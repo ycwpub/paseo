@@ -25,7 +25,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Check, ChevronDown, X } from "lucide-react-native";
+import { Check, ChevronDown, ChevronUp, X } from "lucide-react-native";
 import { usePanelStore } from "@/stores/panel-store";
 import {
   AssistantMessage,
@@ -83,8 +83,7 @@ import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
-import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
-import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
+import { projectProcessVisibility } from "./process-visibility";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -102,16 +101,30 @@ import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { generateDraftId } from "@/stores/draft-keys";
+import {
+  buildDraftWorkspaceAttachmentScopeKey,
+  useWorkspaceAttachmentsStore,
+} from "@/attachments/workspace-attachments-store";
+import type { WorkspaceComposerAttachment } from "@/attachments/types";
+import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
+import { toErrorMessage } from "@/utils/error-messages";
+import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
+import { deriveStreamTurnTiming } from "@/timeline/turn-time";
 
 function renderLiveAuxiliaryNode(input: {
+  processVisibilityControl: ReactNode;
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
 }): ReactNode {
-  if (!input.pendingPermissions && !input.turnFooter) {
+  if (!input.processVisibilityControl && !input.pendingPermissions && !input.turnFooter) {
     return null;
   }
   return (
     <>
+      {input.processVisibilityControl ? (
+        <View style={stylesheet.contentWrapper}>{input.processVisibilityControl}</View>
+      ) : null}
       {input.turnFooter}
       {input.pendingPermissions ? (
         <View style={stylesheet.contentWrapper}>
@@ -231,6 +244,7 @@ function renderLiveHeadStreamItem(input: {
 
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
+  scrollToOldest(): void;
   prepareForViewportChange(): void;
 }
 
@@ -251,8 +265,9 @@ export interface AgentStreamViewProps {
   historyPagination?: {
     hasOlder: boolean;
     isLoadingOlder: boolean;
-    progressKey: string | null;
-    onLoadOlder: () => boolean | Promise<boolean>;
+    onLoadOlder: () => void;
+    isLoadingOldest?: boolean;
+    onLoadUntilOldest?: () => Promise<boolean>;
   };
 }
 
@@ -279,6 +294,169 @@ function useRetainedValue<T>(value: T, active: boolean): T {
 }
 const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [];
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
+
+type AgentHistoryPagination = ReturnType<typeof useLoadOlderAgentHistory>;
+
+function resolveAgentHistoryPagination(
+  override: AgentStreamViewProps["historyPagination"],
+  fallback: AgentHistoryPagination,
+): AgentHistoryPagination {
+  if (!override) {
+    return fallback;
+  }
+  return {
+    isLoadingOlder: override.isLoadingOlder,
+    isLoadingOldest: override.isLoadingOldest ?? false,
+    hasOlder: override.hasOlder,
+    loadOlder: override.onLoadOlder,
+    loadUntilOldest: override.onLoadUntilOldest ?? fallback.loadUntilOldest,
+  };
+}
+
+function scheduleScrollToOldest(viewportRef: React.RefObject<StreamViewportHandle | null>): void {
+  const scroll = () => viewportRef.current?.scrollToOldest();
+  requestAnimationFrame(() => requestAnimationFrame(scroll));
+}
+
+function ScrollNavigationControls({
+  visible,
+  isNearBottom,
+  isLoadingOlder,
+  isLoadingOldest,
+  entering,
+  exiting,
+  onScrollToOldest,
+  onScrollToBottom,
+}: {
+  visible: boolean;
+  isNearBottom: boolean;
+  isLoadingOlder: boolean;
+  isLoadingOldest: boolean;
+  entering: ComponentProps<typeof Animated.View>["entering"];
+  exiting: ComponentProps<typeof Animated.View>["exiting"];
+  onScrollToOldest: () => void;
+  onScrollToBottom: () => void;
+}) {
+  const { t } = useTranslation();
+  if (!visible) {
+    return null;
+  }
+  return (
+    <View style={stylesheet.scrollToBottomContainer} pointerEvents="box-none">
+      <Animated.View
+        entering={entering}
+        exiting={exiting}
+        style={stylesheet.scrollNavigationButtons}
+      >
+        <Pressable
+          style={stylesheet.scrollToBottomButton}
+          onPress={onScrollToOldest}
+          disabled={isLoadingOlder || isLoadingOldest}
+          accessibilityRole="button"
+          accessibilityLabel={t(
+            isLoadingOldest ? "agentStream.locatingOldest" : "agentStream.scrollToOldest",
+          )}
+          testID="scroll-to-oldest-button"
+        >
+          {isLoadingOldest ? (
+            <ActivityIndicator size="small" />
+          ) : (
+            <ChevronUp size={24} color={stylesheet.scrollToBottomIcon.color} />
+          )}
+        </Pressable>
+        {!isNearBottom ? (
+          <Pressable
+            style={stylesheet.scrollToBottomButton}
+            onPress={onScrollToBottom}
+            accessibilityRole="button"
+            accessibilityLabel={t("agentStream.scrollToBottom")}
+            testID="scroll-to-bottom-button"
+          >
+            <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+          </Pressable>
+        ) : null}
+      </Animated.View>
+    </View>
+  );
+}
+
+function ProcessVisibilityControl({
+  expanded,
+  onToggle,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const Icon = expanded ? ChevronUp : ChevronDown;
+  const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
+  return (
+    <Pressable
+      style={stylesheet.processVisibilityControl}
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      accessibilityLabel={t(expanded ? "agentStream.process.hide" : "agentStream.process.show")}
+      testID="process-visibility-toggle"
+    >
+      <Text style={stylesheet.processVisibilityText}>
+        {t(expanded ? "agentStream.process.hide" : "agentStream.process.show")}
+      </Text>
+      <Icon size={16} color={stylesheet.processVisibilityIcon.color} />
+    </Pressable>
+  );
+}
+
+function buildChatHistoryAttachment(input: {
+  draftId: string;
+  serverId: string;
+  agentId: string;
+  payload: Awaited<ReturnType<DaemonClient["buildAgentForkContext"]>>;
+  missingAttachmentMessage: string;
+}): WorkspaceComposerAttachment {
+  if (!input.payload.attachment) {
+    throw new Error(input.missingAttachmentMessage);
+  }
+  return {
+    kind: "chat_history",
+    id: `chat_history:${input.draftId}`,
+    attachment: input.payload.attachment,
+    source: {
+      serverId: input.serverId,
+      agentId: input.agentId,
+      boundaryMessageId: input.payload.boundaryMessageId,
+      boundaryCursor: input.payload.boundaryCursor,
+      itemCount: input.payload.itemCount,
+    },
+  };
+}
+
+function buildForkDraftSetup(agent: AgentScreenAgent): WorkspaceDraftTabSetup | undefined {
+  if (!agent.provider) {
+    return undefined;
+  }
+
+  const featureValues: Record<string, unknown> = {};
+  for (const feature of agent.features ?? []) {
+    featureValues[feature.id] = feature.value;
+  }
+
+  return {
+    provider: agent.provider,
+    cwd: agent.cwd,
+    modeId: agent.currentModeId ?? agent.runtimeInfo?.modeId ?? null,
+    model: agent.model ?? agent.runtimeInfo?.model ?? null,
+    thinkingOptionId: agent.thinkingOptionId ?? agent.runtimeInfo?.thinkingOptionId ?? null,
+    featureValues,
+  };
+}
+
+function buildForkDraftTabTarget(
+  setup: WorkspaceDraftTabSetup | undefined,
+  draftId: string,
+): WorkspaceTabTarget {
+  return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
+}
 
 const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
@@ -325,6 +503,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const [isProcessExpanded, setIsProcessExpanded] = useState(true);
     const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
     const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
 
@@ -363,14 +542,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       agentId,
       toast,
     });
-    const { isLoadingOlder, hasOlder, progressKey, loadOlder } = historyPagination
-      ? {
-          isLoadingOlder: historyPagination.isLoadingOlder,
-          hasOlder: historyPagination.hasOlder,
-          progressKey: historyPagination.progressKey,
-          loadOlder: historyPagination.onLoadOlder,
-        }
-      : agentHistoryPagination;
+    const { isLoadingOlder, isLoadingOldest, hasOlder, loadOlder, loadUntilOldest } =
+      resolveAgentHistoryPagination(historyPagination, agentHistoryPagination);
     // Keep entry/exit animations off on Android due to RN dispatchDraw crashes
     // tracked in react-native-reanimated#8422.
     const shouldDisableEntryExitAnimations = Platform.OS === "android";
@@ -385,7 +558,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      setIsProcessExpanded(true);
     }, [agentId]);
+
+    const toggleProcessVisibility = useCallback(() => {
+      setIsProcessExpanded((expanded) => !expanded);
+    }, []);
 
     const handleInlinePathPress = useStableEvent(
       (target: InlinePathTarget, disposition: OpenFileDisposition) => {
@@ -504,22 +682,40 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         toolCallDetailLevel,
       ],
     );
+    const processVisibility = useMemo(
+      () =>
+        projectProcessVisibility({
+          expanded: isProcessExpanded,
+          isTurnActive: context.status === "running",
+          tail: projectedToolCalls.tail,
+          head: projectedToolCalls.head,
+        }),
+      [context.status, isProcessExpanded, projectedToolCalls.head, projectedToolCalls.tail],
+    );
 
     const baseRenderModel = useMemo(() => {
-      return buildAgentStreamRenderModel({
-        isTurnActive,
-        activeTurnStartedAt: effectiveTurnPresentation.startedAt,
-        tail: projectedToolCalls.tail,
-        head: projectedToolCalls.head,
+      const visibleRenderModel = buildAgentStreamRenderModel({
+        agentStatus: context.status,
+        tail: processVisibility.tail,
+        head: processVisibility.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
       });
+      return {
+        ...visibleRenderModel,
+        turnTiming: deriveStreamTurnTiming({
+          agentStatus: context.status,
+          tail: projectedToolCalls.tail,
+          head: projectedToolCalls.head,
+        }),
+      };
     }, [
+      context.status,
       isMobile,
-      isTurnActive,
+      processVisibility.head,
+      processVisibility.tail,
       projectedToolCalls.head,
       projectedToolCalls.tail,
-      effectiveTurnPresentation.startedAt,
     ]);
     const streamLayout = useMemo(
       () =>
@@ -558,6 +754,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         scrollToBottom(reason = "jump-to-bottom") {
           viewportRef.current?.scrollToBottom(reason);
         },
+        scrollToOldest() {
+          viewportRef.current?.scrollToOldest();
+        },
         prepareForViewportChange() {
           viewportRef.current?.prepareForViewportChange();
         },
@@ -566,19 +765,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const scrollToBottom = useCallback(() => {
-      if (!isTimelineDetached) {
-        viewportRef.current?.scrollToBottom("jump-to-bottom");
+      viewportRef.current?.scrollToBottom("jump-to-bottom");
+    }, []);
+    const scrollToOldest = useCallback(async () => {
+      if (isLoadingOldest) {
         return;
       }
-      void returnToTimelineTail({
-        fetchTail: () =>
-          getHostRuntimeStore().fetchAgentTimeline(resolvedServerId, agentId, {
-            ...planTimelineTailFetch(),
-          }),
-        scrollToBottom: () => viewportRef.current?.scrollToBottom("jump-to-bottom"),
-        onError: handleTimelineHistoryLoadError,
-      });
-    }, [agentId, handleTimelineHistoryLoadError, isTimelineDetached, resolvedServerId]);
+      const reachedOldest = await loadUntilOldest();
+      if (!reachedOldest) {
+        return;
+      }
+      scheduleScrollToOldest(viewportRef);
+    }, [isLoadingOldest, loadUntilOldest]);
+    const handleScrollToOldestPress = useCallback(() => {
+      void scrollToOldest();
+    }, [scrollToOldest]);
 
     const setInlineDetailsExpanded = useCallback(
       (itemId: string, expanded: boolean) => {
@@ -663,20 +864,52 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+        if (!autoExpandReasoning) {
+          return (
+            <AssistantFileLinkResolverProvider
+              client={client}
+              serverId={resolvedServerId}
+              workspaceRoot={workspaceRoot}
+              onOpenWorkspaceFile={handleInlinePathPress}
+              toast={toast}
+            >
+              <AssistantMessage
+                message={item.text}
+                timestamp={item.timestamp.getTime()}
+                workspaceRoot={workspaceRoot}
+                serverId={resolvedServerId}
+                client={client}
+                spacing={layoutItem.assistantSpacing}
+                variant="reasoning"
+              />
+            </AssistantFileLinkResolverProvider>
+          );
+        }
         return (
           <ToolCallSlot
+            key={item.id}
             itemId={item.id}
             onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
             toolName="thinking"
             args={item.text}
             status={item.status === "ready" ? "completed" : "executing"}
+            startedAt={item.startedAt ?? item.timestamp}
+            completedAt={item.status === "ready" ? (item.completedAt ?? item.timestamp) : undefined}
             isLastInSequence={layoutItem.isLastInToolSequence}
-            defaultExpanded={autoExpandReasoning}
-            forceInline={autoExpandReasoning}
+            defaultExpanded
+            forceInline
           />
         );
       },
-      [autoExpandReasoning, setInlineDetailsExpanded],
+      [
+        autoExpandReasoning,
+        client,
+        handleInlinePathPress,
+        resolvedServerId,
+        setInlineDetailsExpanded,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderSingleToolCallItem = useCallback(
@@ -708,6 +941,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               toolName={data.name}
               error={data.error}
               status={data.status}
+              startedAt={item.startedAt ?? item.timestamp}
+              completedAt={
+                data.status === "running" ? undefined : (item.completedAt ?? item.timestamp)
+              }
               detail={data.detail}
               cwd={context.cwd}
               metadata={data.metadata}
@@ -727,6 +964,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             args={data.arguments}
             result={data.result}
             status={data.status}
+            startedAt={item.startedAt ?? item.timestamp}
+            completedAt={
+              data.status === "executing" ? undefined : (item.completedAt ?? item.timestamp)
+            }
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
             maxDetailHeight={maxDetailHeight}
@@ -822,8 +1063,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
+        const disclosure = processVisibility.disclosureByHostId.get(layoutItem.item.id);
+        const contentWithDisclosure = disclosure ? (
+          <>
+            <ProcessVisibilityControl
+              expanded={isProcessExpanded}
+              onToggle={toggleProcessVisibility}
+            />
+            {content}
+          </>
+        ) : (
+          content
+        );
         return renderStreamItemWithTurnFooter({
-          content,
+          content: contentWithDisclosure,
           layoutItem,
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
@@ -834,6 +1087,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
+        processVisibility.disclosureByHostId,
+        isProcessExpanded,
+        toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
       ],
@@ -875,6 +1131,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
         supportsAgentForkContextCursor,
       ],
+    );
+    const auxiliaryProcessVisibilityControl = useMemo(
+      () =>
+        processVisibility.needsAuxiliaryDisclosure ? (
+          <ProcessVisibilityControl
+            expanded={isProcessExpanded}
+            onToggle={toggleProcessVisibility}
+          />
+        ) : null,
+      [isProcessExpanded, processVisibility.needsAuxiliaryDisclosure, toggleProcessVisibility],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
@@ -947,10 +1213,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const renderLiveAuxiliary = useCallback<StreamSegmentRenderers["renderLiveAuxiliary"]>(() => {
       return renderLiveAuxiliaryNode({
+        processVisibilityControl: auxiliaryProcessVisibilityControl,
         pendingPermissions: auxiliary.pendingPermissions,
         turnFooter: auxiliary.turnFooter,
       });
-    }, [auxiliary.pendingPermissions, auxiliary.turnFooter]);
+    }, [auxiliary.pendingPermissions, auxiliary.turnFooter, auxiliaryProcessVisibilityControl]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({
@@ -974,9 +1241,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () => ({
         contentById: projectedToolCalls.historyGroupUpdatesByHostId,
         displayStateById: expandedToolCallGroupIds,
-        globalDisplayState: isMobile,
+        globalDisplayState: isMobile !== isProcessExpanded,
       }),
-      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+      [
+        expandedToolCallGroupIds,
+        isMobile,
+        isProcessExpanded,
+        projectedToolCalls.historyGroupUpdatesByHostId,
+      ],
+    );
+    const liveHeadRowRevision = useMemo(
+      () => ({ expandedToolCallGroupIds, isProcessExpanded }),
+      [expandedToolCallGroupIds, isProcessExpanded],
     );
 
     return (
@@ -987,7 +1263,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               agentId,
               segments: renderModel.segments,
               historyRowRevision,
-              liveHeadRowRevision: expandedToolCallGroupIds,
+              liveHeadRowRevision,
               boundary,
               renderers,
               listEmptyComponent,
@@ -1006,27 +1282,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
             })}
           </MessageOuterSpacingProvider>
-          <ChatOutlineRail
-            prompts={chatOutline.prompts}
-            activePrompt={chatOutline.activePrompt}
-            onJumpToPrompt={chatOutline.jumpToPrompt}
+          <ScrollNavigationControls
+            visible={hasOlder || boundary.hasMountedHistory || boundary.hasVirtualizedHistory}
+            isNearBottom={isNearBottom}
+            isLoadingOlder={isLoadingOlder}
+            isLoadingOldest={isLoadingOldest}
+            entering={scrollIndicatorFadeIn}
+            exiting={scrollIndicatorFadeOut}
+            onScrollToOldest={handleScrollToOldestPress}
+            onScrollToBottom={scrollToBottom}
           />
-          {(!isNearBottom || isTimelineDetached) && (
-            <View style={stylesheet.scrollToBottomContainer} pointerEvents="box-none">
-              <Animated.View entering={scrollIndicatorFadeIn} exiting={scrollIndicatorFadeOut}>
-                <Pressable
-                  style={stylesheet.scrollToBottomButton}
-                  onPress={scrollToBottom}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("agentStream.scrollToBottom")}
-                  testID="scroll-to-bottom-button"
-                >
-                  <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
-                </Pressable>
-              </Animated.View>
-            </View>
-          )}
-        </AssistantSelectionCopySurface>
+        </View>
       </ToolCallSheetProvider>
     );
   },
@@ -1114,8 +1380,9 @@ function historyPaginationPropsEqual(
   return (
     left?.hasOlder === right?.hasOlder &&
     left?.isLoadingOlder === right?.isLoadingOlder &&
-    left?.progressKey === right?.progressKey &&
-    left?.onLoadOlder === right?.onLoadOlder
+    left?.onLoadOlder === right?.onLoadOlder &&
+    left?.isLoadingOldest === right?.isLoadingOldest &&
+    left?.onLoadUntilOldest === right?.onLoadUntilOldest
   );
 }
 
@@ -1526,6 +1793,10 @@ const stylesheet = StyleSheet.create((theme) => ({
     right: 0,
     alignItems: "center",
   },
+  scrollNavigationButtons: {
+    flexDirection: "row",
+    gap: theme.spacing[2],
+  },
   scrollToBottomButton: {
     width: 48,
     height: 48,
@@ -1534,6 +1805,21 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadow.sm,
+  },
+  processVisibilityControl: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingVertical: theme.spacing[2],
+  },
+  processVisibilityText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "500",
+  },
+  processVisibilityIcon: {
+    color: theme.colors.foregroundMuted,
   },
   scrollToBottomIcon: {
     color: theme.colors.foreground,

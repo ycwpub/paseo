@@ -138,8 +138,6 @@ export const ar: TranslationResources = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "إسقاط الصور هنا",
       dropFilesHere: "Drop files here",
-      editQueuedMessage: "تحرير الرسالة في قائمة الانتظار",
-      sendQueuedMessageNow: "إرسال رسالة في قائمة الانتظار الآن",
       openImage: "فتح مرفق الصورة",
       removeImage: "إزالة مرفق الصورة",
       removeFile: "Remove file attachment",
@@ -150,6 +148,15 @@ export const ar: TranslationResources = {
       removeBrowserElement: "إزالة مرفق عنصر المتصفح",
       openReview: "فتح مرفق المراجعة",
       removeReview: "إزالة مرفق المراجعة",
+    },
+    queue: {
+      edit: "تحرير الرسالة في قائمة الانتظار",
+      save: "حفظ الرسالة في قائمة الانتظار",
+      cancelEdit: "إلغاء تحرير الرسالة",
+      remove: "إزالة الرسالة من قائمة الانتظار",
+      moveUp: "نقل الرسالة لأعلى",
+      moveDown: "نقل الرسالة لأسفل",
+      steer: "توجيه",
     },
     errors: {
       failedToSend: "فشل في إرسال الرسالة",
@@ -210,7 +217,12 @@ export const ar: TranslationResources = {
   agentStream: {
     empty: "ابدأ الدردشة مع هذا الوكيل...",
     scrollToBottom: "قم بالتمرير إلى الأسفل",
-    historyLoadFailed: "تعذر تحميل سجل الوكيل",
+    scrollToOldest: "انتقل إلى الرسالة الأولى",
+    locatingOldest: "جارٍ تحديد الرسالة الأولى",
+    process: {
+      show: "إظهار العملية",
+      hide: "إخفاء العملية",
+    },
     permission: {
       plan: "يخطط",
       required: "الإذن مطلوب",
@@ -1883,18 +1895,6 @@ export const ar: TranslationResources = {
         success: "تم مسح بيانات المتصفح.",
         error: "تعذر مسح بيانات المتصفح.",
       },
-      defaultSend: {
-        label: "إرسال افتراضي",
-        descriptions: {
-          interrupt:
-            "عند تشغيل الوكيل، يوقف Enter التشغيل. Command/Ctrl+Enter يضيف إلى قائمة الانتظار.",
-          queue: "عند تشغيل الوكيل، يضيف Enter إلى قائمة الانتظار. Command/Ctrl+Enter يرسل.",
-        },
-        options: {
-          interrupt: "مقاطعة",
-          queue: "طابور",
-        },
-      },
       serviceUrls: {
         label: "عناوين URL للخدمة",
         description: "مكان فتح عناوين URL من تشغيل البرامج النصية",
@@ -2229,7 +2229,7 @@ export const ar: TranslationResources = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2246,6 +2246,8 @@ export const ar: TranslationResources = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint: "Leave empty to generate it automatically.",

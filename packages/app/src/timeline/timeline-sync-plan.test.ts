@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
+import {
+  TIMELINE_FETCH_PAGE_SIZE,
+  TIMELINE_OLDER_FETCH_PAGE_SIZE,
+} from "@/timeline/timeline-fetch-policy";
 import {
   isTimelineCatchUpComplete,
   isTimelineResumeSnapshotAuthoritative,
@@ -25,21 +28,17 @@ describe("timeline sync planning", () => {
     expect(plan).toEqual({
       direction: "before",
       cursor: { epoch: "epoch-1", seq: 25 },
-      limit: TIMELINE_FETCH_PAGE_SIZE,
+      limit: TIMELINE_OLDER_FETCH_PAGE_SIZE,
       projection: "projected",
     });
   });
 
-  test("an unloaded prompt jump merges a window with half a page newer than the target", () => {
-    expect(planTimelinePromptJump({ epoch: "epoch-1", seq: 42 })).toEqual({
+  test("older history can use a larger bounded page for jump-to-oldest", () => {
+    expect(planTimelineOlderFetch({ epoch: "epoch-1", seq: 25 }, 300)).toEqual({
       direction: "before",
-      cursor: {
-        epoch: "epoch-1",
-        seq: 42 + Math.floor(TIMELINE_FETCH_PAGE_SIZE / 2) + 1,
-      },
-      limit: TIMELINE_FETCH_PAGE_SIZE,
+      cursor: { epoch: "epoch-1", seq: 25 },
+      limit: 300,
       projection: "projected",
-      mergeWindow: true,
     });
   });
 

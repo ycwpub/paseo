@@ -3411,6 +3411,86 @@ test("reconnects after relay close with replaced-by-new-connection reason", asyn
   }
 });
 
+test("waits for reconnect before sending a session request", async () => {
+  useHeartbeatClock();
+  try {
+    const logger = createMockLogger();
+    const first = createMockTransport();
+    const second = createMockTransport();
+    const third = createMockTransport();
+    const transports = [first, second, third];
+    let transportIndex = 0;
+
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "clsk_reconnect_request_test",
+      logger,
+      reconnect: {
+        enabled: true,
+        baseDelayMs: 5,
+        maxDelayMs: 5,
+      },
+      transportFactory: () => {
+        const next = transports[Math.min(transportIndex, transports.length - 1)];
+        transportIndex += 1;
+        return next.transport;
+      },
+    });
+    clients.push(client);
+
+    const connectPromise = client.connect();
+    first.triggerOpen();
+    await connectPromise;
+
+    first.triggerClose({ code: 1006, reason: "Daemon restarting" });
+    expect(client.getConnectionState().status).toBe("disconnected");
+
+    const createPromise = client.createAgent({
+      provider: "codex",
+      cwd: "/tmp/project",
+      requestId: "req-after-reconnect",
+      initialPrompt: "Continue after the daemon restarts",
+    });
+    await Promise.resolve();
+    expect(first.sent).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(5);
+    expect(client.getConnectionState().status).toBe("connecting");
+    second.triggerClose({ code: 1006, reason: "Daemon still restarting" });
+    expect(client.getConnectionState().status).toBe("disconnected");
+
+    await vi.advanceTimersByTimeAsync(5);
+    expect(client.getConnectionState().status).toBe("connecting");
+    third.triggerOpen();
+    await Promise.resolve();
+
+    expect(third.sent).toHaveLength(1);
+    const request = parseSentFrame(third.sent[0]);
+    expect(request).toEqual(
+      expect.objectContaining({
+        type: "create_agent_request",
+        requestId: "req-after-reconnect",
+        initialPrompt: "Continue after the daemon restarts",
+      }),
+    );
+
+    third.triggerMessage(
+      wrapSessionMessage({
+        type: "status",
+        payload: {
+          status: "agent_create_failed",
+          requestId: request.requestId,
+          error: "reconnected request sentinel",
+        },
+      }),
+    );
+
+    await expect(createPromise).rejects.toThrow("reconnected request sentinel");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("requires non-empty clientId", () => {
   expect(() => {
     const _client = new DaemonClient({

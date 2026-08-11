@@ -2,12 +2,12 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
+import type { ViewedTimelineSync } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   appendSubmittedUserMessage,
   handoffCreatedAgentUserMessageToStream,
-  removeSubmittedUserMessage,
+  settleInactiveAgentStream,
   type StreamItem,
   type UserMessageItem,
 } from "@/types/stream";
@@ -406,7 +406,7 @@ export interface SessionState {
   // Daemon client (immutable reference)
   client: DaemonClient | null;
   clientGeneration: number;
-  viewedTimelineSync: ViewedTimelineUiBridge | null;
+  viewedTimelineSync: ViewedTimelineSync | null;
 
   // Server metadata (from server_info handshake)
   serverInfo: DaemonServerInfo | null;
@@ -486,7 +486,7 @@ interface SessionStoreActions {
   clearSession: (serverId: string) => void;
   getSession: (serverId: string) => SessionState | undefined;
   updateSessionClient: (serverId: string, client: DaemonClient, clientGeneration?: number) => void;
-  setViewedTimelineSync: (serverId: string, sync: ViewedTimelineUiBridge | null) => void;
+  setViewedTimelineSync: (serverId: string, sync: ViewedTimelineSync | null) => void;
   updateSessionServerInfo: (serverId: string, info: DaemonServerInfo) => void;
 
   // Audio state
@@ -1660,7 +1660,38 @@ export const useSessionStore = create<SessionStore>()(
             return prev;
           }
           const nextAgents = typeof agents === "function" ? agents(session.agents) : agents;
-          if (session.agents === nextAgents) {
+          let nextStreamTail = session.agentStreamTail;
+          let nextStreamHead = session.agentStreamHead;
+          let streamChanged = false;
+
+          for (const [agentId, agent] of nextAgents) {
+            if (agent.status === "running") {
+              continue;
+            }
+            const previousStatus = session.agents.get(agentId)?.status;
+            const currentHead = session.agentStreamHead.get(agentId) ?? [];
+            if (previousStatus !== "running" && currentHead.length === 0) {
+              continue;
+            }
+            const currentTail = session.agentStreamTail.get(agentId) ?? [];
+            const settled = settleInactiveAgentStream(currentTail, currentHead);
+            if (settled.changedTail) {
+              if (nextStreamTail === session.agentStreamTail) {
+                nextStreamTail = new Map(session.agentStreamTail);
+              }
+              nextStreamTail.set(agentId, settled.tail);
+              streamChanged = true;
+            }
+            if (settled.changedHead) {
+              if (nextStreamHead === session.agentStreamHead) {
+                nextStreamHead = new Map(session.agentStreamHead);
+              }
+              nextStreamHead.delete(agentId);
+              streamChanged = true;
+            }
+          }
+
+          if (session.agents === nextAgents && !streamChanged) {
             return prev;
           }
           return {
@@ -1670,6 +1701,8 @@ export const useSessionStore = create<SessionStore>()(
               [serverId]: {
                 ...session,
                 agents: nextAgents,
+                agentStreamTail: nextStreamTail,
+                agentStreamHead: nextStreamHead,
                 workspaceAgentActivity: buildWorkspaceAgentActivityIndex(
                   nextAgents,
                   session.workspaceAgentActivity,

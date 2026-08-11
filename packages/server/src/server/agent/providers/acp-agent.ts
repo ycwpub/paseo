@@ -643,13 +643,29 @@ export function deriveModesFromACP(
   modeState?: { availableModes?: SessionMode[] | null; currentModeId?: string | null } | null,
   configOptions?: SessionConfigOption[] | null,
 ): { modes: AgentMode[]; currentModeId: string | null } {
+  const enrichMode = (mode: AgentMode): AgentMode => {
+    const fallback = fallbackModes.find((candidate) => candidate.id === mode.id);
+    if (!fallback) {
+      return mode;
+    }
+    return {
+      ...mode,
+      ...(mode.description?.trim() ? {} : { description: fallback.description }),
+      ...(mode.icon ? {} : { icon: fallback.icon }),
+      ...(mode.colorTier ? {} : { colorTier: fallback.colorTier }),
+      ...(fallback.isUnattended === undefined ? {} : { isUnattended: fallback.isUnattended }),
+    };
+  };
+
   if (modeState?.availableModes?.length) {
     return {
-      modes: modeState.availableModes.map((mode) => ({
-        id: mode.id,
-        label: mode.name,
-        description: mode.description ?? undefined,
-      })),
+      modes: modeState.availableModes.map((mode) =>
+        enrichMode({
+          id: mode.id,
+          label: mode.name,
+          description: mode.description ?? undefined,
+        }),
+      ),
       currentModeId: modeState.currentModeId ?? null,
     };
   }
@@ -658,11 +674,13 @@ export function deriveModesFromACP(
   if (modeOption) {
     const flatOptions = flattenSelectOptions(modeOption.options);
     return {
-      modes: flatOptions.map((option) => ({
-        id: option.value,
-        label: option.name,
-        description: option.description ?? undefined,
-      })),
+      modes: flatOptions.map((option) =>
+        enrichMode({
+          id: option.value,
+          label: option.name,
+          description: option.description ?? undefined,
+        }),
+      ),
       currentModeId: modeOption.currentValue,
     };
   }

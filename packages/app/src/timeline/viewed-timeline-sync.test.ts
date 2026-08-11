@@ -381,6 +381,28 @@ test("gap recovery supersedes completed catch-up and pages through the current t
   ]);
 });
 
+test("an authoritative agent stop forces a fresh catch-up from the live cursor", async () => {
+  const world = new TimelineWorld();
+  world.sync.setConnected(true);
+  world.sync.replaceVisibleAgentIds("workspace", ["agent-a"]);
+  const membership = await world.nextMembership();
+  membership.succeed();
+  const initial = await world.nextFetch("agent-a");
+  initial.respond({ hasNewer: false });
+  world.setLiveCursor("agent-a", 12);
+
+  world.sync.requestAgentCatchUp("agent-a");
+  const catchUp = await world.nextFetch("agent-a");
+  catchUp.respond({ hasNewer: false });
+
+  expect(catchUp.request).toEqual({
+    direction: "after",
+    cursor: { epoch: "epoch-agent-a", seq: 12 },
+    limit: 100,
+    projection: "projected",
+  });
+});
+
 test("repeated recovery for the same running gap reuses the in-flight fetch", async () => {
   const world = new TimelineWorld();
   world.sync.setConnected(true);

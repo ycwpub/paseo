@@ -6,7 +6,7 @@ import type {
 } from "@getpaseo/protocol/messages";
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
-import { daemonConfigQueryKey } from "@/data/daemon-config";
+import { daemonConfigQueryKey, normalizeMutableDaemonConfig } from "@/data/daemon-config";
 import { larkChannelQueryKey } from "@/data/lark-channel";
 import { teamsQueryKey } from "@/data/team";
 import { mcpServersQueryKey } from "@/data/mcp";
@@ -453,7 +453,7 @@ function applyDaemonConfigStatus(input: {
   }
   input.queryClient.setQueryData<MutableDaemonConfig>(
     daemonConfigQueryKey(input.serverId),
-    payload.config,
+    normalizeMutableDaemonConfig(payload.config),
   );
   void input.queryClient.invalidateQueries({
     queryKey: daemonPairingOfferQueryKey(input.serverId),

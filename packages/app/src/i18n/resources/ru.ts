@@ -138,8 +138,6 @@ export const ru: TranslationResources = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Скиньте изображения сюда",
       dropFilesHere: "Drop files here",
-      editQueuedMessage: "Изменить сообщение в очереди",
-      sendQueuedMessageNow: "Отправить сообщение в очереди сейчас",
       openImage: "Открыть прикрепленное изображение",
       removeImage: "Удалить прикрепленное изображение",
       removeFile: "Remove file attachment",
@@ -150,6 +148,15 @@ export const ru: TranslationResources = {
       removeBrowserElement: "Удалить вложение элемента браузера",
       openReview: "Открыть прикрепленный файл с отзывом",
       removeReview: "Удалить прикрепленный отзыв",
+    },
+    queue: {
+      edit: "Изменить сообщение в очереди",
+      save: "Сохранить сообщение в очереди",
+      cancelEdit: "Отменить редактирование сообщения",
+      remove: "Удалить сообщение из очереди",
+      moveUp: "Переместить сообщение вверх",
+      moveDown: "Переместить сообщение вниз",
+      steer: "Направить",
     },
     errors: {
       failedToSend: "Не удалось отправить сообщение",
@@ -210,7 +217,12 @@ export const ru: TranslationResources = {
   agentStream: {
     empty: "Начните общаться с этим агентом...",
     scrollToBottom: "Прокрутить вниз",
-    historyLoadFailed: "Не удалось загрузить историю агента",
+    scrollToOldest: "Перейти к первому сообщению",
+    locatingOldest: "Поиск первого сообщения",
+    process: {
+      show: "Показать процесс",
+      hide: "Скрыть процесс",
+    },
     permission: {
       plan: "План",
       required: "Требуется разрешение",
@@ -1918,17 +1930,6 @@ export const ru: TranslationResources = {
         success: "Данные браузера очищены.",
         error: "Не удалось очистить данные браузера.",
       },
-      defaultSend: {
-        label: "Отправка по умолчанию",
-        descriptions: {
-          interrupt: "Когда агент работает, Enter прерывает. Command/Ctrl+Enter ставит в очередь.",
-          queue: "Когда агент работает, Enter ставит в очередь. Command/Ctrl+Enter отправляет.",
-        },
-        options: {
-          interrupt: "Прерывать",
-          queue: "Очередь",
-        },
-      },
       serviceUrls: {
         label: "URL- адреса служб",
         description: "Где открыть URL- адреса запущенных скриптов",
@@ -2267,7 +2268,7 @@ export const ru: TranslationResources = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2284,6 +2285,8 @@ export const ru: TranslationResources = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint: "Leave empty to generate it automatically.",

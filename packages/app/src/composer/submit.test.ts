@@ -138,7 +138,7 @@ describe("submitAgentInput", () => {
     expect(setAttachments).toHaveBeenCalledWith([]);
     expect(setSendError).not.toHaveBeenCalled();
     expect(setIsProcessing).not.toHaveBeenCalled();
-    expect(clearDraft).not.toHaveBeenCalled();
+    expect(clearDraft).toHaveBeenCalledWith("sent");
   });
 
   it("restores the composer when submit fails", async () => {

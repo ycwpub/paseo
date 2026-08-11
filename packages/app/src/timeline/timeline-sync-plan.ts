@@ -1,4 +1,7 @@
-import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
+import {
+  TIMELINE_FETCH_PAGE_SIZE,
+  TIMELINE_OLDER_FETCH_PAGE_SIZE,
+} from "@/timeline/timeline-fetch-policy";
 
 export interface TimelineSyncCursor {
   epoch: string;
@@ -51,11 +54,14 @@ export function planTimelineTailFetch() {
   } as const;
 }
 
-export function planTimelineOlderFetch(cursor: TimelineSyncCursor) {
+export function planTimelineOlderFetch(
+  cursor: TimelineSyncCursor,
+  limit = TIMELINE_OLDER_FETCH_PAGE_SIZE,
+) {
   return {
     direction: "before",
     cursor,
-    limit: TIMELINE_FETCH_PAGE_SIZE,
+    limit,
     projection: "projected",
   } as const;
 }

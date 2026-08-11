@@ -138,8 +138,6 @@ export const ptBR: TranslationResources = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Solte imagens aqui",
       dropFilesHere: "Solte arquivos aqui",
-      editQueuedMessage: "Editar mensagem na fila",
-      sendQueuedMessageNow: "Enviar mensagem da fila agora",
       openImage: "Abrir anexo de imagem",
       removeImage: "Remover anexo de imagem",
       removeFile: "Remover anexo de arquivo",
@@ -150,6 +148,15 @@ export const ptBR: TranslationResources = {
       removeBrowserElement: "Remover anexo de elemento do navegador",
       openReview: "Abrir anexo de revisão",
       removeReview: "Remover anexo de revisão",
+    },
+    queue: {
+      edit: "Editar mensagem na fila",
+      save: "Salvar mensagem na fila",
+      cancelEdit: "Cancelar edição da mensagem",
+      remove: "Remover mensagem da fila",
+      moveUp: "Mover mensagem para cima",
+      moveDown: "Mover mensagem para baixo",
+      steer: "Orientar",
     },
     errors: {
       failedToSend: "Falha ao enviar mensagem",
@@ -210,7 +217,12 @@ export const ptBR: TranslationResources = {
   agentStream: {
     empty: "Comece a conversar com este agente...",
     scrollToBottom: "Rolar para o fim",
-    historyLoadFailed: "Não foi possível carregar o histórico do agente",
+    scrollToOldest: "Ir para a primeira mensagem",
+    locatingOldest: "Localizando a primeira mensagem",
+    process: {
+      show: "Mostrar processo",
+      hide: "Ocultar processo",
+    },
     permission: {
       plan: "Plano",
       required: "Permissão necessária",
@@ -1913,18 +1925,6 @@ export const ptBR: TranslationResources = {
         success: "Dados do navegador limpos.",
         error: "Não foi possível limpar os dados do navegador.",
       },
-      defaultSend: {
-        label: "Envio padrão",
-        descriptions: {
-          interrupt:
-            "Quando o agente está em execução, Enter interrompe. Command/Ctrl+Enter enfileira.",
-          queue: "Quando o agente está em execução, Enter enfileira. Command/Ctrl+Enter envia.",
-        },
-        options: {
-          interrupt: "Interromper",
-          queue: "Fila",
-        },
-      },
       serviceUrls: {
         label: "URLs de serviço",
         description: "Onde abrir URLs de scripts em execução",
@@ -2263,7 +2263,7 @@ export const ptBR: TranslationResources = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2280,6 +2280,8 @@ export const ptBR: TranslationResources = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint: "Leave empty to generate it automatically.",

@@ -10,21 +10,6 @@ async function pressSettingsToggleShortcut(page: import("@playwright/test").Page
   await page.keyboard.press(`${modifier}+Comma`);
 }
 
-async function expectSendBehavior(
-  page: import("@playwright/test").Page,
-  expected: "interrupt" | "queue",
-) {
-  await expect
-    .poll(async () => {
-      const raw = await page.evaluate(() => localStorage.getItem("@paseo:app-settings"));
-      if (!raw) {
-        return null;
-      }
-      return (JSON.parse(raw) as { sendBehavior?: string }).sendBehavior ?? null;
-    })
-    .toBe(expected);
-}
-
 async function openAgentRouteAndExpectFocused(input: {
   page: import("@playwright/test").Page;
   serverId: string;
@@ -45,9 +30,7 @@ async function openAgentRouteAndExpectFocused(input: {
 test.describe("Settings toggle tab regression", () => {
   test.describe.configure({ timeout: 180_000 });
 
-  test("toggling settings after changing a setting returns to the same workspace tab", async ({
-    page,
-  }) => {
+  test("toggling settings returns to the same workspace tab", async ({ page }) => {
     const serverId = getServerId();
     const workspace = await seedWorkspace({ repoPrefix: "settings-toggle-tab-" });
 
@@ -69,11 +52,6 @@ test.describe("Settings toggle tab regression", () => {
 
       await pressSettingsToggleShortcut(page);
       await expect(page).toHaveURL(/\/settings\/general$/);
-
-      await page.getByRole("button", { name: "Queue", exact: true }).click();
-      await expectSendBehavior(page, "queue");
-      await page.getByRole("button", { name: "Interrupt", exact: true }).click();
-      await expectSendBehavior(page, "interrupt");
 
       await pressSettingsToggleShortcut(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, workspace.workspaceId));

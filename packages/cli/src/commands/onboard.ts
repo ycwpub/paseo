@@ -47,6 +47,10 @@ type OnboardPersistedConfig = PersistedConfig & {
   };
 };
 
+type LegacyLocalPairingOffer = Omit<LocalPairingOffer, "offers"> & {
+  offers?: LocalPairingOffer["offers"] | null;
+};
+
 const DEFAULT_READY_TIMEOUT_MS = 10 * 60 * 1000;
 const READY_PROBE_TIMEOUT_MS = 1200;
 const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
@@ -54,6 +58,13 @@ const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
 class OnboardCancelledError extends Error {}
 
 const plainNoteFormat = (line: string): string => line;
+
+export function normalizeOnboardPairingOffer(pairing: LegacyLocalPairingOffer): LocalPairingOffer {
+  return {
+    ...pairing,
+    offers: Array.isArray(pairing.offers) ? pairing.offers : [],
+  };
+}
 
 function renderNote(message: string, title: string): void {
   note(message, title, { format: plainNoteFormat });
@@ -449,18 +460,19 @@ async function getOnboardPairingOffer(args: {
     try {
       if (client.getLastServerInfoMessage()?.features?.daemonStatusRpc === true) {
         const offer = await getCompleteDaemonPairingOffer(client, PAIRING_DAEMON_RPC_TIMEOUT_MS);
-        return {
+        const relayOffers = Array.isArray(offer.offers) ? offer.offers : [];
+        return normalizeOnboardPairingOffer({
           relayEnabled: offer.relayEnabled,
           url: offer.url || null,
           qr: offer.qr ?? null,
-          offers: offer.offers.map((relayOffer) => ({
+          offers: relayOffers.map((relayOffer) => ({
             endpoint: relayOffer.endpoint,
             useTls: relayOffer.useTls,
             pairingBaseUrl: relayOffer.pairingBaseUrl ?? new URL(relayOffer.url).origin,
             url: relayOffer.url,
             qr: relayOffer.qr ?? null,
           })),
-        };
+        });
       }
     } catch {
       // COMPAT(daemon-rpc-rollout): fall back to local generation for an older daemon.
@@ -469,18 +481,20 @@ async function getOnboardPairingOffer(args: {
     }
   }
 
-  return generateLocalPairingOffer({
-    paseoHome: args.paseoHome,
-    relayEnabled: args.config.relayEnabled,
-    relayEndpoints: args.config.relayEndpoints,
-    relayPairingBaseUrls: args.config.relayPairingBaseUrls,
-    relayEndpoint: args.config.relayEndpoint,
-    relayPublicEndpoint: args.config.relayPublicEndpoint,
-    relayUseTls: args.config.relayUseTls,
-    relayPublicUseTls: args.config.relayPublicUseTls,
-    appBaseUrl: args.config.appBaseUrl,
-    includeQr: true,
-  });
+  return normalizeOnboardPairingOffer(
+    await generateLocalPairingOffer({
+      paseoHome: args.paseoHome,
+      relayEnabled: args.config.relayEnabled,
+      relayEndpoints: args.config.relayEndpoints,
+      relayPairingBaseUrls: args.config.relayPairingBaseUrls,
+      relayEndpoint: args.config.relayEndpoint,
+      relayPublicEndpoint: args.config.relayPublicEndpoint,
+      relayUseTls: args.config.relayUseTls,
+      relayPublicUseTls: args.config.relayPublicUseTls,
+      appBaseUrl: args.config.appBaseUrl,
+      includeQr: true,
+    }),
+  );
 }
 
 export async function runOnboard(options: OnboardOptions): Promise<void> {
@@ -522,11 +536,13 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     richUi,
   });
 
-  const pairing = await getOnboardPairingOffer({
-    paseoHome,
-    daemonListen: readyState.listen,
-    config,
-  });
+  const pairing = normalizeOnboardPairingOffer(
+    await getOnboardPairingOffer({
+      paseoHome,
+      daemonListen: readyState.listen,
+      config,
+    }),
+  );
 
   if (!pairing.relayEnabled) {
     log.warn("Relay is disabled; pairing offer is unavailable for this daemon.");

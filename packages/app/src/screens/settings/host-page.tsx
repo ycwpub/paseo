@@ -72,13 +72,13 @@ import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   DEFAULT_PUBLIC_RELAY_ENDPOINTS,
+  DEFAULT_RELAY_PAIRING_BASE_URL,
   formatRelayEndpointInput,
   normalizeHostPort,
   normalizeLocalRelayPairingBaseUrl,
   normalizeLocalRelayWebAppPath,
   normalizeRelayPairingBaseUrl,
   parseRelayEndpointInput,
-  resolveRelayPairingBaseUrl,
 } from "@/utils/daemon-endpoints";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
@@ -398,21 +398,23 @@ function RelayConfigurationSection({
 
   useEffect(() => {
     if (!config) return;
+    const relayEndpoints = Array.isArray(config.relay?.endpoints) ? config.relay.endpoints : [];
+    const pairingBaseUrls = Array.isArray(config.relay?.pairingBaseUrls)
+      ? config.relay.pairingBaseUrls
+      : [];
     if (!relayRowsDirty) {
       setRelayRows(
-        config.relay.endpoints.length > 0
-          ? config.relay.endpoints.map((relay) =>
-              createRelayConfigDraft(formatRelayEndpointInput(relay)),
-            )
+        relayEndpoints.length > 0
+          ? relayEndpoints.map((relay) => createRelayConfigDraft(formatRelayEndpointInput(relay)))
           : [createRelayConfigDraft()],
       );
       setPairingRows(
-        config.relay.pairingBaseUrls.length > 0
-          ? config.relay.pairingBaseUrls.map((url) => createRelayConfigDraft(url))
+        pairingBaseUrls.length > 0
+          ? pairingBaseUrls.map((url) => createRelayConfigDraft(url))
           : [createRelayConfigDraft()],
       );
     }
-    setLanRelayEnabled(config.relay.local.enabled);
+    setLanRelayEnabled(config.relay?.local?.enabled ?? false);
   }, [config, relayRowsDirty]);
 
   const updateRelayRow = useCallback((id: number, value: string) => {
@@ -522,9 +524,6 @@ function RelayConfigurationSection({
   const defaultPublicRelayAddresses = DEFAULT_PUBLIC_RELAY_ENDPOINTS.map((endpoint) =>
     formatRelayEndpointInput({ endpoint, useTls: true }),
   ).join(", ");
-  const defaultPublicPairingAddresses = DEFAULT_PUBLIC_RELAY_ENDPOINTS.map((endpoint) =>
-    resolveRelayPairingBaseUrl({ endpoint, useTls: true }),
-  ).join(", ");
 
   return (
     <SettingsSection title={t("settings.host.relay.title")}>
@@ -577,7 +576,7 @@ function RelayConfigurationSection({
               <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.pairingColumn")}</Text>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.host.relay.pairingListHint", {
-                  addresses: defaultPublicPairingAddresses,
+                  addresses: DEFAULT_RELAY_PAIRING_BASE_URL,
                 })}
               </Text>
             </View>
@@ -683,6 +682,7 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
   const [lanRelayWebAppEnabled, setLanRelayWebAppEnabled] = useState(false);
   const [lanRelayWebAppPath, setLanRelayWebAppPath] = useState("/app");
   const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const localRelayStatusQuery = useFetchQuery({
     queryKey: ["daemon-local-relay-status", serverId],
@@ -690,23 +690,56 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
       if (!client) throw new Error(t("workspace.terminal.hostDisconnected"));
       return client.getDaemonStatus();
     },
-    enabled: Boolean(client && isConnected && config?.relay.local.enabled),
+    enabled: Boolean(client && isConnected && config?.relay?.local?.enabled),
     dataShape: "value",
     staleTimeMs: 0,
     retry: false,
-    refetchInterval: config?.relay.local.enabled ? 2000 : false,
+    refetchInterval: config?.relay?.local?.enabled ? 2000 : false,
   });
   const handleRelayHistoryChanged = useCallback(() => {
     void localRelayStatusQuery.refetch();
   }, [localRelayStatusQuery]);
 
   useEffect(() => {
-    if (!config) return;
-    setLanRelayListen(config.relay.local.listen);
-    setLanRelayPairingBaseUrl(config.relay.local.pairingBaseUrl ?? "");
-    setLanRelayWebAppEnabled(config.relay.local.webApp?.enabled ?? false);
-    setLanRelayWebAppPath(config.relay.local.webApp?.path ?? "/app");
-  }, [config]);
+    if (!config || isDirty) return;
+    setLanRelayListen(config.relay?.local?.listen ?? "0.0.0.0:6769");
+    setLanRelayPairingBaseUrl(config.relay?.local?.pairingBaseUrl ?? "");
+    setLanRelayWebAppEnabled(config.relay?.local?.webApp?.enabled ?? false);
+    setLanRelayWebAppPath(config.relay?.local?.webApp?.path ?? "/app");
+  }, [config, isDirty]);
+
+  const markDraftChanged = useCallback(() => {
+    setError(null);
+    setIsDirty(true);
+  }, []);
+  const handleLanRelayListenChange = useCallback(
+    (value: string) => {
+      markDraftChanged();
+      setLanRelayListen(value);
+    },
+    [markDraftChanged],
+  );
+  const handleLanRelayPairingBaseUrlChange = useCallback(
+    (value: string) => {
+      markDraftChanged();
+      setLanRelayPairingBaseUrl(value);
+    },
+    [markDraftChanged],
+  );
+  const handleLanRelayWebAppEnabledChange = useCallback(
+    (value: boolean) => {
+      markDraftChanged();
+      setLanRelayWebAppEnabled(value);
+    },
+    [markDraftChanged],
+  );
+  const handleLanRelayWebAppPathChange = useCallback(
+    (value: string) => {
+      markDraftChanged();
+      setLanRelayWebAppPath(value);
+    },
+    [markDraftChanged],
+  );
 
   const handleSave = useCallback(() => {
     let listen: string;
@@ -737,6 +770,13 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
         },
       },
     })
+      .then(() => {
+        setLanRelayListen(listen);
+        setLanRelayPairingBaseUrl(localPairingBaseUrl ?? "");
+        setLanRelayWebAppPath(localWebAppPath);
+        setIsDirty(false);
+        return localRelayStatusQuery.refetch();
+      })
       .catch((saveError) => {
         setError(saveError instanceof Error ? saveError.message : String(saveError));
       })
@@ -746,6 +786,7 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
     lanRelayPairingBaseUrl,
     lanRelayWebAppEnabled,
     lanRelayWebAppPath,
+    localRelayStatusQuery,
     patchConfig,
   ]);
 
@@ -753,10 +794,11 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
     <SettingsSection title={t("settings.host.relay.lan.title")}>
       <View style={styles.relayField}>
         <Text style={styles.relayFieldLabel}>{t("settings.host.relay.lan.listenLabel")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.host.relay.lan.listenHint")}</Text>
         <SettingsTextAreaCard
           accessibilityLabel={t("settings.host.relay.lan.listenLabel")}
           value={lanRelayListen}
-          onChangeText={setLanRelayListen}
+          onChangeText={handleLanRelayListenChange}
           placeholder="0.0.0.0:6769"
           testID="lan-relay-listen-input"
           style={styles.relayListenInput}
@@ -768,7 +810,7 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
         <SettingsTextAreaCard
           accessibilityLabel={t("settings.host.relay.lan.pairingUrlLabel")}
           value={lanRelayPairingBaseUrl}
-          onChangeText={setLanRelayPairingBaseUrl}
+          onChangeText={handleLanRelayPairingBaseUrlChange}
           placeholder={t("settings.host.relay.lan.pairingUrlPlaceholder")}
           testID="lan-relay-pairing-url-input"
           style={styles.relayListenInput}
@@ -782,7 +824,7 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
           </View>
           <Switch
             value={lanRelayWebAppEnabled}
-            onValueChange={setLanRelayWebAppEnabled}
+            onValueChange={handleLanRelayWebAppEnabledChange}
             accessibilityLabel={t("settings.host.relay.lan.webApp.title")}
             testID="lan-relay-web-app-switch"
           />
@@ -797,13 +839,25 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
           <SettingsTextAreaCard
             accessibilityLabel={t("settings.host.relay.lan.webApp.pathLabel")}
             value={lanRelayWebAppPath}
-            onChangeText={setLanRelayWebAppPath}
+            onChangeText={handleLanRelayWebAppPathChange}
             placeholder="/app"
             testID="lan-relay-web-app-path-input"
             style={styles.relayListenInput}
           />
         </View>
       ) : null}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.relayActions}>
+        <Button
+          variant="default"
+          size="sm"
+          onPress={handleSave}
+          disabled={isLoading || !config || isSaving || !isDirty}
+          testID="lan-relay-config-save"
+        >
+          {isSaving ? t("settings.host.relay.saving") : t("settings.host.relay.save")}
+        </Button>
+      </View>
       <LocalRelayManagement
         runtime={localRelayStatusQuery.data?.relay?.local?.runtime ?? null}
         isLoading={localRelayStatusQuery.isPending}
@@ -814,18 +868,6 @@ function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
         onError={setError}
         t={t}
       />
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <View style={styles.relayActions}>
-        <Button
-          variant="default"
-          size="sm"
-          onPress={handleSave}
-          disabled={isLoading || !config || isSaving}
-          testID="lan-relay-config-save"
-        >
-          {isSaving ? t("settings.host.relay.saving") : t("settings.host.relay.save")}
-        </Button>
-      </View>
     </SettingsSection>
   );
 }
@@ -1101,11 +1143,20 @@ function LocalRelayHistoryRow({
           />
         </View>
       </View>
-      <Button variant="destructive" size="sm" disabled={deletingId !== null} onPress={handleDelete}>
-        {deletingId === record.id
-          ? t("settings.host.relay.management.deleting")
-          : t("settings.host.relay.management.delete")}
-      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        leftIcon={removeProfileIcon}
+        loading={deletingId === record.id}
+        disabled={deletingId !== null}
+        onPress={handleDelete}
+        accessibilityLabel={
+          deletingId === record.id
+            ? t("settings.host.relay.management.deleting")
+            : t("settings.host.relay.management.delete")
+        }
+        style={styles.relayManagementDeleteButton}
+      />
     </View>
   );
 }
@@ -3113,6 +3164,9 @@ const styles = StyleSheet.create((theme) => ({
   relayManagementHistoryHint: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+  },
+  relayManagementDeleteButton: {
+    alignSelf: "flex-end",
   },
   relayActions: {
     flexDirection: "row",

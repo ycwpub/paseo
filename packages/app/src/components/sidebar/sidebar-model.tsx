@@ -4,6 +4,7 @@ import {
   type SidebarWorkspaceEntry,
   type SidebarWorkspacesListResult,
 } from "@/hooks/use-sidebar-workspaces-list";
+import { sortSidebarProjectsByActivity } from "@/hooks/sidebar-workspaces-view-model";
 import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entries";
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
 import { usePinnedSidebarKeys, type PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
@@ -34,6 +35,7 @@ export function SidebarModelProvider({
 }) {
   const list = useSidebarWorkspacesList();
   const groupMode = useSidebarViewStore((state) => state.groupMode);
+  const sortMode = useSidebarViewStore((state) => state.sortMode);
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedProjectKeys,
   );
@@ -49,14 +51,24 @@ export function SidebarModelProvider({
     list.workspacePlacements,
     active !== false || isStatusMode,
   );
+  const projects = useMemo(
+    () =>
+      sortMode === "activity"
+        ? sortSidebarProjectsByActivity({
+            projects: list.projects,
+            workspaceEntriesByKey,
+          })
+        : list.projects,
+    [list.projects, sortMode, workspaceEntriesByKey],
+  );
   const projectionWorkspaceEntriesByKey = isStatusMode
     ? workspaceEntriesByKey
     : EMPTY_WORKSPACE_ENTRIES;
-  const pinnedKeys = usePinnedSidebarKeys(list.projects);
+  const pinnedKeys = usePinnedSidebarKeys(projects);
   const projection = useMemo(
     () =>
       buildSidebarProjection({
-        projects: list.projects,
+        projects,
         pinnedKeys,
         workspaceEntriesByKey: projectionWorkspaceEntriesByKey,
         projectNamesByViewKey: list.projectNamesByViewKey,
@@ -69,8 +81,8 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       collapsedStatusGroupKeys,
       groupMode,
-      list.projectNamesByViewKey,
-      list.projects,
+      list.projectNamesByKey,
+      projects,
       pinnedCollapsed,
       pinnedKeys,
       projectionWorkspaceEntriesByKey,
@@ -79,6 +91,7 @@ export function SidebarModelProvider({
   const value = useMemo(
     () => ({
       ...list,
+      projects,
       workspaceEntriesByKey,
       groupMode,
       statusGroups: projection.statusGroups,
@@ -91,6 +104,7 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       groupMode,
       list,
+      projects,
       projection,
       toggleProjectCollapsed,
       workspaceEntriesByKey,

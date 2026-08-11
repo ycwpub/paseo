@@ -19,7 +19,6 @@ export const APP_SETTINGS_KEY = "@paseo:app-settings";
 export const APP_SETTINGS_QUERY_KEY = ["app-settings"];
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
 
-export type SendBehavior = "interrupt" | "queue";
 export type ReleaseChannel = "stable" | "beta";
 export type ServiceUrlBehavior = "ask" | "in-app" | "external";
 export type WorkspaceTitleSource = "title" | "branch";
@@ -50,7 +49,6 @@ export const MAX_FONT_FAMILY_LENGTH = 200;
 export interface AppSettings {
   theme: ThemePreference;
   language: AppLanguage;
-  sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
   terminalScrollbackLines: number;
   useLegacyTerminalRenderer: boolean;
@@ -86,7 +84,6 @@ type StoredAppSettings = Partial<Omit<AppSettings, "sidebarRowItems">> & {
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   theme: "auto",
   language: "system",
-  sendBehavior: "interrupt",
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
   useLegacyTerminalRenderer: false,
@@ -100,9 +97,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   sidebarRowItems: DEFAULT_SIDEBAR_ROW_ITEMS,
   sidebarChecksDisplay: DEFAULT_SIDEBAR_CHECKS_DISPLAY,
   autoExpandReasoning: false,
-  toolCallDetailLevel: "detailed",
-  chatOutlineEnabled: true,
-  vimKeybindings: false,
+  toolCallDetailLevel: "overview",
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {
@@ -256,8 +251,9 @@ function pickEnumAppSettings(stored: StoredAppSettings): Partial<AppSettings> {
   if (typeof stored.theme === "string" && VALID_THEMES.has(stored.theme)) {
     result.theme = stored.theme;
   }
-  if (stored.sendBehavior === "interrupt" || stored.sendBehavior === "queue") {
-    result.sendBehavior = stored.sendBehavior;
+  const language = parseAppLanguage(stored.language);
+  if (language !== null) {
+    result.language = language;
   }
   if (
     typeof stored.serviceUrlBehavior === "string" &&

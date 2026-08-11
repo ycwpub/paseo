@@ -35,10 +35,10 @@ function useOverviewSummary(summary: OverviewSummary): string {
   return useMemo(() => {
     const parts: string[] = [];
     const entries = [
-      [summary.editedFileCount, "toolCallGroup.editedFiles"],
-      [summary.commandCount, "toolCallGroup.commands"],
       [summary.readFileCount, "toolCallGroup.readFiles"],
       [summary.searchCount, "toolCallGroup.searches"],
+      [summary.commandCount, "toolCallGroup.commands"],
+      [summary.editedFileCount, "toolCallGroup.editedFiles"],
       [summary.otherToolCount, "toolCallGroup.otherTools"],
       [summary.paseoCallCount, "toolCallGroup.paseoCalls"],
     ] as const;

@@ -138,8 +138,6 @@ export const es: TranslationResources = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Suelta imágenes aquí",
       dropFilesHere: "Drop files here",
-      editQueuedMessage: "Editar mensaje en cola",
-      sendQueuedMessageNow: "Enviar mensaje en cola ahora",
       openImage: "Abrir imagen adjunta",
       removeImage: "Quitar imagen adjunta",
       removeFile: "Remove file attachment",
@@ -150,6 +148,15 @@ export const es: TranslationResources = {
       removeBrowserElement: "Eliminar el archivo adjunto del elemento del navegador",
       openReview: "Abrir archivo adjunto de reseña",
       removeReview: "Eliminar archivo adjunto de reseña",
+    },
+    queue: {
+      edit: "Editar mensaje en cola",
+      save: "Guardar mensaje en cola",
+      cancelEdit: "Cancelar edición del mensaje",
+      remove: "Quitar mensaje de la cola",
+      moveUp: "Mover mensaje hacia arriba",
+      moveDown: "Mover mensaje hacia abajo",
+      steer: "Guiar",
     },
     errors: {
       failedToSend: "No se pudo enviar el mensaje",
@@ -210,7 +217,12 @@ export const es: TranslationResources = {
   agentStream: {
     empty: "Comience a chatear con este agente...",
     scrollToBottom: "Desplazarse hacia abajo",
-    historyLoadFailed: "No se pudo cargar el historial del agente",
+    scrollToOldest: "Ir al primer mensaje",
+    locatingOldest: "Buscando el primer mensaje",
+    process: {
+      show: "Mostrar proceso",
+      hide: "Ocultar proceso",
+    },
     permission: {
       plan: "Plan",
       required: "Permiso requerido",
@@ -1928,19 +1940,6 @@ export const es: TranslationResources = {
         success: "Datos del navegador borrados.",
         error: "No se pudieron borrar los datos del navegador.",
       },
-      defaultSend: {
-        label: "Envío predeterminado",
-        descriptions: {
-          interrupt:
-            "Cuando el agente se está ejecutando, Enter interrumpe. Command/Ctrl+Enter pone en cola.",
-          queue:
-            "Cuando el agente se está ejecutando, Enter pone en cola. Command/Ctrl+Enter envía.",
-        },
-        options: {
-          interrupt: "Interrumpir",
-          queue: "Cola",
-        },
-      },
       serviceUrls: {
         label: "URL de servicio",
         description: "Dónde abrir URL desde scripts en ejecución",
@@ -2279,7 +2278,7 @@ export const es: TranslationResources = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2296,6 +2295,8 @@ export const es: TranslationResources = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint: "Leave empty to generate it automatically.",

@@ -1096,15 +1096,24 @@ function buildClaudePlanPermissionActions(
   return actions;
 }
 
-interface TimelineFragment {
-  kind: "assistant" | "reasoning";
-  text: string;
-}
+type TimelineFragment =
+  | {
+      kind: "assistant" | "reasoning";
+      text: string;
+    }
+  | {
+      kind: "redacted_reasoning";
+    }
+  | {
+      kind: "tool_use";
+    };
 
 interface TimelineMessageState {
   id: string;
   assistantText: string;
   reasoningText: string;
+  redactedReasoningSeen: boolean;
+  toolUseSeen: boolean;
   emittedAssistantLength: number;
   emittedReasoningLength: number;
   stopped: boolean;
@@ -1223,8 +1232,12 @@ class TimelineAssembler {
     for (const fragment of fragments) {
       if (fragment.kind === "assistant") {
         state.assistantText += fragment.text;
-      } else {
+      } else if (fragment.kind === "reasoning") {
         state.reasoningText += fragment.text;
+      } else if (fragment.kind === "redacted_reasoning") {
+        state.redactedReasoningSeen = true;
+      } else {
+        state.toolUseSeen = true;
       }
     }
     return this.emitNewContent(state);
@@ -1234,14 +1247,21 @@ class TimelineAssembler {
     state: TimelineMessageState,
     fragments: TimelineFragment[],
   ): AgentTimelineItem[] {
-    const assistantText = fragments
-      .filter((fragment) => fragment.kind === "assistant")
-      .map((fragment) => fragment.text)
-      .join("");
-    const reasoningText = fragments
-      .filter((fragment) => fragment.kind === "reasoning")
-      .map((fragment) => fragment.text)
-      .join("");
+    let assistantText = "";
+    let reasoningText = "";
+    for (const fragment of fragments) {
+      if (fragment.kind === "assistant") {
+        assistantText += fragment.text;
+      } else if (fragment.kind === "reasoning") {
+        reasoningText += fragment.text;
+      }
+    }
+    if (fragments.some((fragment) => fragment.kind === "redacted_reasoning")) {
+      state.redactedReasoningSeen = true;
+    }
+    if (fragments.some((fragment) => fragment.kind === "tool_use")) {
+      state.toolUseSeen = true;
+    }
 
     if (assistantText.length > 0) {
       if (!assistantText.startsWith(state.assistantText)) {
@@ -1255,7 +1275,7 @@ class TimelineAssembler {
       }
       state.reasoningText = reasoningText;
     }
-    return this.emitNewContent(state);
+    return this.emitNewContent(state, true);
   }
 
   private finalizeMessage(messageId: string, runId: string | null): AgentTimelineItem[] {
@@ -1264,7 +1284,7 @@ class TimelineAssembler {
       return [];
     }
     state.stopped = true;
-    const items = this.emitNewContent(state);
+    const items = this.emitNewContent(state, true);
     if (runId && this.activeMessageByRun.get(runId) === messageId) {
       this.activeMessageByRun.delete(runId);
     }
@@ -1273,11 +1293,27 @@ class TimelineAssembler {
     return items;
   }
 
-  private emitNewContent(state: TimelineMessageState): AgentTimelineItem[] {
+  private emitNewContent(
+    state: TimelineMessageState,
+    contentComplete = false,
+  ): AgentTimelineItem[] {
     const items: AgentTimelineItem[] = [];
     const nextAssistantText = state.assistantText.slice(state.emittedAssistantLength);
-    if (
+    const textIsReadableReasoningSummary =
+      state.redactedReasoningSeen &&
+      state.toolUseSeen &&
+      state.reasoningText.length === 0 &&
+      nextAssistantText.length > 0;
+    const shouldEmitAssistantText =
       nextAssistantText.length > 0 &&
+      (!state.redactedReasoningSeen ||
+        state.reasoningText.length > 0 ||
+        (contentComplete && !state.toolUseSeen));
+    if (textIsReadableReasoningSummary) {
+      state.emittedAssistantLength = state.assistantText.length;
+      items.push({ type: "reasoning", text: nextAssistantText });
+    } else if (
+      shouldEmitAssistantText &&
       nextAssistantText !== INTERRUPT_TOOL_USE_PLACEHOLDER &&
       !isClaudeTranscriptNoiseText(nextAssistantText)
     ) {
@@ -1306,6 +1342,8 @@ class TimelineAssembler {
       id: messageId,
       assistantText: "",
       reasoningText: "",
+      redactedReasoningSeen: false,
+      toolUseSeen: false,
       emittedAssistantLength: 0,
       emittedReasoningLength: 0,
       stopped: false,
@@ -1367,6 +1405,16 @@ class TimelineAssembler {
         rawBlock.thinking.length > 0
       ) {
         fragments.push({ kind: "reasoning", text: rawBlock.thinking });
+      }
+      if (rawBlock.type === "redacted_thinking") {
+        fragments.push({ kind: "redacted_reasoning" });
+      }
+      if (
+        rawBlock.type === "tool_use" ||
+        rawBlock.type === "server_tool_use" ||
+        rawBlock.type === "mcp_tool_use"
+      ) {
+        fragments.push({ kind: "tool_use" });
       }
     }
     return fragments;
@@ -3750,6 +3798,21 @@ class ClaudeAgentSession implements AgentSession {
               }) satisfies AgentStreamEvent,
           );
 
+    const firstToolEventIndex = messageEvents.findIndex(
+      (event) => event.type === "timeline" && event.item.type === "tool_call",
+    );
+    if (
+      firstToolEventIndex >= 0 &&
+      assistantTimelineEvents.some(
+        (event) => event.type === "timeline" && event.item.type === "reasoning",
+      )
+    ) {
+      return [
+        ...messageEvents.slice(0, firstToolEventIndex),
+        ...assistantTimelineEvents,
+        ...messageEvents.slice(firstToolEventIndex),
+      ];
+    }
     return [...messageEvents, ...assistantTimelineEvents];
   }
 
@@ -4784,17 +4847,35 @@ class ClaudeAgentSession implements AgentSession {
     const items: AgentTimelineItem[] = [];
     // User SDK entries can arrive as multiple text blocks, but Paseo treats them as one message.
     const userTextParts: string[] = [];
+    const blockContext = {
+      items,
+      userTextParts,
+      textMessageType,
+      suppressText,
+      suppressReasoning,
+      hasReadableReasoning: content.some(
+        (block) =>
+          isClaudeContentChunk(block) &&
+          (block.type === "thinking" || block.type === "thinking_delta") &&
+          typeof block.thinking === "string" &&
+          block.thinking.length > 0,
+      ),
+      hasToolUse: content.some(
+        (block) =>
+          isClaudeContentChunk(block) &&
+          (block.type === "tool_use" ||
+            block.type === "server_tool_use" ||
+            block.type === "mcp_tool_use"),
+      ),
+      hasRedactedReasoning: content.some(
+        (block) => isClaudeContentChunk(block) && block.type === "redacted_thinking",
+      ),
+    };
     for (const block of content) {
       if (!isClaudeContentChunk(block)) {
         continue;
       }
-      this.mapBlockToTimeline(block, {
-        items,
-        userTextParts,
-        textMessageType,
-        suppressText,
-        suppressReasoning,
-      });
+      this.mapBlockToTimeline(block, blockContext);
     }
 
     if (textMessageType === "user_message" && userTextParts.length > 0) {
@@ -4814,9 +4895,22 @@ class ClaudeAgentSession implements AgentSession {
       userTextParts: string[];
       textMessageType: "assistant_message" | "user_message";
       suppressText: boolean;
+      suppressReasoning: boolean;
+      hasReadableReasoning: boolean;
+      hasToolUse: boolean;
+      hasRedactedReasoning: boolean;
     },
   ): void {
-    const { items, userTextParts, textMessageType, suppressText } = context;
+    const {
+      items,
+      userTextParts,
+      textMessageType,
+      suppressText,
+      suppressReasoning,
+      hasReadableReasoning,
+      hasToolUse,
+      hasRedactedReasoning,
+    } = context;
     const text = typeof block.text === "string" ? block.text : "";
     if (!text || text === INTERRUPT_TOOL_USE_PLACEHOLDER || isClaudeTranscriptNoiseText(text)) {
       return;
@@ -4826,6 +4920,10 @@ class ClaudeAgentSession implements AgentSession {
       if (trimmed) {
         userTextParts.push(trimmed);
       }
+      return;
+    }
+    if (!suppressReasoning && hasRedactedReasoning && hasToolUse && !hasReadableReasoning) {
+      items.push({ type: "reasoning", text });
       return;
     }
     if (!suppressText) {
@@ -4841,6 +4939,9 @@ class ClaudeAgentSession implements AgentSession {
       textMessageType: "assistant_message" | "user_message";
       suppressText: boolean;
       suppressReasoning: boolean;
+      hasReadableReasoning: boolean;
+      hasToolUse: boolean;
+      hasRedactedReasoning: boolean;
     },
   ): void {
     switch (block.type) {
@@ -4853,6 +4954,8 @@ class ClaudeAgentSession implements AgentSession {
         if (typeof block.thinking === "string" && block.thinking && !context.suppressReasoning) {
           context.items.push({ type: "reasoning", text: block.thinking });
         }
+        break;
+      case "redacted_thinking":
         break;
       case "tool_use":
       case "server_tool_use":

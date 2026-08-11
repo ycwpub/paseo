@@ -44,6 +44,7 @@ import { OmpAgentClient } from "./providers/omp/agent.js";
 import type { OmpRuntime } from "./providers/omp/runtime.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
+import { TRAE_DEFAULT_MODE_ID, TRAE_MODES } from "./providers/trae-acp-modes.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
 import { ClaudeProviderOptionsSchema } from "./providers/claude/options.js";
@@ -745,19 +746,27 @@ function addDerivedProviders(
       }
       // Capture command in const for closure - TypeScript can't track type refinement inside closures
       const command = override.command;
+      const baseDefinition: AgentProviderDefinition =
+        providerId === "traecli"
+          ? {
+              id: providerId,
+              label: override.label ?? providerId,
+              description:
+                override.description ??
+                "ByteDance's official TRAE coding agent with native ACP support",
+              defaultModeId: TRAE_DEFAULT_MODE_ID,
+              modes: TRAE_MODES,
+            }
+          : {
+              id: providerId,
+              label: override.label ?? providerId,
+              description: override.description ?? "Custom ACP provider",
+              defaultModeId: null,
+              modes: [],
+            };
 
       resolvedProviders.set(providerId, {
-        definition: createDerivedDefinition(
-          providerId,
-          {
-            id: providerId,
-            label: override.label ?? providerId,
-            description: override.description ?? "Custom ACP provider",
-            defaultModeId: null,
-            modes: [],
-          },
-          override,
-        ),
+        definition: createDerivedDefinition(providerId, baseDefinition, override),
         runtimeSettings: toRuntimeSettings(override),
         profileModels: override.models ?? [],
         additionalModels: override.additionalModels ?? [],

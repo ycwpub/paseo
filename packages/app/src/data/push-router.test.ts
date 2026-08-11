@@ -198,6 +198,38 @@ describe("server data push router", () => {
     });
   });
 
+  it("normalizes legacy daemon config payloads before caching them", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const unmount = mountServerDataPushRouter({
+      client: fake.client,
+      queryClient,
+      serverId,
+    });
+    const legacyConfig = {
+      ...daemonConfig,
+      relay: {
+        local: { enabled: true, listen: "10.0.0.8:6769" },
+      },
+    } as unknown as MutableDaemonConfig;
+
+    fake.emit({
+      type: "status",
+      payload: { status: "daemon_config_changed", config: legacyConfig },
+    });
+
+    expect(
+      queryClient.getQueryData<MutableDaemonConfig>(daemonConfigQueryKey(serverId))?.relay,
+    ).toEqual({
+      endpoints: [],
+      pairingBaseUrls: [],
+      local: { enabled: true, listen: "10.0.0.8:6769" },
+    });
+
+    unmount();
+  });
+
   it("subscribes active checkout diff queries and writes matching diff events", () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();

@@ -91,6 +91,8 @@ packages/desktop/.cache/
 packages/desktop/src-tauri/resources/managed-runtime/
 app.json
 packages/desktop/release-test/
+packages/app/release-android/
+packages/cli/release-linux/
 
 # Local build caches
 /.local-build-cache/

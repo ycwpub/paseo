@@ -20,17 +20,19 @@ import {
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
-  editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
+  moveQueuedComposerMessage,
   openComposerAttachment,
   pickAndPersistImages,
   queueComposerMessage,
   removeComposerAttachmentAtIndex,
+  removeQueuedComposerMessage,
   sendQueuedComposerMessageNow,
   toggleGithubAttachment,
   toggleGithubAttachmentFromPicker,
-  type MessageSubmissionWriter,
+  updateQueuedComposerMessage,
+  type AgentStreamWriter,
   type AttachmentPersister,
   type ComposerCancelClient,
   type ComposerSendClient,
@@ -554,11 +556,11 @@ describe("dispatchComposerAgentMessage", () => {
     ]);
   });
 
-  it("appends to the existing head when one is present", async () => {
+  it("commits the existing head before appending the next user message", async () => {
     const existingItem: StreamItem = {
-      kind: "user_message",
+      kind: "assistant_message",
       id: "prior",
-      text: "prior",
+      text: "prior response",
       timestamp: new Date(0),
     };
     const stream = createFakeStream(new Map([["agent", [existingItem]]]));
@@ -573,8 +575,18 @@ describe("dispatchComposerAgentMessage", () => {
       submission: stream,
     });
 
-    expect(stream.head.get("agent")).toHaveLength(2);
-    expect(stream.tail.get("agent")).toEqual([]);
+    expect(stream.head.get("agent")).toEqual([]);
+    expect(
+      stream.tail
+        .get("agent")
+        ?.map((item) => [
+          item.kind,
+          item.kind === "assistant_message" || item.kind === "user_message" ? item.text : null,
+        ]),
+    ).toEqual([
+      ["assistant_message", "prior response"],
+      ["user_message", "next message"],
+    ]);
   });
 
   it("submits empty wire arrays when no attachments are provided", async () => {
@@ -685,17 +697,22 @@ describe("queueComposerMessage", () => {
   });
 });
 
-describe("editQueuedComposerMessage", () => {
-  it("returns null and leaves the queue untouched when the message id is missing", () => {
+describe("updateQueuedComposerMessage", () => {
+  it("returns false and leaves the queue untouched when the message id is missing", () => {
     const queue = createFakeQueue(
       new Map([["agent", [{ id: "other", text: "other", attachments: [] }]]]),
     );
-    const result = editQueuedComposerMessage({ agentId: "agent", messageId: "missing", queue });
-    expect(result).toBeNull();
-    expect(queue.state.get("agent")).toHaveLength(1);
+    const updated = updateQueuedComposerMessage({
+      agentId: "agent",
+      messageId: "missing",
+      text: "updated",
+      queue,
+    });
+    expect(updated).toBe(false);
+    expect(queue.state.get("agent")).toEqual([{ id: "other", text: "other", attachments: [] }]);
   });
 
-  it("returns the text and only user attachments, removing the queued entry", () => {
+  it("updates the text in place without changing attachments or queue position", () => {
     const review = reviewWorkspaceAttachment("Queued snapshot.");
     const image = imageWithId("img-queued-edit");
     const queue = createFakeQueue(
@@ -703,22 +720,146 @@ describe("editQueuedComposerMessage", () => {
         [
           "agent",
           [
+            { id: "msg-0", text: "before", attachments: [] },
             {
               id: "msg-1",
               text: "queued draft",
               attachments: [{ kind: "image", metadata: image }, review],
             },
+            { id: "msg-2", text: "after", attachments: [] },
           ],
         ],
       ]),
     );
 
-    const result = editQueuedComposerMessage({ agentId: "agent", messageId: "msg-1", queue });
-    expect(result).toEqual({
-      text: "queued draft",
-      attachments: [{ kind: "image", metadata: image }],
+    const updated = updateQueuedComposerMessage({
+      agentId: "agent",
+      messageId: "msg-1",
+      text: "  revised draft  ",
+      queue,
     });
-    expect(queue.state.get("agent")).toEqual([]);
+    expect(updated).toBe(true);
+    expect(queue.state.get("agent")).toEqual([
+      { id: "msg-0", text: "before", attachments: [] },
+      {
+        id: "msg-1",
+        text: "revised draft",
+        attachments: [{ kind: "image", metadata: image }, review],
+      },
+      { id: "msg-2", text: "after", attachments: [] },
+    ]);
+  });
+
+  it("rejects an empty edit and preserves the queued message", () => {
+    const queue = createFakeQueue(
+      new Map([["agent", [{ id: "msg-1", text: "keep me", attachments: [] }]]]),
+    );
+    const updated = updateQueuedComposerMessage({
+      agentId: "agent",
+      messageId: "msg-1",
+      text: "   ",
+      queue,
+    });
+    expect(updated).toBe(false);
+    expect(queue.state.get("agent")).toEqual([{ id: "msg-1", text: "keep me", attachments: [] }]);
+  });
+});
+
+describe("removeQueuedComposerMessage", () => {
+  it("removes and returns the selected queued message", () => {
+    const queue = createFakeQueue(
+      new Map([
+        [
+          "agent",
+          [
+            { id: "msg-1", text: "first", attachments: [] },
+            { id: "msg-2", text: "second", attachments: [] },
+          ],
+        ],
+      ]),
+    );
+    const removed = removeQueuedComposerMessage({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+    });
+    expect(removed).toEqual({ id: "msg-1", text: "first", attachments: [] });
+    expect(queue.state.get("agent")).toEqual([{ id: "msg-2", text: "second", attachments: [] }]);
+  });
+});
+
+describe("moveQueuedComposerMessage", () => {
+  it("moves a queued message up and down", () => {
+    const queue = createFakeQueue(
+      new Map([
+        [
+          "agent",
+          [
+            { id: "msg-1", text: "first", attachments: [] },
+            { id: "msg-2", text: "second", attachments: [] },
+            { id: "msg-3", text: "third", attachments: [] },
+          ],
+        ],
+      ]),
+    );
+    expect(
+      moveQueuedComposerMessage({
+        agentId: "agent",
+        messageId: "msg-2",
+        direction: "up",
+        queue,
+      }),
+    ).toBe(true);
+    expect(queue.state.get("agent")?.map((message) => message.id)).toEqual([
+      "msg-2",
+      "msg-1",
+      "msg-3",
+    ]);
+
+    expect(
+      moveQueuedComposerMessage({
+        agentId: "agent",
+        messageId: "msg-2",
+        direction: "down",
+        queue,
+      }),
+    ).toBe(true);
+    expect(queue.state.get("agent")?.map((message) => message.id)).toEqual([
+      "msg-1",
+      "msg-2",
+      "msg-3",
+    ]);
+  });
+
+  it("leaves boundary messages in place", () => {
+    const queue = createFakeQueue(
+      new Map([
+        [
+          "agent",
+          [
+            { id: "msg-1", text: "first", attachments: [] },
+            { id: "msg-2", text: "second", attachments: [] },
+          ],
+        ],
+      ]),
+    );
+    expect(
+      moveQueuedComposerMessage({
+        agentId: "agent",
+        messageId: "msg-1",
+        direction: "up",
+        queue,
+      }),
+    ).toBe(false);
+    expect(
+      moveQueuedComposerMessage({
+        agentId: "agent",
+        messageId: "msg-2",
+        direction: "down",
+        queue,
+      }),
+    ).toBe(false);
+    expect(queue.state.get("agent")?.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
   });
 });
 
@@ -757,7 +898,7 @@ describe("sendQueuedComposerMessageNow", () => {
     expect(submitted).toEqual([{ text: "send me", attachments: [review] }]);
   });
 
-  it("restores the queued entry to the front and surfaces the error message on failure", async () => {
+  it("restores the queued entry to its original position and surfaces the error message", async () => {
     const queue = createFakeQueue(
       new Map([
         [
@@ -765,13 +906,14 @@ describe("sendQueuedComposerMessageNow", () => {
           [
             { id: "msg-1", text: "first", attachments: [] },
             { id: "msg-2", text: "second", attachments: [] },
+            { id: "msg-3", text: "third", attachments: [] },
           ],
         ],
       ]),
     );
     const result = await sendQueuedComposerMessageNow({
       agentId: "agent",
-      messageId: "msg-1",
+      messageId: "msg-2",
       queue,
       submitMessage: async () => {
         throw new Error("network down");
@@ -779,7 +921,7 @@ describe("sendQueuedComposerMessageNow", () => {
     });
     expect(result).toEqual({ status: "failed", errorMessage: "network down" });
     const state = queue.state.get("agent");
-    expect(state?.map((m) => m.id)).toEqual(["msg-1", "msg-2"]);
+    expect(state?.map((m) => m.id)).toEqual(["msg-1", "msg-2", "msg-3"]);
   });
 });
 

@@ -134,6 +134,7 @@ function isCodexAlreadyUnarchivedError(error: unknown, threadId: string): boolea
 
 const TURN_START_TIMEOUT_MS = 90 * 1000;
 const INTERRUPT_TIMEOUT_MS = 2_000;
+const AUTOMATIC_COMPACTION_TIMEOUT_MS = 3 * 60 * 1000;
 const CODEX_PROVIDER = "codex" as const;
 // Codex treats most app-server client names as the model-request originator.
 // This reserved Codex name is non-originating, so requests keep Codex's default
@@ -144,6 +145,13 @@ const CODEX_NON_ORIGINATING_APP_SERVER_CLIENT_INFO = {
   version: "0.0.0",
 } as const;
 const ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN = "\n\n---\n\n";
+const PASEO_CODEX_PROGRESS_UPDATE_INSTRUCTIONS = `<paseo_progress_updates>
+For tasks that require multiple tool calls, keep the user informed with brief progress updates sent as commentary messages.
+- Send an update before the first tool call explaining the immediate next step.
+- After a meaningful batch of actions, summarize concrete findings and what you will do next.
+- Do not narrate every command or repeat the plan.
+- Never expose hidden chain-of-thought. Share only concise, outcome-oriented progress summaries.
+</paseo_progress_updates>`;
 const MAX_PENDING_SUB_AGENT_THREADS = 32;
 const MAX_PENDING_SUB_AGENT_NOTIFICATIONS_PER_THREAD = 128;
 // COMPAT(codexLegacyCollabAgentToolCall): Codex <0.143 emits this shape. Added in
@@ -159,6 +167,12 @@ const CODEX_TOOL_THREAD_ITEM_TYPES = new Set([
 const CODEX_CONTEXT_COMPACTION_TYPE = "contextCompaction";
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX =
   "The user approved the plan. Implement it now. Do not restate or revise the plan unless blocked.";
+
+function composeCodexDeveloperInstructions(
+  ...parts: Array<string | null | undefined>
+): string | undefined {
+  return composeSystemPromptParts(...parts, PASEO_CODEX_PROGRESS_UPDATE_INSTRUCTIONS);
+}
 
 // Codex's experimental `goals` feature ships in 0.128.0+. Older binaries reject
 // `--enable goals` at launch, so we gate by version and silently skip the flag
@@ -241,14 +255,15 @@ const CODEX_MODES: AgentMode[] = [
 const DEFAULT_CODEX_MODE_ID = "auto";
 const PASEO_COMPACT_PROMPT =
   "Compact this coding-agent conversation into a concise state summary for later continuation. " +
-  "Do not reproduce the transcript. Keep the summary under 8,000 tokens and preserve only the " +
+  "Do not reproduce the transcript. Keep the summary under 4,000 tokens and preserve only the " +
   "user's goal, durable instructions and constraints, decisions, modified files and current diff " +
   "state, commands or tests and their outcomes, unresolved errors, and exact next steps. Deduplicate " +
   "repeated messages, routing metadata, logs, tool output, and prior summaries. Never quote large " +
   "blobs; prioritize actionable state when space is limited.";
-const MAX_OUTPUT_TOKENS_CONTINUATION_LIMIT = 1;
+const PROACTIVE_COMPACTION_CONTEXT_USAGE_RATIO = 0.8;
+const MAX_OUTPUT_TOKENS_CONTINUATION_LIMIT = 8;
 const MAX_OUTPUT_TOKENS_CONTINUATION_PROMPT =
-  "The previous response reached the model output-token limit before the task completed, possibly while compacting the conversation. Continue from the current workspace and conversation state without repeating completed work. Keep any context summary concise and do not reproduce the transcript. Split large patches and command arguments into smaller tool calls, and keep each tool call concise.";
+  "The previous response reached the model output-token limit before the task completed. Context compaction has been attempted automatically. Continue from the current workspace and conversation state without repeating completed work. Keep responses and tool calls concise, split large patches and command arguments into smaller operations, and finish the original task.";
 
 interface CodexAppServerClientLike {
   request(method: string, params?: unknown): Promise<unknown>;
@@ -1584,13 +1599,49 @@ function mapCodexThreadPlanItem(normalizedItem: Record<string, unknown>): AgentT
   });
 }
 
+type CodexAgentMessagePhase = "commentary" | "final_answer";
+
+function getCodexAgentMessagePhase(item: Record<string, unknown>): CodexAgentMessagePhase | null {
+  return item.phase === "commentary" || item.phase === "final_answer" ? item.phase : null;
+}
+
+function extractCodexReasoningText(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  return value
+    .flatMap((entry) => {
+      if (typeof entry === "string") {
+        return entry;
+      }
+      const record = toObjectRecord(entry);
+      return typeof record?.text === "string" ? record.text : [];
+    })
+    .join("\n");
+}
+
 function mapCodexThreadReasoningItem(
   normalizedItem: Record<string, unknown>,
 ): AgentTimelineItem | null {
-  const summary = Array.isArray(normalizedItem.summary) ? normalizedItem.summary.join("\n") : "";
-  const content = Array.isArray(normalizedItem.content) ? normalizedItem.content.join("\n") : "";
+  const summary = extractCodexReasoningText(normalizedItem.summary);
+  const content = extractCodexReasoningText(normalizedItem.content);
   const text = summary || content;
   return text ? { type: "reasoning", text } : null;
+}
+
+function mapCodexThreadAgentMessageItem(
+  normalizedItem: Record<string, unknown>,
+): AgentTimelineItem {
+  const messageId = nonEmptyString(normalizedItem.id);
+  const text = typeof normalizedItem.text === "string" ? normalizedItem.text : "";
+  if (getCodexAgentMessagePhase(normalizedItem) === "commentary") {
+    return { type: "reasoning", text };
+  }
+  return {
+    type: "assistant_message",
+    text,
+    ...(messageId ? { messageId } : {}),
+  };
 }
 
 function mapCodexThreadUserMessageItem(
@@ -1813,14 +1864,8 @@ export function threadItemToTimeline(
   switch (normalizedType) {
     case "userMessage":
       return mapCodexThreadUserMessageItem(normalizedItem, includeUserMessage);
-    case "agentMessage": {
-      const messageId = nonEmptyString(normalizedItem.id);
-      return {
-        type: "assistant_message",
-        text: typeof normalizedItem.text === "string" ? normalizedItem.text : "",
-        ...(messageId ? { messageId } : {}),
-      };
-    }
+    case "agentMessage":
+      return mapCodexThreadAgentMessageItem(normalizedItem);
     case "plan":
       return mapCodexThreadPlanItem(normalizedItem);
     case "reasoning":
@@ -2605,6 +2650,26 @@ const CodexNotificationSchema = z.union([
     }),
   ),
   z
+    .object({
+      method: z.literal("item/reasoning/textDelta"),
+      params: ItemTextDeltaNotificationSchema,
+    })
+    .transform(
+      ({ params }): ParsedCodexNotification => ({
+        kind: "reasoning_delta",
+        itemId: params.itemId,
+        delta: params.delta,
+        threadId: params.threadId ?? null,
+      }),
+    ),
+  z.object({ method: z.literal("item/reasoning/textDelta"), params: z.unknown() }).transform(
+    ({ method, params }): ParsedCodexNotification => ({
+      kind: "invalid_payload",
+      method,
+      params,
+    }),
+  ),
+  z
     .object({ method: z.literal("item/completed"), params: ItemLifecycleNotificationSchema })
     .transform(
       ({ params }): ParsedCodexNotification => ({
@@ -3161,11 +3226,10 @@ interface CodexSubAgentCallState {
   childThreadIds: Set<string>;
 }
 
-interface CodexPendingPermissionHandler {
-  resolve: (value: unknown) => void;
-  kind: "command" | "file" | "question" | "mcp_elicitation" | "plan";
-  questions?: CodexQuestionPrompt[];
-  planText?: string;
+interface AutomaticCompactionWaiter {
+  promise: Promise<boolean>;
+  resolve: (completed: boolean) => void;
+  timer: NodeJS.Timeout | null;
 }
 
 export class CodexAppServerAgentSession implements AgentSession {
@@ -3194,6 +3258,10 @@ export class CodexAppServerAgentSession implements AgentSession {
   private activeForegroundTurnId: string | null = null;
   private activeTurnStartParams: Record<string, unknown> | null = null;
   private maxOutputTokensContinuationAttempts = 0;
+  private maxOutputTokensRecoveryInProgress = false;
+  private automaticCompactionWaiter: AutomaticCompactionWaiter | null = null;
+  private pendingAutomaticCompactionStarts = 0;
+  private lastProactiveCompactionUsageKey: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
   private planModeEnabled = false;
@@ -3207,6 +3275,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private resolvedPermissionRequests = new Set<string>();
   private pendingAgentMessages = new Map<string, string>();
   private pendingReasoning = new Map<string, string[]>();
+  private agentMessagePhaseByItemId = new Map<string, CodexAgentMessagePhase>();
   private pendingCommandOutputDeltas = new Map<string, string[]>();
   private pendingFileChangeOutputDeltas = new Map<string, string[]>();
   private pendingAssistantMessageBoundary = false;
@@ -3746,7 +3815,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         return;
       }
       const params: Record<string, unknown> = { threadId: this.currentThreadId };
-      const developerInstructions = composeSystemPromptParts(
+      const developerInstructions = composeCodexDeveloperInstructions(
         this.config.systemPrompt,
         this.config.daemonAppendSystemPrompt,
       );
@@ -3890,7 +3959,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (options?.outputSchema) {
       params.outputSchema = normalizeCodexOutputSchema(options.outputSchema);
     }
-    const developerInstructions = composeSystemPromptParts(
+    const developerInstructions = composeCodexDeveloperInstructions(
       this.config.systemPrompt,
       this.config.daemonAppendSystemPrompt,
     );
@@ -4052,6 +4121,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.activeForegroundTurnId = turnId;
     this.activeTurnStartParams = turnStart.params;
     this.maxOutputTokensContinuationAttempts = 0;
+    this.maxOutputTokensRecoveryInProgress = false;
     this.currentTurnId = null;
 
     try {
@@ -4096,6 +4166,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         hasDeveloperInstructions: turnStart.hasDeveloperInstructions,
         hasCodexConfig: turnStart.hasCodexConfig,
       });
+      await this.maybeCompactBeforeTurn();
       await this.client.request("turn/start", turnStart.params, TURN_START_TIMEOUT_MS);
       return { turnId };
     } catch (error) {
@@ -4103,6 +4174,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.pendingForegroundTurnIdentification = null;
       this.activeForegroundTurnId = null;
       this.activeTurnStartParams = null;
+      this.maxOutputTokensRecoveryInProgress = false;
       throw error;
     }
   }
@@ -4526,6 +4598,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.activeForegroundTurnId = null;
     this.activeTurnStartParams = null;
     this.maxOutputTokensContinuationAttempts = 0;
+    this.maxOutputTokensRecoveryInProgress = false;
+    this.finishAutomaticCompaction(false);
+    this.pendingAutomaticCompactionStarts = 0;
     this.activeContextCompactionItemIds.clear();
     if (this.client) {
       await this.client.dispose();
@@ -4646,6 +4721,121 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
+  private contextUsageKey(): string | null {
+    const max = this.latestUsage?.contextWindowMaxTokens;
+    const used = this.latestUsage?.contextWindowUsedTokens;
+    if (
+      typeof max !== "number" ||
+      !Number.isFinite(max) ||
+      max <= 0 ||
+      typeof used !== "number" ||
+      !Number.isFinite(used) ||
+      used <= 0
+    ) {
+      return null;
+    }
+    return `${max}:${used}`;
+  }
+
+  private async maybeCompactBeforeTurn(): Promise<void> {
+    const max = this.latestUsage?.contextWindowMaxTokens;
+    const used = this.latestUsage?.contextWindowUsedTokens;
+    const usageKey = this.contextUsageKey();
+    if (
+      usageKey === null ||
+      usageKey === this.lastProactiveCompactionUsageKey ||
+      typeof max !== "number" ||
+      typeof used !== "number" ||
+      used / max < PROACTIVE_COMPACTION_CONTEXT_USAGE_RATIO
+    ) {
+      return;
+    }
+
+    this.logger.info(
+      {
+        threadId: this.currentThreadId,
+        contextWindowMaxTokens: max,
+        contextWindowUsedTokens: used,
+      },
+      "Proactively compacting Codex context before starting the next turn",
+    );
+    const completed = await this.runAutomaticCompaction("context_usage");
+    if (completed) {
+      this.lastProactiveCompactionUsageKey = usageKey;
+    }
+  }
+
+  private async runAutomaticCompaction(
+    reason: "context_usage" | "max_output_tokens",
+  ): Promise<boolean> {
+    if (!this.client || !this.currentThreadId) {
+      return false;
+    }
+    if (this.automaticCompactionWaiter) {
+      return await this.automaticCompactionWaiter.promise;
+    }
+
+    let resolveCompletion!: (completed: boolean) => void;
+    const promise = new Promise<boolean>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const waiter: AutomaticCompactionWaiter = {
+      promise,
+      resolve: resolveCompletion,
+      timer: null,
+    };
+    this.automaticCompactionWaiter = waiter;
+    waiter.timer = setTimeout(() => {
+      if (this.automaticCompactionWaiter !== waiter) {
+        return;
+      }
+      this.logger.warn(
+        { threadId: this.currentThreadId, reason },
+        "Timed out waiting for automatic Codex compaction; continuing the task",
+      );
+      this.finishAutomaticCompaction(false);
+    }, AUTOMATIC_COMPACTION_TIMEOUT_MS);
+
+    this.pendingAutomaticCompactionStarts += 1;
+    void this.client
+      .request(
+        "thread/compact/start",
+        {
+          threadId: this.currentThreadId,
+        },
+        AUTOMATIC_COMPACTION_TIMEOUT_MS,
+      )
+      .catch((error) => {
+        if (this.automaticCompactionWaiter !== waiter) {
+          return;
+        }
+        this.logger.warn(
+          { err: error, threadId: this.currentThreadId, reason },
+          "Automatic Codex compaction request failed; continuing the task",
+        );
+        this.finishAutomaticCompaction(false);
+      });
+
+    const completed = await promise;
+    this.settleActiveContextCompaction();
+    return completed;
+  }
+
+  private finishAutomaticCompaction(completed: boolean): void {
+    const waiter = this.automaticCompactionWaiter;
+    if (!waiter) {
+      return;
+    }
+    this.automaticCompactionWaiter = null;
+    if (waiter.timer) {
+      clearTimeout(waiter.timer);
+    }
+    if (!completed && this.pendingAutomaticCompactionStarts > 0) {
+      this.pendingAutomaticCompactionStarts -= 1;
+    }
+    waiter.resolve(completed);
+  }
+
   private async executeGoalSubcommand(subcommand: GoalSubcommand): Promise<string> {
     if (subcommand.kind === "usage") {
       return "Usage: /goal <objective>|pause|resume|clear";
@@ -4760,7 +4950,24 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.config.model = model;
     this.config.thinkingOptionId = thinkingOptionId;
 
-    const { params, approvalPolicy, sandbox } = this.buildThreadStartRequest(model);
+    const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
+    const approvalPolicy = this.config.approvalPolicy ?? preset.approvalPolicy;
+    const sandbox = this.config.sandboxMode ?? preset.sandbox;
+    const innerConfig = this.buildCodexInnerConfig();
+    const developerInstructions = composeCodexDeveloperInstructions(
+      this.config.systemPrompt,
+      this.config.daemonAppendSystemPrompt,
+    );
+    const params: Record<string, unknown> = {
+      model,
+      cwd: this.config.cwd ?? null,
+      approvalPolicy,
+      sandbox,
+      ...(developerInstructions ? { developerInstructions } : {}),
+      ...(innerConfig ? { config: innerConfig } : {}),
+      ...(this.ephemeral ? { ephemeral: true } : {}),
+    };
+    applyApprovalsReviewerParam(params, preset);
     const rawResponse = await this.client.request("thread/start", params);
     this.rememberResolvedSandboxPolicy(rawResponse);
     const response = toObjectRecord(rawResponse);
@@ -5200,6 +5407,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (item.id) {
       this.activeContextCompactionItemIds.delete(item.id);
     }
+    this.finishAutomaticCompaction(true);
     if (this.unpairedCompactionNotificationCompletions > 0) {
       this.unpairedCompactionNotificationCompletions -= 1;
       return true;
@@ -5476,68 +5684,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     routedSubAgentCallId: string | null = null,
   ): void {
     if (parsed.kind === "agent_message_delta") {
-      const prev = this.pendingAgentMessages.get(parsed.itemId) ?? "";
-      const text = prev + parsed.delta;
-      this.pendingAgentMessages.set(parsed.itemId, text);
-      const subAgentCallId = this.getSubAgentCallIdForThread(parsed.threadId);
-      if (subAgentCallId) {
-        if (parsed.threadId) {
-          this.emitProviderSubagentTimeline(parsed.threadId, {
-            type: "assistant_message",
-            messageId: parsed.itemId,
-            text: parsed.delta,
-          });
-        }
-        this.upsertSubAgentChildItem(subAgentCallId, parsed.itemId, {
-          type: "assistant_message",
-          messageId: parsed.itemId,
-          text,
-        });
-        this.emitSubAgentActivityUpdate(subAgentCallId, "running");
-        return;
-      }
-      const isFirstDeltaForItem = prev.length === 0;
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: {
-          type: "assistant_message",
-          messageId: parsed.itemId,
-          text:
-            isFirstDeltaForItem && this.pendingAssistantMessageBoundary
-              ? `${ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN}${parsed.delta}`
-              : parsed.delta,
-        },
-      });
-      if (isFirstDeltaForItem) {
-        this.pendingAssistantMessageBoundary = false;
-      }
+      this.handleAgentMessageDelta(parsed);
       return;
     }
     if (parsed.kind === "reasoning_delta") {
-      const prev = this.pendingReasoning.get(parsed.itemId) ?? [];
-      prev.push(parsed.delta);
-      this.pendingReasoning.set(parsed.itemId, prev);
-      const subAgentCallId = this.getSubAgentCallIdForThread(parsed.threadId);
-      if (subAgentCallId) {
-        if (parsed.threadId) {
-          this.emitProviderSubagentTimeline(parsed.threadId, {
-            type: "reasoning",
-            text: parsed.delta,
-          });
-        }
-        this.upsertSubAgentChildItem(subAgentCallId, parsed.itemId, {
-          type: "reasoning",
-          text: prev.join(""),
-        });
-        this.emitSubAgentActivityUpdate(subAgentCallId, "running");
-        return;
-      }
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: { type: "reasoning", text: parsed.delta },
-      });
+      this.handleReasoningDelta(parsed);
       return;
     }
     if (parsed.kind === "exec_command_output_delta") {
@@ -5558,6 +5709,79 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (outputDeltas) {
       this.appendOutputDeltaChunk(outputDeltas, parsed.itemId, parsed.delta);
     }
+  }
+
+  private handleAgentMessageDelta(
+    parsed: Extract<CodexDeltaNotification, { kind: "agent_message_delta" }>,
+  ): void {
+    if (this.agentMessagePhaseByItemId.get(parsed.itemId) === "commentary") {
+      this.handleReasoningDelta({ ...parsed, kind: "reasoning_delta" });
+      return;
+    }
+    const prev = this.pendingAgentMessages.get(parsed.itemId) ?? "";
+    const text = prev + parsed.delta;
+    this.pendingAgentMessages.set(parsed.itemId, text);
+    const subAgentCallId = this.getSubAgentCallIdForThread(parsed.threadId);
+    if (subAgentCallId) {
+      if (parsed.threadId) {
+        this.emitProviderSubagentTimeline(parsed.threadId, {
+          type: "assistant_message",
+          messageId: parsed.itemId,
+          text: parsed.delta,
+        });
+      }
+      this.upsertSubAgentChildItem(subAgentCallId, parsed.itemId, {
+        type: "assistant_message",
+        messageId: parsed.itemId,
+        text,
+      });
+      this.emitSubAgentActivityUpdate(subAgentCallId, "running");
+      return;
+    }
+    const isFirstDeltaForItem = prev.length === 0;
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: {
+        type: "assistant_message",
+        messageId: parsed.itemId,
+        text:
+          isFirstDeltaForItem && this.pendingAssistantMessageBoundary
+            ? `${ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN}${parsed.delta}`
+            : parsed.delta,
+      },
+    });
+    if (isFirstDeltaForItem) {
+      this.pendingAssistantMessageBoundary = false;
+    }
+  }
+
+  private handleReasoningDelta(
+    parsed: Extract<CodexDeltaNotification, { kind: "reasoning_delta" }>,
+  ): void {
+    const prev = this.pendingReasoning.get(parsed.itemId) ?? [];
+    prev.push(parsed.delta);
+    this.pendingReasoning.set(parsed.itemId, prev);
+    const subAgentCallId = this.getSubAgentCallIdForThread(parsed.threadId);
+    if (subAgentCallId) {
+      if (parsed.threadId) {
+        this.emitProviderSubagentTimeline(parsed.threadId, {
+          type: "reasoning",
+          text: parsed.delta,
+        });
+      }
+      this.upsertSubAgentChildItem(subAgentCallId, parsed.itemId, {
+        type: "reasoning",
+        text: prev.join(""),
+      });
+      this.emitSubAgentActivityUpdate(subAgentCallId, "running");
+      return;
+    }
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: { type: "reasoning", text: parsed.delta },
+    });
   }
 
   private handleThreadStartedNotification(
@@ -5609,7 +5833,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (
       parsed.status === "failed" &&
       isMaxOutputTokensError(parsed.errorMessage) &&
-      this.tryContinueAfterMaxOutputTokens()
+      this.tryRecoverAfterMaxOutputTokens()
     ) {
       return;
     }
@@ -5635,11 +5859,15 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.activeForegroundTurnId = null;
     this.activeTurnStartParams = null;
     this.maxOutputTokensContinuationAttempts = 0;
+    this.maxOutputTokensRecoveryInProgress = false;
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.resetTurnTrackingState();
   }
 
-  private tryContinueAfterMaxOutputTokens(): boolean {
+  private tryRecoverAfterMaxOutputTokens(): boolean {
+    if (this.maxOutputTokensRecoveryInProgress) {
+      return true;
+    }
     if (
       !this.client ||
       !this.activeForegroundTurnId ||
@@ -5650,6 +5878,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
 
     this.maxOutputTokensContinuationAttempts += 1;
+    this.maxOutputTokensRecoveryInProgress = true;
     this.currentTurnId = null;
     const retryParams = {
       ...this.activeTurnStartParams,
@@ -5662,23 +5891,39 @@ export class CodexAppServerAgentSession implements AgentSession {
         threadId: this.currentThreadId,
         attempt: this.maxOutputTokensContinuationAttempts,
       },
-      "Codex reached max_output_tokens; continuing the logical turn automatically",
+      "Codex reached max_output_tokens; compacting and continuing the logical turn automatically",
     );
-    void this.client.request("turn/start", retryParams, TURN_START_TIMEOUT_MS).catch((error) => {
+    void this.recoverAfterMaxOutputTokens(retryParams);
+    return true;
+  }
+
+  private async recoverAfterMaxOutputTokens(retryParams: Record<string, unknown>): Promise<void> {
+    try {
+      // A max-output failure can arrive before Codex closes its compaction item.
+      // Clear that stale loading marker, then start a fresh explicit compaction.
+      this.settleActiveContextCompaction();
+      await this.runAutomaticCompaction("max_output_tokens");
+      if (!this.client || !this.activeForegroundTurnId) {
+        return;
+      }
+      await this.client.request("turn/start", retryParams, TURN_START_TIMEOUT_MS);
+      this.maxOutputTokensRecoveryInProgress = false;
+    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      this.finishAutomaticCompaction(false);
       this.settleActiveContextCompaction();
       this.emitEvent({
         type: "turn_failed",
         provider: CODEX_PROVIDER,
-        error: `Codex automatic continuation failed: ${message}`,
+        error: `Codex automatic recovery failed: ${message}`,
       });
       this.activeForegroundTurnId = null;
       this.activeTurnStartParams = null;
       this.maxOutputTokensContinuationAttempts = 0;
+      this.maxOutputTokensRecoveryInProgress = false;
       this.pendingSubAgentNotificationsByThreadId.clear();
       this.resetTurnTrackingState();
-    });
-    return true;
+    }
   }
 
   private settleActiveContextCompaction(): void {
@@ -5701,6 +5946,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.emittedExecCommandCompletedCallIds.clear();
     this.pendingAgentMessages.clear();
     this.pendingReasoning.clear();
+    this.agentMessagePhaseByItemId.clear();
     this.pendingCommandOutputDeltas.clear();
     this.pendingFileChangeOutputDeltas.clear();
     this.pendingAssistantMessageBoundary = false;
@@ -5757,6 +6003,10 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.pendingManualCompactionStarts -= 1;
       return "manual";
     }
+    if (this.pendingAutomaticCompactionStarts > 0) {
+      this.pendingAutomaticCompactionStarts -= 1;
+      return "auto";
+    }
     return undefined;
   }
 
@@ -5805,6 +6055,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (parsed.threadId !== this.currentThreadId) {
       return;
     }
+    this.finishAutomaticCompaction(true);
     if (this.unpairedCompactionItemCompletions > 0) {
       this.unpairedCompactionItemCompletions -= 1;
       return;
@@ -5980,11 +6231,17 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.handleUserMessageItem(parsed);
       return;
     }
+    const {
+      item: completedItem,
+      itemId,
+      normalizedItemType,
+    } = this.consumeTrackedAgentMessagePhase(parsed.item);
+    const completedParsed = { ...parsed, item: completedItem };
     const childSubAgentCallId = this.getSubAgentCallIdForThread(parsed.threadId);
-    if (this.handleCompletedSpecialItem(parsed, childSubAgentCallId)) {
+    if (this.handleCompletedSpecialItem(completedParsed, childSubAgentCallId)) {
       return;
     }
-    const timelineItem = threadItemToTimeline(parsed.item, {
+    const timelineItem = threadItemToTimeline(completedItem, {
       includeUserMessage: false,
       cwd: this.config.cwd ?? null,
     });
@@ -5995,22 +6252,18 @@ export class CodexAppServerAgentSession implements AgentSession {
       timelineItem.type === "tool_call"
         ? this.registerSubAgentToolCall({
             timelineItem,
-            rawItem: parsed.item,
+            rawItem: completedItem,
             parentCallId: childSubAgentCallId,
           })
         : [];
-    const imageItems = mcpToolResultImagesToTimeline(parsed.item);
+    const imageItems = mcpToolResultImagesToTimeline(completedItem);
     if (childSubAgentCallId) {
-      this.emitCompletedProviderSubagentItem(parsed, timelineItem);
-      this.handleSubAgentChildItemCompleted(childSubAgentCallId, parsed.item.id, timelineItem);
+      this.emitCompletedProviderSubagentItem(completedParsed, timelineItem);
+      this.handleSubAgentChildItemCompleted(childSubAgentCallId, itemId, timelineItem);
       this.emitProviderSubagentTimelineItems(parsed.threadId, imageItems);
       this.replayPendingSubAgentNotifications(registeredChildThreadIds);
       return;
     }
-    const normalizedItemType = normalizeCodexThreadItemType(
-      typeof parsed.item.type === "string" ? parsed.item.type : undefined,
-    );
-    const itemId = parsed.item.id;
     if (this.shouldSkipCompletedThreadItem(timelineItem, normalizedItemType, itemId)) {
       this.replayPendingSubAgentNotifications(registeredChildThreadIds);
       return;
@@ -6036,7 +6289,7 @@ export class CodexAppServerAgentSession implements AgentSession {
           return;
         }
       }
-      this.warnOnIncompleteEditToolCall(timelineItem, "item_completed", parsed.item);
+      this.warnOnIncompleteEditToolCall(timelineItem, "item_completed", completedItem);
     }
     this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: timelineItem });
     if (timelineItem.type === "assistant_message") {
@@ -6053,6 +6306,30 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.pendingFileChangeOutputDeltas.delete(itemId);
     }
     this.replayPendingSubAgentNotifications(registeredChildThreadIds);
+  }
+
+  private consumeTrackedAgentMessagePhase(item: {
+    id?: string;
+    type?: string;
+    [key: string]: unknown;
+  }): {
+    item: { id?: string; type?: string; [key: string]: unknown };
+    itemId: string | undefined;
+    normalizedItemType: string | undefined;
+  } {
+    const itemId = item.id;
+    const normalizedItemType = normalizeCodexThreadItemType(item.type);
+    if (normalizedItemType !== "agentMessage" || !itemId) {
+      return { item, itemId, normalizedItemType };
+    }
+    const trackedPhase = this.agentMessagePhaseByItemId.get(itemId);
+    this.agentMessagePhaseByItemId.delete(itemId);
+    return {
+      item:
+        trackedPhase && !getCodexAgentMessagePhase(item) ? { ...item, phase: trackedPhase } : item,
+      itemId,
+      normalizedItemType,
+    };
   }
 
   private consumeStreamedTextCompletion(
@@ -6134,6 +6411,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.handleUserMessageItem(parsed);
       return;
     }
+    this.trackAgentMessagePhase(parsed.item);
     const childSubAgentCallId = this.getSubAgentCallIdForThread(parsed.threadId);
     if (
       childSubAgentCallId &&
@@ -6154,6 +6432,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!timelineItem || timelineItem.type !== "tool_call") {
       return;
     }
+    const normalizedItemType = normalizeCodexThreadItemType(
+      typeof parsed.item.type === "string" ? parsed.item.type : undefined,
+    );
+    const itemId = parsed.item.id;
     const registeredChildThreadIds = this.registerSubAgentToolCall({
       timelineItem,
       rawItem: parsed.item,
@@ -6168,10 +6450,6 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.replayPendingSubAgentNotifications(registeredChildThreadIds);
       return;
     }
-    const normalizedItemType = normalizeCodexThreadItemType(
-      typeof parsed.item.type === "string" ? parsed.item.type : undefined,
-    );
-    const itemId = parsed.item.id;
     if (normalizedItemType === "commandExecution") {
       const callId = timelineItem.callId || itemId;
       if (callId && this.emittedExecCommandStartedCallIds.has(callId)) {
@@ -6189,6 +6467,20 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.pendingFileChangeOutputDeltas.delete(itemId);
     }
     this.replayPendingSubAgentNotifications(registeredChildThreadIds);
+  }
+
+  private trackAgentMessagePhase(item: {
+    id?: string;
+    type?: string;
+    [key: string]: unknown;
+  }): void {
+    if (normalizeCodexThreadItemType(item.type) !== "agentMessage" || !item.id) {
+      return;
+    }
+    const phase = getCodexAgentMessagePhase(item);
+    if (phase) {
+      this.agentMessagePhaseByItemId.set(item.id, phase);
+    }
   }
 
   private handleUserMessageItem(

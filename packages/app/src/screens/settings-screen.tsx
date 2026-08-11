@@ -67,7 +67,6 @@ import {
   useSettings,
   parseTerminalScrollbackLines,
   type AppSettings,
-  type SendBehavior,
   type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
@@ -272,13 +271,6 @@ function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { ho
   ];
 }
 
-function getSendBehaviorOptions(t: TFunction) {
-  return [
-    { value: "interrupt" as const, label: t("settings.general.defaultSend.options.interrupt") },
-    { value: "queue" as const, label: t("settings.general.defaultSend.options.queue") },
-  ];
-}
-
 function getServiceUrlBehaviorLabel(t: TFunction, value: ServiceUrlBehavior): string {
   const labels: Record<ServiceUrlBehavior, string> = {
     ask: t("settings.general.serviceUrls.options.ask"),
@@ -302,7 +294,6 @@ const SERVICE_URL_BEHAVIOR_VALUES: ServiceUrlBehavior[] = ["ask", "in-app", "ext
 interface GeneralSectionProps {
   settings: AppSettings;
   isDesktopApp: boolean;
-  handleSendBehaviorChange: (behavior: SendBehavior) => void;
   handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
   handleTerminalScrollbackLinesChange: (lines: number) => void;
@@ -358,7 +349,6 @@ function LanguageMenuItem({ value, activeLocale, selected, onChange }: LanguageM
 function GeneralSection({
   settings,
   isDesktopApp,
-  handleSendBehaviorChange,
   handleServiceUrlBehaviorChange,
   handleLanguageChange,
   handleTerminalScrollbackLinesChange,
@@ -366,11 +356,6 @@ function GeneralSection({
   const { t, i18n } = useTranslation();
   const { theme } = useUnistyles();
   const activeLocale = getActiveLocale(i18n.language);
-  const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
-  const sendBehaviorDescriptionKey =
-    settings.sendBehavior === "interrupt"
-      ? "settings.general.defaultSend.descriptions.interrupt"
-      : "settings.general.defaultSend.descriptions.queue";
   const selectedLanguageOption = LANGUAGE_OPTIONS.find(
     (option) => option.value === settings.language,
   );
@@ -481,18 +466,6 @@ function GeneralSection({
           <Text style={styles.clientIdentityId} selectable>
             {clientId ?? t("settings.loading")}
           </Text>
-        </View>
-        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
-            <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
-          </View>
-          <SegmentedControl
-            size="sm"
-            value={settings.sendBehavior}
-            onValueChange={handleSendBehaviorChange}
-            options={sendBehaviorOptions}
-          />
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
@@ -1328,13 +1301,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     });
   }, [view, selectedSettingsHostServerId, localServerId, hosts, sortedHosts]);
 
-  const handleSendBehaviorChange = useCallback(
-    (behavior: SendBehavior) => {
-      void updateSettings({ sendBehavior: behavior });
-    },
-    [updateSettings],
-  );
-
   const handleServiceUrlBehaviorChange = useCallback(
     (behavior: ServiceUrlBehavior) => {
       void updateSettings({ serviceUrlBehavior: behavior });
@@ -1592,7 +1558,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               <GeneralSection
                 settings={settings}
                 isDesktopApp={isDesktopApp}
-                handleSendBehaviorChange={handleSendBehaviorChange}
                 handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
                 handleLanguageChange={handleLanguageChange}
                 handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}

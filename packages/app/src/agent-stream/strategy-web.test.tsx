@@ -462,26 +462,11 @@ describe("createWebStreamStrategy", () => {
     }
     Object.defineProperty(scrollContainer, "clientHeight", { configurable: true, value: 400 });
     Object.defineProperty(scrollContainer, "scrollHeight", { configurable: true, value: 1200 });
-    Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 0 });
+    Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 700 });
 
     act(() => {
-      root?.render(
-        strategy.render({
-          ...renderInput,
-          segments: {
-            historyVirtualized: [],
-            historyMounted: [userMessage(1), userMessage(2)],
-            liveHead: [],
-          },
-          boundary: {
-            hasVirtualizedHistory: false,
-            hasMountedHistory: true,
-            hasLiveHead: false,
-          },
-          hasOlderHistory: true,
-          olderHistoryProgressKey: "epoch-1:20",
-        }),
-      );
+      scrollContainer?.dispatchEvent(new Event("scroll"));
+      scrollContainer?.dispatchEvent(new Event("scroll"));
     });
 
     expect(onNearHistoryStart).not.toHaveBeenCalled();
@@ -489,6 +474,150 @@ describe("createWebStreamStrategy", () => {
       await new Promise((resolve) => requestAnimationFrame(resolve));
     });
     expect(onNearHistoryStart).not.toHaveBeenCalled();
+  });
+
+  it("scrolls directly to the oldest rendered edge through the viewport handle", () => {
+    const scrollTo = vi.fn();
+    HTMLElement.prototype.scrollTo = scrollTo;
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        strategy.render({
+          agentId: "agent",
+          segments: {
+            historyVirtualized: [],
+            historyMounted: [userMessage(1)],
+            liveHead: [],
+          },
+          boundary: {
+            hasVirtualizedHistory: false,
+            hasMountedHistory: true,
+            hasLiveHead: false,
+          },
+          renderers: createRenderers(vi.fn()),
+          listEmptyComponent: null,
+          viewportRef,
+          routeBottomAnchorRequest: null,
+          isAuthoritativeHistoryReady: true,
+          onNearBottomChange: vi.fn(),
+          onNearHistoryStart: vi.fn(),
+          isLoadingOlderHistory: false,
+          hasOlderHistory: false,
+          scrollEnabled: true,
+          listStyle: null,
+          baseListContentContainerStyle: null,
+          forwardListContentContainerStyle: null,
+        }),
+      );
+    });
+
+    scrollTo.mockClear();
+    act(() => viewportRef.current?.scrollToOldest());
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+  });
+
+  it("preserves the visible history position after older rows are prepended", async () => {
+    const scrollTo = vi.fn(function (
+      this: HTMLElement,
+      options?: ScrollToOptions | number,
+      y?: number,
+    ) {
+      const top = typeof options === "object" ? (options.top ?? 0) : (y ?? 0);
+      Object.defineProperty(this, "scrollTop", {
+        configurable: true,
+        value: top,
+      });
+    });
+    HTMLElement.prototype.scrollTo = scrollTo;
+
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: true });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const onNearHistoryStart = vi.fn();
+    const initialHistory = Array.from({ length: 20 }, (_, index) => userMessage(index + 20));
+    const renderInput = {
+      agentId: "agent",
+      boundary: {
+        hasVirtualizedHistory: false,
+        hasMountedHistory: true,
+        hasLiveHead: false,
+      },
+      renderers: createRenderers(vi.fn()),
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart,
+      isLoadingOlderHistory: false,
+      hasOlderHistory: true,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    } satisfies Omit<StreamRenderInput, "segments">;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: {
+            historyVirtualized: [],
+            historyMounted: initialHistory,
+            liveHead: [],
+          },
+        }),
+      );
+    });
+
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    Object.defineProperty(scrollContainer, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(scrollContainer, "scrollHeight", { configurable: true, value: 1200 });
+    Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 64 });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    Object.defineProperty(scrollContainer, "scrollTop", { configurable: true, value: 64 });
+    scrollTo.mockClear();
+
+    act(() => {
+      scrollContainer.dispatchEvent(new WheelEvent("wheel", { deltaY: -120 }));
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+    expect(onNearHistoryStart).toHaveBeenCalledTimes(1);
+
+    const prependedHistory = [
+      ...Array.from({ length: 20 }, (_, index) => userMessage(index)),
+      ...initialHistory,
+    ];
+    Object.defineProperty(scrollContainer, "scrollHeight", { configurable: true, value: 2400 });
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: {
+            historyVirtualized: [],
+            historyMounted: prependedHistory,
+            liveHead: [],
+          },
+          isLoadingOlderHistory: true,
+        }),
+      );
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1264, behavior: "auto" });
+    expect(scrollContainer.scrollTop).toBe(1264);
   });
 
   it("keeps initial route entry anchored when delayed route readiness arrives before user scroll", async () => {

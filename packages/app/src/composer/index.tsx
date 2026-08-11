@@ -3,7 +3,8 @@ import {
   View,
   Pressable,
   Text,
-  StyleSheet as RNStyleSheet,
+  TextInput,
+  ActivityIndicator,
   type PressableStateCallbackType,
 } from "react-native";
 import type { TFunction } from "i18next";
@@ -22,9 +23,13 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
-  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Square,
   Pencil,
+  Trash2,
+  X,
   AudioLines,
   CircleDot,
   FileText,
@@ -58,15 +63,17 @@ import { focusWithRetries } from "@/utils/web-focus";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
-  editQueuedComposerMessage,
   findGithubItemByOption,
   isAttachmentSelectedForGithubItem,
+  moveQueuedComposerMessage,
   openComposerAttachment,
   pickAndPersistImages,
   queueComposerMessage,
   removeComposerAttachmentAtIndex,
+  removeQueuedComposerMessage,
   sendQueuedComposerMessageNow,
   toggleGithubAttachmentFromPicker,
+  updateQueuedComposerMessage,
   uploadFileAttachments,
   type AttachmentPersister,
   type QueueWriter,
@@ -100,7 +107,6 @@ import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { ComposerKeyboardScopeProvider } from "@/composer/keyboard-scope";
-import { useAppSettings } from "@/hooks/use-settings";
 import { isWeb, isNative } from "@/constants/platform";
 import type { ForgeSearchItem } from "@getpaseo/protocol/messages";
 import type {
@@ -413,26 +419,29 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
 
 interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
-  handleEditQueuedMessage: (id: string) => void;
-  handleSendQueuedNow: (id: string) => Promise<void>;
-  editLabel: string;
-  sendNowLabel: string;
+  onUpdate: (id: string, text: string) => boolean;
+  onRemove: (id: string) => void;
+  onMove: (id: string, direction: "up" | "down") => void;
+  onSteer: (id: string) => Promise<void>;
+  labels: QueueActionLabels;
 }
 
 function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
-  const { queuedMessages, handleEditQueuedMessage, handleSendQueuedNow, editLabel, sendNowLabel } =
-    args;
+  const { queuedMessages, onUpdate, onRemove, onMove, onSteer, labels } = args;
   if (queuedMessages.length === 0) return null;
   return (
     <View style={styles.queueTrack}>
-      {queuedMessages.map((item) => (
+      {queuedMessages.map((item, index) => (
         <QueuedMessageRow
           key={item.id}
           item={item}
-          onEdit={handleEditQueuedMessage}
-          onSendNow={handleSendQueuedNow}
-          editLabel={editLabel}
-          sendNowLabel={sendNowLabel}
+          index={index}
+          count={queuedMessages.length}
+          onUpdate={onUpdate}
+          onRemove={onRemove}
+          onMove={onMove}
+          onSteer={onSteer}
+          labels={labels}
         />
       ))}
     </View>
@@ -625,25 +634,103 @@ function resolveMessageInputPassthroughAction(
 
 interface QueuedMessageRowProps {
   item: QueuedMessage;
-  onEdit: (id: string) => void;
-  onSendNow: (id: string) => void;
+  index: number;
+  count: number;
+  onUpdate: (id: string, text: string) => boolean;
+  onRemove: (id: string) => void;
+  onMove: (id: string, direction: "up" | "down") => void;
+  onSteer: (id: string) => Promise<void>;
+  labels: QueueActionLabels;
+}
+
+interface QueueActionLabels {
   editLabel: string;
-  sendNowLabel: string;
+  saveLabel: string;
+  cancelEditLabel: string;
+  removeLabel: string;
+  moveUpLabel: string;
+  moveDownLabel: string;
+  steerLabel: string;
 }
 
 function QueuedMessageRow({
   item,
-  onEdit,
-  onSendNow,
-  editLabel,
-  sendNowLabel,
+  index,
+  count,
+  onUpdate,
+  onRemove,
+  onMove,
+  onSteer,
+  labels,
 }: QueuedMessageRowProps) {
-  const handleEdit = useCallback(() => {
-    onEdit(item.id);
-  }, [onEdit, item.id]);
-  const handleSendNow = useCallback(() => {
-    onSendNow(item.id);
-  }, [onSendNow, item.id]);
+  const [editText, setEditText] = useState<string | null>(null);
+  const [isSteering, setIsSteering] = useState(false);
+  const isEditing = editText !== null;
+  const canSave = Boolean(editText?.trim());
+  const startEditing = useCallback(() => {
+    setEditText(item.text);
+  }, [item.text]);
+  const cancelEditing = useCallback(() => {
+    setEditText(null);
+  }, []);
+  const saveEdit = useCallback(() => {
+    if (editText === null) return;
+    if (onUpdate(item.id, editText)) {
+      setEditText(null);
+    }
+  }, [editText, item.id, onUpdate]);
+  const remove = useCallback(() => {
+    onRemove(item.id);
+  }, [item.id, onRemove]);
+  const moveUp = useCallback(() => {
+    onMove(item.id, "up");
+  }, [item.id, onMove]);
+  const moveDown = useCallback(() => {
+    onMove(item.id, "down");
+  }, [item.id, onMove]);
+  const steer = useCallback(async () => {
+    setIsSteering(true);
+    try {
+      await onSteer(item.id);
+    } finally {
+      setIsSteering(false);
+    }
+  }, [item.id, onSteer]);
+
+  if (isEditing) {
+    return (
+      <View style={styles.queueItem}>
+        <TextInput
+          value={editText}
+          onChangeText={setEditText}
+          autoFocus
+          multiline
+          style={styles.queueEditInput}
+          accessibilityLabel={labels.editLabel}
+        />
+        <View style={styles.queueActions}>
+          <Pressable
+            onPress={cancelEditing}
+            style={styles.queueActionButton}
+            accessibilityLabel={labels.cancelEditLabel}
+            accessibilityRole="button"
+          >
+            <ThemedX size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+          </Pressable>
+          <Pressable
+            onPress={saveEdit}
+            disabled={!canSave}
+            style={[styles.queueActionButton, !canSave && styles.buttonDisabled]}
+            accessibilityLabel={labels.saveLabel}
+            accessibilityRole="button"
+          >
+            <ThemedCheck size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.queueItem}>
       <Text style={styles.queueText} numberOfLines={2} ellipsizeMode="tail">
@@ -651,20 +738,56 @@ function QueuedMessageRow({
       </Text>
       <View style={styles.queueActions}>
         <Pressable
-          onPress={handleEdit}
-          style={styles.queueActionButton}
-          accessibilityLabel={editLabel}
+          onPress={moveUp}
+          disabled={index === 0 || isSteering}
+          style={[styles.queueActionButton, (index === 0 || isSteering) && styles.buttonDisabled]}
+          accessibilityLabel={labels.moveUpLabel}
+          accessibilityRole="button"
+        >
+          <ThemedChevronUp size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+        </Pressable>
+        <Pressable
+          onPress={moveDown}
+          disabled={index === count - 1 || isSteering}
+          style={[
+            styles.queueActionButton,
+            (index === count - 1 || isSteering) && styles.buttonDisabled,
+          ]}
+          accessibilityLabel={labels.moveDownLabel}
+          accessibilityRole="button"
+        >
+          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+        </Pressable>
+        <Pressable
+          onPress={startEditing}
+          disabled={isSteering}
+          style={[styles.queueActionButton, isSteering && styles.buttonDisabled]}
+          accessibilityLabel={labels.editLabel}
           accessibilityRole="button"
         >
           <ThemedPencil size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
         </Pressable>
         <Pressable
-          onPress={handleSendNow}
-          style={[styles.queueActionButton, styles.queueSendButton]}
-          accessibilityLabel={sendNowLabel}
+          onPress={remove}
+          disabled={isSteering}
+          style={[styles.queueActionButton, isSteering && styles.buttonDisabled]}
+          accessibilityLabel={labels.removeLabel}
           accessibilityRole="button"
         >
-          <ThemedArrowUp size={ICON_SIZE.sm} uniProps={iconAccentForegroundMapping} />
+          <ThemedTrash2 size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+        </Pressable>
+        <Pressable
+          onPress={steer}
+          disabled={isSteering}
+          style={[styles.queueActionButton, styles.queueSteerButton]}
+          accessibilityLabel={labels.steerLabel}
+          accessibilityRole="button"
+        >
+          {isSteering ? (
+            <ThemedActivityIndicator size={ICON_SIZE.sm} uniProps={iconAccentForegroundMapping} />
+          ) : (
+            <Text style={styles.queueSteerButtonText}>{labels.steerLabel}</Text>
+          )}
         </Pressable>
       </View>
     </View>
@@ -1140,8 +1263,6 @@ export function Composer({
     agentDirectoryStatus,
   });
 
-  const { settings: appSettings } = useAppSettings();
-
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
 
   const queuedMessagesRaw = useSessionStore((state) =>
@@ -1164,8 +1285,6 @@ export function Composer({
     buildOutgoingAttachments,
     removeAttachment,
     openAttachment,
-    beginSubmit,
-    clearSentAttachments,
     completeSubmit,
     resetSuppression,
   } = composerWorkspaceAttachment.useBinding({
@@ -1484,20 +1603,8 @@ export function Composer({
         queue: queueWriter,
       });
       if (!result.queued) return;
-
-      setUserInput("");
-      setSelectedAttachments([]);
-      resetSuppression();
-      clearSentAttachments(queuedAttachments);
     },
-    [
-      agentId,
-      clearSentAttachments,
-      queueWriter,
-      resetSuppression,
-      setSelectedAttachments,
-      setUserInput,
-    ],
+    [agentId, queueWriter],
   );
 
   const sendMessageWithContent = useCallback(
@@ -1812,30 +1919,48 @@ export function Composer({
     });
   }, [agentId, hasAgent, isConnected, serverId, voice]);
 
-  const handleEditQueuedMessage = useCallback(
+  const handleUpdateQueuedMessage = useCallback(
+    (id: string, text: string) =>
+      updateQueuedComposerMessage({
+        agentId,
+        messageId: id,
+        text,
+        queue: queueWriter,
+      }),
+    [agentId, queueWriter],
+  );
+
+  const handleRemoveQueuedMessage = useCallback(
     (id: string) => {
-      const result = editQueuedComposerMessage({
+      const removed = removeQueuedComposerMessage({
         agentId,
         messageId: id,
         queue: queueWriter,
       });
-      if (!result) return;
-      setUserInput(result.text);
-      setSelectedAttachments(result.attachments);
-      if (result.selectedMcpServerIds) {
-        setSelectedMcpServerIds(result.selectedMcpServerIds);
-      }
-      if (result.selectedSkillIds) {
-        setSelectedSkillIds(result.selectedSkillIds);
-      }
+      if (!removed) return;
+      const imageMetadata = removed.attachments.flatMap((attachment) =>
+        attachment.kind === "image" ? [attachment.metadata] : [],
+      );
+      void deleteAttachments(imageMetadata);
     },
-    [agentId, queueWriter, setSelectedAttachments, setUserInput],
+    [agentId, queueWriter],
   );
 
-  const handleSendQueuedNow = useCallback(
+  const handleMoveQueuedMessage = useCallback(
+    (id: string, direction: "up" | "down") => {
+      moveQueuedComposerMessage({
+        agentId,
+        messageId: id,
+        direction,
+        queue: queueWriter,
+      });
+    },
+    [agentId, queueWriter],
+  );
+
+  const handleSteerQueuedMessage = useCallback(
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
-      // Reuse the regular send path; server-side send atomically interrupts any active run.
       const result = await sendQueuedComposerMessageNow({
         agentId,
         messageId: id,
@@ -1869,13 +1994,18 @@ export function Composer({
       if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
         return;
       }
-      queueMessage(payload.text, outgoingAttachments, sessionResourceSelection);
+      void sendMessageWithContent(
+        payload.text,
+        outgoingAttachments,
+        undefined,
+        sessionResourceSelection,
+      );
     },
     [
       attachments,
       buildOutgoingAttachments,
-      queueMessage,
       runClientSlashCommand,
+      sendMessageWithContent,
       sessionResourceSelection,
     ],
   );
@@ -2324,12 +2454,28 @@ export function Composer({
     () =>
       renderQueueTrack({
         queuedMessages,
-        handleEditQueuedMessage,
-        handleSendQueuedNow,
-        editLabel: t("composer.attachments.editQueuedMessage"),
-        sendNowLabel: t("composer.attachments.sendQueuedMessageNow"),
+        onUpdate: handleUpdateQueuedMessage,
+        onRemove: handleRemoveQueuedMessage,
+        onMove: handleMoveQueuedMessage,
+        onSteer: handleSteerQueuedMessage,
+        labels: {
+          editLabel: t("composer.queue.edit"),
+          saveLabel: t("composer.queue.save"),
+          cancelEditLabel: t("composer.queue.cancelEdit"),
+          removeLabel: t("composer.queue.remove"),
+          moveUpLabel: t("composer.queue.moveUp"),
+          moveDownLabel: t("composer.queue.moveDown"),
+          steerLabel: t("composer.queue.steer"),
+        },
       }),
-    [handleEditQueuedMessage, handleSendQueuedNow, queuedMessages, t],
+    [
+      handleMoveQueuedMessage,
+      handleRemoveQueuedMessage,
+      handleSteerQueuedMessage,
+      handleUpdateQueuedMessage,
+      queuedMessages,
+      t,
+    ],
   );
 
   const messageInputContainerRef = useRef<View>(null);
@@ -2418,7 +2564,6 @@ export function Composer({
                 voiceAgentId={agentId}
                 workspaceId={agentState.workspaceId}
                 isAgentRunning={isAgentRunning}
-                defaultSendBehavior={appSettings.sendBehavior}
                 onQueue={handleQueue}
                 onSubmitLoadingPress={submitLoadingPressHandler}
                 onKeyPress={handleCommandKeyPress}
@@ -2611,21 +2756,41 @@ const animatedStaticStyles = RNStyleSheet.create({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
   },
+  queueEditInput: {
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    backgroundColor: theme.colors.background,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+  },
   queueActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[1],
   },
   queueActionButton: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
   },
-  queueSendButton: {
+  queueSteerButton: {
+    width: "auto",
+    minWidth: 48,
+    paddingHorizontal: theme.spacing[2],
     backgroundColor: theme.colors.accent,
+  },
+  queueSteerButtonText: {
+    color: theme.colors.accentForeground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
   },
   sendErrorText: {
     color: theme.colors.palette.red[500],
@@ -2634,7 +2799,12 @@ const animatedStaticStyles = RNStyleSheet.create({
 })) as unknown as Record<string, object>;
 
 const ThemedPencil = withUnistyles(Pencil);
-const ThemedArrowUp = withUnistyles(ArrowUp);
+const ThemedCheck = withUnistyles(Check);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedChevronUp = withUnistyles(ChevronUp);
+const ThemedTrash2 = withUnistyles(Trash2);
+const ThemedX = withUnistyles(X);
+const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);

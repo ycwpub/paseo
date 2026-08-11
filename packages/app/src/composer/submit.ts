@@ -47,6 +47,7 @@ export async function submitAgentInput<TAttachment>(
     if (shouldClearOnSubmit) {
       input.setUserInput("");
       input.setAttachments([]);
+      input.clearDraft("sent");
     }
     return "queued";
   }

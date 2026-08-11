@@ -145,8 +145,6 @@ export const en = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Drop images here",
       dropFilesHere: "Drop files here",
-      editQueuedMessage: "Edit queued message",
-      sendQueuedMessageNow: "Send queued message now",
       openImage: "Open image attachment",
       removeImage: "Remove image attachment",
       removeFile: "Remove file attachment",
@@ -157,6 +155,15 @@ export const en = {
       removeBrowserElement: "Remove browser element attachment",
       openReview: "Open review attachment",
       removeReview: "Remove review attachment",
+    },
+    queue: {
+      edit: "Edit queued message",
+      save: "Save queued message",
+      cancelEdit: "Cancel editing queued message",
+      remove: "Remove queued message",
+      moveUp: "Move queued message up",
+      moveDown: "Move queued message down",
+      steer: "Steer",
     },
     errors: {
       failedToSend: "Failed to send message",
@@ -217,7 +224,12 @@ export const en = {
   agentStream: {
     empty: "Start chatting with this agent...",
     scrollToBottom: "Scroll to bottom",
-    historyLoadFailed: "Couldn't load agent history",
+    scrollToOldest: "Jump to first message",
+    locatingOldest: "Locating first message",
+    process: {
+      show: "Show process",
+      hide: "Hide process",
+    },
     permission: {
       plan: "Plan",
       required: "Permission Required",
@@ -992,6 +1004,11 @@ export const en = {
         label: "Grouping",
         project: "Project",
         status: "Status",
+      },
+      sorting: {
+        label: "Sort by",
+        activity: "Recent activity",
+        manual: "Manual",
       },
       titleSource: {
         label: "Title",
@@ -1913,17 +1930,6 @@ export const en = {
         success: "Browser data cleared.",
         error: "Couldn't clear browser data.",
       },
-      defaultSend: {
-        label: "Default send",
-        descriptions: {
-          interrupt: "When the agent is running, Enter interrupts. Command/Ctrl+Enter queues.",
-          queue: "When the agent is running, Enter queues. Command/Ctrl+Enter submits.",
-        },
-        options: {
-          interrupt: "Interrupt",
-          queue: "Queue",
-        },
-      },
       serviceUrls: {
         label: "Service URLs",
         description: "Where to open URLs from running scripts",
@@ -2259,7 +2265,7 @@ export const en = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2276,6 +2282,8 @@ export const en = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint:

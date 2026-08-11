@@ -370,7 +370,7 @@ describe("appearance settings", () => {
     expect(result.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
     expect(result.syntaxTheme).toBe("one");
-    expect(result.toolCallDetailLevel).toBe("detailed");
+    expect(result.toolCallDetailLevel).toBe("overview");
   });
 
   it("migrates the enabled compact tool call preference to overview", async () => {

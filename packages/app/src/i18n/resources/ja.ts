@@ -138,8 +138,6 @@ export const ja: TranslationResources = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "ここに画像をドロップ",
       dropFilesHere: "ここにファイルをドロップ",
-      editQueuedMessage: "キューに入れたメッセージを編集",
-      sendQueuedMessageNow: "キューに入れたメッセージを今すぐ送信",
       openImage: "画像添付ファイルを開く",
       removeImage: "画像添付ファイルを削除",
       removeFile: "ファイル添付ファイルを削除",
@@ -150,6 +148,15 @@ export const ja: TranslationResources = {
       removeBrowserElement: "ブラウザ要素の添付ファイルを削除",
       openReview: "レビュー添付ファイルを開く",
       removeReview: "レビュー添付ファイルを削除",
+    },
+    queue: {
+      edit: "キューのメッセージを編集",
+      save: "キューのメッセージを保存",
+      cancelEdit: "メッセージの編集をキャンセル",
+      remove: "キューからメッセージを削除",
+      moveUp: "メッセージを上へ移動",
+      moveDown: "メッセージを下へ移動",
+      steer: "誘導",
     },
     errors: {
       failedToSend: "メッセージの送信に失敗しました",
@@ -210,7 +217,12 @@ export const ja: TranslationResources = {
   agentStream: {
     empty: "このエージェントとチャットを始めましょう...",
     scrollToBottom: "下にスクロール",
-    historyLoadFailed: "エージェントの履歴を読み込めませんでした",
+    scrollToOldest: "最初のメッセージに移動",
+    locatingOldest: "最初のメッセージを検索中",
+    process: {
+      show: "プロセスを表示",
+      hide: "プロセスを非表示",
+    },
     permission: {
       plan: "プラン",
       required: "権限が必要です",
@@ -1899,17 +1911,6 @@ export const ja: TranslationResources = {
         success: "ブラウザーデータを消去しました。",
         error: "ブラウザーデータを消去できませんでした。",
       },
-      defaultSend: {
-        label: "デフォルトの送信",
-        descriptions: {
-          interrupt: "エージェント実行中、Enterで中断します。Command/Ctrl+Enterでキューに追加。",
-          queue: "エージェント実行中、Enterでキューに追加します。Command/Ctrl+Enterで送信。",
-        },
-        options: {
-          interrupt: "中断",
-          queue: "キュー",
-        },
-      },
       serviceUrls: {
         label: "サービスURL",
         description: "実行中のスクリプトからURLを開く場所",
@@ -2248,7 +2249,7 @@ export const ja: TranslationResources = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2265,6 +2266,8 @@ export const ja: TranslationResources = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint: "Leave empty to generate it automatically.",

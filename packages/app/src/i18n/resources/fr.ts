@@ -140,8 +140,6 @@ export const fr: TranslationResources = {
       removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Déposez des images ici",
       dropFilesHere: "Drop files here",
-      editQueuedMessage: "Modifier le message en file d'attente",
-      sendQueuedMessageNow: "Envoyer le message en file d'attente maintenant",
       openImage: "Ouvrir la pièce jointe de l'image",
       removeImage: "Supprimer l'image jointe",
       removeFile: "Remove file attachment",
@@ -152,6 +150,15 @@ export const fr: TranslationResources = {
       removeBrowserElement: "Supprimer la pièce jointe d'un élément de navigateur",
       openReview: "Ouvrir la pièce jointe de l'avis",
       removeReview: "Supprimer la pièce jointe de l'avis",
+    },
+    queue: {
+      edit: "Modifier le message en file d'attente",
+      save: "Enregistrer le message en file d'attente",
+      cancelEdit: "Annuler la modification du message",
+      remove: "Retirer le message de la file d'attente",
+      moveUp: "Déplacer le message vers le haut",
+      moveDown: "Déplacer le message vers le bas",
+      steer: "Guider",
     },
     errors: {
       failedToSend: "Échec de l'envoi du message",
@@ -212,7 +219,12 @@ export const fr: TranslationResources = {
   agentStream: {
     empty: "Commencez à discuter avec cet agent...",
     scrollToBottom: "Faire défiler vers le bas",
-    historyLoadFailed: "Impossible de charger l’historique de l’agent",
+    scrollToOldest: "Aller au premier message",
+    locatingOldest: "Recherche du premier message",
+    process: {
+      show: "Afficher le processus",
+      hide: "Masquer le processus",
+    },
     permission: {
       plan: "Plan",
       required: "Autorisation requise",
@@ -1931,19 +1943,6 @@ export const fr: TranslationResources = {
         success: "Données du navigateur effacées.",
         error: "Impossible d'effacer les données du navigateur.",
       },
-      defaultSend: {
-        label: "Envoi par défaut",
-        descriptions: {
-          interrupt:
-            "Lorsque l'agent est en cours d'exécution, Entrée interrompt. Commande/Ctrl+Entrée met en file d'attente.",
-          queue:
-            "Lorsque l'agent est en cours d'exécution, Entrée met en file d'attente. Commande/Ctrl+Entrée envoie.",
-        },
-        options: {
-          interrupt: "Interrompre",
-          queue: "File d'attente",
-        },
-      },
       serviceUrls: {
         label: "URL de services",
         description: "Où ouvrir les URL à partir de scripts en cours d'exécution",
@@ -2283,7 +2282,7 @@ export const fr: TranslationResources = {
         pairingListHint:
           "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "How to fill in the Relay list above",
         addressPairHint:
           "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
@@ -2300,6 +2299,8 @@ export const fr: TranslationResources = {
           title: "Use this Paseo as a LAN Relay",
           hint: "Devices on the same local network can connect through this Host.",
           listenLabel: "LAN Relay listen address",
+          listenHint:
+            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
           pairingUrlLabel: "LAN Relay HTTP connection address",
           pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
           pairingUrlHint: "Leave empty to generate it automatically.",

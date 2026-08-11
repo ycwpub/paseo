@@ -1,9 +1,12 @@
+import { isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 import {
   loadPersistedConfig,
   savePersistedConfig,
   type PersistedConfig,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
+import { parseHostPort } from "@getpaseo/protocol/daemon-endpoints";
 import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
@@ -144,6 +147,38 @@ function isEqualValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function getLocalInterfaceAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flatMap((addresses) => addresses ?? [])
+    .map((address) => address.address);
+}
+
+export function validateLocalRelayListenAddress(
+  listen: string,
+  localAddresses: readonly string[] = getLocalInterfaceAddresses(),
+): void {
+  const { host } = parseHostPort(listen);
+  if (host === "0.0.0.0" || host === "::" || isIP(host) === 0) {
+    return;
+  }
+
+  const normalizedHost = host.split("%", 1)[0]!;
+  const normalizedAddresses = new Set(localAddresses.map((address) => address.split("%", 1)[0]!));
+  if (normalizedAddresses.has(normalizedHost)) {
+    return;
+  }
+
+  const availableAddresses = Array.from(normalizedAddresses)
+    .filter((address) => isIP(address) !== 0)
+    .sort()
+    .join(", ");
+  throw new Error(
+    `LAN Relay listen IP ${host} is not assigned to this machine. Use 0.0.0.0 to listen on all interfaces${
+      availableAddresses ? `, or choose a local IP: ${availableAddresses}` : ""
+    }.`,
+  );
+}
+
 export function applyMutableProviderConfigToOverrides(
   baseOverrides: Record<string, ProviderOverride> | undefined,
   mutableProviders: MutableDaemonConfig["providers"] | undefined,
@@ -206,6 +241,10 @@ export class DaemonConfigStore {
         removedProviders,
       ),
     );
+    const localRelayPatch = parsedPatch.relay?.local;
+    if (localRelayPatch?.listen !== undefined || localRelayPatch?.enabled === true) {
+      validateLocalRelayListenAddress(next.relay.local.listen);
+    }
 
     const changedFieldPaths = Array.from(this.fieldChangeHandlers.keys()).filter((path) => {
       return !isEqualValue(getValueAtPath(this.current, path), getValueAtPath(next, path));

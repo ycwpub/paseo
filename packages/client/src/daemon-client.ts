@@ -1962,6 +1962,81 @@ export class DaemonClient {
     }
   }
 
+  private waitForConnectionBeforeRequest(timeoutMs: number): Promise<void> {
+    const initialState = this.connectionState;
+    if (initialState.status === "connected") {
+      return Promise.resolve();
+    }
+    if (initialState.status === "disposed") {
+      return Promise.reject(new Error("Daemon client is disposed"));
+    }
+    if (initialState.status === "awaiting_approval") {
+      return Promise.reject(new Error(initialState.message));
+    }
+
+    const canWaitForReconnect =
+      initialState.status === "connecting" ||
+      (initialState.status === "disconnected" &&
+        this.shouldReconnect &&
+        this.config.reconnect?.enabled !== false);
+    if (!canWaitForReconnect) {
+      return Promise.reject(new Error(`Transport not connected (status: ${initialState.status})`));
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let unsubscribe: (() => void) | null = null;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      const settle = (error?: Error): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        unsubscribe?.();
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      unsubscribe = this.subscribeConnectionStatus((state) => {
+        if (state.status === "connected") {
+          settle();
+          return;
+        }
+        if (state.status === "disposed") {
+          settle(new Error("Daemon client is disposed"));
+          return;
+        }
+        if (state.status === "awaiting_approval") {
+          settle(new Error(state.message));
+          return;
+        }
+        if (
+          state.status === "disconnected" &&
+          (!this.shouldReconnect || this.config.reconnect?.enabled === false)
+        ) {
+          settle(new Error(`Transport not connected (status: ${state.status})`));
+        }
+      });
+      if (settled) {
+        unsubscribe();
+        return;
+      }
+
+      if (timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          settle(new Error("Timed out waiting for connection to send message"));
+        }, timeoutMs);
+      }
+    });
+  }
+
   private async sendRequest<T>(params: {
     requestId: string;
     message: SessionInboundMessage;
@@ -1970,6 +2045,13 @@ export class DaemonClient {
     options?: { skipQueue?: boolean };
   }): Promise<T> {
     const timeout = params.timeout ?? DEFAULT_SESSION_RPC_TIMEOUT_MS;
+    let responseTimeout = timeout;
+    if (this.connectionState.status !== "connected") {
+      const connectionWaitStartedAt = Date.now();
+      await this.waitForConnectionBeforeRequest(timeout);
+      responseTimeout =
+        timeout > 0 ? Math.max(1, timeout - (Date.now() - connectionWaitStartedAt)) : timeout;
+    }
     const { promise, cancel } = this.waitForWithCancel<RpcWaitResult<T>>(
       (msg) => {
         if (msg.type === "rpc_error" && msg.payload.requestId === params.requestId) {
@@ -1989,7 +2071,7 @@ export class DaemonClient {
         }
         return { kind: "ok", value };
       },
-      timeout,
+      responseTimeout,
       { ...params.options, requestId: params.requestId },
     );
 

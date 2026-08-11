@@ -437,6 +437,31 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(assistantMessage?.text, "Hello world");
   });
 
+  it("tracks reasoning start and completion timestamps", () => {
+    const startedAt = new Date("2025-01-01T10:00:02Z");
+    const completedAt = new Date("2025-01-01T10:00:04Z");
+    const state = hydrateStreamState([
+      {
+        event: reasoningTimeline("Thinking"),
+        timestamp: startedAt,
+      },
+      {
+        event: reasoningTimeline(" some more"),
+        timestamp: new Date("2025-01-01T10:00:03Z"),
+      },
+      {
+        event: assistantTimeline("Done"),
+        timestamp: completedAt,
+      },
+    ]);
+
+    const thought = state.find((item) => item.kind === "thought");
+    invariant(thought?.kind === "thought");
+    expect(thought.startedAt).toEqual(startedAt);
+    expect(thought.completedAt).toEqual(completedAt);
+    expect(thought.status).toBe("ready");
+  });
+
   it("keeps adjacent assistant timeline items separate when message ids differ", () => {
     const state = hydrateStreamState([
       {
@@ -690,6 +715,8 @@ describe("stream reducer canonical tool calls", () => {
 
     assert.strictEqual(tools.length, 1);
     assert.strictEqual(tools[0].payload.data.status, "completed");
+    expect(tools[0].startedAt).toEqual(new Date("2025-01-01T10:10:00Z"));
+    expect(tools[0].completedAt).toEqual(new Date("2025-01-01T10:10:01Z"));
     assert.deepStrictEqual(tools[0].payload.data.detail, {
       type: "unknown",
       input: { command: "pwd" },
@@ -1393,9 +1420,9 @@ describe("turn lifecycle events", () => {
     assert.deepStrictEqual(userMessage.attachments, [attachment]);
   });
 
-  it("places submitted user messages through the identity producer", () => {
-    const submitted = createUserMessage({
-      clientMessageId: "msg_append_once",
+  it("commits the active head before placing an optimistic user message", () => {
+    const optimistic = buildOptimisticUserMessage({
+      id: "msg_append_once",
       text: "append once",
       timestamp: new Date("2025-01-01T15:03:20Z"),
     });
@@ -1420,13 +1447,54 @@ describe("turn lifecycle events", () => {
       insert: "head",
       presentation: "existing",
     });
-    assert.deepStrictEqual(first.tail, []);
-    assert.deepStrictEqual(first.head, [headItem, submitted]);
-    assert.strictEqual(second.changedHead, false);
+    assert.deepStrictEqual(first.tail, [headItem, optimistic]);
+    assert.deepStrictEqual(first.head, []);
+    assert.strictEqual(first.changedTail, true);
+    assert.strictEqual(first.changedHead, true);
+    assert.strictEqual(second.changedTail, false);
     assert.strictEqual(second.head, first.head);
   });
 
-  it("hands rich submitted content to its create message without overwriting an earlier user row", () => {
+  it("keeps a steered prompt before the assistant output that follows it", () => {
+    const beforePrompt: StreamItem = {
+      kind: "assistant_message",
+      id: "assistant-before-steer",
+      messageId: "assistant-turn",
+      text: "Initial response.",
+      timestamp: new Date("2025-01-01T15:03:19Z"),
+    };
+    const prompt = buildOptimisticUserMessage({
+      id: "steer-prompt",
+      text: "Use HTTP instead.",
+      timestamp: new Date("2025-01-01T15:03:20Z"),
+    });
+    const appended = appendOptimisticUserMessageToStream({
+      tail: [],
+      head: [beforePrompt],
+      message: prompt,
+      placement: "active-head",
+    });
+    const afterPrompt = applyStreamEvent({
+      tail: appended.tail,
+      head: appended.head,
+      event: assistantTimeline("Retried with HTTP.", "codex", "assistant-turn"),
+      timestamp: new Date("2025-01-01T15:03:21Z"),
+    });
+
+    assert.deepStrictEqual(
+      [...afterPrompt.tail, ...afterPrompt.head].map((item) => [
+        item.kind,
+        item.kind === "assistant_message" || item.kind === "user_message" ? item.text : null,
+      ]),
+      [
+        ["assistant_message", "Initial response."],
+        ["user_message", "Use HTTP instead."],
+        ["assistant_message", "Retried with HTTP."],
+      ],
+    );
+  });
+
+  it("hands rich optimistic content to an authoritative create message without duplicating it", () => {
     const timestamp = new Date("2025-01-01T15:03:20Z");
     const submitted = createUserMessage({
       clientMessageId: "client-user",

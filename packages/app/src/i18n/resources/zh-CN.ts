@@ -146,8 +146,6 @@ export const zhCN: TranslationResources = {
       removeSkill: "从本次会话移除 Skill {{name}}",
       dropImagesHere: "将图片拖放到这里",
       dropFilesHere: "Drop files here",
-      editQueuedMessage: "编辑排队消息",
-      sendQueuedMessageNow: "立即发送排队消息",
       openImage: "打开图片附件",
       removeImage: "移除图片附件",
       removeFile: "Remove file attachment",
@@ -158,6 +156,15 @@ export const zhCN: TranslationResources = {
       removeBrowserElement: "移除浏览器元素附件",
       openReview: "打开 review 附件",
       removeReview: "移除 review 附件",
+    },
+    queue: {
+      edit: "编辑排队消息",
+      save: "保存排队消息",
+      cancelEdit: "取消编辑排队消息",
+      remove: "撤销排队消息",
+      moveUp: "上移排队消息",
+      moveDown: "下移排队消息",
+      steer: "引导",
     },
     errors: {
       failedToSend: "发送消息失败",
@@ -218,7 +225,12 @@ export const zhCN: TranslationResources = {
   agentStream: {
     empty: "开始和这个 Agent 对话...",
     scrollToBottom: "滚动到底部",
-    historyLoadFailed: "无法加载智能体历史记录",
+    scrollToOldest: "跳转到第一条消息",
+    locatingOldest: "正在定位第一条消息",
+    process: {
+      show: "展开过程",
+      hide: "隐藏过程",
+    },
     permission: {
       plan: "Plan",
       required: "需要权限",
@@ -974,6 +986,11 @@ export const zhCN: TranslationResources = {
         project: "项目",
         status: "状态",
       },
+      sorting: {
+        label: "排序方式",
+        activity: "最近活动",
+        manual: "手动",
+      },
       titleSource: {
         label: "标题",
         title: "标题",
@@ -1722,28 +1739,28 @@ export const zhCN: TranslationResources = {
   },
   toolCallGroup: {
     editedFiles: {
-      one: "编辑了 {{count}} 个文件",
-      other: "编辑了 {{count}} 个文件",
+      one: "已编辑 {{count}} 个文件",
+      other: "已编辑 {{count}} 个文件",
     },
     commands: {
-      one: "运行了 {{count}} 个命令",
-      other: "运行了 {{count}} 个命令",
+      one: "已运行 {{count}} 个命令",
+      other: "已运行 {{count}} 个命令",
     },
     readFiles: {
-      one: "读取了 {{count}} 个文件",
-      other: "读取了 {{count}} 个文件",
+      one: "已读取 {{count}} 个文件",
+      other: "已读取 {{count}} 个文件",
     },
     searches: {
-      one: "搜索了 {{count}} 次",
-      other: "搜索了 {{count}} 次",
+      one: "已搜索 {{count}} 次",
+      other: "已搜索 {{count}} 次",
     },
     otherTools: {
-      one: "使用了 {{count}} 个其他工具",
-      other: "使用了 {{count}} 个其他工具",
+      one: "已使用 {{count}} 个其他工具",
+      other: "已使用 {{count}} 个其他工具",
     },
     paseoCalls: {
-      one: "调用了 Paseo {{count}} 次",
-      other: "调用了 Paseo {{count}} 次",
+      one: "已调用 Paseo {{count}} 次",
+      other: "已调用 Paseo {{count}} 次",
     },
     and: "并",
   },
@@ -1875,17 +1892,6 @@ export const zhCN: TranslationResources = {
         confirmMessage: "网站帐号将退出登录，打开的浏览器标签页将重新加载。",
         success: "浏览器数据已清除。",
         error: "无法清除浏览器数据。",
-      },
-      defaultSend: {
-        label: "默认发送",
-        descriptions: {
-          interrupt: "Agent 运行时，Enter 会中断。Command/Ctrl+Enter 会排队。",
-          queue: "Agent 运行时，Enter 会排队。Command/Ctrl+Enter 会提交。",
-        },
-        options: {
-          interrupt: "中断",
-          queue: "排队",
-        },
       },
       serviceUrls: {
         label: "服务 URL",
@@ -2220,7 +2226,7 @@ export const zhCN: TranslationResources = {
         pairingListHint:
           "配置配对前端地址，可包含 /app 等路径。默认 HTTP/HTTPS 地址：{{addresses}}。每个 Relay 都会为列表中的每个地址生成配对链接。",
         servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://relay.paseo.sh",
+        pairingPlaceholder: "https://app.paseo.sh",
         addressPairHintTitle: "上方 Relay 列表填写说明",
         addressPairHint:
           "Relay 服务地址与配对前端地址独立配置。配置多个 HTTP/HTTPS 地址时，每个 Relay 都会生成对应的多个配对链接。",
@@ -2237,6 +2243,7 @@ export const zhCN: TranslationResources = {
           title: "将当前 Paseo 作为局域网 Relay",
           hint: "同一局域网内的设备可通过这个 Host 连接。",
           listenLabel: "局域网 Relay 监听地址",
+          listenHint: "建议使用 0.0.0.0 监听所有网卡；指定 IP 时，该 IP 必须属于当前机器。",
           pairingUrlLabel: "局域网 Relay HTTP 连接地址",
           pairingUrlPlaceholder: "例如 http://10.71.95.148:6769",
           pairingUrlHint: "留空时，将根据监听地址和当前局域网 IP 自动生成。",

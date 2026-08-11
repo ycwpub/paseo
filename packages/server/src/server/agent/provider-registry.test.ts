@@ -937,6 +937,12 @@ test("traecli provider extending acp uses TraeACPAgentClient", () => {
   });
 
   expect(registry.traecli.createClient(logger).provider).toBe("traecli");
+  expect(registry.traecli.defaultModeId).toBe("default");
+  expect(registry.traecli.modes).toEqual([
+    expect.objectContaining({ id: "default" }),
+    expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
+    expect.objectContaining({ id: "plan" }),
+  ]);
   expect(mockState.constructorArgs.trae).toEqual([
     {
       command: ["traecli", "acp", "serve"],

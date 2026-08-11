@@ -84,7 +84,6 @@ import {
   applyDictationTranscript,
   computeCanStartDictation,
   resolveComposerSurfacePresentation,
-  runAlternateSendAction,
   runDefaultSendAction,
   runMessageInputKeyboardAction,
   stopRealtimeVoice,
@@ -145,9 +144,6 @@ export interface MessageInputProps {
   workspaceId?: string | null;
   /** When true and there's sendable content, calls onQueue instead of onSubmit */
   isAgentRunning?: boolean;
-  /** Controls what the default send action (Enter, send button, dictation) does
-   *  when the agent is running. "interrupt" sends immediately, "queue" queues. */
-  defaultSendBehavior?: "interrupt" | "queue";
   /** Callback for queue button when agent is running */
   onQueue?: (payload: MessagePayload) => void;
   /** Optional handler used when submit button is in loading state. */
@@ -568,7 +564,6 @@ interface DesktopKeyPressContext {
   isSubmitDisabled: boolean;
   isSubmitLoading: boolean;
   disabled: boolean;
-  handleAlternateSendAction: () => void;
   handleDefaultSendAction: () => void;
 }
 
@@ -595,7 +590,7 @@ function handleDesktopKeyPressImpl(
   if (ctx.isAgentRunning && ctx.onQueue) {
     if (ctx.isSubmitDisabled || ctx.isSubmitLoading || ctx.disabled) return;
     event.preventDefault();
-    ctx.handleAlternateSendAction();
+    ctx.handleDefaultSendAction();
     return;
   }
 
@@ -962,15 +957,6 @@ type PrimaryActionKind = "send" | "active" | "none";
 
 function hasSendableComposerContent(input: {
   value: string;
-  attachments: readonly ComposerAttachment[];
-  hasExternalContent: boolean;
-}): boolean {
-  return input.value.trim().length > 0 || input.attachments.length > 0 || input.hasExternalContent;
-}
-
-function resolvePrimaryActionKind(input: {
-  hasSendableContent: boolean;
-  allowEmptySubmit: boolean;
   isAgentRunning: boolean;
   isSubmitLoading: boolean;
 }): PrimaryActionKind {
@@ -980,17 +966,28 @@ function resolvePrimaryActionKind(input: {
   return "none";
 }
 
-function PrimaryAction({
-  kind,
-  activeActionContent,
-  ...sendButtonProps
-}: {
-  kind: PrimaryActionKind;
-  activeActionContent: React.ReactNode;
-} & React.ComponentProps<typeof SendButtonTooltip>) {
-  if (kind === "active") return activeActionContent;
-  if (kind === "send") return <SendButtonTooltip {...sendButtonProps} />;
-  return null;
+function applyDictationTranscript(text: string, ctx: DictationTranscriptContext): void {
+  if (!text) return;
+  const shouldPad = ctx.value.length > 0 && !/\s$/.test(ctx.value);
+  const nextValue = `${ctx.value}${shouldPad ? " " : ""}${text}`;
+
+  if (!ctx.autoSend) {
+    ctx.onChangeText(nextValue);
+    return;
+  }
+
+  if (ctx.isAgentRunning && ctx.onQueue) {
+    ctx.onQueue({ text: nextValue, attachments: ctx.attachments, cwd: ctx.cwd });
+    ctx.onChangeText("");
+    return;
+  }
+
+  ctx.onSubmit({
+    text: nextValue,
+    attachments: ctx.attachments,
+    cwd: ctx.cwd,
+    forceSend: ctx.isAgentRunning || undefined,
+  });
 }
 interface ToggleRealtimeVoiceContext {
   voice:
@@ -1190,7 +1187,6 @@ interface SendButtonStateInput {
   isSubmitDisabled: boolean;
   isSubmitLoading: boolean;
   onSubmitLoadingPress: (() => void) | undefined;
-  defaultSendBehavior: "interrupt" | "queue";
   isAgentRunning: boolean;
 }
 
@@ -1205,7 +1201,7 @@ function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOut
     input.isSubmitLoading && typeof input.onSubmitLoadingPress === "function";
   const isSendButtonDisabled =
     input.disabled || (!canPressLoadingButton && (input.isSubmitDisabled || input.isSubmitLoading));
-  const defaultActionQueues = input.defaultSendBehavior === "queue" && input.isAgentRunning;
+  const defaultActionQueues = input.isAgentRunning;
   return { canPressLoadingButton, isSendButtonDisabled, defaultActionQueues };
 }
 
@@ -1241,7 +1237,6 @@ interface ResolvedMessageInputProps {
   voiceAgentId: string | undefined;
   workspaceId: string | null | undefined;
   isAgentRunning: boolean;
-  defaultSendBehavior: "interrupt" | "queue";
   onQueue: ((payload: MessagePayload) => void) | undefined;
   onSubmitLoadingPress: (() => void) | undefined;
   onKeyPressCallback: ((event: { key: string; preventDefault: () => void }) => boolean) | undefined;
@@ -1288,7 +1283,6 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     voiceAgentId: props.voiceAgentId,
     workspaceId: props.workspaceId,
     isAgentRunning: props.isAgentRunning ?? false,
-    defaultSendBehavior: props.defaultSendBehavior ?? "interrupt",
     onQueue: props.onQueue,
     onSubmitLoadingPress: props.onSubmitLoadingPress,
     onKeyPressCallback: props.onKeyPress,
@@ -1344,7 +1338,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       voiceAgentId,
       workspaceId,
       isAgentRunning,
-      defaultSendBehavior,
       onQueue,
       onSubmitLoadingPress,
       onKeyPressCallback,
@@ -1545,7 +1538,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         sendAfterTranscriptRef.current = false;
         applyDictationTranscript(text, {
           value: valueRef.current,
-          defaultSendBehavior,
           isAgentRunning,
           onQueue,
           onSubmit,
@@ -1555,7 +1547,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           autoSend,
         });
       },
-      [onChangeText, onSubmit, onQueue, attachments, cwd, isAgentRunning, defaultSendBehavior],
+      [onChangeText, onSubmit, onQueue, attachments, cwd, isAgentRunning],
     );
 
     const handleDictationError = useCallback(
@@ -1773,23 +1765,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const handleDefaultSendAction = useCallback(() => {
       runDefaultSendAction({
-        defaultSendBehavior,
         isAgentRunning,
         onQueue,
         handleSendMessage,
         handleQueueMessage,
       });
-    }, [defaultSendBehavior, isAgentRunning, onQueue, handleQueueMessage, handleSendMessage]);
-
-    const handleAlternateSendAction = useCallback(() => {
-      runAlternateSendAction({
-        defaultSendBehavior,
-        isAgentRunning,
-        onQueue,
-        handleSendMessage,
-        handleQueueMessage,
-      });
-    }, [defaultSendBehavior, isAgentRunning, handleSendMessage, handleQueueMessage, onQueue]);
+    }, [isAgentRunning, onQueue, handleQueueMessage, handleSendMessage]);
 
     const getWebTextArea = useCallback(
       (): TextAreaHandle | null => getWebTextAreaImpl(textInputRef.current),
@@ -1866,7 +1847,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         isSubmitDisabled,
         isSubmitLoading,
         disabled,
-        handleAlternateSendAction,
         handleDefaultSendAction,
       });
     }
@@ -1887,7 +1867,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         isSubmitDisabled,
         isSubmitLoading,
         onSubmitLoadingPress,
-        defaultSendBehavior,
         isAgentRunning,
       });
     useIosHardwareKeyboardSubmit({

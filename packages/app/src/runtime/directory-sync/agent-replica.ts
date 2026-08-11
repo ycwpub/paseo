@@ -68,7 +68,7 @@ export class AgentDirectoryReplica {
       this.members.add(delta.agent.id);
       if (!before) this.advance(delta.agent.id);
     }
-    if (result.stoppedRunning) this.onStoppedRunning(result.agentId);
+    if (result.stoppedRunning) this.handleStoppedRunning(result.agentId);
   }
 
   commitSnapshot(
@@ -93,7 +93,7 @@ export class AgentDirectoryReplica {
       serverId: this.serverId,
       entries: reconciled.entries,
     });
-    for (const agentId of reconciled.stoppedRunningAgentIds) this.onStoppedRunning(agentId);
+    for (const agentId of reconciled.stoppedRunningAgentIds) this.handleStoppedRunning(agentId);
     return agents;
   }
 
@@ -117,5 +117,12 @@ export class AgentDirectoryReplica {
 
   private advance(agentId: string): void {
     this.lifecycleVersions.set(agentId, (this.lifecycleVersions.get(agentId) ?? 0) + 1);
+  }
+
+  private handleStoppedRunning(agentId: string): void {
+    useSessionStore
+      .getState()
+      .sessions[this.serverId]?.viewedTimelineSync?.requestAgentCatchUp(agentId);
+    this.onStoppedRunning(agentId);
   }
 }

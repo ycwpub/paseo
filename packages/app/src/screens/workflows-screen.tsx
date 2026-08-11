@@ -55,13 +55,16 @@ import {
   createEmptyWorkflowScript,
   validateWorkflowDraft,
 } from "@/workflows/editor-model";
+import {
+  deriveWorkflowNodeActions,
+  deriveWorkflowNodeIdentity,
+} from "@/workflows/run-node-actions";
 import { parseWorkflowProcessOutput } from "@/workflows/run-output";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
 const DEFAULT_WORKFLOW_INPUT_JSON = `{
-  "control": "",
-  "error": ""
+  "control": ""
 }`;
 
 function parseWorkflowInputJson(input: string): {
@@ -72,19 +75,22 @@ function parseWorkflowInputJson(input: string): {
   const isPayloadObject =
     typeof rawPayload === "object" && rawPayload !== null && !Array.isArray(rawPayload);
   const rawRecord = isPayloadObject ? (rawPayload as Record<string, unknown>) : null;
-  const missingDefaultFields =
-    rawRecord && (!Object.hasOwn(rawRecord, "control") || !Object.hasOwn(rawRecord, "error"));
+  const missingControl = rawRecord && !Object.hasOwn(rawRecord, "control");
+  const hasFrameworkError = rawRecord && Object.hasOwn(rawRecord, "error");
+  const { error: _frameworkError, ...nodeInput } = rawRecord ?? {};
   const normalizedPayload = rawRecord
     ? {
-        ...rawRecord,
-        control: Object.hasOwn(rawRecord, "control") ? rawRecord.control : "",
-        error: Object.hasOwn(rawRecord, "error") ? rawRecord.error : "",
+        ...nodeInput,
+        control: Object.hasOwn(nodeInput, "control") ? nodeInput.control : "",
+        error: "",
       }
     : rawPayload;
   const parsed = WorkflowPayloadSchema.parse(normalizedPayload);
+  const { error: _internalError, ...parsedNodeInput } = parsed;
   return {
-    inputPayload: JSON.stringify(parsed),
-    formattedInput: missingDefaultFields ? JSON.stringify(parsed, null, 2) : null,
+    inputPayload: JSON.stringify(parsedNodeInput),
+    formattedInput:
+      missingControl || hasFrameworkError ? JSON.stringify(parsedNodeInput, null, 2) : null,
   };
 }
 
@@ -923,45 +929,54 @@ function WorkflowRunPanel({
       <View style={styles.runNodes}>
         {run.nodeRuns.map((node) => {
           const expanded = expandedNodeIds.has(node.id);
-          const canExpand = node.stepType !== "agent";
-          const canOpenAgent = node.stepType === "agent" && Boolean(node.agentId);
-          let expandIcon: ReactElement | null = null;
-          if (canExpand) {
-            expandIcon = expanded ? (
-              <ChevronDown size={13} color={styles.runNodeIcon.color} />
-            ) : (
-              <ChevronRight size={13} color={styles.runNodeIcon.color} />
-            );
-          }
+          const { canExpand, canOpenAgent } = deriveWorkflowNodeActions(node);
+          const nodeIdentity = deriveWorkflowNodeIdentity(node);
+          const linkedAgentId = canOpenAgent ? node.agentId : null;
+          const expandIcon = expanded ? (
+            <ChevronDown size={13} color={styles.runNodeIcon.color} />
+          ) : (
+            <ChevronRight size={13} color={styles.runNodeIcon.color} />
+          );
           return (
             <View key={node.id} style={styles.runNodeCard}>
-              <Pressable
-                onPress={() => {
-                  if (canOpenAgent && node.agentId) {
-                    onOpenAgent(node.agentId);
-                  } else if (canExpand) {
-                    toggleNode(node.id);
-                  }
-                }}
-                disabled={!canExpand && !canOpenAgent}
-                style={({ hovered, pressed }) => [
-                  styles.runNode,
-                  (hovered || pressed) && (canExpand || canOpenAgent)
-                    ? styles.runNodeInteractive
-                    : null,
-                ]}
-                accessibilityRole={canExpand || canOpenAgent ? "button" : undefined}
-              >
-                {expandIcon}
-                {node.stepType === "agent" ? (
-                  <Bot size={13} color={styles.runNodeIcon.color} />
-                ) : (
-                  <FileCode2 size={13} color={styles.runNodeIcon.color} />
-                )}
-                <Text style={styles.runNodeName} numberOfLines={1}>
-                  {node.stepName || node.stepId}
-                </Text>
-                {canOpenAgent ? <ExternalLink size={12} color={styles.runNodeIcon.color} /> : null}
+              <View style={styles.runNode}>
+                <Pressable
+                  onPress={() => toggleNode(node.id)}
+                  disabled={!canExpand}
+                  style={({ hovered, pressed }) => [
+                    styles.runNodeToggle,
+                    (hovered || pressed) && canExpand ? styles.runNodeInteractive : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded }}
+                >
+                  {expandIcon}
+                  {node.stepType === "agent" ? (
+                    <Bot size={13} color={styles.runNodeIcon.color} />
+                  ) : (
+                    <FileCode2 size={13} color={styles.runNodeIcon.color} />
+                  )}
+                  <View style={styles.runNodeIdentity}>
+                    <Text style={styles.runNodeName} numberOfLines={1}>
+                      {t("workflows.nodes.displayName")}: {nodeIdentity.name || "—"}
+                    </Text>
+                    <Text style={styles.runNodeId} numberOfLines={1}>
+                      {t("workflows.nodes.id")}: {nodeIdentity.id}
+                    </Text>
+                  </View>
+                </Pressable>
+                {linkedAgentId ? (
+                  <Pressable
+                    onPress={() => onOpenAgent(linkedAgentId)}
+                    style={({ hovered, pressed }) => [
+                      styles.runNodeAgentLink,
+                      (hovered || pressed) && styles.runNodeInteractive,
+                    ]}
+                    accessibilityRole="button"
+                  >
+                    <ExternalLink size={12} color={styles.runNodeIcon.color} />
+                  </Pressable>
+                ) : null}
                 <Text
                   style={[
                     styles.runNodeStatus,
@@ -974,7 +989,7 @@ function WorkflowRunPanel({
                   {t(`workflows.run.status.${node.status}`)}
                   {node.maxAttempts > 1 ? ` · ${node.attempt}/${node.maxAttempts}` : ""}
                 </Text>
-              </Pressable>
+              </View>
               <WorkflowNodeCore node={node} locale={i18n.language} expanded={expanded} />
               {expanded ? <WorkflowNodeDetails node={node} /> : null}
             </View>
@@ -1585,13 +1600,41 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1.5],
   },
+  runNodeToggle: {
+    minWidth: 0,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    borderRadius: theme.borderRadius.sm,
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
+    marginVertical: -theme.spacing[1],
+    marginLeft: -theme.spacing[1],
+  },
+  runNodeAgentLink: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.sm,
+    padding: theme.spacing[1],
+    marginVertical: -theme.spacing[1],
+  },
   runNodeInteractive: {
     backgroundColor: theme.colors.surface3,
   },
   runNodeName: {
-    flex: 1,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
+  },
+  runNodeIdentity: {
+    minWidth: 0,
+    flex: 1,
+    gap: 1,
+  },
+  runNodeId: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: theme.fontFamily.mono,
   },
   runNodeIcon: {
     color: theme.colors.foregroundMuted,

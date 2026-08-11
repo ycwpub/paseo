@@ -66,8 +66,8 @@ export const en = {
       contract: {
         title: "Input and output contract",
         description:
-          'Nodes exchange one JSON object. "control" and "error" are always strings; additional fields are business data passed to downstream nodes.',
-        note: 'A non-empty "error" stops the workflow. Switch and For nodes read "control". Bash and Agent nodes default missing control/error fields to empty strings.',
+          'Nodes receive one JSON object containing "control" and business data. The framework consumes output "error" and never passes it to downstream node inputs.',
+        note: 'A non-empty output "error" stops the workflow. Switch and For nodes read "control". Bash and Agent outputs default missing control/error fields to empty strings.',
       },
       internal: {
         title: "Use inside Paseo",
@@ -94,7 +94,7 @@ export const en = {
       },
       nodes: {
         title: "Node behavior",
-        bash: "• Bash: reads the payload from $PASEO_WORKFLOW_INPUT_JSON or $1. Write the result to $PASEO_WORKFLOW_RESULT_FILE; stdout is parsed only when that file is not created.",
+        bash: "• Bash: reads the payload from $PASEO_WORKFLOW_INPUT_JSON or $1. Its last non-empty stdout line must be the result JSON; empty stdout fails the node.",
         agent:
           "• Agent: receives the payload and must finish with one valid JSON object. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
         switch: "• Switch: selects the branch whose configured value equals payload.control.",
@@ -122,7 +122,7 @@ export const en = {
       deleted: "Workflow deleted",
       inputRequired: "Enter an input JSON object",
       invalidInputJson:
-        'Input must be a valid JSON object; "control" and "error" must be strings when provided',
+        'Input must be a valid JSON object; "control" must be a string when provided',
       startFailed: "Workflow could not be started",
       started: "Workflow started",
       cancelFailed: "Workflow run could not be cancelled",
@@ -152,7 +152,8 @@ export const en = {
       testRun: "Test run",
       testRunHint: "Run this workflow on the selected host with an initial JSON payload.",
       inputJson: "Input JSON",
-      inputJsonHint: 'Missing "control" or "error" fields are automatically filled with "".',
+      inputJsonHint:
+        'Node input contains "control" and business data only. "error" is reserved for framework output handling.',
       emptyTitle: "Select or create a workflow",
       emptyDescription: "Build Bash, Agent, Switch, and For nodes without editing JSON.",
     },
@@ -223,7 +224,7 @@ export const en = {
       bash: {
         initialCommand: "Initial command",
         initialCommandHint:
-          "Use the template variables shown below, or read the complete payload from $PASEO_WORKFLOW_INPUT_JSON or $1. Output JSON must include string fields control and error.",
+          "Use the template variables shown below, or read the node input from $PASEO_WORKFLOW_INPUT_JSON or $1. Input never contains error. Output control/error default to empty strings when omitted.",
         shell: "Shell",
       },
       agent: {

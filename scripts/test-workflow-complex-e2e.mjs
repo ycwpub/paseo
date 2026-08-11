@@ -17,9 +17,23 @@ function shellQuote(value) {
 }
 
 function nodeCommand(source, ...args) {
-  return [shellQuote(process.execPath), "-e", shellQuote(source), ...args.map(shellQuote)].join(
-    " ",
-  );
+  const stdoutCompatibilityPrelude = [
+    'const __paseoFs = require("fs");',
+    "const __paseoWriteFileSync = __paseoFs.writeFileSync.bind(__paseoFs);",
+    "__paseoFs.writeFileSync = (path, data, ...options) => {",
+    "  if (path === process.env.PASEO_WORKFLOW_RESULT_FILE) {",
+    "    process.stdout.write(String(data));",
+    "    return;",
+    "  }",
+    "  return __paseoWriteFileSync(path, data, ...options);",
+    "};",
+  ].join("\n");
+  return [
+    shellQuote(process.execPath),
+    "-e",
+    shellQuote(`${stdoutCompatibilityPrelude}\n${source}`),
+    ...args.map(shellQuote),
+  ].join(" ");
 }
 
 async function reservePort() {
@@ -444,7 +458,6 @@ async function main() {
       paths.workflow,
       JSON.stringify({
         control: "",
-        error: "",
         filePath: paths.input,
       }),
     ]);
@@ -454,6 +467,10 @@ async function main() {
     assert.equal(run.error, null);
     assert.equal(JSON.parse(run.outputPayload).control, "success");
     assert(run.nodeRuns.every((node) => typeof node.inputPayload === "string"));
+    assert(
+      run.nodeRuns.every((node) => !Object.hasOwn(JSON.parse(node.inputPayload), "error")),
+      "framework error leaked into a node input payload",
+    );
     assert(run.nodeRuns.every((node) => typeof node.outputPayload === "string"));
     assert.equal(run.nodeRuns.length, 16);
     assert.deepEqual(

@@ -19,9 +19,23 @@ function shellQuote(value: string): string {
 }
 
 function nodeCommand(source: string, ...args: string[]): string {
-  return [shellQuote(process.execPath), "-e", shellQuote(source), ...args.map(shellQuote)].join(
-    " ",
-  );
+  const stdoutCompatibilityPrelude = [
+    'const __paseoFs = require("fs");',
+    "const __paseoWriteFileSync = __paseoFs.writeFileSync.bind(__paseoFs);",
+    "__paseoFs.writeFileSync = (path, data, ...options) => {",
+    "  if (path === process.env.PASEO_WORKFLOW_RESULT_FILE) {",
+    "    process.stdout.write(String(data));",
+    "    return;",
+    "  }",
+    "  return __paseoWriteFileSync(path, data, ...options);",
+    "};",
+  ].join("\n");
+  return [
+    shellQuote(process.execPath),
+    "-e",
+    shellQuote(`${stdoutCompatibilityPrelude}\n${source}`),
+    ...args.map(shellQuote),
+  ].join(" ");
 }
 
 function createAssistant(id: string, name: string, prompt: string): Assistant {
@@ -260,7 +274,7 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("defaults missing control and error fields in initial JSON payloads", async () => {
+  it("defaults control and removes framework error from initial node input", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -272,8 +286,7 @@ describe("WorkflowService", () => {
           {
             id: "copy",
             type: "bash",
-            initialCommand:
-              'printf \'%s\\n\' "$PASEO_WORKFLOW_INPUT_JSON" > "$PASEO_WORKFLOW_RESULT_FILE"',
+            initialCommand: "printf '%s\\n' \"$PASEO_WORKFLOW_INPUT_JSON\"",
           },
         ],
       }),
@@ -283,13 +296,16 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: '{"customer":"Alice"}',
+      inputPayload: '{"customer":"Alice","error":"must-not-reach-node"}',
     });
 
     expect(run.status).toBe("succeeded");
     expect(JSON.parse(run.inputPayload ?? "{}")).toEqual({
       control: "",
-      error: "",
+      customer: "Alice",
+    });
+    expect(JSON.parse(run.nodeRuns[0]?.inputPayload ?? "{}")).toEqual({
+      control: "",
       customer: "Alice",
     });
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
@@ -302,11 +318,7 @@ describe("WorkflowService", () => {
   it.each([
     ["invalid JSON", "not json", "valid JSON object"],
     ["a non-object value", "[]", "must be a JSON object"],
-    [
-      "a non-string control field",
-      '{"control":[]}',
-      'fields "control" and "error" must be strings',
-    ],
+    ["a non-string control field", '{"control":[]}', 'field "control" must be a string'],
   ])(
     "rejects initial payloads with %s before creating a run",
     async (_label, inputPayload, error) => {
@@ -497,11 +509,128 @@ describe("WorkflowService", () => {
       greeting: "Hello Alice",
       doubled: 4,
     });
-    expect(JSON.parse(run.nodeRuns[1]?.inputPayload ?? "{}")).toMatchObject({
+    expect(JSON.parse(run.nodeRuns[1]?.inputPayload ?? "{}")).toEqual({
       customer: { name: "Alice" },
       count: 2,
       control: "next",
+      filePath: inputPath,
+    });
+  });
+
+  it("uses the last non-empty stdout line as the node result", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    const command = nodeCommand(
+      [
+        'const fs = require("fs");',
+        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        '  control: "", error: "", source: "result-file"',
+        "}));",
+        'process.stdout.write(JSON.stringify({ control: "ignored", source: "earlier-line" }) + "\\n");',
+        'process.stdout.write("diagnostic output\\n");',
+        'process.stdout.write(JSON.stringify({ control: "true", source: "stdout" }));',
+      ].join("\n"),
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "stdout result",
+        steps: [
+          {
+            id: "stdout-control",
+            type: "bash",
+            initialCommand: command,
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify({ control: "", error: "" }),
+    });
+
+    expect(run.status).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      control: "true",
       error: "",
+      source: "stdout",
+    });
+    expect(run.nodeRuns[0]?.outputControl).toBe("true");
+  });
+
+  it("fails when stdout is empty", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "result file fallback",
+        steps: [
+          {
+            id: "empty-stdout",
+            type: "bash",
+            initialCommand: "true",
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify({ control: "", error: "" }),
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toBe("Bash workflow node produced no stdout result");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      control: "",
+      error: "Bash workflow node produced no stdout result",
+    });
+  });
+
+  it("does not scan earlier stdout lines when the last line is not valid JSON", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    const command = nodeCommand(
+      [
+        'process.stdout.write(JSON.stringify({ control: "ignored", error: "" }) + "\\n");',
+        'process.stdout.write("diagnostic output");',
+      ].join("\n"),
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "last stdout line",
+        steps: [
+          {
+            id: "last-line",
+            type: "bash",
+            initialCommand: command,
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify({ control: "", error: "" }),
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("Workflow node output is not valid JSON");
+    expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({
+      control: "",
+      error: expect.stringContaining("Workflow node output is not valid JSON"),
     });
   });
 
@@ -535,7 +664,7 @@ describe("WorkflowService", () => {
           {
             id: "normalize",
             type: "bash",
-            initialCommand: `printf '%s\\n' ${shellQuote(output)} > "$PASEO_WORKFLOW_RESULT_FILE"`,
+            initialCommand: `printf '%s\\n' ${shellQuote(output)}`,
           },
         ],
       }),
@@ -577,7 +706,7 @@ describe("WorkflowService", () => {
             {
               id: "invalid",
               type: "bash",
-              initialCommand: `printf '%s\\n' ${shellQuote(output)} > "$PASEO_WORKFLOW_RESULT_FILE"`,
+              initialCommand: `printf '%s\\n' ${shellQuote(output)}`,
             },
           ],
         }),
@@ -1181,6 +1310,10 @@ describe("WorkflowService", () => {
     expect(capturedPrompt).toContain("Name=source.txt; control=review; body=source body");
     expect(capturedPrompt).toContain('customer=Alice; first=7; records=[{"id":7},{"id":8}]');
     expect(capturedPrompt).toContain('"customer":{"name":"Alice"}');
+    expect(capturedPrompt).toContain(
+      `{"control":"review","filePath":"${upstreamPath}","customer":{"name":"Alice"}`,
+    );
+    expect(capturedPrompt).not.toContain(`"control":"review","error":""`);
     expect(capturedPrompt).toContain(
       "System prompt delivery: configured separately through the provider's system-instruction",
     );

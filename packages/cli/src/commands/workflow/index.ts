@@ -14,7 +14,7 @@ export function createWorkflowCommand(): Command {
       .command("run")
       .description("Run a workflow script with an input JSON payload")
       .argument("<script>", "Workflow JSON script path on the daemon host")
-      .argument("<input-json>", 'Initial JSON object with string fields "control" and "error"')
+      .argument("<input-json>", 'Initial JSON object with optional string field "control"')
       .option("--background", "Return immediately after starting the workflow"),
   ).action(withOutput(runWorkflowCommand));
 

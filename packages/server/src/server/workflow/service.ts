@@ -290,7 +290,7 @@ export class WorkflowService {
       scriptPath: scriptFile.path,
       scriptSnapshot: scriptFile.script,
       status: "running",
-      inputPayload: serializePayload(inputPayload),
+      inputPayload: serializeNodeInputPayload(inputPayload),
       outputPayload: null,
       inputFilePath,
       outputFilePath: null,
@@ -398,7 +398,7 @@ export class WorkflowService {
         attempt,
         maxAttempts: retry.maxAttempts,
         retryDelayMs: null,
-        inputPayload: serializePayload(state.payload),
+        inputPayload: serializeNodeInputPayload(state.payload),
         outputPayload: null,
         inputFilePath: getPayloadString(state.payload, "filePath") ?? "",
         outputFilePath: null,
@@ -487,14 +487,11 @@ export class WorkflowService {
       attempt,
     });
     const cwd = await resolveStepCwd(step.cwd, state.filePath);
-    const resultPath = join(this.runArtifactsDir, run.id, `${randomUUID()}.result.json`);
-    await mkdir(dirname(resultPath), { recursive: true });
     const output = await runBashInstruction({
       instruction: renderedInstruction,
       inputPayload: state.payload,
       inputFilePath: getPayloadString(state.payload, "filePath") ?? "",
       iterationPath: state.iterationPath,
-      resultPath,
       cwd,
       shell: step.shell ?? DEFAULT_SHELL,
       timeoutMs: step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -504,7 +501,7 @@ export class WorkflowService {
       onSpawn: (child) => this.activeBashProcesses.set(child, run.id),
       onClose: (child) => this.activeBashProcesses.delete(child),
     });
-    const result = await readBashNodeResult(resultPath, output.stdout, cwd);
+    const result = readBashNodeResult(output.stdout, cwd);
     return this.validateNodeResult(result, state, null, formatProcessOutput(output));
   }
 
@@ -1067,16 +1064,17 @@ function parseInitialPayload(inputPayload: string, baseDirectory: string): Workf
   let normalized = parsed;
   if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
     const record = parsed as Record<string, unknown>;
+    const { error: _frameworkError, ...nodeInput } = record;
     normalized = {
-      ...record,
-      control: Object.hasOwn(record, "control") ? record.control : "",
-      error: Object.hasOwn(record, "error") ? record.error : "",
+      ...nodeInput,
+      control: Object.hasOwn(nodeInput, "control") ? nodeInput.control : "",
+      error: "",
     };
   }
   const result = WorkflowPayloadSchema.safeParse(normalized);
   if (!result.success) {
     throw new Error(
-      'Workflow input must be a JSON object; fields "control" and "error" must be strings when provided',
+      'Workflow input must be a JSON object; field "control" must be a string when provided',
       { cause: result.error },
     );
   }
@@ -1104,6 +1102,15 @@ function buildFailedRunResult(
 
 function serializePayload(payload: WorkflowPayload): string {
   return JSON.stringify(payload);
+}
+
+function createNodeInputPayload(payload: WorkflowPayload): Record<string, unknown> {
+  const { error: _frameworkError, ...nodeInputPayload } = payload;
+  return nodeInputPayload;
+}
+
+function serializeNodeInputPayload(payload: WorkflowPayload): string {
+  return JSON.stringify(createNodeInputPayload(payload));
 }
 
 function parseStoredPayload(value: string | null): WorkflowPayload | null {
@@ -1174,6 +1181,7 @@ async function renderWorkflowInstruction(input: {
   stepName: string | undefined;
   attempt: number;
 }): Promise<string> {
+  const nodeInputPayload = createNodeInputPayload(input.state.payload);
   const customVariables = input.variables ?? {};
   const templates = [input.template, ...Object.values(customVariables)];
   const needsInputContent = templates.some((template) =>
@@ -1186,8 +1194,8 @@ async function renderWorkflowInstruction(input: {
     inputFileName: inputFilePath ? basename(inputFilePath) : "",
     inputFileContent:
       needsInputContent && inputFilePath ? await readFile(inputFilePath, "utf8") : "",
-    inputJson: serializePayload(input.state.payload),
-    payload: serializePayload(input.state.payload),
+    inputJson: JSON.stringify(nodeInputPayload),
+    payload: JSON.stringify(nodeInputPayload),
     control: input.state.payload.control,
     iterationPath: JSON.stringify(input.state.iterationPath),
     runId: input.runId,
@@ -1198,13 +1206,13 @@ async function renderWorkflowInstruction(input: {
   const resolvedCustomVariables: Record<string, string> = {};
   for (const [name, value] of Object.entries(customVariables)) {
     resolvedCustomVariables[name] = renderPromptTemplate(value, (variableName) =>
-      resolvePromptVariable(variableName, input.state.payload, {}, builtInVariables),
+      resolvePromptVariable(variableName, nodeInputPayload, {}, builtInVariables),
     );
   }
   return renderPromptTemplate(input.template, (variableName) =>
     resolvePromptVariable(
       variableName,
-      input.state.payload,
+      nodeInputPayload,
       resolvedCustomVariables,
       builtInVariables,
     ),
@@ -1234,7 +1242,7 @@ function renderPromptTemplate(
 
 function resolvePromptVariable(
   name: string,
-  payload: WorkflowPayload,
+  payload: Record<string, unknown>,
   customVariables: Record<string, string>,
   builtInVariables: Record<string, string>,
 ): string | undefined {
@@ -1246,7 +1254,7 @@ function resolvePromptVariable(
 }
 
 function getPayloadPath(
-  payload: WorkflowPayload,
+  payload: Record<string, unknown>,
   requestedPath: string,
 ): { found: boolean; value: unknown } {
   const path = requestedPath === "payload" ? "" : requestedPath.replace(/^payload\./, "");
@@ -1443,7 +1451,7 @@ function buildAgentWorkflowPrompt(input: {
   return [
     "You are executing one node in a Paseo workflow.",
     "Input JSON payload:",
-    serializePayload(input.inputPayload),
+    serializeNodeInputPayload(input.inputPayload),
     `Iteration path: ${JSON.stringify(input.iterationPath)}`,
     `Attempt: ${input.attempt}`,
     ...systemPromptDelivery,
@@ -1514,7 +1522,12 @@ function parseForItems(
     .map((item) => ({ control: item, value: item }));
 }
 
-function parseNodeResult(text: string, cwd: string): WorkflowNodeResult {
+interface ParseNodeResultAttempt {
+  result: WorkflowNodeResult | null;
+  error: string;
+}
+
+function attemptParseNodeResult(text: string, cwd: string): ParseNodeResultAttempt {
   const candidates = [text.trim()];
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim();
   if (fenced) {
@@ -1529,15 +1542,29 @@ function parseNodeResult(text: string, cwd: string): WorkflowNodeResult {
   for (const candidate of candidates) {
     try {
       const parsed = parseNodeResultCandidate(candidate);
-      return normalizePayloadPaths(parsed, cwd);
+      return {
+        result: normalizePayloadPaths(parsed, cwd),
+        error: "",
+      };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       // Try the next extraction.
     }
   }
   return {
-    control: "",
+    result: null,
     error: lastError,
+  };
+}
+
+function parseNodeResult(text: string, cwd: string): WorkflowNodeResult {
+  const attempt = attemptParseNodeResult(text, cwd);
+  if (attempt.result) {
+    return attempt.result;
+  }
+  return {
+    control: "",
+    error: attempt.error,
   };
 }
 
@@ -1566,20 +1593,26 @@ function parseNodeResultCandidate(candidate: string): WorkflowNodeResult {
   });
 }
 
-async function readBashNodeResult(
-  resultPath: string,
-  stdout: string,
-  cwd: string,
-): Promise<WorkflowNodeResult> {
-  try {
-    const content = await readFile(resultPath, "utf8");
-    return parseNodeResult(content, cwd);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
+function readBashNodeResult(stdout: string, cwd: string): WorkflowNodeResult {
+  const stdoutResultLine = getLastNonEmptyLine(stdout);
+  if (stdoutResultLine === null) {
+    return {
+      control: "",
+      error: "Bash workflow node produced no stdout result",
+    };
+  }
+  return parseNodeResult(stdoutResultLine, cwd);
+}
+
+function getLastNonEmptyLine(value: string): string | null {
+  const lines = value.split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim();
+    if (line) {
+      return line;
     }
   }
-  return parseNodeResult(stdout, cwd);
+  return null;
 }
 
 interface BashExecutionOutput {
@@ -1592,7 +1625,6 @@ function runBashInstruction(input: {
   inputPayload: WorkflowPayload;
   inputFilePath: string;
   iterationPath: number[];
-  resultPath: string;
   cwd: string;
   shell: string;
   timeoutMs: number;
@@ -1603,7 +1635,7 @@ function runBashInstruction(input: {
   onClose: (child: ChildProcess) => void;
 }): Promise<BashExecutionOutput> {
   return new Promise((resolvePromise, reject) => {
-    const inputJson = serializePayload(input.inputPayload);
+    const inputJson = serializeNodeInputPayload(input.inputPayload);
     const args =
       process.platform === "win32"
         ? ["/d", "/s", "/c", input.instruction]
@@ -1616,7 +1648,6 @@ function runBashInstruction(input: {
         PASEO_WORKFLOW_INPUT_FILE: input.inputFilePath,
         PASEO_WORKFLOW_CONTROL: input.inputPayload.control,
         PASEO_WORKFLOW_ITERATION_PATH: JSON.stringify(input.iterationPath),
-        PASEO_WORKFLOW_RESULT_FILE: input.resultPath,
         PASEO_WORKFLOW_RUN_ID: input.runId,
         PASEO_WORKFLOW_STEP_ID: input.stepId,
         PASEO_WORKFLOW_ATTEMPT: String(input.attempt),

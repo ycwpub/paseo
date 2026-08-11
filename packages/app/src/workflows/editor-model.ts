@@ -79,8 +79,7 @@ export function createWorkflowStep(
       id,
       name: names.bash,
       type,
-      initialCommand:
-        'printf \'%s\\n\' "$PASEO_WORKFLOW_INPUT_JSON" > "$PASEO_WORKFLOW_RESULT_FILE"',
+      initialCommand: "printf '%s\\n' \"$PASEO_WORKFLOW_INPUT_JSON\"",
     } satisfies WorkflowBashStep;
   }
   if (type === "agent") {

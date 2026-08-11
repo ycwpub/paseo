@@ -68,8 +68,8 @@ export const zhCN: TranslationResources = {
       contract: {
         title: "输入输出约定",
         description:
-          "节点之间传递一个 JSON 对象。control 和 error 必须是字符串，其他字段作为业务数据传递给后续节点。",
-        note: "error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 和 Agent 输出缺少 control/error 时会自动补为空字符串。",
+          "节点输入是一个包含 control 和业务数据的 JSON 对象。输出中的 error 由工作流框架消费，不会传给后续节点。",
+        note: "输出 error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 和 Agent 输出缺少 control/error 时会自动补为空字符串。",
       },
       internal: {
         title: "Paseo 内部使用",
@@ -95,7 +95,7 @@ export const zhCN: TranslationResources = {
       },
       nodes: {
         title: "节点行为",
-        bash: "• Bash：从 $PASEO_WORKFLOW_INPUT_JSON 或 $1 读取数据。应将结果写入 $PASEO_WORKFLOW_RESULT_FILE；只有未创建该文件时才解析 stdout。",
+        bash: "• Bash：从 $PASEO_WORKFLOW_INPUT_JSON 或 $1 读取数据。stdout 最后一个非空行必须是结果 JSON；stdout 为空时节点失败。",
         agent:
           "• Agent：接收完整 JSON，最终必须只输出一个合法 JSON 对象。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
         switch: "• Switch：选择配置值与 payload.control 相等的分支。",
@@ -122,7 +122,7 @@ export const zhCN: TranslationResources = {
       saved: "工作流已保存",
       deleted: "工作流已删除",
       inputRequired: "请输入 JSON 对象",
-      invalidInputJson: "输入必须是合法的 JSON 对象；control 和 error 如有提供，必须是字符串",
+      invalidInputJson: "输入必须是合法的 JSON 对象；control 如有提供，必须是字符串",
       startFailed: "无法启动工作流",
       started: "工作流已启动",
       cancelFailed: "无法取消工作流运行",
@@ -152,7 +152,7 @@ export const zhCN: TranslationResources = {
       testRun: "测试运行",
       testRunHint: "使用初始 JSON 数据在所选主机上运行此工作流。",
       inputJson: "输入 JSON",
-      inputJsonHint: "缺少 control 或 error 时，将自动填充为空字符串。",
+      inputJsonHint: "节点输入只包含 control 和业务数据；error 仅用于框架处理节点输出。",
       emptyTitle: "选择或创建工作流",
       emptyDescription: "无需编辑 JSON，即可编排 Bash、Agent、Switch 和 For 节点。",
     },
@@ -223,7 +223,7 @@ export const zhCN: TranslationResources = {
       bash: {
         initialCommand: "初始命令",
         initialCommandHint:
-          "可使用下方展示的模板变量，或通过 $PASEO_WORKFLOW_INPUT_JSON、$1 读取完整数据。输出 JSON 必须包含字符串类型的 control 和 error 字段。",
+          "可使用下方展示的模板变量，或通过 $PASEO_WORKFLOW_INPUT_JSON、$1 读取节点输入；输入中不会包含 error。输出缺少 control/error 时会自动补为空字符串。",
         shell: "Shell",
       },
       agent: {

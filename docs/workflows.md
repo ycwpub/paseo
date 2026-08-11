@@ -6,18 +6,23 @@ supported.
 
 ## JSON payload contract
 
-Nodes exchange one JSON object serialized as a string. Every executable Bash or Agent node must
-output these two string fields:
+Every Bash or Agent node receives one JSON object serialized as a string. Node input contains
+`control` plus business data, but never contains `error`:
 
 ```json
 {
   "control": "",
-  "error": ""
+  "customer": {
+    "name": "Alice"
+  }
 }
 ```
 
 - `control` drives `switch` and `for`.
-- A non-empty `error` stops the workflow immediately.
+- Bash and Agent outputs may include `error`. The workflow framework consumes it instead of passing
+  it to the next node.
+- A non-empty output `error` stops the workflow immediately.
+- Missing output `control` and `error` fields default to `""`.
 - Any other JSON fields are business data and are passed to the next node unchanged when the node
   includes them in its output.
 - A run starts from a JSON payload supplied by the visual editor, CLI, RPC client, or Agent tool.
@@ -29,7 +34,6 @@ Example payload:
 ```json
 {
   "control": "review",
-  "error": "",
   "filePath": "/absolute/path/input.csv",
   "customer": {
     "name": "Alice"
@@ -61,17 +65,16 @@ Runtime metadata also includes:
 
 - `PASEO_WORKFLOW_CONTROL`
 - `PASEO_WORKFLOW_ITERATION_PATH`
-- `PASEO_WORKFLOW_RESULT_FILE`
 - `PASEO_WORKFLOW_RUN_ID`
 - `PASEO_WORKFLOW_STEP_ID`
 - `PASEO_WORKFLOW_ATTEMPT`
 
-The command should write one valid JSON object to `PASEO_WORKFLOW_RESULT_FILE`. If the file is not
-created, Paseo parses stdout. Both `control` and `error` must be present and must be strings.
+The command must print one valid JSON object as the last non-empty stdout line. Paseo ignores all
+earlier stdout lines. Empty stdout fails the node. Output `control` and `error` must be strings when
+provided and default to `""` when omitted. Input JSON never contains `error`.
 
 ```bash
 node - <<'NODE'
-const fs = require("fs");
 const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);
 const output = {
   ...input,
@@ -79,7 +82,7 @@ const output = {
   control: "normalized",
   error: "",
 };
-fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify(output));
+console.log(JSON.stringify(output));
 NODE
 ```
 
@@ -108,8 +111,9 @@ prefer parsing `PASEO_WORKFLOW_INPUT_JSON` instead of interpolating it into shel
 
 ## Agent nodes
 
-Agent nodes receive the complete input JSON in their workflow prompt and must finish with only one
-valid JSON object containing string fields `control` and `error`.
+Agent nodes receive the complete node input JSON, without `error`, in their workflow prompt and
+must finish with only one valid JSON object. Output `control` and `error` default to `""` when
+omitted.
 
 Payload data can be inserted into `initialPrompt` with nested paths:
 
@@ -166,7 +170,6 @@ Each body iteration receives:
 ```json
 {
   "control": "current item serialized as a string",
-  "error": "",
   "loop": {
     "item": "the original JSON value",
     "index": 0,
@@ -255,8 +258,8 @@ to the node after the loop.
 
 ```bash
 paseo workflow inspect /absolute/path/workflow.json
-paseo workflow run /absolute/path/workflow.json '{"control":"","error":""}'
-paseo workflow run /absolute/path/workflow.json '{"control":"","error":"","filePath":"/absolute/path/input.txt"}' --background
+paseo workflow run /absolute/path/workflow.json '{"control":""}'
+paseo workflow run /absolute/path/workflow.json '{"control":"","filePath":"/absolute/path/input.txt"}' --background
 paseo workflow cancel <run-id>
 paseo workflow ls
 ```
@@ -276,7 +279,6 @@ const run = await daemon.workflowService.runScriptAndWait({
   scriptPath: "/absolute/path/workflow.json",
   inputPayload: JSON.stringify({
     control: "",
-    error: "",
     customer: {
       name: "Alice",
     },

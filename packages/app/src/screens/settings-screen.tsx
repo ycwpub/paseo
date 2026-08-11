@@ -1,12 +1,4 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
@@ -142,7 +134,10 @@ import {
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
-import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToLastWorkspace,
+  useLastWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { getOrCreateClientId } from "@/utils/client-id";
 import { initializeClientHostname, saveClientHostname } from "@/utils/client-hostname";
 import { resolveClientHostname } from "@/utils/client-name";
@@ -1117,7 +1112,6 @@ function SettingsSidebar({
   if (view.kind === "host") {
     selectedHostSection = view.section === "relay" ? "connections" : view.section;
   }
-  const isProjectsSelected = view.kind === "projects" || view.kind === "project";
   const desktopScrollRef = useRef<ScrollView>(null);
   const handleDesktopScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const nextOffset = event.nativeEvent.contentOffset.y;
@@ -1676,16 +1670,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     );
   }
 
-  // Mobile detail: full-screen content with a back header. Project detail uses
-  // an app-level back (out of settings, to the workspace) since the in-body
-  // "Back to projects" ghost button handles list-level back; other detail views
-  // step back to the settings root.
-  let detailBackHandler = handleBackToRoot;
-  if (view.kind === "project") {
-    detailBackHandler = handleBackToWorkspace;
-  } else if (view.kind === "host" && view.section === "relay") {
-    detailBackHandler = handleCloseLocalRelay;
-  }
+  // Mobile detail: full-screen content with a back header.
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
@@ -1704,7 +1689,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
 
   // Desktop split view — mirrors AppContainer: sidebar owns the titlebar drag
   // region + traffic-light padding; detail pane renders whatever header the
-  // selected section provides.
   return (
     <View style={styles.container}>
       <View style={desktopStyles.row}>

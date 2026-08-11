@@ -59,6 +59,7 @@ export {
 } from "./agent/provider-launch-config.js";
 export { findExecutable } from "../executable-resolution/executable-resolution.js";
 export { execCommand, spawnProcess } from "../utils/spawn.js";
+export { WorkflowService, type WorkflowServiceOptions } from "./workflow/service.js";
 
 // Provider manifest (source of truth for provider definitions)
 export {

@@ -47,6 +47,8 @@ interface TooltipContextValue {
   triggerRef: React.RefObject<View | null>;
   enabled: boolean;
   openOnPress: boolean;
+  openOnHover: boolean;
+  dismissOnTriggerPressOnly: boolean;
   delayDuration: number;
 }
 
@@ -231,6 +233,9 @@ export function Tooltip({
   delayDuration = 0,
   enabledOnDesktop = true,
   enabledOnMobile = false,
+  openOnPress,
+  openOnHover = true,
+  dismissOnTriggerPressOnly = false,
   children,
 }: PropsWithChildren<{
   open?: boolean;
@@ -239,6 +244,9 @@ export function Tooltip({
   delayDuration?: number;
   enabledOnDesktop?: boolean;
   enabledOnMobile?: boolean;
+  openOnPress?: boolean;
+  openOnHover?: boolean;
+  dismissOnTriggerPressOnly?: boolean;
 }>): ReactElement {
   const triggerRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useControllableOpenState({
@@ -256,10 +264,21 @@ export function Tooltip({
       setOpen: setIsOpen,
       triggerRef,
       enabled,
-      openOnPress: isCompact,
+      openOnPress: openOnPress ?? isCompact,
+      openOnHover,
+      dismissOnTriggerPressOnly,
       delayDuration,
     }),
-    [isOpen, setIsOpen, enabled, isCompact, delayDuration],
+    [
+      isOpen,
+      setIsOpen,
+      enabled,
+      isCompact,
+      openOnHover,
+      openOnPress,
+      dismissOnTriggerPressOnly,
+      delayDuration,
+    ],
   );
 
   return <TooltipContext.Provider value={value}>{children}</TooltipContext.Provider>;
@@ -291,7 +310,7 @@ export function TooltipTrigger({
   }, []);
 
   const scheduleOpen = useCallback(() => {
-    if (!ctx.enabled || disabled) return;
+    if (!ctx.enabled || disabled || !ctx.openOnHover) return;
     clearOpenTimer();
     if (ctx.delayDuration <= 0) {
       ctx.setOpen(true);
@@ -325,15 +344,18 @@ export function TooltipTrigger({
   const handleHoverOut = useCallback(
     (e?: unknown) => {
       if (isCallable(onHoverOut)) onHoverOut(e);
-      close();
+      if (!ctx.dismissOnTriggerPressOnly) {
+        close();
+      }
     },
-    [onHoverOut, close],
+    [close, ctx.dismissOnTriggerPressOnly, onHoverOut],
   );
 
   const handleFocus = useCallback(
     (e: unknown) => {
       if (isCallable(onFocus)) onFocus(e);
       if (!ctx.enabled || disabled) return;
+      if (ctx.dismissOnTriggerPressOnly) return;
       if (!shouldOpenOnFocus()) return;
       clearOpenTimer();
       ctx.setOpen(true);
@@ -344,9 +366,11 @@ export function TooltipTrigger({
   const handleBlur = useCallback(
     (e: unknown) => {
       if (isCallable(onBlur)) onBlur(e);
-      close();
+      if (!ctx.dismissOnTriggerPressOnly) {
+        close();
+      }
     },
-    [close, onBlur],
+    [close, ctx.dismissOnTriggerPressOnly, onBlur],
   );
 
   const handlePress = useCallback(
@@ -357,7 +381,7 @@ export function TooltipTrigger({
       }
       if (ctx.openOnPress) {
         clearOpenTimer();
-        ctx.setOpen(true);
+        ctx.setOpen(!ctx.open);
         return;
       }
       close();
@@ -514,23 +538,24 @@ export function TooltipContent({
   // On web, avoid React Native's <Modal/> implementation (it uses <dialog> and can
   // steal focus / disrupt hover). Rendering via Portal + position:fixed keeps the
   // exact same positioning math as DropdownMenu, without hover feedback loops.
-  if (isWeb) {
-    return createPortal(
-      <View pointerEvents="none" style={styles.portalOverlay}>
-        <FloatingSurface
-          pointerEvents="none"
-          entering={FadeIn.duration(80)}
-          exiting={FadeOut.duration(80)}
-          collapsable={false}
-          testID={testID}
-          onLayout={handleLayout}
-          style={contentStyle}
-          frameStyle={frameStyle}
-        >
-          {children}
-        </FloatingSurface>
-      </View>,
-      getOverlayRoot(),
+  if (isWeb || ctx.dismissOnTriggerPressOnly) {
+    return (
+      <Portal hostName={bottomSheetInternal?.hostName}>
+        <View pointerEvents="none" style={styles.portalOverlay}>
+          <FloatingSurface
+            pointerEvents="none"
+            entering={FadeIn.duration(80)}
+            exiting={FadeOut.duration(80)}
+            collapsable={false}
+            testID={testID}
+            onLayout={handleLayout}
+            style={contentStyle}
+            frameStyle={frameStyle}
+          >
+            {children}
+          </FloatingSurface>
+        </View>
+      </Portal>
     );
   }
 

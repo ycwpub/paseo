@@ -207,6 +207,7 @@ export interface WorkspaceTabSnapshot {
   knownTerminalIds?: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingDraftCreate?: boolean;
+  replaceableDraftTabId?: string | null;
 }
 
 const DEFAULT_PANE_ID = "main";
@@ -1737,6 +1738,7 @@ function addMissingEntityTabs(input: {
   representedAgentIds: Set<string>;
   standaloneTerminalIds: Set<string>;
   hasActivePendingDraftCreate: boolean;
+  replaceableDraftTabId: string | null;
 }): WorkspaceLayout {
   const {
     autoOpenAgentIds,
@@ -1745,6 +1747,7 @@ function addMissingEntityTabs(input: {
     hasActivePendingDraftCreate,
   } = input;
   let nextLayout = input.layout;
+  let replaceableDraftTabId = input.replaceableDraftTabId;
   const currentEntityTabs = collectAllTabs(nextLayout.root);
   const currentAgentIds = new Set(
     currentEntityTabs.filter(isAgentTab).map((tab) => tab.target.agentId),
@@ -1760,6 +1763,19 @@ function addMissingEntityTabs(input: {
     }
     if (hasActivePendingDraftCreate && !representedAgentIds.has(agentId)) {
       continue;
+    }
+    if (replaceableDraftTabId) {
+      const converted = convertDraftToAgentInLayout({
+        layout: nextLayout,
+        tabId: replaceableDraftTabId,
+        agentId,
+      });
+      if (converted) {
+        nextLayout = converted.layout;
+        replaceableDraftTabId = null;
+        currentAgentIds.add(agentId);
+        continue;
+      }
     }
     nextLayout = openEntityTabWithoutFocusing(nextLayout, {
       kind: "agent",
@@ -1866,6 +1882,7 @@ export function reconcileWorkspaceTabs(
     representedAgentIds,
     standaloneTerminalIds,
     hasActivePendingDraftCreate: snapshot.hasActivePendingDraftCreate ?? false,
+    replaceableDraftTabId: snapshot.replaceableDraftTabId ?? null,
   });
 
   if (reconciledFocusedTabId) {

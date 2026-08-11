@@ -47,6 +47,7 @@ export const ja: TranslationResources = {
       idle: "アイドル",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "サイドバーを切り替え",

@@ -380,6 +380,45 @@ function parseStructuredBranchNamePrompt(
   return { title: title || "Mock task", branch };
 }
 
+function parseMockWorkflowResultPrompt(prompt: AgentPromptInput): Record<string, string> | null {
+  const text = promptToText(prompt);
+  const marker = "MOCK_WORKFLOW_RESULT:";
+  const line = text
+    .split("\n")
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.startsWith(marker));
+  if (!line) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(line.slice(marker.length).trim()) as unknown;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("filePath" in parsed) ||
+      !("control" in parsed) ||
+      !("error" in parsed)
+    ) {
+      return null;
+    }
+    const result = parsed as Record<string, unknown>;
+    if (
+      typeof result.filePath !== "string" ||
+      typeof result.control !== "string" ||
+      typeof result.error !== "string"
+    ) {
+      return null;
+    }
+    return {
+      filePath: result.filePath,
+      control: result.control,
+      error: result.error,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function buildRepeatedPayload(bytes: number, prefix: string): string {
   const line = `${prefix} ${"x".repeat(96)}\n`;
   let output = "";
@@ -771,11 +810,29 @@ export class MockLoadTestAgentSession implements AgentSession {
           ...(options?.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
         },
       });
-    };
-    if (shouldEmitUserMessageBeforeTurnAcceptance(prompt)) {
-      emitUserMessage();
-      scheduleTurn();
-      return { turnId };
+    }, 0);
+
+    const largePayload = parseLargeAgentStreamPayloadPrompt(prompt);
+    const stress = parseAgentStreamStressPrompt(prompt);
+    const questionPrompt = parseMockQuestionPrompt(prompt);
+    const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
+    const workflowResult = parseMockWorkflowResultPrompt(prompt);
+    if (shouldEmitTurnFailure(prompt)) {
+      this.scheduleFailedTurn(turn);
+    } else if (workflowResult) {
+      this.scheduleStructuredJsonTurn(turn, workflowResult);
+    } else if (structuredBranchName) {
+      this.scheduleStructuredJsonTurn(turn, structuredBranchName);
+    } else if (shouldEmitPlanApprovalPrompt(prompt)) {
+      this.schedulePlanApprovalTurn(turn);
+    } else if (questionPrompt) {
+      this.scheduleQuestionPromptTurn(turn, questionPrompt);
+    } else if (largePayload) {
+      this.scheduleLargePayloadTurn(turn, largePayload);
+    } else if (stress) {
+      this.scheduleStressTurn(turn, stress);
+    } else {
+      this.schedule(turn, 0);
     }
     if (shouldWithholdUserMessageUntilInterrupt(prompt)) {
       return { turnId };

@@ -159,6 +159,8 @@ import {
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
+import { WorkflowSession } from "./session/workflow/workflow-session.js";
+import { LoopSession } from "./session/loop/loop-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
@@ -220,6 +222,7 @@ import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
 import { ScheduleService } from "./schedule/service.js";
+import type { WorkflowService } from "./workflow/service.js";
 import {
   createGitHubService,
   GitHubAuthenticationError,
@@ -464,6 +467,8 @@ export interface SessionOptions {
   workspaceRegistry: WorkspaceRegistry;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
+  workflowService?: WorkflowService | null;
+  loopService: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
   createAgentMcpTransport?: AgentMcpTransportFactory;
@@ -695,6 +700,8 @@ export class Session {
   private readonly voiceSession: VoiceSession;
   private readonly checkoutSession: CheckoutSession;
   private readonly scheduleSession: ScheduleSession;
+  private readonly workflowSession: WorkflowSession;
+  private readonly loopSession: LoopSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
@@ -736,6 +743,8 @@ export class Session {
       workspaceRegistry,
       filesystem,
       scheduleService,
+      workflowService,
+      loopService,
       checkoutDiffManager,
       github,
       renameCurrentBranch,
@@ -869,6 +878,16 @@ export class Session {
     this.scheduleSession = new ScheduleSession({
       host: { emit: (msg) => this.emit(msg) },
       scheduleService,
+      logger: this.sessionLogger,
+    });
+    this.workflowSession = new WorkflowSession({
+      host: { emit: (msg) => this.emit(msg) },
+      workflowService,
+      logger: this.sessionLogger,
+    });
+    this.loopSession = new LoopSession({
+      host: { emit: (msg) => this.emit(msg) },
+      loopService,
       logger: this.sessionLogger,
     });
     this.providerCatalogSession = new ProviderCatalogSession({
@@ -2374,6 +2393,30 @@ export class Session {
         return this.scheduleSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
         return this.scheduleSession.handleScheduleUpdateRequest(msg);
+      case "workflow/list":
+        return this.workflowSession.handleListRequest(msg);
+      case "workflow/inspect":
+        return this.workflowSession.handleInspectRequest(msg);
+      case "workflow/run":
+        return this.workflowSession.handleRunRequest(msg);
+      case "workflow/get-run":
+        return this.workflowSession.handleGetRunRequest(msg);
+      case "workflow/cancel-run":
+        return this.workflowSession.handleCancelRunRequest(msg);
+      case "workflow/save":
+        return this.workflowSession.handleSaveRequest(msg);
+      case "workflow/delete":
+        return this.workflowSession.handleDeleteRequest(msg);
+      case "loop/run":
+        return this.loopSession.handleRunRequest(msg);
+      case "loop/list":
+        return this.loopSession.handleListRequest(msg);
+      case "loop/inspect":
+        return this.loopSession.handleInspectRequest(msg);
+      case "loop/logs":
+        return this.loopSession.handleLogsRequest(msg);
+      case "loop/stop":
+        return this.loopSession.handleStopRequest(msg);
       default:
         return undefined;
     }

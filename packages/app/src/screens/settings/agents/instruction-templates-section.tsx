@@ -15,7 +15,13 @@ import {
 import { useToast } from "@/contexts/toast-context";
 
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-jsx-as-prop -- Dynamic template rows bind edits to their current entry. */
-export function InstructionTemplatesSection({ serverId }: { serverId: string }) {
+export function InstructionTemplatesSection({
+  serverId,
+  embedded = false,
+}: {
+  serverId: string;
+  embedded?: boolean;
+}) {
   const { t } = useTranslation();
   const toast = useToast();
   const { config, patchConfig } = useDaemonConfig(serverId);
@@ -68,14 +74,23 @@ export function InstructionTemplatesSection({ serverId }: { serverId: string }) 
 
   return (
     <SettingsGroup
-      title={t("settings.project.instructionTemplates.title")}
-      info={t("settings.project.instructionTemplates.info")}
+      title={
+        embedded
+          ? t("workflows.editor.promptTemplates")
+          : t("settings.project.instructionTemplates.title")
+      }
+      info={
+        embedded
+          ? t("workflows.editor.promptTemplatesHint")
+          : t("settings.project.instructionTemplates.info")
+      }
       trailing={
         <Pressable onPress={add} hitSlop={8} style={settingsStyles.sectionHeaderLink}>
           <Plus size={16} color={styles.iconColor.color} />
         </Pressable>
       }
       testID="host-instruction-templates-group"
+      style={embedded ? styles.embeddedGroup : undefined}
     >
       <View style={styles.list}>
         {values.length === 0 ? (
@@ -208,5 +223,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   placeholderColor: {
     color: theme.colors.foregroundMuted,
+  },
+  embeddedGroup: {
+    marginBottom: 0,
   },
 }));

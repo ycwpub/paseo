@@ -146,6 +146,7 @@ import {
 } from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { ScheduleService } from "./schedule/service.js";
+import { WorkflowService } from "./workflow/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
@@ -484,6 +485,7 @@ export interface PaseoDaemon {
   serviceProxy: ServiceProxySubsystem;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore;
   browserToolsBroker: BrowserToolsBroker;
+  workflowService: WorkflowService;
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
@@ -1601,6 +1603,18 @@ export async function createPaseoDaemon(
     assistantStore,
   });
   await scheduleService.start();
+  const workflowService = new WorkflowService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    createAgent,
+    createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
+    createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
+    archiveWorkspace: archiveScheduleWorkspaceExternal,
+    assistantStore,
+    teamStore,
+  });
+  await workflowService.start();
   let inFlightIdleAgentCollection: Promise<void> | null = null;
   const collectIdleAgentRuntimes = async () => {
     const protectedAgentIds = await scheduleService.listActiveAgentTargetIds();
@@ -1666,6 +1680,7 @@ export async function createPaseoDaemon(
     terminalManager,
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
+    workflowService,
     providerSnapshotManager,
     daemonConfigStore,
     github,
@@ -1976,6 +1991,7 @@ export async function createPaseoDaemon(
               mcpStore,
               skillStore,
               daemonKeyPair.keyPair,
+              workflowService,
             );
             await wsServer.startLanDirectListener();
             await hubRelationships.start();
@@ -2034,6 +2050,7 @@ export async function createPaseoDaemon(
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     speechService.stop();
+    await workflowService.stop().catch(() => undefined);
     await scheduleService.stop().catch(() => undefined);
     relayReconcileStopped = true;
     disposeRelayConfigListener?.();
@@ -2075,6 +2092,7 @@ export async function createPaseoDaemon(
     serviceProxy,
     scriptRuntimeStore,
     browserToolsBroker,
+    workflowService,
     start,
     stop,
     getListenTarget: () => boundListenTarget,

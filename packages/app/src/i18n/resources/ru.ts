@@ -47,6 +47,7 @@ export const ru: TranslationResources = {
       idle: "Праздный",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Переключить боковую панель",

@@ -1286,6 +1286,29 @@ describe("workspace-layout-store actions", () => {
     });
   });
 
+  it("keeps an explicitly pinned archived Agent tab while reconciling active agents", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "archived-agent" });
+    store.pinAgent(workspaceKey, "archived-agent");
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: [],
+      autoOpenAgentIds: [],
+      knownAgentIds: ["archived-agent"],
+      standaloneTerminalIds: [],
+    });
+
+    expect(
+      workspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(workspaceKey)
+        .map((tab) => tab.tabId),
+    ).toEqual(["agent_archived-agent"]);
+  });
+
   it("keeps hidden agent intents in memory per workspace without persisting them", () => {
     const workspaceKey = createWorkspaceKey();
     const otherWorkspaceKey = buildWorkspaceTabPersistenceKey({
@@ -1470,6 +1493,61 @@ describe("workspace-layout-store actions", () => {
       },
     ]);
     expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("draft-agent");
+  });
+
+  it("reconcileTabs replaces the focused empty draft with an externally created Agent", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    const draftTabId = store.openTabFocused(workspaceKey, {
+      kind: "draft",
+      draftId: "draft-default",
+    });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["workflow-agent"],
+      autoOpenAgentIds: ["workflow-agent"],
+      knownAgentIds: ["workflow-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+      replaceableDraftTabId: draftTabId,
+    });
+
+    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(collectAllTabs(layout.root)).toEqual([
+      {
+        tabId: "agent_workflow-agent",
+        target: { kind: "agent", agentId: "workflow-agent" },
+        createdAt: expect.any(Number),
+      },
+    ]);
+    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("agent_workflow-agent");
+  });
+
+  it("reconcileTabs keeps a draft when it is not marked replaceable", () => {
+    const workspaceKey = createWorkspaceKey();
+    const store = workspaceLayoutStore.getState();
+    store.openTabFocused(workspaceKey, {
+      kind: "draft",
+      draftId: "draft-with-input",
+    });
+
+    store.reconcileTabs(workspaceKey, {
+      agentsHydrated: true,
+      terminalsHydrated: true,
+      activeAgentIds: ["workflow-agent"],
+      autoOpenAgentIds: ["workflow-agent"],
+      knownAgentIds: ["workflow-agent"],
+      standaloneTerminalIds: [],
+      hasActivePendingDraftCreate: false,
+      replaceableDraftTabId: null,
+    });
+
+    const tabs = collectAllTabs(
+      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
+    );
+    expect(tabs.map((tab) => tab.tabId)).toEqual(["draft-with-input", "agent_workflow-agent"]);
   });
 
   it("reconcileTabs does not re-add locally hidden agent tabs", () => {

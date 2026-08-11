@@ -72,6 +72,7 @@ import { traceInstant } from "@/performance/native-trace";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   collectAllTabs,
+  findPaneById,
   getFocusedBrowserId,
   type WorkspaceLayout,
   useWorkspaceLayoutStore,
@@ -110,7 +111,8 @@ import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webview
 import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
 import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
-import { generateDraftId } from "@/stores/draft-keys";
+import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
+import { useDraftStore } from "@/stores/draft-store";
 import { resolveWorkspaceRouteId } from "@/utils/workspace-identity";
 import {
   WorkspaceTabPresentationResolver,
@@ -161,6 +163,7 @@ import {
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
 import { WorkspaceFocusProvider } from "@/workspace/focus";
 import { shouldSeedEmptyWorkspaceDraft } from "@/screens/workspace/workspace-empty-draft-seed";
+import { resolveReplaceableWorkspaceDraftTabId } from "@/screens/workspace/workspace-replaceable-draft";
 import {
   buildBulkCloseConfirmationMessage,
   type BulkCloseConfirmationLabels,
@@ -1970,6 +1973,25 @@ function WorkspaceScreenContent({
     () => (workspaceLayout ? collectAllTabs(workspaceLayout.root) : EMPTY_UI_TABS),
     [workspaceLayout],
   );
+  const focusedWorkspaceTab = useMemo(() => {
+    if (!workspaceLayout) {
+      return null;
+    }
+    const focusedTabId =
+      findPaneById(workspaceLayout.root, workspaceLayout.focusedPaneId)?.focusedTabId ?? null;
+    return uiTabs.find((tab) => tab.tabId === focusedTabId) ?? null;
+  }, [uiTabs, workspaceLayout]);
+  const focusedDraftStoreKey =
+    focusedWorkspaceTab?.target.kind === "draft"
+      ? buildDraftStoreKey({
+          serverId: normalizedServerId,
+          agentId: focusedWorkspaceTab.tabId,
+          draftId: focusedWorkspaceTab.target.draftId,
+        })
+      : null;
+  const focusedDraftRecord = useDraftStore((state) =>
+    focusedDraftStoreKey ? state.drafts[focusedDraftStoreKey] : undefined,
+  );
   useSyncWorkspaceActiveBrowser({
     workspaceLayout,
     isRouteFocused,
@@ -2139,6 +2161,15 @@ function WorkspaceScreenContent({
       const pending = pendingByDraftId[tab.target.draftId];
       return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
     });
+    const replaceableDraftTabId = resolveReplaceableWorkspaceDraftTabId({
+      tab: focusedWorkspaceTab,
+      serverId: normalizedServerId,
+      draftRecord: focusedDraftRecord,
+      pendingCreate:
+        focusedWorkspaceTab?.target.kind === "draft"
+          ? pendingByDraftId[focusedWorkspaceTab.target.draftId]
+          : undefined,
+    });
 
     reconcileWorkspaceTabs(
       persistenceKey,
@@ -2149,11 +2180,14 @@ function WorkspaceScreenContent({
         knownTerminalIds,
         standaloneTerminalIds,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
+        replaceableDraftTabId,
       }),
     );
   }, [
     hasHydratedAgents,
     hasHydratedWorkspaceLayoutStore,
+    focusedDraftRecord,
+    focusedWorkspaceTab,
     isRouteFocused,
     normalizedServerId,
     normalizedWorkspaceId,

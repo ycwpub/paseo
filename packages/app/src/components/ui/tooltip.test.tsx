@@ -113,4 +113,45 @@ describe("TooltipTrigger", () => {
 
     expect(onPress).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps a trigger-only tooltip open until the trigger is pressed again", () => {
+    const onOpenChange = vi.fn();
+
+    act(() => {
+      root?.render(
+        <Tooltip
+          openOnHover={false}
+          openOnPress
+          dismissOnTriggerPressOnly
+          onOpenChange={onOpenChange}
+        >
+          <TooltipTrigger asChild>
+            <Pressable testID="trigger">
+              <Text>Help</Text>
+            </Pressable>
+          </TooltipTrigger>
+        </Tooltip>,
+      );
+    });
+
+    const trigger = container?.querySelector('[data-testid="trigger"]') as HTMLElement | null;
+    expect(trigger).not.toBeNull();
+
+    act(() => {
+      trigger?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+    act(() => {
+      trigger?.dispatchEvent(new window.MouseEvent("mouseout", { bubbles: true }));
+      trigger?.focus();
+      trigger?.blur();
+    });
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+
+    act(() => {
+      trigger?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
 });

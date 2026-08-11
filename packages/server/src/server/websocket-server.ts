@@ -14,6 +14,7 @@ import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { ScheduleService } from "./schedule/service.js";
+import type { WorkflowService } from "./workflow/service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
@@ -561,6 +562,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly scheduleService: ScheduleService;
+  private readonly workflowService: WorkflowService | null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: ForgeService;
   private readonly workspaceGitService: WorkspaceGitService;
@@ -673,6 +675,7 @@ export class VoiceAssistantWebSocketServer {
     mcpStore?: McpStore | null,
     skillStore?: SkillStore | null,
     daemonKeyPair?: KeyPair,
+    workflowService?: WorkflowService | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -691,6 +694,7 @@ export class VoiceAssistantWebSocketServer {
     this.teamStore = teamStore ?? null;
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
+    this.workflowService = workflowService ?? null;
     this.daemonKeyPair = daemonKeyPair ?? null;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
@@ -1555,6 +1559,7 @@ export class VoiceAssistantWebSocketServer {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       scheduleService: this.scheduleService,
+      workflowService: this.workflowService,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
       workspaceGitService: this.workspaceGitService,

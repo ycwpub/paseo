@@ -43,6 +43,22 @@ import {
   ScheduleUpdateResponseSchema,
 } from "./schedule/rpc-schemas.js";
 import {
+  WorkflowListRequestSchema,
+  WorkflowInspectRequestSchema,
+  WorkflowRunRequestSchema,
+  WorkflowGetRunRequestSchema,
+  WorkflowCancelRunRequestSchema,
+  WorkflowSaveRequestSchema,
+  WorkflowDeleteRequestSchema,
+  WorkflowListResponseSchema,
+  WorkflowInspectResponseSchema,
+  WorkflowRunResponseSchema,
+  WorkflowGetRunResponseSchema,
+  WorkflowCancelRunResponseSchema,
+  WorkflowSaveResponseSchema,
+  WorkflowDeleteResponseSchema,
+} from "./workflow/rpc-schemas.js";
+import {
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -3172,6 +3188,13 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteRequestSchema,
   ScheduleRunOnceRequestSchema,
   ScheduleUpdateRequestSchema,
+  WorkflowListRequestSchema,
+  WorkflowInspectRequestSchema,
+  WorkflowRunRequestSchema,
+  WorkflowGetRunRequestSchema,
+  WorkflowCancelRunRequestSchema,
+  WorkflowSaveRequestSchema,
+  WorkflowDeleteRequestSchema,
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -6349,6 +6372,13 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
+  WorkflowListResponseSchema,
+  WorkflowInspectResponseSchema,
+  WorkflowRunResponseSchema,
+  WorkflowGetRunResponseSchema,
+  WorkflowCancelRunResponseSchema,
+  WorkflowSaveResponseSchema,
+  WorkflowDeleteResponseSchema,
   LoopRunResponseSchema,
   LoopListResponseSchema,
   LoopInspectResponseSchema,
@@ -6540,6 +6570,13 @@ export type ScheduleResumeResponse = z.infer<typeof ScheduleResumeResponseSchema
 export type ScheduleDeleteResponse = z.infer<typeof ScheduleDeleteResponseSchema>;
 export type ScheduleRunOnceResponse = z.infer<typeof ScheduleRunOnceResponseSchema>;
 export type ScheduleUpdateResponse = z.infer<typeof ScheduleUpdateResponseSchema>;
+export type WorkflowListResponse = z.infer<typeof WorkflowListResponseSchema>;
+export type WorkflowInspectResponse = z.infer<typeof WorkflowInspectResponseSchema>;
+export type WorkflowRunResponse = z.infer<typeof WorkflowRunResponseSchema>;
+export type WorkflowGetRunResponse = z.infer<typeof WorkflowGetRunResponseSchema>;
+export type WorkflowCancelRunResponse = z.infer<typeof WorkflowCancelRunResponseSchema>;
+export type WorkflowSaveResponse = z.infer<typeof WorkflowSaveResponseSchema>;
+export type WorkflowDeleteResponse = z.infer<typeof WorkflowDeleteResponseSchema>;
 export type LoopRunResponse = z.infer<typeof LoopRunResponseSchema>;
 export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopInspectResponse = z.infer<typeof LoopInspectResponseSchema>;
@@ -6608,6 +6645,13 @@ export type ScheduleResumeRequest = z.infer<typeof ScheduleResumeRequestSchema>;
 export type ScheduleDeleteRequest = z.infer<typeof ScheduleDeleteRequestSchema>;
 export type ScheduleRunOnceRequest = z.infer<typeof ScheduleRunOnceRequestSchema>;
 export type ScheduleUpdateRequest = z.infer<typeof ScheduleUpdateRequestSchema>;
+export type WorkflowListRequest = z.infer<typeof WorkflowListRequestSchema>;
+export type WorkflowInspectRequest = z.infer<typeof WorkflowInspectRequestSchema>;
+export type WorkflowRunRequest = z.infer<typeof WorkflowRunRequestSchema>;
+export type WorkflowGetRunRequest = z.infer<typeof WorkflowGetRunRequestSchema>;
+export type WorkflowCancelRunRequest = z.infer<typeof WorkflowCancelRunRequestSchema>;
+export type WorkflowSaveRequest = z.infer<typeof WorkflowSaveRequestSchema>;
+export type WorkflowDeleteRequest = z.infer<typeof WorkflowDeleteRequestSchema>;
 export type LoopRunRequest = z.infer<typeof LoopRunRequestSchema>;
 export type LoopListRequest = z.infer<typeof LoopListRequestSchema>;
 export type LoopInspectRequest = z.infer<typeof LoopInspectRequestSchema>;

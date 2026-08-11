@@ -293,6 +293,7 @@ function BottomSheetVisibleContent({ children }: { children: ReactNode }) {
 export type AdaptiveTextInputProps = TextInputProps & {
   initialValue?: string;
   resetKey?: string | number;
+  controlled?: boolean;
 };
 
 // React Native controlled TextInput can replay stale JS values during fast input
@@ -318,12 +319,20 @@ export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
   function AdaptiveTextInputInner(props, ref) {
     const isMobile = useIsCompactFormFactor();
     const isInsideBottomSheet = useContext(AdaptiveBottomSheetInputContext);
-    const { value: _value, initialValue, resetKey, defaultValue, style, ...inputProps } = props;
+    const {
+      value,
+      initialValue,
+      resetKey,
+      defaultValue,
+      controlled = false,
+      style,
+      ...inputProps
+    } = props;
     // Leaf-owned color goes LAST so callers cannot override it with a stale
     // theme read. Outline color is theme-aware on web :focus-visible.
     const textInputProps = {
       ...inputProps,
-      defaultValue: initialValue ?? defaultValue,
+      ...(controlled ? { value } : { defaultValue: initialValue ?? defaultValue }),
       style: [styles.adaptiveInputOutline, style, styles.adaptiveInputText],
     };
 

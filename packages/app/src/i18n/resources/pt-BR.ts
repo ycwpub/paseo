@@ -47,6 +47,7 @@ export const ptBR: TranslationResources = {
       idle: "Ocioso",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",

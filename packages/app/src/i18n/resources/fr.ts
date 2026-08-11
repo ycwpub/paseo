@@ -48,6 +48,7 @@ export const fr: TranslationResources = {
       idle: "Inactif",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Basculer la barre latérale",

@@ -47,6 +47,7 @@ export const es: TranslationResources = {
       idle: "Inactivo",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",

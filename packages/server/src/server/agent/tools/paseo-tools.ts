@@ -43,6 +43,12 @@ import { expandUserPath, isSameOrDescendantPath, resolvePathFromBase } from "../
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
 import type { CreatePaseoWorktreeWorkflowFn } from "../../worktree-session.js";
 import type { ScheduleService } from "../../schedule/service.js";
+import type { WorkflowService } from "../../workflow/service.js";
+import {
+  WorkflowRunSchema,
+  WorkflowScriptFileSchema,
+  WorkflowScriptSummarySchema,
+} from "@getpaseo/protocol/workflow/types";
 import {
   ScheduleRunSchema,
   ScheduleSummarySchema,
@@ -110,6 +116,7 @@ export interface PaseoToolHostDependencies {
   terminalManager?: TerminalManager | null;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
+  workflowService?: WorkflowService | null;
   providerSnapshotManager: ProviderSnapshotManager;
   daemonConfigStore?: Pick<DaemonConfigStore, "get">;
   github?: ForgeService;
@@ -575,6 +582,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     terminalManager,
     workspaceScripts,
     scheduleService,
+    workflowService,
     providerSnapshotManager,
     daemonConfigStore,
     callerAgentId,
@@ -2608,6 +2616,117 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       return {
         content: [],
         structuredContent: ensureValidJson({ success: true }),
+      };
+    },
+  );
+
+  registerTool(
+    "list_workflows",
+    {
+      title: "List workflows",
+      description: "List workflow scripts installed under the daemon's workflows directory.",
+      inputSchema: {},
+      outputSchema: {
+        scripts: z.array(WorkflowScriptSummarySchema),
+      },
+    },
+    async () => {
+      if (!workflowService) {
+        throw new Error("Workflow service is not configured");
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson({ scripts: await workflowService.listScripts() }),
+      };
+    },
+  );
+
+  registerTool(
+    "inspect_workflow",
+    {
+      title: "Inspect workflow",
+      description: "Load and validate a workflow script file.",
+      inputSchema: {
+        scriptPath: z.string().trim().min(1),
+      },
+      outputSchema: WorkflowScriptFileSchema.shape,
+    },
+    async ({ scriptPath }) => {
+      if (!workflowService) {
+        throw new Error("Workflow service is not configured");
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson(await workflowService.inspectScript(scriptPath)),
+      };
+    },
+  );
+
+  registerTool(
+    "run_workflow",
+    {
+      title: "Run workflow",
+      description:
+        "Run a workflow script with an input JSON payload. By default this waits for the complete workflow result.",
+      inputSchema: {
+        scriptPath: z.string().trim().min(1),
+        inputPayload: z.string().trim().min(1),
+        background: z.boolean().optional(),
+      },
+      outputSchema: WorkflowRunSchema.shape,
+    },
+    async ({ scriptPath, inputPayload, background = false }) => {
+      if (!workflowService) {
+        throw new Error("Workflow service is not configured");
+      }
+      const run = background
+        ? await workflowService.runScript({ scriptPath, inputPayload })
+        : await workflowService.runScriptAndWait({ scriptPath, inputPayload });
+      return {
+        content: [],
+        structuredContent: ensureValidJson(run),
+      };
+    },
+  );
+
+  registerTool(
+    "get_workflow_run",
+    {
+      title: "Get workflow run",
+      description: "Inspect the latest persisted state and task attempts for a workflow run.",
+      inputSchema: {
+        runId: z.string().trim().min(1),
+      },
+      outputSchema: WorkflowRunSchema.shape,
+    },
+    async ({ runId }) => {
+      if (!workflowService) {
+        throw new Error("Workflow service is not configured");
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson(await workflowService.getRun(runId)),
+      };
+    },
+  );
+
+  registerTool(
+    "cancel_workflow",
+    {
+      title: "Cancel workflow",
+      description: "Cancel a running workflow and return its terminal persisted state.",
+      inputSchema: {
+        runId: z.string().trim().min(1),
+      },
+      outputSchema: WorkflowRunSchema.shape,
+    },
+    async ({ runId }) => {
+      if (!workflowService) {
+        throw new Error("Workflow service is not configured");
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson(await workflowService.cancelRun(runId)),
       };
     },
   );

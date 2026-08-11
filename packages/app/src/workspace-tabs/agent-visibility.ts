@@ -65,6 +65,7 @@ export function buildWorkspaceTabSnapshot(input: {
   knownTerminalIds: Iterable<string>;
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingDraftCreate: boolean;
+  replaceableDraftTabId?: string | null;
 }): WorkspaceTabSnapshot {
   return {
     agentsHydrated: input.agentsHydrated,
@@ -75,6 +76,7 @@ export function buildWorkspaceTabSnapshot(input: {
     knownTerminalIds: input.knownTerminalIds,
     standaloneTerminalIds: input.standaloneTerminalIds,
     hasActivePendingDraftCreate: input.hasActivePendingDraftCreate,
+    replaceableDraftTabId: input.replaceableDraftTabId ?? null,
   };
 }
 

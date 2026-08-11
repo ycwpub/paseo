@@ -212,6 +212,33 @@ describe("MockLoadTestAgentClient", () => {
     });
   });
 
+  test("returns a declared workflow node result for workflow smoke tests", async () => {
+    vi.useFakeTimers();
+    const client = new MockLoadTestAgentClient();
+    const session = await client.createSession({
+      provider: "mock",
+      cwd: process.cwd(),
+      model: "ten-second-stream",
+    });
+
+    const resultPromise = session.run(
+      [
+        "You are executing one node in a Paseo workflow.",
+        'MOCK_WORKFLOW_RESULT: {"filePath":"/tmp/output.txt","control":"[\\"a\\",\\"b\\"]","error":""}',
+      ].join("\n"),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+
+    await expect(resultPromise).resolves.toMatchObject({
+      finalText: JSON.stringify({
+        filePath: "/tmp/output.txt",
+        control: '["a","b"]',
+        error: "",
+      }),
+      canceled: false,
+    });
+  });
+
   test("emits sub-word tokens, reasoning, and sequential tool calls during a foreground turn", async () => {
     vi.useFakeTimers();
     const client = new MockLoadTestAgentClient();

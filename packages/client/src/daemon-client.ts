@@ -691,6 +691,34 @@ type ScheduleUpdatePayload = Extract<
   SessionOutboundMessage,
   { type: "schedule/update/response" }
 >["payload"];
+type WorkflowListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/list/response" }
+>["payload"];
+type WorkflowInspectPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/inspect/response" }
+>["payload"];
+type WorkflowRunPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/run/response" }
+>["payload"];
+type WorkflowGetRunPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/get-run/response" }
+>["payload"];
+type WorkflowCancelRunPayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/cancel-run/response" }
+>["payload"];
+type WorkflowSavePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/save/response" }
+>["payload"];
+type WorkflowDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "workflow/delete/response" }
+>["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
 
@@ -1034,6 +1062,33 @@ export interface UpdateScheduleOptions {
   bashConfig?: UpdateScheduleBashConfig;
   maxRuns?: number | null;
   expiresAt?: string | null;
+  requestId?: string;
+}
+export interface InspectWorkflowOptions {
+  scriptPath: string;
+  requestId?: string;
+}
+export interface RunWorkflowOptions {
+  scriptPath: string;
+  inputPayload: string;
+  requestId?: string;
+}
+export interface GetWorkflowRunOptions {
+  runId: string;
+  requestId?: string;
+}
+export interface CancelWorkflowRunOptions {
+  runId: string;
+  requestId?: string;
+}
+export interface SaveWorkflowOptions {
+  scriptPath?: string;
+  fileName?: string;
+  script: import("@getpaseo/protocol/workflow/types").WorkflowScript;
+  requestId?: string;
+}
+export interface DeleteWorkflowOptions {
+  scriptPath: string;
   requestId?: string;
 }
 export interface RenameBranchInput {
@@ -6109,6 +6164,160 @@ export class DaemonClient {
         ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
       },
       responseType: "schedule/update/response",
+    });
+  }
+
+  async workflowList(requestId?: string): Promise<WorkflowListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "workflow/list",
+      },
+      responseType: "workflow/list/response",
+    });
+  }
+
+  async workflowInspect(options: InspectWorkflowOptions): Promise<WorkflowInspectPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "workflow/inspect",
+        scriptPath: options.scriptPath,
+      },
+      responseType: "workflow/inspect/response",
+    });
+  }
+
+  async workflowRun(options: RunWorkflowOptions): Promise<WorkflowRunPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "workflow/run",
+        scriptPath: options.scriptPath,
+        inputPayload: options.inputPayload,
+      },
+      responseType: "workflow/run/response",
+    });
+  }
+
+  async workflowGetRun(options: GetWorkflowRunOptions): Promise<WorkflowGetRunPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "workflow/get-run",
+        runId: options.runId,
+      },
+      responseType: "workflow/get-run/response",
+    });
+  }
+
+  async workflowCancelRun(options: CancelWorkflowRunOptions): Promise<WorkflowCancelRunPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "workflow/cancel-run",
+        runId: options.runId,
+      },
+      responseType: "workflow/cancel-run/response",
+    });
+  }
+
+  async workflowSave(options: SaveWorkflowOptions): Promise<WorkflowSavePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "workflow/save",
+        script: options.script,
+        ...(options.scriptPath ? { scriptPath: options.scriptPath } : {}),
+        ...(options.fileName ? { fileName: options.fileName } : {}),
+      },
+      responseType: "workflow/save/response",
+    });
+  }
+
+  async workflowDelete(options: DeleteWorkflowOptions): Promise<WorkflowDeletePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "workflow/delete",
+        scriptPath: options.scriptPath,
+      },
+      responseType: "workflow/delete/response",
+    });
+  }
+
+  async loopRun(options: RunLoopOptions): Promise<LoopRunPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options.requestId,
+      message: {
+        type: "loop/run",
+        prompt: options.prompt,
+        cwd: options.cwd,
+        ...(options.provider ? { provider: options.provider } : {}),
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.modeId ? { modeId: options.modeId } : {}),
+        ...(options.verifierProvider ? { verifierProvider: options.verifierProvider } : {}),
+        ...(options.verifierModel ? { verifierModel: options.verifierModel } : {}),
+        ...(options.verifierModeId ? { verifierModeId: options.verifierModeId } : {}),
+        ...(options.verifyPrompt ? { verifyPrompt: options.verifyPrompt } : {}),
+        ...(options.verifyChecks && options.verifyChecks.length > 0
+          ? { verifyChecks: options.verifyChecks }
+          : {}),
+        ...(options.name ? { name: options.name } : {}),
+        ...(typeof options.sleepMs === "number" ? { sleepMs: options.sleepMs } : {}),
+        ...(typeof options.maxIterations === "number"
+          ? { maxIterations: options.maxIterations }
+          : {}),
+        ...(typeof options.maxTimeMs === "number" ? { maxTimeMs: options.maxTimeMs } : {}),
+      },
+      responseType: "loop/run/response",
+    });
+  }
+
+  async loopList(requestId?: string): Promise<LoopListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "loop/list",
+      },
+      responseType: "loop/list/response",
+    });
+  }
+
+  async loopInspect(options: string | InspectLoopOptions): Promise<LoopInspectPayload> {
+    const normalized = typeof options === "string" ? { id: options } : options;
+    return this.sendCorrelatedSessionRequest({
+      requestId: normalized.requestId,
+      message: {
+        type: "loop/inspect",
+        id: normalized.id,
+      },
+      responseType: "loop/inspect/response",
+    });
+  }
+
+  async loopLogs(options: string | LoopLogsOptions, afterSeq?: number): Promise<LoopLogsPayload> {
+    const normalized = typeof options === "string" ? { id: options, afterSeq } : options;
+    return this.sendCorrelatedSessionRequest({
+      requestId: normalized.requestId,
+      message: {
+        type: "loop/logs",
+        id: normalized.id,
+        ...(typeof normalized.afterSeq === "number" ? { afterSeq: normalized.afterSeq } : {}),
+      },
+      responseType: "loop/logs/response",
+    });
+  }
+
+  async loopStop(options: string | StopLoopOptions): Promise<LoopStopPayload> {
+    const normalized = typeof options === "string" ? { id: options } : options;
+    return this.sendCorrelatedSessionRequest({
+      requestId: normalized.requestId,
+      message: {
+        type: "loop/stop",
+        id: normalized.id,
+      },
+      responseType: "loop/stop/response",
     });
   }
 

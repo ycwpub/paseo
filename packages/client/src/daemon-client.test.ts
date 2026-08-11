@@ -836,6 +836,61 @@ test("sends new-agent run options when creating schedules", async () => {
   });
 });
 
+test("sends bash target options when creating schedules", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const createPromise = client.scheduleCreate({
+    requestId: "request-1",
+    prompt: "npm test",
+    cadence: { type: "cron", expression: "* * * * *" },
+    target: {
+      type: "bash",
+      config: {
+        cwd: "/tmp/project",
+        shell: "/bin/bash",
+        timeoutMs: 60_000,
+      },
+    },
+  });
+
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toEqual({
+    type: "schedule/create",
+    requestId: "request-1",
+    prompt: "npm test",
+    cadence: { type: "cron", expression: "* * * * *" },
+    target: {
+      type: "bash",
+      config: {
+        cwd: "/tmp/project",
+        shell: "/bin/bash",
+        timeoutMs: 60_000,
+      },
+    },
+  });
+
+  respondToScheduleRequest(mock, request);
+  await expect(createPromise).resolves.toEqual({
+    requestId: "request-1",
+    schedule: null,
+    error: null,
+  });
+});
+
 test("sends new-agent run options when updating schedules", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();
@@ -872,6 +927,53 @@ test("sends new-agent run options when updating schedules", async () => {
       thinkingOptionId: "think-hard",
       archiveOnFinish: false,
       isolation: "worktree",
+    },
+  });
+
+  respondToScheduleRequest(mock, request);
+  await expect(updatePromise).resolves.toEqual({
+    requestId: "request-1",
+    schedule: null,
+    error: null,
+  });
+});
+
+test("sends bash run options when updating schedules", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const updatePromise = client.scheduleUpdate({
+    id: "schedule-1",
+    requestId: "request-1",
+    bashConfig: {
+      cwd: "/tmp/project",
+      shell: null,
+      timeoutMs: null,
+    },
+  });
+
+  const request = parseSentFrame(mock.sent[0]);
+  expect(request).toEqual({
+    type: "schedule/update",
+    requestId: "request-1",
+    scheduleId: "schedule-1",
+    bashConfig: {
+      cwd: "/tmp/project",
+      shell: null,
+      timeoutMs: null,
     },
   });
 

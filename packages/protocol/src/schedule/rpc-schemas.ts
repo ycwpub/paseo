@@ -1,13 +1,12 @@
 import { z } from "zod";
 import {
+  ScheduleBashTargetConfigSchema,
   ScheduleCadenceSchema,
+  ScheduleNewAgentTargetConfigSchema,
   ScheduleRunSchema,
   ScheduleSummarySchema,
   StoredScheduleSchema,
-  ScheduleTargetSchema,
 } from "./types.js";
-
-const ScheduleCreateNewAgentConfigSchema = ScheduleTargetSchema.options[1].shape.config;
 
 const ScheduleCreateTargetSchema = z.discriminatedUnion("type", [
   z.object({
@@ -20,7 +19,11 @@ const ScheduleCreateTargetSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("new-agent"),
-    config: ScheduleCreateNewAgentConfigSchema,
+    config: ScheduleNewAgentTargetConfigSchema,
+  }),
+  z.object({
+    type: z.literal("bash"),
+    config: ScheduleBashTargetConfigSchema,
   }),
 ]);
 
@@ -84,7 +87,14 @@ const ScheduleUpdateNewAgentConfigSchema = z.object({
   thinkingOptionId: z.string().trim().min(1).nullable().optional(),
   archiveOnFinish: z.boolean().optional(),
   isolation: z.enum(["local", "worktree"]).optional(),
+  assistantId: z.string().trim().min(1).nullable().optional(),
   cwd: z.string().trim().min(1).optional(),
+});
+
+const ScheduleUpdateBashConfigSchema = z.object({
+  cwd: z.string().trim().min(1).optional(),
+  shell: z.string().trim().min(1).nullable().optional(),
+  timeoutMs: z.number().int().positive().nullable().optional(),
 });
 
 export const ScheduleUpdateRequestSchema = z.object({
@@ -95,6 +105,7 @@ export const ScheduleUpdateRequestSchema = z.object({
   prompt: z.string().min(1).optional(),
   cadence: ScheduleCadenceSchema.optional(),
   newAgentConfig: ScheduleUpdateNewAgentConfigSchema.optional(),
+  bashConfig: ScheduleUpdateBashConfigSchema.optional(),
   maxRuns: z.number().int().positive().nullable().optional(),
   expiresAt: z.string().nullable().optional(),
 });

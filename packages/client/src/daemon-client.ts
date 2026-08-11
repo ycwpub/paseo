@@ -909,10 +909,19 @@ export interface CreateScheduleOptions {
           thinkingOptionId?: string;
           archiveOnFinish?: boolean;
           isolation?: "local" | "worktree";
+          assistantId?: string;
           title?: string | null;
           providerOptions?: AgentSessionConfig["providerOptions"];
           systemPrompt?: string;
           mcpServers?: AgentSessionConfig["mcpServers"];
+        };
+      }
+    | {
+        type: "bash";
+        config: {
+          cwd: string;
+          shell?: string;
+          timeoutMs?: number;
         };
       };
   maxRuns?: number;
@@ -931,7 +940,13 @@ export interface UpdateScheduleNewAgentConfig {
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
   isolation?: "local" | "worktree";
+  assistantId?: string | null;
   cwd?: string;
+}
+export interface UpdateScheduleBashConfig {
+  cwd?: string;
+  shell?: string | null;
+  timeoutMs?: number | null;
 }
 export interface UpdateScheduleOptions {
   id: string;
@@ -943,6 +958,7 @@ export interface UpdateScheduleOptions {
     timezone?: string;
   };
   newAgentConfig?: UpdateScheduleNewAgentConfig;
+  bashConfig?: UpdateScheduleBashConfig;
   maxRuns?: number | null;
   expiresAt?: string | null;
   requestId?: string;
@@ -5714,6 +5730,7 @@ export class DaemonClient {
         ...(options.prompt !== undefined ? { prompt: options.prompt } : {}),
         ...(options.cadence !== undefined ? { cadence: options.cadence } : {}),
         ...(options.newAgentConfig !== undefined ? { newAgentConfig: options.newAgentConfig } : {}),
+        ...(options.bashConfig !== undefined ? { bashConfig: options.bashConfig } : {}),
         ...(options.maxRuns !== undefined ? { maxRuns: options.maxRuns } : {}),
         ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
       },

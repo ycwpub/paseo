@@ -187,18 +187,39 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [effectiveModelId, providerSelection],
   );
 
-  const [assistantId, setAssistantId] = useState<string | null>(initialAssistantId);
+  const [assistantId, setAssistantIdState] = useState<string | null>(initialAssistantId);
+  const assistantDraftKeyRef = useRef(draftKey);
+  const appliedInitialAssistantIdRef = useRef<string | null>(initialAssistantId);
+  const assistantOverriddenByUserRef = useRef(false);
 
-  // Sync assistantId from the agent's labels when it becomes available.
-  // This handles the case where the user selected an assistant on the workspace
-  // creation page and the agent was created with that assistantId in its labels.
-  // We only set it when assistantId is currently null to avoid overriding the
-  // user's explicit selection in the chat page.
+  const setAssistantId = useCallback((id: string | null) => {
+    assistantOverriddenByUserRef.current = true;
+    setAssistantIdState(id);
+  }, []);
+
+  // Sync assistantId from agent labels/draft setup. The selected assistant can
+  // arrive after the agent panel first renders (directory/detail hydration), and
+  // the same component instance can be reused for another draft/agent. Apply the
+  // incoming value unless the user has already made an explicit selection in the
+  // current draft.
   useEffect(() => {
-    if (initialAssistantId && !assistantId) {
-      setAssistantId(initialAssistantId);
+    if (assistantDraftKeyRef.current !== draftKey) {
+      assistantDraftKeyRef.current = draftKey;
+      appliedInitialAssistantIdRef.current = initialAssistantId;
+      assistantOverriddenByUserRef.current = false;
+      setAssistantIdState(initialAssistantId);
+      return;
     }
-  }, [initialAssistantId, assistantId]);
+
+    if (appliedInitialAssistantIdRef.current === initialAssistantId) {
+      return;
+    }
+
+    appliedInitialAssistantIdRef.current = initialAssistantId;
+    if (!assistantOverriddenByUserRef.current) {
+      setAssistantIdState(initialAssistantId);
+    }
+  }, [draftKey, initialAssistantId]);
 
   const workingDir = lockedWorkingDir || formState.workingDir;
   const {
@@ -267,6 +288,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     setDraftFeatureValue,
     workingDir,
     assistantId,
+    setAssistantId,
   ]);
 
   return {

@@ -1,4 +1,4 @@
-import { MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "lucide-react-native";
+import { History, MoreVertical, Pause, Pencil, Play, RotateCw, Trash2 } from "lucide-react-native";
 import { useCallback, useState, type ReactElement } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -19,6 +19,7 @@ import type { ScheduleDerivedState } from "@/schedules/schedule-derivation";
 import {
   formatCadence,
   formatNextRun,
+  isRunnableSchedule,
   resolveScheduleTitle,
   scheduleProductName,
 } from "@/utils/schedule-format";
@@ -27,6 +28,7 @@ import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 
 // Themed lucide wrappers — module-scope so only the icon re-renders on theme
 // change (never call useUnistyles in render). See docs/unistyles.md.
+const ThemedHistory = withUnistyles(History);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedPause = withUnistyles(Pause);
 const ThemedPlay = withUnistyles(Play);
@@ -56,6 +58,7 @@ export interface ScheduleRowActions {
   onResume: () => void;
   onRunNow: () => void;
   onDelete: () => void;
+  onViewHistory: () => void;
 }
 
 interface ScheduleRowProps extends ScheduleRowActions {
@@ -151,6 +154,7 @@ export function ScheduleRow({
   onResume,
   onRunNow,
   onDelete,
+  onViewHistory,
 }: ScheduleRowProps): ReactElement {
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
@@ -161,7 +165,10 @@ export function ScheduleRow({
   const productName = scheduleProductName(schedule);
   const badge = stateBadge(state);
   const meta = buildMeta(schedule, state, serverName, singleHost ?? false);
-  const canRun = schedule.target.type === "new-agent" && (state === "active" || state === "paused");
+  const isRunnable = isRunnableSchedule(schedule);
+  const canRun = isRunnable && (state === "active" || state === "paused");
+  const canResume =
+    isRunnable && (state === "paused" || state === "expired" || state === "finished");
 
   const rowStyle = useCallback(
     ({ pressed }: PressableStateCallbackType) => [
@@ -209,12 +216,14 @@ export function ScheduleRow({
           <ScheduleKebabMenu
             schedule={schedule}
             canRun={canRun}
+            canResume={canResume}
             pending={pending}
             onEdit={onEdit}
             onPause={onPause}
             onResume={onResume}
             onRunNow={onRunNow}
             onDelete={onDelete}
+            onViewHistory={onViewHistory}
           />
         </View>
       </Pressable>
@@ -222,6 +231,7 @@ export function ScheduleRow({
   );
 }
 
+const historyLeading = <ThemedHistory size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const editLeading = <ThemedPencil size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const pauseLeading = <ThemedPause size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
 const resumeLeading = <ThemedPlay size={MENU_ICON_SIZE} uniProps={mutedColorMapping} />;
@@ -231,23 +241,25 @@ const deleteLeading = <ThemedTrash2 size={MENU_ICON_SIZE} uniProps={destructiveC
 function ScheduleExecutionMenuItems({
   schedule,
   canRun,
+  canResume,
   pending,
   onPause,
   onResume,
   onRunNow,
 }: Pick<ScheduleRowProps, "schedule" | "pending" | "onPause" | "onResume" | "onRunNow"> & {
   canRun: boolean;
+  canResume: boolean;
 }): ReactElement | null {
   if (schedule.target.type === "agent") {
     return null;
   }
 
   let cadenceAction: ReactElement;
-  if (schedule.status === "paused") {
+  if (canResume) {
     cadenceAction = (
       <DropdownMenuItem
         leading={resumeLeading}
-        disabled={!canRun}
+        disabled={!canResume}
         status={pending?.resume ? "pending" : "idle"}
         pendingLabel="Resuming..."
         onSelect={onResume}
@@ -300,17 +312,27 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }): ReactElemen
 function ScheduleKebabMenu({
   schedule,
   canRun,
+  canResume,
   pending,
   onEdit,
   onPause,
   onResume,
   onRunNow,
   onDelete,
+  onViewHistory,
 }: Pick<
   ScheduleRowProps,
-  "schedule" | "pending" | "onEdit" | "onPause" | "onResume" | "onRunNow" | "onDelete"
+  | "schedule"
+  | "pending"
+  | "onEdit"
+  | "onPause"
+  | "onResume"
+  | "onRunNow"
+  | "onDelete"
+  | "onViewHistory"
 > & {
   canRun: boolean;
+  canResume: boolean;
 }): ReactElement {
   const productName = scheduleProductName(schedule);
   const productNameLower = productName.toLowerCase();
@@ -336,11 +358,19 @@ function ScheduleKebabMenu({
         <ScheduleExecutionMenuItems
           schedule={schedule}
           canRun={canRun}
+          canResume={canResume}
           pending={pending}
           onPause={onPause}
           onResume={onResume}
           onRunNow={onRunNow}
         />
+        <DropdownMenuItem
+          leading={historyLeading}
+          onSelect={onViewHistory}
+          testID={`schedule-menu-history-${schedule.id}`}
+        >
+          View run history
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           leading={deleteLeading}

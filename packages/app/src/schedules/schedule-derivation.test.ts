@@ -130,4 +130,16 @@ describe("resolveSchedule target line", () => {
     });
     expect(resolve(unmatched).target).toEqual({ label: "~/work/api", provider: "codex" });
   });
+
+  it("names a bash cwd without a provider glyph", () => {
+    const schedule = makeSchedule({
+      target: { type: "bash", config: { cwd: "/tmp/project" } },
+    });
+    expect(resolve(schedule, { projects: [["host-1:/tmp/project", "My Project"]] }).target).toEqual(
+      {
+        label: "My Project",
+        provider: null,
+      },
+    );
+  });
 });

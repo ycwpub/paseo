@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
@@ -10,6 +11,8 @@ import { ensureAgentLoaded } from "../agent/agent-loading.js";
 import { formatSystemNotificationPrompt } from "../agent/agent-prompt.js";
 import { resolveCreateAgentTitles } from "../agent/create-agent-title.js";
 import { type BoundCreateAgentCommand, formatProviderModel } from "../agent/create-agent/create.js";
+import { buildAssistantInitialPrompt } from "../assistants/assistant-prompt.js";
+import type { AssistantStore } from "../assistants/assistant-store.js";
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
 import { ScheduleStore } from "./store.js";
@@ -18,14 +21,19 @@ import type {
   CreateScheduleInput,
   ScheduleExecutionResult,
   ScheduleRun,
+  ScheduleRunConfigSnapshot,
   ScheduleTarget,
   StoredSchedule,
   UpdateScheduleInput,
+  UpdateScheduleBashConfig,
   UpdateScheduleNewAgentConfig,
 } from "@getpaseo/protocol/schedule/types";
 import type { FirstAgentContext } from "@getpaseo/protocol/messages";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
+const DEFAULT_BASH_SCHEDULE_SHELL = "/bin/bash";
+const DEFAULT_BASH_SCHEDULE_TIMEOUT_MS = 30 * 60 * 1000;
+const MAX_BASH_SCHEDULE_OUTPUT_CHARS = 200_000;
 
 // A run failed because its target no longer exists: the agent was deleted or
 // archived, or a new-agent cwd was removed. These are permanent, so the schedule
@@ -37,12 +45,41 @@ export class ScheduleTargetGoneError extends Error {
   }
 }
 
+export class ScheduleExecutionError extends Error {
+  constructor(
+    message: string,
+    readonly output: string | null,
+  ) {
+    super(message);
+    this.name = "ScheduleExecutionError";
+  }
+}
+
 function trimOptionalName(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function cloneScheduleTarget(target: ScheduleTarget): ScheduleTarget {
+  return JSON.parse(JSON.stringify(target)) as ScheduleTarget;
+}
+
+function cloneScheduleCadence(cadence: StoredSchedule["cadence"]): StoredSchedule["cadence"] {
+  return JSON.parse(JSON.stringify(cadence)) as StoredSchedule["cadence"];
+}
+
+function buildScheduleRunConfigSnapshot(schedule: StoredSchedule): ScheduleRunConfigSnapshot {
+  return {
+    name: schedule.name,
+    prompt: schedule.prompt,
+    cadence: cloneScheduleCadence(schedule.cadence),
+    target: cloneScheduleTarget(schedule.target),
+    maxRuns: schedule.maxRuns,
+    expiresAt: schedule.expiresAt,
+  };
 }
 
 function buildScheduleFireBody(schedule: StoredSchedule, runId: string): string {
@@ -58,6 +95,48 @@ function normalizePrompt(prompt: string): string {
     throw new Error("Schedule prompt is required");
   }
   return trimmed;
+}
+
+function trimOptionalConfigValue(
+  value: string | null | undefined,
+  fieldName: string,
+): string | null {
+  if (value == null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${fieldName} cannot be empty`);
+  }
+  return trimmed;
+}
+
+function applyBashConfig(
+  target: Extract<ScheduleTarget, { type: "bash" }>,
+  patch: UpdateScheduleBashConfig,
+): Extract<ScheduleTarget, { type: "bash" }> {
+  const config = { ...target.config };
+  if (patch.cwd !== undefined) {
+    config.cwd = trimOptionalConfigValue(patch.cwd, "cwd") ?? config.cwd;
+  }
+  if (patch.shell !== undefined) {
+    const shell = trimOptionalConfigValue(patch.shell, "shell");
+    if (shell) {
+      config.shell = shell;
+    } else {
+      delete config.shell;
+    }
+  }
+  if (patch.timeoutMs !== undefined) {
+    if (patch.timeoutMs == null) {
+      delete config.timeoutMs;
+    } else if (!Number.isInteger(patch.timeoutMs) || patch.timeoutMs <= 0) {
+      throw new Error("timeoutMs must be a positive integer");
+    } else {
+      config.timeoutMs = patch.timeoutMs;
+    }
+  }
+  return { ...target, config };
 }
 
 function applyNewAgentConfig(
@@ -101,6 +180,14 @@ function applyNewAgentConfig(
       config.thinkingOptionId = trimmed;
     } else {
       delete config.thinkingOptionId;
+    }
+  }
+  if (patch.assistantId !== undefined) {
+    const trimmed = patch.assistantId?.trim();
+    if (trimmed) {
+      config.assistantId = trimmed;
+    } else {
+      delete config.assistantId;
     }
   }
   if (patch.archiveOnFinish !== undefined) {
@@ -158,6 +245,41 @@ function completeSchedule(schedule: StoredSchedule, now: Date): StoredSchedule {
     pausedAt: null,
     updatedAt: now.toISOString(),
   };
+}
+
+function isScheduleExpired(schedule: StoredSchedule, now: Date): boolean {
+  if (!schedule.expiresAt) {
+    return false;
+  }
+  return new Date(schedule.expiresAt).getTime() <= now.getTime();
+}
+
+function reviveEndedScheduleConstraints(
+  schedule: StoredSchedule,
+  now: Date,
+): Pick<StoredSchedule, "expiresAt" | "maxRuns"> {
+  let expiresAt = schedule.expiresAt;
+  if (isScheduleExpired(schedule, now)) {
+    expiresAt = null;
+  }
+
+  let maxRuns = schedule.maxRuns;
+  const completedRuns = countCompletedRuns(schedule);
+  if (maxRuns !== null && completedRuns >= maxRuns) {
+    maxRuns = completedRuns + 1;
+  }
+
+  return { expiresAt, maxRuns };
+}
+
+function needsScheduleRevival(schedule: StoredSchedule, now: Date): boolean {
+  if (schedule.status === "completed") {
+    return true;
+  }
+  if (isScheduleExpired(schedule, now)) {
+    return true;
+  }
+  return schedule.maxRuns !== null && countCompletedRuns(schedule) >= schedule.maxRuns;
 }
 
 function mergeScheduleCadenceTimezone(
@@ -226,6 +348,7 @@ export interface ScheduleServiceOptions {
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   archiveWorkspace: (workspaceId: string) => Promise<void>;
+  assistantStore?: Pick<AssistantStore, "get">;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
 }
@@ -243,6 +366,7 @@ export class ScheduleService {
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   private readonly archiveWorkspace: (workspaceId: string) => Promise<void>;
+  private readonly assistantStore: Pick<AssistantStore, "get"> | null;
   private readonly now: () => Date;
   private readonly runner: (
     schedule: StoredSchedule,
@@ -260,6 +384,7 @@ export class ScheduleService {
     this.createDirectoryWorkspace = options.createDirectoryWorkspace;
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
+    this.assistantStore = options.assistantStore ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
@@ -404,15 +529,14 @@ export class ScheduleService {
 
   async resume(id: string): Promise<StoredSchedule> {
     const resumed = await this.store.update(id, (schedule) => {
-      if (schedule.status === "completed") {
-        throw new Error(`Schedule ${id} is already completed`);
-      }
-      if (schedule.status === "active") {
+      const now = this.now();
+      if (schedule.status === "active" && !needsScheduleRevival(schedule, now)) {
         return schedule;
       }
-      const now = this.now();
+      const constraints = reviveEndedScheduleConstraints(schedule, now);
       return {
         ...schedule,
+        ...constraints,
         status: "active" as const,
         pausedAt: null,
         nextRunAt: computeNextRunAt(schedule.cadence, now).toISOString(),
@@ -448,6 +572,17 @@ export class ScheduleService {
           throw new Error("new-agent config updates are only valid for new-agent target schedules");
         }
         const patchedTarget = applyNewAgentConfig(updated.target, input.newAgentConfig);
+        updated = {
+          ...updated,
+          target: patchedTarget,
+        };
+      }
+
+      if (input.bashConfig !== undefined) {
+        if (updated.target.type !== "bash") {
+          throw new Error("bash config updates are only valid for bash target schedules");
+        }
+        const patchedTarget = applyBashConfig(updated.target, input.bashConfig);
         updated = {
           ...updated,
           target: patchedTarget,
@@ -692,6 +827,7 @@ export class ScheduleService {
       agentId: null,
       output: null,
       error: null,
+      configSnapshot: buildScheduleRunConfigSnapshot(schedule),
     };
     const scheduleWithRun = await this.appendRunningRun(schedule.id, runningRun);
 
@@ -708,12 +844,13 @@ export class ScheduleService {
         manual,
       });
     } catch (error) {
+      const executionError = error instanceof ScheduleExecutionError ? error : null;
       await this.finishRun({
         scheduleId: schedule.id,
         runId,
         status: "failed",
         agentId: null,
-        output: null,
+        output: executionError?.output ?? null,
         error: error instanceof Error ? error.message : String(error),
         targetGone: error instanceof ScheduleTargetGoneError,
         manual,
@@ -855,11 +992,22 @@ export class ScheduleService {
       };
     }
 
+    if (schedule.target.type === "bash") {
+      await this.assertScheduleCwdDirectory(schedule.target.config.cwd, "Working directory");
+      return executeBashCommand({
+        command: schedule.prompt,
+        cwd: schedule.target.config.cwd,
+        shell: schedule.target.config.shell ?? DEFAULT_BASH_SCHEDULE_SHELL,
+        timeoutMs: schedule.target.config.timeoutMs ?? DEFAULT_BASH_SCHEDULE_TIMEOUT_MS,
+      });
+    }
+
     const config = schedule.target.type === "new-agent" ? schedule.target.config : null;
     if (!config) {
       throw new Error(`Schedule ${schedule.id} target changed during execution`);
     }
-    await this.assertNewAgentCwdDirectory(config.cwd);
+    await this.assertScheduleCwdDirectory(config.cwd, "Working directory");
+    const assistantContext = this.resolveNewAgentAssistantContext(config, schedule.prompt);
     let workspace: PersistedWorkspaceRecord | null = null;
     let agentId: string | null = null;
     try {
@@ -881,6 +1029,7 @@ export class ScheduleService {
         labels: {
           "paseo.schedule-id": schedule.id,
           "paseo.schedule-run": runId,
+          ...assistantContext.labels,
         },
         mode: config.modeId,
         thinking: config.thinkingOptionId,
@@ -901,7 +1050,7 @@ export class ScheduleService {
       if (created.initialPromptError) {
         throw created.initialPromptError;
       }
-      const result = await this.agentManager.runAgent(agent.id, schedule.prompt);
+      const result = await this.agentManager.runAgent(agent.id, assistantContext.prompt);
       const waitResult = await this.agentManager.waitForAgentEvent(agent.id, {
         waitForActive: true,
       });
@@ -946,6 +1095,27 @@ export class ScheduleService {
     }
   }
 
+  private resolveNewAgentAssistantContext(
+    config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
+    prompt: string,
+  ): { prompt: string; labels: Record<string, string> } {
+    const assistantId = config.assistantId?.trim();
+    if (!assistantId) {
+      return { prompt, labels: {} };
+    }
+    const assistant = this.assistantStore?.get(assistantId) ?? null;
+    if (!assistant) {
+      throw new ScheduleTargetGoneError(`Assistant ${assistantId} no longer exists`);
+    }
+    return {
+      prompt: buildAssistantInitialPrompt(assistant, prompt),
+      labels: {
+        assistantId: assistant.id,
+        assistantName: assistant.name,
+      },
+    };
+  }
+
   private async createScheduleRunWorkspace(
     config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
     prompt: string,
@@ -960,19 +1130,108 @@ export class ScheduleService {
     }
   }
 
-  private async assertNewAgentCwdDirectory(cwd: string): Promise<void> {
+  private async assertScheduleCwdDirectory(cwd: string, label: string): Promise<void> {
     try {
       const stats = await stat(cwd);
       if (!stats.isDirectory()) {
-        throw new ScheduleTargetGoneError(`Working directory ${cwd} is not a directory`);
+        throw new ScheduleTargetGoneError(`${label} ${cwd} is not a directory`);
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        throw new ScheduleTargetGoneError(`Working directory ${cwd} no longer exists`);
+        throw new ScheduleTargetGoneError(`${label} ${cwd} no longer exists`);
       }
       throw error;
     }
   }
+}
+
+function trimOutput(value: string): string {
+  if (value.length <= MAX_BASH_SCHEDULE_OUTPUT_CHARS) {
+    return value;
+  }
+  return value.slice(value.length - MAX_BASH_SCHEDULE_OUTPUT_CHARS);
+}
+
+function formatBashOutput(stdout: string, stderr: string): string | null {
+  const sections: string[] = [];
+  if (stdout.trim().length > 0) {
+    sections.push(`stdout:\n${trimOutput(stdout).trimEnd()}`);
+  }
+  if (stderr.trim().length > 0) {
+    sections.push(`stderr:\n${trimOutput(stderr).trimEnd()}`);
+  }
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
+
+function formatBashFailureMessage(input: {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  stderr: string;
+  timedOut: boolean;
+}): string {
+  if (input.timedOut) {
+    return "Bash schedule command timed out";
+  }
+  const reason =
+    input.exitCode === null ? `signal ${input.signal ?? "unknown"}` : `exit code ${input.exitCode}`;
+  const stderr = input.stderr.trim();
+  if (!stderr) {
+    return `Bash schedule command failed with ${reason}`;
+  }
+  return `Bash schedule command failed with ${reason}: ${trimOutput(stderr)}`;
+}
+
+function executeBashCommand(input: {
+  command: string;
+  cwd: string;
+  shell: string;
+  timeoutMs: number;
+}): Promise<ScheduleExecutionResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(input.shell, ["-c", input.command], {
+      cwd: input.cwd,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, input.timeoutMs);
+    (timer as unknown as { unref?: () => void }).unref?.();
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout = trimOutput(stdout + String(chunk));
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr = trimOutput(stderr + String(chunk));
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (exitCode, signal) => {
+      clearTimeout(timer);
+      const output = formatBashOutput(stdout, stderr);
+      if (timedOut || exitCode !== 0) {
+        reject(
+          new ScheduleExecutionError(
+            formatBashFailureMessage({ exitCode, signal, stderr, timedOut }),
+            output,
+          ),
+        );
+        return;
+      }
+      resolve({
+        agentId: null,
+        output,
+      });
+    });
+  });
 }
 
 function buildScheduleAgentConfig(

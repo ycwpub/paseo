@@ -972,8 +972,9 @@ function ChatAgentContent({
   const agentAssistantId = useSessionStore((state) => {
     if (!agentId) return null;
     const session = state.sessions[serverId];
-    const ag = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId);
-    return ag?.labels?.assistantId ?? null;
+    const detail = session?.agentDetails?.get(agentId);
+    const summary = session?.agents?.get(agentId);
+    return detail?.labels?.assistantId ?? summary?.labels?.assistantId ?? null;
   });
   const continuity = useMemo<AgentScreenContinuity>(() => {
     if (!hasActiveCreateHandoff || !agentId) {

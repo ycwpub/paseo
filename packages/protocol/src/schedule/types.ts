@@ -17,6 +17,38 @@ export const ScheduleCadenceSchema = z.discriminatedUnion("type", [
 ]);
 export type ScheduleCadence = z.infer<typeof ScheduleCadenceSchema>;
 
+export const ScheduleNewAgentTargetConfigSchema = z.object({
+  provider: AgentProviderSchema,
+  cwd: z.string().trim().min(1),
+  modeId: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  thinkingOptionId: z.string().trim().min(1).optional(),
+  archiveOnFinish: z.boolean().optional(),
+  isolation: z.enum(["local", "worktree"]).optional(),
+  assistantId: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1).nullable().optional(),
+  approvalPolicy: z.string().trim().min(1).optional(),
+  sandboxMode: z.string().trim().min(1).optional(),
+  networkAccess: z.boolean().optional(),
+  webSearch: z.boolean().optional(),
+  featureValues: z.record(z.string(), z.unknown()).optional(),
+  extra: z
+    .object({
+      codex: z.record(z.string(), z.unknown()).optional(),
+      claude: z.record(z.string(), z.unknown()).optional(),
+    })
+    .partial()
+    .optional(),
+  systemPrompt: z.string().optional(),
+  mcpServers: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const ScheduleBashTargetConfigSchema = z.object({
+  cwd: z.string().trim().min(1),
+  shell: z.string().trim().min(1).optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
 export const ScheduleTargetSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent"),
@@ -24,23 +56,24 @@ export const ScheduleTargetSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("new-agent"),
-    config: z.object({
-      provider: AgentProviderSchema,
-      cwd: z.string().trim().min(1),
-      modeId: z.string().trim().min(1).optional(),
-      model: z.string().trim().min(1).optional(),
-      thinkingOptionId: z.string().trim().min(1).optional(),
-      archiveOnFinish: z.boolean().optional(),
-      isolation: z.enum(["local", "worktree"]).optional(),
-      title: z.string().trim().min(1).nullable().optional(),
-      providerOptions: z.record(z.string(), z.json()).optional(),
-      featureValues: z.record(z.string(), z.unknown()).optional(),
-      systemPrompt: z.string().optional(),
-      mcpServers: z.record(z.string(), z.unknown()).optional(),
-    }),
+    config: ScheduleNewAgentTargetConfigSchema,
+  }),
+  z.object({
+    type: z.literal("bash"),
+    config: ScheduleBashTargetConfigSchema,
   }),
 ]);
 export type ScheduleTarget = z.infer<typeof ScheduleTargetSchema>;
+
+export const ScheduleRunConfigSnapshotSchema = z.object({
+  name: z.string().nullable(),
+  prompt: z.string().min(1),
+  cadence: ScheduleCadenceSchema,
+  target: ScheduleTargetSchema,
+  maxRuns: z.number().int().positive().nullable(),
+  expiresAt: z.string().nullable(),
+});
+export type ScheduleRunConfigSnapshot = z.infer<typeof ScheduleRunConfigSnapshotSchema>;
 
 export const ScheduleRunSchema = z.object({
   id: z.string(),
@@ -52,6 +85,7 @@ export const ScheduleRunSchema = z.object({
   workspaceId: z.string().nullable().optional(),
   output: z.string().nullable(),
   error: z.string().nullable(),
+  configSnapshot: ScheduleRunConfigSnapshotSchema.optional(),
 });
 export type ScheduleRun = z.infer<typeof ScheduleRunSchema>;
 
@@ -95,7 +129,14 @@ export interface UpdateScheduleNewAgentConfig {
   thinkingOptionId?: string | null;
   archiveOnFinish?: boolean;
   isolation?: "local" | "worktree";
+  assistantId?: string | null;
   cwd?: string;
+}
+
+export interface UpdateScheduleBashConfig {
+  cwd?: string;
+  shell?: string | null;
+  timeoutMs?: number | null;
 }
 
 export interface UpdateScheduleInput {
@@ -104,6 +145,7 @@ export interface UpdateScheduleInput {
   prompt?: string;
   cadence?: ScheduleCadence;
   newAgentConfig?: UpdateScheduleNewAgentConfig;
+  bashConfig?: UpdateScheduleBashConfig;
   maxRuns?: number | null;
   expiresAt?: string | null;
 }

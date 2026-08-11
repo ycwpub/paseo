@@ -352,6 +352,53 @@ describe("ScheduleService", () => {
     expect(inspected.nextRunAt).toBe("2026-01-01T00:02:00.000Z");
   });
 
+  test("run history stores a config snapshot from run start", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({
+        agentId: null,
+        output: "ok",
+      }),
+    });
+    const expiresAt = "2026-01-02T00:00:00.000Z";
+    const created = await service.create({
+      name: "Nightly shell",
+      prompt: "echo old",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir, shell: "/bin/bash" } },
+      maxRuns: 5,
+      expiresAt,
+      runOnCreate: false,
+    });
+
+    await service.runOnce(created.id);
+    await service.update({
+      id: created.id,
+      prompt: "echo new",
+      cadence: { type: "every", everyMs: 120_000 },
+      bashConfig: { cwd: join(tempDir, "next") },
+      maxRuns: 10,
+      expiresAt: null,
+    });
+
+    const logs = await service.logs(created.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.configSnapshot).toEqual({
+      name: "Nightly shell",
+      prompt: "echo old",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir, shell: "/bin/bash" } },
+      maxRuns: 5,
+      expiresAt,
+    });
+    expect((await service.inspect(created.id)).prompt).toBe("echo new");
+  });
+
   test("pause and resume update persisted schedule state", async () => {
     const service = createScheduleService({
       paseoHome: tempDir,
@@ -386,6 +433,118 @@ describe("ScheduleService", () => {
     const resumed = await service.resume(created.id);
     expect(resumed.status).toBe("active");
     expect(resumed.nextRunAt).toBe("2026-01-01T00:04:00.000Z");
+  });
+
+  test("resume reactivates completed schedules and extends exhausted maxRuns", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({
+        agentId: null,
+        output: "done",
+      }),
+    });
+
+    const created = await service.create({
+      prompt: "One shot",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir } },
+      maxRuns: 1,
+    });
+
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+    expect((await service.inspect(created.id)).status).toBe("completed");
+
+    now = new Date("2026-01-01T00:10:00.000Z");
+    const resumed = await service.resume(created.id);
+    expect(resumed.status).toBe("active");
+    expect(resumed.maxRuns).toBe(2);
+    expect(resumed.nextRunAt).toBe("2026-01-01T00:11:00.000Z");
+
+    now = new Date("2026-01-01T00:11:00.000Z");
+    await service.tick();
+    const rerun = await service.inspect(created.id);
+    expect(rerun.runs).toHaveLength(2);
+    expect(rerun.status).toBe("completed");
+  });
+
+  test("resume clears past expiration so ended schedules can become active", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({
+        agentId: null,
+        output: "done",
+      }),
+    });
+
+    const created = await service.create({
+      prompt: "Expired job",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir } },
+      expiresAt: "2026-01-01T00:01:00.000Z",
+      runOnCreate: false,
+    });
+
+    now = new Date("2026-01-01T00:02:00.000Z");
+    await service.tick();
+    expect((await service.inspect(created.id)).status).toBe("completed");
+
+    now = new Date("2026-01-01T00:03:00.000Z");
+    const resumed = await service.resume(created.id);
+    expect(resumed.status).toBe("active");
+    expect(resumed.expiresAt).toBeNull();
+    expect(resumed.nextRunAt).toBe("2026-01-01T00:04:00.000Z");
+  });
+
+  test("lists only active schedules that target existing agents", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+    const activeAgentId = "00000000-0000-4000-8000-000000000201";
+    const pausedAgentId = "00000000-0000-4000-8000-000000000202";
+    const completedAgentId = "00000000-0000-4000-8000-000000000203";
+    const cadence = { type: "every" as const, everyMs: 60_000 };
+
+    await service.create({
+      prompt: "Keep active agent resident",
+      cadence,
+      target: { type: "agent", agentId: activeAgentId },
+    });
+    const paused = await service.create({
+      prompt: "Paused heartbeat",
+      cadence,
+      target: { type: "agent", agentId: pausedAgentId },
+    });
+    await service.pause(paused.id);
+    await service.create({
+      prompt: "Completed heartbeat",
+      cadence,
+      target: { type: "agent", agentId: completedAgentId },
+    });
+    await service.completeForAgent(completedAgentId);
+    await service.create({
+      prompt: "Fresh agent each run",
+      cadence,
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+    });
+
+    await expect(service.listActiveAgentTargetIds()).resolves.toEqual(new Set([activeAgentId]));
   });
 
   test("completes schedules when max runs is reached", async () => {
@@ -461,6 +620,62 @@ describe("ScheduleService", () => {
     expect(inspected.runs[0]?.agentId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
+  });
+
+  test("executes bash schedules and records stdout and stderr", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "printf hello; printf warn >&2",
+      cadence: { type: "cron", expression: "0 9 * * *" },
+      target: { type: "bash", config: { cwd: tempDir } },
+      runOnCreate: false,
+    });
+
+    const after = await service.runOnce(created.id);
+
+    expect(after.runs).toHaveLength(1);
+    expect(after.runs[0]).toMatchObject({
+      status: "succeeded",
+      agentId: null,
+      output: "stdout:\nhello\n\nstderr:\nwarn",
+      error: null,
+    });
+  });
+
+  test("records bash schedule failures with captured output", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "printf before; printf nope >&2; exit 7",
+      cadence: { type: "cron", expression: "0 9 * * *" },
+      target: { type: "bash", config: { cwd: tempDir } },
+      runOnCreate: false,
+    });
+
+    const after = await service.runOnce(created.id);
+
+    expect(after.runs[0]).toMatchObject({
+      status: "failed",
+      agentId: null,
+      output: "stdout:\nbefore\n\nstderr:\nnope",
+    });
+    expect(after.runs[0]?.error).toContain("exit code 7");
+    expect(after.runs[0]?.error).toContain("nope");
   });
 
   test("titles scheduled new agents from the schedule prompt", async () => {
@@ -900,6 +1115,155 @@ describe("ScheduleService", () => {
     expect(inspected.runs[0]).toMatchObject({
       status: "succeeded",
       output: "compacted",
+    });
+  });
+
+  test("scheduled new-agent runs can use an assistant prompt", async () => {
+    const createdInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
+    const runPrompts: AgentPromptInput[] = [];
+    const manager = new AgentManager({
+      logger: createTestLogger(),
+      clients: createTestAgentClients(),
+      registry: agentStorage,
+    });
+    manager.runAgent = async (_agentId, prompt) => {
+      runPrompts.push(prompt);
+      return {
+        sessionId: "scheduled-assistant-run",
+        finalText: "done",
+        timeline: [{ type: "assistant_message", text: "done" }],
+      };
+    };
+    manager.waitForAgentEvent = async () => ({
+      status: "idle",
+      permission: null,
+      lastMessage: "done",
+    });
+    manager.archiveAgent = async () => {};
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: manager,
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      assistantStore: {
+        get: (id) =>
+          id === "assistant-1"
+            ? {
+                id,
+                name: "Reviewer",
+                description: "",
+                prompt: "You are a careful reviewer.",
+                memoryEnabled: false,
+                memory: "",
+                memorySummary: "",
+                memoryFiles: { summaryPath: "", detailFiles: [] },
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              }
+            : null,
+      },
+      createAgent: async (input) => {
+        createdInputs.push(input);
+        const snapshot = {
+          id: "00000000-0000-0000-0000-000000000323",
+          provider: "claude",
+          cwd: input.cwd ?? tempDir,
+          workspaceId: input.workspaceId,
+          status: "idle",
+          lifecycle: "idle",
+        };
+        return {
+          snapshot: snapshot as Awaited<
+            ReturnType<ScheduleServiceOptions["createAgent"]>
+          >["snapshot"],
+          liveSnapshot: snapshot as Awaited<
+            ReturnType<ScheduleServiceOptions["createAgent"]>
+          >["liveSnapshot"],
+          background: true,
+          initialPromptStarted: false,
+          initialPromptError: null,
+        };
+      },
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "Review the diff.",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir, assistantId: "assistant-1" },
+      },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    expect(createdInputs[0]?.labels).toMatchObject({
+      assistantId: "assistant-1",
+      assistantName: "Reviewer",
+    });
+    expect(runPrompts[0]).toContain("You are a careful reviewer.");
+    expect(runPrompts[0]).toContain("Review the diff.");
+    const inspected = await service.inspect(created.id);
+    expect(inspected.runs[0]?.status).toBe("succeeded");
+  });
+
+  test("scheduled new-agent assistant selection is persisted on the created agent", async () => {
+    const manager = new AgentManager({
+      logger: createTestLogger(),
+      clients: createTestAgentClients(),
+      registry: agentStorage,
+    });
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: manager,
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      assistantStore: {
+        get: (id) =>
+          id === "assistant-1"
+            ? {
+                id,
+                name: "Reviewer",
+                description: "",
+                prompt: "You are a careful reviewer.",
+                memoryEnabled: false,
+                memory: "",
+                memorySummary: "",
+                memoryFiles: { summaryPath: "", detailFiles: [] },
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              }
+            : null,
+      },
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "Review the diff.",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: {
+          provider: "claude",
+          cwd: tempDir,
+          assistantId: "assistant-1",
+          archiveOnFinish: false,
+        },
+      },
+      maxRuns: 1,
+    });
+    await service.tick();
+
+    const inspected = await service.inspect(created.id);
+    const agentId = inspected.runs[0]?.agentId;
+    expect(agentId).toMatch(/^[0-9a-f-]{36}$/);
+    const storedAgent = await agentStorage.get(agentId!);
+    expect(storedAgent?.labels).toMatchObject({
+      assistantId: "assistant-1",
+      assistantName: "Reviewer",
     });
   });
 
@@ -2463,6 +2827,36 @@ describe("ScheduleService", () => {
     ).rejects.toThrow("only valid for new-agent target schedules");
   });
 
+  test("update changes bash config fields independently", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+
+    const created = await service.create({
+      prompt: "npm test",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir, shell: "/bin/bash", timeoutMs: 1000 } },
+    });
+
+    const changed = await service.update({
+      id: created.id,
+      bashConfig: { cwd: join(tempDir, "subdir"), shell: null, timeoutMs: null },
+    });
+
+    expect(changed.target).toEqual({
+      type: "bash",
+      config: {
+        cwd: join(tempDir, "subdir"),
+      },
+    });
+  });
+
   test("update changes individual new-agent fields independently", async () => {
     const service = createScheduleService({
       paseoHome: tempDir,
@@ -2499,13 +2893,23 @@ describe("ScheduleService", () => {
 
     const clearModel = await service.update({
       id: created.id,
-      newAgentConfig: { model: null },
+      newAgentConfig: { model: null, assistantId: "assistant-1" },
     });
     if (clearModel.target.type !== "new-agent") {
       throw new Error("target type changed unexpectedly");
     }
     expect(clearModel.target.config.model).toBeUndefined();
     expect(clearModel.target.config.modeId).toBe("bypassPermissions");
+    expect(clearModel.target.config.assistantId).toBe("assistant-1");
+
+    const clearAssistant = await service.update({
+      id: created.id,
+      newAgentConfig: { assistantId: null },
+    });
+    if (clearAssistant.target.type !== "new-agent") {
+      throw new Error("target type changed unexpectedly");
+    }
+    expect(clearAssistant.target.config.assistantId).toBeUndefined();
   });
 
   test("update returns a schedule that round-trips through the store", async () => {
@@ -3142,6 +3546,35 @@ describe("ScheduleService", () => {
     });
     expect(third.id).not.toBe(first.id);
     expect(await service.list()).toHaveLength(2);
+  });
+
+  test("createOrReplace matches bash targets by config", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+
+    const first = await service.createOrReplace({
+      name: "bash nightly",
+      prompt: "npm test",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir } },
+    });
+    const second = await service.createOrReplace({
+      name: "bash nightly",
+      prompt: "npm run lint",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: { type: "bash", config: { cwd: tempDir } },
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second.prompt).toBe("npm run lint");
+    expect(await service.list()).toHaveLength(1);
   });
 
   test("concurrent createOrReplace first creates share one schedule", async () => {

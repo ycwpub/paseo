@@ -7,6 +7,7 @@ import type {
   ScheduleListItem,
   ScheduleRecord,
   ScheduleTarget,
+  UpdateScheduleBashConfig,
   UpdateScheduleInput,
   UpdateScheduleNewAgentConfig,
 } from "./types.js";
@@ -53,7 +54,11 @@ export async function requireNewAgentSchedule(
   id: string,
 ): Promise<void> {
   const payload = await client.scheduleInspect({ id });
-  if (payload.error || !payload.schedule || payload.schedule.target.type !== "new-agent") {
+  if (
+    payload.error ||
+    !payload.schedule ||
+    (payload.schedule.target.type !== "new-agent" && payload.schedule.target.type !== "bash")
+  ) {
     throw new Error(payload.error ?? `Schedule not found: ${id}`);
   }
 }
@@ -73,8 +78,12 @@ export function formatTarget(target: ScheduleTarget | ScheduleListItem["target"]
   if (target.type === "agent") {
     return `agent:${target.agentId.slice(0, 7)}`;
   }
+  if (target.type === "bash") {
+    return `bash:${target.config.cwd}`;
+  }
   const modelSuffix = target.config.model ? `/${target.config.model}` : "";
-  return `new-agent:${target.config.provider}${modelSuffix}`;
+  const assistantSuffix = target.config.assistantId ? `@${target.config.assistantId}` : "";
+  return `new-agent:${target.config.provider}${modelSuffix}${assistantSuffix}`;
 }
 
 export function formatDurationMs(durationMs: number): string {
@@ -135,8 +144,9 @@ function resolveScheduleTarget(args: {
   return { type: "agent", agentId: targetValue };
 }
 
-export function parseScheduleCreateInput(options: {
+interface ScheduleCreateOptionsInput {
   prompt: string;
+  type?: string;
   every?: string;
   cron?: string;
   timezone?: string;
@@ -144,21 +154,28 @@ export function parseScheduleCreateInput(options: {
   target?: string;
   provider?: string;
   mode?: string;
-  thinking?: string;
+  assistant?: string;
   cwd?: string;
+  shell?: string;
+  timeout?: string;
   host?: string;
   maxRuns?: string;
   expiresIn?: string;
   runNow?: boolean;
-}): CreateScheduleInput {
-  const prompt = options.prompt.trim();
+}
+
+function parseSchedulePrompt(value: string): string {
+  const prompt = value.trim();
   if (!prompt) {
     throw {
       code: "INVALID_PROMPT",
       message: "Schedule prompt cannot be empty",
     } satisfies CommandError;
   }
+  return prompt;
+}
 
+function parseRequiredCreateCadence(options: ScheduleCreateOptionsInput): ScheduleCadence {
   const cadence = parseCadenceFromFlags(options.every, options.cron, options.timezone);
   if (!cadence) {
     throw {
@@ -166,7 +183,10 @@ export function parseScheduleCreateInput(options: {
       message: "Specify exactly one of --every or --cron",
     } satisfies CommandError;
   }
+  return cadence;
+}
 
+function parseCreateCwdInput(options: ScheduleCreateOptionsInput): string | undefined {
   const cwdInput = options.cwd?.trim();
   if (options.host !== undefined && !cwdInput) {
     throw {
@@ -175,24 +195,62 @@ export function parseScheduleCreateInput(options: {
         "--cwd is required when --host is specified (the local working directory will not exist on the remote daemon)",
     } satisfies CommandError;
   }
+  return cwdInput;
+}
 
-  const runOnCreate = resolveRunOnCreate(options.runNow, cadence.type);
-
-  const targetValue = options.target?.trim();
-  const modeId = options.mode?.trim();
-  const thinkingOptionId = options.thinking?.trim();
-  if (options.thinking !== undefined && !thinkingOptionId) {
+function validateCreateScheduleTargetOptions(input: {
+  options: ScheduleCreateOptionsInput;
+  scheduleType: ScheduleCreateType;
+  targetValue: string | undefined;
+  hasExplicitNewAgentOption: boolean;
+}): void {
+  if (input.scheduleType !== "new-agent" && input.targetValue) {
     throw {
-      code: "INVALID_THINKING_OPTION",
-      message: "--thinking cannot be empty",
+      code: "INVALID_TARGET",
+      message: "--target can only be used with agent schedules",
     } satisfies CommandError;
   }
+  if (input.scheduleType === "bash" && input.hasExplicitNewAgentOption) {
+    throw {
+      code: "INVALID_SCHEDULE_TYPE",
+      message: "--provider/--mode cannot be used with --type bash",
+    } satisfies CommandError;
+  }
+  if (
+    input.scheduleType === "new-agent" &&
+    (input.options.shell !== undefined || input.options.timeout !== undefined)
+  ) {
+    throw {
+      code: "INVALID_SCHEDULE_TYPE",
+      message: "--shell/--timeout can only be used with --type bash",
+    } satisfies CommandError;
+  }
+}
+
+function buildCreateScheduleTarget(input: {
+  options: ScheduleCreateOptionsInput;
+  cwdInput: string | undefined;
+  scheduleType: ScheduleCreateType;
+}): ScheduleTarget {
+  const { options, cwdInput, scheduleType } = input;
+  const targetValue = options.target?.trim();
+  const modeId = options.mode?.trim();
   const hasExplicitNewAgentOption =
-    options.provider !== undefined || options.mode !== undefined || options.thinking !== undefined;
+    options.provider !== undefined || options.mode !== undefined || options.assistant !== undefined;
+  validateCreateScheduleTargetOptions({
+    options,
+    scheduleType,
+    targetValue,
+    hasExplicitNewAgentOption,
+  });
   const createNewAgentTarget = (): ScheduleTarget => {
     const resolvedProviderModel = resolveProviderAndModel({
       provider: options.provider,
     });
+    const assistantId =
+      options.assistant === undefined
+        ? undefined
+        : parseOptionalStringFlag(options.assistant, "--assistant");
     return {
       type: "new-agent",
       config: {
@@ -200,15 +258,31 @@ export function parseScheduleCreateInput(options: {
         cwd: cwdInput ?? process.cwd(),
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
         ...(modeId ? { modeId } : {}),
-        ...(thinkingOptionId ? { thinkingOptionId } : {}),
+        ...(assistantId ? { assistantId } : {}),
       },
     };
   };
-  const target = resolveScheduleTarget({
+  if (scheduleType === "bash") {
+    return createBashScheduleTarget({
+      cwd: cwdInput ?? process.cwd(),
+      shell: options.shell,
+      timeout: options.timeout,
+    });
+  }
+  return resolveScheduleTarget({
     targetValue,
     hasExplicitNewAgentOption,
     createNewAgentTarget,
   });
+}
+
+export function parseScheduleCreateInput(options: ScheduleCreateOptionsInput): CreateScheduleInput {
+  const prompt = parseSchedulePrompt(options.prompt);
+  const cadence = parseRequiredCreateCadence(options);
+  const cwdInput = parseCreateCwdInput(options);
+  const scheduleType = parseScheduleType(options.type);
+  const target = buildCreateScheduleTarget({ options, cwdInput, scheduleType });
+  const runOnCreate = resolveRunOnCreate(options.runNow, cadence.type);
 
   const maxRuns =
     options.maxRuns === undefined ? undefined : parsePositiveInt(options.maxRuns, "--max-runs");
@@ -237,6 +311,7 @@ function resolveRunOnCreate(
 
 export interface ScheduleUpdateOptionsInput {
   id: string;
+  type?: string;
   every?: string;
   cron?: string;
   timezone?: string;
@@ -245,7 +320,11 @@ export interface ScheduleUpdateOptionsInput {
   provider?: string;
   model?: string;
   mode?: string;
+  assistant?: string | false;
   cwd?: string;
+  shell?: string;
+  timeout?: string;
+  clearTimeout?: boolean;
   maxRuns?: string;
   expiresIn?: string;
   clearMaxRuns?: boolean;
@@ -262,7 +341,10 @@ export function parseScheduleUpdateInput(options: ScheduleUpdateOptionsInput): U
   }
 
   const cadence = parseCadenceFromFlags(options.every, options.cron, options.timezone);
-  const newAgentConfig = buildNewAgentConfigPatch(options);
+  const scheduleType = inferScheduleUpdateType(options);
+  validateTypeSpecificUpdateOptions(options, scheduleType);
+  const newAgentConfig = scheduleType === "bash" ? undefined : buildNewAgentConfigPatch(options);
+  const bashConfig = scheduleType === "bash" ? buildBashConfigPatch(options) : undefined;
   const maxRuns = parseUpdateMaxRuns(options);
   const expiresAt = parseUpdateExpiresAt(options);
   const name = parseUpdateName(options);
@@ -273,6 +355,7 @@ export function parseScheduleUpdateInput(options: ScheduleUpdateOptionsInput): U
     prompt === undefined &&
     cadence === undefined &&
     newAgentConfig === undefined &&
+    bashConfig === undefined &&
     maxRuns === undefined &&
     expiresAt === undefined
   ) {
@@ -288,8 +371,93 @@ export function parseScheduleUpdateInput(options: ScheduleUpdateOptionsInput): U
     ...(prompt !== undefined ? { prompt } : {}),
     ...(cadence !== undefined ? { cadence } : {}),
     ...(newAgentConfig !== undefined ? { newAgentConfig } : {}),
+    ...(bashConfig !== undefined ? { bashConfig } : {}),
     ...(maxRuns !== undefined ? { maxRuns } : {}),
     ...(expiresAt !== undefined ? { expiresAt } : {}),
+  };
+}
+
+type ScheduleCreateType = "new-agent" | "bash";
+type ScheduleUpdateType = ScheduleCreateType;
+
+function parseOptionalScheduleType(value: string | undefined): ScheduleUpdateType | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (trimmed === "new-agent" || trimmed === "bash") {
+    return trimmed;
+  }
+  throw {
+    code: "INVALID_SCHEDULE_TYPE",
+    message: "--type must be one of: new-agent, bash",
+  } satisfies CommandError;
+}
+
+function parseScheduleType(value: string | undefined): ScheduleCreateType {
+  return parseOptionalScheduleType(value) ?? "new-agent";
+}
+
+function inferScheduleUpdateType(
+  options: ScheduleUpdateOptionsInput,
+): ScheduleUpdateType | undefined {
+  const explicit = parseOptionalScheduleType(options.type);
+  if (explicit !== undefined) {
+    return explicit;
+  }
+  if (options.shell !== undefined || options.timeout !== undefined || options.clearTimeout) {
+    return "bash";
+  }
+  return undefined;
+}
+
+function validateTypeSpecificUpdateOptions(
+  options: ScheduleUpdateOptionsInput,
+  scheduleType: ScheduleUpdateType | undefined,
+): void {
+  const hasBashOption =
+    options.shell !== undefined || options.timeout !== undefined || options.clearTimeout;
+  const hasNewAgentOption =
+    options.provider !== undefined ||
+    options.model !== undefined ||
+    options.mode !== undefined ||
+    options.assistant !== undefined;
+  if (scheduleType === "bash" && hasNewAgentOption) {
+    throw {
+      code: "INVALID_SCHEDULE_TYPE",
+      message: "--provider/--model/--mode/--assistant cannot be used with --type bash",
+    } satisfies CommandError;
+  }
+  if (scheduleType === "new-agent" && hasBashOption) {
+    throw {
+      code: "INVALID_SCHEDULE_TYPE",
+      message: "--shell/--timeout/--clear-timeout can only be used with --type bash",
+    } satisfies CommandError;
+  }
+}
+
+function createBashScheduleTarget(options: {
+  cwd: string;
+  shell?: string;
+  timeout?: string;
+}): ScheduleTarget {
+  const cwd = options.cwd.trim();
+  if (!cwd) {
+    throw {
+      code: "INVALID_CWD",
+      message: "--cwd cannot be empty",
+    } satisfies CommandError;
+  }
+  const shell = parseOptionalStringFlag(options.shell, "--shell");
+  const timeoutMs =
+    options.timeout === undefined ? undefined : parsePositiveDuration(options.timeout, "--timeout");
+  return {
+    type: "bash",
+    config: {
+      cwd,
+      ...(shell !== undefined ? { shell } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    },
   };
 }
 
@@ -424,6 +592,20 @@ function buildNewAgentConfigPatch(
     const trimmed = options.mode.trim();
     patch.modeId = trimmed.length > 0 ? trimmed : null;
   }
+  if (options.assistant !== undefined) {
+    if (options.assistant === false) {
+      patch.assistantId = null;
+    } else {
+      const trimmed = options.assistant.trim();
+      if (!trimmed) {
+        throw {
+          code: "INVALID_ASSISTANT",
+          message: "--assistant cannot be empty",
+        } satisfies CommandError;
+      }
+      patch.assistantId = trimmed;
+    }
+  }
   if (options.cwd !== undefined) {
     const trimmed = options.cwd.trim();
     if (!trimmed) {
@@ -435,6 +617,63 @@ function buildNewAgentConfigPatch(
     patch.cwd = trimmed;
   }
   return Object.keys(patch).length > 0 ? patch : undefined;
+}
+
+function buildBashConfigPatch(
+  options: ScheduleUpdateOptionsInput,
+): UpdateScheduleBashConfig | undefined {
+  if (options.timeout !== undefined && options.clearTimeout) {
+    throw {
+      code: "CONFLICTING_TIMEOUT",
+      message: "Use either --timeout <duration> or --no-timeout, not both",
+    } satisfies CommandError;
+  }
+  const patch: UpdateScheduleBashConfig = {};
+  if (options.cwd !== undefined) {
+    const trimmed = options.cwd.trim();
+    if (!trimmed) {
+      throw {
+        code: "INVALID_CWD",
+        message: "--cwd cannot be empty",
+      } satisfies CommandError;
+    }
+    patch.cwd = trimmed;
+  }
+  if (options.shell !== undefined) {
+    patch.shell = options.shell.trim() || null;
+  }
+  if (options.timeout !== undefined) {
+    patch.timeoutMs = parsePositiveDuration(options.timeout, "--timeout");
+  }
+  if (options.clearTimeout) {
+    patch.timeoutMs = null;
+  }
+  return Object.keys(patch).length > 0 ? patch : undefined;
+}
+
+function parseOptionalStringFlag(value: string | undefined, flag: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw {
+      code: "INVALID_OPTION",
+      message: `${flag} cannot be empty`,
+    } satisfies CommandError;
+  }
+  return trimmed;
+}
+
+function parsePositiveDuration(value: string, flag: string): number {
+  const parsed = parseDuration(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw {
+      code: "INVALID_DURATION",
+      message: `${flag} must be a positive duration`,
+    } satisfies CommandError;
+  }
+  return parsed;
 }
 
 function parsePositiveInt(value: string, flag: string): number {

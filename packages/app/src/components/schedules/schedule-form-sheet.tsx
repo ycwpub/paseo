@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Text, View } from "react-native";
-import { Brain, Folder, GitBranch } from "lucide-react-native";
+import { Brain, Folder, GitBranch, Terminal } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
@@ -19,6 +19,7 @@ import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-moda
 import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
+import { AssistantSelector } from "@/composer/assistant-selector/assistant-selector";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
@@ -175,6 +176,47 @@ function updateSelectionPreferences(input: {
       },
     }),
     isolation: input.isolation,
+  };
+}
+
+function buildUpdateNewAgentConfig(input: {
+  state: ScheduleFormState;
+  provider: AgentProvider;
+  cwd: string;
+}) {
+  const { state, provider, cwd } = input;
+  return {
+    provider,
+    model: state.selectedModel || null,
+    modeId: state.selectedMode || null,
+    thinkingOptionId: state.selectedThinkingOptionId || null,
+    assistantId: state.selectedAssistantId || null,
+    cwd,
+    ...(state.submitArchiveOnFinish !== undefined
+      ? { archiveOnFinish: state.submitArchiveOnFinish }
+      : {}),
+    ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+  };
+}
+
+function buildCreateNewAgentConfig(input: {
+  state: ScheduleFormState;
+  provider: AgentProvider;
+  cwd: string;
+}) {
+  const { state, provider, cwd } = input;
+  return {
+    provider,
+    cwd,
+    model: state.selectedModel || undefined,
+    modeId: state.selectedMode || undefined,
+    thinkingOptionId: state.selectedThinkingOptionId || undefined,
+    assistantId: state.selectedAssistantId || undefined,
+    ...(state.submitArchiveOnFinish !== undefined
+      ? { archiveOnFinish: state.submitArchiveOnFinish }
+      : {}),
+    ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+    title: state.name.trim() || undefined,
   };
 }
 
@@ -340,17 +382,7 @@ function OpenScheduleFormSheet({
         name: state.name.trim() || null,
         prompt: state.prompt.trim(),
         ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
-        newAgentConfig: {
-          provider,
-          model: state.selectedModel || null,
-          modeId: state.selectedMode || null,
-          thinkingOptionId: state.selectedThinkingOptionId || null,
-          cwd,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-        },
+        newAgentConfig: buildUpdateNewAgentConfig({ state, provider, cwd }),
         maxRuns,
       });
       return true;
@@ -362,23 +394,46 @@ function OpenScheduleFormSheet({
       cadence: requireCronCadence(state.submitCadence),
       target: {
         type: "new-agent",
-        config: {
-          provider,
-          cwd,
-          model: state.selectedModel || undefined,
-          modeId: state.selectedMode || undefined,
-          thinkingOptionId: state.selectedThinkingOptionId || undefined,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-          title: state.name.trim() || undefined,
-        },
+        config: buildCreateNewAgentConfig({ state, provider, cwd }),
       },
       ...(maxRuns != null ? { maxRuns } : {}),
     });
     return true;
   }, [createSchedule, mode, persistPreferences, schedule, state, updateSchedule]);
+
+  const submitBash = useCallback(async (): Promise<boolean> => {
+    const cwd = state.workingDir.trim();
+    if (!cwd) {
+      return false;
+    }
+
+    const maxRuns = parseMaxRuns(state.maxRuns);
+    if (mode === "edit" && schedule) {
+      await updateSchedule({
+        id: schedule.id,
+        name: state.name.trim() || null,
+        prompt: state.prompt.trim(),
+        ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
+        bashConfig: { cwd },
+        maxRuns,
+      });
+      return true;
+    }
+
+    await createSchedule({
+      prompt: state.prompt.trim(),
+      name: state.name.trim() || undefined,
+      cadence: requireCronCadence(state.submitCadence),
+      target: {
+        type: "bash",
+        config: {
+          cwd,
+        },
+      },
+      ...(maxRuns != null ? { maxRuns } : {}),
+    });
+    return true;
+  }, [createSchedule, mode, schedule, state, updateSchedule]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) {
@@ -386,15 +441,21 @@ function OpenScheduleFormSheet({
     }
     model.setSubmitError(null);
     try {
-      const submitted =
-        state.targetKind === "agent" ? await submitAgentTarget() : await submitNewAgent();
+      let submitted: boolean;
+      if (state.targetKind === "agent") {
+        submitted = await submitAgentTarget();
+      } else if (state.targetKind === "bash") {
+        submitted = await submitBash();
+      } else {
+        submitted = await submitNewAgent();
+      }
       if (submitted) {
         onClose();
       }
     } catch (error) {
       model.setSubmitError(toErrorMessage(error));
     }
-  }, [canSubmit, model, onClose, state.targetKind, submitAgentTarget, submitNewAgent]);
+  }, [canSubmit, model, onClose, state.targetKind, submitAgentTarget, submitBash, submitNewAgent]);
 
   const handleSubmitPress = useCallback(() => {
     void handleSubmit();
@@ -505,15 +566,23 @@ function ScheduleFormFields({
         />
       </Field>
 
-      <Field label="Prompt">
+      {state.mode === "create" ? (
+        <ScheduleTypeField model={model} state={state} size={controlSize} />
+      ) : null}
+
+      <Field label={state.targetKind === "bash" ? "Command" : "Prompt"}>
         <FormTextInput
           size={controlSize}
           testID="schedule-prompt-input"
-          accessibilityLabel="Prompt"
+          accessibilityLabel={state.targetKind === "bash" ? "Command" : "Prompt"}
           initialValue={state.prompt}
           value={state.prompt}
           onChangeText={model.setPrompt}
-          placeholder="What should the agent do each run?"
+          placeholder={
+            state.targetKind === "bash"
+              ? "Bash command to run each time"
+              : "What should the agent do each run?"
+          }
           style={styles.multilineInput}
           multiline
           numberOfLines={4}
@@ -552,6 +621,78 @@ function ScheduleFormFields({
 
       {state.submitError ? <Text style={styles.submitError}>{state.submitError}</Text> : null}
     </>
+  );
+}
+
+function ScheduleTypeField({
+  model,
+  state,
+  size,
+}: {
+  model: ScheduleFormModel;
+  state: ScheduleFormState;
+  size: FieldControlSize;
+}): ReactElement {
+  const options = useMemo<SelectFieldOption<"new-agent" | "bash">[]>(
+    () => [
+      {
+        id: "new-agent",
+        value: "new-agent",
+        label: "Agent",
+        testID: "schedule-type-new-agent",
+      },
+      {
+        id: "bash",
+        value: "bash",
+        label: "Bash",
+        testID: "schedule-type-bash",
+      },
+    ],
+    [],
+  );
+  const selectedDisplay = useMemo<SelectFieldDisplay>(
+    () => ({ label: state.targetKind === "bash" ? "Bash" : "Agent" }),
+    [state.targetKind],
+  );
+  const handleSelectType = useCallback(
+    (value: "new-agent" | "bash") => {
+      model.setTargetKind(value);
+    },
+    [model],
+  );
+  const triggerLeading = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        {state.targetKind === "bash" ? (
+          <Terminal size={16} color={styles.providerIcon.color} />
+        ) : (
+          <Brain size={16} color={styles.providerIcon.color} />
+        )}
+      </View>
+    ),
+    [state.targetKind],
+  );
+  const renderTypeOption = useCallback(
+    (input: SelectFieldRenderOptionInput<"new-agent" | "bash">) => <TypeOptionItem {...input} />,
+    [],
+  );
+
+  return (
+    <SelectField
+      label="Type"
+      value={state.targetKind === "bash" ? "bash" : "new-agent"}
+      selectedDisplay={selectedDisplay}
+      options={options}
+      onChange={handleSelectType}
+      placeholder="Select type"
+      emptyText="No schedule types found"
+      searchable={false}
+      title="Schedule type"
+      size={size}
+      triggerTestID="schedule-type-trigger"
+      triggerLeading={triggerLeading}
+      renderOption={renderTypeOption}
+    />
   );
 }
 
@@ -627,6 +768,12 @@ function ScheduleTargetFields({
   const handleSelectModel = useCallback(
     (provider: AgentProvider, modelId: string) => {
       model.setModel(provider, modelId);
+    },
+    [model],
+  );
+  const handleSelectAssistant = useCallback(
+    (assistantId: string | null) => {
+      model.setAssistant(assistantId);
     },
     [model],
   );
@@ -741,6 +888,19 @@ function ScheduleTargetFields({
           triggerTestID="schedule-project-trigger"
           renderOption={renderProjectOption}
         />
+      ) : null}
+
+      {state.disclosure.showAssistantField && state.selectedServerId ? (
+        <Field label="Assistant">
+          <View style={styles.assistantField}>
+            <AssistantSelector
+              serverId={state.selectedServerId}
+              selectedAssistantId={state.selectedAssistantId}
+              onSelect={handleSelectAssistant}
+              disabled={!state.selectedServerId}
+            />
+          </View>
+        </Field>
       ) : null}
 
       {state.disclosure.showModelField ? (
@@ -1022,6 +1182,37 @@ function ThinkingOptionItem({
   );
 }
 
+function TypeOptionItem({
+  option,
+  selected,
+  active,
+  onPress,
+}: SelectFieldRenderOptionInput<"new-agent" | "bash">): ReactElement {
+  const leadingSlot = useMemo(
+    () => (
+      <View style={styles.optionIconBox}>
+        {option.value === "bash" ? (
+          <Terminal size={16} color={styles.providerIcon.color} />
+        ) : (
+          <Brain size={16} color={styles.providerIcon.color} />
+        )}
+      </View>
+    ),
+    [option.value],
+  );
+
+  return (
+    <ComboboxItem
+      testID={option.testID}
+      label={option.label}
+      selected={selected}
+      active={active}
+      onPress={onPress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
 function ProviderGlyph({ provider }: { provider: string | null }): ReactElement | null {
   if (!provider) {
     return null;
@@ -1066,6 +1257,11 @@ const styles = StyleSheet.create((theme) => {
       height: 18,
       alignItems: "center",
       justifyContent: "center",
+    },
+    assistantField: {
+      minHeight: geometry.formTextInputSm.minHeight,
+      flexDirection: "row",
+      alignItems: "center",
     },
     footer: {
       flex: 1,

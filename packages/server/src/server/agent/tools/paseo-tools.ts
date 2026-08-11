@@ -45,6 +45,7 @@ import {
   StoredScheduleSchema,
   type ScheduleCadence,
   type UpdateScheduleInput,
+  type UpdateScheduleBashConfig,
 } from "@getpaseo/protocol/schedule/types";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import {
@@ -380,6 +381,7 @@ function resolveScheduleUpdateProviderAndModel(params: {
 
 interface ScheduleUpdateToolInput {
   id: string;
+  scheduleType?: "new-agent" | "bash";
   every?: string;
   cron?: string;
   timezone?: string;
@@ -390,6 +392,8 @@ interface ScheduleUpdateToolInput {
   model?: string | null;
   mode?: string | null;
   cwd?: string;
+  shell?: string | null;
+  timeoutMs?: number | null;
   expiresIn?: string;
   clearExpires?: boolean;
 }
@@ -462,12 +466,25 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
     provider: input.provider,
     model: input.model,
   });
-  const newAgentConfig = {
-    ...(providerModelPatch.provider !== undefined ? { provider: providerModelPatch.provider } : {}),
-    ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
-    ...(input.mode !== undefined ? { modeId: input.mode } : {}),
-    ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-  };
+  const newAgentConfig =
+    input.scheduleType === "bash"
+      ? {}
+      : {
+          ...(providerModelPatch.provider !== undefined
+            ? { provider: providerModelPatch.provider }
+            : {}),
+          ...(providerModelPatch.model !== undefined ? { model: providerModelPatch.model } : {}),
+          ...(input.mode !== undefined ? { modeId: input.mode } : {}),
+          ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+        };
+  const bashConfig: UpdateScheduleBashConfig =
+    input.scheduleType === "bash"
+      ? {
+          ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+          ...(input.shell !== undefined ? { shell: input.shell } : {}),
+          ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+        }
+      : {};
 
   return {
     id: input.id,
@@ -477,6 +494,7 @@ function buildScheduleUpdateInput(input: ScheduleUpdateToolInput): UpdateSchedul
     ...(input.maxRuns !== undefined ? { maxRuns: input.maxRuns } : {}),
     ...(expiresAt !== undefined ? { expiresAt } : {}),
     ...(Object.keys(newAgentConfig).length > 0 ? { newAgentConfig } : {}),
+    ...(Object.keys(bashConfig).length > 0 ? { bashConfig } : {}),
   };
 }
 
@@ -788,7 +806,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     };
   };
 
-  async function requireScheduleTarget(id: string, type: "agent" | "new-agent") {
+  async function requireScheduleTarget(id: string, type: "agent" | "new-agent" | "bash") {
     if (!scheduleService) {
       throw new Error("Schedule service is not configured");
     }
@@ -797,6 +815,17 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       throw new Error(
         type === "agent" ? `Heartbeat not found: ${id}` : `Schedule not found: ${id}`,
       );
+    }
+    return schedule;
+  }
+
+  async function requireNonHeartbeatSchedule(id: string) {
+    if (!scheduleService) {
+      throw new Error("Schedule service is not configured");
+    }
+    const schedule = await scheduleService.inspect(id);
+    if (schedule.target.type !== "new-agent" && schedule.target.type !== "bash") {
+      throw new Error(`Schedule not found: ${id}`);
     }
     return schedule;
   }
@@ -2560,6 +2589,62 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
   );
 
   registerTool(
+    "create_bash_schedule",
+    {
+      title: "Create bash schedule",
+      description: "Create a recurring schedule that runs a plain bash command on a cron cadence.",
+      inputSchema: {
+        command: z.string().trim().min(1, "command is required"),
+        cron: z.string().trim().min(1, "cron is required"),
+        timezone: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe("IANA time zone for the cron cadence. For example: America/New_York."),
+        name: z.string().optional(),
+        cwd: z.string().trim().min(1).optional(),
+        shell: z.string().trim().min(1).optional(),
+        timeoutMs: z.number().int().positive().optional(),
+        maxRuns: z.number().int().positive().optional(),
+        expiresIn: z.string().optional(),
+      },
+      outputSchema: ScheduleSummarySchema.shape,
+    },
+    async ({ command, cron, timezone, name, cwd, shell, timeoutMs, maxRuns, expiresIn }) => {
+      if (!scheduleService) {
+        throw new Error("Schedule service is not configured");
+      }
+
+      const callerAgent = resolveCallerAgent();
+      const expiresAt = buildScheduleExpiry(expiresIn);
+      const schedule = await scheduleService.createOrReplace({
+        prompt: command.trim(),
+        cadence: buildCronScheduleCadence({
+          cron,
+          ...(timezone !== undefined ? { timezone } : {}),
+        }),
+        target: {
+          type: "bash",
+          config: {
+            cwd: cwd?.trim() ? expandUserPath(cwd) : (callerAgent?.cwd ?? process.cwd()),
+            ...(shell?.trim() ? { shell: shell.trim() } : {}),
+            ...(timeoutMs === undefined ? {} : { timeoutMs }),
+          },
+        },
+        ...(name?.trim() ? { name: name.trim() } : {}),
+        ...(maxRuns === undefined ? {} : { maxRuns }),
+        ...(expiresAt === undefined ? {} : { expiresAt }),
+      });
+
+      return {
+        content: [],
+        structuredContent: ensureValidJson(toScheduleSummary(schedule)),
+      };
+    },
+  );
+
+  registerTool(
     "create_heartbeat",
     {
       title: "Create heartbeat",
@@ -2645,7 +2730,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       }
 
       const schedules = (await scheduleService.list())
-        .filter((schedule) => schedule.target.type === "new-agent")
+        .filter(
+          (schedule) => schedule.target.type === "new-agent" || schedule.target.type === "bash",
+        )
         .map((schedule) => toScheduleSummary(schedule));
       return {
         content: [],
@@ -2669,7 +2756,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
 
-      const schedule = await requireScheduleTarget(id, "new-agent");
+      const schedule = await requireNonHeartbeatSchedule(id);
       return {
         content: [],
         structuredContent: ensureValidJson(schedule),
@@ -2694,7 +2781,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
 
-      await requireScheduleTarget(id, "new-agent");
+      await requireNonHeartbeatSchedule(id);
       await scheduleService.pause(id);
       return {
         content: [],
@@ -2720,7 +2807,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
 
-      await requireScheduleTarget(id, "new-agent");
+      await requireNonHeartbeatSchedule(id);
       await scheduleService.resume(id);
       return {
         content: [],
@@ -2746,7 +2833,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
 
-      await requireScheduleTarget(id, "new-agent");
+      await requireNonHeartbeatSchedule(id);
       await scheduleService.delete(id);
       return {
         content: [],
@@ -2764,6 +2851,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       inputSchema: z
         .object({
           id: z.string(),
+          scheduleType: z
+            .enum(["new-agent", "bash"])
+            .optional()
+            .describe("Set to bash when updating bash-specific fields like shell or timeoutMs."),
           cron: z.string().optional().describe("New cron expression."),
           timezone: z
             .string()
@@ -2802,7 +2893,26 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
             .nullable()
             .optional()
             .describe("New mode for new-agent target (null to clear)."),
-          cwd: z.string().trim().min(1).optional().describe("New cwd for new-agent target."),
+          cwd: z
+            .string()
+            .trim()
+            .min(1)
+            .optional()
+            .describe("New cwd for new-agent or bash target."),
+          shell: z
+            .string()
+            .trim()
+            .min(1)
+            .nullable()
+            .optional()
+            .describe("New shell for bash target (null to clear)."),
+          timeoutMs: z
+            .number()
+            .int()
+            .positive()
+            .nullable()
+            .optional()
+            .describe("New timeout for bash target (null to clear)."),
           expiresIn: z
             .string()
             .optional()
@@ -2817,7 +2927,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         throw new Error("Schedule service is not configured");
       }
 
-      await requireScheduleTarget(input.id, "new-agent");
+      const existing = await requireNonHeartbeatSchedule(input.id);
+      if (input.scheduleType === undefined && existing.target.type === "bash") {
+        input.scheduleType = "bash";
+      }
       const schedule = await scheduleService.update(buildScheduleUpdateInput(input));
 
       return {

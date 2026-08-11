@@ -91,15 +91,11 @@ import {
 } from "@getpaseo/protocol/browser-automation/capabilities";
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
-import {
-  APPLICATION_SOCKET_LEASE_CHECK_INTERVAL_MS,
-  ApplicationSocketLease,
-  MAX_PHYSICAL_SOCKET_BUFFERED_BYTES,
-  outboundFrameByteLength,
-  physicalSocketHasCapacity,
-  sendBoundedPhysicalFrame,
-  sendBoundedPhysicalFrameAndWait,
-} from "./websocket/physical-socket.js";
+import type { LarkChannelService } from "./channels/lark/lark-channel-service.js";
+import type { AssistantStore } from "./assistants/assistant-store.js";
+import type { TeamStore } from "./team/team-store.js";
+import type { McpStore } from "./mcp/mcp-store.js";
+import type { SkillStore } from "./skill/skill-store.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 
@@ -573,11 +569,17 @@ export class VoiceAssistantWebSocketServer {
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
   private readonly hubRelationships: HubRelationshipManagement | null;
+  private readonly larkChannelService: LarkChannelService | null;
+  private readonly assistantStore: AssistantStore | null;
+  private readonly teamStore: TeamStore | null;
+  private readonly mcpStore: McpStore | null;
+  private readonly skillStore: SkillStore | null;
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private acceptingConnections = true;
   private readonly advertiseDaemonStatusRpc: boolean;
   private readonly advertiseRelayConfig: boolean;
 
+  // oxlint-disable-next-line complexity
   constructor(
     server: HTTPServer,
     logger: pino.Logger,
@@ -620,7 +622,11 @@ export class VoiceAssistantWebSocketServer {
     serviceProxyPublicBaseUrl?: string | null,
     browserToolsBroker?: BrowserToolsBroker | null,
     hubRelationships?: HubRelationshipManagement | null,
-    workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
+    larkChannelService?: LarkChannelService | null,
+    assistantStore?: AssistantStore | null,
+    teamStore?: TeamStore | null,
+    mcpStore?: McpStore | null,
+    skillStore?: SkillStore | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -634,6 +640,11 @@ export class VoiceAssistantWebSocketServer {
     this.daemonRuntimeConfig = daemonRuntimeConfig;
     this.browserToolsBroker = browserToolsBroker ?? null;
     this.hubRelationships = hubRelationships ?? null;
+    this.larkChannelService = larkChannelService ?? null;
+    this.assistantStore = assistantStore ?? null;
+    this.teamStore = teamStore ?? null;
+    this.mcpStore = mcpStore ?? null;
+    this.skillStore = skillStore ?? null;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
@@ -1398,6 +1409,11 @@ export class VoiceAssistantWebSocketServer {
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
       getWebSocketRuntimeMetrics: () => this.lastRuntimeMetricsSnapshot,
+      larkChannelService: this.larkChannelService,
+      assistantStore: this.assistantStore,
+      teamStore: this.teamStore,
+      mcpStore: this.mcpStore,
+      skillStore: this.skillStore,
     });
   }
 
@@ -1633,6 +1649,14 @@ export class VoiceAssistantWebSocketServer {
         agentProfiles: true,
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
+        // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
+        larkChannel: true,
+        // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
+        assistants: true,
+        // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
+        mcpServers: true,
+        // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
+        skills: true,
       },
     };
   }

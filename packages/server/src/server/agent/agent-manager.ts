@@ -66,6 +66,12 @@ import { AgentRunState, type ForegroundTurnWaiter } from "./agent-run-state.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
+import {
+  mergeSharedSkillCommands,
+  parseSlashInvocation,
+  resolveSharedSkillInvocation,
+  withSharedMcpServers,
+} from "./shared-agent-resources.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
 import {
@@ -73,6 +79,9 @@ import {
   type ProviderSubagentDescriptor,
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
+import type { McpStore } from "../mcp/mcp-store.js";
+import type { SkillMaterializer } from "../skill/skill-materializer.js";
+import type { SkillStore } from "../skill/skill-store.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -273,6 +282,9 @@ export interface AgentManagerOptions {
   mcpAuthToken?: string;
   paseoToolsEnabled?: boolean;
   paseoToolCatalogFactory?: PaseoToolCatalogFactory;
+  mcpStore?: Pick<McpStore, "list"> | null;
+  skillStore?: Pick<SkillStore, "list"> | null;
+  skillMaterializer?: Pick<SkillMaterializer, "sync" | "syncForWorkspace"> | null;
   appendSystemPrompt?: string;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
@@ -501,6 +513,20 @@ function isAgentBusy(status: AgentLifecycleStatus): boolean {
   return BUSY_STATUSES.has(status);
 }
 
+function normalizeSelectionIds(ids: readonly string[] | undefined): readonly string[] | undefined {
+  if (!ids) return undefined;
+  return Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean))).sort();
+}
+
+function sameSelection(
+  a: readonly string[] | undefined,
+  b: readonly string[] | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
 function isTurnTerminalEvent(event: AgentStreamEvent): boolean {
   return (
     event.type === "turn_completed" ||
@@ -634,6 +660,11 @@ export class AgentManager {
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
+  private readonly mcpStore: Pick<McpStore, "list"> | null;
+  private readonly skillStore: Pick<SkillStore, "list"> | null;
+  private readonly skillMaterializer: Pick<SkillMaterializer, "sync" | "syncForWorkspace"> | null;
+  private readonly selectedMcpServerIdsByAgent = new Map<string, readonly string[]>();
+  private readonly selectedSkillIdsByAgent = new Map<string, readonly string[]>();
   private paseoToolsEnabled = true;
   private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
@@ -652,6 +683,10 @@ export class AgentManager {
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
     this.mcpAuthToken = options?.mcpAuthToken ?? null;
+    const sharedResources = this.configureSharedResources(options);
+    this.mcpStore = sharedResources.mcpStore;
+    this.skillStore = sharedResources.skillStore;
+    this.skillMaterializer = sharedResources.skillMaterializer;
     this.configurePaseoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
@@ -678,6 +713,18 @@ export class AgentManager {
   private configurePaseoTools(options: AgentManagerOptions): void {
     this.paseoToolsEnabled = options.paseoToolsEnabled ?? true;
     this.paseoToolCatalogFactory = options.paseoToolCatalogFactory ?? null;
+  }
+
+  private configureSharedResources(options: AgentManagerOptions): {
+    mcpStore: Pick<McpStore, "list"> | null;
+    skillStore: Pick<SkillStore, "list"> | null;
+    skillMaterializer: Pick<SkillMaterializer, "sync" | "syncForWorkspace"> | null;
+  } {
+    return {
+      mcpStore: options.mcpStore ?? null,
+      skillStore: options.skillStore ?? null,
+      skillMaterializer: options.skillMaterializer ?? null,
+    };
   }
 
   registerClient(provider: AgentProvider, client: AgentClient): void {
@@ -943,9 +990,10 @@ export class AgentManager {
 
   async listDraftCommands(config: AgentSessionConfig): Promise<AgentSlashCommand[]> {
     const normalizedConfig = await this.normalizeConfig(config, { resolveDefaultModel: false });
+    this.syncSharedSkills({ ensureNativeDirs: true });
     const client = this.requireClient(normalizedConfig.provider);
     if (!normalizedConfig.model) {
-      return [];
+      return this.mergeSharedSkillCommands([]);
     }
     const available = await client.isAvailable();
     if (!available) {
@@ -955,7 +1003,7 @@ export class AgentManager {
     }
 
     if (client.listCommands) {
-      return await client.listCommands(normalizedConfig);
+      return this.mergeSharedSkillCommands(await client.listCommands(normalizedConfig));
     }
 
     const session = await client.createSession(normalizedConfig);
@@ -965,7 +1013,7 @@ export class AgentManager {
           `Provider '${normalizedConfig.provider}' does not support listing commands`,
         );
       }
-      return await session.listCommands();
+      return this.mergeSharedSkillCommands(await session.listCommands());
     } finally {
       try {
         await session.close();
@@ -974,6 +1022,58 @@ export class AgentManager {
           { err: error, provider: normalizedConfig.provider },
           "Failed to close draft command listing session",
         );
+      }
+    }
+  }
+
+  async listCommandsForAgent(agentId: string): Promise<AgentSlashCommand[]> {
+    const agent = this.requireSessionAgent(agentId);
+    this.syncSharedSkills({ ensureNativeDirs: true });
+    if (!agent.session.listCommands) {
+      return this.mergeSharedSkillCommands([], this.selectedSkillIdsByAgent.get(agentId));
+    }
+    return this.mergeSharedSkillCommands(
+      await agent.session.listCommands(),
+      this.selectedSkillIdsByAgent.get(agentId),
+    );
+  }
+
+  async applySessionResourceSelection(
+    agentId: string,
+    selection: { selectedMcpServerIds?: readonly string[]; selectedSkillIds?: readonly string[] },
+  ): Promise<void> {
+    let reloadRequired = false;
+    let agent = this.requireSessionAgent(agentId);
+
+    const selectedMcpServerIds = normalizeSelectionIds(selection.selectedMcpServerIds);
+    if (selectedMcpServerIds) {
+      const previous = this.selectedMcpServerIdsByAgent.get(agentId);
+      this.selectedMcpServerIdsByAgent.set(agentId, selectedMcpServerIds);
+      if (!sameSelection(previous, selectedMcpServerIds)) {
+        const defaultIds = this.defaultEnabledMcpServerIds();
+        reloadRequired = !(
+          previous === undefined && sameSelection(defaultIds, selectedMcpServerIds)
+        );
+      }
+    }
+
+    const selectedSkillIds = normalizeSelectionIds(selection.selectedSkillIds);
+    if (selectedSkillIds) {
+      const previous = this.selectedSkillIdsByAgent.get(agentId);
+      this.selectedSkillIdsByAgent.set(agentId, selectedSkillIds);
+      this.syncSelectedSkillsForAgent(agent, selectedSkillIds);
+      if (!sameSelection(previous, selectedSkillIds)) {
+        const defaultIds = this.defaultEnabledSkillIds();
+        reloadRequired ||= !(previous === undefined && sameSelection(defaultIds, selectedSkillIds));
+      }
+    }
+
+    if (reloadRequired) {
+      await this.reloadAgentSession(agentId);
+      agent = this.requireSessionAgent(agentId);
+      const currentSelectedSkillIds = this.selectedSkillIdsByAgent.get(agentId);
+      if (currentSelectedSkillIds) {
+        this.syncSelectedSkillsForAgent(agent, currentSelectedSkillIds);
       }
     }
   }
@@ -2067,7 +2167,8 @@ export class AgentManager {
       let turnId: string;
       let turnStream: ReturnType<AgentRunState["createTurnStream"]> | null = null;
       try {
-        const result = await agent.session.startTurn(prompt, options);
+        const effectivePrompt = await this.resolveSharedSkillPrompt(agent, prompt);
+        const result = await agent.session.startTurn(effectivePrompt, options);
         turnId = result.turnId;
       } catch (error) {
         agent.pendingReplacement = false;
@@ -4455,15 +4556,135 @@ export class AgentManager {
     env?: Record<string, string>,
   ): Promise<PreparedSessionConfig> {
     const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config), { env });
+    this.syncSharedSkills({ ensureNativeDirs: true });
+    const sharedMcpConfig = this.withSharedMcpServers(storedConfig, agentId);
     const launchConfig = this.applyDaemonAppendSystemPrompt(
       withRuntimePaseoMcpServer({
-        config: storedConfig,
+        config: sharedMcpConfig,
         agentId,
         mcpBaseUrl: this.mcpBaseUrl,
         mcpAuthToken: this.mcpAuthToken,
       }),
     );
     return { storedConfig, launchConfig };
+  }
+
+  private withSharedMcpServers(config: AgentSessionConfig, agentId?: string): AgentSessionConfig {
+    if (!this.mcpStore) return config;
+    try {
+      return withSharedMcpServers(
+        config,
+        this.mcpStore.list(),
+        agentId ? this.selectedMcpServerIdsByAgent.get(agentId) : undefined,
+      );
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to load shared MCP servers for agent launch");
+      return config;
+    }
+  }
+
+  private mergeSharedSkillCommands(
+    commands: readonly AgentSlashCommand[],
+    selectedSkillIds?: readonly string[],
+  ): AgentSlashCommand[] {
+    if (!this.skillStore) return [...commands].sort((a, b) => a.name.localeCompare(b.name));
+    try {
+      return mergeSharedSkillCommands(commands, this.skillStore.list(), selectedSkillIds);
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to load shared skills for command listing");
+      return [...commands].sort((a, b) => a.name.localeCompare(b.name));
+    }
+  }
+
+  private syncSharedSkills(options?: { ensureNativeDirs?: boolean }): void {
+    if (!this.skillStore || !this.skillMaterializer) return;
+    try {
+      this.skillMaterializer.sync(this.skillStore.list(), options);
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to sync shared skill symlinks");
+    }
+  }
+
+  private syncSelectedSkillsForAgent(
+    agent: LiveManagedAgent,
+    selectedSkillIds: readonly string[],
+  ): void {
+    if (!this.skillStore || !this.skillMaterializer) return;
+    try {
+      this.skillMaterializer.syncForWorkspace(
+        agent.config.cwd,
+        this.skillStore.list(),
+        selectedSkillIds,
+        {
+          ensureNativeDirs: true,
+        },
+      );
+    } catch (error) {
+      this.logger.warn({ err: error, agentId: agent.id }, "Failed to sync selected skill symlinks");
+    }
+  }
+
+  private defaultEnabledMcpServerIds(): readonly string[] | undefined {
+    if (!this.mcpStore) return undefined;
+    try {
+      return normalizeSelectionIds(
+        this.mcpStore
+          .list()
+          .filter((server) => server.enabled)
+          .map((server) => server.id),
+      );
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to load shared MCP defaults");
+      return undefined;
+    }
+  }
+
+  private defaultEnabledSkillIds(): readonly string[] | undefined {
+    if (!this.skillStore) return undefined;
+    try {
+      return normalizeSelectionIds(
+        this.skillStore
+          .list()
+          .filter((skill) => skill.enabled && Boolean(skill.content?.trim()))
+          .map((skill) => skill.id),
+      );
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to load shared skill defaults");
+      return undefined;
+    }
+  }
+
+  private async resolveSharedSkillPrompt(
+    agent: LiveManagedAgent,
+    prompt: AgentPromptInput,
+  ): Promise<AgentPromptInput> {
+    if (!this.skillStore || typeof prompt !== "string") return prompt;
+    if (!parseSlashInvocation(prompt)) return prompt;
+    this.syncSharedSkills({ ensureNativeDirs: true });
+
+    let providerCommands: AgentSlashCommand[] = [];
+    if (agent.session.listCommands) {
+      try {
+        providerCommands = await agent.session.listCommands();
+      } catch (error) {
+        this.logger.debug(
+          { err: error, agentId: agent.id },
+          "Failed to load provider commands before shared skill resolution",
+        );
+      }
+    }
+
+    try {
+      return resolveSharedSkillInvocation(
+        prompt,
+        this.skillStore.list(),
+        providerCommands,
+        this.selectedSkillIdsByAgent.get(agent.id),
+      );
+    } catch (error) {
+      this.logger.warn({ err: error, agentId: agent.id }, "Failed to resolve shared skill prompt");
+      return prompt;
+    }
   }
 
   private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {

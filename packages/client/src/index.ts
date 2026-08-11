@@ -31,11 +31,17 @@ import type {
   WaitForFinishResult,
 } from "./daemon-client.js";
 
-/**
- * Coding turns routinely run for minutes, so the handle waits far longer than
- * the transport's own conservative default.
- */
-const DEFAULT_WAIT_FOR_FINISH_MS = 10 * 60_000;
+export { DaemonClient };
+export type {
+  DaemonClientConfig,
+  DaemonEvent,
+  BrowserAutomationExecuteRequestMessage,
+  BrowserAutomationExecuteResponseMessage,
+  ConfigureLarkChannelOptions,
+  DeleteLarkBotOptions,
+  WebSocketFactory,
+  WebSocketLike,
+} from "./daemon-client.js";
 
 export type ConnectionState =
   | { status: "idle" }
@@ -216,6 +222,8 @@ export interface PaseoAgentSendOptions {
   messageId?: string;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: SendAgentMessageRequest["attachments"];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export interface PaseoAgentRunOptions extends PaseoAgentSendOptions {

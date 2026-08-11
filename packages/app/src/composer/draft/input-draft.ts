@@ -39,6 +39,7 @@ interface AgentInputDraftComposerOptions {
 interface UseAgentInputDraftInput {
   draftKey: DraftKeyInput;
   composer?: AgentInputDraftComposerOptions;
+  initialAssistantId?: string | null;
 }
 
 type DraftComposerState = UseAgentFormStateResult & {
@@ -48,6 +49,8 @@ type DraftComposerState = UseAgentFormStateResult & {
   featureValues: Record<string, unknown> | undefined;
   agentControls: DraftAgentControlsProps;
   commandDraftConfig: DraftCommandConfig | undefined;
+  assistantId: string | null;
+  setAssistantId: (id: string | null) => void;
 };
 
 export interface AgentInputDraft {
@@ -59,6 +62,8 @@ export interface AgentInputDraft {
   isHydrated: boolean;
   attachmentFocusRequestId: number;
   composerState: DraftComposerState | null;
+  assistantId: string | null;
+  setAssistantId: (id: string | null) => void;
 }
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
@@ -78,15 +83,12 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       }),
     [formState.selectedServerId, input.draftKey],
   );
-  const draftRecord = useDraftStore((state) => state.drafts[draftKey]);
-  const draft = useMemo(() => toDraftInputIfReady(draftRecord), [draftRecord]);
-  const attachmentFocusRequestId = useDraftStore(
-    (state) => state.attachmentFocusRequestByDraftKey[draftKey] ?? 0,
-  );
-  const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
-  const text = draft?.text ?? "";
-  const attachments = draft?.attachments ?? [];
-  const isHydrated = hydratedDraftKey === draftKey;
+  const [text, setText] = useState("");
+  const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const initialAssistantId = input.initialAssistantId ?? null;
+  const draftGenerationRef = useRef(0);
+  const hydratedGenerationRef = useRef(0);
 
   const saveDraft = useCallback(
     (
@@ -185,6 +187,19 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [effectiveModelId, providerSelection],
   );
 
+  const [assistantId, setAssistantId] = useState<string | null>(initialAssistantId);
+
+  // Sync assistantId from the agent's labels when it becomes available.
+  // This handles the case where the user selected an assistant on the workspace
+  // creation page and the agent was created with that assistantId in its labels.
+  // We only set it when assistantId is currently null to avoid overriding the
+  // user's explicit selection in the chat page.
+  useEffect(() => {
+    if (initialAssistantId && !assistantId) {
+      setAssistantId(initialAssistantId);
+    }
+  }, [initialAssistantId, assistantId]);
+
   const workingDir = lockedWorkingDir || formState.workingDir;
   const {
     features: draftFeatures,
@@ -238,6 +253,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         onSetFeature: setDraftFeatureValue,
       }),
       commandDraftConfig,
+      assistantId,
+      setAssistantId,
     };
   }, [
     commandDraftConfig,
@@ -249,6 +266,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     formState,
     setDraftFeatureValue,
     workingDir,
+    assistantId,
   ]);
 
   return {
@@ -260,6 +278,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     isHydrated,
     attachmentFocusRequestId,
     composerState,
+    assistantId,
+    setAssistantId,
   };
 }
 

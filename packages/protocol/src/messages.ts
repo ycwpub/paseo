@@ -57,7 +57,147 @@ import {
   BrowserAutomationExecuteRequestSchema,
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
+import {
+  AssistantChangedMessageSchema,
+  AssistantCreateRequestSchema,
+  AssistantCreateResponseSchema,
+  AssistantDeleteRequestSchema,
+  AssistantDeleteResponseSchema,
+  AssistantListRequestSchema,
+  AssistantListResponseSchema,
+  AssistantUpdateRequestSchema,
+  AssistantUpdateResponseSchema,
+} from "./assistant/rpc-schemas.js";
+import {
+  LarkChannelApprovePairingRequestSchema,
+  LarkChannelApprovePairingResponseSchema,
+  LarkChannelConfigureRequestSchema,
+  LarkChannelConfigureResponseSchema,
+  LarkChannelDeleteBotRequestSchema,
+  LarkChannelDeleteBotResponseSchema,
+  LarkChannelGetStatusRequestSchema,
+  LarkChannelGetStatusResponseSchema,
+  LarkChannelRejectPairingRequestSchema,
+  LarkChannelRejectPairingResponseSchema,
+  LarkChannelRevokeUserRequestSchema,
+  LarkChannelRevokeUserResponseSchema,
+  LarkChannelSetEnabledRequestSchema,
+  LarkChannelSetEnabledResponseSchema,
+  LarkChannelStatusChangedMessageSchema,
+  LarkChannelTestConnectionRequestSchema,
+  LarkChannelTestConnectionResponseSchema,
+} from "./channel/lark/rpc-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
+import {
+  TeamListRequestSchema,
+  TeamCreateRequestSchema,
+  TeamUpdateRequestSchema,
+  TeamDeleteRequestSchema,
+  TeamGetRequestSchema,
+  TeamSendRunRequestSchema,
+  TeamRunStateRequestSchema,
+} from "./team/rpc-schemas.js";
+import {
+  McpListRequestSchema,
+  McpCreateRequestSchema,
+  McpUpdateRequestSchema,
+  McpDeleteRequestSchema,
+  McpTestConnectionRequestSchema,
+} from "./mcp/rpc-schemas.js";
+import {
+  SkillListRequestSchema,
+  SkillCreateRequestSchema,
+  SkillUpdateRequestSchema,
+  SkillDeleteRequestSchema,
+} from "./skill/rpc-schemas.js";
+import {
+  TeamListResponseSchema,
+  TeamCreateResponseSchema,
+  TeamUpdateResponseSchema,
+  TeamDeleteResponseSchema,
+  TeamGetResponseSchema,
+  TeamChangedMessageSchema,
+  TeamSendRunResponseSchema,
+  TeamRunStateResponseSchema,
+} from "./team/rpc-schemas.js";
+import {
+  McpListResponseSchema,
+  McpCreateResponseSchema,
+  McpUpdateResponseSchema,
+  McpDeleteResponseSchema,
+  McpTestConnectionResponseSchema,
+  McpChangedMessageSchema,
+} from "./mcp/rpc-schemas.js";
+import {
+  SkillListResponseSchema,
+  SkillCreateResponseSchema,
+  SkillUpdateResponseSchema,
+  SkillDeleteResponseSchema,
+  SkillChangedMessageSchema,
+} from "./skill/rpc-schemas.js";
+export {
+  LarkChannelAuthorizedUserSchema,
+  LarkChannelBotSchema,
+  LarkChannelBotStatusSchema,
+  LarkChannelConnectionStatusSchema,
+  LarkChannelDomainSchema,
+  LarkChannelPendingPairingSchema,
+  LarkChannelStatusSchema,
+  LarkChannelTargetSchema,
+  type LarkChannelAuthorizedUser,
+  type LarkChannelBot,
+  type LarkChannelBotStatus,
+  type LarkChannelConnectionStatus,
+  type LarkChannelDomain,
+  type LarkChannelPendingPairing,
+  type LarkChannelStatus,
+  type LarkChannelTarget,
+} from "./channel/lark/types.js";
+export {
+  AssistantCreateInputSchema,
+  AssistantMemoryDetailFileSchema,
+  AssistantMemoryFilesSchema,
+  AssistantSchema,
+  AssistantUpdateInputSchema,
+  type Assistant,
+  type AssistantCreateInput,
+  type AssistantMemoryDetailFile,
+  type AssistantMemoryFiles,
+  type AssistantUpdateInput,
+} from "./assistant/types.js";
+export {
+  TeamSchema,
+  TeamCreateInputSchema,
+  TeamUpdateInputSchema,
+  TeamAssistantSchema,
+  type Team,
+  type TeamCreateInput,
+  type TeamUpdateInput,
+  type TeamAssistant,
+  type TeammateRole,
+  type TeammateStatus,
+  type WorkspaceMode,
+} from "./team/types.js";
+export {
+  McpServerSchema,
+  McpTransportSchema,
+  McpToolSchema,
+  McpServerCreateInputSchema,
+  McpServerUpdateInputSchema,
+  type McpServer,
+  type McpTransport,
+  type McpTool,
+  type McpServerCreateInput,
+  type McpServerUpdateInput,
+} from "./mcp/types.js";
+export {
+  SkillSchema,
+  SkillCreateInputSchema,
+  SkillUpdateInputSchema,
+  type Skill,
+  type SkillCreateInput,
+  type SkillUpdateInput,
+} from "./skill/types.js";
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -1221,6 +1361,10 @@ export const SendAgentMessageRequestSchema = z.object({
   messageId: z.string().optional(), // Client-provided ID for deduplication
   images: z.array(ImageAttachmentSchema).optional(),
   attachments: AgentAttachmentsSchema,
+  /** Conversation-scoped MCP servers selected by the composer. Undefined keeps daemon defaults. */
+  selectedMcpServerIds: z.array(z.string()).optional(),
+  /** Conversation-scoped skills selected by the composer. Undefined keeps daemon defaults. */
+  selectedSkillIds: z.array(z.string()).optional(),
 });
 
 export const WaitForFinishRequestSchema = z.object({
@@ -1360,6 +1504,7 @@ export const CreateAgentRequestMessageSchema = z.object({
   callerAgentId: z.string().optional(),
   worktreeName: z.string().optional(),
   initialPrompt: z.string().optional(),
+  assistantId: z.string().optional(),
   clientMessageId: z.string().optional(),
   outputSchema: z.record(z.string(), z.unknown()).optional(),
   images: z.array(ImageAttachmentSchema).optional(),
@@ -2702,6 +2847,18 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
+  AssistantListRequestSchema,
+  AssistantCreateRequestSchema,
+  AssistantUpdateRequestSchema,
+  AssistantDeleteRequestSchema,
+  LarkChannelGetStatusRequestSchema,
+  LarkChannelConfigureRequestSchema,
+  LarkChannelDeleteBotRequestSchema,
+  LarkChannelTestConnectionRequestSchema,
+  LarkChannelSetEnabledRequestSchema,
+  LarkChannelApprovePairingRequestSchema,
+  LarkChannelRejectPairingRequestSchema,
+  LarkChannelRevokeUserRequestSchema,
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
@@ -2866,6 +3023,22 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
+  TeamListRequestSchema,
+  TeamCreateRequestSchema,
+  TeamUpdateRequestSchema,
+  TeamDeleteRequestSchema,
+  TeamGetRequestSchema,
+  TeamSendRunRequestSchema,
+  TeamRunStateRequestSchema,
+  McpListRequestSchema,
+  McpCreateRequestSchema,
+  McpUpdateRequestSchema,
+  McpDeleteRequestSchema,
+  McpTestConnectionRequestSchema,
+  SkillListRequestSchema,
+  SkillCreateRequestSchema,
+  SkillUpdateRequestSchema,
+  SkillDeleteRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -3142,6 +3315,14 @@ export const ServerInfoStatusPayloadSchema = z
         agentProfiles: z.boolean().optional(),
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
+        // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
+        larkChannel: z.boolean().optional(),
+        // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
+        assistants: z.boolean().optional(),
+        // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
+        mcpServers: z.boolean().optional(),
+        // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
+        skills: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5650,6 +5831,20 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentUpdateSchema,
   HubExecutionAgentStreamSchema,
   BrowserAutomationExecuteRequestSchema,
+  AssistantListResponseSchema,
+  AssistantCreateResponseSchema,
+  AssistantUpdateResponseSchema,
+  AssistantDeleteResponseSchema,
+  AssistantChangedMessageSchema,
+  LarkChannelGetStatusResponseSchema,
+  LarkChannelConfigureResponseSchema,
+  LarkChannelDeleteBotResponseSchema,
+  LarkChannelTestConnectionResponseSchema,
+  LarkChannelSetEnabledResponseSchema,
+  LarkChannelApprovePairingResponseSchema,
+  LarkChannelRejectPairingResponseSchema,
+  LarkChannelRevokeUserResponseSchema,
+  LarkChannelStatusChangedMessageSchema,
   ActivityLogMessageSchema,
   AssistantChunkMessageSchema,
   AudioOutputMessageSchema,
@@ -5825,6 +6020,25 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopStopResponseSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
+  TeamListResponseSchema,
+  TeamCreateResponseSchema,
+  TeamUpdateResponseSchema,
+  TeamDeleteResponseSchema,
+  TeamGetResponseSchema,
+  TeamChangedMessageSchema,
+  TeamSendRunResponseSchema,
+  TeamRunStateResponseSchema,
+  McpListResponseSchema,
+  McpCreateResponseSchema,
+  McpUpdateResponseSchema,
+  McpDeleteResponseSchema,
+  McpTestConnectionResponseSchema,
+  McpChangedMessageSchema,
+  SkillListResponseSchema,
+  SkillCreateResponseSchema,
+  SkillUpdateResponseSchema,
+  SkillDeleteResponseSchema,
+  SkillChangedMessageSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;

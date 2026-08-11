@@ -32,13 +32,13 @@ const SECTION_LABELS = {
 export type SettingsSection = keyof typeof SECTION_LABELS;
 
 type HostSection =
-  | "projects"
   | "connections"
-  | "pair-device"
   | "agents"
   | "metadata"
+  | "assistants"
   | "workspaces"
   | "providers"
+  | "channels"
   | "usage"
   | "terminals"
   | "host";

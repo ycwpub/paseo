@@ -513,8 +513,12 @@ export const HOST_SECTION_SLUGS = [
   "pair-device",
   "agents",
   "metadata",
+  "assistants",
+  "mcp",
+  "skills",
   "workspaces",
   "providers",
+  "channels",
   "usage",
   "terminals",
   "host",
@@ -525,6 +529,7 @@ export type HostSectionSlug = (typeof HOST_SECTION_SLUGS)[number];
 const LEGACY_HOST_SECTION_SLUGS: Record<string, HostSectionSlug> = {
   orchestration: "agents",
   daemon: "host",
+  tools: "mcp",
 };
 
 export function isHostSectionSlug(value: string): value is HostSectionSlug {

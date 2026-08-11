@@ -969,6 +969,12 @@ function ChatAgentContent({
     () => buildChatAgentFromState(agentState, projectPlacement),
     [agentState, projectPlacement],
   );
+  const agentAssistantId = useSessionStore((state) => {
+    if (!agentId) return null;
+    const session = state.sessions[serverId];
+    const ag = session?.agents?.get(agentId) ?? session?.agentDetails?.get(agentId);
+    return ag?.labels?.assistantId ?? null;
+  });
   const continuity = useMemo<AgentScreenContinuity>(() => {
     if (!hasActiveCreateHandoff || !agentId) {
       return { kind: "none" };
@@ -1167,6 +1173,7 @@ function ChatAgentContent({
       onAttentionInputFocus={attentionController.clearOnInputFocus}
       onAttentionPromptSend={attentionController.clearOnPromptSend}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
+      agentAssistantId={agentAssistantId}
     />
   );
 }
@@ -1193,6 +1200,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onAttentionInputFocus,
   onAttentionPromptSend,
   onOpenWorkspaceFile,
+  agentAssistantId,
 }: {
   serverId: string;
   agentId: string;
@@ -1215,6 +1223,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
+  agentAssistantId: string | null;
 }) {
   const { t } = useTranslation();
   const rawAgentInputDraft = useAgentInputDraft({
@@ -1222,6 +1231,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       serverId,
       agentId,
     }),
+    initialAssistantId: agentAssistantId,
   });
   // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
   // when only toast state changes (which does not affect any draft field).
@@ -1232,8 +1242,9 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     setAttachments,
     clear,
     isHydrated,
-    attachmentFocusRequestId,
     composerState,
+    assistantId,
+    setAssistantId,
   } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
@@ -1245,6 +1256,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       isHydrated,
       attachmentFocusRequestId,
       composerState,
+      assistantId,
+      setAssistantId,
     }),
     [
       text,
@@ -1253,8 +1266,9 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setAttachments,
       clear,
       isHydrated,
-      attachmentFocusRequestId,
       composerState,
+      assistantId,
+      setAssistantId,
     ],
   );
   const streamSection = (
@@ -1643,6 +1657,8 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        assistantId={agentInputDraft.assistantId}
+        onAssistantSelect={agentInputDraft.setAssistantId}
       />
     </ReanimatedAnimated.View>
   );

@@ -876,6 +876,7 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     model: input.composerState.effectiveModelId || null,
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     featureValues: input.composerState.featureValues ?? {},
+    assistantId: input.composerState.assistantId ?? null,
   };
 }
 
@@ -1019,7 +1020,19 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
     model: composerState.effectiveModelId || null,
     thinkingOptionId: composerState.effectiveThinkingOptionId || null,
     featureValues: composerState.featureValues,
-    target: { kind: "draft", draftId },
+    target: {
+      kind: "draft",
+      draftId,
+      setup: {
+        provider,
+        cwd: workspaceDirectory,
+        modeId: composerState.selectedMode || null,
+        model: composerState.effectiveModelId || null,
+        thinkingOptionId: composerState.effectiveThinkingOptionId || null,
+        featureValues: composerState.featureValues ?? {},
+        assistantId: composerState.assistantId ?? null,
+      },
+    },
   };
 }
 
@@ -2290,62 +2303,33 @@ export function NewWorkspaceScreen({
             <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
           </View>
           {formStack}
-          {isTerminalLaunch ? (
-            <Composer
-              externalKeyboardShift
-              inputMode="terminal"
-              readOnly={!terminalTakesPrompt}
-              placeholder={terminalPlaceholder}
-              submitLabel={terminalSubmitLabel}
-              agentId={draftKey}
-              serverId={selectedServerId}
-              isPaneFocused={true}
-              onSubmitMessage={handleSubmitTerminalLaunch}
-              allowEmptySubmit={true}
-              submitButtonAccessibilityLabel={t("newWorkspace.launch.submit")}
-              submitButtonTestID="new-workspace-launch-submit"
-              isSubmitLoading={isPending}
-              submitBehavior="preserve-and-lock"
-              blurOnSubmit={true}
-              value={terminalComposerValue}
-              onChangeText={setTerminalPromptText}
-              attachments={NO_TERMINAL_ATTACHMENTS}
-              onChangeAttachments={noopChangeAttachments}
-              cwd={selectedSourceDirectory ?? ""}
-              clearDraft={noopClearDraft}
-              autoFocus={terminalTakesPrompt}
-              autoFocusKey={launchFocusKey}
-            />
-          ) : (
-            <Composer
-              externalKeyboardShift
-              agentId={draftKey}
-              serverId={selectedServerId}
-              isPaneFocused={true}
-              onSubmitMessage={handleSubmitNewWorkspace}
-              allowEmptySubmit={true}
-              submitButtonAccessibilityLabel={t("newWorkspace.create")}
-              submitButtonTestID="workspace-create-submit"
-              submitIcon="return"
-              isSubmitLoading={isPending}
-              waitForGithubAutoAttachOnSubmit
-              submitBehavior="preserve-and-lock"
-              blurOnSubmit={true}
-              value={chatDraft.text}
-              onChangeText={chatDraft.setText}
-              attachments={chatDraft.attachments}
-              attachmentScopeKeys={visibleDraftContextScopeKeys}
-              onChangeAttachments={chatDraft.setAttachments}
-              onGithubPrDetected={handleGithubPrDetected}
-              onGithubPrAutoAttach={handleGithubPrAutoAttach}
-              cwd={selectedSourceDirectory ?? ""}
-              clearDraft={handleClearDraft}
-              autoFocus
-              autoFocusKey={launchFocusKey}
-              commandDraftConfig={composerState?.commandDraftConfig}
-              agentControls={agentControlsWithDisabled}
-            />
-          )}
+          <Composer
+            externalKeyboardShift
+            agentId={draftKey}
+            serverId={selectedServerId}
+            isPaneFocused={true}
+            onSubmitMessage={handleSubmitNewWorkspace}
+            allowEmptySubmit={true}
+            submitButtonAccessibilityLabel={t("newWorkspace.create")}
+            submitButtonTestID="workspace-create-submit"
+            submitIcon="return"
+            isSubmitLoading={isPending}
+            submitBehavior="preserve-and-lock"
+            blurOnSubmit={true}
+            value={chatDraft.text}
+            onChangeText={chatDraft.setText}
+            attachments={chatDraft.attachments}
+            attachmentScopeKeys={visibleDraftContextScopeKeys}
+            onChangeAttachments={chatDraft.setAttachments}
+            cwd={selectedSourceDirectory ?? ""}
+            clearDraft={handleClearDraft}
+            autoFocus
+            commandDraftConfig={composerState?.commandDraftConfig}
+            agentControls={agentControlsWithDisabled}
+            footer={composerFooter}
+            assistantId={chatDraft.assistantId}
+            onAssistantSelect={chatDraft.setAssistantId}
+          />
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </ReanimatedAnimated.View>
       </View>

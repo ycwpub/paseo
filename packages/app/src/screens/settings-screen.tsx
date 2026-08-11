@@ -36,6 +36,8 @@ import {
   SquareTerminal,
   Code2,
   Smartphone,
+  MessageCircle,
+  Wrench,
   Sparkles,
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
@@ -104,6 +106,10 @@ import {
   HostAgentsPage,
   HostSettingsPage,
   HostProvidersPage,
+  HostAssistantsPage,
+  HostMcpPage,
+  HostSkillsPage,
+  HostChannelsPage,
   HostUsagePage,
   HostWorkspacesPage,
   HostTerminalsPage,
@@ -187,8 +193,12 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
+  { id: "assistants", labelKey: "settings.hostSections.assistants", icon: Bot },
+  { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
+  { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
+  { id: "channels", labelKey: "settings.hostSections.channels", icon: MessageCircle },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
   { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
 ];
@@ -208,10 +218,18 @@ function renderHostSettingsContent(
       return <HostAgentsPage serverId={view.serverId} />;
     case "metadata":
       return <MetadataGenerationPage serverId={view.serverId} />;
+    case "assistants":
+      return <HostAssistantsPage serverId={view.serverId} />;
+    case "mcp":
+      return <HostMcpPage serverId={view.serverId} />;
+    case "skills":
+      return <HostSkillsPage serverId={view.serverId} />;
     case "workspaces":
       return <HostWorkspacesPage serverId={view.serverId} />;
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
+    case "channels":
+      return <HostChannelsPage serverId={view.serverId} />;
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
     case "terminals":

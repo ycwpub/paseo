@@ -131,6 +131,11 @@ export interface SendPromptToAgentParams {
   prompt: AgentPromptInput;
   messageId?: string;
   runOptions?: AgentRunOptions;
+  /** Optional MCP/skill selection to apply to this conversation before the run starts. */
+  sessionResourceSelection?: {
+    selectedMcpServerIds?: readonly string[];
+    selectedSkillIds?: readonly string[];
+  };
   /** Optional mode to set on the agent before the run starts. */
   sessionMode?: string;
   /**
@@ -196,6 +201,13 @@ export async function sendPromptToAgent(
     agentStorage: params.agentStorage,
     logger: params.logger,
   });
+
+  if (params.sessionResourceSelection) {
+    await params.agentManager.applySessionResourceSelection(
+      params.agentId,
+      params.sessionResourceSelection,
+    );
+  }
 
   if (params.sessionMode) {
     await params.agentManager.setAgentMode(params.agentId, params.sessionMode);

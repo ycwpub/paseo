@@ -21,6 +21,8 @@ export interface QueuedComposerMessage {
   id: string;
   text: string;
   attachments: ComposerAttachment[];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export interface AttachmentPersister {
@@ -50,6 +52,8 @@ export interface ComposerSendClient {
       messageId: string;
       images: Array<{ data: string; mimeType: string }>;
       attachments: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
+      selectedMcpServerIds?: string[];
+      selectedSkillIds?: string[];
     },
   ) => Promise<void>;
   uploadFile: (input: { fileName: string; mimeType: string; bytes: Uint8Array }) => Promise<{
@@ -175,7 +179,9 @@ export interface DispatchComposerAgentMessageInput {
   encodeImages: (
     images: AttachmentMetadata[],
   ) => Promise<Array<{ data: string; mimeType: string }> | undefined>;
-  submission: MessageSubmissionWriter;
+  stream: AgentStreamWriter;
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export async function dispatchComposerAgentMessage(
@@ -192,13 +198,40 @@ export async function dispatchComposerAgentMessage(
     images: wirePayload.images,
     attachments: wirePayload.attachments,
   });
-  input.submission.begin(input.agentId, userMessage);
-  try {
-    const imagesData = await input.encodeImages(wirePayload.images);
-    await input.client.sendAgentMessage(input.agentId, input.text, {
-      messageId: clientMessageId,
-      images: imagesData ?? [],
-      attachments: wirePayload.attachments,
+  appendUserMessageToStream(input.agentId, userMessage, input.stream);
+  const imagesData = await input.encodeImages(wirePayload.images);
+  await input.client.sendAgentMessage(input.agentId, input.text, {
+    messageId,
+    images: imagesData ?? [],
+    attachments: wirePayload.attachments,
+    selectedMcpServerIds: input.selectedMcpServerIds,
+    selectedSkillIds: input.selectedSkillIds,
+  });
+}
+
+function appendUserMessageToStream(
+  agentId: string,
+  userMessage: UserMessageItem,
+  stream: AgentStreamWriter,
+): void {
+  const result = appendOptimisticUserMessageToStream({
+    tail: stream.getTail(agentId) ?? [],
+    head: stream.getHead(agentId) ?? [],
+    message: userMessage,
+    placement: "active-head",
+  });
+  if (result.changedHead) {
+    stream.setHead((prev) => {
+      const next = new Map(prev);
+      next.set(agentId, result.head);
+      return next;
+    });
+  }
+  if (result.changedTail) {
+    stream.setTail((prev) => {
+      const next = new Map(prev);
+      next.set(agentId, result.tail);
+      return next;
     });
     input.submission.accept(input.agentId, clientMessageId);
   } catch (error) {
@@ -212,6 +245,8 @@ export interface QueueComposerMessageInput {
   agentId: string;
   text: string;
   attachments: ComposerAttachment[];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
   queue: QueueWriter;
 }
 
@@ -228,6 +263,8 @@ export function queueComposerMessage(input: QueueComposerMessageInput): QueueCom
     id: generateMessageId(),
     text: trimmed,
     attachments: input.attachments,
+    selectedMcpServerIds: input.selectedMcpServerIds,
+    selectedSkillIds: input.selectedSkillIds,
   };
   input.queue.write((prev) => {
     const next = new Map(prev);
@@ -246,6 +283,8 @@ export interface EditQueuedComposerMessageInput {
 export interface EditQueuedComposerMessageResult {
   text: string;
   attachments: UserComposerAttachment[];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export function editQueuedComposerMessage(
@@ -264,6 +303,8 @@ export function editQueuedComposerMessage(
   return {
     text: item.text,
     attachments: userAttachmentsOnly(item.attachments),
+    selectedMcpServerIds: item.selectedMcpServerIds,
+    selectedSkillIds: item.selectedSkillIds,
   };
 }
 
@@ -271,7 +312,12 @@ export interface SendQueuedComposerMessageNowInput {
   agentId: string;
   messageId: string;
   queue: QueueWriter;
-  submitMessage: (input: { text: string; attachments: ComposerAttachment[] }) => Promise<void>;
+  submitMessage: (input: {
+    text: string;
+    attachments: ComposerAttachment[];
+    selectedMcpServerIds?: string[];
+    selectedSkillIds?: string[];
+  }) => Promise<void>;
   failedToSendMessage?: string;
 }
 
@@ -294,7 +340,12 @@ export async function sendQueuedComposerMessageNow(
     return next;
   });
   try {
-    await input.submitMessage({ text: item.text, attachments: item.attachments });
+    await input.submitMessage({
+      text: item.text,
+      attachments: item.attachments,
+      selectedMcpServerIds: item.selectedMcpServerIds,
+      selectedSkillIds: item.selectedSkillIds,
+    });
     return { status: "submitted" };
   } catch (error) {
     input.queue.write((prev) => {

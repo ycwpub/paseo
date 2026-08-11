@@ -216,6 +216,15 @@ import {
   type HubRelationshipRemote,
 } from "./hub/relationship-remote.js";
 import { DaemonExecutions } from "./hub/daemon-executions.js";
+import { LarkChannelStore } from "./channels/lark/lark-channel-store.js";
+import { OfficialLarkChannelClientAdapter } from "./channels/lark/lark-client-adapter.js";
+import { LarkChannelService } from "./channels/lark/lark-channel-service.js";
+import { AssistantStore } from "./assistants/assistant-store.js";
+import { TeamStore } from "./team/team-store.js";
+import { McpStore } from "./mcp/mcp-store.js";
+import { SkillMaterializer } from "./skill/skill-materializer.js";
+import { SkillStore } from "./skill/skill-store.js";
+import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -612,6 +621,8 @@ export async function createPaseoDaemon(
   const workspaceSetupRuntime = new WorkspaceSetupRuntime();
   const configuredHostnames = config.hostnames ?? config.allowedHosts;
   let wsServer: VoiceAssistantWebSocketServer | null = null;
+  let larkChannelService: LarkChannelService;
+  let assistantStore: AssistantStore;
   let serviceProxyListenTarget: ListenTarget | null = null;
   const scriptHealthMonitor = new ScriptHealthMonitor({
     serviceProxy,
@@ -828,6 +839,28 @@ export async function createPaseoDaemon(
     extraClients: config.agentClients,
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
+  const mcpStore = new McpStore({ paseoHome: config.paseoHome, logger });
+  const skillMaterializer = new SkillMaterializer({ paseoHome: config.paseoHome, logger });
+  const skillStore = new SkillStore({
+    paseoHome: config.paseoHome,
+    logger,
+    onChanged: (skills) => skillMaterializer.sync(skills),
+  });
+  try {
+    importProviderResourcesOnStartup({
+      paseoHome: config.paseoHome,
+      mcpStore,
+      skillStore,
+      logger,
+    });
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to import provider MCP servers and skills during startup");
+  }
+  try {
+    skillMaterializer.sync(skillStore.list());
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to sync skill symlinks during daemon startup");
+  }
   const agentManager = new AgentManager({
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
@@ -837,6 +870,9 @@ export async function createPaseoDaemon(
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
     mcpAuthToken: agentMcpAuthToken,
+    mcpStore,
+    skillStore,
+    skillMaterializer,
     logger,
   });
 
@@ -1141,6 +1177,38 @@ export async function createPaseoDaemon(
       }),
   });
 
+  const larkChannelStore = new LarkChannelStore({ paseoHome: config.paseoHome, logger });
+  assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
+  const teamStore = new TeamStore({ paseoHome: config.paseoHome, logger });
+  larkChannelService = new LarkChannelService({
+    store: larkChannelStore,
+    adapter: new OfficialLarkChannelClientAdapter({ logger }),
+    agentManager,
+    agentStorage,
+    createAgent,
+    assistantStore,
+    logger,
+    host: {
+      emitStatusChanged: (status) => {
+        wsServer?.broadcast(
+          wrapSessionMessage({
+            type: "channel.lark.status_changed",
+            payload: { status },
+          }),
+        );
+      },
+    },
+  });
+
+  const loopService = new LoopService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    createAgent,
+    ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
+  });
+  await loopService.initialize();
+  logger.info({ elapsed: elapsed() }, "Loop service initialized");
   const createScheduleLocalWorkspaceExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
@@ -1557,7 +1625,11 @@ export async function createPaseoDaemon(
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
               hubRelationships,
-              workspaceSetupRuntime,
+              larkChannelService,
+              assistantStore,
+              teamStore,
+              mcpStore,
+              skillStore,
             );
             relayRuntime = createRelayRuntime({
               config: {
@@ -1600,6 +1672,7 @@ export async function createPaseoDaemon(
       // model loading doesn't block the server from accepting connections.
       speechService.start();
       scriptHealthMonitor.start();
+      await larkChannelService.start();
     } catch (error) {
       await serviceProxy.stopStandalone().catch(() => undefined);
       if (mainStarted) {
@@ -1613,6 +1686,7 @@ export async function createPaseoDaemon(
   const stop = async () => {
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
+    await larkChannelService.stop().catch(() => undefined);
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();

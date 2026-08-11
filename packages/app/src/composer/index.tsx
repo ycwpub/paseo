@@ -32,6 +32,8 @@ import {
   Image as ImageIcon,
   ClipboardPaste,
   Paperclip,
+  Sparkles,
+  Wrench,
 } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import Animated from "react-native-reanimated";
@@ -76,6 +78,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
+import { AssistantSelector } from "@/composer/assistant-selector/assistant-selector";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import {
   useHostRuntimeAgentDirectoryStatus,
@@ -119,6 +122,8 @@ import { AttachmentLightbox } from "@/components/attachment-lightbox";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useForgeSearchQuery } from "@/git/use-forge-search-query";
+import { useMcpServers } from "@/hooks/use-mcp-servers";
+import { useSkills } from "@/hooks/use-skills";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { getForgePresentation } from "@/git/forge";
@@ -288,6 +293,8 @@ function resolveContextWindowPlacement(
   return reserveSlot ? <View style={styles.contextWindowMeterSlot}>{meter}</View> : null;
 }
 
+const noopAssistantSelect = (_id: string | null) => {};
+
 interface RenderLeftContentArgs {
   agentControls: DraftAgentControlsProps | undefined;
   agentId: string;
@@ -295,23 +302,40 @@ interface RenderLeftContentArgs {
   focusInput: () => void;
   isCompactLayout: boolean;
   isPaneFocused: boolean;
-  showAgentControls: boolean;
+  assistantId: string | null | undefined;
+  onAssistantSelect: ((id: string | null) => void) | undefined;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
   const { agentControls, agentId, serverId, focusInput, isCompactLayout, isPaneFocused } = args;
-  if (!args.showAgentControls) return null;
+  const assistantId = args.assistantId ?? null;
+  const onAssistantSelect = args.onAssistantSelect ?? noopAssistantSelect;
+  const assistantSelector = (
+    <AssistantSelector
+      serverId={serverId}
+      selectedAssistantId={assistantId}
+      onSelect={onAssistantSelect}
+    />
+  );
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
-    return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
+    return (
+      <View style={styles.leftContentRow}>
+        <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />
+        {assistantSelector}
+      </View>
+    );
   }
   return (
-    <AgentControls
-      agentId={agentId}
-      serverId={serverId}
-      isPaneFocused={isPaneFocused}
-      onDropdownClose={focusInput}
-      isCompactLayout={isCompactLayout}
-    />
+    <View style={styles.leftContentRow}>
+      <AgentControls
+        agentId={agentId}
+        serverId={serverId}
+        isPaneFocused={isPaneFocused}
+        onDropdownClose={focusInput}
+        isCompactLayout={isCompactLayout}
+      />
+      {assistantSelector}
+    </View>
   );
 }
 
@@ -327,6 +351,28 @@ interface RenderAttachmentTrayArgs {
     openGithub: (kind: string, numberLabel: string) => string;
     removeGithub: (kind: string, numberLabel: string) => string;
   };
+}
+
+interface SessionResourceSelection {
+  selectedMcpServerIds: string[];
+  selectedSkillIds: string[];
+}
+
+function renderComposerFooter(
+  footer: ReactNode,
+  footerInlineContent: ReactNode,
+): ReactElement | null {
+  if (!footer && !footerInlineContent) return null;
+  return (
+    <View style={styles.footer}>
+      <View style={styles.footerContent}>
+        <View style={styles.footerLeft}>
+          {footer}
+          {footerInlineContent}
+        </View>
+      </View>
+    </View>
+  );
 }
 
 function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | null {
@@ -743,43 +789,6 @@ function FileAttachmentPill({
   );
 }
 
-interface WorkspaceFileAttachmentPillProps {
-  attachment: WorkspaceFileComposerAttachment;
-  index: number;
-  disabled: boolean;
-  onRemove: (index: number) => void;
-  removeLabel: string;
-}
-
-function WorkspaceFileAttachmentPill({
-  attachment,
-  index,
-  disabled,
-  onRemove,
-  removeLabel,
-}: WorkspaceFileAttachmentPillProps) {
-  const handleRemove = useCallback(() => {
-    onRemove(index);
-  }, [index, onRemove]);
-  const fileName = attachment.path.split("/").pop() ?? attachment.path;
-  return (
-    <AttachmentPill
-      testID="composer-workspace-file-attachment-pill"
-      onOpen={noopCallback}
-      onRemove={handleRemove}
-      openAccessibilityLabel={fileName}
-      removeAccessibilityLabel={removeLabel}
-      disabled={disabled}
-    >
-      <AttachmentLabel
-        icon={filePillIcon}
-        title={fileName}
-        subtitle={getWorkspaceFileAttachmentSubtitle(attachment)}
-      />
-    </AttachmentPill>
-  );
-}
-
 interface GithubPickerOptionProps {
   label: string;
   testID: string;
@@ -816,6 +825,33 @@ function GithubPickerOption({
       selected={selected}
       active={active}
       onPress={handlePress}
+      leadingSlot={leadingSlot}
+    />
+  );
+}
+
+function ResourcePickerOption({
+  option,
+  selected,
+  active,
+  onPress,
+  kind,
+}: {
+  option: ComboboxOption;
+  selected: boolean;
+  active: boolean;
+  onPress: () => void;
+  kind: "mcp" | "skill";
+}) {
+  const leadingSlot = kind === "mcp" ? mcpOptionIcon : skillOptionIcon;
+  return (
+    <ComboboxItem
+      testID={`composer-${kind}-resource-option-${option.id}`}
+      label={option.label}
+      description={option.description}
+      selected={selected}
+      active={active}
+      onPress={onPress}
       leadingSlot={leadingSlot}
     />
   );
@@ -875,18 +911,10 @@ interface ComposerProps {
   externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
-  /**
-   * What this composer is for. Terminal drops the chat-agent affordances and
-   * uses the terminal font; see `@/composer/input-mode`. Callers set the mode
-   * and nothing else — never branch on it at the call site.
-   */
-  inputMode?: ComposerInputMode;
-  /** Renders `value` as static text on the same surface, for content there is nothing to type into. */
-  readOnly?: boolean;
-  /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
-  submitLabel?: string;
-  /** Overrides the mode's default placeholder, for text only the caller can build. */
-  placeholder?: string;
+  /** Selected assistant ID for the current draft, if any. */
+  assistantId?: string | null;
+  /** Called when the user selects or clears an assistant. */
+  onAssistantSelect?: (id: string | null) => void;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -1074,10 +1102,8 @@ export function Composer({
   inputWrapperStyle,
   externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
-  inputMode = "chat",
-  readOnly = false,
-  submitLabel,
-  placeholder,
+  assistantId,
+  onAssistantSelect: setAssistantId,
 }: ComposerProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -1148,6 +1174,53 @@ export function Composer({
     onPullRequestDetected: onGithubPrDetected,
     onPullRequestAdded: onGithubPrAutoAttach,
   });
+  const mcpCatalog = useMcpServers(serverId, { enabled: isConnected });
+  const skillCatalog = useSkills(serverId, { enabled: isConnected });
+  const selectableMcpServers = useMemo(
+    () => mcpCatalog.servers.filter((server) => server.enabled),
+    [mcpCatalog.servers],
+  );
+  const selectableSkills = useMemo(
+    () => skillCatalog.skills.filter((skill) => skill.enabled && Boolean(skill.content?.trim())),
+    [skillCatalog.skills],
+  );
+  const [selectedMcpServerIds, setSelectedMcpServerIds] = useState<string[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [isMcpPickerOpen, setIsMcpPickerOpen] = useState(false);
+  const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
+  const resourceSelectionInitializedForRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const key = `${serverId}:${agentId}`;
+    if (resourceSelectionInitializedForRef.current === key) return;
+    if (!isConnected || mcpCatalog.isLoading || skillCatalog.isLoading) return;
+    setSelectedMcpServerIds(selectableMcpServers.map((server) => server.id));
+    setSelectedSkillIds(selectableSkills.map((skill) => skill.id));
+    resourceSelectionInitializedForRef.current = key;
+  }, [
+    agentId,
+    isConnected,
+    mcpCatalog.isLoading,
+    selectableMcpServers,
+    selectableSkills,
+    serverId,
+    skillCatalog.isLoading,
+  ]);
+
+  useEffect(() => {
+    const available = new Set(selectableMcpServers.map((server) => server.id));
+    setSelectedMcpServerIds((current) => current.filter((id) => available.has(id)));
+  }, [selectableMcpServers]);
+
+  useEffect(() => {
+    const available = new Set(selectableSkills.map((skill) => skill.id));
+    setSelectedSkillIds((current) => current.filter((id) => available.has(id)));
+  }, [selectableSkills]);
+
+  const sessionResourceSelection = useMemo<SessionResourceSelection>(
+    () => ({ selectedMcpServerIds, selectedSkillIds }),
+    [selectedMcpServerIds, selectedSkillIds],
+  );
   const [cursorIndex, setCursorIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -1229,7 +1302,13 @@ export function Composer({
   const { pickFiles } = useFilePicker();
   const agentIdRef = useRef(agentId);
   const sendAgentMessageRef = useRef<
-    ((agentId: string, text: string, attachments: ComposerAttachment[]) => Promise<void>) | null
+    | ((
+        agentId: string,
+        text: string,
+        attachments: ComposerAttachment[],
+        selection: SessionResourceSelection,
+      ) => Promise<void>)
+    | null
   >(null);
   const onSubmitMessageRef = useRef(onSubmitMessage);
 
@@ -1281,16 +1360,26 @@ export function Composer({
   }, [focusInput, onFocusInput]);
 
   const submitMessage = useCallback(
-    async (text: string, submitAttachments: ComposerAttachment[]) => {
+    async (
+      text: string,
+      submitAttachments: ComposerAttachment[],
+      selection: SessionResourceSelection,
+    ) => {
       onMessageSent?.();
       if (onSubmitMessageRef.current) {
-        await onSubmitMessageRef.current({ text, attachments: submitAttachments, cwd });
+        await onSubmitMessageRef.current({
+          text,
+          attachments: submitAttachments,
+          cwd,
+          selectedMcpServerIds: selection.selectedMcpServerIds,
+          selectedSkillIds: selection.selectedSkillIds,
+        });
         return;
       }
       if (!sendAgentMessageRef.current) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
-      await sendAgentMessageRef.current(agentIdRef.current, text, submitAttachments);
+      await sendAgentMessageRef.current(agentIdRef.current, text, submitAttachments, selection);
     },
     [cwd, onMessageSent, t],
   );
@@ -1304,6 +1393,7 @@ export function Composer({
       targetAgentId: string,
       text: string,
       sendAttachments: ComposerAttachment[],
+      selection: SessionResourceSelection,
     ) => {
       if (!client) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
@@ -1317,7 +1407,9 @@ export function Composer({
           supportsForgeAttachments: supportsForgeSearch,
         }),
         encodeImages,
-        submission: createMessageSubmissionWriter(serverId),
+        stream,
+        selectedMcpServerIds: selection.selectedMcpServerIds,
+        selectedSkillIds: selection.selectedSkillIds,
       });
       onAttentionPromptSend?.();
     };
@@ -1347,11 +1439,17 @@ export function Composer({
   );
 
   const queueMessage = useCallback(
-    (queuedMessage: string, queuedAttachments: ComposerAttachment[]) => {
+    (
+      queuedMessage: string,
+      queuedAttachments: ComposerAttachment[],
+      selection: SessionResourceSelection,
+    ) => {
       const result = queueComposerMessage({
         agentId,
         text: queuedMessage,
         attachments: queuedAttachments,
+        selectedMcpServerIds: selection.selectedMcpServerIds,
+        selectedSkillIds: selection.selectedSkillIds,
         queue: queueWriter,
       });
       if (!result.queued) return;
@@ -1376,6 +1474,7 @@ export function Composer({
       outgoingMessage: string,
       outgoingAttachments: ComposerAttachment[],
       forceSend?: boolean,
+      selection: SessionResourceSelection = sessionResourceSelection,
     ) => {
       const result = await submitAgentInput({
         message: outgoingMessage,
@@ -1389,13 +1488,10 @@ export function Composer({
         // transport is disconnected, because the parent decides the failure mode.
         canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
         queueMessage: ({ message: queuedText, attachments: queuedAttachments }) => {
-          queueMessage(queuedText, queuedAttachments);
+          queueMessage(queuedText, queuedAttachments, selection);
         },
         submitMessage: async ({ message: submitText, attachments: submitAttachments }) => {
-          if (submitBehavior !== "preserve-and-lock") {
-            beginSubmit(submitAttachments);
-          }
-          await submitMessage(submitText, submitAttachments);
+          await submitMessage(submitText, submitAttachments, selection);
         },
         clearDraft,
         setUserInput,
@@ -1422,6 +1518,7 @@ export function Composer({
       hasExternalContent,
       isAgentRunning,
       queueMessage,
+      sessionResourceSelection,
       setSelectedAttachments,
       setUserInput,
       submitBehavior,
@@ -1444,7 +1541,12 @@ export function Composer({
       if (blurOnSubmit) {
         messageInputRef.current?.blur();
       }
-      void sendMessageWithContent(payload.text, outgoingAttachments, payload.forceSend);
+      void sendMessageWithContent(
+        payload.text,
+        outgoingAttachments,
+        payload.forceSend,
+        sessionResourceSelection,
+      );
     },
     [
       attachments,
@@ -1452,6 +1554,7 @@ export function Composer({
       buildOutgoingAttachments,
       runClientSlashCommand,
       sendMessageWithContent,
+      sessionResourceSelection,
     ],
   );
 
@@ -1688,6 +1791,12 @@ export function Composer({
       if (!result) return;
       setUserInput(result.text);
       setSelectedAttachments(result.attachments);
+      if (result.selectedMcpServerIds) {
+        setSelectedMcpServerIds(result.selectedMcpServerIds);
+      }
+      if (result.selectedSkillIds) {
+        setSelectedSkillIds(result.selectedSkillIds);
+      }
     },
     [agentId, queueWriter, setSelectedAttachments, setUserInput],
   );
@@ -1700,15 +1809,23 @@ export function Composer({
         agentId,
         messageId: id,
         queue: queueWriter,
-        submitMessage: ({ text, attachments: queuedAttachments }) =>
-          submitMessage(text, queuedAttachments),
+        submitMessage: ({
+          text,
+          attachments: queuedAttachments,
+          selectedMcpServerIds: queuedMcpIds,
+          selectedSkillIds: queuedSkillIds,
+        }) =>
+          submitMessage(text, queuedAttachments, {
+            selectedMcpServerIds: queuedMcpIds ?? selectedMcpServerIds,
+            selectedSkillIds: queuedSkillIds ?? selectedSkillIds,
+          }),
         failedToSendMessage: t("composer.errors.failedToSend"),
       });
       if (result.status === "failed") {
         setSendError(result.errorMessage);
       }
     },
-    [agentId, queueWriter, submitMessage, t],
+    [agentId, queueWriter, selectedMcpServerIds, selectedSkillIds, submitMessage, t],
   );
 
   const handleQueue = useCallback(
@@ -1721,9 +1838,15 @@ export function Composer({
       if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
         return;
       }
-      queueMessage(payload.text, outgoingAttachments);
+      queueMessage(payload.text, outgoingAttachments, sessionResourceSelection);
     },
-    [attachments, buildOutgoingAttachments, queueMessage, runClientSlashCommand],
+    [
+      attachments,
+      buildOutgoingAttachments,
+      queueMessage,
+      runClientSlashCommand,
+      sessionResourceSelection,
+    ],
   );
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
@@ -1890,8 +2013,39 @@ export function Composer({
     [githubSearchItems, githubSearchQueryTrimmed],
   );
 
-  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(() => {
-    const items: AttachmentMenuItem[] = [
+  const mcpOptions: ComboboxOption[] = useMemo(
+    () =>
+      selectableMcpServers.map((server) => ({
+        id: server.id,
+        label: server.name,
+        description: server.description ?? server.transport.type,
+      })),
+    [selectableMcpServers],
+  );
+  const skillOptions: ComboboxOption[] = useMemo(
+    () =>
+      selectableSkills.map((skill) => ({
+        id: skill.id,
+        label: skill.name,
+        description: skill.description ?? "Skill",
+      })),
+    [selectableSkills],
+  );
+  const selectedMcpIdSet = useMemo(() => new Set(selectedMcpServerIds), [selectedMcpServerIds]);
+  const selectedSkillIdSet = useMemo(() => new Set(selectedSkillIds), [selectedSkillIds]);
+  const toggleMcpServerSelection = useCallback((id: string) => {
+    setSelectedMcpServerIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  }, []);
+  const toggleSkillSelection = useCallback((id: string) => {
+    setSelectedSkillIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+  }, []);
+
+  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(
+    () => [
       {
         id: "image",
         label: t("composer.attachments.addImage"),
@@ -1923,6 +2077,24 @@ export function Composer({
         },
       },
       {
+        id: "mcp",
+        label: t("composer.attachments.selectMcpServers"),
+        icon: <ThemedWrench size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        disabled: mcpCatalog.isLoading || selectableMcpServers.length === 0,
+        onSelect: () => {
+          setIsMcpPickerOpen(true);
+        },
+      },
+      {
+        id: "skills",
+        label: t("composer.attachments.selectSkills"),
+        icon: <ThemedSparkles size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
+        disabled: skillCatalog.isLoading || selectableSkills.length === 0,
+        onSelect: () => {
+          setIsSkillPickerOpen(true);
+        },
+      },
+      {
         id: "file",
         label: t("composer.attachments.addFile"),
         icon: <ThemedPaperclip size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
@@ -1930,9 +2102,18 @@ export function Composer({
           void handlePickFile();
         },
       },
-    );
-    return items;
-  }, [forgePresentation, handlePasteImage, handlePickFile, handlePickImage, t]);
+    ],
+    [
+      handlePickImage,
+      handlePickFile,
+      t,
+      forgePresentation,
+      mcpCatalog.isLoading,
+      selectableMcpServers.length,
+      skillCatalog.isLoading,
+      selectableSkills.length,
+    ],
+  );
 
   const handleToggleGithubItem = useCallback(
     (item: ForgeSearchItem) => {
@@ -1963,16 +2144,18 @@ export function Composer({
         focusInput,
         isCompactLayout,
         isPaneFocused,
-        showAgentControls: mode.showAgentControls,
+        assistantId: assistantId ?? null,
+        onAssistantSelect: setAssistantId ?? noopAssistantSelect,
       }),
     [
       agentControls,
       agentId,
+      assistantId,
       focusInput,
       isCompactLayout,
       isPaneFocused,
-      mode.showAgentControls,
       serverId,
+      setAssistantId,
     ],
   );
 
@@ -2028,6 +2211,49 @@ export function Composer({
       );
     },
     [githubSearchItems, selectedAttachments, handleToggleGithubItem],
+  );
+
+  const renderMcpPickerOption = useCallback(
+    ({
+      option,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => (
+      <ResourcePickerOption
+        option={option}
+        selected={selectedMcpIdSet.has(option.id)}
+        active={active}
+        onPress={onPress}
+        kind="mcp"
+      />
+    ),
+    [selectedMcpIdSet],
+  );
+  const renderSkillPickerOption = useCallback(
+    ({
+      option,
+      active,
+      onPress,
+    }: {
+      option: ComboboxOption;
+      selected: boolean;
+      active: boolean;
+      onPress: () => void;
+    }) => (
+      <ResourcePickerOption
+        option={option}
+        selected={selectedSkillIdSet.has(option.id)}
+        active={active}
+        onPress={onPress}
+        kind="skill"
+      />
+    ),
+    [selectedSkillIdSet],
   );
 
   const composerContainerStyle = useMemo(
@@ -2165,9 +2391,6 @@ export function Composer({
                 onHeightChange={onComposerHeightChange}
                 inputWrapperStyle={inputWrapperStyle}
                 attachmentSlot={attachmentTray}
-                inputMode={inputMode}
-                readOnly={readOnly}
-                submitLabel={submitLabel}
               />
               <Combobox
                 options={githubSearchOptions}
@@ -2189,6 +2412,36 @@ export function Composer({
                 emptyText={githubEmptyText}
                 renderOption={renderGithubPickerOption}
               />
+              <Combobox
+                options={mcpOptions}
+                value=""
+                onSelect={toggleMcpServerSelection}
+                keepOpenOnSelect
+                searchable
+                searchPlaceholder={t("composer.attachments.searchMcpServers")}
+                title={t("composer.attachments.mcpPickerTitle")}
+                open={isMcpPickerOpen}
+                onOpenChange={setIsMcpPickerOpen}
+                desktopPlacement="top-start"
+                anchorRef={attachButtonRef}
+                emptyText={t("composer.attachments.noMcpServers")}
+                renderOption={renderMcpPickerOption}
+              />
+              <Combobox
+                options={skillOptions}
+                value=""
+                onSelect={toggleSkillSelection}
+                keepOpenOnSelect
+                searchable
+                searchPlaceholder={t("composer.attachments.searchSkills")}
+                title={t("composer.attachments.skillPickerTitle")}
+                open={isSkillPickerOpen}
+                onOpenChange={setIsSkillPickerOpen}
+                desktopPlacement="top-start"
+                anchorRef={attachButtonRef}
+                emptyText={t("composer.attachments.noSkills")}
+                renderOption={renderSkillPickerOption}
+              />
             </View>
           </View>
         </View>
@@ -2202,9 +2455,12 @@ const animatedStaticStyles = RNStyleSheet.create({
     flexDirection: "column",
     position: "relative",
   },
-});
-
-const styles = StyleSheet.create((theme: Theme) => ({
+  leftContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    flexShrink: 1,
+  },
   borderSeparator: {
     height: theme.borderWidth[1],
     backgroundColor: theme.colors.border,
@@ -2336,6 +2592,8 @@ const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);
 const ThemedPaperclip = withUnistyles(Paperclip);
+const ThemedSparkles = withUnistyles(Sparkles);
+const ThemedWrench = withUnistyles(Wrench);
 const ThemedImageIcon = withUnistyles(ImageIcon);
 const ThemedClipboardPaste = withUnistyles(ClipboardPaste);
 const ThemedFileText = withUnistyles(FileText);
@@ -2356,3 +2614,7 @@ const githubIssuePillIcon = (
   <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
 );
 const filePillIcon = <ThemedFileText size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />;
+const mcpOptionIcon = <ThemedWrench size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />;
+const skillOptionIcon = (
+  <ThemedSparkles size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
+);

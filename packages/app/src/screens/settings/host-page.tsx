@@ -72,6 +72,10 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
+import { LarkChannelSection } from "./channels/lark-channel-section";
+import { AssistantsSection } from "./assistants/assistants-section";
+import { McpSection } from "./mcp/mcp-section";
+import { SkillsSection } from "./skills/skills-section";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -328,6 +332,62 @@ export function HostProvidersPage({ serverId }: { serverId: string }) {
   return (
     <View>
       <ProvidersSection serverId={serverId} />
+    </View>
+  );
+}
+
+export function HostAssistantsPage({ serverId }: { serverId: string }) {
+  const host = useHostProfile(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      <AssistantsSection serverId={serverId} />
+    </View>
+  );
+}
+
+export function HostMcpPage({ serverId }: { serverId: string }) {
+  const host = useHostProfile(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      <McpSection serverId={serverId} />
+    </View>
+  );
+}
+
+export function HostSkillsPage({ serverId }: { serverId: string }) {
+  const host = useHostProfile(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      <SkillsSection serverId={serverId} />
+    </View>
+  );
+}
+
+export function HostChannelsPage({ serverId }: { serverId: string }) {
+  const host = useHostProfile(serverId);
+
+  if (!host) {
+    return <HostNotFound />;
+  }
+
+  return (
+    <View>
+      <LarkChannelSection serverId={serverId} />
     </View>
   );
 }

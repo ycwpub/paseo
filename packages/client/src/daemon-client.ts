@@ -25,6 +25,7 @@ import {
   SkillUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
+import { DaemonResourceRpcClient } from "./daemon-resource-rpc-client.js";
 import type {
   AgentStreamEventPayload,
   AgentSnapshotPayload,
@@ -1379,6 +1380,7 @@ interface PingProbe {
 }
 
 export class DaemonClient {
+  private readonly resourceRpc: DaemonResourceRpcClient;
   private transport: DaemonTransport | null = null;
   private transportCleanup: Array<() => void> = [];
   private directUpgradeTransport: DaemonTransport | null = null;
@@ -1443,6 +1445,14 @@ export class DaemonClient {
   private consecutiveLivenessFailures = 0;
 
   constructor(private config: DaemonClientConfig) {
+    this.resourceRpc = new DaemonResourceRpcClient((params) =>
+      this.sendCorrelatedSessionRequest({
+        requestId: params.requestId,
+        message: params.message,
+        responseType: params.responseType as CorrelatedResponseType,
+        timeout: params.timeout,
+      }),
+    );
     this.logger = config.logger ?? consoleLogger;
     this.logConnectionPath = isRelayClientWebSocketUrl(this.config.url) ? "relay" : "direct";
     let parsedUrlForLog: URL | null = null;
@@ -5799,98 +5809,58 @@ export class DaemonClient {
   }
 
   async listAssistants(options?: AssistantRequestOptions): Promise<AssistantListPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"assistant.list.response">({
-      requestId: options?.requestId,
-      message: { type: "assistant.list.request" },
-    });
+    return this.resourceRpc.listAssistants(options);
   }
 
   async createAssistant(options: CreateAssistantOptions): Promise<AssistantCreatePayload> {
-    const { requestId, ...assistant } = options;
-    return this.sendNamespacedCorrelatedSessionRequest<"assistant.create.response">({
-      requestId,
-      message: { type: "assistant.create.request", assistant },
-    });
+    return this.resourceRpc.createAssistant(options);
   }
 
   async updateAssistant(options: UpdateAssistantOptions): Promise<AssistantUpdatePayload> {
-    const { requestId, ...assistant } = options;
-    return this.sendNamespacedCorrelatedSessionRequest<"assistant.update.response">({
-      requestId,
-      message: { type: "assistant.update.request", assistant },
-    });
+    return this.resourceRpc.updateAssistant(options);
   }
 
   async deleteAssistant(options: DeleteAssistantOptions): Promise<AssistantDeletePayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"assistant.delete.response">({
-      requestId: options.requestId,
-      message: { type: "assistant.delete.request", id: options.id },
-    });
+    return this.resourceRpc.deleteAssistant(options);
   }
 
-  // Team methods
   async listTeams(): Promise<{ teams: Team[]; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"team.list.response">({
-      message: { type: "team.list.request" },
-    });
-    return { teams: result.teams, error: result.error };
+    return this.resourceRpc.listTeams();
   }
 
   async createTeam(input: TeamCreateInput): Promise<{ team: Team | null; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"team.create.response">({
-      message: { type: "team.create.request", team: input },
-    });
-    return { team: result.team, error: result.error };
+    return this.resourceRpc.createTeam(input);
   }
 
   async updateTeam(input: TeamUpdateInput): Promise<{ team: Team | null; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"team.update.response">({
-      message: { type: "team.update.request", team: input },
-    });
-    return { team: result.team, error: result.error };
+    return this.resourceRpc.updateTeam(input);
   }
 
   async deleteTeam(id: string): Promise<{ ok: boolean; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"team.delete.response">({
-      message: { type: "team.delete.request", id },
-    });
-    return { ok: result.ok, error: result.error };
+    return this.resourceRpc.deleteTeam(id);
   }
 
-  // MCP methods
   async listMcpServers(options?: { refresh?: boolean }): Promise<{
     servers: McpServer[];
     error: string | null;
   }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"mcp.list.response">({
-      message: { type: "mcp.list.request", refresh: options?.refresh },
-    });
-    return { servers: result.servers, error: result.error };
+    return this.resourceRpc.listMcpServers(options);
   }
 
   async createMcpServer(
     input: McpServerCreateInput,
   ): Promise<{ server: McpServer | null; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"mcp.create.response">({
-      message: { type: "mcp.create.request", server: input },
-    });
-    return { server: result.server, error: result.error };
+    return this.resourceRpc.createMcpServer(input);
   }
 
   async updateMcpServer(
     input: McpServerUpdateInput,
   ): Promise<{ server: McpServer | null; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"mcp.update.response">({
-      message: { type: "mcp.update.request", server: input },
-    });
-    return { server: result.server, error: result.error };
+    return this.resourceRpc.updateMcpServer(input);
   }
 
   async deleteMcpServer(id: string): Promise<{ ok: boolean; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"mcp.delete.response">({
-      message: { type: "mcp.delete.request", id },
-    });
-    return { ok: result.ok, error: result.error };
+    return this.resourceRpc.deleteMcpServer(id);
   }
 
   async testMcpServerConnection(id: string): Promise<{
@@ -5898,166 +5868,83 @@ export class DaemonClient {
     tools?: { name: string; description?: string }[];
     error: string | null;
   }> {
-    const result =
-      await this.sendNamespacedCorrelatedSessionRequest<"mcp.test_connection.response">({
-        message: { type: "mcp.test_connection.request", id },
-      });
-    return { status: result.status, tools: result.tools, error: result.error };
+    return this.resourceRpc.testMcpServerConnection(id);
   }
 
-  // Skill methods
   async listSkills(options?: {
     refresh?: boolean;
   }): Promise<{ skills: Skill[]; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"skill.list.response">({
-      message: { type: "skill.list.request", refresh: options?.refresh },
-    });
-    return { skills: result.skills, error: result.error };
+    return this.resourceRpc.listSkills(options);
   }
 
   async createSkill(
     input: SkillCreateInput,
   ): Promise<{ skill: Skill | null; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"skill.create.response">({
-      message: { type: "skill.create.request", skill: input },
-    });
-    return { skill: result.skill, error: result.error };
+    return this.resourceRpc.createSkill(input);
   }
 
   async updateSkill(
     input: SkillUpdateInput,
   ): Promise<{ skill: Skill | null; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"skill.update.response">({
-      message: { type: "skill.update.request", skill: input },
-    });
-    return { skill: result.skill, error: result.error };
+    return this.resourceRpc.updateSkill(input);
   }
 
   async deleteSkill(id: string): Promise<{ ok: boolean; error: string | null }> {
-    const result = await this.sendNamespacedCorrelatedSessionRequest<"skill.delete.response">({
-      message: { type: "skill.delete.request", id },
-    });
-    return { ok: result.ok, error: result.error };
+    return this.resourceRpc.deleteSkill(id);
   }
 
   async getLarkChannelStatus(
     options?: LarkChannelRequestOptions,
   ): Promise<LarkChannelGetStatusPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.get_status.response">({
-      requestId: options?.requestId,
-      message: {
-        type: "channel.lark.get_status.request",
-      },
-    });
+    return this.resourceRpc.getLarkChannelStatus(options);
   }
 
   async applyLarkBot(options: ApplyLarkBotOptions = {}): Promise<LarkChannelApplyBotPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.apply_bot.response">({
-      requestId: options.requestId,
-      message: {
-        type: "channel.lark.apply_bot.request",
-        name: options.name,
-      },
-    });
+    return this.resourceRpc.applyLarkBot(options);
   }
 
   async getLarkBotApplication(
     options: GetLarkBotApplicationOptions,
   ): Promise<LarkChannelGetBotApplicationPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.get_bot_application.response">(
-      {
-        requestId: options.requestId,
-        message: {
-          type: "channel.lark.get_bot_application.request",
-          applicationId: options.applicationId,
-        },
-      },
-    );
+    return this.resourceRpc.getLarkBotApplication(options);
   }
 
   async configureLarkChannel(
     options: ConfigureLarkChannelOptions,
   ): Promise<LarkChannelConfigurePayload> {
-    const { requestId, ...messageOptions } = options;
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.configure.response">({
-      requestId,
-      message: {
-        type: "channel.lark.configure.request",
-        ...messageOptions,
-      },
-    });
+    return this.resourceRpc.configureLarkChannel(options);
   }
 
   async testLarkChannel(
     options?: LarkChannelRequestOptions,
   ): Promise<LarkChannelTestConnectionPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.test_connection.response">({
-      requestId: options?.requestId,
-      message: {
-        type: "channel.lark.test_connection.request",
-        botId: options?.botId,
-      },
-    });
+    return this.resourceRpc.testLarkChannel(options);
   }
 
   async deleteLarkChannelBot(options: DeleteLarkBotOptions): Promise<LarkChannelDeleteBotPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.delete_bot.response">({
-      requestId: options.requestId,
-      message: {
-        type: "channel.lark.delete_bot.request",
-        botId: options.botId,
-      },
-    });
+    return this.resourceRpc.deleteLarkChannelBot(options);
   }
 
   async setLarkChannelEnabled(
     options: SetLarkChannelEnabledOptions,
   ): Promise<LarkChannelSetEnabledPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.set_enabled.response">({
-      requestId: options.requestId,
-      message: {
-        type: "channel.lark.set_enabled.request",
-        botId: options.botId,
-        enabled: options.enabled,
-      },
-    });
+    return this.resourceRpc.setLarkChannelEnabled(options);
   }
 
   async approveLarkPairing(
     options: ApproveLarkPairingOptions,
   ): Promise<LarkChannelApprovePairingPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.approve_pairing.response">({
-      requestId: options.requestId,
-      message: {
-        type: "channel.lark.approve_pairing.request",
-        botId: options.botId,
-        code: options.code,
-      },
-    });
+    return this.resourceRpc.approveLarkPairing(options);
   }
 
   async rejectLarkPairing(
     options: RejectLarkPairingOptions,
   ): Promise<LarkChannelRejectPairingPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.reject_pairing.response">({
-      requestId: options.requestId,
-      message: {
-        type: "channel.lark.reject_pairing.request",
-        botId: options.botId,
-        code: options.code,
-      },
-    });
+    return this.resourceRpc.rejectLarkPairing(options);
   }
 
   async revokeLarkUser(options: RevokeLarkUserOptions): Promise<LarkChannelRevokeUserPayload> {
-    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.revoke_user.response">({
-      requestId: options.requestId,
-      message: {
-        type: "channel.lark.revoke_user.request",
-        botId: options.botId,
-        userId: options.userId,
-      },
-    });
+    return this.resourceRpc.revokeLarkUser(options);
   }
 
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {

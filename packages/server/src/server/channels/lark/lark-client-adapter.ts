@@ -20,6 +20,10 @@ export interface LarkThreadReplyResult {
   messageId: string | null;
 }
 
+export interface LarkMessageListOptions {
+  pageSize?: number;
+}
+
 export interface LarkChannelClientAdapter {
   testConnection(config: StoredLarkChannelConfig): Promise<LarkChannelBotInfo | null>;
   startEvents(
@@ -33,6 +37,12 @@ export interface LarkChannelClientAdapter {
     text: string,
   ): Promise<LarkThreadReplyResult>;
   replyInThread(config: StoredLarkChannelConfig, messageId: string, text: string): Promise<void>;
+  getMessage(config: StoredLarkChannelConfig, messageId: string): Promise<unknown | null>;
+  listThreadMessages(
+    config: StoredLarkChannelConfig,
+    threadId: string,
+    options?: LarkMessageListOptions,
+  ): Promise<unknown[]>;
 }
 
 function requireCredentials(config: StoredLarkChannelConfig): { appId: string; appSecret: string } {
@@ -55,7 +65,41 @@ function createClient(config: StoredLarkChannelConfig): lark.Client {
   });
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function recordString(
+  record: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  const value = record?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 function describeLarkError(error: unknown): Error {
+  const response = asRecord(asRecord(error)?.response);
+  const data = asRecord(response?.data);
+  const code = data?.code;
+  const msg = recordString(data, "msg");
+  const headers = asRecord(response?.headers);
+  const logId =
+    recordString(data, "log_id") ??
+    recordString(data, "logId") ??
+    recordString(headers, "x-tt-logid");
+  if (msg || typeof code === "number") {
+    return new Error(
+      [
+        "Lark API error",
+        msg ? `: ${msg}` : "",
+        typeof code === "number" ? ` (code: ${code})` : "",
+        logId ? ` log_id=${logId}` : "",
+      ].join(""),
+      { cause: error },
+    );
+  }
   if (error instanceof Error) {
     return error;
   }
@@ -64,8 +108,55 @@ function describeLarkError(error: unknown): Error {
 
 function assertSuccess(result: { code?: number; msg?: string }): void {
   if (typeof result.code === "number" && result.code !== 0) {
-    throw describeLarkError(new Error(result.msg ?? `Lark API returned code ${result.code}`));
+    throw new Error(
+      result.msg
+        ? `Lark API error: ${result.msg} (code: ${result.code})`
+        : `Lark API returned code ${result.code}`,
+    );
   }
+}
+
+const LARK_MESSAGE_LIST_MAX_PAGE_SIZE = 50;
+
+function wantsAllMessages(pageSize: number): boolean {
+  return pageSize <= 0 || !Number.isFinite(pageSize);
+}
+
+type LarkGetParams = Record<string, string | number | boolean | undefined>;
+interface LarkGetResult {
+  code?: number;
+  msg?: string;
+  data?: { items?: unknown[]; page_token?: string } & Record<string, unknown>;
+}
+
+async function larkGet(
+  client: lark.Client,
+  url: string,
+  params: LarkGetParams,
+): Promise<LarkGetResult> {
+  // The generated SDK message.list helper can attach an empty GET body. Some
+  // Feishu gateways reject that before the OpenAPI handler runs. Use the SDK's
+  // generic request path, matching botmux, so GETs are sent without a body while
+  // still using the SDK token/cache/auth plumbing.
+  try {
+    return (await (client as unknown as { request(input: unknown): Promise<unknown> }).request({
+      method: "GET",
+      url,
+      params,
+    })) as LarkGetResult;
+  } catch (error) {
+    throw describeLarkError(error);
+  }
+}
+
+function getPageSize(pageSize: number, unlimited: boolean): number {
+  return unlimited
+    ? LARK_MESSAGE_LIST_MAX_PAGE_SIZE
+    : Math.min(Math.max(Math.floor(pageSize), 1), LARK_MESSAGE_LIST_MAX_PAGE_SIZE);
+}
+
+function messageListItems(result: { data?: { items?: unknown[] } }): unknown[] {
+  return Array.isArray(result.data?.items) ? result.data.items : [];
 }
 
 export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapter {
@@ -184,5 +275,45 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       },
     });
     assertSuccess(result);
+  }
+
+  async getMessage(config: StoredLarkChannelConfig, messageId: string): Promise<unknown | null> {
+    const client = createClient(config);
+    const result = await larkGet(
+      client,
+      `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+      {},
+    );
+    assertSuccess(result);
+    return messageListItems(result)[0] ?? null;
+  }
+
+  async listThreadMessages(
+    config: StoredLarkChannelConfig,
+    threadId: string,
+    options: LarkMessageListOptions = {},
+  ): Promise<unknown[]> {
+    const client = createClient(config);
+    const pageSize = options.pageSize ?? 0;
+    const unlimited = wantsAllMessages(pageSize);
+    const items: unknown[] = [];
+    let pageToken: string | undefined;
+    do {
+      const result = await larkGet(client, "/open-apis/im/v1/messages", {
+        container_id_type: "thread",
+        container_id: threadId,
+        page_size: getPageSize(pageSize, unlimited),
+        sort_type: "ByCreateTimeAsc",
+        with_sender_name: "true",
+        ...(pageToken ? { page_token: pageToken } : {}),
+      });
+      assertSuccess(result);
+      items.push(...messageListItems(result));
+      pageToken = result.data?.page_token;
+      if (!unlimited && items.length >= pageSize) {
+        break;
+      }
+    } while (pageToken);
+    return unlimited ? items : items.slice(0, pageSize);
   }
 }

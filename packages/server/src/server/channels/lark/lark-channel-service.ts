@@ -18,21 +18,50 @@ import {
   type StoredLarkChannelConfig,
 } from "./lark-channel-store.js";
 import {
+  enrichLarkMessageEventFromApiMessage,
+  filterLarkTopicHistoryMessages,
   formatLarkUserPrompt,
+  formatLarkUserPromptWithTopicHistory,
   getLarkEventDedupeKey,
+  isLarkBotMentionEvent,
   splitLarkText,
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const EVENT_DEDUPE_TTL_MS = 5 * 60 * 1000;
-const THREAD_ACK_TEXT = "Received. Paseo is working on this topic…";
+const THREAD_ACK_TEXT = "收到消息，处理中";
 
 function formatLarkProcessingError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
   return String(error);
+}
+
+function getRawLarkMessageId(message: unknown): string | null {
+  if (!message || typeof message !== "object" || Array.isArray(message)) {
+    return null;
+  }
+  const record = message as Record<string, unknown>;
+  const value = record.message_id ?? record.messageId;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function dedupeLarkMessages(messages: unknown[]): unknown[] {
+  const seen = new Set<string>();
+  const result: unknown[] = [];
+  for (const message of messages) {
+    const id = getRawLarkMessageId(message);
+    if (id) {
+      if (seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+    }
+    result.push(message);
+  }
+  return result;
 }
 
 export type LarkChannelRequest = Extract<
@@ -62,6 +91,7 @@ interface PendingRelay {
   replyMessageId: string;
   lastAssistantMessage: string | null;
   hasSeenRunning: boolean;
+  mentionUserOpenId: string | null;
 }
 
 interface ResolvedLarkThread {
@@ -76,6 +106,40 @@ interface ResolvedLarkTarget {
   workspaceId: string | null;
   initialPrompt: string;
   assistantId: string | null;
+}
+
+interface LarkReplyMentionOptions {
+  openId: string | null;
+}
+
+const NO_REPLY_MENTION_PATTERNS = [
+  /(?:不要|不用|别|无需|不必)\s*(?:@|at|艾特|提及|tag|mention)/i,
+  /(?:不要|不用|别|无需|不必)\s*(?:再)?\s*(?:@|at|艾特|提及|tag|mention)\s*(?:我|这个人|用户)?/i,
+  /\b(?:no|dont|don't|do not|without)\s+(?:@|at|mention|tag)s?\b/i,
+];
+
+function shouldMentionLarkSender(event: NormalizedLarkMessageEvent): boolean {
+  if (!event.openId) {
+    return false;
+  }
+  return !NO_REPLY_MENTION_PATTERNS.some((pattern) => pattern.test(event.text));
+}
+
+function getLarkReplyMention(event: NormalizedLarkMessageEvent): LarkReplyMentionOptions {
+  return {
+    openId: shouldMentionLarkSender(event) ? event.openId : null,
+  };
+}
+
+function escapeLarkMentionAttribute(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function prefixLarkReplyMention(text: string, mention: LarkReplyMentionOptions | null): string {
+  if (!mention?.openId) {
+    return text;
+  }
+  return `<at user_id="${escapeLarkMentionAttribute(mention.openId)}"></at> ${text}`;
 }
 
 export class LarkChannelService {
@@ -253,19 +317,44 @@ export class LarkChannelService {
     if (!config.enabled) {
       return;
     }
+    if (!isLarkBotMentionEvent(event)) {
+      this.logger.debug(
+        {
+          botId,
+          chatId: event.chatId,
+          chatType: event.chatType,
+          messageId: event.messageId,
+        },
+        "Ignoring Lark group message without bot mention",
+      );
+      return;
+    }
+    const enrichedEvent = await this.enrichIncomingEvent(config, event);
+    if (!isLarkBotMentionEvent(enrichedEvent)) {
+      this.logger.debug(
+        {
+          botId,
+          chatId: enrichedEvent.chatId,
+          chatType: enrichedEvent.chatType,
+          messageId: enrichedEvent.messageId,
+        },
+        "Ignoring Lark group message without bot mention",
+      );
+      return;
+    }
     const user = this.store.findAuthorizedUser(botId, {
-      openId: event.openId,
-      unionId: event.unionId,
-      chatId: event.chatId,
+      openId: enrichedEvent.openId,
+      unionId: enrichedEvent.unionId,
+      chatId: enrichedEvent.chatId,
     });
     if (!user) {
       const createdAt = new Date(now).toISOString();
       const expiresAt = new Date(now + PAIRING_TTL_MS).toISOString();
       const pairing = this.store.upsertPendingPairing(botId, {
-        openId: event.openId,
-        unionId: event.unionId,
-        chatId: event.chatId,
-        displayName: event.displayName,
+        openId: enrichedEvent.openId,
+        unionId: enrichedEvent.unionId,
+        chatId: enrichedEvent.chatId,
+        displayName: enrichedEvent.displayName,
         createdAt,
         expiresAt,
       });
@@ -273,13 +362,13 @@ export class LarkChannelService {
       await this.sendTextSafe(
         botId,
         config,
-        event.chatId,
+        enrichedEvent.chatId,
         `Pairing requested. Open Paseo Settings > Channels and approve code ${pairing.code}.`,
       );
       return;
     }
 
-    const thread = await this.resolveThread(botId, config, event);
+    const thread = await this.resolveThread(botId, config, enrichedEvent);
     if (!thread) {
       return;
     }
@@ -290,34 +379,42 @@ export class LarkChannelService {
         config,
         replyMessageId,
         "Lark is connected, but provider and workspace are not configured. Open Paseo Settings > Channels to choose a provider, model, and workspace.",
+        { mention: getLarkReplyMention(enrichedEvent) },
       );
       return;
     }
 
-    const nowIso = new Date(now).toISOString();
-    const existing = this.store.findConversationByThread(botId, event.chatId, threadId);
+    const nowIso = new Date(enrichedEvent.createTime ?? now).toISOString();
+    const existing = this.store.findConversationByThread(botId, enrichedEvent.chatId, threadId);
     try {
       if (existing) {
         await this.relayToExistingAgent({
           botId,
           config,
-          event,
+          event: enrichedEvent,
           userId: user.id,
           threadId,
           replyMessageId,
           agentId: existing.agentId,
+          previousMentionAt: existing.lastInboundAt,
           nowIso,
         });
         return;
       }
 
+      const firstTopicThread = await this.acknowledgeFirstTopicMention({
+        config,
+        event: enrichedEvent,
+        thread,
+      });
       await this.createTopicAgent({
         botId,
         config,
-        event,
+        event: enrichedEvent,
         userId: user.id,
-        threadId,
-        replyMessageId,
+        threadId: firstTopicThread.threadId,
+        replyMessageId: firstTopicThread.replyMessageId,
+        previousMentionAt: null,
         nowIso,
       });
     } catch (error) {
@@ -334,6 +431,7 @@ export class LarkChannelService {
         config,
         replyMessageId,
         `Paseo failed to process this message: ${message}`,
+        { mention: getLarkReplyMention(enrichedEvent) },
       );
     }
   }
@@ -377,6 +475,7 @@ export class LarkChannelService {
     threadId: string;
     replyMessageId: string;
     agentId: string;
+    previousMentionAt: string | null;
     nowIso: string;
   }): Promise<void> {
     const lastAssistantMessage = await this.agentManager.getLastAssistantMessage(input.agentId);
@@ -388,6 +487,7 @@ export class LarkChannelService {
       replyMessageId: input.replyMessageId,
       lastAssistantMessage,
       hasSeenRunning: false,
+      mentionUserOpenId: getLarkReplyMention(input.event).openId,
     });
     this.store.recordThreadConversation(input.botId, {
       agentId: input.agentId,
@@ -398,11 +498,17 @@ export class LarkChannelService {
       title: input.event.topicName,
       now: input.nowIso,
     });
+    const prompt = await this.formatEventPromptWithHistory({
+      config: input.config,
+      event: input.event,
+      threadId: input.threadId,
+      previousMentionAt: input.previousMentionAt,
+    });
     await sendPromptToAgent({
       agentManager: this.agentManager,
       agentStorage: this.agentStorage,
       agentId: input.agentId,
-      prompt: formatLarkUserPrompt(input.event),
+      prompt,
       unarchive: true,
       logger: this.logger,
     });
@@ -415,15 +521,23 @@ export class LarkChannelService {
     userId: string;
     threadId: string;
     replyMessageId: string;
+    previousMentionAt: string | null;
     nowIso: string;
   }): Promise<void> {
-    const target = this.resolveTarget(input.config, input.event);
+    const prompt = await this.formatEventPromptWithHistory({
+      config: input.config,
+      event: input.event,
+      threadId: input.threadId,
+      previousMentionAt: input.previousMentionAt,
+    });
+    const target = this.resolveTarget(input.config, input.event, prompt);
     if (!target) {
       await this.sendThreadTextSafe(
         input.botId,
         input.config,
         input.replyMessageId,
         "Lark is connected, but the selected assistant or workspace target is not available. Open Paseo Settings > Channels to update the bot binding.",
+        { mention: getLarkReplyMention(input.event) },
       );
       return;
     }
@@ -468,6 +582,7 @@ export class LarkChannelService {
       replyMessageId: input.replyMessageId,
       lastAssistantMessage: null,
       hasSeenRunning: false,
+      mentionUserOpenId: getLarkReplyMention(input.event).openId,
     });
     await sendPromptToAgent({
       agentManager: this.agentManager,
@@ -482,6 +597,7 @@ export class LarkChannelService {
   private resolveTarget(
     config: StoredLarkChannelConfig,
     event: NormalizedLarkMessageEvent,
+    prompt: string = formatLarkUserPrompt(event),
   ): ResolvedLarkTarget | null {
     const target = config.target;
     if (target.kind === "workspace") {
@@ -493,7 +609,7 @@ export class LarkChannelService {
         model: target.model ?? null,
         cwd: target.cwd,
         workspaceId: target.workspaceId,
-        initialPrompt: formatLarkUserPrompt(event),
+        initialPrompt: prompt,
         assistantId: null,
       };
     }
@@ -509,9 +625,141 @@ export class LarkChannelService {
       model: target.model ?? null,
       cwd: target.cwd,
       workspaceId: target.workspaceId,
-      initialPrompt: buildAssistantInitialPrompt(assistant, formatLarkUserPrompt(event)),
+      initialPrompt: buildAssistantInitialPrompt(assistant, prompt),
       assistantId: assistant.id,
     };
+  }
+
+  private async enrichIncomingEvent(
+    config: StoredLarkChannelConfig,
+    event: NormalizedLarkMessageEvent,
+  ): Promise<NormalizedLarkMessageEvent> {
+    if (event.threadId && event.rootMessageId && event.createTime !== null) {
+      return event;
+    }
+    try {
+      const message = await this.adapter.getMessage(config, event.messageId);
+      const enriched = enrichLarkMessageEventFromApiMessage(event, message);
+      if (
+        enriched.threadId !== event.threadId ||
+        enriched.rootMessageId !== event.rootMessageId ||
+        enriched.createTime !== event.createTime
+      ) {
+        this.logger.info(
+          {
+            chatId: enriched.chatId,
+            messageId: enriched.messageId,
+            threadId: enriched.threadId,
+            rootMessageId: enriched.rootMessageId,
+            createTime: enriched.createTime,
+          },
+          "Enriched Lark message event from message.get",
+        );
+      }
+      return enriched;
+    } catch (error) {
+      this.logger.warn(
+        { err: error, chatId: event.chatId, messageId: event.messageId },
+        "Failed to enrich Lark message event from message.get",
+      );
+      return event;
+    }
+  }
+
+  private async acknowledgeFirstTopicMention(input: {
+    config: StoredLarkChannelConfig;
+    event: NormalizedLarkMessageEvent;
+    thread: ResolvedLarkThread;
+  }): Promise<ResolvedLarkThread> {
+    // When resolveThread had to create a thread, it already sent this ACK and
+    // returned the ACK message as the reply anchor. If Lark provided/resolved a
+    // topic id up front, still acknowledge the first @ in that topic before
+    // starting the agent so the user gets immediate feedback.
+    if (!input.event.threadId) {
+      return input.thread;
+    }
+    try {
+      const ack = await this.adapter.replyToMessageInThread(
+        input.config,
+        input.event.messageId,
+        THREAD_ACK_TEXT,
+      );
+      if (ack.threadId && ack.threadId !== input.thread.threadId) {
+        this.logger.warn(
+          {
+            expectedThreadId: input.thread.threadId,
+            ackThreadId: ack.threadId,
+            messageId: input.event.messageId,
+          },
+          "Lark first-topic ACK returned a different thread_id",
+        );
+      }
+      return {
+        threadId: input.thread.threadId,
+        replyMessageId: ack.messageId ?? input.thread.replyMessageId,
+      };
+    } catch (error) {
+      this.logger.warn(
+        { err: error, threadId: input.thread.threadId, messageId: input.event.messageId },
+        "Failed to send Lark first-topic ACK; continuing agent work",
+      );
+      return input.thread;
+    }
+  }
+
+  private async formatEventPromptWithHistory(input: {
+    config: StoredLarkChannelConfig;
+    event: NormalizedLarkMessageEvent;
+    threadId: string;
+    previousMentionAt: string | null;
+  }): Promise<string> {
+    if (!input.threadId) {
+      return formatLarkUserPrompt(input.event);
+    }
+    const messages: unknown[] = [];
+    let threadFetchError: unknown = null;
+    try {
+      messages.push(
+        ...(await this.adapter.listThreadMessages(input.config, input.threadId, {
+          pageSize: 0,
+        })),
+      );
+    } catch (error) {
+      threadFetchError = error;
+      this.logger.warn(
+        {
+          err: error,
+          chatId: input.event.chatId,
+          threadId: input.threadId,
+          rootMessageId: input.event.rootMessageId,
+          messageId: input.event.messageId,
+        },
+        "Failed to fetch Lark thread history",
+      );
+    }
+    const historyMessageCount = filterLarkTopicHistoryMessages({
+      event: input.event,
+      messages,
+      previousMentionAt: input.previousMentionAt,
+    }).length;
+    this.logger.info(
+      {
+        chatId: input.event.chatId,
+        threadId: input.threadId,
+        rootMessageId: input.event.rootMessageId,
+        messageId: input.event.messageId,
+        historyMessageCount,
+        previousMentionAt: input.previousMentionAt,
+        historyFetchSucceeded: !threadFetchError,
+      },
+      "Fetched Lark topic history for prompt",
+    );
+    return formatLarkUserPromptWithTopicHistory({
+      event: input.event,
+      threadId: input.threadId,
+      messages: dedupeLarkMessages(messages),
+      previousMentionAt: input.previousMentionAt,
+    });
   }
 
   private async resolveThread(
@@ -578,6 +826,7 @@ export class LarkChannelService {
         storedBot.config,
         relay.replyMessageId,
         event.agent.lastError ?? "Paseo agent failed.",
+        { mention: { openId: relay.mentionUserOpenId } },
       );
       return;
     }
@@ -591,7 +840,9 @@ export class LarkChannelService {
     if (!storedBot) {
       return;
     }
-    await this.sendThreadTextSafe(relay.botId, storedBot.config, relay.replyMessageId, text);
+    await this.sendThreadTextSafe(relay.botId, storedBot.config, relay.replyMessageId, text, {
+      mention: { openId: relay.mentionUserOpenId },
+    });
     this.store.markConversationOutbound(
       relay.botId,
       event.agent.id,
@@ -628,10 +879,16 @@ export class LarkChannelService {
     config: StoredLarkChannelConfig,
     replyMessageId: string,
     text: string,
+    options: { mention?: LarkReplyMentionOptions | null } = {},
   ): Promise<void> {
-    for (const chunk of splitLarkText(text)) {
+    const chunks = splitLarkText(text);
+    for (const [index, chunk] of chunks.entries()) {
       try {
-        await this.adapter.replyInThread(config, replyMessageId, chunk);
+        await this.adapter.replyInThread(
+          config,
+          replyMessageId,
+          index === 0 ? prefixLarkReplyMention(chunk, options.mention ?? null) : chunk,
+        );
       } catch (error) {
         this.logger.error(
           { err: error, messageId: replyMessageId },

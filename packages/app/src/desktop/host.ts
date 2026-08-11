@@ -108,6 +108,9 @@ export interface DesktopWindowBridge {
   toggleMaximize?: () => Promise<void>;
   setFullscreen?: (fullscreen: boolean) => Promise<void>;
   isFullscreen?: () => Promise<boolean>;
+  getName?: () => Promise<string>;
+  setName?: (name: string) => Promise<string>;
+  resetName?: () => Promise<string>;
   updateWindowControls?: (update: DesktopWindowControlsOverlayUpdate) => Promise<void>;
   onResized?: <TEvent = unknown>(
     handler: (event: TEvent) => void,
@@ -176,6 +179,7 @@ export interface DesktopInvokeBridge {
 
 export interface DesktopHostBridge {
   platform?: string;
+  deviceName?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
   agentNavigation?: DesktopAgentNavigationBridge;

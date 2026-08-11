@@ -40,6 +40,23 @@ export interface DesktopAppLogs {
   contents: string;
 }
 
+export interface DesktopPairingOffer {
+  relayEnabled: boolean;
+  url: string | null;
+  qr: string | null;
+  offers: DesktopRelayPairingOffer[];
+}
+
+export interface DesktopRelayPairingOffer {
+  endpoint: string;
+  useTls: boolean;
+  pairingBaseUrl: string | null;
+  url: string;
+  qr: string | null;
+}
+
+export const DESKTOP_DAEMON_PAIRING_QUERY_KEY = ["desktop-daemon-pairing"] as const;
+
 export interface LocalTransportTarget {
   [key: string]: unknown;
   transportType: "socket" | "pipe";
@@ -110,6 +127,34 @@ function parseDesktopDaemonLogs(raw: unknown): DesktopDaemonLogs {
   return {
     logPath: toStringOrNull(raw.logPath) ?? "",
     contents: typeof raw.contents === "string" ? raw.contents : "",
+  };
+}
+
+function parseDesktopPairingOffer(raw: unknown): DesktopPairingOffer {
+  if (!isRecord(raw)) {
+    throw new Error("Unexpected desktop daemon pairing response.");
+  }
+  return {
+    relayEnabled: raw.relayEnabled === true,
+    url: toStringOrNull(raw.url),
+    qr: toStringOrNull(raw.qr),
+    offers: Array.isArray(raw.offers)
+      ? raw.offers.flatMap((offer) => {
+          if (!isRecord(offer)) return [];
+          const endpoint = toStringOrNull(offer.endpoint);
+          const url = toStringOrNull(offer.url);
+          if (!endpoint || !url) return [];
+          return [
+            {
+              endpoint,
+              useTls: offer.useTls === true,
+              pairingBaseUrl: toStringOrNull(offer.pairingBaseUrl),
+              url,
+              qr: toStringOrNull(offer.qr),
+            },
+          ];
+        })
+      : [],
   };
 }
 

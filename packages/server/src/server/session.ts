@@ -2112,6 +2112,9 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
+      case "daemon.relay_history.delete.request":
+        this.daemonSession.handleDeleteRelayHistoryRequest(msg);
+        return undefined;
       case "hub.management.daemon.connect.request":
       case "hub.management.daemon.get_status.request":
       case "hub.management.daemon.disconnect.request":
@@ -2377,6 +2380,8 @@ export class Session {
   private dispatchChannelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "channel.lark.get_status.request":
+      case "channel.lark.apply_bot.request":
+      case "channel.lark.get_bot_application.request":
       case "channel.lark.configure.request":
       case "channel.lark.delete_bot.request":
       case "channel.lark.test_connection.request":
@@ -3391,6 +3396,8 @@ export class Session {
           paseoHome: this.paseoHome,
           worktreesRoot: this.worktreesRoot,
           providerSnapshotManager: this.providerSnapshotManager,
+          projectRegistry: this.projectRegistry,
+          workspaceRegistry: this.workspaceRegistry,
         },
         {
           kind: "session",
@@ -5788,7 +5795,7 @@ export class Session {
       for (const project of await this.projectRegistry.list()) {
         projectsBefore.set(project.projectId, project);
       }
-      const project = await this.workspaceProvisioning.findOrCreateProjectForDirectory(cwd);
+      const project = await this.workspaceProvisioning.createProjectForDirectory(cwd);
       this.sessionLogger.info(
         {
           requestedCwd,
@@ -5831,7 +5838,7 @@ export class Session {
         { parentPath: request.parentPath, name: request.name },
         {
           registerProject: (directoryPath) =>
-            this.workspaceProvisioning.findOrCreateProjectForDirectory(directoryPath),
+            this.workspaceProvisioning.createProjectForDirectory(directoryPath),
         },
       );
       this.emit({

@@ -47,6 +47,10 @@ const channelState = vi.hoisted(() => ({
     approvePairing: vi.fn(),
     rejectPairing: vi.fn(),
     revokeUser: vi.fn(),
+    application: null,
+    applyBot: vi.fn(),
+    refreshApplication: vi.fn(),
+    clearApplication: vi.fn(),
   },
 }));
 
@@ -83,6 +87,11 @@ vi.mock("./use-lark-channel", () => ({
     approvePairing: channelState.current.approvePairing,
     rejectPairing: channelState.current.rejectPairing,
     revokeUser: channelState.current.revokeUser,
+    application: channelState.current.application,
+    applyBot: channelState.current.applyBot,
+    refreshApplication: channelState.current.refreshApplication,
+    clearApplication: channelState.current.clearApplication,
+    isApplying: false,
     isMutating: false,
     mutationError: null,
   }),
@@ -254,17 +263,20 @@ vi.mock("@/components/ui/switch", () => ({
     value,
     onValueChange,
     disabled,
+    accessibilityLabel,
   }: {
     value: boolean;
     onValueChange: (value: boolean) => void;
     disabled?: boolean;
+    accessibilityLabel?: string;
   }) =>
     React.createElement("input", {
       type: "checkbox",
       checked: value,
       disabled,
-      onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-        onValueChange(event.currentTarget.checked),
+      "aria-label": accessibilityLabel,
+      onChange: () => undefined,
+      onClick: () => onValueChange(!value),
     }),
 }));
 
@@ -293,6 +305,11 @@ function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotS
     hasEncryptKey: false,
     hasVerificationToken: false,
     domain: "feishu",
+    substitute: {
+      enabled: false,
+      openId: null,
+      name: null,
+    },
     target: {
       kind: "assistant",
       assistantId: "assistant-1",
@@ -325,6 +342,7 @@ function makeStatus(
     hasVerificationToken: active.hasVerificationToken,
     domain: active.domain,
     target: active.target,
+    substitute: active.substitute,
     bot: active.bot,
     pendingPairings: active.pendingPairings,
     authorizedUsers: active.authorizedUsers,
@@ -334,11 +352,29 @@ function makeStatus(
 }
 
 describe("LarkChannelSection", () => {
+  test("starts the automatic Feishu bot application flow", async () => {
+    channelState.current.status = makeStatus([]);
+    channelState.current.applyBot.mockResolvedValue({
+      id: "application-1",
+      status: "starting",
+    });
+
+    render(<LarkChannelSection serverId="server-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "申请飞书机器人" }));
+
+    await waitFor(() => {
+      expect(channelState.current.applyBot).toHaveBeenCalledWith();
+    });
+  });
+
   afterEach(() => {
     cleanup();
     channelState.current.status = null;
     channelState.current.configure.mockReset();
     channelState.current.deleteBot.mockReset();
+    channelState.current.applyBot.mockReset();
+    channelState.current.refreshApplication.mockReset();
+    channelState.current.clearApplication.mockReset();
     channelState.current.testConnection.mockReset();
     channelState.current.setEnabled.mockReset();
     channelState.current.approvePairing.mockReset();
@@ -348,13 +384,20 @@ describe("LarkChannelSection", () => {
 
   test("shows multiple configured Lark bots and loads the selected bot", async () => {
     channelState.current.status = makeStatus([
-      makeBot(),
+      makeBot({
+        bot: {
+          name: "袁昌旺的paseo_mac",
+        },
+      }),
       makeBot({ id: "bot-2", name: "Ops bot", appId: "cli_ops" }),
     ]);
 
     render(<LarkChannelSection serverId="server-1" />);
 
-    expect(screen.getByText("Settlement bot")).toBeTruthy();
+    expect(screen.getAllByText("袁昌旺的paseo_mac").length).toBeGreaterThan(0);
+    expect(screen.getByText(/本地备注：Settlement bot/)).toBeTruthy();
+    expect(screen.getByText(/下方配置（包括替身模式）只对这个飞书机器人生效/)).toBeTruthy();
+    expect(screen.getByText(/当前机器人：袁昌旺的paseo_mac/)).toBeTruthy();
     expect(screen.getByText("Ops bot")).toBeTruthy();
     expect(screen.getByDisplayValue("cli_settle")).toBeTruthy();
 
@@ -439,6 +482,51 @@ describe("LarkChannelSection", () => {
             modeId: "ask",
             thinkingOptionId: "low",
           }),
+        }),
+      ),
+    );
+  });
+
+  test("configures substitute mode with an Open ID and note name", async () => {
+    const bot = makeBot({
+      substitute: {
+        enabled: true,
+        openId: "ou_old",
+        name: "Old note",
+      },
+    });
+    channelState.current.status = makeStatus([bot]);
+    channelState.current.configure.mockResolvedValue(
+      makeStatus([
+        makeBot({
+          substitute: {
+            enabled: true,
+            openId: "ou_alice",
+            name: "Alice",
+          },
+        }),
+      ]),
+    );
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    const openIdInput = await waitFor(() => screen.getByPlaceholderText("ou_xxxxxxxxxx"));
+    fireEvent.change(openIdInput, {
+      target: { value: " ou_alice " },
+    });
+    fireEvent.change(screen.getByPlaceholderText("例如：张三"), {
+      target: { value: " Alice " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(channelState.current.configure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          substitute: {
+            enabled: true,
+            openId: "ou_alice",
+            name: "Alice",
+          },
         }),
       ),
     );

@@ -160,6 +160,26 @@ describe("workspace registries", () => {
     expect(await projectRegistry.list()).toHaveLength(1);
   });
 
+  test("explicit project creation allows the same root to have distinct identities", async () => {
+    await projectRegistry.initialize();
+    const rootPath = path.join(tmpDir, "same-root");
+    const input = {
+      rootPath,
+      kind: "non_git" as const,
+      displayName: "same-root",
+      timestamp: "2026-03-01T00:00:00.000Z",
+    };
+
+    const first = await projectRegistry.createForRoot(input);
+    const second = await projectRegistry.createForRoot(input);
+
+    expect(first.rootPath).toBe(second.rootPath);
+    expect(first.projectId).not.toBe(second.projectId);
+    expect(first.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
+    expect(second.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
+    expect(await projectRegistry.list()).toHaveLength(2);
+  });
+
   test("keeps readable legacy IDs alongside newly allocated opaque IDs", async () => {
     await projectRegistry.initialize();
     await projectRegistry.upsert(

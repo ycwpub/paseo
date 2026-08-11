@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, vi } from "vitest";
@@ -225,6 +225,89 @@ test("mcp create accepts provider-only internal input and leaves model undefined
       workspaceId: "ws-create-test",
     }),
   );
+});
+
+test("mcp create injects Project context for child agents in an existing workspace", async () => {
+  const root = mkdtempSync(join(tmpdir(), "paseo-create-project-context-"));
+  const workspaceDirectory = join(root, "worktree");
+  mkdirSync(workspaceDirectory, { recursive: true });
+  writeFileSync(
+    join(root, "paseo.json"),
+    JSON.stringify({
+      project: {
+        directories: {
+          knowledge: ["docs/rules"],
+          indexSkill: [".paseo/index"],
+          workspaceData: [".paseo/workspaces"],
+        },
+      },
+    }),
+  );
+  const snapshot = {
+    id: "agent-project-context",
+    provider: "claude",
+    cwd: workspaceDirectory,
+    runtimeInfo: null,
+  } as ManagedAgent;
+  const createAgent = vi.fn(async () => snapshot);
+  const dependencies: Parameters<typeof createAgentCommand>[0] = {
+    agentManager: {
+      createAgent,
+    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
+    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
+    logger: createTestLogger(),
+    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    projectRegistry: {
+      get: vi.fn(async () => ({
+        projectId: "prj_context",
+        rootPath: root,
+        kind: "git",
+        displayName: "Context project",
+        customName: null,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+        archivedAt: null,
+      })),
+    },
+    workspaceRegistry: {
+      get: vi.fn(async () => ({
+        workspaceId: "ws-context",
+        projectId: "prj_context",
+        cwd: workspaceDirectory,
+        displayName: "Context workspace",
+        title: null,
+      })),
+    },
+  } as Parameters<typeof createAgentCommand>[0];
+
+  try {
+    await createAgentCommand(dependencies, {
+      kind: "mcp",
+      provider: "claude",
+      cwd: workspaceDirectory,
+      workspaceId: "ws-context",
+      title: "child agent",
+      background: true,
+      notifyOnFinish: false,
+    });
+
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("Knowledge directories (mandatory instructions)"),
+      }),
+      undefined,
+      expect.objectContaining({ workspaceId: "ws-context" }),
+    );
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("Project ID: prj_context"),
+      }),
+      undefined,
+      expect.anything(),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("mcp create uses workspaceTitle only when provisioning a workspace", async () => {

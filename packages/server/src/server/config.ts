@@ -22,10 +22,16 @@ import { AgentProviderSchema } from "@getpaseo/protocol/provider-manifest";
 import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
-import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
+import {
+  normalizeLocalRelayPairingBaseUrl,
+  normalizeLocalRelayWebAppPath,
+  normalizeRelayPairingBaseUrl,
+  parseRelayEndpointInput,
+  shouldUseTlsForDefaultHostedRelay,
+  type RelayEndpointConfig,
+} from "@getpaseo/protocol/daemon-endpoints";
 
 const DEFAULT_PORT = 6767;
-const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
 const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
 const DEFAULT_TRUSTED_PROXIES = ["loopback"];
 
@@ -198,11 +204,18 @@ interface ResolveRelayInput {
 
 interface ResolvedRelay {
   enabled: boolean;
-  enabledMutable: boolean;
-  endpoint: string;
-  publicEndpoint: string;
-  useTls: boolean;
-  publicUseTls: boolean;
+  endpoints: RelayEndpointConfig[];
+  pairingBaseUrls: string[];
+  local: {
+    enabled: boolean;
+    listen: string;
+    publicEndpoint?: string;
+    pairingBaseUrl?: string;
+    webApp: {
+      enabled: boolean;
+      path: string;
+    };
+  };
 }
 
 interface ResolvedServiceProxy {
@@ -221,39 +234,282 @@ function resolveTlsFromEnv(
   return persistedValue ?? fallback;
 }
 
-function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
-  const environmentEnabled = parseBooleanEnv(input.env.PASEO_RELAY_ENABLED);
-  // COMPAT(relayOptInDefault): configs created before v0.2.6 may omit this field.
-  // Preserve their relay-on behavior until 2027-01-31; new homes materialize false.
-  const enabled =
-    input.cliRelayEnabled ?? environmentEnabled ?? input.persisted.daemon?.relay?.enabled ?? true;
-  const endpoint =
-    input.env.PASEO_RELAY_ENDPOINT ??
-    input.persisted.daemon?.relay?.endpoint ??
-    DEFAULT_RELAY_ENDPOINT;
-  const publicEndpoint =
-    input.env.PASEO_RELAY_PUBLIC_ENDPOINT ??
-    input.persisted.daemon?.relay?.publicEndpoint ??
-    endpoint;
-  const useTls =
-    input.cliRelayUseTls ??
-    resolveTlsFromEnv(
-      input.env.PASEO_RELAY_USE_TLS,
-      input.persisted.daemon?.relay?.useTls,
-      endpoint === DEFAULT_RELAY_ENDPOINT,
+function dedupeRelayEndpoints(endpoints: RelayEndpointConfig[]): RelayEndpointConfig[] {
+  const seen = new Set<string>();
+  return endpoints.filter((entry) => {
+    const key = `${entry.useTls ? "wss" : "ws"}://${entry.endpoint}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeConfiguredRelayPairingBaseUrl(value: string): string {
+  return normalizeRelayPairingBaseUrl(value);
+}
+
+function dedupeRelayPairingBaseUrls(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function parseRelayPairingBaseUrlsEnv(value: string | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  let entries: unknown[];
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) {
+      throw new Error("PASEO_RELAY_PAIRING_BASE_URLS must be a JSON array");
+    }
+    entries = parsed;
+  } else {
+    entries = trimmed.split(/[\n,]+/);
+  }
+
+  return dedupeRelayPairingBaseUrls(
+    entries.map((entry) => {
+      if (typeof entry !== "string") {
+        throw new Error("PASEO_RELAY_PAIRING_BASE_URLS entries must be HTTP/HTTPS URLs");
+      }
+      return normalizeRelayPairingBaseUrl(entry);
+    }),
+  );
+}
+
+function parseRelayEndpointsEnv(value: string | undefined): RelayEndpointConfig[] | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  let entries: RelayEndpointConfig[];
+  if (trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) {
+      throw new Error("PASEO_RELAY_ENDPOINTS must be a JSON array");
+    }
+    entries = parsed.map((entry) => {
+      if (typeof entry === "string") return parseRelayEndpointInput(entry);
+      if (
+        typeof entry !== "object" ||
+        entry === null ||
+        typeof (entry as { endpoint?: unknown }).endpoint !== "string"
+      ) {
+        throw new Error(
+          "PASEO_RELAY_ENDPOINTS entries must be WSS strings or objects with endpoint and pairingBaseUrl",
+        );
+      }
+      const record = entry as {
+        endpoint: string;
+        pairingBaseUrl?: unknown;
+      };
+      const endpoint = parseRelayEndpointInput(record.endpoint);
+      const pairingBaseUrl =
+        typeof record.pairingBaseUrl === "string"
+          ? normalizeConfiguredRelayPairingBaseUrl(record.pairingBaseUrl)
+          : undefined;
+      return {
+        endpoint: endpoint.endpoint,
+        useTls: endpoint.useTls,
+        pairingBaseUrl,
+      };
+    });
+  } else {
+    entries = trimmed.split(/[\n,]+/).map(parseRelayEndpointInput);
+  }
+  return dedupeRelayEndpoints(entries);
+}
+
+function resolveConfiguredRelayEndpoints(input: ResolveRelayInput): RelayEndpointConfig[] {
+  const persistedRelay = input.persisted.daemon?.relay;
+  const envEndpoints = parseRelayEndpointsEnv(input.env.PASEO_RELAY_ENDPOINTS);
+
+  if (envEndpoints !== undefined) {
+    return envEndpoints;
+  }
+  if (input.env.PASEO_RELAY_ENDPOINT) {
+    const endpoint = input.env.PASEO_RELAY_ENDPOINT;
+    const useTls =
+      input.cliRelayUseTls ??
+      resolveTlsFromEnv(
+        input.env.PASEO_RELAY_USE_TLS,
+        persistedRelay?.useTls,
+        shouldUseTlsForDefaultHostedRelay(endpoint),
+      );
+    const publicUseTls = resolveTlsFromEnv(
+      input.env.PASEO_RELAY_PUBLIC_USE_TLS,
+      persistedRelay?.publicUseTls,
+      useTls,
     );
-  const publicUseTls = resolveTlsFromEnv(
-    input.env.PASEO_RELAY_PUBLIC_USE_TLS,
-    input.persisted.daemon?.relay?.publicUseTls,
-    useTls,
+    return [
+      {
+        endpoint,
+        useTls,
+        publicEndpoint: input.env.PASEO_RELAY_PUBLIC_ENDPOINT ?? endpoint,
+        publicUseTls,
+        ...(input.env.PASEO_RELAY_PAIRING_BASE_URL
+          ? {
+              pairingBaseUrl: normalizeConfiguredRelayPairingBaseUrl(
+                input.env.PASEO_RELAY_PAIRING_BASE_URL,
+              ),
+            }
+          : {}),
+      },
+    ];
+  }
+  if (persistedRelay?.endpoints) {
+    return persistedRelay.endpoints.map((entry) => {
+      const useTls =
+        input.cliRelayUseTls ??
+        resolveTlsFromEnv(
+          input.env.PASEO_RELAY_USE_TLS,
+          entry.useTls,
+          shouldUseTlsForDefaultHostedRelay(entry.endpoint),
+        );
+      const hasExplicitPublicUseTls =
+        entry.publicUseTls !== undefined || input.env.PASEO_RELAY_PUBLIC_USE_TLS !== undefined;
+      const publicUseTls = hasExplicitPublicUseTls
+        ? resolveTlsFromEnv(input.env.PASEO_RELAY_PUBLIC_USE_TLS, entry.publicUseTls, useTls)
+        : useTls;
+      return {
+        endpoint: entry.endpoint,
+        useTls,
+        ...(entry.publicEndpoint ? { publicEndpoint: entry.publicEndpoint } : {}),
+        ...(hasExplicitPublicUseTls ? { publicUseTls } : {}),
+        ...(entry.pairingBaseUrl
+          ? {
+              pairingBaseUrl: normalizeConfiguredRelayPairingBaseUrl(entry.pairingBaseUrl),
+            }
+          : {}),
+      };
+    });
+  }
+  if (persistedRelay?.endpoint) {
+    const useTls =
+      input.cliRelayUseTls ??
+      resolveTlsFromEnv(
+        input.env.PASEO_RELAY_USE_TLS,
+        persistedRelay.useTls,
+        shouldUseTlsForDefaultHostedRelay(persistedRelay.endpoint),
+      );
+    const publicUseTls = resolveTlsFromEnv(
+      input.env.PASEO_RELAY_PUBLIC_USE_TLS,
+      persistedRelay.publicUseTls,
+      useTls,
+    );
+    return [
+      {
+        endpoint: persistedRelay.endpoint,
+        useTls,
+        publicEndpoint: persistedRelay.publicEndpoint ?? persistedRelay.endpoint,
+        publicUseTls,
+        ...(input.env.PASEO_RELAY_PAIRING_BASE_URL
+          ? {
+              pairingBaseUrl: normalizeConfiguredRelayPairingBaseUrl(
+                input.env.PASEO_RELAY_PAIRING_BASE_URL,
+              ),
+            }
+          : {}),
+      },
+    ];
+  }
+  return [];
+}
+
+function resolveConfiguredRelayPairingBaseUrls(
+  input: ResolveRelayInput,
+  endpoints: RelayEndpointConfig[],
+): string[] {
+  const persistedRelay = input.persisted.daemon?.relay;
+  const envPairingBaseUrls = parseRelayPairingBaseUrlsEnv(input.env.PASEO_RELAY_PAIRING_BASE_URLS);
+  if (envPairingBaseUrls !== undefined) {
+    return envPairingBaseUrls;
+  }
+  if (input.env.PASEO_RELAY_PAIRING_BASE_URL) {
+    return [normalizeRelayPairingBaseUrl(input.env.PASEO_RELAY_PAIRING_BASE_URL)];
+  }
+  if (persistedRelay?.pairingBaseUrls) {
+    return dedupeRelayPairingBaseUrls(
+      persistedRelay.pairingBaseUrls.map(normalizeRelayPairingBaseUrl),
+    );
+  }
+
+  // COMPAT(relay-pairing-list): migrate the old per-endpoint pairing address
+  // into the independent HTTP/HTTPS address list.
+  return dedupeRelayPairingBaseUrls(
+    endpoints.flatMap((endpoint) =>
+      endpoint.pairingBaseUrl ? [normalizeRelayPairingBaseUrl(endpoint.pairingBaseUrl)] : [],
+    ),
+  );
+}
+
+function resolveLocalRelayConfig(input: ResolveRelayInput): ResolvedRelay["local"] {
+  const persistedLocal = input.persisted.daemon?.relay?.local;
+  const publicEndpoint =
+    input.env.PASEO_LAN_RELAY_PUBLIC_ENDPOINT ?? persistedLocal?.publicEndpoint;
+  const pairingBaseUrl =
+    input.env.PASEO_LAN_RELAY_PAIRING_BASE_URL ?? persistedLocal?.pairingBaseUrl;
+  const webApp = resolveLocalRelayWebAppConfig(input.env, persistedLocal?.webApp);
+  return {
+    enabled: parseBooleanEnv(input.env.PASEO_LAN_RELAY_ENABLED) ?? persistedLocal?.enabled ?? false,
+    listen: input.env.PASEO_LAN_RELAY_LISTEN ?? persistedLocal?.listen ?? "0.0.0.0:6769",
+    ...(publicEndpoint ? { publicEndpoint } : {}),
+    ...(pairingBaseUrl
+      ? { pairingBaseUrl: normalizeLocalRelayPairingBaseUrl(pairingBaseUrl) }
+      : {}),
+    webApp,
+  };
+}
+
+function resolveLocalRelayWebAppConfig(
+  env: NodeJS.ProcessEnv,
+  persistedWebApp: { enabled?: boolean; path?: string } | undefined,
+): ResolvedRelay["local"]["webApp"] {
+  const webAppEnabled =
+    parseBooleanEnv(env.PASEO_LAN_RELAY_WEB_APP_ENABLED) ?? persistedWebApp?.enabled ?? false;
+  const webAppPath = normalizeLocalRelayWebAppPath(
+    env.PASEO_LAN_RELAY_WEB_APP_PATH ?? persistedWebApp?.path ?? "/app",
   );
   return {
-    enabled,
-    enabledMutable: input.cliRelayEnabled === undefined && environmentEnabled === undefined,
-    endpoint,
-    publicEndpoint,
-    useTls,
-    publicUseTls,
+    enabled: webAppEnabled,
+    path: webAppPath,
+  };
+}
+
+function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
+  const persistedRelay = input.persisted.daemon?.relay;
+  let endpoints = resolveConfiguredRelayEndpoints(input);
+  const pairingBaseUrls = resolveConfiguredRelayPairingBaseUrls(input, endpoints);
+  endpoints = endpoints.map(({ pairingBaseUrl: _legacyPairingBaseUrl, ...endpoint }) => endpoint);
+  const local = resolveLocalRelayConfig(input);
+  const configuredEnabled =
+    input.cliRelayEnabled ??
+    parseBooleanEnv(input.env.PASEO_RELAY_ENABLED) ??
+    persistedRelay?.enabled ??
+    true;
+  endpoints = configuredEnabled ? dedupeRelayEndpoints(endpoints) : [];
+  return {
+    enabled: endpoints.length > 0 || local.enabled,
+    endpoints,
+    pairingBaseUrls,
+    local,
+  };
+}
+
+function resolveLegacyRelaySummary(endpoints: RelayEndpointConfig[]): {
+  relayEndpoint?: string;
+  relayPublicEndpoint?: string;
+  relayUseTls?: boolean;
+  relayPublicUseTls?: boolean;
+} {
+  const first = endpoints[0];
+  if (!first) return {};
+  return {
+    relayEndpoint: first.endpoint,
+    relayPublicEndpoint: first.publicEndpoint ?? first.endpoint,
+    relayUseTls: first.useTls,
+    relayPublicUseTls: first.publicUseTls ?? first.useTls,
   };
 }
 
@@ -450,6 +706,13 @@ function resolveProfileLists(persisted: ReturnType<typeof loadPersistedConfig>) 
   };
 }
 
+function resolveClientAccessRequireApproval(
+  persisted: ReturnType<typeof loadPersistedConfig>,
+): boolean {
+  return persisted.daemon?.clientAccess?.requireApproval ?? false;
+}
+
+// oxlint-disable-next-line complexity -- Static configuration precedence is intentionally centralized.
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -460,6 +723,10 @@ function resolveStaticLoadConfigSettings(
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
+    clientAccessRequireApproval: resolveClientAccessRequireApproval(persisted),
+    projectIndexUpdateIntervalMinutes:
+      persisted.daemon?.projectIndexing?.updateIntervalMinutes ?? 1440,
+    instructionTemplates: persisted.daemon?.instructionTemplates,
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     ...resolveProfileLists(persisted),
@@ -488,6 +755,9 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    clientAccessRequireApproval,
+    projectIndexUpdateIntervalMinutes,
+    instructionTemplates,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -528,7 +798,9 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
-    git: resolveGitProcessConfig(env, persisted),
+    clientAccessRequireApproval,
+    projectIndexUpdateIntervalMinutes,
+    instructionTemplates,
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,
     appendSystemPrompt,
@@ -540,11 +812,10 @@ export function loadConfig(
     staticDir: "public",
     agentClients: {},
     relayEnabled: relay.enabled,
-    relayEnabledMutable: relay.enabledMutable,
-    relayEndpoint: relay.endpoint,
-    relayPublicEndpoint: relay.publicEndpoint,
-    relayUseTls: relay.useTls,
-    relayPublicUseTls: relay.publicUseTls,
+    relayEndpoints: relay.endpoints,
+    relayPairingBaseUrls: relay.pairingBaseUrls,
+    ...resolveLegacyRelaySummary(relay.endpoints),
+    lanRelay: relay.local,
     serviceProxy,
     webUi,
     appBaseUrl,

@@ -113,7 +113,14 @@ describe("LarkChannelService", () => {
         threadId: "omt_created",
         messageId: "om_ack",
       })),
-      replyInThread: vi.fn(async () => undefined),
+      replyInThread: vi.fn(async () => ({
+        threadId: "omt_reply",
+        messageId: "om_reply",
+      })),
+      listChatBots: vi.fn(async () => [
+        { openId: "ou_bot", name: "Paseo" },
+        { openId: "ou_reviewer", name: "Reviewer" },
+      ]),
       getMessage: vi.fn(async () => null),
       listThreadMessages: vi.fn(async () => []),
     };
@@ -197,7 +204,7 @@ describe("LarkChannelService", () => {
       mentions: botMention(),
     } satisfies NormalizedLarkMessageEvent);
 
-    harness.lastMessages.set("agent-1", "The answer is ready.");
+    harness.lastMessages.set("agent-1", "<!-- paseo:lark-route=user -->\nThe answer is ready.");
     await harness.emitAgentState("agent-1", "running");
     await harness.emitAgentState("agent-1", "idle");
 
@@ -211,6 +218,420 @@ describe("LarkChannelService", () => {
       expect.anything(),
       "omt_topic",
       expect.any(String),
+    );
+  });
+
+  test("routes an explicit bot handoff without also mentioning the human user", async () => {
+    const harness = createHarness();
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_handoff",
+      rootMessageId: "om_handoff_root",
+      userId: "user-1",
+      agentId: "agent-handoff",
+      title: "Review task",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_handoff",
+      messageId: "om_handoff",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_handoff",
+      rootMessageId: "om_handoff_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Review task",
+      text: "@Paseo 请让 Reviewer 检查实现。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain('<bot name="Reviewer" open_id="ou_reviewer" />');
+    expect(prompt).not.toContain('<bot name="Paseo" open_id="ou_bot" />');
+
+    harness.lastMessages.set(
+      "agent-handoff",
+      "<!-- paseo:lark-route=none -->\n实现完成。@Reviewer 请检查边界条件。",
+    );
+    await harness.emitAgentState("agent-handoff", "running");
+    await harness.emitAgentState("agent-handoff", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_handoff_root",
+      '实现完成。<at user_id="ou_reviewer"></at> 请检查边界条件。',
+    );
+    expect(harness.adapter.replyInThread).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "om_handoff_root",
+      expect.stringContaining('<at user_id="ou_1"></at>'),
+    );
+  });
+
+  test("injects per-bot task ownership for a message addressed to multiple bots", async () => {
+    const harness = createHarness();
+    vi.mocked(harness.adapter.listChatBots).mockResolvedValue([
+      { openId: "ou_bot", name: "Paseo" },
+      { openId: "bot_reviewer_from_list", name: "Reviewer" },
+    ]);
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_multi_bot_assignment",
+      rootMessageId: "om_multi_bot_root",
+      userId: "user-1",
+      agentId: "agent-multi-bot",
+      title: "Multi-bot assignment",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_multi_bot_assignment",
+      messageId: "om_multi_bot_assignment",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_multi_bot_assignment",
+      rootMessageId: "om_multi_bot_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Multi-bot assignment",
+      text: "@_user_1 你负责出方案，@_user_2 你负责审核方案，一起完成任务",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "Paseo",
+          openId: "ou_bot",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+        {
+          key: "@_user_2",
+          name: "Reviewer",
+          openId: "ou_reviewer",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain(
+      '<mention token="@_user_1" name="Paseo" open_id="ou_bot" current_bot="true" />',
+    );
+    expect(prompt).toContain(
+      '<mention token="@_user_2" name="Reviewer" open_id="ou_reviewer" current_bot="false" />',
+    );
+    expect(prompt).toContain('<bot name="Reviewer" open_id="ou_reviewer" />');
+    expect(prompt).not.toContain("bot_reviewer_from_list");
+    expect(prompt).toContain("Execute only the work explicitly assigned to the current bot.");
+    expect(prompt).toContain("never perform an independent review");
+    expect(prompt).toContain("MUST @ that bot's exact name");
+    expect(prompt).toContain("@Reviewer 方案已完成，请独立审核。");
+    expect(prompt).toContain("Completion of only your own subtask is not overall completion");
+
+    harness.lastMessages.set(
+      "agent-multi-bot",
+      "<!-- paseo:lark-route=none -->\n@_user_2 方案已完成，请独立审核预算与可执行性。",
+    );
+    await harness.emitAgentState("agent-multi-bot", "running");
+    await harness.emitAgentState("agent-multi-bot", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_multi_bot_root",
+      '<at user_id="ou_reviewer"></at> 方案已完成，请独立审核预算与可执行性。',
+    );
+    expect(harness.adapter.replyInThread).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "om_multi_bot_root",
+      expect.stringContaining('<at user_id="ou_1"></at>'),
+    );
+  });
+
+  test("does not mention the human for an intermediate answer without a user directive", async () => {
+    const harness = createHarness();
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_progress",
+      rootMessageId: "om_progress_root",
+      userId: "user-1",
+      agentId: "agent-progress",
+      title: "Progress",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_progress",
+      messageId: "om_progress",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_progress",
+      rootMessageId: "om_progress_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Progress",
+      text: "@Paseo 汇报当前进度。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    harness.lastMessages.set("agent-progress", "正在处理，暂时不需要用户授权。");
+    await harness.emitAgentState("agent-progress", "running");
+    await harness.emitAgentState("agent-progress", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_progress_root",
+      "正在处理，暂时不需要用户授权。",
+    );
+  });
+
+  test("accepts an explicitly addressed bot turn in an authorized chat", async () => {
+    const harness = createHarness();
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_bot_turn",
+      rootMessageId: "om_bot_turn_root",
+      userId: "user-1",
+      agentId: "agent-bot-turn",
+      title: "Bot collaboration",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_bot_turn",
+      messageId: "om_bot_turn",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_bot_turn",
+      rootMessageId: "om_bot_turn_root",
+      openId: "ou_reviewer",
+      unionId: null,
+      senderType: "app",
+      displayName: "Reviewer",
+      topicName: "Bot collaboration",
+      text: "@Paseo 我已完成检查，请继续处理，不要 @ 我。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.adapter.sendText).not.toHaveBeenCalled();
+    expect(harness.store.getStatus().pendingPairings).toEqual([]);
+    expect(harness.agentManager.streamAgent).toHaveBeenCalled();
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain('This turn was sent by bot "Reviewer".');
+
+    harness.lastMessages.set(
+      "agent-bot-turn",
+      "<!-- paseo:lark-route=user -->\n检查结果已合并，任务完成。",
+    );
+    await harness.emitAgentState("agent-bot-turn", "running");
+    await harness.emitAgentState("agent-bot-turn", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_bot_turn_root",
+      '<at user_id="ou_1"></at> 检查结果已合并，任务完成。',
+    );
+  });
+
+  test("routes a bot-triggered turn to another bot without mentioning the human", async () => {
+    const harness = createHarness();
+    vi.mocked(harness.adapter.listChatBots).mockResolvedValue([
+      { openId: "ou_bot", name: "Paseo" },
+      { openId: "ou_reviewer", name: "Reviewer" },
+      { openId: "ou_writer", name: "Writer" },
+    ]);
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_bot_handoff",
+      rootMessageId: "om_bot_handoff_root",
+      userId: "user-1",
+      agentId: "agent-bot-handoff",
+      title: "Bot handoff",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_bot_handoff",
+      messageId: "om_bot_handoff",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_bot_handoff",
+      rootMessageId: "om_bot_handoff_root",
+      openId: "ou_reviewer",
+      unionId: null,
+      senderType: "bot",
+      displayName: "Reviewer",
+      topicName: "Bot handoff",
+      text: "@Paseo 代码检查通过，请安排发布说明。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    harness.lastMessages.set(
+      "agent-bot-handoff",
+      "<!-- paseo:lark-route=none -->\n@Writer 请补充发布说明。",
+    );
+    await harness.emitAgentState("agent-bot-handoff", "running");
+    await harness.emitAgentState("agent-bot-handoff", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_bot_handoff_root",
+      '<at user_id="ou_writer"></at> 请补充发布说明。',
+    );
+    expect(harness.adapter.replyInThread).not.toHaveBeenCalledWith(
+      expect.anything(),
+      "om_bot_handoff_root",
+      expect.stringContaining('<at user_id="ou_1"></at>'),
+    );
+  });
+
+  test("continues normal processing when chat bot discovery fails", async () => {
+    const harness = createHarness();
+    vi.mocked(harness.adapter.listChatBots).mockRejectedValue(
+      new Error("missing im:chat.members:read"),
+    );
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_discovery_failure",
+      rootMessageId: "om_discovery_failure_root",
+      userId: "user-1",
+      agentId: "agent-discovery-failure",
+      title: "Fallback",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_discovery_failure",
+      messageId: "om_discovery_failure",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_discovery_failure",
+      rootMessageId: "om_discovery_failure_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Fallback",
+      text: "@Paseo 继续处理。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.agentManager.streamAgent).toHaveBeenCalled();
+    harness.lastMessages.set("agent-discovery-failure", "<!-- paseo:lark-route=user -->\n已完成。");
+    await harness.emitAgentState("agent-discovery-failure", "running");
+    await harness.emitAgentState("agent-discovery-failure", "idle");
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_discovery_failure_root",
+      '<at user_id="ou_1"></at> 已完成。',
+    );
+  });
+
+  test("recovers an explicitly mentioned configured peer when chat bot discovery fails", async () => {
+    const harness = createHarness();
+    const reviewer = harness.store.configure({
+      createNew: true,
+      name: "Reviewer bot",
+      appId: "cli_reviewer",
+      appSecret: "reviewer-secret",
+      target: {
+        kind: "workspace",
+        provider: "claude",
+        model: null,
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    });
+    harness.store.setEnabled(reviewer.id, true);
+    vi.mocked(harness.adapter.testConnection).mockImplementation(async (config) =>
+      config.appId === "cli_reviewer"
+        ? {
+            openId: "ou_reviewer_self_view",
+            appId: "cli_reviewer",
+            name: "审核机器人",
+          }
+        : {
+            openId: "ou_bot",
+            appId: "cli_test",
+            name: "Paseo",
+          },
+    );
+    vi.mocked(harness.adapter.listChatBots).mockRejectedValue(
+      new Error("missing im:chat.members:read"),
+    );
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_configured_peer_fallback",
+      rootMessageId: "om_configured_peer_fallback_root",
+      userId: "user-1",
+      agentId: "agent-configured-peer-fallback",
+      title: "Configured peer fallback",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_configured_peer_fallback",
+      messageId: "om_configured_peer_fallback",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_configured_peer_fallback",
+      rootMessageId: "om_configured_peer_fallback_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Configured peer fallback",
+      text: "@_user_1 负责方案，@_user_2 负责审核。",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "Paseo",
+          openId: "ou_bot",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+        {
+          key: "@_user_2",
+          name: "审核机器人",
+          openId: "ou_reviewer_as_seen_by_paseo",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain(
+      '<mention token="@_user_2" name="审核机器人" open_id="ou_reviewer_as_seen_by_paseo" current_bot="false" />',
+    );
+    expect(prompt).toContain('<bot name="审核机器人" open_id="ou_reviewer_as_seen_by_paseo" />');
+
+    harness.lastMessages.set(
+      "agent-configured-peer-fallback",
+      "<!-- paseo:lark-route=none -->\n@审核机器人 方案已完成，请审核。",
+    );
+    await harness.emitAgentState("agent-configured-peer-fallback", "running");
+    await harness.emitAgentState("agent-configured-peer-fallback", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_configured_peer_fallback_root",
+      '<at user_id="ou_reviewer_as_seen_by_paseo"></at> 方案已完成，请审核。',
     );
   });
 
@@ -253,7 +674,10 @@ describe("LarkChannelService", () => {
       }),
     );
 
-    harness.lastMessages.set("agent-created", "Created topic answer.");
+    harness.lastMessages.set(
+      "agent-created",
+      "<!-- paseo:lark-route=user -->\nCreated topic answer.",
+    );
     await harness.emitAgentState("agent-created", "running");
     await harness.emitAgentState("agent-created", "idle");
 
@@ -479,7 +903,10 @@ describe("LarkChannelService", () => {
       vi.mocked(harness.adapter.replyToMessageInThread).mock.invocationCallOrder[0],
     ).toBeLessThan(vi.mocked(harness.createAgent).mock.invocationCallOrder[0] ?? 0);
 
-    harness.lastMessages.set("agent-created", "First topic answer.");
+    harness.lastMessages.set(
+      "agent-created",
+      "<!-- paseo:lark-route=user -->\nFirst topic answer.",
+    );
     await harness.emitAgentState("agent-created", "running");
     await harness.emitAgentState("agent-created", "idle");
 
@@ -825,6 +1252,389 @@ describe("LarkChannelService", () => {
     expect(harness.adapter.listThreadMessages).not.toHaveBeenCalled();
     expect(harness.createAgent).not.toHaveBeenCalled();
     expect(harness.agentManager.streamAgent).not.toHaveBeenCalled();
+  });
+
+  test("handles a group message that mentions the configured substitute target", async () => {
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_group_substitute",
+      messageId: "om_substitute",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_topic",
+      rootMessageId: "om_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Release plan",
+      text: "@张三 请代表他回复。",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "事件中的名称可以不同",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.createAgent).toHaveBeenCalled();
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain("<lark_substitute_trigger>");
+    expect(prompt).toContain('<configured_target open_id="ou_substitute" name="张三" />');
+    expect(prompt).toContain("Reply on behalf of that person");
+    expect(harness.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          systemPrompt: expect.stringContaining("<lark_substitute_trigger>"),
+        }),
+      }),
+    );
+
+    harness.lastMessages.set("agent-created", "1 + 1 = 2。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_ack",
+      "【代张三回复】1 + 1 = 2。",
+    );
+  });
+
+  test("handles a substitute-mode group message that mentions the current bot", async () => {
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_group_substitute_bot",
+      messageId: "om_substitute_bot",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_topic",
+      rootMessageId: "om_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Release plan",
+      text: "@Paseo 1+1等于几",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.createAgent).toHaveBeenCalled();
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain("<lark_substitute_trigger>");
+    expect(prompt).toContain("<trigger_source>current_bot</trigger_source>");
+    expect(prompt).toContain('<configured_target open_id="ou_substitute" name="张三" />');
+    expect(prompt).toContain("Paseo adds the visible substitute disclosure label");
+    expect(prompt).toContain("Do not write another");
+  });
+
+  test("lets the configured substitute bot answer a question sent by another bot", async () => {
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_yuan_changwang",
+        name: "袁昌旺",
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_substitute_from_bot",
+      messageId: "om_substitute_from_bot",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_substitute_from_bot",
+      rootMessageId: "om_substitute_from_bot_root",
+      openId: "ou_reviewer",
+      unionId: null,
+      senderType: "bot",
+      displayName: "Reviewer",
+      topicName: "Question for 袁昌旺",
+      text: "@袁昌旺 这个方案可以上线吗？",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "袁昌旺",
+          openId: "ou_yuan_changwang",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.createAgent).toHaveBeenCalled();
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1] ?? "";
+    expect(prompt).toContain("<lark_substitute_trigger>");
+    expect(prompt).toContain('<configured_target open_id="ou_yuan_changwang" name="袁昌旺" />');
+
+    harness.lastMessages.set("agent-created", "可以上线。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_ack",
+      "【代袁昌旺回复】可以上线。",
+    );
+  });
+
+  test("does not answer a bot-authored substitute result that mentions the current bot", async () => {
+    const harness = createHarness();
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_substitute_result",
+      messageId: "om_substitute_result",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_substitute_result",
+      rootMessageId: "om_substitute_result_root",
+      openId: "ou_other_bot",
+      unionId: null,
+      senderType: "bot",
+      displayName: "Substitute bot",
+      topicName: "Substitute result",
+      text: "【代袁昌旺回复】2。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
+  });
+
+  test("relays a local bot question to the bot configured as that user's substitute", async () => {
+    const harness = createHarness();
+    const sourcePairing = harness.store.upsertPendingPairing(harness.botId, {
+      openId: "ou_yuan_as_seen_by_source",
+      unionId: "on_yuan",
+      chatId: "oc_1",
+      displayName: "袁昌旺",
+      createdAt: "2026-01-01T00:02:00.000Z",
+      expiresAt: "2026-01-01T00:17:00.000Z",
+    });
+    harness.store.approvePairing(harness.botId, sourcePairing.code, "2026-01-01T00:03:00.000Z");
+    const substituteBot = harness.store.configure({
+      createNew: true,
+      name: "袁昌旺的paseo开发机3",
+      appId: "cli_substitute",
+      appSecret: "substitute-secret",
+      target: {
+        kind: "workspace",
+        provider: "claude",
+        model: null,
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+      substitute: {
+        enabled: true,
+        openId: "ou_yuan_as_seen_by_substitute",
+        name: "袁昌旺",
+      },
+    });
+    harness.store.setEnabled(substituteBot.id, true);
+    const targetPairing = harness.store.upsertPendingPairing(substituteBot.id, {
+      openId: "ou_yuan_as_seen_by_substitute",
+      unionId: "on_yuan",
+      chatId: "oc_1",
+      displayName: "袁昌旺",
+      createdAt: "2026-01-01T00:02:00.000Z",
+      expiresAt: "2026-01-01T00:17:00.000Z",
+    });
+    harness.store.approvePairing(substituteBot.id, targetPairing.code, "2026-01-01T00:03:00.000Z");
+    vi.mocked(harness.adapter.listThreadMessages).mockResolvedValue([
+      {
+        message_id: "om_old_instruction",
+        root_id: "om_local_substitute_root",
+        create_time: "1767226100000",
+        sender_name: "Alice",
+        msg_type: "text",
+        body: {
+          content: JSON.stringify({
+            text: "请把问题转发给袁昌旺，而不是直接回答。",
+          }),
+        },
+      },
+    ]);
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_local_substitute",
+      rootMessageId: "om_local_substitute_root",
+      userId: "user-1",
+      agentId: "agent-local-question",
+      title: "Ask 袁昌旺",
+      now: "2026-01-01T00:04:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_local_question",
+      messageId: "om_local_question",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_local_substitute",
+      rootMessageId: "om_local_substitute_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Ask 袁昌旺",
+      text: "@Paseo 问我 1+1 等于几。",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    harness.lastMessages.set(
+      "agent-local-question",
+      '<!-- paseo:lark-route=none -->\n<at user_id="ou_yuan_as_seen_by_source"></at> 1+1等于几？',
+    );
+    await harness.emitAgentState("agent-local-question", "running");
+    await harness.emitAgentState("agent-local-question", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_local_substitute_root",
+      '<at user_id="ou_yuan_as_seen_by_source"></at> 1+1等于几？',
+    );
+    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    const substitutePrompt =
+      vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1] ?? "";
+    expect(substitutePrompt).toContain("<lark_substitute_trigger>");
+    expect(substitutePrompt).toContain(
+      '<configured_target open_id="ou_yuan_as_seen_by_substitute" name="袁昌旺" />',
+    );
+    expect(substitutePrompt).toContain("1+1等于几？");
+    expect(substitutePrompt).toContain("<local_substitute_relay>");
+    expect(substitutePrompt).toContain("Answer the current question directly");
+    expect(substitutePrompt).not.toContain("请把问题转发给袁昌旺，而不是直接回答。");
+
+    harness.lastMessages.set("agent-created", "<!-- paseo:lark-route=user -->\n代袁昌旺回复：2。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenLastCalledWith(
+      expect.anything(),
+      "om_ack",
+      '<at user_id="ou_bot"></at> 【代袁昌旺回复】2。',
+    );
+  });
+
+  test("preserves substitute disclosure when relaying through an existing topic agent", async () => {
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "袁昌旺",
+      },
+    });
+    harness.store.recordThreadConversation(harness.botId, {
+      chatId: "oc_1",
+      threadId: "omt_existing_substitute",
+      rootMessageId: "om_existing_root",
+      userId: "user-1",
+      agentId: "agent-existing-substitute",
+      title: "Existing substitute topic",
+      now: "2026-01-01T00:02:00.000Z",
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_existing_substitute",
+      messageId: "om_existing_child",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_existing_substitute",
+      rootMessageId: "om_existing_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Existing substitute topic",
+      text: "@Paseo 1+1等于几",
+      createTime: 1767226200000,
+      mentions: botMention(),
+    } satisfies NormalizedLarkMessageEvent);
+
+    harness.lastMessages.set(
+      "agent-existing-substitute",
+      "<!-- paseo:lark-route=user -->\n1 + 1 = 2。",
+    );
+    await harness.emitAgentState("agent-existing-substitute", "running");
+    await harness.emitAgentState("agent-existing-substitute", "idle");
+
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_existing_root",
+      '<at user_id="ou_1"></at> 【代袁昌旺回复】1 + 1 = 2。',
+    );
+  });
+
+  test("still requires authorization for substitute-triggered messages", async () => {
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_group_substitute_unauthorized",
+      messageId: "om_substitute_unauthorized",
+      chatId: "oc_untrusted",
+      chatType: "group",
+      threadId: "omt_topic",
+      rootMessageId: "om_root",
+      openId: "ou_untrusted",
+      unionId: null,
+      displayName: "Mallory",
+      topicName: "Release plan",
+      text: "@张三 请代表他回复。",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "张三",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    expect(harness.adapter.sendText).toHaveBeenCalledWith(
+      expect.anything(),
+      "oc_untrusted",
+      expect.stringContaining("Pairing requested"),
+    );
   });
 
   test("ignores group messages that mention a different bot", async () => {

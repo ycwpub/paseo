@@ -20,11 +20,13 @@ import { mkdtemp, readFile, rm, unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { runLocalPaseo } from "./helpers/local-cli.ts";
+import { getAvailablePort } from "./helpers/network.ts";
 
 console.log("=== Daemon Commands ===\n");
 
 // Keep restart off default 6767 to avoid collisions with any existing daemon.
-const port = 10000 + Math.floor(Math.random() * 50000);
+const port = await getAvailablePort();
+const lanRelayPort = await getAvailablePort();
 const paseoHome = await mkdtemp(join(tmpdir(), "paseo-test-home-"));
 
 function daemonCommand(args: string[]) {
@@ -42,20 +44,51 @@ try {
     assert(result.stdout.includes("stop"), "help should mention stop");
     assert(result.stdout.includes("restart"), "help should mention restart");
     assert(result.stdout.includes("pair"), "help should mention pair");
+    assert(result.stdout.includes("relay"), "help should mention relay");
     console.log("✓ daemon --help shows subcommands\n");
   }
 
   // Test 2: non-interactive pairing keeps relay disabled by default
   {
-    console.log("Test 2: daemon pair requires explicit relay consent");
-    const result = await daemonCommand(["pair"]);
-    assert.strictEqual(result.exitCode, 1, "daemon pair should require relay consent");
-    assert(
-      result.stderr.includes("Relay pairing is disabled"),
-      "output should explain that relay pairing is disabled",
+    console.log("Test 2: relay config and daemon pair print every Relay");
+    const configured = await runLocalPaseo(
+      [
+        "relay",
+        "set",
+        "--endpoint",
+        "wss://relay.example.com:443",
+        "--pairing-url",
+        "https://connect.example.com",
+        "--endpoint",
+        "wss://192.168.1.20:6769",
+        "--pairing-url",
+        "https://192.168.1.20:6769",
+      ],
+      { PASEO_HOME: paseoHome },
     );
-    assert(!result.stdout.includes("#offer="), "output should not include a pairing offer");
-    console.log("✓ daemon pair requires explicit relay consent\n");
+    assert.strictEqual(configured.exitCode, 0, "relay set should succeed");
+
+    const result = await daemonCommand(["pair"]);
+    assert.strictEqual(result.exitCode, 0, "daemon pair should succeed");
+    assert(
+      result.stdout.includes("Relay wss://relay.example.com:443"),
+      "output should include the public Relay",
+    );
+    assert(
+      result.stdout.includes("Relay wss://192.168.1.20:6769"),
+      "output should include the LAN Relay",
+    );
+    assert(
+      result.stdout.includes("https://connect.example.com/#offer=") &&
+        result.stdout.includes("https://192.168.1.20:6769/#offer="),
+      "output should use each Relay's HTTPS connection address",
+    );
+    assert.strictEqual(
+      result.stdout.match(/#offer=/g)?.length,
+      2,
+      "output should include one pairing offer per Relay",
+    );
+    console.log("✓ relay config and daemon pair print every Relay\n");
   }
 
   // Test 3: daemon status reports stopped when daemon not running
@@ -73,13 +106,32 @@ try {
   {
     console.log("Test 4: daemon pair --json reports relay disabled");
     const result = await daemonCommand(["pair", "--json"]);
-    assert.strictEqual(result.exitCode, 1, "daemon pair --json should require relay consent");
-    const errorLine = result.stderr.split("\n").find((line) => line.startsWith("{"));
-    assert(errorLine, "stderr should include a structured error");
-    const error = JSON.parse(errorLine);
-    assert.strictEqual(error.code, "RELAY_DISABLED", "error should identify relay state");
-    assert(!result.stdout.includes("#offer="), "output should not include a pairing offer");
-    console.log("✓ daemon pair --json reports relay disabled\n");
+    assert.strictEqual(result.exitCode, 0, "daemon pair --json should succeed");
+    const pairing = JSON.parse(result.stdout);
+    assert.strictEqual(pairing.relayEnabled, true, "pairing should report relay enabled");
+    assert.match(pairing.url, /#offer=/, "pairing URL should include offer fragment");
+    assert.strictEqual(typeof pairing.qr, "string", "pairing should include QR content");
+    assert.strictEqual(pairing.offers.length, 2, "pairing should include every Relay");
+    assert.deepStrictEqual(
+      pairing.offers.map((offer: { endpoint: string; useTls: boolean }) => ({
+        endpoint: offer.endpoint,
+        useTls: offer.useTls,
+      })),
+      [
+        { endpoint: "relay.example.com:443", useTls: true },
+        { endpoint: "192.168.1.20:6769", useTls: true },
+      ],
+    );
+    assert(
+      pairing.offers.every(
+        (offer: { url?: unknown; qr?: unknown }) =>
+          typeof offer.url === "string" &&
+          offer.url.includes("#offer=") &&
+          typeof offer.qr === "string",
+      ),
+      "every Relay should include its own pairing link and QR",
+    );
+    console.log("✓ daemon pair --json outputs valid JSON\n");
   }
 
   // Test 5: daemon status --json outputs valid JSON
@@ -119,6 +171,40 @@ try {
     const result = await daemonCommand(["restart", "--port", String(port)]);
     assert.strictEqual(result.exitCode, 0, "restart should succeed even when previously stopped");
     assert(result.stdout.toLowerCase().includes("restarted"), "output should report restart");
+
+    const liveRelayUpdate = await daemonCommand([
+      "relay",
+      "set",
+      "--enable-lan-relay",
+      "--lan-listen",
+      `127.0.0.1:${lanRelayPort}`,
+      "--json",
+    ]);
+    assert.strictEqual(liveRelayUpdate.exitCode, 0, "live Relay update should succeed");
+    assert.strictEqual(
+      JSON.parse(liveRelayUpdate.stdout).applied,
+      "live",
+      "running daemon should apply Relay settings immediately",
+    );
+
+    let lanRelayPairing:
+      | {
+          offers?: Array<{ endpoint?: string }>;
+        }
+      | undefined;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const pairingResult = await daemonCommand(["pair", "--json"]);
+      assert.strictEqual(pairingResult.exitCode, 0, "pairing should succeed after live update");
+      lanRelayPairing = JSON.parse(pairingResult.stdout);
+      if (lanRelayPairing.offers?.some((offer) => offer.endpoint === `127.0.0.1:${lanRelayPort}`)) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert(
+      lanRelayPairing?.offers?.some((offer) => offer.endpoint === `127.0.0.1:${lanRelayPort}`),
+      "pairing output should include the live LAN Relay",
+    );
 
     const cleanup = await daemonCommand(["stop", "--force"]);
     assert.strictEqual(cleanup.exitCode, 0, "cleanup stop should succeed after restart");

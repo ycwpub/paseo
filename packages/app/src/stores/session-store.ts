@@ -39,6 +39,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
 } from "@getpaseo/protocol/messages";
+import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
 import {
   normalizeWorkspaceOpaqueId,
   normalizeWorkspacePath,
@@ -314,6 +315,7 @@ interface ExplorerRequestState {
 export interface AgentFileExplorerState {
   directories: Map<string, ExplorerDirectory>;
   files: Map<string, ExplorerFile>;
+  rootStatus: "idle" | "available" | "missing";
   isLoading: boolean;
   lastError: string | null;
   pendingRequest: ExplorerRequestState | null;
@@ -328,6 +330,7 @@ export interface DaemonServerInfo {
   hostname: string | null;
   version: string | null;
   desktopManaged?: boolean;
+  relayDeviceType?: RelayDeviceType;
   capabilities?: ServerCapabilities;
   features?: ServerInfoStatusPayload["features"];
 }
@@ -733,6 +736,7 @@ function isSessionServerInfoUnchanged(input: {
   nextHostname: string | null;
   nextVersion: string | null;
   nextDesktopManaged: boolean | undefined;
+  nextRelayDeviceType: RelayDeviceType | undefined;
   nextCapabilities: ServerCapabilities | undefined;
   nextFeatures: ServerInfoStatusPayload["features"] | undefined;
   nextServerId: string;
@@ -742,6 +746,7 @@ function isSessionServerInfoUnchanged(input: {
     nextHostname,
     nextVersion,
     nextDesktopManaged,
+    nextRelayDeviceType,
     nextCapabilities,
     nextFeatures,
   } = input;
@@ -752,6 +757,7 @@ function isSessionServerInfoUnchanged(input: {
     prevHostname === nextHostname &&
     prevVersion === nextVersion &&
     currentServerInfo?.desktopManaged === nextDesktopManaged &&
+    currentServerInfo?.relayDeviceType === nextRelayDeviceType &&
     areServerCapabilitiesEqual(currentServerInfo?.capabilities, nextCapabilities) &&
     areServerInfoFeaturesEqual(currentServerInfo?.features, nextFeatures)
   );
@@ -923,6 +929,7 @@ export const useSessionStore = create<SessionStore>()(
           const nextHostname = info.hostname?.trim() || null;
           const nextVersion = info.version?.trim() || null;
           const nextDesktopManaged = info.desktopManaged;
+          const nextRelayDeviceType = info.relayDeviceType;
           const nextCapabilities = info.capabilities;
           const nextFeatures = info.features;
 
@@ -932,6 +939,7 @@ export const useSessionStore = create<SessionStore>()(
               nextHostname,
               nextVersion,
               nextDesktopManaged,
+              nextRelayDeviceType,
               nextCapabilities,
               nextFeatures,
               nextServerId: info.serverId,
@@ -953,6 +961,7 @@ export const useSessionStore = create<SessionStore>()(
                   ...(nextDesktopManaged !== undefined
                     ? { desktopManaged: nextDesktopManaged }
                     : {}),
+                  ...(nextRelayDeviceType ? { relayDeviceType: nextRelayDeviceType } : {}),
                   ...(nextCapabilities ? { capabilities: nextCapabilities } : {}),
                   ...(nextFeatures ? { features: nextFeatures } : {}),
                 },

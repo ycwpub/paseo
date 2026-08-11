@@ -78,6 +78,19 @@ interface DesktopDaemonLogs {
   contents: string;
 }
 
+interface DesktopPairingOffer {
+  relayEnabled: boolean;
+  url: string | null;
+  qr: string | null;
+  offers: Array<{
+    endpoint: string;
+    useTls: boolean;
+    pairingBaseUrl: string | null;
+    url: string;
+    qr: string | null;
+  }>;
+}
+
 function parseReleaseChannel(
   args: Record<string, unknown> | undefined,
 ): AppReleaseChannel | undefined {
@@ -566,6 +579,46 @@ function getDaemonLogs(): DesktopDaemonLogs {
 
 async function getCliDaemonStatus(): Promise<string> {
   return await runExternalCliTextCommand(["daemon", "status"]);
+}
+
+async function getDaemonPairing(): Promise<DesktopPairingOffer> {
+  const status = await resolveDesktopDaemonStatus();
+  if (status.status !== "running") {
+    return {
+      relayEnabled: false,
+      url: null,
+      qr: null,
+      offers: [],
+    };
+  }
+
+  const payload = await runExternalCliJsonCommand(["daemon", "pair", "--json"]);
+  if (!isRecord(payload)) {
+    throw new Error("Daemon pairing response was not an object.");
+  }
+
+  return {
+    relayEnabled: payload.relayEnabled === true,
+    url: toTrimmedString(payload.url),
+    qr: toTrimmedString(payload.qr),
+    offers: Array.isArray(payload.offers)
+      ? payload.offers.flatMap((offer) => {
+          if (!isRecord(offer)) return [];
+          const endpoint = toTrimmedString(offer.endpoint);
+          const url = toTrimmedString(offer.url);
+          if (!endpoint || !url) return [];
+          return [
+            {
+              endpoint,
+              useTls: offer.useTls === true,
+              pairingBaseUrl: toTrimmedString(offer.pairingBaseUrl),
+              url,
+              qr: toTrimmedString(offer.qr),
+            },
+          ];
+        })
+      : [],
+  };
 }
 
 async function getLocalDaemonVersion(): Promise<{ version: string | null; error: string | null }> {

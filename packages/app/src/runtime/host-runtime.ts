@@ -4,6 +4,7 @@ import equal from "fast-deep-equal/es6";
 import {
   DaemonClient,
   type ConnectionState,
+  type DaemonConnectionTransport,
   type FetchAgentsOptions,
 } from "@getpaseo/client/internal/daemon-client";
 import {
@@ -23,10 +24,23 @@ import {
   shouldUseTlsForDefaultHostedRelay,
 } from "@/utils/daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
-import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
+import {
+  resolveClientDeviceType,
+  resolveClientHostname,
+  resolveClientName,
+  resolveClientType,
+} from "@/utils/client-name";
+import {
+  ConnectionOfferSchema,
+  getConnectionOfferRelays,
+  type ConnectionOffer,
+} from "@getpaseo/protocol/connection-offer";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { isWeb } from "@/constants/platform";
-import { connectToDaemon } from "@/utils/test-daemon-connection";
+import {
+  connectToDaemon,
+  DaemonConnectionApprovalRequiredError,
+} from "@/utils/test-daemon-connection";
 import { getOrCreateClientId } from "@/utils/client-id";
 import {
   selectBestConnection,
@@ -91,6 +105,7 @@ export interface HostRuntimeSnapshot {
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
   connectionEpoch: number;
+  transport?: DaemonConnectionTransport | null;
 }
 
 type HostRuntimeSnapshotPatch = Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>;
@@ -237,7 +252,11 @@ type HostRuntimeConnectionMachineState =
     };
 
 type HostRuntimeConnectionMachineEvent =
-  | { type: "select_connection"; connectionId: string; connection: ActiveConnection }
+  | {
+      type: "select_connection";
+      connectionId: string;
+      connection: ActiveConnection;
+    }
   | { type: "client_state"; state: ConnectionState; lastError: string | null }
   | { type: "connect_failed"; message: string }
   | { type: "no_connections" }
@@ -272,7 +291,7 @@ function buildConnectionStateFromStatus(
       lastOnlineAt: new Date().toISOString(),
     };
   }
-  if (status === "connecting" || status === "idle") {
+  if (status === "connecting" || status === "awaiting_approval" || status === "idle") {
     return {
       tag: "connecting",
       activeConnectionId: previousActiveConnectionId,
@@ -483,7 +502,9 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
       const base = {
         suppressSendErrors: true,
         clientId,
-        clientType: "mobile" as const,
+        clientName: resolveClientName(),
+        clientHostname: resolveClientHostname(),
+        clientType: resolveClientType(),
         appVersion: resolveAppVersion() ?? undefined,
         runtimeGeneration,
         capabilities: appCapabilities,
@@ -516,6 +537,9 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
           endpoint: connection.relayEndpoint,
           useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
           serverId: host.serverId,
+          clientId,
+          clientHostname: base.clientHostname,
+          deviceType: resolveClientDeviceType(),
         }),
         e2ee: {
           enabled: true,
@@ -561,6 +585,7 @@ export class HostRuntimeController {
   private listeners = new Set<() => void>();
   private activeClient: DaemonClient | null = null;
   private unsubscribeClientStatus: (() => void) | null = null;
+  private unsubscribeClientTransport: (() => void) | null = null;
   private unsubscribeClientHandlers: (() => void) | null = null;
   private probeIntervalHandle: ReturnType<typeof setInterval> | null = null;
   private started = false;
@@ -643,6 +668,10 @@ export class HostRuntimeController {
     if (this.unsubscribeClientStatus) {
       this.unsubscribeClientStatus();
       this.unsubscribeClientStatus = null;
+    }
+    if (this.unsubscribeClientTransport) {
+      this.unsubscribeClientTransport();
+      this.unsubscribeClientTransport = null;
     }
     if (this.unsubscribeClientHandlers) {
       this.unsubscribeClientHandlers();
@@ -805,7 +834,9 @@ export class HostRuntimeController {
       if (!this.isCurrentProbeRequest(requestVersion)) {
         return;
       }
-      this.updateSnapshot({ probeByConnectionId: new Map(probeByConnectionId) });
+      this.updateSnapshot({
+        probeByConnectionId: new Map(probeByConnectionId),
+      });
     };
 
     const maybeActivateFirstAvailable = async (
@@ -979,7 +1010,9 @@ export class HostRuntimeController {
               return;
             }
 
-            const rttMs = await connectedClient.measureLatency({ timeoutMs: 5000 });
+            const rttMs = await connectedClient.measureLatency({
+              timeoutMs: 5000,
+            });
             if (!this.isCurrentProbeRequest(requestVersion)) {
               return;
             }
@@ -989,7 +1022,20 @@ export class HostRuntimeController {
               latencyMs: rttMs,
             });
             publishProbeState();
-          } catch {
+          } catch (error) {
+            if (error instanceof DaemonConnectionApprovalRequiredError) {
+              connectedClient = error.client as DaemonClient;
+              const activated = await maybeActivateFirstAvailable(connection.id, connectedClient);
+              shouldCloseClient = !activated;
+              if (this.isCurrentProbeRequest(requestVersion)) {
+                probeByConnectionId.set(connection.id, {
+                  status: "pending",
+                  latencyMs: null,
+                });
+                publishProbeState();
+              }
+              return;
+            }
             if (this.isCurrentProbeRequest(requestVersion)) {
               probeByConnectionId.set(connection.id, {
                 status: "unavailable",
@@ -1128,6 +1174,10 @@ export class HostRuntimeController {
       this.unsubscribeClientStatus();
       this.unsubscribeClientStatus = null;
     }
+    if (this.unsubscribeClientTransport) {
+      this.unsubscribeClientTransport();
+      this.unsubscribeClientTransport = null;
+    }
     if (this.unsubscribeClientHandlers) {
       this.unsubscribeClientHandlers();
       this.unsubscribeClientHandlers = null;
@@ -1143,7 +1193,10 @@ export class HostRuntimeController {
     if (this.snapshot.hasEverLoadedAgentDirectory) return {};
     const tag = this.connectionMachineState.tag;
     if (tag === "connecting" || tag === "online") {
-      return { agentDirectoryStatus: "initial_loading", agentDirectoryError: null };
+      return {
+        agentDirectoryStatus: "initial_loading",
+        agentDirectoryError: null,
+      };
     }
     if (tag === "error") {
       return {
@@ -1171,7 +1224,10 @@ export class HostRuntimeController {
     }
     const requestVersion = ++this.switchRequestVersion;
 
-    const clientId = await this.resolveClientIdForSwitch({ existingClient, requestVersion });
+    const clientId = await this.resolveClientIdForSwitch({
+      existingClient,
+      requestVersion,
+    });
     if (clientId === null) return;
 
     if (!this.isSwitchStillValid(requestVersion, expectedProbeVersion)) {
@@ -1206,7 +1262,11 @@ export class HostRuntimeController {
 
     this.activeClient = client;
     this.unsubscribeClientHandlers =
-      this.deps.mountClientHandlers?.({ client, host: this.host, connection }) ?? null;
+      this.deps.mountClientHandlers?.({
+        client,
+        host: this.host,
+        connection,
+      }) ?? null;
     this.applyConnectionEvent({
       type: "select_connection",
       connectionId: connection.id,
@@ -1238,6 +1298,14 @@ export class HostRuntimeController {
       };
       this.updateSnapshot(patch);
     });
+    if (typeof client.subscribeConnectionTransport === "function") {
+      this.unsubscribeClientTransport = client.subscribeConnectionTransport((transport) => {
+        if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) {
+          return;
+        }
+        this.updateSnapshot({ transport });
+      });
+    }
 
     try {
       if (!existingClient) {
@@ -1638,7 +1706,11 @@ export class HostRuntimeStore {
 
     this.hosts = this.hosts.map((host) =>
       host.serverId === oldServerId
-        ? { ...host, serverId: newServerId, updatedAt: new Date().toISOString() }
+        ? {
+            ...host,
+            serverId: newServerId,
+            updatedAt: new Date().toISOString(),
+          }
         : host,
     );
     this.emitHostList();
@@ -1676,7 +1748,11 @@ export class HostRuntimeStore {
     connection: HostConnection;
     label?: string;
     timeoutMs?: number;
-  }): Promise<{ profile: HostProfile; serverId: string; hostname: string | null }> {
+  }): Promise<{
+    profile: HostProfile;
+    serverId: string;
+    hostname: string | null;
+  }> {
     if (input.connection.type === "relay") {
       throw new Error("Cannot probe a relay connection without a server id.");
     }
@@ -1709,7 +1785,11 @@ export class HostRuntimeStore {
     useTls?: boolean;
     password?: string;
     label?: string;
-  }): Promise<{ profile: HostProfile; serverId: string; hostname: string | null }> {
+  }): Promise<{
+    profile: HostProfile;
+    serverId: string;
+    hostname: string | null;
+  }> {
     const endpoint = normalizeHostPort(input.endpoint);
     const password = input.password?.trim();
     return this.probeAndUpsertConnection({
@@ -1752,15 +1832,20 @@ export class HostRuntimeStore {
   }
 
   async upsertConnectionFromOffer(offer: ConnectionOffer, label?: string): Promise<HostProfile> {
-    // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
-    const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
-    return this.upsertRelayConnection({
-      serverId: offer.serverId,
-      relayEndpoint: offer.relay.endpoint,
-      useTls,
-      daemonPublicKeyB64: offer.daemonPublicKeyB64,
-      label,
-    });
+    let profile: HostProfile | null = null;
+    for (const relay of getConnectionOfferRelays(offer)) {
+      // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
+      const useTls = relay.useTls ?? shouldUseTlsForDefaultHostedRelay(relay.endpoint);
+      profile = await this.upsertRelayConnection({
+        serverId: offer.serverId,
+        relayEndpoint: relay.endpoint,
+        useTls,
+        daemonPublicKeyB64: offer.daemonPublicKeyB64,
+        label,
+      });
+    }
+    if (!profile) throw new Error("Pairing offer contains no relay endpoints");
+    return profile;
   }
 
   async upsertConnectionFromOfferUrl(
@@ -1890,6 +1975,15 @@ export class HostRuntimeStore {
       .filter((entry): entry is HostProfile => entry !== null);
     this.setHostsAndSync(next);
     await this.persistHosts();
+  }
+
+  async reconnectAllClients(): Promise<void> {
+    await Promise.all(
+      [...this.controllers.values()].map(async (controller) => {
+        await controller.stop();
+        await controller.start();
+      }),
+    );
   }
 
   private async upsertHostConnection(input: {
@@ -2148,16 +2242,16 @@ export class HostRuntimeStore {
       submitMessage: async ({ text, attachments }) => {
         const supportsForgeAttachments =
           useSessionStore.getState().sessions[serverId]?.serverInfo?.features?.forgeSearch === true;
-        await dispatchComposerAgentMessage({
-          client,
-          agentId,
-          text,
-          attachments,
-          attachmentSubmitFormat: resolveComposerAttachmentSubmitFormat({
+        const wirePayload = splitComposerAttachmentsForSubmit(attachments, {
+          format: resolveComposerAttachmentSubmitFormat({
             supportsForgeAttachments,
           }),
-          encodeImages,
-          submission: createMessageSubmissionWriter(serverId),
+        });
+        const images = await encodeImages(wirePayload.images);
+        await client.sendAgentMessage(agentId, text, {
+          messageId: next.id,
+          ...(images && images.length > 0 ? { images } : {}),
+          attachments: wirePayload.attachments,
         });
       },
     })
@@ -2474,7 +2568,11 @@ export interface HostMutations {
     useTls?: boolean;
     password?: string;
     label?: string;
-  }) => Promise<{ profile: HostProfile; serverId: string; hostname: string | null }>;
+  }) => Promise<{
+    profile: HostProfile;
+    serverId: string;
+    hostname: string | null;
+  }>;
   upsertRelayConnection: (input: {
     serverId: string;
     relayEndpoint: string;

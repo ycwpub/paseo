@@ -1,15 +1,12 @@
-/// <reference lib="dom" />
-import { EventEmitter } from "node:events";
 import { WebSocket } from "ws";
 import type pino from "pino";
-import {
-  createDaemonChannel,
-  type Transport as RelayTransport,
-  type KeyPair,
-} from "@getpaseo/relay/e2ee";
-import { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
+import type { KeyPair } from "@getpaseo/relay/e2ee";
+import { buildRelayWebSocketUrl, type RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
 import type { ExternalSocketMetadata } from "./websocket-server.js";
-import { createEncryptedRelaySocket } from "./websocket/encrypted-relay-socket.js";
+import {
+  wrapDaemonEncryptedWebSocket,
+  type EncryptedWebSocketLike,
+} from "./encrypted-websocket.js";
 
 export interface RelayTransportOptions {
   logger: pino.Logger;
@@ -17,7 +14,10 @@ export interface RelayTransportOptions {
   relayEndpoint: string; // "host:port"
   relayUseTls: boolean;
   serverId: string;
+  serverHostname?: string;
+  serverDeviceType?: RelayDeviceType;
   daemonKeyPair?: KeyPair;
+  onPairingBaseUrl?: (pairingBaseUrl: string) => void;
   createWebSocket?: RelayWebSocketFactory;
 }
 
@@ -25,15 +25,7 @@ export interface RelayTransportController {
   stop: () => Promise<void>;
 }
 
-export interface RelaySocketLike {
-  readyState: number;
-  bufferedAmount?: number;
-  send: (data: string | Uint8Array | ArrayBuffer, callback?: (error?: Error) => void) => void;
-  close: (code?: number, reason?: string) => void;
-  terminate?: () => void;
-  on: (event: "message" | "close" | "error", listener: (...args: unknown[]) => void) => void;
-  once: (event: "close" | "error", listener: (...args: unknown[]) => void) => void;
-}
+type RelaySocketLike = EncryptedWebSocketLike;
 
 interface RelayWebSocketLike extends RelaySocketLike {
   terminate: () => void;
@@ -46,9 +38,15 @@ interface RelayWebSocketLike extends RelaySocketLike {
 
 type RelayWebSocketFactory = (url: string) => RelayWebSocketLike;
 
+interface RelayClientPeer {
+  connectionId: string;
+  remoteAddress: string | null;
+  remotePort: number | null;
+}
+
 type ControlMessage =
-  | { type: "sync"; connectionIds: string[] }
-  | { type: "connected"; connectionId: string }
+  | { type: "sync"; connections: RelayClientPeer[]; pairingBaseUrl: string | null }
+  | ({ type: "connected" } & RelayClientPeer)
   | { type: "disconnected"; connectionId: string }
   | { type: "ping" }
   | { type: "pong" };
@@ -66,6 +64,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function parseRelayClientPeer(value: unknown): RelayClientPeer | null {
+  if (!isRecord(value) || typeof value.connectionId !== "string" || !value.connectionId.trim()) {
+    return null;
+  }
+  return {
+    connectionId: value.connectionId.trim(),
+    remoteAddress:
+      typeof value.remoteAddress === "string" && value.remoteAddress.trim()
+        ? value.remoteAddress.trim()
+        : null,
+    remotePort:
+      typeof value.remotePort === "number" &&
+      Number.isInteger(value.remotePort) &&
+      value.remotePort >= 0 &&
+      value.remotePort <= 65535
+        ? value.remotePort
+        : null,
+  };
+}
+
+// oxlint-disable-next-line complexity
 function tryParseControlMessage(raw: unknown): ControlMessage | null {
   try {
     let text: string;
@@ -81,17 +100,42 @@ function tryParseControlMessage(raw: unknown): ControlMessage | null {
     if (parsed.type === "ping") return { type: "ping" };
     if (parsed.type === "pong") return { type: "pong" };
     if (parsed.type === "sync" && Array.isArray(parsed.connectionIds)) {
-      const connectionIds = parsed.connectionIds.filter(
-        (id: unknown) => typeof id === "string" && id.trim().length > 0,
-      );
-      return { type: "sync", connectionIds };
+      const peers = Array.isArray(parsed.connections)
+        ? parsed.connections
+            .map((connection) => parseRelayClientPeer(connection))
+            .filter((connection): connection is RelayClientPeer => connection !== null)
+        : [];
+      const peersById = new Map(peers.map((peer) => [peer.connectionId, peer]));
+      for (const id of parsed.connectionIds) {
+        if (typeof id !== "string" || !id.trim() || peersById.has(id.trim())) continue;
+        peersById.set(id.trim(), {
+          connectionId: id.trim(),
+          remoteAddress: null,
+          remotePort: null,
+        });
+      }
+      return {
+        type: "sync",
+        connections: [...peersById.values()],
+        pairingBaseUrl:
+          typeof parsed.pairingBaseUrl === "string" && parsed.pairingBaseUrl.trim()
+            ? parsed.pairingBaseUrl.trim()
+            : null,
+      };
     }
     if (
       parsed.type === "connected" &&
       typeof parsed.connectionId === "string" &&
       parsed.connectionId.trim()
     ) {
-      return { type: "connected", connectionId: parsed.connectionId.trim() };
+      return {
+        type: "connected",
+        ...(parseRelayClientPeer(parsed) ?? {
+          connectionId: parsed.connectionId.trim(),
+          remoteAddress: null,
+          remotePort: null,
+        }),
+      };
     }
     if (
       parsed.type === "disconnected" &&
@@ -112,7 +156,10 @@ export function startRelayTransport({
   relayEndpoint,
   relayUseTls,
   serverId,
+  serverHostname,
+  serverDeviceType,
   daemonKeyPair,
+  onPairingBaseUrl,
   createWebSocket = createDefaultRelayWebSocket,
 }: RelayTransportOptions): RelayTransportController {
   const relayLogger = logger.child({ module: "relay-transport" });
@@ -168,6 +215,8 @@ export function startRelayTransport({
       useTls: relayUseTls,
       serverId,
       role: "server",
+      hostname: serverHostname,
+      deviceType: serverDeviceType,
     });
     const socket = createWebSocket(url);
     controlWs = socket;
@@ -307,13 +356,16 @@ export function startRelayTransport({
       }
       if (msg.type === "pong") return;
       if (msg.type === "sync") {
-        for (const clientConnectionId of msg.connectionIds) {
-          ensureClientDataSocket(clientConnectionId);
+        if (msg.pairingBaseUrl) {
+          onPairingBaseUrl?.(msg.pairingBaseUrl);
+        }
+        for (const connection of msg.connections) {
+          ensureClientDataSocket(connection.connectionId, connection);
         }
         return;
       }
       if (msg.type === "connected") {
-        ensureClientDataSocket(msg.connectionId);
+        ensureClientDataSocket(msg.connectionId, msg);
         return;
       }
       if (msg.type === "disconnected") {
@@ -342,7 +394,10 @@ export function startRelayTransport({
     }, delayMs);
   };
 
-  const ensureClientDataSocket = (connectionId: string): void => {
+  const ensureClientDataSocket = (
+    connectionId: string,
+    peer: RelayClientPeer | null = null,
+  ): void => {
     if (stopped) return;
     if (!connectionId) return;
     if (dataSockets.has(connectionId)) return;
@@ -353,6 +408,8 @@ export function startRelayTransport({
       serverId,
       role: "server",
       connectionId,
+      hostname: serverHostname,
+      deviceType: serverDeviceType,
     });
     const socket = createWebSocket(url);
     dataSockets.set(connectionId, socket);
@@ -374,10 +431,15 @@ export function startRelayTransport({
       relayLogger.info({ connectionId }, "relay_data_connected");
       if (attached) return;
       attached = true;
+      const relayConnectionKey = `${relayUseTls ? "wss" : "ws"}://${relayEndpoint}:${connectionId}`;
       const externalMetadata: ExternalSocketMetadata = {
         transport: "relay",
-        externalSessionKey: `session:${connectionId}`,
-        relayConnectionId: connectionId,
+        externalSessionKey: `relay:${relayConnectionKey}`,
+        relayConnectionId: relayConnectionKey,
+        ...(peer?.remoteAddress ? { remoteAddress: peer.remoteAddress } : {}),
+        ...(peer?.remotePort !== null && peer?.remotePort !== undefined
+          ? { remotePort: peer.remotePort }
+          : {}),
       };
       if (daemonKeyPair) {
         void attachEncryptedSocket(
@@ -421,37 +483,8 @@ async function attachEncryptedSocket(
   metadata?: ExternalSocketMetadata,
 ): Promise<void> {
   try {
-    const relayTransport = createRelayTransportAdapter(socket, logger);
-    const emitter = new EventEmitter();
-    const pendingMessages: Array<string | ArrayBuffer> = [];
-    let attached = false;
-    const emitMessage = (data: string | ArrayBuffer) => {
-      if (attached) {
-        emitter.emit("message", data);
-        return;
-      }
-      pendingMessages.push(data);
-    };
-    const channel = await createDaemonChannel(relayTransport, daemonKeyPair, {
-      onmessage: emitMessage,
-      onclose: (code, reason) => emitter.emit("close", code, reason),
-      onerror: (error) => {
-        logger.warn({ err: error }, "relay_e2ee_error");
-        emitter.emit("error", error);
-      },
-    });
-    const encryptedSocket = createEncryptedRelaySocket({
-      channel,
-      emitter,
-      getTransportBufferedAmount: () => socket.bufferedAmount,
-      terminateTransport: () => socket.terminate(),
-    });
+    const encryptedSocket = await wrapDaemonEncryptedWebSocket(socket, daemonKeyPair, logger);
     await attachSocket(encryptedSocket, metadata);
-    attached = true;
-    for (const message of pendingMessages) {
-      emitter.emit("message", message);
-    }
-    pendingMessages.length = 0;
   } catch (error) {
     logger.warn({ err: error }, "relay_e2ee_handshake_failed");
     try {
@@ -460,94 +493,4 @@ async function attachEncryptedSocket(
       // ignore
     }
   }
-}
-
-function createRelayTransportAdapter(
-  socket: RelayWebSocketLike,
-  logger: pino.Logger,
-): RelayTransport {
-  const relayTransport: RelayTransport = {
-    send: (data) =>
-      new Promise<void>((resolve, reject) => {
-        try {
-          socket.send(data, (error) => {
-            if (!error) {
-              resolve();
-              return;
-            }
-            logger.warn({ err: error }, "relay_socket_send_failed");
-            reject(error);
-          });
-        } catch (error) {
-          const err = error instanceof Error ? error : new Error(String(error));
-          logger.warn({ err }, "relay_socket_send_failed");
-          reject(err);
-        }
-      }),
-    close: (code?: number, reason?: string) => socket.close(code, reason),
-    onmessage: null,
-    onclose: null,
-    onerror: null,
-  };
-
-  socket.on("message", (data, isBinary) => {
-    const binary = isBinary === true;
-    relayTransport.onmessage?.({ data: normalizeMessageData(data, binary), isBinary: binary });
-  });
-  socket.on("close", (code, reason) => {
-    const closeCode = typeof code === "number" ? code : 1006;
-    relayTransport.onclose?.(closeCode, String(reason ?? ""));
-  });
-  socket.on("error", (err) => {
-    relayTransport.onerror?.(err instanceof Error ? err : new Error(String(err)));
-  });
-
-  return relayTransport;
-}
-
-function normalizeMessageData(data: unknown, isBinary: boolean): string | ArrayBuffer {
-  if (!isBinary) {
-    if (typeof data === "string") return data;
-    const buffer = bufferFromWsData(data);
-    if (buffer) return buffer.toString("utf8");
-    return String(data);
-  }
-
-  if (data instanceof ArrayBuffer) return data;
-
-  const buffer = bufferFromWsData(data);
-  if (buffer) {
-    const view = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-    const out = new Uint8Array(view.byteLength);
-    out.set(view);
-    return out.buffer;
-  }
-
-  return String(data);
-}
-
-function bufferFromWsData(data: unknown): Buffer | null {
-  if (Buffer.isBuffer(data)) return data;
-  if (Array.isArray(data)) {
-    const buffers: Buffer[] = [];
-    for (const part of data) {
-      if (Buffer.isBuffer(part)) {
-        buffers.push(part);
-      } else if (part instanceof ArrayBuffer) {
-        buffers.push(Buffer.from(part));
-      } else if (ArrayBuffer.isView(part)) {
-        buffers.push(Buffer.from(part.buffer, part.byteOffset, part.byteLength));
-      } else if (typeof part === "string") {
-        buffers.push(Buffer.from(part, "utf8"));
-      } else {
-        return null;
-      }
-    }
-    return Buffer.concat(buffers);
-  }
-  if (data instanceof ArrayBuffer) return Buffer.from(data);
-  if (ArrayBuffer.isView(data)) {
-    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-  }
-  return null;
 }

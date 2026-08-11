@@ -1,4 +1,13 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  forwardRef,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -216,6 +225,7 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const WEB_EXIT_DURATION_MS = 160;
+const AdaptiveBottomSheetInputContext = createContext(false);
 
 function SheetBackground({ style }: BottomSheetBackgroundProps) {
   const { theme } = useUnistyles();
@@ -307,6 +317,7 @@ const ThemedBottomSheetTextInput = withUnistyles(BottomSheetTextInput, (theme) =
 export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
   function AdaptiveTextInputInner(props, ref) {
     const isMobile = useIsCompactFormFactor();
+    const isInsideBottomSheet = useContext(AdaptiveBottomSheetInputContext);
     const { value: _value, initialValue, resetKey, defaultValue, style, ...inputProps } = props;
     // Leaf-owned color goes LAST so callers cannot override it with a stale
     // theme read. Outline color is theme-aware on web :focus-visible.
@@ -316,7 +327,7 @@ export const AdaptiveTextInput = forwardRef<TextInput, AdaptiveTextInputProps>(
       style: [styles.adaptiveInputOutline, style, styles.adaptiveInputText],
     };
 
-    if (isMobile && isNative) {
+    if (isMobile && isNative && isInsideBottomSheet) {
       return (
         <ThemedBottomSheetTextInput
           key={resetKey}
@@ -693,11 +704,21 @@ export function AdaptiveModalSheet({
         accessible={false}
         presentation={presentation}
       >
-        {sizeContentToCurrentSnapPoint ? (
-          <BottomSheetVisibleContent>{sheetContent}</BottomSheetVisibleContent>
-        ) : (
-          sheetContent
-        )}
+        <AdaptiveBottomSheetInputContext.Provider value>
+          <SheetHeaderView header={header} onClose={onClose} testID={testID} />
+          {scrollable ? (
+            <BottomSheetScrollView
+              contentContainerStyle={bottomSheetContentStyle}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {children}
+            </BottomSheetScrollView>
+          ) : (
+            <View style={bottomSheetStaticContentStyle}>{children}</View>
+          )}
+          {footer ? <View style={footerStyle}>{footer}</View> : null}
+        </AdaptiveBottomSheetInputContext.Provider>
       </IsolatedBottomSheetModal>
     );
   }

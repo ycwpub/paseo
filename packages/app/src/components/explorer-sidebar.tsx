@@ -36,16 +36,7 @@ import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
-import { resolveDesktopExplorerWidth } from "@/components/desktop-sidebar-layout";
-import {
-  SIDEBAR_RESIZE_ACTIVATION_OFFSET,
-  SIDEBAR_RESIZE_FAIL_OFFSET,
-} from "@/components/sidebar-resize-handle-layout";
-import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { resolveFocusedChatTarget } from "@/composer/focused-chat-target";
-import { createWorkspaceFileAttachment } from "@/attachments/workspace-file";
-import { useDraftStore } from "@/stores/draft-store";
+import { resolveDesktopWorkspaceExplorerWidth } from "@/components/desktop-sidebar-layout";
 
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
@@ -157,6 +148,8 @@ export function ExplorerSidebar({
 }: ExplorerSidebarProps) {
   const insets = useSafeAreaInsets();
   const explorerWidth = usePanelStore((state) => state.explorerWidth);
+  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
+  const isAppSidebarOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const setExplorerWidth = usePanelStore((state) => state.setExplorerWidth);
   const isOpen = usePanelStore((state) => selectIsFileExplorerOpen(state, { isCompact: false }));
   const closeDesktopFileExplorer = usePanelStore((state) => state.closeDesktopFileExplorer);
@@ -166,8 +159,10 @@ export function ExplorerSidebar({
     isGit,
   });
   const { width: viewportWidth } = useWindowDimensions();
-  const visibleExplorerWidth = resolveDesktopExplorerWidth({
-    requestedWidth: explorerWidth,
+  const visibleExplorerWidth = resolveDesktopWorkspaceExplorerWidth({
+    isAppSidebarOpen,
+    requestedAppSidebarWidth: sidebarWidth,
+    requestedExplorerWidth: explorerWidth,
     viewportWidth,
   });
   const startWidthRef = useRef(visibleExplorerWidth);
@@ -206,8 +201,10 @@ export function ExplorerSidebar({
         })
         .onUpdate((event) => {
           const newWidth = startWidthRef.current - event.translationX;
-          resizeWidth.value = resolveDesktopExplorerWidth({
-            requestedWidth: newWidth,
+          resizeWidth.value = resolveDesktopWorkspaceExplorerWidth({
+            isAppSidebarOpen,
+            requestedAppSidebarWidth: sidebarWidth,
+            requestedExplorerWidth: newWidth,
             viewportWidth,
           });
         })
@@ -218,10 +215,10 @@ export function ExplorerSidebar({
           scheduleOnRN(hideResizeGrip);
         }),
     [
-      hideResizeGrip,
+      isAppSidebarOpen,
       resizeWidth,
       setExplorerWidth,
-      showResizeGrip,
+      sidebarWidth,
       viewportWidth,
       visibleExplorerWidth,
     ],

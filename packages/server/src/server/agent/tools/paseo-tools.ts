@@ -1557,6 +1557,8 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           worktreesRoot: options.worktreesRoot,
           terminalManager,
           providerSnapshotManager,
+          projectRegistry: options.projectRegistry,
+          workspaceRegistry: options.workspaceRegistry,
           createPaseoWorktree: options.createPaseoWorktree,
           ...(options.ensureWorkspaceForCreate
             ? { ensureWorkspaceForCreate: options.ensureWorkspaceForCreate }

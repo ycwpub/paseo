@@ -1,10 +1,17 @@
 import { describe, expect, test } from "vitest";
 import {
+  extractLarkUserMentionDirective,
   filterLarkTopicHistoryMessages,
+  formatLarkCollaborationPrompt,
+  formatLarkSubstitutePrompt,
+  formatLarkSubstituteReply,
   formatLarkUserPromptWithTopicHistory,
   getLarkEventDedupeKey,
   isLarkBotMentionEvent,
   normalizeLarkMessageEvent,
+  resolveLarkAddressedBots,
+  resolveLarkSubstituteTrigger,
+  routeLarkReplyBotMentions,
 } from "./lark-message-format.js";
 
 describe("lark-message-format", () => {
@@ -38,11 +45,300 @@ describe("lark-message-format", () => {
       threadId: "omt_1",
       rootMessageId: "om_root",
       quotedMessageId: "om_quoted",
+      senderType: null,
       topicName: "Launch checklist",
       text: "Please review the release.",
       createTime: 1767225900000,
     });
     expect(event ? getLarkEventDedupeKey(event) : null).toBe("om_1");
+  });
+
+  test("injects available bots and explicit collaboration routing rules", () => {
+    const prompt = formatLarkCollaborationPrompt({
+      prompt: "Please implement the change.",
+      currentBotName: "Lead",
+      senderBot: null,
+      userName: "Alice",
+      availableBots: [
+        { openId: "ou_reviewer", name: "Reviewer" },
+        { openId: "ou_writer", name: "Writer" },
+      ],
+      addressedBots: [
+        {
+          token: "@_user_1",
+          name: "Lead",
+          openId: "ou_lead",
+          isCurrentBot: true,
+        },
+        {
+          token: "@_user_2",
+          name: "Reviewer",
+          openId: "ou_reviewer",
+          isCurrentBot: false,
+        },
+      ],
+    });
+
+    expect(prompt).toContain("Current bot: Lead.");
+    expect(prompt).toContain('This turn was sent by user "Alice".');
+    expect(prompt).toContain('<bot name="Reviewer" open_id="ou_reviewer" />');
+    expect(prompt).toContain(
+      '<mention token="@_user_1" name="Lead" open_id="ou_lead" current_bot="true" />',
+    );
+    expect(prompt).toContain(
+      '<mention token="@_user_2" name="Reviewer" open_id="ou_reviewer" current_bot="false" />',
+    );
+    expect(prompt).toContain("Execute only the work explicitly assigned to the current bot.");
+    expect(prompt).toContain("never perform an independent review");
+    expect(prompt).toContain("MUST @ that bot's exact name");
+    expect(prompt).toContain("交由审核负责人审核");
+    expect(prompt).toContain("@Reviewer 方案已完成，请独立审核。");
+    expect(prompt).toContain("already a usable, verified bot identity");
+    expect(prompt).toContain("Never claim that the bot name or identity is missing");
+    expect(prompt).toContain(
+      'if "Reviewer" must act after your work, the visible answer must include "@Reviewer"',
+    );
+    expect(prompt).toContain("Completion of only your own subtask is not overall completion");
+    expect(prompt).toContain("Only when another bot must reply or take an independent action");
+    expect(prompt).toContain("paseo:lark-route=user");
+    expect(prompt).toContain("ONLY when the overall task is complete");
+    expect(prompt).toContain("explicit human authorization or permission");
+    expect(prompt).toContain("NEVER write @_user_1, @_user_2");
+  });
+
+  test("always injects explicit user routing rules even when no other bot is available", () => {
+    const prompt = formatLarkCollaborationPrompt({
+      prompt: "Please finish the task.",
+      currentBotName: "Paseo",
+      senderBot: null,
+      userName: "Alice",
+      availableBots: [],
+      addressedBots: [],
+    });
+
+    expect(prompt).toContain("<!-- paseo:lark-route=user -->");
+    expect(prompt).toContain("<!-- paseo:lark-route=none -->");
+  });
+
+  test("maps only confirmed bot mentions and marks the current bot", () => {
+    expect(
+      resolveLarkAddressedBots({
+        mentions: [
+          {
+            key: "@_user_1",
+            name: "Paseo Mac",
+            openId: "ou_current",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+          {
+            key: "@_user_2",
+            name: "Paseo Reviewer",
+            openId: "ou_reviewer",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+          {
+            key: "@_user_3",
+            name: "Alice",
+            openId: "ou_human",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+        ],
+        chatBots: [
+          { openId: "ou_current", name: "Paseo Mac" },
+          { openId: "ou_reviewer", name: "Paseo Reviewer" },
+        ],
+        currentBot: {
+          openId: "ou_current",
+          appId: "cli_current",
+          name: "Paseo Mac",
+        },
+      }),
+    ).toEqual([
+      {
+        token: "@_user_1",
+        name: "Paseo Mac",
+        openId: "ou_current",
+        isCurrentBot: true,
+      },
+      {
+        token: "@_user_2",
+        name: "Paseo Reviewer",
+        openId: "ou_reviewer",
+        isCurrentBot: false,
+      },
+    ]);
+  });
+
+  test("uses configured bot names to recover app-scoped peer mention identities", () => {
+    expect(
+      resolveLarkAddressedBots({
+        mentions: [
+          {
+            key: "@_user_1",
+            name: "Paseo",
+            openId: "ou_current",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+          {
+            key: "@_user_2",
+            name: "审核机器人",
+            openId: "ou_reviewer_as_seen_by_current",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+          {
+            key: "@_user_3",
+            name: "Alice",
+            openId: "ou_human",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+        ],
+        chatBots: [],
+        knownBotNames: ["Paseo", "审核机器人"],
+        currentBot: {
+          openId: "ou_current",
+          appId: "cli_current",
+          name: "Paseo",
+        },
+      }),
+    ).toEqual([
+      {
+        token: "@_user_1",
+        name: "Paseo",
+        openId: "ou_current",
+        isCurrentBot: true,
+      },
+      {
+        token: "@_user_2",
+        name: "审核机器人",
+        openId: "ou_reviewer_as_seen_by_current",
+        isCurrentBot: false,
+      },
+    ]);
+  });
+
+  test("prefers the event-scoped open id when bot discovery returns a different handle", () => {
+    expect(
+      resolveLarkAddressedBots({
+        mentions: [
+          {
+            key: "@_user_2",
+            name: "Reviewer",
+            openId: "ou_reviewer_from_event",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+        ],
+        chatBots: [{ openId: "bot_reviewer_from_list", name: "Reviewer" }],
+        currentBot: {
+          openId: "ou_current",
+          appId: "cli_current",
+          name: "Paseo",
+        },
+      }),
+    ).toEqual([
+      {
+        token: "@_user_2",
+        name: "Reviewer",
+        openId: "ou_reviewer_from_event",
+        isCurrentBot: false,
+      },
+    ]);
+  });
+
+  test("converts an intentional bot addressee into a real Lark mention", () => {
+    expect(
+      routeLarkReplyBotMentions("实现已完成。@Reviewer 请检查边界条件；@Writer 请补充发布说明。", [
+        { openId: "ou_reviewer", name: "Reviewer" },
+        { openId: "ou_writer", name: "Writer" },
+      ]),
+    ).toEqual({
+      text: '实现已完成。<at user_id="ou_reviewer"></at> 请检查边界条件；<at user_id="ou_writer"></at> 请补充发布说明。',
+      mentionedBotOpenIds: ["ou_reviewer", "ou_writer"],
+    });
+  });
+
+  test("converts an input mention placeholder into the mapped real bot mention", () => {
+    expect(
+      routeLarkReplyBotMentions(
+        "@_user_2 方案已完成，请独立审核。",
+        [{ openId: "ou_reviewer", name: "Reviewer" }],
+        [
+          {
+            token: "@_user_1",
+            name: "Paseo",
+            openId: "ou_current",
+            isCurrentBot: true,
+          },
+          {
+            token: "@_user_2",
+            name: "Reviewer",
+            openId: "ou_reviewer",
+            isCurrentBot: false,
+          },
+        ],
+      ),
+    ).toEqual({
+      text: '<at user_id="ou_reviewer"></at> 方案已完成，请独立审核。',
+      mentionedBotOpenIds: ["ou_reviewer"],
+    });
+  });
+
+  test("extracts and removes the explicit user mention routing directive", () => {
+    expect(
+      extractLarkUserMentionDirective("<!-- paseo:lark-route=user -->\n任务已经完成，请查看结果。"),
+    ).toEqual({
+      text: "任务已经完成，请查看结果。",
+      mentionUser: true,
+    });
+    expect(
+      extractLarkUserMentionDirective(
+        "<!-- paseo:lark-route=none -->\n正在处理，暂时不需要用户介入。",
+      ),
+    ).toEqual({
+      text: "正在处理，暂时不需要用户介入。",
+      mentionUser: false,
+    });
+    expect(extractLarkUserMentionDirective("没有路由指令的普通回复。")).toEqual({
+      text: "没有路由指令的普通回复。",
+      mentionUser: false,
+    });
+  });
+
+  test("does not turn bot names in Markdown code into Lark mentions", () => {
+    const result = routeLarkReplyBotMentions(
+      "示例：`@Reviewer 请检查`。\n```\n@Reviewer\n```\n无需接力。",
+      [{ openId: "ou_reviewer", name: "Reviewer" }],
+    );
+
+    expect(result).toEqual({
+      text: "示例：`@Reviewer 请检查`。\n```\n@Reviewer\n```\n无需接力。",
+      mentionedBotOpenIds: [],
+    });
+  });
+
+  test("does not guess between bots with the same display name", () => {
+    expect(
+      routeLarkReplyBotMentions("@Reviewer 请处理。", [
+        { openId: "ou_reviewer_1", name: "Reviewer" },
+        { openId: "ou_reviewer_2", name: "Reviewer" },
+      ]),
+    ).toEqual({
+      text: "@Reviewer 请处理。",
+      mentionedBotOpenIds: [],
+    });
   });
 
   test("derives a topic name from the first sentence when Lark does not provide one", () => {
@@ -144,6 +440,184 @@ describe("lark-message-format", () => {
       ),
     ).toBe(true);
     expect(isLarkBotMentionEvent({ ...event, chatType: "p2p", mentions: [] }, null)).toBe(true);
+  });
+
+  test("matches substitute targets only by configured open_id", () => {
+    const event = {
+      eventId: "evt_substitute",
+      messageId: "om_substitute",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_user",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Substitute",
+      text: "@张三 请回复",
+      createTime: null,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "Different rendered name",
+          openId: "ou_target",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    };
+    const trigger = resolveLarkSubstituteTrigger(event, {
+      enabled: true,
+      openId: "ou_target",
+      name: "张三",
+    });
+
+    expect(trigger?.source).toBe("configured_target");
+    expect(trigger?.configuredTarget).toEqual({ openId: "ou_target", name: "张三" });
+    expect(
+      resolveLarkSubstituteTrigger(event, {
+        enabled: true,
+        openId: "ou_other",
+        name: "Different rendered name",
+      }),
+    ).toBeNull();
+    expect(
+      resolveLarkSubstituteTrigger(event, {
+        enabled: false,
+        openId: "ou_target",
+        name: "张三",
+      }),
+    ).toBeNull();
+    expect(
+      resolveLarkSubstituteTrigger(
+        { ...event, chatType: "p2p" },
+        { enabled: true, openId: "ou_target", name: "张三" },
+      ),
+    ).toBeNull();
+  });
+
+  test("triggers substitute mode when the current bot is mentioned", () => {
+    const event = {
+      eventId: "evt_substitute_bot",
+      messageId: "om_substitute_bot",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_user",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "Substitute",
+      text: "@Paseo 请回复",
+      createTime: null,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "Paseo",
+          openId: "ou_bot",
+          userId: null,
+          appId: "cli_bot",
+          idType: "open_id",
+        },
+      ],
+    };
+
+    const trigger = resolveLarkSubstituteTrigger(
+      event,
+      {
+        enabled: true,
+        openId: "ou_target",
+        name: "张三",
+      },
+      { openId: "ou_bot", appId: "cli_bot" },
+    );
+
+    expect(trigger?.source).toBe("current_bot");
+    expect(trigger?.configuredTarget).toEqual({ openId: "ou_target", name: "张三" });
+    expect(trigger?.observedMention.openId).toBe("ou_bot");
+    expect(
+      resolveLarkSubstituteTrigger(
+        { ...event, mentions: [] },
+        { enabled: true, openId: "ou_target", name: "张三" },
+        { openId: "ou_bot", appId: "cli_bot" },
+      ),
+    ).toBeNull();
+  });
+
+  test("injects substitute identity data and a legacy provider fallback instruction", () => {
+    const prompt = formatLarkSubstitutePrompt("Original prompt", {
+      source: "configured_target",
+      configuredTarget: { openId: "ou_target", name: '张三 & "负责人"' },
+      observedMention: {
+        key: "@_user_1",
+        name: "张三",
+        openId: "ou_target",
+        userId: null,
+        appId: null,
+        idType: "open_id",
+      },
+    });
+
+    expect(prompt).toContain(
+      '<configured_target open_id="ou_target" name="张三 &amp; &quot;负责人&quot;" />',
+    );
+    expect(prompt).toContain("<trigger_source>configured_target</trigger_source>");
+    expect(prompt).toContain("Reply on behalf of that person");
+    expect(prompt).toContain("Paseo adds the visible substitute disclosure label");
+    expect(prompt).toContain("Do not write another");
+    expect(prompt).toContain("matching is based only on the configured open_id");
+  });
+
+  test("describes a current-bot substitute trigger without claiming the target was mentioned", () => {
+    const prompt = formatLarkSubstitutePrompt("Original prompt", {
+      source: "current_bot",
+      configuredTarget: { openId: "ou_target", name: "张三" },
+      observedMention: {
+        key: "@_user_1",
+        name: "Paseo",
+        openId: "ou_bot",
+        userId: null,
+        appId: "cli_bot",
+        idType: "open_id",
+      },
+    });
+
+    expect(prompt).toContain("<trigger_source>current_bot</trigger_source>");
+    expect(prompt).toContain("mentioned the current bot while substitute mode is enabled");
+    expect(prompt).not.toContain(
+      "triggered substitute mode because it mentioned the configured substitute target",
+    );
+  });
+
+  test("adds a deterministic substitute disclosure to the visible reply", () => {
+    const trigger = {
+      source: "current_bot" as const,
+      configuredTarget: { openId: "ou_target", name: "张三" },
+      observedMention: {
+        key: "@_user_1",
+        name: "Paseo",
+        openId: "ou_bot",
+        userId: null,
+        appId: "cli_bot",
+        idType: "open_id",
+      },
+    };
+
+    expect(formatLarkSubstituteReply("1 + 1 = 2。", trigger)).toBe("【代张三回复】1 + 1 = 2。");
+    expect(formatLarkSubstituteReply("我代表张三回复：可以。", trigger)).toBe(
+      "【代张三回复】可以。",
+    );
+    expect(formatLarkSubstituteReply("代张三回复：2。", trigger)).toBe("【代张三回复】2。");
+    expect(formatLarkSubstituteReply("【代张三回复】代张三回复：2。", trigger)).toBe(
+      "【代张三回复】2。",
+    );
+    expect(
+      formatLarkSubstituteReply("完成。", {
+        ...trigger,
+        configuredTarget: { openId: "ou_target", name: " \n " },
+      }),
+    ).toBe("【替身回复】完成。");
   });
 
   test("ignores an empty Lark topic name and falls back to the first sentence", () => {

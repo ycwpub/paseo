@@ -191,6 +191,7 @@ describe("panel-store checkout-intent file explorer actions", () => {
     const checkout = { serverId: "server-1", cwd: "/tmp/repo", isGit: true };
     const key = buildExplorerCheckoutKey(checkout.serverId, checkout.cwd)!;
     const state = makePanelState({
+      desktop: { agentListOpen: false, fileExplorerOpen: false, focusModeEnabled: false },
       explorerTab: "changes",
       explorerTabByCheckout: { [key]: "files" },
     });
@@ -198,13 +199,17 @@ describe("panel-store checkout-intent file explorer actions", () => {
     const patch = buildOpenFileExplorerPatch(state, { isCompact: false, checkout });
 
     expect(patch.mobilePanel).toBeUndefined();
-    expect(patch.desktop?.fileExplorerOpen).toBe(true);
+    expect(patch.desktop).toEqual({
+      agentListOpen: true,
+      fileExplorerOpen: true,
+      focusModeEnabled: false,
+    });
     expect(patch.explorerTab).toBe("files");
   });
 
-  it("toggles the explorer closed without changing the active tab", () => {
+  it("toggles the explorer closed without closing the expanded agent list", () => {
     const state = makePanelState({
-      desktop: { agentListOpen: false, fileExplorerOpen: true, focusModeEnabled: false },
+      desktop: { agentListOpen: true, fileExplorerOpen: true, focusModeEnabled: false },
       explorerTab: "files",
     });
 
@@ -214,7 +219,23 @@ describe("panel-store checkout-intent file explorer actions", () => {
     });
 
     expect(patch).toEqual({
+      desktop: { agentListOpen: true, fileExplorerOpen: false, focusModeEnabled: false },
+    });
+  });
+
+  it("keeps compact explorer behavior independent from desktop sidebars", () => {
+    const state = makePanelState({
       desktop: { agentListOpen: false, fileExplorerOpen: false, focusModeEnabled: false },
+    });
+
+    const patch = buildToggleFileExplorerPatch(state, {
+      isCompact: true,
+      checkout: { serverId: "server-1", cwd: "/tmp/repo", isGit: true },
+    });
+
+    expect(patch).toEqual({
+      mobilePanel: { target: "file-explorer", revision: 1 },
+      explorerTab: "changes",
     });
   });
 

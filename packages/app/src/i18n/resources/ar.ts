@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 
 export const ar: TranslationResources = {
   common: {
@@ -100,6 +100,7 @@ export const ar: TranslationResources = {
       queue: "طابور",
       send: "يرسل",
     },
+    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "وكيل الإلغاء",
       stopAgent: "توقف الوكيل",
@@ -443,6 +444,7 @@ export const ar: TranslationResources = {
       },
     },
     fileExplorer: {
+      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "اسم",
         modified: "معدل",
@@ -1142,6 +1144,10 @@ export const ar: TranslationResources = {
     },
   },
   desktop: {
+    windowName: {
+      renameTitle: "إعادة تسمية النافذة",
+      placeholder: "اسم النافذة",
+    },
     quitting: {
       title: "جارٍ إنهاء Paseo...",
       detail: "إيقاف البرنامج الخفي المحلي.",
@@ -1528,10 +1534,13 @@ export const ar: TranslationResources = {
       alert: {
         failedTitle: "فشل الاقتران",
       },
+      awaitingApproval:
+        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "يلغي",
         pair: "زوج",
         pairing: "الاقتران...",
+        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1543,11 +1552,16 @@ export const ar: TranslationResources = {
       cameraPermissionBody: "اسمح بالوصول إلى الكاميرا لمسح رمز الاقتران QR من البرنامج الخفي لديك.",
       grantPermission: "منح الإذن",
       pairing: "الاقتران...",
+      awaitingApprovalStatus: "Waiting for approval",
+      awaitingApprovalTitle: "Approve this device on the server",
+      awaitingApprovalBody:
+        "Approve this device under Client management on the Paseo server. It will connect automatically.",
       unableToPair: "غير قادر على إقران المضيف",
       errorTitle: "خطأ",
     },
     device: {
       loadingOffer: "جارٍ تحميل عرض الإقران...",
+      relayListTitle: "قائمة Relay",
       failedToLoadOffer: "فشل تحميل عرض الاقتران.",
       relayDisabled: "لم يتم تمكين التتابع. تمكين التتابع لإقران جهاز.",
       enableTitle: "تمكين التتابع؟",
@@ -1563,11 +1577,52 @@ export const ar: TranslationResources = {
       updateRequired: "حدّث المضيف لتمكين التتابع من Paseo Desktop.",
       unavailable: "عرض الاقتران غير متاح.",
       hint: "قم بمسح رمز QR هذا باستخدام Paseo على هاتفك، أو انسخ الرابط أدناه.",
+      hintMultiple:
+        "Choose a Relay below that the new device can reach. Scan its QR code with the new device, or copy and open the pairing link on that device.",
       qrUnavailable: "رمز QR غير متاح.",
       qrAccessibility: "رمز QR للإقران",
       retry: "أعد المحاولة",
       copy: "ينسخ",
       copied: "منقول",
+      access: {
+        title: "إدارة العملاء",
+        requireApproval: "Require client approval",
+        requireApprovalHint:
+          "When enabled, new clients must be approved here before they can connect.",
+        empty: "No client connection requests.",
+        pending: "Pending approval",
+        allowed: "الاتصال مسموح",
+        approved: "Approved",
+        paused: "Paused",
+        connected: "Connected",
+        disconnected: "Disconnected",
+        hostname: "Hostname",
+        identityId: "Identity ID",
+        endpoint: "IP / port",
+        endpointUnavailable: "Unavailable",
+        lastConnectedAt: "آخر اتصال",
+        neverConnected: "لا يوجد سجل",
+        unknownName: "Unknown client",
+        macClient: "إصدار Mac",
+        androidClient: "إصدار Android",
+        cliClient: "إصدار CLI",
+        browserClient: "إصدار المتصفح",
+        historyTitle: "Client connection history",
+        historyEmpty: "No historical client connections.",
+        connectedAt: "Connected at",
+        disconnectedAt: "Disconnected at",
+        stillConnected: "Still connected",
+        historyRetention:
+          "History is automatically retained for {{days}} days and can be deleted manually.",
+        approve: "Approve",
+        approving: "Approving...",
+        pause: "Pause",
+        pausing: "Pausing...",
+        resume: "Resume",
+        resuming: "Resuming...",
+        delete: "Delete",
+        deleting: "Deleting...",
+      },
     },
   },
   realtimeVoice: {
@@ -1807,6 +1862,16 @@ export const ar: TranslationResources = {
     },
     general: {
       title: "عام",
+      clientIdentity: {
+        hostname: "اسم مضيف العميل",
+        hostnameDescription: "يظهر في صفحة إدارة عملاء daemon",
+        editHostname: "تعديل اسم مضيف العميل",
+        editHostnameTitle: "تعديل اسم مضيف العميل",
+        hostnamePlaceholder: "جهاز Mac الخاص بي",
+        identityId: "معرّف هوية العميل",
+        identityIdDescription: "هوية فريدة لعميل Paseo هذا ولا يمكن تعديلها",
+        unavailable: "غير متاح",
+      },
       browserData: {
         title: "بيانات المتصفح",
         siteData: "ملفات تعريف الارتباط وبيانات المواقع",
@@ -2152,6 +2217,93 @@ export const ar: TranslationResources = {
       badges: {
         relay: "تتابع",
         local: "محلي",
+        direct: "Direct to server",
+        viaRelay: "Via Relay",
+      },
+      relay: {
+        title: "Relay",
+        serviceColumn: "WS / WSS address",
+        pairingColumn: "HTTP / HTTPS connection address",
+        serviceListHint:
+          "Configure one or more Relay service addresses used by Paseo. Default public Relay: {{addresses}}.",
+        pairingListHint:
+          "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
+        servicePlaceholder: "wss://relay.paseo.sh:443",
+        pairingPlaceholder: "https://relay.paseo.sh",
+        addressPairHintTitle: "How to fill in the Relay list above",
+        addressPairHint:
+          "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
+        incompleteRow: "Each Relay requires both a service address and a connection address",
+        duplicateRow: "Relay service addresses must be unique",
+        duplicatePairingUrl: "HTTP / HTTPS connection addresses must be unique",
+        addRow: "Add Relay",
+        addPairingUrl: "Add connection address",
+        removeRow: "Remove Relay",
+        removePairingUrl: "Remove connection address",
+        save: "Save",
+        saving: "Saving...",
+        lan: {
+          title: "Use this Paseo as a LAN Relay",
+          hint: "Devices on the same local network can connect through this Host.",
+          listenLabel: "LAN Relay listen address",
+          pairingUrlLabel: "LAN Relay HTTP connection address",
+          pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
+          pairingUrlHint: "Leave empty to generate it automatically.",
+          webApp: {
+            title: "Host the Paseo pairing web app",
+            hint: "Serve a web page on this Relay that parses pairing offers and connects to Paseo.",
+            pathLabel: "Pairing web app path",
+            pathHint: "For example /app. Links use http://local-ip:port/app/#offer=....",
+          },
+        },
+        management: {
+          title: "Relay connections",
+          count: "{{count}} connections",
+          empty: "No clients or servers are connected to this Relay.",
+          loading: "Loading Relay connections...",
+          unavailable: "Relay runtime information is unavailable.",
+          unknownPeer: "Unknown peer",
+          pairingAddress: "Pairing page address",
+          relayAddress: "Relay WebSocket address",
+          deviceType: "Device type",
+          deviceTypes: {
+            mac: "Mac app",
+            windows: "Windows app",
+            linux: "Linux app",
+            android: "Android app",
+            ios: "iOS app",
+            web: "Web app",
+            cli: "CLI",
+            mcp: "MCP",
+            unknown: "Unknown",
+          },
+          hostname: "Server hostname",
+          clientHostname: "Client hostname",
+          clientId: "Client identity ID",
+          serverId: "Server identity ID",
+          connectionId: "Connection ID",
+          peerEndpoint: "IP / port",
+          clients: "Clients",
+          servers: "Servers",
+          noClients: "No clients are connected to this Relay.",
+          noServers: "No servers are connected to this Relay.",
+          clientHistory: "Client connection history",
+          serverHistory: "Server connection history",
+          noClientHistory: "No historical client connections.",
+          noServerHistory: "No historical server connections.",
+          connectedAt: "Connected at",
+          disconnectedAt: "Disconnected at",
+          stillConnected: "Still connected",
+          historyRetention:
+            "History is automatically retained for {{days}} days and can be deleted manually.",
+          delete: "Delete",
+          deleting: "Deleting...",
+          roles: {
+            client: "Client",
+            server_control: "Server control connection",
+            server_data: "Server data connection",
+          },
+        },
       },
       connections: {
         title: "اتصالات",
@@ -2254,6 +2406,11 @@ export const ar: TranslationResources = {
         moveDown: "نقل لأسفل",
       },
       daemon: {
+        identity: {
+          title: "معلومات الهوية",
+          serverId: "معرّف هوية الخادم",
+          serverIdDescription: "هوية فريدة لـ daemon ولا يمكن تعديلها",
+        },
         rename: {
           editLabel: "تحرير التسمية",
           title: "إعادة تسمية المضيف",
@@ -2390,16 +2547,17 @@ export const ar: TranslationResources = {
     project: {
       noEditableTarget: "هذا المشروع غير متاح للتحرير على هذا المضيف.",
       backToProjects: "العودة إلى المشاريع",
-      edit: {
-        title: "تعديل المشروع",
-        name: "الاسم",
-        nameLabel: "اسم المشروع",
-        icon: "الأيقونة",
-        chooseImage: "اختيار صورة",
-        useAutomatic: "استخدام التلقائي",
-        imageUrl: "رابط صورة أو موقع",
-        save: "حفظ التغييرات",
-        savedToast: "تم تحديث المشروع",
+      switchHost: "تبديل المضيف",
+      projectId: en.settings.project.projectId,
+      rename: {
+        renamedToast: "تمت إعادة تسمية المشروع",
+        errorFallback: "تعذرت إعادة تسمية المشروع",
+        renameLabel: "إعادة تسمية المشروع",
+        resetLabel: "إعادة تعيين اسم المشروع إلى الافتراضي",
+        projectNameLabel: "اسم المشروع",
+        saveLabel: "احفظ اسم المشروع",
+        cancelLabel: "إلغاء إعادة التسمية",
+        reset: "إعادة ضبط",
       },
       readFailures: {
         invalidTitle: "تعذر تحليل paseo.json",
@@ -2447,6 +2605,10 @@ export const ar: TranslationResources = {
           remove: "يزيل",
         },
       },
+      resources: en.settings.project.resources,
+      indexSkill: en.settings.project.indexSkill,
+      variables: en.settings.project.variables,
+      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "توليد البيانات الوصفية",
         info: "تعليمات خاصة بالمشروع يتم إدخالها في الذكاء الاصطناعي الذي يستخدمه Paseo لإنشاء بيانات التعريف - استخدمها لفرض اصطلاحات فريقك مثل تسمية الفرع أو نمط الالتزام أو تنسيق PR",

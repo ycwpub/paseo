@@ -9,7 +9,11 @@ import {
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
-import { AgentProfileSchema, TerminalProfileSchema } from "@getpaseo/protocol/messages";
+import {
+  AgentProfileSchema,
+  PaseoInstructionTemplateSchema,
+  TerminalProfileSchema,
+} from "@getpaseo/protocol/messages";
 import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
@@ -248,13 +252,19 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
-        git: z
+        clientAccess: z
           .object({
-            maxProcessesPerSecond: z.number().int().positive().optional(),
-            maxProcessConcurrency: z.number().int().positive().optional(),
+            requireApproval: z.boolean().optional(),
           })
           .strict()
           .optional(),
+        projectIndexing: z
+          .object({
+            updateIntervalMinutes: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
+        instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
         appendSystemPrompt: z.string().optional(),
@@ -273,6 +283,36 @@ export const PersistedConfigSchema = z
             publicEndpoint: z.string().optional(),
             useTls: z.boolean().optional(),
             publicUseTls: z.boolean().optional(),
+            endpoints: z
+              .array(
+                z
+                  .object({
+                    endpoint: z.string().trim().min(1),
+                    useTls: z.boolean().optional(),
+                    publicEndpoint: z.string().trim().min(1).optional(),
+                    publicUseTls: z.boolean().optional(),
+                    pairingBaseUrl: z.url().optional(),
+                  })
+                  .strict(),
+              )
+              .optional(),
+            pairingBaseUrls: z.array(z.url()).optional(),
+            local: z
+              .object({
+                enabled: z.boolean().optional(),
+                listen: z.string().trim().min(1).optional(),
+                publicEndpoint: z.string().trim().min(1).optional(),
+                pairingBaseUrl: z.url().optional(),
+                webApp: z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    path: z.string().trim().min(1).optional(),
+                  })
+                  .strict()
+                  .optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),

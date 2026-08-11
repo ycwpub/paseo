@@ -250,6 +250,7 @@ function buildRealtimeVoiceButtonStyle(
 }
 
 function buildAgentStateSelector(serverId: string, agentId: string) {
+  // oxlint-disable-next-line complexity -- Optional persisted agent fields are projected independently.
   return (state: ReturnType<typeof useSessionStore.getState>) => {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
     return {
@@ -259,6 +260,7 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
       model: agent?.model ?? null,
       provider: agent?.provider ?? null,
+      workspaceId: agent?.workspaceId ?? null,
     };
   };
 }
@@ -324,18 +326,13 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
       selectedTeamId={args.teamId ?? null}
       onSelect={onAssistantSelect}
       onSelectTeam={args.onTeamSelect}
+      fullWidth={isCompactLayout}
     />
   );
-  if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
-    return (
-      <View style={styles.leftContentRow}>
-        <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />
-        {assistantSelector}
-      </View>
-    );
-  }
-  return (
-    <View style={styles.leftContentRow}>
+  const controls =
+    resolveAgentControlsMode(agentControls) === "draft" && agentControls ? (
+      <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />
+    ) : (
       <AgentControls
         agentId={agentId}
         serverId={serverId}
@@ -343,6 +340,11 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
         onDropdownClose={focusInput}
         isCompactLayout={isCompactLayout}
       />
+    );
+
+  return (
+    <View style={[styles.leftContentRow, isCompactLayout && styles.compactLeftContent]}>
+      <View style={isCompactLayout ? styles.compactAgentControlsRow : undefined}>{controls}</View>
       {assistantSelector}
     </View>
   );
@@ -2414,6 +2416,7 @@ export function Composer({
                 activeActionContent={activeActionContent}
                 voiceServerId={serverId}
                 voiceAgentId={agentId}
+                workspaceId={agentState.workspaceId}
                 isAgentRunning={isAgentRunning}
                 defaultSendBehavior={appSettings.sendBehavior}
                 onQueue={handleQueue}
@@ -2493,6 +2496,17 @@ const animatedStaticStyles = RNStyleSheet.create({
     alignItems: "center",
     gap: theme.spacing[2],
     flexShrink: 1,
+  },
+  compactLeftContent: {
+    width: "100%",
+    minWidth: 0,
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: theme.spacing[1],
+  },
+  compactAgentControlsRow: {
+    width: "100%",
+    minWidth: 0,
   },
   borderSeparator: {
     height: theme.borderWidth[1],

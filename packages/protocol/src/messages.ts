@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RELAY_DEVICE_TYPES } from "./daemon-endpoints.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
@@ -71,12 +72,16 @@ import {
 import {
   LarkChannelApprovePairingRequestSchema,
   LarkChannelApprovePairingResponseSchema,
+  LarkChannelApplyBotRequestSchema,
+  LarkChannelApplyBotResponseSchema,
   LarkChannelConfigureRequestSchema,
   LarkChannelConfigureResponseSchema,
   LarkChannelDeleteBotRequestSchema,
   LarkChannelDeleteBotResponseSchema,
   LarkChannelGetStatusRequestSchema,
   LarkChannelGetStatusResponseSchema,
+  LarkChannelGetBotApplicationRequestSchema,
+  LarkChannelGetBotApplicationResponseSchema,
   LarkChannelRejectPairingRequestSchema,
   LarkChannelRejectPairingResponseSchema,
   LarkChannelRevokeUserRequestSchema,
@@ -143,6 +148,7 @@ export {
   LarkChannelDomainSchema,
   LarkChannelPendingPairingSchema,
   LarkChannelStatusSchema,
+  LarkChannelSubstituteSchema,
   LarkChannelTargetSchema,
   type LarkChannelAuthorizedUser,
   type LarkChannelBot,
@@ -151,8 +157,14 @@ export {
   type LarkChannelDomain,
   type LarkChannelPendingPairing,
   type LarkChannelStatus,
+  type LarkChannelSubstitute,
   type LarkChannelTarget,
 } from "./channel/lark/types.js";
+export {
+  LarkBotApplicationSchema,
+  LarkBotApplicationStatusSchema,
+  type LarkBotApplication,
+} from "./channel/lark/rpc-schemas.js";
 export {
   AssistantCreateInputSchema,
   AssistantMemoryDetailFileSchema,
@@ -207,6 +219,10 @@ import {
   PaseoLifecycleCommandRawSchema,
   PaseoMetadataGenerationEntrySchema,
   PaseoMetadataGenerationSchema,
+  PaseoProjectConfigSchema,
+  PaseoProjectDirectoriesSchema,
+  PaseoProjectIndexSkillSchema,
+  PaseoInstructionTemplateSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   PaseoConfigRevisionSchema,
@@ -215,6 +231,10 @@ import {
   type PaseoConfigRevision,
   type PaseoMetadataGeneration,
   type PaseoMetadataGenerationEntry,
+  type PaseoProjectConfig,
+  type PaseoProjectDirectories,
+  type PaseoProjectIndexSkill,
+  type PaseoInstructionTemplate,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 } from "./paseo-config-schema.js";
@@ -223,12 +243,20 @@ export {
   PaseoLifecycleCommandRawSchema,
   PaseoMetadataGenerationEntrySchema,
   PaseoMetadataGenerationSchema,
+  PaseoProjectConfigSchema,
+  PaseoProjectDirectoriesSchema,
+  PaseoProjectIndexSkillSchema,
+  PaseoInstructionTemplateSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   type PaseoConfigRaw,
   type PaseoConfigRevision,
   type PaseoMetadataGeneration,
   type PaseoMetadataGenerationEntry,
+  type PaseoProjectConfig,
+  type PaseoProjectDirectories,
+  type PaseoProjectIndexSkill,
+  type PaseoInstructionTemplate,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 };
@@ -312,11 +340,44 @@ const MutableBrowserToolsConfigSchema = z
     enabled: z.boolean().default(false),
   })
   .passthrough();
-const MutableRelayConfigSchema = z
+
+export const RelayEndpointConfigSchema = z
   .object({
-    enabled: z.boolean(),
+    endpoint: z.string().trim().min(1),
+    useTls: z.boolean(),
+    publicEndpoint: z.string().trim().min(1).optional(),
+    publicUseTls: z.boolean().optional(),
+    pairingBaseUrl: z.url().optional(),
   })
   .passthrough();
+
+const MutableLocalRelayConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    listen: z.string().trim().min(1).default("0.0.0.0:6769"),
+    publicEndpoint: z.string().trim().min(1).optional(),
+    pairingBaseUrl: z.url().optional(),
+    webApp: z
+      .object({
+        enabled: z.boolean().default(false),
+        path: z.string().trim().min(1).default("/app"),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const MutableRelayConfigSchema = z
+  .object({
+    endpoints: z.array(RelayEndpointConfigSchema).default([]),
+    pairingBaseUrls: z.array(z.url()).default([]),
+    local: MutableLocalRelayConfigSchema.default({
+      enabled: false,
+      listen: "0.0.0.0:6769",
+    }),
+  })
+  .passthrough();
+
 export const MutableDaemonConfigSchema = z
   .object({
     // COMPAT(relayConfig): added in v0.2.6, remove after 2027-01-31 when old daemons are unsupported.
@@ -327,8 +388,26 @@ export const MutableDaemonConfigSchema = z
       })
       .passthrough(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
+    relay: MutableRelayConfigSchema.default({
+      endpoints: [],
+      pairingBaseUrls: [],
+      local: { enabled: false, listen: "0.0.0.0:6769" },
+    }),
+    clientAccess: z
+      .object({
+        requireApproval: z.boolean().default(false),
+      })
+      .default({ requireApproval: false }),
+    projectIndexing: z
+      .object({
+        updateIntervalMinutes: z.number().int().positive().default(1440),
+      })
+      .default({ updateIntervalMinutes: 1440 }),
+    instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
-    metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
+    metadataGeneration: MutableMetadataGenerationConfigSchema.default({
+      providers: [],
+    }),
     autoArchiveAfterMerge: z.boolean().default(false),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
@@ -342,6 +421,26 @@ export const MutableDaemonConfigPatchSchema = z
     relay: MutableRelayConfigSchema.partial().optional(),
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    relay: z
+      .object({
+        endpoints: z.array(RelayEndpointConfigSchema).optional(),
+        pairingBaseUrls: z.array(z.url()).optional(),
+        local: MutableLocalRelayConfigSchema.partial().optional(),
+      })
+      .partial()
+      .passthrough()
+      .optional(),
+    clientAccess: z
+      .object({
+        requireApproval: z.boolean().optional(),
+      })
+      .optional(),
+    projectIndexing: z
+      .object({
+        updateIntervalMinutes: z.number().int().positive().optional(),
+      })
+      .optional(),
+    instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),
@@ -1387,6 +1486,42 @@ export const DaemonGetStatusRequestSchema = z.object({
 export const DaemonGetPairingOfferRequestSchema = z.object({
   type: z.literal("daemon.get_pairing_offer.request"),
   requestId: z.string(),
+});
+
+export const DaemonClientAccessListRequestSchema = z.object({
+  type: z.literal("daemon.client_access.list.request"),
+  requestId: z.string(),
+});
+
+export const DaemonClientAccessApproveRequestSchema = z.object({
+  type: z.literal("daemon.client_access.approve.request"),
+  requestId: z.string(),
+  clientId: z.string().trim().min(1),
+});
+
+export const DaemonClientAccessSetPausedRequestSchema = z.object({
+  type: z.literal("daemon.client_access.set_paused.request"),
+  requestId: z.string(),
+  clientId: z.string().trim().min(1),
+  paused: z.boolean(),
+});
+
+export const DaemonClientAccessDeleteRequestSchema = z.object({
+  type: z.literal("daemon.client_access.delete.request"),
+  requestId: z.string(),
+  clientId: z.string().trim().min(1),
+});
+
+export const DaemonClientAccessHistoryDeleteRequestSchema = z.object({
+  type: z.literal("daemon.client_access.history.delete.request"),
+  requestId: z.string(),
+  historyId: z.string().trim().min(1),
+});
+
+export const DaemonRelayHistoryDeleteRequestSchema = z.object({
+  type: z.literal("daemon.relay_history.delete.request"),
+  requestId: z.string(),
+  historyId: z.string().trim().min(1),
 });
 
 export const HubManagementDaemonConnectRequestSchema = z.object({
@@ -2462,6 +2597,8 @@ const FileExplorerDirectorySchema = z.object({
   entries: z.array(FileExplorerEntrySchema),
 });
 
+const FileExplorerErrorCodeSchema = z.enum(["not_found"]);
+
 export const FileExplorerRequestSchema = z.object({
   type: z.literal("file_explorer_request"),
   cwd: z.string(),
@@ -2861,6 +2998,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AssistantUpdateRequestSchema,
   AssistantDeleteRequestSchema,
   LarkChannelGetStatusRequestSchema,
+  LarkChannelApplyBotRequestSchema,
+  LarkChannelGetBotApplicationRequestSchema,
   LarkChannelConfigureRequestSchema,
   LarkChannelDeleteBotRequestSchema,
   LarkChannelTestConnectionRequestSchema,
@@ -2893,6 +3032,12 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WaitForFinishRequestSchema,
   DaemonGetStatusRequestSchema,
   DaemonGetPairingOfferRequestSchema,
+  DaemonClientAccessListRequestSchema,
+  DaemonClientAccessApproveRequestSchema,
+  DaemonClientAccessSetPausedRequestSchema,
+  DaemonClientAccessDeleteRequestSchema,
+  DaemonClientAccessHistoryDeleteRequestSchema,
+  DaemonRelayHistoryDeleteRequestSchema,
   HubManagementDaemonConnectRequestSchema,
   HubManagementDaemonGetStatusRequestSchema,
   HubManagementDaemonDisconnectRequestSchema,
@@ -3202,6 +3347,8 @@ const ServerCapabilitiesFromUnknownSchema = z
     return parsed.data;
   });
 
+const RelayDeviceTypeSchema = z.enum(RELAY_DEVICE_TYPES);
+
 export const ServerInfoStatusPayloadSchema = z
   .object({
     status: z.literal("server_info"),
@@ -3210,6 +3357,8 @@ export const ServerInfoStatusPayloadSchema = z
     version: ServerInfoVersionSchema.optional(),
     // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
     desktopManaged: z.boolean().optional(),
+    // COMPAT(relayDeviceType): added in v0.2.0, remove optional parsing after 2027-01-31.
+    relayDeviceType: RelayDeviceTypeSchema.optional(),
     capabilities: ServerCapabilitiesFromUnknownSchema.optional(),
     // COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
     features: z
@@ -3821,7 +3970,10 @@ export const WorkspaceUpdateMessageSchema = z.object({
 export const ProjectUpdateMessageSchema = z.object({
   type: z.literal("project.update"),
   payload: z.discriminatedUnion("kind", [
-    z.object({ kind: z.literal("upsert"), project: WorkspaceProjectDescriptorPayloadSchema }),
+    z.object({
+      kind: z.literal("upsert"),
+      project: WorkspaceProjectDescriptorPayloadSchema,
+    }),
     z.object({ kind: z.literal("remove"), projectId: z.string() }),
   ]),
 });
@@ -4315,10 +4467,61 @@ export const DaemonGetStatusResponseSchema = z.object({
       relay: z
         .object({
           enabled: z.boolean(),
-          endpoint: z.string(),
-          publicEndpoint: z.string(),
-          useTls: z.boolean(),
-          publicUseTls: z.boolean(),
+          endpoints: z.array(RelayEndpointConfigSchema).default([]),
+          pairingBaseUrls: z.array(z.url()).default([]),
+          local: z
+            .object({
+              enabled: z.boolean(),
+              listen: z.string(),
+              publicEndpoint: z.string().optional(),
+              pairingBaseUrl: z.url().optional(),
+              runtime: z
+                .object({
+                  listen: z.string(),
+                  publicEndpoint: z.string(),
+                  pairingBaseUrl: z.url(),
+                  connections: z.array(
+                    z.object({
+                      serverId: z.string(),
+                      hostname: z.string().nullable().default(null),
+                      deviceType: RelayDeviceTypeSchema.nullable().default(null),
+                      clientId: z.string().nullable().default(null),
+                      clientHostname: z.string().nullable().default(null),
+                      role: z.enum(["client", "server_control", "server_data"]),
+                      connectionId: z.string().nullable(),
+                      remoteAddress: z.string().nullable(),
+                      remotePort: z.number().int().min(0).max(65535).nullable().default(null),
+                      connectedAt: z.string(),
+                    }),
+                  ),
+                  history: z
+                    .array(
+                      z.object({
+                        id: z.string(),
+                        serverId: z.string(),
+                        hostname: z.string().nullable().default(null),
+                        deviceType: RelayDeviceTypeSchema.nullable().default(null),
+                        clientId: z.string().nullable().default(null),
+                        clientHostname: z.string().nullable().default(null),
+                        role: z.enum(["client", "server_control", "server_data"]),
+                        connectionId: z.string().nullable(),
+                        remoteAddress: z.string().nullable(),
+                        remotePort: z.number().int().min(0).max(65535).nullable().default(null),
+                        connectedAt: z.string(),
+                        disconnectedAt: z.string().nullable(),
+                      }),
+                    )
+                    .optional(),
+                  historyRetentionDays: z.number().int().positive().optional(),
+                })
+                .nullable()
+                .optional(),
+            })
+            .optional(),
+          endpoint: z.string().optional(),
+          publicEndpoint: z.string().optional(),
+          useTls: z.boolean().optional(),
+          publicUseTls: z.boolean().optional(),
         })
         .nullable()
         .optional(),
@@ -4350,11 +4553,17 @@ export const HubRelationshipStatusSchema = z.object({
 });
 export const HubManagementDaemonConnectResponseSchema = z.object({
   type: z.literal("hub.management.daemon.connect.response"),
-  payload: z.object({ requestId: z.string(), status: HubRelationshipStatusSchema }),
+  payload: z.object({
+    requestId: z.string(),
+    status: HubRelationshipStatusSchema,
+  }),
 });
 export const HubManagementDaemonGetStatusResponseSchema = z.object({
   type: z.literal("hub.management.daemon.get_status.response"),
-  payload: z.object({ requestId: z.string(), status: HubRelationshipStatusSchema }),
+  payload: z.object({
+    requestId: z.string(),
+    status: HubRelationshipStatusSchema,
+  }),
 });
 export const HubManagementDaemonDisconnectResponseSchema = z.object({
   type: z.literal("hub.management.daemon.disconnect.response"),
@@ -4373,8 +4582,115 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       url: z.string(),
       qr: z.string().nullable().optional(),
       relayEnabled: z.boolean(),
+      offers: z
+        .array(
+          z.object({
+            endpoint: z.string().min(1),
+            useTls: z.boolean(),
+            pairingBaseUrl: z.url().optional(),
+            url: z.string().min(1),
+            qr: z.string().nullable().optional(),
+          }),
+        )
+        .default([]),
     })
     .passthrough(),
+});
+
+export const DaemonClientAccessEntrySchema = z.object({
+  clientId: z.string().min(1),
+  clientName: z.string().nullable(),
+  clientHostname: z.string().nullable().default(null),
+  clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
+  appVersion: z.string().nullable(),
+  remoteAddress: z.string().nullable().default(null),
+  remotePort: z.number().int().min(0).max(65535).nullable().default(null),
+  transport: z.enum(["direct", "relay"]),
+  peer: z.enum(["loopback", "local_ipc", "external"]),
+  status: z.enum(["pending", "allowed", "approved", "paused"]),
+  requestedAt: z.string(),
+  approvedAt: z.string().nullable(),
+  lastConnectedAt: z.string().nullable().default(null),
+  connected: z.boolean(),
+});
+
+export type DaemonClientAccessEntry = z.infer<typeof DaemonClientAccessEntrySchema>;
+
+export const DaemonClientAccessHistoryEntrySchema = z.object({
+  id: z.string().min(1),
+  clientId: z.string().min(1),
+  clientName: z.string().nullable(),
+  clientHostname: z.string().nullable().default(null),
+  clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
+  appVersion: z.string().nullable(),
+  remoteAddress: z.string().nullable().default(null),
+  remotePort: z.number().int().min(0).max(65535).nullable().default(null),
+  transport: z.enum(["direct", "relay"]),
+  peer: z.enum(["loopback", "local_ipc", "external"]),
+  connectedAt: z.string(),
+  disconnectedAt: z.string().nullable(),
+});
+
+export type DaemonClientAccessHistoryEntry = z.infer<typeof DaemonClientAccessHistoryEntrySchema>;
+
+export const DaemonClientAccessListResponseSchema = z.object({
+  type: z.literal("daemon.client_access.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    clients: z.array(DaemonClientAccessEntrySchema),
+    history: z.array(DaemonClientAccessHistoryEntrySchema).optional(),
+    historyRetentionDays: z.number().int().positive().optional(),
+  }),
+});
+
+export const DaemonClientAccessApproveResponseSchema = z.object({
+  type: z.literal("daemon.client_access.approve.response"),
+  payload: z.object({
+    requestId: z.string(),
+    client: DaemonClientAccessEntrySchema.nullable(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const DaemonClientAccessSetPausedResponseSchema = z.object({
+  type: z.literal("daemon.client_access.set_paused.response"),
+  payload: z.object({
+    requestId: z.string(),
+    client: DaemonClientAccessEntrySchema.nullable(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const DaemonClientAccessDeleteResponseSchema = z.object({
+  type: z.literal("daemon.client_access.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    clientId: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const DaemonClientAccessHistoryDeleteResponseSchema = z.object({
+  type: z.literal("daemon.client_access.history.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    historyId: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const DaemonRelayHistoryDeleteResponseSchema = z.object({
+  type: z.literal("daemon.relay_history.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    historyId: z.string(),
+    success: z.boolean(),
+    error: z.string().nullable(),
+  }),
 });
 
 export const DiagnosticsResponseSchema = z.object({
@@ -5257,6 +5573,7 @@ export const FileExplorerResponseSchema = z.object({
     directory: FileExplorerDirectorySchema.nullable(),
     file: FileExplorerFileSchema.nullable(),
     error: z.string().nullable(),
+    errorCode: FileExplorerErrorCodeSchema.optional(),
     requestId: z.string(),
   }),
 });
@@ -5848,6 +6165,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AssistantDeleteResponseSchema,
   AssistantChangedMessageSchema,
   LarkChannelGetStatusResponseSchema,
+  LarkChannelApplyBotResponseSchema,
+  LarkChannelGetBotApplicationResponseSchema,
   LarkChannelConfigureResponseSchema,
   LarkChannelDeleteBotResponseSchema,
   LarkChannelTestConnectionResponseSchema,
@@ -5913,6 +6232,12 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
+  DaemonClientAccessListResponseSchema,
+  DaemonClientAccessApproveResponseSchema,
+  DaemonClientAccessSetPausedResponseSchema,
+  DaemonClientAccessDeleteResponseSchema,
+  DaemonClientAccessHistoryDeleteResponseSchema,
+  DaemonRelayHistoryDeleteResponseSchema,
   HubManagementDaemonConnectResponseSchema,
   HubManagementDaemonGetStatusResponseSchema,
   HubManagementDaemonDisconnectResponseSchema,
@@ -6423,23 +6748,7 @@ export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSche
 export type WorkspaceClearAttentionRequest = z.infer<typeof WorkspaceClearAttentionRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;
 export type FileExplorerResponse = z.infer<typeof FileExplorerResponseSchema>;
-export type FileVersion = z.infer<typeof FileVersionSchema>;
-export type FileSubscribeRequest = z.infer<typeof FileSubscribeRequestSchema>;
-export type FileSubscribeResponse = z.infer<typeof FileSubscribeResponseSchema>;
-export type FileUnsubscribeRequest = z.infer<typeof FileUnsubscribeRequestSchema>;
-export type FileUnsubscribeResponse = z.infer<typeof FileUnsubscribeResponseSchema>;
-export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
-export type FileWriteResponse = z.infer<typeof FileWriteResponseSchema>;
-export type FileEntryCreateRequest = z.infer<typeof FileEntryCreateRequestSchema>;
-export type FileEntryCreateResponse = z.infer<typeof FileEntryCreateResponseSchema>;
-export type FileEntryRenameRequest = z.infer<typeof FileEntryRenameRequestSchema>;
-export type FileEntryRenameResponse = z.infer<typeof FileEntryRenameResponseSchema>;
-export type FileEntryDuplicateRequest = z.infer<typeof FileEntryDuplicateRequestSchema>;
-export type FileEntryDuplicateResponse = z.infer<typeof FileEntryDuplicateResponseSchema>;
-export type FileEntryDeleteRequest = z.infer<typeof FileEntryDeleteRequestSchema>;
-export type FileEntryDeleteResponse = z.infer<typeof FileEntryDeleteResponseSchema>;
-export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
-export type FileUpdate = z.infer<typeof FileUpdateSchema>;
+export type FileExplorerErrorCode = z.infer<typeof FileExplorerErrorCodeSchema>;
 export type ProjectIconRequest = z.infer<typeof ProjectIconRequestSchema>;
 export type ProjectIconResponse = z.infer<typeof ProjectIconResponseSchema>;
 export type ProjectIconGetRequest = z.infer<typeof ProjectIconGetRequestSchema>;
@@ -6505,9 +6814,22 @@ export const WSPongMessageSchema = z.object({
   type: z.literal("pong"),
 });
 
+export const WSConnectionApprovalRequiredMessageSchema = z.object({
+  type: z.literal("connection.approval_required"),
+  message: z.string(),
+});
+
+export const WSDirectConnectionOfferMessageSchema = z.object({
+  type: z.literal("transport.direct_offer"),
+  candidates: z.array(z.string().url()).min(1),
+  expiresAt: z.string().datetime(),
+});
+
 export const WSHelloMessageSchema = z.object({
   type: z.literal("hello"),
   clientId: z.string().min(1),
+  clientName: z.string().trim().min(1).max(120).optional(),
+  clientHostname: z.string().trim().min(1).max(255).optional(),
   clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
   protocolVersion: z.number().int(),
   appVersion: z.string().optional(),
@@ -6554,6 +6876,8 @@ export const WSInboundMessageSchema = z.discriminatedUnion("type", [
 
 export const WSOutboundMessageSchema = z.discriminatedUnion("type", [
   WSPongMessageSchema,
+  WSConnectionApprovalRequiredMessageSchema,
+  WSDirectConnectionOfferMessageSchema,
   WSSessionOutboundSchema,
 ]);
 

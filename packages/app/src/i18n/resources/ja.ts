@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 
 export const ja: TranslationResources = {
   common: {
@@ -100,6 +100,7 @@ export const ja: TranslationResources = {
       queue: "キュー",
       send: "送信",
     },
+    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "エージェントをキャンセル中",
       stopAgent: "エージェントを停止",
@@ -447,6 +448,7 @@ export const ja: TranslationResources = {
       },
     },
     fileExplorer: {
+      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "名前",
         modified: "更新日時",
@@ -1153,6 +1155,10 @@ export const ja: TranslationResources = {
     },
   },
   desktop: {
+    windowName: {
+      renameTitle: "ウインドウ名を変更",
+      placeholder: "ウインドウ名",
+    },
     quitting: {
       title: "Paseoを終了中...",
       detail: "ローカルデーモンを停止中。",
@@ -1541,10 +1547,13 @@ export const ja: TranslationResources = {
       alert: {
         failedTitle: "ペアリングに失敗しました",
       },
+      awaitingApproval:
+        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "キャンセル",
         pair: "ペアリング",
         pairing: "ペアリング中...",
+        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1558,11 +1567,16 @@ export const ja: TranslationResources = {
         "デーモンからのペアリングQRコードをスキャンするためにカメラへのアクセスを許可してください。",
       grantPermission: "権限を許可",
       pairing: "ペアリング中...",
+      awaitingApprovalStatus: "Waiting for approval",
+      awaitingApprovalTitle: "Approve this device on the server",
+      awaitingApprovalBody:
+        "Approve this device under Client management on the Paseo server. It will connect automatically.",
       unableToPair: "ホストをペアリングできません",
       errorTitle: "エラー",
     },
     device: {
       loadingOffer: "ペアリングオファーを読み込み中...",
+      relayListTitle: "Relay リスト",
       failedToLoadOffer: "ペアリングオファーの読み込みに失敗しました。",
       relayDisabled:
         "リレーが有効になっていません。デバイスをペアリングするにはリレーを有効にしてください。",
@@ -1579,11 +1593,52 @@ export const ja: TranslationResources = {
       updateRequired: "Paseo Desktop からリレーを有効にするにはホストを更新してください。",
       unavailable: "ペアリングオファーが利用できません。",
       hint: "スマートフォンのPaseoでこのQRコードをスキャンするか、以下のリンクをコピーしてください。",
+      hintMultiple:
+        "Choose a Relay below that the new device can reach. Scan its QR code with the new device, or copy and open the pairing link on that device.",
       qrUnavailable: "QRコードが利用できません。",
       qrAccessibility: "ペアリング QR コード",
       retry: "再試行",
       copy: "コピー",
       copied: "コピーしました",
+      access: {
+        title: "クライアント管理",
+        requireApproval: "Require client approval",
+        requireApprovalHint:
+          "When enabled, new clients must be approved here before they can connect.",
+        empty: "No client connection requests.",
+        pending: "Pending approval",
+        allowed: "接続を許可",
+        approved: "Approved",
+        paused: "Paused",
+        connected: "Connected",
+        disconnected: "Disconnected",
+        hostname: "Hostname",
+        identityId: "Identity ID",
+        endpoint: "IP / port",
+        endpointUnavailable: "Unavailable",
+        lastConnectedAt: "最終接続日時",
+        neverConnected: "記録なし",
+        unknownName: "Unknown client",
+        macClient: "Mac版",
+        androidClient: "Android版",
+        cliClient: "CLI版",
+        browserClient: "ブラウザ版",
+        historyTitle: "Client connection history",
+        historyEmpty: "No historical client connections.",
+        connectedAt: "Connected at",
+        disconnectedAt: "Disconnected at",
+        stillConnected: "Still connected",
+        historyRetention:
+          "History is automatically retained for {{days}} days and can be deleted manually.",
+        approve: "Approve",
+        approving: "Approving...",
+        pause: "Pause",
+        pausing: "Pausing...",
+        resume: "Resume",
+        resuming: "Resuming...",
+        delete: "Delete",
+        deleting: "Deleting...",
+      },
     },
   },
   realtimeVoice: {
@@ -1823,6 +1878,16 @@ export const ja: TranslationResources = {
     },
     general: {
       title: "一般",
+      clientIdentity: {
+        hostname: "クライアントのホスト名",
+        hostnameDescription: "daemon のクライアント管理画面に表示されます",
+        editHostname: "クライアントのホスト名を編集",
+        editHostnameTitle: "クライアントのホスト名を編集",
+        hostnamePlaceholder: "自分の Mac",
+        identityId: "クライアント ID",
+        identityIdDescription: "この Paseo クライアント固有の ID。変更できません",
+        unavailable: "利用できません",
+      },
       browserData: {
         title: "ブラウザーデータ",
         siteData: "Cookie とサイトデータ",
@@ -2171,6 +2236,93 @@ export const ja: TranslationResources = {
       badges: {
         relay: "リレー",
         local: "ローカル",
+        direct: "Direct to server",
+        viaRelay: "Via Relay",
+      },
+      relay: {
+        title: "Relay",
+        serviceColumn: "WS / WSS address",
+        pairingColumn: "HTTP / HTTPS connection address",
+        serviceListHint:
+          "Configure one or more Relay service addresses used by Paseo. Default public Relay: {{addresses}}.",
+        pairingListHint:
+          "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
+        servicePlaceholder: "wss://relay.paseo.sh:443",
+        pairingPlaceholder: "https://relay.paseo.sh",
+        addressPairHintTitle: "How to fill in the Relay list above",
+        addressPairHint:
+          "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
+        incompleteRow: "Each Relay requires both a service address and a connection address",
+        duplicateRow: "Relay service addresses must be unique",
+        duplicatePairingUrl: "HTTP / HTTPS connection addresses must be unique",
+        addRow: "Add Relay",
+        addPairingUrl: "Add connection address",
+        removeRow: "Remove Relay",
+        removePairingUrl: "Remove connection address",
+        save: "Save",
+        saving: "Saving...",
+        lan: {
+          title: "Use this Paseo as a LAN Relay",
+          hint: "Devices on the same local network can connect through this Host.",
+          listenLabel: "LAN Relay listen address",
+          pairingUrlLabel: "LAN Relay HTTP connection address",
+          pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
+          pairingUrlHint: "Leave empty to generate it automatically.",
+          webApp: {
+            title: "Host the Paseo pairing web app",
+            hint: "Serve a web page on this Relay that parses pairing offers and connects to Paseo.",
+            pathLabel: "Pairing web app path",
+            pathHint: "For example /app. Links use http://local-ip:port/app/#offer=....",
+          },
+        },
+        management: {
+          title: "Relay connections",
+          count: "{{count}} connections",
+          empty: "No clients or servers are connected to this Relay.",
+          loading: "Loading Relay connections...",
+          unavailable: "Relay runtime information is unavailable.",
+          unknownPeer: "Unknown peer",
+          pairingAddress: "Pairing page address",
+          relayAddress: "Relay WebSocket address",
+          deviceType: "Device type",
+          deviceTypes: {
+            mac: "Mac app",
+            windows: "Windows app",
+            linux: "Linux app",
+            android: "Android app",
+            ios: "iOS app",
+            web: "Web app",
+            cli: "CLI",
+            mcp: "MCP",
+            unknown: "Unknown",
+          },
+          hostname: "Server hostname",
+          clientHostname: "Client hostname",
+          clientId: "Client identity ID",
+          serverId: "Server identity ID",
+          connectionId: "Connection ID",
+          peerEndpoint: "IP / port",
+          clients: "Clients",
+          servers: "Servers",
+          noClients: "No clients are connected to this Relay.",
+          noServers: "No servers are connected to this Relay.",
+          clientHistory: "Client connection history",
+          serverHistory: "Server connection history",
+          noClientHistory: "No historical client connections.",
+          noServerHistory: "No historical server connections.",
+          connectedAt: "Connected at",
+          disconnectedAt: "Disconnected at",
+          stillConnected: "Still connected",
+          historyRetention:
+            "History is automatically retained for {{days}} days and can be deleted manually.",
+          delete: "Delete",
+          deleting: "Deleting...",
+          roles: {
+            client: "Client",
+            server_control: "Server control connection",
+            server_data: "Server data connection",
+          },
+        },
       },
       connections: {
         title: "接続",
@@ -2276,6 +2428,11 @@ export const ja: TranslationResources = {
         moveDown: "下に移動",
       },
       daemon: {
+        identity: {
+          title: "ID 情報",
+          serverId: "サーバー ID",
+          serverIdDescription: "この daemon 固有の ID。変更できません",
+        },
         rename: {
           editLabel: "ラベルを編集",
           title: "ホストの名前を変更",
@@ -2414,16 +2571,17 @@ export const ja: TranslationResources = {
     project: {
       noEditableTarget: "このホストではこのプロジェクトを編集できません。",
       backToProjects: "プロジェクトに戻る",
-      edit: {
-        title: "プロジェクトを編集",
-        name: "名前",
-        nameLabel: "プロジェクト名",
-        icon: "アイコン",
-        chooseImage: "画像を選択",
-        useAutomatic: "自動を使う",
-        imageUrl: "画像またはサイトのURL",
-        save: "変更を保存",
-        savedToast: "プロジェクトを更新しました",
+      switchHost: "ホストを切り替え",
+      projectId: en.settings.project.projectId,
+      rename: {
+        renamedToast: "プロジェクト名を変更しました",
+        errorFallback: "プロジェクト名を変更できませんでした",
+        renameLabel: "プロジェクトの名前を変更",
+        resetLabel: "プロジェクト名をデフォルトにリセット",
+        projectNameLabel: "プロジェクト名",
+        saveLabel: "プロジェクト名を保存",
+        cancelLabel: "名前変更をキャンセル",
+        reset: "リセット",
       },
       readFailures: {
         invalidTitle: "paseo.jsonを解析できませんでした",
@@ -2472,6 +2630,10 @@ export const ja: TranslationResources = {
           remove: "削除",
         },
       },
+      resources: en.settings.project.resources,
+      indexSkill: en.settings.project.indexSkill,
+      variables: en.settings.project.variables,
+      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "メタデータ生成",
         info: "Paseoがメタデータ生成に使うAIプロンプトへ追加する、プロジェクト固有の指示です。ブランチ名、コミット形式、PR形式など、チームの規約を反映するために使います。",

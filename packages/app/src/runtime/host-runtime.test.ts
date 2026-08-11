@@ -12,6 +12,7 @@ import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { defaultHostAppearance } from "@/hosts/appearance";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import { DaemonConnectionApprovalRequiredError } from "@/utils/test-daemon-connection";
 import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import {
@@ -660,6 +661,50 @@ describe("HostRuntimeController", () => {
     expect(snapshot.client).toBe(clients[0] as unknown as DaemonClient);
     expect(clients[0]?.connectCalls).toBe(1);
     expect(clients[1]?.isDisposed()).toBe(true);
+  });
+
+  it("keeps a pending approval probe active until the server approves it", async () => {
+    const relay = makeHost().connections.find((connection) => connection.type === "relay")!;
+    const host = makeHost({ connections: [relay], preferredConnectionId: relay.id });
+    const pendingClient = new FakeDaemonClient();
+    pendingClient.setConnectionState({
+      status: "awaiting_approval",
+      message: "无权限，联系服务端通过连接申请",
+    });
+    const controller = new HostRuntimeController({
+      host,
+      deps: {
+        createClient: () => {
+          throw new Error("should adopt the pending approval client");
+        },
+        connectToDaemon: async () => {
+          throw new DaemonConnectionApprovalRequiredError(
+            "无权限，联系服务端通过连接申请",
+            {
+              reason: "无权限，联系服务端通过连接申请",
+              lastError: "无权限，联系服务端通过连接申请",
+            },
+            pendingClient as unknown as DaemonClient,
+          );
+        },
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    await controller.runProbeCycleNow();
+
+    expect(controller.getSnapshot().activeConnectionId).toBe(relay.id);
+    expect(controller.getSnapshot().connectionStatus).toBe("connecting");
+    expect(controller.getSnapshot().client).toBe(pendingClient);
+    expect(controller.getSnapshot().probeByConnectionId.get(relay.id)).toEqual({
+      status: "pending",
+      latencyMs: null,
+    });
+    expect(pendingClient.isDisposed()).toBe(false);
+
+    pendingClient.setConnectionState({ status: "connected" });
+    expect(controller.getSnapshot().connectionStatus).toBe("online");
+    expect(controller.getSnapshot().lastError).toBeNull();
   });
 
   it("activates the first successful probe without waiting for slower probes", async () => {

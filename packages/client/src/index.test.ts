@@ -80,12 +80,15 @@ function parseSentFrame(
   return JSON.parse(data);
 }
 
-async function connectClient(
-  features: Record<string, boolean> = { providersSnapshotCwd: true },
-): Promise<{ client: PaseoClient; ws: FakeWebSocket }> {
+async function connectClient(): Promise<{
+  client: PaseoClient;
+  ws: FakeWebSocket;
+}> {
   vi.stubGlobal("WebSocket", FakeWebSocket);
   const client = createPaseoClient({
     url: "ws://daemon.test",
+    clientName: "Paseo SDK · test-runner",
+    clientHostname: "test-runner",
     reconnect: { enabled: false },
   });
 
@@ -95,6 +98,8 @@ async function connectClient(
   const hello = parseSentFrame(ws.sent.at(-1));
   expect(hello).toMatchObject({
     type: "hello",
+    clientName: "Paseo SDK · test-runner",
+    clientHostname: "test-runner",
     clientType: "cli",
     protocolVersion: 1,
   });
@@ -210,6 +215,10 @@ test("createPaseoClient exposes workspace list through the daemon client", async
     },
   });
   expect(client.getConnectionState()).toEqual({ status: "connected" });
+  expect(client.getConnectionTransport()).toMatchObject({
+    type: "direct",
+    upgradedFromRelay: false,
+  });
 
   await client.close();
 });
@@ -295,7 +304,9 @@ test("workspace handles keep identity and refresh snapshots through existing dri
   expect(workspace.current()).toEqual(openedWorkspace);
 
   const refreshedWorkspace = createWorkspace({ name: "sdk refreshed" });
-  const refetchPromise = workspace.refresh({ requestId: "workspace-refetch-request" });
+  const refetchPromise = workspace?.refetch({
+    requestId: "workspace-refetch-request",
+  });
   expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
     type: "fetch_workspaces_request",
     requestId: "workspace-refetch-request",
@@ -983,7 +994,13 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       mcp: { injectIntoAgents: true },
       providers: {},
       browserTools: { enabled: false },
+      clientAccess: { requireApproval: false },
+      projectIndexing: { updateIntervalMinutes: 1440 },
       metadataGeneration: { providers: [] },
+      relay: {
+        endpoints: [],
+        local: { enabled: false, listen: "0.0.0.0:6769" },
+      },
       autoArchiveAfterMerge: false,
       enableTerminalAgentHooks: false,
       appendSystemPrompt: "",
@@ -1038,7 +1055,13 @@ test("config actions delegate to existing daemon config RPCs", async () => {
         },
       },
       browserTools: { enabled: false },
+      clientAccess: { requireApproval: false },
+      projectIndexing: { updateIntervalMinutes: 1440 },
       metadataGeneration: { providers: [] },
+      relay: {
+        endpoints: [],
+        local: { enabled: false, listen: "0.0.0.0:6769" },
+      },
       autoArchiveAfterMerge: false,
       enableTerminalAgentHooks: false,
       appendSystemPrompt: "",

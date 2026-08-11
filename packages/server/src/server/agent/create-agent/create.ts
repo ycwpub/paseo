@@ -16,6 +16,8 @@ import type { AgentPromptInput, AgentRunOptions, AgentSessionConfig } from "../a
 import type { AgentStorage } from "../agent-storage.js";
 import type { AgentOwner } from "../agent-owner.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
+import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
+import { withProjectAgentContext } from "../../project/project-context.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
 import { buildAgentPrompt } from "../prompt-attachments.js";
@@ -43,6 +45,8 @@ export interface CreateAgentCommandDependencies {
   worktreesRoot?: string;
   terminalManager?: TerminalManager | null;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
+  projectRegistry?: Pick<ProjectRegistry, "get">;
+  workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -186,8 +190,20 @@ export async function createAgentCommand(
       ? await resolveSessionCreateAgent(dependencies, input)
       : await resolveMcpCreateAgent(dependencies, input);
 
+  const workspaceId = resolved.createOptions.workspaceId;
+  const config =
+    workspaceId && dependencies.projectRegistry && dependencies.workspaceRegistry
+      ? await withProjectAgentContext({
+          config: resolved.config,
+          workspaceId,
+          projectRegistry: dependencies.projectRegistry,
+          workspaceRegistry: dependencies.workspaceRegistry,
+          logger: dependencies.logger,
+        })
+      : resolved.config;
+
   const snapshot = await dependencies.agentManager.createAgent(
-    resolved.config,
+    config,
     undefined,
     resolved.createOptions,
   );

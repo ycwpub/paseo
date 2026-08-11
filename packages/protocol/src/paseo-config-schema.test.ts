@@ -1,7 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { PaseoConfigRawSchema, PaseoConfigSchema } from "@getpaseo/protocol/paseo-config-schema";
+import {
+  PaseoConfigRawSchema,
+  PaseoConfigSchema,
+  resolvePaseoProjectDirectoryValues,
+} from "@getpaseo/protocol/paseo-config-schema";
 
 describe("paseo config schema", () => {
+  it("provides cross-agent knowledge and workspace-data directory defaults", () => {
+    expect(resolvePaseoProjectDirectoryValues(undefined)).toEqual({
+      project: ["{{workspaceDirectory}}"],
+      knowledge: [],
+      indexSkill: [],
+      workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
+    });
+  });
+
+  it("keeps explicitly configured empty directory lists", () => {
+    expect(
+      resolvePaseoProjectDirectoryValues({
+        project: [],
+        knowledge: [],
+        indexSkill: [],
+        workspaceData: [],
+      }),
+    ).toEqual({
+      project: [],
+      knowledge: [],
+      indexSkill: [],
+      workspaceData: [],
+    });
+  });
+
+  it("accepts enabled directory entries and excludes unchecked entries", () => {
+    const directories = {
+      project: [
+        { path: "/repo/a", enabled: true },
+        { path: "/repo/b", enabled: false },
+      ],
+      knowledge: ["docs"],
+    };
+    expect(resolvePaseoProjectDirectoryValues(directories)).toMatchObject({
+      project: ["/repo/a"],
+      knowledge: ["docs"],
+    });
+    expect(
+      PaseoConfigSchema.parse({
+        project: { directoryMode: "multiple", directories },
+      }),
+    ).toMatchObject({
+      project: { directoryMode: "multiple", directories },
+    });
+  });
+
   it("parses an empty config without metadata generation", () => {
     const parsed = PaseoConfigSchema.parse({});
 
@@ -210,6 +260,52 @@ describe("paseo config schema", () => {
     ).toEqual({
       metadataGeneration: {
         branchName: {},
+      },
+    });
+  });
+
+  it("parses project directories, indexing, variables, and instruction templates", () => {
+    const project = {
+      directories: {
+        project: [".", "../shared-source"],
+        knowledge: ["docs/rules", "/opt/company/standards"],
+        indexSkill: [".paseo/project-index"],
+        workspaceData: [".paseo/workspaces"],
+      },
+      indexSkill: {
+        autoGenerate: true,
+        updateIntervalMinutes: 30,
+      },
+      variables: {
+        serviceName: "checkout",
+        owner: "payments",
+      },
+      instructionTemplates: [
+        {
+          id: "review",
+          name: "Review changes",
+          description: "Review the current workspace",
+          content: "Review {{serviceName}} for {{owner}}.",
+        },
+      ],
+    };
+
+    expect(PaseoConfigRawSchema.parse({ project })).toEqual({ project });
+    expect(PaseoConfigSchema.parse({ project })).toEqual({ project });
+  });
+
+  it("allows automatic index generation to be disabled with empty index directories", () => {
+    expect(
+      PaseoConfigSchema.parse({
+        project: {
+          directories: { indexSkill: [] },
+          indexSkill: { autoGenerate: false },
+        },
+      }),
+    ).toEqual({
+      project: {
+        directories: { indexSkill: [] },
+        indexSkill: { autoGenerate: false },
       },
     });
   });

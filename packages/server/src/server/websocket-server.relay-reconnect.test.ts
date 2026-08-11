@@ -94,6 +94,86 @@ vi.mock("./push/index.js", () => ({
   }),
 }));
 
+vi.mock("./client-access-store.js", () => ({
+  CLIENT_ACCESS_HISTORY_RETENTION_DAYS: 30,
+  ClientAccessStore: class {
+    private approved = new Map<string, Record<string, unknown>>();
+    private history: Record<string, unknown>[] = [];
+
+    isApproved(clientId: string) {
+      return this.approved.get(clientId)?.paused === false;
+    }
+
+    isPaused(clientId: string) {
+      return this.approved.get(clientId)?.paused === true;
+    }
+
+    get(clientId: string) {
+      return this.approved.get(clientId) ?? null;
+    }
+
+    listApproved() {
+      return Array.from(this.approved.values());
+    }
+
+    approve(record: Record<string, unknown>, approvedAt = new Date().toISOString()) {
+      const existing = this.approved.get(String(record.clientId));
+      const approved = {
+        ...record,
+        approvedAt,
+        lastConnectedAt: record.lastConnectedAt ?? existing?.lastConnectedAt ?? null,
+        paused: false,
+      };
+      this.approved.set(String(record.clientId), approved);
+      return approved;
+    }
+
+    markConnected(clientId: string, connectedAt = new Date().toISOString()) {
+      const existing = this.approved.get(clientId);
+      if (!existing) return null;
+      const updated = { ...existing, lastConnectedAt: connectedAt };
+      this.approved.set(clientId, updated);
+      return updated;
+    }
+
+    setPaused(clientId: string, paused: boolean) {
+      const existing = this.approved.get(clientId);
+      if (!existing) return null;
+      const updated = { ...existing, paused };
+      this.approved.set(clientId, updated);
+      return updated;
+    }
+
+    delete(clientId: string) {
+      return this.approved.delete(clientId);
+    }
+
+    startConnection(record: Record<string, unknown>, connectedAt = new Date().toISOString()) {
+      const id = `history-${this.history.length + 1}`;
+      this.history.push({ ...record, id, connectedAt, disconnectedAt: null });
+      return id;
+    }
+
+    endConnection(historyId: string, disconnectedAt = new Date().toISOString()) {
+      const record = this.history.find((entry) => entry.id === historyId);
+      if (!record) return false;
+      record.disconnectedAt = disconnectedAt;
+      return true;
+    }
+
+    listHistory() {
+      return [...this.history];
+    }
+
+    deleteHistory(historyId: string) {
+      const index = this.history.findIndex((entry) => entry.id === historyId);
+      if (index < 0) return false;
+      this.history.splice(index, 1);
+      return true;
+    }
+  },
+}));
+
 import { z } from "zod";
 import { VoiceAssistantWebSocketServer } from "./websocket-server";
 import { parseServerInfoStatusPayload } from "./messages.js";
@@ -101,9 +181,22 @@ import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 
 interface WebSocketServerInternals {
   attachSocket(ws: unknown, req: unknown): Promise<void>;
+  approveClientAccess(clientId: string): unknown;
+  setClientAccessPaused(clientId: string, paused: boolean): { status: string } | null;
+  deleteClientAccess(clientId: string): boolean;
+  listClientAccessEntries(): Array<{
+    clientId: string;
+    clientName: string | null;
+    clientHostname: string | null;
+    lastConnectedAt: string | null;
+    status: string;
+  }>;
+  directCandidateBaseUrls: string[];
+  consumeDirectUpgradeToken(token: string): { clientId: string; expiresAtMs: number } | null;
 }
 
 const TEST_DAEMON_VERSION = "1.2.3-test";
+type DaemonConfigChangeListener = Parameters<DaemonConfigStore["onChange"]>[0];
 
 const WireEnvelopeSchema = z.object({
   type: z.string().optional(),
@@ -121,7 +214,11 @@ function parseSentEnvelope(data: unknown): z.infer<typeof WireEnvelopeSchema> {
 }
 
 function sentEnvelopes(socket: MockSocket): z.infer<typeof WireEnvelopeSchema>[] {
-  return socket.sent.filter((data) => typeof data === "string").map(parseSentEnvelope);
+  return socket.sent
+    .filter((data): data is string => typeof data === "string")
+    .map((data) => WireEnvelopeSchema.safeParse(JSON.parse(data)))
+    .filter((result) => result.success)
+    .map((result) => result.data);
 }
 
 function sentServerInfoEnvelopes(socket: MockSocket): z.infer<typeof WireEnvelopeSchema>[] {
@@ -157,6 +254,7 @@ class MockSocket {
   readyState = 1;
   bufferedAmount = 0;
   sent: unknown[] = [];
+  closeCalls: Array<{ code: number; reason: string }> = [];
   private listeners = new Map<string, SocketListener[]>();
 
   on(event: "message" | "close" | "error", listener: SocketListener): void {
@@ -178,6 +276,7 @@ class MockSocket {
   }
 
   close(code?: number, reason?: string): void {
+    this.closeCalls.push({ code: code ?? 1000, reason: reason ?? "" });
     this.readyState = 3;
     this.emit("close", code ?? 1000, reason ?? "");
   }
@@ -220,19 +319,32 @@ function createWorkspaceAutoNameStub(): WorkspaceAutoName {
 function createServer(options?: {
   speechReadiness?: SpeechReadinessSnapshot | null;
   logger?: ReturnType<typeof createLogger>;
+  requireClientApproval?: boolean;
 }) {
   const speechReadiness = options?.speechReadiness ?? null;
+  let daemonConfigChangeListener: DaemonConfigChangeListener | null = null;
+  const mutableConfig = {
+    providers: {},
+    clientAccess: { requireApproval: options?.requireClientApproval ?? true },
+  };
   const daemonConfigStore = {
-    onChange: vi.fn(() => () => {}),
+    get: vi.fn(() => mutableConfig),
+    onChange: vi.fn((listener: DaemonConfigChangeListener) => {
+      daemonConfigChangeListener = listener;
+      return () => {
+        daemonConfigChangeListener = null;
+      };
+    }),
   };
   const logger = options?.logger ?? createLogger();
-  return new VoiceAssistantWebSocketServer(
+  const server = new VoiceAssistantWebSocketServer(
     createStub<HTTPServer>({}),
     createStub<pino.Logger>(logger),
     "srv_test",
     createStub<AgentManager>({
       subscribe: vi.fn(() => () => {}),
       setAgentAttentionCallback: vi.fn(),
+      updateProviderRegistry: vi.fn(),
       getAgent: vi.fn(() => null),
       getMetricsSnapshot: vi.fn(() => ({
         totalAgents: 0,
@@ -294,6 +406,14 @@ function createServer(options?: {
     undefined,
     createProviderSnapshotManagerStub().manager,
   );
+  return Object.assign(server, {
+    setRequireClientApprovalForTest(requireApproval: boolean) {
+      mutableConfig.clientAccess.requireApproval = requireApproval;
+      daemonConfigChangeListener?.(mutableConfig as Parameters<DaemonConfigChangeListener>[0], {
+        removedProviders: [],
+      });
+    },
+  });
 }
 
 function createReadySpeechReadinessSnapshot(): SpeechReadinessSnapshot {
@@ -401,10 +521,19 @@ async function attachRelayAndHello(params: {
   socket: MockSocket;
   clientId: string;
 }) {
-  await params.server.attachExternalSocket(params.socket, { transport: "relay" });
+  await params.server.attachExternalSocket(params.socket, {
+    transport: "relay",
+  });
   params.socket.emit("message", JSON.stringify(createHelloMessage(params.clientId)));
   expect(params.socket.sent.length).toBeGreaterThan(0);
-  const envelope = parseSentEnvelope(params.socket.sent[0]);
+  const firstEnvelope = JSON.parse(String(params.socket.sent[0])) as {
+    type?: string;
+  };
+  if (firstEnvelope.type === "connection.approval_required") {
+    asInternals<WebSocketServerInternals>(params.server).approveClientAccess(params.clientId);
+    params.socket.sent.shift();
+  }
+  const envelope = parseSentEnvelope(params.socket.sent.at(-1));
   expect(envelope.type).toBe("session");
   const serverInfo = parseServerInfoStatusPayload(envelope.message?.payload);
   expect(envelope.message?.type).toBe("status");
@@ -469,6 +598,342 @@ describe("relay external socket reconnect behavior", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  test("blocks an external client until its connection request is approved", async () => {
+    const server = createServer();
+    const socket = new MockSocket();
+    const clientId = "cid-awaiting-approval";
+
+    await server.attachExternalSocket(socket, {
+      transport: "relay",
+      remoteAddress: "10.37.55.187",
+      remotePort: 54321,
+    });
+    socket.emit("message", JSON.stringify(createHelloMessage(clientId)));
+
+    expect(sessionMock.instances).toHaveLength(0);
+    expect(JSON.parse(String(socket.sent.at(-1)))).toEqual({
+      type: "connection.approval_required",
+      message: "无权限，联系服务端通过连接申请",
+    });
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "daemon.get_status.request",
+          requestId: "req-before-approval",
+        },
+      }),
+    );
+    expect(JSON.parse(String(socket.sent.at(-1)))).toEqual({
+      type: "connection.approval_required",
+      message: "无权限，联系服务端通过连接申请",
+    });
+
+    asInternals<WebSocketServerInternals>(server).approveClientAccess(clientId);
+    expect(sessionMock.instances).toHaveLength(1);
+    expect(sentServerInfoEnvelopes(socket)).toHaveLength(1);
+
+    await server.close();
+  });
+
+  test("lists client names and supports pausing, resuming, and deleting access", async () => {
+    vi.setSystemTime(new Date("2026-07-30T08:00:00.000Z"));
+    const server = createServer();
+    const internals = asInternals<WebSocketServerInternals>(server);
+    const clientId = "cid-managed-access";
+    const socket = new MockSocket();
+
+    await server.attachExternalSocket(socket, {
+      transport: "relay",
+      remoteAddress: "10.37.55.187",
+      remotePort: 54321,
+    });
+    socket.emit(
+      "message",
+      JSON.stringify({
+        ...createHelloMessage(clientId),
+        clientName: "Paseo · Alice's Pixel",
+        clientHostname: "alice-pixel",
+      }),
+    );
+    internals.approveClientAccess(clientId);
+
+    expect(internals.listClientAccessEntries()).toEqual([
+      expect.objectContaining({
+        clientId,
+        clientName: "Paseo · Alice's Pixel",
+        clientHostname: "alice-pixel",
+        remoteAddress: "10.37.55.187",
+        remotePort: 54321,
+        lastConnectedAt: "2026-07-30T08:00:00.000Z",
+        status: "approved",
+      }),
+    ]);
+
+    expect(internals.setClientAccessPaused(clientId, true)?.status).toBe("paused");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.closeCalls.at(-1)).toMatchObject({ code: 4404 });
+
+    const reconnectingSocket = new MockSocket();
+    await server.attachExternalSocket(reconnectingSocket, { transport: "relay" });
+    reconnectingSocket.emit("message", JSON.stringify(createHelloMessage(clientId)));
+    expect(JSON.parse(String(reconnectingSocket.sent.at(-1)))).toMatchObject({
+      type: "connection.approval_required",
+    });
+    server.setRequireClientApprovalForTest(false);
+    expect(sentServerInfoEnvelopes(reconnectingSocket)).toHaveLength(0);
+
+    vi.setSystemTime(new Date("2026-07-30T09:30:00.000Z"));
+    expect(internals.setClientAccessPaused(clientId, false)?.status).toBe("approved");
+    expect(sentServerInfoEnvelopes(reconnectingSocket)).toHaveLength(1);
+    expect(internals.listClientAccessEntries()[0]?.lastConnectedAt).toBe(
+      "2026-07-30T09:30:00.000Z",
+    );
+    expect(internals.deleteClientAccess(clientId)).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(internals.listClientAccessEntries()).toHaveLength(0);
+
+    await server.close();
+  });
+
+  test("rejects pausing or deleting the client issuing the request", async () => {
+    const server = createServer();
+    const internals = asInternals<WebSocketServerInternals>(server);
+    const clientId = "cid-current-manager";
+    const socket = new MockSocket();
+
+    await attachRelayAndHello({ server, socket, clientId });
+    const sentBeforeRequests = socket.sent.length;
+
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "daemon.client_access.set_paused.request",
+          requestId: "pause-current-client",
+          clientId,
+          paused: true,
+        },
+      }),
+    );
+    socket.emit(
+      "message",
+      JSON.stringify({
+        type: "session",
+        message: {
+          type: "daemon.client_access.delete.request",
+          requestId: "delete-current-client",
+          clientId,
+        },
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(sentEnvelopes(socket).slice(sentBeforeRequests)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: expect.objectContaining({
+              type: "daemon.client_access.set_paused.response",
+              payload: expect.objectContaining({
+                requestId: "pause-current-client",
+                success: false,
+                error: "不能暂停当前客户端",
+              }),
+            }),
+          }),
+          expect.objectContaining({
+            message: expect.objectContaining({
+              type: "daemon.client_access.delete.response",
+              payload: expect.objectContaining({
+                requestId: "delete-current-client",
+                success: false,
+                error: "不能删除当前客户端",
+              }),
+            }),
+          }),
+        ]),
+      );
+    });
+    expect(socket.closeCalls).toHaveLength(0);
+    expect(internals.listClientAccessEntries()).toEqual([
+      expect.objectContaining({ clientId, status: "approved" }),
+    ]);
+
+    await server.close();
+  });
+
+  test("accepts an external client immediately when client approval is disabled", async () => {
+    vi.setSystemTime(new Date("2026-07-30T10:00:00.000Z"));
+    const server = createServer({ requireClientApproval: false });
+    const internals = asInternals<WebSocketServerInternals>(server);
+    const socket = new MockSocket();
+
+    await server.attachExternalSocket(socket, {
+      transport: "relay",
+      remoteAddress: "10.37.55.20",
+      remotePort: 45678,
+    });
+    socket.emit(
+      "message",
+      JSON.stringify({
+        ...createHelloMessage("cid-no-approval-required"),
+        clientName: "Paseo Desktop · development-mac",
+        clientHostname: "development-mac",
+      }),
+    );
+
+    expect(sessionMock.instances).toHaveLength(1);
+    expect(sentServerInfoEnvelopes(socket)).toHaveLength(1);
+    expect(
+      socket.sent.some(
+        (frame) =>
+          typeof frame === "string" &&
+          (JSON.parse(frame) as { type?: string }).type === "connection.approval_required",
+      ),
+    ).toBe(false);
+    expect(internals.listClientAccessEntries()).toEqual([
+      expect.objectContaining({
+        clientId: "cid-no-approval-required",
+        clientName: "Paseo Desktop · development-mac",
+        clientHostname: "development-mac",
+        remoteAddress: "10.37.55.20",
+        remotePort: 45678,
+        status: "allowed",
+        approvedAt: null,
+        lastConnectedAt: "2026-07-30T10:00:00.000Z",
+        connected: true,
+      }),
+    ]);
+
+    expect(internals.setClientAccessPaused("cid-no-approval-required", true)).toEqual(
+      expect.objectContaining({
+        clientId: "cid-no-approval-required",
+        status: "paused",
+        lastConnectedAt: "2026-07-30T10:00:00.000Z",
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.closeCalls.at(-1)).toMatchObject({ code: 4404 });
+
+    const reconnectingSocket = new MockSocket();
+    await server.attachExternalSocket(reconnectingSocket, {
+      transport: "relay",
+      remoteAddress: "10.37.55.20",
+      remotePort: 45679,
+    });
+    reconnectingSocket.emit(
+      "message",
+      JSON.stringify(createHelloMessage("cid-no-approval-required")),
+    );
+    expect(JSON.parse(String(reconnectingSocket.sent.at(-1)))).toMatchObject({
+      type: "connection.approval_required",
+    });
+
+    expect(internals.setClientAccessPaused("cid-no-approval-required", false)?.status).toBe(
+      "approved",
+    );
+    expect(sentServerInfoEnvelopes(reconnectingSocket)).toHaveLength(1);
+
+    await server.close();
+  });
+
+  test("lists loopback desktop clients as implicitly allowed", async () => {
+    vi.setSystemTime(new Date("2026-07-30T10:30:00.000Z"));
+    const server = createServer();
+    const internals = asInternals<WebSocketServerInternals>(server);
+    const socket = new MockSocket();
+
+    await asInternals<WebSocketServerInternals>(server).attachSocket(socket, createDirectRequest());
+    socket.emit(
+      "message",
+      JSON.stringify({
+        ...createHelloMessage("cid-local-desktop"),
+        clientName: "Paseo Desktop · development-mac",
+        clientHostname: "development-mac",
+      }),
+    );
+
+    expect(internals.listClientAccessEntries()).toEqual([
+      expect.objectContaining({
+        clientId: "cid-local-desktop",
+        status: "allowed",
+        peer: "loopback",
+        transport: "direct",
+        lastConnectedAt: "2026-07-30T10:30:00.000Z",
+        connected: true,
+      }),
+    ]);
+
+    await server.close();
+  });
+
+  test("accepts pending clients when client approval is disabled at runtime", async () => {
+    const server = createServer();
+    const socket = new MockSocket();
+
+    await server.attachExternalSocket(socket, { transport: "relay" });
+    socket.emit("message", JSON.stringify(createHelloMessage("cid-disable-approval-runtime")));
+    expect(sessionMock.instances).toHaveLength(0);
+
+    server.setRequireClientApprovalForTest(false);
+
+    expect(sessionMock.instances).toHaveLength(1);
+    expect(sentServerInfoEnvelopes(socket)).toHaveLength(1);
+
+    await server.close();
+  });
+
+  test("issues a one-time LAN direct token only after Relay approval", async () => {
+    const server = createServer();
+    const internals = asInternals<WebSocketServerInternals>(server);
+    internals.directCandidateBaseUrls = ["ws://192.168.10.20:43210/ws"];
+    const socket = new MockSocket();
+    const clientId = "cid-direct-token";
+
+    await server.attachExternalSocket(socket, { transport: "relay" });
+    socket.emit("message", JSON.stringify(createHelloMessage(clientId)));
+    internals.approveClientAccess(clientId);
+
+    const directOffer = socket.sent
+      .filter((frame): frame is string => typeof frame === "string")
+      .map((frame) => JSON.parse(frame) as Record<string, unknown>)
+      .find((frame) => frame.type === "transport.direct_offer") as
+      | { candidates: string[]; expiresAt: string }
+      | undefined;
+    expect(directOffer).toBeDefined();
+    expect(Date.parse(directOffer!.expiresAt)).toBeGreaterThan(Date.now());
+    const token = new URL(directOffer!.candidates[0]!).searchParams.get("directToken");
+    expect(token).toBeTruthy();
+    expect(internals.consumeDirectUpgradeToken(token!)).toMatchObject({
+      clientId,
+    });
+    expect(internals.consumeDirectUpgradeToken(token!)).toBeNull();
+
+    await server.close();
+  });
+
+  test("rejects a LAN direct socket whose hello uses a different clientId", async () => {
+    const server = createServer();
+    const socket = new MockSocket();
+
+    await server.attachExternalSocket(socket, {
+      transport: "direct_e2ee",
+      directUpgradeClientId: "cid-expected",
+    });
+    socket.emit("message", JSON.stringify(createHelloMessage("cid-attacker")));
+
+    expect(socket.closeCalls).toContainEqual({
+      code: 4403,
+      reason: "Direct upgrade client mismatch",
+    });
+    expect(sessionMock.instances).toHaveLength(0);
+
+    await server.close();
   });
 
   test("keeps the same session when relay reconnects within grace window", async () => {
@@ -657,6 +1122,7 @@ describe("relay external socket reconnect behavior", () => {
       relayConnectionId: "relay-conn-1",
     });
     socket.emit("message", JSON.stringify(createHelloMessage("cid-control-log")));
+    asInternals<WebSocketServerInternals>(server).approveClientAccess("cid-control-log");
     socket.emit(
       "message",
       JSON.stringify({
@@ -717,7 +1183,9 @@ describe("relay external socket reconnect behavior", () => {
     socket.emit("message", JSON.stringify({ type: "ping" }));
     await Promise.resolve();
 
-    expect(sentEnvelopes(socket).slice(sentBeforeDiagnostic)).toContainEqual({ type: "pong" });
+    expect(sentEnvelopes(socket).slice(sentBeforeDiagnostic)).toContainEqual({
+      type: "pong",
+    });
 
     providerDiagnostic.finish();
     await Promise.resolve();

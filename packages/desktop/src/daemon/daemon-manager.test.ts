@@ -203,6 +203,60 @@ describe("daemon-manager commands", () => {
     expect(mocks.runExternalCliJsonCommand).toHaveBeenCalledWith(["daemon", "status", "--json"]);
   });
 
+  it("returns pairing offers from the running daemon", async () => {
+    mocks.runExternalCliJsonCommand
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-1",
+        pid: 4242,
+        listen: "127.0.0.1:6769",
+        desktopManaged: true,
+      })
+      .mockResolvedValueOnce({
+        relayEnabled: true,
+        url: "http://10.71.95.148:6769/#offer=all",
+        qr: null,
+        offers: [
+          {
+            endpoint: "10.71.95.148:6769",
+            useTls: false,
+            pairingBaseUrl: "http://10.71.95.148:6769",
+            url: "http://10.71.95.148:6769/#offer=relay",
+            qr: null,
+          },
+        ],
+      });
+
+    await expect(createDaemonCommandHandlers().desktop_daemon_pairing()).resolves.toMatchObject({
+      relayEnabled: true,
+      offers: [
+        {
+          endpoint: "10.71.95.148:6769",
+          useTls: false,
+          pairingBaseUrl: "http://10.71.95.148:6769",
+        },
+      ],
+    });
+  });
+
+  it("reports pairing command failures instead of claiming Relay is disabled", async () => {
+    mocks.runExternalCliJsonCommand
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-1",
+        pid: 4242,
+        listen: "127.0.0.1:6769",
+        desktopManaged: true,
+      })
+      .mockRejectedValueOnce(new Error("Invalid Relay HTTP connection address"));
+
+    await expect(createDaemonCommandHandlers().desktop_daemon_pairing()).rejects.toThrow(
+      "Invalid Relay HTTP connection address",
+    );
+  });
+
   it("routes running desktop daemon stops through external CLI daemon stop", async () => {
     mocks.runExternalCliJsonCommand
       .mockResolvedValueOnce({

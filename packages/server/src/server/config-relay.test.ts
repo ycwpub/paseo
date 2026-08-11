@@ -21,45 +21,7 @@ describe("daemon relay config", () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  test("preserves implicit relay-on for a legacy config without enabled", async () => {
-    const home = await createPaseoHome({ version: 1, daemon: { relay: {} } });
-    expect(loadConfig(home, { env: {} }).relayEnabled).toBe(true);
-  });
-
-  test("keeps explicit persisted relay state and marks it mutable", async () => {
-    const home = await createPaseoHome({
-      version: 1,
-      daemon: { relay: { enabled: false } },
-    });
-    const config = loadConfig(home, { env: {} });
-    expect(config.relayEnabled).toBe(false);
-    expect(config.relayEnabledMutable).toBe(true);
-  });
-
-  test("marks environment relay overrides immutable", async () => {
-    const home = await createPaseoHome({
-      version: 1,
-      daemon: { relay: { enabled: false } },
-    });
-    const config = loadConfig(home, { env: { PASEO_RELAY_ENABLED: "true" } });
-    expect(config.relayEnabled).toBe(true);
-    expect(config.relayEnabledMutable).toBe(false);
-  });
-
-  test.each(["", "treu"])(
-    "ignores invalid relay override %j without locking config",
-    async (value) => {
-      const home = await createPaseoHome({
-        version: 1,
-        daemon: { relay: { enabled: false } },
-      });
-      const config = loadConfig(home, { env: { PASEO_RELAY_ENABLED: value } });
-      expect(config.relayEnabled).toBe(false);
-      expect(config.relayEnabledMutable).toBe(true);
-    },
-  );
-
-  test("loads relay TLS from env, persisted config, and hosted relay fallback", async () => {
+  test("loads relay TLS from env and persisted legacy config", async () => {
     const persistedHome = await createPaseoHome({
       version: 1,
       daemon: {
@@ -81,22 +43,171 @@ describe("daemon relay config", () => {
       },
     });
     expect(loadConfig(envHome, { env: { PASEO_RELAY_USE_TLS: "true" } }).relayUseTls).toBe(true);
-
-    const hostedHome = await createPaseoHome({
-      version: 1,
-      daemon: { relay: {} },
-    });
-    expect(loadConfig(hostedHome, { env: {} }).relayUseTls).toBe(true);
   });
 
-  test("relayPublicUseTls falls back to relayUseTls when unset", async () => {
-    const home = await createPaseoHome({ version: 1, daemon: { relay: {} } });
-    // Default: both true (hosted relay)
-    expect(loadConfig(home, { env: {} }).relayPublicUseTls).toBe(true);
+  test("keeps Relay endpoints empty by default", async () => {
+    const home = await createPaseoHome({ version: 1 });
+    const config = loadConfig(home, { env: {} });
+    expect(config.relayEnabled).toBe(false);
+    expect(config.relayEndpoints).toEqual([]);
+    expect(config.relayPairingBaseUrls).toEqual([]);
+    expect(config.relayEndpoint).toBeUndefined();
+  });
+
+  test("loads multiple Relay endpoints from PASEO_RELAY_ENDPOINTS", async () => {
+    const home = await createPaseoHome({ version: 1 });
+    const config = loadConfig(home, {
+      env: {
+        PASEO_RELAY_ENDPOINTS: "wss://relay.paseo.sh:443,ws://192.168.1.20:6769",
+      },
+    });
+    expect(config.relayEnabled).toBe(true);
+    expect(config.relayEndpoints).toEqual([
+      { endpoint: "relay.paseo.sh:443", useTls: true },
+      { endpoint: "192.168.1.20:6769", useTls: false },
+    ]);
+  });
+
+  test("loads independent HTTP/HTTPS pairing addresses from the environment", async () => {
+    const home = await createPaseoHome({ version: 1 });
+    const config = loadConfig(home, {
+      env: {
+        PASEO_RELAY_ENDPOINTS: "wss://relay.paseo.sh:443,ws://192.168.1.20:6769",
+        PASEO_RELAY_PAIRING_BASE_URLS:
+          "https://app.paseo.sh,http://192.168.1.20:6769,https://app.paseo.sh",
+      },
+    });
+
+    expect(config.relayPairingBaseUrls).toEqual([
+      "https://app.paseo.sh",
+      "http://192.168.1.20:6769",
+    ]);
+  });
+
+  test("loads paired WSS and HTTPS Relay addresses from JSON", async () => {
+    const home = await createPaseoHome({ version: 1 });
+    const config = loadConfig(home, {
+      env: {
+        PASEO_RELAY_ENDPOINTS: JSON.stringify([
+          {
+            endpoint: "wss://relay.example.com:443",
+            pairingBaseUrl: "https://connect.example.com:8443",
+          },
+          {
+            endpoint: "wss://10.0.0.8:6769",
+            pairingBaseUrl: "10.0.0.8:6769",
+          },
+        ]),
+      },
+    });
+    expect(config.relayEndpoints).toEqual([
+      {
+        endpoint: "relay.example.com:443",
+        useTls: true,
+      },
+      {
+        endpoint: "10.0.0.8:6769",
+        useTls: true,
+      },
+    ]);
+    expect(config.relayPairingBaseUrls).toEqual([
+      "https://connect.example.com:8443",
+      "https://10.0.0.8:6769",
+    ]);
+  });
+
+  test("loads paired WS and HTTP Relay addresses from JSON", async () => {
+    const home = await createPaseoHome({ version: 1 });
+    const config = loadConfig(home, {
+      env: {
+        PASEO_RELAY_ENDPOINTS: JSON.stringify([
+          {
+            endpoint: "ws://10.71.95.148:6769",
+            pairingBaseUrl: "http://10.71.95.148:6769",
+          },
+        ]),
+      },
+    });
+    expect(config.relayEndpoints).toEqual([
+      {
+        endpoint: "10.71.95.148:6769",
+        useTls: false,
+      },
+    ]);
+    expect(config.relayPairingBaseUrls).toEqual(["http://10.71.95.148:6769"]);
+  });
+
+  test("does not couple a legacy pairing frontend protocol to the Relay protocol", async () => {
+    const home = await createPaseoHome({ version: 1 });
+    const config = loadConfig(home, {
+      env: {
+        PASEO_RELAY_ENDPOINTS: JSON.stringify([
+          {
+            endpoint: "ws://10.71.95.148:6769",
+            pairingBaseUrl: "https://app.example.com",
+          },
+        ]),
+      },
+    });
+
+    expect(config.relayPairingBaseUrls).toEqual(["https://app.example.com"]);
+  });
+
+  test("loads persisted WS and HTTP Relay addresses saved by the settings UI", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          enabled: true,
+          endpoints: [
+            {
+              endpoint: "10.71.95.148:6769",
+              useTls: false,
+              pairingBaseUrl: "http://10.71.95.148:6769",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(loadConfig(home, { env: {} }).relayEndpoints).toEqual([
+      {
+        endpoint: "10.71.95.148:6769",
+        useTls: false,
+      },
+    ]);
+    expect(loadConfig(home, { env: {} }).relayPairingBaseUrls).toEqual([
+      "http://10.71.95.148:6769",
+    ]);
+  });
+
+  test("loads independent Relay pairing frontend addresses", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          enabled: true,
+          endpoints: [{ endpoint: "relay.example.com:443", useTls: true }],
+          pairingBaseUrls: [
+            "https://app.example.com/paseo/",
+            "http://10.71.95.148:6769/app",
+            "https://app.example.com/paseo",
+          ],
+        },
+      },
+    });
+
+    expect(loadConfig(home, { env: {} }).relayPairingBaseUrls).toEqual([
+      "https://app.example.com/paseo",
+      "http://10.71.95.148:6769/app",
+    ]);
   });
 
   test("PASEO_RELAY_PUBLIC_USE_TLS overrides relayUseTls for public side", async () => {
-    const home = await createPaseoHome({ version: 1, daemon: { relay: {} } });
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: { relay: { endpoint: "relay.example.com:80" } },
+    });
     const config = loadConfig(home, {
       env: { PASEO_RELAY_USE_TLS: "false", PASEO_RELAY_PUBLIC_USE_TLS: "true" },
     });
@@ -105,7 +216,10 @@ describe("daemon relay config", () => {
   });
 
   test("relayPublicUseTls falls back to relayUseTls when only PASEO_RELAY_USE_TLS is set", async () => {
-    const home = await createPaseoHome({ version: 1, daemon: { relay: {} } });
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: { relay: { endpoint: "relay.example.com:80" } },
+    });
     const config = loadConfig(home, { env: { PASEO_RELAY_USE_TLS: "false" } });
     expect(config.relayUseTls).toBe(false);
     expect(config.relayPublicUseTls).toBe(false);
@@ -114,11 +228,106 @@ describe("daemon relay config", () => {
   test("persisted publicUseTls overrides relayUseTls fallback", async () => {
     const home = await createPaseoHome({
       version: 1,
-      daemon: { relay: { useTls: false, publicUseTls: true } },
+      daemon: {
+        relay: {
+          endpoint: "relay.example.com:80",
+          useTls: false,
+          publicUseTls: true,
+        },
+      },
     });
     const config = loadConfig(home, { env: {} });
     expect(config.relayUseTls).toBe(false);
     expect(config.relayPublicUseTls).toBe(true);
+  });
+
+  test("loads LAN Relay settings without adding a public Relay", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          endpoints: [],
+          local: { enabled: true, listen: "0.0.0.0:7788" },
+        },
+      },
+    });
+    const config = loadConfig(home, { env: {} });
+    expect(config.relayEnabled).toBe(true);
+    expect(config.relayEndpoints).toEqual([]);
+    expect(config.lanRelay).toEqual({
+      enabled: true,
+      listen: "0.0.0.0:7788",
+      webApp: {
+        enabled: false,
+        path: "/app",
+      },
+    });
+  });
+
+  test("loads a custom LAN Relay HTTP connection address", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          endpoints: [],
+          local: {
+            enabled: true,
+            listen: "0.0.0.0:7788",
+            pairingBaseUrl: "http://10.0.0.8:7788",
+          },
+        },
+      },
+    });
+    expect(loadConfig(home, { env: {} }).lanRelay).toEqual({
+      enabled: true,
+      listen: "0.0.0.0:7788",
+      pairingBaseUrl: "http://10.0.0.8:7788",
+      webApp: {
+        enabled: false,
+        path: "/app",
+      },
+    });
+  });
+
+  test("loads and normalizes LAN Relay pairing web app settings", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          endpoints: [],
+          local: {
+            enabled: true,
+            listen: "0.0.0.0:7788",
+            webApp: {
+              enabled: true,
+              path: "/pair/",
+            },
+          },
+        },
+      },
+    });
+
+    expect(loadConfig(home, { env: {} }).lanRelay?.webApp).toEqual({
+      enabled: true,
+      path: "/pair",
+    });
+  });
+
+  test("migrates a persisted LAN Relay HTTPS connection address to HTTP", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          endpoints: [],
+          local: {
+            enabled: true,
+            listen: "0.0.0.0:7788",
+            pairingBaseUrl: "https://10.0.0.8:7788",
+          },
+        },
+      },
+    });
+    expect(loadConfig(home, { env: {} }).lanRelay?.pairingBaseUrl).toBe("http://10.0.0.8:7788");
   });
 });
 

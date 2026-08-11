@@ -93,7 +93,10 @@ describe("RelayDurableObject versioning", () => {
     await withMockWebSocketPair(async ({ serverWs }) => {
       const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
       const req = new Request("https://relay.test/ws?role=client&serverId=srv_test&v=2", {
-        headers: { Upgrade: "websocket" },
+        headers: {
+          Upgrade: "websocket",
+          "cf-connecting-ip": "203.0.113.8",
+        },
       });
       await relay.fetch(req).catch(swallow);
       expect(state.acceptWebSocket).toHaveBeenCalled();
@@ -101,7 +104,10 @@ describe("RelayDurableObject versioning", () => {
       expect(attachment).toMatchObject({
         role: "client",
         connectionId: expect.stringMatching(/^conn_/),
+        remoteAddress: "203.0.113.8",
+        remotePort: null,
       });
+      expect(attachment).not.toHaveProperty("userAgent");
     });
   });
 });

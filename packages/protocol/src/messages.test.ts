@@ -1,11 +1,125 @@
 import { describe, expect, test } from "vitest";
 import {
+  DaemonGetStatusResponseSchema,
   FileExplorerRequestSchema,
+  FileExplorerResponseSchema,
+  MutableDaemonConfigPatchSchema,
+  MutableDaemonConfigSchema,
   PaseoWorktreeArchiveRequestSchema,
   parseServerInfoStatusPayload,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
 } from "./messages.js";
+
+describe("global instruction template configuration", () => {
+  test("parses daemon-global templates and template patches", () => {
+    const instructionTemplates = [
+      {
+        id: "review",
+        name: "Review changes",
+        content: "Review {{serviceName}}.",
+      },
+    ];
+
+    expect(
+      MutableDaemonConfigSchema.parse({
+        mcp: { injectIntoAgents: false },
+        instructionTemplates,
+      }).instructionTemplates,
+    ).toEqual(instructionTemplates);
+    expect(
+      MutableDaemonConfigPatchSchema.parse({ instructionTemplates }).instructionTemplates,
+    ).toEqual(instructionTemplates);
+  });
+});
+
+describe("Relay configuration", () => {
+  test("parses independent Relay and pairing frontend lists", () => {
+    const relay = MutableDaemonConfigSchema.parse({
+      mcp: { injectIntoAgents: false },
+      relay: {
+        endpoints: [
+          { endpoint: "relay.paseo.sh:443", useTls: true },
+          { endpoint: "10.71.95.148:6769", useTls: false },
+        ],
+        pairingBaseUrls: ["https://app.paseo.sh", "http://10.71.95.148:6769"],
+        local: { enabled: false, listen: "0.0.0.0:6769" },
+      },
+    }).relay;
+
+    expect(relay.pairingBaseUrls).toEqual(["https://app.paseo.sh", "http://10.71.95.148:6769"]);
+  });
+});
+
+describe("Daemon Relay status messages", () => {
+  test("parses the daemon Relay device type from server info", () => {
+    expect(
+      parseServerInfoStatusPayload({
+        status: "server_info",
+        serverId: "srv_mac",
+        relayDeviceType: "mac",
+      })?.relayDeviceType,
+    ).toBe("mac");
+
+    expect(
+      parseServerInfoStatusPayload({
+        status: "server_info",
+        serverId: "srv_legacy",
+      })?.relayDeviceType,
+    ).toBeUndefined();
+  });
+
+  test("parses Relay device types and defaults legacy records to unknown", () => {
+    const response = DaemonGetStatusResponseSchema.parse({
+      type: "daemon.get_status.response",
+      payload: {
+        requestId: "req-relay-status",
+        serverId: "srv_test",
+        pid: 123,
+        nodePath: "/usr/bin/node",
+        listen: "127.0.0.1:6767",
+        providers: [],
+        relay: {
+          enabled: true,
+          endpoints: [],
+          local: {
+            enabled: true,
+            listen: "127.0.0.1:6769",
+            runtime: {
+              listen: "127.0.0.1:6769",
+              publicEndpoint: "127.0.0.1:6769",
+              pairingBaseUrl: "http://127.0.0.1:6769/app",
+              connections: [
+                {
+                  serverId: "srv_test",
+                  role: "client",
+                  connectionId: "connection-1",
+                  remoteAddress: "127.0.0.1",
+                  connectedAt: "2026-07-31T00:00:00.000Z",
+                  deviceType: "android",
+                },
+              ],
+              history: [
+                {
+                  id: "history-1",
+                  serverId: "srv_test",
+                  role: "server_control",
+                  connectionId: null,
+                  remoteAddress: "127.0.0.1",
+                  connectedAt: "2026-07-31T00:00:00.000Z",
+                  disconnectedAt: "2026-07-31T00:01:00.000Z",
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    expect(response.payload.relay?.local?.runtime?.connections[0]?.deviceType).toBe("android");
+    expect(response.payload.relay?.local?.runtime?.history?.[0]?.deviceType).toBeNull();
+  });
+});
 
 function workspaceDescriptor(overrides: Record<string, unknown> = {}) {
   return {
@@ -139,6 +253,11 @@ describe("Lark channel messages", () => {
         name: "Settlement bot",
         appId: "cli_test",
         appSecret: "secret",
+        substitute: {
+          enabled: true,
+          openId: "ou_alice",
+          name: "Alice",
+        },
         target: {
           kind: "workspace",
           provider: "claude",
@@ -586,6 +705,32 @@ describe("file explorer request compatibility", () => {
       requestId: "req-new",
       acceptBinary: true,
     });
+  });
+
+  test("errorCode is optional for old daemons and accepted from new daemons", () => {
+    const payload = {
+      cwd: "/repo/app",
+      path: ".",
+      mode: "list" as const,
+      directory: null,
+      file: null,
+      error: "Directory does not exist",
+      requestId: "req-missing",
+    };
+
+    expect(
+      FileExplorerResponseSchema.parse({
+        type: "file_explorer_response",
+        payload,
+      }).payload.errorCode,
+    ).toBeUndefined();
+
+    expect(
+      FileExplorerResponseSchema.parse({
+        type: "file_explorer_response",
+        payload: { ...payload, errorCode: "not_found" },
+      }).payload.errorCode,
+    ).toBe("not_found");
   });
 });
 

@@ -3,6 +3,7 @@ import type pino from "pino";
 import type { StoredLarkChannelConfig } from "./lark-channel-store.js";
 import {
   normalizeLarkMessageEvent,
+  type LarkChatBot,
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
 
@@ -42,7 +43,12 @@ export interface LarkChannelClientAdapter {
     messageId: string,
     text: string,
   ): Promise<LarkThreadReplyResult>;
-  replyInThread(config: StoredLarkChannelConfig, messageId: string, text: string): Promise<void>;
+  replyInThread(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+  ): Promise<LarkThreadReplyResult>;
+  listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]>;
   getMessage(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -291,7 +297,7 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     config: StoredLarkChannelConfig,
     messageId: string,
     text: string,
-  ): Promise<void> {
+  ): Promise<LarkThreadReplyResult> {
     const client = createClient(config);
     const result = await client.im.v1.message.reply({
       path: {
@@ -304,6 +310,26 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       },
     });
     assertSuccess(result);
+    return {
+      threadId: result.data?.thread_id ?? null,
+      messageId: result.data?.message_id ?? null,
+    };
+  }
+
+  async listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]> {
+    const client = createClient(config);
+    const result = await larkGet(
+      client,
+      `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}/members/bots`,
+      {},
+    );
+    assertSuccess(result);
+    return messageListItems(result).flatMap((item) => {
+      const record = asRecord(item);
+      const openId = recordString(record, "bot_id");
+      const name = recordString(record, "bot_name");
+      return openId && name ? [{ openId, name }] : [];
+    });
   }
 
   async getMessage(

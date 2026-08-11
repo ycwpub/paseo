@@ -137,7 +137,11 @@ export function buildOpenFileExplorerPatch(
     };
   }
   return {
-    desktop: { ...state.desktop, fileExplorerOpen: true },
+    desktop: {
+      ...state.desktop,
+      agentListOpen: true,
+      fileExplorerOpen: true,
+    },
     explorerTab: resolvedTab,
   };
 }

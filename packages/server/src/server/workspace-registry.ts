@@ -130,6 +130,12 @@ export interface ProjectRegistry {
     projectKey?: string;
     timestamp: string;
   }): Promise<PersistedProjectRecord>;
+  createForRoot?(input: {
+    rootPath: string;
+    kind: PersistedProjectKind;
+    displayName: string;
+    timestamp: string;
+  }): Promise<PersistedProjectRecord>;
   upsert(record: PersistedProjectRecord): Promise<void>;
   update(
     projectId: string,
@@ -379,6 +385,36 @@ export class FileBackedProjectRegistry
           kind: input.kind,
           displayName: input.displayName,
           projectKey: input.projectKey ?? null,
+          createdAt: input.timestamp,
+          updatedAt: input.timestamp,
+        });
+        await this.upsert(record);
+        return record;
+      }
+    } finally {
+      release();
+    }
+  }
+
+  async createForRoot(input: {
+    rootPath: string;
+    kind: PersistedProjectKind;
+    displayName: string;
+    timestamp: string;
+  }): Promise<PersistedProjectRecord> {
+    const previous = this.allocationQueue;
+    let release!: () => void;
+    this.allocationQueue = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+    try {
+      for (;;) {
+        const projectId = this.projectIdFactory();
+        if (await this.get(projectId)) continue;
+        const record = createPersistedProjectRecord({
+          projectId,
+          rootPath: input.rootPath,
+          kind: input.kind,
+          displayName: input.displayName,
           createdAt: input.timestamp,
           updatedAt: input.timestamp,
         });

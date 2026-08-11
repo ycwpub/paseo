@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 
 export const ru: TranslationResources = {
   common: {
@@ -100,6 +100,7 @@ export const ru: TranslationResources = {
       queue: "Очередь",
       send: "Отправлять",
     },
+    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "Отменяющий агент",
       stopAgent: "Остановить агент",
@@ -446,6 +447,7 @@ export const ru: TranslationResources = {
       },
     },
     fileExplorer: {
+      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "Имя",
         modified: "Модифицированный",
@@ -1164,6 +1166,10 @@ export const ru: TranslationResources = {
     },
   },
   desktop: {
+    windowName: {
+      renameTitle: "Переименовать окно",
+      placeholder: "Имя окна",
+    },
     quitting: {
       title: "Выход из Paseo...",
       detail: "Остановка локального демона.",
@@ -1560,10 +1566,13 @@ export const ru: TranslationResources = {
       alert: {
         failedTitle: "Сопряжение не удалось",
       },
+      awaitingApproval:
+        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "Отмена",
         pair: "Пара",
         pairing: "Сопряжение...",
+        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1577,11 +1586,16 @@ export const ru: TranslationResources = {
         "Разрешите камере доступ к сканированию кода сопряжения QR с вашего демона.",
       grantPermission: "Предоставить разрешение",
       pairing: "Сопряжение...",
+      awaitingApprovalStatus: "Waiting for approval",
+      awaitingApprovalTitle: "Approve this device on the server",
+      awaitingApprovalBody:
+        "Approve this device under Client management on the Paseo server. It will connect automatically.",
       unableToPair: "Невозможно подключить хост",
       errorTitle: "Ошибка",
     },
     device: {
       loadingOffer: "Загрузка предложения по сопряжению...",
+      relayListTitle: "Список Relay",
       failedToLoadOffer: "Не удалось загрузить предложение сопряжения.",
       relayDisabled: "Реле не включено. Включите реле для сопряжения устройства.",
       enableTitle: "Включить реле?",
@@ -1597,11 +1611,52 @@ export const ru: TranslationResources = {
       updateRequired: "Обновите хост, чтобы включить реле из Paseo Desktop.",
       unavailable: "Предложение по сопряжению недоступно.",
       hint: "Отсканируйте этот код QR с помощью Paseo на своем телефоне или скопируйте ссылку ниже.",
+      hintMultiple:
+        "Choose a Relay below that the new device can reach. Scan its QR code with the new device, or copy and open the pairing link on that device.",
       qrUnavailable: "Код QR недоступен.",
       qrAccessibility: "QR-код сопряжения",
       retry: "Повторить попытку",
       copy: "Копировать",
       copied: "Скопировано",
+      access: {
+        title: "Управление клиентами",
+        requireApproval: "Require client approval",
+        requireApprovalHint:
+          "When enabled, new clients must be approved here before they can connect.",
+        empty: "No client connection requests.",
+        pending: "Pending approval",
+        allowed: "Подключение разрешено",
+        approved: "Approved",
+        paused: "Paused",
+        connected: "Connected",
+        disconnected: "Disconnected",
+        hostname: "Hostname",
+        identityId: "Identity ID",
+        endpoint: "IP / port",
+        endpointUnavailable: "Unavailable",
+        lastConnectedAt: "Последнее подключение",
+        neverConnected: "Нет данных",
+        unknownName: "Unknown client",
+        macClient: "Версия для Mac",
+        androidClient: "Версия для Android",
+        cliClient: "CLI-версия",
+        browserClient: "Браузерная версия",
+        historyTitle: "Client connection history",
+        historyEmpty: "No historical client connections.",
+        connectedAt: "Connected at",
+        disconnectedAt: "Disconnected at",
+        stillConnected: "Still connected",
+        historyRetention:
+          "History is automatically retained for {{days}} days and can be deleted manually.",
+        approve: "Approve",
+        approving: "Approving...",
+        pause: "Pause",
+        pausing: "Pausing...",
+        resume: "Resume",
+        resuming: "Resuming...",
+        delete: "Delete",
+        deleting: "Deleting...",
+      },
     },
   },
   realtimeVoice: {
@@ -1841,6 +1896,16 @@ export const ru: TranslationResources = {
     },
     general: {
       title: "Общий",
+      clientIdentity: {
+        hostname: "Имя хоста клиента",
+        hostnameDescription: "Отображается в управлении клиентами daemon",
+        editHostname: "Изменить имя хоста клиента",
+        editHostnameTitle: "Изменить имя хоста клиента",
+        hostnamePlaceholder: "Мой Mac",
+        identityId: "ID клиента",
+        identityIdDescription: "Уникальный идентификатор клиента Paseo; изменить нельзя",
+        unavailable: "Недоступно",
+      },
       browserData: {
         title: "Данные браузера",
         siteData: "Файлы cookie и данные сайтов",
@@ -2190,6 +2255,93 @@ export const ru: TranslationResources = {
       badges: {
         relay: "Реле",
         local: "Местный",
+        direct: "Direct to server",
+        viaRelay: "Via Relay",
+      },
+      relay: {
+        title: "Relay",
+        serviceColumn: "WS / WSS address",
+        pairingColumn: "HTTP / HTTPS connection address",
+        serviceListHint:
+          "Configure one or more Relay service addresses used by Paseo. Default public Relay: {{addresses}}.",
+        pairingListHint:
+          "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
+        servicePlaceholder: "wss://relay.paseo.sh:443",
+        pairingPlaceholder: "https://relay.paseo.sh",
+        addressPairHintTitle: "How to fill in the Relay list above",
+        addressPairHint:
+          "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
+        incompleteRow: "Each Relay requires both a service address and a connection address",
+        duplicateRow: "Relay service addresses must be unique",
+        duplicatePairingUrl: "HTTP / HTTPS connection addresses must be unique",
+        addRow: "Add Relay",
+        addPairingUrl: "Add connection address",
+        removeRow: "Remove Relay",
+        removePairingUrl: "Remove connection address",
+        save: "Save",
+        saving: "Saving...",
+        lan: {
+          title: "Use this Paseo as a LAN Relay",
+          hint: "Devices on the same local network can connect through this Host.",
+          listenLabel: "LAN Relay listen address",
+          pairingUrlLabel: "LAN Relay HTTP connection address",
+          pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
+          pairingUrlHint: "Leave empty to generate it automatically.",
+          webApp: {
+            title: "Host the Paseo pairing web app",
+            hint: "Serve a web page on this Relay that parses pairing offers and connects to Paseo.",
+            pathLabel: "Pairing web app path",
+            pathHint: "For example /app. Links use http://local-ip:port/app/#offer=....",
+          },
+        },
+        management: {
+          title: "Relay connections",
+          count: "{{count}} connections",
+          empty: "No clients or servers are connected to this Relay.",
+          loading: "Loading Relay connections...",
+          unavailable: "Relay runtime information is unavailable.",
+          unknownPeer: "Unknown peer",
+          pairingAddress: "Pairing page address",
+          relayAddress: "Relay WebSocket address",
+          deviceType: "Device type",
+          deviceTypes: {
+            mac: "Mac app",
+            windows: "Windows app",
+            linux: "Linux app",
+            android: "Android app",
+            ios: "iOS app",
+            web: "Web app",
+            cli: "CLI",
+            mcp: "MCP",
+            unknown: "Unknown",
+          },
+          hostname: "Server hostname",
+          clientHostname: "Client hostname",
+          clientId: "Client identity ID",
+          serverId: "Server identity ID",
+          connectionId: "Connection ID",
+          peerEndpoint: "IP / port",
+          clients: "Clients",
+          servers: "Servers",
+          noClients: "No clients are connected to this Relay.",
+          noServers: "No servers are connected to this Relay.",
+          clientHistory: "Client connection history",
+          serverHistory: "Server connection history",
+          noClientHistory: "No historical client connections.",
+          noServerHistory: "No historical server connections.",
+          connectedAt: "Connected at",
+          disconnectedAt: "Disconnected at",
+          stillConnected: "Still connected",
+          historyRetention:
+            "History is automatically retained for {{days}} days and can be deleted manually.",
+          delete: "Delete",
+          deleting: "Deleting...",
+          roles: {
+            client: "Client",
+            server_control: "Server control connection",
+            server_data: "Server data connection",
+          },
+        },
       },
       connections: {
         title: "Соединения",
@@ -2295,6 +2447,11 @@ export const ru: TranslationResources = {
         moveDown: "Переместить вниз",
       },
       daemon: {
+        identity: {
+          title: "Сведения об идентификаторах",
+          serverId: "ID сервера",
+          serverIdDescription: "Уникальный идентификатор daemon; изменить нельзя",
+        },
         rename: {
           editLabel: "Изменить ярлык",
           title: "Переименовать хост",
@@ -2432,16 +2589,17 @@ export const ru: TranslationResources = {
     project: {
       noEditableTarget: "Этот проект нельзя редактировать на этом хосте.",
       backToProjects: "Вернуться к проектам",
-      edit: {
-        title: "Изменить проект",
-        name: "Название",
-        nameLabel: "Название проекта",
-        icon: "Значок",
-        chooseImage: "Выбрать изображение",
-        useAutomatic: "Использовать автоматический",
-        imageUrl: "URL изображения или сайта",
-        save: "Сохранить изменения",
-        savedToast: "Проект обновлён",
+      switchHost: "Сменить хост",
+      projectId: en.settings.project.projectId,
+      rename: {
+        renamedToast: "Проект переименован",
+        errorFallback: "Не удалось переименовать проект",
+        renameLabel: "Переименовать проект",
+        resetLabel: "Сбросить имя проекта по умолчанию",
+        projectNameLabel: "Название проекта",
+        saveLabel: "Сохранить название проекта",
+        cancelLabel: "Отменить переименование",
+        reset: "Перезагрузить",
       },
       readFailures: {
         invalidTitle: "paseo.json не удалось разобрать",
@@ -2490,6 +2648,10 @@ export const ru: TranslationResources = {
           remove: "Удалять",
         },
       },
+      resources: en.settings.project.resources,
+      indexSkill: en.settings.project.indexSkill,
+      variables: en.settings.project.variables,
+      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Генерация метаданных",
         info: "Инструкции для конкретного проекта, внедренные в подсказки ИИ, которые Paseo использует для генерации метаданных. Используйте их для обеспечения соблюдения соглашений вашей команды, таких как наименование ветвей, стиль фиксации или формат PR.",

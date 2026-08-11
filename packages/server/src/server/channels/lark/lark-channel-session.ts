@@ -1,12 +1,15 @@
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import type pino from "pino";
 import { LarkChannelService } from "./lark-channel-service.js";
+import { LarkBotApplicationService } from "./lark-bot-application-service.js";
 
 export type LarkChannelSessionRequest = Extract<
   SessionInboundMessage,
   {
     type:
       | "channel.lark.get_status.request"
+      | "channel.lark.apply_bot.request"
+      | "channel.lark.get_bot_application.request"
       | "channel.lark.configure.request"
       | "channel.lark.delete_bot.request"
       | "channel.lark.test_connection.request"
@@ -22,6 +25,8 @@ type LarkChannelResponse = Extract<
   {
     type:
       | "channel.lark.get_status.response"
+      | "channel.lark.apply_bot.response"
+      | "channel.lark.get_bot_application.response"
       | "channel.lark.configure.response"
       | "channel.lark.delete_bot.response"
       | "channel.lark.test_connection.response"
@@ -40,6 +45,7 @@ export class LarkChannelSession {
   private readonly host: LarkChannelSessionHost;
   private readonly service: LarkChannelService;
   private readonly logger: pino.Logger;
+  private readonly applicationService: LarkBotApplicationService;
 
   constructor(options: {
     host: LarkChannelSessionHost;
@@ -48,6 +54,10 @@ export class LarkChannelSession {
   }) {
     this.host = options.host;
     this.service = options.service;
+    this.applicationService = new LarkBotApplicationService({
+      channelService: options.service,
+      logger: options.logger,
+    });
     this.logger = options.logger.child({ module: "lark-channel-session" });
   }
 
@@ -60,6 +70,26 @@ export class LarkChannelSession {
             payload: {
               requestId: message.requestId,
               status: this.service.getStatus(),
+              error: null,
+            },
+          });
+          return;
+        case "channel.lark.apply_bot.request":
+          this.emitResponse({
+            type: "channel.lark.apply_bot.response",
+            payload: {
+              requestId: message.requestId,
+              application: this.applicationService.start(message.name),
+              error: null,
+            },
+          });
+          return;
+        case "channel.lark.get_bot_application.request":
+          this.emitResponse({
+            type: "channel.lark.get_bot_application.response",
+            payload: {
+              requestId: message.requestId,
+              application: this.applicationService.get(message.applicationId),
               error: null,
             },
           });
@@ -81,6 +111,7 @@ export class LarkChannelSession {
                 clearVerificationToken: message.clearVerificationToken,
                 domain: message.domain,
                 target: message.target,
+                substitute: message.substitute,
               }),
               error: null,
             },
@@ -166,6 +197,18 @@ export class LarkChannelSession {
     switch (message.type) {
       case "channel.lark.get_status.request":
         this.emitResponse({ type: "channel.lark.get_status.response", payload });
+        return;
+      case "channel.lark.apply_bot.request":
+        this.emitResponse({
+          type: "channel.lark.apply_bot.response",
+          payload: { requestId: message.requestId, application: null, error },
+        });
+        return;
+      case "channel.lark.get_bot_application.request":
+        this.emitResponse({
+          type: "channel.lark.get_bot_application.response",
+          payload: { requestId: message.requestId, application: null, error },
+        });
         return;
       case "channel.lark.configure.request":
         this.emitResponse({ type: "channel.lark.configure.response", payload });

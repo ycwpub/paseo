@@ -29,6 +29,7 @@ import { AddProjectFlowHost } from "@/components/add-project-flow-host";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
+import { DesktopWindowNameDialog } from "@/components/desktop-window-name-dialog";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
@@ -114,6 +115,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import { initializeClientHostname } from "@/utils/client-hostname";
 import {
   useHasWindowChromeObstruction,
   WindowChromeProvider,
@@ -367,11 +369,18 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const store = getHostRuntimeStore();
     const daemonStartService = getDaemonStartService({ store });
-    startHostRuntimeBootstrap({
-      store,
-      daemonStartService,
-      shouldStartDaemon: shouldStartBuiltInDaemon,
-    });
+    void initializeClientHostname()
+      .catch((error) => {
+        console.warn("[ClientIdentity] Failed to load client hostname", error);
+      })
+      .finally(() => {
+        startHostRuntimeBootstrap({
+          store,
+          daemonStartService,
+          shouldStartDaemon: shouldStartBuiltInDaemon,
+          onGateError: (message) => daemonStartService.recordError(message),
+        });
+      });
   }, []);
 
   const anyOnlineHostServerId = useEarliestOnlineHostServerId();
@@ -462,9 +471,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const exitFocusMode = usePanelStore((state) => state.exitFocusMode);
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
-  const isDesktopFileExplorerOpen = usePanelStore((state) => state.desktop.fileExplorerOpen);
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const explorerWidth = usePanelStore((state) => state.explorerWidth);
   const { width: viewportWidth } = useWindowDimensions();
 
   const cycleTheme = useCallback(() => {
@@ -515,9 +522,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
 
   const appContentMinimumWidth = resolveDesktopAppContentMinimum({
     isSettingsRoute: pathname.includes("/settings"),
-    isWorkspaceExplorerOpen: isWorkspaceRoute && isDesktopFileExplorerOpen,
-    requestedExplorerWidth: explorerWidth,
-    viewportWidth,
   });
   const desktopSidebarMounted = hasMountedDesktopSidebar && !isWorkspaceFocusModeEnabled;
   const desktopSidebarVisible = resolveDesktopSidebarVisibility({
@@ -596,6 +600,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
       <AppDiagnosticHost />
+      <DesktopWindowNameDialog />
       <QuittingOverlay />
     </View>
   );
@@ -977,17 +982,19 @@ function RuntimeProviders({ children }: { children: ReactNode }) {
 // context and need one shared provider for sibling sheets to stack.
 function RootProviders({ children }: { children: ReactNode }) {
   return (
-    <WindowChromeProvider>
-      <KeyboardProvider>
-        <KeyboardShiftProvider>
-          <ToastProvider>
-            <PortalProvider>
-              <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
-            </PortalProvider>
-          </ToastProvider>
-        </KeyboardShiftProvider>
-      </KeyboardProvider>
-    </WindowChromeProvider>
+    <SafeAreaProvider>
+      <WindowChromeProvider>
+        <KeyboardProvider>
+          <KeyboardShiftProvider>
+            <ToastProvider>
+              <PortalProvider>
+                <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+              </PortalProvider>
+            </ToastProvider>
+          </KeyboardShiftProvider>
+        </KeyboardProvider>
+      </WindowChromeProvider>
+    </SafeAreaProvider>
   );
 }
 

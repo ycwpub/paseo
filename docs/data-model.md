@@ -2,17 +2,23 @@
 
 ## Project identity
 
-Projects are allocated for the exact root selected by the caller, normalized lexically with `path.resolve` (never `realpath`). New project IDs are opaque `prj_<16 hex>` values. Existing remote-shaped or path-shaped IDs are retained as readable compatibility records and are never rekeyed. An active exact root is idempotent; archived-only matches do not resurrect an old project. Workspace `projectId` is stable membership: reconciliation may update git-derived kind and branch metadata, but never rehomes a workspace or changes a project's root, ID, or default name.
+Projects are allocated for the exact root selected by the caller, normalized lexically with
+`path.resolve` (never `realpath`). New project IDs are generated opaque `prj_<16 hex>` values and
+are never derived from the filesystem path. Existing remote-shaped or path-shaped IDs are retained
+as readable compatibility records and are never rekeyed. Explicit **Add Project** operations always
+allocate a new identity, so multiple Projects may intentionally use the same root path. Idempotent
+workspace recovery may reuse the oldest active exact-root Project. Archived-only matches do not
+resurrect an old Project. Workspace `projectId` is stable membership: reconciliation may update
+git-derived kind and branch metadata, but never rehomes a workspace or changes a Project's root,
+ID, or default name.
 
-`projectKey` is a persisted, opaque equivalence key used only to group the same logical project
-across hosts. It is separate from the host-local `projectId`; today's producer prefers a normalized
-Git remote and otherwise uses the local project root. Consumers never derive it from live Git.
-Creation persists it with the project, and normal boot reconciliation fills it for
-older records where the field is absent—there is no migration.
+`projectId` is the unique project identity. Display/custom project names are not unique and may be
+reused by multiple projects. UI and protocol operations that mutate a project use `projectId`,
+never the display name.
 
-`kind` and `projectKey` are mutable metadata, not identity. Workspace reconciliation watches active project roots and
-updates those fields and `updatedAt` when Git facts change, preserving the project's ID, root path,
-names, and workspace foreign keys. Attached workspaces are independently refreshed
+`kind` is mutable metadata, not identity. Workspace reconciliation watches active project roots and
+updates only a project's `kind` and `updatedAt` when `.git` appears or disappears, preserving its
+ID, root path, names, and workspace foreign keys. Attached workspaces are independently refreshed
 from their own cwd, so an explicit project root never implies a workspace checkout. Empty projects
 are observed too.
 
@@ -34,6 +40,65 @@ Paseo uses **file-based JSON persistence** instead of a traditional database. Al
 
 All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
+## Project resource configuration
+
+Each Project may define a `project` block in the Project root's `paseo.json`:
+
+```json
+{
+  "project": {
+    "directories": {
+      "project": [".", "../shared-source"],
+      "knowledge": ["docs/rules"],
+      "indexSkill": [".paseo/project-index"],
+      "workspaceData": [".paseo/workspaces"]
+    },
+    "indexSkill": {
+      "autoGenerate": false,
+      "updateIntervalMinutes": null
+    },
+    "variables": {
+      "serviceName": "checkout"
+    }
+  }
+}
+```
+
+Every directory type accepts multiple physical directories. Relative paths resolve from the
+registered Project root. When `directories.project` is empty, the active Workspace directory is
+used so worktree Agents do not accidentally edit the main checkout. Knowledge
+directories are injected into the Agent's persisted system prompt as mandatory instructions.
+Project directories are read on demand. Configured index Skill directories are consulted before
+broad filesystem exploration.
+
+Workspace data roots are workspace-scoped: Paseo appends the opaque `workspaceId` unless the
+configured path explicitly contains `{{workspaceId}}`. These directories hold resumable process
+notes, review artifacts, and outputs. They are created when an Agent starts in the Workspace.
+
+When a Project omits directory configuration, Paseo uses these defaults:
+
+- Project directories: `{{workspaceDirectory}}`
+- Required AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
+- Index Skill directories: none
+- Workspace data directories: `.paseo/workspaces/{{workspaceId}}`
+
+Missing default knowledge directories are ignored by the Agent context until they exist. The
+right-side file explorer exposes all four directory categories and supports switching among every
+configured physical root.
+
+Automatic index Skill generation is disabled by default. When enabled, Paseo writes a standard
+`SKILL.md` directory index to every configured index Skill directory. A Project-specific
+`updateIntervalMinutes` overrides the daemon-wide interval; a missing/null value inherits the
+global setting. Disabling generation does not delete manually maintained index content.
+
+Instruction templates are daemon-global and stored in `$PASEO_HOME/config.json`, not in a
+Project's `paseo.json`. Projects define only variables used to fill those templates. The expanded
+Markdown composer loads the host's global templates and fills active Project variables plus
+built-ins such as `projectId`, `projectName`, `projectRoot`, `workspaceId`, `workspaceName`, and
+`workspaceDirectory`. Unknown placeholders remain visible rather than being silently removed.
+Legacy Project-local templates remain readable and are migrated to global configuration the next
+time that Project is saved.
+
 ## Store Surface Rules
 
 Store APIs own persistence atomicity and should not make services coordinate raw reads and writes. A good store method maps cleanly to one SQL statement or one SQL transaction, even when the current implementation is JSON files. If a caller needs a queue, lock, read-merge-write loop, or uniqueness race workaround, that behavior belongs behind the store surface.
@@ -54,6 +119,8 @@ $PASEO_HOME/
 │       └── {agentId}.json               # One file per agent
 ├── assistants.json                      # Assistant presets
 ├── teams.json                           # Assistant teams and leader membership
+├── client-access.json                   # Approved clients + 30-day client connection history
+├── relay-connection-history.json        # 30-day local Relay connection history
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
 ├── projects/
@@ -67,6 +134,11 @@ $PASEO_HOME/
 ```
 
 The `agents/{sanitized-cwd}/` directory name is derived from the agent's `cwd` by stripping the filesystem root and replacing path separators with `-` (Windows drive letters become a `C-` style prefix). Persistent server stores write atomically by writing a temp file in the target directory and then renaming it into place.
+
+Client and local Relay histories record every accepted connection's start and end time. Active
+records use a null end time; records left active by a process restart are closed when the store is
+next loaded. Ended records older than 30 days are deleted automatically, and individual records
+can also be deleted from their management screens.
 
 ---
 
@@ -185,7 +257,7 @@ Single file, validated with `PersistedConfigSchema`.
     hostnames: true | string[],   // legacy alias `allowedHosts` is migrated on load
     trustedProxies: true | string[], // defaults to ["loopback"]; Express proxy names/CIDRs
     mcp: { enabled: boolean, injectIntoAgents: boolean },
-    git: { maxProcessesPerSecond: number, maxProcessConcurrency: number },
+    projectIndexing: { updateIntervalMinutes: number }, // default 1440
     appendSystemPrompt: string,    // appended to supported provider system/developer prompts
     terminalProfiles: TerminalProfile[],  // named shell commands; omitted means DEFAULT_TERMINAL_PROFILES
     agentProfiles: AgentProfile[],        // named agent launch bundles; omitted means none

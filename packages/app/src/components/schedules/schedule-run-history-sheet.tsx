@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveModalSheet } from "@/components/adaptive-modal-sheet";
@@ -220,6 +221,7 @@ export function ScheduleRunHistorySheet({
   schedule,
   onClose,
 }: ScheduleRunHistorySheetProps): ReactElement {
+  const { t } = useTranslation();
   const scheduleId = schedule?.id ?? null;
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   const query = useFetchQuery({
@@ -230,7 +232,7 @@ export function ScheduleRunHistorySheet({
       }
       const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
       if (!client) {
-        throw new Error("Daemon client unavailable");
+        throw new Error(t("common.errors.daemonClientUnavailable"));
       }
       const payload = await client.scheduleLogs({ id: scheduleId });
       if (payload.error) {

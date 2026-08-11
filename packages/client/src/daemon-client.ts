@@ -34,6 +34,7 @@ import type {
   CreatePaseoWorktreeRequest,
   FileDownloadTokenResponse,
   FileUploadResponse,
+  FileExplorerErrorCode,
   FileExplorerResponse,
   FileVersion,
   FileWriteResult,
@@ -138,6 +139,7 @@ import {
   type FileTransferFrame,
 } from "@getpaseo/protocol/binary-frames/index";
 import {
+  createEncryptedTransport,
   createRelayE2eeTransportFactory,
   createWebSocketTransportFactory,
   decodeMessageData,
@@ -180,6 +182,7 @@ const perfNow: () => number =
     : () => Date.now();
 
 const PROJECT_GITHUB_CLONE_TIMEOUT_MS = 5 * 60 * 1000;
+const DIRECT_UPGRADE_CONNECT_TIMEOUT_MS = 4_000;
 
 interface ImportAgentInputBase {
   cwd?: string;
@@ -253,9 +256,23 @@ export type { TerminalStreamEvent };
 export type ConnectionState =
   | { status: "idle" }
   | { status: "connecting"; attempt: number }
+  | { status: "awaiting_approval"; message: string }
   | { status: "connected" }
   | { status: "disconnected"; reason?: string }
   | { status: "disposed" };
+
+export type DaemonConnectionTransport =
+  | {
+      type: "direct";
+      endpoint: string;
+      e2ee: boolean;
+      upgradedFromRelay: boolean;
+    }
+  | {
+      type: "relay";
+      endpoint: string;
+      e2ee: boolean;
+    };
 
 export type DaemonEvent =
   | {
@@ -319,6 +336,8 @@ export type BrowserAutomationExecuteResponseMessage = BrowserAutomationExecuteRe
 export interface DaemonClientConfig {
   url: string;
   clientId: string;
+  clientName?: string;
+  clientHostname?: string;
   clientType?: "mobile" | "browser" | "cli" | "mcp";
   appVersion?: string;
   runtimeGeneration?: number | null;
@@ -449,6 +468,17 @@ type WorkspaceCreatePayload = Extract<
 type FileExplorerPayload = FileExplorerResponse["payload"];
 export type FileExplorerDirectoryPayload = NonNullable<FileExplorerPayload["directory"]>;
 type LegacyFileExplorerFilePayload = NonNullable<FileExplorerPayload["file"]>;
+
+export class FileExplorerRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly code: FileExplorerErrorCode | null,
+  ) {
+    super(message);
+    this.name = "FileExplorerRequestError";
+  }
+}
+
 export interface FileReadResult {
   bytes: Uint8Array;
   mime: string;
@@ -478,6 +508,30 @@ type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
+type DaemonClientAccessListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "daemon.client_access.list.response" }
+>["payload"];
+type DaemonClientAccessApprovePayload = Extract<
+  SessionOutboundMessage,
+  { type: "daemon.client_access.approve.response" }
+>["payload"];
+type DaemonClientAccessSetPausedPayload = Extract<
+  SessionOutboundMessage,
+  { type: "daemon.client_access.set_paused.response" }
+>["payload"];
+type DaemonClientAccessDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "daemon.client_access.delete.response" }
+>["payload"];
+type DaemonClientAccessHistoryDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "daemon.client_access.history.delete.response" }
+>["payload"];
+type DaemonRelayHistoryDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "daemon.relay_history.delete.response" }
+>["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
 type ReadProjectConfigPayload = Extract<
   SessionOutboundMessage,
@@ -556,6 +610,14 @@ type AssistantDeletePayload = Extract<
 type LarkChannelGetStatusPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.get_status.response" }
+>["payload"];
+type LarkChannelApplyBotPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.apply_bot.response" }
+>["payload"];
+type LarkChannelGetBotApplicationPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.get_bot_application.response" }
 >["payload"];
 type LarkChannelConfigurePayload = Extract<
   SessionOutboundMessage,
@@ -849,6 +911,14 @@ export interface RevokeLarkUserOptions {
 }
 export interface LarkChannelRequestOptions {
   botId?: string;
+  requestId?: string;
+}
+export interface ApplyLarkBotOptions {
+  name?: string;
+  requestId?: string;
+}
+export interface GetLarkBotApplicationOptions {
+  applicationId: string;
   requestId?: string;
 }
 export interface DeleteLarkBotOptions {
@@ -1252,6 +1322,10 @@ interface PingProbe {
 export class DaemonClient {
   private transport: DaemonTransport | null = null;
   private transportCleanup: Array<() => void> = [];
+  private directUpgradeTransport: DaemonTransport | null = null;
+  private directUpgradeCleanup: Array<() => void> = [];
+  private directUpgradeGeneration = 0;
+  private usingDirectUpgradeTransport = false;
   private rawMessageListeners: Set<(message: SessionOutboundMessage) => void> = new Set();
   private messageHandlers: Map<
     SessionOutboundMessage["type"],
@@ -1261,6 +1335,9 @@ export class DaemonClient {
   private waiters: Set<Waiter<unknown>> = new Set();
   private checkoutStatusInFlight: Map<string, Promise<CheckoutStatusPayload>> = new Map();
   private connectionListeners: Set<(status: ConnectionState) => void> = new Set();
+  private connectionTransportListeners = new Set<
+    (transport: DaemonConnectionTransport | null) => void
+  >();
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private pendingGenericTransportErrorTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1271,11 +1348,16 @@ export class DaemonClient {
   private connectReject: ((error: Error) => void) | null = null;
   private lastErrorValue: string | null = null;
   private connectionState: ConnectionState = { status: "idle" };
+  private connectionTransport: DaemonConnectionTransport | null = null;
   private checkoutDiffSubscriptions = new Map<
     string,
     {
       cwd: string;
-      compare: { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean };
+      compare: {
+        mode: "uncommitted" | "base";
+        baseRef?: string;
+        ignoreWhitespace?: boolean;
+      };
     }
   >();
   private terminalDirectorySubscriptions = new Map<string, { cwd: string; workspaceId?: string }>();
@@ -1347,6 +1429,10 @@ export class DaemonClient {
     }
   }
 
+  getClientId(): string {
+    return this.config.clientId;
+  }
+
   // ============================================================================
   // Connection
   // ============================================================================
@@ -1357,6 +1443,9 @@ export class DaemonClient {
     }
     if (this.connectionState.status === "connected") {
       return;
+    }
+    if (this.connectionState.status === "awaiting_approval") {
+      throw new Error(this.connectionState.message);
     }
     if (this.connectPromise) {
       return this.connectPromise;
@@ -1586,7 +1675,8 @@ export class DaemonClient {
     }
     if (
       this.connectionState.status === "connected" ||
-      this.connectionState.status === "connecting"
+      this.connectionState.status === "connecting" ||
+      this.connectionState.status === "awaiting_approval"
     ) {
       return;
     }
@@ -1597,11 +1687,25 @@ export class DaemonClient {
     return this.connectionState;
   }
 
+  getConnectionTransport(): DaemonConnectionTransport | null {
+    return this.connectionTransport;
+  }
+
   subscribeConnectionStatus(listener: (status: ConnectionState) => void): () => void {
     this.connectionListeners.add(listener);
     listener(this.connectionState);
     return () => {
       this.connectionListeners.delete(listener);
+    };
+  }
+
+  subscribeConnectionTransport(
+    listener: (transport: DaemonConnectionTransport | null) => void,
+  ): () => void {
+    this.connectionTransportListeners.add(listener);
+    listener(this.connectionTransport);
+    return () => {
+      this.connectionTransportListeners.delete(listener);
     };
   }
 
@@ -1968,10 +2072,9 @@ export class DaemonClient {
     TResult = CorrelatedResponsePayload<TResponseType>,
   >(params: {
     requestId?: string;
-    message: { type: Extract<SessionInboundMessage["type"], `${string}.request`> } & Record<
-      string,
-      unknown
-    >;
+    message: {
+      type: Extract<SessionInboundMessage["type"], `${string}.request`>;
+    } & Record<string, unknown>;
     timeout?: number;
     selectPayload?: (payload: CorrelatedResponsePayload<TResponseType>) => TResult | null;
   }): Promise<TResult> {
@@ -2114,7 +2217,10 @@ export class DaemonClient {
 
   measureLatency(params?: { timeoutMs?: number }): Promise<number> {
     const timeoutMs = Math.max(1, params?.timeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS);
-    return this.sendPingAwaitRtt({ timeoutMs, drivesLivenessFailure: false }).catch((error) => {
+    return this.sendPingAwaitRtt({
+      timeoutMs,
+      drivesLivenessFailure: false,
+    }).catch((error) => {
       throw toTimeoutError(error, "Latency measurement", timeoutMs);
     });
   }
@@ -2122,7 +2228,10 @@ export class DaemonClient {
   private async livenessPing(params?: { timeoutMs?: number }): Promise<number> {
     const timeoutMs = Math.max(1, params?.timeoutMs ?? DEFAULT_LIVENESS_TIMEOUT_MS);
     try {
-      const rttMs = await this.sendPingAwaitRtt({ timeoutMs, drivesLivenessFailure: true });
+      const rttMs = await this.sendPingAwaitRtt({
+        timeoutMs,
+        drivesLivenessFailure: true,
+      });
       this.lastLivenessRttMs = rttMs;
       return rttMs;
     } catch (error) {
@@ -2397,7 +2506,11 @@ export class DaemonClient {
   }
 
   async cloneGithubProject(
-    input: { repo: string; targetDirectory: string; cloneProtocol?: ProjectGithubCloneProtocol },
+    input: {
+      repo: string;
+      targetDirectory: string;
+      cloneProtocol?: ProjectGithubCloneProtocol;
+    },
     requestId?: string,
   ): Promise<ProjectGithubClonePayload> {
     const message = {
@@ -2909,7 +3022,10 @@ export class DaemonClient {
       type: "import_agent_request",
       requestId,
       ...("providerId" in input
-        ? { providerId: input.providerId, providerHandleId: input.providerHandleId }
+        ? {
+            providerId: input.providerId,
+            providerHandleId: input.providerHandleId,
+          }
         : { provider: input.provider, sessionId: input.sessionId }),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
@@ -3531,7 +3647,12 @@ export class DaemonClient {
   }
 
   async sendVoiceAudioChunk(audio: string, format: string, isLast = false): Promise<void> {
-    this.sendSessionMessage({ type: "voice_audio_chunk", audio, format, isLast });
+    this.sendSessionMessage({
+      type: "voice_audio_chunk",
+      audio,
+      format,
+      isLast,
+    });
   }
 
   async startDictationStream(dictationId: string, format: string): Promise<void> {
@@ -3572,7 +3693,11 @@ export class DaemonClient {
 
     const cleanupError = new Error("Cancelled dictation start waiter");
     try {
-      this.sendSessionMessageStrict({ type: "dictation_stream_start", dictationId, format });
+      this.sendSessionMessageStrict({
+        type: "dictation_stream_start",
+        dictationId,
+        format,
+      });
       await Promise.race([ackPromise, errorPromise]);
     } finally {
       ack.cancel(cleanupError);
@@ -3708,7 +3833,11 @@ export class DaemonClient {
 
     const cleanupError = new Error("Cancelled dictation finish waiter");
     try {
-      this.sendSessionMessageStrict({ type: "dictation_stream_finish", dictationId, finalSeq });
+      this.sendSessionMessageStrict({
+        type: "dictation_stream_finish",
+        dictationId,
+        finalSeq,
+      });
       const firstOutcome = await Promise.race([
         finalOutcomePromise,
         errorOutcomePromise,
@@ -3740,7 +3869,10 @@ export class DaemonClient {
   }
 
   cancelDictationStream(dictationId: string): void {
-    this.sendSessionMessageStrict({ type: "dictation_stream_cancel", dictationId });
+    this.sendSessionMessageStrict({
+      type: "dictation_stream_cancel",
+      dictationId,
+    });
   }
 
   async abortRequest(): Promise<void> {
@@ -3808,7 +3940,11 @@ export class DaemonClient {
     mode: "uncommitted" | "base";
     baseRef?: string;
     ignoreWhitespace?: boolean;
-  }): { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean } {
+  }): {
+    mode: "uncommitted" | "base";
+    baseRef?: string;
+    ignoreWhitespace?: boolean;
+  } {
     if (compare.mode === "uncommitted") {
       return compare.ignoreWhitespace === true
         ? { mode: "uncommitted", ignoreWhitespace: true }
@@ -3827,7 +3963,11 @@ export class DaemonClient {
 
   async getCheckoutDiff(
     cwd: string,
-    compare: { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean },
+    compare: {
+      mode: "uncommitted" | "base";
+      baseRef?: string;
+      ignoreWhitespace?: boolean;
+    },
     requestId?: string,
   ): Promise<CheckoutDiffPayload> {
     const oneShotSubscriptionId = `oneshot-checkout-diff:${crypto.randomUUID()}`;
@@ -3854,7 +3994,11 @@ export class DaemonClient {
 
   async subscribeCheckoutDiff(
     cwd: string,
-    compare: { mode: "uncommitted" | "base"; baseRef?: string; ignoreWhitespace?: boolean },
+    compare: {
+      mode: "uncommitted" | "base";
+      baseRef?: string;
+      ignoreWhitespace?: boolean;
+    },
     options?: { subscriptionId?: string; requestId?: string },
   ): Promise<SubscribeCheckoutDiffPayload> {
     const subscriptionId = options?.subscriptionId ?? crypto.randomUUID();
@@ -3924,7 +4068,11 @@ export class DaemonClient {
 
   async checkoutMerge(
     cwd: string,
-    input: { baseRef?: string; strategy?: "merge" | "squash"; requireCleanTarget?: boolean },
+    input: {
+      baseRef?: string;
+      strategy?: "merge" | "squash";
+      requireCleanTarget?: boolean;
+    },
     requestId?: string,
   ): Promise<CheckoutMergePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4164,7 +4312,12 @@ export class DaemonClient {
   }
 
   async pullRequestTimeline(
-    input: { cwd: string; prNumber: number; repoOwner: string; repoName: string },
+    input: {
+      cwd: string;
+      prNumber: number;
+      repoOwner: string;
+      repoName: string;
+    },
     requestId?: string,
   ): Promise<PullRequestTimelinePayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4368,7 +4521,12 @@ export class DaemonClient {
   }
 
   async searchForge(
-    options: { cwd: string; query: string; limit?: number; kinds?: ForgeSearchRequest["kinds"] },
+    options: {
+      cwd: string;
+      query: string;
+      limit?: number;
+      kinds?: ForgeSearchRequest["kinds"];
+    },
     requestId?: string,
   ): Promise<ForgeSearchPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4386,7 +4544,12 @@ export class DaemonClient {
   }
 
   async searchGitHub(
-    options: { cwd: string; query: string; limit?: number; kinds?: GitHubSearchRequest["kinds"] },
+    options: {
+      cwd: string;
+      query: string;
+      limit?: number;
+      kinds?: GitHubSearchRequest["kinds"];
+    },
     requestId?: string,
   ): Promise<GitHubSearchPayload> {
     return this.sendCorrelatedSessionRequest({
@@ -4461,7 +4624,7 @@ export class DaemonClient {
   ): Promise<FileExplorerDirectoryPayload> {
     const payload = await this.requestFileExplorer(cwd, path, "list", requestId);
     if (payload.error) {
-      throw new Error(payload.error);
+      throw new FileExplorerRequestError(payload.error, payload.errorCode ?? null);
     }
     if (!payload.directory) {
       throw new Error("Directory listing unavailable.");
@@ -4824,6 +4987,88 @@ export class DaemonClient {
       },
       responseType: "daemon.get_pairing_offer.response",
       timeout: options?.timeout,
+    });
+  }
+
+  async listDaemonClientAccess(requestId?: string): Promise<DaemonClientAccessListPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.client_access.list.request",
+      },
+      responseType: "daemon.client_access.list.response",
+    });
+  }
+
+  async approveDaemonClientAccess(
+    clientId: string,
+    requestId?: string,
+  ): Promise<DaemonClientAccessApprovePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.client_access.approve.request",
+        clientId,
+      },
+      responseType: "daemon.client_access.approve.response",
+    });
+  }
+
+  async setDaemonClientAccessPaused(
+    clientId: string,
+    paused: boolean,
+    requestId?: string,
+  ): Promise<DaemonClientAccessSetPausedPayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.client_access.set_paused.request",
+        clientId,
+        paused,
+      },
+      responseType: "daemon.client_access.set_paused.response",
+    });
+  }
+
+  async deleteDaemonClientAccess(
+    clientId: string,
+    requestId?: string,
+  ): Promise<DaemonClientAccessDeletePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.client_access.delete.request",
+        clientId,
+      },
+      responseType: "daemon.client_access.delete.response",
+    });
+  }
+
+  async deleteDaemonClientAccessHistory(
+    historyId: string,
+    requestId?: string,
+  ): Promise<DaemonClientAccessHistoryDeletePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.client_access.history.delete.request",
+        historyId,
+      },
+      responseType: "daemon.client_access.history.delete.response",
+    });
+  }
+
+  async deleteDaemonRelayHistory(
+    historyId: string,
+    requestId?: string,
+  ): Promise<DaemonRelayHistoryDeletePayload> {
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "daemon.relay_history.delete.request",
+        historyId,
+      },
+      responseType: "daemon.relay_history.delete.response",
     });
   }
 
@@ -5472,7 +5717,10 @@ export class DaemonClient {
   }
 
   // MCP methods
-  async listMcpServers(): Promise<{ servers: McpServer[]; error: string | null }> {
+  async listMcpServers(): Promise<{
+    servers: McpServer[];
+    error: string | null;
+  }> {
     const result = await this.sendNamespacedCorrelatedSessionRequest<"mcp.list.response">({
       message: { type: "mcp.list.request" },
     });
@@ -5558,6 +5806,30 @@ export class DaemonClient {
         type: "channel.lark.get_status.request",
       },
     });
+  }
+
+  async applyLarkBot(options: ApplyLarkBotOptions = {}): Promise<LarkChannelApplyBotPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.apply_bot.response">({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.apply_bot.request",
+        name: options.name,
+      },
+    });
+  }
+
+  async getLarkBotApplication(
+    options: GetLarkBotApplicationOptions,
+  ): Promise<LarkChannelGetBotApplicationPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"channel.lark.get_bot_application.response">(
+      {
+        requestId: options.requestId,
+        message: {
+          type: "channel.lark.get_bot_application.request",
+          applicationId: options.applicationId,
+        },
+      },
+    );
   }
 
   async configureLarkChannel(
@@ -5815,22 +6087,7 @@ export class DaemonClient {
     }
 
     try {
-      this.sendJsonMessage("hello", "hello", {
-        type: "hello",
-        clientId: this.config.clientId,
-        clientType: this.config.clientType ?? "cli",
-        protocolVersion: 1,
-        capabilities: {
-          [CLIENT_CAPS.customModeIcons]: true,
-          [CLIENT_CAPS.reasoningMergeEnum]: true,
-          [CLIENT_CAPS.terminalReflowableSnapshot]: true,
-          [CLIENT_CAPS.providerSubagents]: true,
-          [CLIENT_CAPS.projectUpdates]: true,
-          [CLIENT_CAPS.compactProviderSnapshots]: true,
-          ...this.config.capabilities,
-        },
-        ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
-      });
+      this.transport.send(this.createHelloMessage());
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to send hello message";
       this.lastErrorValue = message;
@@ -5842,8 +6099,238 @@ export class DaemonClient {
     }
   }
 
+  private createHelloMessage(): string {
+    return JSON.stringify({
+      type: "hello",
+      clientId: this.config.clientId,
+      ...(this.config.clientName?.trim() ? { clientName: this.config.clientName.trim() } : {}),
+      ...(this.config.clientHostname?.trim()
+        ? { clientHostname: this.config.clientHostname.trim() }
+        : {}),
+      clientType: this.config.clientType ?? "cli",
+      protocolVersion: 1,
+      capabilities: {
+        [CLIENT_CAPS.customModeIcons]: true,
+        [CLIENT_CAPS.reasoningMergeEnum]: true,
+        [CLIENT_CAPS.terminalReflowableSnapshot]: true,
+        [CLIENT_CAPS.providerSubagents]: true,
+        [CLIENT_CAPS.projectUpdates]: true,
+        ...this.config.capabilities,
+      },
+      ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
+    });
+  }
+
+  private handleDirectConnectionOffer(offer: { candidates: string[]; expiresAt: string }): void {
+    if (
+      this.usingDirectUpgradeTransport ||
+      this.connectionState.status !== "connected" ||
+      this.config.e2ee?.enabled !== true ||
+      !this.config.e2ee.daemonPublicKeyB64 ||
+      !isRelayClientWebSocketUrl(this.config.url)
+    ) {
+      return;
+    }
+    const expiresAtMs = Date.parse(offer.expiresAt);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+      return;
+    }
+
+    this.cancelDirectUpgrade(1000, "Superseded direct upgrade offer");
+    const generation = this.directUpgradeGeneration;
+    void this.tryDirectUpgradeCandidates(offer.candidates, expiresAtMs, generation);
+  }
+
+  private async tryDirectUpgradeCandidates(
+    candidates: string[],
+    expiresAtMs: number,
+    generation: number,
+  ): Promise<void> {
+    for (const candidate of candidates) {
+      if (
+        generation !== this.directUpgradeGeneration ||
+        this.connectionState.status !== "connected" ||
+        expiresAtMs <= Date.now()
+      ) {
+        return;
+      }
+      try {
+        const transport = await this.probeDirectUpgradeCandidate(
+          candidate,
+          expiresAtMs,
+          generation,
+        );
+        if (generation !== this.directUpgradeGeneration) {
+          transport.close(1000, "Stale direct upgrade");
+          return;
+        }
+        this.activateDirectUpgradeTransport(transport, candidate);
+        return;
+      } catch (error) {
+        this.logger.debug(
+          {
+            err: error instanceof Error ? error.message : String(error),
+            candidate: redactDirectCandidate(candidate),
+          },
+          "LAN direct candidate failed",
+        );
+      }
+    }
+  }
+
+  private probeDirectUpgradeCandidate(
+    candidate: string,
+    expiresAtMs: number,
+    generation: number,
+  ): Promise<DaemonTransport> {
+    return new Promise((resolve, reject) => {
+      let parsed: URL;
+      try {
+        parsed = new URL(candidate);
+      } catch {
+        reject(new Error("Invalid direct candidate URL"));
+        return;
+      }
+      if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+        reject(new Error("Unsupported direct candidate protocol"));
+        return;
+      }
+
+      const daemonPublicKeyB64 = this.config.e2ee?.daemonPublicKeyB64;
+      if (!daemonPublicKeyB64) {
+        reject(new Error("Missing daemon public key"));
+        return;
+      }
+      const baseFactory =
+        this.config.transportFactory ??
+        createWebSocketTransportFactory(this.config.webSocketFactory ?? defaultWebSocketFactory);
+      const transport = createEncryptedTransport(
+        baseFactory({ url: parsed.toString() }),
+        daemonPublicKeyB64,
+        this.logger,
+      );
+      this.directUpgradeTransport = transport;
+      let settled = false;
+      const timeoutMs = Math.max(
+        1,
+        Math.min(DIRECT_UPGRADE_CONNECT_TIMEOUT_MS, expiresAtMs - Date.now()),
+      );
+      const timeout = setTimeout(() => {
+        finish(new Error("Direct upgrade timed out"));
+      }, timeoutMs);
+      const cleanups: Array<() => void> = [];
+      const cleanup = () => {
+        clearTimeout(timeout);
+        for (const remove of cleanups) {
+          try {
+            remove();
+          } catch {
+            // no-op
+          }
+        }
+        if (this.directUpgradeCleanup === cleanups) {
+          this.directUpgradeCleanup = [];
+        }
+      };
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error) {
+          if (this.directUpgradeTransport === transport) {
+            this.directUpgradeTransport = null;
+          }
+          try {
+            transport.close(1000, "Direct upgrade probe failed");
+          } catch {
+            // no-op
+          }
+          reject(error);
+          return;
+        }
+        resolve(transport);
+      };
+
+      cleanups.push(
+        transport.onOpen(() => {
+          if (generation !== this.directUpgradeGeneration) {
+            finish(new Error("Direct upgrade superseded"));
+            return;
+          }
+          try {
+            transport.send(this.createHelloMessage());
+          } catch (error) {
+            finish(error instanceof Error ? error : new Error(String(error)));
+          }
+        }),
+        transport.onMessage((data) => {
+          if (isServerInfoTransportMessage(data)) {
+            finish();
+          }
+        }),
+        transport.onClose((event) => {
+          finish(new Error(describeTransportClose(event)));
+        }),
+        transport.onError((event) => {
+          finish(new Error(describeTransportError(event)));
+        }),
+      );
+      this.directUpgradeCleanup = cleanups;
+    });
+  }
+
+  private activateDirectUpgradeTransport(transport: DaemonTransport, candidate: string): void {
+    const previousTransport = this.transport;
+    if (!previousTransport || this.connectionState.status !== "connected") {
+      transport.close(1000, "Relay transport unavailable");
+      return;
+    }
+
+    this.directUpgradeTransport = null;
+    this.directUpgradeCleanup = [];
+    this.cleanupTransport();
+    this.transport = transport;
+    this.usingDirectUpgradeTransport = true;
+    this.updateConnectionTransport({
+      type: "direct",
+      endpoint: formatConnectionTransportEndpoint(candidate),
+      e2ee: true,
+      upgradedFromRelay: true,
+    });
+    let failed = false;
+    const fallbackToRelay = (reason: string, event: string) => {
+      if (failed) return;
+      failed = true;
+      this.usingDirectUpgradeTransport = false;
+      this.scheduleReconnect({
+        reason,
+        event,
+        reasonCode: "direct_transport_lost",
+      });
+    };
+    this.transportCleanup = [
+      transport.onClose((event) => {
+        fallbackToRelay(describeTransportClose(event), "DIRECT_TRANSPORT_CLOSE");
+      }),
+      transport.onError((event) => {
+        fallbackToRelay(describeTransportError(event), "DIRECT_TRANSPORT_ERROR");
+      }),
+      transport.onMessage((data) => this.handleTransportMessage(data)),
+    ];
+    try {
+      previousTransport.close(1000, "Upgraded to LAN direct E2EE");
+    } catch {
+      // no-op
+    }
+    this.logger.info(
+      { serverId: this.logServerId, clientIdHash: this.logClientIdHash },
+      "Upgraded Relay connection to LAN direct E2EE",
+    );
+  }
+
   private disposeTransport(code = 1001, reason = "Reconnecting"): void {
     this.stopLivenessHeartbeat();
+    this.cancelDirectUpgrade(code, reason);
     this.cleanupTransport();
     if (this.transport) {
       try {
@@ -5852,6 +6339,27 @@ export class DaemonClient {
         // no-op
       }
       this.transport = null;
+    }
+    this.usingDirectUpgradeTransport = false;
+  }
+
+  private cancelDirectUpgrade(code = 1001, reason = "Direct upgrade cancelled"): void {
+    this.directUpgradeGeneration += 1;
+    for (const cleanup of this.directUpgradeCleanup) {
+      try {
+        cleanup();
+      } catch {
+        // no-op
+      }
+    }
+    this.directUpgradeCleanup = [];
+    if (this.directUpgradeTransport) {
+      try {
+        this.directUpgradeTransport.close(code, reason);
+      } catch {
+        // no-op
+      }
+      this.directUpgradeTransport = null;
     }
   }
 
@@ -5967,10 +6475,32 @@ export class DaemonClient {
       return;
     }
 
-    this.traceInstant("paseo.ws.message.inbound", {
-      envelopeType: "session",
-      messageType: parsed.data.message.type,
-    });
+    if (parsed.data.type === "connection.approval_required") {
+      this.resetConnectTimeout();
+      this.lastErrorValue = parsed.data.message;
+      this.updateConnectionState(
+        { status: "awaiting_approval", message: parsed.data.message },
+        {
+          event: "HELLO_APPROVAL_REQUIRED",
+          reason: parsed.data.message,
+          reasonCode: "approval_required",
+        },
+      );
+      this.rejectConnect(new Error(parsed.data.message));
+      this.runtimeMetrics?.recordMessage(
+        "connection.approval_required",
+        bytes,
+        perfNow() - startMs,
+      );
+      return;
+    }
+
+    if (parsed.data.type === "transport.direct_offer") {
+      this.runtimeMetrics?.recordMessage("transport.direct_offer", bytes, perfNow() - startMs);
+      this.handleDirectConnectionOffer(parsed.data);
+      return;
+    }
+
     this.handleSessionMessage(parsed.data.message);
     const msgType = parsed.data.message.type;
     this.runtimeMetrics?.recordMessage(msgType, bytes, perfNow() - startMs);
@@ -6078,6 +6608,9 @@ export class DaemonClient {
     next: ConnectionState,
     metadata?: { event: string; reason?: string; reasonCode?: string },
   ): void {
+    if (next.status !== "connected") {
+      this.updateConnectionTransport(null);
+    }
     const previous = this.connectionState;
     this.connectionState = next;
     const reasonFromNext =
@@ -6107,8 +6640,46 @@ export class DaemonClient {
     }
   }
 
+  private updateConnectionTransport(next: DaemonConnectionTransport | null): void {
+    if (
+      this.connectionTransport?.type === next?.type &&
+      this.connectionTransport?.endpoint === next?.endpoint &&
+      this.connectionTransport?.e2ee === next?.e2ee &&
+      (this.connectionTransport?.type !== "direct" ||
+        next?.type !== "direct" ||
+        this.connectionTransport.upgradedFromRelay === next.upgradedFromRelay)
+    ) {
+      return;
+    }
+    this.connectionTransport = next;
+    for (const listener of this.connectionTransportListeners) {
+      try {
+        listener(next);
+      } catch {
+        // no-op
+      }
+    }
+  }
+
+  private resolveConfiguredConnectionTransport(): DaemonConnectionTransport {
+    const endpoint = formatConnectionTransportEndpoint(this.config.url);
+    const e2ee = this.config.e2ee?.enabled === true;
+    if (isRelayClientWebSocketUrl(this.config.url)) {
+      return { type: "relay", endpoint, e2ee };
+    }
+    return {
+      type: "direct",
+      endpoint,
+      e2ee,
+      upgradedFromRelay: false,
+    };
+  }
+
   setReconnectEnabled(enabled: boolean): void {
-    this.config = { ...this.config, reconnect: { ...this.config.reconnect, enabled } };
+    this.config = {
+      ...this.config,
+      reconnect: { ...this.config.reconnect, enabled },
+    };
   }
 
   private scheduleReconnect(input?: {
@@ -6116,6 +6687,7 @@ export class DaemonClient {
     event?: string;
     reasonCode?: string;
   }): void {
+    this.cancelDirectUpgrade(1001, "Transport reconnecting");
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -6231,9 +6803,13 @@ export class DaemonClient {
       const serverInfo = parseServerInfoStatusPayload(consumerMessage.payload);
       if (serverInfo) {
         this.lastServerInfoMessage = serverInfo;
-        if (this.connectionState.status === "connecting") {
+        if (
+          this.connectionState.status === "connecting" ||
+          this.connectionState.status === "awaiting_approval"
+        ) {
           this.resetConnectTimeout();
           this.reconnectAttempt = 0;
+          this.updateConnectionTransport(this.resolveConfiguredConnectionTransport());
           this.updateConnectionState({ status: "connected" }, { event: "HELLO_SERVER_INFO" });
           this.startLivenessHeartbeat();
           this.resubscribeCheckoutDiffSubscriptions();
@@ -6461,6 +7037,48 @@ export class DaemonClient {
     };
 
     return { promise, cancel };
+  }
+}
+
+function isServerInfoTransportMessage(data: unknown): boolean {
+  const rawData =
+    data && typeof data === "object" && "data" in data ? (data as { data: unknown }).data : data;
+  const payload = decodeMessageData(rawData);
+  if (!payload) return false;
+  try {
+    const parsed = validateWSOutboundMessage(JSON.parse(payload) as unknown);
+    return (
+      parsed.success &&
+      parsed.data.type === "session" &&
+      parsed.data.message.type === "status" &&
+      parseServerInfoStatusPayload(parsed.data.message.payload) !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
+function redactDirectCandidate(candidate: string): string {
+  try {
+    const url = new URL(candidate);
+    url.search = "";
+    return url.toString();
+  } catch {
+    return "invalid";
+  }
+}
+
+function formatConnectionTransportEndpoint(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.origin !== "null") {
+      return url.origin;
+    }
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return value;
   }
 }
 

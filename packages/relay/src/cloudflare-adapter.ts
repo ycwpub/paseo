@@ -86,6 +86,17 @@ function getString(record: Record<string, unknown>, key: string): string | undef
   return typeof value === "string" ? value : undefined;
 }
 
+function getNullableString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getClientAddress(request: Request): string | null {
+  const cloudflareAddress = request.headers.get("cf-connecting-ip")?.trim();
+  if (cloudflareAddress) return cloudflareAddress;
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+}
+
 function getGlobalWebSocketPair(): (new () => WebSocketPair) | undefined {
   // Access WebSocketPair from global scope (Cloudflare Workers runtime)
   // Use Reflect to access global property without type assertions
@@ -231,7 +242,11 @@ export class RelayDurableObject {
       if (this.hasServerDataSocket(connectionId)) return;
 
       // First nudge: send a full sync list.
-      this.notifyControls({ type: "sync", connectionIds: this.listConnectedConnectionIds() });
+      this.notifyControls({
+        type: "sync",
+        connectionIds: this.listConnectedConnectionIds(),
+        connections: this.listConnectedConnections(),
+      });
 
       setTimeout(() => {
         if (!this.hasClientSocket(connectionId)) return;
@@ -275,7 +290,22 @@ export class RelayDurableObject {
   }
 
   private listConnectedConnectionIds(): string[] {
-    const out = new Set<string>();
+    return this.listConnectedConnections().map((connection) => connection.connectionId);
+  }
+
+  private listConnectedConnections(): Array<{
+    connectionId: string;
+    remoteAddress: string | null;
+    remotePort: number | null;
+  }> {
+    const out = new Map<
+      string,
+      {
+        connectionId: string;
+        remoteAddress: string | null;
+        remotePort: number | null;
+      }
+    >();
     for (const ws of this.state.getWebSockets("client")) {
       try {
         const attachmentRaw = deserializeAttachment(ws);
@@ -285,13 +315,17 @@ export class RelayDurableObject {
           typeof attachment.connectionId === "string" &&
           attachment.connectionId
         ) {
-          out.add(attachment.connectionId);
+          out.set(attachment.connectionId, {
+            connectionId: attachment.connectionId,
+            remoteAddress: getNullableString(attachment, "remoteAddress"),
+            remotePort: typeof attachment.remotePort === "number" ? attachment.remotePort : null,
+          });
         }
       } catch {
         // ignore
       }
     }
-    return Array.from(out);
+    return Array.from(out.values());
   }
 
   private notifyControls(message: unknown): void {
@@ -377,6 +411,8 @@ export class RelayDurableObject {
       role,
       version: CURRENT_RELAY_VERSION,
       connectionId: resolvedConnectionId || null,
+      remoteAddress: role === "client" ? getClientAddress(request) : null,
+      remotePort: null,
       createdAt: Date.now(),
     };
     serializeAttachment(server, attachment);
@@ -392,7 +428,12 @@ export class RelayDurableObject {
     console.log(`[Relay DO] v2:${role}${roleSuffix} connected to session ${serverId}`);
 
     if (role === "client") {
-      this.notifyControls({ type: "connected", connectionId: resolvedConnectionId });
+      this.notifyControls({
+        type: "connected",
+        connectionId: resolvedConnectionId,
+        remoteAddress: attachment.remoteAddress,
+        remotePort: attachment.remotePort,
+      });
       this.nudgeOrResetControlForConnection(resolvedConnectionId);
     }
 
@@ -400,7 +441,11 @@ export class RelayDurableObject {
       // Send current connection list so the daemon can attach existing connections.
       try {
         server.send(
-          JSON.stringify({ type: "sync", connectionIds: this.listConnectedConnectionIds() }),
+          JSON.stringify({
+            type: "sync",
+            connectionIds: this.listConnectedConnectionIds(),
+            connections: this.listConnectedConnections(),
+          }),
         );
       } catch {
         // ignore

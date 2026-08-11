@@ -63,6 +63,7 @@ export interface WorkspaceProvisioningService {
     input: CreateWorktreeWorkspaceInput,
   ): Promise<PersistedWorkspaceRecord>;
   findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord>;
+  createProjectForDirectory(cwd: string): Promise<PersistedProjectRecord>;
   ensureWorkspaceRecordUnarchived(
     workspace: PersistedWorkspaceRecord,
   ): Promise<PersistedWorkspaceRecord>;
@@ -173,6 +174,20 @@ export function createWorkspaceProvisioningService(deps: {
       }),
       timestamp,
     });
+  }
+
+  async function createProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
+    const rootPath = resolve(cwd);
+    const checkout = await workspaceGitService.getCheckout(rootPath);
+    const allocation = {
+      rootPath,
+      kind: checkout.isGit ? ("git" as const) : ("non_git" as const),
+      displayName: basename(rootPath) || rootPath,
+      timestamp: new Date().toISOString(),
+    };
+    return projectRegistry.createForRoot
+      ? projectRegistry.createForRoot(allocation)
+      : projectRegistry.getOrCreateActiveByRoot(allocation);
   }
 
   async function requireActiveProject(projectId: string): Promise<PersistedProjectRecord> {
@@ -445,6 +460,7 @@ export function createWorkspaceProvisioningService(deps: {
     createWorkspaceForDirectory,
     createWorkspaceForWorktree,
     findOrCreateProjectForDirectory,
+    createProjectForDirectory,
     ensureWorkspaceRecordUnarchived,
   };
 }

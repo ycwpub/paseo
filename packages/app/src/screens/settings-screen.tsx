@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
@@ -7,6 +15,8 @@ import {
   Text,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type PressableStateCallbackType,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -39,7 +49,9 @@ import {
   MessageCircle,
   Wrench,
   Sparkles,
+  Pencil,
 } from "lucide-react-native";
+import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
@@ -59,7 +71,7 @@ import {
   type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
-import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
+import { getHostRuntimeStore, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import {
   orderHostsLocalFirst,
@@ -102,7 +114,7 @@ import {
 } from "@/i18n/locales";
 import {
   HostConnectionsPage,
-  HostPairDevicePage,
+  HostLocalRelayPage,
   HostAgentsPage,
   HostSettingsPage,
   HostProvidersPage,
@@ -131,10 +143,10 @@ import {
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
-import {
-  navigateToLastWorkspace,
-  useLastWorkspaceSelection,
-} from "@/stores/navigation-active-workspace-store";
+import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
+import { getOrCreateClientId } from "@/utils/client-id";
+import { initializeClientHostname, saveClientHostname } from "@/utils/client-hostname";
+import { resolveClientHostname } from "@/utils/client-name";
 
 // ---------------------------------------------------------------------------
 // View model
@@ -206,14 +218,15 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
 function renderHostSettingsContent(
   view: Extract<SettingsView, { kind: "host" }>,
   onHostRemoved: () => void,
+  onOpenLocalRelay: () => void,
 ): ReactNode {
   switch (view.section) {
     case "projects":
       return <ProjectsScreen serverId={view.serverId} />;
     case "connections":
-      return <HostConnectionsPage serverId={view.serverId} />;
-    case "pair-device":
-      return <HostPairDevicePage serverId={view.serverId} />;
+      return <HostConnectionsPage serverId={view.serverId} onOpenLocalRelay={onOpenLocalRelay} />;
+    case "relay":
+      return <HostLocalRelayPage serverId={view.serverId} />;
     case "agents":
       return <HostAgentsPage serverId={view.serverId} />;
     case "metadata":
@@ -351,6 +364,7 @@ function GeneralSection({
   handleTerminalScrollbackLinesChange,
 }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
+  const { theme } = useUnistyles();
   const activeLocale = getActiveLocale(i18n.language);
   const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
   const sendBehaviorDescriptionKey =
@@ -370,6 +384,9 @@ function GeneralSection({
   const [terminalScrollbackValue, setTerminalScrollbackValue] = useState(
     String(settings.terminalScrollbackLines),
   );
+  const [clientHostname, setClientHostname] = useState(resolveClientHostname() ?? "");
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [isEditingClientHostname, setIsEditingClientHostname] = useState(false);
 
   const handleTerminalScrollbackChangeText = useCallback((value: string) => {
     setTerminalScrollbackValue(value.replace(/[^\d]/g, ""));
@@ -392,10 +409,80 @@ function GeneralSection({
     setTerminalScrollbackValue(String(settings.terminalScrollbackLines));
   }, [settings.terminalScrollbackLines]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([initializeClientHostname(), getOrCreateClientId()])
+      .then(([, resolvedClientId]) => {
+        if (cancelled) return undefined;
+        setClientHostname(resolveClientHostname() ?? "");
+        setClientId(resolvedClientId);
+        return undefined;
+      })
+      .catch((error) => {
+        console.warn("[ClientIdentity] Failed to load client identity", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleClientHostnameSubmit = useCallback(async (value: string) => {
+    const savedHostname = await saveClientHostname(value);
+    setClientHostname(savedHostname);
+    void getHostRuntimeStore()
+      .reconnectAllClients()
+      .catch((error) => {
+        console.warn("[ClientIdentity] Failed to reconnect clients after hostname change", error);
+      });
+  }, []);
+
+  const openClientHostnameEditor = useCallback(() => {
+    setIsEditingClientHostname(true);
+  }, []);
+  const closeClientHostnameEditor = useCallback(() => {
+    setIsEditingClientHostname(false);
+  }, []);
+
   return (
     <SettingsSection title={t("settings.general.title")}>
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.general.clientIdentity.hostname")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.general.clientIdentity.hostnameDescription")}
+            </Text>
+          </View>
+          <Pressable
+            onPress={openClientHostnameEditor}
+            hitSlop={8}
+            style={styles.clientHostnameButton}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.general.clientIdentity.editHostname")}
+            testID="general-client-hostname-edit"
+          >
+            <Text style={styles.clientHostnameValue} numberOfLines={2}>
+              {clientHostname || t("settings.general.clientIdentity.unavailable")}
+            </Text>
+            <Pencil size={14} color={theme.colors.foregroundMuted} />
+          </Pressable>
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.general.clientIdentity.identityId")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.general.clientIdentity.identityIdDescription")}
+            </Text>
+          </View>
+          <Text style={styles.clientIdentityId} selectable>
+            {clientId ?? t("settings.loading")}
+          </Text>
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
             <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
@@ -483,6 +570,17 @@ function GeneralSection({
           />
         </View>
       </View>
+      <AdaptiveRenameModal
+        visible={isEditingClientHostname}
+        title={t("settings.general.clientIdentity.editHostnameTitle")}
+        initialValue={clientHostname}
+        placeholder={t("settings.general.clientIdentity.hostnamePlaceholder")}
+        submitLabel={t("common.actions.save")}
+        onClose={closeClientHostnameEditor}
+        onSubmit={handleClientHostnameSubmit}
+        maxLength={255}
+        testID="general-client-hostname-modal"
+      />
     </SettingsSection>
   );
 }
@@ -1010,6 +1108,8 @@ interface SettingsSidebarProps {
   layout: "desktop" | "mobile";
 }
 
+let desktopSettingsSidebarScrollY = 0;
+
 function SettingsSidebar({
   view,
   onSelectSection,
@@ -1041,8 +1141,30 @@ function SettingsSidebar({
   );
   const selectedSectionId = view.kind === "section" ? view.section : null;
   let selectedHostSection: HostSectionSlug | null = null;
-  if (view.kind === "host") selectedHostSection = view.section;
-  if (view.kind === "project") selectedHostSection = "projects";
+  if (view.kind === "host") {
+    selectedHostSection = view.section === "relay" ? "connections" : view.section;
+  }
+  const isProjectsSelected = view.kind === "projects" || view.kind === "project";
+  const desktopScrollRef = useRef<ScrollView>(null);
+  const handleDesktopScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const nextOffset = event.nativeEvent.contentOffset.y;
+    if (Number.isFinite(nextOffset)) {
+      desktopSettingsSidebarScrollY = Math.max(0, nextOffset);
+    }
+  }, []);
+
+  // Desktop settings sections live on separate routes, so the sidebar is
+  // remounted on every selection. Restore its previous position before paint
+  // instead of making lower navigation items jump back to the top.
+  useLayoutEffect(() => {
+    if (!isDesktop || desktopSettingsSidebarScrollY <= 0) {
+      return;
+    }
+    desktopScrollRef.current?.scrollTo({
+      y: desktopSettingsSidebarScrollY,
+      animated: false,
+    });
+  }, [isDesktop]);
 
   const sidebarBody = (
     <>
@@ -1133,7 +1255,13 @@ function SettingsSidebar({
               testID="settings-back-to-workspace"
             />
           </View>
-          <ScrollView style={sidebarStyles.scrollBody} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            ref={desktopScrollRef}
+            style={sidebarStyles.scrollBody}
+            showsVerticalScrollIndicator={false}
+            onScroll={handleDesktopScroll}
+            scrollEventThrottle={16}
+          >
             {sidebarBody}
           </ScrollView>
         </View>
@@ -1339,7 +1467,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       if (view.kind !== "host") {
         return;
       }
-      const target = buildSettingsHostSectionRoute(serverId, view.section);
+      const section: HostSectionSlug = view.section === "relay" ? "connections" : view.section;
+      const target = buildSettingsHostSectionRoute(serverId, section);
       if (isCompactLayout) {
         router.push(target);
       } else {
@@ -1382,6 +1511,19 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
   }, [isCompactLayout, router]);
 
+  const handleOpenLocalRelay = useCallback(() => {
+    if (!activeHostServerId) return;
+    router.push(buildSettingsHostSectionRoute(activeHostServerId, "relay"));
+  }, [activeHostServerId, router]);
+
+  const handleCloseLocalRelay = useCallback(() => {
+    if (!activeHostServerId) {
+      router.replace("/settings");
+      return;
+    }
+    router.replace(buildSettingsHostSectionRoute(activeHostServerId, "connections"));
+  }, [activeHostServerId, router]);
+
   const handleBackToRoot = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
@@ -1410,8 +1552,16 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     title: string;
     Icon: ComponentType<{ size: number; color: string }>;
     titleAccessory?: ReactNode;
+    onBack?: () => void;
   } | null => {
     if (view.kind === "host") {
+      if (view.section === "relay") {
+        return {
+          title: t("settings.host.relay.lan.title"),
+          Icon: Network,
+          onBack: handleCloseLocalRelay,
+        };
+      }
       const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
       if (!item) return null;
       return { title: t(item.labelKey), Icon: item.icon };
@@ -1429,7 +1579,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
 
   const content = (() => {
     if (view.kind === "host") {
-      return renderHostSettingsContent(view, handleHostRemoved);
+      return renderHostSettingsContent(view, handleHostRemoved, handleOpenLocalRelay);
     }
     if (view.kind === "project") {
       return <ProjectSettingsScreen serverId={view.serverId} projectId={view.projectId} />;
@@ -1496,6 +1646,17 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
 
   const desktopDetailHeaderLeft = detailHeader ? (
     <>
+      {detailHeader.onBack ? (
+        <Pressable
+          onPress={detailHeader.onBack}
+          style={styles.detailBackButton}
+          accessibilityRole="button"
+          accessibilityLabel={t("common.actions.back")}
+          testID="settings-detail-back"
+        >
+          <ArrowLeft size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+        </Pressable>
+      ) : null}
       <HeaderIconBadge>
         <detailHeader.Icon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
       </HeaderIconBadge>
@@ -1550,6 +1711,16 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     );
   }
 
+  // Mobile detail: full-screen content with a back header. Project detail uses
+  // an app-level back (out of settings, to the workspace) since the in-body
+  // "Back to projects" ghost button handles list-level back; other detail views
+  // step back to the settings root.
+  let detailBackHandler = handleBackToRoot;
+  if (view.kind === "project") {
+    detailBackHandler = handleBackToWorkspace;
+  } else if (view.kind === "host" && view.section === "relay") {
+    detailBackHandler = handleCloseLocalRelay;
+  }
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
@@ -1631,6 +1802,10 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: 720,
     alignSelf: "center",
   },
+  detailBackButton: {
+    padding: theme.spacing[2],
+    borderRadius: theme.borderRadius.lg,
+  },
   aboutValue: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
@@ -1676,6 +1851,31 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+    textAlign: "right",
+  },
+  clientHostnameButton: {
+    maxWidth: "55%",
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  clientHostnameValue: {
+    flexShrink: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  clientIdentityId: {
+    maxWidth: "55%",
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: theme.fontFamily.mono,
     textAlign: "right",
   },
   placeholder: {

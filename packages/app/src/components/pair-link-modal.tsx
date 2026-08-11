@@ -7,8 +7,15 @@ import { Link } from "lucide-react-native";
 import type { HostProfile } from "@/types/host-connection";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
-import { connectToDaemon } from "@/utils/test-daemon-connection";
-import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
+import {
+  connectToDaemon,
+  DaemonConnectionApprovalRequiredError,
+  waitForDaemonApproval,
+} from "@/utils/test-daemon-connection";
+import {
+  ConnectionOfferSchema,
+  getConnectionOfferRelays,
+} from "@getpaseo/protocol/connection-offer";
 import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 
@@ -40,6 +47,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.destructive,
     fontSize: theme.fontSize.sm,
   },
+  approval: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
   actions: {
     flexDirection: "row",
     gap: theme.spacing[3],
@@ -69,7 +81,10 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
   const offerUrlRef = useRef("");
   const inputRef = useRef<TextInput>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAwaitingApproval, setIsAwaitingApproval] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const pendingClientRef = useRef<DaemonConnectionApprovalRequiredError["client"] | null>(null);
+  const pairingAbortRef = useRef<AbortController | null>(null);
 
   const clearInput = useCallback(() => {
     offerUrlRef.current = "";
@@ -81,20 +96,43 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
     [theme.colors.accentForeground],
   );
 
-  const handleClose = useCallback(() => {
-    if (isSaving) return;
+  const resetAndClose = useCallback(() => {
+    pairingAbortRef.current?.abort();
+    pairingAbortRef.current = null;
+    const pendingClient = pendingClientRef.current;
+    pendingClientRef.current = null;
+    if (pendingClient) {
+      void pendingClient.close().catch(() => undefined);
+    }
     clearInput();
     setErrorMessage("");
+    setIsAwaitingApproval(false);
+    setIsSaving(false);
     onClose();
-  }, [isSaving, clearInput, onClose]);
+  }, [clearInput, onClose]);
+
+  const handleClose = useCallback(() => {
+    if (isSaving && !isAwaitingApproval) return;
+    resetAndClose();
+  }, [isAwaitingApproval, isSaving, resetAndClose]);
 
   const handleCancel = useCallback(() => {
-    if (isSaving) return;
+    if (isSaving && !isAwaitingApproval) return;
+    pairingAbortRef.current?.abort();
+    pairingAbortRef.current = null;
+    const pendingClient = pendingClientRef.current;
+    pendingClientRef.current = null;
+    if (pendingClient) {
+      void pendingClient.close().catch(() => undefined);
+    }
     clearInput();
     setErrorMessage("");
+    setIsAwaitingApproval(false);
+    setIsSaving(false);
     (onCancel ?? onClose)();
-  }, [isSaving, clearInput, onCancel, onClose]);
+  }, [clearInput, isAwaitingApproval, isSaving, onCancel, onClose]);
 
+  // oxlint-disable-next-line complexity
   const handleSave = useCallback(async () => {
     if (isSaving) return;
     const raw = offerUrlRef.current.trim();
@@ -130,27 +168,69 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       return;
     }
 
+    const pairingAbort = new AbortController();
     try {
       setIsSaving(true);
+      setIsAwaitingApproval(false);
       setErrorMessage("");
+      pairingAbortRef.current = pairingAbort;
 
-      const { client, hostname } = await connectToDaemon(
-        {
-          id: "probe",
-          type: "relay",
-          relayEndpoint: normalizeHostPort(parsedOffer.relay.endpoint),
-          useTls: parsedOffer.relay.useTls,
-          daemonPublicKeyB64: parsedOffer.daemonPublicKeyB64,
-        },
-        { serverId: parsedOffer.serverId },
-      );
+      let connected: Awaited<ReturnType<typeof connectToDaemon>> | null = null;
+      let approvalRequired: DaemonConnectionApprovalRequiredError | null = null;
+      let lastError: unknown = null;
+      for (const relay of getConnectionOfferRelays(parsedOffer)) {
+        try {
+          connected = await connectToDaemon(
+            {
+              id: "probe",
+              type: "relay",
+              relayEndpoint: normalizeHostPort(relay.endpoint),
+              useTls: relay.useTls,
+              daemonPublicKeyB64: parsedOffer.daemonPublicKeyB64,
+            },
+            { serverId: parsedOffer.serverId },
+          );
+          break;
+        } catch (error) {
+          if (error instanceof DaemonConnectionApprovalRequiredError) {
+            approvalRequired = error;
+            break;
+          }
+          lastError = error;
+        }
+      }
+      if (!connected && approvalRequired) {
+        pendingClientRef.current = approvalRequired.client;
+        setIsAwaitingApproval(true);
+        const serverInfo = await waitForDaemonApproval(
+          approvalRequired.client,
+          pairingAbort.signal,
+        );
+        pendingClientRef.current = null;
+        await approvalRequired.client.close().catch(() => undefined);
+        const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
+        const profile = await upsertDaemonFromOfferUrl(raw, serverInfo.hostname ?? undefined);
+        resetAndClose();
+        onSaved?.({
+          profile,
+          serverId: parsedOffer.serverId,
+          hostname: serverInfo.hostname,
+          isNewHost,
+        });
+        return;
+      }
+      if (!connected) throw lastError ?? new Error("No relay endpoint is available");
+      const { client, hostname } = connected;
       await client.close().catch(() => undefined);
 
       const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
       const profile = await upsertDaemonFromOfferUrl(raw, hostname ?? undefined);
+      resetAndClose();
       onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
-      handleClose();
     } catch (error) {
+      if (pairingAbort.signal.aborted) {
+        return;
+      }
       const message =
         error instanceof Error ? error.message : t("pairing.link.errors.unableToPair");
       setErrorMessage(message);
@@ -158,9 +238,18 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
         Alert.alert(t("pairing.link.alert.failedTitle"), message);
       }
     } finally {
+      if (pairingAbortRef.current === pairingAbort) {
+        pairingAbortRef.current = null;
+      }
+      const pendingClient = pendingClientRef.current;
+      pendingClientRef.current = null;
+      if (pendingClient) {
+        await pendingClient.close().catch(() => undefined);
+      }
+      setIsAwaitingApproval(false);
       setIsSaving(false);
     }
-  }, [daemons, handleClose, isMobile, isSaving, onSaved, t, upsertDaemonFromOfferUrl]);
+  }, [daemons, isMobile, isSaving, onSaved, resetAndClose, t, upsertDaemonFromOfferUrl]);
 
   const handleChangeOfferUrl = useCallback((next: string) => {
     offerUrlRef.current = next;
@@ -171,6 +260,12 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
   }, [handleSave]);
 
   const header = useMemo<SheetHeader>(() => ({ title: t("pairing.link.title") }), [t]);
+  let submitLabel = t("pairing.link.actions.pair");
+  if (isAwaitingApproval) {
+    submitLabel = t("pairing.link.actions.awaitingApproval");
+  } else if (isSaving) {
+    submitLabel = t("pairing.link.actions.pairing");
+  }
 
   return (
     <AdaptiveModalSheet
@@ -179,10 +274,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       onClose={handleClose}
       testID="pair-link-modal"
     >
-      <Text style={styles.helper}>{t("pairing.link.helper")}</Text>
-
       <View style={styles.field}>
         <Text style={styles.label}>{t("pairing.link.label")}</Text>
+        <Text style={styles.helper}>{t("pairing.link.helper")}</Text>
         <AdaptiveTextInput
           ref={inputRef}
           testID="pair-link-input"
@@ -198,6 +292,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           keyboardType="url"
         />
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+        {isAwaitingApproval ? (
+          <Text style={styles.approval}>{t("pairing.link.awaitingApproval")}</Text>
+        ) : null}
       </View>
 
       <View style={styles.actions}>
@@ -205,7 +302,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           style={FLEX_ONE_STYLE}
           variant="secondary"
           onPress={handleCancel}
-          disabled={isSaving}
+          disabled={isSaving && !isAwaitingApproval}
           testID="pair-link-cancel"
           accessibilityRole="button"
           accessibilityLabel={t("pairing.link.actions.cancel")}
@@ -222,7 +319,7 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           accessibilityLabel={t("pairing.link.actions.pair")}
           leftIcon={pairIcon}
         >
-          {isSaving ? t("pairing.link.actions.pairing") : t("pairing.link.actions.pair")}
+          {submitLabel}
         </Button>
       </View>
     </AdaptiveModalSheet>

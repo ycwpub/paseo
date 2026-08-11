@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { loadConfig, resolvePaseoHome } from "@getpaseo/server";
 import {
   buildDaemonWebSocketUrl,
@@ -8,6 +9,7 @@ import {
   shouldUseTlsForDefaultHostedRelay,
 } from "@getpaseo/protocol/daemon-endpoints";
 import {
+  getConnectionOfferRelays,
   parseConnectionOfferFromUrl,
   type ConnectionOffer,
 } from "@getpaseo/protocol/connection-offer";
@@ -275,9 +277,12 @@ async function tryConnectHost(
   nodeWebSocketFactory: ReturnType<typeof createNodeWebSocketFactory>,
 ): Promise<{ client: DaemonClient } | { error: unknown }> {
   const target = resolveDaemonTarget(host);
+  const clientHostname = hostname();
   const client = new DaemonClient({
     url: target.url,
     clientId,
+    clientName: `Paseo CLI · ${clientHostname}`,
+    clientHostname,
     clientType: "cli",
     appVersion: resolveCliVersion(),
     password,
@@ -309,36 +314,44 @@ async function connectViaRelayOffer(
   timeout: number,
   nodeWebSocketFactory: ReturnType<typeof createNodeWebSocketFactory>,
 ): Promise<DaemonClient> {
-  const url = buildRelayWebSocketUrl({
-    endpoint: offer.relay.endpoint,
-    serverId: offer.serverId,
-    role: "client",
-    useTls: offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint),
-  });
-
-  const client = new DaemonClient({
-    url,
-    clientId,
-    clientType: "cli",
-    appVersion: resolveCliVersion(),
-    connectTimeoutMs: timeout,
-    webSocketFactory: (
-      target: string,
-      config?: { headers?: Record<string, string>; protocols?: string[] },
-    ) => nodeWebSocketFactory(target, { headers: config?.headers, protocols: config?.protocols }),
-    e2ee: { enabled: true, daemonPublicKeyB64: offer.daemonPublicKeyB64 },
-    reconnect: { enabled: false },
-  });
-
-  try {
-    await client.connect();
-    return client;
-  } catch (error) {
-    await client.close().catch(() => {});
-    const message = error instanceof Error ? error.message : String(error);
-    const lastError = client.lastError ? ` (${client.lastError})` : "";
-    throw new Error(`Failed to connect via relay offer: ${message}${lastError}`, { cause: error });
+  const errors: string[] = [];
+  const clientHostname = hostname();
+  for (const relay of getConnectionOfferRelays(offer)) {
+    const url = buildRelayWebSocketUrl({
+      endpoint: relay.endpoint,
+      serverId: offer.serverId,
+      role: "client",
+      useTls: relay.useTls ?? shouldUseTlsForDefaultHostedRelay(relay.endpoint),
+      clientId,
+      clientHostname,
+      deviceType: "cli",
+    });
+    const client = new DaemonClient({
+      url,
+      clientId,
+      clientName: `Paseo CLI · ${clientHostname}`,
+      clientHostname,
+      clientType: "cli",
+      appVersion: resolveCliVersion(),
+      connectTimeoutMs: timeout,
+      webSocketFactory: (
+        target: string,
+        config?: { headers?: Record<string, string>; protocols?: string[] },
+      ) => nodeWebSocketFactory(target, { headers: config?.headers, protocols: config?.protocols }),
+      e2ee: { enabled: true, daemonPublicKeyB64: offer.daemonPublicKeyB64 },
+      reconnect: { enabled: false },
+    });
+    try {
+      await client.connect();
+      return client;
+    } catch (error) {
+      await client.close().catch(() => {});
+      const message = error instanceof Error ? error.message : String(error);
+      const lastError = client.lastError ? ` (${client.lastError})` : "";
+      errors.push(`${relay.endpoint}: ${message}${lastError}`);
+    }
   }
+  throw new Error(`Failed to connect via relay offer: ${errors.join("; ")}`);
 }
 
 function parseHostOfferOrNull(host: string | undefined): ConnectionOffer | null {

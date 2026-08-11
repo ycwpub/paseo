@@ -14,19 +14,28 @@ import {
 import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
-import type { TerminalProfile } from "@getpaseo/protocol/messages";
+import { useShallow } from "zustand/shallow";
+import type {
+  DaemonClient,
+  DaemonConnectionTransport,
+} from "@getpaseo/client/internal/daemon-client";
+import type { DaemonGetStatusResponse, TerminalProfile } from "@getpaseo/protocol/messages";
 import {
   getTerminalProfileIcon,
   DEFAULT_TERMINAL_PROFILES,
 } from "@getpaseo/protocol/terminal-profiles";
 import { AgentProfilesSection } from "@/agent-profiles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { AdaptiveRenameModal } from "@/components/rename-modal";
+import { PairDeviceModal } from "@/components/pair-device-modal";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Alert as InlineAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
+import { useFetchQuery } from "@/data/query";
 import {
   ProfileDraft,
   TerminalProfileEditModal,
@@ -41,7 +50,6 @@ import {
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
-import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
@@ -62,6 +70,16 @@ import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import {
+  DEFAULT_PUBLIC_RELAY_ENDPOINTS,
+  formatRelayEndpointInput,
+  normalizeHostPort,
+  normalizeLocalRelayPairingBaseUrl,
+  normalizeLocalRelayWebAppPath,
+  normalizeRelayPairingBaseUrl,
+  parseRelayEndpointInput,
+  resolveRelayPairingBaseUrl,
+} from "@/utils/daemon-endpoints";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
@@ -72,11 +90,19 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
+import {
+  buildRelayHostLabelMap,
+  buildRelayServerDeviceTypeMap,
+  formatRelayPeerEndpoint,
+  resolveRelayServerDeviceType,
+  resolveRelayServerHostname,
+} from "./relay-connection-display";
 import { LarkChannelSection } from "./channels/lark-channel-section";
 import { AssistantsSection } from "./assistants/assistants-section";
 import { TeamsSection } from "./teams/teams-section";
 import { McpSection } from "./mcp/mcp-section";
 import { SkillsSection } from "./skills/skills-section";
+import { InstructionTemplatesSection } from "./agents/instruction-templates-section";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -98,8 +124,12 @@ function DynamicProviderIcon({ iconKey, size, color = "" }: DynamicProviderIconP
 
 const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
-const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
+const mutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const destructiveColorMapping = (theme: Theme) => ({
+  color: theme.colors.destructive,
+});
 
 const moveUpIcon = <ThemedArrowUp size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
 const moveDownIcon = <ThemedArrowDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
@@ -119,9 +149,22 @@ function formatHostConnectionLabel(connection: HostConnection, t: TFunction): st
 
 function formatActiveConnectionBadge(
   activeConnection: { type: HostConnection["type"]; display: string } | null,
+  transport: DaemonConnectionTransport | null,
   theme: ReturnType<typeof useUnistyles>["theme"],
   t: TFunction,
 ): { icon: React.ReactNode; text: string } | null {
+  if (transport?.type === "relay") {
+    return {
+      icon: <Globe size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
+      text: `${t("settings.host.badges.viaRelay")} · ${transport.endpoint}`,
+    };
+  }
+  if (transport?.type === "direct") {
+    return {
+      icon: <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
+      text: t("settings.host.badges.direct"),
+    };
+  }
   if (!activeConnection) return null;
   if (activeConnection.type === "relay") {
     return {
@@ -173,6 +216,7 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
 
   const connectionStatus = snapshot?.connectionStatus ?? "connecting";
   const activeConnection = snapshot?.activeConnection ?? null;
+  const transport = snapshot?.transport ?? null;
   const statusLabel = formatConnectionStatus(connectionStatus);
   const statusTone = getConnectionStatusTone(connectionStatus);
   let statusColor: string;
@@ -195,7 +239,7 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
   } else {
     statusPillBg = "rgba(161, 161, 170, 0.1)";
   }
-  const connectionBadge = formatActiveConnectionBadge(activeConnection, theme, t);
+  const connectionBadge = formatActiveConnectionBadge(activeConnection, transport, theme, t);
   const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
 
   const statusPillStyle = useMemo(
@@ -242,7 +286,14 @@ function HostConnectionError({ serverId }: { serverId: string }) {
   return <Text style={styles.errorText}>{connectionError}</Text>;
 }
 
-export function HostConnectionsPage({ serverId }: { serverId: string }) {
+export function HostConnectionsPage({
+  serverId,
+  onOpenLocalRelay,
+}: {
+  serverId: string;
+  onOpenLocalRelay: () => void;
+}) {
+  const { t } = useTranslation();
   const host = useHostProfile(serverId);
 
   if (!host) {
@@ -252,23 +303,934 @@ export function HostConnectionsPage({ serverId }: { serverId: string }) {
   return (
     <View>
       <HostConnectionError serverId={serverId} />
+      <RelayConfigurationSection serverId={serverId} onOpenLocalRelay={onOpenLocalRelay} />
       <ConnectionsSection host={host} />
+      <SettingsSection title={t("settings.host.pairDevices.title")}>
+        <PairDeviceRow serverId={serverId} />
+      </SettingsSection>
     </View>
   );
 }
 
-export function HostPairDevicePage({ serverId }: { serverId: string }) {
+interface RelayConfigDraft {
+  id: number;
+  value: string;
+}
+
+let relayConfigDraftId = 0;
+
+function createRelayConfigDraft(value = ""): RelayConfigDraft {
+  relayConfigDraftId += 1;
+  return { id: relayConfigDraftId, value };
+}
+
+function RelayConfigurationRow({
+  row,
+  index,
+  onUpdate,
+  onRemove,
+  placeholder,
+  accessibilityLabel,
+  inputTestId,
+  removeTestId,
+  removeLabel,
+}: {
+  row: RelayConfigDraft;
+  index: number;
+  onUpdate: (id: number, value: string) => void;
+  onRemove: (id: number) => void;
+  placeholder: string;
+  accessibilityLabel: string;
+  inputTestId: string;
+  removeTestId: string;
+  removeLabel: string;
+}) {
+  const handleChange = useCallback((value: string) => onUpdate(row.id, value), [onUpdate, row.id]);
+  const handleRemove = useCallback(() => onRemove(row.id), [onRemove, row.id]);
+
+  return (
+    <View style={[styles.relayTableRow, index > 0 ? settingsStyles.rowBorder : null]}>
+      <View style={styles.relayServiceColumn}>
+        <FormTextInput
+          size="sm"
+          initialValue={row.value}
+          resetKey={`relay-address-${row.id}`}
+          onChangeText={handleChange}
+          placeholder={placeholder}
+          accessibilityLabel={`${accessibilityLabel} ${index + 1}`}
+          testID={`${inputTestId}-${index}`}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </View>
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={Trash2}
+        style={styles.relayRemoveButton}
+        onPress={handleRemove}
+        accessibilityLabel={removeLabel}
+        testID={`${removeTestId}-${index}`}
+      />
+    </View>
+  );
+}
+
+function RelayConfigurationSection({
+  serverId,
+  onOpenLocalRelay,
+}: {
+  serverId: string;
+  onOpenLocalRelay: () => void;
+}) {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
+  const { config, isLoading, patchConfig } = useDaemonConfig(serverId);
+  const [relayRows, setRelayRows] = useState<RelayConfigDraft[]>(() => [createRelayConfigDraft()]);
+  const [pairingRows, setPairingRows] = useState<RelayConfigDraft[]>(() => [
+    createRelayConfigDraft(),
+  ]);
+  const [relayRowsDirty, setRelayRowsDirty] = useState(false);
+  const [lanRelayEnabled, setLanRelayEnabled] = useState(false);
+  const [isUpdatingLanRelay, setIsUpdatingLanRelay] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!config) return;
+    if (!relayRowsDirty) {
+      setRelayRows(
+        config.relay.endpoints.length > 0
+          ? config.relay.endpoints.map((relay) =>
+              createRelayConfigDraft(formatRelayEndpointInput(relay)),
+            )
+          : [createRelayConfigDraft()],
+      );
+      setPairingRows(
+        config.relay.pairingBaseUrls.length > 0
+          ? config.relay.pairingBaseUrls.map((url) => createRelayConfigDraft(url))
+          : [createRelayConfigDraft()],
+      );
+    }
+    setLanRelayEnabled(config.relay.local.enabled);
+  }, [config, relayRowsDirty]);
+
+  const updateRelayRow = useCallback((id: number, value: string) => {
+    setRelayRowsDirty(true);
+    setRelayRows((current) => current.map((row) => (row.id === id ? { ...row, value } : row)));
+  }, []);
+
+  const updatePairingRow = useCallback((id: number, value: string) => {
+    setRelayRowsDirty(true);
+    setPairingRows((current) => current.map((row) => (row.id === id ? { ...row, value } : row)));
+  }, []);
+
+  const addRelayRow = useCallback(() => {
+    setRelayRowsDirty(true);
+    setRelayRows((current) => [...current, createRelayConfigDraft()]);
+  }, []);
+
+  const addPairingRow = useCallback(() => {
+    setRelayRowsDirty(true);
+    setPairingRows((current) => [...current, createRelayConfigDraft()]);
+  }, []);
+
+  const removeRelayRow = useCallback((id: number) => {
+    setRelayRowsDirty(true);
+    setRelayRows((current) => {
+      const next = current.filter((row) => row.id !== id);
+      return next.length > 0 ? next : [createRelayConfigDraft()];
+    });
+  }, []);
+
+  const removePairingRow = useCallback((id: number) => {
+    setRelayRowsDirty(true);
+    setPairingRows((current) => {
+      const next = current.filter((row) => row.id !== id);
+      return next.length > 0 ? next : [createRelayConfigDraft()];
+    });
+  }, []);
+
+  const handleSave = useCallback(() => {
+    let endpoints;
+    let pairingBaseUrls;
+    try {
+      endpoints = relayRows
+        .map((row) => row.value.trim())
+        .filter(Boolean)
+        .map(parseRelayEndpointInput);
+      const endpointKeys = new Set<string>();
+      for (const endpoint of endpoints) {
+        const key = formatRelayEndpointInput(endpoint);
+        if (endpointKeys.has(key)) {
+          throw new Error(t("settings.host.relay.duplicateRow"));
+        }
+        endpointKeys.add(key);
+      }
+      pairingBaseUrls = pairingRows
+        .map((row) => row.value.trim())
+        .filter(Boolean)
+        .map(normalizeRelayPairingBaseUrl);
+      if (new Set(pairingBaseUrls).size !== pairingBaseUrls.length) {
+        throw new Error(t("settings.host.relay.duplicatePairingUrl"));
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    void patchConfig({
+      relay: {
+        endpoints,
+        pairingBaseUrls,
+      },
+    })
+      .then(() => setRelayRowsDirty(false))
+      .catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : String(saveError));
+      })
+      .finally(() => setIsSaving(false));
+  }, [pairingRows, patchConfig, relayRows, t]);
+
+  const handleLanRelayEnabledChange = useCallback(
+    (enabled: boolean) => {
+      if (isUpdatingLanRelay) return;
+      const previous = lanRelayEnabled;
+      setLanRelayEnabled(enabled);
+      setIsUpdatingLanRelay(true);
+      setError(null);
+      void patchConfig({ relay: { local: { enabled } } })
+        .catch((updateError) => {
+          setLanRelayEnabled(previous);
+          setError(updateError instanceof Error ? updateError.message : String(updateError));
+        })
+        .finally(() => setIsUpdatingLanRelay(false));
+    },
+    [isUpdatingLanRelay, lanRelayEnabled, patchConfig],
+  );
+  const lanRelayRowStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      settingsStyles.row,
+      lanRelayEnabled && hovered ? styles.relayDetailsRowHovered : null,
+      lanRelayEnabled && pressed ? styles.relayDetailsRowPressed : null,
+    ],
+    [lanRelayEnabled],
+  );
+
+  const defaultPublicRelayAddresses = DEFAULT_PUBLIC_RELAY_ENDPOINTS.map((endpoint) =>
+    formatRelayEndpointInput({ endpoint, useTls: true }),
+  ).join(", ");
+  const defaultPublicPairingAddresses = DEFAULT_PUBLIC_RELAY_ENDPOINTS.map((endpoint) =>
+    resolveRelayPairingBaseUrl({ endpoint, useTls: true }),
+  ).join(", ");
+
+  return (
+    <SettingsSection title={t("settings.host.relay.title")}>
+      <View style={[settingsStyles.card, styles.relayAddCard]}>
+        <View style={styles.relayAddSectionDescription}>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.addRow")}</Text>
+          <Text style={settingsStyles.rowHint}>{t("settings.host.relay.addressPairHint")}</Text>
+        </View>
+        <View style={settingsStyles.card}>
+          <View style={styles.relayTableHeader}>
+            <View style={styles.relayServiceColumn}>
+              <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.serviceColumn")}</Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.host.relay.serviceListHint", {
+                  addresses: defaultPublicRelayAddresses,
+                })}
+              </Text>
+            </View>
+            <View style={styles.relayRemoveColumn} />
+          </View>
+          {relayRows.map((row, index) => (
+            <RelayConfigurationRow
+              key={row.id}
+              row={row}
+              index={index}
+              onUpdate={updateRelayRow}
+              onRemove={removeRelayRow}
+              placeholder={t("settings.host.relay.servicePlaceholder")}
+              accessibilityLabel={t("settings.host.relay.serviceColumn")}
+              inputTestId="relay-service-input"
+              removeTestId="relay-remove-row"
+              removeLabel={t("settings.host.relay.removeRow")}
+            />
+          ))}
+          <View style={styles.relayTableFooter}>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={Plus}
+              onPress={addRelayRow}
+              testID="relay-add-row"
+            >
+              {t("settings.host.relay.addRow")}
+            </Button>
+          </View>
+        </View>
+        <View style={settingsStyles.card}>
+          <View style={styles.relayTableHeader}>
+            <View style={styles.relayServiceColumn}>
+              <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.pairingColumn")}</Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.host.relay.pairingListHint", {
+                  addresses: defaultPublicPairingAddresses,
+                })}
+              </Text>
+            </View>
+            <View style={styles.relayRemoveColumn} />
+          </View>
+          {pairingRows.map((row, index) => (
+            <RelayConfigurationRow
+              key={row.id}
+              row={row}
+              index={index}
+              onUpdate={updatePairingRow}
+              onRemove={removePairingRow}
+              placeholder={t("settings.host.relay.pairingPlaceholder")}
+              accessibilityLabel={t("settings.host.relay.pairingColumn")}
+              inputTestId="relay-pairing-input"
+              removeTestId="relay-remove-pairing-row"
+              removeLabel={t("settings.host.relay.removePairingUrl")}
+            />
+          ))}
+          <View style={styles.relayTableFooter}>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={Plus}
+              onPress={addPairingRow}
+              testID="relay-add-pairing-row"
+            >
+              {t("settings.host.relay.addPairingUrl")}
+            </Button>
+          </View>
+        </View>
+      </View>
+
+      <View style={settingsStyles.card}>
+        <Pressable
+          onPress={lanRelayEnabled ? onOpenLocalRelay : undefined}
+          style={lanRelayRowStyle}
+          accessibilityRole={lanRelayEnabled ? "button" : undefined}
+          accessibilityLabel={lanRelayEnabled ? t("settings.host.relay.lan.title") : undefined}
+          testID={lanRelayEnabled ? "lan-relay-details-button" : undefined}
+        >
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.lan.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.host.relay.lan.hint")}</Text>
+          </View>
+          <Switch
+            value={lanRelayEnabled}
+            onValueChange={handleLanRelayEnabledChange}
+            disabled={isLoading || !config || isUpdatingLanRelay}
+            accessibilityLabel={t("settings.host.relay.lan.title")}
+            testID="lan-relay-switch"
+          />
+          {lanRelayEnabled ? (
+            <View style={styles.relayDetailsButton}>
+              <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.relayActions}>
+        <Button
+          variant="default"
+          size="sm"
+          onPress={handleSave}
+          disabled={isLoading || !config || isSaving}
+          testID="relay-config-save"
+        >
+          {isSaving ? t("settings.host.relay.saving") : t("settings.host.relay.save")}
+        </Button>
+      </View>
+    </SettingsSection>
+  );
+}
+
+export function HostLocalRelayPage({ serverId }: { serverId: string }) {
   const host = useHostProfile(serverId);
 
   if (!host) {
     return <HostNotFound />;
   }
 
+  return <LocalRelayConfigurationSection serverId={serverId} />;
+}
+
+function LocalRelayConfigurationSection({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const hosts = useHosts();
+  const hostLabelByServerId = useMemo(() => buildRelayHostLabelMap(hosts), [hosts]);
+  const serverInfos = useSessionStore(
+    useShallow((state) => Object.values(state.sessions).map((session) => session.serverInfo)),
+  );
+  const serverDeviceTypeByServerId = useMemo(
+    () => buildRelayServerDeviceTypeMap(serverInfos),
+    [serverInfos],
+  );
+  const { config, isLoading, patchConfig } = useDaemonConfig(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const [lanRelayListen, setLanRelayListen] = useState("0.0.0.0:6769");
+  const [lanRelayPairingBaseUrl, setLanRelayPairingBaseUrl] = useState("");
+  const [lanRelayWebAppEnabled, setLanRelayWebAppEnabled] = useState(false);
+  const [lanRelayWebAppPath, setLanRelayWebAppPath] = useState("/app");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const localRelayStatusQuery = useFetchQuery({
+    queryKey: ["daemon-local-relay-status", serverId],
+    queryFn: async () => {
+      if (!client) throw new Error(t("workspace.terminal.hostDisconnected"));
+      return client.getDaemonStatus();
+    },
+    enabled: Boolean(client && isConnected && config?.relay.local.enabled),
+    dataShape: "value",
+    staleTimeMs: 0,
+    retry: false,
+    refetchInterval: config?.relay.local.enabled ? 2000 : false,
+  });
+  const handleRelayHistoryChanged = useCallback(() => {
+    void localRelayStatusQuery.refetch();
+  }, [localRelayStatusQuery]);
+
+  useEffect(() => {
+    if (!config) return;
+    setLanRelayListen(config.relay.local.listen);
+    setLanRelayPairingBaseUrl(config.relay.local.pairingBaseUrl ?? "");
+    setLanRelayWebAppEnabled(config.relay.local.webApp?.enabled ?? false);
+    setLanRelayWebAppPath(config.relay.local.webApp?.path ?? "/app");
+  }, [config]);
+
+  const handleSave = useCallback(() => {
+    let listen: string;
+    let localPairingBaseUrl: string | undefined;
+    let localWebAppPath: string;
+    try {
+      listen = normalizeHostPort(lanRelayListen);
+      localPairingBaseUrl = lanRelayPairingBaseUrl.trim()
+        ? normalizeLocalRelayPairingBaseUrl(lanRelayPairingBaseUrl)
+        : undefined;
+      localWebAppPath = normalizeLocalRelayWebAppPath(lanRelayWebAppPath);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    void patchConfig({
+      relay: {
+        local: {
+          listen,
+          pairingBaseUrl: localPairingBaseUrl,
+          webApp: {
+            enabled: lanRelayWebAppEnabled,
+            path: localWebAppPath,
+          },
+        },
+      },
+    })
+      .catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : String(saveError));
+      })
+      .finally(() => setIsSaving(false));
+  }, [
+    lanRelayListen,
+    lanRelayPairingBaseUrl,
+    lanRelayWebAppEnabled,
+    lanRelayWebAppPath,
+    patchConfig,
+  ]);
+
   return (
-    <SettingsSection title={t("settings.host.pairDevices.title")}>
-      <PairDeviceRow serverId={serverId} />
+    <SettingsSection title={t("settings.host.relay.lan.title")}>
+      <View style={styles.relayField}>
+        <Text style={styles.relayFieldLabel}>{t("settings.host.relay.lan.listenLabel")}</Text>
+        <SettingsTextAreaCard
+          accessibilityLabel={t("settings.host.relay.lan.listenLabel")}
+          value={lanRelayListen}
+          onChangeText={setLanRelayListen}
+          placeholder="0.0.0.0:6769"
+          testID="lan-relay-listen-input"
+          style={styles.relayListenInput}
+        />
+      </View>
+      <View style={styles.relayField}>
+        <Text style={styles.relayFieldLabel}>{t("settings.host.relay.lan.pairingUrlLabel")}</Text>
+        <Text style={settingsStyles.rowHint}>{t("settings.host.relay.lan.pairingUrlHint")}</Text>
+        <SettingsTextAreaCard
+          accessibilityLabel={t("settings.host.relay.lan.pairingUrlLabel")}
+          value={lanRelayPairingBaseUrl}
+          onChangeText={setLanRelayPairingBaseUrl}
+          placeholder={t("settings.host.relay.lan.pairingUrlPlaceholder")}
+          testID="lan-relay-pairing-url-input"
+          style={styles.relayListenInput}
+        />
+      </View>
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.lan.webApp.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.host.relay.lan.webApp.hint")}</Text>
+          </View>
+          <Switch
+            value={lanRelayWebAppEnabled}
+            onValueChange={setLanRelayWebAppEnabled}
+            accessibilityLabel={t("settings.host.relay.lan.webApp.title")}
+            testID="lan-relay-web-app-switch"
+          />
+        </View>
+      </View>
+      {lanRelayWebAppEnabled ? (
+        <View style={styles.relayField}>
+          <Text style={styles.relayFieldLabel}>
+            {t("settings.host.relay.lan.webApp.pathLabel")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>{t("settings.host.relay.lan.webApp.pathHint")}</Text>
+          <SettingsTextAreaCard
+            accessibilityLabel={t("settings.host.relay.lan.webApp.pathLabel")}
+            value={lanRelayWebAppPath}
+            onChangeText={setLanRelayWebAppPath}
+            placeholder="/app"
+            testID="lan-relay-web-app-path-input"
+            style={styles.relayListenInput}
+          />
+        </View>
+      ) : null}
+      <LocalRelayManagement
+        runtime={localRelayStatusQuery.data?.relay?.local?.runtime ?? null}
+        isLoading={localRelayStatusQuery.isPending}
+        hostLabelByServerId={hostLabelByServerId}
+        serverDeviceTypeByServerId={serverDeviceTypeByServerId}
+        client={client}
+        onHistoryChanged={handleRelayHistoryChanged}
+        onError={setError}
+        t={t}
+      />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.relayActions}>
+        <Button
+          variant="default"
+          size="sm"
+          onPress={handleSave}
+          disabled={isLoading || !config || isSaving}
+          testID="lan-relay-config-save"
+        >
+          {isSaving ? t("settings.host.relay.saving") : t("settings.host.relay.save")}
+        </Button>
+      </View>
     </SettingsSection>
+  );
+}
+
+type LocalRelayRuntime = NonNullable<
+  NonNullable<NonNullable<DaemonGetStatusResponse["payload"]["relay"]>["local"]>["runtime"]
+>;
+type LocalRelayConnection = LocalRelayRuntime["connections"][number];
+type LocalRelayHistoryRecord = NonNullable<LocalRelayRuntime["history"]>[number];
+
+function resolveRelayDeviceTypeLabel(
+  deviceType: LocalRelayConnection["deviceType"],
+  t: TFunction,
+): string {
+  if (!deviceType) return t("settings.host.relay.management.deviceTypes.unknown");
+  return t(`settings.host.relay.management.deviceTypes.${deviceType}`);
+}
+
+function RelayManagementField({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <View style={styles.relayManagementField}>
+      <Text style={styles.relayManagementFieldLabel}>{label}</Text>
+      <Text
+        style={[
+          styles.relayManagementFieldValue,
+          mono ? styles.relayManagementFieldValueMono : null,
+        ]}
+        numberOfLines={2}
+        selectable
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function LocalRelayConnectionGroup({
+  connections,
+  title,
+  empty,
+  hostLabelByServerId,
+  serverDeviceTypeByServerId,
+  showHostLabel,
+  t,
+}: {
+  connections: LocalRelayConnection[];
+  title: string;
+  empty: string;
+  hostLabelByServerId: ReadonlyMap<string, string>;
+  serverDeviceTypeByServerId: ReadonlyMap<string, NonNullable<LocalRelayConnection["deviceType"]>>;
+  showHostLabel: boolean;
+  t: TFunction;
+}) {
+  return (
+    <View style={styles.relayManagementGroup}>
+      <View style={styles.relayManagementGroupHeader}>
+        <Text style={styles.relayManagementGroupTitle}>{title}</Text>
+        <Text style={styles.relayManagementCount}>{connections.length}</Text>
+      </View>
+      {connections.length > 0 ? (
+        <View style={styles.relayManagementList}>
+          {connections.map((connection) => {
+            const serverHostname = showHostLabel
+              ? resolveRelayServerHostname(
+                  connection.hostname,
+                  connection.serverId,
+                  hostLabelByServerId,
+                )
+              : null;
+            return (
+              <View
+                key={`${connection.role}:${connection.serverId}:${
+                  connection.connectionId ?? "control"
+                }`}
+                style={styles.relayManagementRow}
+              >
+                <View style={styles.relayManagementDetails}>
+                  <Text style={styles.relayManagementRole}>
+                    {t(`settings.host.relay.management.roles.${connection.role}`)}
+                  </Text>
+                  <View style={styles.relayManagementFieldGrid}>
+                    <RelayManagementField
+                      label={t("settings.host.relay.management.deviceType")}
+                      value={resolveRelayDeviceTypeLabel(
+                        resolveRelayServerDeviceType(
+                          connection.deviceType,
+                          connection.role,
+                          connection.serverId,
+                          serverDeviceTypeByServerId,
+                        ),
+                        t,
+                      )}
+                    />
+                    {serverHostname ? (
+                      <RelayManagementField
+                        label={t("settings.host.relay.management.hostname")}
+                        value={serverHostname}
+                      />
+                    ) : null}
+                    {connection.clientHostname ? (
+                      <RelayManagementField
+                        label={t("settings.host.relay.management.clientHostname")}
+                        value={connection.clientHostname}
+                      />
+                    ) : null}
+                    {connection.clientId ? (
+                      <RelayManagementField
+                        label={t("settings.host.relay.management.clientId")}
+                        value={connection.clientId}
+                        mono
+                      />
+                    ) : null}
+                    <RelayManagementField
+                      label={t("settings.host.relay.management.serverId")}
+                      value={connection.serverId}
+                      mono
+                    />
+                    {connection.connectionId ? (
+                      <RelayManagementField
+                        label={t("settings.host.relay.management.connectionId")}
+                        value={connection.connectionId}
+                        mono
+                      />
+                    ) : null}
+                    <RelayManagementField
+                      label={t("settings.host.relay.management.peerEndpoint")}
+                      value={
+                        formatRelayPeerEndpoint(connection.remoteAddress, connection.remotePort) ??
+                        t("settings.host.relay.management.unknownPeer")
+                      }
+                      mono
+                    />
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      ) : (
+        <Text style={styles.relayManagementEmpty}>{empty}</Text>
+      )}
+    </View>
+  );
+}
+
+function LocalRelayHistoryGroup({
+  history,
+  title,
+  empty,
+  deletingId,
+  serverDeviceTypeByServerId,
+  onDelete,
+  t,
+}: {
+  history: LocalRelayHistoryRecord[];
+  title: string;
+  empty: string;
+  deletingId: string | null;
+  serverDeviceTypeByServerId: ReadonlyMap<string, NonNullable<LocalRelayConnection["deviceType"]>>;
+  onDelete: (historyId: string) => void;
+  t: TFunction;
+}) {
+  return (
+    <View style={styles.relayManagementGroup}>
+      <View style={styles.relayManagementGroupHeader}>
+        <Text style={styles.relayManagementGroupTitle}>{title}</Text>
+        <Text style={styles.relayManagementCount}>{history.length}</Text>
+      </View>
+      {history.length > 0 ? (
+        <View style={styles.relayManagementList}>
+          {history.map((record) => (
+            <LocalRelayHistoryRow
+              key={record.id}
+              record={record}
+              deletingId={deletingId}
+              serverDeviceTypeByServerId={serverDeviceTypeByServerId}
+              onDelete={onDelete}
+              t={t}
+            />
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.relayManagementEmpty}>{empty}</Text>
+      )}
+    </View>
+  );
+}
+
+function LocalRelayHistoryRow({
+  record,
+  deletingId,
+  serverDeviceTypeByServerId,
+  onDelete,
+  t,
+}: {
+  record: LocalRelayHistoryRecord;
+  deletingId: string | null;
+  serverDeviceTypeByServerId: ReadonlyMap<string, NonNullable<LocalRelayConnection["deviceType"]>>;
+  onDelete: (historyId: string) => void;
+  t: TFunction;
+}) {
+  const handleDelete = useCallback(() => onDelete(record.id), [onDelete, record.id]);
+  return (
+    <View style={styles.relayManagementRow}>
+      <View style={styles.relayManagementDetails}>
+        <Text style={styles.relayManagementRole}>
+          {t(`settings.host.relay.management.roles.${record.role}`)}
+        </Text>
+        <View style={styles.relayManagementFieldGrid}>
+          <RelayManagementField
+            label={t("settings.host.relay.management.deviceType")}
+            value={resolveRelayDeviceTypeLabel(
+              resolveRelayServerDeviceType(
+                record.deviceType,
+                record.role,
+                record.serverId,
+                serverDeviceTypeByServerId,
+              ),
+              t,
+            )}
+          />
+          {record.clientHostname ? (
+            <RelayManagementField
+              label={t("settings.host.relay.management.clientHostname")}
+              value={record.clientHostname}
+            />
+          ) : null}
+          {record.clientId ? (
+            <RelayManagementField
+              label={t("settings.host.relay.management.clientId")}
+              value={record.clientId}
+              mono
+            />
+          ) : null}
+          {record.role !== "client" && record.hostname ? (
+            <RelayManagementField
+              label={t("settings.host.relay.management.hostname")}
+              value={record.hostname}
+            />
+          ) : null}
+          <RelayManagementField
+            label={t("settings.host.relay.management.serverId")}
+            value={record.serverId}
+            mono
+          />
+          <RelayManagementField
+            label={t("settings.host.relay.management.peerEndpoint")}
+            value={
+              formatRelayPeerEndpoint(record.remoteAddress, record.remotePort) ??
+              t("settings.host.relay.management.unknownPeer")
+            }
+            mono
+          />
+          <RelayManagementField
+            label={t("settings.host.relay.management.connectedAt")}
+            value={new Date(record.connectedAt).toLocaleString()}
+          />
+          <RelayManagementField
+            label={t("settings.host.relay.management.disconnectedAt")}
+            value={
+              record.disconnectedAt
+                ? new Date(record.disconnectedAt).toLocaleString()
+                : t("settings.host.relay.management.stillConnected")
+            }
+          />
+        </View>
+      </View>
+      <Button variant="destructive" size="sm" disabled={deletingId !== null} onPress={handleDelete}>
+        {deletingId === record.id
+          ? t("settings.host.relay.management.deleting")
+          : t("settings.host.relay.management.delete")}
+      </Button>
+    </View>
+  );
+}
+
+function LocalRelayManagement({
+  runtime,
+  isLoading,
+  hostLabelByServerId,
+  serverDeviceTypeByServerId,
+  client,
+  onHistoryChanged,
+  onError,
+  t,
+}: {
+  runtime: LocalRelayRuntime | null;
+  isLoading: boolean;
+  hostLabelByServerId: ReadonlyMap<string, string>;
+  serverDeviceTypeByServerId: ReadonlyMap<string, NonNullable<LocalRelayConnection["deviceType"]>>;
+  client: DaemonClient | null;
+  onHistoryChanged: () => void;
+  onError: (message: string) => void;
+  t: TFunction;
+}) {
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const clientConnections = runtime?.connections.filter(
+    (connection) => connection.role === "client",
+  );
+  const serverConnections = runtime?.connections.filter(
+    (connection) => connection.role !== "client",
+  );
+  const clientHistory = (runtime?.history ?? []).filter((record) => record.role === "client");
+  const serverHistory = (runtime?.history ?? []).filter((record) => record.role !== "client");
+  const deleteHistory = useCallback(
+    (historyId: string) => {
+      if (!client || deletingHistoryId) return;
+      setDeletingHistoryId(historyId);
+      void client
+        .deleteDaemonRelayHistory(historyId)
+        .then((result) => {
+          if (!result.success) throw new Error(result.error ?? "Failed to delete Relay history");
+          return onHistoryChanged();
+        })
+        .catch((deleteError: unknown) => {
+          onError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+        })
+        .finally(() => setDeletingHistoryId(null));
+    },
+    [client, deletingHistoryId, onError, onHistoryChanged],
+  );
+  return (
+    <View style={[settingsStyles.card, styles.relayManagementCard]}>
+      <View style={styles.relayManagementHeader}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.management.title")}</Text>
+        {runtime ? (
+          <Text style={styles.relayManagementCount}>
+            {t("settings.host.relay.management.count", {
+              count: runtime.connections.length,
+            })}
+          </Text>
+        ) : null}
+      </View>
+      {runtime ? (
+        <>
+          <View style={styles.relayManagementFieldGrid}>
+            <RelayManagementField
+              label={t("settings.host.relay.management.pairingAddress")}
+              value={runtime.pairingBaseUrl}
+              mono
+            />
+            <RelayManagementField
+              label={t("settings.host.relay.management.relayAddress")}
+              value={`ws://${runtime.publicEndpoint}`}
+              mono
+            />
+          </View>
+          <LocalRelayConnectionGroup
+            connections={clientConnections ?? []}
+            title={t("settings.host.relay.management.clients")}
+            empty={t("settings.host.relay.management.noClients")}
+            hostLabelByServerId={hostLabelByServerId}
+            serverDeviceTypeByServerId={serverDeviceTypeByServerId}
+            showHostLabel={false}
+            t={t}
+          />
+          <Text style={styles.relayManagementHistoryHint}>
+            {t("settings.host.relay.management.historyRetention", {
+              days: runtime.historyRetentionDays ?? 30,
+            })}
+          </Text>
+          <LocalRelayHistoryGroup
+            history={clientHistory}
+            title={t("settings.host.relay.management.clientHistory")}
+            empty={t("settings.host.relay.management.noClientHistory")}
+            deletingId={deletingHistoryId}
+            serverDeviceTypeByServerId={serverDeviceTypeByServerId}
+            onDelete={deleteHistory}
+            t={t}
+          />
+          <LocalRelayHistoryGroup
+            history={serverHistory}
+            title={t("settings.host.relay.management.serverHistory")}
+            empty={t("settings.host.relay.management.noServerHistory")}
+            deletingId={deletingHistoryId}
+            serverDeviceTypeByServerId={serverDeviceTypeByServerId}
+            onDelete={deleteHistory}
+            t={t}
+          />
+          <LocalRelayConnectionGroup
+            connections={serverConnections ?? []}
+            title={t("settings.host.relay.management.servers")}
+            empty={t("settings.host.relay.management.noServers")}
+            hostLabelByServerId={hostLabelByServerId}
+            serverDeviceTypeByServerId={serverDeviceTypeByServerId}
+            showHostLabel
+            t={t}
+          />
+        </>
+      ) : (
+        <Text style={styles.relayManagementEmpty}>
+          {isLoading
+            ? t("settings.host.relay.management.loading")
+            : t("settings.host.relay.management.unavailable")}
+        </Text>
+      )}
+    </View>
   );
 }
 
@@ -284,11 +1246,14 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <SettingsSection title={t("settings.hostSections.agents")}>
-          <InjectPaseoToolsCard serverId={serverId} />
-          <BrowserToolsOptInCard serverId={serverId} />
-          <AppendSystemPromptCard serverId={serverId} />
-        </SettingsSection>
+        <>
+          <SettingsSection title={t("settings.hostSections.agents")}>
+            <InjectPaseoToolsCard serverId={serverId} />
+            <BrowserToolsOptInCard serverId={serverId} />
+            <AppendSystemPromptCard serverId={serverId} />
+          </SettingsSection>
+          <InstructionTemplatesSection serverId={serverId} />
+        </>
       ) : (
         <View style={[settingsStyles.card, styles.emptyCard]}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
@@ -419,8 +1384,11 @@ export function HostSettingsPage({
   serverId: string;
   onHostRemoved?: () => void;
 }) {
+  const { t } = useTranslation();
   const host = useHostProfile(serverId);
   const isLocalDaemon = useIsLocalDaemon(serverId);
+  const daemonClient = useHostRuntimeClient(serverId);
+  const clientId = daemonClient?.getClientId() ?? null;
 
   if (!host) {
     return <HostNotFound />;
@@ -436,7 +1404,36 @@ export function HostSettingsPage({
 
       <HostStatusBadges serverId={serverId} />
 
-      <HostAppearanceSection host={host} />
+      <SettingsSection title={t("settings.host.daemon.identity.title")}>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.host.daemon.identity.serverId")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.host.daemon.identity.serverIdDescription")}
+              </Text>
+            </View>
+            <Text style={styles.identityId} selectable>
+              {serverId}
+            </Text>
+          </View>
+          <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.general.clientIdentity.identityId")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.general.clientIdentity.identityIdDescription")}
+              </Text>
+            </View>
+            <Text style={styles.identityId} selectable>
+              {clientId ?? t("settings.general.clientIdentity.unavailable")}
+            </Text>
+          </View>
+        </View>
+      </SettingsSection>
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 
@@ -700,7 +1697,9 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
         if (!reconnected) {
           Alert.alert(
             t("settings.host.daemon.restart.unableToReconnectTitle"),
-            t("settings.host.daemon.restart.unableToReconnectMessage", { name: host.label }),
+            t("settings.host.daemon.restart.unableToReconnectMessage", {
+              name: host.label,
+            }),
           );
         }
       }
@@ -725,7 +1724,9 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
     }
 
     void confirmDialog({
-      title: t("settings.host.daemon.restart.confirmTitle", { name: host.label }),
+      title: t("settings.host.daemon.restart.confirmTitle", {
+        name: host.label,
+      }),
       message: t("settings.host.daemon.restart.confirmMessage"),
       confirmLabel: t("settings.host.daemon.restart.confirm"),
       cancelLabel: t("common.actions.cancel"),
@@ -797,7 +1798,9 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
   const daemonClient = useHostRuntimeClient(host.serverId);
   const isConnected = useHostRuntimeIsConnected(host.serverId);
   const runtime = getHostRuntimeStore();
-  const [updateState, setUpdateState] = useState<DaemonUpdateState>({ status: "idle" });
+  const [updateState, setUpdateState] = useState<DaemonUpdateState>({
+    status: "idle",
+  });
   const isMountedRef = useRef(true);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -893,7 +1896,9 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
     }
 
     void confirmDialog({
-      title: t("settings.host.daemon.update.confirmTitle", { name: host.label }),
+      title: t("settings.host.daemon.update.confirmTitle", {
+        name: host.label,
+      }),
       message: t("settings.host.daemon.update.confirmMessage"),
       confirmLabel: t("settings.host.daemon.update.confirm"),
       cancelLabel: t("common.actions.cancel"),
@@ -1454,7 +2459,9 @@ function RemoveHostSection({
           <Text style={styles.confirmText}>
             {isLocalDaemon
               ? t("settings.host.daemon.remove.localConfirmMessage")
-              : t("settings.host.daemon.remove.confirmMessage", { name: host.label })}
+              : t("settings.host.daemon.remove.confirmMessage", {
+                  name: host.label,
+                })}
           </Text>
           <View style={styles.confirmActions}>
             <Button
@@ -1891,6 +2898,13 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
   },
+  identityId: {
+    maxWidth: "55%",
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: theme.fontFamily.mono,
+    textAlign: "right",
+  },
   identityBadges: {
     flexDirection: "row",
     alignItems: "center",
@@ -1956,6 +2970,153 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: theme.spacing[2],
+  },
+  relayAddCard: {
+    padding: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  relayAddSectionDescription: {
+    gap: theme.spacing[1],
+  },
+  relayField: {
+    gap: theme.spacing[2],
+  },
+  relayFieldLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    marginLeft: theme.spacing[1],
+  },
+  relayTableHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    paddingTop: theme.spacing[3],
+    paddingBottom: theme.spacing[2],
+    backgroundColor: theme.colors.surface2,
+  },
+  relayColumnHeader: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  relayTableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+  },
+  relayServiceColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  relayRemoveColumn: {
+    width: 40,
+  },
+  relayRemoveButton: {
+    width: 40,
+    paddingHorizontal: 0,
+  },
+  relayTableFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+  },
+  relayListenInput: {
+    minHeight: 48,
+  },
+  relayDetailsButton: {
+    padding: theme.spacing[2],
+    borderRadius: theme.borderRadius.lg,
+  },
+  relayDetailsRowHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  relayDetailsRowPressed: {
+    backgroundColor: theme.colors.surface3,
+  },
+  relayManagementCard: {
+    padding: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  relayManagementHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  relayManagementCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  relayManagementGroup: {
+    gap: theme.spacing[2],
+  },
+  relayManagementGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  relayManagementGroupTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  relayManagementList: {
+    gap: theme.spacing[2],
+  },
+  relayManagementRow: {
+    padding: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface1,
+  },
+  relayManagementDetails: {
+    gap: theme.spacing[2],
+  },
+  relayManagementRole: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  relayManagementFieldGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+  },
+  relayManagementField: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 0,
+    gap: theme.spacing[1],
+  },
+  relayManagementFieldLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
+  relayManagementFieldValue: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+  },
+  relayManagementFieldValueMono: {
+    fontFamily: theme.fontFamily.mono,
+  },
+  relayManagementEmpty: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  relayManagementHistoryHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  relayActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   emptyCard: {
     padding: theme.spacing[4],

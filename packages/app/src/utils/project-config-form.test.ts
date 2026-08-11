@@ -1,27 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { PaseoConfigRawSchema } from "@getpaseo/protocol/paseo-config-schema";
 import type { PaseoConfigRaw } from "@getpaseo/protocol/messages";
-import { applyDraftToConfig, configToDraft, type ProjectConfigDraft } from "./project-config-form";
+import {
+  applyDraftToConfig,
+  configToDraft,
+  instructionTemplateDraftsToConfig,
+  type ProjectDirectoryDraft,
+} from "./project-config-form";
 
-function emptyDraft(): ProjectConfigDraft {
-  return {
-    setupText: "",
-    setupOriginalKind: "missing",
-    teardownText: "",
-    teardownOriginalKind: "missing",
-    scripts: [],
-    metadataPrompts: {
-      branchName: "",
-      commitMessage: "",
-      pullRequest: "",
-    },
-    metadataGenerationBase: undefined,
-  };
+function directory(id: string, path: string, enabled = true): ProjectDirectoryDraft {
+  return { id, path, enabled };
 }
 
 describe("configToDraft", () => {
   it("returns an empty draft for null config", () => {
-    expect(configToDraft(null)).toEqual(emptyDraft());
+    const draft = configToDraft(null);
+    expect(draft).toMatchObject({
+      setupText: "",
+      teardownText: "",
+      projectDirectoryMode: "single",
+      projectIndexAutoGenerate: false,
+      projectIndexUpdateIntervalText: "",
+      projectVariables: [],
+      instructionTemplates: [],
+    });
+    expect(draft.projectDirectories.project).toEqual([
+      expect.objectContaining({ path: "{{workspaceDirectory}}", enabled: true }),
+    ]);
+    expect(draft.projectDirectories.knowledge).toEqual([]);
+    expect(draft.projectDirectories.workspaceData).toEqual([
+      expect.objectContaining({
+        path: "~/.paseo/workspaces/{{workspaceId}}",
+        enabled: true,
+      }),
+    ]);
   });
 
   it("renders a string lifecycle command as a single textarea text and remembers the kind", () => {
@@ -62,6 +74,48 @@ describe("configToDraft", () => {
     expect(buildRow.commandOriginalKind).toBe("array");
     expect(buildRow.portText).toBe("");
     expect(buildRow.id).not.toBe(devRow.id);
+  });
+
+  it("projects project resources, variables, indexing, and templates into the draft", () => {
+    const draft = configToDraft({
+      project: {
+        directories: {
+          project: [".", "../shared"],
+          knowledge: ["docs/rules"],
+          indexSkill: [".paseo/index"],
+          workspaceData: [".paseo/workspaces"],
+        },
+        indexSkill: { autoGenerate: true, updateIntervalMinutes: 45 },
+        variables: { service: "billing" },
+        instructionTemplates: [
+          {
+            id: "review",
+            name: "Review",
+            description: "Review changes",
+            content: "Review {{service}}.",
+          },
+        ],
+      },
+    });
+
+    expect(
+      draft.projectDirectories.project.map(({ path, enabled }) => ({ path, enabled })),
+    ).toEqual([
+      { path: ".", enabled: true },
+      { path: "../shared", enabled: true },
+    ]);
+    expect(
+      draft.projectDirectories.knowledge.map(({ path, enabled }) => ({ path, enabled })),
+    ).toEqual([{ path: "docs/rules", enabled: true }]);
+    expect(draft.projectIndexAutoGenerate).toBe(true);
+    expect(draft.projectIndexUpdateIntervalText).toBe("45");
+    expect(draft.projectVariables[0]).toMatchObject({ name: "service", value: "billing" });
+    expect(draft.instructionTemplates[0]).toMatchObject({
+      id: "review",
+      name: "Review",
+      description: "Review changes",
+      content: "Review {{service}}.",
+    });
   });
 });
 
@@ -348,5 +402,106 @@ describe("applyDraftToConfig", () => {
     const next = applyDraftToConfig({ draft, base });
     const scripts = next.scripts ?? {};
     expect(Object.keys(scripts)).toEqual(["dev"]);
+  });
+
+  it("writes project directories, variables, and indexing without project-local templates", () => {
+    const draft = configToDraft({});
+    draft.projectDirectories = {
+      project: [directory("p1", "."), directory("p2", " packages/api ")],
+      knowledge: [directory("k1", "docs/rules")],
+      indexSkill: [directory("i1", ".paseo/index")],
+      workspaceData: [directory("w1", ".paseo/workspaces")],
+    };
+    draft.projectIndexAutoGenerate = true;
+    draft.projectIndexUpdateIntervalText = "60";
+    draft.projectVariables = [{ id: "v1", name: " service ", value: "billing" }];
+    draft.instructionTemplates = [
+      {
+        rowId: "t1",
+        id: " review ",
+        name: " Review changes ",
+        description: "",
+        content: "Review {{service}}.",
+        rawEntry: { id: "review", name: "Review", content: "" },
+      },
+    ];
+
+    expect(applyDraftToConfig({ draft, base: {} }).project).toEqual({
+      directoryMode: "single",
+      directories: {
+        project: [
+          { path: ".", enabled: true },
+          { path: "packages/api", enabled: true },
+        ],
+        knowledge: [{ path: "docs/rules", enabled: true }],
+        indexSkill: [{ path: ".paseo/index", enabled: true }],
+        workspaceData: [{ path: ".paseo/workspaces", enabled: true }],
+      },
+      indexSkill: { autoGenerate: true, updateIntervalMinutes: 60 },
+      variables: { service: "billing" },
+    });
+  });
+
+  it("preserves legacy project-local instruction templates when saving", () => {
+    const base: PaseoConfigRaw = {
+      project: {
+        instructionTemplates: [{ id: "review", name: "Review", content: "Review this." }],
+      },
+    };
+
+    expect(applyDraftToConfig({ draft: configToDraft(base), base }).project).toMatchObject({
+      instructionTemplates: [{ id: "review", name: "Review", content: "Review this." }],
+    });
+  });
+
+  it("converts global instruction template drafts independently from project config", () => {
+    expect(
+      instructionTemplateDraftsToConfig([
+        {
+          rowId: "template-1",
+          id: " review ",
+          name: " Review changes ",
+          description: " ",
+          content: "Review {{service}}.",
+          rawEntry: {
+            id: "legacy",
+            name: "Legacy",
+            description: "Remove me",
+            content: "",
+            futureField: "keep",
+          },
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "review",
+        name: "Review changes",
+        content: "Review {{service}}.",
+        futureField: "keep",
+      },
+    ]);
+  });
+
+  it("preserves unknown project configuration fields", () => {
+    const base = PaseoConfigRawSchema.parse({
+      project: {
+        futureField: { keep: true },
+        directories: { project: ["."], futureDirectoryKind: ["generated"] },
+        indexSkill: { autoGenerate: false, futureIndexFlag: "keep" },
+      },
+    });
+    const draft = configToDraft(base);
+    draft.projectDirectories.knowledge = [directory("k1", "docs")];
+
+    const next = applyDraftToConfig({ draft, base });
+    expect(next.project).toMatchObject({
+      futureField: { keep: true },
+      directories: {
+        project: [{ path: ".", enabled: true }],
+        knowledge: [{ path: "docs", enabled: true }],
+        futureDirectoryKind: ["generated"],
+      },
+      indexSkill: { autoGenerate: false, futureIndexFlag: "keep" },
+    });
   });
 });

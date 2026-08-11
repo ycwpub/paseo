@@ -1,9 +1,11 @@
 import type {
   PaseoConfigRaw,
+  PaseoInstructionTemplate,
   PaseoMetadataGeneration,
   PaseoMetadataGenerationEntry,
   PaseoScriptEntryRaw,
 } from "@getpaseo/protocol/messages";
+import { resolvePaseoProjectDirectoryEntries } from "@getpaseo/protocol/paseo-config-schema";
 
 export type LifecycleOriginalKind = "string" | "array" | "missing";
 
@@ -20,6 +22,35 @@ export interface ProjectScriptDraft {
   rawEntry: PaseoScriptEntryRaw;
 }
 
+export const PROJECT_DIRECTORY_KEYS = [
+  "project",
+  "knowledge",
+  "indexSkill",
+  "workspaceData",
+] as const;
+export type ProjectDirectoryKey = (typeof PROJECT_DIRECTORY_KEYS)[number];
+
+export interface ProjectDirectoryDraft {
+  id: string;
+  path: string;
+  enabled: boolean;
+}
+
+export interface ProjectVariableDraft {
+  id: string;
+  name: string;
+  value: string;
+}
+
+export interface ProjectInstructionTemplateDraft {
+  rowId: string;
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  rawEntry: PaseoInstructionTemplate;
+}
+
 export interface ProjectConfigDraft {
   setupText: string;
   setupOriginalKind: LifecycleOriginalKind;
@@ -28,6 +59,13 @@ export interface ProjectConfigDraft {
   scripts: ProjectScriptDraft[];
   metadataPrompts: Record<MetadataPromptKey, string>;
   metadataGenerationBase: PaseoMetadataGeneration | undefined;
+  projectDirectoryMode: "single" | "multiple";
+  projectDirectories: Record<ProjectDirectoryKey, ProjectDirectoryDraft[]>;
+  projectIndexAutoGenerate: boolean;
+  projectIndexUpdateIntervalText: string;
+  projectVariables: ProjectVariableDraft[];
+  instructionTemplates: ProjectInstructionTemplateDraft[];
+  projectConfigBase: Record<string, unknown> | undefined;
 }
 
 interface LifecycleProjection {
@@ -92,10 +130,60 @@ function parseScriptPort(value: string): number | string | undefined {
 }
 
 let scriptDraftIdCounter = 0;
+let projectDraftIdCounter = 0;
 
 function nextScriptDraftId(): string {
   scriptDraftIdCounter += 1;
   return `script-draft-${scriptDraftIdCounter}`;
+}
+
+function nextProjectDraftId(prefix: string): string {
+  projectDraftIdCounter += 1;
+  return `${prefix}-${projectDraftIdCounter}`;
+}
+
+export function instructionTemplatesToDraft(
+  templates: readonly PaseoInstructionTemplate[] | null | undefined,
+): ProjectInstructionTemplateDraft[] {
+  return (templates ?? []).map((entry) => ({
+    rowId: nextProjectDraftId("instruction-template"),
+    id: entry.id,
+    name: entry.name,
+    description: entry.description ?? "",
+    content: entry.content,
+    rawEntry: entry,
+  }));
+}
+
+export function instructionTemplateDraftsToConfig(
+  templates: readonly ProjectInstructionTemplateDraft[],
+): PaseoInstructionTemplate[] {
+  return templates
+    .map((entry) => {
+      const id = entry.id.trim();
+      const name = entry.name.trim();
+      if (!id || !name || !entry.content.trim()) return null;
+      const next: PaseoInstructionTemplate = {
+        ...entry.rawEntry,
+        id,
+        name,
+        content: entry.content,
+      };
+      if (entry.description.trim()) {
+        next.description = entry.description;
+      } else {
+        delete next.description;
+      }
+      return next;
+    })
+    .filter((entry): entry is PaseoInstructionTemplate => entry !== null);
+}
+
+function parsePositiveInteger(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function emptyMetadataPrompts(): Record<MetadataPromptKey, string> {
@@ -106,6 +194,7 @@ function emptyMetadataPrompts(): Record<MetadataPromptKey, string> {
   };
 }
 
+// oxlint-disable-next-line complexity -- This adapter preserves all supported paseo.json shapes.
 export function configToDraft(config: PaseoConfigRaw | null | undefined): ProjectConfigDraft {
   const worktree = config?.worktree ?? {};
   const setup = projectLifecycle(worktree.setup);
@@ -127,6 +216,17 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
   }
 
   const metadataGeneration = config?.metadataGeneration;
+  const directoryEntries = resolvePaseoProjectDirectoryEntries(config?.project?.directories);
+  const projectDirectories = Object.fromEntries(
+    PROJECT_DIRECTORY_KEYS.map((key) => [
+      key,
+      directoryEntries[key].map((entry) => ({
+        id: nextProjectDraftId(`project-directory-${key}`),
+        path: entry.path,
+        enabled: entry.enabled,
+      })),
+    ]),
+  ) as Record<ProjectDirectoryKey, ProjectDirectoryDraft[]>;
   const metadataPrompts = emptyMetadataPrompts();
   for (const key of METADATA_PROMPT_KEYS) {
     const instructions = metadataGeneration?.[key]?.instructions;
@@ -143,6 +243,20 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
     scripts,
     metadataPrompts,
     metadataGenerationBase: metadataGeneration,
+    projectDirectoryMode: config?.project?.directoryMode ?? "single",
+    projectDirectories,
+    projectIndexAutoGenerate: config?.project?.indexSkill?.autoGenerate === true,
+    projectIndexUpdateIntervalText:
+      config?.project?.indexSkill?.updateIntervalMinutes == null
+        ? ""
+        : String(config.project.indexSkill.updateIntervalMinutes),
+    projectVariables: Object.entries(config?.project?.variables ?? {}).map(([name, value]) => ({
+      id: nextProjectDraftId("project-variable"),
+      name,
+      value,
+    })),
+    instructionTemplates: instructionTemplatesToDraft(config?.project?.instructionTemplates),
+    projectConfigBase: config?.project as Record<string, unknown> | undefined,
   };
 }
 
@@ -151,6 +265,7 @@ interface ApplyDraftInput {
   base: PaseoConfigRaw | null | undefined;
 }
 
+// oxlint-disable-next-line complexity -- This adapter preserves unknown fields while applying form edits.
 export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
   const baseConfig = input.base ?? {};
   const baseWorktree = baseConfig.worktree ?? {};
@@ -241,6 +356,52 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
     delete result.metadataGeneration;
   } else {
     result.metadataGeneration = nextMetadataGeneration;
+  }
+
+  const nextProject: Record<string, unknown> = { ...input.draft.projectConfigBase };
+  nextProject.directoryMode = input.draft.projectDirectoryMode;
+  const nextDirectories: Record<string, unknown> = {
+    ...(input.draft.projectConfigBase?.directories as Record<string, unknown> | undefined),
+  };
+  for (const key of PROJECT_DIRECTORY_KEYS) {
+    const entries = input.draft.projectDirectories[key]
+      .map((entry) => ({ path: entry.path.trim(), enabled: entry.enabled }))
+      .filter((entry) => entry.path.length > 0);
+    nextDirectories[key] = entries;
+  }
+  if (Object.keys(nextDirectories).length === 0) {
+    delete nextProject.directories;
+  } else {
+    nextProject.directories = nextDirectories;
+  }
+
+  const nextIndexSkill: Record<string, unknown> = {
+    ...(input.draft.projectConfigBase?.indexSkill as Record<string, unknown> | undefined),
+    autoGenerate: input.draft.projectIndexAutoGenerate,
+  };
+  const customInterval = parsePositiveInteger(input.draft.projectIndexUpdateIntervalText);
+  if (customInterval === undefined) {
+    delete nextIndexSkill.updateIntervalMinutes;
+  } else {
+    nextIndexSkill.updateIntervalMinutes = customInterval;
+  }
+  nextProject.indexSkill = nextIndexSkill;
+
+  const nextVariables = Object.fromEntries(
+    input.draft.projectVariables
+      .map((entry) => [entry.name.trim(), entry.value] as const)
+      .filter(([name]) => name.length > 0),
+  );
+  if (Object.keys(nextVariables).length === 0) {
+    delete nextProject.variables;
+  } else {
+    nextProject.variables = nextVariables;
+  }
+
+  if (Object.keys(nextProject).length === 0) {
+    delete result.project;
+  } else {
+    result.project = nextProject;
   }
   return result as PaseoConfigRaw;
 }

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -24,6 +24,32 @@ describe("server config", () => {
 
     expect(desktopConfig.desktopManaged).toBe(true);
     expect(standaloneConfig.desktopManaged).toBe(false);
+  });
+
+  test("disables client approval validation by default", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-client-access-"));
+    roots.push(paseoHome);
+
+    expect(loadConfig(paseoHome, { env: {} }).clientAccessRequireApproval).toBe(false);
+  });
+
+  test("loads daemon-global instruction templates", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-templates-"));
+    roots.push(paseoHome);
+    const instructionTemplates = [
+      {
+        id: "review",
+        name: "Review changes",
+        content: "Review {{serviceName}}.",
+      },
+    ];
+    await writeFile(
+      path.join(paseoHome, "config.json"),
+      `${JSON.stringify({ daemon: { instructionTemplates } }, null, 2)}\n`,
+      "utf8",
+    );
+
+    expect(loadConfig(paseoHome, { env: {} }).instructionTemplates).toEqual(instructionTemplates);
   });
 
   test("resolves bundled web UI path from source-tree modules", () => {

@@ -57,6 +57,13 @@ export const LarkChannelBotSchema = z.object({
 });
 export type LarkChannelBot = z.infer<typeof LarkChannelBotSchema>;
 
+export const LarkChannelSubstituteSchema = z.object({
+  enabled: z.boolean(),
+  openId: z.string().nullable(),
+  name: z.string().nullable(),
+});
+export type LarkChannelSubstitute = z.infer<typeof LarkChannelSubstituteSchema>;
+
 export const LarkChannelPendingPairingSchema = z.object({
   code: z.string(),
   openId: z.string().nullable(),
@@ -90,6 +97,11 @@ export const LarkChannelBotStatusSchema = z.object({
   hasVerificationToken: z.boolean(),
   domain: LarkChannelDomainSchema,
   target: LarkChannelTargetSchema,
+  substitute: LarkChannelSubstituteSchema.default({
+    enabled: false,
+    openId: null,
+    name: null,
+  }),
   bot: LarkChannelBotSchema.nullable(),
   pendingPairings: z.array(LarkChannelPendingPairingSchema),
   authorizedUsers: z.array(LarkChannelAuthorizedUserSchema),

@@ -15,6 +15,7 @@ import { createHooksCommand } from "./commands/hooks.js";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
 import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon/status.js";
 import { runRestartCommand as runDaemonRestartCommand } from "./commands/daemon/restart.js";
+import { createRelayCommand } from "./commands/daemon/relay.js";
 import { addLsOptions, runLsCommand } from "./commands/agent/ls.js";
 import { addRunOptions, runRunCommand } from "./commands/agent/run.js";
 import { addLogsOptions, runLogsCommand } from "./commands/agent/logs.js";
@@ -114,6 +115,7 @@ export function createCli(): Command {
   // Top-level local daemon shortcuts
   program.addCommand(onboardCommand());
   program.addCommand(daemonStartCommand());
+  program.addCommand(createRelayCommand());
   program.addCommand(createHooksCommand());
 
   addJsonOption(

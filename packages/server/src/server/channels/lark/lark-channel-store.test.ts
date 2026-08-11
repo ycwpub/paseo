@@ -24,6 +24,11 @@ describe("LarkChannelStore", () => {
       appSecret: "secret",
       encryptKey: "encrypt",
       verificationToken: "token",
+      substitute: {
+        enabled: true,
+        openId: " ou_alice ",
+        name: " Alice ",
+      },
       target: {
         kind: "workspace",
         provider: "claude",
@@ -51,6 +56,11 @@ describe("LarkChannelStore", () => {
         cwd: "/repo/app",
         workspaceId: "ws-1",
       },
+      substitute: {
+        enabled: true,
+        openId: "ou_alice",
+        name: "Alice",
+      },
     });
     expect(status.bots).toHaveLength(1);
     expect(status.bots[0]).toMatchObject({ appId: "cli_test" });
@@ -60,6 +70,7 @@ describe("LarkChannelStore", () => {
 
     const raw = await readFile(store.getFilePath(), "utf8");
     expect(raw).toContain("secret");
+    expect(raw).toContain("ou_alice");
   });
 
   test("omitted secret fields preserve existing values", () => {
@@ -69,6 +80,18 @@ describe("LarkChannelStore", () => {
     const payload = store.getPayload();
     expect(payload.bots[0]?.config.appId).toBe("cli_next");
     expect(payload.bots[0]?.config.appSecret).toBe("secret");
+  });
+
+  test("requires an Open ID when substitute mode is enabled", () => {
+    expect(() =>
+      store.configure({
+        substitute: {
+          enabled: true,
+          openId: " ",
+          name: "Alice",
+        },
+      }),
+    ).toThrow("Substitute Open ID is required");
   });
 
   test("persists a team target", () => {
@@ -115,6 +138,22 @@ describe("LarkChannelStore", () => {
 
     expect(store.revokeUser(bot.id, user!.id)).toBe(true);
     expect(store.getStatus().authorizedUsers).toEqual([]);
+  });
+
+  test("finds the authorized human for a bot turn in the same chat", () => {
+    const bot = store.configure({ name: "Support bot" });
+    const pairing = store.upsertPendingPairing(bot.id, {
+      openId: "ou_alice",
+      unionId: "on_alice",
+      chatId: "oc_team",
+      displayName: "Alice",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      expiresAt: "2026-01-01T00:15:00.000Z",
+    });
+    const user = store.approvePairing(bot.id, pairing.code, "2026-01-01T00:01:00.000Z");
+
+    expect(store.findAuthorizedUserByChat(bot.id, "oc_team")).toEqual(user);
+    expect(store.findAuthorizedUserByChat(bot.id, "oc_other")).toBeNull();
   });
 
   test("records conversations by Lark thread", () => {
@@ -212,13 +251,92 @@ describe("LarkChannelStore", () => {
       logger: pino({ level: "silent" }),
     });
     expect(migratedStore.getPayload()).toMatchObject({
-      version: 4,
+      version: 5,
       activeBotId: "bot-1",
-      bots: [{ id: "bot-1", processedEvents: [] }],
+      bots: [
+        {
+          id: "bot-1",
+          processedEvents: [],
+          config: {
+            substitute: {
+              enabled: false,
+              openId: null,
+              name: null,
+            },
+          },
+        },
+      ],
     });
     expect(
       migratedStore.claimIncomingEvent("bot-1", "om_message_1", "2026-01-01T00:00:00.000Z"),
     ).toBe(true);
+  });
+
+  test("migrates version 4 stores without losing processed event history", async () => {
+    const filePath = store.getFilePath();
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 4,
+        activeBotId: "bot-1",
+        bots: [
+          {
+            id: "bot-1",
+            name: "Support bot",
+            config: {
+              enabled: true,
+              appId: "cli_test",
+              appSecret: "secret",
+              encryptKey: null,
+              verificationToken: null,
+              domain: "feishu",
+              target: {
+                kind: "workspace",
+                provider: "claude",
+                model: null,
+                cwd: "/repo",
+                workspaceId: null,
+              },
+            },
+            authorizedUsers: [],
+            pendingPairings: [],
+            conversations: [],
+            processedEvents: [
+              {
+                key: "om_message_1",
+                processedAt: "2026-01-01T00:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const migratedStore = new LarkChannelStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+    });
+    expect(migratedStore.getPayload()).toMatchObject({
+      version: 5,
+      bots: [
+        {
+          config: {
+            substitute: {
+              enabled: false,
+              openId: null,
+              name: null,
+            },
+          },
+          processedEvents: [
+            {
+              key: "om_message_1",
+              processedAt: "2026-01-01T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    });
   });
 
   test("stores multiple bot configurations independently", () => {

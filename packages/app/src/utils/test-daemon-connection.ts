@@ -1,8 +1,14 @@
 import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { DaemonClientConfig } from "@getpaseo/client/internal/daemon-client";
+import type { ConnectionState, DaemonClientConfig } from "@getpaseo/client/internal/daemon-client";
 import type { HostConnection } from "@/types/host-connection";
 import { getOrCreateClientId } from "./client-id";
 import { resolveAppVersion } from "./app-version";
+import {
+  resolveClientDeviceType,
+  resolveClientHostname,
+  resolveClientName,
+  resolveClientType,
+} from "./client-name";
 import {
   buildDaemonWebSocketUrl,
   buildRelayWebSocketUrl,
@@ -40,6 +46,11 @@ const defaultDaemonConnectionDependencies: DaemonConnectionDependencies<DaemonCl
   buildLocalTransportUrl: buildLocalDaemonTransportUrl,
   createClient: (config) => new DaemonClient(config),
 };
+
+export function isClientAccessApprovalRequired(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.includes("无权限，联系服务端通过连接申请");
+}
 
 function normalizeNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -94,6 +105,83 @@ export class DaemonConnectionTestError extends Error {
   }
 }
 
+export class DaemonConnectionApprovalRequiredError<
+  TClient extends DaemonProbeClient = DaemonClient,
+> extends DaemonConnectionTestError {
+  readonly client: TClient;
+
+  constructor(
+    message: string,
+    details: { reason: string | null; lastError: string | null },
+    client: TClient,
+  ) {
+    super(message, details);
+    this.name = "DaemonConnectionApprovalRequiredError";
+    this.client = client;
+  }
+}
+
+interface ApprovalWaitClient {
+  subscribeConnectionStatus(listener: (status: ConnectionState) => void): () => void;
+  getLastServerInfoMessage(): { serverId: string; hostname: string | null } | null;
+}
+
+export function waitForDaemonApproval(
+  client: ApprovalWaitClient,
+  signal?: AbortSignal,
+): Promise<{ serverId: string; hostname: string | null }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let unsubscribe = () => {};
+
+    const cleanup = () => {
+      unsubscribe();
+      signal?.removeEventListener("abort", handleAbort);
+    };
+    const finishResolve = (value: { serverId: string; hostname: string | null }) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const finishReject = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const handleAbort = () => {
+      finishReject(new Error("Pairing cancelled"));
+    };
+
+    if (signal?.aborted) {
+      handleAbort();
+      return;
+    }
+    signal?.addEventListener("abort", handleAbort, { once: true });
+
+    unsubscribe = client.subscribeConnectionStatus((state) => {
+      if (state.status === "connected") {
+        const serverInfo = client.getLastServerInfoMessage();
+        if (serverInfo) {
+          finishResolve(serverInfo);
+        }
+        return;
+      }
+      if (state.status === "disconnected") {
+        finishReject(new Error(state.reason || "Connection closed while waiting for approval"));
+        return;
+      }
+      if (state.status === "disposed") {
+        finishReject(new Error("Connection closed while waiting for approval"));
+      }
+    });
+    if (settled) {
+      unsubscribe();
+    }
+  });
+}
+
 export async function buildClientConfig(
   connection: HostConnection,
   serverId?: string,
@@ -110,7 +198,9 @@ export async function buildClientConfig(
   const localTransportFactory = deps.createLocalTransportFactory();
   const base = {
     clientId,
-    clientType: "mobile" as const,
+    clientName: resolveClientName(),
+    clientHostname: resolveClientHostname(),
+    clientType: resolveClientType(),
     appVersion: deps.resolveAppVersion() ?? undefined,
     suppressSendErrors: true,
     reconnect: { enabled: false },
@@ -150,6 +240,9 @@ export async function buildClientConfig(
       endpoint: connection.relayEndpoint,
       useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
       serverId,
+      clientId,
+      clientHostname: base.clientHostname,
+      deviceType: resolveClientDeviceType(),
     }),
     e2ee: { enabled: true, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
   };
@@ -217,6 +310,12 @@ export function connectAndProbe(
           const message = isIncorrectPasswordFailure({ config, reason, lastError })
             ? "Incorrect password"
             : pickBestReason(reason, lastError);
+          if (isClientAccessApprovalRequired(message)) {
+            reject(
+              new DaemonConnectionApprovalRequiredError(message, { reason, lastError }, client),
+            );
+            return;
+          }
           void client.close().catch(() => undefined);
           reject(new DaemonConnectionTestError(message, { reason, lastError }));
         });

@@ -1,4 +1,4 @@
-import type { TranslationResources } from "./en";
+import { en, type TranslationResources } from "./en";
 
 export const fr: TranslationResources = {
   common: {
@@ -102,6 +102,7 @@ export const fr: TranslationResources = {
       queue: "File d'attente",
       send: "Envoyer",
     },
+    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "Agent d'annulation",
       stopAgent: "Agent d'arrêt",
@@ -447,6 +448,7 @@ export const fr: TranslationResources = {
       },
     },
     fileExplorer: {
+      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "Nom",
         modified: "Modifié",
@@ -1172,6 +1174,10 @@ export const fr: TranslationResources = {
     },
   },
   desktop: {
+    windowName: {
+      renameTitle: "Renommer la fenêtre",
+      placeholder: "Nom de la fenêtre",
+    },
     quitting: {
       title: "QuitterPaseo...",
       detail: "Arrêt du démon local.",
@@ -1573,10 +1579,13 @@ export const fr: TranslationResources = {
       alert: {
         failedTitle: "Échec du couplage",
       },
+      awaitingApproval:
+        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "Annuler",
         pair: "Paire",
         pairing: "L'appariement...",
+        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1590,11 +1599,16 @@ export const fr: TranslationResources = {
         "Autorisez l'accès à la caméra pour scanner le code d'appairageQRà partir de votre démon.",
       grantPermission: "Accorder l'autorisation",
       pairing: "L'appariement...",
+      awaitingApprovalStatus: "Waiting for approval",
+      awaitingApprovalTitle: "Approve this device on the server",
+      awaitingApprovalBody:
+        "Approve this device under Client management on the Paseo server. It will connect automatically.",
       unableToPair: "Impossible de coupler l'hôte",
       errorTitle: "Erreur",
     },
     device: {
       loadingOffer: "Chargement de l'offre d'association...",
+      relayListTitle: "Liste des Relay",
       failedToLoadOffer: "Échec du chargement de l'offre d'association.",
       relayDisabled: "Le relais n'est pas activé. Activer le relais pour coupler un appareil.",
       enableTitle: "Activer le relais ?",
@@ -1610,11 +1624,52 @@ export const fr: TranslationResources = {
       updateRequired: "Mettez à jour l’hôte pour activer le relais depuis Paseo Desktop.",
       unavailable: "Offre de jumelage indisponible.",
       hint: "Scannez ce codeQRavecPaseosur votre téléphone ou copiez le lien ci-dessous.",
+      hintMultiple:
+        "Choose a Relay below that the new device can reach. Scan its QR code with the new device, or copy and open the pairing link on that device.",
       qrUnavailable: "CodeQRindisponible.",
       qrAccessibility: "Code QR de couplage",
       retry: "Réessayer",
       copy: "Copie",
       copied: "Copié",
+      access: {
+        title: "Gestion des clients",
+        requireApproval: "Require client approval",
+        requireApprovalHint:
+          "When enabled, new clients must be approved here before they can connect.",
+        empty: "No client connection requests.",
+        pending: "Pending approval",
+        allowed: "Connexion autorisée",
+        approved: "Approved",
+        paused: "Paused",
+        connected: "Connected",
+        disconnected: "Disconnected",
+        hostname: "Hostname",
+        identityId: "Identity ID",
+        endpoint: "IP / port",
+        endpointUnavailable: "Unavailable",
+        lastConnectedAt: "Dernière connexion",
+        neverConnected: "Aucun enregistrement",
+        unknownName: "Unknown client",
+        macClient: "Version Mac",
+        androidClient: "Version Android",
+        cliClient: "Version CLI",
+        browserClient: "Version navigateur",
+        historyTitle: "Client connection history",
+        historyEmpty: "No historical client connections.",
+        connectedAt: "Connected at",
+        disconnectedAt: "Disconnected at",
+        stillConnected: "Still connected",
+        historyRetention:
+          "History is automatically retained for {{days}} days and can be deleted manually.",
+        approve: "Approve",
+        approving: "Approving...",
+        pause: "Pause",
+        pausing: "Pausing...",
+        resume: "Resume",
+        resuming: "Resuming...",
+        delete: "Delete",
+        deleting: "Deleting...",
+      },
     },
   },
   realtimeVoice: {
@@ -1854,6 +1909,16 @@ export const fr: TranslationResources = {
     },
     general: {
       title: "Général",
+      clientIdentity: {
+        hostname: "Nom d’hôte du client",
+        hostnameDescription: "Affiché dans la gestion des clients du daemon",
+        editHostname: "Modifier le nom d’hôte du client",
+        editHostnameTitle: "Modifier le nom d’hôte du client",
+        hostnamePlaceholder: "Mon Mac",
+        identityId: "ID d’identité du client",
+        identityIdDescription: "Identité unique de ce client Paseo, non modifiable",
+        unavailable: "Indisponible",
+      },
       browserData: {
         title: "Données du navigateur",
         siteData: "Cookies et données des sites",
@@ -2206,6 +2271,93 @@ export const fr: TranslationResources = {
       badges: {
         relay: "Relais",
         local: "Locale",
+        direct: "Direct to server",
+        viaRelay: "Via Relay",
+      },
+      relay: {
+        title: "Relay",
+        serviceColumn: "WS / WSS address",
+        pairingColumn: "HTTP / HTTPS connection address",
+        serviceListHint:
+          "Configure one or more Relay service addresses used by Paseo. Default public Relay: {{addresses}}.",
+        pairingListHint:
+          "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
+        servicePlaceholder: "wss://relay.paseo.sh:443",
+        pairingPlaceholder: "https://relay.paseo.sh",
+        addressPairHintTitle: "How to fill in the Relay list above",
+        addressPairHint:
+          "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
+        incompleteRow: "Each Relay requires both a service address and a connection address",
+        duplicateRow: "Relay service addresses must be unique",
+        duplicatePairingUrl: "HTTP / HTTPS connection addresses must be unique",
+        addRow: "Add Relay",
+        addPairingUrl: "Add connection address",
+        removeRow: "Remove Relay",
+        removePairingUrl: "Remove connection address",
+        save: "Save",
+        saving: "Saving...",
+        lan: {
+          title: "Use this Paseo as a LAN Relay",
+          hint: "Devices on the same local network can connect through this Host.",
+          listenLabel: "LAN Relay listen address",
+          pairingUrlLabel: "LAN Relay HTTP connection address",
+          pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
+          pairingUrlHint: "Leave empty to generate it automatically.",
+          webApp: {
+            title: "Host the Paseo pairing web app",
+            hint: "Serve a web page on this Relay that parses pairing offers and connects to Paseo.",
+            pathLabel: "Pairing web app path",
+            pathHint: "For example /app. Links use http://local-ip:port/app/#offer=....",
+          },
+        },
+        management: {
+          title: "Relay connections",
+          count: "{{count}} connections",
+          empty: "No clients or servers are connected to this Relay.",
+          loading: "Loading Relay connections...",
+          unavailable: "Relay runtime information is unavailable.",
+          unknownPeer: "Unknown peer",
+          pairingAddress: "Pairing page address",
+          relayAddress: "Relay WebSocket address",
+          deviceType: "Device type",
+          deviceTypes: {
+            mac: "Mac app",
+            windows: "Windows app",
+            linux: "Linux app",
+            android: "Android app",
+            ios: "iOS app",
+            web: "Web app",
+            cli: "CLI",
+            mcp: "MCP",
+            unknown: "Unknown",
+          },
+          hostname: "Server hostname",
+          clientHostname: "Client hostname",
+          clientId: "Client identity ID",
+          serverId: "Server identity ID",
+          connectionId: "Connection ID",
+          peerEndpoint: "IP / port",
+          clients: "Clients",
+          servers: "Servers",
+          noClients: "No clients are connected to this Relay.",
+          noServers: "No servers are connected to this Relay.",
+          clientHistory: "Client connection history",
+          serverHistory: "Server connection history",
+          noClientHistory: "No historical client connections.",
+          noServerHistory: "No historical server connections.",
+          connectedAt: "Connected at",
+          disconnectedAt: "Disconnected at",
+          stillConnected: "Still connected",
+          historyRetention:
+            "History is automatically retained for {{days}} days and can be deleted manually.",
+          delete: "Delete",
+          deleting: "Deleting...",
+          roles: {
+            client: "Client",
+            server_control: "Server control connection",
+            server_data: "Server data connection",
+          },
+        },
       },
       connections: {
         title: "Relations",
@@ -2312,6 +2464,11 @@ export const fr: TranslationResources = {
         moveDown: "Déplacer vers le bas",
       },
       daemon: {
+        identity: {
+          title: "Informations d’identité",
+          serverId: "ID d’identité du serveur",
+          serverIdDescription: "Identité unique de ce daemon, non modifiable",
+        },
         rename: {
           editLabel: "Modifier l'étiquette",
           title: "Renommer l'hôte",
@@ -2450,16 +2607,17 @@ export const fr: TranslationResources = {
     project: {
       noEditableTarget: "Ce projet n'est pas modifiable sur cet hôte.",
       backToProjects: "Retour aux projets",
-      edit: {
-        title: "Modifier le projet",
-        name: "Nom",
-        nameLabel: "Nom du projet",
-        icon: "Icône",
-        chooseImage: "Choisir une image",
-        useAutomatic: "Utiliser l'automatique",
-        imageUrl: "URL d'image ou de site",
-        save: "Enregistrer",
-        savedToast: "Projet mis à jour",
+      switchHost: "Changer d'hôte",
+      projectId: en.settings.project.projectId,
+      rename: {
+        renamedToast: "Projet renommé",
+        errorFallback: "Impossible de renommer le projet",
+        renameLabel: "Renommer le projet",
+        resetLabel: "Réinitialiser le nom du projet par défaut",
+        projectNameLabel: "Nom du projet",
+        saveLabel: "Enregistrer le nom du projet",
+        cancelLabel: "Annuler le changement de nom",
+        reset: "Réinitialiser",
       },
       readFailures: {
         invalidTitle: "paseo.json n'a pas pu être analysé",
@@ -2508,6 +2666,10 @@ export const fr: TranslationResources = {
           remove: "Retirer",
         },
       },
+      resources: en.settings.project.resources,
+      indexSkill: en.settings.project.indexSkill,
+      variables: en.settings.project.variables,
+      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Génération de métadonnées",
         info: "Instructions spécifiques au projet injectées dans les invites de l'IA quePaseoutilise pour générer des métadonnées: utilisez-les pour appliquer les conventions de votre équipe telles que la dénomination des branches, le style de validation ou le formatPR.",

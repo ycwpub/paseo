@@ -8,11 +8,18 @@ export interface NormalizedLarkMessageEvent {
   quotedMessageId?: string | null;
   openId: string | null;
   unionId: string | null;
+  senderType?: string | null;
   displayName: string;
   topicName: string;
   text: string;
   createTime: number | null;
   mentions?: NormalizedLarkMention[];
+  /**
+   * Internal-only reply recipient used when Paseo relays a message between two
+   * locally configured Lark bots. The value is already scoped to the receiving
+   * bot's Lark application.
+   */
+  localReplyMentionOpenId?: string | null;
 }
 
 export interface NormalizedLarkMention {
@@ -27,6 +34,52 @@ export interface NormalizedLarkMention {
 export interface LarkBotMentionIdentity {
   openId: string | null;
   appId: string | null;
+}
+
+export interface LarkSubstituteConfig {
+  enabled: boolean;
+  openId: string | null;
+  name: string | null;
+}
+
+export interface LarkSubstituteTrigger {
+  source: "configured_target" | "current_bot";
+  configuredTarget: {
+    openId: string;
+    name: string | null;
+  };
+  observedMention: NormalizedLarkMention;
+}
+
+export interface LarkChatBot {
+  openId: string;
+  name: string;
+}
+
+export interface LarkAddressedBot {
+  token: string | null;
+  name: string;
+  openId: string;
+  isCurrentBot: boolean;
+}
+
+export interface LarkCollaborationPromptInput {
+  prompt: string;
+  currentBotName: string | null;
+  senderBot: LarkChatBot | null;
+  userName: string | null;
+  availableBots: LarkChatBot[];
+  addressedBots?: LarkAddressedBot[];
+}
+
+export interface LarkReplyRoutingResult {
+  text: string;
+  mentionedBotOpenIds: string[];
+}
+
+export interface LarkUserMentionDirectiveResult {
+  text: string;
+  mentionUser: boolean;
 }
 
 const MAX_LARK_TEXT_CHARS = 3000;
@@ -127,11 +180,13 @@ function getTopicName(message: Record<string, unknown>, text: string): string {
 
 function getSenderParts(root: Record<string, unknown>): {
   senderId: Record<string, unknown>;
+  senderType: string | null;
   displayName: string;
 } {
   const sender = getRecord(root, "sender") ?? {};
   return {
     senderId: getRecord(sender, "sender_id") ?? getRecord(sender, "senderId") ?? {},
+    senderType: getStringByKeys(sender, ["sender_type", "senderType"]),
     displayName: getStringByKeys(sender, ["sender_name", "senderName"]) ?? "Lark user",
   };
 }
@@ -240,6 +295,7 @@ export function normalizeLarkMessageEvent(event: unknown): NormalizedLarkMessage
     quotedMessageId: identity.quotedMessageId,
     openId: getStringByKeys(sender.senderId, ["open_id", "openId"]),
     unionId: getStringByKeys(sender.senderId, ["union_id", "unionId"]),
+    senderType: sender.senderType,
     displayName: sender.displayName,
     topicName: getTopicName(message, text),
     text,
@@ -289,8 +345,455 @@ export function isLarkBotMentionEvent(
   );
 }
 
+export function resolveLarkSubstituteTrigger(
+  event: NormalizedLarkMessageEvent,
+  substitute: LarkSubstituteConfig,
+  bot: LarkBotMentionIdentity | null = null,
+): LarkSubstituteTrigger | null {
+  if (
+    event.chatType?.toLowerCase() === "p2p" ||
+    !substitute.enabled ||
+    !substitute.openId?.trim()
+  ) {
+    return null;
+  }
+  const openId = substitute.openId.trim();
+  const mentions = event.mentions ?? [];
+  const configuredTargetMention = mentions.find((mention) => mention.openId === openId);
+  const currentBotMention = bot
+    ? mentions.find(
+        (mention) =>
+          Boolean(bot.openId && mention.openId === bot.openId) ||
+          Boolean(bot.appId && mention.appId === bot.appId),
+      )
+    : null;
+  const observedMention = configuredTargetMention ?? currentBotMention;
+  if (!observedMention) {
+    return null;
+  }
+  return {
+    source: configuredTargetMention ? "configured_target" : "current_bot",
+    configuredTarget: {
+      openId,
+      name: substitute.name?.trim() || null,
+    },
+    observedMention,
+  };
+}
+
+export function formatLarkSubstitutePrompt(
+  prompt: string,
+  trigger: LarkSubstituteTrigger | null,
+): string {
+  if (!trigger) {
+    return prompt;
+  }
+  const configuredName = trigger.configuredTarget.name
+    ? ` name="${xmlEscape(trigger.configuredTarget.name)}"`
+    : "";
+  const observedName = trigger.observedMention.name
+    ? ` name="${xmlEscape(trigger.observedMention.name)}"`
+    : "";
+  const triggerDescription =
+    trigger.source === "configured_target"
+      ? "This group message triggered substitute mode because it mentioned the configured substitute target."
+      : "This group message triggered substitute mode because it mentioned the current bot while substitute mode is enabled.";
+  return [
+    prompt,
+    "",
+    "<lark_substitute_trigger>",
+    `  <trigger_source>${trigger.source}</trigger_source>`,
+    `  <configured_target open_id="${xmlEscape(trigger.configuredTarget.openId)}"${configuredName} />`,
+    `  <observed_mention open_id="${xmlEscape(trigger.observedMention.openId ?? "")}"${observedName} />`,
+    "  <instruction>",
+    `    ${triggerDescription}`,
+    "    Reply on behalf of that person, but do not pretend to actually be that person.",
+    "    Paseo adds the visible substitute disclosure label after generation. Do not write another '代某人回复', '代表某人回复', or similar disclosure in your answer.",
+    "    The configured name is only a human-readable note. Identity matching is based only on the configured open_id.",
+    "  </instruction>",
+    "</lark_substitute_trigger>",
+  ].join("\n");
+}
+
+function normalizeLarkSubstituteName(name: string | null): string | null {
+  const normalized = name
+    ?.replace(/\p{Cc}+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+  return normalized || null;
+}
+
+function escapeLarkSubstitutePattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripLeadingLarkSubstituteDisclosure(text: string, name: string | null): string {
+  let result = text.trimStart();
+  result = result.replace(/^【(?:代.{0,80}(?:回复|回答)|替身回复)】\s*/u, "");
+  const normalizedName = name ? escapeLarkSubstitutePattern(name) : ".{0,80}?";
+  const chineseDisclosure = new RegExp(
+    `^(?:(?:我(?:来)?(?:代表|代)|代表|代)\\s*${normalizedName}\\s*(?:回复|回答)|替身回复)\\s*[：:]?\\s*`,
+    "u",
+  );
+  result = result.replace(chineseDisclosure, "");
+  result = result.replace(
+    /^(?:(?:I(?:'m| am)?\s+)?(?:replying|answering)\s+(?:on behalf of|for)|on behalf of)\b[^:：\n]{0,80}[:：]?\s*/iu,
+    "",
+  );
+  return result;
+}
+
+export function formatLarkSubstituteReply(
+  text: string,
+  trigger: LarkSubstituteTrigger | null,
+): string {
+  if (!trigger) {
+    return text;
+  }
+  const name = normalizeLarkSubstituteName(trigger.configuredTarget.name);
+  const disclosure = name ? `【代${name}回复】` : "【替身回复】";
+  return `${disclosure}${stripLeadingLarkSubstituteDisclosure(text, name)}`;
+}
+
+function normalizeLarkBotName(name: string | null | undefined): string {
+  return name?.trim().toLocaleLowerCase() ?? "";
+}
+
+function indexLarkBotsByName(chatBots: LarkChatBot[]): Map<string, LarkChatBot[]> {
+  const botsByName = new Map<string, LarkChatBot[]>();
+  for (const bot of chatBots) {
+    const key = normalizeLarkBotName(bot.name);
+    if (!key) continue;
+    const matches = botsByName.get(key) ?? [];
+    matches.push(bot);
+    botsByName.set(key, matches);
+  }
+  return botsByName;
+}
+
+function countLarkBotNames(names: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const name of names) {
+    const key = normalizeLarkBotName(name);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function mentionAddressesCurrentBot(
+  mention: NormalizedLarkMention,
+  currentBot: LarkBotMentionIdentity,
+): boolean {
+  if (currentBot.openId && mention.openId === currentBot.openId) return true;
+  return Boolean(currentBot.appId && mention.appId === currentBot.appId);
+}
+
+function findMentionedChatBot(
+  mention: NormalizedLarkMention,
+  botsByOpenId: ReadonlyMap<string, LarkChatBot>,
+  botsByName: ReadonlyMap<string, LarkChatBot[]>,
+): LarkChatBot | undefined {
+  if (mention.openId) {
+    const openIdMatch = botsByOpenId.get(mention.openId);
+    if (openIdMatch) return openIdMatch;
+  }
+  const nameMatches = botsByName.get(normalizeLarkBotName(mention.name)) ?? [];
+  return nameMatches.length === 1 ? nameMatches[0] : undefined;
+}
+
+function resolveMentionedBotOpenId(
+  mention: NormalizedLarkMention,
+  chatBot: LarkChatBot | undefined,
+  currentBot: LarkBotMentionIdentity,
+  isCurrentBot: boolean,
+): string | null {
+  if (isCurrentBot) return currentBot.openId ?? mention.openId;
+  return mention.openId ?? chatBot?.openId ?? null;
+}
+
+function resolveMentionedBotName(
+  mention: NormalizedLarkMention,
+  chatBot: LarkChatBot | undefined,
+  currentBotName: string | null,
+  isCurrentBot: boolean,
+): string | null {
+  if (isCurrentBot) return currentBotName ?? chatBot?.name ?? null;
+  return mention.name?.trim() || chatBot?.name || null;
+}
+
+function resolveAddressedLarkMention(input: {
+  mention: NormalizedLarkMention;
+  botsByOpenId: ReadonlyMap<string, LarkChatBot>;
+  botsByName: ReadonlyMap<string, LarkChatBot[]>;
+  knownBotNameCounts: ReadonlyMap<string, number>;
+  currentBot: {
+    openId: string | null;
+    appId: string | null;
+    name: string | null;
+  };
+}): LarkAddressedBot | null {
+  const { mention, currentBot } = input;
+  const isCurrentBot = mentionAddressesCurrentBot(mention, currentBot);
+  const mentionNameKey = normalizeLarkBotName(mention.name);
+  const chatBot = findMentionedChatBot(mention, input.botsByOpenId, input.botsByName);
+  const isKnownConfiguredBot = input.knownBotNameCounts.get(mentionNameKey) === 1;
+  if (!isCurrentBot && !chatBot && !isKnownConfiguredBot) {
+    return null;
+  }
+
+  // A mention open_id is scoped to the current bot's Lark app and is the
+  // authoritative outbound @ handle. A configured peer's self-view open_id
+  // cannot be used by another app, so only use discovery as a fallback.
+  const openId = resolveMentionedBotOpenId(mention, chatBot, currentBot, isCurrentBot);
+  const name = resolveMentionedBotName(mention, chatBot, currentBot.name, isCurrentBot);
+  if (!openId || !name) {
+    return null;
+  }
+  return {
+    token: mention.key,
+    name,
+    openId,
+    isCurrentBot,
+  };
+}
+
+export function resolveLarkAddressedBots(input: {
+  mentions: NormalizedLarkMention[] | undefined;
+  chatBots: LarkChatBot[];
+  knownBotNames?: readonly string[];
+  currentBot: {
+    openId: string | null;
+    appId: string | null;
+    name: string | null;
+  };
+}): LarkAddressedBot[] {
+  const botsByOpenId = new Map(input.chatBots.map((bot) => [bot.openId, bot]));
+  const botsByName = indexLarkBotsByName(input.chatBots);
+  const knownBotNameCounts = countLarkBotNames(input.knownBotNames ?? []);
+  const resolved: LarkAddressedBot[] = [];
+  const seen = new Set<string>();
+
+  for (const mention of input.mentions ?? []) {
+    const bot = resolveAddressedLarkMention({
+      mention,
+      botsByOpenId,
+      botsByName,
+      knownBotNameCounts,
+      currentBot: input.currentBot,
+    });
+    if (!bot) continue;
+    const dedupeKey = `${bot.token ?? ""}\u0000${bot.openId}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    resolved.push(bot);
+  }
+
+  return resolved;
+}
+
 export function formatLarkUserPrompt(event: NormalizedLarkMessageEvent): string {
   return `Message from Lark user ${event.displayName} in chat ${event.chatId} (${event.topicName}):\n\n${event.text}`;
+}
+
+export function formatLarkCollaborationPrompt(input: LarkCollaborationPromptInput): string {
+  const addressedBots = input.addressedBots ?? [];
+  const currentBotName = input.currentBotName
+    ? `Current bot: ${xmlEscape(input.currentBotName)}.`
+    : "You are the current Paseo bot.";
+  const sender = input.senderBot
+    ? `This turn was sent by bot "${xmlEscape(input.senderBot.name)}".`
+    : `This turn was sent by user "${xmlEscape(input.userName ?? "Lark user")}".`;
+  const bots = input.availableBots.map(
+    (bot) => `  <bot name="${xmlEscape(bot.name)}" open_id="${xmlEscape(bot.openId)}" />`,
+  );
+  const availableBots =
+    bots.length > 0
+      ? ["<available_lark_bots>", ...bots, "</available_lark_bots>"]
+      : ["<available_lark_bots />"];
+  const mentions = addressedBots.map(
+    (bot) =>
+      `  <mention token="${xmlEscape(bot.token ?? "")}" name="${xmlEscape(bot.name)}" open_id="${xmlEscape(bot.openId)}" current_bot="${bot.isCurrentBot ? "true" : "false"}" />`,
+  );
+  const currentMessageBotMentions =
+    mentions.length > 0
+      ? ["<current_message_bot_mentions>", ...mentions, "</current_message_bot_mentions>"]
+      : ["<current_message_bot_mentions />"];
+  const handoffBot = addressedBots.find((bot) => !bot.isCurrentBot);
+  const handoffExample = handoffBot
+    ? `For this message, if "${xmlEscape(handoffBot.name)}" must act after your work, the visible answer must include "@${xmlEscape(handoffBot.name)}" followed by a concrete request.`
+    : "For example, a reviewer handoff should say '@Reviewer 方案已完成，请独立审核。'.";
+  return [
+    input.prompt,
+    "",
+    "<lark_collaboration>",
+    currentBotName,
+    sender,
+    ...availableBots,
+    ...currentMessageBotMentions,
+    "<routing_rules>",
+    "The current Lark message may assign different work to different mentioned bots. Use <current_message_bot_mentions> to map placeholder tokens such as @_user_1 to exact bot identities and determine which assignment belongs to the current bot.",
+    "A non-current entry in <current_message_bot_mentions> is already a usable, verified bot identity for this conversation. Never claim that the bot name or identity is missing, and never ask the user to provide it again.",
+    "The placeholder tokens in <current_message_bot_mentions> are input-only metadata. NEVER write @_user_1, @_user_2, or any @_user_N token in the answer. To trigger another bot, write @ followed by that bot's exact name from the mapping, never the placeholder token.",
+    "Execute only the work explicitly assigned to the current bot. Work assigned to another mentioned bot is outside your scope; do not take over, simulate, summarize as completed, or merge that bot's independent task into your own answer.",
+    "In particular, never perform an independent review, approval, verification, or other role that the user assigned to another bot. Complete your own deliverable and leave the other bot's responsibility to that bot.",
+    "Respect dependencies between assignments. If another bot needs your deliverable before it can do its assigned work, finish your part and MUST @ that bot's exact name with the result as a handoff. If your work depends on another bot's unfinished deliverable, do not invent or complete it yourself; wait for or explicitly request that deliverable.",
+    "Bot handoff is a hard routing requirement: saying only '交由审核负责人审核', 'the reviewer can review it', or another role description does not trigger that bot and is invalid. The visible answer itself must contain @ExactBotName, for example: '@Reviewer 方案已完成，请独立审核。'.",
+    handoffExample,
+    "Before sending every answer, choose the route explicitly: (1) if another bot must review, approve, verify, continue, decide, or perform any next action, @ that bot; (2) only if no bot action remains and the overall collaborative task is complete or human authorization is required, route to the human user.",
+    "If the entire message is assigned to other bots, do not claim that you completed any of their work.",
+    "Only when another bot must reply or take an independent action, include @ followed by that bot's exact name in the user-visible answer. Paseo converts it to a real Lark mention so the bot is triggered.",
+    "When several bots were already assigned work in the same human message, do not @ them merely to repeat the user's assignment. @ another bot only when your result is a required dependency or handoff for that bot to start or continue.",
+    "If another bot does not need to reply or act, do not @ it. Do not @ bots for status updates, acknowledgements, thanks, or FYI messages.",
+    "Do not @ yourself. Avoid reciprocal acknowledgement loops.",
+    "Every answer MUST start with exactly one internal routing directive: <!-- paseo:lark-route=user --> or <!-- paseo:lark-route=none -->. Paseo removes this directive before posting the visible answer.",
+    "Use <!-- paseo:lark-route=user --> ONLY when the overall task is complete, or when explicit human authorization or permission is required before work can continue. This causes Paseo to @ the human user.",
+    "Use <!-- paseo:lark-route=none --> for progress, intermediate results, acknowledgements, bot-to-bot handoffs, or any answer where no human action is required yet. Never request a human @ merely because your own subtask finished.",
+    "Do not select the user directive merely for a progress update, ordinary question, suggestion, bot handoff, or completion of only your own subtask. Completion of only your own subtask is not overall completion when another bot still has assigned work.",
+    "</routing_rules>",
+    "</lark_collaboration>",
+  ].join("\n");
+}
+
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function maskMarkdownCode(text: string): string {
+  const characters = text.split("");
+  const mask = (start: number, end: number) => {
+    for (let index = start; index < end; index += 1) {
+      if (characters[index] !== "\n") {
+        characters[index] = " ";
+      }
+    }
+  };
+  const fencedPattern = /(`{3,}|~{3,})[\s\S]*?\1/g;
+  for (const match of text.matchAll(fencedPattern)) {
+    mask(match.index, match.index + match[0].length);
+  }
+  const afterFences = characters.join("");
+  const inlinePattern = /(`+)[^\n]*?\1/g;
+  for (const match of afterFences.matchAll(inlinePattern)) {
+    mask(match.index, match.index + match[0].length);
+  }
+  return characters.join("");
+}
+
+interface LarkMentionReplacement {
+  start: number;
+  end: number;
+  bot: LarkChatBot;
+}
+
+export function extractLarkUserMentionDirective(text: string): LarkUserMentionDirectiveResult {
+  const maskedText = maskMarkdownCode(text);
+  const pattern = /<!--\s*paseo:lark-route=(user|none)\s*-->/giu;
+  const matches = Array.from(maskedText.matchAll(pattern));
+  if (matches.length === 0) {
+    return { text, mentionUser: false };
+  }
+
+  const mentionUser = matches.at(-1)?.[1]?.toLowerCase() === "user";
+  let cursor = 0;
+  let cleanedText = "";
+  for (const match of matches) {
+    const start = match.index;
+    cleanedText += text.slice(cursor, start);
+    cursor = start + match[0].length;
+  }
+  cleanedText += text.slice(cursor);
+  return {
+    text: cleanedText.trim(),
+    mentionUser,
+  };
+}
+
+export function routeLarkReplyBotMentions(
+  text: string,
+  availableBots: LarkChatBot[],
+  addressedBots: LarkAddressedBot[] = [],
+): LarkReplyRoutingResult {
+  const botsByName = new Map<string, LarkChatBot[]>();
+  for (const bot of availableBots) {
+    const key = bot.name.trim().toLocaleLowerCase();
+    if (!key || !bot.openId) {
+      continue;
+    }
+    const existing = botsByName.get(key);
+    if (existing) {
+      existing.push(bot);
+    } else {
+      botsByName.set(key, [bot]);
+    }
+  }
+  const uniquelyNamedBots = Array.from(botsByName.values())
+    .filter((bots) => bots.length === 1)
+    .map((bots) => bots[0]!)
+    .sort((left, right) => right.name.length - left.name.length);
+  const placeholderBots = addressedBots.filter(
+    (bot) => !bot.isCurrentBot && Boolean(bot.token && bot.openId),
+  );
+  if (uniquelyNamedBots.length === 0 && placeholderBots.length === 0) {
+    return { text, mentionedBotOpenIds: [] };
+  }
+
+  const maskedText = maskMarkdownCode(text);
+  const replacements: LarkMentionReplacement[] = [];
+  for (const addressedBot of placeholderBots) {
+    const pattern = new RegExp(
+      `(?<![A-Za-z0-9_])${escapeRegularExpression(addressedBot.token!)}(?![A-Za-z0-9_])`,
+      "giu",
+    );
+    for (const match of maskedText.matchAll(pattern)) {
+      const start = match.index;
+      const end = start + match[0].length;
+      replacements.push({
+        start,
+        end,
+        bot: { name: addressedBot.name, openId: addressedBot.openId },
+      });
+    }
+  }
+  for (const bot of uniquelyNamedBots) {
+    const pattern = new RegExp(
+      `(?<![A-Za-z0-9_])@${escapeRegularExpression(bot.name)}(?![\\p{L}\\p{N}_])`,
+      "giu",
+    );
+    for (const match of maskedText.matchAll(pattern)) {
+      const start = match.index;
+      const end = start + match[0].length;
+      const overlaps = replacements.some(
+        (replacement) => start < replacement.end && end > replacement.start,
+      );
+      if (!overlaps) {
+        replacements.push({ start, end, bot });
+      }
+    }
+  }
+  if (replacements.length === 0) {
+    return { text, mentionedBotOpenIds: [] };
+  }
+
+  replacements.sort((left, right) => left.start - right.start);
+  const mentionedBotOpenIds: string[] = [];
+  const seenOpenIds = new Set<string>();
+  let cursor = 0;
+  let routedText = "";
+  for (const replacement of replacements) {
+    routedText += text.slice(cursor, replacement.start);
+    routedText += `<at user_id="${xmlEscape(replacement.bot.openId)}"></at>`;
+    cursor = replacement.end;
+    if (!seenOpenIds.has(replacement.bot.openId)) {
+      seenOpenIds.add(replacement.bot.openId);
+      mentionedBotOpenIds.push(replacement.bot.openId);
+    }
+  }
+  routedText += text.slice(cursor);
+  return { text: routedText, mentionedBotOpenIds };
 }
 
 export interface LarkTopicHistoryPromptInput {

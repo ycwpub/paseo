@@ -2,8 +2,31 @@ import { z } from "zod";
 import {
   LarkChannelDomainSchema,
   LarkChannelStatusSchema,
+  LarkChannelSubstituteSchema,
   LarkChannelTargetSchema,
 } from "./types.js";
+
+export const LarkBotApplicationStatusSchema = z.enum([
+  "starting",
+  "waiting_for_scan",
+  "registering",
+  "completed",
+  "failed",
+]);
+
+export const LarkBotApplicationSchema = z.object({
+  id: z.string(),
+  status: LarkBotApplicationStatusSchema,
+  qrUrl: z.string().nullable(),
+  expiresAt: z.string().nullable(),
+  message: z.string().nullable(),
+  error: z.string().nullable(),
+  botId: z.string().nullable(),
+  appId: z.string().nullable(),
+  domain: LarkChannelDomainSchema.nullable(),
+});
+
+export type LarkBotApplication = z.infer<typeof LarkBotApplicationSchema>;
 
 export const LarkChannelGetStatusRequestSchema = z.object({
   type: z.literal("channel.lark.get_status.request"),
@@ -33,6 +56,7 @@ export const LarkChannelConfigureRequestSchema = z.object({
   clearVerificationToken: z.boolean().optional(),
   domain: LarkChannelDomainSchema.optional(),
   target: LarkChannelTargetSchema.optional(),
+  substitute: LarkChannelSubstituteSchema.optional(),
 });
 
 export const LarkChannelConfigureResponseSchema = z.object({
@@ -40,6 +64,36 @@ export const LarkChannelConfigureResponseSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     status: LarkChannelStatusSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const LarkChannelApplyBotRequestSchema = z.object({
+  type: z.literal("channel.lark.apply_bot.request"),
+  requestId: z.string(),
+  name: z.string().max(100).optional(),
+});
+
+export const LarkChannelApplyBotResponseSchema = z.object({
+  type: z.literal("channel.lark.apply_bot.response"),
+  payload: z.object({
+    requestId: z.string(),
+    application: LarkBotApplicationSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const LarkChannelGetBotApplicationRequestSchema = z.object({
+  type: z.literal("channel.lark.get_bot_application.request"),
+  requestId: z.string(),
+  applicationId: z.string().min(1),
+});
+
+export const LarkChannelGetBotApplicationResponseSchema = z.object({
+  type: z.literal("channel.lark.get_bot_application.response"),
+  payload: z.object({
+    requestId: z.string(),
+    application: LarkBotApplicationSchema.nullable(),
     error: z.string().nullable(),
   }),
 });

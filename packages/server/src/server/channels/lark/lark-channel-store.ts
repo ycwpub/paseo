@@ -7,6 +7,7 @@ import {
   LarkChannelAuthorizedUserSchema,
   LarkChannelDomainSchema,
   LarkChannelPendingPairingSchema,
+  LarkChannelSubstituteSchema,
   LarkChannelStatusSchema,
   LarkChannelTargetSchema,
   type LarkChannelAuthorizedUser,
@@ -15,17 +16,19 @@ import {
   type LarkChannelConnectionStatus,
   type LarkChannelPendingPairing,
   type LarkChannelStatus,
+  type LarkChannelSubstitute,
   type LarkChannelTarget,
 } from "@getpaseo/protocol/messages";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
 
-const LARK_CHANNEL_STORE_VERSION = 4;
-const LEGACY_LARK_CHANNEL_STORE_VERSION = 3;
+const LARK_CHANNEL_STORE_VERSION = 5;
+const LEGACY_LARK_CHANNEL_STORE_VERSION_V4 = 4;
+const LEGACY_LARK_CHANNEL_STORE_VERSION_V3 = 3;
 const LEGACY_DEFAULT_BOT_ID = "default";
 const PROCESSED_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_PROCESSED_EVENTS_PER_BOT = 5_000;
 
-const StoredLarkChannelConfigSchema = z.object({
+const LegacyStoredLarkChannelConfigBaseSchema = z.object({
   enabled: z.boolean(),
   appId: z.string().nullable(),
   appSecret: z.string().nullable(),
@@ -33,6 +36,10 @@ const StoredLarkChannelConfigSchema = z.object({
   verificationToken: z.string().nullable(),
   domain: LarkChannelDomainSchema,
   target: LarkChannelTargetSchema,
+});
+
+const StoredLarkChannelConfigSchema = LegacyStoredLarkChannelConfigBaseSchema.extend({
+  substitute: LarkChannelSubstituteSchema,
 });
 
 export type StoredLarkChannelConfig = z.infer<typeof StoredLarkChannelConfigSchema>;
@@ -83,7 +90,7 @@ const LegacyLarkChannelTargetSchema = z.object({
   agentId: z.string().nullable(),
 });
 
-const LegacyStoredLarkChannelConfigSchema = StoredLarkChannelConfigSchema.extend({
+const LegacyStoredLarkChannelConfigSchema = LegacyStoredLarkChannelConfigBaseSchema.extend({
   target: z.union([LarkChannelTargetSchema, LegacyLarkChannelTargetSchema]),
 });
 
@@ -106,8 +113,18 @@ const LegacyStoredLarkChannelBotSchema = z.object({
   ),
 });
 
+const LegacyStoredLarkChannelBotV4Schema = LegacyStoredLarkChannelBotSchema.extend({
+  processedEvents: z.array(LarkChannelProcessedEventSchema),
+});
+
+const LegacyLarkChannelStorePayloadV4Schema = z.object({
+  version: z.literal(LEGACY_LARK_CHANNEL_STORE_VERSION_V4),
+  activeBotId: z.string().nullable(),
+  bots: z.array(LegacyStoredLarkChannelBotV4Schema),
+});
+
 const LegacyLarkChannelStorePayloadV3Schema = z.object({
-  version: z.literal(LEGACY_LARK_CHANNEL_STORE_VERSION),
+  version: z.literal(LEGACY_LARK_CHANNEL_STORE_VERSION_V3),
   activeBotId: z.string().nullable().optional(),
   bots: z.array(LegacyStoredLarkChannelBotSchema),
 });
@@ -144,6 +161,7 @@ export interface ConfigureLarkChannelStoreInput {
   clearVerificationToken?: boolean;
   domain?: StoredLarkChannelConfig["domain"];
   target?: LarkChannelTarget;
+  substitute?: LarkChannelSubstitute;
 }
 
 export interface UpsertLarkPendingPairingInput {
@@ -184,6 +202,15 @@ function createDefaultConfig(): StoredLarkChannelConfig {
     verificationToken: null,
     domain: "feishu",
     target: createDefaultTarget(),
+    substitute: createDefaultSubstitute(),
+  };
+}
+
+function createDefaultSubstitute(): LarkChannelSubstitute {
+  return {
+    enabled: false,
+    openId: null,
+    name: null,
   };
 }
 
@@ -254,7 +281,27 @@ function normalizeConversation(
   return null;
 }
 
-function normalizeBot(bot: z.infer<typeof LegacyStoredLarkChannelBotSchema>): StoredLarkChannelBot {
+function normalizeSubstitute(
+  substitute: LarkChannelSubstitute | null | undefined,
+): LarkChannelSubstitute {
+  if (!substitute) {
+    return createDefaultSubstitute();
+  }
+  const openId = trimToNull(substitute.openId);
+  if (substitute.enabled && !openId) {
+    return createDefaultSubstitute();
+  }
+  return {
+    enabled: substitute.enabled,
+    openId,
+    name: trimToNull(substitute.name),
+  };
+}
+
+function normalizeBot(
+  bot: z.infer<typeof LegacyStoredLarkChannelBotSchema>,
+  processedEvents: LarkChannelProcessedEvent[] = [],
+): StoredLarkChannelBot {
   const conversations = bot.conversations
     .map((conversation) => normalizeConversation(conversation))
     .filter((conversation): conversation is LarkChannelConversation => conversation !== null);
@@ -264,11 +311,12 @@ function normalizeBot(bot: z.infer<typeof LegacyStoredLarkChannelBotSchema>): St
     config: {
       ...bot.config,
       target: normalizeTarget(bot.config.target),
+      substitute: createDefaultSubstitute(),
     },
     authorizedUsers: bot.authorizedUsers,
     pendingPairings: bot.pendingPairings,
     conversations,
-    processedEvents: [],
+    processedEvents,
   });
 }
 
@@ -286,6 +334,16 @@ function normalizePayload(raw: unknown): LarkChannelStorePayload {
   const parsedCurrent = LarkChannelStorePayloadSchema.safeParse(raw);
   if (parsedCurrent.success) {
     return parsedCurrent.data;
+  }
+
+  const parsedV4 = LegacyLarkChannelStorePayloadV4Schema.safeParse(raw);
+  if (parsedV4.success) {
+    const bots = parsedV4.data.bots.map((bot) => normalizeBot(bot, bot.processedEvents));
+    return LarkChannelStorePayloadSchema.parse({
+      version: LARK_CHANNEL_STORE_VERSION,
+      activeBotId: normalizeActiveBotId(parsedV4.data.activeBotId, bots),
+      bots,
+    });
   }
 
   const parsedV3 = LegacyLarkChannelStorePayloadV3Schema.safeParse(raw);
@@ -343,6 +401,7 @@ function buildBotStatus(
     hasVerificationToken: Boolean(bot.config.verificationToken),
     domain: bot.config.domain,
     target: bot.config.target,
+    substitute: bot.config.substitute,
     bot: runtime.bot,
     pendingPairings: bot.pendingPairings,
     authorizedUsers: bot.authorizedUsers,
@@ -360,6 +419,7 @@ function buildEmptyStatus(): Omit<LarkChannelStatus, "activeBotId" | "bots"> {
     hasVerificationToken: false,
     domain: "feishu",
     target: createDefaultTarget(),
+    substitute: createDefaultSubstitute(),
     bot: null,
     pendingPairings: [],
     authorizedUsers: [],
@@ -416,6 +476,7 @@ export class LarkChannelStore {
           hasVerificationToken: activeStatus.hasVerificationToken,
           domain: activeStatus.domain,
           target: activeStatus.target,
+          substitute: activeStatus.substitute,
           bot: activeStatus.bot,
           pendingPairings: activeStatus.pendingPairings,
           authorizedUsers: activeStatus.authorizedUsers,
@@ -462,6 +523,13 @@ export class LarkChannelStore {
     }
     if (input.target) {
       bot.config.target = input.target;
+    }
+    if (input.substitute) {
+      const substitute = normalizeSubstitute(input.substitute);
+      if (input.substitute.enabled && !substitute.openId) {
+        throw new Error("Substitute Open ID is required when substitute mode is enabled");
+      }
+      bot.config.substitute = substitute;
     }
     next.activeBotId = bot.id;
     this.replaceAndPersist(next);
@@ -596,6 +664,15 @@ export class LarkChannelStore {
     this.ensureLoaded();
     const bot = this.resolveBot(this.payload, botId);
     return bot?.authorizedUsers.find((user) => sameLarkIdentity(user, input)) ?? null;
+  }
+
+  findAuthorizedUserByChat(
+    botId: string | null | undefined,
+    chatId: string,
+  ): LarkChannelAuthorizedUser | null {
+    this.ensureLoaded();
+    const bot = this.resolveBot(this.payload, botId);
+    return bot?.authorizedUsers.find((user) => user.chatId === chatId) ?? null;
   }
 
   findConversationByThread(

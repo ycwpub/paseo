@@ -19,11 +19,9 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceCreateRequest,
 } from "@getpaseo/protocol/messages";
-import { DaemonClient } from "./daemon-client.js";
+import { DaemonClient, FileExplorerRequestError } from "./daemon-client.js";
 import type {
-  FetchAgentsEntry,
-  FetchAgentsOptions,
-  FetchAgentsPageInfo,
+  DaemonConnectionTransport,
   FetchAgentTimelineCursor,
   FetchAgentTimelineDirection,
   FetchAgentTimelinePayload,
@@ -31,14 +29,17 @@ import type {
   WaitForFinishResult,
 } from "./daemon-client.js";
 
-export { DaemonClient };
+export { DaemonClient, FileExplorerRequestError };
 export type {
   DaemonClientConfig,
   DaemonEvent,
   BrowserAutomationExecuteRequestMessage,
   BrowserAutomationExecuteResponseMessage,
   ConfigureLarkChannelOptions,
+  ApplyLarkBotOptions,
+  GetLarkBotApplicationOptions,
   DeleteLarkBotOptions,
+  DaemonConnectionTransport,
   WebSocketFactory,
   WebSocketLike,
 } from "./daemon-client.js";
@@ -46,6 +47,7 @@ export type {
 export type ConnectionState =
   | { status: "idle" }
   | { status: "connecting"; attempt: number }
+  | { status: "awaiting_approval"; message: string }
   | { status: "connected" }
   | { status: "disconnected"; reason?: string }
   | { status: "disposed" };
@@ -60,6 +62,8 @@ export interface PaseoLogger {
 export interface PaseoClientConfig {
   url: string;
   clientId?: string;
+  clientName?: string;
+  clientHostname?: string;
   appVersion?: string;
   runtimeGeneration?: number | null;
   password?: string;
@@ -372,6 +376,7 @@ export interface PaseoClient {
   close(): Promise<void>;
   ensureConnected(): void;
   getConnectionState(): ConnectionState;
+  getConnectionTransport(): DaemonConnectionTransport | null;
 }
 
 export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
@@ -461,6 +466,7 @@ export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
     close: () => daemonClient.close(),
     ensureConnected: () => daemonClient.ensureConnected(),
     getConnectionState: () => daemonClient.getConnectionState(),
+    getConnectionTransport: () => daemonClient.getConnectionTransport(),
   };
 }
 
@@ -572,44 +578,13 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
             }
           }),
       },
-      get workspaceId() {
-        return current?.workspaceId ?? null;
-      },
-      get cwd() {
-        return current?.cwd ?? null;
-      },
-      get status() {
-        return current?.status ?? null;
-      },
-      current: () => current,
-      refresh: async (requestId) => {
-        const result = await daemonClient.fetchAgent({ agentId: id, requestId });
-        current = result?.agent ?? null;
-        return result;
-      },
-      send: async (text, options) => {
-        await daemonClient.sendAgentMessage(id, text, options);
-      },
-      run: async (text, options) => {
-        const { timeoutMs, ...sendOptions } = options ?? {};
-        await daemonClient.sendAgentMessage(id, text, sendOptions);
-        const result = await daemonClient.waitForFinish(
-          id,
-          timeoutMs ?? DEFAULT_WAIT_FOR_FINISH_MS,
-        );
-        if (result.final) {
-          current = result.final;
-        }
-        return result;
-      },
-      waitForFinish: async (timeoutMs) => {
-        const result = await daemonClient.waitForFinish(
-          id,
-          timeoutMs ?? DEFAULT_WAIT_FOR_FINISH_MS,
-        );
-        if (result.final) {
-          current = result.final;
-        }
+      latest: () => latest,
+      refetch: async (requestId) => {
+        const result = await daemonClient.fetchAgent({
+          agentId: id,
+          requestId,
+        });
+        latest = result?.agent ?? null;
         return result;
       },
       archive: async () => {

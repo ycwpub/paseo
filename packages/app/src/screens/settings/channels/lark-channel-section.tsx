@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking, Text, View } from "react-native";
+import * as QRCode from "qrcode";
+import { SvgXml } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Bot, ExternalLink } from "lucide-react-native";
 import type {
@@ -110,6 +112,98 @@ interface BotListCardProps {
   onAdd: () => void;
 }
 
+function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
+  const application = channel.application ?? null;
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!application?.qrUrl) {
+      setQrSvg(null);
+      return;
+    }
+    void QRCode.toString(application.qrUrl, {
+      type: "svg",
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 320,
+    })
+      .then((value) => {
+        if (active) setQrSvg(value);
+        return value;
+      })
+      .catch(() => {
+        if (active) setQrSvg(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [application?.qrUrl]);
+
+  useEffect(() => {
+    if (!application || application.status === "completed" || application.status === "failed") {
+      return;
+    }
+    const timer = setInterval(() => {
+      void channel.refreshApplication().catch(() => undefined);
+    }, 1200);
+    return () => clearInterval(timer);
+  }, [application, channel]);
+
+  const handleApply = useCallback(() => {
+    void channel.applyBot();
+  }, [channel]);
+
+  return (
+    <SettingsSection title="申请飞书机器人">
+      <View style={styles.formCard} testID="host-page-lark-apply-card">
+        <Text style={settingsStyles.rowTitle}>一键申请并开通群消息监听</Text>
+        <Text style={settingsStyles.rowHint}>
+          扫码后，Paseo 会自动创建机器人、保存凭证并启动群消息长连接监听。
+        </Text>
+        {qrSvg ? (
+          <View style={styles.applicationQr}>
+            <SvgXml xml={qrSvg} width={240} height={240} />
+          </View>
+        ) : null}
+        {application?.message ? (
+          <Text style={settingsStyles.rowHint}>{application.message}</Text>
+        ) : null}
+        {application?.error ? (
+          <Text style={settingsStyles.rowError}>{application.error}</Text>
+        ) : null}
+        {application?.appId ? (
+          <Text style={settingsStyles.rowHint} selectable>
+            App ID: {application.appId}
+          </Text>
+        ) : null}
+        <View style={styles.actionsRow}>
+          <Button
+            variant="default"
+            onPress={handleApply}
+            loading={channel.isApplying}
+            disabled={
+              !channel.isConnected ||
+              channel.isApplying ||
+              (application !== null &&
+                application.status !== "completed" &&
+                application.status !== "failed")
+            }
+            testID="host-page-lark-apply-bot"
+          >
+            {application?.status === "failed" ? "重新申请" : "申请飞书机器人"}
+          </Button>
+          {application ? (
+            <Button variant="outline" onPress={channel.clearApplication}>
+              关闭申请状态
+            </Button>
+          ) : null}
+        </View>
+      </View>
+    </SettingsSection>
+  );
+}
+
 interface CredentialsCardProps {
   status: LarkChannelBotStatus | null;
   botName: string;
@@ -120,6 +214,9 @@ interface CredentialsCardProps {
   appSecret: string;
   encryptKey: string;
   verificationToken: string;
+  substituteEnabled: boolean;
+  substituteOpenId: string;
+  substituteName: string;
   targetValue: string | null;
   provider: string | null;
   model: string | null;
@@ -149,6 +246,9 @@ interface CredentialsCardProps {
   onAppSecretChange: (value: string) => void;
   onEncryptKeyChange: (value: string) => void;
   onVerificationTokenChange: (value: string) => void;
+  onSubstituteEnabledChange: (value: boolean) => void;
+  onSubstituteOpenIdChange: (value: string) => void;
+  onSubstituteNameChange: (value: string) => void;
   onTargetChange: (value: string) => void;
   onProviderChange: (value: string) => void;
   onModelChange: (value: string) => void;
@@ -228,6 +328,9 @@ function buildConfigureInput(input: {
   appSecret: string;
   encryptKey: string;
   verificationToken: string;
+  substituteEnabled: boolean;
+  substituteOpenId: string;
+  substituteName: string;
   assistantId: string | null;
   teamId: string | null;
   provider: string | null;
@@ -248,6 +351,11 @@ function buildConfigureInput(input: {
     name: input.botName,
     ...secrets,
     domain: input.status?.domain ?? "feishu",
+    substitute: {
+      enabled: input.substituteEnabled,
+      openId: input.substituteOpenId.trim() || null,
+      name: input.substituteName.trim() || null,
+    },
     target: input.teamId
       ? {
           kind: "team",
@@ -352,7 +460,14 @@ function StatusCard({ channel, status, onEnabledChange }: StatusCardProps) {
 }
 
 function getBotDisplayName(bot: LarkChannelBotStatus): string {
-  return bot.name || bot.bot?.name || bot.appId || "Untitled Lark bot";
+  return bot.bot?.name || bot.name || bot.appId || "Untitled Lark bot";
+}
+
+function getBotListDescription(bot: LarkChannelBotStatus): string {
+  const configuredName = bot.name && bot.name !== bot.bot?.name ? `本地备注：${bot.name}` : null;
+  return [configuredName, bot.appId ?? "No App ID", getStatusLabel(bot)]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 }
 
 function hasLegacyStatusConfig(status: LarkChannelStatus): boolean {
@@ -386,6 +501,7 @@ function buildBotStatuses(status: LarkChannelStatus | null): LarkChannelBotStatu
       hasVerificationToken: status.hasVerificationToken,
       domain: status.domain,
       target: status.target,
+      substitute: status.substitute,
       bot: status.bot,
       pendingPairings: status.pendingPairings,
       authorizedUsers: status.authorizedUsers,
@@ -428,9 +544,7 @@ function BotListRow({
     <View style={isFirst ? settingsStyles.row : ROW_WITH_BORDER_STYLE}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{getBotDisplayName(bot)}</Text>
-        <Text style={settingsStyles.rowHint}>
-          {bot.appId ?? "No App ID"} · {getStatusLabel(bot)}
-        </Text>
+        <Text style={settingsStyles.rowHint}>{getBotListDescription(bot)}</Text>
       </View>
       <Button
         size="sm"
@@ -487,9 +601,19 @@ function BotListCard({ bots, selectedBotId, creating, onSelect, onAdd }: BotList
 }
 
 function CredentialsCard(props: CredentialsCardProps) {
+  const selectedBotName = props.status ? getBotDisplayName(props.status) : null;
   return (
     <SettingsSection title={props.creating ? "新机器人配置" : "机器人配置"}>
       <View style={styles.formCard}>
+        {selectedBotName ? (
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>正在编辑：{selectedBotName}</Text>
+            <Text style={settingsStyles.rowHint}>
+              下方配置（包括替身模式）只对这个飞书机器人生效
+              {props.status?.appId ? ` · ${props.status.appId}` : ""}。
+            </Text>
+          </View>
+        ) : null}
         <Field label="机器人名称" testID="host-page-lark-bot-name">
           <FormTextInput
             initialValue={props.botName}
@@ -527,6 +651,47 @@ function CredentialsCard(props: CredentialsCardProps) {
           {props.showOptional ? "Hide optional settings" : "Show optional settings"}
         </Button>
         {props.showOptional ? <OptionalCredentialFields {...props} /> : null}
+        <View style={styles.substituteHeader}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>替身模式</Text>
+            <Text style={settingsStyles.rowHint}>
+              群聊中有人 @ 当前机器人或被附身用户时，由当前机器人代其回复。
+              {selectedBotName ? ` 当前机器人：${selectedBotName}。` : ""}
+            </Text>
+          </View>
+          <Switch
+            value={props.substituteEnabled}
+            onValueChange={props.onSubstituteEnabledChange}
+            accessibilityLabel="启用替身模式"
+            testID="host-page-lark-substitute-enabled"
+          />
+        </View>
+        <Field
+          label="被附身用户 Open ID"
+          hint="被附身用户仅按 Open ID 匹配；@ 当前机器人也会触发替身回复。"
+          testID="host-page-lark-substitute-open-id"
+        >
+          <FormTextInput
+            initialValue={props.substituteOpenId}
+            resetKey={`substitute-open-id:${props.formRevision}`}
+            onChangeText={props.onSubstituteOpenIdChange}
+            placeholder="ou_xxxxxxxxxx"
+            editable={props.substituteEnabled}
+          />
+        </Field>
+        <Field
+          label="用户名（备注）"
+          hint="仅作为备注和回复上下文，不参与身份匹配。"
+          testID="host-page-lark-substitute-name"
+        >
+          <FormTextInput
+            initialValue={props.substituteName}
+            resetKey={`substitute-name:${props.formRevision}`}
+            onChangeText={props.onSubstituteNameChange}
+            placeholder="例如：张三"
+            editable={props.substituteEnabled}
+          />
+        </Field>
         <SelectField
           label="Provider"
           value={props.provider}
@@ -935,6 +1100,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   const [appSecret, setAppSecret] = useState("");
   const [encryptKey, setEncryptKey] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
+  const [substituteEnabled, setSubstituteEnabled] = useState(false);
+  const [substituteOpenId, setSubstituteOpenId] = useState("");
+  const [substituteName, setSubstituteName] = useState("");
   const [assistantId, setAssistantId] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
@@ -979,6 +1147,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
       setAppSecret("");
       setEncryptKey("");
       setVerificationToken("");
+      setSubstituteEnabled(false);
+      setSubstituteOpenId("");
+      setSubstituteName("");
       setAssistantId(null);
       setTeamId(null);
       setProvider(null);
@@ -994,6 +1165,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     setAppSecret("");
     setEncryptKey("");
     setVerificationToken("");
+    setSubstituteEnabled(selectedBotStatus.substitute.enabled);
+    setSubstituteOpenId(selectedBotStatus.substitute.openId ?? "");
+    setSubstituteName(selectedBotStatus.substitute.name ?? "");
     setAssistantId(
       selectedBotStatus.target.kind === "assistant" ? selectedBotStatus.target.assistantId : null,
     );
@@ -1057,6 +1231,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     setAppSecret("");
     setEncryptKey("");
     setVerificationToken("");
+    setSubstituteEnabled(false);
+    setSubstituteOpenId("");
+    setSubstituteName("");
     setAssistantId(null);
     setTeamId(null);
     setProvider(null);
@@ -1115,6 +1292,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   const save = useCallback(async () => {
     try {
       setSaveError(null);
+      if (substituteEnabled && substituteOpenId.trim().length === 0) {
+        throw new Error("启用替身模式时必须填写被附身用户 Open ID");
+      }
       const nextStatus = await channel.configure(
         buildConfigureInput({
           botId: selectedBotStatus?.id ?? selectedBotId,
@@ -1124,6 +1304,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
           appSecret,
           encryptKey,
           verificationToken,
+          substituteEnabled,
+          substituteOpenId,
+          substituteName,
           assistantId,
           teamId,
           provider,
@@ -1157,6 +1340,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     provider,
     selectedBotId,
     selectedBotStatus,
+    substituteEnabled,
+    substituteName,
+    substituteOpenId,
     teamId,
     verificationToken,
   ]);
@@ -1222,6 +1408,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
 
   return (
     <View testID="host-page-channels">
+      <BotApplicationCard channel={channel} />
       <BotListCard
         bots={botStatuses}
         selectedBotId={selectedBotStatus?.id ?? selectedBotId}
@@ -1244,6 +1431,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         appSecret={appSecret}
         encryptKey={encryptKey}
         verificationToken={verificationToken}
+        substituteEnabled={substituteEnabled}
+        substituteOpenId={substituteOpenId}
+        substituteName={substituteName}
         targetValue={targetValue}
         provider={provider}
         model={model}
@@ -1273,6 +1463,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         onAppSecretChange={setAppSecret}
         onEncryptKeyChange={setEncryptKey}
         onVerificationTokenChange={setVerificationToken}
+        onSubstituteEnabledChange={setSubstituteEnabled}
+        onSubstituteOpenIdChange={setSubstituteOpenId}
+        onSubstituteNameChange={setSubstituteName}
         onTargetChange={handleTargetChange}
         onProviderChange={handleProviderChange}
         onModelChange={handleModelChange}
@@ -1349,10 +1542,23 @@ const styles = StyleSheet.create((theme) => ({
   formCard: {
     gap: theme.spacing[4],
   },
+  substituteHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: theme.spacing[3],
+  },
   actionsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing[2],
+  },
+  applicationQr: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#ffffff",
+    borderRadius: theme.borderRadius.md,
+    justifyContent: "center",
+    padding: theme.spacing[2],
   },
   inlineActions: {
     flexDirection: "row",

@@ -8,14 +8,63 @@ import {
   DEFAULT_WINDOW_WIDTH,
   getMainWindowChromeOptions,
   getTitleBarOverlayOptions,
+  MAX_CUSTOM_WINDOW_NAME_LENGTH,
+  normalizeCustomWindowName,
   readBadgeCount,
   readWindowControlsOverlayUpdate,
   readWindowTheme,
+  resetCustomWindowName,
   resolveRuntimeTitleBarOverlayOptions,
   resolveWindowBounds,
+  setCustomWindowName,
+  setupWindowTitleManagement,
 } from "./window-manager";
 
 describe("window-manager", () => {
+  describe("normalizeCustomWindowName", () => {
+    it("trims names and rejects empty or non-string values", () => {
+      expect(normalizeCustomWindowName("  Finance team  ")).toBe("Finance team");
+      expect(normalizeCustomWindowName("   ")).toBeNull();
+      expect(normalizeCustomWindowName(undefined)).toBeNull();
+      expect(normalizeCustomWindowName(42)).toBeNull();
+    });
+
+    it("limits names to the supported native title length", () => {
+      const name = "x".repeat(MAX_CUSTOM_WINDOW_NAME_LENGTH + 10);
+      expect(normalizeCustomWindowName(name)).toBe("x".repeat(MAX_CUSTOM_WINDOW_NAME_LENGTH));
+    });
+  });
+
+  describe("custom window titles", () => {
+    it("keeps a custom title while remembering page title updates for reset", () => {
+      const setTitle = vi.fn();
+      const webContentsOn = vi.fn();
+      const win = {
+        getTitle: () => "Paseo",
+        setTitle,
+        webContents: {
+          on: webContentsOn,
+        },
+        on: vi.fn(),
+      };
+
+      setupWindowTitleManagement(win as never, "Paseo");
+      expect(setCustomWindowName(win as never, "Finance")).toBe("Finance");
+
+      const [, pageTitleUpdated] = (webContentsOn.mock.calls[0] ?? []) as [
+        string?,
+        ((event: { preventDefault: () => void }, title: string) => void)?,
+      ];
+      const preventDefault = vi.fn();
+      pageTitleUpdated?.({ preventDefault }, "Settlement workspace");
+
+      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(setTitle).toHaveBeenLastCalledWith("Finance");
+      expect(resetCustomWindowName(win as never)).toBe("Settlement workspace");
+      expect(setTitle).toHaveBeenLastCalledWith("Settlement workspace");
+    });
+  });
+
   describe("readBadgeCount", () => {
     it("returns valid non-negative integers", () => {
       expect(readBadgeCount(0)).toBe(0);

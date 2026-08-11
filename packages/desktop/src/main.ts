@@ -2,6 +2,7 @@ process.emitWarning = (() => {}) as typeof process.emitWarning;
 
 import log from "electron-log/main";
 import path from "node:path";
+import { hostname as getSystemHostname } from "node:os";
 log.transports.console.level = "info";
 log.initialize({ spyRendererConsole: true });
 
@@ -35,9 +36,11 @@ import {
   resolveWindowBounds,
   setupWindowResizeEvents,
   setupWindowStatePersistence,
+  setupWindowTitleManagement,
   setupDefaultContextMenu,
   setupDragDropPrevention,
   buildStandardContextMenuItems,
+  resetCustomWindowName,
 } from "./window/window-manager.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
@@ -357,6 +360,10 @@ let pendingAgentNavigation = parseAgentDeepLinkFromArgv(process.argv);
 // in-app "Open in new window" action) land on the right project without
 // racing a global.
 const pendingOpenProjectStore = new PendingOpenProjectStore();
+
+ipcMain.on("paseo:get-device-name", (event) => {
+  event.returnValue = getSystemHostname();
+});
 
 if (PASEO_DEBUG) {
   log.info("[open-project] argv:", process.argv);
@@ -725,6 +732,7 @@ async function createWindow(
       webviewTag: true,
     },
   });
+  setupWindowTitleManagement(mainWindow, title);
 
   const webContentsId = mainWindow.webContents.id;
   pendingOpenProjectStore.set(webContentsId, options.pendingOpenProjectPath);
@@ -978,6 +986,12 @@ async function bootstrap(): Promise<void> {
       void createWindow().catch((error) => {
         log.error("[window] failed to create window from menu", error);
       });
+    },
+    onRenameWindow: (win) => {
+      win.webContents.send("paseo:event:rename-window", {});
+    },
+    onResetWindowName: (win) => {
+      resetCustomWindowName(win);
     },
   });
   ensureNotificationCenterRegistration();

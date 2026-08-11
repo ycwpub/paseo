@@ -1625,6 +1625,8 @@ describe("daemon status + pairing RPC", () => {
         listen: "127.0.0.1:6767",
         getRelayConfig: () => ({
           enabled: false,
+          endpoints: [],
+          local: { enabled: false, listen: "0.0.0.0:6769" },
           endpoint: "relay.paseo.sh:443",
           publicEndpoint: "relay.paseo.sh:443",
           useTls: true,
@@ -1646,6 +1648,7 @@ describe("daemon status + pairing RPC", () => {
           url: "",
           qr: null,
           relayEnabled: false,
+          offers: [],
         },
       },
     ]);

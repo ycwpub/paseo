@@ -46,11 +46,15 @@ function resolveDesktopPanelWidth(input: {
   viewportWidth: number;
   minimumWidth: number;
   maximumWidth: number;
+  reservedWidth?: number;
 }): number {
   "worklet";
   const maximumVisibleWidth = Math.max(
     input.minimumWidth,
-    Math.min(input.maximumWidth, input.viewportWidth - MIN_DESKTOP_CENTER_WIDTH),
+    Math.min(
+      input.maximumWidth,
+      input.viewportWidth - (input.reservedWidth ?? 0) - MIN_DESKTOP_CENTER_WIDTH,
+    ),
   );
   return Math.max(input.minimumWidth, Math.min(maximumVisibleWidth, input.requestedWidth));
 }
@@ -70,6 +74,7 @@ export function resolveDesktopSidebarWidth(input: {
 export function resolveDesktopExplorerWidth(input: {
   requestedWidth: number;
   viewportWidth: number;
+  reservedWidth?: number;
 }): number {
   "worklet";
   return resolveDesktopPanelWidth({
@@ -79,20 +84,28 @@ export function resolveDesktopExplorerWidth(input: {
   });
 }
 
-export function resolveDesktopAppContentMinimum(input: {
-  isSettingsRoute: boolean;
-  isWorkspaceExplorerOpen: boolean;
+export function resolveDesktopWorkspaceExplorerWidth(input: {
+  isAppSidebarOpen: boolean;
+  requestedAppSidebarWidth: number;
   requestedExplorerWidth: number;
   viewportWidth: number;
 }): number {
-  const workspaceMinimum = input.isWorkspaceExplorerOpen
-    ? MIN_DESKTOP_CENTER_WIDTH +
-      resolveDesktopExplorerWidth({
-        requestedWidth: input.requestedExplorerWidth,
+  "worklet";
+  const reservedWidth = input.isAppSidebarOpen
+    ? resolveDesktopSidebarWidth({
+        requestedWidth: input.requestedAppSidebarWidth,
         viewportWidth: input.viewportWidth,
       })
     : 0;
-  return Math.max(input.isSettingsRoute ? SETTINGS_DESKTOP_SPLIT_MIN_WIDTH : 0, workspaceMinimum);
+  return resolveDesktopExplorerWidth({
+    requestedWidth: input.requestedExplorerWidth,
+    viewportWidth: input.viewportWidth,
+    reservedWidth,
+  });
+}
+
+export function resolveDesktopAppContentMinimum(input: { isSettingsRoute: boolean }): number {
+  return input.isSettingsRoute ? SETTINGS_DESKTOP_SPLIT_MIN_WIDTH : 0;
 }
 
 export function canDesktopAppSidebarShare(input: {

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
 import { useReplicaQuery } from "@/data/query";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
 interface UseDaemonConfigResult {
@@ -39,9 +40,12 @@ export function useDaemonConfig(serverId: string | null): UseDaemonConfigResult 
       }
       const result = await client.patchDaemonConfig(patch);
       queryClient.setQueryData(queryKey, result.config);
+      if (patch.relay !== undefined) {
+        void queryClient.invalidateQueries({ queryKey: daemonPairingQueryKey(serverId) });
+      }
       return result.config;
     },
-    [client, queryClient, queryKey],
+    [client, queryClient, queryKey, serverId],
   );
 
   return {

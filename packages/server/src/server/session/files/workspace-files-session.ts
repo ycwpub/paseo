@@ -321,22 +321,26 @@ export class WorkspaceFilesSession {
         }
       }
     } catch (error) {
-      this.logger.error(
-        { err: error, cwd, path: requestedPath },
-        `Failed to fulfill file explorer request for workspace ${cwd}`,
-      );
-      this.host.emit(
-        {
-          type: "file_explorer_response",
-          payload: {
-            cwd,
-            path: requestedPath,
-            mode,
-            directory: null,
-            file: null,
-            error: getErrorMessage(error),
-            requestId,
-          },
+      const errorCode = getFileExplorerErrorCode(error);
+      if (errorCode === "not_found") {
+        this.logger.debug({ cwd, path: requestedPath }, "File explorer path does not exist");
+      } else {
+        this.logger.error(
+          { err: error, cwd, path: requestedPath },
+          `Failed to fulfill file explorer request for workspace ${cwd}`,
+        );
+      }
+      this.host.emit({
+        type: "file_explorer_response",
+        payload: {
+          cwd,
+          path: requestedPath,
+          mode,
+          directory: null,
+          file: null,
+          error: getErrorMessage(error),
+          ...(errorCode ? { errorCode } : {}),
+          requestId,
         },
         source,
       );
@@ -455,4 +459,9 @@ export class WorkspaceFilesSession {
       });
     }
   }
+}
+
+function getFileExplorerErrorCode(error: unknown): "not_found" | null {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "ENOENT" || code === "ENOTDIR" ? "not_found" : null;
 }

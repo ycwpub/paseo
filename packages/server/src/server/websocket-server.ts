@@ -1,9 +1,11 @@
 import { WebSocket, WebSocketServer } from "ws";
+import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, Server as HTTPServer } from "http";
 import { join } from "path";
-import { hostname as getHostname } from "node:os";
+import { hostname as getHostname, networkInterfaces } from "node:os";
 import { randomUUID } from "node:crypto";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import type { KeyPair } from "@getpaseo/relay/e2ee";
 import type { AgentManager, AgentMetricsSnapshot } from "./agent/agent-manager.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
@@ -16,6 +18,7 @@ import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-m
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
   type ServerInfoStatusPayload,
+  type DaemonClientAccessEntry,
   type SessionOutboundMessage,
   type WorkspaceSetupSnapshot,
   type WSHelloMessage,
@@ -96,13 +99,27 @@ import type { AssistantStore } from "./assistants/assistant-store.js";
 import type { TeamStore } from "./team/team-store.js";
 import type { McpStore } from "./mcp/mcp-store.js";
 import type { SkillStore } from "./skill/skill-store.js";
+import {
+  CLIENT_ACCESS_HISTORY_RETENTION_DAYS,
+  ClientAccessStore,
+  type ApprovedClientAccessRecord,
+} from "./client-access-store.js";
+import { wrapDaemonEncryptedWebSocket } from "./encrypted-websocket.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
+const WS_CLOSE_DIRECT_UPGRADE_DENIED = 4403;
+const WS_CLOSE_CLIENT_ACCESS_REVOKED = 4404;
+const CLIENT_ACCESS_DENIED_MESSAGE = "无权限，联系服务端通过连接申请";
+const DIRECT_UPGRADE_TOKEN_TTL_MS = 30_000;
 
 export interface ExternalSocketMetadata {
-  transport: "relay";
+  transport: "relay" | "direct_e2ee";
   externalSessionKey?: string;
   relayConnectionId?: string;
+  directUpgradeClientId?: string;
+  remoteAddress?: string;
+  remotePort?: number;
+  userAgent?: string;
 }
 
 interface PendingConnection {
@@ -110,6 +127,15 @@ interface PendingConnection {
   helloTimeout: ReturnType<typeof setTimeout> | null;
   identity: WebSocketConnectionIdentity;
 }
+
+interface PendingClientAdmission {
+  connectionLogger: pino.Logger;
+  identity: WebSocketConnectionIdentity;
+  hello: WSHelloMessage;
+  requestedAt: string;
+}
+
+type ImplicitlyAllowedClientAccessEntry = Omit<DaemonClientAccessEntry, "connected" | "status">;
 
 interface WebSocketConnectionIdentity {
   connectionId: string;
@@ -120,7 +146,9 @@ interface WebSocketConnectionIdentity {
   origin?: string;
   userAgent?: string;
   remoteAddress?: string;
+  remotePort?: number;
   relayConnectionId?: string;
+  directUpgradeClientId?: string;
   clientId?: string;
   sessionId?: string;
   appVersion?: string;
@@ -432,6 +460,8 @@ interface HubConnection {
   socket: WebSocketLike;
 }
 
+type SessionInboundMessage = Extract<WSInboundMessage, { type: "session" }>["message"];
+
 type SessionConnection = TrustedSessionConnection | HubConnection;
 
 type TrustedLifecycleKey =
@@ -514,9 +544,15 @@ export class VoiceAssistantWebSocketServer {
   private readonly logger: pino.Logger;
   private readonly wss: WebSocketServer;
   private readonly pendingConnections: Map<WebSocketLike, PendingConnection> = new Map();
+  private readonly pendingClientAdmissions = new Map<WebSocketLike, PendingClientAdmission>();
   private readonly sessions: Map<WebSocketLike, SessionConnection> = new Map();
   private readonly socketIdentities: Map<WebSocketLike, WebSocketConnectionIdentity> = new Map();
+  private readonly clientAccessHistoryIds = new Map<WebSocketLike, string>();
   private readonly externalSessionsByKey: Map<string, TrustedSessionConnection> = new Map();
+  private readonly implicitlyAllowedClientAccess = new Map<
+    string,
+    ImplicitlyAllowedClientAccessEntry
+  >();
   private readonly serverId: string;
   private readonly daemonVersion: string;
   private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
@@ -574,6 +610,15 @@ export class VoiceAssistantWebSocketServer {
   private readonly teamStore: TeamStore | null;
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
+  private readonly clientAccessStore: ClientAccessStore;
+  private readonly daemonKeyPair: KeyPair | null;
+  private readonly directUpgradeTokens = new Map<
+    string,
+    { clientId: string; expiresAtMs: number }
+  >();
+  private directHttpServer: HTTPServer | null = null;
+  private directWss: WebSocketServer | null = null;
+  private directCandidateBaseUrls: string[] = [];
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
   private acceptingConnections = true;
   private readonly advertiseDaemonStatusRpc: boolean;
@@ -627,6 +672,7 @@ export class VoiceAssistantWebSocketServer {
     teamStore?: TeamStore | null,
     mcpStore?: McpStore | null,
     skillStore?: SkillStore | null,
+    daemonKeyPair?: KeyPair,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -645,6 +691,7 @@ export class VoiceAssistantWebSocketServer {
     this.teamStore = teamStore ?? null;
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
+    this.daemonKeyPair = daemonKeyPair ?? null;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
@@ -660,6 +707,10 @@ export class VoiceAssistantWebSocketServer {
     this.workspaceAutoName = workspaceAutoName;
     this.downloadTokenStore = downloadTokenStore;
     this.paseoHome = paseoHome;
+    this.clientAccessStore = new ClientAccessStore(
+      this.logger,
+      join(paseoHome, "client-access.json"),
+    );
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
     this.mcpBaseUrl = mcpBaseUrl;
@@ -693,6 +744,9 @@ export class VoiceAssistantWebSocketServer {
         { removeProviders: details.removedProviders },
       );
       this.agentManager.updateProviderRegistry(nextAgentManagerState);
+      if (!config.clientAccess.requireApproval) {
+        this.acceptPendingClientAdmissions();
+      }
       this.broadcastDaemonConfigChanged(config);
     });
 
@@ -718,6 +772,130 @@ export class VoiceAssistantWebSocketServer {
     this.startApplicationSocketLeaseInterval();
 
     this.logger.info("WebSocket server initialized on /ws");
+  }
+
+  public async startLanDirectListener(): Promise<void> {
+    if (this.directHttpServer || !this.daemonKeyPair) {
+      return;
+    }
+
+    const httpServer = createHttpServer((_request, response) => {
+      response.statusCode = 404;
+      response.end("Not found");
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onError = (error: Error) => {
+          httpServer.off("listening", onListening);
+          reject(error);
+        };
+        const onListening = () => {
+          httpServer.off("error", onError);
+          resolve();
+        };
+        httpServer.once("error", onError);
+        httpServer.once("listening", onListening);
+        httpServer.listen(0, "0.0.0.0");
+      });
+    } catch (error) {
+      httpServer.close();
+      this.logger.warn({ err: error }, "Failed to start LAN direct listener");
+      return;
+    }
+
+    const boundAddress = httpServer.address();
+    if (!boundAddress || typeof boundAddress === "string") {
+      httpServer.close();
+      return;
+    }
+
+    const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+    wss.on("connection", (socket, request) => {
+      void this.attachLanDirectSocket(socket, request);
+    });
+    this.directHttpServer = httpServer;
+    this.directWss = wss;
+    this.directCandidateBaseUrls = listLanIpv4Addresses().map(
+      (host) => `ws://${host}:${boundAddress.port}/ws`,
+    );
+    this.logger.info(
+      {
+        port: boundAddress.port,
+        candidateCount: this.directCandidateBaseUrls.length,
+      },
+      "LAN E2EE direct listener started",
+    );
+  }
+
+  private async attachLanDirectSocket(socket: WebSocket, request: IncomingMessage): Promise<void> {
+    const token = readDirectUpgradeToken(request);
+    const grant = token ? this.consumeDirectUpgradeToken(token) : null;
+    if (!grant || !this.daemonKeyPair) {
+      socket.close(WS_CLOSE_DIRECT_UPGRADE_DENIED, "Direct upgrade denied");
+      return;
+    }
+
+    try {
+      const encryptedSocket = await wrapDaemonEncryptedWebSocket(
+        socket,
+        this.daemonKeyPair,
+        this.logger.child({ module: "lan-direct", clientId: grant.clientId }),
+      );
+      await this.attachSocket(encryptedSocket, request, {
+        transport: "direct_e2ee",
+        directUpgradeClientId: grant.clientId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, clientId: grant.clientId },
+        "LAN direct E2EE handshake failed",
+      );
+      try {
+        socket.close(1011, "E2EE handshake failed");
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  private consumeDirectUpgradeToken(
+    token: string,
+  ): { clientId: string; expiresAtMs: number } | null {
+    const grant = this.directUpgradeTokens.get(token);
+    this.directUpgradeTokens.delete(token);
+    if (!grant || grant.expiresAtMs <= Date.now()) {
+      return null;
+    }
+    return grant;
+  }
+
+  private sendDirectConnectionOffer(
+    ws: WebSocketLike,
+    identity: WebSocketConnectionIdentity,
+    clientId: string,
+  ): void {
+    if (identity.transport !== "relay" || this.directCandidateBaseUrls.length === 0) {
+      return;
+    }
+    const now = Date.now();
+    for (const [token, grant] of this.directUpgradeTokens) {
+      if (grant.expiresAtMs <= now || grant.clientId === clientId) {
+        this.directUpgradeTokens.delete(token);
+      }
+    }
+    const token = `${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
+    const expiresAtMs = now + DIRECT_UPGRADE_TOKEN_TTL_MS;
+    this.directUpgradeTokens.set(token, { clientId, expiresAtMs });
+    this.sendToClient(ws, {
+      type: "transport.direct_offer",
+      candidates: this.directCandidateBaseUrls.map((baseUrl) => {
+        const url = new URL(baseUrl);
+        url.searchParams.set("directToken", token);
+        return url.toString();
+      }),
+      expiresAt: new Date(expiresAtMs).toISOString(),
+    });
   }
 
   private assignOptionalServices(params: {
@@ -818,7 +996,11 @@ export class VoiceAssistantWebSocketServer {
 
   // Main-loop stall visibility: terminal frames and agent traffic share one event
   // loop, so delay percentiles here are the ground truth for "the daemon is busy".
-  private snapshotEventLoopDelay(): { p50Ms: number; p99Ms: number; maxMs: number } | null {
+  private snapshotEventLoopDelay(): {
+    p50Ms: number;
+    p99Ms: number;
+    maxMs: number;
+  } | null {
     const monitor = this.eventLoopDelayMonitor;
     if (!monitor) {
       return null;
@@ -1005,7 +1187,10 @@ export class VoiceAssistantWebSocketServer {
       ...this.externalSessionsByKey.values(),
     ]);
 
-    const pendingSockets = new Set<WebSocketLike>(this.pendingConnections.keys());
+    const pendingSockets = new Set<WebSocketLike>([
+      ...this.pendingConnections.keys(),
+      ...this.pendingClientAdmissions.keys(),
+    ]);
     for (const pending of this.pendingConnections.values()) {
       if (pending.helloTimeout) {
         clearTimeout(pending.helloTimeout);
@@ -1055,13 +1240,27 @@ export class VoiceAssistantWebSocketServer {
     this.checkoutDiffManager.dispose();
     await this.workspaceGitService.dispose();
     this.pendingConnections.clear();
+    this.pendingClientAdmissions.clear();
     this.sessions.clear();
     this.socketIdentities.clear();
     this.externalSessionsByKey.clear();
+    this.directUpgradeTokens.clear();
     for (const clientId of this.browserToolsRegistrations.keys()) {
       this.unregisterBrowserToolsClient(clientId);
     }
     this.wss.close();
+    const directWss = this.directWss;
+    this.directWss = null;
+    if (directWss) {
+      await new Promise<void>((resolve) => directWss.close(() => resolve()));
+    }
+    const directHttpServer = this.directHttpServer;
+    this.directHttpServer = null;
+    if (directHttpServer) {
+      directHttpServer.closeAllConnections();
+      await new Promise<void>((resolve) => directHttpServer.close(() => resolve()));
+    }
+    this.directCandidateBaseUrls = [];
   }
 
   private sendToClient(ws: WebSocketLike, message: WSOutboundMessage): void {
@@ -1430,6 +1629,7 @@ export class VoiceAssistantWebSocketServer {
     return pending;
   }
 
+  // oxlint-disable-next-line complexity
   private handleHello(params: {
     ws: WebSocketLike;
     message: WSHelloMessage;
@@ -1471,6 +1671,105 @@ export class VoiceAssistantWebSocketServer {
     if (message.appVersion) {
       pending.identity.appVersion = message.appVersion;
     }
+
+    if (
+      pending.identity.directUpgradeClientId &&
+      pending.identity.directUpgradeClientId !== clientId
+    ) {
+      pending.connectionLogger.warn(
+        {
+          expectedClientId: pending.identity.directUpgradeClientId,
+          receivedClientId: clientId,
+        },
+        "Rejected LAN direct upgrade for mismatched client",
+      );
+      try {
+        ws.close(WS_CLOSE_DIRECT_UPGRADE_DENIED, "Direct upgrade client mismatch");
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (
+      this.clientAccessStore.isPaused(clientId) ||
+      (pending.identity.peer === "external" &&
+        this.daemonConfigStore.get().clientAccess.requireApproval &&
+        !this.clientAccessStore.isApproved(clientId))
+    ) {
+      this.pendingClientAdmissions.set(ws, {
+        connectionLogger: pending.connectionLogger.child({ clientId }),
+        identity: pending.identity,
+        hello: { ...message, clientId },
+        requestedAt: new Date().toISOString(),
+      });
+      this.sendClientApprovalRequired(ws);
+      pending.connectionLogger.info(
+        { ...toConnectionLogFields(pending.identity) },
+        "Client connection waiting for approval",
+      );
+      return;
+    }
+
+    const approvedClient = this.clientAccessStore.get(clientId);
+    if (pending.identity.peer === "external" && approvedClient && !approvedClient.paused) {
+      this.clientAccessStore.approve(
+        {
+          clientId,
+          clientName: message.clientName ?? approvedClient.clientName,
+          clientHostname:
+            resolveClientHostname(message.clientHostname, pending.identity.remoteAddress) ??
+            approvedClient.clientHostname,
+          clientType: message.clientType,
+          appVersion: message.appVersion ?? null,
+          remoteAddress: pending.identity.remoteAddress ?? approvedClient.remoteAddress,
+          remotePort: pending.identity.remotePort ?? approvedClient.remotePort,
+          transport: pending.identity.transport,
+          peer: pending.identity.peer,
+          requestedAt: approvedClient.requestedAt,
+        },
+        approvedClient.approvedAt,
+      );
+    }
+
+    this.acceptApprovedHello({
+      ws,
+      message: { ...message, clientId },
+      identity: pending.identity,
+      connectionLogger: pending.connectionLogger,
+    });
+  }
+
+  private acceptApprovedHello(params: {
+    ws: WebSocketLike;
+    message: WSHelloMessage;
+    identity: WebSocketConnectionIdentity;
+    connectionLogger: pino.Logger;
+  }): void {
+    const { ws, message, identity, connectionLogger: baseLogger } = params;
+    const clientId = message.clientId.trim();
+    if (!this.clientAccessHistoryIds.has(ws)) {
+      this.clientAccessHistoryIds.set(
+        ws,
+        this.clientAccessStore.startConnection({
+          clientId,
+          clientName: message.clientName ?? null,
+          clientHostname: resolveClientHostname(message.clientHostname, identity.remoteAddress),
+          clientType: message.clientType,
+          appVersion: message.appVersion ?? null,
+          remoteAddress: identity.remoteAddress ?? null,
+          remotePort: identity.remotePort ?? null,
+          transport: identity.transport,
+          peer: identity.peer,
+        }),
+      );
+    }
+    if (this.clientAccessStore.get(clientId)) {
+      this.implicitlyAllowedClientAccess.delete(clientId);
+      this.clientAccessStore.markConnected(clientId);
+    } else {
+      this.recordImplicitlyAllowedClientAccess(message, identity);
+    }
     const existing = this.externalSessionsByKey.get(clientId);
     if (existing) {
       this.incrementRuntimeCounter("helloResumed");
@@ -1497,12 +1796,13 @@ export class VoiceAssistantWebSocketServer {
       }
       existing.sockets.add(ws);
       this.sessions.set(ws, existing);
-      pending.identity.sessionId = existing.session.getSessionId();
+      identity.sessionId = existing.session.getSessionId();
       this.syncBrowserToolsClientRegistration(existing);
       this.sendToClient(ws, this.createServerInfoMessage());
-      pending.connectionLogger.info(
+      this.sendDirectConnectionOffer(ws, identity, clientId);
+      baseLogger.info(
         {
-          ...toConnectionLogFields(pending.identity),
+          ...toConnectionLogFields(identity),
           resumed: true,
           totalSessions: this.sessions.size,
         },
@@ -1511,7 +1811,7 @@ export class VoiceAssistantWebSocketServer {
       return;
     }
 
-    const connectionLogger = pending.connectionLogger.child({ clientId });
+    const connectionLogger = baseLogger.child({ clientId });
     this.incrementRuntimeCounter("helloNew");
     const connection = this.createSessionConnection({
       ws,
@@ -1522,17 +1822,25 @@ export class VoiceAssistantWebSocketServer {
     });
     this.sessions.set(ws, connection);
     this.externalSessionsByKey.set(clientId, connection);
-    pending.identity.sessionId = connection.session.getSessionId();
+    identity.sessionId = connection.session.getSessionId();
     this.syncBrowserToolsClientRegistration(connection);
     this.sendToClient(ws, this.createServerInfoMessage());
+    this.sendDirectConnectionOffer(ws, identity, clientId);
     connection.connectionLogger.info(
       {
-        ...toConnectionLogFields(pending.identity),
+        ...toConnectionLogFields(identity),
         resumed: false,
         totalSessions: this.sessions.size,
       },
       "Client connected via hello",
     );
+  }
+
+  private sendClientApprovalRequired(ws: WebSocketLike): void {
+    this.sendToClient(ws, {
+      type: "connection.approval_required",
+      message: CLIENT_ACCESS_DENIED_MESSAGE,
+    });
   }
 
   private buildServerInfoStatusPayload(): ServerInfoStatusPayload {
@@ -1543,6 +1851,9 @@ export class VoiceAssistantWebSocketServer {
       version: this.daemonVersion,
       // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
       desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
+      ...(this.daemonRuntimeConfig?.relayDeviceType
+        ? { relayDeviceType: this.daemonRuntimeConfig.relayDeviceType }
+        : {}),
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
@@ -1683,6 +1994,228 @@ export class VoiceAssistantWebSocketServer {
     });
   }
 
+  private recordImplicitlyAllowedClientAccess(
+    hello: WSHelloMessage,
+    identity: WebSocketConnectionIdentity,
+    connectedAt = new Date().toISOString(),
+  ): void {
+    const clientId = hello.clientId.trim();
+    const existing = this.implicitlyAllowedClientAccess.get(clientId);
+    this.implicitlyAllowedClientAccess.set(clientId, {
+      clientId,
+      clientName: hello.clientName ?? existing?.clientName ?? null,
+      clientHostname:
+        resolveClientHostname(hello.clientHostname, identity.remoteAddress) ??
+        existing?.clientHostname ??
+        null,
+      clientType: hello.clientType,
+      appVersion: hello.appVersion ?? existing?.appVersion ?? null,
+      remoteAddress: identity.remoteAddress ?? existing?.remoteAddress ?? null,
+      remotePort: identity.remotePort ?? existing?.remotePort ?? null,
+      transport: identity.transport,
+      peer: identity.peer,
+      requestedAt: existing?.requestedAt ?? connectedAt,
+      approvedAt: null,
+      lastConnectedAt: connectedAt,
+    });
+  }
+
+  private listClientAccessEntries(): DaemonClientAccessEntry[] {
+    const entries = new Map<string, DaemonClientAccessEntry>();
+    for (const approved of this.clientAccessStore.listApproved()) {
+      const connection = this.externalSessionsByKey.get(approved.clientId);
+      entries.set(approved.clientId, {
+        ...approved,
+        status: approved.paused ? "paused" : "approved",
+        connected: Boolean(connection && connection.sockets.size > 0),
+      });
+    }
+    for (const allowed of this.implicitlyAllowedClientAccess.values()) {
+      if (entries.has(allowed.clientId)) continue;
+      const connection = this.externalSessionsByKey.get(allowed.clientId);
+      entries.set(allowed.clientId, {
+        ...allowed,
+        status: "allowed",
+        connected: Boolean(connection && connection.sockets.size > 0),
+      });
+    }
+    for (const [socket, pending] of this.pendingClientAdmissions) {
+      const clientId = pending.hello.clientId.trim();
+      if (!clientId || entries.has(clientId)) continue;
+      entries.set(clientId, {
+        clientId,
+        clientName: pending.hello.clientName ?? null,
+        clientHostname: resolveClientHostname(
+          pending.hello.clientHostname,
+          pending.identity.remoteAddress,
+        ),
+        clientType: pending.hello.clientType,
+        appVersion: pending.hello.appVersion ?? null,
+        remoteAddress: pending.identity.remoteAddress ?? null,
+        remotePort: pending.identity.remotePort ?? null,
+        transport: pending.identity.transport,
+        peer: pending.identity.peer,
+        status: "pending",
+        requestedAt: pending.requestedAt,
+        approvedAt: null,
+        lastConnectedAt: null,
+        connected: socket.readyState === 1,
+      });
+    }
+    return Array.from(entries.values()).sort((left, right) => {
+      if (left.status !== right.status) return left.status === "pending" ? -1 : 1;
+      return right.requestedAt.localeCompare(left.requestedAt);
+    });
+  }
+
+  private approveClientAccess(clientIdInput: string): DaemonClientAccessEntry | null {
+    const clientId = clientIdInput.trim();
+    if (!clientId) return null;
+    const admissions = Array.from(this.pendingClientAdmissions.entries()).filter(
+      ([, pending]) => pending.hello.clientId.trim() === clientId,
+    );
+    const pending = admissions[0]?.[1];
+    let approved: ApprovedClientAccessRecord | undefined =
+      this.clientAccessStore.get(clientId) ?? undefined;
+    if (pending) {
+      approved = this.clientAccessStore.approve({
+        clientId,
+        clientName: pending.hello.clientName ?? null,
+        clientHostname: resolveClientHostname(
+          pending.hello.clientHostname,
+          pending.identity.remoteAddress,
+        ),
+        clientType: pending.hello.clientType,
+        appVersion: pending.hello.appVersion ?? null,
+        remoteAddress: pending.identity.remoteAddress ?? null,
+        remotePort: pending.identity.remotePort ?? null,
+        transport: pending.identity.transport,
+        peer: pending.identity.peer,
+        requestedAt: pending.requestedAt,
+      });
+      this.implicitlyAllowedClientAccess.delete(clientId);
+    }
+    if (!approved) return null;
+
+    for (const [socket, admission] of admissions) {
+      this.pendingClientAdmissions.delete(socket);
+      this.acceptApprovedHello({
+        ws: socket,
+        message: admission.hello,
+        identity: admission.identity,
+        connectionLogger: admission.connectionLogger,
+      });
+    }
+    const connection = this.externalSessionsByKey.get(clientId);
+    return {
+      ...approved,
+      status: approved.paused ? "paused" : "approved",
+      connected: Boolean(connection && connection.sockets.size > 0),
+    };
+  }
+
+  private setClientAccessPaused(
+    clientIdInput: string,
+    paused: boolean,
+  ): DaemonClientAccessEntry | null {
+    const clientId = clientIdInput.trim();
+    let updated = this.clientAccessStore.setPaused(clientId, paused);
+    if (!updated && paused) {
+      const allowed = this.implicitlyAllowedClientAccess.get(clientId);
+      if (allowed) {
+        const approved = this.clientAccessStore.approve({
+          clientId: allowed.clientId,
+          clientName: allowed.clientName,
+          clientHostname: allowed.clientHostname,
+          clientType: allowed.clientType,
+          appVersion: allowed.appVersion,
+          remoteAddress: allowed.remoteAddress,
+          remotePort: allowed.remotePort,
+          transport: allowed.transport,
+          peer: allowed.peer,
+          requestedAt: allowed.requestedAt,
+          lastConnectedAt: allowed.lastConnectedAt,
+        });
+        this.implicitlyAllowedClientAccess.delete(clientId);
+        updated = this.clientAccessStore.setPaused(approved.clientId, true);
+      }
+    }
+    if (!updated) return null;
+    if (paused) {
+      setTimeout(() => void this.disconnectClientAccess(clientId), 0);
+    } else {
+      this.acceptPendingClientAdmissionsForClient(clientId);
+    }
+    const connection = this.externalSessionsByKey.get(clientId);
+    return {
+      ...updated,
+      status: paused ? "paused" : "approved",
+      connected: !paused && Boolean(connection && connection.sockets.size > 0),
+    };
+  }
+
+  private deleteClientAccess(clientIdInput: string): boolean {
+    const clientId = clientIdInput.trim();
+    if (!clientId) return false;
+    const hasPendingAdmission = Array.from(this.pendingClientAdmissions.values()).some(
+      (pending) => pending.hello.clientId.trim() === clientId,
+    );
+    const deletedImplicitlyAllowed = this.implicitlyAllowedClientAccess.delete(clientId);
+    const deleted = this.clientAccessStore.delete(clientId);
+    if (!deleted && !deletedImplicitlyAllowed && !hasPendingAdmission) return false;
+    setTimeout(() => void this.disconnectClientAccess(clientId), 0);
+    return true;
+  }
+
+  private acceptPendingClientAdmissionsForClient(clientId: string): void {
+    for (const [socket, admission] of Array.from(this.pendingClientAdmissions.entries())) {
+      if (admission.hello.clientId.trim() !== clientId) continue;
+      this.pendingClientAdmissions.delete(socket);
+      this.acceptApprovedHello({
+        ws: socket,
+        message: admission.hello,
+        identity: admission.identity,
+        connectionLogger: admission.connectionLogger,
+      });
+    }
+  }
+
+  private async disconnectClientAccess(clientId: string): Promise<void> {
+    for (const [socket, admission] of Array.from(this.pendingClientAdmissions.entries())) {
+      if (admission.hello.clientId.trim() !== clientId) continue;
+      this.pendingClientAdmissions.delete(socket);
+      try {
+        socket.close(WS_CLOSE_CLIENT_ACCESS_REVOKED, "Client access revoked");
+      } catch {
+        // ignore close failures
+      }
+    }
+
+    const connection = this.externalSessionsByKey.get(clientId);
+    if (!connection) return;
+    for (const socket of connection.sockets) {
+      try {
+        socket.close(WS_CLOSE_CLIENT_ACCESS_REVOKED, "Client access revoked");
+      } catch {
+        // ignore close failures
+      }
+    }
+    await this.cleanupConnection(connection, "Client access revoked");
+  }
+
+  private acceptPendingClientAdmissions(): void {
+    for (const [socket, admission] of Array.from(this.pendingClientAdmissions.entries())) {
+      if (this.clientAccessStore.isPaused(admission.hello.clientId)) continue;
+      this.pendingClientAdmissions.delete(socket);
+      this.acceptApprovedHello({
+        ws: socket,
+        message: admission.hello,
+        identity: admission.identity,
+        connectionLogger: admission.connectionLogger,
+      });
+    }
+  }
+
   private broadcastCapabilitiesUpdate(): void {
     this.broadcast(this.createServerInfoMessage());
   }
@@ -1711,7 +2244,12 @@ export class VoiceAssistantWebSocketServer {
       const err = error instanceof Error ? error : new Error(String(error));
       const active = this.sessions.get(ws);
       const pending = this.pendingConnections.get(ws);
-      const log = active?.connectionLogger ?? pending?.connectionLogger ?? this.logger;
+      const admission = this.pendingClientAdmissions.get(ws);
+      const log =
+        active?.connectionLogger ??
+        pending?.connectionLogger ??
+        admission?.connectionLogger ??
+        this.logger;
       log.error({ err }, "Client error");
       await this.detachSocket(ws, { error: err });
     });
@@ -1735,6 +2273,11 @@ export class VoiceAssistantWebSocketServer {
   ): Promise<void> {
     this.applicationSocketLease.release(ws);
     const identity = this.socketIdentities.get(ws);
+    const clientAccessHistoryId = this.clientAccessHistoryIds.get(ws);
+    if (clientAccessHistoryId) {
+      this.clientAccessStore.endConnection(clientAccessHistoryId);
+      this.clientAccessHistoryIds.delete(ws);
+    }
     const identityFields = identity ? toConnectionLogFields(identity) : {};
     const pending = this.clearPendingConnection(ws);
     if (pending) {
@@ -1746,6 +2289,21 @@ export class VoiceAssistantWebSocketServer {
           reason: stringifyCloseReason(details.reason),
         },
         "Pending client disconnected",
+      );
+      this.socketIdentities.delete(ws);
+      return;
+    }
+
+    const admission = this.pendingClientAdmissions.get(ws);
+    if (admission) {
+      this.pendingClientAdmissions.delete(ws);
+      admission.connectionLogger.info(
+        {
+          ...identityFields,
+          code: details.code,
+          reason: stringifyCloseReason(details.reason),
+        },
+        "Client access request disconnected",
       );
       this.socketIdentities.delete(ws);
       return;
@@ -1983,6 +2541,10 @@ export class VoiceAssistantWebSocketServer {
     if (!decodedFrame) {
       return false;
     }
+    if (!activeConnection && this.pendingClientAdmissions.has(ws)) {
+      this.sendClientApprovalRequired(ws);
+      return true;
+    }
     if (!activeConnection) {
       this.incrementRuntimeCounter("binaryBeforeHelloRejected");
       log.warn("Rejected binary frame before hello");
@@ -2054,8 +2616,12 @@ export class VoiceAssistantWebSocketServer {
 
     const activeConnection = this.sessions.get(ws);
     const pendingConnection = this.pendingConnections.get(ws);
+    const pendingAdmission = this.pendingClientAdmissions.get(ws);
     const log =
-      activeConnection?.connectionLogger ?? pendingConnection?.connectionLogger ?? this.logger;
+      activeConnection?.connectionLogger ??
+      pendingConnection?.connectionLogger ??
+      pendingAdmission?.connectionLogger ??
+      this.logger;
 
     try {
       const buffer = bufferFromWsData(data);
@@ -2105,6 +2671,11 @@ export class VoiceAssistantWebSocketServer {
         return;
       }
 
+      if (pendingAdmission) {
+        this.sendClientApprovalRequired(ws);
+        return;
+      }
+
       if (!activeConnection) {
         this.incrementRuntimeCounter("missingConnectionForMessage");
         this.logger.error("No connection found for websocket");
@@ -2124,12 +2695,128 @@ export class VoiceAssistantWebSocketServer {
 
       if (message.type === "session") {
         void this.dispatchSessionMessage(ws, activeConnection, message).catch((error: unknown) => {
-          this.handleRawMessageError({ ws, data, error, log: activeConnection.connectionLogger });
+          this.handleRawMessageError({
+            ws,
+            data,
+            error,
+            log: activeConnection.connectionLogger,
+          });
         });
       }
     } catch (error) {
       this.handleRawMessageError({ ws, data, error, log });
     }
+  }
+
+  private dispatchClientAccessMessage(
+    ws: WebSocketLike,
+    activeConnection: TrustedSessionConnection,
+    message: SessionInboundMessage,
+  ): boolean {
+    if (message.type === "daemon.client_access.list.request") {
+      this.sendToClient(
+        ws,
+        wrapSessionMessage({
+          type: "daemon.client_access.list.response",
+          payload: {
+            requestId: message.requestId,
+            clients: this.listClientAccessEntries(),
+            history: this.clientAccessStore.listHistory(),
+            historyRetentionDays: CLIENT_ACCESS_HISTORY_RETENTION_DAYS,
+          },
+        }),
+      );
+      return true;
+    }
+
+    if (message.type === "daemon.client_access.approve.request") {
+      const client = this.approveClientAccess(message.clientId);
+      this.sendToClient(
+        ws,
+        wrapSessionMessage({
+          type: "daemon.client_access.approve.response",
+          payload: {
+            requestId: message.requestId,
+            client,
+            success: client !== null,
+            error: client ? null : "连接申请不存在",
+          },
+        }),
+      );
+      return true;
+    }
+
+    if (message.type === "daemon.client_access.set_paused.request") {
+      const clientId = message.clientId.trim();
+      const isPausingCurrentClient = message.paused && activeConnection.clientId === clientId;
+      const client = isPausingCurrentClient
+        ? null
+        : this.setClientAccessPaused(clientId, message.paused);
+      let error: string | null = null;
+      if (isPausingCurrentClient) {
+        error = "不能暂停当前客户端";
+      } else if (!client) {
+        error = "客户端不存在";
+      }
+      this.sendToClient(
+        ws,
+        wrapSessionMessage({
+          type: "daemon.client_access.set_paused.response",
+          payload: {
+            requestId: message.requestId,
+            client,
+            success: client !== null,
+            error,
+          },
+        }),
+      );
+      return true;
+    }
+
+    if (message.type === "daemon.client_access.delete.request") {
+      const clientId = message.clientId.trim();
+      const isCurrentClient = activeConnection.clientId === clientId;
+      const success = isCurrentClient ? false : this.deleteClientAccess(clientId);
+      let error: string | null = null;
+      if (isCurrentClient) {
+        error = "不能删除当前客户端";
+      } else if (!success) {
+        error = "客户端不存在";
+      }
+      this.sendToClient(
+        ws,
+        wrapSessionMessage({
+          type: "daemon.client_access.delete.response",
+          payload: {
+            requestId: message.requestId,
+            clientId,
+            success,
+            error,
+          },
+        }),
+      );
+      return true;
+    }
+
+    if (message.type === "daemon.client_access.history.delete.request") {
+      const historyId = message.historyId.trim();
+      const success = this.clientAccessStore.deleteHistory(historyId);
+      this.sendToClient(
+        ws,
+        wrapSessionMessage({
+          type: "daemon.client_access.history.delete.response",
+          payload: {
+            requestId: message.requestId,
+            historyId,
+            success,
+            error: success ? null : "历史记录不存在",
+          },
+        }),
+      );
+      return true;
+    }
+
+    return false;
   }
 
   private async dispatchSessionMessage(
@@ -2162,6 +2849,13 @@ export class VoiceAssistantWebSocketServer {
       message.message.type === "browser.automation.execute.response"
     ) {
       this.browserToolsBroker?.receiveResponse(message.message as BrowserAutomationExecuteResponse);
+      return;
+    }
+
+    if (
+      activeConnection.kind === "trusted" &&
+      this.dispatchClientAccessMessage(ws, activeConnection, message.message)
+    ) {
       return;
     }
 
@@ -2556,8 +3250,10 @@ interface SocketRequestMetadata {
   origin?: string;
   userAgent?: string;
   remoteAddress?: string;
+  remotePort?: number;
 }
 
+// oxlint-disable-next-line complexity
 function createWebSocketConnectionIdentity(
   requestMetadata: SocketRequestMetadata,
   metadata: ExternalSocketMetadata | undefined,
@@ -2569,9 +3265,23 @@ function createWebSocketConnectionIdentity(
     browserOrigin: requestMetadata.origin !== undefined,
     ...(requestMetadata.host ? { host: requestMetadata.host } : {}),
     ...(requestMetadata.origin ? { origin: requestMetadata.origin } : {}),
-    ...(requestMetadata.userAgent ? { userAgent: requestMetadata.userAgent } : {}),
-    ...(requestMetadata.remoteAddress ? { remoteAddress: requestMetadata.remoteAddress } : {}),
+    ...((metadata?.userAgent ?? requestMetadata.userAgent)
+      ? { userAgent: metadata?.userAgent ?? requestMetadata.userAgent }
+      : {}),
+    ...((metadata?.remoteAddress ?? requestMetadata.remoteAddress)
+      ? {
+          remoteAddress: normalizeRemoteAddress(
+            (metadata?.remoteAddress ?? requestMetadata.remoteAddress)!,
+          ),
+        }
+      : {}),
+    ...((metadata?.remotePort ?? requestMetadata.remotePort)
+      ? { remotePort: metadata?.remotePort ?? requestMetadata.remotePort }
+      : {}),
     ...(metadata?.relayConnectionId ? { relayConnectionId: metadata.relayConnectionId } : {}),
+    ...(metadata?.directUpgradeClientId
+      ? { directUpgradeClientId: metadata.directUpgradeClientId }
+      : {}),
   };
 }
 
@@ -2584,6 +3294,7 @@ function toConnectionLogFields(identity: WebSocketConnectionIdentity): Record<st
     ...(identity.origin ? { origin: identity.origin } : {}),
     ...(identity.userAgent ? { userAgent: identity.userAgent } : {}),
     ...(identity.remoteAddress ? { remoteAddress: identity.remoteAddress } : {}),
+    ...(identity.remotePort !== undefined ? { remotePort: String(identity.remotePort) } : {}),
     ...(identity.relayConnectionId ? { relayConnectionId: identity.relayConnectionId } : {}),
     ...(identity.clientId ? { clientId: identity.clientId } : {}),
     ...(identity.sessionId ? { sessionId: identity.sessionId } : {}),
@@ -2595,18 +3306,63 @@ function resolveConnectionPeer(
   requestMetadata: SocketRequestMetadata,
   metadata: ExternalSocketMetadata | undefined,
 ): WebSocketConnectionIdentity["peer"] {
-  if (metadata?.transport === "relay") return "external";
+  if (metadata?.transport === "relay" || metadata?.transport === "direct_e2ee") return "external";
   if (!requestMetadata.remoteAddress) return "local_ipc";
   return isLoopbackAddress(requestMetadata.remoteAddress) ? "loopback" : "external";
 }
 
-function isLoopbackAddress(address: string): boolean {
-  const normalized = address.toLowerCase();
-  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
-  const ipv4 = normalized.startsWith("::ffff:") ? normalized.slice("::ffff:".length) : normalized;
-  return ipv4.startsWith("127.");
+function readDirectUpgradeToken(request: IncomingMessage): string | null {
+  try {
+    const url = new URL(request.url ?? "", "http://localhost");
+    const token = url.searchParams.get("directToken")?.trim();
+    return token || null;
+  } catch {
+    return null;
+  }
 }
 
+function listLanIpv4Addresses(): string[] {
+  const addresses = new Set<string>();
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.internal || entry.family !== "IPv4") continue;
+      addresses.add(entry.address);
+    }
+  }
+  return [...addresses].sort();
+}
+
+function isLoopbackAddress(address: string): boolean {
+  const normalized = normalizeRemoteAddress(address).toLowerCase();
+  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") return true;
+  return normalized.startsWith("127.");
+}
+
+function resolveClientHostname(
+  advertisedHostname: string | undefined,
+  remoteAddress: string | undefined,
+): string | null {
+  const advertised = advertisedHostname?.trim();
+  if (advertised) return advertised;
+  if (!remoteAddress) return null;
+  const normalizedRemoteAddress = normalizeRemoteAddress(remoteAddress).toLowerCase();
+  if (isLoopbackAddress(normalizedRemoteAddress)) return getHostname();
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (normalizeRemoteAddress(entry.address).toLowerCase() === normalizedRemoteAddress) {
+        return getHostname();
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeRemoteAddress(address: string): string {
+  const trimmed = address.trim();
+  return trimmed.toLowerCase().startsWith("::ffff:") ? trimmed.slice("::ffff:".length) : trimmed;
+}
+
+// oxlint-disable-next-line complexity
 function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
   if (!request || typeof request !== "object") {
     return {};
@@ -2621,6 +3377,7 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
     url?: unknown;
     socket?: {
       remoteAddress?: unknown;
+      remotePort?: unknown;
     };
   };
 
@@ -2630,12 +3387,20 @@ function extractSocketRequestMetadata(request: unknown): SocketRequestMetadata {
     typeof record.headers?.["user-agent"] === "string" ? record.headers["user-agent"] : undefined;
   const remoteAddress =
     typeof record.socket?.remoteAddress === "string" ? record.socket.remoteAddress : undefined;
+  const remotePort =
+    typeof record.socket?.remotePort === "number" &&
+    Number.isInteger(record.socket.remotePort) &&
+    record.socket.remotePort >= 0 &&
+    record.socket.remotePort <= 65535
+      ? record.socket.remotePort
+      : undefined;
 
   return {
     ...(host ? { host } : {}),
     ...(origin ? { origin } : {}),
     ...(userAgent ? { userAgent } : {}),
     ...(remoteAddress ? { remoteAddress } : {}),
+    ...(remotePort !== undefined ? { remotePort } : {}),
   };
 }
 

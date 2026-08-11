@@ -24,6 +24,8 @@ interface AssistantSelectorProps {
   onSelect: (assistantId: string | null) => void;
   onSelectTeam?: (teamId: string | null, leaderAssistantId: string | null) => void;
   disabled?: boolean;
+  /** Fill the available row in compact composer layouts. */
+  fullWidth?: boolean;
 }
 
 const NO_ASSISTANT_ID = "__none__";
@@ -37,6 +39,7 @@ export function AssistantSelector({
   onSelect,
   onSelectTeam,
   disabled,
+  fullWidth = false,
 }: AssistantSelectorProps): ReactElement | null {
   const assistants = useAssistants(serverId, { enabled: true });
   const supportsTeams = useHostFeature(serverId, "teams");
@@ -117,11 +120,12 @@ export function AssistantSelector({
   const pressableStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType) => [
       styles.trigger,
+      fullWidth && styles.triggerFullWidth,
       hovered && styles.triggerHovered,
       (pressed || open) && styles.triggerPressed,
       effectiveDisabled && styles.triggerDisabled,
     ],
-    [effectiveDisabled, open],
+    [effectiveDisabled, fullWidth, open],
   );
 
   if (!assistants.isLoading && !assistants.isConnected && assistants.assistants.length === 0) {
@@ -182,6 +186,10 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   triggerHovered: {
     backgroundColor: theme.colors.surface2,
+  },
+  triggerFullWidth: {
+    width: "100%",
+    justifyContent: "flex-start",
   },
   triggerPressed: {
     backgroundColor: theme.colors.surface0,

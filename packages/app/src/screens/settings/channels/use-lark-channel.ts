@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { LarkChannelStatus } from "@getpaseo/protocol/messages";
+import type { LarkBotApplication, LarkChannelStatus } from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
 import { larkChannelQueryKey } from "@/data/lark-channel";
 import { useReplicaQuery } from "@/data/query";
@@ -18,6 +18,11 @@ export interface UseLarkChannelResult {
   approvePairing: (code: string, botId?: string | null) => Promise<LarkChannelStatus>;
   rejectPairing: (code: string, botId?: string | null) => Promise<LarkChannelStatus>;
   revokeUser: (userId: string, botId?: string | null) => Promise<LarkChannelStatus>;
+  application: LarkBotApplication | null;
+  applyBot: (name?: string) => Promise<LarkBotApplication>;
+  refreshApplication: () => Promise<LarkBotApplication | null>;
+  clearApplication: () => void;
+  isApplying: boolean;
   isMutating: boolean;
   mutationError: Error | null;
 }
@@ -43,6 +48,8 @@ export function useLarkChannel(
   const queryKey = useMemo(() => larkChannelQueryKey(serverId), [serverId]);
   const queryEnabled = Boolean((options.enabled ?? true) && client && isConnected);
   const lastRefreshKeyRef = useRef<string | null>(null);
+  const [application, setApplication] = useState<LarkBotApplication | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
 
   const query = useReplicaQuery({
     queryKey,
@@ -171,6 +178,35 @@ export function useLarkChannel(
     [client, run],
   );
 
+  const applyBot = useCallback(
+    async (name?: string) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      setIsApplying(true);
+      try {
+        const result = await client.applyLarkBot({ name: name?.trim() || undefined });
+        if (result.error) throw new Error(result.error);
+        if (!result.application) throw new Error("飞书机器人申请任务未创建");
+        setApplication(result.application);
+        return result.application;
+      } finally {
+        setIsApplying(false);
+      }
+    },
+    [client],
+  );
+
+  const refreshApplication = useCallback(async () => {
+    if (!client || !application) return application;
+    const result = await client.getLarkBotApplication({ applicationId: application.id });
+    if (result.error) throw new Error(result.error);
+    setApplication(result.application);
+    return result.application;
+  }, [application, client]);
+
+  const clearApplication = useCallback(() => setApplication(null), []);
+
   return {
     status: query.data ?? null,
     isLoading: query.isLoading && !query.error,
@@ -183,6 +219,11 @@ export function useLarkChannel(
     approvePairing,
     rejectPairing,
     revokeUser,
+    application,
+    applyBot,
+    refreshApplication,
+    clearApplication,
+    isApplying,
     isMutating: mutation.isPending,
     mutationError: mutation.error,
   };

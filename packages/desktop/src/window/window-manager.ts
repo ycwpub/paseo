@@ -15,6 +15,74 @@ import type { WindowState, WindowStateStore } from "../settings/window-state.js"
 const WINDOW_STATE_SAVE_DEBOUNCE_MS = 400;
 const MAC_TRAFFIC_LIGHT_POSITION = { x: 16, y: 14 } as const;
 const MAX_TRAFFIC_LIGHT_OFFSET_Y = 10;
+export const MAX_CUSTOM_WINDOW_NAME_LENGTH = 80;
+
+const customNameByWindow = new WeakMap<BrowserWindow, string>();
+const automaticTitleByWindow = new WeakMap<BrowserWindow, string>();
+const defaultTitleByWindow = new WeakMap<BrowserWindow, string>();
+
+export function normalizeCustomWindowName(input: unknown): string | null {
+  if (typeof input !== "string") {
+    return null;
+  }
+
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.slice(0, MAX_CUSTOM_WINDOW_NAME_LENGTH);
+}
+
+function getAutomaticWindowTitle(win: BrowserWindow): string {
+  return automaticTitleByWindow.get(win) ?? defaultTitleByWindow.get(win) ?? win.getTitle();
+}
+
+export function getWindowDisplayName(win: BrowserWindow): string {
+  return customNameByWindow.get(win) ?? getAutomaticWindowTitle(win);
+}
+
+export function setCustomWindowName(win: BrowserWindow, input: unknown): string | null {
+  const name = normalizeCustomWindowName(input);
+  if (!name) {
+    return null;
+  }
+
+  customNameByWindow.set(win, name);
+  win.setTitle(name);
+  return name;
+}
+
+export function resetCustomWindowName(win: BrowserWindow): string {
+  customNameByWindow.delete(win);
+  const title = getAutomaticWindowTitle(win);
+  win.setTitle(title);
+  return title;
+}
+
+export function setupWindowTitleManagement(win: BrowserWindow, defaultTitle: string): void {
+  defaultTitleByWindow.set(win, defaultTitle);
+  automaticTitleByWindow.set(win, defaultTitle);
+
+  win.webContents.on("page-title-updated", (event, title) => {
+    const automaticTitle = title.trim() || defaultTitle;
+    automaticTitleByWindow.set(win, automaticTitle);
+
+    const customName = customNameByWindow.get(win);
+    if (!customName) {
+      return;
+    }
+
+    event.preventDefault();
+    win.setTitle(customName);
+  });
+
+  win.on("closed", () => {
+    customNameByWindow.delete(win);
+    automaticTitleByWindow.delete(win);
+    defaultTitleByWindow.delete(win);
+  });
+}
 
 export function readBadgeCount(input: unknown): number {
   if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0) {
@@ -229,6 +297,29 @@ export function registerWindowManager(): void {
   ipcMain.handle("paseo:window:setFullscreen", (event, fullscreen: unknown) => {
     if (typeof fullscreen !== "boolean") return;
     BrowserWindow.fromWebContents(event.sender)?.setFullScreen(fullscreen);
+  });
+
+  ipcMain.handle("paseo:window:getName", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win ? getWindowDisplayName(win) : "";
+  });
+
+  ipcMain.handle("paseo:window:setName", (event, name: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) {
+      throw new Error("Window is unavailable.");
+    }
+
+    const normalizedName = setCustomWindowName(win, name);
+    if (!normalizedName) {
+      throw new Error("Window name is required.");
+    }
+    return normalizedName;
+  });
+
+  ipcMain.handle("paseo:window:resetName", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win ? resetCustomWindowName(win) : "";
   });
 
   ipcMain.handle("paseo:window:setBadgeCount", (_event, count?: unknown) => {

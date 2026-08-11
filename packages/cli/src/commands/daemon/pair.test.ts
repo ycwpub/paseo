@@ -1,139 +1,107 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 
-import { runPairCommand, type PairCommandOutput, type PairingOffer } from "./pair.js";
+import { getCompleteDaemonPairingOffer } from "./pair.js";
 
-const disabledOffer: PairingOffer = { relayEnabled: false, url: null, qr: null };
-const enabledOffer: PairingOffer = {
-  relayEnabled: true,
-  url: "https://app.paseo.sh/#offer=test",
-  qr: null,
-};
+type PairingClient = Parameters<typeof getCompleteDaemonPairingOffer>[0];
 
-interface RecordedPairCommandOutput extends PairCommandOutput {
-  stdout: string[];
-  stderr: string[];
-  successes: string[];
-  exitCode: number | undefined;
-}
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-function createRecordedOutput(): RecordedPairCommandOutput {
+function createClient(input: {
+  endpoints: Array<{
+    endpoint: string;
+    useTls: boolean;
+    publicEndpoint?: string;
+  }>;
+  local: {
+    enabled: boolean;
+    listen: string;
+    publicEndpoint?: string;
+  };
+  offers: Array<Array<{ endpoint: string; useTls: boolean }>>;
+}) {
+  let offerIndex = 0;
+  const getDaemonPairingOffer = vi.fn(async () => {
+    const offers = input.offers[Math.min(offerIndex, input.offers.length - 1)] ?? [];
+    offerIndex += 1;
+    return {
+      relayEnabled: offers.length > 0,
+      url: "https://app.paseo.sh/#offer=test",
+      qr: null,
+      offers: offers.map((offer) => ({
+        endpoint: offer.endpoint,
+        useTls: offer.useTls,
+        url: `https://app.paseo.sh/#offer=${offer.endpoint}`,
+        qr: null,
+      })),
+    };
+  });
   return {
-    columns: 80,
-    stdout: [],
-    stderr: [],
-    successes: [],
-    exitCode: undefined,
-    writeStdout(message) {
-      this.stdout.push(message);
+    client: {
+      getDaemonConfig: vi.fn(async () => ({
+        config: {
+          relay: {
+            endpoints: input.endpoints,
+            local: input.local,
+          },
+        },
+      })),
+      getDaemonPairingOffer,
     },
-    writeStderr(message) {
-      this.stderr.push(message);
-    },
-    setExitCode(code) {
-      this.exitCode = code;
-    },
-    success(message) {
-      this.successes.push(message);
-    },
+    getDaemonPairingOffer,
   };
 }
 
-describe("daemon pair workflow", () => {
-  test("interactive decline prints direct guidance and creates no pairing output", async () => {
-    const resolveOffer = vi.fn(async () => disabledOffer);
-    const confirmRelay = vi.fn(async () => false);
-    const printDirectGuidance = vi.fn();
-    const output = createRecordedOutput();
-
-    await runPairCommand(
-      {},
-      { resolveOffer, confirmRelay, printDirectGuidance, isInteractive: () => true, output },
-    );
-
-    expect(confirmRelay).toHaveBeenCalledOnce();
-    expect(printDirectGuidance).toHaveBeenCalledOnce();
-    expect(output.stderr.join("")).toContain("No pairing QR was created");
-    expect(output.exitCode).toBe(1);
+test("does not double-count a configured Relay replaced by the local WS Relay", async () => {
+  const { client, getDaemonPairingOffer } = createClient({
+    endpoints: [
+      { endpoint: "relay.paseo.sh:443", useTls: true },
+      { endpoint: "10.71.95.148:6769", useTls: false },
+    ],
+    local: {
+      enabled: true,
+      listen: "10.71.95.148:6769",
+    },
+    offers: [
+      [
+        { endpoint: "relay.paseo.sh:443", useTls: true },
+        { endpoint: "10.71.95.148:6769", useTls: false },
+      ],
+    ],
   });
 
-  test("interactive consent enables relay and prints the refreshed offer", async () => {
-    const resolveOffer = vi
-      .fn<(options: { paseoHome: string; enableRelay?: boolean }) => Promise<PairingOffer>>()
-      .mockResolvedValueOnce(disabledOffer)
-      .mockResolvedValueOnce(enabledOffer);
-    const output = createRecordedOutput();
+  const result = await getCompleteDaemonPairingOffer(client as PairingClient, 100);
 
-    await runPairCommand(
-      {},
-      {
-        resolveOffer,
-        confirmRelay: async () => true,
-        printDirectGuidance: vi.fn(),
-        isInteractive: () => true,
-        output,
-      },
-    );
+  expect(result.offers).toHaveLength(2);
+  expect(result.offers[1]).toMatchObject({
+    endpoint: "10.71.95.148:6769",
+    useTls: false,
+  });
+  expect(getDaemonPairingOffer).toHaveBeenCalledTimes(1);
+});
 
-    expect(resolveOffer).toHaveBeenNthCalledWith(2, expect.objectContaining({ enableRelay: true }));
-    expect(output.stdout.join("")).toContain(enabledOffer.url ?? "");
-    expect(output.successes).toEqual(["Relay enabled"]);
+test("waits for the local Relay to appear in the runtime pairing offer", async () => {
+  vi.useFakeTimers();
+  const { client, getDaemonPairingOffer } = createClient({
+    endpoints: [{ endpoint: "relay.paseo.sh:443", useTls: true }],
+    local: {
+      enabled: true,
+      listen: "10.71.95.148:6769",
+    },
+    offers: [
+      [{ endpoint: "relay.paseo.sh:443", useTls: true }],
+      [
+        { endpoint: "relay.paseo.sh:443", useTls: true },
+        { endpoint: "10.71.95.148:6769", useTls: false },
+      ],
+    ],
   });
 
-  test("JSON mode never prompts and returns a structured relay-disabled error", async () => {
-    const confirmRelay = vi.fn(async () => true);
-    const output = createRecordedOutput();
+  const resultPromise = getCompleteDaemonPairingOffer(client as PairingClient, 1_000);
+  await vi.advanceTimersByTimeAsync(100);
+  const result = await resultPromise;
 
-    await runPairCommand(
-      { json: true },
-      {
-        resolveOffer: async () => disabledOffer,
-        confirmRelay,
-        printDirectGuidance: vi.fn(),
-        isInteractive: () => true,
-        output,
-      },
-    );
-
-    expect(confirmRelay).not.toHaveBeenCalled();
-    expect(output.stderr.join("")).toContain('"code":"RELAY_DISABLED"');
-    expect(output.exitCode).toBe(1);
-  });
-
-  test("explicit relay opts in without prompting", async () => {
-    const resolveOffer = vi.fn(async () => enabledOffer);
-    const confirmRelay = vi.fn(async () => false);
-    const output = createRecordedOutput();
-
-    await runPairCommand(
-      { relay: true, json: true },
-      {
-        resolveOffer,
-        confirmRelay,
-        printDirectGuidance: vi.fn(),
-        isInteractive: () => false,
-        output,
-      },
-    );
-
-    expect(resolveOffer).toHaveBeenCalledWith(expect.objectContaining({ enableRelay: true }));
-    expect(confirmRelay).not.toHaveBeenCalled();
-    expect(output.exitCode).toBeUndefined();
-  });
-
-  test("surfaces launch-override rejection", async () => {
-    await expect(
-      runPairCommand(
-        { relay: true },
-        {
-          resolveOffer: async () => {
-            throw new Error("Relay is controlled by a daemon launch override");
-          },
-          confirmRelay: vi.fn(),
-          printDirectGuidance: vi.fn(),
-          isInteractive: () => false,
-          output: createRecordedOutput(),
-        },
-      ),
-    ).rejects.toThrow("launch override");
-  });
+  expect(result.offers).toHaveLength(2);
+  expect(getDaemonPairingOffer).toHaveBeenCalledTimes(2);
 });

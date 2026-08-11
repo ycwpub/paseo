@@ -82,7 +82,9 @@ function omitProvidersFromConfig<T extends { providers?: Record<string, unknown>
 }
 
 function omitMetadataGenerationProvidersFromConfig<
-  T extends { metadataGeneration?: { providers?: Array<{ provider?: unknown }> } },
+  T extends {
+    metadataGeneration?: { providers?: Array<{ provider?: unknown }> };
+  },
 >(config: T, providers: readonly string[]): T {
   if (providers.length === 0 || !config.metadataGeneration?.providers) {
     return config;
@@ -352,6 +354,26 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       browserTools: {
         ...persisted.daemon?.browserTools,
         enabled: browserToolsEnabled,
+      },
+      clientAccess: {
+        ...persisted.daemon?.clientAccess,
+        requireApproval: mutable.clientAccess.requireApproval,
+      },
+      projectIndexing: {
+        ...persisted.daemon?.projectIndexing,
+        updateIntervalMinutes: mutable.projectIndexing.updateIntervalMinutes,
+      },
+      instructionTemplates: mutable.instructionTemplates,
+      relay: {
+        ...persisted.daemon?.relay,
+        enabled: mutable.relay.endpoints.length > 0 || mutable.relay.local.enabled,
+        endpoints: mutable.relay.endpoints,
+        local: mutable.relay.local,
+        // Stop persisting the legacy single-relay fields after the first edit.
+        endpoint: undefined,
+        publicEndpoint: undefined,
+        useTls: undefined,
+        publicUseTls: undefined,
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,

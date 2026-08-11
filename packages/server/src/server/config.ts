@@ -23,14 +23,8 @@ import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
-import {
-  normalizeLocalRelayPairingBaseUrl,
-  normalizeLocalRelayWebAppPath,
-  normalizeRelayPairingBaseUrl,
-  parseRelayEndpointInput,
-  shouldUseTlsForDefaultHostedRelay,
-  type RelayEndpointConfig,
-} from "@getpaseo/protocol/daemon-endpoints";
+import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
+import { resolveLegacyRelaySummary, resolveRelayConfig } from "./config/relay-config.js";
 
 const DEFAULT_PORT = 6767;
 const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
@@ -790,6 +784,7 @@ export function resolveConfigFromPersisted(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    git: resolveGitProcessConfig(env, persisted),
     clientAccessRequireApproval,
     projectIndexUpdateIntervalMinutes,
     instructionTemplates,
@@ -807,6 +802,7 @@ export function resolveConfigFromPersisted(
     staticDir: "public",
     agentClients: {},
     relayEnabled: relay.enabled,
+    relayEnabledMutable: true,
     relayEndpoints: relay.endpoints,
     relayPairingBaseUrls: relay.pairingBaseUrls,
     ...resolveLegacyRelaySummary(relay.endpoints),

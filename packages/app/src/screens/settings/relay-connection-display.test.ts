@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { HostProfile } from "@/types/host-connection";
+import { defaultHostAppearance } from "@/hosts/appearance";
 import {
   buildRelayHostLabelMap,
   buildRelayServerDeviceTypeMap,
@@ -12,6 +13,7 @@ function host(serverId: string, label: string): HostProfile {
   return {
     serverId,
     label,
+    appearance: defaultHostAppearance(),
     lifecycle: {},
     connections: [],
     preferredConnectionId: null,

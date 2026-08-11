@@ -48,6 +48,7 @@ export const ptBR: TranslationResources = {
       idle: "Ocioso",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",
@@ -1084,6 +1085,11 @@ export const ptBR: TranslationResources = {
         project: "Projeto",
         status: "Status",
         labels: "Etiquetas",
+      },
+      sorting: {
+        label: "Ordenar por",
+        activity: "Atividade recente",
+        manual: "Manual",
       },
       titleSource: {
         label: "Título",

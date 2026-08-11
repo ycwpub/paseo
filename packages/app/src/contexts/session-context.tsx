@@ -455,6 +455,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     );
     const sync = getHostRuntimeStore().createViewedTimelineOwner(serverId, {
       initialDeliveryMode,
+      readCursor: (agentId) =>
+        useSessionStore.getState().sessions[serverId]?.agentTimelineCursor.get(agentId) ?? null,
       setSubscription: (agentIds) => client.setAgentTimelineSubscription(agentIds),
       readCursor: (agentId) => {
         const timeline = selectAgentTimelineState(

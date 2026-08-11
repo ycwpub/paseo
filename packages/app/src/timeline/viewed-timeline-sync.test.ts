@@ -44,6 +44,7 @@ class TimelineWorld {
       await this.cacheGate?.promise;
     },
     initialDeliveryMode: "selective",
+    readCursor: (agentId) => this.liveCursors.get(agentId) ?? null,
     setSubscription: async (agentIds) => {
       const result = deferred<void>();
       this.memberships.push({
@@ -150,6 +151,10 @@ class TimelineWorld {
     return new Promise((resolve) => this.membershipWaiters.push(resolve));
   }
 
+  setLiveCursor(agentId: string, endSeq: number): void {
+    this.liveCursors.set(agentId, { epoch: `epoch-${agentId}`, endSeq });
+  }
+
   nextFetch(agentId: string): Promise<TimelineFetch> {
     const index = this.fetches.findIndex((fetch) => fetch.agentId === agentId);
     if (index >= 0) return Promise.resolve(this.fetches.splice(index, 1)[0]);
@@ -212,7 +217,7 @@ test("uses a tail fetch when an agent becomes visible", async () => {
   membership.succeed();
 
   const fetch = await world.nextFetch("agent-a");
-  expect(fetch.request).toEqual({ direction: "tail", limit: 40, projection: "projected" });
+  expect(fetch.request).toEqual({ direction: "tail", limit: 100, projection: "projected" });
   fetch.respond({ hasNewer: false });
 });
 
@@ -293,7 +298,7 @@ test("a gap absorbed by a running tail is recovered after the tail completes", a
   expect(recovery.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 9 },
-    limit: 40,
+    limit: 100,
     projection: "projected",
   });
   recovery.respond({ hasNewer: false });
@@ -322,7 +327,7 @@ test("unchanged visible-set publication does not cancel paged catch-up", async (
   expect(secondPage.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 5 },
-    limit: 40,
+    limit: 100,
     projection: "projected",
   });
   world.expectNoPendingMembership();
@@ -586,13 +591,13 @@ test("gap recovery supersedes completed catch-up and pages through the current t
     {
       direction: "after",
       cursor: { epoch: "epoch-agent-a", seq: 10 },
-      limit: 40,
+      limit: 100,
       projection: "projected",
     },
     {
       direction: "after",
       cursor: { epoch: "epoch-agent-a", seq: 15 },
-      limit: 40,
+      limit: 100,
       projection: "projected",
     },
   ]);
@@ -903,7 +908,7 @@ test("legacy delivery skips subscription RPCs while retaining visibility catch-u
   expect(recovery.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 10 },
-    limit: 40,
+    limit: 100,
     projection: "projected",
   });
 });

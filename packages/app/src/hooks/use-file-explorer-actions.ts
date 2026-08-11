@@ -1,7 +1,11 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { FileExplorerRequestError } from "@getpaseo/client";
-import { useSessionStore, type AgentFileExplorerState } from "@/stores/session-store";
+import {
+  useSessionStore,
+  type AgentFileExplorerState,
+  type ExplorerDirectory,
+} from "@/stores/session-store";
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
 import { parentExplorerPath } from "@/utils/explorer-paths";
 

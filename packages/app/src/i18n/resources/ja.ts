@@ -48,6 +48,7 @@ export const ja: TranslationResources = {
       idle: "アイドル",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "サイドバーを切り替え",
@@ -1070,6 +1071,11 @@ export const ja: TranslationResources = {
         project: "プロジェクト",
         status: "ステータス",
         labels: "ラベル",
+      },
+      sorting: {
+        label: "並び順",
+        activity: "最近のアクティビティ",
+        manual: "手動",
       },
       titleSource: {
         label: "タイトル",

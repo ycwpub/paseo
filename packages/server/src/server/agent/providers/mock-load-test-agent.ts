@@ -457,6 +457,45 @@ function parseStructuredBranchNamePrompt(
   return { title: title || "Mock task", branch };
 }
 
+function parseMockWorkflowResultPrompt(prompt: AgentPromptInput): Record<string, string> | null {
+  const text = promptToText(prompt);
+  const marker = "MOCK_WORKFLOW_RESULT:";
+  const line = text
+    .split("\n")
+    .map((candidate) => candidate.trim())
+    .find((candidate) => candidate.startsWith(marker));
+  if (!line) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(line.slice(marker.length).trim()) as unknown;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("filePath" in parsed) ||
+      !("control" in parsed) ||
+      !("error" in parsed)
+    ) {
+      return null;
+    }
+    const result = parsed as Record<string, unknown>;
+    if (
+      typeof result.filePath !== "string" ||
+      typeof result.control !== "string" ||
+      typeof result.error !== "string"
+    ) {
+      return null;
+    }
+    return {
+      filePath: result.filePath,
+      control: result.control,
+      error: result.error,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function buildRepeatedPayload(bytes: number, prefix: string): string {
   const line = `${prefix} ${"x".repeat(96)}\n`;
   let output = "";
@@ -831,6 +870,8 @@ export class MockLoadTestAgentSession implements AgentSession {
         this.scheduleStreamingAssistantTurn(turn, this.streamingAssistantResponse);
       } else if (this.assistantResponse !== null) {
         this.scheduleSettledAssistantTurn(turn, this.assistantResponse);
+      } else if (workflowResult) {
+        this.scheduleSettledAssistantTurn(turn, JSON.stringify(workflowResult));
       } else if (structuredBranchName) {
         this.scheduleSettledAssistantTurn(turn, JSON.stringify(structuredBranchName));
       } else if (settledAssistantImageMarkdown) {

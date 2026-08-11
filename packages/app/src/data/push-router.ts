@@ -7,11 +7,17 @@ import type {
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
 import { daemonConfigQueryKey, normalizeMutableDaemonConfig } from "@/data/daemon-config";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing";
 import { larkChannelQueryKey } from "@/data/lark-channel";
 import { teamsQueryKey } from "@/data/team";
 import { mcpServersQueryKey } from "@/data/mcp";
 import { skillsQueryKey } from "@/data/skill";
-import { providersSnapshotQueryKey, providersSnapshotQueryRoot } from "@/data/providers-snapshot";
+import { providerSnapshotCache, type ProviderSnapshotCache } from "@/data/provider-snapshot-cache";
+import {
+  normalizeProvidersSnapshotCwd,
+  providersSnapshotQueryKey,
+  providersSnapshotQueryRoot,
+} from "@/data/providers-snapshot";
 
 type ProvidersSnapshotUpdateMessage = Extract<
   SessionOutboundMessage,
@@ -112,6 +118,12 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
     domain: "daemonConfig",
     invalidate: ({ queryClient, serverId }) => {
       void queryClient.invalidateQueries({ queryKey: daemonConfigQueryKey(serverId) });
+    },
+  },
+  {
+    domain: "daemonPairing",
+    invalidate: ({ queryClient, serverId }) => {
+      void queryClient.invalidateQueries({ queryKey: daemonPairingQueryKey(serverId) });
     },
   },
   {
@@ -456,7 +468,7 @@ function applyDaemonConfigStatus(input: {
     normalizeMutableDaemonConfig(payload.config),
   );
   void input.queryClient.invalidateQueries({
-    queryKey: daemonPairingOfferQueryKey(input.serverId),
+    queryKey: daemonPairingQueryKey(input.serverId),
   });
 }
 

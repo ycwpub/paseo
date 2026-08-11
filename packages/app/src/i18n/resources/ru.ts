@@ -48,6 +48,7 @@ export const ru: TranslationResources = {
       idle: "Ожидание",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Переключить боковую панель",
@@ -1076,6 +1077,11 @@ export const ru: TranslationResources = {
         project: "Проект",
         status: "Статус",
         labels: "Метки",
+      },
+      sorting: {
+        label: "Сортировать по",
+        activity: "Недавняя активность",
+        manual: "Вручную",
       },
       titleSource: {
         label: "Заголовок",

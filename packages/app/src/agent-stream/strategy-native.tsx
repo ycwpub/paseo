@@ -50,7 +50,18 @@ const DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION = Object.freeze({
   minIndexForVisible: 0,
   autoscrollToTopThreshold: 0,
 });
-const HISTORY_START_THRESHOLD_PX = 800;
+
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const historyStartSlotStyle: ViewStyle = {
+  alignItems: "center",
+  justifyContent: "center",
+  height: 32,
+  flexShrink: 0,
+};
+const HISTORY_START_SETTLE_FRAMES = 2;
 
 interface HistoryRowDisplayVariants {
   regular?: StreamItem;
@@ -90,7 +101,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     onNearHistoryStart,
     isLoadingOlderHistory,
     hasOlderHistory,
-    olderHistoryProgressKey,
+    olderHistoryProgressKey = null,
     scrollEnabled,
     listStyle,
     baseListContentContainerStyle,

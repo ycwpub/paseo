@@ -17,6 +17,7 @@ import {
   Text,
   Pressable,
   Platform,
+  ActivityIndicator,
   type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
@@ -56,7 +57,6 @@ import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import { useSettings } from "@/hooks/use-settings";
 import type { ToastApi } from "@/components/toast-host";
-import { returnToTimelineTail } from "./timeline-tail-navigation";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { ToolCallDetailsContent } from "@/components/tool-call-details";
 import { QuestionFormCard } from "@/components/question-form-card";
@@ -69,10 +69,7 @@ import { OverviewToolCallGroupView } from "@/tool-calls/detail-level/overview/vi
 import { type AgentStreamRenderModel, buildAgentStreamRenderModel } from "./model";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
-import { ChatOutlineRail } from "@/agent-stream/chat-outline/rail";
 import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
-import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
   CompletedTurnFooterRow,
   TurnFooter,
@@ -87,6 +84,8 @@ import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
+import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
+import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 import { projectProcessVisibility } from "./process-visibility";
 import {
   AssistantFileLinkResolverProvider,
@@ -376,10 +375,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const timelineEpoch = useSessionStore(
       (state) => state.sessions[resolvedServerId]?.agentTimelineCursor.get(agentId)?.epoch ?? null,
     );
-    const isTimelineDetached = useSessionStore(
-      (state) => state.sessions[resolvedServerId]?.agentTimelineHasNewer.get(agentId) === true,
-    );
-
     const workspaceRoot = context.cwd?.trim() || "";
     const { requestDirectoryListing } = useFileExplorerActions({
       serverId: resolvedServerId,
@@ -561,7 +556,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const baseRenderModel = useMemo(() => {
       const visibleRenderModel = buildAgentStreamRenderModel({
-        agentStatus: context.status,
+        isTurnActive,
+        activeTurnStartedAt: effectiveTurnPresentation.startedAt,
         tail: processVisibility.tail,
         head: processVisibility.head,
         platform: isWeb ? "web" : "native",
@@ -571,13 +567,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       return {
         ...visibleRenderModel,
         turnTiming: deriveStreamTurnTiming({
-          agentStatus: context.status,
+          isTurnActive,
+          activeTurnStartedAt: effectiveTurnPresentation.startedAt,
           tail: projectedToolCalls.tail,
           head: projectedToolCalls.head,
         }),
       };
     }, [
-      context.status,
+      effectiveTurnPresentation.startedAt,
+      isTurnActive,
       isMobile,
       processVisibility.head,
       processVisibility.tail,
@@ -732,7 +730,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               serverId={resolvedServerId}
               client={client}
               spacing={layoutItem.assistantSpacing}
-              phase={layoutItem.phase}
             />
           </AssistantFileLinkResolverProvider>
         );
@@ -752,6 +749,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               toast={toast}
             >
               <AssistantMessage
+                occurrenceKey={createAssistantImageOccurrenceKey({
+                  agentId,
+                  itemId: item.id,
+                })}
                 message={item.text}
                 timestamp={item.timestamp.getTime()}
                 workspaceRoot={workspaceRoot}
@@ -775,6 +776,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         );
       },
       [
+        agentId,
         autoExpandReasoning,
         client,
         handleInlinePathPress,

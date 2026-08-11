@@ -348,11 +348,36 @@ async function resolveDaemonNodeLabel(
   return fromPid.nodePath ?? `unknown (${fromPid.error ?? "could not resolve from PID"})`;
 }
 
-function formatRelayStatus(state: ReturnType<typeof resolveLocalDaemonState>): string {
-  if (!state.relayEnabled) return "disabled";
-  if (!state.relayEndpoint) return "LAN Relay enabled";
-  const scheme = state.relayPublicUseTls ? "wss" : "ws";
-  return `${scheme}://${state.relayEndpoint}`;
+interface RelayStatusConfig {
+  enabled: boolean;
+  endpoint?: string | null;
+  publicEndpoint?: string | null;
+  useTls?: boolean;
+  publicUseTls?: boolean;
+}
+
+function relayConfigFromLocalState(
+  state: ReturnType<typeof resolveLocalDaemonState>,
+): RelayStatusConfig {
+  return {
+    enabled: state.relayEnabled,
+    endpoint: state.relayEndpoint,
+    publicEndpoint: state.relayEndpoint,
+    useTls: state.relayUseTls,
+    publicUseTls: state.relayPublicUseTls,
+  };
+}
+
+export function selectRelayStatus(input: {
+  persisted: RelayStatusConfig;
+  live?: RelayStatusConfig;
+}): string {
+  const relay = input.live ?? input.persisted;
+  if (!relay.enabled) return "disabled";
+  const publicEndpoint = relay.publicEndpoint ?? relay.endpoint;
+  if (!publicEndpoint) return "LAN Relay enabled";
+  const scheme = relay.publicUseTls ? "wss" : "ws";
+  return `${scheme}://${publicEndpoint}`;
 }
 
 export type StatusResult = ListResult<StatusRow>;

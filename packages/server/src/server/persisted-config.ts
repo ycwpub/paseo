@@ -254,6 +254,13 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        git: z
+          .object({
+            maxProcessesPerSecond: z.number().int().positive().optional(),
+            maxProcessConcurrency: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
         clientAccess: z
           .object({
             requireApproval: z.boolean().optional(),

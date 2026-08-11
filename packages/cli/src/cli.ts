@@ -6,6 +6,7 @@ import { createProviderCommand } from "./commands/provider/index.js";
 import { createPluginCommand } from "./commands/plugin/index.js";
 import { createProjectCommand } from "./commands/project/index.js";
 import { createScheduleCommand } from "./commands/schedule/index.js";
+import { createWorkflowCommand } from "./commands/workflow/index.js";
 import { createSpeechCommand } from "./commands/speech/index.js";
 import { createScriptCommand } from "./commands/script/index.js";
 import { createTerminalCommand } from "./commands/terminal/index.js";
@@ -183,6 +184,9 @@ export function createCli(): Command {
 
   // Schedule commands
   program.addCommand(createScheduleCommand());
+
+  // Workflow script commands
+  program.addCommand(createWorkflowCommand());
   program.addCommand(createHeartbeatCommand());
 
   // Permission commands

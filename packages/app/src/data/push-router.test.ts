@@ -4,7 +4,7 @@ import type { MutableDaemonConfig, SessionOutboundMessage } from "@getpaseo/prot
 import { checkoutDiffQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
-import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
 import {
   checkoutDiffPushRoute,
@@ -40,7 +40,6 @@ type RouterHandler = (message: RouterMessage) => void;
 type RouterClient = Parameters<typeof mountServerDataPushRouter>[0]["client"];
 
 const daemonConfig: MutableDaemonConfig = {
-  relay: { enabled: false },
   mcp: { injectIntoAgents: true },
   browserTools: { enabled: false },
   clientAccess: { requireApproval: true },
@@ -168,6 +167,8 @@ describe("server data push router", () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();
     const serverId = "server-1";
+    const pairingOfferKey = daemonPairingQueryKey(serverId);
+    queryClient.setQueryData(pairingOfferKey, []);
     const unmount = mountServerDataPushRouter({
       client: fake.client,
       queryClient,
@@ -281,7 +282,6 @@ describe("server data push router", () => {
       cwd,
       files: [],
       error: null,
-      diffTooLarge: true,
       requestId: "diff-1",
     });
 
@@ -589,7 +589,7 @@ describe("server data push router", () => {
     const otherServerId = "server-2";
     const providerKey = providersSnapshotQueryKey(serverId);
     const daemonConfigKey = daemonConfigQueryKey(serverId);
-    const pairingOfferKey = daemonPairingOfferQueryKey(serverId);
+    const pairingOfferKey = daemonPairingQueryKey(serverId);
     const diffKey = checkoutDiffQueryKey(serverId, "/repo", "uncommitted", undefined, false);
     const terminalKey = buildTerminalsQueryKey(serverId, "/repo", "workspace-a");
     const otherProviderKey = providersSnapshotQueryKey(otherServerId);
@@ -600,6 +600,7 @@ describe("server data push router", () => {
       requestId: "p",
     });
     queryClient.setQueryData(daemonConfigKey, daemonConfig);
+    queryClient.setQueryData(pairingOfferKey, []);
     queryClient.setQueryData(diffKey, {
       cwd: "/repo",
       files: [],

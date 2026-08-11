@@ -224,68 +224,6 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     };
   }, [draftKey, publishTextReplacement]);
 
-  useEffect(() => {
-    if (finalizedDraftVersion === null) {
-      return;
-    }
-
-    const store = useDraftStore.getState();
-    const generation = store.beginDraftGeneration(draftKey);
-    draftGenerationRef.current = generation;
-    hydratedGenerationRef.current = generation;
-
-    setText("");
-    setAttachmentsState([]);
-    setIsHydrated(true);
-  }, [draftKey, finalizedDraftVersion]);
-
-  const renderedDraftGeneration = draftGenerationRef.current;
-  useEffect(() => {
-    const currentGeneration = renderedDraftGeneration;
-    if (currentGeneration <= 0) {
-      return;
-    }
-
-    const store = useDraftStore.getState();
-    const isCurrentGeneration = store.isDraftGenerationCurrent({
-      draftKey,
-      generation: currentGeneration,
-    });
-    if (!isCurrentGeneration) {
-      return;
-    }
-    if (hydratedGenerationRef.current !== currentGeneration) {
-      return;
-    }
-
-    const existing = store.getDraftInput(draftKey);
-    const isSameDraft =
-      existing !== undefined &&
-      existing.text === text &&
-      areAttachmentsEqual({
-        left: existing.attachments,
-        right: attachments,
-      });
-    if (isSameDraft) {
-      return;
-    }
-
-    if (!hasDraftContent({ text, attachments })) {
-      if (existing) {
-        store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
-      }
-      return;
-    }
-
-    store.saveDraftInput({
-      draftKey,
-      draft: {
-        text,
-        attachments,
-      },
-    });
-  }, [attachments, draftKey, renderedDraftGeneration, text]);
-
   const lockedWorkingDir = composerOptions?.lockedWorkingDir?.trim() ?? "";
   useEffect(() => {
     if (!composerOptions || !lockedWorkingDir) {

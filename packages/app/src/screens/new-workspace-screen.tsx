@@ -1562,6 +1562,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   );
 }
 
+// oxlint-disable-next-line complexity -- The workspace creation surface coordinates several independent launch modes.
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -1641,7 +1642,6 @@ export function NewWorkspaceScreen({
     terminalTakesPrompt,
     terminalComposerValue,
     terminalPlaceholder,
-    terminalSubmitLabel,
     launchFocusKey,
   } = useTerminalComposerState({ launchTarget, terminalProfiles, terminalPromptText });
   const terminalTextReplacement = useMemo(

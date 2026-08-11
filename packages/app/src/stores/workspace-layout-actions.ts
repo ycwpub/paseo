@@ -267,6 +267,7 @@ export interface WorkspaceTabSnapshot {
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingTerminalCreate?: boolean;
   hasActivePendingDraftCreate?: boolean;
+  replaceableDraftTabId?: string | null;
 }
 
 export const DEFAULT_PANE_ID = "main";
@@ -2328,6 +2329,7 @@ function addMissingEntityTabs(input: {
     explorerSidebarPaneId,
   } = input;
   let nextLayout = input.layout;
+  let replaceableDraftTabId = input.replaceableDraftTabId;
   const currentEntityTabs = collectAllTabs(nextLayout.root);
   const currentAgentIds = new Set(
     currentEntityTabs.filter(isAgentTab).map((tab) => tab.target.agentId),

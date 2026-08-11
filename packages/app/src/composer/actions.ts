@@ -415,11 +415,11 @@ export function buildForgeAttachment(item: ForgeSearchItem): UserComposerAttachm
     : { kind: "forge_issue", item };
 }
 
-function isForgeAttachment(
-  attachment: UserComposerAttachment,
-): attachment is Extract<
+function isForgeAttachment(attachment: UserComposerAttachment): attachment is Extract<
   UserComposerAttachment,
-  { kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr" }
+  {
+    kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr";
+  }
 > {
   return (
     attachment.kind === "forge_issue" ||

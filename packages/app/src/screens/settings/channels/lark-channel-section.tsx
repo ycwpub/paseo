@@ -67,11 +67,11 @@ function buildProjectOptions(
     if (!host) continue;
     const label = project.projectCustomName ?? project.projectName;
     options.push({
-      id: `${project.projectKey}:${host.repoRoot}`,
+      id: `${project.viewKey}:${host.repoRoot}`,
       value: host.repoRoot,
       label,
       description: host.repoRoot,
-      testID: `host-page-lark-project-option-${project.projectKey}`,
+      testID: `host-page-lark-project-option-${project.viewKey}`,
     });
   }
   return options;

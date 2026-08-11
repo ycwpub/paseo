@@ -622,7 +622,7 @@ describe("dispatchComposerAgentMessage", () => {
     ]);
   });
 
-  it("commits the existing head before appending the next user message", async () => {
+  it("appends to the existing head when one is present", async () => {
     const existingItem: StreamItem = {
       kind: "assistant_message",
       id: "prior",
@@ -641,18 +641,8 @@ describe("dispatchComposerAgentMessage", () => {
       submission: stream,
     });
 
-    expect(stream.head.get("agent")).toEqual([]);
-    expect(
-      stream.tail
-        .get("agent")
-        ?.map((item) => [
-          item.kind,
-          item.kind === "assistant_message" || item.kind === "user_message" ? item.text : null,
-        ]),
-    ).toEqual([
-      ["assistant_message", "prior response"],
-      ["user_message", "next message"],
-    ]);
+    expect(stream.head.get("agent")).toHaveLength(2);
+    expect(stream.tail.get("agent")).toEqual([]);
   });
 
   it("submits empty wire arrays when no attachments are provided", async () => {

@@ -54,8 +54,28 @@ const USER_SCROLL_DELTA_EPSILON = 1;
 const BOTTOM_OVERSCROLL_TOLERANCE_PX = 2;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
 const AUTO_SCROLL_RESUME_THRESHOLD_PX = 1;
+const HISTORY_START_SETTLE_FRAMES = 2;
+const HISTORY_START_SLOT_HEIGHT_PX = 32;
+const CONTENT_PADDING_TOP_PX = 16;
+const UPWARD_INPUT_EVIDENCE_TIMEOUT_MS = 100;
+const VIRTUALIZER_SCROLL_MARGIN_PX = HISTORY_START_SLOT_HEIGHT_PX + CONTENT_PADDING_TOP_PX;
+const READING_POSITION_OFFSET_PX = 8;
 const HISTORY_START_THRESHOLD_PX = 900;
 const HISTORY_START_RESET_THRESHOLD_PX = 1200;
+
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+
+function findHistoryRowElement(contentNode: HTMLElement, rowId: string): HTMLElement | null {
+  for (const element of contentNode.querySelectorAll<HTMLElement>("[data-history-row-id]")) {
+    if (element.dataset.historyRowId === rowId) {
+      return element;
+    }
+  }
+  return null;
+}
 
 const historyStartSlotStyle: CSSProperties = {
   position: "sticky",
@@ -68,6 +88,12 @@ const historyStartSlotStyle: CSSProperties = {
   height: 0,
   pointerEvents: "none",
   transform: "translateY(12px)",
+};
+
+const streamRowStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
 };
 
 interface PendingHistoryAnchor {
@@ -276,7 +302,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     onNearHistoryStart,
     isLoadingOlderHistory,
     hasOlderHistory,
-    olderHistoryProgressKey,
+    olderHistoryProgressKey = null,
     scrollEnabled,
     isMobileBreakpoint,
   } = props;
@@ -781,7 +807,13 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
     updateScrollMetrics();
     requestOlderHistory();
-  }, [cancelPendingStickToBottom, isLoadingOlderHistory, requestOlderHistory, updateScrollMetrics]);
+  }, [
+    isJumpSettling,
+    isLoadingOlderHistory,
+    requestOlderHistory,
+    stopFollowingOutputFromUserIntent,
+    updateScrollMetrics,
+  ]);
 
   useEffect(() => {
     const initialHistoryStartState = createHistoryStartPaginationState();
@@ -1192,6 +1224,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     forceStickToBottom,
     onNearBottomChange,
     scheduleStickToBottom,
+    scrollToMessage,
     viewportRef,
   ]);
 

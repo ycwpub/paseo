@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  MutableLocalRelayConfigSchema,
+  MutableRelayConfigSchema,
+  RelayEndpointConfigSchema,
+} from "./relay-config-schema.js";
 import { RELAY_DEVICE_TYPES } from "./daemon-endpoints.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
@@ -60,161 +65,27 @@ import {
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
 import {
-  AssistantChangedMessageSchema,
-  AssistantCreateRequestSchema,
-  AssistantCreateResponseSchema,
-  AssistantDeleteRequestSchema,
-  AssistantDeleteResponseSchema,
-  AssistantListRequestSchema,
-  AssistantListResponseSchema,
-  AssistantUpdateRequestSchema,
-  AssistantUpdateResponseSchema,
-} from "./assistant/rpc-schemas.js";
-import {
-  LarkChannelApprovePairingRequestSchema,
-  LarkChannelApprovePairingResponseSchema,
-  LarkChannelApplyBotRequestSchema,
-  LarkChannelApplyBotResponseSchema,
-  LarkChannelConfigureRequestSchema,
-  LarkChannelConfigureResponseSchema,
-  LarkChannelDeleteBotRequestSchema,
-  LarkChannelDeleteBotResponseSchema,
-  LarkChannelGetStatusRequestSchema,
-  LarkChannelGetStatusResponseSchema,
-  LarkChannelGetBotApplicationRequestSchema,
-  LarkChannelGetBotApplicationResponseSchema,
-  LarkChannelRejectPairingRequestSchema,
-  LarkChannelRejectPairingResponseSchema,
-  LarkChannelRevokeUserRequestSchema,
-  LarkChannelRevokeUserResponseSchema,
-  LarkChannelSetEnabledRequestSchema,
-  LarkChannelSetEnabledResponseSchema,
-  LarkChannelStatusChangedMessageSchema,
-  LarkChannelTestConnectionRequestSchema,
-  LarkChannelTestConnectionResponseSchema,
-} from "./channel/lark/rpc-schemas.js";
+  ExtensionSessionInboundSchemas,
+  ExtensionSessionOutboundSchemas,
+} from "./extension-message-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
-import {
-  TeamListRequestSchema,
-  TeamCreateRequestSchema,
-  TeamUpdateRequestSchema,
-  TeamDeleteRequestSchema,
-  TeamGetRequestSchema,
-  TeamSendRunRequestSchema,
-  TeamRunStateRequestSchema,
-} from "./team/rpc-schemas.js";
-import {
-  McpListRequestSchema,
-  McpCreateRequestSchema,
-  McpUpdateRequestSchema,
-  McpDeleteRequestSchema,
-  McpTestConnectionRequestSchema,
-} from "./mcp/rpc-schemas.js";
-import {
-  SkillListRequestSchema,
-  SkillCreateRequestSchema,
-  SkillUpdateRequestSchema,
-  SkillDeleteRequestSchema,
-} from "./skill/rpc-schemas.js";
-import {
-  TeamListResponseSchema,
-  TeamCreateResponseSchema,
-  TeamUpdateResponseSchema,
-  TeamDeleteResponseSchema,
-  TeamGetResponseSchema,
-  TeamChangedMessageSchema,
-  TeamSendRunResponseSchema,
-  TeamRunStateResponseSchema,
-} from "./team/rpc-schemas.js";
-import {
-  McpListResponseSchema,
-  McpCreateResponseSchema,
-  McpUpdateResponseSchema,
-  McpDeleteResponseSchema,
-  McpTestConnectionResponseSchema,
-  McpChangedMessageSchema,
-} from "./mcp/rpc-schemas.js";
-import {
-  SkillListResponseSchema,
-  SkillCreateResponseSchema,
-  SkillUpdateResponseSchema,
-  SkillDeleteResponseSchema,
-  SkillChangedMessageSchema,
-} from "./skill/rpc-schemas.js";
-export {
-  LarkChannelAuthorizedUserSchema,
-  LarkChannelBotSchema,
-  LarkChannelBotStatusSchema,
-  LarkChannelConnectionStatusSchema,
-  LarkChannelDomainSchema,
-  LarkChannelPendingPairingSchema,
-  LarkChannelStatusSchema,
-  LarkChannelSubstituteSchema,
-  LarkChannelTargetSchema,
-  type LarkChannelAuthorizedUser,
-  type LarkChannelBot,
-  type LarkChannelBotStatus,
-  type LarkChannelConnectionStatus,
-  type LarkChannelDomain,
-  type LarkChannelPendingPairing,
-  type LarkChannelStatus,
-  type LarkChannelSubstitute,
-  type LarkChannelTarget,
-} from "./channel/lark/types.js";
-export {
-  LarkBotApplicationSchema,
-  LarkBotApplicationStatusSchema,
-  type LarkBotApplication,
-} from "./channel/lark/rpc-schemas.js";
-export {
-  AssistantCreateInputSchema,
-  AssistantMemoryDetailFileSchema,
-  AssistantMemoryFilesSchema,
-  AssistantResourceSelectionSchema,
-  AssistantSchema,
-  AssistantUpdateInputSchema,
-  type Assistant,
-  type AssistantCreateInput,
-  type AssistantMemoryDetailFile,
-  type AssistantMemoryFiles,
-  type AssistantResourceSelection,
-  type AssistantUpdateInput,
-} from "./assistant/types.js";
-export {
-  TeamSchema,
-  TeamCreateInputSchema,
-  TeamMemberSettingsSchema,
-  TeamUpdateInputSchema,
-  TeamAssistantSchema,
-  type Team,
-  type TeamCreateInput,
-  type TeamMemberSettings,
-  type TeamUpdateInput,
-  type TeamAssistant,
-  type TeammateRole,
-  type TeammateStatus,
-  type WorkspaceMode,
-} from "./team/types.js";
-export {
-  McpServerSchema,
-  McpTransportSchema,
-  McpToolSchema,
-  McpServerCreateInputSchema,
-  McpServerUpdateInputSchema,
-  type McpServer,
-  type McpTransport,
-  type McpTool,
-  type McpServerCreateInput,
-  type McpServerUpdateInput,
-} from "./mcp/types.js";
-export {
-  SkillSchema,
-  SkillCreateInputSchema,
-  SkillUpdateInputSchema,
-  type Skill,
-  type SkillCreateInput,
-  type SkillUpdateInput,
-} from "./skill/types.js";
+export * from "./extension-resource-exports.js";
+export type {
+  WorkflowCancelRunRequest,
+  WorkflowCancelRunResponse,
+  WorkflowDeleteRequest,
+  WorkflowDeleteResponse,
+  WorkflowGetRunRequest,
+  WorkflowGetRunResponse,
+  WorkflowInspectRequest,
+  WorkflowInspectResponse,
+  WorkflowListRequest,
+  WorkflowListResponse,
+  WorkflowRunRequest,
+  WorkflowRunResponse,
+  WorkflowSaveRequest,
+  WorkflowSaveResponse,
+} from "./workflow/rpc-schemas.js";
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -374,8 +245,6 @@ export type AgentSkillSelection = z.infer<typeof AgentSkillSelectionSchema>;
 
 export const MutableDaemonConfigSchema = z
   .object({
-    // COMPAT(relayConfig): added in v0.2.6, remove after 2027-01-31 when old daemons are unsupported.
-    relay: MutableRelayConfigSchema.optional(),
     mcp: z
       .object({
         enabled: z.boolean().optional(),
@@ -2848,12 +2717,14 @@ export const FileSubscribeRequestSchema = z.object({
   subscriptionId: z.string(),
   requestId: z.string(),
 });
+export type FileSubscribeRequest = z.infer<typeof FileSubscribeRequestSchema>;
 
 export const FileUnsubscribeRequestSchema = z.object({
   type: z.literal("fs.file.unsubscribe.request"),
   subscriptionId: z.string(),
   requestId: z.string(),
 });
+export type FileUnsubscribeRequest = z.infer<typeof FileUnsubscribeRequestSchema>;
 
 export const FileWriteRequestSchema = z.object({
   type: z.literal("fs.file.write.request"),
@@ -2864,6 +2735,7 @@ export const FileWriteRequestSchema = z.object({
   expectedRevision: z.string().optional(),
   requestId: z.string(),
 });
+export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
 
 export const FileEntryCreateRequestSchema = z.object({
   type: z.literal("fs.entry.create.request"),
@@ -2873,6 +2745,7 @@ export const FileEntryCreateRequestSchema = z.object({
   kind: z.enum(["file", "directory"]),
   requestId: z.string(),
 });
+export type FileEntryCreateRequest = z.infer<typeof FileEntryCreateRequestSchema>;
 
 export const FileEntryRenameRequestSchema = z.object({
   type: z.literal("fs.entry.rename.request"),
@@ -2881,6 +2754,7 @@ export const FileEntryRenameRequestSchema = z.object({
   name: z.string(),
   requestId: z.string(),
 });
+export type FileEntryRenameRequest = z.infer<typeof FileEntryRenameRequestSchema>;
 
 export const FileEntryDuplicateRequestSchema = z.object({
   type: z.literal("fs.entry.duplicate.request"),
@@ -2888,6 +2762,7 @@ export const FileEntryDuplicateRequestSchema = z.object({
   path: z.string(),
   requestId: z.string(),
 });
+export type FileEntryDuplicateRequest = z.infer<typeof FileEntryDuplicateRequestSchema>;
 
 export const FileEntryDeleteRequestSchema = z.object({
   type: z.literal("fs.entry.delete.request"),
@@ -2895,6 +2770,7 @@ export const FileEntryDeleteRequestSchema = z.object({
   path: z.string(),
   requestId: z.string(),
 });
+export type FileEntryDeleteRequest = z.infer<typeof FileEntryDeleteRequestSchema>;
 
 export const ProjectIconRequestSchema = z.object({
   type: z.literal("project_icon_request"),
@@ -3204,20 +3080,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
-  AssistantListRequestSchema,
-  AssistantCreateRequestSchema,
-  AssistantUpdateRequestSchema,
-  AssistantDeleteRequestSchema,
-  LarkChannelGetStatusRequestSchema,
-  LarkChannelApplyBotRequestSchema,
-  LarkChannelGetBotApplicationRequestSchema,
-  LarkChannelConfigureRequestSchema,
-  LarkChannelDeleteBotRequestSchema,
-  LarkChannelTestConnectionRequestSchema,
-  LarkChannelSetEnabledRequestSchema,
-  LarkChannelApprovePairingRequestSchema,
-  LarkChannelRejectPairingRequestSchema,
-  LarkChannelRevokeUserRequestSchema,
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
@@ -3406,22 +3268,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
-  TeamListRequestSchema,
-  TeamCreateRequestSchema,
-  TeamUpdateRequestSchema,
-  TeamDeleteRequestSchema,
-  TeamGetRequestSchema,
-  TeamSendRunRequestSchema,
-  TeamRunStateRequestSchema,
-  McpListRequestSchema,
-  McpCreateRequestSchema,
-  McpUpdateRequestSchema,
-  McpDeleteRequestSchema,
-  McpTestConnectionRequestSchema,
-  SkillListRequestSchema,
-  SkillCreateRequestSchema,
-  SkillUpdateRequestSchema,
-  SkillDeleteRequestSchema,
+  ...ExtensionSessionInboundSchemas,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -3667,6 +3514,16 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceRecovery: z.boolean().optional(),
         // COMPAT(workspaceFileEditing): added in v0.2.0, remove after 2027-01-18 once daemon floor >= v0.2.0.
         workspaceFileEditing: z.boolean().optional(),
+        // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
+        workspaceScriptManagement: z.boolean().optional(),
+        // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
+        projectCustomIcon: z.boolean().optional(),
+        // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
+        fsEntryOps: z.boolean().optional(),
+        // COMPAT(fsEntryDuplicate): added in v0.3.0, remove gate after 2027-02-09.
+        fsEntryDuplicate: z.boolean().optional(),
+        // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
+        checkoutDiscardChanges: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
@@ -3716,16 +3573,6 @@ export const ServerInfoStatusPayloadSchema = z
         agentTurnIdentity: z.boolean().optional(),
         // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
         stableProjectIdentity: z.boolean().optional(),
-        // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
-        workspaceScriptManagement: z.boolean().optional(),
-        // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
-        projectCustomIcon: z.boolean().optional(),
-        // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
-        fsEntryOps: z.boolean().optional(),
-        // COMPAT(fsEntryDuplicate): added in v0.3.0, remove gate after 2027-02-09.
-        fsEntryDuplicate: z.boolean().optional(),
-        // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
-        checkoutDiscardChanges: z.boolean().optional(),
         // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
         // An older daemon parses its persisted config strictly, so writing
         // agentProfiles to one is silently dropped. The client hides the feature
@@ -6817,25 +6664,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopStopResponseSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
-  TeamListResponseSchema,
-  TeamCreateResponseSchema,
-  TeamUpdateResponseSchema,
-  TeamDeleteResponseSchema,
-  TeamGetResponseSchema,
-  TeamChangedMessageSchema,
-  TeamSendRunResponseSchema,
-  TeamRunStateResponseSchema,
-  McpListResponseSchema,
-  McpCreateResponseSchema,
-  McpUpdateResponseSchema,
-  McpDeleteResponseSchema,
-  McpTestConnectionResponseSchema,
-  McpChangedMessageSchema,
-  SkillListResponseSchema,
-  SkillCreateResponseSchema,
-  SkillUpdateResponseSchema,
-  SkillDeleteResponseSchema,
-  SkillChangedMessageSchema,
+  ...ExtensionSessionOutboundSchemas,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -6868,6 +6697,8 @@ export type WorkspaceProjectDescriptorPayload = z.infer<
   typeof WorkspaceProjectDescriptorPayloadSchema
 >;
 export type ProjectListResponseMessage = z.infer<typeof ProjectListResponseMessageSchema>;
+export type FileVersion = z.infer<typeof FileVersionSchema>;
+export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
 export type WorkspaceScriptLifecycle = z.infer<typeof WorkspaceScriptLifecycleSchema>;
 export type WorkspaceScriptHealth = z.infer<typeof WorkspaceScriptHealthSchema>;
 export type WorkspaceScriptPayload = z.infer<typeof WorkspaceScriptPayloadSchema>;

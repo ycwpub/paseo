@@ -1,0 +1,250 @@
+import { z } from "zod";
+import { ScheduleNewAgentTargetConfigSchema } from "../schedule/types.js";
+
+export const WorkflowPayloadSchema = z
+  .object({
+    control: z.string().default(""),
+    error: z.string().default(""),
+  })
+  .catchall(z.unknown());
+export type WorkflowPayload = z.infer<typeof WorkflowPayloadSchema>;
+
+// Keep the historical name as an alias for callers that still model an executable
+// node's payload as its result.
+export const WorkflowNodeResultSchema = WorkflowPayloadSchema;
+export type WorkflowNodeResult = z.infer<typeof WorkflowNodeResultSchema>;
+
+export const WorkflowAgentConfigSchema = ScheduleNewAgentTargetConfigSchema.omit({
+  cwd: true,
+}).extend({
+  cwd: z.string().trim().min(1).optional(),
+  teamId: z.string().trim().min(1).optional(),
+});
+export type WorkflowAgentConfig = z.infer<typeof WorkflowAgentConfigSchema>;
+
+export const WorkflowRetryPolicySchema = z.object({
+  maxAttempts: z.number().int().min(1).max(20),
+  initialDelayMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(60 * 60 * 1000)
+    .optional(),
+  maxDelayMs: z
+    .number()
+    .int()
+    .positive()
+    .max(24 * 60 * 60 * 1000)
+    .optional(),
+  backoffMultiplier: z.number().min(1).max(10).optional(),
+  jitter: z.boolean().optional(),
+});
+export type WorkflowRetryPolicy = z.infer<typeof WorkflowRetryPolicySchema>;
+
+export const WorkflowTaskDefaultsSchema = z.object({
+  timeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(7 * 24 * 60 * 60 * 1000)
+    .optional(),
+  retry: WorkflowRetryPolicySchema.optional(),
+});
+export type WorkflowTaskDefaults = z.infer<typeof WorkflowTaskDefaultsSchema>;
+
+export const WorkflowPromptVariablesSchema = z
+  .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/), z.string().max(20_000))
+  .refine((variables) => Object.keys(variables).length <= 100, {
+    message: "Workflow template variables cannot exceed 100 entries",
+  });
+export type WorkflowPromptVariables = z.infer<typeof WorkflowPromptVariablesSchema>;
+
+export interface WorkflowBashStep {
+  id: string;
+  name?: string;
+  type: "bash";
+  initialCommand: string;
+  variables?: WorkflowPromptVariables;
+  cwd?: string;
+  shell?: string;
+  timeoutMs?: number;
+  retry?: WorkflowRetryPolicy;
+}
+
+export interface WorkflowAgentStep {
+  id: string;
+  name?: string;
+  type: "agent";
+  initialPrompt: string;
+  promptVariables?: WorkflowPromptVariables;
+  timeoutMs?: number;
+  retry?: WorkflowRetryPolicy;
+  config: WorkflowAgentConfig;
+}
+
+export interface WorkflowSwitchCase {
+  equals: string;
+  steps: WorkflowStep[];
+}
+
+export interface WorkflowSwitchStep {
+  id: string;
+  name?: string;
+  type: "switch";
+  cases: WorkflowSwitchCase[];
+  defaultSteps?: WorkflowStep[];
+  caseSensitive?: boolean;
+}
+
+export interface WorkflowForStep {
+  id: string;
+  name?: string;
+  type: "for";
+  steps: WorkflowStep[];
+  separator?: string;
+  maxIterations?: number;
+  breakControl?: string;
+}
+
+export type WorkflowStep =
+  | WorkflowBashStep
+  | WorkflowAgentStep
+  | WorkflowSwitchStep
+  | WorkflowForStep;
+
+const WorkflowStepIdSchema = z.string().trim().min(1).max(128);
+const WorkflowStepNameSchema = z.string().trim().min(1).max(256).optional();
+
+export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    z.object({
+      id: WorkflowStepIdSchema,
+      name: WorkflowStepNameSchema,
+      type: z.literal("bash"),
+      initialCommand: z.string().trim().min(1),
+      variables: WorkflowPromptVariablesSchema.optional(),
+      cwd: z.string().trim().min(1).optional(),
+      shell: z.string().trim().min(1).optional(),
+      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
+      retry: WorkflowRetryPolicySchema.optional(),
+    }),
+    z.object({
+      id: WorkflowStepIdSchema,
+      name: WorkflowStepNameSchema,
+      type: z.literal("agent"),
+      initialPrompt: z.string().trim().min(1),
+      promptVariables: WorkflowPromptVariablesSchema.optional(),
+      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
+      retry: WorkflowRetryPolicySchema.optional(),
+      config: WorkflowAgentConfigSchema,
+    }),
+    z.object({
+      id: WorkflowStepIdSchema,
+      name: WorkflowStepNameSchema,
+      type: z.literal("switch"),
+      cases: z
+        .array(
+          z.object({
+            equals: z.string(),
+            steps: z.array(WorkflowStepSchema),
+          }),
+        )
+        .min(1),
+      defaultSteps: z.array(WorkflowStepSchema).optional(),
+      caseSensitive: z.boolean().optional(),
+    }),
+    z.object({
+      id: WorkflowStepIdSchema,
+      name: WorkflowStepNameSchema,
+      type: z.literal("for"),
+      steps: z.array(WorkflowStepSchema).min(1),
+      separator: z.string().min(1).optional(),
+      maxIterations: z.number().int().positive().max(10_000).default(100),
+      breakControl: z.string().optional(),
+    }),
+  ]),
+);
+
+export const WorkflowScriptSchema = z.object({
+  version: z.literal(1),
+  name: z.string().trim().min(1).max(256),
+  description: z.string().max(4_000).nullable().optional(),
+  timeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(30 * 24 * 60 * 60 * 1000)
+    .optional(),
+  taskDefaults: WorkflowTaskDefaultsSchema.optional(),
+  labels: z
+    .record(z.string().trim().min(1).max(128), z.string().max(512))
+    .refine((labels) => Object.keys(labels).length <= 100, {
+      message: "Workflow labels cannot exceed 100 entries",
+    })
+    .optional(),
+  steps: z.array(WorkflowStepSchema).min(1),
+});
+export type WorkflowScript = z.infer<typeof WorkflowScriptSchema>;
+
+export const WorkflowScriptFileSchema = z.object({
+  path: z.string(),
+  script: WorkflowScriptSchema,
+});
+export type WorkflowScriptFile = z.infer<typeof WorkflowScriptFileSchema>;
+
+export const WorkflowScriptSummarySchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  stepCount: z.number().int().nonnegative(),
+  modifiedAt: z.string(),
+});
+export type WorkflowScriptSummary = z.infer<typeof WorkflowScriptSummarySchema>;
+
+export const WorkflowNodeRunSchema = z.object({
+  id: z.string(),
+  stepId: z.string(),
+  stepName: z.string().nullable(),
+  stepType: z.enum(["bash", "agent", "switch", "for"]),
+  iterationPath: z.array(z.number().int().nonnegative()),
+  startedAt: z.string(),
+  endedAt: z.string().nullable(),
+  status: z.enum(["running", "succeeded", "failed", "cancelled", "timed_out"]),
+  attempt: z.number().int().positive().default(1),
+  maxAttempts: z.number().int().positive().default(1),
+  retryDelayMs: z.number().int().nonnegative().nullable().default(null),
+  inputPayload: z.string().nullable().default(null),
+  outputPayload: z.string().nullable().default(null),
+  inputFilePath: z.string(),
+  outputFilePath: z.string().nullable(),
+  inputControl: z.string(),
+  outputControl: z.string().nullable(),
+  error: z.string().nullable(),
+  errorCode: z.string().nullable().default(null),
+  agentId: z.guid().nullable(),
+  output: z.string().nullable(),
+});
+export type WorkflowNodeRun = z.infer<typeof WorkflowNodeRunSchema>;
+
+export const WorkflowRunSchema = z.object({
+  id: z.string(),
+  scriptPath: z.string(),
+  scriptSnapshot: WorkflowScriptSchema,
+  status: z.enum(["running", "succeeded", "failed", "cancelled", "timed_out"]),
+  inputPayload: z.string().nullable().default(null),
+  outputPayload: z.string().nullable().default(null),
+  inputFilePath: z.string(),
+  outputFilePath: z.string().nullable(),
+  control: z.string(),
+  error: z.string().nullable(),
+  errorCode: z.string().nullable().default(null),
+  startedAt: z.string(),
+  endedAt: z.string().nullable(),
+  nodeRuns: z.array(WorkflowNodeRunSchema),
+});
+export type WorkflowRun = z.infer<typeof WorkflowRunSchema>;
+
+export const StoredWorkflowRunsSchema = z.object({
+  runs: z.array(WorkflowRunSchema),
+});
+export type StoredWorkflowRuns = z.infer<typeof StoredWorkflowRunsSchema>;

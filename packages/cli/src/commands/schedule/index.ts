@@ -33,6 +33,7 @@ export function createScheduleCommand(): Command {
         "--mode <mode>",
         "Provider-specific mode (e.g. claude bypassPermissions, opencode build)",
       )
+      .option("--thinking <id>", "Thinking option ID for new-agent runs")
       .option("--assistant <id>", "Assistant ID for new-agent schedules")
       .option("--cwd <path>", "Working directory (default: current; required with --host)")
       .option("--shell <path>", "Shell for bash schedules (default: /bin/bash)")

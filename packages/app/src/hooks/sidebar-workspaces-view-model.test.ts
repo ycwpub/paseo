@@ -14,6 +14,7 @@ import {
   deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
   sortSidebarProjectsByActivity,
+  type ProjectStatusSession,
   type SidebarProjectEntry,
   type SidebarWorkspacePlacement,
 } from "./sidebar-workspaces-view-model";
@@ -328,7 +329,7 @@ describe("sortSidebarProjectsByActivity", () => {
 
     const sorted = sortSidebarProjectsByActivity({ projects, workspaceEntriesByKey });
 
-    expect(sorted.map((entry) => entry.projectKey)).toEqual(["project-b", "project-a"]);
+    expect(sorted.map((entry) => entry.viewKey)).toEqual(["project-b", "project-a"]);
     expect(sorted[1]?.workspaces.map((entry) => entry.workspaceId)).toEqual(["a-newer", "a-older"]);
   });
 
@@ -362,7 +363,7 @@ describe("sortSidebarProjectsByActivity", () => {
 
     const sorted = sortSidebarProjectsByActivity({ projects, workspaceEntriesByKey });
 
-    expect(sorted.map((entry) => entry.projectKey)).toEqual(["project-b", "project-a"]);
+    expect(sorted.map((entry) => entry.viewKey)).toEqual(["project-b", "project-a"]);
     expect(sorted[0]?.workspaces.map((entry) => entry.workspaceId)).toEqual([
       "b-second",
       "b-first",

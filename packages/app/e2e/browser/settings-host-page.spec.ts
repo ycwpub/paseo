@@ -1,9 +1,9 @@
-import { expect, test } from "./fixtures";
-import { gotoAppShell, openSettings } from "./helpers/app";
-import { getE2EDaemonPort } from "./helpers/daemon-port";
-import { TEST_HOST_LABEL } from "./helpers/daemon-registry";
-import { getServerId } from "./helpers/server-id";
-import { expectAppRoute } from "./helpers/route-assertions";
+import { expect, test } from "../support/fixtures";
+import { gotoAppShell, openSettings } from "../support/helpers/app";
+import { getE2EDaemonPort } from "../support/helpers/daemon-port";
+import { TEST_HOST_LABEL } from "../support/helpers/daemon-registry";
+import { getServerId } from "../support/helpers/server-id";
+import { expectAppRoute } from "../support/helpers/route-assertions";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import {
   expectSettingsHeader,

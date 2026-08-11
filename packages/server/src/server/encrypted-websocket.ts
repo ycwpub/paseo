@@ -5,6 +5,7 @@ import {
   type EncryptedChannel,
   type KeyPair,
   type Transport,
+  type TransportMessage,
 } from "@getpaseo/relay/e2ee";
 
 export interface EncryptedWebSocketLike {
@@ -69,7 +70,10 @@ function createTransportAdapter(socket: RawEncryptedWebSocketLike, logger: pino.
   };
 
   socket.on("message", (data, isBinary) => {
-    transport.onmessage?.(normalizeMessageData(data, isBinary === true));
+    transport.onmessage?.({
+      data: normalizeMessageData(data, isBinary === true),
+      isBinary: isBinary === true,
+    } satisfies TransportMessage);
   });
   socket.on("close", (code, reason) => {
     const closeCode = typeof code === "number" ? code : 1006;

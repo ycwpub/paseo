@@ -48,6 +48,7 @@ export const es: TranslationResources = {
       idle: "Inactivo",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",
@@ -1093,6 +1094,11 @@ export const es: TranslationResources = {
         project: "Proyecto",
         status: "Estado",
         labels: "Etiquetas",
+      },
+      sorting: {
+        label: "Ordenar por",
+        activity: "Actividad reciente",
+        manual: "Manual",
       },
       titleSource: {
         label: "Título",

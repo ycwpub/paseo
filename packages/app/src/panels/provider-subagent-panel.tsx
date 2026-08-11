@@ -23,6 +23,7 @@ import {
   TIMELINE_FETCH_PAGE_SIZE,
   TIMELINE_OLDEST_FETCH_PAGE_SIZE,
 } from "@/timeline/timeline-fetch-policy";
+import type { TurnPresentation } from "@/timeline/turn-liveness";
 
 const EMPTY_PERMISSIONS = new Map<string, PendingPermission>();
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
@@ -215,7 +216,16 @@ function ProviderSubagentPanel() {
       isLoadingOldest,
       onLoadUntilOldest: loadUntilOldest,
     }),
-    [isLoadingOlder, isLoadingOldest, loadOlder, loadUntilOldest, timeline?.hasOlder],
+    [isLoadingOlder, isLoadingOldest, loadOlder, loadUntilOldest, progressKey, timeline?.hasOlder],
+  );
+  const turnPresentation = useMemo<TurnPresentation>(
+    () => ({
+      isActive: descriptor?.status === "running",
+      isCancelling: false,
+      startedAt: null,
+      turnId: null,
+    }),
+    [descriptor?.status],
   );
 
   if (serverInfo && !supported) {

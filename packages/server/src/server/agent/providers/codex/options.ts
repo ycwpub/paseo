@@ -37,6 +37,7 @@ const NetworkPolicySchema = z
 // Codex config reference, maintained against Codex CLI 0.143+.
 export const CodexProviderOptionsSchema = z
   .object({
+    compact_prompt: z.string().optional(),
     approval_policy: ApprovalPolicySchema.optional(),
     sandbox_mode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
     sandbox_workspace_write: z

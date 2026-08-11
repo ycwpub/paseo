@@ -48,6 +48,7 @@ export const ar: TranslationResources = {
       idle: "عاطل",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "تبديل الشريط الجانبي",
@@ -1059,6 +1060,11 @@ export const ar: TranslationResources = {
         project: "المشروع",
         status: "الحالة",
         labels: "التسميات",
+      },
+      sorting: {
+        label: "الترتيب حسب",
+        activity: "النشاط الأخير",
+        manual: "يدوي",
       },
       titleSource: {
         label: "العنوان",

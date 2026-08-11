@@ -49,6 +49,7 @@ export const fr: TranslationResources = {
       idle: "Inactif",
     },
   },
+  workflows: en.workflows,
   shell: {
     menu: {
       toggleSidebar: "Basculer la barre latérale",
@@ -1092,6 +1093,11 @@ export const fr: TranslationResources = {
         project: "Projet",
         status: "Statut",
         labels: "Libellés",
+      },
+      sorting: {
+        label: "Trier par",
+        activity: "Activité récente",
+        manual: "Manuel",
       },
       titleSource: {
         label: "Titre",

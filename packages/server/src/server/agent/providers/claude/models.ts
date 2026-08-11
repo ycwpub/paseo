@@ -27,8 +27,23 @@ interface AidenClaudeModelDiscoveryOptions {
   configDir?: string;
 }
 
-export function getClaudeModels(): AgentModelDefinition[] {
-  return getClaudeManifestModels();
+export function getClaudeModels(claudeCodeVersion?: string): AgentModelDefinition[] {
+  return getClaudeManifestModels(claudeCodeVersion);
+}
+
+export function resolveConfiguredClaudeModel(model: AgentModelDefinition): AgentModelDefinition {
+  if (model.thinkingOptions !== undefined) return model;
+
+  const manifestModelId = normalizeClaudeManifestModelId(model.id);
+  const manifestModel = manifestModelId
+    ? getClaudeModels().find((candidate) => candidate.id === manifestModelId)
+    : undefined;
+  if (manifestModel) {
+    return manifestModel.thinkingOptions
+      ? { ...model, thinkingOptions: manifestModel.thinkingOptions }
+      : model;
+  }
+  return { ...model, thinkingOptions: getClaudeCustomModelThinkingOptions() };
 }
 
 export function findClaudeModel(
@@ -45,8 +60,9 @@ export async function getClaudeModelsWithSettings(
   logger: Logger,
   configDir?: string,
   aiden?: AidenClaudeModelDiscoveryOptions,
+  claudeCodeVersion?: string,
 ): Promise<AgentModelDefinition[]> {
-  const hardcodedModels = getClaudeModels();
+  const hardcodedModels = getClaudeModels(claudeCodeVersion);
   const [settingsModels, aidenModels] = await Promise.all([
     readClaudeSettingsModels(logger, configDir),
     aiden ? readAidenClaudeCustomModels(logger, aiden) : Promise.resolve([]),
@@ -59,7 +75,12 @@ export async function getClaudeModelsWithSettings(
   const models = [...hardcodedModels];
 
   for (const model of discoveredModels) {
-    if (seenModelIds.has(model.id)) {
+    const existingIndex = models.findIndex((candidate) => candidate.id === model.id);
+    if (existingIndex !== -1) {
+      const existing = models[existingIndex];
+      if (existing?.isSelectable === false) {
+        models[existingIndex] = { ...existing, ...model, isSelectable: true };
+      }
       continue;
     }
     models.push(model);

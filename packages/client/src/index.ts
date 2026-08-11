@@ -26,12 +26,17 @@ import type {
 import { DaemonClient, FileExplorerRequestError } from "./daemon-client.js";
 import type {
   DaemonConnectionTransport,
+  FetchAgentsEntry,
+  FetchAgentsOptions,
+  FetchAgentsPageInfo,
   FetchAgentTimelineCursor,
   FetchAgentTimelineDirection,
   FetchAgentTimelinePayload,
   FetchAgentTimelineProjection,
   WaitForFinishResult,
 } from "./daemon-client.js";
+
+const DEFAULT_WAIT_FOR_FINISH_MS = 10 * 60_000;
 
 export { DaemonClient, FileExplorerRequestError };
 export type {

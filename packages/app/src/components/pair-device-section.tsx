@@ -760,60 +760,12 @@ function RelayPairingCard({
           unavailableLabel={labels.qrUnavailable}
         />
       </View>
-      {props.enableError ? <Alert variant="error" description={props.enableError.message} /> : null}
-      {!props.canConfigureRelay ? (
-        <Alert variant="warning" description={t("pairing.device.updateRequired")} />
-      ) : null}
-      <View style={styles.actions}>
-        <Button variant="secondary" style={FLEX_ONE_STYLE} onPress={props.onClose}>
-          {t("pairing.device.notNow")}
-        </Button>
-        {props.canConfigureRelay ? (
-          <Button
-            variant="default"
-            style={FLEX_ONE_STYLE}
-            loading={props.enablePending}
-            onPress={props.onEnableRelay}
-          >
-            {enableButtonLabel}
-          </Button>
-        ) : null}
-      </View>
-      <View style={styles.directRow}>
-        <ThemedNetwork size={14} style={styles.directIcon} />
-        <Text style={styles.directHint}>{t("pairing.device.directConnectionHint")}</Text>
-      </View>
-    </View>
-  );
-}
-
-function RelayHeroBadge() {
-  return (
-    <View style={styles.heroBadge}>
-      <ThemedShieldCheck size={20} uniProps={accentBrightColorMapping} />
-    </View>
-  );
-}
-
-function PairingOffer(props: PairDeviceBodyProps & { offer: { url: string } }) {
-  const { t } = useTranslation();
-  return (
-    <View style={styles.offer}>
-      <Text style={styles.offerHint}>{t("pairing.device.hint")}</Text>
-      <View style={styles.qrTile}>
-        <PairingQr svg={props.qrSvg} isError={props.qrError} />
-      </View>
       <View style={styles.linkRow}>
         <View style={styles.inputWrapper}>
           <ThemedTextInput style={styles.linkInput} value={offer.url} readOnly selectTextOnFocus />
         </View>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={props.copied ? Check : Copy}
-          onPress={props.onCopy}
-        >
-          {props.copied ? t("pairing.device.copied") : t("pairing.device.copy")}
+        <Button variant="outline" size="sm" leftIcon={copyButtonIcon} onPress={handleCopyPress}>
+          {copied ? labels.copied : labels.copy}
         </Button>
       </View>
     </View>
@@ -828,10 +780,10 @@ function PairDeviceQrContent(props: {
   if (props.qrSvg) {
     return <SvgXml xml={props.qrSvg} width="100%" height="100%" />;
   }
-  if (isError) {
-    return <Text style={styles.hint}>{t("pairing.device.qrUnavailable")}</Text>;
+  if (props.qrQuery.isError) {
+    return <Text style={styles.hint}>{props.unavailableLabel}</Text>;
   }
-  return <ThemedLoadingSpinner size="small" uniProps={foregroundMutedColorMapping} />;
+  return <ActivityIndicator size="small" />;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -938,9 +890,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   hint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.xs,
     textAlign: "center",
-    paddingVertical: theme.spacing[6],
   },
   relayHeader: {
     paddingHorizontal: theme.spacing[4],
@@ -967,62 +918,8 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: theme.spacing[1],
-  },
-  consentTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-  },
-  consentDescription: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: theme.spacing[3],
-  },
-  directRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: theme.spacing[2],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    paddingTop: theme.spacing[4],
-  },
-  directIcon: {
-    color: theme.colors.foregroundMuted,
-    marginTop: 1, // optical: seats the glyph on the hint's first text line
-  },
-  directHint: {
-    flex: 1,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.5,
-  },
-  offer: {
-    gap: theme.spacing[4],
-  },
-  offerHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
-  },
-  qrTile: {
-    alignSelf: "center",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 304,
-    maxWidth: "100%",
-    aspectRatio: 1,
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.xl,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.palette.white,
+    backgroundColor: theme.colors.surface0,
+    padding: theme.spacing[2],
   },
   linkRow: {
     flexDirection: "row",
@@ -1033,22 +930,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   inputWrapper: {
     flex: 1,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface0,
     overflow: "hidden",
   },
   linkInput: {
     color: theme.colors.foregroundMuted,
-    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     outlineStyle: "none",
   } as object,
-  hint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
 }));

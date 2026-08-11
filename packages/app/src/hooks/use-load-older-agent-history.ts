@@ -44,7 +44,10 @@ export async function loadOlderAgentHistory(
 ): Promise<boolean> {
   const { client, cursor, hasOlder, isLoadingOlder, setInFlight, toast, logger, failedMessage } =
     deps;
-  if (!client || !cursor || !hasOlder || isLoadingOlder) {
+  if (isLoadingOlder) {
+    return true;
+  }
+  if (!client || !cursor || !hasOlder) {
     return false;
   }
 
@@ -65,7 +68,6 @@ export async function loadOlderAgentHistory(
   } finally {
     setInFlight(false);
   }
-  return true;
 }
 
 function yieldToHistoryRender(): Promise<void> {

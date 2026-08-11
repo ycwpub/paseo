@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest";
+import {
+  resolveOptionalWorkflowExpression,
+  resolveWorkflowExpression,
+  resolveWorkflowNodeInput,
+} from "./workflow-data-mapping.js";
+
+const context = {
+  workflowInputs: { project: "paseo", threshold: 3 },
+  currentInput: { approved: true, alerts: [{ id: 7 }] },
+  nodeOutputs: {
+    scan: {
+      alerts: [{ id: 7 }],
+      summary: "one alert",
+    },
+  },
+  workflowVariables: {
+    traceId: "trace-1",
+  },
+  loopVariables: {
+    var: {
+      item: { id: 7 },
+      index: 1,
+      count: 3,
+      cursor: "next-loop",
+    },
+  },
+  nodeVariables: {
+    cursor: "next",
+  },
+};
+
+describe("workflow data mapping", () => {
+  it("preserves native values for whole expressions", () => {
+    expect(
+      resolveWorkflowNodeInput(
+        {
+          project: "{{workflow.inputs.project}}",
+          originalThreshold: "{{origin_input.threshold}}",
+          alerts: "{{nodes.scan.outputs.alerts}}",
+          approved: "{{approved}}",
+          traceId: "{{workflow.var.traceId}}",
+          loopItem: "{{loop.var.item}}",
+          loopCursor: "{{loop.var.cursor}}",
+          cursor: "{{node.var.cursor}}",
+          label: "{{workflow.inputs.project}}: {{nodes.scan.outputs.summary}}",
+        },
+        context,
+      ),
+    ).toEqual({
+      project: "paseo",
+      originalThreshold: 3,
+      alerts: [{ id: 7 }],
+      approved: true,
+      traceId: "trace-1",
+      loopItem: { id: 7 },
+      loopCursor: "next-loop",
+      cursor: "next",
+      label: "paseo: one alert",
+    });
+  });
+
+  it("uses the current input when no mapping is configured", () => {
+    expect(resolveWorkflowNodeInput(undefined, context)).toEqual(context.currentInput);
+  });
+
+  it("resolves collection expressions for control nodes", () => {
+    expect(resolveWorkflowExpression("{{nodes.scan.outputs.alerts}}", context)).toEqual([
+      { id: 7 },
+    ]);
+  });
+
+  it("fails missing references before running the node", () => {
+    expect(() =>
+      resolveWorkflowNodeInput({ value: "{{nodes.missing.outputs.value}}" }, context),
+    ).toThrow("Workflow expression path not found");
+  });
+
+  it("allows optional expressions to resolve missing paths as undefined", () => {
+    expect(resolveOptionalWorkflowExpression("{{data.control}}", context)).toBeUndefined();
+    expect(resolveOptionalWorkflowExpression("{{data.approved}}", context)).toBe(true);
+  });
+});

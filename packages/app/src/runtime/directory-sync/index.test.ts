@@ -126,21 +126,26 @@ const serverIds = new Set<string>();
 function createDirectory(serverId: string): {
   client: FakeDirectoryClient;
   directory: DirectorySync;
+  workspaceEvents: string[];
 } {
   serverIds.add(serverId);
   const client = new FakeDirectoryClient();
+  const workspaceEvents: string[] = [];
   const directory = new DirectorySync(serverId, {
     onAgentStoppedRunning: () => undefined,
     markAgentLoading: () => undefined,
     markAgentReady: () => undefined,
     markAgentError: () => undefined,
+    markWorkspaceLoading: () => workspaceEvents.push("loading"),
+    markWorkspaceReady: () => workspaceEvents.push("ready"),
+    markWorkspaceError: (error) => workspaceEvents.push(`error:${error}`),
   });
   directory.connectionChanged({
     client: client as unknown as DaemonClient,
     status: "online",
     source: { clientGeneration: 1, connectionEpoch: 1 },
   });
-  return { client, directory };
+  return { client, directory, workspaceEvents };
 }
 
 function createAgent(serverId: string, id: string) {
@@ -867,7 +872,7 @@ describe("DirectorySync session readiness", () => {
 
   it("fetches the project descriptor channel when the daemon advertises it", async () => {
     const serverId = "project-list";
-    const { client, directory } = createDirectory(serverId);
+    const { client, directory, workspaceEvents } = createDirectory(serverId);
     const store = useSessionStore.getState();
     store.initializeSession(serverId, client as unknown as DaemonClient, 1);
     store.updateSessionServerInfo(serverId, {
@@ -880,6 +885,7 @@ describe("DirectorySync session readiness", () => {
     await directory.refreshWorkspaces();
 
     expect(client.listProjectsCalls).toBe(1);
+    expect(workspaceEvents).toEqual(["loading", "ready"]);
     expect(useSessionStore.getState().sessions[serverId]?.projects.get("project-1")).toMatchObject({
       projectId: "project-1",
       projectKey: "remote:github.com/acme/app",

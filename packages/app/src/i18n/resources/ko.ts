@@ -1,7 +1,7 @@
 import { en, type TranslationResources } from "./en";
 import { pluginSettings } from "./plugin-settings";
 
-export const ko = {
+const koOverrides = {
   common: {
     back: "뒤로",
     loading: "불러오는 중...",
@@ -46,6 +46,62 @@ export const ko = {
       offline: "오프라인",
       error: "오류",
       idle: "대기 중",
+    },
+  },
+  workflows: {
+    graph: {
+      fullView: "전체 계획",
+      fullViewTitle: "전체 워크플로 그래프",
+      fullViewHint: "전체 종속성 그래프와 실행 경로를 확인하고 확대하거나 노드를 열 수 있습니다.",
+      zoomIn: "워크플로 그래프 확대",
+      zoomOut: "워크플로 그래프 축소",
+      resetZoom: "워크플로 그래프 확대/축소 초기화",
+      nodeName: "노드 이름",
+      nodeId: "노드 ID",
+      nodeType: "노드 유형",
+      configuration: "전체 노드 구성",
+    },
+    nodes: {
+      agent: {
+        lifecycle: "에이전트 수명 주기",
+        lifecycleHint:
+          "이 에이전트 노드가 동일한 에이전트를 재사용하는 기간을 정합니다. 재사용되는 에이전트 호출은 순서대로 실행됩니다.",
+        selectLifecycle: "에이전트 수명 주기 선택",
+        lifecycleOptions: {
+          workflow: "전체 Workflow",
+          workflowDescription: "첫 실행 시 생성하여 재사용하고 Workflow가 끝나면 해제합니다.",
+          for: "현재 For 루프",
+          forDescription:
+            "첫 반복에서 생성하여 현재 For 루프 안에서 재사용하고 루프를 벗어나면 해제합니다.",
+          single: "단일 실행",
+          singleDescription: "실행할 때마다 새 에이전트를 생성하며 재사용하지 않습니다.",
+        },
+        subsequentPromptMode: "첫 실행 이후 프롬프트",
+        subsequentPromptModeHint:
+          "이미 초기화된 에이전트를 다시 호출할 때 보낼 프롬프트를 선택합니다.",
+        selectSubsequentPromptMode: "후속 프롬프트 방식 선택",
+        subsequentPromptModes: {
+          reuseInitial: "초기 프롬프트 재사용",
+          reuseInitialDescription: "현재 노드 입력으로 초기 프롬프트를 다시 렌더링합니다.",
+          custom: "사용자 지정 프롬프트",
+          customDescription: "첫 호출 이후에는 별도로 설정한 프롬프트를 사용합니다.",
+        },
+        subsequentPrompt: "사용자 지정 후속 프롬프트",
+        subsequentPromptHint: "초기 프롬프트와 동일한 입력 데이터 및 템플릿 변수를 지원합니다.",
+        archiveAtLifecycleEnd: "에이전트 수명 주기가 끝나면 자동 보관",
+      },
+      openDetails: "{{name}} 노드 세부 정보 열기",
+      downstream: {
+        label: "다음 노드",
+        hint: "이 노드가 완료된 후 실행할 같은 수준의 노드를 선택하세요.",
+        sequential: "목록 순서 따르기",
+        sequentialDescription: "목록의 다음 노드를 실행합니다.",
+        end: "시퀀스 종료",
+        endDescription: "현재 노드가 완료되면 이 시퀀스를 종료합니다.",
+        missing: "노드 없음: {{id}}",
+        placeholder: "다음 노드 선택",
+        empty: "선택할 수 있는 다음 노드가 없습니다",
+      },
     },
   },
   shell: {
@@ -244,9 +300,18 @@ export const ko = {
     title: "기록",
     empty: "아직 세션이 없습니다",
     noMatches: "일치하는 세션이 없습니다",
+    noProjectSessions: "이 프로젝트의 세션이 없습니다",
     tooManyMatches: "일치 항목이 너무 많습니다 — 검색 범위를 좁히세요",
     hostLoadFailed: "{{host}}: 기록을 불러오지 못했습니다",
     searchPlaceholder: "기록 검색",
+    projectFilter: {
+      label: "프로젝트",
+      title: "프로젝트로 필터링",
+      all: "모든 프로젝트",
+      empty: "사용 가능한 프로젝트가 없습니다",
+      search: "프로젝트 검색",
+      hostCount: "호스트 {{count}}개",
+    },
     actions: {
       loadMore: "더 불러오기",
       clearSearch: "검색 지우기",
@@ -1092,6 +1157,8 @@ export const ko = {
       home: "홈",
       settings: "설정",
       closeSidebar: "사이드바 닫기",
+      collapseAllWorkspaces: "모든 워크스페이스 접기",
+      expandAllWorkspaces: "모든 워크스페이스 펼치기",
     },
     help: {
       trigger: "도움말 및 지원",
@@ -1122,8 +1189,13 @@ export const ko = {
         openNewWindowFailed: "새 창을 열 수 없습니다",
         openFolder: "파일 관리자에서 열기",
         openFolderFailed: "폴더를 열 수 없습니다.",
+        hide: "프로젝트 숨기기",
+        show: "프로젝트 표시",
         remove: "프로젝트 제거",
         removing: "제거하는 중...",
+      },
+      hidden: {
+        title: "숨겨진 프로젝트 ({{count}})",
       },
       confirmations: {
         removeTitle: "프로젝트를 제거할까요?",
@@ -1172,6 +1244,17 @@ export const ko = {
         hideFromSidebar: "사이드바에서 숨기기",
         archiving: "보관하는 중...",
         hiding: "숨기는 중...",
+      },
+      bulkArchive: {
+        select: "워크스페이스 선택",
+        selected: "{{count}}개 선택됨",
+        cancel: "선택 취소",
+        title: "워크스페이스 {{count}}개를 보관할까요?",
+        message: "선택한 워크스페이스가 보관되고 사이드바에서 제거됩니다.",
+        riskyWorktrees:
+          "선택한 worktree 중 {{count}}개에 커밋하지 않았거나 푸시하지 않은 변경 사항이 있습니다. 해당 디렉터리가 삭제될 수 있습니다.",
+        confirm: "선택 항목 보관",
+        failed: "워크스페이스 {{count}}개를 보관하지 못했습니다",
       },
       confirmations: {
         hideTitle: "워크스페이스를 숨길까요?",
@@ -2646,4 +2729,6 @@ export const ko = {
       },
     },
   },
-} as unknown as TranslationResources;
+} as const;
+
+export const ko = completeTranslationResource(en, koOverrides);

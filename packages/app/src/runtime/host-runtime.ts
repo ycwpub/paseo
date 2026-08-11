@@ -69,9 +69,9 @@ import {
 } from "@/data/push-router";
 import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
-import { sendQueuedComposerMessageNow } from "@/composer/actions";
+import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/composer/actions";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
-import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
+import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
 import { ReplicaCache } from "@/runtime/replica-cache";
@@ -118,6 +118,9 @@ export interface HostRuntimeSnapshot {
   agentDirectoryStatus: HostRuntimeAgentDirectoryStatus;
   agentDirectoryError: string | null;
   hasEverLoadedAgentDirectory: boolean;
+  workspaceDirectoryStatus: HostRuntimeWorkspaceDirectoryStatus;
+  workspaceDirectoryError: string | null;
+  hasEverLoadedWorkspaceDirectory: boolean;
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
   connectionEpoch: number;
@@ -654,6 +657,7 @@ export class HostRuntimeController {
       agentDirectoryStatus: "idle",
       agentDirectoryError: null,
       hasEverLoadedAgentDirectory: false,
+      ...INITIAL_WORKSPACE_DIRECTORY_STATUS,
       probeByConnectionId: new Map(),
       clientGeneration: 0,
     };
@@ -780,6 +784,18 @@ export class HostRuntimeController {
       agentDirectoryStatus: this.snapshot.hasEverLoadedAgentDirectory ? "ready" : "idle",
       agentDirectoryError: null,
     });
+  }
+
+  markWorkspaceDirectorySyncLoading(): void {
+    this.updateSnapshot(startWorkspaceDirectoryRefresh(this.snapshot));
+  }
+
+  markWorkspaceDirectorySyncReady(): void {
+    this.updateSnapshot(completeWorkspaceDirectoryRefresh());
+  }
+
+  markWorkspaceDirectorySyncError(error: string): void {
+    this.updateSnapshot(failWorkspaceDirectoryRefresh(this.snapshot, error));
   }
 
   markStartupError(message: string): void {
@@ -1244,6 +1260,15 @@ export class HostRuntimeController {
     return { agentDirectoryStatus: "idle", agentDirectoryError: null };
   }
 
+  private buildWorkspaceDirectoryStatusPatch(): Partial<HostRuntimeSnapshotPatch> {
+    const error =
+      this.connectionMachineState.tag === "error" ? this.connectionMachineState.message : null;
+    return workspaceDirectoryConnectionPatch(this.snapshot, {
+      status: this.snapshot.connectionStatus,
+      error,
+    });
+  }
+
   private async switchToConnection(input: {
     connectionId: string;
     expectedProbeVersion?: number;
@@ -1332,6 +1357,7 @@ export class HostRuntimeController {
       const patch: HostRuntimeSnapshotPatch = {
         ...toSnapshotConnectionPatch(this.connectionMachineState, this.connectionEpoch),
         ...this.buildAgentDirectoryStatusPatch(),
+        ...this.buildWorkspaceDirectoryStatusPatch(),
       };
       this.updateSnapshot(patch);
     });
@@ -2276,19 +2302,21 @@ export class HostRuntimeStore {
           useSessionStore.getState().sessions[serverId]?.queuedMessages.get(queuedAgentId) ?? [],
         write: (update) => useSessionStore.getState().setQueuedMessages(serverId, update),
       },
-      submitMessage: async ({ text, attachments }) => {
+      submitMessage: async ({ text, attachments, selectedMcpServerIds, selectedSkillIds }) => {
         const supportsForgeAttachments =
           useSessionStore.getState().sessions[serverId]?.serverInfo?.features?.forgeSearch === true;
-        const wirePayload = splitComposerAttachmentsForSubmit(attachments, {
-          format: resolveComposerAttachmentSubmitFormat({
+        await dispatchComposerAgentMessage({
+          client,
+          agentId,
+          text,
+          attachments,
+          attachmentSubmitFormat: resolveComposerAttachmentSubmitFormat({
             supportsForgeAttachments,
           }),
-        });
-        const images = await encodeImages(wirePayload.images);
-        await client.sendAgentMessage(agentId, text, {
-          messageId: next.id,
-          ...(images && images.length > 0 ? { images } : {}),
-          attachments: wirePayload.attachments,
+          encodeImages,
+          submission: createMessageSubmissionWriter(serverId),
+          selectedMcpServerIds,
+          selectedSkillIds,
         });
       },
     })

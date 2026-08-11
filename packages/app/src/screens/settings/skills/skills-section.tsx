@@ -16,8 +16,6 @@ interface SkillsSectionProps {
   serverId: string;
 }
 
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
-
 const DEFAULT_SKILL_CONTENT = `---
 name: my-skill
 description: Explain when this skill should be used.
@@ -83,7 +81,10 @@ function SkillRow({
   const handleEdit = useCallback(() => onEdit(skill), [onEdit, skill]);
   const handleDelete = useCallback(() => onDelete(skill), [onDelete, skill]);
   const rowStyle = useMemo(
-    () => [isFirst ? settingsStyles.row : ROW_WITH_BORDER_STYLE, styles.skillRow],
+    () => [
+      isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder],
+      styles.skillRow,
+    ],
     [isFirst],
   );
 

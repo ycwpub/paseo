@@ -149,6 +149,7 @@ import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { WorkflowService } from "./workflow/service.js";
+import { resolveWorkflowProjectVariables } from "./workflow/workflow-project-variables.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { createOrchestrationSkills } from "./orchestration-skills/index.js";
 import { resolveConfigFromPersisted, type CliConfigOverrides } from "./config.js";
@@ -549,6 +550,28 @@ function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | stri
   return config.trustedProxies ?? ["loopback"];
 }
 
+function resolveInitialRelayEndpoints(
+  config: PaseoDaemonConfig,
+): MutableDaemonConfig["relay"]["endpoints"] {
+  if (config.relayEnabled === false) {
+    return [];
+  }
+  if (config.relayEndpoints !== undefined) {
+    return config.relayEndpoints;
+  }
+  if (!config.relayEndpoint) {
+    return [];
+  }
+  return [
+    {
+      endpoint: config.relayEndpoint,
+      useTls: config.relayUseTls ?? false,
+      ...(config.relayPublicEndpoint ? { publicEndpoint: config.relayPublicEndpoint } : {}),
+      ...(config.relayPublicUseTls !== undefined ? { publicUseTls: config.relayPublicUseTls } : {}),
+    },
+  ];
+}
+
 function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
   const providers = config.providerOverrides ?? {};
 
@@ -575,24 +598,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     },
     instructionTemplates: config.instructionTemplates,
     relay: {
-      endpoints:
-        config.relayEnabled === false
-          ? []
-          : (config.relayEndpoints ??
-            (config.relayEndpoint
-              ? [
-                  {
-                    endpoint: config.relayEndpoint,
-                    useTls: config.relayUseTls ?? false,
-                    ...(config.relayPublicEndpoint
-                      ? { publicEndpoint: config.relayPublicEndpoint }
-                      : {}),
-                    ...(config.relayPublicUseTls !== undefined
-                      ? { publicUseTls: config.relayPublicUseTls }
-                      : {}),
-                  },
-                ]
-              : [])),
+      endpoints: resolveInitialRelayEndpoints(config),
       pairingBaseUrls: config.relayPairingBaseUrls ?? [],
       local: config.lanRelay ?? {
         enabled: false,
@@ -1664,6 +1670,20 @@ export async function createPaseoDaemon(
       },
     );
   };
+  const workflowService = new WorkflowService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    createAgent,
+    createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
+    createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
+    archiveWorkspace: archiveScheduleWorkspaceExternal,
+    resolveAgentProjectVariables: (cwd) =>
+      resolveWorkflowProjectVariables({ cwd, projectRegistry, logger }),
+    assistantStore,
+    teamStore,
+  });
+  await workflowService.start();
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,
     logger,
@@ -1674,20 +1694,9 @@ export async function createPaseoDaemon(
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
     assistantStore,
+    workflowService,
   });
   await scheduleService.start();
-  const workflowService = new WorkflowService({
-    paseoHome: config.paseoHome,
-    logger,
-    agentManager,
-    createAgent,
-    createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
-    createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
-    archiveWorkspace: archiveScheduleWorkspaceExternal,
-    assistantStore,
-    teamStore,
-  });
-  await workflowService.start();
   let inFlightIdleAgentCollection: Promise<void> | null = null;
   const collectIdleAgentRuntimes = async () => {
     const protectedAgentIds = await scheduleService.listActiveAgentTargetIds();

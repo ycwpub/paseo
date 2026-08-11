@@ -41,8 +41,14 @@ interface SidebarModel extends SidebarWorkspacesListResult {
   workspaceGroups: SidebarWorkspaceGroup[];
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
+  hiddenProjects: SidebarProjectEntry[];
+  hiddenProjectsCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleHiddenProjectsCollapsed: () => void;
+  allWorkspaceGroupsCollapsed: boolean;
+  setAllWorkspaceGroupsCollapsed: (collapsed: boolean) => void;
+  setProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   shortcutModel: SidebarShortcutModel;
 }
 
@@ -156,6 +162,7 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       collapsedWorkspaceGroupKeys,
       groupMode,
+      hiddenProjectKeys,
       list.projectNamesByViewKey,
       filteredProjects,
       pinnedCollapsed,
@@ -177,17 +184,28 @@ export function SidebarModelProvider({
       workspaceGroups: projection.workspaceGroups,
       projectIconTargets: projection.projectIconTargets,
       pinnedGroups: projection.pinnedGroups,
+      hiddenProjects: projection.hiddenProjects,
+      hiddenProjectsCollapsed,
       collapsedProjectKeys,
       toggleProjectCollapsed,
+      toggleHiddenProjectsCollapsed,
+      allWorkspaceGroupsCollapsed,
+      setAllWorkspaceGroupsCollapsed,
+      setProjectHidden,
       shortcutModel: projection.shortcutModel,
     }),
     [
       resolvedProjectFilters,
       collapsedProjectKeys,
+      allWorkspaceGroupsCollapsed,
       groupMode,
+      hiddenProjectsCollapsed,
       list,
       filteredProjects,
       projection,
+      setProjectHidden,
+      setAllWorkspaceGroupsCollapsed,
+      toggleHiddenProjectsCollapsed,
       toggleProjectCollapsed,
       filteredWorkspaceEntriesByKey,
     ],

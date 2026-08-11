@@ -523,16 +523,24 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   isDragging?: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
 }) {
+  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const selected =
-    activeWorkspaceSelection?.serverId === workspace.serverId &&
-    activeWorkspaceSelection?.workspaceId === workspace.workspaceId;
+  const selected = bulkSelection.active
+    ? bulkSelection.selected
+    : activeWorkspaceSelection?.serverId === workspace.serverId &&
+      activeWorkspaceSelection?.workspaceId === workspace.workspaceId;
 
   const handlePress = useCallback(() => {
+    if (bulkSelection.active) {
+      if (workspace.archivingAt === null) {
+        bulkSelection.toggle();
+      }
+      return;
+    }
     if (!workspace.serverId) return;
     onWorkspacePress?.();
     navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
-  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
+  }, [bulkSelection, onWorkspacePress, workspace]);
 
   return (
     <StatusWorkspaceRowWithMenu
@@ -594,6 +602,7 @@ function StatusWorkspaceRowWithMenu({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const isArchiving = workspace.archivingAt !== null || isHidingWorkspace;
@@ -671,20 +680,22 @@ function StatusWorkspaceRowWithMenu({
         projectIconDataUri={projectIconDataUri}
         selected={selected}
         shortcutNumber={shortcutNumber}
-        showShortcutBadge={showShortcutBadge}
+        showShortcutBadge={bulkSelection.active ? false : showShortcutBadge}
         onPress={onPress}
         isArchiving={isArchiving}
         archiveLabel={t("sidebar.workspace.actions.archive")}
         archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
-        onArchive={handleArchive}
-        onCopyBranchName={workspace.projectKind === "git" ? handleCopyBranchName : undefined}
-        onCopyPath={handleCopyPath}
-        onRename={handleOpenRename}
-        onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
+        onArchive={bulkSelection.active ? undefined : handleArchive}
+        onCopyBranchName={
+          bulkSelection.active || workspace.projectKind !== "git" ? undefined : handleCopyBranchName
+        }
+        onCopyPath={bulkSelection.active ? undefined : handleCopyPath}
+        onRename={bulkSelection.active ? undefined : handleOpenRename}
+        onMarkAsRead={bulkSelection.active || !hasClearableAttention ? undefined : handleMarkAsRead}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
-        isPinned={isPinned}
-        onTogglePin={onTogglePin}
+        isPinned={bulkSelection.active ? undefined : isPinned}
+        onTogglePin={bulkSelection.active ? undefined : onTogglePin}
         reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
         inStatusGroup={inStatusGroup}
         drag={drag}

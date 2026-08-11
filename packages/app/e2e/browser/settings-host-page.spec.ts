@@ -8,6 +8,7 @@ import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import {
   expectSettingsHeader,
   openSettingsHost,
+  openSettingsHostSection,
   openHostSection,
   expectHostLabelDisplayed,
   clickEditHostLabel,
@@ -33,6 +34,18 @@ test.describe("Settings host page", () => {
 
     await expectSettingsHeader(page, "Connections");
     await expectHostConnectionsCard(page, port);
+  });
+
+  test("pair device is only available from its dedicated host section", async ({ page }) => {
+    const serverId = getServerId();
+
+    await gotoAppShell(page);
+    await openSettings(page);
+    await openSettingsHost(page, serverId);
+
+    await expect(page.getByTestId("host-page-pair-device-row")).toHaveCount(0);
+    await openSettingsHostSection(page, serverId, "pair-device");
+    await expect(page.getByTestId("host-page-pair-device-card")).toBeVisible();
   });
 
   test("LAN Relay settings open as a secondary page and return to connections", async ({

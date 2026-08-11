@@ -3,17 +3,42 @@ import {
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
+  type WorkflowPythonStep,
   type WorkflowScript,
   type WorkflowStep,
   type WorkflowSwitchStep,
 } from "@getpaseo/protocol/workflow/types";
 import type { PaseoInstructionTemplate } from "@getpaseo/protocol/messages";
+import {
+  DEFAULT_AGENT_INITIAL_PROMPT,
+  DEFAULT_BASH_INITIAL_COMMAND,
+  DEFAULT_PYTHON_CODE,
+  DEFAULT_SWITCH_CONTROL,
+} from "@/workflows/step-examples";
+import { validateWorkflowSequenceLinks } from "@/workflows/sequence-links";
+
+export { DEFAULT_AGENT_INITIAL_PROMPT } from "@/workflows/step-examples";
 
 export type WorkflowStepType = WorkflowStep["type"];
+
+const WORKFLOW_STEP_TYPES: readonly WorkflowStepType[] = [
+  "bash",
+  "python",
+  "agent",
+  "switch",
+  "for",
+];
+
+export function getAvailableWorkflowStepTypes(allowPython: boolean): readonly WorkflowStepType[] {
+  return allowPython
+    ? WORKFLOW_STEP_TYPES
+    : WORKFLOW_STEP_TYPES.filter((type) => type !== "python");
+}
 
 export interface WorkflowDefaultNames {
   workflow: string;
   bash: string;
+  python: string;
   agent: string;
   switch: string;
   for: string;
@@ -22,6 +47,7 @@ export interface WorkflowDefaultNames {
 const DEFAULT_NAMES: WorkflowDefaultNames = {
   workflow: "Untitled workflow",
   bash: "Bash command",
+  python: "Python code",
   agent: "Agent",
   switch: "Switch",
   for: "For each",
@@ -31,6 +57,8 @@ export function createEmptyWorkflowScript(
   names: WorkflowDefaultNames = DEFAULT_NAMES,
 ): WorkflowScript {
   return {
+    apiVersion: "paseo.sh/workflow/v1",
+    kind: "Workflow",
     version: 1,
     name: names.workflow,
     description: "",
@@ -79,15 +107,26 @@ export function createWorkflowStep(
       id,
       name: names.bash,
       type,
-      initialCommand: "printf '%s\\n' \"$PASEO_WORKFLOW_INPUT_JSON\"",
+      initialCommand: DEFAULT_BASH_INITIAL_COMMAND,
     } satisfies WorkflowBashStep;
+  }
+  if (type === "python") {
+    return {
+      id,
+      name: names.python,
+      type,
+      code: DEFAULT_PYTHON_CODE,
+    } satisfies WorkflowPythonStep;
   }
   if (type === "agent") {
     return {
       id,
       name: names.agent,
       type,
-      initialPrompt: "Process this workflow payload and return the updated JSON: {{payload}}",
+      lifecycle: "single",
+      subsequentPromptMode: "reuse_initial",
+      outputMode: "normal",
+      initialPrompt: DEFAULT_AGENT_INITIAL_PROMPT,
       config: {
         provider: "codex",
         isolation: "local",
@@ -100,7 +139,8 @@ export function createWorkflowStep(
       id,
       name: names.switch,
       type,
-      cases: [{ equals: "success", steps: [] }],
+      switchVar: "{{data.control}}",
+      cases: [{ equals: DEFAULT_SWITCH_CONTROL, steps: [] }],
       defaultSteps: [],
     } satisfies WorkflowSwitchStep;
   }
@@ -108,7 +148,12 @@ export function createWorkflowStep(
     id,
     name: names.for,
     type,
+    mode: "array",
+    executionMode: "serial",
+    items: "{{data.items}}",
+    forControl: "{{data.control}}",
     maxIterations: 100,
+    concurrency: 1,
     steps: [createWorkflowStep("bash", existingSteps, names)],
   } satisfies WorkflowForStep;
 }
@@ -156,6 +201,29 @@ export function applyInstructionTemplateToAgentStep(
   };
 }
 
+export function applyInstructionTemplateToAgentSystemPrompt(
+  step: WorkflowAgentStep,
+  template: Pick<PaseoInstructionTemplate, "content">,
+): WorkflowAgentStep {
+  return {
+    ...step,
+    config: {
+      ...step.config,
+      systemPrompt: template.content,
+    },
+  };
+}
+
+export function updateAgentOutputMode(
+  step: WorkflowAgentStep,
+  outputMode: "normal" | "custom",
+): WorkflowAgentStep {
+  return {
+    ...step,
+    outputMode,
+  };
+}
+
 export function countWorkflowSteps(steps: WorkflowStep[]): number {
   return steps.reduce((count, step) => {
     if (step.type === "switch") {
@@ -183,13 +251,21 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
   if (duplicate) {
     return `Duplicate workflow step id: ${duplicate}`;
   }
+  if (script.apiVersion !== "paseo.sh/workflow/v1" || script.kind !== "Workflow") {
+    return "Workflow version 1 requires apiVersion paseo.sh/workflow/v1 and kind Workflow";
+  }
   const defaultRetryError = validateRetryPolicy(script.taskDefaults?.retry, "Workflow default");
   if (defaultRetryError) {
     return defaultRetryError;
   }
-  const validateSteps = (steps: WorkflowStep[]): string | null => {
+  // oxlint-disable-next-line complexity -- Recursive validation keeps branch, loop, retry, and self-reference errors in one deterministic traversal.
+  const validateSteps = (steps: WorkflowStep[], insideFor = false): string | null => {
+    const sequenceError = validateWorkflowSequenceLinks(steps);
+    if (sequenceError) {
+      return sequenceError;
+    }
     for (const step of steps) {
-      if (step.type === "bash" || step.type === "agent") {
+      if (step.type === "bash" || step.type === "python" || step.type === "agent") {
         const retryError = validateRetryPolicy(
           script.taskDefaults?.retry || step.retry
             ? { ...script.taskDefaults?.retry, ...step.retry }
@@ -199,28 +275,48 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
         if (retryError) {
           return retryError;
         }
+        if (step.type === "agent" && (step.lifecycle ?? "single") === "for" && !insideFor) {
+          return `Agent step ${step.id} with For lifecycle must be inside a For loop`;
+        }
       }
       if (step.type === "switch") {
         const cases = new Set<string>();
         for (const candidate of step.cases) {
-          const normalized = step.caseSensitive ? candidate.equals : candidate.equals.toLowerCase();
+          const normalized =
+            typeof candidate.equals === "string" && !step.caseSensitive
+              ? candidate.equals.toLowerCase()
+              : JSON.stringify(candidate.equals);
           if (cases.has(normalized)) {
             return `Switch step ${step.id} has duplicate case: ${candidate.equals}`;
           }
           cases.add(normalized);
-          const branchError = validateSteps(candidate.steps);
+          const branchError = validateSteps(candidate.steps, insideFor);
           if (branchError) {
             return branchError;
           }
         }
-        const defaultError = validateSteps(step.defaultSteps ?? []);
+        const defaultError = validateSteps(step.defaultSteps ?? [], insideFor);
         if (defaultError) {
           return defaultError;
         }
+        if (!step.switchVar) {
+          return `Switch step ${step.id} requires a value expression`;
+        }
       } else if (step.type === "for") {
-        const loopError = validateSteps(step.steps);
+        const loopError = validateSteps(step.steps, true);
         if (loopError) {
           return loopError;
+        }
+        const mode = step.mode ?? "array";
+        if (mode !== "true" && !step.items) {
+          return `For step ${step.id} in ${mode} mode requires an items expression`;
+        }
+        const executionMode = step.executionMode ?? "serial";
+        if (executionMode === "serial" && (step.concurrency ?? 1) !== 1) {
+          return `For step ${step.id} in serial mode requires concurrency 1`;
+        }
+        if (executionMode === "parallel" && mode === "true" && (step.maxIterations ?? 100) === 0) {
+          return `For step ${step.id} cannot run an unlimited True loop in parallel`;
         }
       }
     }

@@ -49,7 +49,106 @@ export const fr: TranslationResources = {
       idle: "Inactif",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plan complet",
+      fullViewTitle: "Graphe complet du workflow",
+      fullViewHint:
+        "Inspectez le graphe des dépendances et le chemin d’exécution, zoomez ou ouvrez un nœud.",
+      zoomIn: "Agrandir le graphe du workflow",
+      zoomOut: "Réduire le graphe du workflow",
+      resetZoom: "Réinitialiser le zoom du graphe",
+      nodeName: "Nom du nœud",
+      nodeId: "ID du nœud",
+      nodeType: "Type de nœud",
+      configuration: "Configuration complète du nœud",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Cycle de vie de l’agent",
+        lifecycleHint:
+          "Définit la durée de réutilisation du même agent par ce nœud. Les appels réutilisés sont exécutés dans l’ordre.",
+        selectLifecycle: "Sélectionner le cycle de vie de l’agent",
+        lifecycleOptions: {
+          workflow: "Workflow entier",
+          workflowDescription:
+            "Créé lors de la première exécution, réutilisé, puis libéré à la fin du Workflow.",
+          for: "Boucle For actuelle",
+          forDescription:
+            "Créé à la première itération, réutilisé dans la boucle For actuelle, puis libéré à sa sortie.",
+          single: "Exécution unique",
+          singleDescription: "Créer un nouvel agent à chaque exécution, sans réutilisation.",
+        },
+        subsequentPromptMode: "Prompt après le premier appel",
+        subsequentPromptModeHint:
+          "Choisissez le prompt envoyé lorsque ce nœud appelle un agent déjà initialisé.",
+        selectSubsequentPromptMode: "Sélectionner le comportement du prompt suivant",
+        subsequentPromptModes: {
+          reuseInitial: "Réutiliser le prompt initial",
+          reuseInitialDescription:
+            "Rendre à nouveau le prompt initial avec les données actuelles du nœud.",
+          custom: "Prompt personnalisé",
+          customDescription: "Utiliser un prompt distinct pour chaque appel après le premier.",
+        },
+        subsequentPrompt: "Prompt suivant personnalisé",
+        subsequentPromptHint:
+          "Prend en charge les mêmes données et variables de modèle que le prompt initial.",
+        archiveAtLifecycleEnd: "Archiver automatiquement à la fin du cycle de vie de l’agent",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variables d’environnement du nœud (JSON)",
+        environmentHint:
+          "Les valeurs textuelles facultatives remplacent l’environnement de commande du Workflow pour ce nœud.",
+        environmentStringValues:
+          "Les valeurs des variables d’environnement doivent être des chaînes.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Module Python",
+        moduleHint: "Chemin de module facultatif à configurer avec une fonction.",
+        function: "Fonction Python",
+        functionHint:
+          "Reçoit l’entrée complète du nœud et renvoie son résultat ; les fonctions asynchrones sont prises en charge.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condition d’arrêt",
+        breakWhenHint: "L’expression doit renvoyer un booléen ; true arrête la boucle.",
+        continueWhen: "Condition de poursuite",
+        continueWhenHint:
+          "L’expression doit renvoyer un booléen ; true ignore les nœuds restants de cette itération.",
+      },
+      contract: {
+        title: "Contrat de données du nœud",
+        description: "Mappez uniquement les champs requis et validez les entrées et sorties.",
+        inputs: "Mappage d’entrée (JSON)",
+        inputsHint:
+          "Une expression complète comme {{nodes.scan.outputs.items}} conserve son type natif.",
+        inputSchema: "Schéma d’entrée",
+        outputSchema: "Schéma de sortie",
+        schemaHint: "Facultatif. Paseo valide l’objet avant de continuer.",
+        invalidJson: "Saisissez un JSON valide.",
+        objectRequired: "La valeur doit être un objet JSON.",
+      },
+      openDetails: "Ouvrir les détails du nœud {{name}}",
+      downstream: {
+        label: "Nœud suivant",
+        hint: "Choisissez le nœud de même niveau à exécuter après celui-ci.",
+        sequential: "Suivre l’ordre de la liste",
+        sequentialDescription: "Exécuter le nœud suivant de la liste.",
+        end: "Terminer la séquence",
+        endDescription: "Terminer cette séquence après le nœud actuel.",
+        missing: "Nœud manquant : {{id}}",
+        placeholder: "Sélectionner le nœud suivant",
+        empty: "Aucun nœud suivant disponible",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Basculer la barre latérale",
@@ -230,6 +329,21 @@ export const fr: TranslationResources = {
     process: {
       show: "Afficher le processus",
       hide: "Masquer le processus",
+      processed: "Traité",
+      processedWithDuration: "Traité en {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "Plan",
@@ -273,9 +387,18 @@ export const fr: TranslationResources = {
     title: "Historique",
     empty: "Aucune séance pour l'instant",
     noMatches: "Aucune séance correspondante",
+    noProjectSessions: "Aucune séance pour ce projet",
     tooManyMatches: "Trop de résultats — affinez la recherche",
     hostLoadFailed: "{{host}} : Impossible de charger l'historique",
     searchPlaceholder: "Rechercher dans l'historique",
+    projectFilter: {
+      label: "Projet",
+      title: "Filtrer par projet",
+      all: "Tous les projets",
+      empty: "Aucun projet disponible",
+      search: "Rechercher des projets",
+      hostCount: "{{count}} hôtes",
+    },
     actions: {
       loadMore: "Charger plus",
       clearSearch: "Effacer la recherche",
@@ -1151,6 +1274,8 @@ export const fr: TranslationResources = {
       home: "Maison",
       settings: "Paramètres",
       closeSidebar: "Fermer la barre latérale",
+      collapseAllWorkspaces: "Réduire tous les espaces de travail",
+      expandAllWorkspaces: "Développer tous les espaces de travail",
     },
     help: {
       trigger: "Aide et assistance",
@@ -1181,8 +1306,13 @@ export const fr: TranslationResources = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Masquer le projet",
+        show: "Afficher le projet",
         remove: "Supprimer le projet",
         removing: "Suppression...",
+      },
+      hidden: {
+        title: "Projets masqués ({{count}})",
       },
       confirmations: {
         removeTitle: "Supprimer le projet?",
@@ -1231,6 +1361,18 @@ export const fr: TranslationResources = {
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",
         hiding: "Dissimulation...",
+      },
+      bulkArchive: {
+        select: "Sélectionner des espaces de travail",
+        selected: "{{count}} sélectionnés",
+        cancel: "Annuler la sélection",
+        title: "Archiver {{count}} espaces de travail ?",
+        message:
+          "Les espaces de travail sélectionnés seront archivés et retirés de la barre latérale.",
+        riskyWorktrees:
+          "{{count}} worktree(s) sélectionnés contiennent des modifications non validées ou non envoyées. Leurs dossiers peuvent être supprimés.",
+        confirm: "Archiver la sélection",
+        failed: "Échec de l’archivage de {{count}} espaces de travail",
       },
       confirmations: {
         hideTitle: "Masquer l'espace de travail?",
@@ -2013,6 +2155,7 @@ export const fr: TranslationResources = {
     projects: "Projets",
     projectList: {
       hostLoadFailed: "Impossible de charger les projets depuis l'hôte{{hostName}}:{{message}}",
+      hostLoadTimedOut: "L'hôte {{hostName}} n'a pas répondu à temps. Réessayez.",
       editProject: "Modifier{{projectName}}",
     },
     groupInfo: "À propos de{{title}}",

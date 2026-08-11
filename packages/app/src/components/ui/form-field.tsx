@@ -38,7 +38,7 @@ export function Field({ label, children, hint, error, testID }: FieldProps) {
   const subtext = useMemo(() => {
     if (error) {
       return (
-        <Text numberOfLines={1} style={styles.errorText} testID={errorTestID}>
+        <Text style={styles.errorText} testID={errorTestID}>
           {error}
         </Text>
       );
@@ -64,6 +64,7 @@ export function Field({ label, children, hint, error, testID }: FieldProps) {
 
 type FormTextInputProps = AdaptiveTextInputProps & {
   size?: FieldControlSize;
+  textInputStyle?: AdaptiveTextInputProps["style"];
 };
 
 type FlatFormTextInputStyle = ViewStyle & TextStyle;

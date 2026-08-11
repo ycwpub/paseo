@@ -29,6 +29,7 @@ Not typically invoked directly by users, it's a reference that other skills depe
 
 ```
 /paseo show me the Paseo CLI surface for creating an agent in a worktree-isolated workspace
+/paseo discover whether an installed Workflow can process these alert groups
 ```
 
 ## `/paseo-handoff`, Task Handoff

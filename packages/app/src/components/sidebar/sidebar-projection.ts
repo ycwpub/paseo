@@ -4,6 +4,7 @@ import {
   type PinnedSidebarGroups,
   type PinnedSidebarKeys,
 } from "@/hooks/use-sidebar-pins";
+import { splitHiddenSidebarProjects } from "@/hooks/sidebar-hidden-projects";
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
@@ -43,13 +44,14 @@ export interface SidebarProjectionInput {
   projectNamesByViewKey: Map<string, string>;
   groupMode: SidebarGroupMode;
   pinnedCollapsed: boolean;
+  hiddenProjectKeys: ReadonlySet<string>;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
 }
 
 export function buildSidebarProjection(input: SidebarProjectionInput): SidebarProjection {
   const pinnedGroups = splitPinnedSidebarGroups({
-    projects: input.projects,
+    projects: visibleProjects,
     keys: input.pinnedKeys,
     pinnedWorkspaceOrder: input.pinnedWorkspaceOrder,
   });

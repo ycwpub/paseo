@@ -200,6 +200,33 @@ describe("fetchAgentHistoryPage", () => {
     } satisfies FetchAgentHistoryOptions);
   });
 
+  it("passes project filters to the daemon", async () => {
+    const client = createClient([
+      historyPayload({
+        entries: [
+          historyEntry({
+            id: "project-history",
+            cwd: "/repo/project",
+            updatedAt: "2026-04-01T10:00:00.000Z",
+          }),
+        ],
+      }),
+    ]);
+
+    await fetchAgentHistoryPage({
+      client,
+      serverId: "server-1",
+      cursor: null,
+      projectKeys: ["project-1"],
+    });
+
+    expect(client.calls.at(-1)).toEqual({
+      filter: { projectKeys: ["project-1"] },
+      sort: [{ key: "updated_at", direction: "desc" }],
+      page: { limit: 200 },
+    } satisfies FetchAgentHistoryOptions);
+  });
+
   it("maps daemon history entries into aggregated agents tagged with the requested server", async () => {
     const client = createClient([
       historyPayload({
@@ -286,6 +313,32 @@ describe("fetchAgentHistoryPage", () => {
       "Linux box:newer-b",
       "MacBook:older-a",
     ]);
+  });
+
+  it("uses each host's local project id when filtering a grouped project", async () => {
+    const serverAClient = createClient([historyPayload({ entries: [] })]);
+    const serverBClient = createClient([historyPayload({ entries: [] })]);
+
+    await fetchAgentHistoryBatch({
+      hosts: [
+        {
+          serverId: "server-a",
+          serverLabel: "MacBook",
+          client: serverAClient,
+          projectKeys: ["project-a"],
+        },
+        {
+          serverId: "server-b",
+          serverLabel: "Linux box",
+          client: serverBClient,
+          projectKeys: ["project-b"],
+        },
+      ] satisfies AgentHistoryHost[],
+      cursorByServerId: null,
+    });
+
+    expect(serverAClient.calls[0]?.filter).toEqual({ projectKeys: ["project-a"] });
+    expect(serverBClient.calls[0]?.filter).toEqual({ projectKeys: ["project-b"] });
   });
 
   it("sends the query to the daemon rather than filtering the page locally", async () => {

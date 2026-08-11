@@ -97,6 +97,10 @@ import {
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import type { BrowserAutomationExecuteResponse } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import {
+  WORKFLOW_PROTOCOL_REVISION,
+  WORKFLOW_PROTOCOL_VERSION,
+} from "@getpaseo/protocol/workflow/protocol-version";
+import {
   BrowserAutomationHostCapabilitySchema,
   type BrowserAutomationHostCapability,
 } from "@getpaseo/protocol/browser-automation/capabilities";
@@ -1971,6 +1975,19 @@ export class VoiceAssistantWebSocketServer {
         stableProjectIdentity: true,
         // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
         agentProfiles: true,
+        // COMPAT(workflowPython): added in v0.3.2, remove gate after 2027-02-12.
+        workflowPython: true,
+        // COMPAT(workflowNodeRun): added in v0.3.2, remove gate after 2027-02-12.
+        workflowNodeRun: true,
+        // COMPAT(workflowNodeInputMode): added in v0.3.2, remove gate after 2027-02-16.
+        workflowNodeInputMode: true,
+        // COMPAT(workflowInputConfiguration): added in v0.3.2, remove gate after 2027-02-12.
+        workflowInputConfiguration: true,
+        // COMPAT(workflowCommandResultFd3): added in v0.3.2, remove gate after 2027-02-12.
+        workflowCommandResultFd3: true,
+        workflowProtocolVersion: WORKFLOW_PROTOCOL_VERSION,
+        // COMPAT(workflowProtocolRevision): added in v0.3.2, remove gate after 2027-02-16.
+        workflowProtocolRevision: WORKFLOW_PROTOCOL_REVISION,
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.

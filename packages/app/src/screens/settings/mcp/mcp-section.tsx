@@ -22,8 +22,6 @@ interface McpSectionProps {
   serverId: string;
 }
 
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
-
 const EMPTY_MCP_JSON = `{
   "mcpServers": {
     "weather": {
@@ -115,7 +113,10 @@ function McpServerRow({
   const handleEdit = useCallback(() => onEdit(server), [onEdit, server]);
   const handleDelete = useCallback(() => onDelete(server), [onDelete, server]);
   const rowStyle = useMemo(
-    () => [isFirst ? settingsStyles.row : ROW_WITH_BORDER_STYLE, styles.serverRow],
+    () => [
+      isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder],
+      styles.serverRow,
+    ],
     [isFirst],
   );
 

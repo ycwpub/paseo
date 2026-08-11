@@ -10,13 +10,17 @@ import {
 
 export interface EncryptedWebSocketLike {
   readonly readyState: number;
-  send: (data: string | Uint8Array | ArrayBuffer) => void;
+  send: (data: string | Uint8Array | ArrayBuffer) => void | Promise<void>;
   close: (code?: number, reason?: string) => void;
   on: (event: "message" | "close" | "error", listener: (...args: unknown[]) => void) => void;
   once: (event: "close" | "error", listener: (...args: unknown[]) => void) => void;
 }
 
 export interface RawEncryptedWebSocketLike extends EncryptedWebSocketLike {
+  send: (
+    data: string | Uint8Array | ArrayBuffer,
+    callback?: (error?: Error) => void,
+  ) => void | Promise<void>;
   on: (event: "message" | "close" | "error", listener: (...args: unknown[]) => void) => void;
 }
 
@@ -56,13 +60,28 @@ export async function wrapDaemonEncryptedWebSocket(
 
 function createTransportAdapter(socket: RawEncryptedWebSocketLike, logger: pino.Logger): Transport {
   const transport: Transport = {
-    send: (data) => {
-      try {
-        socket.send(data);
-      } catch (err) {
-        logger.warn({ err }, "encrypted_websocket_send_failed");
-      }
-    },
+    send: (data) =>
+      new Promise<void>((resolve, reject) => {
+        try {
+          const returned = socket.send(data, (error) => {
+            if (error) {
+              logger.warn({ err: error }, "encrypted_websocket_send_failed");
+              reject(error);
+              return;
+            }
+            resolve();
+          });
+          if (returned && typeof returned.then === "function") {
+            void returned.then(resolve, (error: unknown) => {
+              logger.warn({ err: error }, "encrypted_websocket_send_failed");
+              reject(error);
+            });
+          }
+        } catch (error) {
+          logger.warn({ err: error }, "encrypted_websocket_send_failed");
+          reject(error);
+        }
+      }),
     close: (code?: number, reason?: string) => socket.close(code, reason),
     onmessage: null,
     onclose: null,
@@ -110,11 +129,14 @@ function createEncryptedSocket(
     get readyState() {
       return readyState;
     },
-    send: (data) => {
+    send: async (data) => {
       const outbound = normalizeSendPayload(data);
-      void channel.send(outbound).catch((error) => {
+      try {
+        await channel.send(outbound);
+      } catch (error) {
         emitter.emit("error", error);
-      });
+        throw error;
+      }
     },
     close,
     on: (event, listener) => {

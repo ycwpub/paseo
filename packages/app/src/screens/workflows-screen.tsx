@@ -6,8 +6,6 @@ import { useTranslation } from "react-i18next";
 import {
   Bot,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   Circle,
   Clock3,
   ExternalLink,
@@ -16,8 +14,7 @@ import {
   Play,
   Plus,
   RefreshCw,
-  Save,
-  Trash2,
+  TerminalSquare,
   Workflow,
   XCircle,
 } from "lucide-react-native";
@@ -29,11 +26,27 @@ import {
   type WorkflowScript,
   type WorkflowScriptFile,
   type WorkflowScriptSummary,
+  type WorkflowStep,
+  type WorkflowTargetInputMode,
 } from "@getpaseo/protocol/workflow/types";
+import { WorkflowNodeInputEnvelopeSchema } from "@getpaseo/protocol/workflow/data-contract";
+import type { WorkflowInputPreset } from "@getpaseo/protocol/workflow/input-contract";
 import { MenuHeader } from "@/components/headers/menu-header";
+import { WorkflowAgentOutput } from "@/components/workflows/workflow-agent-output";
+import { WorkflowEditorToolbar } from "@/components/workflows/workflow-editor-toolbar";
+import { WorkflowEnvironmentConfiguration } from "@/components/workflows/workflow-environment-configuration";
+import { WorkflowExpandableReadonlyValue } from "@/components/workflows/workflow-expandable-readonly-value";
+import { WorkflowGraph } from "@/components/workflows/workflow-graph";
+import { WorkflowInputConfiguration } from "@/components/workflows/workflow-input-configuration";
+import { WorkflowRunInput } from "@/components/workflows/workflow-run-input";
+import { WorkflowSchemaCompatibilityAlert } from "@/components/workflows/workflow-schema-compatibility-alert";
+import { WorkflowStepDetailsSheet } from "@/components/workflows/workflow-step-details-sheet";
 import { WorkflowStepListEditor } from "@/components/workflows/workflow-step-editor";
 import { WorkflowUsageGuide } from "@/components/workflows/workflow-usage-guide";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
+import { useWorkflowEditorGuard } from "@/components/workflows/use-workflow-editor-guard";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -49,23 +62,27 @@ import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { storeFetchedAgentDetail } from "@/utils/store-fetched-agent-detail";
-import { InstructionTemplatesSection } from "@/screens/settings/agents/instruction-templates-section";
-import {
-  countWorkflowSteps,
-  createEmptyWorkflowScript,
-  validateWorkflowDraft,
-} from "@/workflows/editor-model";
-import {
-  deriveWorkflowNodeActions,
-  deriveWorkflowNodeIdentity,
-} from "@/workflows/run-node-actions";
+import { countWorkflowSteps, createEmptyWorkflowScript } from "@/workflows/editor-model";
+import { collectWorkflowRunTargets } from "@/workflows/run-targets";
+import { deriveWorkflowNodeIdentity } from "@/workflows/run-node-actions";
 import { parseWorkflowProcessOutput } from "@/workflows/run-output";
+import { findWorkflowStep } from "@/workflows/step-lookup";
+import { updateWorkflowStepById } from "@/workflows/workflow-step-tree";
+import { getWorkflowDraftValidationPresentation } from "@/workflows/workflow-validation-error";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
-const DEFAULT_WORKFLOW_INPUT_JSON = `{
-  "control": ""
-}`;
+const DEFAULT_WORKFLOW_INPUT_JSON = "{}";
+const DEFAULT_WORKFLOW_NODE_INPUT_JSON = JSON.stringify(
+  {
+    data: {},
+    origin_input: {},
+    workflow: { var: {} },
+    node: { var: {} },
+  },
+  null,
+  2,
+);
 
 function parseWorkflowInputJson(input: string): {
   inputPayload: string;
@@ -74,24 +91,16 @@ function parseWorkflowInputJson(input: string): {
   const rawPayload: unknown = JSON.parse(input);
   const isPayloadObject =
     typeof rawPayload === "object" && rawPayload !== null && !Array.isArray(rawPayload);
-  const rawRecord = isPayloadObject ? (rawPayload as Record<string, unknown>) : null;
-  const missingControl = rawRecord && !Object.hasOwn(rawRecord, "control");
-  const hasFrameworkError = rawRecord && Object.hasOwn(rawRecord, "error");
-  const { error: _frameworkError, ...nodeInput } = rawRecord ?? {};
-  const normalizedPayload = rawRecord
-    ? {
-        ...nodeInput,
-        control: Object.hasOwn(nodeInput, "control") ? nodeInput.control : "",
-        error: "",
-      }
-    : rawPayload;
-  const parsed = WorkflowPayloadSchema.parse(normalizedPayload);
-  const { error: _internalError, ...parsedNodeInput } = parsed;
+  const parsed = WorkflowPayloadSchema.parse(rawPayload);
   return {
-    inputPayload: JSON.stringify(parsedNodeInput),
-    formattedInput:
-      missingControl || hasFrameworkError ? JSON.stringify(parsedNodeInput, null, 2) : null,
+    inputPayload: JSON.stringify(parsed),
+    formattedInput: isPayloadObject ? null : JSON.stringify(parsed, null, 2),
   };
+}
+
+function createDefaultWorkflowInput(presets: WorkflowInputPreset[] | undefined): string {
+  const preset = presets?.[0]?.payload ?? {};
+  return JSON.stringify(preset, null, 2);
 }
 
 export function WorkflowsScreen(): ReactElement {
@@ -118,6 +127,13 @@ function WorkflowsScreenContent(): ReactElement {
     enabled: Boolean(selectedHost),
   });
   const supportsTeams = useHostFeature(selectedHost, "teams");
+  const supportsWorkflowPython = useHostFeature(selectedHost, "workflowPython");
+  const supportsWorkflowNodeRun = useHostFeature(selectedHost, "workflowNodeRun");
+  const supportsWorkflowNodeInputMode = useHostFeature(selectedHost, "workflowNodeInputMode");
+  const supportsWorkflowInputConfiguration = useHostFeature(
+    selectedHost,
+    "workflowInputConfiguration",
+  );
   const teamsResult = useTeams(selectedHost, {
     enabled: Boolean(selectedHost) && supportsTeams,
   });
@@ -131,10 +147,16 @@ function WorkflowsScreenContent(): ReactElement {
   const [running, setRunning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [inputJson, setInputJson] = useState(DEFAULT_WORKFLOW_INPUT_JSON);
+  const [targetNodeId, setTargetNodeId] = useState("");
+  const [targetInputMode, setTargetInputMode] =
+    useState<WorkflowTargetInputMode>("upstream_output");
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [inspectingPath, setInspectingPath] = useState<string | null>(null);
   const [usageGuideVisible, setUsageGuideVisible] = useState(false);
+  const [selectedDesignStepId, setSelectedDesignStepId] = useState<string | null>(null);
   const requestGeneration = useRef(0);
+  const inspectGeneration = useRef(0);
   const wide = width >= 960;
 
   useEffect(() => {
@@ -177,11 +199,16 @@ function WorkflowsScreenContent(): ReactElement {
   }, [client, selectedHost, t]);
 
   useEffect(() => {
+    inspectGeneration.current += 1;
     setDraft(null);
     setDraftPath(null);
     setSelectedPath(null);
+    setInspectingPath(null);
     setDirty(false);
     setActiveRun(null);
+    setTargetNodeId("");
+    setTargetInputMode("upstream_output");
+    setSelectedDesignStepId(null);
     void loadScripts();
   }, [loadScripts, selectedHost]);
 
@@ -201,19 +228,35 @@ function WorkflowsScreenContent(): ReactElement {
           return;
         }
       }
-      setSelectedPath(path);
+      const generation = ++inspectGeneration.current;
+      setInspectingPath(path);
       setActiveRun(null);
+      setTargetNodeId("");
+      setTargetInputMode("upstream_output");
+      setSelectedDesignStepId(null);
       try {
         const payload = await client.workflowInspect({ scriptPath: path });
+        if (generation !== inspectGeneration.current) {
+          return;
+        }
         if (payload.error || !payload.script) {
           throw new Error(payload.error ?? t("workflows.messages.notFound"));
         }
+        setSelectedPath(path);
         setDraft(payload.script.script);
         setDraftPath(payload.script.path);
         setDirty(false);
         setActiveRun(payload.latestRun);
+        setInputJson(createDefaultWorkflowInput(payload.script.script.inputPresets));
       } catch (error) {
+        if (generation !== inspectGeneration.current) {
+          return;
+        }
         toast.error(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (generation === inspectGeneration.current) {
+          setInspectingPath(null);
+        }
       }
     },
     [client, dirty, t, toast],
@@ -235,6 +278,7 @@ function WorkflowsScreenContent(): ReactElement {
       createEmptyWorkflowScript({
         workflow: t("workflows.editor.untitled"),
         bash: t("workflows.nodes.defaultNames.bash"),
+        python: t("workflows.nodes.defaultNames.python"),
         agent: t("workflows.nodes.defaultNames.agent"),
         switch: t("workflows.nodes.defaultNames.switch"),
         for: t("workflows.nodes.defaultNames.for"),
@@ -244,6 +288,10 @@ function WorkflowsScreenContent(): ReactElement {
     setSelectedPath(null);
     setDirty(true);
     setActiveRun(null);
+    setTargetNodeId("");
+    setTargetInputMode("upstream_output");
+    setSelectedDesignStepId(null);
+    setInputJson(DEFAULT_WORKFLOW_INPUT_JSON);
   }, [dirty, t]);
 
   const updateDraft = useCallback((next: WorkflowScript) => {
@@ -251,13 +299,30 @@ function WorkflowsScreenContent(): ReactElement {
     setDirty(true);
   }, []);
 
+  const updateSelectedDesignStep = useCallback(
+    (nextStep: WorkflowStep) => {
+      if (!draft || selectedDesignStepId === null) {
+        return;
+      }
+      updateDraft({
+        ...draft,
+        steps: updateWorkflowStepById(draft.steps, selectedDesignStepId, nextStep),
+      });
+      setSelectedDesignStepId(nextStep.id);
+    },
+    [draft, selectedDesignStepId, updateDraft],
+  );
+
   const persistDraft = useCallback(async (): Promise<WorkflowScriptFile | null> => {
     if (!client || !draft) {
       return null;
     }
-    const validationError = validateWorkflowDraft(draft);
-    if (validationError) {
-      toast.error(validationError);
+    const validation = getWorkflowDraftValidationPresentation(draft, t);
+    if (validation) {
+      if (validation.stepId) {
+        setSelectedDesignStepId(validation.stepId);
+      }
+      toast.error(validation.message);
       return null;
     }
     setSaving(true);
@@ -307,12 +372,19 @@ function WorkflowsScreenContent(): ReactElement {
       setSelectedPath(null);
       setDirty(false);
       setActiveRun(null);
+      setSelectedDesignStepId(null);
       await loadScripts();
       toast.show(t("workflows.messages.deleted"), { variant: "success" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     }
   }, [client, draft, draftPath, loadScripts, t, toast]);
+
+  useWorkflowEditorGuard({
+    dirty,
+    saveEnabled: Boolean(draft) && dirty && !saving,
+    onSave: () => void persistDraft(),
+  });
 
   const runWorkflow = useCallback(async () => {
     if (!client || !draft) {
@@ -326,12 +398,23 @@ function WorkflowsScreenContent(): ReactElement {
     let inputPayload: string;
     try {
       const parsedInput = parseWorkflowInputJson(normalizedInput);
-      inputPayload = parsedInput.inputPayload;
+      const parsedPayload = JSON.parse(parsedInput.inputPayload) as Record<string, unknown>;
+      if (targetNodeId && targetInputMode === "node_input") {
+        inputPayload = JSON.stringify(WorkflowNodeInputEnvelopeSchema.parse(parsedPayload));
+      } else {
+        inputPayload = JSON.stringify(parsedPayload);
+      }
       if (parsedInput.formattedInput) {
         setInputJson(parsedInput.formattedInput);
       }
     } catch {
-      toast.error(t("workflows.messages.invalidInputJson"));
+      toast.error(
+        t(
+          targetNodeId && targetInputMode === "node_input"
+            ? "workflows.messages.invalidNodeInputJson"
+            : "workflows.messages.invalidInputJson",
+        ),
+      );
       return;
     }
     const saved = dirty || !draftPath ? await persistDraft() : { path: draftPath, script: draft };
@@ -343,6 +426,8 @@ function WorkflowsScreenContent(): ReactElement {
       const payload = await client.workflowRun({
         scriptPath: saved.path,
         inputPayload,
+        ...(targetNodeId ? { targetNodeId } : {}),
+        ...(targetNodeId ? { targetInputMode } : {}),
       });
       if (payload.error || !payload.run) {
         throw new Error(payload.error ?? t("workflows.messages.startFailed"));
@@ -354,7 +439,18 @@ function WorkflowsScreenContent(): ReactElement {
     } finally {
       setRunning(false);
     }
-  }, [client, dirty, draft, draftPath, inputJson, persistDraft, t, toast]);
+  }, [
+    client,
+    dirty,
+    draft,
+    draftPath,
+    inputJson,
+    persistDraft,
+    t,
+    targetInputMode,
+    targetNodeId,
+    toast,
+  ]);
 
   const cancelWorkflow = useCallback(async () => {
     if (!client || activeRun?.status !== "running") {
@@ -433,7 +529,62 @@ function WorkflowsScreenContent(): ReactElement {
     [hosts],
   );
   const selectedHostOption = hostOptions.find((option) => option.value === selectedHost);
-  const validationError = draft ? validateWorkflowDraft(draft) : null;
+  const validation = draft ? getWorkflowDraftValidationPresentation(draft, t) : null;
+  const validationError = validation?.message ?? null;
+  const runTargetOptions = useMemo<SelectFieldOption<string>[]>(() => {
+    if (!draft) {
+      return [];
+    }
+    return [
+      {
+        id: "entire-workflow",
+        value: "",
+        label: t("workflows.editor.runEntireWorkflow"),
+      },
+      ...collectWorkflowRunTargets(draft.steps).map((target) => ({
+        id: target.id,
+        value: target.id,
+        label: target.name ? `${target.name} (${target.id})` : target.id,
+        description: t(`workflows.nodes.types.${target.type}`),
+      })),
+    ];
+  }, [draft, t]);
+  const selectedRunTarget = runTargetOptions.find((option) => option.value === targetNodeId);
+  const targetInputModeOptions = useMemo<SelectFieldOption<WorkflowTargetInputMode>[]>(
+    () => [
+      {
+        id: "upstream_output",
+        value: "upstream_output",
+        label: t("workflows.editor.inputModes.upstreamOutput"),
+        description: t("workflows.editor.inputModes.upstreamOutputDescription"),
+      },
+      {
+        id: "node_input",
+        value: "node_input",
+        label: t("workflows.editor.inputModes.nodeInput"),
+        description: t("workflows.editor.inputModes.nodeInputDescription"),
+      },
+    ],
+    [t],
+  );
+  const selectedTargetInputMode = targetInputModeOptions.find(
+    (option) => option.value === targetInputMode,
+  );
+  let testRunHintKey:
+    | "workflows.editor.testRunHint"
+    | "workflows.editor.testRunUpstreamHint"
+    | "workflows.editor.testRunNodeInputHint" = "workflows.editor.testRunHint";
+  if (targetNodeId) {
+    testRunHintKey =
+      targetInputMode === "node_input"
+        ? "workflows.editor.testRunNodeInputHint"
+        : "workflows.editor.testRunUpstreamHint";
+  }
+  useEffect(() => {
+    if (targetNodeId && !selectedRunTarget) {
+      setTargetNodeId("");
+    }
+  }, [selectedRunTarget, targetNodeId]);
 
   return (
     <View style={styles.container}>
@@ -508,6 +659,7 @@ function WorkflowsScreenContent(): ReactElement {
           state={loadState}
           error={loadError}
           selectedPath={selectedPath}
+          inspectingPath={inspectingPath}
           onSelect={(path) => void selectWorkflow(path)}
           onCreate={() => void createWorkflow()}
           onRetry={() => void loadScripts()}
@@ -515,71 +667,43 @@ function WorkflowsScreenContent(): ReactElement {
         />
         <View style={styles.editorPane}>
           {draft ? (
-            <ScrollView
-              style={styles.editorScroll}
-              contentContainerStyle={styles.editorContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.editorToolbar}>
-                <View style={styles.editorTitleGroup}>
-                  <View style={styles.editorTitleRow}>
-                    <WorkflowTextInput
-                      value={draft.name}
-                      onChangeText={(name) => updateDraft({ ...draft, name })}
-                      placeholder={t("workflows.editor.untitled")}
-                      accessibilityLabel={t("workflows.editor.name")}
-                      style={styles.editorTitleInput}
-                      testID="workflow-name"
+            <>
+              <WorkflowEditorToolbar
+                name={draft.name}
+                path={draftPath}
+                dirty={dirty}
+                saving={saving}
+                nameLabel={t("workflows.editor.name")}
+                untitledPlaceholder={t("workflows.editor.untitled")}
+                generatedPathLabel={t("workflows.editor.generatedFileName")}
+                unsavedLabel={t("workflows.editor.unsaved")}
+                deleteLabel={t("workflows.actions.delete")}
+                saveLabel={t("workflows.actions.save")}
+                onChangeName={(name) =>
+                  updateDraft({ ...draft, name: name.replace(/\r?\n/g, " ") })
+                }
+                onDelete={() => void deleteWorkflow()}
+                onSave={() => void persistDraft()}
+              />
+              <ScrollView
+                style={styles.editorScroll}
+                contentContainerStyle={styles.editorContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                {validationError ? <Alert variant="error" description={validationError} /> : null}
+                <WorkflowSchemaCompatibilityAlert script={draft} />
+
+                <View style={styles.metadataCard}>
+                  <View style={styles.metadataHeader}>
+                    <Text style={styles.metadataLabel}>{t("workflows.editor.description")}</Text>
+                    <StatusBadge
+                      label={t("workflows.list.nodeCount", {
+                        count: countWorkflowSteps(draft.steps),
+                      })}
+                      variant="muted"
                     />
-                    {dirty ? (
-                      <StatusBadge label={t("workflows.editor.unsaved")} variant="muted" />
-                    ) : null}
                   </View>
-                  <Text style={styles.editorPath} numberOfLines={1}>
-                    {draftPath ?? t("workflows.editor.generatedFileName")}
-                  </Text>
-                </View>
-                <View style={styles.editorActions}>
-                  {draftPath ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      leftIcon={Trash2}
-                      onPress={() => void deleteWorkflow()}
-                    >
-                      {t("workflows.actions.delete")}
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="default"
-                    size="sm"
-                    leftIcon={Save}
-                    onPress={() => void persistDraft()}
-                    loading={saving}
-                    disabled={!dirty && Boolean(draftPath)}
-                    testID="workflow-save"
-                  >
-                    {t("workflows.actions.save")}
-                  </Button>
-                </View>
-              </View>
-
-              {validationError ? (
-                <View style={styles.validationBanner}>
-                  <XCircle size={16} color={styles.validationIcon.color} />
-                  <Text style={styles.validationText}>{validationError}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.metadataCard}>
-                <View style={styles.metadataCountRow}>
-                  <View style={styles.metadataCount}>
-                    <Text style={styles.metadataCountValue}>{countWorkflowSteps(draft.steps)}</Text>
-                    <Text style={styles.metadataCountLabel}>{t("workflows.editor.nodes")}</Text>
-                  </View>
-                </View>
-                <Field label={t("workflows.editor.description")}>
                   <WorkflowTextInput
                     value={draft.description ?? ""}
                     onChangeText={(description) => updateDraft({ ...draft, description })}
@@ -587,151 +711,279 @@ function WorkflowsScreenContent(): ReactElement {
                     textAlignVertical="top"
                     style={styles.descriptionInput}
                     placeholder={t("workflows.editor.descriptionPlaceholder")}
+                    accessibilityLabel={t("workflows.editor.description")}
                   />
-                </Field>
-                <View style={styles.policyGrid}>
-                  <View style={styles.policyField}>
-                    <Field
-                      label={t("workflows.editor.workflowTimeout")}
-                      hint={t("workflows.editor.workflowTimeoutHint")}
-                    >
-                      <WorkflowTextInput
-                        value={formatMillisecondsAsSeconds(draft.timeoutMs)}
-                        onChangeText={(value) =>
-                          updateDraft({
-                            ...draft,
-                            timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
-                          })
-                        }
-                        placeholder="86400"
-                        keyboardType="decimal-pad"
-                        size="sm"
-                      />
-                    </Field>
-                  </View>
-                  <View style={styles.policyField}>
-                    <Field
-                      label={t("workflows.editor.taskTimeout")}
-                      hint={t("workflows.editor.taskTimeoutHint")}
-                    >
-                      <WorkflowTextInput
-                        value={formatMillisecondsAsSeconds(draft.taskDefaults?.timeoutMs)}
-                        onChangeText={(value) =>
-                          updateDraft({
-                            ...draft,
-                            taskDefaults: {
-                              ...draft.taskDefaults,
+                  <View style={styles.policyGrid}>
+                    <View style={styles.policyField}>
+                      <Field
+                        label={t("workflows.editor.workflowTimeout")}
+                        hint={t("workflows.editor.workflowTimeoutHint")}
+                      >
+                        <WorkflowTextInput
+                          value={formatMillisecondsAsSeconds(draft.timeoutMs)}
+                          onChangeText={(value) =>
+                            updateDraft({
+                              ...draft,
                               timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
-                            },
-                          })
-                        }
-                        placeholder="1800"
-                        keyboardType="decimal-pad"
-                        size="sm"
-                      />
-                    </Field>
-                  </View>
-                  <View style={styles.policyField}>
-                    <Field
-                      label={t("workflows.editor.defaultAttempts")}
-                      hint={t("workflows.editor.defaultAttemptsHint")}
-                    >
-                      <WorkflowTextInput
-                        value={draft.taskDefaults?.retry?.maxAttempts?.toString() ?? ""}
-                        onChangeText={(value) =>
-                          updateDraft({
-                            ...draft,
-                            taskDefaults: {
-                              ...draft.taskDefaults,
-                              retry: {
-                                maxAttempts: optionalPositiveNumber(value) ?? 1,
-                                initialDelayMs: draft.taskDefaults?.retry?.initialDelayMs,
-                                maxDelayMs: draft.taskDefaults?.retry?.maxDelayMs,
-                                backoffMultiplier: draft.taskDefaults?.retry?.backoffMultiplier,
-                                jitter: draft.taskDefaults?.retry?.jitter,
+                            })
+                          }
+                          placeholder="86400"
+                          keyboardType="decimal-pad"
+                          size="sm"
+                          expandable={false}
+                        />
+                      </Field>
+                    </View>
+                    <View style={styles.policyField}>
+                      <Field
+                        label={t("workflows.editor.taskTimeout")}
+                        hint={t("workflows.editor.taskTimeoutHint")}
+                      >
+                        <WorkflowTextInput
+                          value={formatMillisecondsAsSeconds(draft.taskDefaults?.timeoutMs)}
+                          onChangeText={(value) =>
+                            updateDraft({
+                              ...draft,
+                              taskDefaults: {
+                                ...draft.taskDefaults,
+                                timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
                               },
-                            },
-                          })
+                            })
+                          }
+                          placeholder="1800"
+                          keyboardType="decimal-pad"
+                          size="sm"
+                          expandable={false}
+                        />
+                      </Field>
+                    </View>
+                    <View style={styles.policyField}>
+                      <Field
+                        label={t("workflows.editor.defaultAttempts")}
+                        hint={t("workflows.editor.defaultAttemptsHint")}
+                      >
+                        <WorkflowTextInput
+                          value={draft.taskDefaults?.retry?.maxAttempts?.toString() ?? ""}
+                          onChangeText={(value) =>
+                            updateDraft({
+                              ...draft,
+                              taskDefaults: {
+                                ...draft.taskDefaults,
+                                retry: {
+                                  maxAttempts: optionalPositiveNumber(value) ?? 1,
+                                  initialDelayMs: draft.taskDefaults?.retry?.initialDelayMs,
+                                  maxDelayMs: draft.taskDefaults?.retry?.maxDelayMs,
+                                  backoffMultiplier: draft.taskDefaults?.retry?.backoffMultiplier,
+                                  jitter: draft.taskDefaults?.retry?.jitter,
+                                },
+                              },
+                            })
+                          }
+                          placeholder="3"
+                          keyboardType="numeric"
+                          size="sm"
+                          expandable={false}
+                        />
+                      </Field>
+                    </View>
+                  </View>
+                </View>
+
+                {supportsWorkflowInputConfiguration ? (
+                  <>
+                    <WorkflowInputConfiguration
+                      variables={draft.variables}
+                      outputSchema={draft.outputSchema}
+                      presets={draft.inputPresets}
+                      onChangeVariables={(variables) => updateDraft({ ...draft, variables })}
+                      onChangeOutputSchema={(outputSchema) =>
+                        updateDraft({ ...draft, outputSchema })
+                      }
+                      onChangePresets={(inputPresets) => updateDraft({ ...draft, inputPresets })}
+                    />
+                    <WorkflowEnvironmentConfiguration
+                      environment={draft.environment}
+                      onChange={(environment) => updateDraft({ ...draft, environment })}
+                    />
+                  </>
+                ) : null}
+
+                <View style={styles.sectionHeading}>
+                  <View>
+                    <Text style={styles.sectionTitle}>{t("workflows.editor.flow")}</Text>
+                    <Text style={styles.sectionDescription}>{t("workflows.editor.flowHint")}</Text>
+                  </View>
+                </View>
+                <WorkflowGraph
+                  steps={draft.steps}
+                  selectedStepId={selectedDesignStepId}
+                  onSelectStep={setSelectedDesignStepId}
+                  mode="design"
+                  layoutKey={draftPath ?? `draft:${draft.name}`}
+                />
+                <WorkflowStepDetailsSheet
+                  steps={draft.steps}
+                  stepId={selectedDesignStepId}
+                  providerEntries={providersSnapshot.entries ?? []}
+                  providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
+                  assistants={assistantsResult.assistants}
+                  assistantsLoading={assistantsResult.isLoading}
+                  teams={teamsResult.teams}
+                  teamsLoading={teamsResult.isLoading}
+                  promptTemplates={daemonConfig.config?.instructionTemplates ?? []}
+                  promptTemplatesLoading={daemonConfig.isLoading}
+                  allowPython={supportsWorkflowPython}
+                  onChange={updateSelectedDesignStep}
+                  onClose={() => setSelectedDesignStepId(null)}
+                />
+                <WorkflowStepListEditor
+                  steps={draft.steps}
+                  rootSteps={draft.steps}
+                  providerEntries={providersSnapshot.entries ?? []}
+                  providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
+                  assistants={assistantsResult.assistants}
+                  assistantsLoading={assistantsResult.isLoading}
+                  teams={teamsResult.teams}
+                  teamsLoading={teamsResult.isLoading}
+                  promptTemplates={daemonConfig.config?.instructionTemplates ?? []}
+                  promptTemplatesLoading={daemonConfig.isLoading}
+                  allowPython={supportsWorkflowPython}
+                  onChange={(steps) => updateDraft({ ...draft, steps })}
+                  testID="workflow-step-list"
+                />
+
+                <View style={styles.runCard}>
+                  <View style={styles.runHeader}>
+                    <View>
+                      <Text style={styles.sectionTitle}>{t("workflows.editor.testRun")}</Text>
+                      <Text style={styles.sectionDescription}>{t(testRunHintKey)}</Text>
+                    </View>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      leftIcon={Play}
+                      onPress={() => void runWorkflow()}
+                      loading={running}
+                      disabled={Boolean(validationError)}
+                      testID="workflow-run"
+                    >
+                      {t("workflows.actions.run")}
+                    </Button>
+                  </View>
+                  {supportsWorkflowNodeRun ? (
+                    <Field
+                      label={t("workflows.editor.runTarget")}
+                      hint={t("workflows.editor.runTargetHint")}
+                    >
+                      <SelectField
+                        field={false}
+                        label=""
+                        value={targetNodeId}
+                        selectedDisplay={
+                          selectedRunTarget
+                            ? {
+                                label: selectedRunTarget.label,
+                                description: selectedRunTarget.description,
+                              }
+                            : null
                         }
-                        placeholder="3"
-                        keyboardType="numeric"
+                        options={runTargetOptions}
+                        onChange={(nextTargetNodeId) => {
+                          setTargetNodeId(nextTargetNodeId);
+                          if (!nextTargetNodeId) {
+                            setTargetInputMode("upstream_output");
+                          }
+                        }}
+                        placeholder={t("workflows.editor.runEntireWorkflow")}
+                        emptyText={t("workflows.editor.noRunTargets")}
+                        title={t("workflows.editor.runTarget")}
+                        searchable
                         size="sm"
+                        testID="workflow-run-target"
                       />
                     </Field>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.promptTemplatesCard}>
-                <InstructionTemplatesSection serverId={selectedHost} embedded />
-              </View>
-
-              <View style={styles.sectionHeading}>
-                <View>
-                  <Text style={styles.sectionTitle}>{t("workflows.editor.flow")}</Text>
-                  <Text style={styles.sectionDescription}>{t("workflows.editor.flowHint")}</Text>
-                </View>
-              </View>
-              <WorkflowStepListEditor
-                steps={draft.steps}
-                rootSteps={draft.steps}
-                providerEntries={providersSnapshot.entries ?? []}
-                providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
-                assistants={assistantsResult.assistants}
-                assistantsLoading={assistantsResult.isLoading}
-                teams={teamsResult.teams}
-                teamsLoading={teamsResult.isLoading}
-                promptTemplates={daemonConfig.config?.instructionTemplates ?? []}
-                promptTemplatesLoading={daemonConfig.isLoading}
-                onChange={(steps) => updateDraft({ ...draft, steps })}
-                testID="workflow-step-list"
-              />
-
-              <View style={styles.runCard}>
-                <View style={styles.runHeader}>
-                  <View>
-                    <Text style={styles.sectionTitle}>{t("workflows.editor.testRun")}</Text>
-                    <Text style={styles.sectionDescription}>
-                      {t("workflows.editor.testRunHint")}
-                    </Text>
-                  </View>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    leftIcon={Play}
-                    onPress={() => void runWorkflow()}
-                    loading={running}
-                    disabled={Boolean(validationError)}
-                    testID="workflow-run"
+                  ) : null}
+                  {supportsWorkflowNodeInputMode && targetNodeId ? (
+                    <Field
+                      label={t("workflows.editor.inputMode")}
+                      hint={t("workflows.editor.inputModeHint")}
+                    >
+                      <SelectField
+                        field={false}
+                        label=""
+                        value={targetInputMode}
+                        selectedDisplay={
+                          selectedTargetInputMode
+                            ? {
+                                label: selectedTargetInputMode.label,
+                                description: selectedTargetInputMode.description,
+                              }
+                            : null
+                        }
+                        options={targetInputModeOptions}
+                        onChange={(nextMode) => {
+                          setTargetInputMode(nextMode);
+                          if (
+                            nextMode === "node_input" &&
+                            inputJson.trim() === DEFAULT_WORKFLOW_INPUT_JSON
+                          ) {
+                            setInputJson(DEFAULT_WORKFLOW_NODE_INPUT_JSON);
+                          }
+                        }}
+                        placeholder={t("workflows.editor.selectInputMode")}
+                        emptyText=""
+                        title={t("workflows.editor.inputMode")}
+                        size="sm"
+                        testID="workflow-run-input-mode"
+                      />
+                    </Field>
+                  ) : null}
+                  {supportsWorkflowInputConfiguration &&
+                  !(targetNodeId && targetInputMode === "node_input") ? (
+                    <WorkflowRunInput
+                      presets={draft.inputPresets}
+                      inputJson={inputJson}
+                      onChangeInputJson={setInputJson}
+                    />
+                  ) : null}
+                  <Field
+                    label={t(
+                      targetNodeId && targetInputMode === "node_input"
+                        ? "workflows.editor.nodeInputJson"
+                        : "workflows.editor.inputJson",
+                    )}
+                    hint={t(
+                      targetNodeId && targetInputMode === "node_input"
+                        ? "workflows.editor.nodeInputJsonHint"
+                        : "workflows.editor.inputJsonHint",
+                    )}
                   >
-                    {t("workflows.actions.run")}
-                  </Button>
+                    <WorkflowTextInput
+                      value={inputJson}
+                      onChangeText={setInputJson}
+                      placeholder={
+                        targetNodeId && targetInputMode === "node_input"
+                          ? DEFAULT_WORKFLOW_NODE_INPUT_JSON
+                          : DEFAULT_WORKFLOW_INPUT_JSON
+                      }
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      multiline
+                      textAlignVertical="top"
+                      style={styles.inputJson}
+                    />
+                  </Field>
+                  {activeRun ? (
+                    <WorkflowRunPanel
+                      run={activeRun}
+                      onCancel={() => void cancelWorkflow()}
+                      onOpenAgent={(agentId) => void openWorkflowAgent(agentId)}
+                      cancelling={cancelling}
+                    />
+                  ) : null}
                 </View>
-                <Field
-                  label={t("workflows.editor.inputJson")}
-                  hint={t("workflows.editor.inputJsonHint")}
-                >
-                  <WorkflowTextInput
-                    value={inputJson}
-                    onChangeText={setInputJson}
-                    placeholder={DEFAULT_WORKFLOW_INPUT_JSON}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    multiline
-                    textAlignVertical="top"
-                    style={styles.inputJson}
-                  />
-                </Field>
-                {activeRun ? (
-                  <WorkflowRunPanel
-                    run={activeRun}
-                    onCancel={() => void cancelWorkflow()}
-                    onOpenAgent={(agentId) => void openWorkflowAgent(agentId)}
-                    cancelling={cancelling}
-                  />
-                ) : null}
-              </View>
-            </ScrollView>
+              </ScrollView>
+            </>
           ) : (
             <View style={styles.editorEmpty}>
               <Workflow size={44} color={styles.editorEmptyIcon.color} />
@@ -760,6 +1012,7 @@ function WorkflowListPane({
   state,
   error,
   selectedPath,
+  inspectingPath,
   onSelect,
   onCreate,
   onRetry,
@@ -769,6 +1022,7 @@ function WorkflowListPane({
   state: LoadState;
   error: string | null;
   selectedPath: string | null;
+  inspectingPath: string | null;
   onSelect: (path: string) => void;
   onCreate: () => void;
   onRetry: () => void;
@@ -808,35 +1062,46 @@ function WorkflowListPane({
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {scripts.map((script) => (
-          <Pressable
-            key={script.path}
-            onPress={() => onSelect(script.path)}
-            style={({ hovered, pressed }) => [
-              styles.workflowRow,
-              selectedPath === script.path && styles.workflowRowSelected,
-              hovered && styles.workflowRowHovered,
-              pressed && styles.workflowRowPressed,
-            ]}
-            testID={`workflow-row-${script.name}`}
-          >
-            <View style={styles.workflowRowIcon}>
-              <Workflow size={16} color={styles.workflowRowIconColor.color} />
-            </View>
-            <View style={styles.workflowRowText}>
-              <Text style={styles.workflowRowTitle} numberOfLines={1}>
-                {script.name}
-              </Text>
-              <Text style={styles.workflowRowDescription} numberOfLines={2}>
-                {script.description || t("workflows.list.nodeCount", { count: script.stepCount })}
-              </Text>
-              <Text style={styles.workflowRowMeta}>
-                {t("workflows.list.nodeCount", { count: script.stepCount })} ·{" "}
-                {formatModifiedAt(script.modifiedAt, i18n.language)}
-              </Text>
-            </View>
-          </Pressable>
-        ))}
+        {scripts.map((script) => {
+          const inspecting = inspectingPath === script.path;
+          return (
+            <Pressable
+              key={script.path}
+              disabled={inspecting}
+              onPress={() => onSelect(script.path)}
+              accessibilityState={{
+                busy: inspecting,
+                selected: selectedPath === script.path,
+              }}
+              style={({ hovered, pressed }) => [
+                styles.workflowRow,
+                selectedPath === script.path && styles.workflowRowSelected,
+                hovered && styles.workflowRowHovered,
+                pressed && styles.workflowRowPressed,
+              ]}
+              testID={`workflow-row-${script.name}`}
+            >
+              <View style={styles.workflowRowIcon}>
+                <Workflow size={16} color={styles.workflowRowIconColor.color} />
+              </View>
+              <View style={styles.workflowRowText}>
+                <Text style={styles.workflowRowTitle}>{script.name}</Text>
+                <Text style={styles.workflowRowDescription} numberOfLines={2}>
+                  {script.description || t("workflows.list.nodeCount", { count: script.stepCount })}
+                </Text>
+                <Text style={styles.workflowRowMeta}>
+                  {t("workflows.list.nodeCount", { count: script.stepCount })} ·{" "}
+                  {formatModifiedAt(script.modifiedAt, i18n.language)}
+                </Text>
+              </View>
+              {inspecting ? (
+                <View style={styles.workflowRowLoading}>
+                  <LoadingSpinner size="small" color={styles.loadingIcon.color} />
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
       </ScrollView>
     );
   }
@@ -864,21 +1129,11 @@ function WorkflowRunPanel({
   cancelling: boolean;
 }) {
   const { t, i18n } = useTranslation();
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const closeSelectedStep = useCallback(() => setSelectedStepId(null), []);
   useEffect(() => {
-    setExpandedNodeIds(new Set());
+    setSelectedStepId(null);
   }, [run.id]);
-  const toggleNode = useCallback((nodeId: string) => {
-    setExpandedNodeIds((current) => {
-      const next = new Set(current);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
-      }
-      return next;
-    });
-  }, []);
   let statusIcon: ReactElement;
   if (run.status === "succeeded") {
     statusIcon = <CheckCircle2 size={16} color={styles.runSuccessIcon.color} />;
@@ -918,86 +1173,173 @@ function WorkflowRunPanel({
           label={t("workflows.run.duration")}
           value={formatWorkflowDuration(run.startedAt, run.endedAt)}
         />
+        {run.targetNodeId ? (
+          <WorkflowRunValue label={t("workflows.run.targetNode")} value={run.targetNodeId} mono />
+        ) : null}
         <WorkflowRunValue label={t("workflows.run.control")} value={run.control || "—"} />
       </View>
-      <WorkflowPayloadValue label={t("workflows.run.input")} value={run.inputPayload} />
-      <WorkflowPayloadValue label={t("workflows.run.outputPayload")} value={run.outputPayload} />
+      <WorkflowPayloadValue label={t("workflows.run.input")} value={run.inputPayload} compact />
+      <WorkflowPayloadValue
+        label={t("workflows.run.outputPayload")}
+        value={run.outputPayload}
+        compact
+      />
       {run.outputFilePath ? (
         <WorkflowRunValue label={t("workflows.run.outputFile")} value={run.outputFilePath} mono />
       ) : null}
       {run.error ? <Text style={styles.runError}>{run.error}</Text> : null}
-      <View style={styles.runNodes}>
-        {run.nodeRuns.map((node) => {
-          const expanded = expandedNodeIds.has(node.id);
-          const { canExpand, canOpenAgent } = deriveWorkflowNodeActions(node);
-          const nodeIdentity = deriveWorkflowNodeIdentity(node);
-          const linkedAgentId = canOpenAgent ? node.agentId : null;
-          const expandIcon = expanded ? (
-            <ChevronDown size={13} color={styles.runNodeIcon.color} />
-          ) : (
-            <ChevronRight size={13} color={styles.runNodeIcon.color} />
-          );
-          return (
-            <View key={node.id} style={styles.runNodeCard}>
-              <View style={styles.runNode}>
-                <Pressable
-                  onPress={() => toggleNode(node.id)}
-                  disabled={!canExpand}
-                  style={({ hovered, pressed }) => [
-                    styles.runNodeToggle,
-                    (hovered || pressed) && canExpand ? styles.runNodeInteractive : null,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded }}
-                >
-                  {expandIcon}
-                  {node.stepType === "agent" ? (
-                    <Bot size={13} color={styles.runNodeIcon.color} />
-                  ) : (
-                    <FileCode2 size={13} color={styles.runNodeIcon.color} />
-                  )}
-                  <View style={styles.runNodeIdentity}>
-                    <Text style={styles.runNodeName} numberOfLines={1}>
-                      {t("workflows.nodes.displayName")}: {nodeIdentity.name || "—"}
-                    </Text>
-                    <Text style={styles.runNodeId} numberOfLines={1}>
-                      {t("workflows.nodes.id")}: {nodeIdentity.id}
-                    </Text>
-                  </View>
-                </Pressable>
-                {linkedAgentId ? (
-                  <Pressable
-                    onPress={() => onOpenAgent(linkedAgentId)}
-                    style={({ hovered, pressed }) => [
-                      styles.runNodeAgentLink,
-                      (hovered || pressed) && styles.runNodeInteractive,
-                    ]}
-                    accessibilityRole="button"
-                  >
-                    <ExternalLink size={12} color={styles.runNodeIcon.color} />
-                  </Pressable>
-                ) : null}
-                <Text
-                  style={[
-                    styles.runNodeStatus,
-                    (node.status === "failed" ||
-                      node.status === "cancelled" ||
-                      node.status === "timed_out") &&
-                      styles.runNodeStatusFailed,
-                  ]}
-                >
-                  {t(`workflows.run.status.${node.status}`)}
-                  {node.maxAttempts > 1 ? ` · ${node.attempt}/${node.maxAttempts}` : ""}
-                </Text>
-              </View>
-              <WorkflowNodeCore node={node} locale={i18n.language} expanded={expanded} />
-              {expanded ? <WorkflowNodeDetails node={node} /> : null}
-            </View>
-          );
-        })}
-      </View>
+      <WorkflowGraph
+        steps={run.scriptSnapshot.steps}
+        nodeRuns={run.nodeRuns}
+        selectedStepId={selectedStepId}
+        onSelectStep={setSelectedStepId}
+        mode="run"
+        layoutKey={run.scriptPath}
+      />
+      <WorkflowSelectedNodeRuns
+        stepId={selectedStepId}
+        steps={run.scriptSnapshot.steps}
+        nodeRuns={run.nodeRuns}
+        locale={i18n.language}
+        onOpenAgent={onOpenAgent}
+        onClose={closeSelectedStep}
+      />
     </View>
   );
+}
+
+function WorkflowSelectedNodeRuns({
+  stepId,
+  steps,
+  nodeRuns,
+  locale,
+  onOpenAgent,
+  onClose,
+}: {
+  stepId: string | null;
+  steps: WorkflowStep[];
+  nodeRuns: WorkflowNodeRun[];
+  locale: string;
+  onOpenAgent: (agentId: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const selectedRuns = nodeRuns.filter((nodeRun) => nodeRun.stepId === stepId);
+  const selectedNode = selectedRuns.at(-1);
+  const selectedStep = findWorkflowStep(steps, stepId);
+  let selectedStepType: string | undefined = selectedStep?.type;
+  if (selectedNode) {
+    selectedStepType = selectedNode.executor === "python" ? "python" : selectedNode.stepType;
+  }
+  const header = useMemo<SheetHeader>(
+    () => ({
+      title:
+        selectedNode?.stepName ||
+        selectedStep?.name ||
+        selectedNode?.stepId ||
+        selectedStep?.id ||
+        t("workflows.graph.nodeDetails"),
+      subtitle:
+        selectedNode || selectedStep
+          ? `${t(`workflows.nodes.types.${selectedStepType}`)} · ${
+              selectedNode?.stepId || selectedStep?.id
+            }`
+          : t("workflows.graph.nodeDetails"),
+    }),
+    [selectedNode, selectedStep, selectedStepType, t],
+  );
+  return (
+    <AdaptiveModalSheet
+      visible={Boolean(stepId)}
+      header={header}
+      onClose={onClose}
+      desktopMaxWidth={960}
+      snapPoints={["90%", "95%"]}
+      testID="workflow-node-details"
+    >
+      <View style={styles.selectedNodeRuns}>
+        {selectedRuns.length === 0 ? (
+          <>
+            <Text style={styles.selectedNodeEmpty}>{t("workflows.graph.nodeNotRun")}</Text>
+            {selectedStep ? (
+              <WorkflowPayloadValue
+                label={t("workflows.graph.configuration")}
+                value={JSON.stringify(selectedStep)}
+              />
+            ) : null}
+          </>
+        ) : (
+          selectedRuns.map((node) => {
+            const nodeIdentity = deriveWorkflowNodeIdentity(node);
+            const linkedAgentId = node.agentId;
+            return (
+              <View key={node.id} style={styles.runNodeCard}>
+                <View style={styles.runNode}>
+                  <View style={styles.runNodeToggle}>
+                    {renderWorkflowNodeTypeIcon(node)}
+                    <View style={styles.runNodeIdentity}>
+                      <Text style={styles.runNodeName} numberOfLines={2}>
+                        {nodeIdentity.name || nodeIdentity.id}
+                      </Text>
+                      <Text style={styles.runNodeId}>
+                        {t("workflows.graph.executionAttempt", {
+                          attempt: node.attempt,
+                          count: node.maxAttempts,
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  {linkedAgentId ? (
+                    <Pressable
+                      onPress={() => onOpenAgent(linkedAgentId)}
+                      style={({ hovered, pressed }) => [
+                        styles.runNodeAgentLink,
+                        (hovered || pressed) && styles.runNodeInteractive,
+                      ]}
+                      accessibilityRole="button"
+                    >
+                      <ExternalLink size={12} color={styles.runNodeIcon.color} />
+                    </Pressable>
+                  ) : null}
+                  <Text
+                    style={[
+                      styles.runNodeStatus,
+                      (node.status === "failed" ||
+                        node.status === "cancelled" ||
+                        node.status === "timed_out") &&
+                        styles.runNodeStatusFailed,
+                    ]}
+                  >
+                    {t(`workflows.run.status.${node.status}`)}
+                  </Text>
+                </View>
+                <WorkflowNodeCore node={node} locale={locale} expanded />
+                <WorkflowNodeDetails node={node} />
+              </View>
+            );
+          })
+        )}
+      </View>
+    </AdaptiveModalSheet>
+  );
+}
+
+function renderWorkflowNodeTypeIcon(
+  node: Pick<WorkflowNodeRun, "executor" | "stepType">,
+): ReactElement {
+  if (node.stepType === "agent") {
+    return <Bot size={13} color={styles.runNodeIcon.color} />;
+  }
+  if (node.stepType === "workflow") {
+    return <Workflow size={13} color={styles.runNodeIcon.color} />;
+  }
+  if (node.executor === "python") {
+    return <FileCode2 size={13} color={styles.runNodeIcon.color} />;
+  }
+  if (node.stepType === "bash") {
+    return <TerminalSquare size={13} color={styles.runNodeIcon.color} />;
+  }
+  return <FileCode2 size={13} color={styles.runNodeIcon.color} />;
 }
 
 function WorkflowNodeCore({
@@ -1039,9 +1381,57 @@ function WorkflowNodeCore({
 
 function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
   const { t } = useTranslation();
+  return (
+    <View style={styles.runNodeDetails}>
+      <WorkflowNodeOutputDetails node={node} />
+      <WorkflowNodeExecutionMetadata node={node} />
+      <WorkflowRunValue
+        label={t("workflows.run.iteration")}
+        value={node.iterationPath.length > 0 ? node.iterationPath.join(" / ") : "—"}
+      />
+      {node.errorCode ? (
+        <WorkflowRunValue label={t("workflows.run.errorCode")} value={node.errorCode} mono />
+      ) : null}
+      {node.workflowPath ? (
+        <WorkflowRunValue label={t("workflows.run.workflow")} value={node.workflowPath} mono />
+      ) : null}
+      {node.workflowRunId ? (
+        <WorkflowRunValue
+          label={t("workflows.run.workflowRunId")}
+          value={node.workflowRunId}
+          mono
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function WorkflowNodeOutputDetails({ node }: { node: WorkflowNodeRun }) {
+  const { t } = useTranslation();
   let outputContent: ReactElement | null = null;
-  if (node.output && node.stepType === "bash") {
-    outputContent = <WorkflowBashOutput value={node.output} />;
+  const isCommandNode = node.stepType === "bash";
+  const hasStructuredProcessOutput = node.stdout !== undefined || node.stderr !== undefined;
+  if (isCommandNode && hasStructuredProcessOutput) {
+    outputContent = (
+      <WorkflowStructuredCommandOutput
+        stdout={node.stdout ?? null}
+        stderr={node.stderr ?? null}
+        executor={node.executor ?? "bash"}
+      />
+    );
+  } else if (node.output && isCommandNode) {
+    outputContent = (
+      <WorkflowCommandOutput value={node.output} executor={node.executor ?? "bash"} />
+    );
+  } else if (node.stepType === "agent") {
+    outputContent = (
+      <WorkflowAgentOutput
+        prompt={node.agentPrompt}
+        response={node.agentResponse}
+        processOutput={node.output}
+        legacyOutput={node.output}
+      />
+    );
   } else if (node.output) {
     outputContent = (
       <WorkflowPayloadValue
@@ -1051,47 +1441,108 @@ function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
       />
     );
   }
+  return outputContent;
+}
+
+function WorkflowNodeExecutionMetadata({ node }: { node: WorkflowNodeRun }) {
+  const { t } = useTranslation();
   return (
-    <View style={styles.runNodeDetails}>
-      {outputContent}
-      <WorkflowRunValue
-        label={t("workflows.run.inputFile")}
-        value={node.inputFilePath || "—"}
-        mono
-      />
-      <WorkflowRunValue
-        label={t("workflows.run.outputFile")}
-        value={node.outputFilePath || "—"}
-        mono
-      />
-      <WorkflowRunValue
-        label={t("workflows.run.control")}
-        value={`${node.inputControl || "—"} → ${node.outputControl || "—"}`}
-      />
-      <WorkflowRunValue
-        label={t("workflows.run.iteration")}
-        value={node.iterationPath.length > 0 ? node.iterationPath.join(" / ") : "—"}
-      />
-      {node.errorCode ? (
-        <WorkflowRunValue label={t("workflows.run.errorCode")} value={node.errorCode} mono />
+    <>
+      {node.expandedInstruction ? (
+        <WorkflowPayloadValue
+          label={t("workflows.run.expandedInstruction")}
+          value={node.expandedInstruction}
+          preserveText
+        />
       ) : null}
+      {node.cwd ? <WorkflowRunValue label={t("workflows.run.cwd")} value={node.cwd} mono /> : null}
+      {node.environmentSource ? (
+        <WorkflowRunValue
+          label={t("workflows.run.environment")}
+          value={t(`workflows.run.environmentSource.${node.environmentSource}`)}
+        />
+      ) : null}
+      {node.environmentPath ? (
+        <WorkflowRunValue label={t("workflows.run.path")} value={node.environmentPath} mono />
+      ) : null}
+      {node.exitCode !== undefined && node.exitCode !== null ? (
+        <WorkflowRunValue label={t("workflows.run.exitCode")} value={String(node.exitCode)} mono />
+      ) : null}
+      {node.signal ? (
+        <WorkflowRunValue label={t("workflows.run.signal")} value={node.signal} mono />
+      ) : null}
+      {node.skippedReason ? (
+        <WorkflowRunValue label={t("workflows.run.skippedReason")} value={node.skippedReason} />
+      ) : null}
+    </>
+  );
+}
+
+function WorkflowStructuredCommandOutput({
+  stdout,
+  stderr,
+  executor,
+}: {
+  stdout: string | null;
+  stderr: string | null;
+  executor: "bash" | "python";
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.runValue}>
+      <Text style={styles.runValueLabel}>
+        {t(
+          executor === "python"
+            ? "workflows.run.pythonProcessOutput"
+            : "workflows.run.processOutput",
+        )}
+      </Text>
+      <View style={styles.runProcessSections}>
+        <View style={styles.runProcessSection}>
+          <Text style={styles.runProcessLabel}>{t("workflows.run.stdout")}</Text>
+          <WorkflowExpandableReadonlyValue
+            label={t("workflows.run.stdout")}
+            value={stdout || "—"}
+          />
+        </View>
+        <View style={styles.runProcessSection}>
+          <Text style={styles.runProcessLabel}>{t("workflows.run.stderr")}</Text>
+          <WorkflowExpandableReadonlyValue
+            label={t("workflows.run.stderr")}
+            value={stderr || "—"}
+          />
+        </View>
+      </View>
     </View>
   );
 }
 
-function WorkflowBashOutput({ value }: { value: string }) {
+function WorkflowCommandOutput({
+  value,
+  executor,
+}: {
+  value: string;
+  executor: "bash" | "python";
+}) {
   const { t } = useTranslation();
   const sections = parseWorkflowProcessOutput(value);
   return (
     <View style={styles.runValue}>
-      <Text style={styles.runValueLabel}>{t("workflows.run.processOutput")}</Text>
+      <Text style={styles.runValueLabel}>
+        {t(
+          executor === "python"
+            ? "workflows.run.pythonProcessOutput"
+            : "workflows.run.processOutput",
+        )}
+      </Text>
       <View style={styles.runProcessSections}>
         {sections.map((section) => (
           <View key={section.stream} style={styles.runProcessSection}>
             <Text style={styles.runProcessLabel}>{t(`workflows.run.${section.stream}`)}</Text>
-            <Text style={styles.runPayloadValue} selectable>
-              {section.value || "—"}
-            </Text>
+            <WorkflowExpandableReadonlyValue
+              label={t(`workflows.run.${section.stream}`)}
+              value={section.value || "—"}
+            />
           </View>
         ))}
       </View>
@@ -1113,13 +1564,17 @@ function WorkflowPayloadValue({
   return (
     <View style={styles.runValue}>
       <Text style={styles.runValueLabel}>{label}</Text>
-      <Text
-        style={[styles.runPayloadValue, compact && styles.runPayloadValueCompact]}
-        numberOfLines={compact ? 3 : undefined}
-        selectable
-      >
-        {preserveText ? value || "—" : formatWorkflowPayload(value)}
-      </Text>
+      {compact ? (
+        <WorkflowExpandableReadonlyValue
+          label={label}
+          value={preserveText ? value || "—" : formatWorkflowPayload(value)}
+          previewLines={4}
+        />
+      ) : (
+        <Text style={styles.runPayloadValue} selectable>
+          {preserveText ? value || "—" : formatWorkflowPayload(value)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -1228,19 +1683,23 @@ const styles = StyleSheet.create((theme) => ({
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
   hostBar: {
     minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: { xs: "column", md: "row" },
+    alignItems: { xs: "stretch", md: "center" },
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[2],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
   hostSelector: {
     width: 220,
+    maxWidth: "100%",
   },
   hostLabel: {
     color: theme.colors.foreground,
@@ -1249,8 +1708,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   hostHint: {
     flex: 1,
+    minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+    lineHeight: Math.round(theme.fontSize.xs * 1.4),
   },
   workspace: {
     flex: 1,
@@ -1287,8 +1748,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   listCount: {
     minWidth: 22,
@@ -1336,12 +1795,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     padding: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: "transparent",
   },
   workflowRowSelected: {
     backgroundColor: theme.colors.surface3,
-    borderColor: theme.colors.border,
   },
   workflowRowHovered: {
     backgroundColor: theme.colors.surface2,
@@ -1365,10 +1821,14 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     gap: theme.spacing[1],
   },
+  workflowRowLoading: {
+    alignSelf: "center",
+    flexShrink: 0,
+  },
   workflowRowTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
+    fontWeight: theme.fontWeight.normal,
   },
   workflowRowDescription: {
     color: theme.colors.foregroundMuted,
@@ -1398,63 +1858,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[12],
     gap: theme.spacing[6],
   },
-  editorToolbar: {
-    flexDirection: { xs: "column", md: "row" },
-    alignItems: { xs: "stretch", md: "center" },
-    justifyContent: "space-between",
-    gap: theme.spacing[3],
-  },
-  editorTitleGroup: {
-    flex: 1,
-    minWidth: 0,
-    gap: theme.spacing[1],
-  },
-  editorTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  editorTitleInput: {
-    flex: 1,
-    minWidth: 120,
-    maxWidth: 480,
-    minHeight: 36,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    borderWidth: 0,
-    backgroundColor: "transparent",
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xl,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  editorPath: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontFamily: theme.fontFamily.mono,
-  },
-  editorActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: theme.spacing[2],
-  },
-  validationBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.statusDanger,
-  },
-  validationText: {
-    flex: 1,
-    color: theme.colors.statusDanger,
-    fontSize: theme.fontSize.sm,
-  },
-  validationIcon: {
-    color: theme.colors.statusDanger,
-  },
   metadataCard: {
     padding: theme.spacing[4],
     gap: theme.spacing[4],
@@ -1463,25 +1866,16 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
-  metadataCountRow: {
+  metadataHeader: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  metadataCount: {
-    width: 72,
     alignItems: "center",
-    paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
   },
-  metadataCountValue: {
+  metadataLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  metadataCountLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   policyGrid: {
     flexDirection: { xs: "column", md: "row" },
@@ -1506,19 +1900,12 @@ const styles = StyleSheet.create((theme) => ({
   sectionTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.semibold,
+    fontWeight: theme.fontWeight.medium,
   },
   sectionDescription: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
-  },
-  promptTemplatesCard: {
-    padding: theme.spacing[4],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
   },
   runCard: {
     padding: theme.spacing[4],
@@ -1529,8 +1916,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   runHeader: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: { xs: "column", md: "row" },
+    alignItems: { xs: "stretch", md: "center" },
     justifyContent: "space-between",
     gap: theme.spacing[3],
   },
@@ -1548,6 +1935,7 @@ const styles = StyleSheet.create((theme) => ({
   runStatusRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
   runStatus: {
@@ -1581,9 +1969,19 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.statusDanger,
     fontSize: theme.fontSize.xs,
   },
-  runNodes: {
+  selectedNodeRuns: {
     gap: theme.spacing[2],
     marginTop: theme.spacing[1],
+  },
+  selectedNodeEmpty: {
+    padding: theme.spacing[4],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    textAlign: "center",
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderStyle: "dashed",
+    borderRadius: theme.borderRadius.lg,
   },
   runNodeCard: {
     overflow: "hidden",

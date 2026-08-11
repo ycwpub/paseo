@@ -48,7 +48,99 @@ export const ja: TranslationResources = {
       idle: "アイドル",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "全体プラン",
+      fullViewTitle: "ワークフロー全体図",
+      fullViewHint: "依存関係と実行経路の全体図を確認し、拡大縮小やノードの表示ができます。",
+      zoomIn: "ワークフロー図を拡大",
+      zoomOut: "ワークフロー図を縮小",
+      resetZoom: "ワークフロー図の倍率をリセット",
+      nodeName: "ノード名",
+      nodeId: "ノードID",
+      nodeType: "ノード種別",
+      configuration: "ノードの完全な設定",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "エージェントのライフサイクル",
+        lifecycleHint:
+          "このエージェントノードが同じエージェントを再利用する期間を指定します。再利用時の呼び出しは順番に実行されます。",
+        selectLifecycle: "エージェントのライフサイクルを選択",
+        lifecycleOptions: {
+          workflow: "Workflow 全体",
+          workflowDescription: "初回実行時に作成して再利用し、Workflow の終了時に解放します。",
+          for: "現在の For ループ",
+          forDescription:
+            "最初の反復で作成し、現在の For ループ内で再利用して、ループ終了時に解放します。",
+          single: "単一実行",
+          singleDescription: "実行ごとに新しいエージェントを作成し、再利用しません。",
+        },
+        subsequentPromptMode: "2 回目以降のプロンプト",
+        subsequentPromptModeHint:
+          "初期化済みのエージェントを再度呼び出すときに送信する内容を選択します。",
+        selectSubsequentPromptMode: "2 回目以降のプロンプト動作を選択",
+        subsequentPromptModes: {
+          reuseInitial: "初期プロンプトを再利用",
+          reuseInitialDescription: "現在のノード入力で初期プロンプトを再レンダリングします。",
+          custom: "カスタムプロンプト",
+          customDescription: "初回以降の呼び出しでは別のプロンプトを使用します。",
+        },
+        subsequentPrompt: "カスタムの後続プロンプト",
+        subsequentPromptHint:
+          "初期プロンプトと同じ入力データおよびテンプレート変数を利用できます。",
+        archiveAtLifecycleEnd: "エージェントのライフサイクル終了時に自動アーカイブ",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "ノード環境変数（JSON）",
+        environmentHint: "任意の文字列値で、このノードの Workflow コマンド環境を上書きします。",
+        environmentStringValues: "環境変数の値は文字列である必要があります。",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Python モジュール",
+        moduleHint: "任意のモジュールパスです。関数と一緒に設定します。",
+        function: "Python 関数",
+        functionHint: "完全なノード入力を受け取り、結果を返します。非同期関数にも対応します。",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "終了条件",
+        breakWhenHint: "式は真偽値を返す必要があり、true の場合はループを終了します。",
+        continueWhen: "継続条件",
+        continueWhenHint:
+          "式は真偽値を返す必要があり、true の場合は現在の反復の残りのノードをスキップします。",
+      },
+      contract: {
+        title: "ノードデータ契約",
+        description: "必要なフィールドだけをマッピングし、入出力を検証します。",
+        inputs: "入力マッピング（JSON）",
+        inputsHint: "{{nodes.scan.outputs.items}} のような式全体では元の型が保持されます。",
+        inputSchema: "入力スキーマ",
+        outputSchema: "出力スキーマ",
+        schemaHint: "任意。続行前に Paseo が検証します。",
+        invalidJson: "有効な JSON を入力してください。",
+        objectRequired: "JSON オブジェクトが必要です。",
+      },
+      openDetails: "{{name}}ノードの詳細を開く",
+      downstream: {
+        label: "次のノード",
+        hint: "このノードの完了後に実行する同階層のノードを選択します。",
+        sequential: "リスト順に実行",
+        sequentialDescription: "リスト内の次のノードを実行します。",
+        end: "シーケンスを終了",
+        endDescription: "現在のノードの完了後にこのシーケンスを終了します。",
+        missing: "ノードがありません：{{id}}",
+        placeholder: "次のノードを選択",
+        empty: "選択できる次のノードがありません",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "サイドバーを切り替え",
@@ -228,6 +320,21 @@ export const ja: TranslationResources = {
     process: {
       show: "プロセスを表示",
       hide: "プロセスを非表示",
+      processed: "処理済み",
+      processedWithDuration: "処理済み {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "プラン",
@@ -272,9 +379,18 @@ export const ja: TranslationResources = {
     title: "履歴",
     empty: "セッションがまだありません",
     noMatches: "一致するセッションはありません",
+    noProjectSessions: "このプロジェクトのセッションはありません",
     tooManyMatches: "一致が多すぎます — 検索条件を絞ってください",
     hostLoadFailed: "{{host}}: 履歴を読み込めませんでした",
     searchPlaceholder: "履歴を検索",
+    projectFilter: {
+      label: "プロジェクト",
+      title: "プロジェクトで絞り込む",
+      all: "すべてのプロジェクト",
+      empty: "利用可能なプロジェクトがありません",
+      search: "プロジェクトを検索",
+      hostCount: "{{count}} 台のホスト",
+    },
     actions: {
       loadMore: "さらに読み込む",
       clearSearch: "検索をクリア",
@@ -1129,6 +1245,8 @@ export const ja: TranslationResources = {
       home: "ホーム",
       settings: "設定",
       closeSidebar: "サイドバーを閉じる",
+      collapseAllWorkspaces: "すべてのワークスペースを折りたたむ",
+      expandAllWorkspaces: "すべてのワークスペースを展開",
     },
     help: {
       trigger: "ヘルプとサポート",
@@ -1159,8 +1277,13 @@ export const ja: TranslationResources = {
         openNewWindowFailed: "新しいウィンドウを開けませんでした",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "プロジェクトを非表示",
+        show: "プロジェクトを表示",
         remove: "プロジェクトを削除",
         removing: "削除中...",
+      },
+      hidden: {
+        title: "非表示のプロジェクト（{{count}}）",
       },
       confirmations: {
         removeTitle: "プロジェクトを削除しますか？",
@@ -1209,6 +1332,17 @@ export const ja: TranslationResources = {
         hideFromSidebar: "サイドバーから非表示",
         archiving: "アーカイブ中...",
         hiding: "非表示にしています...",
+      },
+      bulkArchive: {
+        select: "ワークスペースを選択",
+        selected: "{{count}} 件選択中",
+        cancel: "選択を解除",
+        title: "{{count}} 件のワークスペースをアーカイブしますか？",
+        message: "選択したワークスペースはアーカイブされ、サイドバーから削除されます。",
+        riskyWorktrees:
+          "選択した worktree のうち {{count}} 件に未コミットまたは未プッシュの変更があります。ディレクトリが削除される可能性があります。",
+        confirm: "選択項目をアーカイブ",
+        failed: "{{count}} 件のワークスペースをアーカイブできませんでした",
       },
       confirmations: {
         hideTitle: "ワークスペースを非表示にしますか？",
@@ -1980,6 +2114,7 @@ export const ja: TranslationResources = {
     projects: "プロジェクト",
     projectList: {
       hostLoadFailed: "ホスト{{hostName}}からプロジェクトを読み込めませんでした: {{message}}",
+      hostLoadTimedOut: "ホスト {{hostName}} が時間内に応答しませんでした。再試行してください。",
       editProject: "{{projectName}}を編集",
     },
     groupInfo: "{{title}}について",

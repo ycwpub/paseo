@@ -9,6 +9,7 @@ import {
   PersistedCollapsedProjectsSchema,
   serializeCollapsedProjects,
   setProjectCollapsed,
+  setWorkspaceGroupsCollapsed,
   togglePinnedCollapsed,
   toggleProjectCollapsed,
   toggleWorkspaceGroupCollapsed,

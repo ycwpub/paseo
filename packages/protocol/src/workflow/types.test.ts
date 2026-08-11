@@ -1,43 +1,117 @@
 import { describe, expect, it } from "vitest";
-import { WorkflowPayloadSchema, WorkflowScriptSchema } from "./types.js";
+import { WorkflowNodeRunSchema, WorkflowPayloadSchema, WorkflowScriptSchema } from "./types.js";
+
+const workflowIdentity = {
+  apiVersion: "paseo.sh/workflow/v1",
+  kind: "Workflow",
+} as const;
 
 describe("WorkflowScriptSchema", () => {
-  it("accepts nested bash, agent, switch, and for steps", () => {
+  it("accepts the version 1 workflow contract", () => {
     const parsed = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
       version: 1,
-      name: "triage",
-      timeoutMs: 86_400_000,
-      taskDefaults: {
-        timeoutMs: 1_800_000,
-        retry: {
-          maxAttempts: 3,
-          initialDelayMs: 1_000,
-          maxDelayMs: 30_000,
-          backoffMultiplier: 2,
-          jitter: true,
+      name: "structured workflow",
+      variables: {
+        traceId: { type: "string", default: "" },
+        counter: { type: "int64", default: "0" },
+      },
+      outputSchema: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: { type: "string" },
         },
       },
       steps: [
         {
           id: "prepare",
           type: "bash",
-          initialCommand: "echo prepare",
-          variables: { customerName: "{{customer.name}}" },
-          retry: { maxAttempts: 2 },
+          initialCommand: 'output="{\\"data\\":{}}"',
+          env: { FIXED_WIKI_URL: "https://example.test/wiki" },
+          sideEffects: ["wiki_read"],
+          idempotencyKey: "{{origin_input.requestId}}",
+          inputVariable: "request",
+          outputVariable: "response",
+          templateVariables: {
+            project: "{{data.project}}",
+          },
+          variables: {
+            cursor: { type: "string", default: "" },
+          },
+          inputs: {
+            project: "{{workflow.inputs.project}}",
+          },
+          inputSchema: {
+            type: "object",
+            required: ["project"],
+            properties: {
+              project: { type: "string" },
+            },
+          },
+          outputSchema: {
+            type: "object",
+            required: ["items"],
+            properties: {
+              items: { type: "array" },
+            },
+          },
         },
+        {
+          id: "route",
+          type: "switch",
+          switchVar: "{{data.route}}",
+          cases: [{ equals: "process", steps: [] }],
+        },
+        {
+          id: "loop",
+          type: "for",
+          mode: "array",
+          items: "{{data.items}}",
+          forControl: "{{data.control}}",
+          breakWhen: "{{data.review_passed}}",
+          continueWhen: "{{data.skip_remaining}}",
+          loopVariables: {
+            cursor: { type: "string", default: "" },
+          },
+          steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+        },
+      ],
+    });
+
+    expect(parsed.version).toBe(1);
+    expect(parsed.variables?.counter).toEqual({ type: "int64", default: "0" });
+    expect(parsed.steps[0]?.type === "bash" ? parsed.steps[0].inputVariable : null).toBe("request");
+    expect(parsed.steps[0]?.sideEffects).toEqual(["wiki_read"]);
+    expect(parsed.steps[1]?.type === "switch" ? parsed.steps[1].switchVar : null).toBe(
+      "{{data.route}}",
+    );
+    expect(parsed.steps[2]?.type === "for" ? parsed.steps[2].mode : null).toBe("array");
+    expect(parsed.steps[2]?.type === "for" ? parsed.steps[2].breakWhen : null).toBe(
+      "{{data.review_passed}}",
+    );
+  });
+
+  it("accepts nested Agent, Switch, and For steps with defaults", () => {
+    const parsed = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
+      version: 1,
+      name: "triage",
+      steps: [
         {
           id: "route",
           type: "switch",
           cases: [
             {
-              equals: "agent",
+              equals: true,
               steps: [
                 {
                   id: "analyze",
                   type: "agent",
-                  initialPrompt: "Analyze {{inputFilePath}} in {{language}}",
-                  promptVariables: { language: "Chinese" },
-                  timeoutMs: 900_000,
+                  initialPrompt: "Analyze {{data.input}}",
+                  variables: {
+                    language: { type: "string", default: "Chinese" },
+                  },
                   config: {
                     provider: "codex",
                     assistantId: "assistant-leader",
@@ -51,13 +125,14 @@ describe("WorkflowScriptSchema", () => {
             {
               id: "loop",
               type: "for",
+              mode: "true",
               maxIterations: 10,
-              breakControl: "done",
+              forControl: "{{data.control}}",
               steps: [
                 {
                   id: "iterate",
                   type: "bash",
-                  initialCommand: "echo iterate",
+                  initialCommand: "output='{}'",
                 },
               ],
             },
@@ -66,91 +141,241 @@ describe("WorkflowScriptSchema", () => {
       ],
     });
 
-    expect(parsed.version).toBe(1);
-    expect(parsed.steps).toHaveLength(2);
-    expect(parsed.taskDefaults?.retry?.maxAttempts).toBe(3);
-    expect(
-      parsed.steps[1]?.type === "switch" &&
-        parsed.steps[1].cases[0]?.steps[0]?.type === "agent" &&
-        parsed.steps[1].cases[0].steps[0].config.teamId,
-    ).toBe("team-reviewers");
-    expect(
-      parsed.steps[1]?.type === "switch" &&
-        parsed.steps[1].defaultSteps?.[0]?.type === "for" &&
-        parsed.steps[1].defaultSteps[0].breakControl,
-    ).toBe("done");
+    const route = parsed.steps[0];
+    if (route?.type !== "switch") {
+      throw new Error("Expected a Switch step");
+    }
+    const analyze = route.cases[0]?.steps[0];
+    if (analyze?.type !== "agent") {
+      throw new Error("Expected a nested Agent step");
+    }
+    const loop = route.defaultSteps?.[0];
+    if (loop?.type !== "for") {
+      throw new Error("Expected a nested For step");
+    }
+    expect(analyze.outputMode).toBe("normal");
+    expect(analyze.lifecycle).toBe("single");
+    expect(analyze.subsequentPromptMode).toBe("reuse_initial");
+    expect(analyze.variables?.language).toEqual({ type: "string", default: "Chinese" });
+    expect(loop.concurrency).toBe(1);
   });
 
-  it("requires explicit initial instructions for executable steps", () => {
-    expect(() =>
-      WorkflowScriptSchema.parse({
+  it("rejects legacy Agent template variables", () => {
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
         version: 1,
-        name: "invalid",
-        steps: [{ id: "first", type: "bash", initialCommand: "" }],
-      }),
-    ).toThrow();
-  });
-
-  it("rejects invalid prompt variable names", () => {
-    expect(() =>
-      WorkflowScriptSchema.parse({
-        version: 1,
-        name: "invalid variable",
+        name: "legacy Agent variables",
         steps: [
           {
             id: "agent",
             type: "agent",
-            initialPrompt: "Analyze",
-            promptVariables: { "not valid": "value" },
+            initialPrompt: "Review {{node.var.role}}",
+            templateVariables: { role: "reviewer" },
             config: { provider: "codex" },
           },
         ],
-      }),
-    ).toThrow();
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a custom subsequent prompt for reusable Agent nodes", () => {
+    const parsed = WorkflowScriptSchema.safeParse({
+      ...workflowIdentity,
+      version: 1,
+      name: "custom subsequent prompt",
+      steps: [
+        {
+          id: "agent",
+          type: "agent",
+          lifecycle: "workflow",
+          subsequentPromptMode: "custom",
+          initialPrompt: "First",
+          config: { provider: "codex" },
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.path).toContain("subsequentPrompt");
+    }
+  });
+
+  it("rejects removed protocol shapes and versions", () => {
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 2,
+        name: "removed version",
+        steps: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 1,
+        name: "legacy contract",
+        inputContract: { required: ["project"] },
+        steps: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 1,
+        name: "legacy output",
+        steps: [
+          {
+            id: "agent",
+            type: "agent",
+            outputType: "answer",
+            initialPrompt: "Analyze",
+            config: { provider: "codex" },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects invalid template variable names", () => {
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 1,
+        name: "invalid variable",
+        steps: [
+          {
+            id: "bash",
+            type: "bash",
+            initialCommand: "true",
+            templateVariables: { "not valid": "value" },
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });
 
 describe("WorkflowPayloadSchema", () => {
-  it("defaults missing control and error strings while preserving arbitrary business data", () => {
-    const payload = WorkflowPayloadSchema.parse({
-      control: "review",
-      error: "",
+  it("preserves arbitrary workflow data without framework-owned fields", () => {
+    expect(
+      WorkflowPayloadSchema.parse({
+        customer: { name: "Alice" },
+        items: [1, 2],
+      }),
+    ).toEqual({
       customer: { name: "Alice" },
       items: [1, 2],
     });
+  });
+});
 
-    expect(payload.customer).toEqual({ name: "Alice" });
-    expect(WorkflowPayloadSchema.parse({ customer: "Alice" })).toEqual({
-      control: "",
-      error: "",
-      customer: "Alice",
+describe("WorkflowNodeRunSchema", () => {
+  it("keeps persisted run records readable while defaulting Agent conversation fields", () => {
+    const nodeRun = WorkflowNodeRunSchema.parse({
+      id: "node-run",
+      stepId: "agent",
+      stepName: "Agent",
+      stepType: "agent",
+      iterationPath: [],
+      startedAt: "2026-08-11T00:00:00.000Z",
+      endedAt: "2026-08-11T00:00:01.000Z",
+      status: "succeeded",
+      inputFilePath: "",
+      outputFilePath: null,
+      inputControl: "",
+      outputControl: "",
+      error: null,
+      agentId: null,
+      output: null,
     });
-    expect(WorkflowPayloadSchema.parse({ control: "next" })).toEqual({
-      control: "next",
-      error: "",
-    });
-    expect(WorkflowPayloadSchema.parse({ error: "failed" })).toEqual({
-      control: "",
-      error: "failed",
-    });
-    expect(() => WorkflowPayloadSchema.parse({ control: [], error: "" })).toThrow();
+
+    expect(nodeRun.agentPrompt).toBeNull();
+    expect(nodeRun.agentResponse).toBeNull();
+    expect(nodeRun.workflowPath).toBeNull();
+    expect(nodeRun.workflowRunId).toBeNull();
   });
 });
 
 describe("Workflow For defaults", () => {
-  it("defaults maximum iterations to 100", () => {
+  it("defaults to serial execution with 100 maximum iterations and concurrency one", () => {
     const script = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
       version: 1,
       name: "loop",
       steps: [
         {
           id: "loop",
           type: "for",
-          steps: [{ id: "body", type: "bash", initialCommand: "echo body" }],
+          items: "{{data.items}}",
+          steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
         },
       ],
     });
 
     expect(script.steps[0]?.type === "for" ? script.steps[0].maxIterations : null).toBe(100);
+    expect(script.steps[0]?.type === "for" ? script.steps[0].executionMode : null).toBe("serial");
+    expect(script.steps[0]?.type === "for" ? script.steps[0].concurrency : null).toBe(1);
+  });
+
+  it("accepts explicit parallel For execution", () => {
+    const script = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
+      version: 1,
+      name: "parallel loop",
+      steps: [
+        {
+          id: "loop",
+          type: "for",
+          executionMode: "parallel",
+          items: "{{data.items}}",
+          concurrency: 4,
+          steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+        },
+      ],
+    });
+
+    expect(script.steps[0]).toMatchObject({
+      type: "for",
+      executionMode: "parallel",
+      concurrency: 4,
+    });
+  });
+
+  it("accepts zero as an unlimited loop cap and reserves built-in loop variable names", () => {
+    const parsed = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
+      version: 1,
+      name: "unlimited loop",
+      steps: [
+        {
+          id: "loop",
+          type: "for",
+          mode: "true",
+          maxIterations: 0,
+          steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+        },
+      ],
+    });
+    expect(parsed.steps[0]?.type === "for" ? parsed.steps[0].maxIterations : null).toBe(0);
+
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 1,
+        name: "reserved loop variable",
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            loopVariables: {
+              item: { type: "string" },
+            },
+            steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

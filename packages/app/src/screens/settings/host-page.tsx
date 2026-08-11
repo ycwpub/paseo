@@ -25,7 +25,6 @@ import {
 import { AgentProfilesSection } from "@/agent-profiles";
 import { AgentSkillsSection } from "@/agent-skills";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { PairDeviceModal } from "@/components/pair-device-modal";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Alert as InlineAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -272,7 +271,6 @@ export function HostConnectionsPage({
   serverId: string;
   onOpenLocalRelay: () => void;
 }) {
-  const { t } = useTranslation();
   const host = useHostProfile(serverId);
 
   if (!host) {
@@ -284,9 +282,6 @@ export function HostConnectionsPage({
       <HostConnectionError serverId={serverId} />
       <RelayConfigurationSection serverId={serverId} onOpenLocalRelay={onOpenLocalRelay} />
       <ConnectionsSection host={host} />
-      <SettingsSection title={t("settings.host.pairDevices.title")}>
-        <PairDeviceRow serverId={serverId} />
-      </SettingsSection>
     </View>
   );
 }
@@ -1623,39 +1618,6 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
         </AdaptiveModalSheet>
       ) : null}
     </>
-  );
-}
-
-function PairDeviceRow({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const { theme } = useUnistyles();
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const handleOpen = useCallback(() => setIsModalOpen(true), []);
-  const handleClose = useCallback(() => setIsModalOpen(false), []);
-
-  return (
-    <View style={settingsStyles.card}>
-      <Pressable
-        style={settingsStyles.row}
-        onPress={handleOpen}
-        accessibilityRole="button"
-        testID="host-page-pair-device-row"
-      >
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.pairDevices.rowTitle")}</Text>
-          <Text style={settingsStyles.rowHint}>{t("settings.host.pairDevices.rowHint")}</Text>
-        </View>
-        <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-      </Pressable>
-
-      <PairDeviceModal
-        serverId={serverId}
-        visible={isModalOpen}
-        onClose={handleClose}
-        testID="host-page-pair-device-card"
-      />
-    </View>
   );
 }
 

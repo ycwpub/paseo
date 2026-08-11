@@ -222,10 +222,7 @@ describe("MockLoadTestAgentClient", () => {
     });
 
     const resultPromise = session.run(
-      [
-        "You are executing one node in a Paseo workflow.",
-        'MOCK_WORKFLOW_RESULT: {"filePath":"/tmp/output.txt","control":"[\\"a\\",\\"b\\"]","error":""}',
-      ].join("\n"),
+      'MOCK_WORKFLOW_RESULT: {"filePath":"/tmp/output.txt","control":"[\\"a\\",\\"b\\"]","error":""}',
     );
     await vi.advanceTimersByTimeAsync(0);
 

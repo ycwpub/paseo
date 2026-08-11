@@ -22,7 +22,7 @@
     "clean": "expo-module clean",
     "dev": "expo-module build",
     "lint": "expo-module lint",
-    "test": "expo-module test",
+    "test": "expo-module test --passWithNoTests",
     "format": "oxfmt --check .",
     "format:fix": "oxfmt .",
     "typecheck": "tsgo --noEmit",

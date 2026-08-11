@@ -80,6 +80,7 @@ import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
 import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
+import { PairDeviceSection } from "@/components/pair-device-section";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
 import { EditorSection } from "@/screens/settings/editor-section";
 import { Button } from "@/components/ui/button";
@@ -219,6 +220,8 @@ function renderHostSettingsContent(
       return <ProjectsScreen serverId={view.serverId} />;
     case "connections":
       return <HostConnectionsPage serverId={view.serverId} onOpenLocalRelay={onOpenLocalRelay} />;
+    case "pair-device":
+      return <PairDeviceSection serverId={view.serverId} />;
     case "relay":
       return <HostLocalRelayPage serverId={view.serverId} />;
     case "agents":

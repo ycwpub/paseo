@@ -3,6 +3,8 @@ import { validateWSOutboundMessage } from "../validation/ws-outbound.js";
 import { WorkflowRunRequestSchema } from "./rpc-schemas.js";
 
 const nestedScript = {
+  apiVersion: "paseo.sh/workflow/v1",
+  kind: "Workflow",
   version: 1,
   name: "nested workflow",
   steps: [
@@ -16,6 +18,8 @@ const nestedScript = {
             {
               id: "loop",
               type: "for",
+              mode: "array",
+              items: "{{data.items}}",
               steps: [
                 {
                   id: "worker",

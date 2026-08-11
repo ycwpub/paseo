@@ -48,7 +48,105 @@ export const ptBR: TranslationResources = {
       idle: "Ocioso",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plano completo",
+      fullViewTitle: "Grafo completo do workflow",
+      fullViewHint:
+        "Inspecione o grafo de dependências e o caminho de execução, aplique zoom ou abra um nó.",
+      zoomIn: "Ampliar o grafo do workflow",
+      zoomOut: "Reduzir o grafo do workflow",
+      resetZoom: "Redefinir o zoom do grafo",
+      nodeName: "Nome do nó",
+      nodeId: "ID do nó",
+      nodeType: "Tipo do nó",
+      configuration: "Configuração completa do nó",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Ciclo de vida do agente",
+        lifecycleHint:
+          "Controla por quanto tempo este nó reutiliza o mesmo agente. As chamadas reutilizadas são executadas em ordem.",
+        selectLifecycle: "Selecionar ciclo de vida do agente",
+        lifecycleOptions: {
+          workflow: "Workflow inteiro",
+          workflowDescription:
+            "Cria na primeira execução, reutiliza e libera quando o Workflow termina.",
+          for: "Loop For atual",
+          forDescription:
+            "Cria na primeira iteração, reutiliza no loop For atual e libera ao sair do loop.",
+          single: "Execução única",
+          singleDescription: "Criar um novo agente a cada execução, sem reutilização.",
+        },
+        subsequentPromptMode: "Prompt após a primeira chamada",
+        subsequentPromptModeHint:
+          "Escolha o que enviar quando este nó chamar um agente já inicializado.",
+        selectSubsequentPromptMode: "Selecionar comportamento do prompt seguinte",
+        subsequentPromptModes: {
+          reuseInitial: "Reutilizar prompt inicial",
+          reuseInitialDescription:
+            "Renderizar novamente o prompt inicial com a entrada atual do nó.",
+          custom: "Prompt personalizado",
+          customDescription: "Usar um prompt separado em cada chamada após a primeira.",
+        },
+        subsequentPrompt: "Prompt seguinte personalizado",
+        subsequentPromptHint:
+          "Aceita os mesmos dados de entrada e variáveis de modelo do prompt inicial.",
+        archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variáveis de ambiente do nó (JSON)",
+        environmentHint:
+          "Valores de texto opcionais substituem o ambiente de comandos do Workflow neste nó.",
+        environmentStringValues: "Os valores das variáveis de ambiente devem ser textos.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Módulo Python",
+        moduleHint: "Caminho de módulo opcional; configure-o junto com uma função.",
+        function: "Função Python",
+        functionHint:
+          "Recebe toda a entrada do nó e retorna o resultado; aceita funções assíncronas.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condição de parada",
+        breakWhenHint: "A expressão deve retornar um booleano; true encerra o loop.",
+        continueWhen: "Condição de continuação",
+        continueWhenHint:
+          "A expressão deve retornar um booleano; true ignora os nós restantes desta iteração.",
+      },
+      contract: {
+        title: "Contrato de dados do nó",
+        description: "Mapeie apenas os campos necessários e valide entrada e saída.",
+        inputs: "Mapeamento de entrada (JSON)",
+        inputsHint:
+          "Expressões completas como {{nodes.scan.outputs.items}} preservam o tipo nativo.",
+        inputSchema: "Esquema de entrada",
+        outputSchema: "Esquema de saída",
+        schemaHint: "Opcional. O Paseo valida antes de continuar.",
+        invalidJson: "Digite um JSON válido.",
+        objectRequired: "O valor deve ser um objeto JSON.",
+      },
+      openDetails: "Abrir detalhes do nó {{name}}",
+      downstream: {
+        label: "Próximo nó",
+        hint: "Escolha o nó do mesmo nível que será executado após este nó.",
+        sequential: "Seguir a ordem da lista",
+        sequentialDescription: "Executar o próximo nó da lista.",
+        end: "Encerrar sequência",
+        endDescription: "Encerrar esta sequência após a conclusão do nó atual.",
+        missing: "Nó ausente: {{id}}",
+        placeholder: "Selecionar próximo nó",
+        empty: "Nenhum próximo nó disponível",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",
@@ -228,6 +326,21 @@ export const ptBR: TranslationResources = {
     process: {
       show: "Mostrar processo",
       hide: "Ocultar processo",
+      processed: "Processado",
+      processedWithDuration: "Processado em {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "Plano",
@@ -272,9 +385,18 @@ export const ptBR: TranslationResources = {
     title: "Histórico de agentes",
     empty: "Nenhuma sessão ainda",
     noMatches: "Nenhuma sessão corresponde",
+    noProjectSessions: "Nenhuma sessão para este projeto",
     tooManyMatches: "Muitos resultados — refine a busca",
     hostLoadFailed: "{{host}}: Não foi possível carregar o histórico",
     searchPlaceholder: "Buscar no histórico",
+    projectFilter: {
+      label: "Projeto",
+      title: "Filtrar por projeto",
+      all: "Todos os projetos",
+      empty: "Nenhum projeto disponível",
+      search: "Buscar projetos",
+      hostCount: "{{count}} hosts",
+    },
     actions: {
       loadMore: "Carregar mais",
       clearSearch: "Limpar busca",
@@ -1142,6 +1264,8 @@ export const ptBR: TranslationResources = {
       home: "Início",
       settings: "Configurações",
       closeSidebar: "Fechar barra lateral",
+      collapseAllWorkspaces: "Recolher todos os workspaces",
+      expandAllWorkspaces: "Expandir todos os workspaces",
     },
     help: {
       trigger: "Ajuda e suporte",
@@ -1172,8 +1296,13 @@ export const ptBR: TranslationResources = {
         openNewWindowFailed: "Não foi possível abrir uma nova janela",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Ocultar projeto",
+        show: "Mostrar projeto",
         remove: "Remover projeto",
         removing: "Removendo...",
+      },
+      hidden: {
+        title: "Projetos ocultos ({{count}})",
       },
       confirmations: {
         removeTitle: "Remover projeto?",
@@ -1222,6 +1351,17 @@ export const ptBR: TranslationResources = {
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
         hiding: "Ocultando...",
+      },
+      bulkArchive: {
+        select: "Selecionar workspaces",
+        selected: "{{count}} selecionados",
+        cancel: "Cancelar seleção",
+        title: "Arquivar {{count}} workspaces?",
+        message: "Os workspaces selecionados serão arquivados e removidos da barra lateral.",
+        riskyWorktrees:
+          "{{count}} worktree(s) selecionados têm alterações sem commit ou sem push. Seus diretórios podem ser excluídos.",
+        confirm: "Arquivar selecionados",
+        failed: "Falha ao arquivar {{count}} workspaces",
       },
       confirmations: {
         hideTitle: "Ocultar workspace?",
@@ -1994,6 +2134,7 @@ export const ptBR: TranslationResources = {
     projects: "Projetos",
     projectList: {
       hostLoadFailed: "Não foi possível carregar projetos do host {{hostName}}: {{message}}",
+      hostLoadTimedOut: "O host {{hostName}} não respondeu a tempo. Tente novamente.",
       editProject: "Editar {{projectName}}",
     },
     groupInfo: "Sobre {{title}}",

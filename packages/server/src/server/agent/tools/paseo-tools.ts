@@ -48,6 +48,7 @@ import {
   WorkflowRunSchema,
   WorkflowScriptFileSchema,
   WorkflowScriptSummarySchema,
+  WorkflowTargetInputModeSchema,
 } from "@getpaseo/protocol/workflow/types";
 import {
   ScheduleRunSchema,
@@ -2657,21 +2658,46 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     {
       title: "Run workflow",
       description:
-        "Run a workflow script with an input JSON payload. By default this waits for the complete workflow result.",
+        "Run a workflow script or one node with an input JSON payload. By default this waits for the result.",
       inputSchema: {
         scriptPath: z.string().trim().min(1),
-        inputPayload: z.string().trim().min(1),
+        inputPayload: z.string().trim().min(1).optional(),
+        inputPresetId: z.string().trim().min(1).optional(),
+        targetNodeId: z.string().trim().min(1).optional(),
+        targetInputMode: WorkflowTargetInputModeSchema.optional(),
         background: z.boolean().optional(),
       },
       outputSchema: WorkflowRunSchema.shape,
     },
-    async ({ scriptPath, inputPayload, background = false }) => {
+    async ({
+      scriptPath,
+      inputPayload,
+      inputPresetId,
+      targetNodeId,
+      targetInputMode,
+      background = false,
+    }) => {
       if (!workflowService) {
         throw new Error("Workflow service is not configured");
       }
+      if (!inputPayload && !inputPresetId) {
+        throw new Error("Workflow input JSON or inputPresetId is required");
+      }
       const run = background
-        ? await workflowService.runScript({ scriptPath, inputPayload })
-        : await workflowService.runScriptAndWait({ scriptPath, inputPayload });
+        ? await workflowService.runScript({
+            scriptPath,
+            inputPayload,
+            inputPresetId,
+            targetNodeId,
+            targetInputMode,
+          })
+        : await workflowService.runScriptAndWait({
+            scriptPath,
+            inputPayload,
+            inputPresetId,
+            targetNodeId,
+            targetInputMode,
+          });
       return {
         content: [],
         structuredContent: ensureValidJson(run),

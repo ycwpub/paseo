@@ -10,10 +10,19 @@ import { writeJsonFileAtomic } from "../atomic-file.js";
 
 type WorkflowRunUpdater = (run: WorkflowRun) => WorkflowRun | Promise<WorkflowRun>;
 
+export interface InvalidWorkflowRun {
+  filePath: string;
+  error: unknown;
+}
+
 export class WorkflowRunStore {
   private readonly mutations = new Map<string, Promise<unknown>>();
+  private readonly reportedInvalidFiles = new Set<string>();
 
-  constructor(private readonly dir: string) {}
+  constructor(
+    private readonly dir: string,
+    private readonly onInvalidRun?: (invalidRun: InvalidWorkflowRun) => void,
+  ) {}
 
   private filePath(id: string): string {
     return join(this.dir, `${id}.json`);
@@ -29,21 +38,17 @@ export class WorkflowRunStore {
     const runs = await Promise.all(
       entries
         .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
-        .map(async (entry) => {
-          const content = await readFile(join(this.dir, entry.name), "utf8");
-          return WorkflowRunSchema.parse(JSON.parse(content));
-        }),
+        .map((entry) => this.readRun(join(this.dir, entry.name))),
     );
-    return StoredWorkflowRunsSchema.parse({ runs }).runs.sort((left, right) =>
-      right.startedAt.localeCompare(left.startedAt),
+    return StoredWorkflowRunsSchema.parse({ runs: runs.filter((run) => run !== null) }).runs.sort(
+      (left, right) => right.startedAt.localeCompare(left.startedAt),
     );
   }
 
   async get(id: string): Promise<WorkflowRun | null> {
     await this.ensureDir();
     try {
-      const content = await readFile(this.filePath(id), "utf8");
-      return WorkflowRunSchema.parse(JSON.parse(content));
+      return await this.readRun(this.filePath(id));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null;
@@ -83,7 +88,36 @@ export class WorkflowRunStore {
 
   private async write(run: WorkflowRun): Promise<void> {
     await this.ensureDir();
-    await writeJsonFileAtomic(this.filePath(run.id), run);
+    const path = this.filePath(run.id);
+    await writeJsonFileAtomic(path, run);
+    this.reportedInvalidFiles.delete(path);
+  }
+
+  private async readRun(path: string): Promise<WorkflowRun | null> {
+    try {
+      const content = await readFile(path, "utf8");
+      const parsed = WorkflowRunSchema.safeParse(JSON.parse(content));
+      if (parsed.success) {
+        this.reportedInvalidFiles.delete(path);
+        return parsed.data;
+      }
+      this.reportInvalidRun(path, parsed.error);
+      return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw error;
+      }
+      this.reportInvalidRun(path, error);
+      return null;
+    }
+  }
+
+  private reportInvalidRun(filePath: string, error: unknown): void {
+    if (this.reportedInvalidFiles.has(filePath)) {
+      return;
+    }
+    this.reportedInvalidFiles.add(filePath);
+    this.onInvalidRun?.({ filePath, error });
   }
 
   private async serialize<T>(id: string, mutation: () => Promise<T>): Promise<T> {

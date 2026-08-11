@@ -48,7 +48,106 @@ export const es: TranslationResources = {
       idle: "Inactivo",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plan completo",
+      fullViewTitle: "Grafo completo del flujo de trabajo",
+      fullViewHint:
+        "Inspecciona el grafo de dependencias y la ruta de ejecución, amplíalo o abre un nodo.",
+      zoomIn: "Ampliar el grafo del flujo de trabajo",
+      zoomOut: "Reducir el grafo del flujo de trabajo",
+      resetZoom: "Restablecer el zoom del grafo",
+      nodeName: "Nombre del nodo",
+      nodeId: "ID del nodo",
+      nodeType: "Tipo de nodo",
+      configuration: "Configuración completa del nodo",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Ciclo de vida del agente",
+        lifecycleHint:
+          "Controla cuánto tiempo este nodo reutiliza el mismo agente. Las llamadas reutilizadas se ejecutan en orden.",
+        selectLifecycle: "Seleccionar ciclo de vida del agente",
+        lifecycleOptions: {
+          workflow: "Workflow completo",
+          workflowDescription:
+            "Se crea en la primera ejecución, se reutiliza y se libera cuando termina el Workflow.",
+          for: "Bucle For actual",
+          forDescription:
+            "Se crea en la primera iteración, se reutiliza dentro del bucle For actual y se libera al salir.",
+          single: "Ejecución única",
+          singleDescription: "Crear un agente nuevo para cada ejecución, sin reutilizarlo.",
+        },
+        subsequentPromptMode: "Prompt posterior al primero",
+        subsequentPromptModeHint:
+          "Elige qué enviar cuando este nodo invoque un agente ya inicializado.",
+        selectSubsequentPromptMode: "Seleccionar comportamiento del prompt posterior",
+        subsequentPromptModes: {
+          reuseInitial: "Reutilizar prompt inicial",
+          reuseInitialDescription:
+            "Volver a renderizar el prompt inicial con la entrada actual del nodo.",
+          custom: "Prompt personalizado",
+          customDescription:
+            "Usar un prompt independiente en cada invocación posterior a la primera.",
+        },
+        subsequentPrompt: "Prompt posterior personalizado",
+        subsequentPromptHint:
+          "Admite los mismos datos de entrada y variables de plantilla que el prompt inicial.",
+        archiveAtLifecycleEnd: "Archivar automáticamente al finalizar el ciclo de vida del agente",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variables de entorno del nodo (JSON)",
+        environmentHint:
+          "Los valores de texto opcionales reemplazan el entorno de comandos del Workflow para este nodo.",
+        environmentStringValues: "Los valores de las variables de entorno deben ser texto.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Módulo de Python",
+        moduleHint: "Ruta de módulo opcional; configúrala junto con una función.",
+        function: "Función de Python",
+        functionHint:
+          "Recibe la entrada completa del nodo y devuelve el resultado; admite funciones asíncronas.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condición de finalización",
+        breakWhenHint: "La expresión debe devolver un booleano; true termina el bucle.",
+        continueWhen: "Condición de continuación",
+        continueWhenHint:
+          "La expresión debe devolver un booleano; true omite los nodos restantes de esta iteración.",
+      },
+      contract: {
+        title: "Contrato de datos del nodo",
+        description: "Mapea solo los campos necesarios y valida entrada y salida con JSON Schema.",
+        inputs: "Mapeo de entrada (JSON)",
+        inputsHint:
+          "Las expresiones completas como {{nodes.scan.outputs.items}} conservan el tipo original.",
+        inputSchema: "Esquema de entrada",
+        outputSchema: "Esquema de salida",
+        schemaHint: "Opcional. Paseo valida el objeto antes de continuar.",
+        invalidJson: "Introduce JSON válido.",
+        objectRequired: "El valor debe ser un objeto JSON.",
+      },
+      openDetails: "Abrir los detalles del nodo {{name}}",
+      downstream: {
+        label: "Nodo siguiente",
+        hint: "Elige el nodo del mismo nivel que se ejecutará al terminar este nodo.",
+        sequential: "Seguir el orden de la lista",
+        sequentialDescription: "Ejecutar el siguiente nodo de la lista.",
+        end: "Finalizar la secuencia",
+        endDescription: "Finalizar esta secuencia al completar el nodo actual.",
+        missing: "Falta el nodo: {{id}}",
+        placeholder: "Seleccionar nodo siguiente",
+        empty: "No hay nodos siguientes disponibles",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",
@@ -228,6 +327,21 @@ export const es: TranslationResources = {
     process: {
       show: "Mostrar proceso",
       hide: "Ocultar proceso",
+      processed: "Procesado",
+      processedWithDuration: "Procesado {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "Plan",
@@ -272,9 +386,18 @@ export const es: TranslationResources = {
     title: "Historial",
     empty: "Aún no hay sesiones",
     noMatches: "No hay sesiones que coincidan",
+    noProjectSessions: "No hay sesiones para este proyecto",
     tooManyMatches: "Demasiadas coincidencias: acota la búsqueda",
     hostLoadFailed: "{{host}}: No se pudo cargar el historial",
     searchPlaceholder: "Buscar en el historial",
+    projectFilter: {
+      label: "Proyecto",
+      title: "Filtrar por proyecto",
+      all: "Todos los proyectos",
+      empty: "No hay proyectos disponibles",
+      search: "Buscar proyectos",
+      hostCount: "{{count}} hosts",
+    },
     actions: {
       loadMore: "Cargar más",
       clearSearch: "Borrar búsqueda",
@@ -1151,6 +1274,8 @@ export const es: TranslationResources = {
       home: "Hogar",
       settings: "Ajustes",
       closeSidebar: "Cerrar barra lateral",
+      collapseAllWorkspaces: "Contraer todos los espacios de trabajo",
+      expandAllWorkspaces: "Expandir todos los espacios de trabajo",
     },
     help: {
       trigger: "Ayuda y soporte",
@@ -1181,8 +1306,13 @@ export const es: TranslationResources = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Ocultar proyecto",
+        show: "Mostrar proyecto",
         remove: "Eliminar proyecto",
         removing: "Eliminando...",
+      },
+      hidden: {
+        title: "Proyectos ocultos ({{count}})",
       },
       confirmations: {
         removeTitle: "¿Quitar proyecto?",
@@ -1231,6 +1361,18 @@ export const es: TranslationResources = {
         hideFromSidebar: "Ocultar de la barra lateral",
         archiving: "Archivando...",
         hiding: "Ocultación...",
+      },
+      bulkArchive: {
+        select: "Seleccionar espacios de trabajo",
+        selected: "{{count}} seleccionados",
+        cancel: "Cancelar selección",
+        title: "¿Archivar {{count}} espacios de trabajo?",
+        message:
+          "Los espacios de trabajo seleccionados se archivarán y se quitarán de la barra lateral.",
+        riskyWorktrees:
+          "{{count}} worktree(s) seleccionados tienen cambios sin confirmar o sin enviar. Sus directorios podrían eliminarse.",
+        confirm: "Archivar seleccionados",
+        failed: "No se pudieron archivar {{count}} espacios de trabajo",
       },
       confirmations: {
         hideTitle: "¿Ocultar espacio de trabajo?",
@@ -2008,6 +2150,7 @@ export const es: TranslationResources = {
     projects: "Proyectos",
     projectList: {
       hostLoadFailed: "No se pudieron cargar proyectos desde el host{{hostName}}:{{message}}",
+      hostLoadTimedOut: "El host {{hostName}} no respondió a tiempo. Inténtalo de nuevo.",
       editProject: "Editar{{projectName}}",
     },
     groupInfo: "Acerca de{{title}}",

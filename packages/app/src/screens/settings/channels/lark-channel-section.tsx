@@ -36,7 +36,6 @@ import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const EMPTY_PAIRINGS: LarkChannelPendingPairing[] = [];
 const EMPTY_AUTHORIZED_USERS: LarkChannelAuthorizedUser[] = [];
 const ASSISTANT_TARGET_PREFIX = "assistant:";
@@ -541,7 +540,7 @@ function BotListRow({
   }, [bot.id, onSelect]);
 
   return (
-    <View style={isFirst ? settingsStyles.row : ROW_WITH_BORDER_STYLE}>
+    <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{getBotDisplayName(bot)}</Text>
         <Text style={settingsStyles.rowHint}>{getBotListDescription(bot)}</Text>
@@ -577,7 +576,11 @@ function BotListCard({ bots, selectedBotId, creating, onSelect, onAdd }: BotList
             <Text style={settingsStyles.rowHint}>暂无已配置的飞书机器人。</Text>
           </View>
         )}
-        <View style={bots.length > 0 ? ROW_WITH_BORDER_STYLE : settingsStyles.row}>
+        <View
+          style={
+            bots.length > 0 ? [settingsStyles.row, settingsStyles.rowBorder] : settingsStyles.row
+          }
+        >
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
               {creating ? "正在添加新的飞书机器人" : "添加飞书机器人"}
@@ -833,7 +836,7 @@ function PairingRow({ pairing, isFirst, onApprove, onReject }: PairingRowProps) 
   }, [onReject, pairing.code]);
 
   return (
-    <View style={isFirst ? settingsStyles.row : ROW_WITH_BORDER_STYLE}>
+    <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{pairing.displayName}</Text>
         <Text style={settingsStyles.rowHint}>Code {pairing.code}</Text>
@@ -886,7 +889,7 @@ function AuthorizedUserRow({ user, isFirst, onRevoke }: AuthorizedUserRowProps) 
   }, [onRevoke, user.id]);
 
   return (
-    <View style={isFirst ? settingsStyles.row : ROW_WITH_BORDER_STYLE}>
+    <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{user.displayName}</Text>
         <Text style={settingsStyles.rowHint}>{user.chatId}</Text>

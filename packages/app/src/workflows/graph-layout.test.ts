@@ -1,0 +1,337 @@
+import { describe, expect, it } from "vitest";
+import type { WorkflowStep } from "@getpaseo/protocol/workflow/types";
+import { buildWorkflowGraphModel } from "./graph-model";
+import {
+  layoutWorkflowGraph,
+  WORKFLOW_GRAPH_NODE_HEIGHT,
+  WORKFLOW_GRAPH_NODE_WIDTH,
+} from "./graph-layout";
+
+describe("workflow graph layout", () => {
+  it("lays a linear workflow out from left to right with start and end nodes", () => {
+    const layout = createLayout([
+      { id: "first", type: "bash", initialCommand: "true" },
+      { id: "second", type: "python", code: "print('{}')" },
+    ]);
+
+    expect(layout.nodes.map((candidate) => [candidate.id, candidate.rank, candidate.lane])).toEqual(
+      [
+        ["__workflow_start__", 0, 0],
+        ["first", 1, 0],
+        ["second", 2, 0],
+        ["__workflow_end__", 3, 0],
+      ],
+    );
+    expect(layout.edges.map((edge) => [edge.from, edge.to])).toEqual([
+      ["__workflow_start__", "first"],
+      ["first", "second"],
+      ["second", "__workflow_end__"],
+    ]);
+  });
+
+  it("places switch branches in separate lanes and merges them into a later rank", () => {
+    const layout = createLayout([
+      {
+        id: "route",
+        type: "switch",
+        cases: [
+          {
+            equals: "yes",
+            steps: [{ id: "approve", type: "bash", initialCommand: "true" }],
+          },
+          {
+            equals: "no",
+            steps: [{ id: "reject", type: "bash", initialCommand: "true" }],
+          },
+        ],
+        defaultSteps: [],
+      },
+      { id: "finish", type: "bash", initialCommand: "true" },
+    ]);
+
+    expect(node(layout, "route")).toMatchObject({ rank: 1, lane: 0 });
+    expect(node(layout, "approve")).toMatchObject({ rank: 2, lane: 1 });
+    expect(node(layout, "reject")).toMatchObject({ rank: 2, lane: 2 });
+    expect(node(layout, "finish")).toMatchObject({ rank: 3, lane: 0 });
+    expect(
+      layout.edges.some(
+        (edge) =>
+          edge.from === "route" &&
+          edge.to === "finish" &&
+          edge.kind === "branch" &&
+          edge.label === null,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps loop bodies off the main lane and renders a loop-back edge", () => {
+    const layout = createLayout([
+      {
+        id: "loop",
+        type: "for",
+        steps: [{ id: "worker", type: "bash", initialCommand: "true" }],
+      },
+      { id: "finish", type: "bash", initialCommand: "true" },
+    ]);
+
+    expect(node(layout, "loop")).toMatchObject({ rank: 1, lane: 0 });
+    expect(node(layout, "worker")).toMatchObject({ rank: 2, lane: 1 });
+    expect(node(layout, "finish")).toMatchObject({ rank: 2, lane: 0 });
+    expect(
+      layout.edges.some(
+        (edge) => edge.from === "worker" && edge.to === "loop" && edge.kind === "loop_back",
+      ),
+    ).toBe(true);
+  });
+
+  it("routes nested loop-back edges below their full subtrees on separate channels", () => {
+    const layout = createLayout([
+      {
+        id: "outer",
+        type: "for",
+        steps: [
+          {
+            id: "inner",
+            type: "for",
+            steps: [
+              { id: "work", type: "agent", initialPrompt: "work", config: { provider: "codex" } },
+              {
+                id: "review",
+                type: "agent",
+                initialPrompt: "review",
+                config: { provider: "codex" },
+              },
+            ],
+          },
+          { id: "close", type: "bash", initialCommand: "true" },
+        ],
+      },
+      { id: "finish", type: "bash", initialCommand: "true" },
+    ]);
+
+    const innerLoopBack = findEdge(layout, "review", "inner", "loop_back");
+    const outerLoopBack = findEdge(layout, "close", "outer", "loop_back");
+    const deepestNodeBottom = node(layout, "review").y + WORKFLOW_GRAPH_NODE_HEIGHT;
+
+    expect(innerLoopBack.labelY).toBeGreaterThan(deepestNodeBottom);
+    expect(outerLoopBack.labelY).toBeGreaterThan(innerLoopBack.labelY);
+    expect(outerLoopBack.labelY - innerLoopBack.labelY).toBeGreaterThanOrEqual(28);
+    expect(loopRoutesCross(layout, innerLoopBack, outerLoopBack)).toBe(false);
+    expect(layout.height).toBeGreaterThan(outerLoopBack.labelY);
+  });
+
+  it("connects a terminal loop controller to workflow end", () => {
+    const layout = createLayout([
+      {
+        id: "loop",
+        type: "for",
+        steps: [{ id: "worker", type: "bash", initialCommand: "true" }],
+      },
+    ]);
+
+    expect(
+      layout.edges.some(
+        (edge) =>
+          edge.from === "loop" && edge.to === "__workflow_end__" && edge.kind === "sequence",
+      ),
+    ).toBe(true);
+    expect(
+      layout.edges.some((edge) => edge.from === "worker" && edge.to === "__workflow_end__"),
+    ).toBe(false);
+  });
+
+  it("connects every terminal switch branch to workflow end", () => {
+    const layout = createLayout([
+      {
+        id: "route",
+        type: "switch",
+        cases: [
+          {
+            equals: "yes",
+            steps: [{ id: "approve", type: "bash", initialCommand: "true" }],
+          },
+        ],
+        defaultSteps: [],
+      },
+    ]);
+
+    expect(
+      layout.edges.some((edge) => edge.from === "approve" && edge.to === "__workflow_end__"),
+    ).toBe(true);
+    expect(
+      layout.edges.some(
+        (edge) =>
+          edge.from === "route" &&
+          edge.to === "__workflow_end__" &&
+          edge.kind === "branch" &&
+          edge.label === null,
+      ),
+    ).toBe(true);
+  });
+
+  it("lays out explicit downstream links and connects the reachable terminal to end", () => {
+    const layout = createLayout([
+      { id: "first", type: "bash", initialCommand: "true", nextStepId: "third" },
+      { id: "second", type: "bash", initialCommand: "true", nextStepId: null },
+      { id: "third", type: "bash", initialCommand: "true", nextStepId: "second" },
+    ]);
+
+    expect(node(layout, "first")).toMatchObject({ rank: 1 });
+    expect(node(layout, "third")).toMatchObject({ rank: 2 });
+    expect(node(layout, "second")).toMatchObject({ rank: 3 });
+    expect(layout.edges.map((edge) => [edge.from, edge.to])).toEqual([
+      ["__workflow_start__", "first"],
+      ["first", "third"],
+      ["third", "second"],
+      ["second", "__workflow_end__"],
+    ]);
+  });
+
+  it("uses stable fixed-size nodes without overlaps", () => {
+    const layout = createLayout([
+      {
+        id: "route",
+        type: "switch",
+        cases: [
+          {
+            equals: "a",
+            steps: [
+              { id: "a1", type: "bash", initialCommand: "true" },
+              { id: "a2", type: "bash", initialCommand: "true" },
+            ],
+          },
+          {
+            equals: "b",
+            steps: [{ id: "b1", type: "bash", initialCommand: "true" }],
+          },
+        ],
+      },
+      { id: "finish", type: "bash", initialCommand: "true" },
+    ]);
+
+    for (const current of layout.nodes.filter((candidate) => candidate.kind === "step")) {
+      expect(current.width).toBe(WORKFLOW_GRAPH_NODE_WIDTH);
+      expect(current.height).toBe(WORKFLOW_GRAPH_NODE_HEIGHT);
+      for (const candidate of layout.nodes) {
+        if (current.id === candidate.id) {
+          continue;
+        }
+        expect(overlaps(current, candidate)).toBe(false);
+      }
+    }
+  });
+
+  it("applies manual node and edge positions to the generated graph", () => {
+    const model = buildWorkflowGraphModel([
+      { id: "first", type: "bash", initialCommand: "true" },
+      { id: "second", type: "bash", initialCommand: "true" },
+    ]);
+    const automatic = layoutWorkflowGraph(model);
+    const edge = findEdge(automatic, "first", "second", "sequence");
+    const layout = layoutWorkflowGraph(model, {
+      nodes: { first: { x: 240, y: 180 } },
+      edges: { [edge.id]: { control: { x: 520, y: 260 } } },
+    });
+
+    expect(node(layout, "first")).toMatchObject({ x: 240, y: 180 });
+    expect(findEdge(layout, "first", "second", "sequence")).toMatchObject({
+      labelX: 520,
+      labelY: 260,
+      route: { kind: "forward", controlX: 520, controlY: 260 },
+    });
+  });
+});
+
+function createLayout(steps: WorkflowStep[]) {
+  return layoutWorkflowGraph(buildWorkflowGraphModel(steps));
+}
+
+function node(layout: ReturnType<typeof createLayout>, id: string) {
+  const result = layout.nodes.find((candidate) => candidate.id === id);
+  if (!result) {
+    throw new Error(`Missing layout node: ${id}`);
+  }
+  return result;
+}
+
+function findEdge(
+  layout: ReturnType<typeof createLayout>,
+  from: string,
+  to: string,
+  kind: "sequence" | "branch" | "loop_back",
+) {
+  const result = layout.edges.find(
+    (candidate) => candidate.from === from && candidate.to === to && candidate.kind === kind,
+  );
+  if (!result) {
+    throw new Error(`Missing layout edge: ${from} -> ${to} (${kind})`);
+  }
+  return result;
+}
+
+function overlaps(left: ReturnType<typeof node>, right: ReturnType<typeof node>): boolean {
+  return !(
+    left.x + left.width <= right.x ||
+    right.x + right.width <= left.x ||
+    left.y + left.height <= right.y ||
+    right.y + right.height <= left.y
+  );
+}
+
+interface Segment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function loopRoutesCross(
+  layout: ReturnType<typeof createLayout>,
+  left: ReturnType<typeof findEdge>,
+  right: ReturnType<typeof findEdge>,
+): boolean {
+  const leftSegments = loopSegments(layout, left);
+  const rightSegments = loopSegments(layout, right);
+  return leftSegments.some((leftSegment) =>
+    rightSegments.some((rightSegment) => orthogonalSegmentsCross(leftSegment, rightSegment)),
+  );
+}
+
+function loopSegments(
+  layout: ReturnType<typeof createLayout>,
+  edge: ReturnType<typeof findEdge>,
+): Segment[] {
+  if (edge.route.kind !== "loop_back") {
+    return [];
+  }
+  const source = node(layout, edge.from);
+  const target = node(layout, edge.to);
+  const sourceX = source.x + source.width;
+  const sourceY = source.y + source.height / 2;
+  const targetX = target.x;
+  const targetY = target.y + target.height / 2;
+  const { sourceTurnX, targetTurnX, channelY } = edge.route;
+  return [
+    { x1: sourceX, y1: sourceY, x2: sourceTurnX, y2: sourceY },
+    { x1: sourceTurnX, y1: sourceY, x2: sourceTurnX, y2: channelY },
+    { x1: sourceTurnX, y1: channelY, x2: targetTurnX, y2: channelY },
+    { x1: targetTurnX, y1: channelY, x2: targetTurnX, y2: targetY },
+    { x1: targetTurnX, y1: targetY, x2: targetX, y2: targetY },
+  ];
+}
+
+function orthogonalSegmentsCross(left: Segment, right: Segment): boolean {
+  const leftHorizontal = left.y1 === left.y2;
+  const rightHorizontal = right.y1 === right.y2;
+  if (leftHorizontal === rightHorizontal) {
+    return false;
+  }
+  const horizontal = leftHorizontal ? left : right;
+  const vertical = leftHorizontal ? right : left;
+  return (
+    vertical.x1 > Math.min(horizontal.x1, horizontal.x2) &&
+    vertical.x1 < Math.max(horizontal.x1, horizontal.x2) &&
+    horizontal.y1 > Math.min(vertical.y1, vertical.y2) &&
+    horizontal.y1 < Math.max(vertical.y1, vertical.y2)
+  );
+}

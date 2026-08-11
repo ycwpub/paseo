@@ -375,23 +375,6 @@ interface SessionResourceSelection {
   selectedSkillIds: string[];
 }
 
-function renderComposerFooter(
-  footer: ReactNode,
-  footerInlineContent: ReactNode,
-): ReactElement | null {
-  if (!footer && !footerInlineContent) return null;
-  return (
-    <View style={styles.footer}>
-      <View style={styles.footerContent}>
-        <View style={styles.footerLeft}>
-          {footer}
-          {footerInlineContent}
-        </View>
-      </View>
-    </View>
-  );
-}
-
 function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | null {
   const {
     selectedAttachments,
@@ -517,6 +500,43 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
       openLabel={labels.openGithub}
       removeLabel={labels.removeGithub}
     />
+  );
+}
+
+interface WorkspaceFileAttachmentPillProps {
+  attachment: WorkspaceFileComposerAttachment;
+  index: number;
+  disabled: boolean;
+  onRemove: (index: number) => void;
+  removeLabel: string;
+}
+
+function WorkspaceFileAttachmentPill({
+  attachment,
+  index,
+  disabled,
+  onRemove,
+  removeLabel,
+}: WorkspaceFileAttachmentPillProps) {
+  const handleRemove = useCallback(() => {
+    onRemove(index);
+  }, [index, onRemove]);
+  const fileName = attachment.path.split("/").pop() ?? attachment.path;
+  return (
+    <AttachmentPill
+      testID="composer-workspace-file-attachment-pill"
+      onOpen={noopCallback}
+      onRemove={handleRemove}
+      openAccessibilityLabel={fileName}
+      removeAccessibilityLabel={removeLabel}
+      disabled={disabled}
+    >
+      <AttachmentLabel
+        icon={filePillIcon}
+        title={fileName}
+        subtitle={getWorkspaceFileAttachmentSubtitle(attachment)}
+      />
+    </AttachmentPill>
   );
 }
 
@@ -836,7 +856,9 @@ function ImageAttachmentPill({
 interface GithubAttachmentPillProps {
   attachment: Extract<
     ComposerAttachment,
-    { kind: "forge_change_request" | "forge_issue" | "github_pr" | "github_issue" }
+    {
+      kind: "forge_change_request" | "forge_issue" | "github_pr" | "github_issue";
+    }
   >;
   index: number;
   disabled: boolean;
@@ -1063,7 +1085,10 @@ const StableMessageInput = memo(MessageInput);
 function resolveContextWindowValues(
   rawMax: number | null,
   rawUsed: number | null,
-): { contextWindowMaxTokens: number | null; contextWindowUsedTokens: number | null } {
+): {
+  contextWindowMaxTokens: number | null;
+  contextWindowUsedTokens: number | null;
+} {
   if (typeof rawMax === "number" && typeof rawUsed === "number") {
     return { contextWindowMaxTokens: rawMax, contextWindowUsedTokens: rawUsed };
   }
@@ -1330,7 +1355,11 @@ export function Composer({
   useEffect(() => {
     if (!isConnected || mcpCatalog.isLoading || skillCatalog.isLoading) return;
     if (assistantId && assistantCatalog.isLoading) return;
-    const key = buildAssistantResourceApplyKey({ serverId, agentId, assistantId });
+    const key = buildAssistantResourceApplyKey({
+      serverId,
+      agentId,
+      assistantId,
+    });
     if (resourceSelectionAppliedForRef.current === key) return;
     const selectedAssistant = assistantId
       ? (assistantCatalog.assistants.find((assistant) => assistant.id === assistantId) ?? null)
@@ -1495,7 +1524,11 @@ export function Composer({
       if (!workspaceId) {
         return;
       }
-      const attachment = resolveWorkspaceFileDrop({ payload, serverId, workspaceId });
+      const attachment = resolveWorkspaceFileDrop({
+        payload,
+        serverId,
+        workspaceId,
+      });
       if (!attachment) {
         return;
       }
@@ -1557,7 +1590,7 @@ export function Composer({
           supportsForgeAttachments: supportsForgeSearch,
         }),
         encodeImages,
-        stream,
+        submission: createMessageSubmissionWriter(serverId),
         selectedMcpServerIds: selection.selectedMcpServerIds,
         selectedSkillIds: selection.selectedSkillIds,
       });
@@ -1650,7 +1683,6 @@ export function Composer({
     },
     [
       allowEmptySubmit,
-      beginSubmit,
       clearDraft,
       completeSubmit,
       hasExternalContent,
@@ -1736,7 +1768,10 @@ export function Composer({
       const oversized = files.find((f) => f.bytes.byteLength > MAX_FILE_SIZE_BYTES);
       if (oversized) {
         toastErrorRef.current(
-          t("composer.errors.fileTooLarge", { size: "50MB", fileName: oversized.fileName }),
+          t("composer.errors.fileTooLarge", {
+            size: "50MB",
+            fileName: oversized.fileName,
+          }),
         );
         return;
       }
@@ -1805,7 +1840,11 @@ export function Composer({
         return;
       }
       setSelectedAttachments((prev) =>
-        removeComposerAttachmentAtIndex({ attachments: prev, index, deleteAttachments }),
+        removeComposerAttachmentAtIndex({
+          attachments: prev,
+          index,
+          deleteAttachments,
+        }),
       );
     },
     [githubAutoAttach, removeAttachment, selectedAttachments, setSelectedAttachments],
@@ -2205,8 +2244,8 @@ export function Composer({
     );
   }, []);
 
-  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(
-    () => [
+  const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(() => {
+    const items: AttachmentMenuItem[] = [
       {
         id: "image",
         label: t("composer.attachments.addImage"),
@@ -2263,18 +2302,19 @@ export function Composer({
           void handlePickFile();
         },
       },
-    ],
-    [
-      handlePickImage,
-      handlePickFile,
-      t,
-      forgePresentation,
-      mcpCatalog.isLoading,
-      selectableMcpServers.length,
-      skillCatalog.isLoading,
-      selectableSkills.length,
-    ],
-  );
+    );
+    return items;
+  }, [
+    forgePresentation,
+    handlePasteImage,
+    handlePickFile,
+    handlePickImage,
+    mcpCatalog.isLoading,
+    selectableMcpServers.length,
+    skillCatalog.isLoading,
+    selectableSkills.length,
+    t,
+  ]);
 
   const handleToggleGithubItem = useCallback(
     (item: ForgeSearchItem) => {
@@ -2444,7 +2484,10 @@ export function Composer({
           openGithub: (kind: string, numberLabel: string) =>
             t("composer.attachments.openGithub", { kind, number: numberLabel }),
           removeGithub: (kind: string, numberLabel: string) =>
-            t("composer.attachments.removeGithub", { kind, number: numberLabel }),
+            t("composer.attachments.removeGithub", {
+              kind,
+              number: numberLabel,
+            }),
         },
       }),
     [handleOpenAttachment, handleRemoveAttachment, isComposerLocked, selectedAttachments, t],
@@ -2636,6 +2679,9 @@ const animatedStaticStyles = RNStyleSheet.create({
     flexDirection: "column",
     position: "relative",
   },
+});
+
+const styles = StyleSheet.create((theme: Theme) => ({
   leftContentRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2814,9 +2860,15 @@ const ThemedWrench = withUnistyles(Wrench);
 const ThemedImageIcon = withUnistyles(ImageIcon);
 const ThemedClipboardPaste = withUnistyles(ClipboardPaste);
 const ThemedFileText = withUnistyles(FileText);
-const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
-const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
+const iconForegroundMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const iconForegroundMutedMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
+const iconAccentForegroundMapping = (theme: Theme) => ({
+  color: theme.colors.accentForeground,
+});
 
 function renderForgeAttachmentIcon(icon: string): ReactElement {
   return (

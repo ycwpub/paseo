@@ -1292,7 +1292,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onScrollToOldest={handleScrollToOldestPress}
             onScrollToBottom={scrollToBottom}
           />
-        </View>
+        </AssistantSelectionCopySurface>
       </ToolCallSheetProvider>
     );
   },

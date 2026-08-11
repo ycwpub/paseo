@@ -330,17 +330,19 @@ export class WorkspaceFilesSession {
           `Failed to fulfill file explorer request for workspace ${cwd}`,
         );
       }
-      this.host.emit({
-        type: "file_explorer_response",
-        payload: {
-          cwd,
-          path: requestedPath,
-          mode,
-          directory: null,
-          file: null,
-          error: getErrorMessage(error),
-          ...(errorCode ? { errorCode } : {}),
-          requestId,
+      this.host.emit(
+        {
+          type: "file_explorer_response",
+          payload: {
+            cwd,
+            path: requestedPath,
+            mode,
+            directory: null,
+            file: null,
+            error: getErrorMessage(error),
+            ...(errorCode ? { errorCode } : {}),
+            requestId,
+          },
         },
         source,
       );

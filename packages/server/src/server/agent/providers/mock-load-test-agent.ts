@@ -771,6 +771,7 @@ export class MockLoadTestAgentSession implements AgentSession {
     const questionPrompt = parseMockQuestionPrompt(prompt);
     const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
     const settledAssistantImageMarkdown = parseSettledAssistantImageMarkdown(prompt);
+    const workflowResult = parseMockWorkflowResultPrompt(prompt);
     const scheduleTurn = () => {
       if (shouldEmitTurnFailure(prompt)) {
         this.scheduleFailedTurn(turn);
@@ -778,6 +779,8 @@ export class MockLoadTestAgentSession implements AgentSession {
         this.scheduleStreamingAssistantTurn(turn, this.streamingAssistantResponse);
       } else if (this.assistantResponse !== null) {
         this.scheduleSettledAssistantTurn(turn, this.assistantResponse);
+      } else if (workflowResult) {
+        this.scheduleStructuredJsonTurn(turn, workflowResult);
       } else if (structuredBranchName) {
         this.scheduleSettledAssistantTurn(turn, JSON.stringify(structuredBranchName));
       } else if (settledAssistantImageMarkdown) {
@@ -810,29 +813,11 @@ export class MockLoadTestAgentSession implements AgentSession {
           ...(options?.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
         },
       });
-    }, 0);
-
-    const largePayload = parseLargeAgentStreamPayloadPrompt(prompt);
-    const stress = parseAgentStreamStressPrompt(prompt);
-    const questionPrompt = parseMockQuestionPrompt(prompt);
-    const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
-    const workflowResult = parseMockWorkflowResultPrompt(prompt);
-    if (shouldEmitTurnFailure(prompt)) {
-      this.scheduleFailedTurn(turn);
-    } else if (workflowResult) {
-      this.scheduleStructuredJsonTurn(turn, workflowResult);
-    } else if (structuredBranchName) {
-      this.scheduleStructuredJsonTurn(turn, structuredBranchName);
-    } else if (shouldEmitPlanApprovalPrompt(prompt)) {
-      this.schedulePlanApprovalTurn(turn);
-    } else if (questionPrompt) {
-      this.scheduleQuestionPromptTurn(turn, questionPrompt);
-    } else if (largePayload) {
-      this.scheduleLargePayloadTurn(turn, largePayload);
-    } else if (stress) {
-      this.scheduleStressTurn(turn, stress);
-    } else {
-      this.schedule(turn, 0);
+    };
+    if (shouldEmitUserMessageBeforeTurnAcceptance(prompt)) {
+      emitUserMessage();
+      scheduleTurn();
+      return { turnId };
     }
     if (shouldWithholdUserMessageUntilInterrupt(prompt)) {
       return { turnId };

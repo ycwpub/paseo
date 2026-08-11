@@ -179,7 +179,7 @@ export interface DispatchComposerAgentMessageInput {
   encodeImages: (
     images: AttachmentMetadata[],
   ) => Promise<Array<{ data: string; mimeType: string }> | undefined>;
-  stream: AgentStreamWriter;
+  submission: MessageSubmissionWriter;
   selectedMcpServerIds?: string[];
   selectedSkillIds?: string[];
 }
@@ -198,40 +198,15 @@ export async function dispatchComposerAgentMessage(
     images: wirePayload.images,
     attachments: wirePayload.attachments,
   });
-  appendUserMessageToStream(input.agentId, userMessage, input.stream);
-  const imagesData = await input.encodeImages(wirePayload.images);
-  await input.client.sendAgentMessage(input.agentId, input.text, {
-    messageId,
-    images: imagesData ?? [],
-    attachments: wirePayload.attachments,
-    selectedMcpServerIds: input.selectedMcpServerIds,
-    selectedSkillIds: input.selectedSkillIds,
-  });
-}
-
-function appendUserMessageToStream(
-  agentId: string,
-  userMessage: UserMessageItem,
-  stream: AgentStreamWriter,
-): void {
-  const result = appendOptimisticUserMessageToStream({
-    tail: stream.getTail(agentId) ?? [],
-    head: stream.getHead(agentId) ?? [],
-    message: userMessage,
-    placement: "active-head",
-  });
-  if (result.changedHead) {
-    stream.setHead((prev) => {
-      const next = new Map(prev);
-      next.set(agentId, result.head);
-      return next;
-    });
-  }
-  if (result.changedTail) {
-    stream.setTail((prev) => {
-      const next = new Map(prev);
-      next.set(agentId, result.tail);
-      return next;
+  input.submission.begin(input.agentId, userMessage);
+  try {
+    const imagesData = await input.encodeImages(wirePayload.images);
+    await input.client.sendAgentMessage(input.agentId, input.text, {
+      messageId: clientMessageId,
+      images: imagesData ?? [],
+      attachments: wirePayload.attachments,
+      selectedMcpServerIds: input.selectedMcpServerIds,
+      selectedSkillIds: input.selectedSkillIds,
     });
     input.submission.accept(input.agentId, clientMessageId);
   } catch (error) {
@@ -437,11 +412,11 @@ export function buildForgeAttachment(item: ForgeSearchItem): UserComposerAttachm
     : { kind: "forge_issue", item };
 }
 
-function isForgeAttachment(
-  attachment: UserComposerAttachment,
-): attachment is Extract<
+function isForgeAttachment(attachment: UserComposerAttachment): attachment is Extract<
   UserComposerAttachment,
-  { kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr" }
+  {
+    kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr";
+  }
 > {
   return (
     attachment.kind === "forge_issue" ||

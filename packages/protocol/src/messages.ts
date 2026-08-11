@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  MutableLocalRelayConfigSchema,
+  MutableRelayConfigSchema,
+  RelayEndpointConfigSchema,
+} from "./relay-config-schema.js";
 import { RELAY_DEVICE_TYPES } from "./daemon-endpoints.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
@@ -356,48 +361,8 @@ const MutableBrowserToolsConfigSchema = z
     enabled: z.boolean().default(false),
   })
   .passthrough();
-
-export const RelayEndpointConfigSchema = z
-  .object({
-    endpoint: z.string().trim().min(1),
-    useTls: z.boolean(),
-    publicEndpoint: z.string().trim().min(1).optional(),
-    publicUseTls: z.boolean().optional(),
-    pairingBaseUrl: z.url().optional(),
-  })
-  .passthrough();
-
-const MutableLocalRelayConfigSchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    listen: z.string().trim().min(1).default("0.0.0.0:6769"),
-    publicEndpoint: z.string().trim().min(1).optional(),
-    pairingBaseUrl: z.url().optional(),
-    webApp: z
-      .object({
-        enabled: z.boolean().default(false),
-        path: z.string().trim().min(1).default("/app"),
-      })
-      .passthrough()
-      .optional(),
-  })
-  .passthrough();
-
-const MutableRelayConfigSchema = z
-  .object({
-    endpoints: z.array(RelayEndpointConfigSchema).default([]),
-    pairingBaseUrls: z.array(z.url()).default([]),
-    local: MutableLocalRelayConfigSchema.default({
-      enabled: false,
-      listen: "0.0.0.0:6769",
-    }),
-  })
-  .passthrough();
-
 export const MutableDaemonConfigSchema = z
   .object({
-    // COMPAT(relayConfig): added in v0.2.6, remove after 2027-01-31 when old daemons are unsupported.
-    relay: MutableRelayConfigSchema.optional(),
     mcp: z
       .object({
         injectIntoAgents: z.boolean(),
@@ -434,7 +399,6 @@ export const MutableDaemonConfigSchema = z
 
 export const MutableDaemonConfigPatchSchema = z
   .object({
-    relay: MutableRelayConfigSchema.partial().optional(),
     mcp: MutableDaemonConfigSchema.shape.mcp.partial().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
     relay: z

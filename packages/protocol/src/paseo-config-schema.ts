@@ -1,5 +1,26 @@
 import { z } from "zod";
 
+const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
+
+export const PaseoServicePortAllocationSchema = z
+  .object({
+    range: z.string().trim().regex(TCP_PORT_RANGE_PATTERN).optional(),
+    portScript: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.range !== undefined || value.portScript !== undefined,
+    "Expected range or portScript",
+  )
+  .refine((value) => {
+    if (!value.range) return true;
+    const match = TCP_PORT_RANGE_PATTERN.exec(value.range);
+    if (!match) return false;
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    return start >= 1 && end <= 65_535 && start <= end;
+  }, "Expected an inclusive TCP port range from 1-65535");
+
 export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
   project: ["{{workspaceDirectory}}"],
   knowledge: [],

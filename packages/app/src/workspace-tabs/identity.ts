@@ -86,6 +86,7 @@ export function normalizeWorkspaceDraftTabSetup(
     assistantId: trimOptionalString(
       typeof record.assistantId === "string" ? record.assistantId : null,
     ),
+    teamId: trimOptionalString(typeof record.teamId === "string" ? record.teamId : null),
   };
 }
 
@@ -147,7 +148,8 @@ function workspaceDraftTabSetupsEqual(
     left.model === right.model &&
     left.thinkingOptionId === right.thinkingOptionId &&
     recordsShallowEqual(left.featureValues, right.featureValues) &&
-    (left.assistantId ?? null) === (right.assistantId ?? null)
+    (left.assistantId ?? null) === (right.assistantId ?? null) &&
+    (left.teamId ?? null) === (right.teamId ?? null)
   );
 }
 

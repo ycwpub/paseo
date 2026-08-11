@@ -16,6 +16,8 @@ const LarkChannelWorkspaceTargetSchema = z.object({
   kind: z.literal("workspace"),
   provider: z.string().nullable().optional(),
   model: z.string().nullable().optional(),
+  modeId: z.string().nullable().optional(),
+  thinkingOptionId: z.string().nullable().optional(),
   cwd: z.string().nullable(),
   workspaceId: z.string().nullable(),
 });
@@ -25,6 +27,19 @@ const LarkChannelAssistantTargetSchema = z.object({
   assistantId: z.string().nullable(),
   provider: z.string().nullable().optional(),
   model: z.string().nullable().optional(),
+  modeId: z.string().nullable().optional(),
+  thinkingOptionId: z.string().nullable().optional(),
+  cwd: z.string().nullable(),
+  workspaceId: z.string().nullable(),
+});
+
+const LarkChannelTeamTargetSchema = z.object({
+  kind: z.literal("team"),
+  teamId: z.string().nullable(),
+  provider: z.string().nullable().optional(),
+  model: z.string().nullable().optional(),
+  modeId: z.string().nullable().optional(),
+  thinkingOptionId: z.string().nullable().optional(),
   cwd: z.string().nullable(),
   workspaceId: z.string().nullable(),
 });
@@ -32,6 +47,7 @@ const LarkChannelAssistantTargetSchema = z.object({
 export const LarkChannelTargetSchema = z.discriminatedUnion("kind", [
   LarkChannelWorkspaceTargetSchema,
   LarkChannelAssistantTargetSchema,
+  LarkChannelTeamTargetSchema,
 ]);
 export type LarkChannelTarget = z.infer<typeof LarkChannelTargetSchema>;
 

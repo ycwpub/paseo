@@ -19,23 +19,16 @@ const CLAUDE_SETTINGS_MODEL_ENV_KEYS = [
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 ] as const;
 
-export function getClaudeModels(claudeCodeVersion?: string): AgentModelDefinition[] {
-  return getClaudeManifestModels(claudeCodeVersion);
+const AIDEN_CUSTOM_MODEL_NAME_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const AIDEN_CUSTOM_MODEL_PREFIX = "[custom]";
+
+interface AidenClaudeModelDiscoveryOptions {
+  cwd: string;
+  configDir?: string;
 }
 
-export function resolveConfiguredClaudeModel(model: AgentModelDefinition): AgentModelDefinition {
-  if (model.thinkingOptions !== undefined) return model;
-
-  const manifestModelId = normalizeClaudeManifestModelId(model.id);
-  const manifestModel = manifestModelId
-    ? getClaudeModels().find((candidate) => candidate.id === manifestModelId)
-    : undefined;
-  if (manifestModel) {
-    return manifestModel.thinkingOptions
-      ? { ...model, thinkingOptions: manifestModel.thinkingOptions }
-      : model;
-  }
-  return { ...model, thinkingOptions: getClaudeCustomModelThinkingOptions() };
+export function getClaudeModels(): AgentModelDefinition[] {
+  return getClaudeManifestModels();
 }
 
 export function findClaudeModel(
@@ -51,23 +44,22 @@ export function findClaudeModel(
 export async function getClaudeModelsWithSettings(
   logger: Logger,
   configDir?: string,
-  claudeCodeVersion?: string,
+  aiden?: AidenClaudeModelDiscoveryOptions,
 ): Promise<AgentModelDefinition[]> {
-  const hardcodedModels = getClaudeModels(claudeCodeVersion);
-  const settingsModels = await readClaudeSettingsModels(logger, configDir);
-  if (settingsModels.length === 0) {
+  const hardcodedModels = getClaudeModels();
+  const [settingsModels, aidenModels] = await Promise.all([
+    readClaudeSettingsModels(logger, configDir),
+    aiden ? readAidenClaudeCustomModels(logger, aiden) : Promise.resolve([]),
+  ]);
+  const discoveredModels = [...settingsModels, ...aidenModels];
+  if (discoveredModels.length === 0) {
     return hardcodedModels;
   }
 
   const models = [...hardcodedModels];
 
-  for (const model of settingsModels) {
-    const existingIndex = models.findIndex((candidate) => candidate.id === model.id);
-    if (existingIndex !== -1) {
-      const existing = models[existingIndex];
-      if (existing?.isSelectable === false) {
-        models[existingIndex] = { ...existing, ...model, isSelectable: true };
-      }
+  for (const model of discoveredModels) {
+    if (seenModelIds.has(model.id)) {
       continue;
     }
     models.push(model);
@@ -76,23 +68,88 @@ export async function getClaudeModelsWithSettings(
   return models;
 }
 
+async function readAidenClaudeCustomModels(
+  logger: Logger,
+  options: AidenClaudeModelDiscoveryOptions,
+): Promise<AgentModelDefinition[]> {
+  const settingsPaths = [
+    path.join(options.configDir ?? path.join(os.homedir(), ".aiden"), "settings.json"),
+    path.join(options.cwd, ".aiden", "settings.json"),
+    path.join(options.cwd, ".aiden", "settings.local.json"),
+  ];
+  const customModels = new Map<string, unknown>();
+
+  for (const settingsPath of settingsPaths) {
+    const parsed = await readJsonObject(logger, settingsPath, "Aiden");
+    if (!parsed) {
+      continue;
+    }
+    const configuredModels = parsed.xCustomModels ?? parsed.x_custom_models;
+    if (!isRecord(configuredModels)) {
+      continue;
+    }
+    for (const [name, config] of Object.entries(configuredModels)) {
+      customModels.set(name, config);
+    }
+  }
+
+  const models: AgentModelDefinition[] = [];
+  for (const [name, config] of customModels) {
+    if (
+      !AIDEN_CUSTOM_MODEL_NAME_PATTERN.test(name) ||
+      !isRecord(config) ||
+      !isAidenCustomModelVisibleInClaude(config) ||
+      !isValidAidenClaudeCodeConfig(config.claude_code ?? config.claudeCode)
+    ) {
+      continue;
+    }
+
+    const id = `${AIDEN_CUSTOM_MODEL_PREFIX}${name}`;
+    models.push({
+      provider: "claude",
+      id,
+      label: id,
+      description:
+        typeof config.description === "string" && config.description.trim().length > 0
+          ? config.description.trim()
+          : `Custom model ${name} from Aiden`,
+    });
+  }
+  return models;
+}
+
+function isAidenCustomModelVisibleInClaude(config: Record<string, unknown>): boolean {
+  const visible = config.visible;
+  if (visible === undefined || visible === null) {
+    return true;
+  }
+  if (typeof visible === "boolean") {
+    return visible;
+  }
+  if (!isRecord(visible)) {
+    return false;
+  }
+  return (visible.claude_code ?? visible.claudeCode) !== false;
+}
+
+function isValidAidenClaudeCodeConfig(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.series === "string" &&
+    value.series.trim().length > 0 &&
+    (value.alias === "haiku" || value.alias === "sonnet" || value.alias === "opus")
+  );
+}
+
 async function readClaudeSettingsModels(
   logger: Logger,
   configDir?: string,
 ): Promise<AgentModelDefinition[]> {
   const settingsPath = path.join(resolveClaudeConfigDir(configDir), "settings.json");
-
-  let parsed: unknown;
-  try {
-    const rawSettings = await fs.readFile(settingsPath, "utf8");
-    parsed = JSON.parse(rawSettings);
-  } catch (error) {
-    logger.debug({ err: error, settingsPath }, "Failed to read Claude settings models");
-    return [];
-  }
-
-  if (!isRecord(parsed)) {
-    logger.debug({ settingsPath }, "Claude settings.json is not an object");
+  const parsed = await readJsonObject(logger, settingsPath, "Claude");
+  if (!parsed) {
     return [];
   }
 
@@ -113,6 +170,27 @@ async function readClaudeSettingsModels(
   }
 
   return models;
+}
+
+async function readJsonObject(
+  logger: Logger,
+  settingsPath: string,
+  source: "Aiden" | "Claude",
+): Promise<Record<string, unknown> | null> {
+  let parsed: unknown;
+  try {
+    const rawSettings = await fs.readFile(settingsPath, "utf8");
+    parsed = JSON.parse(rawSettings);
+  } catch (error) {
+    logger.debug({ err: error, settingsPath }, `Failed to read ${source} settings models`);
+    return null;
+  }
+
+  if (!isRecord(parsed)) {
+    logger.debug({ settingsPath }, `${source} settings.json is not an object`);
+    return null;
+  }
+  return parsed;
 }
 
 function resolveClaudeConfigDir(configDir?: string): string {

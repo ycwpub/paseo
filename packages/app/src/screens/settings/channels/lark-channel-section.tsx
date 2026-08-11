@@ -3,10 +3,12 @@ import { Linking, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Bot, ExternalLink } from "lucide-react-native";
 import type {
+  Assistant,
   LarkChannelAuthorizedUser,
   LarkChannelBotStatus,
   LarkChannelPendingPairing,
   LarkChannelStatus,
+  Team,
 } from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useAssistants } from "@/hooks/use-assistants";
+import { useTeams } from "@/hooks/use-teams";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import { useProjects } from "@/hooks/use-projects";
@@ -26,6 +29,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
@@ -33,6 +37,52 @@ const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
 const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
 const EMPTY_PAIRINGS: LarkChannelPendingPairing[] = [];
 const EMPTY_AUTHORIZED_USERS: LarkChannelAuthorizedUser[] = [];
+const ASSISTANT_TARGET_PREFIX = "assistant:";
+const TEAM_TARGET_PREFIX = "team:";
+
+function parseTargetValue(value: string): {
+  assistantId: string | null;
+  teamId: string | null;
+} {
+  if (value.startsWith(TEAM_TARGET_PREFIX)) {
+    return { assistantId: null, teamId: value.slice(TEAM_TARGET_PREFIX.length) };
+  }
+  if (value.startsWith(ASSISTANT_TARGET_PREFIX)) {
+    return { assistantId: value.slice(ASSISTANT_TARGET_PREFIX.length), teamId: null };
+  }
+  return { assistantId: null, teamId: null };
+}
+
+function buildProjectOptions(
+  projects: ReturnType<typeof useProjects>["projects"],
+  serverId: string,
+): SelectFieldOption<string>[] {
+  const options: SelectFieldOption<string>[] = [];
+  for (const project of projects) {
+    const host = project.hosts.find(
+      (entry) => entry.serverId === serverId && entry.isOnline && entry.repoRoot.trim().length > 0,
+    );
+    if (!host) continue;
+    const label = project.projectCustomName ?? project.projectName;
+    options.push({
+      id: `${project.projectKey}:${host.repoRoot}`,
+      value: host.repoRoot,
+      label,
+      description: host.repoRoot,
+      testID: `host-page-lark-project-option-${project.projectKey}`,
+    });
+  }
+  return options;
+}
+
+function canDeleteSelectedBot(
+  status: LarkChannelStatus | null,
+  selectedBotStatus: LarkChannelBotStatus | null,
+): boolean {
+  return Boolean(
+    selectedBotStatus?.id && status?.bots.some((bot) => bot.id === selectedBotStatus.id),
+  );
+}
 
 const ThemedBot = withUnistyles(Bot);
 const foregroundIconMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -70,18 +120,24 @@ interface CredentialsCardProps {
   appSecret: string;
   encryptKey: string;
   verificationToken: string;
-  assistantId: string | null;
+  targetValue: string | null;
   provider: string | null;
   model: string | null;
+  modeId: string | null;
+  thinkingOptionId: string | null;
   cwd: string;
   showOptional: boolean;
-  assistantOptions: SelectFieldOption<string>[];
-  selectedAssistantDisplay: SelectFieldDisplay | null;
-  assistantsLoading: boolean;
+  targetOptions: SelectFieldOption<string>[];
+  selectedTargetDisplay: SelectFieldDisplay | null;
+  targetsLoading: boolean;
   providerOptions: SelectFieldOption<string>[];
   selectedProviderDisplay: SelectFieldDisplay | null;
   modelOptions: SelectFieldOption<string>[];
   selectedModelDisplay: SelectFieldDisplay | null;
+  modeOptions: SelectFieldOption<string>[];
+  selectedModeDisplay: SelectFieldDisplay | null;
+  thinkingOptions: SelectFieldOption<string>[];
+  selectedThinkingDisplay: SelectFieldDisplay | null;
   providersLoading: boolean;
   projectOptions: SelectFieldOption<string>[];
   selectedProjectDisplay: SelectFieldDisplay | null;
@@ -93,9 +149,11 @@ interface CredentialsCardProps {
   onAppSecretChange: (value: string) => void;
   onEncryptKeyChange: (value: string) => void;
   onVerificationTokenChange: (value: string) => void;
-  onAssistantChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
   onProviderChange: (value: string) => void;
   onModelChange: (value: string) => void;
+  onModeChange: (value: string) => void;
+  onThinkingChange: (value: string) => void;
   onCwdChange: (value: string) => void;
   onToggleOptional: () => void;
   onSave: () => void;
@@ -171,8 +229,11 @@ function buildConfigureInput(input: {
   encryptKey: string;
   verificationToken: string;
   assistantId: string | null;
+  teamId: string | null;
   provider: string | null;
   model: string | null;
+  modeId: string | null;
+  thinkingOptionId: string | null;
   cwd: string;
   status: LarkChannelBotStatus | null;
 }): ConfigureLarkChannelOptions {
@@ -187,14 +248,27 @@ function buildConfigureInput(input: {
     name: input.botName,
     ...secrets,
     domain: input.status?.domain ?? "feishu",
-    target: {
-      kind: "assistant",
-      assistantId: input.assistantId,
-      provider: input.provider,
-      model: input.model,
-      cwd: cwd.length > 0 ? cwd : null,
-      workspaceId: input.status?.target.workspaceId ?? null,
-    },
+    target: input.teamId
+      ? {
+          kind: "team",
+          teamId: input.teamId,
+          provider: input.provider,
+          model: input.model,
+          modeId: input.modeId,
+          thinkingOptionId: input.thinkingOptionId,
+          cwd: cwd.length > 0 ? cwd : null,
+          workspaceId: input.status?.target.workspaceId ?? null,
+        }
+      : {
+          kind: "assistant",
+          assistantId: input.assistantId,
+          provider: input.provider,
+          model: input.model,
+          modeId: input.modeId,
+          thinkingOptionId: input.thinkingOptionId,
+          cwd: cwd.length > 0 ? cwd : null,
+          workspaceId: input.status?.target.workspaceId ?? null,
+        },
   };
 }
 
@@ -317,6 +391,22 @@ function buildBotStatuses(status: LarkChannelStatus | null): LarkChannelBotStatu
       authorizedUsers: status.authorizedUsers,
     },
   ];
+}
+
+function resolveSelectedBotStatus(input: {
+  botStatuses: LarkChannelBotStatus[];
+  creatingBot: boolean;
+  selectedBotId: string | null;
+  activeBotId: string | null | undefined;
+}): LarkChannelBotStatus | null {
+  if (input.creatingBot) return null;
+  if (input.selectedBotId) {
+    return input.botStatuses.find((bot) => bot.id === input.selectedBotId) ?? null;
+  }
+  if (input.activeBotId) {
+    return input.botStatuses.find((bot) => bot.id === input.activeBotId) ?? null;
+  }
+  return input.botStatuses[0] ?? null;
 }
 
 function BotListRow({
@@ -463,16 +553,40 @@ function CredentialsCard(props: CredentialsCardProps) {
           disabled={!props.provider}
         />
         <SelectField
-          label="Assistant"
-          value={props.assistantId}
-          selectedDisplay={props.selectedAssistantDisplay}
-          options={props.assistantOptions}
-          onChange={props.onAssistantChange}
-          placeholder="Select an assistant"
-          emptyText="No assistants on this host"
-          loading={props.assistantsLoading}
+          label="Thinking mode"
+          value={props.thinkingOptionId}
+          selectedDisplay={props.selectedThinkingDisplay}
+          options={props.thinkingOptions}
+          onChange={props.onThinkingChange}
+          placeholder="Select thinking mode"
+          emptyText="No thinking modes for this model"
+          loading={props.providersLoading}
+          testID="host-page-lark-thinking-mode"
+          disabled={!props.model || props.thinkingOptions.length === 0}
+        />
+        <SelectField
+          label="Safety mode"
+          value={props.modeId}
+          selectedDisplay={props.selectedModeDisplay}
+          options={props.modeOptions}
+          onChange={props.onModeChange}
+          placeholder="Select safety mode"
+          emptyText="No safety modes for this provider"
+          loading={props.providersLoading}
+          testID="host-page-lark-safety-mode"
+          disabled={!props.provider || props.modeOptions.length === 0}
+        />
+        <SelectField
+          label="Assistant or team"
+          value={props.targetValue}
+          selectedDisplay={props.selectedTargetDisplay}
+          options={props.targetOptions}
+          onChange={props.onTargetChange}
+          placeholder="Select an assistant or team"
+          emptyText="No assistants or teams on this host"
+          loading={props.targetsLoading}
           searchable
-          testID="host-page-lark-assistant"
+          testID="host-page-lark-target"
         />
         <SelectField
           label="Project path"
@@ -665,12 +779,153 @@ function buildModelOptions(models: AgentModelDefinition[]): SelectFieldOption<st
   }));
 }
 
+function buildModeOptions(
+  modes: NonNullable<ProviderSnapshotEntry["modes"]>,
+): SelectFieldOption<string>[] {
+  return modes.map((mode) => ({
+    id: mode.id,
+    value: mode.id,
+    label: formatAgentModeLabel(mode),
+    description: mode.description ?? mode.id,
+  }));
+}
+
+function buildThinkingOptions(model: AgentModelDefinition | null): SelectFieldOption<string>[] {
+  return (model?.thinkingOptions ?? []).map((option) => ({
+    id: option.id,
+    value: option.id,
+    label: formatThinkingOptionLabel(option),
+    description: option.description ?? option.id,
+  }));
+}
+
+function getDefaultModeId(entry: ProviderSnapshotEntry | null): string | null {
+  const modes = entry?.modes ?? [];
+  if (entry?.defaultModeId && modes.some((mode) => mode.id === entry.defaultModeId)) {
+    return entry.defaultModeId;
+  }
+  return modes[0]?.id ?? null;
+}
+
+function getDefaultThinkingOptionId(model: AgentModelDefinition | null): string | null {
+  return (
+    model?.defaultThinkingOptionId ??
+    model?.thinkingOptions?.find((option) => option.isDefault)?.id ??
+    model?.thinkingOptions?.[0]?.id ??
+    null
+  );
+}
+
 function optionDisplay(option: SelectFieldOption<string> | undefined): SelectFieldDisplay | null {
   return option ? { label: option.label, description: option.description } : null;
 }
 
+function resolveTargetValue(assistantId: string | null, teamId: string | null): string | null {
+  if (teamId) return `${TEAM_TARGET_PREFIX}${teamId}`;
+  if (assistantId) return `${ASSISTANT_TARGET_PREFIX}${assistantId}`;
+  return null;
+}
+
+function useLarkTargetControls(input: {
+  assistants: Assistant[];
+  teams: Team[];
+  assistantId: string | null;
+  teamId: string | null;
+}) {
+  const targetOptions = useMemo<SelectFieldOption<string>[]>(() => {
+    const assistantOptions = input.assistants.map((assistant) => ({
+      id: `${ASSISTANT_TARGET_PREFIX}${assistant.id}`,
+      value: `${ASSISTANT_TARGET_PREFIX}${assistant.id}`,
+      label: assistant.name,
+      description: `Assistant · ${assistant.description || assistant.name}`,
+    }));
+    const teamOptions = input.teams.map((team) => {
+      const leader = input.assistants.find((assistant) => assistant.id === team.leaderAssistantId);
+      return {
+        id: `${TEAM_TARGET_PREFIX}${team.id}`,
+        value: `${TEAM_TARGET_PREFIX}${team.id}`,
+        label: team.name,
+        description: `Team · Leader: ${leader?.name || "Missing assistant"}`,
+      };
+    });
+    return [...assistantOptions, ...teamOptions];
+  }, [input.assistants, input.teams]);
+  const targetValue = resolveTargetValue(input.assistantId, input.teamId);
+  const selectedTargetDisplay = useMemo<SelectFieldDisplay | null>(() => {
+    const selected = targetOptions.find((option) => option.value === targetValue);
+    return optionDisplay(selected);
+  }, [targetOptions, targetValue]);
+  return { targetOptions, targetValue, selectedTargetDisplay };
+}
+
+function useLarkModelControls(input: {
+  entries: ProviderSnapshotEntry[];
+  provider: string | null;
+  model: string | null;
+  modeId: string | null;
+  thinkingOptionId: string | null;
+}) {
+  const providerOptions = useMemo(() => buildProviderOptions(input.entries), [input.entries]);
+  const selectedProviderEntry = useMemo(
+    () => input.entries.find((entry) => entry.provider === input.provider) ?? null,
+    [input.entries, input.provider],
+  );
+  const modelOptions = useMemo(
+    () => buildModelOptions(selectedProviderEntry?.models ?? []),
+    [selectedProviderEntry?.models],
+  );
+  const selectedModelEntry = useMemo(
+    () => selectedProviderEntry?.models?.find((entry) => entry.id === input.model) ?? null,
+    [input.model, selectedProviderEntry?.models],
+  );
+  const modeOptions = useMemo(
+    () => buildModeOptions(selectedProviderEntry?.modes ?? []),
+    [selectedProviderEntry?.modes],
+  );
+  const thinkingOptions = useMemo(
+    () => buildThinkingOptions(selectedModelEntry),
+    [selectedModelEntry],
+  );
+  const effectiveModeId = input.modeId ?? getDefaultModeId(selectedProviderEntry);
+  const effectiveThinkingOptionId =
+    input.thinkingOptionId ?? getDefaultThinkingOptionId(selectedModelEntry);
+  const selectedProviderDisplay = useMemo(
+    () => optionDisplay(providerOptions.find((option) => option.value === input.provider)),
+    [input.provider, providerOptions],
+  );
+  const selectedModelDisplay = useMemo(
+    () => optionDisplay(modelOptions.find((option) => option.value === input.model)),
+    [input.model, modelOptions],
+  );
+  const selectedModeDisplay = useMemo(
+    () => optionDisplay(modeOptions.find((option) => option.value === effectiveModeId)),
+    [effectiveModeId, modeOptions],
+  );
+  const selectedThinkingDisplay = useMemo(
+    () =>
+      optionDisplay(thinkingOptions.find((option) => option.value === effectiveThinkingOptionId)),
+    [effectiveThinkingOptionId, thinkingOptions],
+  );
+
+  return {
+    effectiveModeId,
+    effectiveThinkingOptionId,
+    modeOptions,
+    modelOptions,
+    providerOptions,
+    selectedModeDisplay,
+    selectedModelDisplay,
+    selectedProviderDisplay,
+    selectedProviderEntry,
+    selectedThinkingDisplay,
+    thinkingOptions,
+  };
+}
+
 function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedContentProps) {
   const assistants = useAssistants(serverId);
+  const supportsTeams = useHostFeature(serverId, "teams");
+  const teams = useTeams(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId);
   const { projects } = useProjects();
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
@@ -681,24 +936,27 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   const [encryptKey, setEncryptKey] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
   const [assistantId, setAssistantId] = useState<string | null>(null);
+  const [teamId, setTeamId] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
+  const [modeId, setModeId] = useState<string | null>(null);
+  const [thinkingOptionId, setThinkingOptionId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("");
   const [showOptional, setShowOptional] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [formRevision, setFormRevision] = useState(0);
   const status = channel.status;
   const botStatuses = useMemo(() => buildBotStatuses(status), [status]);
-  const selectedBotStatus = useMemo<LarkChannelBotStatus | null>(() => {
-    if (creatingBot) return null;
-    if (selectedBotId) {
-      return botStatuses.find((bot) => bot.id === selectedBotId) ?? null;
-    }
-    if (status?.activeBotId) {
-      return botStatuses.find((bot) => bot.id === status.activeBotId) ?? null;
-    }
-    return botStatuses[0] ?? null;
-  }, [botStatuses, creatingBot, selectedBotId, status?.activeBotId]);
+  const selectedBotStatus = useMemo(
+    () =>
+      resolveSelectedBotStatus({
+        botStatuses,
+        creatingBot,
+        selectedBotId,
+        activeBotId: status?.activeBotId,
+      }),
+    [botStatuses, creatingBot, selectedBotId, status?.activeBotId],
+  );
 
   useEffect(() => {
     if (!status || creatingBot) return;
@@ -722,8 +980,11 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
       setEncryptKey("");
       setVerificationToken("");
       setAssistantId(null);
+      setTeamId(null);
       setProvider(null);
       setModel(null);
+      setModeId(null);
+      setThinkingOptionId(null);
       setCwd("");
       setFormRevision((value) => value + 1);
       return;
@@ -736,76 +997,54 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     setAssistantId(
       selectedBotStatus.target.kind === "assistant" ? selectedBotStatus.target.assistantId : null,
     );
+    setTeamId(selectedBotStatus.target.kind === "team" ? selectedBotStatus.target.teamId : null);
     setProvider(
-      selectedBotStatus.target.kind === "assistant"
+      selectedBotStatus.target.kind !== "workspace"
         ? (selectedBotStatus.target.provider ?? null)
         : null,
     );
     setModel(
-      selectedBotStatus.target.kind === "assistant"
+      selectedBotStatus.target.kind !== "workspace"
         ? (selectedBotStatus.target.model ?? null)
         : null,
     );
+    setModeId(selectedBotStatus.target.modeId ?? null);
+    setThinkingOptionId(selectedBotStatus.target.thinkingOptionId ?? null);
     setCwd(selectedBotStatus.target.cwd ?? "");
     setFormRevision((value) => value + 1);
   }, [creatingBot, selectedBotStatus]);
 
-  const assistantOptions = useMemo<SelectFieldOption<string>[]>(
-    () =>
-      assistants.assistants.map((assistant) => ({
-        id: assistant.id,
-        value: assistant.id,
-        label: assistant.name,
-        description: assistant.description || assistant.name,
-      })),
-    [assistants.assistants],
-  );
+  const { targetOptions, targetValue, selectedTargetDisplay } = useLarkTargetControls({
+    assistants: assistants.assistants,
+    teams: teams.teams,
+    assistantId,
+    teamId,
+  });
 
-  const selectedAssistantDisplay = useMemo<SelectFieldDisplay | null>(() => {
-    const selected = assistantOptions.find((option) => option.value === assistantId);
-    return selected ? { label: selected.label, description: selected.description } : null;
-  }, [assistantId, assistantOptions]);
+  const {
+    effectiveModeId,
+    effectiveThinkingOptionId,
+    modeOptions,
+    modelOptions,
+    providerOptions,
+    selectedModeDisplay,
+    selectedModelDisplay,
+    selectedProviderDisplay,
+    selectedProviderEntry,
+    selectedThinkingDisplay,
+    thinkingOptions,
+  } = useLarkModelControls({
+    entries: providersSnapshot.entries ?? [],
+    provider,
+    model,
+    modeId,
+    thinkingOptionId,
+  });
 
-  const providerOptions = useMemo(
-    () => buildProviderOptions(providersSnapshot.entries ?? []),
-    [providersSnapshot.entries],
+  const projectOptions = useMemo(
+    () => buildProjectOptions(projects, serverId),
+    [projects, serverId],
   );
-  const selectedProviderEntry = useMemo(
-    () => providersSnapshot.entries?.find((entry) => entry.provider === provider) ?? null,
-    [provider, providersSnapshot.entries],
-  );
-  const modelOptions = useMemo(
-    () => buildModelOptions(selectedProviderEntry?.models ?? []),
-    [selectedProviderEntry?.models],
-  );
-  const selectedProviderDisplay = useMemo(
-    () => optionDisplay(providerOptions.find((option) => option.value === provider)),
-    [provider, providerOptions],
-  );
-  const selectedModelDisplay = useMemo(
-    () => optionDisplay(modelOptions.find((option) => option.value === model)),
-    [model, modelOptions],
-  );
-
-  const projectOptions = useMemo<SelectFieldOption<string>[]>(() => {
-    const options: SelectFieldOption<string>[] = [];
-    for (const project of projects) {
-      const host = project.hosts.find(
-        (entry) =>
-          entry.serverId === serverId && entry.isOnline && entry.repoRoot.trim().length > 0,
-      );
-      if (!host) continue;
-      const label = project.projectCustomName ?? project.projectName;
-      options.push({
-        id: `${project.projectKey}:${host.repoRoot}`,
-        value: host.repoRoot,
-        label,
-        description: host.repoRoot,
-        testID: `host-page-lark-project-option-${project.projectKey}`,
-      });
-    }
-    return options;
-  }, [projects, serverId]);
 
   const selectedProjectDisplay = useMemo<SelectFieldDisplay | null>(() => {
     const selected = projectOptions.find((option) => option.value === cwd);
@@ -819,8 +1058,11 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     setEncryptKey("");
     setVerificationToken("");
     setAssistantId(null);
+    setTeamId(null);
     setProvider(null);
     setModel(null);
+    setModeId(null);
+    setThinkingOptionId(null);
     setCwd("");
     setSaveError(null);
     setFormRevision((value) => value + 1);
@@ -839,19 +1081,28 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     setBotName(value);
     setSaveError(null);
   }, []);
-  const handleAssistantChange = useCallback((value: string) => {
-    setAssistantId(value);
+  const handleTargetChange = useCallback((value: string) => {
+    const target = parseTargetValue(value);
+    setAssistantId(target.assistantId);
+    setTeamId(target.teamId);
     setSaveError(null);
   }, []);
   const handleProviderChange = useCallback((value: string) => {
     setProvider(value);
     setModel(null);
+    setModeId(null);
+    setThinkingOptionId(null);
     setSaveError(null);
   }, []);
-  const handleModelChange = useCallback((value: string) => {
-    setModel(value);
-    setSaveError(null);
-  }, []);
+  const handleModelChange = useCallback(
+    (value: string) => {
+      setModel(value);
+      const nextModel = selectedProviderEntry?.models?.find((entry) => entry.id === value) ?? null;
+      setThinkingOptionId(getDefaultThinkingOptionId(nextModel));
+      setSaveError(null);
+    },
+    [selectedProviderEntry?.models],
+  );
 
   const handleProjectChange = useCallback((value: string) => {
     setCwd(value);
@@ -874,8 +1125,11 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
           encryptKey,
           verificationToken,
           assistantId,
+          teamId,
           provider,
           model,
+          modeId: effectiveModeId,
+          thinkingOptionId: effectiveThinkingOptionId,
           cwd,
           status: selectedBotStatus,
         }),
@@ -897,10 +1151,13 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     creatingBot,
     cwd,
     encryptKey,
+    effectiveModeId,
+    effectiveThinkingOptionId,
     model,
     provider,
     selectedBotId,
     selectedBotStatus,
+    teamId,
     verificationToken,
   ]);
   const handleSave = useCallback(async () => {
@@ -981,26 +1238,30 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         status={selectedBotStatus}
         botName={botName}
         creating={creatingBot}
-        canDelete={Boolean(
-          selectedBotStatus?.id && status?.bots.some((bot) => bot.id === selectedBotStatus.id),
-        )}
+        canDelete={canDeleteSelectedBot(status, selectedBotStatus)}
         formRevision={formRevision}
         appId={appId}
         appSecret={appSecret}
         encryptKey={encryptKey}
         verificationToken={verificationToken}
-        assistantId={assistantId}
+        targetValue={targetValue}
         provider={provider}
         model={model}
+        modeId={effectiveModeId}
+        thinkingOptionId={effectiveThinkingOptionId}
         cwd={cwd}
         showOptional={showOptional}
-        assistantOptions={assistantOptions}
-        selectedAssistantDisplay={selectedAssistantDisplay}
-        assistantsLoading={assistants.isLoading}
+        targetOptions={targetOptions}
+        selectedTargetDisplay={selectedTargetDisplay}
+        targetsLoading={assistants.isLoading || teams.isLoading}
         providerOptions={providerOptions}
         selectedProviderDisplay={selectedProviderDisplay}
         modelOptions={modelOptions}
         selectedModelDisplay={selectedModelDisplay}
+        modeOptions={modeOptions}
+        selectedModeDisplay={selectedModeDisplay}
+        thinkingOptions={thinkingOptions}
+        selectedThinkingDisplay={selectedThinkingDisplay}
         providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
         projectOptions={projectOptions}
         selectedProjectDisplay={selectedProjectDisplay}
@@ -1012,9 +1273,11 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         onAppSecretChange={setAppSecret}
         onEncryptKeyChange={setEncryptKey}
         onVerificationTokenChange={setVerificationToken}
-        onAssistantChange={handleAssistantChange}
+        onTargetChange={handleTargetChange}
         onProviderChange={handleProviderChange}
         onModelChange={handleModelChange}
+        onModeChange={setModeId}
+        onThinkingChange={setThinkingOptionId}
         onCwdChange={handleProjectChange}
         onToggleOptional={handleToggleOptional}
         onSave={handleSave}

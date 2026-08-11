@@ -59,6 +59,10 @@ export interface DesktopNotificationBridge {
   ) => Promise<boolean>;
 }
 
+export interface DesktopAttentionBridge {
+  signal?: (reason: "finished" | "intervention") => Promise<boolean>;
+}
+
 export interface DesktopOpenerBridge {
   openUrl?: (url: string) => Promise<void>;
 }
@@ -179,6 +183,7 @@ export interface DesktopHostBridge {
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;
   notification?: DesktopNotificationBridge;
+  attention?: DesktopAttentionBridge;
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
   webUtils?: DesktopWebUtilsBridge;

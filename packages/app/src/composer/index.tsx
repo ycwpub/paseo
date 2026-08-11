@@ -124,6 +124,11 @@ import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useForgeSearchQuery } from "@/git/use-forge-search-query";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useSkills } from "@/hooks/use-skills";
+import { useAssistants } from "@/hooks/use-assistants";
+import {
+  buildAssistantResourceApplyKey,
+  resolveSessionResourceSelectionFromAssistant,
+} from "@/composer/resource-selection";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { getForgePresentation } from "@/git/forge";
@@ -304,6 +309,8 @@ interface RenderLeftContentArgs {
   isPaneFocused: boolean;
   assistantId: string | null | undefined;
   onAssistantSelect: ((id: string | null) => void) | undefined;
+  teamId: string | null | undefined;
+  onTeamSelect: ((teamId: string | null, leaderAssistantId: string | null) => void) | undefined;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
@@ -314,7 +321,9 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
     <AssistantSelector
       serverId={serverId}
       selectedAssistantId={assistantId}
+      selectedTeamId={args.teamId ?? null}
       onSelect={onAssistantSelect}
+      onSelectTeam={args.onTeamSelect}
     />
   );
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
@@ -915,6 +924,10 @@ interface ComposerProps {
   assistantId?: string | null;
   /** Called when the user selects or clears an assistant. */
   onAssistantSelect?: (id: string | null) => void;
+  /** Selected assistant team for a new conversation. */
+  teamId?: string | null;
+  /** Called when the user selects or clears a team. */
+  onTeamSelect?: (teamId: string | null, leaderAssistantId: string | null) => void;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -1104,6 +1117,8 @@ export function Composer({
   isCompactLayout: isCompactLayoutOverride,
   assistantId,
   onAssistantSelect: setAssistantId,
+  teamId,
+  onTeamSelect: setTeamId,
 }: ComposerProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -1176,6 +1191,7 @@ export function Composer({
   });
   const mcpCatalog = useMcpServers(serverId, { enabled: isConnected });
   const skillCatalog = useSkills(serverId, { enabled: isConnected });
+  const assistantCatalog = useAssistants(serverId, { enabled: isConnected });
   const selectableMcpServers = useMemo(
     () => mcpCatalog.servers.filter((server) => server.enabled),
     [mcpCatalog.servers],
@@ -1188,17 +1204,30 @@ export function Composer({
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [isMcpPickerOpen, setIsMcpPickerOpen] = useState(false);
   const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
-  const resourceSelectionInitializedForRef = useRef<string | null>(null);
+  const resourceSelectionAppliedForRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const key = `${serverId}:${agentId}`;
-    if (resourceSelectionInitializedForRef.current === key) return;
     if (!isConnected || mcpCatalog.isLoading || skillCatalog.isLoading) return;
-    setSelectedMcpServerIds(selectableMcpServers.map((server) => server.id));
-    setSelectedSkillIds(selectableSkills.map((skill) => skill.id));
-    resourceSelectionInitializedForRef.current = key;
+    if (assistantId && assistantCatalog.isLoading) return;
+    const key = buildAssistantResourceApplyKey({ serverId, agentId, assistantId });
+    if (resourceSelectionAppliedForRef.current === key) return;
+    const selectedAssistant = assistantId
+      ? (assistantCatalog.assistants.find((assistant) => assistant.id === assistantId) ?? null)
+      : null;
+    if (assistantId && !selectedAssistant) return;
+    const nextSelection = resolveSessionResourceSelectionFromAssistant({
+      assistant: selectedAssistant,
+      selectableMcpServerIds: selectableMcpServers.map((server) => server.id),
+      selectableSkillIds: selectableSkills.map((skill) => skill.id),
+    });
+    setSelectedMcpServerIds(nextSelection.selectedMcpServerIds);
+    setSelectedSkillIds(nextSelection.selectedSkillIds);
+    resourceSelectionAppliedForRef.current = key;
   }, [
     agentId,
+    assistantCatalog.assistants,
+    assistantCatalog.isLoading,
+    assistantId,
     isConnected,
     mcpCatalog.isLoading,
     selectableMcpServers,
@@ -2146,6 +2175,8 @@ export function Composer({
         isPaneFocused,
         assistantId: assistantId ?? null,
         onAssistantSelect: setAssistantId ?? noopAssistantSelect,
+        teamId: teamId ?? null,
+        onTeamSelect: setTeamId,
       }),
     [
       agentControls,
@@ -2156,6 +2187,8 @@ export function Composer({
       isPaneFocused,
       serverId,
       setAssistantId,
+      setTeamId,
+      teamId,
     ],
   );
 

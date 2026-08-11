@@ -52,6 +52,8 @@ $PASEO_HOME/
 ├── agents/
 │   └── {sanitized-cwd}/
 │       └── {agentId}.json               # One file per agent
+├── assistants.json                      # Assistant presets
+├── teams.json                           # Assistant teams and leader membership
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
 ├── projects/
@@ -320,6 +322,22 @@ Paseo uses these paths under the configured OpenAI base URL:
 - dictation STT: `/v1/audio/transcriptions`
 - voice mode STT: `/v1/audio/transcriptions`
 - voice mode TTS: `/v1/audio/speech`
+
+---
+
+## Assistant teams
+
+**Path:** `$PASEO_HOME/teams.json`
+
+A team references at least two assistant presets. `leaderAssistantId` must be present in
+`assistantIds`; the remaining assistants are available to the leader for delegation. Starting a
+conversation with a team creates the root agent with the leader assistant and stamps
+`paseo.team-id` / `paseo.team-role` labels. Subagents inherit the team identity. The leader may pass
+an optional `assistantId` to `create_agent`; the daemon accepts only non-leader assistants from that
+team, while omitting `assistantId` deliberately creates an unassigned subagent.
+
+The persisted `assistants` array is a denormalized compatibility projection used by older team
+clients. `assistantIds` and `leaderAssistantId` are the membership authority.
 
 ---
 

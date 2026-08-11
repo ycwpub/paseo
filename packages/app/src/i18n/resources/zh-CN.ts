@@ -2076,6 +2076,13 @@ export const zhCN: TranslationResources = {
       refresh: "刷新",
       refreshing: "正在刷新...",
       refreshAccessibility: "刷新桌面端权限",
+      test: "测试",
+      backgroundAttention: {
+        title: "后台提醒",
+        soundVolume: "提醒声音大小",
+        description:
+          "当任意已连接的本地或远端 Host 完成任务或需要用户介入，且 Paseo 未获得焦点时，抖动程序坞图标、播放声音并显示醒目标记。",
+      },
       actions: {
         granted: "已授权",
         request: "请求",

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
@@ -28,6 +28,8 @@ describe("LarkChannelStore", () => {
         kind: "workspace",
         provider: "claude",
         model: "sonnet",
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
         cwd: "/repo/app",
         workspaceId: "ws-1",
       },
@@ -44,6 +46,8 @@ describe("LarkChannelStore", () => {
         kind: "workspace",
         provider: "claude",
         model: "sonnet",
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
         cwd: "/repo/app",
         workspaceId: "ws-1",
       },
@@ -65,6 +69,32 @@ describe("LarkChannelStore", () => {
     const payload = store.getPayload();
     expect(payload.bots[0]?.config.appId).toBe("cli_next");
     expect(payload.bots[0]?.config.appSecret).toBe("secret");
+  });
+
+  test("persists a team target", () => {
+    store.configure({
+      target: {
+        kind: "team",
+        teamId: "team-delivery",
+        provider: "claude",
+        model: "sonnet",
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
+        cwd: "/repo/app",
+        workspaceId: "ws-1",
+      },
+    });
+
+    expect(store.getStatus().target).toEqual({
+      kind: "team",
+      teamId: "team-delivery",
+      provider: "claude",
+      model: "sonnet",
+      modeId: "accept-edits",
+      thinkingOptionId: "high",
+      cwd: "/repo/app",
+      workspaceId: "ws-1",
+    });
   });
 
   test("approves and revokes pending pairings", () => {
@@ -116,6 +146,79 @@ describe("LarkChannelStore", () => {
     expect(store.findConversationByThread(bot.id, "oc_1", "om_thread_1")?.lastOutboundAt).toBe(
       "2026-01-01T00:02:00.000Z",
     );
+  });
+
+  test("persists claimed incoming events across store restarts", () => {
+    const bot = store.configure({ name: "Support bot" });
+
+    expect(store.claimIncomingEvent(bot.id, "om_message_1", "2026-01-01T00:00:00.000Z")).toBe(true);
+
+    const restartedStore = new LarkChannelStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+    });
+    expect(
+      restartedStore.claimIncomingEvent(bot.id, "om_message_1", "2026-01-01T00:01:00.000Z"),
+    ).toBe(false);
+    expect(
+      restartedStore.claimIncomingEvent(bot.id, "om_message_2", "2026-01-01T00:01:00.000Z"),
+    ).toBe(true);
+  });
+
+  test("allows a claimed incoming event again after retention expires", () => {
+    const bot = store.configure({ name: "Support bot" });
+
+    expect(store.claimIncomingEvent(bot.id, "om_message_1", "2026-01-01T00:00:00.000Z")).toBe(true);
+    expect(store.claimIncomingEvent(bot.id, "om_message_1", "2026-01-09T00:00:00.000Z")).toBe(true);
+  });
+
+  test("migrates version 3 stores with an empty processed event history", async () => {
+    const filePath = store.getFilePath();
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      JSON.stringify({
+        version: 3,
+        activeBotId: "bot-1",
+        bots: [
+          {
+            id: "bot-1",
+            name: "Support bot",
+            config: {
+              enabled: true,
+              appId: "cli_test",
+              appSecret: "secret",
+              encryptKey: null,
+              verificationToken: null,
+              domain: "feishu",
+              target: {
+                kind: "workspace",
+                provider: "claude",
+                model: null,
+                cwd: "/repo",
+                workspaceId: null,
+              },
+            },
+            authorizedUsers: [],
+            pendingPairings: [],
+            conversations: [],
+          },
+        ],
+      }),
+    );
+
+    const migratedStore = new LarkChannelStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+    });
+    expect(migratedStore.getPayload()).toMatchObject({
+      version: 4,
+      activeBotId: "bot-1",
+      bots: [{ id: "bot-1", processedEvents: [] }],
+    });
+    expect(
+      migratedStore.claimIncomingEvent("bot-1", "om_message_1", "2026-01-01T00:00:00.000Z"),
+    ).toBe(true);
   });
 
   test("stores multiple bot configurations independently", () => {

@@ -200,6 +200,8 @@ export interface PaseoAgentCreateOptions {
   worktree?: CreateAgentRequestMessage["worktree"];
   autoArchive?: CreateAgentRequestMessage["autoArchive"];
   requestId?: string;
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
   labels?: Record<string, string>;
 }
 

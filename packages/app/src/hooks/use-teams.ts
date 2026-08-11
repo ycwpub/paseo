@@ -17,7 +17,7 @@ export interface UseTeamsResult {
   mutationError: Error | null;
 }
 
-export function useTeams(serverId: string): UseTeamsResult {
+export function useTeams(serverId: string, options: { enabled?: boolean } = {}): UseTeamsResult {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const queryClient = useQueryClient();
@@ -26,7 +26,7 @@ export function useTeams(serverId: string): UseTeamsResult {
   const query = useReplicaQuery({
     queryKey,
     pushEvent: "team.changed",
-    enabled: Boolean(client && isConnected),
+    enabled: Boolean((options.enabled ?? true) && client && isConnected),
     queryFn: async () => {
       if (!client) throw new Error("Host is disconnected");
       const result = await client.listTeams();

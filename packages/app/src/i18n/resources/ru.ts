@@ -2137,6 +2137,13 @@ export const ru: TranslationResources = {
       refresh: "Обновить",
       refreshing: "Освежающий...",
       refreshAccessibility: "Обновить разрешения рабочего стола",
+      test: "Тест",
+      backgroundAttention: {
+        title: "Фоновые оповещения",
+        soundVolume: "Громкость сигнала",
+        description:
+          "Paseo оповещает, когда подключённый локальный или удалённый Host завершает задачу или требует вмешательства пользователя.",
+      },
       actions: {
         granted: "Предоставленный",
         request: "Запрос",

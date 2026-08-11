@@ -2110,6 +2110,13 @@ export const en = {
       refresh: "Refresh",
       refreshing: "Refreshing...",
       refreshAccessibility: "Refresh desktop permissions",
+      test: "Test",
+      backgroundAttention: {
+        title: "Background attention",
+        soundVolume: "Alert sound volume",
+        description:
+          "When any connected local or remote host finishes a task or needs user intervention while Paseo is unfocused, bounce the Dock icon, play a sound, and show an attention badge.",
+      },
       actions: {
         granted: "Granted",
         request: "Request",

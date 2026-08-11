@@ -153,6 +153,10 @@ export interface StartCreatedAgentInitialPromptParams {
   snapshot?: ManagedAgent;
   prompt: AgentPromptInput | null;
   runOptions?: AgentRunOptions;
+  sessionResourceSelection?: {
+    selectedMcpServerIds?: readonly string[];
+    selectedSkillIds?: readonly string[];
+  };
   logger: Logger;
 }
 
@@ -229,6 +233,13 @@ export async function startCreatedAgentInitialPrompt(
   const currentSnapshot = params.agentManager.getAgent(params.agentId) ?? params.snapshot ?? null;
   if (!currentSnapshot) {
     throw new Error(`Agent ${params.agentId} not found`);
+  }
+
+  if (params.sessionResourceSelection) {
+    await params.agentManager.applySessionResourceSelection(
+      params.agentId,
+      params.sessionResourceSelection,
+    );
   }
 
   if (params.prompt === null) {

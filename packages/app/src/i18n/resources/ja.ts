@@ -2118,6 +2118,13 @@ export const ja: TranslationResources = {
       refresh: "更新",
       refreshing: "更新中...",
       refreshAccessibility: "デスクトップの権限を更新",
+      test: "テスト",
+      backgroundAttention: {
+        title: "バックグラウンド通知",
+        soundVolume: "通知音量",
+        description:
+          "接続中のローカルまたはリモート Host がタスクを完了するか、ユーザーの介入が必要になったときに通知します。",
+      },
       actions: {
         granted: "許可済み",
         request: "許可を求める",

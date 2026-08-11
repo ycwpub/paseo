@@ -13,12 +13,16 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  attention: {
+    soundVolume: number;
+  };
 }
 
 interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  attention?: Partial<DesktopSettings["attention"]>;
 }
 
 interface PersistedDesktopSettingsDocument {
@@ -49,6 +53,9 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
   },
+  attention: {
+    soundVolume: 0.5,
+  },
 };
 
 const DESKTOP_SETTINGS_FILENAME = "desktop-settings.json";
@@ -71,6 +78,13 @@ function coerceBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
+function coerceVolume(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.min(1, Math.max(0, value));
+}
+
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error;
 }
@@ -82,6 +96,7 @@ function buildDefaultDocument(): PersistedDesktopSettingsDocument {
       releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
       notifications: { ...DEFAULT_DESKTOP_SETTINGS.notifications },
       daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
+      attention: { ...DEFAULT_DESKTOP_SETTINGS.attention },
     },
     migrations: {
       legacyRendererSettingsImported: false,
@@ -95,6 +110,7 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
     notifications: { ...DEFAULT_DESKTOP_SETTINGS.notifications },
     daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
+    attention: { ...DEFAULT_DESKTOP_SETTINGS.attention },
   };
 
   if (!isRecord(input)) {
@@ -122,6 +138,13 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     const keepRunningAfterQuit = coerceBoolean(input.daemon.keepRunningAfterQuit);
     if (keepRunningAfterQuit !== null) {
       result.daemon.keepRunningAfterQuit = keepRunningAfterQuit;
+    }
+  }
+
+  if (isRecord(input.attention)) {
+    const soundVolume = coerceVolume(input.attention.soundVolume);
+    if (soundVolume !== null) {
+      result.attention.soundVolume = soundVolume;
     }
   }
 
@@ -162,6 +185,17 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
+  if (isRecord(input.attention)) {
+    const attentionPatch: Partial<DesktopSettings["attention"]> = {};
+    const soundVolume = coerceVolume(input.attention.soundVolume);
+    if (soundVolume !== null) {
+      attentionPatch.soundVolume = soundVolume;
+    }
+    if (Object.keys(attentionPatch).length > 0) {
+      patch.attention = attentionPatch;
+    }
+  }
+
   return patch;
 }
 
@@ -194,6 +228,7 @@ function mergeDesktopSettings(
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
+    attention: { ...current.attention, ...patch.attention },
   };
 }
 

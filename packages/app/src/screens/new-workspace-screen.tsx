@@ -149,6 +149,15 @@ function resolveVisibleDraftContextScopeKeys(input: {
   return [input.draftContextScopeKey];
 }
 
+function resolveDraftAssistantSelection(
+  setup: WorkspaceDraftTabSetup | null | undefined,
+): Pick<WorkspaceDraftTabSetup, "assistantId" | "teamId"> {
+  return {
+    assistantId: setup?.assistantId ?? null,
+    teamId: setup?.teamId ?? null,
+  };
+}
+
 function isNewWorkspacePending(input: {
   pendingAction: "chat" | "empty" | "terminal" | null;
   isDraftHandoffActive: boolean;
@@ -877,6 +886,7 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     featureValues: input.composerState.featureValues ?? {},
     assistantId: input.composerState.assistantId ?? null,
+    teamId: input.composerState.teamId ?? null,
   };
 }
 
@@ -1031,6 +1041,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
         thinkingOptionId: composerState.effectiveThinkingOptionId || null,
         featureValues: composerState.featureValues ?? {},
         assistantId: composerState.assistantId ?? null,
+        teamId: composerState.teamId ?? null,
       },
     },
   };
@@ -1686,6 +1697,7 @@ export function NewWorkspaceScreen({
   });
   const draftKey = buildNewWorkspaceDraftKey(draftId);
   const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
+  const draftAssistantSelection = resolveDraftAssistantSelection(forkDraftSetup?.setup);
   const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
   const visibleDraftContextScopeKeys = useMemo(
     () => resolveVisibleDraftContextScopeKeys({ isDraftHandoffActive, draftContextScopeKey }),
@@ -1700,6 +1712,8 @@ export function NewWorkspaceScreen({
       sourceDirectory: selectedSourceDirectory,
       initialSetup: forkDraftSetup?.setup,
     }),
+    initialAssistantId: draftAssistantSelection.assistantId,
+    initialTeamId: draftAssistantSelection.teamId,
   });
   const composerState = chatDraft.composerState;
   const [pickerSelection, dispatchPickerSelection] = useReducer(
@@ -2329,6 +2343,8 @@ export function NewWorkspaceScreen({
             footer={composerFooter}
             assistantId={chatDraft.assistantId}
             onAssistantSelect={chatDraft.setAssistantId}
+            teamId={chatDraft.teamId}
+            onTeamSelect={chatDraft.setTeamId}
           />
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </ReanimatedAnimated.View>

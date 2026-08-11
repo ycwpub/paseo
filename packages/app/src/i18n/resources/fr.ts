@@ -2153,6 +2153,13 @@ export const fr: TranslationResources = {
       refresh: "Rafraîchir",
       refreshing: "Rafraîchissant...",
       refreshAccessibility: "Actualiser les autorisations du bureau",
+      test: "Test",
+      backgroundAttention: {
+        title: "Alertes en arrière-plan",
+        soundVolume: "Volume du son d’alerte",
+        description:
+          "Paseo vous avertit lorsqu’un hôte local ou distant connecté termine une tâche ou nécessite l’intervention de l’utilisateur.",
+      },
       actions: {
         granted: "Accordé",
         request: "Demande",

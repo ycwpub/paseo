@@ -45,6 +45,7 @@ import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
+import { applyNormalDockIcon, registerAppAttentionHandlers } from "./features/app-attention.js";
 import { registerOpenerHandlers } from "./features/opener.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { setupApplicationMenu } from "./features/menu.js";
@@ -675,24 +676,6 @@ function getWindowIconPath(): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-function applyAppIcon(): void {
-  if (process.platform !== "darwin") {
-    return;
-  }
-
-  const iconPath = getWindowIconPath();
-  if (!iconPath) {
-    return;
-  }
-
-  const icon = nativeImage.createFromPath(iconPath);
-  if (icon.isEmpty()) {
-    return;
-  }
-
-  app.dock?.setIcon(icon);
-}
-
 // Work areas with the primary display first, so window-state clamping treats
 // it as the fallback. getAllDisplays() order is not guaranteed to lead with it.
 function getWorkAreasPrimaryFirst(): Electron.Rectangle[] {
@@ -989,7 +972,7 @@ async function bootstrap(): Promise<void> {
     return net.fetch(pathToFileURL(filePath).toString());
   });
 
-  applyAppIcon();
+  applyNormalDockIcon();
   setupApplicationMenu({
     onNewWindow: () => {
       void createWindow().catch((error) => {
@@ -1002,6 +985,7 @@ async function bootstrap(): Promise<void> {
   registerWindowManager();
   registerDialogHandlers();
   registerNotificationHandlers();
+  registerAppAttentionHandlers();
   registerOpenerHandlers();
   registerEditorTargetHandlers();
   registerBrowserAutomationIpc();

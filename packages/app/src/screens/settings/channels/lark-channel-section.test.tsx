@@ -94,7 +94,25 @@ vi.mock("@/runtime/host-features", () => ({
 
 vi.mock("@/hooks/use-assistants", () => ({
   useAssistants: () => ({
-    assistants: [{ id: "assistant-1", name: "Settlement", description: "Settlement helper" }],
+    assistants: [
+      { id: "assistant-1", name: "Settlement", description: "Settlement helper" },
+      { id: "assistant-2", name: "Reviewer", description: "Reviews changes" },
+    ],
+    isLoading: false,
+  }),
+}));
+
+vi.mock("@/hooks/use-teams", () => ({
+  useTeams: () => ({
+    teams: [
+      {
+        id: "team-1",
+        name: "Delivery team",
+        leaderAssistantId: "assistant-1",
+        assistantIds: ["assistant-1", "assistant-2"],
+        assistants: [],
+      },
+    ],
     isLoading: false,
   }),
 }));
@@ -106,7 +124,23 @@ vi.mock("@/hooks/use-providers-snapshot", () => ({
         provider: "claude",
         label: "Claude",
         enabled: true,
-        models: [{ id: "sonnet", label: "Sonnet", description: "Sonnet" }],
+        defaultModeId: "accept-edits",
+        modes: [
+          { id: "ask", label: "Ask every time" },
+          { id: "accept-edits", label: "Accept edits" },
+        ],
+        models: [
+          {
+            id: "sonnet",
+            label: "Sonnet",
+            description: "Sonnet",
+            defaultThinkingOptionId: "high",
+            thinkingOptions: [
+              { id: "low", label: "Low" },
+              { id: "high", label: "High", isDefault: true },
+            ],
+          },
+        ],
       },
     ],
     isLoading: false,
@@ -178,18 +212,41 @@ vi.mock("@/components/ui/form-field", () => ({
 }));
 
 vi.mock("@/components/ui/select-field", () => ({
-  SelectField: ({
-    label,
-    selectedDisplay,
-  }: {
+  SelectField: (props: {
     label: string;
+    value?: string | null;
     selectedDisplay?: { label: string } | null;
-  }) => (
-    <div>
-      <span>{label}</span>
-      <span>{selectedDisplay?.label ?? ""}</span>
-    </div>
-  ),
+    options?: Array<{ value: string; label: string }>;
+    onChange?: (value: string) => void;
+    disabled?: boolean;
+  }) => {
+    const { onChange } = props;
+    const handleChange = React.useCallback(
+      (event: React.ChangeEvent<HTMLSelectElement>) => {
+        onChange?.(event.currentTarget.value);
+      },
+      [onChange],
+    );
+    return (
+      <label>
+        <span>{props.label}</span>
+        <select
+          aria-label={props.label}
+          value={props.value ?? ""}
+          disabled={props.disabled}
+          onChange={handleChange}
+        >
+          <option value="" />
+          {(props.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <span>{props.selectedDisplay?.label ?? ""}</span>
+      </label>
+    );
+  },
 }));
 
 vi.mock("@/components/ui/switch", () => ({
@@ -241,6 +298,8 @@ function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotS
       assistantId: "assistant-1",
       provider: "claude",
       model: "sonnet",
+      modeId: "accept-edits",
+      thinkingOptionId: "high",
       cwd: "/repo/app",
       workspaceId: null,
     },
@@ -356,5 +415,71 @@ describe("LarkChannelSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete bot" }));
     await waitFor(() => expect(channelState.current.deleteBot).toHaveBeenCalledWith("bot-1"));
+  });
+
+  test("saves the selected thinking and safety modes", async () => {
+    const bot = makeBot();
+    channelState.current.status = makeStatus([bot]);
+    channelState.current.configure.mockResolvedValue(makeStatus([bot]));
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    expect((screen.getByLabelText("Thinking mode") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByLabelText("Safety mode") as HTMLSelectElement).value).toBe("accept-edits");
+
+    fireEvent.change(screen.getByLabelText("Thinking mode"), { target: { value: "low" } });
+    fireEvent.change(screen.getByLabelText("Safety mode"), { target: { value: "ask" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(channelState.current.configure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            modeId: "ask",
+            thinkingOptionId: "low",
+          }),
+        }),
+      ),
+    );
+  });
+
+  test("selects a team as the Lark bot target", async () => {
+    const bot = makeBot();
+    const teamBot = makeBot({
+      target: {
+        kind: "team",
+        teamId: "team-1",
+        provider: "claude",
+        model: "sonnet",
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
+        cwd: "/repo/app",
+        workspaceId: null,
+      },
+    });
+    channelState.current.status = makeStatus([bot]);
+    channelState.current.configure.mockResolvedValue(makeStatus([teamBot]));
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    expect((screen.getByLabelText("Assistant or team") as HTMLSelectElement).value).toBe(
+      "assistant:assistant-1",
+    );
+    fireEvent.change(screen.getByLabelText("Assistant or team"), {
+      target: { value: "team:team-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(channelState.current.configure).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            kind: "team",
+            teamId: "team-1",
+          }),
+        }),
+      ),
+    );
   });
 });

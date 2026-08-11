@@ -19,8 +19,11 @@ import {
 } from "@getpaseo/protocol/messages";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
 
-const LARK_CHANNEL_STORE_VERSION = 3;
+const LARK_CHANNEL_STORE_VERSION = 4;
+const LEGACY_LARK_CHANNEL_STORE_VERSION = 3;
 const LEGACY_DEFAULT_BOT_ID = "default";
+const PROCESSED_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_PROCESSED_EVENTS_PER_BOT = 5_000;
 
 const StoredLarkChannelConfigSchema = z.object({
   enabled: z.boolean(),
@@ -48,6 +51,13 @@ const LarkChannelConversationSchema = z.object({
 
 export type LarkChannelConversation = z.infer<typeof LarkChannelConversationSchema>;
 
+const LarkChannelProcessedEventSchema = z.object({
+  key: z.string().min(1),
+  processedAt: z.string(),
+});
+
+export type LarkChannelProcessedEvent = z.infer<typeof LarkChannelProcessedEventSchema>;
+
 const StoredLarkChannelBotSchema = z.object({
   id: z.string().min(1),
   name: z.string().nullable(),
@@ -55,6 +65,7 @@ const StoredLarkChannelBotSchema = z.object({
   authorizedUsers: z.array(LarkChannelAuthorizedUserSchema),
   pendingPairings: z.array(LarkChannelPendingPairingSchema),
   conversations: z.array(LarkChannelConversationSchema),
+  processedEvents: z.array(LarkChannelProcessedEventSchema),
 });
 
 export type StoredLarkChannelBot = z.infer<typeof StoredLarkChannelBotSchema>;
@@ -96,7 +107,7 @@ const LegacyStoredLarkChannelBotSchema = z.object({
 });
 
 const LegacyLarkChannelStorePayloadV3Schema = z.object({
-  version: z.literal(LARK_CHANNEL_STORE_VERSION),
+  version: z.literal(LEGACY_LARK_CHANNEL_STORE_VERSION),
   activeBotId: z.string().nullable().optional(),
   bots: z.array(LegacyStoredLarkChannelBotSchema),
 });
@@ -184,6 +195,7 @@ function createStoredBot(input: { id?: string; name?: string | null } = {}): Sto
     authorizedUsers: [],
     pendingPairings: [],
     conversations: [],
+    processedEvents: [],
   };
 }
 
@@ -227,7 +239,7 @@ function sameLarkIdentity(
 function normalizeTarget(
   target: z.infer<typeof LegacyStoredLarkChannelConfigSchema>["target"],
 ): LarkChannelTarget {
-  if (target.kind === "workspace" || target.kind === "assistant") {
+  if (target.kind === "workspace" || target.kind === "assistant" || target.kind === "team") {
     return target;
   }
   return createDefaultTarget();
@@ -256,6 +268,7 @@ function normalizeBot(bot: z.infer<typeof LegacyStoredLarkChannelBotSchema>): St
     authorizedUsers: bot.authorizedUsers,
     pendingPairings: bot.pendingPairings,
     conversations,
+    processedEvents: [],
   });
 }
 
@@ -270,6 +283,11 @@ function normalizeActiveBotId(
 }
 
 function normalizePayload(raw: unknown): LarkChannelStorePayload {
+  const parsedCurrent = LarkChannelStorePayloadSchema.safeParse(raw);
+  if (parsedCurrent.success) {
+    return parsedCurrent.data;
+  }
+
   const parsedV3 = LegacyLarkChannelStorePayloadV3Schema.safeParse(raw);
   if (parsedV3.success) {
     const bots = parsedV3.data.bots.map((bot) => normalizeBot(bot));
@@ -592,6 +610,42 @@ export class LarkChannelStore {
         (conversation) => conversation.chatId === chatId && conversation.threadId === threadId,
       ) ?? null
     );
+  }
+
+  claimIncomingEvent(
+    botId: string | null | undefined,
+    eventKey: string,
+    processedAt: string,
+  ): boolean {
+    this.ensureLoaded();
+    const now = Date.parse(processedAt);
+    if (!Number.isFinite(now)) {
+      throw new Error("Invalid Lark event processedAt timestamp");
+    }
+    const next = clonePayload(this.payload);
+    const botIndex = this.requireBotIndex(next, botId);
+    const bot = next.bots[botIndex]!;
+    const retentionCutoff = now - PROCESSED_EVENT_RETENTION_MS;
+    const retainedEvents = bot.processedEvents.filter((event) => {
+      const timestamp = Date.parse(event.processedAt);
+      return Number.isFinite(timestamp) && timestamp > retentionCutoff;
+    });
+    const alreadyProcessed = retainedEvents.some((event) => event.key === eventKey);
+    if (alreadyProcessed) {
+      if (retainedEvents.length !== bot.processedEvents.length) {
+        bot.processedEvents = retainedEvents;
+        this.replaceAndPersist(next);
+      }
+      return false;
+    }
+
+    retainedEvents.push({ key: eventKey, processedAt });
+    retainedEvents.sort(
+      (left, right) => Date.parse(left.processedAt) - Date.parse(right.processedAt),
+    );
+    bot.processedEvents = retainedEvents.slice(-MAX_PROCESSED_EVENTS_PER_BOT);
+    this.replaceAndPersist(next);
+    return true;
   }
 
   recordThreadConversation(

@@ -108,6 +108,7 @@ export class AssistantStore {
       memory,
       memorySummary: materializedMemory.memorySummary,
       memoryFiles: materializedMemory.memoryFiles,
+      resourceSelection: parsed.resourceSelection,
       createdAt: timestamp,
       updatedAt: timestamp,
     });
@@ -172,6 +173,9 @@ export class AssistantStore {
       memory,
       memorySummary: materializedMemory.memorySummary,
       memoryFiles: materializedMemory.memoryFiles,
+      ...(parsed.resourceSelection !== undefined
+        ? { resourceSelection: parsed.resourceSelection }
+        : {}),
       updatedAt: nowIso(),
     });
     const assistants = [...this.payload.assistants];

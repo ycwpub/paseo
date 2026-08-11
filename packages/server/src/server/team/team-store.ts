@@ -9,9 +9,11 @@ import {
   TeamUpdateInputSchema,
   type Team,
   type TeamCreateInput,
+  type TeamMemberSettings,
   type TeamUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../private-files.js";
+import type { AssistantStore } from "../assistants/assistant-store.js";
 
 const TEAM_STORE_VERSION = 1;
 
@@ -34,15 +36,29 @@ function nowMs(): number {
   return Date.now();
 }
 
+function requireTrimmed(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${label} is required`);
+  }
+  return trimmed;
+}
+
 export class TeamStore {
   private readonly filePath: string;
   private readonly logger: pino.Logger;
+  private readonly assistantStore: Pick<AssistantStore, "get">;
   private loaded = false;
   private payload: TeamStorePayload = createDefaultPayload();
 
-  constructor(options: { paseoHome: string; logger: pino.Logger }) {
+  constructor(options: {
+    paseoHome: string;
+    logger: pino.Logger;
+    assistantStore: Pick<AssistantStore, "get">;
+  }) {
     this.filePath = path.join(options.paseoHome, "teams.json");
     this.logger = options.logger.child({ module: "team-store" });
+    this.assistantStore = options.assistantStore;
   }
 
   list(): Team[] {
@@ -58,15 +74,22 @@ export class TeamStore {
   create(input: TeamCreateInput): Team {
     this.ensureLoaded();
     const parsed = TeamCreateInputSchema.parse(input);
+    if (!parsed.leaderAssistantId || !parsed.assistantIds) {
+      throw new Error("Team leader and assistants are required");
+    }
+    const leaderAssistantId = requireTrimmed(parsed.leaderAssistantId, "Team leader");
+    const assistantIds = this.validateMembership(parsed.assistantIds, leaderAssistantId);
+    const memberSettings = this.validateMemberSettings(parsed.memberSettings ?? {}, assistantIds);
     const timestamp = nowMs();
     const team = TeamSchema.parse({
       id: randomUUID(),
       userId: "local",
-      name: parsed.name,
-      workspace: parsed.workspace,
+      name: requireTrimmed(parsed.name, "Team name"),
+      workspace: parsed.workspace?.trim() ?? "",
       workspaceMode: parsed.workspaceMode ?? "shared",
-      leaderAssistantId: parsed.leaderAssistantId ?? "",
-      assistants: [],
+      leaderAssistantId,
+      assistantIds,
+      assistants: this.buildAssistantSlots(assistantIds, leaderAssistantId, memberSettings),
       createdAt: timestamp,
       updatedAt: timestamp,
     });
@@ -80,11 +103,26 @@ export class TeamStore {
     const index = this.payload.teams.findIndex((team) => team.id === parsed.id);
     if (index < 0) return null;
     const current = this.payload.teams[index]!;
+    const leaderAssistantId = requireTrimmed(
+      parsed.leaderAssistantId ?? current.leaderAssistantId,
+      "Team leader",
+    );
+    const assistantIds = this.validateMembership(
+      parsed.assistantIds ?? resolveTeamAssistantIds(current),
+      leaderAssistantId,
+    );
+    const memberSettings = this.validateMemberSettings(
+      parsed.memberSettings ?? this.resolveStoredMemberSettings(current),
+      assistantIds,
+    );
     const team = TeamSchema.parse({
       ...current,
-      ...(parsed.name !== undefined ? { name: parsed.name } : {}),
+      ...(parsed.name !== undefined ? { name: requireTrimmed(parsed.name, "Team name") } : {}),
       ...(parsed.workspace !== undefined ? { workspace: parsed.workspace } : {}),
       ...(parsed.workspaceMode !== undefined ? { workspaceMode: parsed.workspaceMode } : {}),
+      leaderAssistantId,
+      assistantIds,
+      assistants: this.buildAssistantSlots(assistantIds, leaderAssistantId, memberSettings),
       ...(parsed.sessionMode !== undefined ? { sessionMode: parsed.sessionMode } : {}),
       updatedAt: nowMs(),
     });
@@ -100,6 +138,109 @@ export class TeamStore {
     if (teams.length === this.payload.teams.length) return false;
     this.replaceAndPersist({ ...this.payload, teams });
     return true;
+  }
+
+  isAssistantInUse(assistantId: string): boolean {
+    this.ensureLoaded();
+    return this.payload.teams.some((team) => resolveTeamAssistantIds(team).includes(assistantId));
+  }
+
+  private validateMembership(assistantIds: string[], leaderAssistantId: string): string[] {
+    const normalized = [...new Set(assistantIds.map((id) => id.trim()).filter(Boolean))];
+    if (normalized.length < 2) {
+      throw new Error("A team requires at least two assistants");
+    }
+    if (!normalized.includes(leaderAssistantId)) {
+      throw new Error("The team leader must be a team member");
+    }
+    for (const assistantId of normalized) {
+      if (!this.assistantStore.get(assistantId)) {
+        throw new Error(`Assistant ${assistantId} not found`);
+      }
+    }
+    return normalized;
+  }
+
+  private buildAssistantSlots(
+    assistantIds: string[],
+    leaderAssistantId: string,
+    memberSettings: Record<string, TeamMemberSettings>,
+  ): Team["assistants"] {
+    return assistantIds.map((assistantId) => {
+      const assistant = this.assistantStore.get(assistantId);
+      if (!assistant) {
+        throw new Error(`Assistant ${assistantId} not found`);
+      }
+      return {
+        slotId: assistantId,
+        conversationId: "",
+        role: assistantId === leaderAssistantId ? "leader" : "teammate",
+        assistantBackend: "preset",
+        assistantName: assistant.name,
+        status: "idle",
+        assistantId,
+        ...(memberSettings[assistantId]?.provider
+          ? { provider: memberSettings[assistantId].provider }
+          : {}),
+        ...(memberSettings[assistantId]?.model ? { model: memberSettings[assistantId].model } : {}),
+        ...(memberSettings[assistantId]?.thinkingOptionId
+          ? { thinkingOptionId: memberSettings[assistantId].thinkingOptionId }
+          : {}),
+      };
+    });
+  }
+
+  private validateMemberSettings(
+    settings: Record<string, TeamMemberSettings>,
+    assistantIds: string[],
+  ): Record<string, TeamMemberSettings> {
+    const memberIds = new Set(assistantIds);
+    const normalized: Record<string, TeamMemberSettings> = {};
+    for (const [rawAssistantId, value] of Object.entries(settings)) {
+      const assistantId = requireTrimmed(rawAssistantId, "Team member");
+      if (!memberIds.has(assistantId)) {
+        throw new Error(`Assistant ${assistantId} is not a team member`);
+      }
+      let provider = value.provider?.trim();
+      let model = value.model?.trim();
+      if (!provider && model?.includes("/")) {
+        const separatorIndex = model.indexOf("/");
+        provider = model.slice(0, separatorIndex).trim();
+        model = model.slice(separatorIndex + 1).trim();
+      }
+      const thinkingOptionId = value.thinkingOptionId?.trim();
+      if (provider || model || thinkingOptionId) {
+        normalized[assistantId] = {
+          ...(provider ? { provider } : {}),
+          ...(model ? { model } : {}),
+          ...(thinkingOptionId ? { thinkingOptionId } : {}),
+        };
+      }
+    }
+    return normalized;
+  }
+
+  private resolveStoredMemberSettings(team: Team): Record<string, TeamMemberSettings> {
+    return Object.fromEntries(
+      team.assistants.flatMap((member) => {
+        if (
+          !member.assistantId ||
+          (!member.provider && !member.model && !member.thinkingOptionId)
+        ) {
+          return [];
+        }
+        return [
+          [
+            member.assistantId,
+            {
+              ...(member.provider ? { provider: member.provider } : {}),
+              ...(member.model ? { model: member.model } : {}),
+              ...(member.thinkingOptionId ? { thinkingOptionId: member.thinkingOptionId } : {}),
+            },
+          ],
+        ];
+      }),
+    );
   }
 
   private ensureLoaded(): void {
@@ -126,4 +267,13 @@ export class TeamStore {
     this.payload = parsed;
     this.loaded = true;
   }
+}
+
+export function resolveTeamAssistantIds(team: Team): string[] {
+  if (team.assistantIds) {
+    return [...team.assistantIds];
+  }
+  return team.assistants
+    .map((assistant) => assistant.assistantId)
+    .filter((assistantId): assistantId is string => Boolean(assistantId));
 }

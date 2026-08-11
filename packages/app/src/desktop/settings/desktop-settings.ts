@@ -20,12 +20,16 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  attention: {
+    soundVolume: number;
+  };
 }
 
 export interface DesktopSettingsPatch {
   releaseChannel?: ReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  attention?: Partial<DesktopSettings["attention"]>;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -36,6 +40,9 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
+  },
+  attention: {
+    soundVolume: 0.5,
   },
 };
 
@@ -153,6 +160,7 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
   const record = isRecord(raw) ? raw : {};
   const notifications = isRecord(record.notifications) ? record.notifications : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
+  const attention = isRecord(record.attention) ? record.attention : {};
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
@@ -172,6 +180,12 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
           ? daemon.keepRunningAfterQuit
           : DEFAULT_DESKTOP_SETTINGS.daemon.keepRunningAfterQuit,
     },
+    attention: {
+      soundVolume:
+        typeof attention.soundVolume === "number" && Number.isFinite(attention.soundVolume)
+          ? Math.min(1, Math.max(0, attention.soundVolume))
+          : DEFAULT_DESKTOP_SETTINGS.attention.soundVolume,
+    },
   };
 }
 
@@ -189,6 +203,10 @@ function mergeDesktopSettings(
       ...current.daemon,
       ...updates.daemon,
     },
+    attention: {
+      ...current.attention,
+      ...updates.attention,
+    },
   };
 }
 
@@ -197,6 +215,7 @@ function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> 
     ...(updates.releaseChannel ? { releaseChannel: updates.releaseChannel } : {}),
     ...(updates.notifications ? { notifications: updates.notifications } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
+    ...(updates.attention ? { attention: updates.attention } : {}),
   };
 }
 

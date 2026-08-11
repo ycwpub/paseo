@@ -175,6 +175,10 @@ import type { AssistantStore } from "./assistants/assistant-store.js";
 import { buildAssistantInitialPrompt } from "./assistants/assistant-prompt.js";
 import { TeamStore } from "./team/team-store.js";
 import { TeamSession } from "./team/team-session.js";
+import {
+  clearTeamIdentityLabels,
+  resolveTeamLeaderCreateContext,
+} from "./team/team-agent-context.js";
 import { McpStore } from "./mcp/mcp-store.js";
 import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
@@ -700,6 +704,7 @@ export class Session {
   private readonly assistantSession: AssistantSession | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
+  private readonly teamStore: TeamStore | null;
   private readonly mcpSession: McpSession | null;
   private readonly skillSession: SkillSession | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
@@ -948,10 +953,14 @@ export class Session {
             emit: (msg) => this.emit(msg),
           },
           store: assistantStore,
+          isAssistantInUse: teamStore
+            ? (assistantId) => teamStore.isAssistantInUse(assistantId)
+            : undefined,
           logger: this.sessionLogger,
         })
       : null;
     this.assistantStore = assistantStore ?? null;
+    this.teamStore = teamStore ?? null;
 
     this.teamSession = teamStore
       ? new TeamSession({
@@ -3249,10 +3258,31 @@ export class Session {
 
   private resolveAssistantCreateContext(input: {
     assistantId?: string;
+    teamId?: string;
     config: AgentSessionConfig;
     initialPrompt?: string;
     labels: Record<string, string>;
   }): AssistantCreateContext {
+    const labels = clearTeamIdentityLabels(input.labels);
+    if (input.teamId) {
+      if (!this.assistantStore || !this.teamStore) {
+        throw new Error("Team support is unavailable");
+      }
+      const context = resolveTeamLeaderCreateContext(
+        { assistantStore: this.assistantStore, teamStore: this.teamStore },
+        {
+          teamId: input.teamId,
+          assistantId: input.assistantId,
+          userPrompt: input.initialPrompt ?? "",
+          labels,
+        },
+      );
+      return {
+        effectiveConfig: input.config,
+        effectiveInitialPrompt: context.prompt,
+        effectiveLabels: context.labels,
+      };
+    }
     const assistant = input.assistantId ? this.assistantStore?.get(input.assistantId) : null;
     if (input.assistantId && !assistant) {
       throw new Error(`Assistant ${input.assistantId} not found`);
@@ -3261,14 +3291,14 @@ export class Session {
       return {
         effectiveConfig: input.config,
         effectiveInitialPrompt: input.initialPrompt,
-        effectiveLabels: input.labels,
+        effectiveLabels: labels,
       };
     }
     return {
       effectiveConfig: input.config,
       effectiveInitialPrompt: buildAssistantInitialPrompt(assistant, input.initialPrompt ?? ""),
       effectiveLabels: {
-        ...input.labels,
+        ...labels,
         assistantId: assistant.id,
         assistantName: assistant.name,
       },
@@ -3291,6 +3321,8 @@ export class Session {
       autoArchive,
       images,
       attachments,
+      selectedMcpServerIds,
+      selectedSkillIds,
       env,
     } = msg;
     this.sessionLogger.info(
@@ -3306,6 +3338,7 @@ export class Session {
       const { effectiveConfig, effectiveInitialPrompt, effectiveLabels } =
         this.resolveAssistantCreateContext({
           assistantId: msg.assistantId,
+          teamId: msg.teamId,
           config,
           initialPrompt,
           labels: msg.labels,
@@ -3369,6 +3402,8 @@ export class Session {
           outputSchema,
           images,
           attachments,
+          selectedMcpServerIds,
+          selectedSkillIds,
           git,
           labels: resolvedIntent.intent.labels,
           env,

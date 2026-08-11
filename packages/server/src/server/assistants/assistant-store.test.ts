@@ -33,6 +33,7 @@ describe("AssistantStore", () => {
     expect(assistant).toMatchObject({
       name: "Reviewer",
       memoryEnabled: true,
+      resourceSelection: { mode: "all-enabled", selectedMcpServerIds: [], selectedSkillIds: [] },
     });
     expect(assistant.memorySummary).toContain("Assistant memory summary");
     expect(assistant.memorySummary).toContain("Style");
@@ -52,6 +53,42 @@ describe("AssistantStore", () => {
     expect(store.delete(assistant.id)).toBe(true);
     expect(store.list()).toEqual([]);
     expect(existsSync(detailPath!)).toBe(false);
+  });
+
+  test("persists custom assistant MCP and skill selection", () => {
+    const assistant = store.create({
+      name: "Custom resources",
+      prompt: "Use only selected resources.",
+      resourceSelection: {
+        mode: "custom",
+        selectedMcpServerIds: ["mcp-a"],
+        selectedSkillIds: ["skill-a", "skill-b"],
+      },
+    });
+
+    expect(assistant.resourceSelection).toEqual({
+      mode: "custom",
+      selectedMcpServerIds: ["mcp-a"],
+      selectedSkillIds: ["skill-a", "skill-b"],
+    });
+
+    const updated = store.update({
+      id: assistant.id,
+      resourceSelection: {
+        mode: "custom",
+        selectedMcpServerIds: ["mcp-b"],
+        selectedSkillIds: [],
+      },
+    });
+
+    expect(updated?.resourceSelection).toEqual({
+      mode: "custom",
+      selectedMcpServerIds: ["mcp-b"],
+      selectedSkillIds: [],
+    });
+
+    const reloaded = new AssistantStore({ paseoHome, logger: pino({ level: "silent" }) });
+    expect(reloaded.get(assistant.id)?.resourceSelection).toEqual(updated?.resourceSelection);
   });
 
   test("materializes summary and detail files for legacy stored memory", () => {
@@ -76,6 +113,11 @@ describe("AssistantStore", () => {
     const loaded = new AssistantStore({ paseoHome, logger: pino({ level: "silent" }) });
     const [assistant] = loaded.list();
 
+    expect(assistant?.resourceSelection).toEqual({
+      mode: "all-enabled",
+      selectedMcpServerIds: [],
+      selectedSkillIds: [],
+    });
     expect(assistant?.memorySummary).toContain("Assistant memory summary");
     expect(assistant?.memorySummary).toContain("Preferences");
     expect(assistant?.memoryFiles.detailFiles).toHaveLength(2);

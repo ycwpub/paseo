@@ -157,21 +157,25 @@ export {
   AssistantCreateInputSchema,
   AssistantMemoryDetailFileSchema,
   AssistantMemoryFilesSchema,
+  AssistantResourceSelectionSchema,
   AssistantSchema,
   AssistantUpdateInputSchema,
   type Assistant,
   type AssistantCreateInput,
   type AssistantMemoryDetailFile,
   type AssistantMemoryFiles,
+  type AssistantResourceSelection,
   type AssistantUpdateInput,
 } from "./assistant/types.js";
 export {
   TeamSchema,
   TeamCreateInputSchema,
+  TeamMemberSettingsSchema,
   TeamUpdateInputSchema,
   TeamAssistantSchema,
   type Team,
   type TeamCreateInput,
+  type TeamMemberSettings,
   type TeamUpdateInput,
   type TeamAssistant,
   type TeammateRole,
@@ -1505,6 +1509,11 @@ export const CreateAgentRequestMessageSchema = z.object({
   worktreeName: z.string().optional(),
   initialPrompt: z.string().optional(),
   assistantId: z.string().optional(),
+  teamId: z.string().optional(),
+  /** Conversation-scoped MCP servers selected by the composer for the initial run. */
+  selectedMcpServerIds: z.array(z.string()).optional(),
+  /** Conversation-scoped skills selected by the composer for the initial run. */
+  selectedSkillIds: z.array(z.string()).optional(),
   clientMessageId: z.string().optional(),
   outputSchema: z.record(z.string(), z.unknown()).optional(),
   images: z.array(ImageAttachmentSchema).optional(),
@@ -3319,6 +3328,8 @@ export const ServerInfoStatusPayloadSchema = z
         larkChannel: z.boolean().optional(),
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: z.boolean().optional(),
+        // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
+        teams: z.boolean().optional(),
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         mcpServers: z.boolean().optional(),
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.

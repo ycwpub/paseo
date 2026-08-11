@@ -2149,6 +2149,13 @@ export const es: TranslationResources = {
       refresh: "Refrescar",
       refreshing: "Refrescante...",
       refreshAccessibility: "Actualizar permisos de escritorio",
+      test: "Prueba",
+      backgroundAttention: {
+        title: "Avisos en segundo plano",
+        soundVolume: "Volumen del sonido de aviso",
+        description:
+          "Paseo te avisa cuando un host local o remoto conectado termina una tarea o necesita la intervención del usuario.",
+      },
       actions: {
         granted: "Otorgada",
         request: "Pedido",

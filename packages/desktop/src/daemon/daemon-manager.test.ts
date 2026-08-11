@@ -6,6 +6,24 @@ import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
 import { getBundledCliShimPath } from "../integrations/cli-install";
 import { createDaemonCommandHandlers } from "./daemon-manager";
 
+const originalExecPath = process.execPath;
+const originalResourcesPath = process.resourcesPath;
+
+function setProcessRuntime(input: { execPath?: string; resourcesPath?: string }): void {
+  if ("execPath" in input) {
+    Object.defineProperty(process, "execPath", {
+      configurable: true,
+      value: input.execPath,
+    });
+  }
+  if ("resourcesPath" in input) {
+    Object.defineProperty(process, "resourcesPath", {
+      configurable: true,
+      value: input.resourcesPath,
+    });
+  }
+}
+
 const mocks = vi.hoisted(() => ({
   paseoHome: "/tmp/paseo-desktop-daemon-manager-test-home",
   settings: {
@@ -109,6 +127,22 @@ function scheduleFailedStartup(child: MockChildProcess): void {
   });
 }
 
+function currentDesktopBuildId(): string {
+  return ["1.2.3", process.execPath, process.resourcesPath].filter(Boolean).join("|");
+}
+
+function writeDesktopPidLock(desktopBuildId: string): void {
+  mkdirSync(mocks.paseoHome, { recursive: true });
+  writeFileSync(
+    `${mocks.paseoHome}/paseo.pid`,
+    JSON.stringify({
+      pid: 7675,
+      desktopManaged: true,
+      desktopBuildId,
+    }),
+  );
+}
+
 describe("daemon-manager commands", () => {
   beforeEach(() => {
     mocks.settings = DEFAULT_DESKTOP_SETTINGS;
@@ -128,6 +162,7 @@ describe("daemon-manager commands", () => {
   afterEach(() => {
     rmSync(mocks.paseoHome, { recursive: true, force: true });
     rmSync(mocks.appLogPath, { force: true });
+    setProcessRuntime({ execPath: originalExecPath, resourcesPath: originalResourcesPath });
   });
 
   it("refuses start and restart while built-in daemon management is disabled", async () => {
@@ -320,6 +355,11 @@ describe("daemon-manager commands", () => {
   });
 
   it("uses a stale reachable desktop daemon when the version matches", async () => {
+    setProcessRuntime({
+      execPath: "/tmp/Paseo.app/Contents/MacOS/Paseo",
+      resourcesPath: "/tmp/Paseo.app/Contents/Resources",
+    });
+    writeDesktopPidLock(currentDesktopBuildId());
     mocks.runExternalCliJsonCommand.mockResolvedValue({
       localDaemon: "stale_pid",
       connectedDaemon: "reachable",
@@ -345,6 +385,212 @@ describe("daemon-manager commands", () => {
     });
 
     expect(mocks.spawnProcess).not.toHaveBeenCalled();
+  });
+
+  it("restarts a desktop-managed daemon when a regular packaged build id differs", async () => {
+    setProcessRuntime({
+      execPath: "/tmp/Paseo.app/Contents/MacOS/Paseo",
+      resourcesPath: "/tmp/Paseo.app/Contents/Resources",
+    });
+    writeDesktopPidLock("1.2.3|/Applications/Old-Paseo.app/Contents/MacOS/Paseo");
+    mocks.runExternalCliJsonCommand
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-1",
+        pid: 7675,
+        listen: "127.0.0.1:6767",
+        hostname: "dev-host",
+        daemonVersion: "1.2.3",
+        desktopManaged: true,
+      })
+      .mockResolvedValueOnce({ action: "stopped" })
+      .mockResolvedValueOnce({
+        localDaemon: "stopped",
+        connectedDaemon: "unreachable",
+        serverId: "",
+      })
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-2",
+        pid: 8888,
+        listen: "127.0.0.1:6767",
+        hostname: "dev-host",
+        daemonVersion: "1.2.3",
+        desktopManaged: true,
+      });
+    mocks.spawnProcess.mockReturnValue(createMockChildProcess());
+
+    await expect(createDaemonCommandHandlers().start_desktop_daemon()).resolves.toEqual(
+      expect.objectContaining({ serverId: "server-2", status: "running" }),
+    );
+
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenNthCalledWith(2, [
+      "daemon",
+      "stop",
+      "--json",
+      "--timeout",
+      "5",
+      "--force",
+      "--kill-timeout",
+      "5",
+    ]);
+    expect(mocks.spawnProcess).toHaveBeenCalledWith(
+      "node",
+      [],
+      expect.objectContaining({
+        envOverlay: expect.objectContaining({
+          PASEO_DESKTOP_MANAGED: "1",
+          PASEO_DESKTOP_BUILD_ID: currentDesktopBuildId(),
+        }),
+      }),
+    );
+  });
+
+  it("does not replace an unmarked daemon for regular packaged builds", async () => {
+    setProcessRuntime({
+      execPath: "/tmp/Paseo.app/Contents/MacOS/Paseo",
+      resourcesPath: "/tmp/Paseo.app/Contents/Resources",
+    });
+    mocks.runExternalCliJsonCommand.mockResolvedValue({
+      localDaemon: "running",
+      connectedDaemon: "reachable",
+      serverId: "server-1",
+      pid: 7675,
+      listen: "127.0.0.1:6767",
+      hostname: "dev-host",
+      daemonVersion: "1.2.3",
+      desktopManaged: false,
+    });
+
+    await expect(createDaemonCommandHandlers().start_desktop_daemon()).resolves.toEqual(
+      expect.objectContaining({ serverId: "server-1", status: "running" }),
+    );
+
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.spawnProcess).not.toHaveBeenCalled();
+  });
+
+  it("restarts an unmarked daemon for test builds when the build id is missing", async () => {
+    setProcessRuntime({
+      execPath: "/Applications/Paseo-Feishu-Test.app/Contents/MacOS/Paseo-Feishu-Test",
+      resourcesPath: "/Applications/Paseo-Feishu-Test.app/Contents/Resources",
+    });
+    mocks.runExternalCliJsonCommand
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-1",
+        pid: 7675,
+        listen: "127.0.0.1:6767",
+        hostname: "dev-host",
+        daemonVersion: "1.2.3",
+        desktopManaged: false,
+      })
+      .mockResolvedValueOnce({ action: "stopped" })
+      .mockResolvedValueOnce({
+        localDaemon: "stopped",
+        connectedDaemon: "unreachable",
+        serverId: "",
+      })
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-2",
+        pid: 8888,
+        listen: "127.0.0.1:6767",
+        hostname: "dev-host",
+        daemonVersion: "1.2.3",
+        desktopManaged: true,
+      });
+    mocks.spawnProcess.mockReturnValue(createMockChildProcess());
+    const handlers = createDaemonCommandHandlers();
+
+    await expect(handlers.start_desktop_daemon()).resolves.toEqual({
+      serverId: "server-2",
+      status: "running",
+      listen: "127.0.0.1:6767",
+      hostname: "dev-host",
+      pid: 8888,
+      home: mocks.paseoHome,
+      version: "1.2.3",
+      desktopManaged: true,
+      error: null,
+    });
+
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenNthCalledWith(2, [
+      "daemon",
+      "stop",
+      "--json",
+      "--timeout",
+      "5",
+      "--force",
+      "--kill-timeout",
+      "5",
+    ]);
+    expect(mocks.spawnProcess).toHaveBeenCalledWith(
+      "node",
+      [],
+      expect.objectContaining({
+        envOverlay: expect.objectContaining({
+          PASEO_DESKTOP_MANAGED: "1",
+          PASEO_DESKTOP_BUILD_ID: expect.stringContaining("Paseo-Feishu-Test"),
+        }),
+      }),
+    );
+  });
+
+  it("force-stops an unmarked unresponsive daemon for test builds before starting", async () => {
+    setProcessRuntime({
+      execPath: "/Applications/Paseo-Feishu-Test.app/Contents/MacOS/Paseo-Feishu-Test",
+      resourcesPath: "/Applications/Paseo-Feishu-Test.app/Contents/Resources",
+    });
+    mocks.runExternalCliJsonCommand
+      .mockResolvedValueOnce({
+        localDaemon: "unresponsive",
+        connectedDaemon: "unreachable",
+        serverId: "server-1",
+        pid: 7675,
+        listen: "127.0.0.1:6767",
+        daemonVersion: null,
+        desktopManaged: false,
+      })
+      .mockResolvedValueOnce({ action: "stopped" })
+      .mockResolvedValueOnce({
+        localDaemon: "stopped",
+        connectedDaemon: "unreachable",
+        serverId: "",
+      })
+      .mockResolvedValueOnce({
+        localDaemon: "running",
+        connectedDaemon: "reachable",
+        serverId: "server-2",
+        pid: 8888,
+        listen: "127.0.0.1:6767",
+        hostname: "dev-host",
+        daemonVersion: "1.2.3",
+        desktopManaged: true,
+      });
+    mocks.spawnProcess.mockReturnValue(createMockChildProcess());
+
+    await expect(createDaemonCommandHandlers().start_desktop_daemon()).resolves.toEqual(
+      expect.objectContaining({ serverId: "server-2", status: "running" }),
+    );
+
+    expect(mocks.runExternalCliJsonCommand).toHaveBeenNthCalledWith(2, [
+      "daemon",
+      "stop",
+      "--json",
+      "--timeout",
+      "5",
+      "--force",
+      "--kill-timeout",
+      "5",
+    ]);
+    expect(mocks.createNodeEntrypointInvocation).toHaveBeenCalledWith(
+      expect.objectContaining({ args: [] }),
+    );
   });
 
   it("restarts a stale reachable desktop daemon when the version differs", async () => {

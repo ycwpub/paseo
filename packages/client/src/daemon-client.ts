@@ -376,6 +376,7 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   workspaceId?: string;
   callerAgentId?: string;
   assistantId?: string;
+  teamId?: string;
   initialPrompt?: string;
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
@@ -384,6 +385,8 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   git?: GitSetupOptions;
   worktree?: CreateAgentRequestMessage["worktree"];
   autoArchive?: CreateAgentRequestMessage["autoArchive"];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
   // COMPAT(createAgentWorktree): low-level old callers may still send the
   // create-agent worktree field. Added in v0.2.0; remove after 2027-01-17.
   worktreeName?: string;
@@ -2589,6 +2592,19 @@ export class DaemonClient {
   // Agent Lifecycle
   // ============================================================================
 
+  private buildCreateAgentResourceSelection(
+    options: Pick<CreateAgentRequestOptions, "selectedMcpServerIds" | "selectedSkillIds">,
+  ): { selectedMcpServerIds?: string[]; selectedSkillIds?: string[] } {
+    return {
+      ...(options.selectedMcpServerIds !== undefined
+        ? { selectedMcpServerIds: options.selectedMcpServerIds }
+        : {}),
+      ...(options.selectedSkillIds !== undefined
+        ? { selectedSkillIds: options.selectedSkillIds }
+        : {}),
+    };
+  }
+
   async createAgent(options: CreateAgentRequestOptions): Promise<AgentSnapshotPayload> {
     const requestId = this.createRequestId(options.requestId);
     const config = resolveAgentConfig(options);
@@ -2601,6 +2617,8 @@ export class DaemonClient {
       ...(options.workspaceId !== undefined ? { workspaceId: options.workspaceId } : {}),
       ...(options.callerAgentId !== undefined ? { callerAgentId: options.callerAgentId } : {}),
       ...(options.assistantId ? { assistantId: options.assistantId } : {}),
+      ...(options.teamId ? { teamId: options.teamId } : {}),
+      ...this.buildCreateAgentResourceSelection(options),
       ...(options.initialPrompt ? { initialPrompt: options.initialPrompt } : {}),
       ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}),
       ...(options.outputSchema ? { outputSchema: options.outputSchema } : {}),

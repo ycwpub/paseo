@@ -1653,6 +1653,8 @@ export class VoiceAssistantWebSocketServer {
         larkChannel: true,
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: true,
+        // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
+        teams: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         mcpServers: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.

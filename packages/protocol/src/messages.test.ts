@@ -54,6 +54,11 @@ describe("Assistant messages", () => {
           prompt: "Review carefully.",
           memoryEnabled: true,
           memory: "Prefer concise feedback.",
+          resourceSelection: {
+            mode: "custom",
+            selectedMcpServerIds: ["mcp-db"],
+            selectedSkillIds: ["skill-review"],
+          },
         },
       }).type,
     ).toBe("assistant.create.request");
@@ -67,6 +72,9 @@ describe("Assistant messages", () => {
           memoryEnabled: true,
           memoryAppend: "Remember to keep review comments actionable.",
           memorySummary: "# Edited memory summary",
+          resourceSelection: {
+            mode: "all-enabled",
+          },
           memoryDetailFileEdits: [
             {
               id: "detail-001",
@@ -107,6 +115,11 @@ describe("Assistant messages", () => {
                 ],
               },
               createdAt: "2026-01-01T00:00:00.000Z",
+              resourceSelection: {
+                mode: "custom",
+                selectedMcpServerIds: ["mcp-db"],
+                selectedSkillIds: ["skill-review"],
+              },
               updatedAt: "2026-01-01T00:00:00.000Z",
             },
           ],
@@ -130,6 +143,25 @@ describe("Lark channel messages", () => {
           kind: "workspace",
           provider: "claude",
           model: "sonnet",
+          modeId: "accept-edits",
+          thinkingOptionId: "high",
+          cwd: "/repo/app",
+          workspaceId: "ws-1",
+        },
+      }).type,
+    ).toBe("channel.lark.configure.request");
+
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "channel.lark.configure.request",
+        requestId: "req-lark-team",
+        target: {
+          kind: "team",
+          teamId: "team-delivery",
+          provider: "claude",
+          model: "sonnet",
+          modeId: "accept-edits",
+          thinkingOptionId: "high",
           cwd: "/repo/app",
           workspaceId: "ws-1",
         },

@@ -1,7 +1,7 @@
-import { useCallback, useReducer, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useReducer, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { Assistant } from "@getpaseo/protocol/messages";
+import type { Assistant, AssistantResourceSelection } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
@@ -9,6 +9,8 @@ import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { useAssistants } from "@/hooks/use-assistants";
+import { useMcpServers } from "@/hooks/use-mcp-servers";
+import { useSkills } from "@/hooks/use-skills";
 import { useHostFeature } from "@/runtime/host-features";
 
 interface AssistantsSectionProps {
@@ -66,6 +68,179 @@ function AssistantRow({
           Delete
         </Button>
       </View>
+    </View>
+  );
+}
+
+function toggleId(current: string[], id: string): string[] {
+  return current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id];
+}
+
+function AssistantResourceOption({
+  id,
+  name,
+  description,
+  selected,
+  accessibilityLabel,
+  onToggle,
+}: {
+  id: string;
+  name: string;
+  description?: string;
+  selected: boolean;
+  accessibilityLabel: string;
+  onToggle: (id: string) => void;
+}) {
+  const handleToggle = useCallback(() => {
+    onToggle(id);
+  }, [id, onToggle]);
+
+  return (
+    <View style={styles.resourceOptionRow}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{name}</Text>
+        {description ? <Text style={settingsStyles.rowHint}>{description}</Text> : null}
+      </View>
+      <Switch
+        value={selected}
+        onValueChange={handleToggle}
+        accessibilityLabel={accessibilityLabel}
+      />
+    </View>
+  );
+}
+
+function AssistantResourceGroup({
+  kind,
+  title,
+  hint,
+  countLabel,
+  children,
+}: {
+  kind: "mcp" | "skill";
+  title: string;
+  hint: string;
+  countLabel: string;
+  children: ReactNode;
+}) {
+  const cardStyle = kind === "mcp" ? styles.resourceGroupCardMcp : styles.resourceGroupCardSkill;
+
+  return (
+    <View style={cardStyle} testID={`assistant-resource-group-${kind}`}>
+      <View style={styles.resourceGroupHeader}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={styles.resourceGroupTitle}>{title}</Text>
+          <Text style={styles.resourceGroupHint}>{hint}</Text>
+        </View>
+        <Text style={styles.resourceGroupBadge}>{countLabel}</Text>
+      </View>
+      <View style={styles.resourceOptionsList}>{children}</View>
+    </View>
+  );
+}
+
+function AssistantResourceSelectionEditor({
+  mode,
+  selectedMcpServerIds,
+  selectedSkillIds,
+  mcpServers,
+  skills,
+  onModeChange,
+  onToggleMcpServer,
+  onToggleSkill,
+}: {
+  mode: AssistantResourceSelection["mode"];
+  selectedMcpServerIds: string[];
+  selectedSkillIds: string[];
+  mcpServers: Array<{ id: string; name: string; description?: string }>;
+  skills: Array<{ id: string; name: string; description?: string }>;
+  onModeChange: (mode: AssistantResourceSelection["mode"]) => void;
+  onToggleMcpServer: (id: string) => void;
+  onToggleSkill: (id: string) => void;
+}) {
+  const isAllEnabled = mode === "all-enabled";
+  const selectedMcpIdSet = useMemo(() => new Set(selectedMcpServerIds), [selectedMcpServerIds]);
+  const selectedSkillIdSet = useMemo(() => new Set(selectedSkillIds), [selectedSkillIds]);
+  const handleUseAllChange = useCallback(
+    (value: boolean) => {
+      onModeChange(value ? "all-enabled" : "custom");
+    },
+    [onModeChange],
+  );
+
+  return (
+    <View style={styles.resourceCard} testID="assistant-resource-selection">
+      <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>MCP and Skills</Text>
+          <Text style={settingsStyles.rowHint}>
+            Default uses every active MCP server and skill. Choose custom to limit what this
+            assistant enables for new conversations.
+          </Text>
+        </View>
+      </View>
+      <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>Use all active MCP servers and skills</Text>
+          <Text style={settingsStyles.rowHint}>
+            New conversations will pick up active resources automatically when this assistant is
+            selected.
+          </Text>
+        </View>
+        <Switch
+          value={isAllEnabled}
+          onValueChange={handleUseAllChange}
+          accessibilityLabel="Use all active assistant resources"
+        />
+      </View>
+      {!isAllEnabled ? (
+        <View style={styles.resourceCustomLists}>
+          <AssistantResourceGroup
+            kind="mcp"
+            title="MCP servers"
+            hint="External tools this assistant may call in new conversations."
+            countLabel={`${mcpServers.filter((server) => selectedMcpIdSet.has(server.id)).length}/${mcpServers.length} selected`}
+          >
+            {mcpServers.length > 0 ? (
+              mcpServers.map((server) => (
+                <AssistantResourceOption
+                  key={server.id}
+                  id={server.id}
+                  name={server.name}
+                  description={server.description}
+                  selected={selectedMcpIdSet.has(server.id)}
+                  accessibilityLabel={`Enable MCP ${server.name} for assistant`}
+                  onToggle={onToggleMcpServer}
+                />
+              ))
+            ) : (
+              <Text style={settingsStyles.rowHint}>No active MCP servers.</Text>
+            )}
+          </AssistantResourceGroup>
+          <AssistantResourceGroup
+            kind="skill"
+            title="Skills"
+            hint="Instruction packs injected for this assistant."
+            countLabel={`${skills.filter((skill) => selectedSkillIdSet.has(skill.id)).length}/${skills.length} selected`}
+          >
+            {skills.length > 0 ? (
+              skills.map((skill) => (
+                <AssistantResourceOption
+                  key={skill.id}
+                  id={skill.id}
+                  name={skill.name}
+                  description={skill.description}
+                  selected={selectedSkillIdSet.has(skill.id)}
+                  accessibilityLabel={`Enable skill ${skill.name} for assistant`}
+                  onToggle={onToggleSkill}
+                />
+              ))
+            ) : (
+              <Text style={settingsStyles.rowHint}>No active skills.</Text>
+            )}
+          </AssistantResourceGroup>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -251,11 +426,30 @@ function AssistantMemoryArtifacts({
 export function AssistantsSection({ serverId }: AssistantsSectionProps) {
   const supportsAssistants = useHostFeature(serverId, "assistants");
   const assistants = useAssistants(serverId, { enabled: supportsAssistants });
+  const mcpCatalog = useMcpServers(serverId, { enabled: supportsAssistants });
+  const skillCatalog = useSkills(serverId, { enabled: supportsAssistants });
+  const activeMcpServers = useMemo(
+    () => mcpCatalog.servers.filter((server) => server.enabled),
+    [mcpCatalog.servers],
+  );
+  const activeSkills = useMemo(
+    () => skillCatalog.skills.filter((skill) => skill.enabled && Boolean(skill.content?.trim())),
+    [skillCatalog.skills],
+  );
+  const activeMcpServerIds = useMemo(
+    () => activeMcpServers.map((server) => server.id),
+    [activeMcpServers],
+  );
+  const activeSkillIds = useMemo(() => activeSkills.map((skill) => skill.id), [activeSkills]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [prompt, setPrompt] = useState("");
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [memory, setMemory] = useState("");
+  const [resourceSelectionMode, setResourceSelectionMode] =
+    useState<AssistantResourceSelection["mode"]>("all-enabled");
+  const [selectedMcpServerIds, setSelectedMcpServerIds] = useState<string[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [editingMemorySummary, setEditingMemorySummary] = useState("");
   const [editingMemoryFiles, setEditingMemoryFiles] = useState<Assistant["memoryFiles"] | null>(
     null,
@@ -272,6 +466,9 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
     setPrompt("");
     setMemoryEnabled(false);
     setMemory("");
+    setResourceSelectionMode("all-enabled");
+    setSelectedMcpServerIds([]);
+    setSelectedSkillIds([]);
     setEditingMemorySummary("");
     setEditingMemoryFiles(null);
     setMemorySummaryDirty(false);
@@ -286,6 +483,9 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
     setPrompt(assistant.prompt);
     setMemoryEnabled(assistant.memoryEnabled);
     setMemory("");
+    setResourceSelectionMode(assistant.resourceSelection.mode);
+    setSelectedMcpServerIds(assistant.resourceSelection.selectedMcpServerIds);
+    setSelectedSkillIds(assistant.resourceSelection.selectedSkillIds);
     setEditingMemorySummary(assistant.memorySummary);
     setEditingMemoryFiles(assistant.memoryFiles);
     setMemorySummaryDirty(false);
@@ -313,6 +513,34 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
     setDirtyMemoryDetailFileIds((current) => (current.includes(id) ? current : [...current, id]));
   }, []);
 
+  const handleResourceSelectionModeChange = useCallback(
+    (nextMode: AssistantResourceSelection["mode"]) => {
+      setResourceSelectionMode(nextMode);
+      if (nextMode === "custom") {
+        setSelectedMcpServerIds((current) => (current.length > 0 ? current : activeMcpServerIds));
+        setSelectedSkillIds((current) => (current.length > 0 ? current : activeSkillIds));
+      }
+    },
+    [activeMcpServerIds, activeSkillIds],
+  );
+
+  const handleToggleMcpServer = useCallback((id: string) => {
+    setSelectedMcpServerIds((current) => toggleId(current, id));
+  }, []);
+
+  const handleToggleSkill = useCallback((id: string) => {
+    setSelectedSkillIds((current) => toggleId(current, id));
+  }, []);
+
+  const assistantResourceSelection = useMemo<AssistantResourceSelection>(
+    () => ({
+      mode: resourceSelectionMode,
+      selectedMcpServerIds: resourceSelectionMode === "custom" ? selectedMcpServerIds : [],
+      selectedSkillIds: resourceSelectionMode === "custom" ? selectedSkillIds : [],
+    }),
+    [resourceSelectionMode, selectedMcpServerIds, selectedSkillIds],
+  );
+
   const handleSaveAssistant = useCallback(async () => {
     if (editingAssistantId) {
       const memoryAppend = memory.trim();
@@ -326,6 +554,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
         description,
         prompt,
         memoryEnabled,
+        resourceSelection: assistantResourceSelection,
         ...(memoryEnabled && memoryAppend.length > 0 ? { memoryAppend } : {}),
         ...(memoryEnabled && memorySummaryDirty ? { memorySummary: editingMemorySummary } : {}),
         ...(memoryEnabled && memoryDetailFileEdits.length > 0 ? { memoryDetailFileEdits } : {}),
@@ -339,10 +568,12 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
         prompt,
         memoryEnabled,
         memory,
+        resourceSelection: assistantResourceSelection,
       });
     }
     resetForm();
   }, [
+    assistantResourceSelection,
     assistants,
     description,
     dirtyMemoryDetailFileIds,
@@ -408,6 +639,16 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
               style={styles.promptInput}
             />
           </Field>
+          <AssistantResourceSelectionEditor
+            mode={resourceSelectionMode}
+            selectedMcpServerIds={selectedMcpServerIds}
+            selectedSkillIds={selectedSkillIds}
+            mcpServers={activeMcpServers}
+            skills={activeSkills}
+            onModeChange={handleResourceSelectionModeChange}
+            onToggleMcpServer={handleToggleMcpServer}
+            onToggleSkill={handleToggleSkill}
+          />
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>Memory</Text>
@@ -505,6 +746,73 @@ const styles = StyleSheet.create((theme) => ({
   rowActions: {
     flexDirection: "row",
     gap: theme.spacing[2],
+  },
+  resourceCard: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  resourceCustomLists: {
+    paddingHorizontal: theme.spacing[4],
+    paddingBottom: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  resourceGroupCardMcp: {
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.accent,
+    padding: theme.spacing[3],
+    gap: theme.spacing[3],
+  },
+  resourceGroupCardSkill: {
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.borderAccent,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.colors.accentBright,
+    padding: theme.spacing[3],
+    gap: theme.spacing[3],
+  },
+  resourceGroupHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  resourceGroupTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
+  },
+  resourceGroupHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    marginTop: theme.spacing[1],
+  },
+  resourceGroupBadge: {
+    color: theme.colors.foregroundMuted,
+    backgroundColor: theme.colors.surface3,
+    borderRadius: theme.borderRadius.full,
+    fontSize: theme.fontSize.xs,
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    overflow: "hidden",
+  },
+  resourceOptionsList: {
+    gap: theme.spacing[2],
+  },
+  resourceOptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
   },
   promptInput: {
     minHeight: 140,

@@ -31,6 +31,10 @@ extraResources:
     to: app-dist
   - from: ../../skills
     to: skills
+  - from: assets/icon.png
+    to: desktop-icons/icon.png
+  - from: assets/icon-attention.png
+    to: desktop-icons/icon-attention.png
   - from: assets/editor-targets
     to: editor-target-icons
 publish:

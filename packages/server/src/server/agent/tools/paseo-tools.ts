@@ -31,7 +31,11 @@ import {
   requireActiveWorkspaceForArchive,
   type ArchiveDependencies,
 } from "../../workspace-archive-service.js";
-import { createAgentCommand, type CreateAgentFromMcpInput } from "../create-agent/create.js";
+import {
+  createAgentCommand,
+  formatProviderModel,
+  type CreateAgentFromMcpInput,
+} from "../create-agent/create.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "../../voice-types.js";
 import type { FirstAgentContext } from "../../messages.js";
 import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
@@ -86,6 +90,12 @@ import {
 } from "../../worktree/commands.js";
 import { registerBrowserTools } from "../../browser-tools/tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
+import type { AssistantStore } from "../../assistants/assistant-store.js";
+import type { TeamStore } from "../../team/team-store.js";
+import {
+  describeTeamAssistantChoices,
+  resolveTeamChildCreateContext,
+} from "../../team/team-agent-context.js";
 import type {
   PaseoToolCatalog,
   PaseoToolConfig,
@@ -129,6 +139,8 @@ export interface PaseoToolHostDependencies {
   ) => Promise<string>;
   browserToolsEnabled?: boolean;
   browserToolsBroker?: BrowserToolsBroker | null;
+  assistantStore?: Pick<AssistantStore, "get"> | null;
+  teamStore?: Pick<TeamStore, "get"> | null;
   paseoHome?: string;
   worktreesRoot?: string;
   /**
@@ -1012,6 +1024,18 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       "Required provider/model pair, for example codex/gpt-5.4.",
     ),
     labels: z.record(z.string(), z.string()).optional().describe("Labels to set on the agent"),
+    assistantId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        options.assistantStore && options.teamStore && callerAgentId
+          ? describeTeamAssistantChoices(
+              { assistantStore: options.assistantStore, teamStore: options.teamStore },
+              resolveCallerAgent()?.labels ?? {},
+            )
+          : "Optional assistant preset ID for the new agent.",
+      ),
     settings: CreateAgentSettingsInputSchema.optional().describe(
       "Initial runtime settings for the new agent.",
     ),
@@ -1184,6 +1208,74 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
   type LegacyAgentToAgentCreateAgentArgs = z.infer<typeof legacyAgentToAgentCreateAgentArgsSchema>;
   type TopLevelCreateAgentArgs = z.infer<typeof canonicalTopLevelCreateAgentArgsSchema>;
   type LegacyTopLevelCreateAgentArgs = z.infer<typeof legacyTopLevelCreateAgentArgsSchema>;
+  type CreateAgentToolArgs =
+    | AgentToAgentCreateAgentArgs
+    | LegacyAgentToAgentCreateAgentArgs
+    | TopLevelCreateAgentArgs
+    | LegacyTopLevelCreateAgentArgs;
+  type ResolvedCreateAgentToolArgs =
+    | {
+        kind: "agent-scoped";
+        parsedArgs: AgentToAgentCreateAgentArgs | LegacyAgentToAgentCreateAgentArgs;
+        detached: boolean;
+        cwd: string | undefined;
+        workspaceId: string | undefined;
+        worktree: CreateAgentFromMcpInput["worktree"];
+      }
+    | {
+        kind: "top-level";
+        parsedArgs: TopLevelCreateAgentArgs | LegacyTopLevelCreateAgentArgs;
+        detached: boolean;
+        cwd: string | undefined;
+        workspaceId: string | undefined;
+        worktree: CreateAgentFromMcpInput["worktree"];
+      };
+
+  function resolveCreateAgentAssistantContext(parsedArgs: CreateAgentToolArgs) {
+    if (parsedArgs.assistantId && !options.assistantStore) {
+      throw new Error("Assistant support is unavailable");
+    }
+    if (!options.assistantStore || !options.teamStore) {
+      return {
+        prompt: parsedArgs.initialPrompt,
+        labels: parsedArgs.labels ?? {},
+      };
+    }
+    const callerAgent = resolveCallerAgent();
+    return resolveTeamChildCreateContext(
+      { assistantStore: options.assistantStore, teamStore: options.teamStore },
+      {
+        callerLabels: callerAgent?.labels ?? {},
+        ...(callerAgent
+          ? {
+              callerProvider: callerAgent.provider,
+              callerModel: callerAgent.runtimeInfo?.model ?? callerAgent.config.model,
+              callerThinkingOptionId:
+                callerAgent.runtimeInfo?.thinkingOptionId ?? callerAgent.config.thinkingOptionId,
+            }
+          : {}),
+        assistantId: parsedArgs.assistantId,
+        initialPrompt: parsedArgs.initialPrompt,
+        labels: parsedArgs.labels,
+      },
+    );
+  }
+
+  function resolveCreateAgentRunSettings(resolvedArgs: ResolvedCreateAgentToolArgs): {
+    background: boolean;
+    notifyOnFinish: boolean;
+  } {
+    if (resolvedArgs.kind === "agent-scoped") {
+      return {
+        background: true,
+        notifyOnFinish: resolvedArgs.parsedArgs.notifyOnFinish,
+      };
+    }
+    return {
+      background: resolvedArgs.parsedArgs.background,
+      notifyOnFinish: resolvedArgs.parsedArgs.notifyOnFinish ?? false,
+    };
+  }
 
   if (options.voiceOnly || options.enableVoiceTools || callerContext?.enableVoiceTools) {
     registerTool(
@@ -1449,17 +1541,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     async (args: unknown) => {
       const resolvedArgs = await resolveCreateAgentToolArgs(args);
       const { parsedArgs, worktree } = resolvedArgs;
-      let requestedBackground: boolean;
-      let notifyOnFinish: boolean;
-      if (resolvedArgs.kind === "agent-scoped") {
-        requestedBackground = true;
-        notifyOnFinish = parsedArgs.notifyOnFinish;
-      } else {
-        requestedBackground = resolvedArgs.parsedArgs.background;
-        notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
-      }
-      const selectedProvider = resolveRequiredProviderModel(parsedArgs.provider).provider;
-      const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
+      const assistantContext = resolveCreateAgentAssistantContext(parsedArgs);
+      const { background: requestedBackground, notifyOnFinish } =
+        resolveCreateAgentRunSettings(resolvedArgs);
       const {
         snapshot,
         background: createdInBackground,
@@ -1480,15 +1564,21 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         },
         {
           kind: "mcp",
-          provider: parsedArgs.provider,
+          provider: assistantContext.runtimeSettings
+            ? formatProviderModel(
+                assistantContext.runtimeSettings.provider,
+                assistantContext.runtimeSettings.model,
+              )
+            : parsedArgs.provider,
           title: parsedArgs.title,
-          initialPrompt: parsedArgs.initialPrompt,
-          config: inheritedConfig,
+          initialPrompt: assistantContext.prompt,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
-          thinking: parsedArgs.settings?.thinkingOptionId,
+          thinking: assistantContext.runtimeSettings
+            ? assistantContext.runtimeSettings.thinkingOptionId
+            : parsedArgs.settings?.thinkingOptionId,
           features: parsedArgs.settings?.features,
-          labels: parsedArgs.labels,
+          labels: assistantContext.labels,
           mode: parsedArgs.settings?.modeId,
           background: requestedBackground,
           notifyOnFinish,
@@ -1554,24 +1644,6 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       return response;
     },
   );
-
-  type ResolvedCreateAgentToolArgs =
-    | {
-        kind: "agent-scoped";
-        parsedArgs: AgentToAgentCreateAgentArgs | LegacyAgentToAgentCreateAgentArgs;
-        detached: boolean;
-        cwd: string | undefined;
-        workspaceId: string | undefined;
-        worktree: CreateAgentFromMcpInput["worktree"];
-      }
-    | {
-        kind: "top-level";
-        parsedArgs: TopLevelCreateAgentArgs | LegacyTopLevelCreateAgentArgs;
-        detached: boolean;
-        cwd: string | undefined;
-        workspaceId: string | undefined;
-        worktree: CreateAgentFromMcpInput["worktree"];
-      };
 
   async function resolveCreateAgentToolArgs(args: unknown): Promise<ResolvedCreateAgentToolArgs> {
     if (callerAgentId) {

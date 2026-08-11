@@ -74,6 +74,7 @@ import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon
 import { restartDaemonFromSettings } from "./daemon-restart";
 import { LarkChannelSection } from "./channels/lark-channel-section";
 import { AssistantsSection } from "./assistants/assistants-section";
+import { TeamsSection } from "./teams/teams-section";
 import { McpSection } from "./mcp/mcp-section";
 import { SkillsSection } from "./skills/skills-section";
 
@@ -346,6 +347,7 @@ export function HostAssistantsPage({ serverId }: { serverId: string }) {
   return (
     <View>
       <AssistantsSection serverId={serverId} />
+      <TeamsSection serverId={serverId} />
     </View>
   );
 }

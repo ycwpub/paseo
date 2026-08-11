@@ -69,6 +69,25 @@ interface AutoSubmitConfig {
   featureValues: Record<string, unknown>;
 }
 
+function resolveDraftAssistantSelection(
+  setup: WorkspaceDraftTabSetup | null,
+): Pick<WorkspaceDraftTabSetup, "assistantId" | "teamId"> {
+  return {
+    assistantId: setup?.assistantId ?? null,
+    teamId: setup?.teamId ?? null,
+  };
+}
+
+function buildCreateAgentAssistantSelection(input: {
+  assistantId: string | null;
+  teamId: string | null;
+}): { assistantId?: string; teamId?: string } {
+  if (input.teamId) {
+    return { teamId: input.teamId };
+  }
+  return input.assistantId ? { assistantId: input.assistantId } : {};
+}
+
 function resolveAutoSubmitConfig(
   pending: {
     provider: string;
@@ -137,6 +156,8 @@ async function submitDraftCreateRequest(input: {
   text: string;
   images?: UserMessageImageAttachment[];
   attachments?: unknown;
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
   cwd: string;
   client: DaemonClient | null;
   workspaceDirectory: string | null;
@@ -150,6 +171,7 @@ async function submitDraftCreateRequest(input: {
     effectiveThinkingOptionId: string | null;
     featureValues: Record<string, unknown> | undefined;
     assistantId: string | null;
+    teamId: string | null;
   };
   hostDisconnectedMessage: string;
   selectModelMessage: string;
@@ -159,6 +181,8 @@ async function submitDraftCreateRequest(input: {
     text,
     images,
     attachments,
+    selectedMcpServerIds,
+    selectedSkillIds,
     cwd,
     client,
     workspaceDirectory,
@@ -198,7 +222,8 @@ async function submitDraftCreateRequest(input: {
     config,
     workspaceId,
     ...(text ? { initialPrompt: text } : {}),
-    ...(composerState.assistantId ? { assistantId: composerState.assistantId } : {}),
+    ...buildCreateAgentAssistantSelection(composerState),
+    ...buildCreateAgentResourceSelection({ selectedMcpServerIds, selectedSkillIds }),
     clientMessageId: attempt.clientMessageId,
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
@@ -296,6 +321,18 @@ function resolveDraftWorkingDirectory(input: {
   return input.workspaceDirectory;
 }
 
+function buildCreateAgentResourceSelection(input: {
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
+}): { selectedMcpServerIds?: string[]; selectedSkillIds?: string[] } {
+  return {
+    ...(input.selectedMcpServerIds !== undefined
+      ? { selectedMcpServerIds: input.selectedMcpServerIds }
+      : {}),
+    ...(input.selectedSkillIds !== undefined ? { selectedSkillIds: input.selectedSkillIds } : {}),
+  };
+}
+
 function resolveOnlineServerIds(input: { isConnected: boolean; serverId: string }): string[] {
   if (!input.isConnected) {
     return EMPTY_ONLINE_SERVER_IDS;
@@ -346,6 +383,7 @@ export function WorkspaceDraftAgentTab({
   }));
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const draftSetup = initialSetup ?? null;
+  const draftAssistantSelection = resolveDraftAssistantSelection(draftSetup);
   const draftWorkingDirectory = resolveDraftWorkingDirectory({
     workspaceDirectory,
     initialSetup: draftSetup,
@@ -374,7 +412,8 @@ export function WorkspaceDraftAgentTab({
       onlineServerIds,
       lockedWorkingDir: draftWorkingDirectory ?? undefined,
     },
-    initialAssistantId: draftSetup?.assistantId ?? null,
+    initialAssistantId: draftAssistantSelection.assistantId,
+    initialTeamId: draftAssistantSelection.teamId,
   });
   const composerState = draftInput.composerState;
   if (!composerState) {
@@ -423,6 +462,12 @@ export function WorkspaceDraftAgentTab({
         : {}),
       ...(pendingCreateAttempt.attachments && pendingCreateAttempt.attachments.length > 0
         ? { attachments: pendingCreateAttempt.attachments }
+        : {}),
+      ...(pendingCreateAttempt.selectedMcpServerIds !== undefined
+        ? { selectedMcpServerIds: pendingCreateAttempt.selectedMcpServerIds }
+        : {}),
+      ...(pendingCreateAttempt.selectedSkillIds !== undefined
+        ? { selectedSkillIds: pendingCreateAttempt.selectedSkillIds }
         : {}),
     };
   }, [pendingAutoSubmit, pendingCreateAttempt]);
@@ -513,12 +558,22 @@ export function WorkspaceDraftAgentTab({
         composerState,
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
       }),
-    createRequest: async ({ attempt, text, images, attachments, cwd }) =>
+    createRequest: async ({
+      attempt,
+      text,
+      images,
+      attachments,
+      selectedMcpServerIds,
+      selectedSkillIds,
+      cwd,
+    }) =>
       submitDraftCreateRequest({
         attempt,
         text,
         images,
         attachments,
+        selectedMcpServerIds,
+        selectedSkillIds,
         cwd,
         client,
         workspaceDirectory: draftWorkingDirectory,
@@ -717,6 +772,8 @@ export function WorkspaceDraftAgentTab({
           isCompactLayout={isCompactComposerLayout}
           assistantId={draftInput.assistantId}
           onAssistantSelect={draftInput.setAssistantId}
+          teamId={draftInput.teamId}
+          onTeamSelect={draftInput.setTeamId}
         />
       </ReanimatedAnimated.View>
     </FileDropZone>

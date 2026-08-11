@@ -6,13 +6,30 @@ export interface AcpProviderCatalogEntry {
   description: string;
   version: string;
   iconSvg: string | null;
-  installLink: string;
-  command: readonly [string, ...string[]];
+  extends: "acp" | "claude" | "codex";
+  installLink?: string;
+  command?: readonly [string, ...string[]];
   env?: Readonly<Record<string, string>>;
   params?: Readonly<Record<string, unknown>>;
 }
 
 const CATALOG_DATA = [
+  {
+    id: "aiden-claude",
+    title: "Aiden Claude",
+    description: "Claude provided through Aiden.",
+    version: "built-in",
+    iconId: "claude-acp",
+    extends: "claude",
+  },
+  {
+    id: "aiden-codex",
+    title: "Aiden Codex",
+    description: "Codex provided through Aiden.",
+    version: "built-in",
+    iconId: "codex-acp",
+    extends: "codex",
+  },
   {
     id: "agoragentic-acp",
     title: "Agoragentic",
@@ -365,8 +382,9 @@ export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = CATALOG_DATA.map(
   title: entry.title,
   description: entry.description,
   version: entry.version,
-  installLink: entry.installLink,
-  command: entry.command,
+  extends: "extends" in entry ? entry.extends : "acp",
+  installLink: "installLink" in entry ? entry.installLink : undefined,
+  command: "command" in entry ? entry.command : undefined,
   env: "env" in entry ? entry.env : undefined,
   params: "params" in entry ? entry.params : undefined,
   iconSvg: entry.iconId ? (ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null) : null,

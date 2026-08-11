@@ -2099,6 +2099,13 @@ export const ar: TranslationResources = {
       refresh: "ينعش",
       refreshing: "منعش...",
       refreshAccessibility: "تحديث أذونات سطح المكتب",
+      test: "امتحان",
+      backgroundAttention: {
+        title: "تنبيهات الخلفية",
+        soundVolume: "مستوى صوت التنبيه",
+        description:
+          "ينبهك Paseo عندما يكمل مضيف محلي أو بعيد متصل مهمة أو يحتاج إلى تدخل المستخدم.",
+      },
       actions: {
         granted: "ممنوح",
         request: "طلب",

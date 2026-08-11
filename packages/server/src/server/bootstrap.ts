@@ -1179,7 +1179,7 @@ export async function createPaseoDaemon(
 
   const larkChannelStore = new LarkChannelStore({ paseoHome: config.paseoHome, logger });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
-  const teamStore = new TeamStore({ paseoHome: config.paseoHome, logger });
+  const teamStore = new TeamStore({ paseoHome: config.paseoHome, logger, assistantStore });
   larkChannelService = new LarkChannelService({
     store: larkChannelStore,
     adapter: new OfficialLarkChannelClientAdapter({ logger }),
@@ -1187,6 +1187,7 @@ export async function createPaseoDaemon(
     agentStorage,
     createAgent,
     assistantStore,
+    teamStore,
     logger,
     host: {
       emitStatusChanged: (status) => {
@@ -1351,6 +1352,8 @@ export async function createPaseoDaemon(
     createPaseoWorktree: createAgentCommandDependencies.createPaseoWorktree,
     browserToolsEnabled: browserToolsPolicy.isEnabled(),
     browserToolsBroker,
+    assistantStore,
+    teamStore,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,

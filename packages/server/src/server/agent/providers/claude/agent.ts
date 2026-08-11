@@ -393,6 +393,10 @@ interface ClaudeAgentClientOptions {
   resolveBinary?: () => Promise<string>;
   resolveVersion?: () => Promise<string>;
   configDir?: string;
+  aidenConfigDir?: string;
+  customProvider?: {
+    id: string;
+  };
 }
 
 interface ClaudeAgentSessionOptions {
@@ -1477,6 +1481,8 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly resolveBinary: () => Promise<string>;
   private readonly resolveVersion: () => Promise<string>;
   private readonly configDir?: string;
+  private readonly aidenConfigDir?: string;
+  private readonly customProviderId?: string;
 
   constructor(options: ClaudeAgentClientOptions) {
     this.defaults = options.defaults;
@@ -1487,6 +1493,8 @@ export class ClaudeAgentClient implements AgentClient {
     this.resolveVersion =
       options.resolveVersion ?? (() => resolveClaudeCodeVersion(this.runtimeSettings));
     this.configDir = options.configDir;
+    this.aidenConfigDir = options.aidenConfigDir;
+    this.customProviderId = options.customProvider?.id;
   }
 
   resolveConfiguredModel(model: AgentModelDefinition): AgentModelDefinition {
@@ -1539,18 +1547,16 @@ export class ClaudeAgentClient implements AgentClient {
     });
   }
 
-  async fetchCatalog(_options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    let claudeCodeVersion: string | undefined;
-    try {
-      claudeCodeVersion = await this.resolveVersion();
-    } catch (error) {
-      this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
-    }
+  async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
     const models = await getClaudeModelsWithSettings(
       this.logger,
       this.configDir,
-      claudeCodeVersion,
+      this.customProviderId === "aiden-claude"
+        ? {
+            cwd: options.scope === "workspace" ? options.cwd : process.cwd(),
+            configDir: this.aidenConfigDir,
+          }
+        : undefined,
     );
     const modes = detectIneligibleAutoModeTransport(
       createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),

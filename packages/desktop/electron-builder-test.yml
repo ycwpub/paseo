@@ -20,6 +20,10 @@ extraResources:
     to: app-dist
   - from: ../../skills
     to: skills
+  - from: assets/icon.png
+    to: desktop-icons/icon.png
+  - from: assets/icon-attention.png
+    to: desktop-icons/icon-attention.png
 mac:
   artifactName: "Paseo-Feishu-Test-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools

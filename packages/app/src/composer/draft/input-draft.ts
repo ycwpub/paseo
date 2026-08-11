@@ -40,6 +40,7 @@ interface UseAgentInputDraftInput {
   draftKey: DraftKeyInput;
   composer?: AgentInputDraftComposerOptions;
   initialAssistantId?: string | null;
+  initialTeamId?: string | null;
 }
 
 type DraftComposerState = UseAgentFormStateResult & {
@@ -51,6 +52,8 @@ type DraftComposerState = UseAgentFormStateResult & {
   commandDraftConfig: DraftCommandConfig | undefined;
   assistantId: string | null;
   setAssistantId: (id: string | null) => void;
+  teamId: string | null;
+  setTeamId: (id: string | null) => void;
 };
 
 export interface AgentInputDraft {
@@ -64,6 +67,8 @@ export interface AgentInputDraft {
   composerState: DraftComposerState | null;
   assistantId: string | null;
   setAssistantId: (id: string | null) => void;
+  teamId: string | null;
+  setTeamId: (id: string | null) => void;
 }
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
@@ -87,6 +92,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   const [attachments, setAttachmentsState] = useState<UserComposerAttachment[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const initialAssistantId = input.initialAssistantId ?? null;
+  const initialTeamId = input.initialTeamId ?? null;
   const draftGenerationRef = useRef(0);
   const hydratedGenerationRef = useRef(0);
 
@@ -188,6 +194,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   );
 
   const [assistantId, setAssistantIdState] = useState<string | null>(initialAssistantId);
+  const [teamId, setTeamIdState] = useState<string | null>(initialTeamId);
   const assistantDraftKeyRef = useRef(draftKey);
   const appliedInitialAssistantIdRef = useRef<string | null>(initialAssistantId);
   const assistantOverriddenByUserRef = useRef(false);
@@ -195,6 +202,13 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   const setAssistantId = useCallback((id: string | null) => {
     assistantOverriddenByUserRef.current = true;
     setAssistantIdState(id);
+  }, []);
+  const teamDraftKeyRef = useRef(draftKey);
+  const appliedInitialTeamIdRef = useRef<string | null>(initialTeamId);
+  const teamOverriddenByUserRef = useRef(false);
+  const setTeamId = useCallback((id: string | null) => {
+    teamOverriddenByUserRef.current = true;
+    setTeamIdState(id);
   }, []);
 
   // Sync assistantId from agent labels/draft setup. The selected assistant can
@@ -220,6 +234,23 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       setAssistantIdState(initialAssistantId);
     }
   }, [draftKey, initialAssistantId]);
+
+  useEffect(() => {
+    if (teamDraftKeyRef.current !== draftKey) {
+      teamDraftKeyRef.current = draftKey;
+      appliedInitialTeamIdRef.current = initialTeamId;
+      teamOverriddenByUserRef.current = false;
+      setTeamIdState(initialTeamId);
+      return;
+    }
+    if (appliedInitialTeamIdRef.current === initialTeamId) {
+      return;
+    }
+    appliedInitialTeamIdRef.current = initialTeamId;
+    if (!teamOverriddenByUserRef.current) {
+      setTeamIdState(initialTeamId);
+    }
+  }, [draftKey, initialTeamId]);
 
   const workingDir = lockedWorkingDir || formState.workingDir;
   const {
@@ -276,6 +307,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       commandDraftConfig,
       assistantId,
       setAssistantId,
+      teamId,
+      setTeamId,
     };
   }, [
     commandDraftConfig,
@@ -289,6 +322,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     workingDir,
     assistantId,
     setAssistantId,
+    teamId,
+    setTeamId,
   ]);
 
   return {
@@ -302,6 +337,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     composerState,
     assistantId,
     setAssistantId,
+    teamId,
+    setTeamId,
   };
 }
 

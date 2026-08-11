@@ -7,6 +7,12 @@ import type { BoundCreateAgentCommand } from "../../agent/create-agent/create.js
 import type { AssistantStore } from "../../assistants/assistant-store.js";
 import { buildAssistantInitialPrompt } from "../../assistants/assistant-prompt.js";
 import {
+  resolveTeamLeaderCreateContext,
+  type ResolvedTeamAgentContext,
+} from "../../team/team-agent-context.js";
+import type { TeamStore } from "../../team/team-store.js";
+import {
+  type LarkChannelBotInfo,
   type LarkChannelClientAdapter,
   type LarkChannelEventSubscription,
 } from "./lark-client-adapter.js";
@@ -29,7 +35,7 @@ import {
 } from "./lark-message-format.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
-const EVENT_DEDUPE_TTL_MS = 5 * 60 * 1000;
+const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
 const THREAD_ACK_TEXT = "收到消息，处理中";
 
 function formatLarkProcessingError(error: unknown): string {
@@ -102,10 +108,13 @@ interface ResolvedLarkThread {
 interface ResolvedLarkTarget {
   provider: string;
   model: string | null;
+  modeId: string | null;
+  thinkingOptionId: string | null;
   cwd: string;
   workspaceId: string | null;
   initialPrompt: string;
   assistantId: string | null;
+  labels: Record<string, string>;
 }
 
 interface LarkReplyMentionOptions {
@@ -149,13 +158,16 @@ export class LarkChannelService {
   private readonly agentStorage: AgentStorage;
   private readonly createAgent: BoundCreateAgentCommand;
   private readonly assistantStore: AssistantStore;
+  private readonly teamStore: TeamStore;
   private readonly logger: pino.Logger;
   private readonly host: LarkChannelServiceHost;
   private readonly subscriptions = new Map<string, LarkChannelEventSubscription>();
   private readonly runtimes = new Map<string, LarkChannelRuntimeStatusInput>();
-  private readonly eventDedupe = new Map<string, number>();
+  private readonly botIdentities = new Map<string, LarkChannelBotInfo>();
+  private readonly botIdentityProbes = new Map<string, Promise<LarkChannelBotInfo>>();
   private readonly pendingRelays = new Map<string, PendingRelay>();
   private readonly unsubscribeAgentEvents: () => void;
+  private reconnectEventCutoff: number | null = null;
 
   constructor(options: {
     store: LarkChannelStore;
@@ -164,6 +176,7 @@ export class LarkChannelService {
     agentStorage: AgentStorage;
     createAgent: BoundCreateAgentCommand;
     assistantStore: AssistantStore;
+    teamStore: TeamStore;
     logger: pino.Logger;
     host: LarkChannelServiceHost;
   }) {
@@ -173,6 +186,7 @@ export class LarkChannelService {
     this.agentStorage = options.agentStorage;
     this.createAgent = options.createAgent;
     this.assistantStore = options.assistantStore;
+    this.teamStore = options.teamStore;
     this.logger = options.logger.child({ module: "lark-channel-service" });
     this.host = options.host;
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
@@ -188,6 +202,7 @@ export class LarkChannelService {
   }
 
   async start(): Promise<void> {
+    this.reconnectEventCutoff ??= Date.now() - RECONNECT_EVENT_GRACE_MS;
     const bots = this.store.getBots();
     if (bots.length === 0) {
       this.emitStatusChanged();
@@ -210,6 +225,8 @@ export class LarkChannelService {
         bot: null,
       });
     }
+    this.botIdentities.clear();
+    this.botIdentityProbes.clear();
     this.unsubscribeAgentEvents();
     this.emitStatusChanged();
   }
@@ -226,6 +243,8 @@ export class LarkChannelService {
   async deleteBot(botId: string): Promise<ReturnType<LarkChannelService["getStatus"]>> {
     this.closeSubscription(botId);
     this.runtimes.delete(botId);
+    this.botIdentities.delete(botId);
+    this.botIdentityProbes.delete(botId);
     if (!this.store.deleteBot(botId)) {
       throw new Error("Lark bot not found");
     }
@@ -236,7 +255,9 @@ export class LarkChannelService {
   async testConnection(botId?: string): Promise<ReturnType<LarkChannelService["getStatus"]>> {
     const storedBot = this.requireStoredBot(botId);
     const runtime = this.ensureRuntime(storedBot.id, storedBot.config);
-    runtime.bot = await this.adapter.testConnection(storedBot.config);
+    const botInfo = await this.adapter.testConnection(storedBot.config);
+    this.botIdentities.set(storedBot.id, botInfo);
+    runtime.bot = this.getPublicBotInfo(botInfo);
     runtime.error = null;
     if (runtime.connectionStatus === "error") {
       runtime.connectionStatus = storedBot.config.enabled ? "connected" : "idle";
@@ -302,13 +323,6 @@ export class LarkChannelService {
 
   async handleIncomingEvent(botId: string, event: NormalizedLarkMessageEvent): Promise<void> {
     const now = Date.now();
-    this.evictDedupe(now);
-    const dedupeKey = `${botId}:${getLarkEventDedupeKey(event)}`;
-    if (this.eventDedupe.has(dedupeKey)) {
-      return;
-    }
-    this.eventDedupe.set(dedupeKey, now + EVENT_DEDUPE_TTL_MS);
-
     const storedBot = this.store.getBot(botId);
     if (!storedBot) {
       return;
@@ -317,28 +331,47 @@ export class LarkChannelService {
     if (!config.enabled) {
       return;
     }
-    if (!isLarkBotMentionEvent(event)) {
-      this.logger.debug(
-        {
-          botId,
-          chatId: event.chatId,
-          chatType: event.chatType,
-          messageId: event.messageId,
-        },
-        "Ignoring Lark group message without bot mention",
-      );
-      return;
-    }
     const enrichedEvent = await this.enrichIncomingEvent(config, event);
-    if (!isLarkBotMentionEvent(enrichedEvent)) {
+    const botIdentity =
+      enrichedEvent.chatType?.toLowerCase() === "p2p"
+        ? null
+        : await this.ensureBotIdentity(botId, config);
+    if (!isLarkBotMentionEvent(enrichedEvent, botIdentity)) {
       this.logger.debug(
         {
           botId,
           chatId: enrichedEvent.chatId,
           chatType: enrichedEvent.chatType,
           messageId: enrichedEvent.messageId,
+          botOpenId: botIdentity?.openId ?? null,
+          mentionedOpenIds: (enrichedEvent.mentions ?? []).map((mention) => mention.openId),
         },
-        "Ignoring Lark group message without bot mention",
+        "Ignoring Lark group message not addressed to this bot",
+      );
+      return;
+    }
+    const dedupeKey = getLarkEventDedupeKey(enrichedEvent);
+    if (!this.store.claimIncomingEvent(botId, dedupeKey, new Date(now).toISOString())) {
+      this.logger.debug(
+        { botId, eventId: enrichedEvent.eventId, messageId: enrichedEvent.messageId },
+        "Ignoring duplicate Lark message event",
+      );
+      return;
+    }
+    if (
+      this.reconnectEventCutoff !== null &&
+      enrichedEvent.createTime !== null &&
+      enrichedEvent.createTime < this.reconnectEventCutoff
+    ) {
+      this.logger.info(
+        {
+          botId,
+          eventId: enrichedEvent.eventId,
+          messageId: enrichedEvent.messageId,
+          createTime: enrichedEvent.createTime,
+          reconnectEventCutoff: this.reconnectEventCutoff,
+        },
+        "Ignoring stale Lark message replayed after reconnect",
       );
       return;
     }
@@ -438,6 +471,8 @@ export class LarkChannelService {
 
   private async restartSubscription(botId: string, config: StoredLarkChannelConfig): Promise<void> {
     this.closeSubscription(botId);
+    this.botIdentities.delete(botId);
+    this.botIdentityProbes.delete(botId);
     const previousBotInfo = this.ensureRuntime(botId, config).bot;
     this.setRuntime(botId, {
       connectionStatus: "connecting",
@@ -447,6 +482,13 @@ export class LarkChannelService {
     this.emitStatusChanged();
     try {
       const botInfo = await this.adapter.testConnection(config);
+      this.botIdentities.set(botId, botInfo);
+      this.setRuntime(botId, {
+        connectionStatus: "connecting",
+        error: null,
+        bot: this.getPublicBotInfo(botInfo),
+      });
+      this.emitStatusChanged();
       const subscription = await this.adapter.startEvents(config, (event) =>
         this.handleIncomingEvent(botId, event),
       );
@@ -454,7 +496,7 @@ export class LarkChannelService {
       this.setRuntime(botId, {
         connectionStatus: "connected",
         error: null,
-        bot: botInfo,
+        bot: this.getPublicBotInfo(botInfo),
       });
     } catch (error) {
       this.setRuntime(botId, {
@@ -530,7 +572,14 @@ export class LarkChannelService {
       threadId: input.threadId,
       previousMentionAt: input.previousMentionAt,
     });
-    const target = this.resolveTarget(input.config, input.event, prompt);
+    const baseLabels = {
+      channel: "lark",
+      "lark.botId": input.botId,
+      "lark.chatId": input.event.chatId,
+      "lark.threadId": input.threadId,
+      "lark.userId": input.userId,
+    };
+    const target = this.resolveTarget(input.config, input.event, prompt, baseLabels);
     if (!target) {
       await this.sendThreadTextSafe(
         input.botId,
@@ -550,17 +599,12 @@ export class LarkChannelService {
       config: {
         title,
         ...(target.model ? { model: target.model } : {}),
+        ...(target.modeId ? { modeId: target.modeId } : {}),
+        ...(target.thinkingOptionId ? { thinkingOptionId: target.thinkingOptionId } : {}),
       },
       cwd: target.cwd,
       workspaceId: target.workspaceId ?? undefined,
-      labels: {
-        channel: "lark",
-        "lark.botId": input.botId,
-        "lark.chatId": input.event.chatId,
-        "lark.threadId": input.threadId,
-        "lark.userId": input.userId,
-        ...(target.assistantId ? { assistantId: target.assistantId } : {}),
-      },
+      labels: target.labels,
       background: true,
       notifyOnFinish: false,
       promptFailure: "throw",
@@ -598,21 +642,71 @@ export class LarkChannelService {
     config: StoredLarkChannelConfig,
     event: NormalizedLarkMessageEvent,
     prompt: string = formatLarkUserPrompt(event),
+    labels: Record<string, string> = {},
   ): ResolvedLarkTarget | null {
     const target = config.target;
     if (target.kind === "workspace") {
-      if (!target.provider || !target.cwd) {
-        return null;
-      }
-      return {
-        provider: target.provider,
-        model: target.model ?? null,
-        cwd: target.cwd,
-        workspaceId: target.workspaceId,
-        initialPrompt: prompt,
-        assistantId: null,
-      };
+      return this.resolveWorkspaceTarget(target, prompt, labels);
     }
+    if (target.kind === "team") {
+      return this.resolveTeamTarget(target, prompt, labels);
+    }
+    return this.resolveAssistantTarget(target, prompt, labels);
+  }
+
+  private resolveWorkspaceTarget(
+    target: Extract<StoredLarkChannelConfig["target"], { kind: "workspace" }>,
+    prompt: string,
+    labels: Record<string, string>,
+  ): ResolvedLarkTarget | null {
+    if (!target.provider || !target.cwd) return null;
+    return {
+      provider: target.provider,
+      model: target.model ?? null,
+      modeId: target.modeId ?? null,
+      thinkingOptionId: target.thinkingOptionId ?? null,
+      cwd: target.cwd,
+      workspaceId: target.workspaceId,
+      initialPrompt: prompt,
+      assistantId: null,
+      labels,
+    };
+  }
+
+  private resolveTeamTarget(
+    target: Extract<StoredLarkChannelConfig["target"], { kind: "team" }>,
+    prompt: string,
+    labels: Record<string, string>,
+  ): ResolvedLarkTarget | null {
+    if (!target.teamId || !target.cwd) return null;
+    let context: ResolvedTeamAgentContext;
+    try {
+      context = resolveTeamLeaderCreateContext(
+        { assistantStore: this.assistantStore, teamStore: this.teamStore },
+        { teamId: target.teamId, userPrompt: prompt, labels },
+      );
+    } catch (error) {
+      this.logger.warn({ err: error, teamId: target.teamId }, "Failed to resolve Lark team target");
+      return null;
+    }
+    return {
+      provider: target.provider ?? "claude",
+      model: target.model ?? null,
+      modeId: target.modeId ?? null,
+      thinkingOptionId: target.thinkingOptionId ?? null,
+      cwd: target.cwd,
+      workspaceId: target.workspaceId,
+      initialPrompt: context.prompt,
+      assistantId: context.assistantId ?? null,
+      labels: context.labels,
+    };
+  }
+
+  private resolveAssistantTarget(
+    target: Extract<StoredLarkChannelConfig["target"], { kind: "assistant" }>,
+    prompt: string,
+    labels: Record<string, string>,
+  ): ResolvedLarkTarget | null {
     if (!target.assistantId || !target.cwd) {
       return null;
     }
@@ -623,10 +717,13 @@ export class LarkChannelService {
     return {
       provider: target.provider ?? "claude",
       model: target.model ?? null,
+      modeId: target.modeId ?? null,
+      thinkingOptionId: target.thinkingOptionId ?? null,
       cwd: target.cwd,
       workspaceId: target.workspaceId,
       initialPrompt: buildAssistantInitialPrompt(assistant, prompt),
       assistantId: assistant.id,
+      labels: { ...labels, assistantId: assistant.id, assistantName: assistant.name },
     };
   }
 
@@ -634,7 +731,13 @@ export class LarkChannelService {
     config: StoredLarkChannelConfig,
     event: NormalizedLarkMessageEvent,
   ): Promise<NormalizedLarkMessageEvent> {
-    if (event.threadId && event.rootMessageId && event.createTime !== null) {
+    if (
+      event.chatType &&
+      event.threadId &&
+      event.rootMessageId &&
+      event.createTime !== null &&
+      event.mentions !== undefined
+    ) {
       return event;
     }
     try {
@@ -717,6 +820,7 @@ export class LarkChannelService {
       return formatLarkUserPrompt(input.event);
     }
     const messages: unknown[] = [];
+    const quotedMessages: unknown[] = [];
     let threadFetchError: unknown = null;
     try {
       messages.push(
@@ -737,6 +841,42 @@ export class LarkChannelService {
         "Failed to fetch Lark thread history",
       );
     }
+    const quotedMessageId = input.event.quotedMessageId;
+    if (
+      quotedMessageId &&
+      quotedMessageId !== input.event.messageId &&
+      quotedMessageId !== input.event.rootMessageId
+    ) {
+      const quotedFromHistory = messages.find(
+        (message) => getRawLarkMessageId(message) === quotedMessageId,
+      );
+      if (quotedFromHistory) {
+        quotedMessages.push(quotedFromHistory);
+      }
+      const quoteFetches = await Promise.allSettled([
+        this.adapter.getMessage(input.config, quotedMessageId),
+        this.adapter.getMessage(input.config, quotedMessageId, { userCardContent: true }),
+      ]);
+      for (const result of quoteFetches) {
+        if (result.status === "fulfilled" && result.value) {
+          quotedMessages.push(result.value);
+        }
+      }
+      const quoteFetchErrors = quoteFetches
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason);
+      if (quoteFetchErrors.length > 0) {
+        this.logger.warn(
+          {
+            errors: quoteFetchErrors,
+            chatId: input.event.chatId,
+            threadId: input.threadId,
+            quotedMessageId,
+          },
+          "One or more quoted Lark message representations could not be fetched",
+        );
+      }
+    }
     const historyMessageCount = filterLarkTopicHistoryMessages({
       event: input.event,
       messages,
@@ -751,6 +891,8 @@ export class LarkChannelService {
         historyMessageCount,
         previousMentionAt: input.previousMentionAt,
         historyFetchSucceeded: !threadFetchError,
+        quotedMessageId: quotedMessageId ?? null,
+        quotedMessageFetchCount: quotedMessages.length,
       },
       "Fetched Lark topic history for prompt",
     );
@@ -758,6 +900,10 @@ export class LarkChannelService {
       event: input.event,
       threadId: input.threadId,
       messages: dedupeLarkMessages(messages),
+      // Keep both message.get representations for interactive cards: the
+      // default response can contain server-rendered values while
+      // user_card_content carries the original card structure.
+      quotedMessages,
       previousMentionAt: input.previousMentionAt,
     });
   }
@@ -967,6 +1113,46 @@ export class LarkChannelService {
     this.runtimes.set(botId, runtime);
   }
 
+  private getPublicBotInfo(bot: LarkChannelBotInfo): LarkChannelRuntimeStatusInput["bot"] {
+    return {
+      ...(bot.name ? { name: bot.name } : {}),
+      ...(bot.avatarUrl ? { avatarUrl: bot.avatarUrl } : {}),
+    };
+  }
+
+  private async ensureBotIdentity(
+    botId: string,
+    config: StoredLarkChannelConfig,
+  ): Promise<LarkChannelBotInfo | null> {
+    const existing = this.botIdentities.get(botId);
+    if (existing) {
+      return existing;
+    }
+    let probe = this.botIdentityProbes.get(botId);
+    if (!probe) {
+      probe = this.adapter
+        .testConnection(config)
+        .then((botInfo) => {
+          this.botIdentities.set(botId, botInfo);
+          this.ensureRuntime(botId, config).bot = this.getPublicBotInfo(botInfo);
+          return botInfo;
+        })
+        .finally(() => {
+          this.botIdentityProbes.delete(botId);
+        });
+      this.botIdentityProbes.set(botId, probe);
+    }
+    try {
+      return await probe;
+    } catch (error) {
+      this.logger.warn(
+        { err: error, botId },
+        "Failed to resolve Lark bot identity; ignoring group message",
+      );
+      return null;
+    }
+  }
+
   private closeSubscription(botId: string): void {
     const subscription = this.subscriptions.get(botId);
     if (!subscription) {
@@ -989,17 +1175,10 @@ export class LarkChannelService {
     if (target.kind === "workspace") {
       return Boolean(target.provider && target.cwd);
     }
-    // For assistant targets, provider defaults to "claude" at resolve time,
-    // so we only require assistantId and cwd.
-    return Boolean(target.assistantId && target.cwd);
-  }
-
-  private evictDedupe(now: number): void {
-    for (const [key, expiresAt] of this.eventDedupe) {
-      if (expiresAt <= now) {
-        this.eventDedupe.delete(key);
-      }
-    }
+    // Assistant and team targets default provider to "claude" at resolve time.
+    return Boolean(
+      target.cwd && (target.kind === "assistant" ? target.assistantId : target.teamId),
+    );
   }
 
   private emitStatusChanged(): void {

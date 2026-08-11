@@ -346,7 +346,8 @@ function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
 }
 
 function shouldRestartForDesktopBuild(current: DesktopDaemonStatus): boolean {
-  if (!isTestDesktopBuild() || !current.desktopManaged) return false;
+  if (current.status !== "running" && current.status !== "errored") return false;
+  if (!current.desktopManaged && !isTestDesktopBuild()) return false;
   const appBuildId = resolveDesktopBuildId();
   if (!appBuildId) return false;
   return readDesktopBuildIdFromPidLock() !== appBuildId;
@@ -412,14 +413,32 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
       });
       await stopDesktopDaemon("version_mismatch");
     } else if (shouldRestartForDesktopBuild(current)) {
-      logDesktopDaemonLifecycle("test daemon build mismatch, restarting", {
+      logDesktopDaemonLifecycle("daemon build mismatch, restarting", {
         appBuildId: resolveDesktopBuildId(),
         daemonBuildId: readDesktopBuildIdFromPidLock(),
+        desktopManaged: current.desktopManaged,
       });
-      await stopDesktopDaemon("version_mismatch");
+      await runDesktopDaemonStopViaCli({
+        reason: "version_mismatch",
+        statusBefore: current,
+        resolveStatusAfter: true,
+      });
     } else {
       return current;
     }
+  } else if (shouldRestartForDesktopBuild(current)) {
+    logDesktopDaemonLifecycle("daemon build mismatch on errored daemon, force-stopping", {
+      appBuildId: resolveDesktopBuildId(),
+      daemonBuildId: readDesktopBuildIdFromPidLock(),
+      desktopManaged: current.desktopManaged,
+      status: current.status,
+      pid: current.pid,
+    });
+    await runDesktopDaemonStopViaCli({
+      reason: "version_mismatch",
+      statusBefore: current,
+      resolveStatusAfter: true,
+    });
   }
 
   const daemonRunner = resolveDaemonRunnerEntrypoint();

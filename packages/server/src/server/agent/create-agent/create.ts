@@ -63,6 +63,8 @@ export interface CreateAgentFromSessionInput {
   outputSchema?: Record<string, unknown>;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: AgentAttachment[];
+  selectedMcpServerIds?: readonly string[];
+  selectedSkillIds?: readonly string[];
   git?: GitSetupOptions;
   labels: Record<string, string>;
   env?: Record<string, string>;
@@ -168,6 +170,10 @@ interface ResolvedCreateAgent {
   background: boolean;
   promptFailure: CreateAgentPromptFailureMode;
   promptLogger?: Logger;
+  sessionResourceSelection?: {
+    selectedMcpServerIds?: readonly string[];
+    selectedSkillIds?: readonly string[];
+  };
   createdWorktree?: CreatePaseoWorktreeWorkflowResult;
 }
 
@@ -297,6 +303,13 @@ async function resolveSessionCreateAgent(
     promptLogger: dependencies.logger.child({
       clientMessageId: resolveClientMessageId(input.clientMessageId),
     }),
+    sessionResourceSelection:
+      input.selectedMcpServerIds !== undefined || input.selectedSkillIds !== undefined
+        ? {
+            selectedMcpServerIds: input.selectedMcpServerIds,
+            selectedSkillIds: input.selectedSkillIds,
+          }
+        : undefined,
   };
 }
 
@@ -457,7 +470,18 @@ async function sendInitialPrompt(
   try {
     const prompt = resolved.prompt;
     if (prompt === undefined) {
-      return { started: false, liveSnapshot: snapshot };
+      if (!resolved.sessionResourceSelection) {
+        return { started: false, liveSnapshot: snapshot };
+      }
+      const liveSnapshot = await startCreatedAgentInitialPrompt({
+        agentManager: dependencies.agentManager,
+        agentId: snapshot.id,
+        snapshot,
+        prompt: null,
+        sessionResourceSelection: resolved.sessionResourceSelection,
+        logger: resolved.promptLogger ?? dependencies.logger,
+      });
+      return { started: false, liveSnapshot };
     }
     const liveSnapshot = await startCreatedAgentInitialPrompt({
       agentManager: dependencies.agentManager,
@@ -465,6 +489,7 @@ async function sendInitialPrompt(
       snapshot,
       prompt,
       runOptions: resolved.runOptions,
+      sessionResourceSelection: resolved.sessionResourceSelection,
       logger: resolved.promptLogger ?? dependencies.logger,
     });
     return { started: true, liveSnapshot };

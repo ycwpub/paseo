@@ -20,17 +20,20 @@ export interface AssistantSessionHost {
 export interface AssistantSessionOptions {
   host: AssistantSessionHost;
   store: AssistantStore;
+  isAssistantInUse?: (assistantId: string) => boolean;
   logger: pino.Logger;
 }
 
 export class AssistantSession {
   private readonly host: AssistantSessionHost;
   private readonly store: AssistantStore;
+  private readonly isAssistantInUse: (assistantId: string) => boolean;
   private readonly logger: pino.Logger;
 
   constructor(options: AssistantSessionOptions) {
     this.host = options.host;
     this.store = options.store;
+    this.isAssistantInUse = options.isAssistantInUse ?? (() => false);
     this.logger = options.logger.child({ module: "assistant-session" });
   }
 
@@ -77,6 +80,9 @@ export class AssistantSession {
           return;
         }
         case "assistant.delete.request": {
+          if (this.isAssistantInUse(message.id)) {
+            throw new Error("Remove this assistant from its teams before deleting it");
+          }
           const ok = this.store.delete(message.id);
           if (ok) {
             this.emitChanged();

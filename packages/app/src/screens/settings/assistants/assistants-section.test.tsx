@@ -44,6 +44,49 @@ const assistantsState = vi.hoisted(() => ({
   },
 }));
 
+const resourceState = vi.hoisted(() => ({
+  mcpServers: [
+    {
+      id: "mcp-a",
+      name: "MCP A",
+      enabled: true,
+      transport: { type: "stdio" as const, command: "mcp-a" },
+      createdAt: 1,
+      updatedAt: 1,
+      originalJson: "{}",
+    },
+    {
+      id: "mcp-b",
+      name: "MCP B",
+      enabled: true,
+      transport: { type: "stdio" as const, command: "mcp-b" },
+      createdAt: 1,
+      updatedAt: 1,
+      originalJson: "{}",
+    },
+  ],
+  skills: [
+    {
+      id: "skill-a",
+      name: "Skill A",
+      source: "user" as const,
+      enabled: true,
+      content: "# Skill A",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: "skill-b",
+      name: "Skill B",
+      source: "user" as const,
+      enabled: true,
+      content: "# Skill B",
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ],
+}));
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
@@ -70,6 +113,35 @@ vi.mock("@/hooks/use-assistants", () => ({
     createAssistant: assistantsState.current.createAssistant,
     updateAssistant: assistantsState.current.updateAssistant,
     deleteAssistant: assistantsState.current.deleteAssistant,
+    isMutating: false,
+    mutationError: null,
+  }),
+}));
+
+vi.mock("@/hooks/use-mcp-servers", () => ({
+  useMcpServers: () => ({
+    servers: resourceState.mcpServers,
+    isLoading: false,
+    isConnected: true,
+    error: null,
+    createServer: vi.fn(),
+    updateServer: vi.fn(),
+    deleteServer: vi.fn(),
+    testServer: vi.fn(),
+    isMutating: false,
+    mutationError: null,
+  }),
+}));
+
+vi.mock("@/hooks/use-skills", () => ({
+  useSkills: () => ({
+    skills: resourceState.skills,
+    isLoading: false,
+    isConnected: true,
+    error: null,
+    createSkill: vi.fn(),
+    updateSkill: vi.fn(),
+    deleteSkill: vi.fn(),
     isMutating: false,
     mutationError: null,
   }),
@@ -121,10 +193,19 @@ vi.mock("@/components/ui/form-field", () => ({
 }));
 
 vi.mock("@/components/ui/switch", () => ({
-  Switch: ({ value, onValueChange }: { value: boolean; onValueChange: (value: boolean) => void }) =>
+  Switch: ({
+    value,
+    onValueChange,
+    accessibilityLabel,
+  }: {
+    value: boolean;
+    onValueChange: (value: boolean) => void;
+    accessibilityLabel?: string;
+  }) =>
     React.createElement("input", {
       type: "checkbox",
       checked: value,
+      "aria-label": accessibilityLabel,
       onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
         onValueChange(event.currentTarget.checked),
     }),
@@ -180,6 +261,11 @@ function makeAssistant(overrides: Partial<Assistant> = {}): Assistant {
           content: "# Existing\n\nPrefer concise feedback.",
         },
       ],
+    },
+    resourceSelection: {
+      mode: "all-enabled",
+      selectedMcpServerIds: [],
+      selectedSkillIds: [],
     },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -296,5 +382,49 @@ describe("AssistantsSection", () => {
       expect(screen.getByDisplayValue("edited summary")).toBeTruthy();
       expect(screen.getByDisplayValue(/Detail body/)).toBeTruthy();
     });
+  });
+
+  test("saves custom assistant MCP and skill selection", async () => {
+    assistantsState.current.createAssistant.mockResolvedValue(
+      makeAssistant({
+        id: "assistant-created",
+        resourceSelection: {
+          mode: "custom",
+          selectedMcpServerIds: ["mcp-b"],
+          selectedSkillIds: ["skill-a"],
+        },
+      }),
+    );
+
+    render(<AssistantsSection serverId="server-1" />);
+
+    fireEvent.change(screen.getByPlaceholderText("Code reviewer"), { target: { value: "Custom" } });
+    fireEvent.change(screen.getByLabelText("Assistant prompt"), {
+      target: { value: "Use selected resources." },
+    });
+    fireEvent.click(screen.getByLabelText("Use all active assistant resources"));
+    expect(screen.getByTestId("assistant-resource-group-mcp")).toBeTruthy();
+    expect(screen.getByTestId("assistant-resource-group-skill")).toBeTruthy();
+    expect(
+      screen.getByText("External tools this assistant may call in new conversations."),
+    ).toBeTruthy();
+    expect(screen.getByText("Instruction packs injected for this assistant.")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Enable MCP MCP A for assistant"));
+    fireEvent.click(screen.getByLabelText("Enable skill Skill B for assistant"));
+    fireEvent.click(screen.getByRole("button", { name: "Add assistant" }));
+
+    await waitFor(() =>
+      expect(assistantsState.current.createAssistant).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Custom",
+          prompt: "Use selected resources.",
+          resourceSelection: {
+            mode: "custom",
+            selectedMcpServerIds: ["mcp-b"],
+            selectedSkillIds: ["skill-a"],
+          },
+        }),
+      ),
+    );
   });
 });

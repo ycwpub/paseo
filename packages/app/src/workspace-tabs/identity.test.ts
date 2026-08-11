@@ -5,6 +5,43 @@ import {
   workspaceTabTargetsEqual,
 } from "./identity";
 
+describe("workspace draft team identity", () => {
+  test("normalizes and compares the selected team", () => {
+    const target = normalizeWorkspaceTabTarget({
+      kind: "draft",
+      draftId: "draft-1",
+      setup: {
+        provider: "codex",
+        cwd: "/repo",
+        modeId: null,
+        model: null,
+        thinkingOptionId: null,
+        featureValues: {},
+        assistantId: "assistant-lead",
+        teamId: " team-1 ",
+      },
+    });
+    expect(target?.kind === "draft" ? target.setup?.teamId : null).toBe("team-1");
+    expect(
+      target &&
+        workspaceTabTargetsEqual(target, {
+          kind: "draft",
+          draftId: "draft-1",
+          setup: {
+            provider: "codex",
+            cwd: "/repo",
+            modeId: null,
+            model: null,
+            thinkingOptionId: null,
+            featureValues: {},
+            assistantId: "assistant-lead",
+            teamId: "team-1",
+          },
+        }),
+    ).toBe(true);
+  });
+});
+
 describe("provider subagent tab identity", () => {
   test("normalizes and compares the parent and provider child as one tab identity", () => {
     const target = normalizeWorkspaceTabTarget({

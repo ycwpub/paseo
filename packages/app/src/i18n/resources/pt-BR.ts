@@ -2133,6 +2133,13 @@ export const ptBR: TranslationResources = {
       refresh: "Atualizar",
       refreshing: "Atualizando...",
       refreshAccessibility: "Atualizar permissões do desktop",
+      test: "Testar",
+      backgroundAttention: {
+        title: "Alertas em segundo plano",
+        soundVolume: "Volume do som de alerta",
+        description:
+          "O Paseo avisa quando um host local ou remoto conectado conclui uma tarefa ou precisa da intervenção do usuário.",
+      },
       actions: {
         granted: "Concedida",
         request: "Solicitar",

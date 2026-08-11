@@ -7,6 +7,8 @@ import {
 } from "./lark-message-format.js";
 
 export interface LarkChannelBotInfo {
+  openId: string;
+  appId: string;
   name?: string;
   avatarUrl?: string;
 }
@@ -24,8 +26,12 @@ export interface LarkMessageListOptions {
   pageSize?: number;
 }
 
+export interface LarkMessageGetOptions {
+  userCardContent?: boolean;
+}
+
 export interface LarkChannelClientAdapter {
-  testConnection(config: StoredLarkChannelConfig): Promise<LarkChannelBotInfo | null>;
+  testConnection(config: StoredLarkChannelConfig): Promise<LarkChannelBotInfo>;
   startEvents(
     config: StoredLarkChannelConfig,
     handler: (event: NormalizedLarkMessageEvent) => Promise<void>,
@@ -37,7 +43,11 @@ export interface LarkChannelClientAdapter {
     text: string,
   ): Promise<LarkThreadReplyResult>;
   replyInThread(config: StoredLarkChannelConfig, messageId: string, text: string): Promise<void>;
-  getMessage(config: StoredLarkChannelConfig, messageId: string): Promise<unknown | null>;
+  getMessage(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    options?: LarkMessageGetOptions,
+  ): Promise<unknown | null>;
   listThreadMessages(
     config: StoredLarkChannelConfig,
     threadId: string,
@@ -166,17 +176,36 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     this.logger = options.logger.child({ module: "lark-client-adapter" });
   }
 
-  async testConnection(config: StoredLarkChannelConfig): Promise<LarkChannelBotInfo | null> {
+  async testConnection(config: StoredLarkChannelConfig): Promise<LarkChannelBotInfo> {
     const credentials = requireCredentials(config);
     const client = createClient(config);
-    const result = await client.auth.v3.tenantAccessToken.internal({
-      data: {
-        app_id: credentials.appId,
-        app_secret: credentials.appSecret,
-      },
-    });
-    assertSuccess(result);
-    return null;
+    try {
+      const result = await client.request<{
+        code?: number;
+        msg?: string;
+        bot?: {
+          open_id?: string;
+          app_name?: string;
+          avatar_url?: string;
+        };
+      }>({
+        method: "GET",
+        url: "/open-apis/bot/v3/info",
+      });
+      assertSuccess(result);
+      const openId = result.bot?.open_id;
+      if (!openId) {
+        throw new Error("Lark bot info response is missing open_id");
+      }
+      return {
+        openId,
+        appId: credentials.appId,
+        ...(result.bot?.app_name ? { name: result.bot.app_name } : {}),
+        ...(result.bot?.avatar_url ? { avatarUrl: result.bot.avatar_url } : {}),
+      };
+    } catch (error) {
+      throw describeLarkError(error);
+    }
   }
 
   async startEvents(
@@ -277,12 +306,16 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     assertSuccess(result);
   }
 
-  async getMessage(config: StoredLarkChannelConfig, messageId: string): Promise<unknown | null> {
+  async getMessage(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    options: LarkMessageGetOptions = {},
+  ): Promise<unknown | null> {
     const client = createClient(config);
     const result = await larkGet(
       client,
       `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
-      {},
+      options.userCardContent ? { card_msg_content_type: "user_card_content" } : {},
     );
     assertSuccess(result);
     return messageListItems(result)[0] ?? null;

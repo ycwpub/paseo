@@ -1,5 +1,5 @@
 import { type ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { app, ipcMain, powerMonitor } from "electron";
 import log from "electron-log/main";
@@ -79,6 +79,19 @@ export interface DesktopDaemonStatus {
 interface DesktopDaemonLogs {
   logPath: string;
   contents: string;
+}
+
+interface DesktopPairingOffer {
+  relayEnabled: boolean;
+  url: string | null;
+  qr: string | null;
+  offers: Array<{
+    endpoint: string;
+    useTls: boolean;
+    pairingBaseUrl: string | null;
+    url: string;
+    qr: string | null;
+  }>;
 }
 
 function parseReleaseChannel(
@@ -264,6 +277,50 @@ function resolveDesktopAppVersion(): string {
   return app.getVersion();
 }
 
+function resolveDesktopBuildId(): string | null {
+  const resourcesPath =
+    typeof process.resourcesPath === "string" && process.resourcesPath.trim().length > 0
+      ? process.resourcesPath
+      : null;
+  const appAsarPath = resourcesPath ? path.join(resourcesPath, "app.asar") : null;
+  const statParts = (() => {
+    if (!appAsarPath) {
+      return null;
+    }
+    try {
+      const stat = statSync(appAsarPath);
+      return `${stat.size}:${Math.trunc(stat.mtimeMs)}`;
+    } catch {
+      return null;
+    }
+  })();
+
+  return [
+    normalizeVersion(resolveDesktopAppVersion()) ?? "unknown-version",
+    process.execPath,
+    resourcesPath,
+    statParts,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("|");
+}
+
+function readDesktopBuildIdFromPidLock(): string | null {
+  try {
+    const raw = readFileSync(path.join(getPaseoHome(), "paseo.pid"), "utf-8");
+    const lock = JSON.parse(raw) as { desktopBuildId?: unknown };
+    return typeof lock.desktopBuildId === "string" && lock.desktopBuildId.trim().length > 0
+      ? lock.desktopBuildId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isTestDesktopBuild(): boolean {
+  return path.basename(process.execPath).toLowerCase().includes("test");
+}
+
 // ---------------------------------------------------------------------------
 // Daemon lifecycle
 // ---------------------------------------------------------------------------
@@ -305,6 +362,14 @@ function shouldRestartForVersion(current: DesktopDaemonStatus): boolean {
   const appVersion = normalizeVersion(resolveDesktopAppVersion());
   const daemonVersion = normalizeVersion(current.version);
   return Boolean(appVersion && daemonVersion && appVersion !== daemonVersion);
+}
+
+function shouldRestartForDesktopBuild(current: DesktopDaemonStatus): boolean {
+  if (current.status !== "running" && current.status !== "errored") return false;
+  if (!current.desktopManaged && !isTestDesktopBuild()) return false;
+  const appBuildId = resolveDesktopBuildId();
+  if (!appBuildId) return false;
+  return readDesktopBuildIdFromPidLock() !== appBuildId;
 }
 
 function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
@@ -366,9 +431,33 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
         daemonVersion: normalizeVersion(current.version),
       });
       await stopDesktopDaemon("version_mismatch");
+    } else if (shouldRestartForDesktopBuild(current)) {
+      logDesktopDaemonLifecycle("daemon build mismatch, restarting", {
+        appBuildId: resolveDesktopBuildId(),
+        daemonBuildId: readDesktopBuildIdFromPidLock(),
+        desktopManaged: current.desktopManaged,
+      });
+      await runDesktopDaemonStopViaCli({
+        reason: "version_mismatch",
+        statusBefore: current,
+        resolveStatusAfter: true,
+      });
     } else {
       return current;
     }
+  } else if (shouldRestartForDesktopBuild(current)) {
+    logDesktopDaemonLifecycle("daemon build mismatch on errored daemon, force-stopping", {
+      appBuildId: resolveDesktopBuildId(),
+      daemonBuildId: readDesktopBuildIdFromPidLock(),
+      desktopManaged: current.desktopManaged,
+      status: current.status,
+      pid: current.pid,
+    });
+    await runDesktopDaemonStopViaCli({
+      reason: "version_mismatch",
+      statusBefore: current,
+      resolveStatusAfter: true,
+    });
   }
 
   const daemonRunner = resolveDaemonRunnerEntrypoint();
@@ -396,13 +485,14 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     arch: process.arch,
   });
 
+  const desktopBuildId = resolveDesktopBuildId();
   const child: ChildProcess = spawnProcess(invocation.command, invocation.args, {
     detached: true,
     envMode: "internal",
     env: invocation.env,
     envOverlay: {
       PASEO_DESKTOP_MANAGED: "1",
-      PASEO_CLI: getBundledCliShimPath(),
+      ...(desktopBuildId ? { PASEO_DESKTOP_BUILD_ID: desktopBuildId } : {}),
       PASEO_WEB_UI_ENABLED: "false",
     },
     stdio: ["ignore", "ignore", "ignore"],
@@ -495,6 +585,46 @@ function getDaemonLogs(): DesktopDaemonLogs {
 
 async function getCliDaemonStatus(): Promise<string> {
   return await runExternalCliTextCommand(["daemon", "status"]);
+}
+
+async function getDaemonPairing(): Promise<DesktopPairingOffer> {
+  const status = await resolveDesktopDaemonStatus();
+  if (status.status !== "running") {
+    return {
+      relayEnabled: false,
+      url: null,
+      qr: null,
+      offers: [],
+    };
+  }
+
+  const payload = await runExternalCliJsonCommand(["daemon", "pair", "--json"]);
+  if (!isRecord(payload)) {
+    throw new Error("Daemon pairing response was not an object.");
+  }
+
+  return {
+    relayEnabled: payload.relayEnabled === true,
+    url: toTrimmedString(payload.url),
+    qr: toTrimmedString(payload.qr),
+    offers: Array.isArray(payload.offers)
+      ? payload.offers.flatMap((offer) => {
+          if (!isRecord(offer)) return [];
+          const endpoint = toTrimmedString(offer.endpoint);
+          const url = toTrimmedString(offer.url);
+          if (!endpoint || !url) return [];
+          return [
+            {
+              endpoint,
+              useTls: offer.useTls === true,
+              pairingBaseUrl: toTrimmedString(offer.pairingBaseUrl),
+              url,
+              qr: toTrimmedString(offer.qr),
+            },
+          ];
+        })
+      : [],
+  };
 }
 
 async function getLocalDaemonVersion(): Promise<{ version: string | null; error: string | null }> {

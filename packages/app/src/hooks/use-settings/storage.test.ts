@@ -435,6 +435,7 @@ describe("loadSettingsFromStorage", () => {
         releaseChannel: "beta",
         notifications: { playSound: true },
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
+        attention: { soundVolume: 0.5 },
       },
     });
     const deps = makeDeps({
@@ -608,7 +609,7 @@ describe("appearance settings", () => {
     expect(result.contentFontSize).toBe(DEFAULT_UI_BASE_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
     expect(result.syntaxTheme).toBe("one");
-    expect(result.toolCallDetailLevel).toBe("detailed");
+    expect(result.toolCallDetailLevel).toBe("overview");
   });
 
   it("migrates the enabled compact tool call preference to overview", async () => {

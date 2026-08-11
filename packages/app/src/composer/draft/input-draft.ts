@@ -42,6 +42,8 @@ interface AgentInputDraftComposerOptions {
 interface UseAgentInputDraftInput {
   draftKey: DraftKeyInput;
   composer?: AgentInputDraftComposerOptions;
+  initialAssistantId?: string | null;
+  initialTeamId?: string | null;
 }
 
 type DraftComposerState = UseAgentFormStateResult & {
@@ -51,6 +53,10 @@ type DraftComposerState = UseAgentFormStateResult & {
   featureValues: Record<string, unknown> | undefined;
   agentControls: DraftAgentControlsProps;
   commandDraftConfig: DraftCommandConfig | undefined;
+  assistantId: string | null;
+  setAssistantId: (id: string | null) => void;
+  teamId: string | null;
+  setTeamId: (id: string | null) => void;
 };
 
 export interface AgentInputDraft {
@@ -64,6 +70,10 @@ export interface AgentInputDraft {
   isHydrated: boolean;
   attachmentFocusRequestId: number;
   composerState: DraftComposerState | null;
+  assistantId: string | null;
+  setAssistantId: (id: string | null) => void;
+  teamId: string | null;
+  setTeamId: (id: string | null) => void;
 }
 
 export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDraft {
@@ -214,6 +224,68 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     };
   }, [draftKey, publishTextReplacement]);
 
+  useEffect(() => {
+    if (finalizedDraftVersion === null) {
+      return;
+    }
+
+    const store = useDraftStore.getState();
+    const generation = store.beginDraftGeneration(draftKey);
+    draftGenerationRef.current = generation;
+    hydratedGenerationRef.current = generation;
+
+    setText("");
+    setAttachmentsState([]);
+    setIsHydrated(true);
+  }, [draftKey, finalizedDraftVersion]);
+
+  const renderedDraftGeneration = draftGenerationRef.current;
+  useEffect(() => {
+    const currentGeneration = renderedDraftGeneration;
+    if (currentGeneration <= 0) {
+      return;
+    }
+
+    const store = useDraftStore.getState();
+    const isCurrentGeneration = store.isDraftGenerationCurrent({
+      draftKey,
+      generation: currentGeneration,
+    });
+    if (!isCurrentGeneration) {
+      return;
+    }
+    if (hydratedGenerationRef.current !== currentGeneration) {
+      return;
+    }
+
+    const existing = store.getDraftInput(draftKey);
+    const isSameDraft =
+      existing !== undefined &&
+      existing.text === text &&
+      areAttachmentsEqual({
+        left: existing.attachments,
+        right: attachments,
+      });
+    if (isSameDraft) {
+      return;
+    }
+
+    if (!hasDraftContent({ text, attachments })) {
+      if (existing) {
+        store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
+      }
+      return;
+    }
+
+    store.saveDraftInput({
+      draftKey,
+      draft: {
+        text,
+        attachments,
+      },
+    });
+  }, [attachments, draftKey, renderedDraftGeneration, text]);
+
   const lockedWorkingDir = composerOptions?.lockedWorkingDir?.trim() ?? "";
   useEffect(() => {
     if (!composerOptions || !lockedWorkingDir) {
@@ -253,6 +325,65 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     () => resolveEffectiveComposerThinkingOptionId(providerSelection, effectiveModelId),
     [effectiveModelId, providerSelection],
   );
+
+  const [assistantId, setAssistantIdState] = useState<string | null>(initialAssistantId);
+  const [teamId, setTeamIdState] = useState<string | null>(initialTeamId);
+  const assistantDraftKeyRef = useRef(draftKey);
+  const appliedInitialAssistantIdRef = useRef<string | null>(initialAssistantId);
+  const assistantOverriddenByUserRef = useRef(false);
+
+  const setAssistantId = useCallback((id: string | null) => {
+    assistantOverriddenByUserRef.current = true;
+    setAssistantIdState(id);
+  }, []);
+  const teamDraftKeyRef = useRef(draftKey);
+  const appliedInitialTeamIdRef = useRef<string | null>(initialTeamId);
+  const teamOverriddenByUserRef = useRef(false);
+  const setTeamId = useCallback((id: string | null) => {
+    teamOverriddenByUserRef.current = true;
+    setTeamIdState(id);
+  }, []);
+
+  // Sync assistantId from agent labels/draft setup. The selected assistant can
+  // arrive after the agent panel first renders (directory/detail hydration), and
+  // the same component instance can be reused for another draft/agent. Apply the
+  // incoming value unless the user has already made an explicit selection in the
+  // current draft.
+  useEffect(() => {
+    if (assistantDraftKeyRef.current !== draftKey) {
+      assistantDraftKeyRef.current = draftKey;
+      appliedInitialAssistantIdRef.current = initialAssistantId;
+      assistantOverriddenByUserRef.current = false;
+      setAssistantIdState(initialAssistantId);
+      return;
+    }
+
+    if (appliedInitialAssistantIdRef.current === initialAssistantId) {
+      return;
+    }
+
+    appliedInitialAssistantIdRef.current = initialAssistantId;
+    if (!assistantOverriddenByUserRef.current) {
+      setAssistantIdState(initialAssistantId);
+    }
+  }, [draftKey, initialAssistantId]);
+
+  useEffect(() => {
+    if (teamDraftKeyRef.current !== draftKey) {
+      teamDraftKeyRef.current = draftKey;
+      appliedInitialTeamIdRef.current = initialTeamId;
+      teamOverriddenByUserRef.current = false;
+      setTeamIdState(initialTeamId);
+      return;
+    }
+    if (appliedInitialTeamIdRef.current === initialTeamId) {
+      return;
+    }
+    appliedInitialTeamIdRef.current = initialTeamId;
+    if (!teamOverriddenByUserRef.current) {
+      setTeamIdState(initialTeamId);
+    }
+  }, [draftKey, initialTeamId]);
 
   const workingDir = lockedWorkingDir || formState.workingDir;
   const {
@@ -317,6 +448,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         onApplyAgentProfile: applyDraftAgentProfile,
       }),
       commandDraftConfig,
+      assistantId,
+      setAssistantId,
+      teamId,
+      setTeamId,
     };
   }, [
     commandDraftConfig,
@@ -329,6 +464,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     formState,
     setDraftFeatureValue,
     workingDir,
+    assistantId,
+    setAssistantId,
+    teamId,
+    setTeamId,
   ]);
 
   return {
@@ -342,6 +481,10 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     isHydrated,
     attachmentFocusRequestId,
     composerState,
+    assistantId,
+    setAssistantId,
+    teamId,
+    setTeamId,
   };
 }
 

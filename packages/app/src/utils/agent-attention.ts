@@ -9,6 +9,11 @@ interface ShouldClearAgentAttentionInput {
   hasDeferredFocusEntryClear?: boolean;
 }
 
+interface AgentAttentionRoutingInput {
+  reason: "finished" | "error" | "permission";
+  shouldNotify: boolean;
+}
+
 export type AgentAttentionClearTrigger =
   | "focus-entry"
   | "input-focus"
@@ -20,6 +25,18 @@ const ATTENTION_REASON_PRIORITY = {
   error: 1,
   finished: 2,
 } as const;
+
+export function getAgentAttentionRouting(input: AgentAttentionRoutingInput): {
+  shouldSignalDesktop: boolean;
+  shouldProcessNotification: boolean;
+} {
+  return {
+    // Desktop attention is local and focus-aware, so it must not be suppressed by the
+    // server's cross-client notification deduplication flag.
+    shouldSignalDesktop: input.reason === "finished",
+    shouldProcessNotification: input.shouldNotify,
+  };
+}
 
 function getAttentionPriority(reason: Agent["attentionReason"]): number | null {
   if (!reason) {

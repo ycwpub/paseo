@@ -66,6 +66,12 @@ function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-client-"));
 }
 
+function resolveExpectedDesktopRelayDeviceType(): "mac" | "windows" | "linux" {
+  if (process.platform === "darwin") return "mac";
+  if (process.platform === "win32") return "windows";
+  return "linux";
+}
+
 test("DaemonClient connects to a password-protected daemon", async () => {
   const daemon = await createTestPaseoDaemon({
     auth: { password: "$2b$12$GMhF7pN4QnMlHOQXOqjd1OitKWPSmAO3FwB0PHzKtcZR/sAMryz76" },
@@ -1239,6 +1245,7 @@ test("receives server_info on websocket connect", async () => {
   expect(serverInfo?.features?.commitsList).toBe(true);
   expect(serverInfo?.features?.commitBaseClassification).toBe(true);
   expect(serverInfo?.desktopManaged).toBe(false);
+  expect(serverInfo?.relayDeviceType).toBe("cli");
   expect(serverInfo?.features?.daemonSelfUpdate).toBe(true);
   expect(serverInfo?.features?.worktreeRestore).toBe(true);
   expect(serverInfo?.features?.workspaceRecovery).toBe(true);
@@ -1259,6 +1266,7 @@ test("a Desktop-managed daemon does not advertise npm self-update", async () => 
     const serverInfo = client.getLastServerInfoMessage();
 
     expect(serverInfo?.desktopManaged).toBe(true);
+    expect(serverInfo?.relayDeviceType).toBe(resolveExpectedDesktopRelayDeviceType());
     expect(serverInfo?.features?.daemonSelfUpdate).toBe(false);
   } finally {
     await client.close();

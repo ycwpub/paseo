@@ -87,8 +87,7 @@ import {
   type BottomAnchorLocalRequest,
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
-import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
-import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
+import { projectProcessVisibility } from "./process-visibility";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -110,6 +109,7 @@ import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView } from "@/plugins/timeline";
 
 function renderLiveAuxiliaryNode(input: {
+  processVisibilityControl: ReactNode;
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
   bottomOverlayInset: number;
@@ -119,6 +119,9 @@ function renderLiveAuxiliaryNode(input: {
   }
   return (
     <>
+      {input.processVisibilityControl ? (
+        <View style={stylesheet.contentWrapper}>{input.processVisibilityControl}</View>
+      ) : null}
       {input.turnFooter}
       {input.pendingPermissions ? (
         <View style={stylesheet.contentWrapper}>
@@ -246,6 +249,7 @@ function renderLiveHeadStreamItem(input: {
 
 export interface AgentStreamViewHandle {
   scrollToBottom(reason?: BottomAnchorLocalRequest["reason"]): void;
+  scrollToOldest(): void;
   prepareForViewportChange(): void;
 }
 
@@ -270,8 +274,9 @@ export interface AgentStreamViewProps {
   historyPagination?: {
     hasOlder: boolean;
     isLoadingOlder: boolean;
-    progressKey: string | null;
-    onLoadOlder: () => boolean | Promise<boolean>;
+    onLoadOlder: () => void;
+    isLoadingOldest?: boolean;
+    onLoadUntilOldest?: () => Promise<boolean>;
   };
 }
 
@@ -413,7 +418,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      setIsProcessExpanded(true);
     }, [agentId]);
+
+    const toggleProcessVisibility = useCallback(() => {
+      setIsProcessExpanded((expanded) => !expanded);
+    }, []);
 
     const handleInlinePathPress = useStableEvent(
       (target: InlinePathTarget, disposition: OpenFileDisposition) => {
@@ -550,18 +560,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const progressKey = `${remoteProgressKey ?? "local"}:${historyWindowStart}`;
 
     const baseRenderModel = useMemo(() => {
-      return buildAgentStreamRenderModel({
-        isTurnActive,
-        activeTurnStartedAt: effectiveTurnPresentation.startedAt,
-        tail: projectedToolCalls.tail,
-        head: projectedToolCalls.head,
+      const visibleRenderModel = buildAgentStreamRenderModel({
+        agentStatus: context.status,
+        tail: processVisibility.tail,
+        head: processVisibility.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         historyStart: historyWindowStart,
       });
+      return {
+        ...visibleRenderModel,
+        turnTiming: deriveStreamTurnTiming({
+          agentStatus: context.status,
+          tail: projectedToolCalls.tail,
+          head: projectedToolCalls.head,
+        }),
+      };
     }, [
+      context.status,
       isMobile,
-      isTurnActive,
+      processVisibility.head,
+      processVisibility.tail,
       projectedToolCalls.head,
       projectedToolCalls.tail,
       effectiveTurnPresentation.startedAt,
@@ -613,6 +632,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         scrollToBottom(reason = "jump-to-bottom") {
           viewportRef.current?.scrollToBottom(reason);
         },
+        scrollToOldest() {
+          viewportRef.current?.scrollToOldest();
+        },
         prepareForViewportChange() {
           viewportRef.current?.prepareForViewportChange();
         },
@@ -621,19 +643,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const scrollToBottom = useCallback(() => {
-      if (!isTimelineDetached) {
-        viewportRef.current?.scrollToBottom("jump-to-bottom");
+      viewportRef.current?.scrollToBottom("jump-to-bottom");
+    }, []);
+    const scrollToOldest = useCallback(async () => {
+      if (isLoadingOldest) {
         return;
       }
-      void returnToTimelineTail({
-        fetchTail: () =>
-          getHostRuntimeStore().fetchAgentTimeline(resolvedServerId, agentId, {
-            ...planTimelineTailFetch(),
-          }),
-        scrollToBottom: () => viewportRef.current?.scrollToBottom("jump-to-bottom"),
-        onError: handleTimelineHistoryLoadError,
-      });
-    }, [agentId, handleTimelineHistoryLoadError, isTimelineDetached, resolvedServerId]);
+      const reachedOldest = await loadUntilOldest();
+      if (!reachedOldest) {
+        return;
+      }
+      scheduleScrollToOldest(viewportRef);
+    }, [isLoadingOldest, loadUntilOldest]);
+    const handleScrollToOldestPress = useCallback(() => {
+      void scrollToOldest();
+    }, [scrollToOldest]);
 
     const setInlineDetailsExpanded = useCallback(
       (itemId: string, expanded: boolean) => {
@@ -718,6 +742,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+        if (!autoExpandReasoning) {
+          return (
+            <AssistantFileLinkResolverProvider
+              client={client}
+              serverId={resolvedServerId}
+              workspaceRoot={workspaceRoot}
+              onOpenWorkspaceFile={handleInlinePathPress}
+              toast={toast}
+            >
+              <AssistantMessage
+                message={item.text}
+                timestamp={item.timestamp.getTime()}
+                workspaceRoot={workspaceRoot}
+                serverId={resolvedServerId}
+                client={client}
+                spacing={layoutItem.assistantSpacing}
+                variant="reasoning"
+              />
+            </AssistantFileLinkResolverProvider>
+          );
+        }
         return (
           <ThoughtSlot
             itemId={item.id}
@@ -729,7 +774,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           />
         );
       },
-      [autoExpandReasoning, setInlineDetailsExpanded],
+      [
+        autoExpandReasoning,
+        client,
+        handleInlinePathPress,
+        resolvedServerId,
+        setInlineDetailsExpanded,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderSingleToolCallItem = useCallback(
@@ -761,6 +814,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               toolName={data.name}
               error={data.error}
               status={data.status}
+              startedAt={item.startedAt ?? item.timestamp}
+              completedAt={
+                data.status === "running" ? undefined : (item.completedAt ?? item.timestamp)
+              }
               detail={data.detail}
               cwd={context.cwd}
               metadata={data.metadata}
@@ -780,6 +837,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             args={data.arguments}
             result={data.result}
             status={data.status}
+            startedAt={item.startedAt ?? item.timestamp}
+            completedAt={
+              data.status === "executing" ? undefined : (item.completedAt ?? item.timestamp)
+            }
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
             maxDetailHeight={maxDetailHeight}
@@ -887,8 +948,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
+        const disclosure = processVisibility.disclosureByHostId.get(layoutItem.item.id);
+        const contentWithDisclosure = disclosure ? (
+          <>
+            <ProcessVisibilityControl
+              expanded={isProcessExpanded}
+              onToggle={toggleProcessVisibility}
+            />
+            {content}
+          </>
+        ) : (
+          content
+        );
         return renderStreamItemWithTurnFooter({
-          content,
+          content: contentWithDisclosure,
           layoutItem,
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
@@ -899,6 +972,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
+        processVisibility.disclosureByHostId,
+        isProcessExpanded,
+        toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
       ],
@@ -940,6 +1016,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
         supportsAgentForkContextCursor,
       ],
+    );
+    const auxiliaryProcessVisibilityControl = useMemo(
+      () =>
+        processVisibility.needsAuxiliaryDisclosure ? (
+          <ProcessVisibilityControl
+            expanded={isProcessExpanded}
+            onToggle={toggleProcessVisibility}
+          />
+        ) : null,
+      [isProcessExpanded, processVisibility.needsAuxiliaryDisclosure, toggleProcessVisibility],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
@@ -1025,6 +1111,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         existingTailSpacing,
       });
       return renderLiveAuxiliaryNode({
+        processVisibilityControl: auxiliaryProcessVisibilityControl,
         pendingPermissions: auxiliary.pendingPermissions,
         turnFooter: auxiliary.turnFooter,
         bottomOverlayInset,
@@ -1053,9 +1140,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () => ({
         contentById: projectedToolCalls.historyGroupUpdatesByHostId,
         displayStateById: expandedToolCallGroupIds,
-        globalDisplayState: isMobile,
+        globalDisplayState: isMobile !== isProcessExpanded,
       }),
-      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+      [
+        expandedToolCallGroupIds,
+        isMobile,
+        isProcessExpanded,
+        projectedToolCalls.historyGroupUpdatesByHostId,
+      ],
+    );
+    const liveHeadRowRevision = useMemo(
+      () => ({ expandedToolCallGroupIds, isProcessExpanded }),
+      [expandedToolCallGroupIds, isProcessExpanded],
     );
 
     return (
@@ -1066,7 +1162,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               agentId,
               segments: renderModel.segments,
               historyRowRevision,
-              liveHeadRowRevision: expandedToolCallGroupIds,
+              liveHeadRowRevision,
               boundary,
               renderers,
               listEmptyComponent,
@@ -1085,10 +1181,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
             })}
           </MessageOuterSpacingProvider>
-          <ChatOutlineRail
-            prompts={chatOutline.prompts}
-            activePrompt={chatOutline.activePrompt}
-            onJumpToPrompt={chatOutline.jumpToPrompt}
+          <ScrollNavigationControls
+            visible={hasOlder || boundary.hasMountedHistory || boundary.hasVirtualizedHistory}
+            isNearBottom={isNearBottom}
+            isLoadingOlder={isLoadingOlder}
+            isLoadingOldest={isLoadingOldest}
+            entering={scrollIndicatorFadeIn}
+            exiting={scrollIndicatorFadeOut}
+            onScrollToOldest={handleScrollToOldestPress}
+            onScrollToBottom={scrollToBottom}
           />
           {(!isNearBottom || isTimelineDetached) && (
             <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
@@ -1193,8 +1294,9 @@ function historyPaginationPropsEqual(
   return (
     left?.hasOlder === right?.hasOlder &&
     left?.isLoadingOlder === right?.isLoadingOlder &&
-    left?.progressKey === right?.progressKey &&
-    left?.onLoadOlder === right?.onLoadOlder
+    left?.onLoadOlder === right?.onLoadOlder &&
+    left?.isLoadingOldest === right?.isLoadingOldest &&
+    left?.onLoadUntilOldest === right?.onLoadUntilOldest
   );
 }
 
@@ -1637,6 +1739,10 @@ const stylesheet = StyleSheet.create((theme) => ({
     right: 0,
     alignItems: "center",
   },
+  scrollNavigationButtons: {
+    flexDirection: "row",
+    gap: theme.spacing[2],
+  },
   scrollToBottomButton: {
     width: 48,
     height: 48,
@@ -1645,6 +1751,21 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadow.sm,
+  },
+  processVisibilityControl: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingVertical: theme.spacing[2],
+  },
+  processVisibilityText: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "500",
+  },
+  processVisibilityIcon: {
+    color: theme.colors.foregroundMuted,
   },
   scrollToBottomIcon: {
     color: theme.colors.foreground,

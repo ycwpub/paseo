@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, View } from "react-native";
 import type { GestureResponderEvent } from "react-native";
 import { Plus, Server, Settings } from "lucide-react-native";
@@ -73,12 +74,19 @@ export function HostPickerOption({
   onOpenHostSettings,
   testID,
 }: HostPickerOptionProps): ReactElement {
+  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
-  const connectionLabel =
-    showActiveConnection && activeConnection
-      ? formatActiveConnectionLabel(activeConnection)
-      : undefined;
+  const snapshot = useHostRuntimeSnapshot(serverId);
+  const activeConnection = snapshot?.activeConnection ?? null;
+  const transport = snapshot?.transport ?? null;
+  let connectionLabel: string | undefined;
+  if (showActiveConnection && transport?.type === "relay") {
+    connectionLabel = `${t("settings.host.badges.viaRelay")} · ${transport.endpoint}`;
+  } else if (showActiveConnection && transport?.type === "direct") {
+    connectionLabel = t("settings.host.badges.direct");
+  } else if (showActiveConnection && activeConnection) {
+    connectionLabel = formatActiveConnectionLabel(activeConnection);
+  }
   const leadingSlot = useMemo(() => <HostStatusDotSlot serverId={serverId} />, [serverId]);
   const handleSettingsPress = useCallback(
     (event: GestureResponderEvent) => {
@@ -212,7 +220,10 @@ export function HostPicker({
   );
 
   const options = useMemo(() => {
-    const hostOptions = orderedHosts.map((host) => ({ id: host.serverId, label: host.label }));
+    const hostOptions = orderedHosts.map((host) => ({
+      id: host.serverId,
+      label: host.label,
+    }));
     if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "All hosts" });
     if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host" });
     if (includeEnableBuiltInDaemon)

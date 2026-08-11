@@ -41,11 +41,15 @@ function resolveDesktopPanelWidth(input: {
   viewportWidth: number;
   minimumWidth: number;
   maximumWidth: number;
+  reservedWidth?: number;
 }): number {
   "worklet";
   const maximumVisibleWidth = Math.max(
     input.minimumWidth,
-    Math.min(input.maximumWidth, input.viewportWidth - MIN_DESKTOP_CENTER_WIDTH),
+    Math.min(
+      input.maximumWidth,
+      input.viewportWidth - (input.reservedWidth ?? 0) - MIN_DESKTOP_CENTER_WIDTH,
+    ),
   );
   return Math.max(input.minimumWidth, Math.min(maximumVisibleWidth, input.requestedWidth));
 }

@@ -13,7 +13,7 @@ import {
   deriveProjectStatusBucket,
   deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
-  type ProjectStatusSession,
+  sortSidebarProjectsByActivity,
   type SidebarProjectEntry,
   type SidebarWorkspacePlacement,
 } from "./sidebar-workspaces-view-model";
@@ -289,6 +289,84 @@ describe("buildSidebarProjectsFromStructure", () => {
       serverId: "relay:paseo-host",
       workspaceId: "ws-main",
     });
+  });
+});
+
+describe("sortSidebarProjectsByActivity", () => {
+  it("sorts projects and their workspaces by latest activity", () => {
+    const projects = buildSidebarProjectsFromStructure({
+      projects: [
+        project({
+          projectKey: "project-a",
+          workspaceKeys: ["a-older", "a-newer"],
+        }),
+        project({
+          projectKey: "project-b",
+          workspaceKeys: ["b-newest"],
+        }),
+      ],
+    });
+    const workspaceEntriesByKey = new Map(
+      [
+        ["a-older", "2026-08-09T10:00:00.000Z"],
+        ["a-newer", "2026-08-09T11:00:00.000Z"],
+        ["b-newest", "2026-08-09T12:00:00.000Z"],
+      ].map(([id, activityAt]) => [
+        `srv:${id}`,
+        createSidebarWorkspaceEntry({
+          serverId: "srv",
+          workspace: workspace({
+            id,
+            name: id,
+            projectId: id.startsWith("a-") ? "project-a" : "project-b",
+            projectDisplayName: id.startsWith("a-") ? "project-a" : "project-b",
+            statusEnteredAt: new Date(activityAt),
+          }),
+        }),
+      ]),
+    );
+
+    const sorted = sortSidebarProjectsByActivity({ projects, workspaceEntriesByKey });
+
+    expect(sorted.map((entry) => entry.projectKey)).toEqual(["project-b", "project-a"]);
+    expect(sorted[1]?.workspaces.map((entry) => entry.workspaceId)).toEqual(["a-newer", "a-older"]);
+  });
+
+  it("preserves manual order when activity timestamps are equal", () => {
+    const projects = buildSidebarProjectsFromStructure({
+      projects: [
+        project({ projectKey: "project-b", workspaceKeys: ["b-second", "b-first"] }),
+        project({ projectKey: "project-a", workspaceKeys: ["a-first"] }),
+      ],
+    });
+    const activityAt = new Date("2026-08-09T12:00:00.000Z");
+    const workspaceEntriesByKey = new Map(
+      [
+        ["b-second", "project-b"],
+        ["b-first", "project-b"],
+        ["a-first", "project-a"],
+      ].map(([id, projectId]) => [
+        `srv:${id}`,
+        createSidebarWorkspaceEntry({
+          serverId: "srv",
+          workspace: workspace({
+            id,
+            name: id,
+            projectId,
+            projectDisplayName: projectId,
+            statusEnteredAt: activityAt,
+          }),
+        }),
+      ]),
+    );
+
+    const sorted = sortSidebarProjectsByActivity({ projects, workspaceEntriesByKey });
+
+    expect(sorted.map((entry) => entry.projectKey)).toEqual(["project-b", "project-a"]);
+    expect(sorted[0]?.workspaces.map((entry) => entry.workspaceId)).toEqual([
+      "b-second",
+      "b-first",
+    ]);
   });
 });
 

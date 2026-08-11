@@ -519,18 +519,23 @@ class TestAgentSession implements AgentSession {
   async close(): Promise<void> {}
 }
 
-class McpCapableTestAgentSession extends TestAgentSession {
-  override readonly capabilities = {
-    ...TEST_CAPABILITIES,
-    supportsMcpServers: true,
-  };
-}
+class CommandAwareTestAgentSession extends TestAgentSession {
+  readonly prompts: AgentPromptInput[] = [];
 
-class CloseRecordingTestAgentSession extends TestAgentSession {
-  closed = false;
+  constructor(
+    config: AgentSessionConfig,
+    private readonly commands: AgentSlashCommand[] = [],
+  ) {
+    super(config);
+  }
 
-  override async close(): Promise<void> {
-    this.closed = true;
+  override async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
+    this.prompts.push(prompt);
+    return super.startTurn(prompt);
+  }
+
+  async listCommands(): Promise<AgentSlashCommand[]> {
+    return this.commands;
   }
 }
 
@@ -1176,19 +1181,9 @@ class McpCapableTestAgentClient extends TestAgentClient {
 
   override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
     this.createdConfigs.push(config);
-    return new McpCapableTestAgentSession(config);
-  }
-
-  override async resumeSession(
-    _handle: AgentPersistenceHandle,
-    config?: Partial<AgentSessionConfig>,
-  ): Promise<AgentSession> {
-    this.resumeOverrides.push(config);
-    return new McpCapableTestAgentSession({
-      ...config,
-      provider: this.provider,
-      cwd: config?.cwd ?? process.cwd(),
-    });
+    const session = new CommandAwareTestAgentSession(config, this.commands);
+    this.sessions.push(session);
+    return session;
   }
 }
 
@@ -4479,6 +4474,44 @@ test("runAgent persists finished attention and idle status without an external s
   expect(persisted?.requiresAttention).toBe(true);
   expect(persisted?.attentionReason).toBe("finished");
   expect(persisted?.attentionTimestamp).toEqual(expect.any(String));
+});
+
+test("each completed turn emits attention even when the previous turn is still unread", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-multi-turn-attention-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const attentionReasons: Array<"finished" | "error" | "permission"> = [];
+  const manager = new AgentManager({
+    clients: {
+      codex: new TestAgentClient(),
+    },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000136",
+    onAgentAttention: ({ reason }) => {
+      attentionReasons.push(reason);
+    },
+  });
+
+  const snapshot = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Multi-turn attention test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.runAgent(snapshot.id, "first turn");
+  await manager.runAgent(snapshot.id, "second turn");
+  await manager.flush();
+
+  expect(attentionReasons).toEqual(["finished", "finished"]);
+  expect(manager.getAgent(snapshot.id)?.attention).toMatchObject({
+    requiresAttention: true,
+    attentionReason: "finished",
+  });
 });
 
 test("archiveSnapshot clears persisted attention and normalizes running status", async () => {
@@ -10101,4 +10134,164 @@ test("onWorkspaceStateMayHaveChanged is not called for running shell tool calls"
   await manager.runAgent(snapshot.id, { text: "merge it" });
 
   expect(onWorkspaceStateMayHaveChanged).not.toHaveBeenCalled();
+});
+
+test("injects enabled daemon MCP servers into launch config without persisting them", async () => {
+  const client = new TestAgentClient("codex");
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-shared-mcp-"));
+  const timestamp = Date.now();
+  const sharedServers: McpServer[] = [
+    {
+      id: "shared-db",
+      name: "db",
+      enabled: true,
+      transport: { type: "http", url: "http://127.0.0.1:8123/mcp" },
+      tools: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      originalJson: "{}",
+    },
+    {
+      id: "disabled-files",
+      name: "files",
+      enabled: false,
+      transport: { type: "stdio", command: "files-mcp" },
+      tools: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      originalJson: "{}",
+    },
+    {
+      id: "reserved-paseo",
+      name: "paseo",
+      enabled: true,
+      transport: { type: "http", url: "http://example.com/not-daemon" },
+      tools: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      originalJson: "{}",
+    },
+  ];
+
+  const manager = new AgentManager({
+    clients: { codex: client },
+    mcpBaseUrl: "http://127.0.0.1:6767/mcp/agents",
+    mcpAuthToken: "cap-token",
+    mcpStore: { list: () => sharedServers },
+    logger,
+  });
+
+  const snapshot = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      mcpServers: {
+        files: { type: "stdio", command: "explicit-files" },
+      },
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  expect(client.createdConfigs[0]?.mcpServers).toEqual({
+    paseo: {
+      type: "http",
+      url: `http://127.0.0.1:6767/mcp/agents?callerAgentId=${snapshot.id}`,
+      headers: { Authorization: "Bearer cap-token" },
+    },
+    files: { type: "stdio", command: "explicit-files" },
+    db: { type: "http", url: "http://127.0.0.1:8123/mcp" },
+  });
+  expect(snapshot.config.mcpServers).toEqual({
+    files: { type: "stdio", command: "explicit-files" },
+  });
+});
+
+test("lists and expands daemon-managed skills for providers without native collisions", async () => {
+  const client = new CommandAwareTestAgentClient("codex");
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-shared-skills-"));
+  const timestamp = Date.now();
+  const sharedSkills: Skill[] = [
+    {
+      id: "skill-review",
+      name: "review",
+      description: "Review a code change",
+      source: "user",
+      enabled: true,
+      content: "---\nname: review\n---\nCheck correctness and tests.",
+      tags: ["code"],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  ];
+  const manager = new AgentManager({
+    clients: { codex: client },
+    skillStore: { list: () => sharedSkills },
+    logger,
+  });
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(manager.listCommandsForAgent(snapshot.id)).resolves.toContainEqual({
+    name: "review",
+    description: "Review a code change",
+    argumentHint: "",
+    kind: "skill",
+  });
+
+  await manager.runAgent(snapshot.id, "/review check auth flow");
+
+  expect(client.sessions[0]?.prompts[0]).toEqual(
+    expect.stringContaining("Use the following Paseo-managed skill: review."),
+  );
+  expect(client.sessions[0]?.prompts[0]).toEqual(
+    expect.stringContaining("Check correctness and tests."),
+  );
+  expect(client.sessions[0]?.prompts[0]).toEqual(expect.stringContaining("check auth flow"));
+});
+
+test("does not expand daemon-managed skill when provider owns the same slash command", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-shared-skill-collision-"));
+  const client = new CommandAwareTestAgentClient("codex", [
+    {
+      name: "review",
+      description: "Native provider review command",
+      argumentHint: "",
+      kind: "command",
+    },
+  ]);
+  const timestamp = Date.now();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    skillStore: {
+      list: () => [
+        {
+          id: "skill-review",
+          name: "review",
+          description: "Shared review skill",
+          source: "user",
+          enabled: true,
+          content: "Shared skill content",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    },
+    logger,
+  });
+  const snapshot = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+
+  await expect(manager.listCommandsForAgent(snapshot.id)).resolves.toContainEqual({
+    name: "review",
+    description: "Native provider review command",
+    argumentHint: "",
+    kind: "command",
+  });
+
+  await manager.runAgent(snapshot.id, "/review keep native behavior");
+
+  expect(client.sessions[0]?.prompts[0]).toBe("/review keep native behavior");
 });

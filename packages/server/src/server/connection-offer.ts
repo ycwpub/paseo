@@ -30,13 +30,19 @@ export function buildOfferEndpoints({ listenHost, port }: BuildOfferEndpointsArg
 export async function createConnectionOfferV2(args: {
   serverId: string;
   daemonPublicKeyB64: string;
-  relay: { endpoint: string; useTls?: boolean };
+  relay?: { endpoint: string; useTls?: boolean };
+  relays?: Array<{ endpoint: string; useTls?: boolean }>;
 }): Promise<ConnectionOffer> {
+  const relays = args.relays ?? (args.relay ? [args.relay] : []);
+  if (relays.length === 0) {
+    throw new Error("At least one relay endpoint is required");
+  }
   return ConnectionOfferV2Schema.parse({
     v: 2,
     serverId: args.serverId,
     daemonPublicKeyB64: args.daemonPublicKeyB64,
-    relay: args.relay,
+    relay: relays[0],
+    relays,
   });
 }
 

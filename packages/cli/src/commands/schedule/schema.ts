@@ -35,10 +35,17 @@ export function createScheduleInspectSchema(
 export interface ScheduleLogRow {
   id: string;
   status: string;
+  scheduledFor: string;
   startedAt: string;
+  endedAt: string | null;
+  duration: string | null;
   agentId: string | null;
+  workspaceId: string | null;
+  target: string | null;
+  config: string | null;
   output: string | null;
   error: string | null;
+  configSnapshot: ScheduleRunRecord["configSnapshot"];
 }
 
 export const scheduleLogSchema: OutputSchema<ScheduleLogRow> = {
@@ -46,21 +53,60 @@ export const scheduleLogSchema: OutputSchema<ScheduleLogRow> = {
   columns: [
     { header: "RUN ID", field: "id", width: 14 },
     { header: "STATUS", field: "status", width: 12 },
+    { header: "SCHEDULED", field: "scheduledFor", width: 24 },
     { header: "STARTED", field: "startedAt", width: 24 },
+    { header: "ENDED", field: "endedAt", width: 24 },
+    { header: "DURATION", field: "duration", width: 10 },
+    { header: "TARGET", field: "target", width: 24 },
+    { header: "CONFIG", field: "config", width: 32 },
     { header: "AGENT", field: "agentId", width: 12 },
     { header: "OUTPUT", field: "output", width: 40 },
     { header: "ERROR", field: "error", width: 40 },
   ],
 };
 
+function formatRunDuration(startedAt: string, endedAt: string | null): string | null {
+  if (!endedAt) {
+    return null;
+  }
+  const started = Date.parse(startedAt);
+  const ended = Date.parse(endedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(ended) || ended < started) {
+    return null;
+  }
+  return `${Math.round((ended - started) / 1000)}s`;
+}
+
+function formatRunConfigSnapshot(run: ScheduleRunRecord): string | null {
+  const snapshot = run.configSnapshot;
+  if (!snapshot) {
+    return null;
+  }
+  const parts = [formatCadence(snapshot.cadence)];
+  if (snapshot.maxRuns !== null) {
+    parts.push(`maxRuns:${snapshot.maxRuns}`);
+  }
+  if (snapshot.expiresAt !== null) {
+    parts.push(`expires:${snapshot.expiresAt}`);
+  }
+  return parts.join(" · ");
+}
+
 export function toScheduleLogRow(run: ScheduleRunRecord): ScheduleLogRow {
   return {
     id: run.id,
     status: run.status,
+    scheduledFor: run.scheduledFor,
     startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    duration: formatRunDuration(run.startedAt, run.endedAt),
     agentId: run.agentId ? run.agentId.slice(0, 7) : null,
+    workspaceId: run.workspaceId ?? null,
+    target: run.configSnapshot ? formatTarget(run.configSnapshot.target) : null,
+    config: formatRunConfigSnapshot(run),
     output: run.output,
     error: run.error,
+    configSnapshot: run.configSnapshot,
   };
 }
 

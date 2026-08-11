@@ -1,8 +1,10 @@
-import { expect, test } from "../support/fixtures";
-import { gotoAppShell, openSettings } from "../support/helpers/app";
-import { getE2EDaemonPort } from "../support/helpers/daemon-port";
-import { TEST_HOST_LABEL } from "../support/helpers/daemon-registry";
-import { getServerId } from "../support/helpers/server-id";
+import { expect, test } from "./fixtures";
+import { gotoAppShell, openSettings } from "./helpers/app";
+import { getE2EDaemonPort } from "./helpers/daemon-port";
+import { TEST_HOST_LABEL } from "./helpers/daemon-registry";
+import { getServerId } from "./helpers/server-id";
+import { expectAppRoute } from "./helpers/route-assertions";
+import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import {
   expectSettingsHeader,
   openSettingsHost,
@@ -31,6 +33,24 @@ test.describe("Settings host page", () => {
 
     await expectSettingsHeader(page, "Connections");
     await expectHostConnectionsCard(page, port);
+  });
+
+  test("LAN Relay settings open as a secondary page and return to connections", async ({
+    page,
+  }) => {
+    const serverId = getServerId();
+
+    await gotoAppShell(page);
+    await page.goto(buildSettingsHostSectionRoute(serverId, "relay"));
+
+    await expectSettingsHeader(page, "Use this Paseo as a LAN Relay");
+    await expect(page.getByTestId("lan-relay-listen-input")).toBeVisible();
+    await expect(page.getByTestId("lan-relay-pairing-url-input")).toBeVisible();
+    await expect(page.getByText("Relay connections", { exact: true })).toBeVisible();
+
+    await page.getByTestId("settings-detail-back").click();
+    await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, "connections"));
+    await expect(page.getByTestId("lan-relay-listen-input")).toHaveCount(0);
   });
 
   test("agents section shows the inject MCP toggle", async ({ page }) => {

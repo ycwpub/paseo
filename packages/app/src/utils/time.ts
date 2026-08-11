@@ -103,6 +103,7 @@ function isSameLocalDay(a: Date, b: Date): boolean {
 // options is what makes the runtime respect the user's OS-level 12h/24h
 // preference rather than the locale's default cycle.
 let cachedTimeFormatter: Intl.DateTimeFormat | null = null;
+let cachedActionTimeFormatter: Intl.DateTimeFormat | null = null;
 function getTimeFormatter(): Intl.DateTimeFormat {
   if (cachedTimeFormatter) return cachedTimeFormatter;
   const resolved = new Intl.DateTimeFormat(undefined, {
@@ -115,6 +116,45 @@ function getTimeFormatter(): Intl.DateTimeFormat {
     hourCycle: resolved.hourCycle,
   });
   return cachedTimeFormatter;
+}
+
+function getActionTimeFormatter(): Intl.DateTimeFormat {
+  if (cachedActionTimeFormatter) return cachedActionTimeFormatter;
+  const resolved = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  }).resolvedOptions();
+  cachedActionTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: resolved.hourCycle,
+  });
+  return cachedActionTimeFormatter;
+}
+
+export function formatActionTimestamp(date: Date, now: Date = new Date()): string {
+  const time = getActionTimeFormatter().format(date);
+  if (isSameLocalDay(date, now)) {
+    return time;
+  }
+  const dateLabel = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+  return `${dateLabel} ${time}`;
+}
+
+export function formatActionTimeRange(input: {
+  startedAt: Date;
+  completedAt?: Date;
+  now?: Date;
+}): string {
+  const now = input.now ?? new Date();
+  const start = formatActionTimestamp(input.startedAt, now);
+  const end = input.completedAt ? formatActionTimestamp(input.completedAt, now) : "…";
+  return `${start} → ${end}`;
 }
 
 /**

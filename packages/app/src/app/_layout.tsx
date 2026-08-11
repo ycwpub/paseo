@@ -31,6 +31,7 @@ import { AddProjectFlowHost } from "@/components/add-project-flow-host";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
+import { DesktopWindowNameDialog } from "@/components/desktop-window-name-dialog";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
@@ -375,11 +376,18 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const store = getHostRuntimeStore();
     const daemonStartService = getDaemonStartService({ store });
-    startHostRuntimeBootstrap({
-      store,
-      daemonStartService,
-      shouldStartDaemon: shouldStartBuiltInDaemon,
-    });
+    void initializeClientHostname()
+      .catch((error) => {
+        console.warn("[ClientIdentity] Failed to load client hostname", error);
+      })
+      .finally(() => {
+        startHostRuntimeBootstrap({
+          store,
+          daemonStartService,
+          shouldStartDaemon: shouldStartBuiltInDaemon,
+          onGateError: (message) => daemonStartService.recordError(message),
+        });
+      });
   }, []);
 
   const anyOnlineHostServerId = useEarliestOnlineHostServerId();
@@ -604,6 +612,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
       <AppDiagnosticHost />
+      <DesktopWindowNameDialog />
       <QuittingOverlay />
     </View>
   );

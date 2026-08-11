@@ -1,25 +1,56 @@
 import { z } from "zod";
 
-const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
+export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
+  project: ["{{workspaceDirectory}}"],
+  knowledge: [],
+  indexSkill: [],
+  workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
+} as const;
 
-export const PaseoServicePortAllocationSchema = z
-  .object({
-    range: z.string().trim().regex(TCP_PORT_RANGE_PATTERN).optional(),
-    portScript: z.string().trim().min(1).optional(),
-  })
-  .strict()
-  .refine(
-    (value) => value.range !== undefined || value.portScript !== undefined,
-    "Expected range or portScript",
-  )
-  .refine((value) => {
-    if (!value.range) return true;
-    const match = TCP_PORT_RANGE_PATTERN.exec(value.range);
-    if (!match) return false;
-    const start = Number(match[1]);
-    const end = Number(match[2]);
-    return start >= 1 && end <= 65_535 && start <= end;
-  }, "Expected an inclusive TCP port range from 1-65535");
+export type PaseoProjectDirectoryKey = keyof typeof DEFAULT_PASEO_PROJECT_DIRECTORIES;
+export type PaseoProjectDirectoryMode = "single" | "multiple";
+
+export const PaseoProjectDirectoryEntrySchema = z.union([
+  z.string(),
+  z
+    .object({
+      path: z.string(),
+      enabled: z.boolean().optional(),
+    })
+    .passthrough(),
+]);
+
+export type PaseoProjectDirectoryEntry = z.infer<typeof PaseoProjectDirectoryEntrySchema>;
+
+export function resolvePaseoProjectDirectoryEntries(
+  directories: PaseoProjectDirectories | null | undefined,
+): Record<PaseoProjectDirectoryKey, Array<{ path: string; enabled: boolean }>> {
+  const resolve = (entries: readonly PaseoProjectDirectoryEntry[]) =>
+    entries.map((entry) =>
+      typeof entry === "string"
+        ? { path: entry, enabled: true }
+        : { path: entry.path, enabled: entry.enabled !== false },
+    );
+  return {
+    project: resolve(directories?.project ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.project),
+    knowledge: resolve(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
+    indexSkill: resolve(directories?.indexSkill ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.indexSkill),
+    workspaceData: resolve(
+      directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
+    ),
+  };
+}
+
+export function resolvePaseoProjectDirectoryValues(
+  directories: PaseoProjectDirectories | null | undefined,
+): Record<PaseoProjectDirectoryKey, string[]> {
+  return Object.fromEntries(
+    Object.entries(resolvePaseoProjectDirectoryEntries(directories)).map(([key, entries]) => [
+      key,
+      entries.filter((entry) => entry.enabled).map((entry) => entry.path),
+    ]),
+  ) as Record<PaseoProjectDirectoryKey, string[]>;
+}
 
 export function normalizeLifecycleCommands(commands: unknown): string[] {
   if (typeof commands === "string") {
@@ -71,11 +102,47 @@ export const PaseoMetadataGenerationSchema = z
   .passthrough()
   .catch({});
 
+export const PaseoProjectDirectoriesSchema = z
+  .object({
+    project: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+    knowledge: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+    indexSkill: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+    workspaceData: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+  })
+  .passthrough();
+
+export const PaseoProjectIndexSkillSchema = z
+  .object({
+    autoGenerate: z.boolean().optional(),
+    updateIntervalMinutes: z.number().int().positive().nullable().optional(),
+  })
+  .passthrough();
+
+export const PaseoInstructionTemplateSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    description: z.string().optional(),
+    content: z.string(),
+  })
+  .passthrough();
+
+export const PaseoProjectConfigSchema = z
+  .object({
+    directoryMode: z.enum(["single", "multiple"]).optional(),
+    directories: PaseoProjectDirectoriesSchema.optional(),
+    indexSkill: PaseoProjectIndexSkillSchema.optional(),
+    variables: z.record(z.string(), z.string()).optional(),
+    instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
+  })
+  .passthrough();
+
 export const PaseoConfigRawSchema = z
   .object({
     worktree: PaseoWorktreeConfigRawSchema.optional(),
     scripts: z.record(z.string(), PaseoScriptEntryRawSchema).optional(),
     metadataGeneration: PaseoMetadataGenerationSchema.optional(),
+    project: PaseoProjectConfigSchema.optional(),
   })
   .passthrough();
 
@@ -92,6 +159,7 @@ export const PaseoConfigSchema = PaseoConfigRawSchema.extend({
   worktree: WorktreeConfigSchema.optional(),
   scripts: z.record(z.string(), ScriptEntrySchema).optional().catch({}),
   metadataGeneration: PaseoMetadataGenerationSchema.optional(),
+  project: PaseoProjectConfigSchema.optional(),
 })
   .passthrough()
   .catch({});
@@ -114,7 +182,10 @@ export const ProjectConfigRpcErrorSchema = z.discriminatedUnion("code", [
 export type PaseoScriptEntryRaw = z.infer<typeof PaseoScriptEntryRawSchema>;
 export type PaseoMetadataGenerationEntry = z.infer<typeof PaseoMetadataGenerationEntrySchema>;
 export type PaseoMetadataGeneration = z.infer<typeof PaseoMetadataGenerationSchema>;
-export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocationSchema>;
+export type PaseoProjectDirectories = z.infer<typeof PaseoProjectDirectoriesSchema>;
+export type PaseoProjectIndexSkill = z.infer<typeof PaseoProjectIndexSkillSchema>;
+export type PaseoInstructionTemplate = z.infer<typeof PaseoInstructionTemplateSchema>;
+export type PaseoProjectConfig = z.infer<typeof PaseoProjectConfigSchema>;
 export type PaseoConfigRaw = z.infer<typeof PaseoConfigRawSchema>;
 export type PaseoConfig = z.infer<typeof PaseoConfigSchema>;
 export type PaseoConfigRevision = z.infer<typeof PaseoConfigRevisionSchema>;

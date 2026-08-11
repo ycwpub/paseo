@@ -14,9 +14,31 @@ export interface ParsedConnectionUri extends ConnectionUriParts {
 
 export type RelayRole = "server" | "client";
 export type RelayProtocolVersion = "1" | "2";
+export const RELAY_DEVICE_TYPES = [
+  "mac",
+  "windows",
+  "linux",
+  "android",
+  "ios",
+  "web",
+  "cli",
+  "mcp",
+] as const;
+export type RelayDeviceType = (typeof RELAY_DEVICE_TYPES)[number];
 
 export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "2";
 export const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
+export const DEFAULT_PUBLIC_RELAY_ENDPOINTS = [DEFAULT_RELAY_ENDPOINT] as const;
+export const DEFAULT_RELAY_PAIRING_BASE_URL = "https://app.paseo.sh";
+
+export interface RelayEndpointConfig {
+  [key: string]: unknown;
+  endpoint: string;
+  useTls: boolean;
+  publicEndpoint?: string;
+  publicUseTls?: boolean;
+  pairingBaseUrl?: string;
+}
 
 export function normalizeRelayProtocolVersion(
   value: unknown,
@@ -80,6 +102,132 @@ export function parseHostPort(input: string): HostPortParts {
 export function normalizeHostPort(input: string): string {
   const { host, port, isIpv6 } = parseHostPort(input);
   return isIpv6 ? `[${host}]:${port}` : `${host}:${port}`;
+}
+
+export function parseRelayEndpointInput(input: string): RelayEndpointConfig {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Relay endpoint is required");
+  }
+
+  if (trimmed.startsWith("ws://") || trimmed.startsWith("wss://")) {
+    const parsed = new URL(trimmed);
+    if (parsed.pathname !== "/" && parsed.pathname !== "/ws") {
+      throw new Error("Relay URL path must be /ws");
+    }
+    if (parsed.search || parsed.hash || parsed.username || parsed.password) {
+      throw new Error("Relay URL must not include credentials, query parameters, or fragments");
+    }
+    const endpoint = extractHostPortFromWebSocketUrl(`${parsed.protocol}//${parsed.host}/ws`);
+    return { endpoint, useTls: parsed.protocol === "wss:" };
+  }
+
+  const endpoint = normalizeHostPort(trimmed);
+  return { endpoint, useTls: shouldUseTlsForDefaultHostedRelay(endpoint) };
+}
+
+export function formatRelayEndpointInput(config: RelayEndpointConfig): string {
+  return `${config.useTls ? "wss" : "ws"}://${config.endpoint}`;
+}
+
+export function deriveRelayPairingBaseUrl(
+  config: Pick<RelayEndpointConfig, "endpoint" | "useTls" | "publicEndpoint" | "publicUseTls">,
+): string {
+  const endpoint = config.publicEndpoint ?? config.endpoint;
+  const useTls = config.publicUseTls ?? config.useTls;
+  return new URL(`${useTls ? "https" : "http"}://${endpoint}`).origin;
+}
+
+export function resolveRelayPairingBaseUrl(config: RelayEndpointConfig): string {
+  const configured = config.pairingBaseUrl?.trim();
+  if (configured) {
+    return configured;
+  }
+  return deriveRelayPairingBaseUrl(config);
+}
+
+export function normalizeRelayPairingBaseUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Relay HTTP/HTTPS connection address is required");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+  } catch {
+    throw new Error("Invalid Relay HTTP/HTTPS connection address");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Relay connection address must use http:// or https://");
+  }
+  if (!parsed.hostname) {
+    throw new Error("Relay HTTP/HTTPS connection address must include a host");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("Relay HTTP/HTTPS connection address must not include credentials");
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error(
+      "Relay HTTP/HTTPS connection address must not include query parameters or fragments",
+    );
+  }
+
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  return pathname ? `${parsed.origin}${pathname}` : parsed.origin;
+}
+
+export function normalizeLocalRelayPairingBaseUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("LAN Relay HTTP connection address is required");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed.includes("://") ? trimmed : `http://${trimmed}`);
+  } catch {
+    throw new Error("Invalid LAN Relay HTTP connection address");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("LAN Relay connection address must use http://");
+  }
+  if (
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    (parsed.pathname !== "/" && parsed.pathname !== "")
+  ) {
+    throw new Error("LAN Relay HTTP connection address must contain only a host and optional port");
+  }
+  parsed.protocol = "http:";
+  return parsed.origin;
+}
+
+export function normalizeLocalRelayWebAppPath(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("LAN Relay web app path is required");
+  }
+
+  const pathInput = trimmed;
+  if (
+    !pathInput.startsWith("/") ||
+    pathInput.includes("?") ||
+    pathInput.includes("#") ||
+    pathInput.includes("\\")
+  ) {
+    throw new Error("LAN Relay web app path must be a URL path such as /app");
+  }
+
+  const segments = pathInput.split("/").filter(Boolean);
+  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) {
+    throw new Error("LAN Relay web app path must be a URL path such as /app");
+  }
+
+  return `/${segments.join("/")}`;
 }
 
 export function parseConnectionUri(input: string): ParsedConnectionUri {
@@ -179,6 +327,16 @@ export function buildRelayWebSocketUrl(params: {
   serverId: string;
   role: RelayRole;
   /**
+   * Optional daemon hostname reported to Relay implementations that expose
+   * connection-management information.
+   */
+  hostname?: string;
+  /** Opaque client identity ID exposed only to self-hosted Relay management. */
+  clientId?: string;
+  clientHostname?: string;
+  /** Coarse app/runtime type exposed to self-hosted Relay management. */
+  deviceType?: RelayDeviceType;
+  /**
    * Per-connection routing identifier used by the daemon to open server data sockets.
    * Clients should NOT provide this — the relay assigns a routing ID on connect.
    */
@@ -194,6 +352,21 @@ export function buildRelayWebSocketUrl(params: {
   url.searchParams.set("v", normalizeRelayProtocolVersion(params.version));
   if (params.connectionId) {
     url.searchParams.set("connectionId", params.connectionId);
+  }
+  if (params.deviceType) {
+    url.searchParams.set("deviceType", params.deviceType);
+  }
+  if (params.role === "server" && params.hostname?.trim()) {
+    url.searchParams.set("hostname", params.hostname.trim());
+  }
+  if (params.role === "client") {
+    const clientId = params.clientId?.trim();
+    if (clientId?.startsWith("cid_")) {
+      url.searchParams.set("clientId", clientId);
+    }
+    if (params.clientHostname?.trim()) {
+      url.searchParams.set("clientHostname", params.clientHostname.trim());
+    }
   }
   return url.toString();
 }

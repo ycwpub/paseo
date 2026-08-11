@@ -351,6 +351,7 @@ describe("schedule form model", () => {
 
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
+      showAssistantField: true,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,
@@ -362,6 +363,7 @@ describe("schedule form model", () => {
 
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
+      showAssistantField: true,
       showModelField: true,
       showThinkingField: false,
       showModeField: false,
@@ -374,11 +376,79 @@ describe("schedule form model", () => {
 
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
+      showAssistantField: true,
       showModelField: true,
       showThinkingField: true,
       showModeField: true,
       showIsolationField: true,
       showArchiveOnFinishField: true,
+    });
+  });
+
+  it("supports bash schedules without provider resolution", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+
+    form.setTargetKind("bash");
+    form.setPrompt("npm test");
+    form.setProject(buildProjectOptionId("host-a", "project-a"), { label: "Project A" });
+
+    expect(form.getState()).toMatchObject({
+      targetKind: "bash",
+      selectedServerId: "host-a",
+      workingDir: "/repo/a",
+      selectedProvider: null,
+      providerSnapshotRequest: null,
+      disclosure: {
+        showProjectField: true,
+        showAssistantField: false,
+        showModelField: false,
+        showThinkingField: false,
+        showModeField: false,
+      },
+      canSubmit: true,
+    });
+  });
+
+  it("stores assistant selection for new-agent schedules and clears it when host changes", () => {
+    const form = open({
+      mode: "create",
+      defaults: { serverId: "host-a", projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+
+    form.setAssistant("assistant-1");
+    expect(form.getState().selectedAssistantId).toBe("assistant-1");
+
+    form.setProject(buildProjectOptionId("host-b", "project-b"), { label: "Project B" });
+    expect(form.getState().selectedAssistantId).toBeNull();
+  });
+
+  it("opens existing bash schedules for editing", () => {
+    const form = open({
+      mode: "edit",
+      schedule: {
+        ...scheduleOnHost({
+          serverId: "host-a",
+          serverName: "Host A",
+          cwd: "/repo/a",
+          model: "model-a",
+        }),
+        target: { type: "bash", config: { cwd: "/repo/a" } },
+        prompt: "npm test",
+      },
+      defaults: { serverId: null, projectTargets: PROJECT_TARGETS, preferences: {} },
+    });
+
+    expect(form.getState()).toMatchObject({
+      mode: "edit",
+      targetKind: "bash",
+      prompt: "npm test",
+      workingDir: "/repo/a",
+      projectDisplay: { label: "Project A" },
+      providerSnapshotRequest: null,
+      canSubmit: true,
     });
   });
 

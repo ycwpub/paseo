@@ -86,6 +86,9 @@ describe("desktop-settings", () => {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
       },
+      attention: {
+        soundVolume: 0.5,
+      },
     });
   });
 
@@ -98,6 +101,7 @@ describe("desktop-settings", () => {
     const next = await store.patch({
       releaseChannel: "beta",
       daemon: { keepRunningAfterQuit: false },
+      attention: { soundVolume: 0.75 },
     });
     const files = await readdir(userDataPath);
 
@@ -107,6 +111,9 @@ describe("desktop-settings", () => {
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
+      },
+      attention: {
+        soundVolume: 0.75,
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
@@ -274,6 +281,9 @@ describe("desktop-settings", () => {
       daemon: {
         manageBuiltInDaemon: false,
         keepRunningAfterQuit: false,
+      },
+      attention: {
+        soundVolume: 0.5,
       },
     });
     expect(ignoredSecondMigration).toEqual(migrated);

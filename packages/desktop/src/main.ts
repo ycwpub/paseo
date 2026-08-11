@@ -1,12 +1,13 @@
 process.emitWarning = (() => {}) as typeof process.emitWarning;
 
 import log from "electron-log/main";
+import path from "node:path";
+import { hostname as getSystemHostname } from "node:os";
 log.transports.console.level = "info";
 log.initialize({ spyRendererConsole: true });
 
 import { inheritLoginShellEnv } from "./login-shell-env.js";
 
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -37,9 +38,11 @@ import {
   resolveWindowBounds,
   setupWindowResizeEvents,
   setupWindowStatePersistence,
+  setupWindowTitleManagement,
   setupDefaultContextMenu,
   setupDragDropPrevention,
   buildStandardContextMenuItems,
+  resetCustomWindowName,
 } from "./window/window-manager.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
@@ -117,6 +120,9 @@ const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
   isPackaged: app.isPackaged,
 });
 const UPDATE_QUIT_DEADLINE_MS = 5_000;
+const IS_TEST_BUILD = path.basename(process.execPath).toLowerCase().includes("test");
+const APP_NAME =
+  process.env.PASEO_TEST_APP_NAME?.trim() || (IS_TEST_BUILD ? app.getName() : "Paseo");
 const pendingBrowserWindowOpenRequests = new PendingBrowserWindowOpenRequests();
 const agentNavigationInbox = new AgentNavigationInbox();
 
@@ -130,6 +136,21 @@ const bootstrapComplete = new Promise<void>((resolve) => {
 let bootstrapIsComplete = false;
 
 app.setName(APP_NAME);
+
+// For test builds, use the same PASEO_HOME as production so that workspaces,
+// providers, assistants, channels, and agent config are shared (no duplicate
+// configuration needed). Only the listen port is changed to avoid conflicts
+// when both apps run simultaneously.
+if (IS_TEST_BUILD) {
+  if (!process.env.PASEO_LISTEN) {
+    process.env.PASEO_LISTEN = process.env.PASEO_TEST_LISTEN ?? "127.0.0.1:6769";
+  }
+  log.info("[test-build] shared daemon home, isolated listen port", {
+    paseoHome: process.env.PASEO_HOME ?? "~/.paseo",
+    paseoListen: process.env.PASEO_LISTEN,
+    execPath: process.execPath,
+  });
+}
 
 interface AttachedBrowserInput {
   browserId: string;
@@ -353,6 +374,10 @@ let pendingAgentNavigation = parseAgentDeepLinkFromArgv(process.argv);
 // in-app "Open in new window" action) land on the right project without
 // racing a global.
 let desktopWindowOwner: DesktopWindowOwner<AgentDeepLinkTarget>;
+
+ipcMain.on("paseo:get-device-name", (event) => {
+  event.returnValue = getSystemHostname();
+});
 
 if (PASEO_DEBUG) {
   log.info("[open-project] argv:", process.argv);
@@ -935,6 +960,12 @@ async function bootstrap(): Promise<void> {
       void desktopWindowOwner.openAdditional().catch((error) => {
         log.error("[window] failed to create window from menu", error);
       });
+    },
+    onRenameWindow: (win) => {
+      win.webContents.send("paseo:event:rename-window", {});
+    },
+    onResetWindowName: (win) => {
+      resetCustomWindowName(win);
     },
   });
   ensureNotificationCenterRegistration();

@@ -23,11 +23,9 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceCreateRequest,
 } from "@getpaseo/protocol/messages";
-import { DaemonClient } from "./daemon-client.js";
+import { DaemonClient, FileExplorerRequestError } from "./daemon-client.js";
 import type {
-  FetchAgentsEntry,
-  FetchAgentsOptions,
-  FetchAgentsPageInfo,
+  DaemonConnectionTransport,
   FetchAgentTimelineCursor,
   FetchAgentTimelineDirection,
   FetchAgentTimelinePayload,
@@ -35,15 +33,25 @@ import type {
   WaitForFinishResult,
 } from "./daemon-client.js";
 
-/**
- * Coding turns routinely run for minutes, so the handle waits far longer than
- * the transport's own conservative default.
- */
-const DEFAULT_WAIT_FOR_FINISH_MS = 10 * 60_000;
+export { DaemonClient, FileExplorerRequestError };
+export type {
+  DaemonClientConfig,
+  DaemonEvent,
+  BrowserAutomationExecuteRequestMessage,
+  BrowserAutomationExecuteResponseMessage,
+  ConfigureLarkChannelOptions,
+  ApplyLarkBotOptions,
+  GetLarkBotApplicationOptions,
+  DeleteLarkBotOptions,
+  DaemonConnectionTransport,
+  WebSocketFactory,
+  WebSocketLike,
+} from "./daemon-client.js";
 
 export type ConnectionState =
   | { status: "idle" }
   | { status: "connecting"; attempt: number }
+  | { status: "awaiting_approval"; message: string }
   | { status: "connected" }
   | { status: "disconnected"; reason?: string }
   | { status: "disposed" };
@@ -58,6 +66,8 @@ export interface PaseoLogger {
 export interface PaseoClientConfig {
   url: string;
   clientId?: string;
+  clientName?: string;
+  clientHostname?: string;
   appVersion?: string;
   runtimeGeneration?: number | null;
   password?: string;
@@ -208,6 +218,8 @@ export interface PaseoAgentCreateOptions {
   worktree?: CreateAgentRequestMessage["worktree"];
   autoArchive?: CreateAgentRequestMessage["autoArchive"];
   requestId?: string;
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
   labels?: Record<string, string>;
 }
 
@@ -230,6 +242,8 @@ export interface PaseoAgentSendOptions {
   messageId?: string;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: SendAgentMessageRequest["attachments"];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export interface PaseoAgentRunOptions extends PaseoAgentSendOptions {
@@ -410,6 +424,7 @@ export interface PaseoClient extends PaseoApi {
   close(): Promise<void>;
   ensureConnected(): void;
   getConnectionState(): ConnectionState;
+  getConnectionTransport(): DaemonConnectionTransport | null;
 }
 
 export function createPaseoClient(config: PaseoClientConfig): PaseoClient {

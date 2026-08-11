@@ -7,6 +7,8 @@ export interface MessagePayload {
   attachments: ComposerAttachment[];
   cwd: string;
   forceSend?: boolean;
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export interface TextReplacement {

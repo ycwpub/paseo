@@ -17,3 +17,13 @@ export {
   maxBase64EncryptedPlaintextByteLength,
 } from "./encrypted-channel.js";
 export type { Transport, EncryptedChannelEvents } from "./encrypted-channel.js";
+export { startLocalRelayServer } from "./local-server.js";
+export type {
+  LocalRelayConnectionInfo,
+  LocalRelayConnectionHistoryRecord,
+  LocalRelayConnectionRole,
+  LocalRelayDeviceType,
+  LocalRelayLogger,
+  LocalRelayServerController,
+  LocalRelayStatus,
+} from "./local-server.js";

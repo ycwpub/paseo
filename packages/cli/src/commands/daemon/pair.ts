@@ -40,25 +40,36 @@ export interface PairingOffer {
   qr: string | null;
 }
 
-const PAIRING_DAEMON_RPC_TIMEOUT_MS = 1500;
-const RELAY_DOCS_URL = "https://paseo.sh/docs/security";
+const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
+const PAIRING_RECONCILE_POLL_MS = 100;
 
-function createProcessOutput(): PairCommandOutput {
-  return {
-    columns: process.stdout.columns,
-    writeStdout(message) {
-      process.stdout.write(message);
-    },
-    writeStderr(message) {
-      process.stderr.write(message);
-    },
-    setExitCode(code) {
-      process.exitCode = code;
-    },
-    success(message) {
-      log.success(message);
-    },
-  };
+type ConnectedDaemonClient = NonNullable<Awaited<ReturnType<typeof tryConnectToDaemon>>>;
+
+export async function getCompleteDaemonPairingOffer(
+  client: ConnectedDaemonClient,
+  timeoutMs: number = PAIRING_DAEMON_RPC_TIMEOUT_MS,
+) {
+  const config = await client.getDaemonConfig();
+  const expectedEndpoints = new Set(
+    config.config.relay.endpoints.map((relay) => relay.publicEndpoint ?? relay.endpoint),
+  );
+  if (config.config.relay.local.enabled) {
+    expectedEndpoints.add(
+      config.config.relay.local.publicEndpoint ?? config.config.relay.local.listen,
+    );
+  }
+  const expectedOfferCount = expectedEndpoints.size;
+  const deadline = Date.now() + timeoutMs;
+  let offer = await client.getDaemonPairingOffer({ timeout: Math.max(1, timeoutMs) });
+
+  while (offer.offers.length < expectedOfferCount && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, PAIRING_RECONCILE_POLL_MS));
+    offer = await client.getDaemonPairingOffer({
+      timeout: Math.max(1, deadline - Date.now()),
+    });
+  }
+
+  return offer;
 }
 
 export function pairCommand(): Command {
@@ -85,14 +96,44 @@ export async function resolveLocalPairingOffer(options: {
     );
   }
 
-  const config = loadConfig(options.paseoHome);
-  if (options.enableRelay && !config.relayEnabled) {
-    throw new Error("Start the daemon before enabling relay for pairing.");
+  const paseoHome = resolvePaseoHome();
+  const state = resolveLocalDaemonState({ home: paseoHome });
+
+  // Try to get the pairing offer from the running daemon first.
+  if (state.running) {
+    const client = await tryConnectToDaemon({ host: state.listen, timeout: 1500 });
+    if (client) {
+      const supportsDaemonStatusRpc =
+        client.getLastServerInfoMessage()?.features?.daemonStatusRpc === true;
+      if (supportsDaemonStatusRpc) {
+        try {
+          const offer = await getCompleteDaemonPairingOffer(client, PAIRING_DAEMON_RPC_TIMEOUT_MS);
+          await client.close().catch(() => {});
+          outputPairingResult(
+            {
+              relayEnabled: offer.relayEnabled,
+              url: offer.url,
+              qr: offer.qr ?? null,
+              offers: offer.offers,
+            },
+            options,
+          );
+          return;
+        } catch {
+          // COMPAT(daemon-rpc-rollout): fall back to CLI-side pairing generation while
+          // old daemons lack daemonStatusRpc. Remove once the daemon floor is past
+          // v0.1.76; pairing should come from daemon.get_pairing_offer.
+        }
+      }
+      await client.close().catch(() => {});
+    }
   }
 
   return generateLocalPairingOffer({
     paseoHome: options.paseoHome,
     relayEnabled: config.relayEnabled,
+    relayEndpoints: config.relayEndpoints,
+    relayPairingBaseUrls: config.relayPairingBaseUrls,
     relayEndpoint: config.relayEndpoint,
     relayPublicEndpoint: config.relayPublicEndpoint,
     relayUseTls: config.relayUseTls,
@@ -201,7 +242,18 @@ export async function runPairCommand(
 }
 
 function outputPairingResult(
-  pairing: PairingOffer,
+  pairing: {
+    relayEnabled: boolean;
+    url: string | null;
+    qr: string | null;
+    offers: Array<{
+      endpoint: string;
+      useTls: boolean;
+      pairingBaseUrl?: string;
+      url: string;
+      qr?: string | null;
+    }>;
+  },
   options: PairOptions,
   output: PairCommandOutput,
 ): void {
@@ -225,7 +277,12 @@ function outputPairingResult(
   if (options.json) {
     output.writeStdout(
       `${JSON.stringify(
-        { relayEnabled: pairing.relayEnabled, url: pairing.url, qr: pairing.qr },
+        {
+          relayEnabled: pairing.relayEnabled,
+          url: pairing.url,
+          qr: pairing.qr,
+          offers: pairing.offers,
+        },
         null,
         2,
       )}\n`,
@@ -233,11 +290,12 @@ function outputPairingResult(
     return;
   }
 
-  output.writeStdout(
-    formatPairingInstructions({
-      url: pairing.url,
-      qr: pairing.qr,
-      columns: output.columns,
-    }),
-  );
+  const offerBlocks = pairing.offers
+    .map((offer) => {
+      const qrBlock = offer.qr ? `${offer.qr}\n` : "";
+      const scheme = offer.useTls ? "wss" : "ws";
+      return `\nRelay ${scheme}://${offer.endpoint}\n${qrBlock}${offer.url}\n`;
+    })
+    .join("");
+  process.stdout.write(offerBlocks || `\nScan to pair:\n${pairing.qr ?? ""}\n${pairing.url}\n`);
 }

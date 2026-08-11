@@ -97,9 +97,7 @@ async function openAgentRouteAndExpectFocused(input: {
 test.describe("Settings toggle tab regression", () => {
   test.describe.configure({ timeout: 180_000 });
 
-  test("toggling settings after changing a setting returns to the same workspace tab", async ({
-    page,
-  }) => {
+  test("toggling settings returns to the same workspace tab", async ({ page }) => {
     const serverId = getServerId();
     const workspace = await seedWorkspace({ repoPrefix: "settings-toggle-tab-" });
 

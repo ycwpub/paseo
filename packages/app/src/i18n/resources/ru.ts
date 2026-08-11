@@ -105,6 +105,7 @@ export const ru: TranslationResources = {
       queue: "Очередь",
       send: "Отправить",
     },
+    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "Отменить агента",
       stopAgent: "Остановить агента",
@@ -128,6 +129,18 @@ export const ru: TranslationResources = {
       addFile: "Загрузить файл",
       addIssueOrPr: "Добавить проблему или PR",
       addIssueOrPr_mr: "Добавить проблему или MR",
+      selectMcpServers: "Select MCP servers",
+      selectSkills: "Select skills",
+      mcpPickerTitle: "MCP servers for this session",
+      skillPickerTitle: "Skills for this session",
+      searchMcpServers: "Search MCP servers...",
+      searchSkills: "Search skills...",
+      noMcpServers: "No enabled MCP servers.",
+      noSkills: "No enabled skills.",
+      openMcpPicker: "Open MCP server picker",
+      openSkillPicker: "Open skill picker",
+      removeMcp: "Remove MCP server {{name}} from this session",
+      removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Скиньте изображения сюда",
       dropFilesHere: "Переместите файлы сюда",
       editQueuedMessage: "Изменить сообщение из очереди",
@@ -142,6 +155,15 @@ export const ru: TranslationResources = {
       removeBrowserElement: "Удалить вложение с элементом браузера",
       openReview: "Открыть вложение проверки",
       removeReview: "Удалить вложение проверки",
+    },
+    queue: {
+      edit: "Изменить сообщение в очереди",
+      save: "Сохранить сообщение в очереди",
+      cancelEdit: "Отменить редактирование сообщения",
+      remove: "Удалить сообщение из очереди",
+      moveUp: "Переместить сообщение вверх",
+      moveDown: "Переместить сообщение вниз",
+      steer: "Направить",
     },
     errors: {
       failedToSend: "Не удалось отправить сообщение",
@@ -202,7 +224,12 @@ export const ru: TranslationResources = {
   agentStream: {
     empty: "Начните общаться с этим агентом...",
     scrollToBottom: "Прокрутить вниз",
-    historyLoadFailed: "Не удалось загрузить историю агента",
+    scrollToOldest: "Перейти к первому сообщению",
+    locatingOldest: "Поиск первого сообщения",
+    process: {
+      show: "Показать процесс",
+      hide: "Скрыть процесс",
+    },
     permission: {
       plan: "План",
       required: "Требуется разрешение",
@@ -450,6 +477,7 @@ export const ru: TranslationResources = {
       },
     },
     fileExplorer: {
+      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "Имя",
         modified: "Дата изменения",
@@ -1672,10 +1700,13 @@ export const ru: TranslationResources = {
       alert: {
         failedTitle: "Сопряжение не удалось",
       },
+      awaitingApproval:
+        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "Отмена",
         pair: "Подключить",
         pairing: "Сопряжение...",
+        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1717,6 +1748,45 @@ export const ru: TranslationResources = {
       retry: "Повторить попытку",
       copy: "Копировать",
       copied: "Скопировано",
+      access: {
+        title: "Управление клиентами",
+        requireApproval: "Require client approval",
+        requireApprovalHint:
+          "When enabled, new clients must be approved here before they can connect.",
+        empty: "No client connection requests.",
+        pending: "Pending approval",
+        allowed: "Подключение разрешено",
+        approved: "Approved",
+        paused: "Paused",
+        connected: "Connected",
+        disconnected: "Disconnected",
+        hostname: "Hostname",
+        identityId: "Identity ID",
+        endpoint: "IP / port",
+        endpointUnavailable: "Unavailable",
+        lastConnectedAt: "Последнее подключение",
+        neverConnected: "Нет данных",
+        unknownName: "Unknown client",
+        macClient: "Версия для Mac",
+        androidClient: "Версия для Android",
+        cliClient: "CLI-версия",
+        browserClient: "Браузерная версия",
+        historyTitle: "Client connection history",
+        historyEmpty: "No historical client connections.",
+        connectedAt: "Connected at",
+        disconnectedAt: "Disconnected at",
+        stillConnected: "Still connected",
+        historyRetention:
+          "History is automatically retained for {{days}} days and can be deleted manually.",
+        approve: "Approve",
+        approving: "Approving...",
+        pause: "Pause",
+        pausing: "Pausing...",
+        resume: "Resume",
+        resuming: "Resuming...",
+        delete: "Delete",
+        deleting: "Deleting...",
+      },
     },
   },
   realtimeVoice: {
@@ -1957,6 +2027,7 @@ export const ru: TranslationResources = {
       metadata: "Метаданные",
       workspaces: "Рабочие пространства",
       providers: "Провайдеры",
+      channels: "Каналы",
       usage: "Использование",
       terminals: "Терминалы",
       plugins: "Плагины",
@@ -2256,6 +2327,13 @@ export const ru: TranslationResources = {
       refresh: "Обновить",
       refreshing: "Обновление...",
       refreshAccessibility: "Обновить разрешения рабочего стола",
+      test: "Тест",
+      backgroundAttention: {
+        title: "Фоновые оповещения",
+        soundVolume: "Громкость сигнала",
+        description:
+          "Paseo оповещает, когда подключённый локальный или удалённый Host завершает задачу или требует вмешательства пользователя.",
+      },
       actions: {
         granted: "Предоставлено",
         request: "Запросить",
@@ -2453,6 +2531,11 @@ export const ru: TranslationResources = {
         moveDown: "Переместить вниз",
       },
       daemon: {
+        identity: {
+          title: "Сведения об идентификаторах",
+          serverId: "ID сервера",
+          serverIdDescription: "Уникальный идентификатор daemon; изменить нельзя",
+        },
         rename: {
           editLabel: "Изменить название",
           title: "Переименовать хост",
@@ -2653,6 +2736,10 @@ export const ru: TranslationResources = {
           remove: "Удалить",
         },
       },
+      resources: en.settings.project.resources,
+      indexSkill: en.settings.project.indexSkill,
+      variables: en.settings.project.variables,
+      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Генерация метаданных",
         info: "Инструкции для этого проекта, добавляемые в промпты ИИ, с помощью которых Paseo генерирует метаданные. Используйте их, чтобы соблюдать принятые в команде правила именования веток, оформления коммитов и формата PR.",

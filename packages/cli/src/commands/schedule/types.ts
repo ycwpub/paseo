@@ -28,10 +28,28 @@ export type ScheduleTarget =
         modeId?: string;
         model?: string;
         thinkingOptionId?: string;
+        assistantId?: string;
         title?: string | null;
         providerOptions?: Record<string, unknown>;
       };
+    }
+  | {
+      type: "bash";
+      config: {
+        cwd: string;
+        shell?: string;
+        timeoutMs?: number;
+      };
     };
+
+export interface ScheduleRunConfigSnapshot {
+  name: string | null;
+  prompt: string;
+  cadence: ScheduleCadence;
+  target: Exclude<ScheduleTarget, { type: "self" }>;
+  maxRuns: number | null;
+  expiresAt: string | null;
+}
 
 export interface ScheduleRunRecord {
   id: string;
@@ -40,8 +58,10 @@ export interface ScheduleRunRecord {
   endedAt: string | null;
   status: "running" | "succeeded" | "failed";
   agentId: string | null;
+  workspaceId?: string | null;
   output: string | null;
   error: string | null;
+  configSnapshot?: ScheduleRunConfigSnapshot;
 }
 
 export interface ScheduleRecord {
@@ -138,7 +158,15 @@ export interface UpdateScheduleNewAgentConfig {
   provider?: string;
   model?: string | null;
   modeId?: string | null;
+  thinkingOptionId?: string | null;
+  assistantId?: string | null;
   cwd?: string;
+}
+
+export interface UpdateScheduleBashConfig {
+  cwd?: string;
+  shell?: string | null;
+  timeoutMs?: number | null;
 }
 
 export interface UpdateScheduleInput {
@@ -147,6 +175,7 @@ export interface UpdateScheduleInput {
   prompt?: string;
   cadence?: ScheduleCadence;
   newAgentConfig?: UpdateScheduleNewAgentConfig;
+  bashConfig?: UpdateScheduleBashConfig;
   maxRuns?: number | null;
   expiresAt?: string | null;
 }

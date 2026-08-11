@@ -166,8 +166,10 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
-import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
-import type { PushNotificationSender } from "./push/index.js";
+import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
+import { startLocalRelayServer, type LocalRelayServerController } from "@getpaseo/relay";
+import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
+import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
@@ -182,7 +184,8 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
-import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
+import type { RelayDeviceType, RelayEndpointConfig } from "@getpaseo/protocol/daemon-endpoints";
+import type { PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
@@ -393,10 +396,9 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   browserToolsEnabled?: boolean;
-  git?: {
-    maxProcessesPerSecond: number;
-    maxProcessConcurrency: number;
-  };
+  clientAccessRequireApproval?: boolean;
+  projectIndexUpdateIntervalMinutes?: number;
+  instructionTemplates?: PaseoInstructionTemplate[];
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
@@ -411,11 +413,22 @@ export interface PaseoDaemonConfig {
   agentClients: Partial<Record<AgentProvider, AgentClient>>;
   agentStoragePath: string;
   relayEnabled?: boolean;
-  relayEnabledMutable?: boolean;
+  relayEndpoints?: RelayEndpointConfig[];
+  relayPairingBaseUrls?: string[];
   relayEndpoint?: string;
   relayPublicEndpoint?: string;
   relayUseTls?: boolean;
   relayPublicUseTls?: boolean;
+  lanRelay?: {
+    enabled: boolean;
+    listen: string;
+    publicEndpoint?: string;
+    pairingBaseUrl?: string;
+    webApp?: {
+      enabled: boolean;
+      path: string;
+    };
+  };
   serviceProxy?: {
     publicBaseUrl: string | null;
     standaloneListen: string | null;
@@ -454,6 +467,13 @@ export interface PaseoDaemonConfig {
     relayEnabledFallback: boolean;
     startupPersisted: PersistedConfig;
   };
+}
+
+function resolveRelayServerDeviceType(desktopManaged: boolean | undefined): RelayDeviceType {
+  if (!desktopManaged) return "cli";
+  if (process.platform === "darwin") return "mac";
+  if (process.platform === "win32") return "windows";
+  return "linux";
 }
 
 export interface PaseoDaemon {
@@ -539,6 +559,42 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
       ? { catalogRefreshTimeoutMs: config.providerCatalogRefreshTimeoutMs }
       : {}),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
+    clientAccess: {
+      requireApproval: config.clientAccessRequireApproval ?? false,
+    },
+    projectIndexing: {
+      updateIntervalMinutes: config.projectIndexUpdateIntervalMinutes ?? 1440,
+    },
+    instructionTemplates: config.instructionTemplates,
+    relay: {
+      endpoints:
+        config.relayEnabled === false
+          ? []
+          : (config.relayEndpoints ??
+            (config.relayEndpoint
+              ? [
+                  {
+                    endpoint: config.relayEndpoint,
+                    useTls: config.relayUseTls ?? false,
+                    ...(config.relayPublicEndpoint
+                      ? { publicEndpoint: config.relayPublicEndpoint }
+                      : {}),
+                    ...(config.relayPublicUseTls !== undefined
+                      ? { publicUseTls: config.relayPublicUseTls }
+                      : {}),
+                  },
+                ]
+              : [])),
+      pairingBaseUrls: config.relayPairingBaseUrls ?? [],
+      local: config.lanRelay ?? {
+        enabled: false,
+        listen: "0.0.0.0:6769",
+        webApp: {
+          enabled: false,
+          path: "/app",
+        },
+      },
+    },
     providers,
     metadataGeneration: {
       providers: config.metadataGeneration?.providers ?? [],
@@ -560,6 +616,24 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
   }
 
   return initialConfig;
+}
+
+function resolveMutableLocalRelayWebApp(local: MutableDaemonConfig["relay"]["local"]): {
+  enabled: boolean;
+  path: string;
+} {
+  return {
+    enabled: local.webApp?.enabled ?? false,
+    path: local.webApp?.path ?? "/app",
+  };
+}
+
+function createLocalRelaySignature(local: MutableDaemonConfig["relay"]["local"]): string {
+  if (!local.enabled) return "";
+  const webApp = resolveMutableLocalRelayWebApp(local);
+  return `${local.listen}\n${local.publicEndpoint ?? ""}\n${
+    local.pairingBaseUrl ?? ""
+  }\n${webApp.enabled ? "1" : "0"}\n${webApp.path}`;
 }
 
 export async function createPaseoDaemon(
@@ -616,7 +690,14 @@ export async function createPaseoDaemon(
   void reconcileManagedProcessLedger(managedProcesses, logger).catch((error) => {
     logger.warn({ err: error }, "Failed to reconcile managed helper process ledger");
   });
-  let relayRuntime: RelayRuntime | null = null;
+  const relayTransports = new Map<string, RelayTransportController>();
+  const discoveredRelayPairingBaseUrls = new Map<string, string>();
+  let localRelayServer: LocalRelayServerController | null = null;
+  let appliedLocalRelaySignature = "";
+  let relayReconcileGeneration = 0;
+  let relayReconcileQueue = Promise.resolve();
+  let relayReconcileStopped = false;
+  let disposeRelayConfigListener: (() => void) | null = null;
 
   const staticDir = config.staticDir;
   const downloadTokenTtlMs = config.downloadTokenTtlMs ?? 60000;
@@ -666,7 +747,223 @@ export async function createPaseoDaemon(
     appBaseUrl = typeof value === "string" ? value : "https://app.paseo.sh";
   });
   let wsServer: VoiceAssistantWebSocketServer | null = null;
+  const daemonRuntimeConfig: DaemonRuntimeConfig = {
+    listen: config.listen,
+    worktreesRoot: config.worktreesRoot,
+    appBaseUrl: config.appBaseUrl,
+    desktopManaged: config.desktopManaged === true,
+    relayDeviceType: resolveRelayServerDeviceType(config.desktopManaged),
+    getLocalRelayStatus: () => localRelayServer?.getStatus() ?? null,
+    deleteLocalRelayHistory: (historyId) => localRelayServer?.deleteHistory(historyId) ?? false,
+    relay: null,
+  };
+  let larkChannelService: LarkChannelService;
+  let assistantStore: AssistantStore;
   let serviceProxyListenTarget: ListenTarget | null = null;
+
+  const relayKey = (relay: RelayEndpointConfig): string =>
+    `${relay.useTls ? "wss" : "ws"}://${relay.endpoint}`;
+
+  type EffectiveRelayEndpoint = RelayEndpointConfig;
+
+  const dedupeEffectiveRelayEndpoints = (
+    endpoints: EffectiveRelayEndpoint[],
+  ): EffectiveRelayEndpoint[] => {
+    const unique: EffectiveRelayEndpoint[] = [];
+    const indexesByPublicEndpoint = new Map<string, number>();
+    for (const relay of endpoints) {
+      const publicEndpoint = relay.publicEndpoint ?? relay.endpoint;
+      const existingIndex = indexesByPublicEndpoint.get(publicEndpoint);
+      if (existingIndex === undefined) {
+        indexesByPublicEndpoint.set(publicEndpoint, unique.length);
+        unique.push(relay);
+        continue;
+      }
+      const existing = unique[existingIndex];
+      const existingUseTls = existing?.publicUseTls ?? existing?.useTls ?? false;
+      const nextUseTls = relay.publicUseTls ?? relay.useTls;
+      if (!existingUseTls && nextUseTls) {
+        unique[existingIndex] = relay;
+      } else if (existingUseTls === nextUseTls && existing) {
+        // Keep the original position, but prefer the latest runtime metadata.
+        // The local Relay is appended after configured Relay rows and supplies
+        // the actual hosted web-app URL (for example http://host:6769/app).
+        unique[existingIndex] = {
+          ...existing,
+          ...relay,
+          pairingBaseUrl: relay.pairingBaseUrl ?? existing.pairingBaseUrl,
+        };
+      }
+    }
+    return unique;
+  };
+
+  const updateRuntimeRelayConfig = (
+    relayConfig: MutableDaemonConfig["relay"],
+    effectiveEndpoints: EffectiveRelayEndpoint[],
+  ): void => {
+    const publicEndpoints = effectiveEndpoints.map(
+      ({ endpoint, useTls, publicEndpoint, publicUseTls, pairingBaseUrl }) => {
+        const discoveredPairingBaseUrl = discoveredRelayPairingBaseUrls.get(
+          `${useTls ? "wss" : "ws"}://${endpoint}`,
+        );
+        return {
+          endpoint,
+          useTls,
+          ...(publicEndpoint ? { publicEndpoint } : {}),
+          ...(publicUseTls !== undefined ? { publicUseTls } : {}),
+          ...(discoveredPairingBaseUrl || pairingBaseUrl
+            ? { pairingBaseUrl: discoveredPairingBaseUrl ?? pairingBaseUrl }
+            : {}),
+        };
+      },
+    );
+    const first = publicEndpoints[0];
+    // Keep this list limited to user-configured shared pairing frontends.
+    // Endpoint-discovered and local Relay URLs remain on their endpoint.
+    const pairingBaseUrls = relayConfig.pairingBaseUrls.filter(
+      (value, index, values) => values.indexOf(value) === index,
+    );
+    daemonRuntimeConfig.relay = {
+      enabled: publicEndpoints.length > 0,
+      endpoints: publicEndpoints,
+      pairingBaseUrls,
+      local: {
+        ...relayConfig.local,
+        ...(localRelayServer
+          ? {
+              publicEndpoint: localRelayServer.publicEndpoint,
+              pairingBaseUrl: localRelayServer.pairingBaseUrl,
+            }
+          : {}),
+      },
+      endpoint: first?.endpoint,
+      publicEndpoint: first?.publicEndpoint ?? first?.endpoint,
+      useTls: first?.useTls,
+      publicUseTls: first?.publicUseTls ?? first?.useTls,
+    };
+  };
+
+  const scheduleRelayReconcile = (relayConfig: MutableDaemonConfig["relay"]): void => {
+    if (relayReconcileStopped) return;
+
+    // Make status and newly generated pairing offers reflect edited public Relay
+    // addresses immediately. The transport swap itself runs on the serialized
+    // queue below so rapid consecutive edits cannot leave stale sockets behind.
+    const currentLocalSignature = createLocalRelaySignature(relayConfig.local);
+    updateRuntimeRelayConfig(
+      relayConfig,
+      dedupeEffectiveRelayEndpoints([
+        ...relayConfig.endpoints,
+        ...(localRelayServer && currentLocalSignature === appliedLocalRelaySignature
+          ? [
+              {
+                endpoint: localRelayServer.connectEndpoint,
+                useTls: localRelayServer.useTls,
+                publicEndpoint: localRelayServer.publicEndpoint,
+                publicUseTls: localRelayServer.useTls,
+                pairingBaseUrl: localRelayServer.pairingBaseUrl,
+              },
+            ]
+          : []),
+      ]),
+    );
+
+    const generation = ++relayReconcileGeneration;
+    relayReconcileQueue = relayReconcileQueue
+      .then(async () => {
+        if (relayReconcileStopped || generation !== relayReconcileGeneration) return undefined;
+
+        const localSignature = createLocalRelaySignature(relayConfig.local);
+        if (localSignature !== appliedLocalRelaySignature) {
+          const previousLocalRelay = localRelayServer;
+          localRelayServer = null;
+          await previousLocalRelay?.stop();
+          const webApp = resolveMutableLocalRelayWebApp(relayConfig.local);
+          localRelayServer = relayConfig.local.enabled
+            ? await startLocalRelayServer({
+                listen: relayConfig.local.listen,
+                publicEndpoint: relayConfig.local.publicEndpoint,
+                pairingBaseUrl: relayConfig.local.pairingBaseUrl,
+                webApp: {
+                  ...webApp,
+                  distDir: config.webUi?.distDir ?? null,
+                },
+                historyFilePath: path.join(config.paseoHome, "relay-connection-history.json"),
+                logger,
+              })
+            : null;
+          appliedLocalRelaySignature = localSignature;
+        }
+
+        if (relayReconcileStopped || generation !== relayReconcileGeneration) return undefined;
+
+        const effectiveEndpoints = dedupeEffectiveRelayEndpoints([
+          ...relayConfig.endpoints,
+          ...(localRelayServer
+            ? [
+                {
+                  endpoint: localRelayServer.connectEndpoint,
+                  useTls: localRelayServer.useTls,
+                  publicEndpoint: localRelayServer.publicEndpoint,
+                  publicUseTls: localRelayServer.useTls,
+                  pairingBaseUrl: localRelayServer.pairingBaseUrl,
+                },
+              ]
+            : []),
+        ]);
+        const desiredKeys = new Set(effectiveEndpoints.map(relayKey));
+
+        for (const [key, controller] of relayTransports) {
+          if (desiredKeys.has(key)) continue;
+          relayTransports.delete(key);
+          await controller.stop().catch(() => undefined);
+        }
+
+        for (const relay of effectiveEndpoints) {
+          const key = relayKey(relay);
+          if (relayTransports.has(key)) continue;
+          if (!wsServer) throw new Error("WebSocket server not initialized");
+          relayTransports.set(
+            key,
+            startRelayTransport({
+              logger,
+              attachSocket: (socket, metadata) => {
+                if (!wsServer) throw new Error("WebSocket server not initialized");
+                return wsServer.attachExternalSocket(socket, metadata);
+              },
+              relayEndpoint: relay.endpoint,
+              relayUseTls: relay.useTls,
+              serverId,
+              serverHostname: getHostname(),
+              serverDeviceType: resolveRelayServerDeviceType(config.desktopManaged),
+              daemonKeyPair: daemonKeyPair.keyPair,
+              onPairingBaseUrl: (pairingBaseUrl) => {
+                discoveredRelayPairingBaseUrls.set(key, pairingBaseUrl);
+                const runtimeRelay = daemonRuntimeConfig.relay;
+                if (!runtimeRelay) return;
+                for (const endpoint of runtimeRelay.endpoints) {
+                  if (relayKey(endpoint) === key) endpoint.pairingBaseUrl = pairingBaseUrl;
+                }
+              },
+            }),
+          );
+        }
+
+        updateRuntimeRelayConfig(relayConfig, effectiveEndpoints);
+        logger.info(
+          {
+            relayCount: effectiveEndpoints.length,
+            lanRelayEnabled: relayConfig.local.enabled,
+          },
+          "Relay configuration applied",
+        );
+        return undefined;
+      })
+      .catch((error) => {
+        logger.error({ err: error }, "Failed to apply relay configuration");
+      });
+  };
   const scriptHealthMonitor = new ScriptHealthMonitor({
     serviceProxy,
     onChange: createScriptStatusEmitter({
@@ -881,7 +1178,9 @@ export async function createPaseoDaemon(
     workspaceGitService,
     logger,
   });
-  const providerSnapshotLogger = logger.child({ module: "provider-snapshot-manager" });
+  const providerSnapshotLogger = logger.child({
+    module: "provider-snapshot-manager",
+  });
   const providerSnapshotManager = new ProviderSnapshotManager({
     logger: providerSnapshotLogger,
     refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
@@ -904,6 +1203,31 @@ export async function createPaseoDaemon(
     if (git) configureGitProcessPolicy(git);
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
+  const mcpStore = new McpStore({ paseoHome: config.paseoHome, logger });
+  const skillMaterializer = new SkillMaterializer({
+    paseoHome: config.paseoHome,
+    logger,
+  });
+  const skillStore = new SkillStore({
+    paseoHome: config.paseoHome,
+    logger,
+    onChanged: (skills) => skillMaterializer.sync(skills),
+  });
+  try {
+    importProviderResourcesOnStartup({
+      paseoHome: config.paseoHome,
+      mcpStore,
+      skillStore,
+      logger,
+    });
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to import provider MCP servers and skills during startup");
+  }
+  try {
+    skillMaterializer.sync(skillStore.list());
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to sync skill symlinks during daemon startup");
+  }
   const agentManager = new AgentManager({
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
@@ -913,6 +1237,9 @@ export async function createPaseoDaemon(
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
     mcpAuthToken: agentMcpAuthToken,
+    mcpStore,
+    skillStore,
+    skillMaterializer,
     logger,
   });
 
@@ -934,10 +1261,12 @@ export async function createPaseoDaemon(
   });
   await workspaceLabelService.initialize();
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
-  const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
-    scriptRuntimeStore.removeForWorkspace(workspaceId);
-    releaseWorkspaceServicePortPlan(workspaceId);
-  };
+  const projectIndexService = new ProjectIndexService({
+    projectRegistry,
+    daemonConfigStore,
+    logger,
+  });
+  projectIndexService.start();
   const workspaceReconciliation = new WorkspaceReconciliationService({
     serverId,
     projectRegistry,
@@ -1050,7 +1379,9 @@ export async function createPaseoDaemon(
     workspaceRegistry,
     workspaceGitService,
     providerSnapshotManager,
-    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    readDaemonConfig: () => ({
+      metadataGeneration: daemonConfigStore.get().metadataGeneration,
+    }),
     gitMutation: createGitMutationService({
       workspaceGitService,
       logger,
@@ -1141,6 +1472,8 @@ export async function createPaseoDaemon(
     worktreesRoot: config.worktreesRoot,
     terminalManager,
     providerSnapshotManager,
+    projectRegistry,
+    workspaceRegistry,
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
   };
@@ -1218,6 +1551,46 @@ export async function createPaseoDaemon(
       }),
   });
 
+  const larkChannelStore = new LarkChannelStore({
+    paseoHome: config.paseoHome,
+    logger,
+  });
+  assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
+  const teamStore = new TeamStore({
+    paseoHome: config.paseoHome,
+    logger,
+    assistantStore,
+  });
+  larkChannelService = new LarkChannelService({
+    store: larkChannelStore,
+    adapter: new OfficialLarkChannelClientAdapter({ logger }),
+    agentManager,
+    agentStorage,
+    createAgent,
+    assistantStore,
+    teamStore,
+    logger,
+    host: {
+      emitStatusChanged: (status) => {
+        wsServer?.broadcast(
+          wrapSessionMessage({
+            type: "channel.lark.status_changed",
+            payload: { status },
+          }),
+        );
+      },
+    },
+  });
+
+  const loopService = new LoopService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    createAgent,
+    ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
+  });
+  await loopService.initialize();
+  logger.info({ elapsed: elapsed() }, "Loop service initialized");
   const createScheduleLocalWorkspaceExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
@@ -1287,8 +1660,45 @@ export async function createPaseoDaemon(
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    assistantStore,
   });
   await scheduleService.start();
+  let inFlightIdleAgentCollection: Promise<void> | null = null;
+  const collectIdleAgentRuntimes = async () => {
+    const protectedAgentIds = await scheduleService.listActiveAgentTargetIds();
+    const cutoff = new Date(Date.now() - IDLE_AGENT_RUNTIME_TTL_MS);
+    const result = await agentManager.collectIdleAgents({
+      cutoff,
+      protectedAgentIds,
+    });
+    for (const collected of result.collected) {
+      logger.info(collected, "Collected idle agent runtime");
+    }
+    for (const failure of result.failures) {
+      const { error, ...context } = failure;
+      logger.warn({ ...context, err: error }, "Failed to collect idle agent runtime");
+    }
+  };
+  const runIdleAgentCollection = () => {
+    if (inFlightIdleAgentCollection) {
+      return;
+    }
+    const collection = collectIdleAgentRuntimes()
+      .catch((error) => {
+        logger.warn({ err: error }, "Idle agent runtime sweep failed");
+      })
+      .finally(() => {
+        if (inFlightIdleAgentCollection === collection) {
+          inFlightIdleAgentCollection = null;
+        }
+      });
+    inFlightIdleAgentCollection = collection;
+  };
+  const idleAgentCollectionTimer = setInterval(
+    runIdleAgentCollection,
+    IDLE_AGENT_RUNTIME_SWEEP_INTERVAL_MS,
+  );
+  idleAgentCollectionTimer.unref();
   agentManager.setAgentArchivedCallback(async (agentId) => {
     try {
       await scheduleService.completeForAgent(agentId);
@@ -1301,7 +1711,9 @@ export async function createPaseoDaemon(
   const persistedRecords = await agentStorage.list();
   logger.info(
     { elapsed: elapsed() },
-    `Agent registry loaded (${persistedRecords.length} record${persistedRecords.length === 1 ? "" : "s"}); agents will initialize on demand`,
+    `Agent registry loaded (${persistedRecords.length} record${
+      persistedRecords.length === 1 ? "" : "s"
+    }); agents will initialize on demand`,
   );
   logger.info(
     "Voice mode configured for agent-scoped resume flow (no dedicated voice assistant provider)",
@@ -1359,6 +1771,8 @@ export async function createPaseoDaemon(
     createPaseoWorktree: createAgentCommandDependencies.createPaseoWorktree,
     browserToolsEnabled: browserToolsPolicy.isEnabled(),
     browserToolsBroker,
+    assistantStore,
+    teamStore,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
@@ -1552,11 +1966,8 @@ export async function createPaseoDaemon(
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
-            const relayEnabled = config.relayEnabled ?? true;
-            const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
-            const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.paseo.sh:443";
-            const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
+            const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
+
             if (boundListenTarget.type === "tcp") {
               logger.info(
                 {
@@ -1674,6 +2085,13 @@ export async function createPaseoDaemon(
               relayRuntime?.setEnabled(value === true);
             });
             await hubRelationships.start();
+
+            daemonRuntimeConfig.listen = formatListenTarget(boundListenTarget ?? listenTarget);
+            daemonRuntimeConfig.appBaseUrl = appBaseUrl;
+            disposeRelayConfigListener = daemonConfigStore.onFieldChange("relay", (value) => {
+              scheduleRelayReconcile(value as MutableDaemonConfig["relay"]);
+            });
+            scheduleRelayReconcile(daemonConfigStore.get().relay);
           };
 
           logAndResolve().then(resolve, reject);
@@ -1695,6 +2113,7 @@ export async function createPaseoDaemon(
       // model loading doesn't block the server from accepting connections.
       speechService.start();
       scriptHealthMonitor.start();
+      await larkChannelService.start();
     } catch (error) {
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
@@ -1709,7 +2128,9 @@ export async function createPaseoDaemon(
   const stop = async () => {
     await pluginRuntime.stopAllPlugins();
     await hubRelationships.stop();
+    projectIndexService.stop();
     workspaceReconciliation.dispose();
+    await larkChannelService.stop().catch(() => undefined);
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
@@ -1722,7 +2143,17 @@ export async function createPaseoDaemon(
     terminalManager.killAll();
     await speechService.stop();
     await scheduleService.stop().catch(() => undefined);
-    await relayRuntime?.stop().catch(() => undefined);
+    relayReconcileStopped = true;
+    disposeRelayConfigListener?.();
+    disposeRelayConfigListener = null;
+    relayReconcileGeneration += 1;
+    await relayReconcileQueue.catch(() => undefined);
+    await Promise.all(
+      [...relayTransports.values()].map((controller) => controller.stop().catch(() => undefined)),
+    );
+    relayTransports.clear();
+    await localRelayServer?.stop().catch(() => undefined);
+    localRelayServer = null;
     if (wsServer) {
       await wsServer.close();
     }

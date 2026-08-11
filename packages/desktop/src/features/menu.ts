@@ -8,6 +8,8 @@ interface ShowContextMenuInput {
 
 interface ApplicationMenuOptions {
   onNewWindow: () => void;
+  onRenameWindow: (win: BrowserWindow) => void;
+  onResetWindowName: (win: BrowserWindow) => void;
 }
 
 function withBrowserWindow(
@@ -171,6 +173,19 @@ function buildApplicationMenuTemplate(
     {
       label: "Window",
       submenu: [
+        {
+          label: "Rename Window…",
+          click: withBrowserWindow((win) => {
+            options.onRenameWindow(win);
+          }),
+        },
+        {
+          label: "Use Automatic Window Name",
+          click: withBrowserWindow((win) => {
+            options.onResetWindowName(win);
+          }),
+        },
+        { type: "separator" },
         { role: "minimize" },
         { role: "zoom" },
         ...(isMac

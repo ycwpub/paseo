@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RELAY_DEVICE_TYPES } from "./daemon-endpoints.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";
@@ -58,12 +59,171 @@ import {
   BrowserAutomationExecuteRequestSchema,
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
+import {
+  AssistantChangedMessageSchema,
+  AssistantCreateRequestSchema,
+  AssistantCreateResponseSchema,
+  AssistantDeleteRequestSchema,
+  AssistantDeleteResponseSchema,
+  AssistantListRequestSchema,
+  AssistantListResponseSchema,
+  AssistantUpdateRequestSchema,
+  AssistantUpdateResponseSchema,
+} from "./assistant/rpc-schemas.js";
+import {
+  LarkChannelApprovePairingRequestSchema,
+  LarkChannelApprovePairingResponseSchema,
+  LarkChannelApplyBotRequestSchema,
+  LarkChannelApplyBotResponseSchema,
+  LarkChannelConfigureRequestSchema,
+  LarkChannelConfigureResponseSchema,
+  LarkChannelDeleteBotRequestSchema,
+  LarkChannelDeleteBotResponseSchema,
+  LarkChannelGetStatusRequestSchema,
+  LarkChannelGetStatusResponseSchema,
+  LarkChannelGetBotApplicationRequestSchema,
+  LarkChannelGetBotApplicationResponseSchema,
+  LarkChannelRejectPairingRequestSchema,
+  LarkChannelRejectPairingResponseSchema,
+  LarkChannelRevokeUserRequestSchema,
+  LarkChannelRevokeUserResponseSchema,
+  LarkChannelSetEnabledRequestSchema,
+  LarkChannelSetEnabledResponseSchema,
+  LarkChannelStatusChangedMessageSchema,
+  LarkChannelTestConnectionRequestSchema,
+  LarkChannelTestConnectionResponseSchema,
+} from "./channel/lark/rpc-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
+import {
+  TeamListRequestSchema,
+  TeamCreateRequestSchema,
+  TeamUpdateRequestSchema,
+  TeamDeleteRequestSchema,
+  TeamGetRequestSchema,
+  TeamSendRunRequestSchema,
+  TeamRunStateRequestSchema,
+} from "./team/rpc-schemas.js";
+import {
+  McpListRequestSchema,
+  McpCreateRequestSchema,
+  McpUpdateRequestSchema,
+  McpDeleteRequestSchema,
+  McpTestConnectionRequestSchema,
+} from "./mcp/rpc-schemas.js";
+import {
+  SkillListRequestSchema,
+  SkillCreateRequestSchema,
+  SkillUpdateRequestSchema,
+  SkillDeleteRequestSchema,
+} from "./skill/rpc-schemas.js";
+import {
+  TeamListResponseSchema,
+  TeamCreateResponseSchema,
+  TeamUpdateResponseSchema,
+  TeamDeleteResponseSchema,
+  TeamGetResponseSchema,
+  TeamChangedMessageSchema,
+  TeamSendRunResponseSchema,
+  TeamRunStateResponseSchema,
+} from "./team/rpc-schemas.js";
+import {
+  McpListResponseSchema,
+  McpCreateResponseSchema,
+  McpUpdateResponseSchema,
+  McpDeleteResponseSchema,
+  McpTestConnectionResponseSchema,
+  McpChangedMessageSchema,
+} from "./mcp/rpc-schemas.js";
+import {
+  SkillListResponseSchema,
+  SkillCreateResponseSchema,
+  SkillUpdateResponseSchema,
+  SkillDeleteResponseSchema,
+  SkillChangedMessageSchema,
+} from "./skill/rpc-schemas.js";
+export {
+  LarkChannelAuthorizedUserSchema,
+  LarkChannelBotSchema,
+  LarkChannelBotStatusSchema,
+  LarkChannelConnectionStatusSchema,
+  LarkChannelDomainSchema,
+  LarkChannelPendingPairingSchema,
+  LarkChannelStatusSchema,
+  LarkChannelSubstituteSchema,
+  LarkChannelTargetSchema,
+  type LarkChannelAuthorizedUser,
+  type LarkChannelBot,
+  type LarkChannelBotStatus,
+  type LarkChannelConnectionStatus,
+  type LarkChannelDomain,
+  type LarkChannelPendingPairing,
+  type LarkChannelStatus,
+  type LarkChannelSubstitute,
+  type LarkChannelTarget,
+} from "./channel/lark/types.js";
+export {
+  LarkBotApplicationSchema,
+  LarkBotApplicationStatusSchema,
+  type LarkBotApplication,
+} from "./channel/lark/rpc-schemas.js";
+export {
+  AssistantCreateInputSchema,
+  AssistantMemoryDetailFileSchema,
+  AssistantMemoryFilesSchema,
+  AssistantResourceSelectionSchema,
+  AssistantSchema,
+  AssistantUpdateInputSchema,
+  type Assistant,
+  type AssistantCreateInput,
+  type AssistantMemoryDetailFile,
+  type AssistantMemoryFiles,
+  type AssistantResourceSelection,
+  type AssistantUpdateInput,
+} from "./assistant/types.js";
+export {
+  TeamSchema,
+  TeamCreateInputSchema,
+  TeamMemberSettingsSchema,
+  TeamUpdateInputSchema,
+  TeamAssistantSchema,
+  type Team,
+  type TeamCreateInput,
+  type TeamMemberSettings,
+  type TeamUpdateInput,
+  type TeamAssistant,
+  type TeammateRole,
+  type TeammateStatus,
+  type WorkspaceMode,
+} from "./team/types.js";
+export {
+  McpServerSchema,
+  McpTransportSchema,
+  McpToolSchema,
+  McpServerCreateInputSchema,
+  McpServerUpdateInputSchema,
+  type McpServer,
+  type McpTransport,
+  type McpTool,
+  type McpServerCreateInput,
+  type McpServerUpdateInput,
+} from "./mcp/types.js";
+export {
+  SkillSchema,
+  SkillCreateInputSchema,
+  SkillUpdateInputSchema,
+  type Skill,
+  type SkillCreateInput,
+  type SkillUpdateInput,
+} from "./skill/types.js";
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
   PaseoMetadataGenerationEntrySchema,
   PaseoMetadataGenerationSchema,
+  PaseoProjectConfigSchema,
+  PaseoProjectDirectoriesSchema,
+  PaseoProjectIndexSkillSchema,
+  PaseoInstructionTemplateSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   PaseoConfigRevisionSchema,
@@ -72,6 +232,10 @@ import {
   type PaseoConfigRevision,
   type PaseoMetadataGeneration,
   type PaseoMetadataGenerationEntry,
+  type PaseoProjectConfig,
+  type PaseoProjectDirectories,
+  type PaseoProjectIndexSkill,
+  type PaseoInstructionTemplate,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 } from "./paseo-config-schema.js";
@@ -80,12 +244,20 @@ export {
   PaseoLifecycleCommandRawSchema,
   PaseoMetadataGenerationEntrySchema,
   PaseoMetadataGenerationSchema,
+  PaseoProjectConfigSchema,
+  PaseoProjectDirectoriesSchema,
+  PaseoProjectIndexSkillSchema,
+  PaseoInstructionTemplateSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   type PaseoConfigRaw,
   type PaseoConfigRevision,
   type PaseoMetadataGeneration,
   type PaseoMetadataGenerationEntry,
+  type PaseoProjectConfig,
+  type PaseoProjectDirectories,
+  type PaseoProjectIndexSkill,
+  type PaseoInstructionTemplate,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 };
@@ -169,9 +341,14 @@ const MutableBrowserToolsConfigSchema = z
     enabled: z.boolean().default(false),
   })
   .passthrough();
-const MutableRelayConfigSchema = z
+
+export const RelayEndpointConfigSchema = z
   .object({
-    enabled: z.boolean(),
+    endpoint: z.string().trim().min(1),
+    useTls: z.boolean(),
+    publicEndpoint: z.string().trim().min(1).optional(),
+    publicUseTls: z.boolean().optional(),
+    pairingBaseUrl: z.url().optional(),
   })
   .passthrough();
 
@@ -222,8 +399,26 @@ export const MutableDaemonConfigSchema = z
     app: z.object({ baseUrl: z.string() }).optional(),
     catalogRefreshTimeoutMs: z.number().int().positive().optional(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
+    relay: MutableRelayConfigSchema.default({
+      endpoints: [],
+      pairingBaseUrls: [],
+      local: { enabled: false, listen: "0.0.0.0:6769" },
+    }),
+    clientAccess: z
+      .object({
+        requireApproval: z.boolean().default(false),
+      })
+      .default({ requireApproval: false }),
+    projectIndexing: z
+      .object({
+        updateIntervalMinutes: z.number().int().positive().default(1440),
+      })
+      .default({ updateIntervalMinutes: 1440 }),
+    instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
-    metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
+    metadataGeneration: MutableMetadataGenerationConfigSchema.default({
+      providers: [],
+    }),
     autoArchiveAfterMerge: z.boolean().default(false),
     enableTerminalAgentHooks: z.boolean().default(false),
     appendSystemPrompt: z.string().default(""),
@@ -240,6 +435,26 @@ export const MutableDaemonConfigPatchSchema = z
     relay: MutableRelayConfigSchema.partial().optional(),
     mcp: z.object({ injectIntoAgents: z.boolean().optional() }).passthrough().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
+    relay: z
+      .object({
+        endpoints: z.array(RelayEndpointConfigSchema).optional(),
+        pairingBaseUrls: z.array(z.url()).optional(),
+        local: MutableLocalRelayConfigSchema.partial().optional(),
+      })
+      .partial()
+      .passthrough()
+      .optional(),
+    clientAccess: z
+      .object({
+        requireApproval: z.boolean().optional(),
+      })
+      .optional(),
+    projectIndexing: z
+      .object({
+        updateIntervalMinutes: z.number().int().positive().optional(),
+      })
+      .optional(),
+    instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
       .optional(),
@@ -1363,6 +1578,10 @@ export const SendAgentMessageRequestSchema = z.object({
   activeTurnBehavior: ActiveTurnBehaviorSchema.optional(),
   images: z.array(ImageAttachmentSchema).optional(),
   attachments: AgentAttachmentsSchema,
+  /** Conversation-scoped MCP servers selected by the composer. Undefined keeps daemon defaults. */
+  selectedMcpServerIds: z.array(z.string()).optional(),
+  /** Conversation-scoped skills selected by the composer. Undefined keeps daemon defaults. */
+  selectedSkillIds: z.array(z.string()).optional(),
 });
 
 export const WaitForFinishRequestSchema = z.object({
@@ -1628,6 +1847,12 @@ export const CreateAgentRequestMessageSchema = z.object({
   callerAgentId: z.string().optional(),
   worktreeName: z.string().optional(),
   initialPrompt: z.string().optional(),
+  assistantId: z.string().optional(),
+  teamId: z.string().optional(),
+  /** Conversation-scoped MCP servers selected by the composer for the initial run. */
+  selectedMcpServerIds: z.array(z.string()).optional(),
+  /** Conversation-scoped skills selected by the composer for the initial run. */
+  selectedSkillIds: z.array(z.string()).optional(),
   clientMessageId: z.string().optional(),
   outputSchema: z.record(z.string(), z.unknown()).optional(),
   images: z.array(ImageAttachmentSchema).optional(),
@@ -2582,6 +2807,8 @@ const FileExplorerDirectorySchema = z.object({
   entries: z.array(FileExplorerEntrySchema),
 });
 
+const FileExplorerErrorCodeSchema = z.enum(["not_found"]);
+
 export const FileExplorerRequestSchema = z.object({
   type: z.literal("file_explorer_request"),
   cwd: z.string(),
@@ -2977,6 +3204,20 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
+  AssistantListRequestSchema,
+  AssistantCreateRequestSchema,
+  AssistantUpdateRequestSchema,
+  AssistantDeleteRequestSchema,
+  LarkChannelGetStatusRequestSchema,
+  LarkChannelApplyBotRequestSchema,
+  LarkChannelGetBotApplicationRequestSchema,
+  LarkChannelConfigureRequestSchema,
+  LarkChannelDeleteBotRequestSchema,
+  LarkChannelTestConnectionRequestSchema,
+  LarkChannelSetEnabledRequestSchema,
+  LarkChannelApprovePairingRequestSchema,
+  LarkChannelRejectPairingRequestSchema,
+  LarkChannelRevokeUserRequestSchema,
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
@@ -3165,6 +3406,22 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
+  TeamListRequestSchema,
+  TeamCreateRequestSchema,
+  TeamUpdateRequestSchema,
+  TeamDeleteRequestSchema,
+  TeamGetRequestSchema,
+  TeamSendRunRequestSchema,
+  TeamRunStateRequestSchema,
+  McpListRequestSchema,
+  McpCreateRequestSchema,
+  McpUpdateRequestSchema,
+  McpDeleteRequestSchema,
+  McpTestConnectionRequestSchema,
+  SkillListRequestSchema,
+  SkillCreateRequestSchema,
+  SkillUpdateRequestSchema,
+  SkillDeleteRequestSchema,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -3319,6 +3576,8 @@ const ServerCapabilitiesFromUnknownSchema = z
     return parsed.data;
   });
 
+const RelayDeviceTypeSchema = z.enum(RELAY_DEVICE_TYPES);
+
 export const ServerInfoStatusPayloadSchema = z
   .object({
     status: z.literal("server_info"),
@@ -3327,6 +3586,8 @@ export const ServerInfoStatusPayloadSchema = z
     version: ServerInfoVersionSchema.optional(),
     // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
     desktopManaged: z.boolean().optional(),
+    // COMPAT(relayDeviceType): added in v0.2.0, remove optional parsing after 2027-01-31.
+    relayDeviceType: RelayDeviceTypeSchema.optional(),
     capabilities: ServerCapabilitiesFromUnknownSchema.optional(),
     // COMPAT(providersSnapshot): added in v0.1.48, remove gating when all clients use snapshot
     features: z
@@ -3472,6 +3733,16 @@ export const ServerInfoStatusPayloadSchema = z
         agentProfiles: z.boolean().optional(),
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
+        // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
+        larkChannel: z.boolean().optional(),
+        // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
+        assistants: z.boolean().optional(),
+        // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
+        teams: z.boolean().optional(),
+        // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
+        mcpServers: z.boolean().optional(),
+        // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
+        skills: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4570,10 +4841,61 @@ export const DaemonGetStatusResponseSchema = z.object({
       relay: z
         .object({
           enabled: z.boolean(),
-          endpoint: z.string(),
-          publicEndpoint: z.string(),
-          useTls: z.boolean(),
-          publicUseTls: z.boolean(),
+          endpoints: z.array(RelayEndpointConfigSchema).default([]),
+          pairingBaseUrls: z.array(z.url()).default([]),
+          local: z
+            .object({
+              enabled: z.boolean(),
+              listen: z.string(),
+              publicEndpoint: z.string().optional(),
+              pairingBaseUrl: z.url().optional(),
+              runtime: z
+                .object({
+                  listen: z.string(),
+                  publicEndpoint: z.string(),
+                  pairingBaseUrl: z.url(),
+                  connections: z.array(
+                    z.object({
+                      serverId: z.string(),
+                      hostname: z.string().nullable().default(null),
+                      deviceType: RelayDeviceTypeSchema.nullable().default(null),
+                      clientId: z.string().nullable().default(null),
+                      clientHostname: z.string().nullable().default(null),
+                      role: z.enum(["client", "server_control", "server_data"]),
+                      connectionId: z.string().nullable(),
+                      remoteAddress: z.string().nullable(),
+                      remotePort: z.number().int().min(0).max(65535).nullable().default(null),
+                      connectedAt: z.string(),
+                    }),
+                  ),
+                  history: z
+                    .array(
+                      z.object({
+                        id: z.string(),
+                        serverId: z.string(),
+                        hostname: z.string().nullable().default(null),
+                        deviceType: RelayDeviceTypeSchema.nullable().default(null),
+                        clientId: z.string().nullable().default(null),
+                        clientHostname: z.string().nullable().default(null),
+                        role: z.enum(["client", "server_control", "server_data"]),
+                        connectionId: z.string().nullable(),
+                        remoteAddress: z.string().nullable(),
+                        remotePort: z.number().int().min(0).max(65535).nullable().default(null),
+                        connectedAt: z.string(),
+                        disconnectedAt: z.string().nullable(),
+                      }),
+                    )
+                    .optional(),
+                  historyRetentionDays: z.number().int().positive().optional(),
+                })
+                .nullable()
+                .optional(),
+            })
+            .optional(),
+          endpoint: z.string().optional(),
+          publicEndpoint: z.string().optional(),
+          useTls: z.boolean().optional(),
+          publicUseTls: z.boolean().optional(),
         })
         .nullable()
         .optional(),
@@ -4605,11 +4927,17 @@ export const HubRelationshipStatusSchema = z.object({
 });
 export const HubManagementDaemonConnectResponseSchema = z.object({
   type: z.literal("hub.management.daemon.connect.response"),
-  payload: z.object({ requestId: z.string(), status: HubRelationshipStatusSchema }),
+  payload: z.object({
+    requestId: z.string(),
+    status: HubRelationshipStatusSchema,
+  }),
 });
 export const HubManagementDaemonGetStatusResponseSchema = z.object({
   type: z.literal("hub.management.daemon.get_status.response"),
-  payload: z.object({ requestId: z.string(), status: HubRelationshipStatusSchema }),
+  payload: z.object({
+    requestId: z.string(),
+    status: HubRelationshipStatusSchema,
+  }),
 });
 export const HubManagementDaemonDisconnectResponseSchema = z.object({
   type: z.literal("hub.management.daemon.disconnect.response"),
@@ -4628,6 +4956,17 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       url: z.string(),
       qr: z.string().nullable().optional(),
       relayEnabled: z.boolean(),
+      offers: z
+        .array(
+          z.object({
+            endpoint: z.string().min(1),
+            useTls: z.boolean(),
+            pairingBaseUrl: z.url().optional(),
+            url: z.string().min(1),
+            qr: z.string().nullable().optional(),
+          }),
+        )
+        .default([]),
     })
     .passthrough(),
 });
@@ -5541,6 +5880,7 @@ export const FileExplorerResponseSchema = z.object({
     directory: FileExplorerDirectorySchema.nullable(),
     file: FileExplorerFileSchema.nullable(),
     error: z.string().nullable(),
+    errorCode: FileExplorerErrorCodeSchema.optional(),
     requestId: z.string(),
   }),
 });
@@ -6477,6 +6817,25 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopStopResponseSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
+  TeamListResponseSchema,
+  TeamCreateResponseSchema,
+  TeamUpdateResponseSchema,
+  TeamDeleteResponseSchema,
+  TeamGetResponseSchema,
+  TeamChangedMessageSchema,
+  TeamSendRunResponseSchema,
+  TeamRunStateResponseSchema,
+  McpListResponseSchema,
+  McpCreateResponseSchema,
+  McpUpdateResponseSchema,
+  McpDeleteResponseSchema,
+  McpTestConnectionResponseSchema,
+  McpChangedMessageSchema,
+  SkillListResponseSchema,
+  SkillCreateResponseSchema,
+  SkillUpdateResponseSchema,
+  SkillDeleteResponseSchema,
+  SkillChangedMessageSchema,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -6851,23 +7210,7 @@ export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequestSche
 export type WorkspaceClearAttentionRequest = z.infer<typeof WorkspaceClearAttentionRequestSchema>;
 export type FileExplorerRequest = z.infer<typeof FileExplorerRequestSchema>;
 export type FileExplorerResponse = z.infer<typeof FileExplorerResponseSchema>;
-export type FileVersion = z.infer<typeof FileVersionSchema>;
-export type FileSubscribeRequest = z.infer<typeof FileSubscribeRequestSchema>;
-export type FileSubscribeResponse = z.infer<typeof FileSubscribeResponseSchema>;
-export type FileUnsubscribeRequest = z.infer<typeof FileUnsubscribeRequestSchema>;
-export type FileUnsubscribeResponse = z.infer<typeof FileUnsubscribeResponseSchema>;
-export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
-export type FileWriteResponse = z.infer<typeof FileWriteResponseSchema>;
-export type FileEntryCreateRequest = z.infer<typeof FileEntryCreateRequestSchema>;
-export type FileEntryCreateResponse = z.infer<typeof FileEntryCreateResponseSchema>;
-export type FileEntryRenameRequest = z.infer<typeof FileEntryRenameRequestSchema>;
-export type FileEntryRenameResponse = z.infer<typeof FileEntryRenameResponseSchema>;
-export type FileEntryDuplicateRequest = z.infer<typeof FileEntryDuplicateRequestSchema>;
-export type FileEntryDuplicateResponse = z.infer<typeof FileEntryDuplicateResponseSchema>;
-export type FileEntryDeleteRequest = z.infer<typeof FileEntryDeleteRequestSchema>;
-export type FileEntryDeleteResponse = z.infer<typeof FileEntryDeleteResponseSchema>;
-export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
-export type FileUpdate = z.infer<typeof FileUpdateSchema>;
+export type FileExplorerErrorCode = z.infer<typeof FileExplorerErrorCodeSchema>;
 export type ProjectIconRequest = z.infer<typeof ProjectIconRequestSchema>;
 export type ProjectIconResponse = z.infer<typeof ProjectIconResponseSchema>;
 export type ProjectIconGetRequest = z.infer<typeof ProjectIconGetRequestSchema>;
@@ -6933,9 +7276,22 @@ export const WSPongMessageSchema = z.object({
   type: z.literal("pong"),
 });
 
+export const WSConnectionApprovalRequiredMessageSchema = z.object({
+  type: z.literal("connection.approval_required"),
+  message: z.string(),
+});
+
+export const WSDirectConnectionOfferMessageSchema = z.object({
+  type: z.literal("transport.direct_offer"),
+  candidates: z.array(z.string().url()).min(1),
+  expiresAt: z.string().datetime(),
+});
+
 export const WSHelloMessageSchema = z.object({
   type: z.literal("hello"),
   clientId: z.string().min(1),
+  clientName: z.string().trim().min(1).max(120).optional(),
+  clientHostname: z.string().trim().min(1).max(255).optional(),
   clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
   protocolVersion: z.number().int(),
   appVersion: z.string().optional(),
@@ -6983,6 +7339,8 @@ export const WSInboundMessageSchema = z.discriminatedUnion("type", [
 
 export const WSOutboundMessageSchema = z.discriminatedUnion("type", [
   WSPongMessageSchema,
+  WSConnectionApprovalRequiredMessageSchema,
+  WSDirectConnectionOfferMessageSchema,
   WSSessionOutboundSchema,
 ]);
 

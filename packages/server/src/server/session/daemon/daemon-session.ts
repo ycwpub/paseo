@@ -18,12 +18,30 @@ export interface DaemonRuntimeConfig {
   worktreesRoot?: string;
   appBaseUrl?: string;
   desktopManaged?: boolean;
-  getRelayConfig(): {
+  relayDeviceType?: RelayDeviceType;
+  getLocalRelayStatus?: () => LocalRelayStatus | null;
+  deleteLocalRelayHistory?: (historyId: string) => boolean;
+  relay: {
     enabled: boolean;
-    endpoint: string;
-    publicEndpoint: string;
-    useTls: boolean;
-    publicUseTls: boolean;
+    endpoints: Array<{
+      endpoint: string;
+      useTls: boolean;
+      publicEndpoint?: string;
+      publicUseTls?: boolean;
+      pairingBaseUrl?: string;
+    }>;
+    pairingBaseUrls: string[];
+    local: {
+      enabled: boolean;
+      listen: string;
+      publicEndpoint?: string;
+      pairingBaseUrl?: string;
+    };
+    // Legacy summary fields retained in status payloads.
+    endpoint?: string;
+    publicEndpoint?: string;
+    useTls?: boolean;
+    publicUseTls?: boolean;
   } | null;
 }
 
@@ -156,44 +174,54 @@ export class DaemonSession {
   async handleGetStatusRequest(
     msg: Extract<SessionInboundMessage, { type: "daemon.get_status.request" }>,
   ): Promise<void> {
-    try {
-      const pidInfo = await getPidLockInfo(this.paseoHome);
-      const providers = (await this.listProviderAvailability()).map((p) => ({
-        provider: p.provider,
-        available: p.available,
-        error: p.error ?? null,
-      }));
-      this.host.emit({
-        type: "daemon.get_status.response",
-        payload: {
-          requestId: msg.requestId,
-          serverId: this.serverId ?? "",
-          version: this.daemonVersion ?? null,
-          pid: process.pid,
-          nodePath: process.execPath,
-          startedAt: pidInfo?.startedAt ?? null,
-          listen: this.daemonRuntimeConfig?.listen ?? null,
-          relay: this.daemonRuntimeConfig?.getRelayConfig() ?? null,
-          providers,
-        },
+    const pidInfo = await getPidLockInfo(this.paseoHome).catch((error) => {
+      this.logger.warn({ err: error }, "Failed to read daemon pid information for status");
+      return null;
+    });
+    const providers = await this.listProviderAvailability()
+      .then((availability) =>
+        availability.map((provider) => ({
+          provider: provider.provider,
+          available: provider.available,
+          error: provider.error ?? null,
+        })),
+      )
+      .catch((error) => {
+        this.logger.warn({ err: error }, "Failed to list provider availability for daemon status");
+        return [];
       });
-    } catch (error) {
-      this.logger.error({ err: error }, "Failed to handle daemon status request");
-      this.host.emit({
-        type: "daemon.get_status.response",
-        payload: {
-          requestId: msg.requestId,
-          serverId: this.serverId ?? "",
-          version: this.daemonVersion ?? null,
-          pid: process.pid,
-          nodePath: process.execPath,
-          startedAt: null,
-          listen: null,
-          relay: null,
-          providers: [],
-        },
-      });
-    }
+    const relay = this.daemonRuntimeConfig?.relay;
+    const localRelayStatus = (() => {
+      try {
+        return this.daemonRuntimeConfig?.getLocalRelayStatus?.() ?? null;
+      } catch (error) {
+        this.logger.warn({ err: error }, "Failed to read local Relay runtime status");
+        return null;
+      }
+    })();
+
+    this.host.emit({
+      type: "daemon.get_status.response",
+      payload: {
+        requestId: msg.requestId,
+        serverId: this.serverId ?? "",
+        version: this.daemonVersion ?? null,
+        pid: process.pid,
+        nodePath: process.execPath,
+        startedAt: pidInfo?.startedAt ?? null,
+        listen: this.daemonRuntimeConfig?.listen ?? null,
+        relay: relay
+          ? {
+              ...relay,
+              local: {
+                ...relay.local,
+                runtime: localRelayStatus,
+              },
+            }
+          : null,
+        providers,
+      },
+    });
   }
 
   async handleGetPairingOfferRequest(
@@ -204,6 +232,8 @@ export class DaemonSession {
       const pairing = await generateLocalPairingOffer({
         paseoHome: this.paseoHome,
         relayEnabled: relay?.enabled ?? false,
+        relayEndpoints: relay?.endpoints,
+        relayPairingBaseUrls: relay?.pairingBaseUrls,
         relayEndpoint: relay?.endpoint,
         relayPublicEndpoint: relay?.publicEndpoint,
         relayUseTls: relay?.useTls,
@@ -219,6 +249,7 @@ export class DaemonSession {
           url: pairing.url ?? "",
           qr: pairing.qr ?? null,
           relayEnabled: pairing.relayEnabled,
+          offers: pairing.offers,
         },
       });
     } catch (error) {

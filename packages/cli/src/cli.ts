@@ -117,6 +117,7 @@ export function createCli(): Command {
   // Top-level local daemon shortcuts
   program.addCommand(onboardCommand());
   program.addCommand(daemonStartCommand());
+  program.addCommand(createRelayCommand());
   program.addCommand(createHooksCommand());
 
   addJsonOption(

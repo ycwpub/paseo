@@ -68,7 +68,6 @@ export interface AppSettings {
   /** Which contributed theme `theme: "plugin"` selects. */
   pluginThemeId: string | null;
   language: AppLanguage;
-  sendBehavior: SendBehavior;
   serviceUrlBehavior: ServiceUrlBehavior;
   terminalScrollbackLines: number;
   useLegacyTerminalRenderer: boolean;

@@ -306,6 +306,7 @@ export interface ViewedTimelineSync extends ViewedTimelineUiBridge {
   setActive(active: boolean): void;
   setConnected(connected: boolean): void;
   setDeliveryMode(mode: TimelineDeliveryMode): void;
+  requestAgentCatchUp(agentId: string): void;
   recoverGap(agentId: string, cursor: { epoch: string; endSeq: number }): void;
   dispose(): void;
 }
@@ -422,7 +423,8 @@ function isSameCatchUpRequest(
   left: ProjectedTimelineForwardFetchPlan | undefined,
   right: ProjectedTimelineForwardFetchPlan | undefined,
 ): boolean {
-  if (!left || !right || left.direction !== right.direction) return false;
+  if (!left || !right) return left === right;
+  if (left.direction !== right.direction) return false;
   if (left.direction !== "after" || right.direction !== "after") return true;
   return left.cursor.epoch === right.cursor.epoch && left.cursor.seq === right.cursor.seq;
 }
@@ -896,6 +898,16 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
       notifyListeners();
       if (deliveryMode === "selective" && connected) void reconcileMembership();
       else if (connected) startAcknowledgedCatchUps();
+    },
+    requestAgentCatchUp(agentId) {
+      if (!isDesired(agentId)) return;
+      const cursor = ports.readCursor(agentId);
+      startCatchUp(agentId, {
+        request: cursor
+          ? planTimelineCatchUpAfter({ epoch: cursor.epoch, seq: cursor.endSeq })
+          : undefined,
+        supersede: true,
+      });
     },
     recoverGap(agentId, cursor) {
       if (!isDesired(agentId)) return;

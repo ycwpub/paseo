@@ -16,6 +16,8 @@ import type { AgentPromptInput, AgentRunOptions, AgentSessionConfig } from "../a
 import type { AgentStorage } from "../agent-storage.js";
 import type { AgentOwner } from "../agent-owner.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
+import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
+import { withProjectAgentContext } from "../../project/project-context.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
 import { buildAgentPrompt } from "../prompt-attachments.js";
@@ -43,6 +45,8 @@ export interface CreateAgentCommandDependencies {
   worktreesRoot?: string;
   terminalManager?: TerminalManager | null;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
+  projectRegistry?: Pick<ProjectRegistry, "get">;
+  workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -63,6 +67,8 @@ export interface CreateAgentFromSessionInput {
   outputSchema?: Record<string, unknown>;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: AgentAttachment[];
+  selectedMcpServerIds?: readonly string[];
+  selectedSkillIds?: readonly string[];
   git?: GitSetupOptions;
   labels: Record<string, string>;
   env?: Record<string, string>;
@@ -80,6 +86,7 @@ export interface CreateAgentFromMcpInput {
   kind: "mcp";
   provider: string;
   title: string;
+  workspaceTitle?: string;
   initialPrompt?: string;
   config?: Partial<AgentSessionConfig>;
   cwd?: string;
@@ -167,6 +174,10 @@ interface ResolvedCreateAgent {
   background: boolean;
   promptFailure: CreateAgentPromptFailureMode;
   promptLogger?: Logger;
+  sessionResourceSelection?: {
+    selectedMcpServerIds?: readonly string[];
+    selectedSkillIds?: readonly string[];
+  };
   createdWorktree?: CreatePaseoWorktreeWorkflowResult;
 }
 
@@ -179,8 +190,20 @@ export async function createAgentCommand(
       ? await resolveSessionCreateAgent(dependencies, input)
       : await resolveMcpCreateAgent(dependencies, input);
 
+  const workspaceId = resolved.createOptions.workspaceId;
+  const config =
+    workspaceId && dependencies.projectRegistry && dependencies.workspaceRegistry
+      ? await withProjectAgentContext({
+          config: resolved.config,
+          workspaceId,
+          projectRegistry: dependencies.projectRegistry,
+          workspaceRegistry: dependencies.workspaceRegistry,
+          logger: dependencies.logger,
+        })
+      : resolved.config;
+
   const snapshot = await dependencies.agentManager.createAgent(
-    resolved.config,
+    config,
     undefined,
     resolved.createOptions,
   );
@@ -296,6 +319,13 @@ async function resolveSessionCreateAgent(
     promptLogger: dependencies.logger.child({
       clientMessageId: resolveClientMessageId(input.clientMessageId),
     }),
+    sessionResourceSelection:
+      input.selectedMcpServerIds !== undefined || input.selectedSkillIds !== undefined
+        ? {
+            selectedMcpServerIds: input.selectedMcpServerIds,
+            selectedSkillIds: input.selectedSkillIds,
+          }
+        : undefined,
   };
 }
 
@@ -314,7 +344,7 @@ async function resolveMcpCreateAgent(
       dependencies,
       cwd,
       worktree: input.worktree,
-      initialPrompt: input.initialPrompt ?? "",
+      initialPrompt: input.workspaceTitle ?? input.initialPrompt ?? "",
     });
   if (createdWorktree) input.onWorktreeCreated?.(createdWorktree);
 
@@ -329,7 +359,11 @@ async function resolveMcpCreateAgent(
     resolveWorkspace: async (workspaceId) => ({ workspaceId, cwd: resolvedCwd }),
     createWorkspace: async () => ({
       workspaceId: requireResolvedWorkspaceId(
-        await ensureWorkspaceForMcpCreate(dependencies, resolvedCwd, input.initialPrompt ?? ""),
+        await ensureWorkspaceForMcpCreate(
+          dependencies,
+          resolvedCwd,
+          input.workspaceTitle ?? input.initialPrompt ?? "",
+        ),
       ),
       cwd: resolvedCwd,
     }),
@@ -452,7 +486,18 @@ async function sendInitialPrompt(
   try {
     const prompt = resolved.prompt;
     if (prompt === undefined) {
-      return { started: false, liveSnapshot: snapshot };
+      if (!resolved.sessionResourceSelection) {
+        return { started: false, liveSnapshot: snapshot };
+      }
+      const liveSnapshot = await startCreatedAgentInitialPrompt({
+        agentManager: dependencies.agentManager,
+        agentId: snapshot.id,
+        snapshot,
+        prompt: null,
+        sessionResourceSelection: resolved.sessionResourceSelection,
+        logger: resolved.promptLogger ?? dependencies.logger,
+      });
+      return { started: false, liveSnapshot };
     }
     const liveSnapshot = await startCreatedAgentInitialPrompt({
       agentManager: dependencies.agentManager,
@@ -460,6 +505,7 @@ async function sendInitialPrompt(
       snapshot,
       prompt,
       runOptions: resolved.runOptions,
+      sessionResourceSelection: resolved.sessionResourceSelection,
       logger: resolved.promptLogger ?? dependencies.logger,
     });
     return { started: true, liveSnapshot };

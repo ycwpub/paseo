@@ -15,12 +15,16 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  attention: {
+    soundVolume: number;
+  };
 }
 
 interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  attention?: Partial<DesktopSettings["attention"]>;
 }
 
 export interface DesktopSettingsStore {
@@ -37,6 +41,9 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
+  },
+  attention: {
+    soundVolume: 0.5,
   },
 };
 
@@ -97,6 +104,13 @@ function coerceReleaseChannel(value: unknown): AppReleaseChannel | null {
 
 function coerceBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
+}
+
+function coerceVolume(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.min(1, Math.max(0, value));
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -166,6 +180,17 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
+  if (isRecord(input.attention)) {
+    const attentionPatch: Partial<DesktopSettings["attention"]> = {};
+    const soundVolume = coerceVolume(input.attention.soundVolume);
+    if (soundVolume !== null) {
+      attentionPatch.soundVolume = soundVolume;
+    }
+    if (Object.keys(attentionPatch).length > 0) {
+      patch.attention = attentionPatch;
+    }
+  }
+
   return patch;
 }
 
@@ -199,6 +224,7 @@ function mergeDesktopSettings(
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
+    attention: { ...current.attention, ...patch.attention },
   };
 }
 

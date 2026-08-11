@@ -20,6 +20,8 @@ export function createDaemonCommand(): Command {
 
   daemon.addCommand(startCommand());
   daemon.addCommand(pairCommand());
+  daemon.addCommand(createRelayCommand());
+  daemon.addCommand(createClientAccessCommand());
 
   addJsonAndDaemonHostOptions(
     daemon.command("reload").description("Reload config.json without restarting the daemon"),

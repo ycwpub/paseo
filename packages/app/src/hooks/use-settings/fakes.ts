@@ -39,6 +39,9 @@ const DEFAULT_DESKTOP: DesktopSettings = {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
   },
+  attention: {
+    soundVolume: 0.5,
+  },
 };
 
 export function createFakeDesktopBridge(

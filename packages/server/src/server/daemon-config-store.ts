@@ -1,9 +1,12 @@
+import { isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 import {
   loadPersistedConfig,
   savePersistedConfig,
   type PersistedConfig,
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
+import { parseHostPort } from "@getpaseo/protocol/daemon-endpoints";
 import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
@@ -119,7 +122,9 @@ function omitProvidersFromConfig<T extends { providers?: Record<string, unknown>
 }
 
 function omitMetadataGenerationProvidersFromConfig<
-  T extends { metadataGeneration?: { providers?: Array<{ provider?: unknown }> } },
+  T extends {
+    metadataGeneration?: { providers?: Array<{ provider?: unknown }> };
+  },
 >(config: T, providers: readonly string[]): T {
   if (providers.length === 0 || !config.metadataGeneration?.providers) {
     return config;
@@ -364,6 +369,10 @@ export class DaemonConfigStore {
         removedProviders,
       ),
     );
+    const localRelayPatch = parsedPatch.relay?.local;
+    if (localRelayPatch?.listen !== undefined || localRelayPatch?.enabled === true) {
+      validateLocalRelayListenAddress(next.relay.local.listen);
+    }
 
     const configChanged = !isEqualValue(this.current, next);
 

@@ -26,6 +26,7 @@ const mockState = vi.hoisted(() => {
     runtimeSettings?: unknown;
     providerParams?: unknown;
     commandsRpcType?: unknown;
+    customProvider?: unknown;
   }
 
   return {
@@ -81,17 +82,39 @@ vi.mock("../../executable-resolution/executable-resolution.js", () => ({
   isCommandAvailable: mockState.isCommandAvailable,
 }));
 
-vi.mock("./providers/claude/agent.js", async () => {
-  const { resolveConfiguredClaudeModel } = await import("./providers/claude/models.js");
-  return {
-    ClaudeAgentClient: class ClaudeAgentClient {
-      readonly capabilities = {
-        supportsStreaming: true,
-        supportsSessionPersistence: true,
-        supportsDynamicModes: true,
-        supportsMcpServers: true,
-        supportsReasoningStream: true,
-        supportsToolInvocations: true,
+vi.mock("./providers/claude/agent.js", () => ({
+  ClaudeAgentClient: class ClaudeAgentClient {
+    readonly capabilities = {
+      supportsStreaming: true,
+      supportsSessionPersistence: true,
+      supportsDynamicModes: true,
+      supportsMcpServers: true,
+      supportsReasoningStream: true,
+      supportsToolInvocations: true,
+    };
+    readonly provider = "claude";
+    readonly runtimeSettings?: unknown;
+
+    constructor(options: { runtimeSettings?: unknown; customProvider?: unknown }) {
+      this.runtimeSettings = options.runtimeSettings;
+      mockState.constructorArgs.claude.push({
+        runtimeSettings: options.runtimeSettings,
+        ...(options.customProvider ? { customProvider: options.customProvider } : {}),
+      });
+    }
+
+    async createSession(): Promise<never> {
+      throw new Error("not implemented");
+    }
+
+    async resumeSession(): Promise<never> {
+      throw new Error("not implemented");
+    }
+
+    async fetchCatalog(): Promise<ProviderCatalog> {
+      return {
+        models: mockState.runtimeModels.get(this.provider) ?? [],
+        modes: [],
       };
       readonly provider = "claude";
       readonly runtimeSettings?: unknown;
@@ -649,6 +672,14 @@ test("new provider extending claude appears in registry", () => {
   expect(registry.zai.label).toBe("ZAI");
   expect(registry.zai.description).toBe("Claude with ZAI defaults");
   expect(registry.zai.createClient(logger).provider).toBe("zai");
+  expect(mockState.constructorArgs.claude).toContainEqual({
+    runtimeSettings: undefined,
+    customProvider: {
+      id: "zai",
+      label: "ZAI",
+      extends: "claude",
+    },
+  });
 });
 
 test("built-in OMP override keeps the real OMP adapter enabled and launchable", async () => {
@@ -906,6 +937,12 @@ test("traecli provider extending acp uses TraeACPAgentClient", () => {
   });
 
   expect(registry.traecli.createClient(logger).provider).toBe("traecli");
+  expect(registry.traecli.defaultModeId).toBe("default");
+  expect(registry.traecli.modes).toEqual([
+    expect.objectContaining({ id: "default" }),
+    expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
+    expect.objectContaining({ id: "plan" }),
+  ]);
   expect(mockState.constructorArgs.trae).toEqual([
     {
       command: ["traecli", "acp", "serve"],

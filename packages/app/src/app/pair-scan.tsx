@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter, type Href } from "expo-router";
@@ -8,8 +8,15 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import type { BarcodeScanningResult, BarcodeSettings } from "expo-camera";
 import { useHostMutations } from "@/runtime/host-runtime";
 import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
-import { connectToDaemon } from "@/utils/test-daemon-connection";
-import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
+import {
+  connectToDaemon,
+  DaemonConnectionApprovalRequiredError,
+  waitForDaemonApproval,
+} from "@/utils/test-daemon-connection";
+import {
+  ConnectionOfferSchema,
+  getConnectionOfferRelays,
+} from "@getpaseo/protocol/connection-offer";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
 import { isWeb } from "@/constants/platform";
 import { BackHeader } from "@/components/headers/back-header";
@@ -108,6 +115,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.white,
     fontWeight: theme.fontWeight.semibold,
   },
+  approvalStatus: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
 }));
 
 function extractOfferUrlFromScan(result: BarcodeScanningResult): string | null {
@@ -131,8 +143,13 @@ export default function PairScanScreen() {
   const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
 
   const [permission, requestPermission] = useCameraPermissions();
-  const [isPairing, setIsPairing] = useState(false);
+  const [pairingPhase, setPairingPhase] = useState<"idle" | "connecting" | "awaiting_approval">(
+    "idle",
+  );
   const lastScannedRef = useRef<string | null>(null);
+  const pendingClientRef = useRef<DaemonConnectionApprovalRequiredError["client"] | null>(null);
+  const pairingAbortRef = useRef<AbortController | null>(null);
+  const isPairing = pairingPhase !== "idle";
 
   const navigateToPairedHost = useCallback(
     (serverId: string) => {
@@ -146,12 +163,31 @@ export default function PairScanScreen() {
   );
 
   const closeToSource = useCallback(() => {
+    pairingAbortRef.current?.abort();
+    pairingAbortRef.current = null;
+    const pendingClient = pendingClientRef.current;
+    pendingClientRef.current = null;
+    if (pendingClient) {
+      void pendingClient.close().catch(() => undefined);
+    }
     try {
       router.back();
     } catch {
       router.replace("/" as Href);
     }
   }, [router]);
+
+  useEffect(
+    () => () => {
+      pairingAbortRef.current?.abort();
+      const pendingClient = pendingClientRef.current;
+      pendingClientRef.current = null;
+      if (pendingClient) {
+        void pendingClient.close().catch(() => undefined);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (isWeb) return;
@@ -168,34 +204,79 @@ export default function PairScanScreen() {
       if (lastScannedRef.current === offerUrl) return;
       lastScannedRef.current = offerUrl;
 
+      const pairingAbort = new AbortController();
       try {
-        setIsPairing(true);
+        setPairingPhase("connecting");
+        pairingAbortRef.current = pairingAbort;
         const idx = offerUrl.indexOf("#offer=");
         const encoded = offerUrl.slice(idx + "#offer=".length).trim();
         const offerPayload = decodeOfferFragmentPayload(encoded);
         const offer = ConnectionOfferSchema.parse(offerPayload);
 
-        const { client, hostname } = await connectToDaemon(
-          {
-            id: "probe",
-            type: "relay",
-            relayEndpoint: normalizeHostPort(offer.relay.endpoint),
-            useTls: offer.relay.useTls,
-            daemonPublicKeyB64: offer.daemonPublicKeyB64,
-          },
-          { serverId: offer.serverId },
-        );
+        let connected: Awaited<ReturnType<typeof connectToDaemon>> | null = null;
+        let approvalRequired: DaemonConnectionApprovalRequiredError | null = null;
+        let lastError: unknown = null;
+        for (const relay of getConnectionOfferRelays(offer)) {
+          try {
+            connected = await connectToDaemon(
+              {
+                id: "probe",
+                type: "relay",
+                relayEndpoint: normalizeHostPort(relay.endpoint),
+                useTls: relay.useTls,
+                daemonPublicKeyB64: offer.daemonPublicKeyB64,
+              },
+              { serverId: offer.serverId },
+            );
+            break;
+          } catch (error) {
+            if (error instanceof DaemonConnectionApprovalRequiredError) {
+              approvalRequired = error;
+              break;
+            }
+            lastError = error;
+          }
+        }
+        if (!connected && approvalRequired) {
+          pendingClientRef.current = approvalRequired.client;
+          setPairingPhase("awaiting_approval");
+          const serverInfo = await waitForDaemonApproval(
+            approvalRequired.client,
+            pairingAbort.signal,
+          );
+          pendingClientRef.current = null;
+          await approvalRequired.client.close().catch(() => undefined);
+          const profile = await upsertDaemonFromOfferUrl(
+            offerUrl,
+            serverInfo.hostname ?? undefined,
+          );
+          navigateToPairedHost(profile.serverId);
+          return;
+        }
+        if (!connected) throw lastError ?? new Error("No relay endpoint is available");
+        const { client, hostname } = connected;
         await client.close().catch(() => undefined);
 
         const profile = await upsertDaemonFromOfferUrl(offerUrl, hostname ?? undefined);
 
         navigateToPairedHost(profile.serverId);
       } catch (error) {
+        if (pairingAbort.signal.aborted) {
+          return;
+        }
         lastScannedRef.current = null;
         const message = error instanceof Error ? error.message : t("pairing.scan.unableToPair");
         Alert.alert(t("pairing.scan.errorTitle"), message);
       } finally {
-        setIsPairing(false);
+        if (pairingAbortRef.current === pairingAbort) {
+          pairingAbortRef.current = null;
+        }
+        const pendingClient = pendingClientRef.current;
+        pendingClientRef.current = null;
+        if (pendingClient) {
+          await pendingClient.close().catch(() => undefined);
+        }
+        setPairingPhase("idle");
       }
     },
     [isPairing, navigateToPairedHost, t, upsertDaemonFromOfferUrl],
@@ -233,40 +314,55 @@ export default function PairScanScreen() {
   }
 
   const granted = Boolean(permission?.granted);
+  let scanContent: ReactNode;
+  if (pairingPhase === "awaiting_approval") {
+    scanContent = (
+      <View style={styles.permissionCard} testID="pairing-awaiting-approval">
+        <Text style={styles.approvalStatus}>{t("pairing.scan.awaitingApprovalStatus")}</Text>
+        <Text style={styles.permissionTitle}>{t("pairing.scan.awaitingApprovalTitle")}</Text>
+        <Text style={styles.permissionBody}>{t("pairing.scan.awaitingApprovalBody")}</Text>
+        <Pressable style={styles.permissionButton} onPress={closeToSource}>
+          <Text style={styles.permissionButtonText}>{t("common.actions.cancel")}</Text>
+        </Pressable>
+      </View>
+    );
+  } else if (!granted) {
+    scanContent = (
+      <View style={styles.permissionCard}>
+        <Text style={styles.permissionTitle}>{t("pairing.scan.cameraPermissionTitle")}</Text>
+        <Text style={styles.permissionBody}>{t("pairing.scan.cameraPermissionBody")}</Text>
+        <Pressable style={styles.permissionButton} onPress={handleRequestPermission}>
+          <Text style={styles.permissionButtonText}>{t("pairing.scan.grantPermission")}</Text>
+        </Pressable>
+      </View>
+    );
+  } else {
+    scanContent = (
+      <View style={styles.cameraWrap}>
+        <CameraView
+          style={styles.camera}
+          facing="back"
+          barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
+          onBarcodeScanned={handleScan}
+        />
+        <View style={styles.overlay} pointerEvents="none">
+          <View style={styles.scanFrame}>
+            <View style={[styles.corner, styles.cornerTL]} />
+            <View style={[styles.corner, styles.cornerTR]} />
+            <View style={[styles.corner, styles.cornerBL]} />
+            <View style={[styles.corner, styles.cornerBR]} />
+          </View>
+          {isPairing ? <Text style={helperTextStyle}>{t("pairing.scan.pairing")}</Text> : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <BackHeader title={t("pairing.scan.title")} onBack={closeToSource} />
 
-      <View style={bodyStyle}>
-        {!granted ? (
-          <View style={styles.permissionCard}>
-            <Text style={styles.permissionTitle}>{t("pairing.scan.cameraPermissionTitle")}</Text>
-            <Text style={styles.permissionBody}>{t("pairing.scan.cameraPermissionBody")}</Text>
-            <Pressable style={styles.permissionButton} onPress={handleRequestPermission}>
-              <Text style={styles.permissionButtonText}>{t("pairing.scan.grantPermission")}</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.cameraWrap}>
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              barcodeScannerSettings={BARCODE_SCANNER_SETTINGS}
-              onBarcodeScanned={handleScan}
-            />
-            <View style={styles.overlay} pointerEvents="none">
-              <View style={styles.scanFrame}>
-                <View style={[styles.corner, styles.cornerTL]} />
-                <View style={[styles.corner, styles.cornerTR]} />
-                <View style={[styles.corner, styles.cornerBL]} />
-                <View style={[styles.corner, styles.cornerBR]} />
-              </View>
-              {isPairing ? <Text style={helperTextStyle}>{t("pairing.scan.pairing")}</Text> : null}
-            </View>
-          </View>
-        )}
-      </View>
+      <View style={bodyStyle}>{scanContent}</View>
     </View>
   );
 }

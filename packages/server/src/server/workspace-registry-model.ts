@@ -17,6 +17,10 @@ export function generateProjectId(): string {
   return `prj_${randomBytes(8).toString("hex")}`;
 }
 
+export function isGeneratedProjectId(projectId: string): boolean {
+  return /^prj_[0-9a-f]{16}$/.test(projectId);
+}
+
 export function deriveProjectKind(checkout: ProjectCheckoutLitePayload): PersistedProjectKind {
   return checkout.isGit ? "git" : "non_git";
 }

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { PairDeviceSection } from "@/desktop/components/pair-device-section";
+import { PairDeviceSection } from "@/components/pair-device-section";
 
 export interface PairDeviceModalProps {
   serverId: string;
@@ -10,7 +10,10 @@ export interface PairDeviceModalProps {
   testID?: string;
 }
 
-const SNAP_POINTS: string[] = ["72%", "92%"];
+// Client management exposes the same information and actions as desktop.
+// Open near full height on compact screens so the client list is usable
+// immediately instead of hiding most of it below the initial snap point.
+const SNAP_POINTS: string[] = ["94%"];
 
 export function PairDeviceModal({ serverId, visible, onClose, testID }: PairDeviceModalProps) {
   const { t } = useTranslation();
@@ -28,7 +31,7 @@ export function PairDeviceModal({ serverId, visible, onClose, testID }: PairDevi
       desktopMaxWidth={480}
       testID={testID}
     >
-      <PairDeviceSection serverId={serverId} onClose={onClose} />
+      <PairDeviceSection serverId={serverId} active={visible} />
     </AdaptiveModalSheet>
   );
 }

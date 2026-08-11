@@ -15,6 +15,8 @@ export interface PendingCreateAttempt {
   lifecycle: CreateFlowLifecycleState;
   images?: UserMessageImageAttachment[];
   attachments?: AgentAttachment[];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
 }
 
 export function isActiveCreateFlowForDraft(input: {

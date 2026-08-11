@@ -242,15 +242,7 @@ describe("bootstrapWorkspaceRegistries", () => {
 
     const projects = await projectRegistry.list();
     expect(projects).toHaveLength(1);
-    expect(projects[0]?.projectId).toBe(NON_GIT_PROJECT);
-    expect(projects[0]?.projectKey).toBe(
-      deriveProjectKey({
-        rootPath: NON_GIT_PROJECT,
-        remoteUrl: null,
-        worktreeRoot: null,
-        mainRepoRoot: null,
-      }),
-    );
+    expect(projects[0]?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
     expect(projects[0]?.createdAt).toBe("2026-03-01T00:00:00.000Z");
     expect(projects[0]?.updatedAt).toBe("2026-03-03T00:00:00.000Z");
   });
@@ -306,9 +298,13 @@ describe("bootstrapWorkspaceRegistries", () => {
       logger,
     });
 
-    expect(await projectRegistry.list()).toHaveLength(1);
-    expect(await workspaceRegistry.list()).toHaveLength(1);
-    expect((await workspaceRegistry.list())[0]?.workspaceId).toBe("ws-existing");
+    const projects = await projectRegistry.list();
+    const workspaces = await workspaceRegistry.list();
+    expect(projects).toHaveLength(1);
+    expect(projects[0]?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
+    expect(workspaces).toHaveLength(1);
+    expect(workspaces[0]?.workspaceId).toBe("ws-existing");
+    expect(workspaces[0]?.projectId).toBe(projects[0]?.projectId);
   });
 
   test("materializes legacy remote worktrees into one readable project", async () => {
@@ -358,9 +354,9 @@ describe("bootstrapWorkspaceRegistries", () => {
 
     const projects = await projectRegistry.list();
     expect(projects).toHaveLength(1);
+    const opaqueProjectId = projects[0]!.projectId;
+    expect(opaqueProjectId).toMatch(/^prj_[0-9a-f]{16}$/);
     expect(projects[0]).toMatchObject({
-      projectId: "remote:github.com/acme/legacy-project",
-      projectKey: "remote:github.com/acme/legacy-project",
       rootPath: GIT_PROJECT,
       kind: "git",
       displayName: "acme/legacy-project",
@@ -373,13 +369,13 @@ describe("bootstrapWorkspaceRegistries", () => {
         .sort((left, right) => left.cwd.localeCompare(right.cwd)),
     ).toEqual([
       {
-        projectId: "remote:github.com/acme/legacy-project",
+        projectId: opaqueProjectId,
         cwd: GIT_PROJECT,
         kind: "local_checkout",
         displayName: "main",
       },
       {
-        projectId: "remote:github.com/acme/legacy-project",
+        projectId: opaqueProjectId,
         cwd: GIT_WORKTREE,
         kind: "worktree",
         displayName: "feature/plain",
@@ -575,6 +571,6 @@ describe("bootstrapWorkspaceRegistries", () => {
 
     const projects = await projectRegistry.list();
     expect(projects).toHaveLength(1);
-    expect(projects[0]?.projectId).toBe(NON_GIT_PROJECT);
+    expect(projects[0]?.projectId).toMatch(/^prj_[0-9a-f]{16}$/);
   });
 });

@@ -206,7 +206,7 @@ describe("panel-store compact file explorer actions", () => {
     expect(patch.explorerTab).toBe("files");
   });
 
-  it("toggles the explorer closed without changing the active tab", () => {
+  it("toggles the explorer closed without closing the expanded agent list", () => {
     const state = makePanelState({
       mobilePanel: { target: "file-explorer", revision: 1 },
       explorerTab: "files",

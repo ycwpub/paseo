@@ -18,7 +18,7 @@ import {
 } from "@/constants/layout";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
+import { PairDeviceModal } from "@/components/pair-device-modal";
 import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -131,12 +131,14 @@ export function OpenProjectScreen() {
       <View style={styles.communityRow}>
         <CommunityLinks />
       </View>
-      <PairDeviceModal
-        serverId={localServerId ?? ""}
-        visible={isPairDeviceOpen}
-        onClose={handleClosePairDevice}
-        testID="open-project-pair-device-modal"
-      />
+      {localServerId ? (
+        <PairDeviceModal
+          serverId={localServerId}
+          visible={isPairDeviceOpen}
+          onClose={handleClosePairDevice}
+          testID="open-project-pair-device-modal"
+        />
+      ) : null}
       <ImportSessionSheet
         visible={isImportSheetOpen}
         client={importClient}

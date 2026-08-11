@@ -48,22 +48,6 @@ import {
   ScheduleUpdateResponseSchema,
 } from "./schedule/rpc-schemas.js";
 import {
-  WorkflowListRequestSchema,
-  WorkflowInspectRequestSchema,
-  WorkflowRunRequestSchema,
-  WorkflowGetRunRequestSchema,
-  WorkflowCancelRunRequestSchema,
-  WorkflowSaveRequestSchema,
-  WorkflowDeleteRequestSchema,
-  WorkflowListResponseSchema,
-  WorkflowInspectResponseSchema,
-  WorkflowRunResponseSchema,
-  WorkflowGetRunResponseSchema,
-  WorkflowCancelRunResponseSchema,
-  WorkflowSaveResponseSchema,
-  WorkflowDeleteResponseSchema,
-} from "./workflow/rpc-schemas.js";
-import {
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
@@ -80,161 +64,27 @@ import {
   BrowserAutomationExecuteResponseSchema,
 } from "./browser-automation/rpc-schemas.js";
 import {
-  AssistantChangedMessageSchema,
-  AssistantCreateRequestSchema,
-  AssistantCreateResponseSchema,
-  AssistantDeleteRequestSchema,
-  AssistantDeleteResponseSchema,
-  AssistantListRequestSchema,
-  AssistantListResponseSchema,
-  AssistantUpdateRequestSchema,
-  AssistantUpdateResponseSchema,
-} from "./assistant/rpc-schemas.js";
-import {
-  LarkChannelApprovePairingRequestSchema,
-  LarkChannelApprovePairingResponseSchema,
-  LarkChannelApplyBotRequestSchema,
-  LarkChannelApplyBotResponseSchema,
-  LarkChannelConfigureRequestSchema,
-  LarkChannelConfigureResponseSchema,
-  LarkChannelDeleteBotRequestSchema,
-  LarkChannelDeleteBotResponseSchema,
-  LarkChannelGetStatusRequestSchema,
-  LarkChannelGetStatusResponseSchema,
-  LarkChannelGetBotApplicationRequestSchema,
-  LarkChannelGetBotApplicationResponseSchema,
-  LarkChannelRejectPairingRequestSchema,
-  LarkChannelRejectPairingResponseSchema,
-  LarkChannelRevokeUserRequestSchema,
-  LarkChannelRevokeUserResponseSchema,
-  LarkChannelSetEnabledRequestSchema,
-  LarkChannelSetEnabledResponseSchema,
-  LarkChannelStatusChangedMessageSchema,
-  LarkChannelTestConnectionRequestSchema,
-  LarkChannelTestConnectionResponseSchema,
-} from "./channel/lark/rpc-schemas.js";
+  ExtensionSessionInboundSchemas,
+  ExtensionSessionOutboundSchemas,
+} from "./extension-message-schemas.js";
 import { BrowserAutomationHostCapabilitySchema } from "./browser-automation/capabilities.js";
-import {
-  TeamListRequestSchema,
-  TeamCreateRequestSchema,
-  TeamUpdateRequestSchema,
-  TeamDeleteRequestSchema,
-  TeamGetRequestSchema,
-  TeamSendRunRequestSchema,
-  TeamRunStateRequestSchema,
-} from "./team/rpc-schemas.js";
-import {
-  McpListRequestSchema,
-  McpCreateRequestSchema,
-  McpUpdateRequestSchema,
-  McpDeleteRequestSchema,
-  McpTestConnectionRequestSchema,
-} from "./mcp/rpc-schemas.js";
-import {
-  SkillListRequestSchema,
-  SkillCreateRequestSchema,
-  SkillUpdateRequestSchema,
-  SkillDeleteRequestSchema,
-} from "./skill/rpc-schemas.js";
-import {
-  TeamListResponseSchema,
-  TeamCreateResponseSchema,
-  TeamUpdateResponseSchema,
-  TeamDeleteResponseSchema,
-  TeamGetResponseSchema,
-  TeamChangedMessageSchema,
-  TeamSendRunResponseSchema,
-  TeamRunStateResponseSchema,
-} from "./team/rpc-schemas.js";
-import {
-  McpListResponseSchema,
-  McpCreateResponseSchema,
-  McpUpdateResponseSchema,
-  McpDeleteResponseSchema,
-  McpTestConnectionResponseSchema,
-  McpChangedMessageSchema,
-} from "./mcp/rpc-schemas.js";
-import {
-  SkillListResponseSchema,
-  SkillCreateResponseSchema,
-  SkillUpdateResponseSchema,
-  SkillDeleteResponseSchema,
-  SkillChangedMessageSchema,
-} from "./skill/rpc-schemas.js";
-export {
-  LarkChannelAuthorizedUserSchema,
-  LarkChannelBotSchema,
-  LarkChannelBotStatusSchema,
-  LarkChannelConnectionStatusSchema,
-  LarkChannelDomainSchema,
-  LarkChannelPendingPairingSchema,
-  LarkChannelStatusSchema,
-  LarkChannelSubstituteSchema,
-  LarkChannelTargetSchema,
-  type LarkChannelAuthorizedUser,
-  type LarkChannelBot,
-  type LarkChannelBotStatus,
-  type LarkChannelConnectionStatus,
-  type LarkChannelDomain,
-  type LarkChannelPendingPairing,
-  type LarkChannelStatus,
-  type LarkChannelSubstitute,
-  type LarkChannelTarget,
-} from "./channel/lark/types.js";
-export {
-  LarkBotApplicationSchema,
-  LarkBotApplicationStatusSchema,
-  type LarkBotApplication,
-} from "./channel/lark/rpc-schemas.js";
-export {
-  AssistantCreateInputSchema,
-  AssistantMemoryDetailFileSchema,
-  AssistantMemoryFilesSchema,
-  AssistantResourceSelectionSchema,
-  AssistantSchema,
-  AssistantUpdateInputSchema,
-  type Assistant,
-  type AssistantCreateInput,
-  type AssistantMemoryDetailFile,
-  type AssistantMemoryFiles,
-  type AssistantResourceSelection,
-  type AssistantUpdateInput,
-} from "./assistant/types.js";
-export {
-  TeamSchema,
-  TeamCreateInputSchema,
-  TeamMemberSettingsSchema,
-  TeamUpdateInputSchema,
-  TeamAssistantSchema,
-  type Team,
-  type TeamCreateInput,
-  type TeamMemberSettings,
-  type TeamUpdateInput,
-  type TeamAssistant,
-  type TeammateRole,
-  type TeammateStatus,
-  type WorkspaceMode,
-} from "./team/types.js";
-export {
-  McpServerSchema,
-  McpTransportSchema,
-  McpToolSchema,
-  McpServerCreateInputSchema,
-  McpServerUpdateInputSchema,
-  type McpServer,
-  type McpTransport,
-  type McpTool,
-  type McpServerCreateInput,
-  type McpServerUpdateInput,
-} from "./mcp/types.js";
-export {
-  SkillSchema,
-  SkillCreateInputSchema,
-  SkillUpdateInputSchema,
-  type Skill,
-  type SkillCreateInput,
-  type SkillUpdateInput,
-} from "./skill/types.js";
+export * from "./extension-resource-exports.js";
+export type {
+  WorkflowCancelRunRequest,
+  WorkflowCancelRunResponse,
+  WorkflowDeleteRequest,
+  WorkflowDeleteResponse,
+  WorkflowGetRunRequest,
+  WorkflowGetRunResponse,
+  WorkflowInspectRequest,
+  WorkflowInspectResponse,
+  WorkflowListRequest,
+  WorkflowListResponse,
+  WorkflowRunRequest,
+  WorkflowRunResponse,
+  WorkflowSaveRequest,
+  WorkflowSaveResponse,
+} from "./workflow/rpc-schemas.js";
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -1466,42 +1316,6 @@ export const DaemonGetStatusRequestSchema = z.object({
 export const DaemonGetPairingOfferRequestSchema = z.object({
   type: z.literal("daemon.get_pairing_offer.request"),
   requestId: z.string(),
-});
-
-export const DaemonClientAccessListRequestSchema = z.object({
-  type: z.literal("daemon.client_access.list.request"),
-  requestId: z.string(),
-});
-
-export const DaemonClientAccessApproveRequestSchema = z.object({
-  type: z.literal("daemon.client_access.approve.request"),
-  requestId: z.string(),
-  clientId: z.string().trim().min(1),
-});
-
-export const DaemonClientAccessSetPausedRequestSchema = z.object({
-  type: z.literal("daemon.client_access.set_paused.request"),
-  requestId: z.string(),
-  clientId: z.string().trim().min(1),
-  paused: z.boolean(),
-});
-
-export const DaemonClientAccessDeleteRequestSchema = z.object({
-  type: z.literal("daemon.client_access.delete.request"),
-  requestId: z.string(),
-  clientId: z.string().trim().min(1),
-});
-
-export const DaemonClientAccessHistoryDeleteRequestSchema = z.object({
-  type: z.literal("daemon.client_access.history.delete.request"),
-  requestId: z.string(),
-  historyId: z.string().trim().min(1),
-});
-
-export const DaemonRelayHistoryDeleteRequestSchema = z.object({
-  type: z.literal("daemon.relay_history.delete.request"),
-  requestId: z.string(),
-  historyId: z.string().trim().min(1),
 });
 
 export const HubManagementDaemonConnectRequestSchema = z.object({
@@ -2980,20 +2794,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentValidateRequestSchema,
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
-  AssistantListRequestSchema,
-  AssistantCreateRequestSchema,
-  AssistantUpdateRequestSchema,
-  AssistantDeleteRequestSchema,
-  LarkChannelGetStatusRequestSchema,
-  LarkChannelApplyBotRequestSchema,
-  LarkChannelGetBotApplicationRequestSchema,
-  LarkChannelConfigureRequestSchema,
-  LarkChannelDeleteBotRequestSchema,
-  LarkChannelTestConnectionRequestSchema,
-  LarkChannelSetEnabledRequestSchema,
-  LarkChannelApprovePairingRequestSchema,
-  LarkChannelRejectPairingRequestSchema,
-  LarkChannelRevokeUserRequestSchema,
   VoiceAudioChunkMessageSchema,
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
@@ -3019,12 +2819,6 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WaitForFinishRequestSchema,
   DaemonGetStatusRequestSchema,
   DaemonGetPairingOfferRequestSchema,
-  DaemonClientAccessListRequestSchema,
-  DaemonClientAccessApproveRequestSchema,
-  DaemonClientAccessSetPausedRequestSchema,
-  DaemonClientAccessDeleteRequestSchema,
-  DaemonClientAccessHistoryDeleteRequestSchema,
-  DaemonRelayHistoryDeleteRequestSchema,
   HubManagementDaemonConnectRequestSchema,
   HubManagementDaemonGetStatusRequestSchema,
   HubManagementDaemonDisconnectRequestSchema,
@@ -3159,34 +2953,12 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteRequestSchema,
   ScheduleRunOnceRequestSchema,
   ScheduleUpdateRequestSchema,
-  WorkflowListRequestSchema,
-  WorkflowInspectRequestSchema,
-  WorkflowRunRequestSchema,
-  WorkflowGetRunRequestSchema,
-  WorkflowCancelRunRequestSchema,
-  WorkflowSaveRequestSchema,
-  WorkflowDeleteRequestSchema,
   LoopRunRequestSchema,
   LoopListRequestSchema,
   LoopInspectRequestSchema,
   LoopLogsRequestSchema,
   LoopStopRequestSchema,
-  TeamListRequestSchema,
-  TeamCreateRequestSchema,
-  TeamUpdateRequestSchema,
-  TeamDeleteRequestSchema,
-  TeamGetRequestSchema,
-  TeamSendRunRequestSchema,
-  TeamRunStateRequestSchema,
-  McpListRequestSchema,
-  McpCreateRequestSchema,
-  McpUpdateRequestSchema,
-  McpDeleteRequestSchema,
-  McpTestConnectionRequestSchema,
-  SkillListRequestSchema,
-  SkillCreateRequestSchema,
-  SkillUpdateRequestSchema,
-  SkillDeleteRequestSchema,
+  ...ExtensionSessionInboundSchemas,
 ]);
 
 export type SessionInboundMessage = z.infer<typeof SessionInboundMessageSchema>;
@@ -3460,16 +3232,6 @@ export const ServerInfoStatusPayloadSchema = z
         agentTurnIdentity: z.boolean().optional(),
         // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
         stableProjectIdentity: z.boolean().optional(),
-        // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
-        workspaceScriptManagement: z.boolean().optional(),
-        // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
-        projectCustomIcon: z.boolean().optional(),
-        // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
-        fsEntryOps: z.boolean().optional(),
-        // COMPAT(fsEntryDuplicate): added in v0.3.0, remove gate after 2027-02-09.
-        fsEntryDuplicate: z.boolean().optional(),
-        // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
-        checkoutDiscardChanges: z.boolean().optional(),
         // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
         // An older daemon parses its persisted config strictly, so writing
         // agentProfiles to one is silently dropped. The client hides the feature
@@ -4599,102 +4361,6 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
         .default([]),
     })
     .passthrough(),
-});
-
-export const DaemonClientAccessEntrySchema = z.object({
-  clientId: z.string().min(1),
-  clientName: z.string().nullable(),
-  clientHostname: z.string().nullable().default(null),
-  clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
-  appVersion: z.string().nullable(),
-  remoteAddress: z.string().nullable().default(null),
-  remotePort: z.number().int().min(0).max(65535).nullable().default(null),
-  transport: z.enum(["direct", "relay"]),
-  peer: z.enum(["loopback", "local_ipc", "external"]),
-  status: z.enum(["pending", "allowed", "approved", "paused"]),
-  requestedAt: z.string(),
-  approvedAt: z.string().nullable(),
-  lastConnectedAt: z.string().nullable().default(null),
-  connected: z.boolean(),
-});
-
-export type DaemonClientAccessEntry = z.infer<typeof DaemonClientAccessEntrySchema>;
-
-export const DaemonClientAccessHistoryEntrySchema = z.object({
-  id: z.string().min(1),
-  clientId: z.string().min(1),
-  clientName: z.string().nullable(),
-  clientHostname: z.string().nullable().default(null),
-  clientType: z.enum(["mobile", "browser", "cli", "mcp"]),
-  appVersion: z.string().nullable(),
-  remoteAddress: z.string().nullable().default(null),
-  remotePort: z.number().int().min(0).max(65535).nullable().default(null),
-  transport: z.enum(["direct", "relay"]),
-  peer: z.enum(["loopback", "local_ipc", "external"]),
-  connectedAt: z.string(),
-  disconnectedAt: z.string().nullable(),
-});
-
-export type DaemonClientAccessHistoryEntry = z.infer<typeof DaemonClientAccessHistoryEntrySchema>;
-
-export const DaemonClientAccessListResponseSchema = z.object({
-  type: z.literal("daemon.client_access.list.response"),
-  payload: z.object({
-    requestId: z.string(),
-    clients: z.array(DaemonClientAccessEntrySchema),
-    history: z.array(DaemonClientAccessHistoryEntrySchema).optional(),
-    historyRetentionDays: z.number().int().positive().optional(),
-  }),
-});
-
-export const DaemonClientAccessApproveResponseSchema = z.object({
-  type: z.literal("daemon.client_access.approve.response"),
-  payload: z.object({
-    requestId: z.string(),
-    client: DaemonClientAccessEntrySchema.nullable(),
-    success: z.boolean(),
-    error: z.string().nullable(),
-  }),
-});
-
-export const DaemonClientAccessSetPausedResponseSchema = z.object({
-  type: z.literal("daemon.client_access.set_paused.response"),
-  payload: z.object({
-    requestId: z.string(),
-    client: DaemonClientAccessEntrySchema.nullable(),
-    success: z.boolean(),
-    error: z.string().nullable(),
-  }),
-});
-
-export const DaemonClientAccessDeleteResponseSchema = z.object({
-  type: z.literal("daemon.client_access.delete.response"),
-  payload: z.object({
-    requestId: z.string(),
-    clientId: z.string(),
-    success: z.boolean(),
-    error: z.string().nullable(),
-  }),
-});
-
-export const DaemonClientAccessHistoryDeleteResponseSchema = z.object({
-  type: z.literal("daemon.client_access.history.delete.response"),
-  payload: z.object({
-    requestId: z.string(),
-    historyId: z.string(),
-    success: z.boolean(),
-    error: z.string().nullable(),
-  }),
-});
-
-export const DaemonRelayHistoryDeleteResponseSchema = z.object({
-  type: z.literal("daemon.relay_history.delete.response"),
-  payload: z.object({
-    requestId: z.string(),
-    historyId: z.string(),
-    success: z.boolean(),
-    error: z.string().nullable(),
-  }),
 });
 
 export const DiagnosticsResponseSchema = z.object({
@@ -6163,22 +5829,6 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionAgentUpdateSchema,
   HubExecutionAgentStreamSchema,
   BrowserAutomationExecuteRequestSchema,
-  AssistantListResponseSchema,
-  AssistantCreateResponseSchema,
-  AssistantUpdateResponseSchema,
-  AssistantDeleteResponseSchema,
-  AssistantChangedMessageSchema,
-  LarkChannelGetStatusResponseSchema,
-  LarkChannelApplyBotResponseSchema,
-  LarkChannelGetBotApplicationResponseSchema,
-  LarkChannelConfigureResponseSchema,
-  LarkChannelDeleteBotResponseSchema,
-  LarkChannelTestConnectionResponseSchema,
-  LarkChannelSetEnabledResponseSchema,
-  LarkChannelApprovePairingResponseSchema,
-  LarkChannelRejectPairingResponseSchema,
-  LarkChannelRevokeUserResponseSchema,
-  LarkChannelStatusChangedMessageSchema,
   ActivityLogMessageSchema,
   AssistantChunkMessageSchema,
   AudioOutputMessageSchema,
@@ -6236,12 +5886,6 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
-  DaemonClientAccessListResponseSchema,
-  DaemonClientAccessApproveResponseSchema,
-  DaemonClientAccessSetPausedResponseSchema,
-  DaemonClientAccessDeleteResponseSchema,
-  DaemonClientAccessHistoryDeleteResponseSchema,
-  DaemonRelayHistoryDeleteResponseSchema,
   HubManagementDaemonConnectResponseSchema,
   HubManagementDaemonGetStatusResponseSchema,
   HubManagementDaemonDisconnectResponseSchema,
@@ -6353,13 +5997,6 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
-  WorkflowListResponseSchema,
-  WorkflowInspectResponseSchema,
-  WorkflowRunResponseSchema,
-  WorkflowGetRunResponseSchema,
-  WorkflowCancelRunResponseSchema,
-  WorkflowSaveResponseSchema,
-  WorkflowDeleteResponseSchema,
   LoopRunResponseSchema,
   LoopListResponseSchema,
   LoopInspectResponseSchema,
@@ -6367,25 +6004,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   LoopStopResponseSchema,
   DaemonUpdateProgressMessageSchema,
   DaemonUpdateResponseSchema,
-  TeamListResponseSchema,
-  TeamCreateResponseSchema,
-  TeamUpdateResponseSchema,
-  TeamDeleteResponseSchema,
-  TeamGetResponseSchema,
-  TeamChangedMessageSchema,
-  TeamSendRunResponseSchema,
-  TeamRunStateResponseSchema,
-  McpListResponseSchema,
-  McpCreateResponseSchema,
-  McpUpdateResponseSchema,
-  McpDeleteResponseSchema,
-  McpTestConnectionResponseSchema,
-  McpChangedMessageSchema,
-  SkillListResponseSchema,
-  SkillCreateResponseSchema,
-  SkillUpdateResponseSchema,
-  SkillDeleteResponseSchema,
-  SkillChangedMessageSchema,
+  ...ExtensionSessionOutboundSchemas,
 ]);
 
 export type SessionOutboundMessage = z.infer<typeof SessionOutboundMessageSchema>;
@@ -6553,13 +6172,6 @@ export type ScheduleResumeResponse = z.infer<typeof ScheduleResumeResponseSchema
 export type ScheduleDeleteResponse = z.infer<typeof ScheduleDeleteResponseSchema>;
 export type ScheduleRunOnceResponse = z.infer<typeof ScheduleRunOnceResponseSchema>;
 export type ScheduleUpdateResponse = z.infer<typeof ScheduleUpdateResponseSchema>;
-export type WorkflowListResponse = z.infer<typeof WorkflowListResponseSchema>;
-export type WorkflowInspectResponse = z.infer<typeof WorkflowInspectResponseSchema>;
-export type WorkflowRunResponse = z.infer<typeof WorkflowRunResponseSchema>;
-export type WorkflowGetRunResponse = z.infer<typeof WorkflowGetRunResponseSchema>;
-export type WorkflowCancelRunResponse = z.infer<typeof WorkflowCancelRunResponseSchema>;
-export type WorkflowSaveResponse = z.infer<typeof WorkflowSaveResponseSchema>;
-export type WorkflowDeleteResponse = z.infer<typeof WorkflowDeleteResponseSchema>;
 export type LoopRunResponse = z.infer<typeof LoopRunResponseSchema>;
 export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopInspectResponse = z.infer<typeof LoopInspectResponseSchema>;
@@ -6628,13 +6240,6 @@ export type ScheduleResumeRequest = z.infer<typeof ScheduleResumeRequestSchema>;
 export type ScheduleDeleteRequest = z.infer<typeof ScheduleDeleteRequestSchema>;
 export type ScheduleRunOnceRequest = z.infer<typeof ScheduleRunOnceRequestSchema>;
 export type ScheduleUpdateRequest = z.infer<typeof ScheduleUpdateRequestSchema>;
-export type WorkflowListRequest = z.infer<typeof WorkflowListRequestSchema>;
-export type WorkflowInspectRequest = z.infer<typeof WorkflowInspectRequestSchema>;
-export type WorkflowRunRequest = z.infer<typeof WorkflowRunRequestSchema>;
-export type WorkflowGetRunRequest = z.infer<typeof WorkflowGetRunRequestSchema>;
-export type WorkflowCancelRunRequest = z.infer<typeof WorkflowCancelRunRequestSchema>;
-export type WorkflowSaveRequest = z.infer<typeof WorkflowSaveRequestSchema>;
-export type WorkflowDeleteRequest = z.infer<typeof WorkflowDeleteRequestSchema>;
 export type LoopRunRequest = z.infer<typeof LoopRunRequestSchema>;
 export type LoopListRequest = z.infer<typeof LoopListRequestSchema>;
 export type LoopInspectRequest = z.infer<typeof LoopInspectRequestSchema>;

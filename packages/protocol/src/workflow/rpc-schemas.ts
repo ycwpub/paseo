@@ -127,3 +127,18 @@ export const WorkflowDeleteResponseSchema = z.object({
     error: z.string().nullable(),
   }),
 });
+
+export type WorkflowListRequest = z.infer<typeof WorkflowListRequestSchema>;
+export type WorkflowInspectRequest = z.infer<typeof WorkflowInspectRequestSchema>;
+export type WorkflowRunRequest = z.infer<typeof WorkflowRunRequestSchema>;
+export type WorkflowGetRunRequest = z.infer<typeof WorkflowGetRunRequestSchema>;
+export type WorkflowCancelRunRequest = z.infer<typeof WorkflowCancelRunRequestSchema>;
+export type WorkflowSaveRequest = z.infer<typeof WorkflowSaveRequestSchema>;
+export type WorkflowDeleteRequest = z.infer<typeof WorkflowDeleteRequestSchema>;
+export type WorkflowListResponse = z.infer<typeof WorkflowListResponseSchema>;
+export type WorkflowInspectResponse = z.infer<typeof WorkflowInspectResponseSchema>;
+export type WorkflowRunResponse = z.infer<typeof WorkflowRunResponseSchema>;
+export type WorkflowGetRunResponse = z.infer<typeof WorkflowGetRunResponseSchema>;
+export type WorkflowCancelRunResponse = z.infer<typeof WorkflowCancelRunResponseSchema>;
+export type WorkflowSaveResponse = z.infer<typeof WorkflowSaveResponseSchema>;
+export type WorkflowDeleteResponse = z.infer<typeof WorkflowDeleteResponseSchema>;

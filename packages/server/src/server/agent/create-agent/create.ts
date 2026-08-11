@@ -386,6 +386,8 @@ async function resolveMcpCreateAgent(
       trimmedPrompt,
       resolvedMode: resolvedCreateConfig.modeId,
       resolvedFeatures: resolvedCreateConfig.featureValues,
+      inheritedProviderOptions:
+        parentAgent?.provider === provider ? parentAgent.config?.providerOptions : undefined,
     }),
     createOptions: {
       ...(Object.keys(intent.labels).length > 0 ? { labels: intent.labels } : {}),
@@ -442,6 +444,7 @@ function buildMcpSessionConfig(params: {
   trimmedPrompt: string;
   resolvedMode?: string;
   resolvedFeatures?: Record<string, unknown>;
+  inheritedProviderOptions?: AgentSessionConfig["providerOptions"];
 }): AgentSessionConfig {
   const passthroughConfig = params.input.config;
   const { provisionalTitle } = resolveCreateAgentTitles({
@@ -463,6 +466,9 @@ function buildMcpSessionConfig(params: {
   }
   if (featureValues) {
     config.featureValues = featureValues;
+  }
+  if (config.providerOptions === undefined && params.inheritedProviderOptions !== undefined) {
+    config.providerOptions = params.inheritedProviderOptions;
   }
   return config;
 }

@@ -69,7 +69,7 @@ export const zhCN: TranslationResources = {
         title: "输入输出约定",
         description:
           "节点输入是一个包含 control 和业务数据的 JSON 对象。输出中的 error 由工作流框架消费，不会传给后续节点。",
-        note: "输出 error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 和 Agent 输出缺少 control/error 时会自动补为空字符串。",
+        note: "输出 error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 输出缺少 control/error 时会自动补为空字符串；Agent 根据节点类型把回答写入 answer 或 control。",
       },
       internal: {
         title: "Paseo 内部使用",
@@ -97,7 +97,9 @@ export const zhCN: TranslationResources = {
         title: "节点行为",
         bash: "• Bash：从 $PASEO_WORKFLOW_INPUT_JSON 或 $1 读取数据。stdout 最后一个非空行必须是结果 JSON；stdout 为空时节点失败。",
         agent:
-          "• Agent：接收完整 JSON，最终必须只输出一个合法 JSON 对象。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
+          "• Agent：Answer 节点把回答写入 answer，Control 节点把回答写入 control。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
+        workflow:
+          "• Workflow：运行同一主机上的另一个 Workflow。当前数据作为子流程输入，子流程输出作为节点输出；循环引用和过深嵌套会被拒绝。",
         switch: "• Switch：选择配置值与 payload.control 相等的分支。",
         for: "• For：根据 payload.control 生成循环项，子节点可返回 continue 或 break。",
       },
@@ -141,7 +143,7 @@ export const zhCN: TranslationResources = {
       workflowTimeout: "工作流超时（秒）",
       workflowTimeoutHint: "整个工作流运行的最长时间。",
       taskTimeout: "任务超时（秒）",
-      taskTimeoutHint: "Bash 和 Agent 节点的默认超时时间。",
+      taskTimeoutHint: "Bash、Agent 和 Workflow 节点的默认超时时间。",
       defaultAttempts: "默认尝试次数",
       defaultAttemptsHint: "包含首次执行。",
       promptTemplates: "提示词模板",
@@ -154,7 +156,7 @@ export const zhCN: TranslationResources = {
       inputJson: "输入 JSON",
       inputJsonHint: "节点输入只包含 control 和业务数据；error 仅用于框架处理节点输出。",
       emptyTitle: "选择或创建工作流",
-      emptyDescription: "无需编辑 JSON，即可编排 Bash、Agent、Switch 和 For 节点。",
+      emptyDescription: "无需编辑 JSON，即可编排 Bash、Agent、Workflow、Switch 和 For 节点。",
     },
     list: {
       title: "已保存的工作流",
@@ -178,7 +180,12 @@ export const zhCN: TranslationResources = {
       stdout: "标准输出（stdout）",
       stderr: "错误输出（stderr）",
       nodeOutput: "节点运行输出",
+      userInput: "用户输入",
+      agentAnswer: "Agent 回答",
+      agentProcess: "Agent 执行过程",
       errorCode: "错误码",
+      workflow: "Workflow",
+      workflowRunId: "子流程运行 ID",
       status: {
         running: "运行中",
         succeeded: "成功",
@@ -198,18 +205,21 @@ export const zhCN: TranslationResources = {
       defaultNames: {
         bash: "Bash 命令",
         agent: "Agent",
+        workflow: "子工作流",
         switch: "条件分支",
         for: "逐项循环",
       },
       types: {
         bash: "Bash",
         agent: "Agent",
+        workflow: "Workflow",
         switch: "Switch",
         for: "For",
       },
       typeDescriptions: {
         bash: "执行 Shell 命令",
         agent: "运行 AI Agent",
+        workflow: "运行另一个 Workflow",
         switch: "根据 control 选择分支",
         for: "遍历 control",
       },
@@ -226,11 +236,32 @@ export const zhCN: TranslationResources = {
           "可使用下方展示的模板变量，或通过 $PASEO_WORKFLOW_INPUT_JSON、$1 读取节点输入；输入中不会包含 error。输出缺少 control/error 时会自动补为空字符串。",
         shell: "Shell",
       },
+      workflow: {
+        workflow: "选择 Workflow",
+        workflowHint:
+          "当前节点输入 JSON 会作为子 Workflow 输入，子 Workflow 输出会成为当前节点输出。",
+        selectWorkflow: "选择要运行的 Workflow",
+        noWorkflows: "没有其他可用 Workflow。",
+        timeoutHint: "等待子 Workflow 完成的最长时间；留空使用默认任务超时。",
+      },
       agent: {
         promptTemplate: "提示词模板",
         promptTemplateHint: "选择后会把模板内容复制到当前节点，节点提示词可独立修改。",
         selectPromptTemplate: "选择要复制的提示词模板",
+        systemPromptTemplate: "系统提示词模板",
+        selectSystemPromptTemplate: "选择要复制到系统提示词的模板",
         noPromptTemplates: "当前主机尚未配置提示词模板。",
+        outputType: "Agent 节点类型",
+        outputTypeHint:
+          "Answer 节点把 Agent 回答写入 answer；Control 节点把 Agent 回答写入 control。",
+        selectOutputType: "选择 Agent 节点类型",
+        noOutputTypes: "暂无 Agent 节点类型。",
+        outputTypes: {
+          answer: "Answer 节点",
+          answerDescription: '把 Agent 回答转换为 {"answer":"Agent 回答"}。',
+          control: "Control 节点",
+          controlDescription: '把 Agent 回答转换为 {"control":"Agent 回答"}。',
+        },
         initialPrompt: "初始提示词",
         initialPromptHint:
           "使用下方展示的模板变量插入数据。范例包含嵌套字段、数组、内置变量和自定义变量。",
@@ -252,9 +283,9 @@ export const zhCN: TranslationResources = {
         systemPrompt: "系统提示词",
         systemPromptPlaceholder: "可选的附加系统提示词",
         systemPromptHint:
-          "通过 Provider 的系统指令通道独立发送，不会追加到界面可见的用户提示词中。",
+          "支持与用户提示词相同的模板变量；通过 Provider 的系统指令通道独立发送，不会追加到界面可见的用户提示词中。",
         systemPromptConfiguredHint:
-          "已配置，将通过 Provider 的系统指令通道独立发送；工作流用户消息中会显示注入标记。",
+          "已配置，运行时会替换模板变量，并通过 Provider 的系统指令通道独立发送。",
         archive: "完成后归档 Agent",
         network: "允许访问网络",
         webSearch: "允许联网搜索",
@@ -289,7 +320,8 @@ export const zhCN: TranslationResources = {
         bashTitle: "Bash 变量",
         agentTitle: "Agent 变量",
         bashDescription: "定义命令中可复用的变量，变量值也可引用输入数据路径或内置变量。",
-        agentDescription: "定义提示词中可复用的变量，变量值也可引用输入数据路径或内置变量。",
+        agentDescription:
+          "定义用户提示词和系统提示词中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         examplesTitle: "变量使用范例",
         inputExample: "假设输入 JSON 为：",
         nestedObjectExample: "读取嵌套对象字段",
@@ -298,7 +330,7 @@ export const zhCN: TranslationResources = {
         payloadExample: "读取完整 JSON 数据",
         customExample: "读取自定义变量，例如 role = reviewer",
         bashUsageExample: "Bash 命令范例：",
-        agentUsageExample: "Agent 提示词范例：",
+        agentUsageExample: "Agent 用户提示词或系统提示词范例：",
         showHelp: "查看变量使用范例",
         add: "添加变量",
         name: "变量名",
@@ -561,9 +593,18 @@ export const zhCN: TranslationResources = {
     title: "历史",
     empty: "还没有会话",
     noMatches: "没有匹配的会话",
+    noProjectSessions: "这个 Project 暂无历史会话",
     tooManyMatches: "匹配过多 — 请缩小搜索范围",
     hostLoadFailed: "{{host}}：无法加载历史",
     searchPlaceholder: "搜索历史",
+    projectFilter: {
+      label: "Project",
+      title: "按 Project 筛选",
+      all: "全部 Project",
+      empty: "暂无可用 Project",
+      search: "搜索 Project",
+      hostCount: "{{count}} 台主机",
+    },
     actions: {
       loadMore: "加载更多",
       clearSearch: "清除搜索",
@@ -1321,6 +1362,8 @@ export const zhCN: TranslationResources = {
       home: "首页",
       settings: "设置",
       closeSidebar: "关闭侧边栏",
+      collapseAllWorkspaces: "一键折叠所有工作区",
+      expandAllWorkspaces: "一键展开所有工作区",
     },
     help: {
       trigger: "帮助与支持",
@@ -1350,8 +1393,13 @@ export const zhCN: TranslationResources = {
         openNewWindowFailed: "无法打开新窗口",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "隐藏 Project",
+        show: "显示 Project",
         remove: "移除 project",
         removing: "正在移除...",
+      },
+      hidden: {
+        title: "隐藏的 Project（{{count}}）",
       },
       confirmations: {
         removeTitle: "移除 project？",

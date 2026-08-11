@@ -29,6 +29,8 @@ import type {
   UpdateScheduleNewAgentConfig,
 } from "@getpaseo/protocol/schedule/types";
 import type { FirstAgentContext } from "@getpaseo/protocol/messages";
+import type { WorkflowRun } from "@getpaseo/protocol/workflow/types";
+import { parseScheduledWorkflowCommand } from "./workflow-command.js";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
 const DEFAULT_BASH_SCHEDULE_SHELL = "/bin/bash";
@@ -349,6 +351,10 @@ export interface ScheduleServiceOptions {
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   archiveWorkspace: (workspaceId: string) => Promise<void>;
   assistantStore?: Pick<AssistantStore, "get">;
+  workflowService?: {
+    runScript: (input: { scriptPath: string; inputPayload: string }) => Promise<WorkflowRun>;
+    runScriptAndWait: (input: { scriptPath: string; inputPayload: string }) => Promise<WorkflowRun>;
+  } | null;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
 }
@@ -367,6 +373,7 @@ export class ScheduleService {
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   private readonly archiveWorkspace: (workspaceId: string) => Promise<void>;
   private readonly assistantStore: Pick<AssistantStore, "get"> | null;
+  private readonly workflowService: ScheduleServiceOptions["workflowService"];
   private readonly now: () => Date;
   private readonly runner: (
     schedule: StoredSchedule,
@@ -385,6 +392,7 @@ export class ScheduleService {
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
     this.assistantStore = options.assistantStore ?? null;
+    this.workflowService = options.workflowService ?? null;
     this.now = options.now ?? (() => new Date());
     this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
   }
@@ -1004,13 +1012,7 @@ export class ScheduleService {
     }
 
     if (schedule.target.type === "bash") {
-      await this.assertScheduleCwdDirectory(schedule.target.config.cwd, "Working directory");
-      return executeBashCommand({
-        command: schedule.prompt,
-        cwd: schedule.target.config.cwd,
-        shell: schedule.target.config.shell ?? DEFAULT_BASH_SCHEDULE_SHELL,
-        timeoutMs: schedule.target.config.timeoutMs ?? DEFAULT_BASH_SCHEDULE_TIMEOUT_MS,
-      });
+      return this.executeBashSchedule(schedule, schedule.target);
     }
 
     const config = schedule.target.type === "new-agent" ? schedule.target.config : null;
@@ -1104,6 +1106,33 @@ export class ScheduleService {
         }
       }
     }
+  }
+
+  private async executeBashSchedule(
+    schedule: StoredSchedule,
+    target: Extract<ScheduleTarget, { type: "bash" }>,
+  ): Promise<ScheduleExecutionResult> {
+    const workflowCommand = parseScheduledWorkflowCommand(schedule.prompt);
+    if (workflowCommand && this.workflowService) {
+      const run = workflowCommand.background
+        ? await this.workflowService.runScript(workflowCommand)
+        : await this.workflowService.runScriptAndWait(workflowCommand);
+      const output = JSON.stringify(run, null, 2);
+      if (run.status === "failed" || run.status === "cancelled" || run.status === "timed_out") {
+        throw new ScheduleExecutionError(
+          run.error ?? `Workflow run ${run.id} ended with status ${run.status}`,
+          output,
+        );
+      }
+      return { agentId: null, output };
+    }
+    await this.assertScheduleCwdDirectory(target.config.cwd, "Working directory");
+    return executeBashCommand({
+      command: schedule.prompt,
+      cwd: target.config.cwd,
+      shell: target.config.shell ?? DEFAULT_BASH_SCHEDULE_SHELL,
+      timeoutMs: target.config.timeoutMs ?? DEFAULT_BASH_SCHEDULE_TIMEOUT_MS,
+    });
   }
 
   private resolveNewAgentAssistantContext(

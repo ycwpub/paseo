@@ -685,6 +685,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const requestOlderHistory = useCallback(() => {
     const scrollContainer = scrollContainerRef.current;
     if (
+      olderHistoryProgressKey !== null ||
       !scrollContainer ||
       !historyStartReadyRef.current ||
       historyStartTriggeredRef.current ||
@@ -700,7 +701,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       scrollTop: scrollContainer.scrollTop,
     };
     onNearHistoryStart();
-  }, [hasOlderHistory, isLoadingOlderHistory, onNearHistoryStart]);
+  }, [hasOlderHistory, isLoadingOlderHistory, olderHistoryProgressKey, onNearHistoryStart]);
 
   const handleDomScroll = useCallback(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -736,8 +737,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       pendingHistoryAnchorRef.current = null;
     }
     updateScrollMetrics();
+    evaluateHistoryStart();
     requestOlderHistory();
   }, [
+    evaluateHistoryStart,
     isJumpSettling,
     isLoadingOlderHistory,
     requestOlderHistory,
@@ -934,6 +937,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
     const markUpwardViewportInput = () => {
       markUpwardInputEvidence();
+      stopFollowingOutputFromUserIntent();
       if (scrollContainer.scrollTop <= USER_SCROLL_DELTA_EPSILON) {
         rearmHistoryStartFromUserIntent();
       }
@@ -1070,6 +1074,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     isActive,
     markUpwardInputEvidence,
     rearmHistoryStartFromUserIntent,
+    stopFollowingOutputFromUserIntent,
   ]);
 
   useEffect(() => {

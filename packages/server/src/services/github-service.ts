@@ -737,7 +737,10 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   const ttlMs = options.ttlMs ?? DEFAULT_GITHUB_CACHE_TTL_MS;
   const deps: GitHubServiceDependencies = {
     runner: options.runner ?? runGhCommand,
-    resolveGhPath: options.resolveGhPath ?? resolveGhPath,
+    // A custom runner is already the executable dependency boundary. Requiring
+    // the host machine to also have `gh` installed makes injected runners
+    // unusable in tests and embedders.
+    resolveGhPath: options.resolveGhPath ?? (options.runner ? async () => "gh" : resolveGhPath),
     now: options.now ?? Date.now,
     resolveRepoHost: options.resolveRepoHost ?? resolveGitHubEnterpriseHost,
   };

@@ -67,7 +67,7 @@ export const en = {
         title: "Input and output contract",
         description:
           'Nodes receive one JSON object containing "control" and business data. The framework consumes output "error" and never passes it to downstream node inputs.',
-        note: 'A non-empty output "error" stops the workflow. Switch and For nodes read "control". Bash and Agent outputs default missing control/error fields to empty strings.',
+        note: 'A non-empty output "error" stops the workflow. Switch and For nodes read "control". Bash output defaults missing control/error fields to empty strings; Agent output is written to answer or control according to its node type.',
       },
       internal: {
         title: "Use inside Paseo",
@@ -96,7 +96,9 @@ export const en = {
         title: "Node behavior",
         bash: "• Bash: reads the payload from $PASEO_WORKFLOW_INPUT_JSON or $1. Its last non-empty stdout line must be the result JSON; empty stdout fails the node.",
         agent:
-          "• Agent: receives the payload and must finish with one valid JSON object. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
+          "• Agent: Answer nodes write the reply to answer; Control nodes write the reply to control. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
+        workflow:
+          "• Workflow: runs another workflow on the same host. The current payload becomes its input, and the child output becomes this node's output. Cycles and excessive nesting are rejected.",
         switch: "• Switch: selects the branch whose configured value equals payload.control.",
         for: '• For: iterates values derived from payload.control. Child nodes may return "continue" or "break".',
       },
@@ -141,7 +143,7 @@ export const en = {
       workflowTimeout: "Workflow timeout (seconds)",
       workflowTimeoutHint: "Maximum duration for the whole run.",
       taskTimeout: "Task timeout (seconds)",
-      taskTimeoutHint: "Default for Bash and Agent nodes.",
+      taskTimeoutHint: "Default for Bash, Agent, and Workflow nodes.",
       defaultAttempts: "Default attempts",
       defaultAttemptsHint: "Includes the first execution.",
       promptTemplates: "Prompt templates",
@@ -155,7 +157,7 @@ export const en = {
       inputJsonHint:
         'Node input contains "control" and business data only. "error" is reserved for framework output handling.',
       emptyTitle: "Select or create a workflow",
-      emptyDescription: "Build Bash, Agent, Switch, and For nodes without editing JSON.",
+      emptyDescription: "Build Bash, Agent, Workflow, Switch, and For nodes without editing JSON.",
     },
     list: {
       title: "Saved workflows",
@@ -179,7 +181,12 @@ export const en = {
       stdout: "Standard output (stdout)",
       stderr: "Error output (stderr)",
       nodeOutput: "Node output",
+      userInput: "User input",
+      agentAnswer: "Agent answer",
+      agentProcess: "Agent process",
       errorCode: "Error code",
+      workflow: "Workflow",
+      workflowRunId: "Child run ID",
       status: {
         running: "Running",
         succeeded: "Succeeded",
@@ -199,18 +206,21 @@ export const en = {
       defaultNames: {
         bash: "Bash command",
         agent: "Agent",
+        workflow: "Workflow",
         switch: "Switch",
         for: "For each",
       },
       types: {
         bash: "Bash",
         agent: "Agent",
+        workflow: "Workflow",
         switch: "Switch",
         for: "For",
       },
       typeDescriptions: {
         bash: "Run a shell command",
         agent: "Run an AI agent",
+        workflow: "Run another workflow",
         switch: "Branch on control",
         for: "Iterate over control",
       },
@@ -227,12 +237,34 @@ export const en = {
           "Use the template variables shown below, or read the node input from $PASEO_WORKFLOW_INPUT_JSON or $1. Input never contains error. Output control/error default to empty strings when omitted.",
         shell: "Shell",
       },
+      workflow: {
+        workflow: "Workflow",
+        workflowHint:
+          "The current node input JSON becomes the child workflow input, and its output becomes this node's output.",
+        selectWorkflow: "Choose a workflow to run",
+        noWorkflows: "No other workflows are available.",
+        timeoutHint:
+          "Maximum time to wait for the child workflow. Leave blank to use the default task timeout.",
+      },
       agent: {
         promptTemplate: "Prompt template",
         promptTemplateHint:
           "Copies the selected template into this node. The node remains independently editable.",
         selectPromptTemplate: "Choose a template to copy",
+        systemPromptTemplate: "System prompt template",
+        selectSystemPromptTemplate: "Choose a template to copy into the system prompt",
         noPromptTemplates: "No prompt templates are configured on this host.",
+        outputType: "Agent node type",
+        outputTypeHint:
+          "Answer writes the Agent reply to answer. Control writes the Agent reply to control.",
+        selectOutputType: "Select an Agent node type",
+        noOutputTypes: "No Agent node types are available.",
+        outputTypes: {
+          answer: "Answer",
+          answerDescription: 'Converts the Agent reply to {"answer":"Agent reply"}.',
+          control: "Control",
+          controlDescription: 'Converts the Agent reply to {"control":"Agent reply"}.',
+        },
         initialPrompt: "Initial prompt",
         initialPromptHint:
           "Insert payload values with the template variables shown below. The examples cover nested fields, arrays, built-ins, and custom variables.",
@@ -254,9 +286,9 @@ export const en = {
         systemPrompt: "System prompt",
         systemPromptPlaceholder: "Optional additional system prompt",
         systemPromptHint:
-          "Sent separately through the provider's system-instruction channel; it is not appended to the visible user prompt.",
+          "Supports the same template variables as the user prompt and is sent separately through the provider's system-instruction channel.",
         systemPromptConfiguredHint:
-          "Configured and sent separately through the provider's system-instruction channel. The workflow user message will show a delivery marker.",
+          "Configured. Template variables are rendered at runtime and sent separately through the provider's system-instruction channel.",
         archive: "Archive agent after completion",
         network: "Allow network access",
         webSearch: "Allow web search",
@@ -293,7 +325,7 @@ export const en = {
         bashDescription:
           "Define reusable values for the command. Values may reference payload paths or built-in variables.",
         agentDescription:
-          "Define reusable values for the prompt. Values may reference payload paths or built-in variables.",
+          "Define reusable values for both user and system prompts. Values may reference payload paths or built-in variables.",
         examplesTitle: "Variable examples",
         inputExample: "With this input JSON:",
         nestedObjectExample: "Nested object field",
@@ -302,7 +334,7 @@ export const en = {
         payloadExample: "Complete JSON payload",
         customExample: 'Custom variable, for example role = "reviewer"',
         bashUsageExample: "Bash command example:",
-        agentUsageExample: "Agent prompt example:",
+        agentUsageExample: "Agent user or system prompt example:",
         showHelp: "Show variable usage examples",
         add: "Add variable",
         name: "name",
@@ -568,9 +600,18 @@ export const en = {
     title: "History",
     empty: "No sessions yet",
     noMatches: "No sessions match",
+    noProjectSessions: "No sessions for this project",
     tooManyMatches: "Too many matches — narrow your search",
     hostLoadFailed: "{{host}}: Could not load history",
     searchPlaceholder: "Search history",
+    projectFilter: {
+      label: "Project",
+      title: "Filter by project",
+      all: "All projects",
+      empty: "No projects available",
+      search: "Search projects",
+      hostCount: "{{count}} hosts",
+    },
     actions: {
       loadMore: "Load more",
       clearSearch: "Clear search",
@@ -1347,6 +1388,8 @@ export const en = {
       home: "Home",
       settings: "Settings",
       closeSidebar: "Close sidebar",
+      collapseAllWorkspaces: "Collapse all workspaces",
+      expandAllWorkspaces: "Expand all workspaces",
     },
     help: {
       trigger: "Help and support",
@@ -1377,8 +1420,13 @@ export const en = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Hide project",
+        show: "Show project",
         remove: "Remove project",
         removing: "Removing...",
+      },
+      hidden: {
+        title: "Hidden projects ({{count}})",
       },
       confirmations: {
         removeTitle: "Remove project?",

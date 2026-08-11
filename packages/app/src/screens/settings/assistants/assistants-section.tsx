@@ -17,8 +17,6 @@ interface AssistantsSectionProps {
   serverId: string;
 }
 
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
-
 function AssistantsUpgradeCard() {
   return (
     <SettingsSection title="Assistants">
@@ -53,7 +51,7 @@ function AssistantRow({
   }, [assistant.id, onDelete]);
 
   return (
-    <View style={ROW_WITH_BORDER_STYLE}>
+    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{assistant.name || "Unnamed assistant"}</Text>
         {assistant.description ? (

@@ -4,12 +4,14 @@ import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Logger } from "pino";
 import {
+  DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT,
   WorkflowNodeResultSchema,
   WorkflowPayloadSchema,
   WorkflowScriptSchema,
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
+  type WorkflowNestedStep,
   type WorkflowNodeResult,
   type WorkflowNodeRun,
   type WorkflowPayload,
@@ -31,7 +33,7 @@ import { buildAssistantInitialPrompt } from "../assistants/assistant-prompt.js";
 import type { AssistantStore } from "../assistants/assistant-store.js";
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
-import { expandUserPath } from "../path-utils.js";
+import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 import {
   clearTeamIdentityLabels,
@@ -81,6 +83,10 @@ interface ExecutionState {
 
 interface StepExecutionResult extends ExecutionState {
   agentId: string | null;
+  agentPrompt?: string | null;
+  agentResponse?: string | null;
+  workflowPath?: string | null;
+  workflowRunId?: string | null;
   output: string | null;
 }
 
@@ -112,6 +118,8 @@ export class WorkflowService {
   private readonly teamStore: WorkflowServiceOptions["teamStore"];
   private readonly now: () => Date;
   private readonly activeRuns = new Map<string, Promise<void>>();
+  private readonly activeRunStacks = new Map<string, readonly string[]>();
+  private readonly childRunIdsByParent = new Map<string, Set<string>>();
   private readonly activeBashProcesses = new Map<ChildProcess, string>();
   private readonly activeAgentIds = new Map<string, Set<string>>();
   private readonly terminationRequests = new Map<
@@ -269,10 +277,27 @@ export class WorkflowService {
     inputPayload?: string;
     inputFilePath?: string;
   }): Promise<WorkflowRun> {
+    return this.startScriptRun(input, []);
+  }
+
+  private async startScriptRun(
+    input: {
+      scriptPath: string;
+      inputPayload?: string;
+      inputFilePath?: string;
+    },
+    parentStack: readonly string[],
+  ): Promise<WorkflowRun> {
     if (!this.acceptingRuns) {
       throw new Error("Workflow service is shutting down");
     }
     const scriptFile = await this.inspectScript(input.scriptPath);
+    if (parentStack.includes(scriptFile.path)) {
+      throw new Error(`Workflow cycle detected: ${[...parentStack, scriptFile.path].join(" -> ")}`);
+    }
+    if (parentStack.length >= MAX_WORKFLOW_DEPTH) {
+      throw new Error(`Workflow execution nesting exceeds ${MAX_WORKFLOW_DEPTH} levels`);
+    }
     let inputPayload: WorkflowPayload;
     let inputFilePath: string;
     if (input.inputPayload !== undefined) {
@@ -301,8 +326,10 @@ export class WorkflowService {
       endedAt: null,
       nodeRuns: [],
     });
+    this.activeRunStacks.set(run.id, [...parentStack, scriptFile.path]);
     const task = this.executeRun(run).finally(() => {
       this.activeRuns.delete(run.id);
+      this.activeRunStacks.delete(run.id);
     });
     this.activeRuns.set(run.id, task);
     void task.catch((error) => {
@@ -377,6 +404,7 @@ export class WorkflowService {
     return state;
   }
 
+  // oxlint-disable-next-line complexity -- Step dispatch centralizes retries, node-run persistence, and terminal error normalization.
   private async executeStep(
     run: WorkflowRun,
     step: WorkflowStep,
@@ -407,6 +435,10 @@ export class WorkflowService {
         error: null,
         errorCode: null,
         agentId: null,
+        agentPrompt: null,
+        agentResponse: null,
+        workflowPath: step.type === "workflow" ? step.workflowPath : null,
+        workflowRunId: null,
         output: null,
       });
       try {
@@ -417,6 +449,9 @@ export class WorkflowService {
             break;
           case "agent":
             result = await this.executeAgentStep(run, step, state, attempt);
+            break;
+          case "workflow":
+            result = await this.executeNestedWorkflowStep(run, step, state, nodeRunId);
             break;
           case "switch":
             result = await this.executeSwitchStep(run, step, state);
@@ -434,6 +469,10 @@ export class WorkflowService {
           error: null,
           errorCode: null,
           agentId: result.agentId,
+          agentPrompt: result.agentPrompt ?? null,
+          agentResponse: result.agentResponse ?? null,
+          ...(result.workflowPath !== undefined ? { workflowPath: result.workflowPath } : {}),
+          ...(result.workflowRunId !== undefined ? { workflowRunId: result.workflowRunId } : {}),
           output: result.output,
           retryDelayMs: null,
         });
@@ -459,6 +498,8 @@ export class WorkflowService {
           error: executionError.message,
           errorCode: executionError.code,
           agentId: null,
+          agentPrompt: null,
+          agentResponse: null,
           output: null,
           retryDelayMs,
         });
@@ -522,19 +563,28 @@ export class WorkflowService {
       stepName: step.name,
       attempt,
     });
-    const workflowPrompt = buildAgentWorkflowPrompt({
-      instruction: renderedInstruction,
-      inputPayload: state.payload,
-      iterationPath: state.iterationPath,
-      attempt,
-      systemPrompt: step.config.systemPrompt,
-    });
+    const renderedSystemPrompt =
+      (step.outputType ?? "answer") === "control"
+        ? await renderWorkflowInstruction({
+            template: step.config.systemPrompt ?? DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT,
+            variables: step.promptVariables,
+            state,
+            runId: run.id,
+            stepId: step.id,
+            stepName: step.name,
+            attempt,
+          })
+        : undefined;
     const baseLabels = {
       "paseo.workflow-run": run.id,
       "paseo.workflow-step": step.id,
       "paseo.workflow-attempt": String(attempt),
     };
-    const { prompt, labels } = this.resolveAgentIdentityContext(step, workflowPrompt, baseLabels);
+    const { prompt, labels } = this.resolveAgentIdentityContext(
+      step,
+      renderedInstruction,
+      baseLabels,
+    );
     let workspace: PersistedWorkspaceRecord | null = null;
     let agentId: string | null = null;
     try {
@@ -543,7 +593,7 @@ export class WorkflowService {
           ? (await this.createPaseoWorktreeWorkspace({ cwd, firstAgentContext: { prompt } }))
               .workspace
           : await this.createDirectoryWorkspace({ cwd, firstAgentContext: { prompt } });
-      const config = buildWorkflowAgentConfig(step, workspace.cwd);
+      const config = buildWorkflowAgentConfig(step, workspace.cwd, renderedSystemPrompt);
       const created = await this.createAgent({
         kind: "mcp",
         provider: formatProviderModel(config.provider, config.model),
@@ -601,13 +651,19 @@ export class WorkflowService {
         throw new Error(waitResult.lastMessage ?? `Workflow agent ${agentId} failed`);
       }
       const responseText = result.finalText ?? waitResult.lastMessage ?? "";
-      const parsed = parseNodeResult(responseText, cwd);
-      const timelineText = curateAgentActivity(result.timeline);
+      const parsed = createAgentNodeResult(step, responseText);
+      const timelineText = curateAgentActivity(result.timeline, {
+        includeKinds: ["reasoning", "tool_call", "todo", "error", "compaction"],
+      });
+      const processOutput =
+        timelineText === "No activity to display." ? null : trimOutput(timelineText);
       return this.validateNodeResult(
         parsed,
         state,
         agentId,
-        trimOutput([timelineText, responseText].filter(Boolean).join("\n\n")),
+        processOutput,
+        trimOutput(prompt),
+        trimOutput(responseText),
       );
     } finally {
       if (agentId) {
@@ -621,6 +677,107 @@ export class WorkflowService {
           );
         });
       }
+    }
+  }
+
+  private async executeNestedWorkflowStep(
+    run: WorkflowRun,
+    step: WorkflowNestedStep,
+    state: ExecutionState,
+    nodeRunId: string,
+  ): Promise<StepExecutionResult> {
+    const workflowPath = resolveNestedWorkflowPath(step.workflowPath, dirname(run.scriptPath));
+    const stack = this.activeRunStacks.get(run.id) ?? [resolveWorkflowPath(run.scriptPath)];
+    if (stack.includes(workflowPath)) {
+      throw new WorkflowExecutionError(
+        `Workflow cycle detected: ${[...stack, workflowPath].join(" -> ")}`,
+        state,
+        "WORKFLOW_CYCLE",
+      );
+    }
+    if (stack.length >= MAX_WORKFLOW_DEPTH) {
+      throw new WorkflowExecutionError(
+        `Workflow execution nesting exceeds ${MAX_WORKFLOW_DEPTH} levels`,
+        state,
+        "WORKFLOW_DEPTH_EXCEEDED",
+      );
+    }
+
+    const childRun = await this.startScriptRun(
+      {
+        scriptPath: workflowPath,
+        inputPayload: serializeNodeInputPayload(state.payload),
+      },
+      stack,
+    );
+    this.trackChildRun(run.id, childRun.id);
+    await this.updateNodeRun(run.id, nodeRunId, {
+      workflowPath,
+      workflowRunId: childRun.id,
+    });
+
+    const timeoutMs =
+      step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    try {
+      const childTask = this.activeRuns.get(childRun.id);
+      if (childTask) {
+        await withTimeout(
+          childTask,
+          timeoutMs,
+          () =>
+            this.requestTermination(
+              childRun.id,
+              "timed_out",
+              `Nested workflow timed out after ${timeoutMs}ms`,
+            ),
+          `Nested workflow node timed out after ${timeoutMs}ms`,
+        );
+      }
+      const completed = await this.getRun(childRun.id);
+      const childPayload = parseStoredPayload(completed.outputPayload);
+      if (completed.status !== "succeeded") {
+        const message = completed.error ?? `Nested workflow ${workflowPath} failed`;
+        const terminalStatus: WorkflowTerminalStatus =
+          completed.status === "running" ? "failed" : completed.status;
+        const failedPayload = {
+          ...(childPayload ?? state.payload),
+          error: message,
+        };
+        throw new WorkflowExecutionError(
+          message,
+          {
+            ...state,
+            payload: failedPayload,
+            filePath:
+              completed.outputFilePath ?? resolvePayloadFilePath(failedPayload, state.filePath),
+            hasFileOutput:
+              completed.outputFilePath !== null ||
+              getPayloadString(failedPayload, "filePath") !== null,
+          },
+          completed.errorCode ?? "NESTED_WORKFLOW_FAILED",
+          terminalStatus,
+        );
+      }
+      if (!childPayload) {
+        throw new WorkflowExecutionError(
+          `Nested workflow ${workflowPath} produced no valid JSON output`,
+          state,
+          "NESTED_WORKFLOW_INVALID_OUTPUT",
+        );
+      }
+      const result = await this.validateNodeResult(
+        childPayload,
+        state,
+        null,
+        `Workflow run ${childRun.id}`,
+      );
+      return {
+        ...result,
+        workflowPath,
+        workflowRunId: childRun.id,
+      };
+    } finally {
+      this.untrackChildRun(run.id, childRun.id);
     }
   }
 
@@ -756,6 +913,8 @@ export class WorkflowService {
     state: ExecutionState,
     agentId: string | null,
     output: string | null,
+    agentPrompt: string | null = null,
+    agentResponse: string | null = null,
   ): Promise<StepExecutionResult> {
     const payload = normalizePayloadPaths(result, dirname(state.filePath));
     const hasFileOutput = getPayloadString(payload, "filePath") !== null;
@@ -774,6 +933,8 @@ export class WorkflowService {
       hasFileOutput,
       iterationPath: state.iterationPath,
       agentId,
+      agentPrompt,
+      agentResponse,
       output,
     };
   }
@@ -826,6 +987,11 @@ export class WorkflowService {
       return;
     }
     this.terminationRequests.set(runId, { status, message });
+    await Promise.allSettled(
+      [...(this.childRunIdsByParent.get(runId) ?? [])].map((childRunId) =>
+        this.requestTermination(childRunId, status, message),
+      ),
+    );
     for (const waiter of this.terminationWaiters.get(runId) ?? []) {
       waiter();
     }
@@ -852,6 +1018,20 @@ export class WorkflowService {
     agents?.delete(agentId);
     if (agents?.size === 0) {
       this.activeAgentIds.delete(runId);
+    }
+  }
+
+  private trackChildRun(parentRunId: string, childRunId: string): void {
+    const childRunIds = this.childRunIdsByParent.get(parentRunId) ?? new Set<string>();
+    childRunIds.add(childRunId);
+    this.childRunIdsByParent.set(parentRunId, childRunIds);
+  }
+
+  private untrackChildRun(parentRunId: string, childRunId: string): void {
+    const childRunIds = this.childRunIdsByParent.get(parentRunId);
+    childRunIds?.delete(childRunId);
+    if (childRunIds?.size === 0) {
+      this.childRunIdsByParent.delete(parentRunId);
     }
   }
 
@@ -924,9 +1104,12 @@ export class WorkflowService {
       | "error"
       | "errorCode"
       | "agentId"
+      | "agentPrompt"
+      | "agentResponse"
       | "output"
       | "retryDelayMs"
-    >,
+    > &
+      Partial<Pick<WorkflowNodeRun, "workflowPath" | "workflowRunId">>,
   ): Promise<void> {
     const updated = await this.store.update(runId, (run) => ({
       ...run,
@@ -941,6 +1124,22 @@ export class WorkflowService {
               endedAt: this.now().toISOString(),
             }
           : nodeRun,
+      ),
+    }));
+    if (!updated) {
+      throw new Error(`Workflow run not found: ${runId}`);
+    }
+  }
+
+  private async updateNodeRun(
+    runId: string,
+    nodeRunId: string,
+    patch: Partial<WorkflowNodeRun>,
+  ): Promise<void> {
+    const updated = await this.store.update(runId, (run) => ({
+      ...run,
+      nodeRuns: run.nodeRuns.map((nodeRun) =>
+        nodeRun.id === nodeRunId ? { ...nodeRun, ...patch } : nodeRun,
       ),
     }));
     if (!updated) {
@@ -1044,6 +1243,10 @@ function slugifyWorkflowName(name: string): string {
 
 function resolveWorkflowPath(path: string): string {
   return resolve(expandUserPath(path.trim()));
+}
+
+function resolveNestedWorkflowPath(path: string, parentDirectory: string): string {
+  return resolvePathFromBase(parentDirectory, path);
 }
 
 function createInitialPayload(inputFilePath: string): WorkflowPayload {
@@ -1435,38 +1638,11 @@ function trimOutput(value: string): string {
   return value.length <= MAX_OUTPUT_CHARS ? value : value.slice(value.length - MAX_OUTPUT_CHARS);
 }
 
-function buildAgentWorkflowPrompt(input: {
-  instruction: string;
-  inputPayload: WorkflowPayload;
-  iterationPath: number[];
-  attempt: number;
-  systemPrompt?: string;
-}): string {
-  const systemPromptDelivery = input.systemPrompt?.trim()
-    ? [
-        "System prompt delivery: configured separately through the provider's system-instruction",
-        "channel; it is not duplicated in this user message.",
-      ]
-    : [];
-  return [
-    "You are executing one node in a Paseo workflow.",
-    "Input JSON payload:",
-    serializeNodeInputPayload(input.inputPayload),
-    `Iteration path: ${JSON.stringify(input.iterationPath)}`,
-    `Attempt: ${input.attempt}`,
-    ...systemPromptDelivery,
-    "",
-    "Execute the instruction below using values from the input JSON payload.",
-    "Your final response MUST be only one valid JSON object.",
-    'The object MUST include string fields "control" and "error"; preserve or add any other data',
-    "that downstream nodes need. Use a non-empty error string when the workflow must stop.",
-    "",
-    "Instruction:",
-    input.instruction,
-  ].join("\n");
-}
-
-function buildWorkflowAgentConfig(step: WorkflowAgentStep, cwd: string): AgentSessionConfig {
+function buildWorkflowAgentConfig(
+  step: WorkflowAgentStep,
+  cwd: string,
+  systemPrompt: string | undefined,
+): AgentSessionConfig {
   return {
     provider: step.config.provider,
     cwd,
@@ -1476,8 +1652,23 @@ function buildWorkflowAgentConfig(step: WorkflowAgentStep, cwd: string): AgentSe
     title: step.config.title,
     providerOptions: step.config.providerOptions,
     featureValues: step.config.featureValues,
-    systemPrompt: step.config.systemPrompt,
+    systemPrompt,
     mcpServers: step.config.mcpServers as AgentSessionConfig["mcpServers"],
+  };
+}
+
+function createAgentNodeResult(step: WorkflowAgentStep, responseText: string): WorkflowNodeResult {
+  const response = responseText.trim();
+  if ((step.outputType ?? "answer") === "control") {
+    return {
+      control: response,
+      error: "",
+    };
+  }
+  return {
+    control: "",
+    error: "",
+    answer: response,
   };
 }
 

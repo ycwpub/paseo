@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { WorkflowPayloadSchema, WorkflowScriptSchema } from "./types.js";
+import { WorkflowNodeRunSchema, WorkflowPayloadSchema, WorkflowScriptSchema } from "./types.js";
 
 describe("WorkflowScriptSchema", () => {
-  it("accepts nested bash, agent, switch, and for steps", () => {
+  it("accepts nested bash, agent, workflow, switch, and for steps", () => {
     const parsed = WorkflowScriptSchema.parse({
       version: 1,
       name: "triage",
@@ -24,6 +24,12 @@ describe("WorkflowScriptSchema", () => {
           initialCommand: "echo prepare",
           variables: { customerName: "{{customer.name}}" },
           retry: { maxAttempts: 2 },
+        },
+        {
+          id: "shared-check",
+          type: "workflow",
+          workflowPath: "/tmp/shared-check.json",
+          timeoutMs: 120_000,
         },
         {
           id: "route",
@@ -67,18 +73,26 @@ describe("WorkflowScriptSchema", () => {
     });
 
     expect(parsed.version).toBe(1);
-    expect(parsed.steps).toHaveLength(2);
+    expect(parsed.steps).toHaveLength(3);
     expect(parsed.taskDefaults?.retry?.maxAttempts).toBe(3);
     expect(
-      parsed.steps[1]?.type === "switch" &&
-        parsed.steps[1].cases[0]?.steps[0]?.type === "agent" &&
-        parsed.steps[1].cases[0].steps[0].config.teamId,
+      parsed.steps[2]?.type === "switch" &&
+        parsed.steps[2].cases[0]?.steps[0]?.type === "agent" &&
+        parsed.steps[2].cases[0].steps[0].config.teamId,
     ).toBe("team-reviewers");
     expect(
-      parsed.steps[1]?.type === "switch" &&
-        parsed.steps[1].defaultSteps?.[0]?.type === "for" &&
-        parsed.steps[1].defaultSteps[0].breakControl,
+      parsed.steps[2]?.type === "switch" &&
+        parsed.steps[2].cases[0]?.steps[0]?.type === "agent" &&
+        parsed.steps[2].cases[0].steps[0].outputType,
+    ).toBe("answer");
+    expect(
+      parsed.steps[2]?.type === "switch" &&
+        parsed.steps[2].defaultSteps?.[0]?.type === "for" &&
+        parsed.steps[2].defaultSteps[0].breakControl,
     ).toBe("done");
+    expect(parsed.steps[1]?.type === "workflow" ? parsed.steps[1].workflowPath : null).toBe(
+      "/tmp/shared-check.json",
+    );
   });
 
   it("requires explicit initial instructions for executable steps", () => {
@@ -134,6 +148,33 @@ describe("WorkflowPayloadSchema", () => {
       error: "failed",
     });
     expect(() => WorkflowPayloadSchema.parse({ control: [], error: "" })).toThrow();
+  });
+});
+
+describe("WorkflowNodeRunSchema", () => {
+  it("keeps old run records compatible while defaulting Agent conversation fields", () => {
+    const nodeRun = WorkflowNodeRunSchema.parse({
+      id: "node-run",
+      stepId: "agent",
+      stepName: "Agent",
+      stepType: "agent",
+      iterationPath: [],
+      startedAt: "2026-08-11T00:00:00.000Z",
+      endedAt: "2026-08-11T00:00:01.000Z",
+      status: "succeeded",
+      inputFilePath: "",
+      outputFilePath: null,
+      inputControl: "",
+      outputControl: "",
+      error: null,
+      agentId: null,
+      output: null,
+    });
+
+    expect(nodeRun.agentPrompt).toBeNull();
+    expect(nodeRun.agentResponse).toBeNull();
+    expect(nodeRun.workflowPath).toBeNull();
+    expect(nodeRun.workflowRunId).toBeNull();
   });
 });
 

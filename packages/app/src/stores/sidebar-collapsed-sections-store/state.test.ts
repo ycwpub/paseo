@@ -4,6 +4,7 @@ import {
   mergePersistedCollapsedProjects,
   serializeCollapsedProjects,
   setProjectCollapsed,
+  setWorkspaceGroupsCollapsed,
   togglePinnedCollapsed,
   toggleProjectCollapsed,
   toggleStatusGroupCollapsed,
@@ -42,6 +43,26 @@ describe("sidebar collapsed projects transitions", () => {
       collapsedStatusGroupKeys: ["running"],
       collapsedPinned: true,
     });
+  });
+
+  it("collapses and expands workspace groups in one transition", () => {
+    const collapsed = setWorkspaceGroupsCollapsed(
+      emptyState(),
+      ["project-a", "project-b"],
+      ["running"],
+      true,
+    );
+    expect(Array.from(collapsed.collapsedProjectKeys)).toEqual(["project-a", "project-b"]);
+    expect(Array.from(collapsed.collapsedStatusGroupKeys)).toEqual(["running"]);
+
+    const expanded = setWorkspaceGroupsCollapsed(
+      collapsed,
+      ["project-a", "project-b"],
+      ["running"],
+      false,
+    );
+    expect(Array.from(expanded.collapsedProjectKeys)).toEqual([]);
+    expect(Array.from(expanded.collapsedStatusGroupKeys)).toEqual([]);
   });
 
   it("toggles and restores the pinned section collapse flag", () => {

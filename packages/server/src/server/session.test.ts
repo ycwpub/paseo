@@ -25,7 +25,6 @@ import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
-import { deriveProjectKey } from "./project-key.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -691,12 +690,6 @@ describe("project command-center RPCs", () => {
         rootPath: directoryPath,
         kind: "non_git",
         displayName: "new-project",
-        projectKey: deriveProjectKey({
-          rootPath: directoryPath,
-          remoteUrl: null,
-          worktreeRoot: null,
-          mainRepoRoot: null,
-        }),
         timestamp: expect.any(String),
       });
       expect(messages).toEqual([
@@ -1608,7 +1601,7 @@ describe("daemon status + pairing RPC", () => {
           pid: process.pid,
           nodePath: process.execPath,
           startedAt: null,
-          listen: null,
+          listen: "127.0.0.1:6767",
           relay: null,
           providers: [],
         },

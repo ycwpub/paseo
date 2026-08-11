@@ -1,6 +1,8 @@
 import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
+  ChevronsDown,
+  ChevronsUp,
   FolderPlus,
   GitBranch,
   History,
@@ -86,6 +88,7 @@ interface SidebarSharedProps {
   theme: SidebarTheme;
   statusGroups: StatusGroup[];
   pinnedGroups: PinnedSidebarGroups;
+  hiddenProjects: SidebarProjectEntry[];
   projects: SidebarProjectEntry[];
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   isInitialLoad: boolean;
@@ -93,8 +96,11 @@ interface SidebarSharedProps {
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
+  hiddenProjectsCollapsed: boolean;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleHiddenProjectsCollapsed: () => void;
+  setProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   handleRefresh: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
@@ -150,8 +156,12 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     refreshAll,
     statusGroups,
     pinnedGroups,
+    hiddenProjects,
+    hiddenProjectsCollapsed,
     collapsedProjectKeys,
     toggleProjectCollapsed,
+    toggleHiddenProjectsCollapsed,
+    setProjectHidden,
     groupMode,
     shortcutModel,
   } = useSidebarModel();
@@ -253,6 +263,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     theme,
     statusGroups,
     pinnedGroups,
+    hiddenProjects,
     projects,
     workspaceEntriesByKey,
     isInitialLoad,
@@ -260,8 +271,11 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isManualRefresh,
     groupMode,
     collapsedProjectKeys,
+    hiddenProjectsCollapsed,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
+    toggleHiddenProjectsCollapsed,
+    setProjectHidden,
     handleRefresh,
     labels,
     newWorkspaceKeys,
@@ -608,6 +622,7 @@ function MobileSidebar({
   theme,
   statusGroups,
   pinnedGroups,
+  hiddenProjects,
   projects,
   workspaceEntriesByKey,
   isInitialLoad,
@@ -615,8 +630,11 @@ function MobileSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  hiddenProjectsCollapsed,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleHiddenProjectsCollapsed,
+  setProjectHidden,
   handleRefresh,
   newWorkspaceKeys,
   handleOpenProject,
@@ -734,11 +752,15 @@ function MobileSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            hiddenProjectsCollapsed={hiddenProjectsCollapsed}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleHiddenProjectsCollapsed={toggleHiddenProjectsCollapsed}
+            onSetProjectHidden={setProjectHidden}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             statusGroups={statusGroups}
             pinnedGroups={pinnedGroups}
+            hiddenProjects={hiddenProjects}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
@@ -769,6 +791,7 @@ function DesktopSidebar({
   theme,
   statusGroups,
   pinnedGroups,
+  hiddenProjects,
   projects,
   workspaceEntriesByKey,
   isInitialLoad,
@@ -776,8 +799,11 @@ function DesktopSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  hiddenProjectsCollapsed,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleHiddenProjectsCollapsed,
+  setProjectHidden,
   handleRefresh,
   newWorkspaceKeys,
   handleOpenProject,
@@ -944,11 +970,15 @@ function DesktopSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            hiddenProjectsCollapsed={hiddenProjectsCollapsed}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleHiddenProjectsCollapsed={toggleHiddenProjectsCollapsed}
+            onSetProjectHidden={setProjectHidden}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             statusGroups={statusGroups}
             pinnedGroups={pinnedGroups}
+            hiddenProjects={hiddenProjects}
             projects={projects}
             workspaceEntriesByKey={workspaceEntriesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
@@ -983,9 +1013,19 @@ function DesktopSidebar({
 
 function WorkspacesSectionHeader() {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
+  const { allWorkspaceGroupsCollapsed, setAllWorkspaceGroupsCollapsed } = useSidebarModel();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
+  const handleToggleAllPress = useCallback(
+    () => setAllWorkspaceGroupsCollapsed(!allWorkspaceGroupsCollapsed),
+    [allWorkspaceGroupsCollapsed, setAllWorkspaceGroupsCollapsed],
+  );
+  const toggleAllLabel = allWorkspaceGroupsCollapsed
+    ? t("sidebar.actions.expandAllWorkspaces")
+    : t("sidebar.actions.collapseAllWorkspaces");
+  const ToggleAllIcon = allWorkspaceGroupsCollapsed ? ChevronsDown : ChevronsUp;
   const searchButtonStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.workspacesHeaderIconButton,
@@ -998,6 +1038,29 @@ function WorkspacesSectionHeader() {
     <View style={styles.workspacesSectionHeader}>
       <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
       <View style={styles.workspacesSectionActions}>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={toggleAllLabel}
+              testID="sidebar-toggle-all-workspaces"
+              style={searchButtonStyle}
+              onPress={handleToggleAllPress}
+            >
+              {({ hovered, pressed }) => (
+                <ToggleAllIcon
+                  size={14}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <IconTooltipContent label={toggleAllLabel} />
+          </TooltipContent>
+        </Tooltip>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <Pressable

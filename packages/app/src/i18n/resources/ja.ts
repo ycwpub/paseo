@@ -266,9 +266,18 @@ export const ja: TranslationResources = {
     title: "履歴",
     empty: "セッションがまだありません",
     noMatches: "一致するセッションはありません",
+    noProjectSessions: "このプロジェクトのセッションはありません",
     tooManyMatches: "一致が多すぎます — 検索条件を絞ってください",
     hostLoadFailed: "{{host}}: 履歴を読み込めませんでした",
     searchPlaceholder: "履歴を検索",
+    projectFilter: {
+      label: "プロジェクト",
+      title: "プロジェクトで絞り込む",
+      all: "すべてのプロジェクト",
+      empty: "利用可能なプロジェクトがありません",
+      search: "プロジェクトを検索",
+      hostCount: "{{count}} 台のホスト",
+    },
     actions: {
       loadMore: "さらに読み込む",
       clearSearch: "検索をクリア",
@@ -1032,6 +1041,8 @@ export const ja: TranslationResources = {
       home: "ホーム",
       settings: "設定",
       closeSidebar: "サイドバーを閉じる",
+      collapseAllWorkspaces: "すべてのワークスペースを折りたたむ",
+      expandAllWorkspaces: "すべてのワークスペースを展開",
     },
     help: {
       trigger: "ヘルプとサポート",
@@ -1062,8 +1073,13 @@ export const ja: TranslationResources = {
         openNewWindowFailed: "新しいウィンドウを開けませんでした",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "プロジェクトを非表示",
+        show: "プロジェクトを表示",
         remove: "プロジェクトを削除",
         removing: "削除中...",
+      },
+      hidden: {
+        title: "非表示のプロジェクト（{{count}}）",
       },
       confirmations: {
         removeTitle: "プロジェクトを削除しますか？",

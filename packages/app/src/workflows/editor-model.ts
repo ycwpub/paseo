@@ -1,8 +1,10 @@
 import {
+  DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT,
   WorkflowScriptSchema,
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
+  type WorkflowNestedStep,
   type WorkflowScript,
   type WorkflowStep,
   type WorkflowSwitchStep,
@@ -15,6 +17,7 @@ export interface WorkflowDefaultNames {
   workflow: string;
   bash: string;
   agent: string;
+  workflowNode: string;
   switch: string;
   for: string;
 }
@@ -23,9 +26,12 @@ const DEFAULT_NAMES: WorkflowDefaultNames = {
   workflow: "Untitled workflow",
   bash: "Bash command",
   agent: "Agent",
+  workflowNode: "Workflow",
   switch: "Switch",
   for: "For each",
 };
+
+export const DEFAULT_AGENT_INITIAL_PROMPT = "[User] // 用户的提示词，替换该行";
 
 export function createEmptyWorkflowScript(
   names: WorkflowDefaultNames = DEFAULT_NAMES,
@@ -87,13 +93,22 @@ export function createWorkflowStep(
       id,
       name: names.agent,
       type,
-      initialPrompt: "Process this workflow payload and return the updated JSON: {{payload}}",
+      outputType: "answer",
+      initialPrompt: DEFAULT_AGENT_INITIAL_PROMPT,
       config: {
         provider: "codex",
         isolation: "local",
         archiveOnFinish: true,
       },
     } satisfies WorkflowAgentStep;
+  }
+  if (type === "workflow") {
+    return {
+      id,
+      name: names.workflowNode,
+      type,
+      workflowPath: "",
+    } satisfies WorkflowNestedStep;
   }
   if (type === "switch") {
     return {
@@ -156,6 +171,33 @@ export function applyInstructionTemplateToAgentStep(
   };
 }
 
+export function applyInstructionTemplateToAgentSystemPrompt(
+  step: WorkflowAgentStep,
+  template: Pick<PaseoInstructionTemplate, "content">,
+): WorkflowAgentStep {
+  return {
+    ...step,
+    config: {
+      ...step.config,
+      systemPrompt: template.content,
+    },
+  };
+}
+
+export function updateAgentOutputType(
+  step: WorkflowAgentStep,
+  outputType: "answer" | "control",
+): WorkflowAgentStep {
+  return {
+    ...step,
+    outputType,
+    config: {
+      ...step.config,
+      systemPrompt: outputType === "control" ? DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT : undefined,
+    },
+  };
+}
+
 export function countWorkflowSteps(steps: WorkflowStep[]): number {
   return steps.reduce((count, step) => {
     if (step.type === "switch") {
@@ -173,7 +215,10 @@ export function countWorkflowSteps(steps: WorkflowStep[]): number {
   }, 0);
 }
 
-export function validateWorkflowDraft(script: WorkflowScript): string | null {
+export function validateWorkflowDraft(
+  script: WorkflowScript,
+  currentWorkflowPath?: string | null,
+): string | null {
   const parsed = WorkflowScriptSchema.safeParse(script);
   if (!parsed.success) {
     return parsed.error.issues[0]?.message ?? "Workflow is invalid";
@@ -187,6 +232,7 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
   if (defaultRetryError) {
     return defaultRetryError;
   }
+  // oxlint-disable-next-line complexity -- Recursive validation keeps branch, loop, retry, and self-reference errors in one deterministic traversal.
   const validateSteps = (steps: WorkflowStep[]): string | null => {
     for (const step of steps) {
       if (step.type === "bash" || step.type === "agent") {
@@ -199,6 +245,13 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
         if (retryError) {
           return retryError;
         }
+      }
+      if (
+        step.type === "workflow" &&
+        currentWorkflowPath &&
+        step.workflowPath.trim() === currentWorkflowPath.trim()
+      ) {
+        return `Workflow step ${step.id} cannot reference its own workflow`;
       }
       if (step.type === "switch") {
         const cases = new Set<string>();

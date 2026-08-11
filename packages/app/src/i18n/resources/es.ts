@@ -266,9 +266,18 @@ export const es: TranslationResources = {
     title: "Historial",
     empty: "Aún no hay sesiones",
     noMatches: "No hay sesiones que coincidan",
+    noProjectSessions: "No hay sesiones para este proyecto",
     tooManyMatches: "Demasiadas coincidencias: acota la búsqueda",
     hostLoadFailed: "{{host}}: No se pudo cargar el historial",
     searchPlaceholder: "Buscar en el historial",
+    projectFilter: {
+      label: "Proyecto",
+      title: "Filtrar por proyecto",
+      all: "Todos los proyectos",
+      empty: "No hay proyectos disponibles",
+      search: "Buscar proyectos",
+      hostCount: "{{count}} hosts",
+    },
     actions: {
       loadMore: "Cargar más",
       clearSearch: "Borrar búsqueda",
@@ -1052,6 +1061,8 @@ export const es: TranslationResources = {
       home: "Hogar",
       settings: "Ajustes",
       closeSidebar: "Cerrar barra lateral",
+      collapseAllWorkspaces: "Contraer todos los espacios de trabajo",
+      expandAllWorkspaces: "Expandir todos los espacios de trabajo",
     },
     help: {
       trigger: "Ayuda y soporte",
@@ -1082,8 +1093,13 @@ export const es: TranslationResources = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Ocultar proyecto",
+        show: "Mostrar proyecto",
         remove: "Eliminar proyecto",
         removing: "Eliminando...",
+      },
+      hidden: {
+        title: "Proyectos ocultos ({{count}})",
       },
       confirmations: {
         removeTitle: "¿Quitar proyecto?",

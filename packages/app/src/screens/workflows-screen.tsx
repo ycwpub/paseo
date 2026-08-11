@@ -31,6 +31,7 @@ import {
   type WorkflowScriptSummary,
 } from "@getpaseo/protocol/workflow/types";
 import { MenuHeader } from "@/components/headers/menu-header";
+import { WorkflowAgentOutput } from "@/components/workflows/workflow-agent-output";
 import { WorkflowStepListEditor } from "@/components/workflows/workflow-step-editor";
 import { WorkflowUsageGuide } from "@/components/workflows/workflow-usage-guide";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
@@ -49,7 +50,6 @@ import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { storeFetchedAgentDetail } from "@/utils/store-fetched-agent-detail";
-import { InstructionTemplatesSection } from "@/screens/settings/agents/instruction-templates-section";
 import {
   countWorkflowSteps,
   createEmptyWorkflowScript,
@@ -236,6 +236,7 @@ function WorkflowsScreenContent(): ReactElement {
         workflow: t("workflows.editor.untitled"),
         bash: t("workflows.nodes.defaultNames.bash"),
         agent: t("workflows.nodes.defaultNames.agent"),
+        workflowNode: t("workflows.nodes.defaultNames.workflow"),
         switch: t("workflows.nodes.defaultNames.switch"),
         for: t("workflows.nodes.defaultNames.for"),
       }),
@@ -255,7 +256,7 @@ function WorkflowsScreenContent(): ReactElement {
     if (!client || !draft) {
       return null;
     }
-    const validationError = validateWorkflowDraft(draft);
+    const validationError = validateWorkflowDraft(draft, draftPath);
     if (validationError) {
       toast.error(validationError);
       return null;
@@ -433,7 +434,7 @@ function WorkflowsScreenContent(): ReactElement {
     [hosts],
   );
   const selectedHostOption = hostOptions.find((option) => option.value === selectedHost);
-  const validationError = draft ? validateWorkflowDraft(draft) : null;
+  const validationError = draft ? validateWorkflowDraft(draft, draftPath) : null;
 
   return (
     <View style={styles.container}>
@@ -662,10 +663,6 @@ function WorkflowsScreenContent(): ReactElement {
                 </View>
               </View>
 
-              <View style={styles.promptTemplatesCard}>
-                <InstructionTemplatesSection serverId={selectedHost} embedded />
-              </View>
-
               <View style={styles.sectionHeading}>
                 <View>
                   <Text style={styles.sectionTitle}>{t("workflows.editor.flow")}</Text>
@@ -683,6 +680,8 @@ function WorkflowsScreenContent(): ReactElement {
                 teamsLoading={teamsResult.isLoading}
                 promptTemplates={daemonConfig.config?.instructionTemplates ?? []}
                 promptTemplatesLoading={daemonConfig.isLoading}
+                workflowScripts={scripts}
+                currentWorkflowPath={draftPath}
                 onChange={(steps) => updateDraft({ ...draft, steps })}
                 testID="workflow-step-list"
               />
@@ -932,6 +931,7 @@ function WorkflowRunPanel({
           const { canExpand, canOpenAgent } = deriveWorkflowNodeActions(node);
           const nodeIdentity = deriveWorkflowNodeIdentity(node);
           const linkedAgentId = canOpenAgent ? node.agentId : null;
+          const nodeTypeIcon = renderWorkflowNodeTypeIcon(node.stepType);
           const expandIcon = expanded ? (
             <ChevronDown size={13} color={styles.runNodeIcon.color} />
           ) : (
@@ -951,11 +951,7 @@ function WorkflowRunPanel({
                   accessibilityState={{ expanded }}
                 >
                   {expandIcon}
-                  {node.stepType === "agent" ? (
-                    <Bot size={13} color={styles.runNodeIcon.color} />
-                  ) : (
-                    <FileCode2 size={13} color={styles.runNodeIcon.color} />
-                  )}
+                  {nodeTypeIcon}
                   <View style={styles.runNodeIdentity}>
                     <Text style={styles.runNodeName} numberOfLines={1}>
                       {t("workflows.nodes.displayName")}: {nodeIdentity.name || "—"}
@@ -1000,6 +996,16 @@ function WorkflowRunPanel({
   );
 }
 
+function renderWorkflowNodeTypeIcon(stepType: WorkflowNodeRun["stepType"]): ReactElement {
+  if (stepType === "agent") {
+    return <Bot size={13} color={styles.runNodeIcon.color} />;
+  }
+  if (stepType === "workflow") {
+    return <Workflow size={13} color={styles.runNodeIcon.color} />;
+  }
+  return <FileCode2 size={13} color={styles.runNodeIcon.color} />;
+}
+
 function WorkflowNodeCore({
   node,
   locale,
@@ -1042,6 +1048,15 @@ function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
   let outputContent: ReactElement | null = null;
   if (node.output && node.stepType === "bash") {
     outputContent = <WorkflowBashOutput value={node.output} />;
+  } else if (node.stepType === "agent") {
+    outputContent = (
+      <WorkflowAgentOutput
+        prompt={node.agentPrompt}
+        response={node.agentResponse}
+        processOutput={node.output}
+        legacyOutput={node.output}
+      />
+    );
   } else if (node.output) {
     outputContent = (
       <WorkflowPayloadValue
@@ -1055,25 +1070,21 @@ function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
     <View style={styles.runNodeDetails}>
       {outputContent}
       <WorkflowRunValue
-        label={t("workflows.run.inputFile")}
-        value={node.inputFilePath || "—"}
-        mono
-      />
-      <WorkflowRunValue
-        label={t("workflows.run.outputFile")}
-        value={node.outputFilePath || "—"}
-        mono
-      />
-      <WorkflowRunValue
-        label={t("workflows.run.control")}
-        value={`${node.inputControl || "—"} → ${node.outputControl || "—"}`}
-      />
-      <WorkflowRunValue
         label={t("workflows.run.iteration")}
         value={node.iterationPath.length > 0 ? node.iterationPath.join(" / ") : "—"}
       />
       {node.errorCode ? (
         <WorkflowRunValue label={t("workflows.run.errorCode")} value={node.errorCode} mono />
+      ) : null}
+      {node.workflowPath ? (
+        <WorkflowRunValue label={t("workflows.run.workflow")} value={node.workflowPath} mono />
+      ) : null}
+      {node.workflowRunId ? (
+        <WorkflowRunValue
+          label={t("workflows.run.workflowRunId")}
+          value={node.workflowRunId}
+          mono
+        />
       ) : null}
     </View>
   );
@@ -1512,13 +1523,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
-  },
-  promptTemplatesCard: {
-    padding: theme.spacing[4],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface1,
   },
   runCard: {
     padding: theme.spacing[4],

@@ -64,9 +64,9 @@ import {
 } from "@/data/push-router";
 import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
-import { sendQueuedComposerMessageNow } from "@/composer/actions";
+import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/composer/actions";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
-import { splitComposerAttachmentsForSubmit } from "@/composer/attachments/submit";
+import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
 import { ReplicaCache } from "@/runtime/replica-cache";
@@ -2239,19 +2239,21 @@ export class HostRuntimeStore {
           useSessionStore.getState().sessions[serverId]?.queuedMessages.get(queuedAgentId) ?? [],
         write: (update) => useSessionStore.getState().setQueuedMessages(serverId, update),
       },
-      submitMessage: async ({ text, attachments }) => {
+      submitMessage: async ({ text, attachments, selectedMcpServerIds, selectedSkillIds }) => {
         const supportsForgeAttachments =
           useSessionStore.getState().sessions[serverId]?.serverInfo?.features?.forgeSearch === true;
-        const wirePayload = splitComposerAttachmentsForSubmit(attachments, {
-          format: resolveComposerAttachmentSubmitFormat({
+        await dispatchComposerAgentMessage({
+          client,
+          agentId,
+          text,
+          attachments,
+          attachmentSubmitFormat: resolveComposerAttachmentSubmitFormat({
             supportsForgeAttachments,
           }),
-        });
-        const images = await encodeImages(wirePayload.images);
-        await client.sendAgentMessage(agentId, text, {
-          messageId: next.id,
-          ...(images && images.length > 0 ? { images } : {}),
-          attachments: wirePayload.attachments,
+          encodeImages,
+          submission: createMessageSubmissionWriter(serverId),
+          selectedMcpServerIds,
+          selectedSkillIds,
         });
       },
     })

@@ -1413,7 +1413,7 @@ function reduceTimelineEvent(
       return appendThought(state, item.text, timestamp, timelineCursor);
     case "tool_call":
       return finalizeActiveThoughts(
-        reduceTimelineToolCall(state, event, item, timestamp),
+        reduceTimelineToolCall(state, event, item, timestamp, timelineCursor),
         timestamp,
       );
     case "todo": {
@@ -1425,7 +1425,7 @@ function reduceTimelineEvent(
         completed: todo.completed,
       }));
       return finalizeActiveThoughts(
-        appendTodoList(state, event.provider, items, timestamp),
+        appendTodoList(state, event.provider, items, timestamp, timelineCursor),
         timestamp,
       );
     }
@@ -1441,7 +1441,10 @@ function reduceTimelineEvent(
       return finalizeActiveThoughts(appendActivityLog(state, activity), timestamp);
     }
     case "compaction":
-      return finalizeActiveThoughts(reduceTimelineCompaction(state, item, timestamp), timestamp);
+      return finalizeActiveThoughts(
+        reduceTimelineCompaction(state, item, timestamp, timelineCursor),
+        timestamp,
+      );
     default:
       return state;
   }

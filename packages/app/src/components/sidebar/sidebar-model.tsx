@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useMemo, type ReactNode } from "react";
+import React, { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import {
   useSidebarWorkspacesList,
+  type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
   type SidebarWorkspacesListResult,
 } from "@/hooks/use-sidebar-workspaces-list";
@@ -9,6 +10,7 @@ import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entrie
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
 import { usePinnedSidebarKeys, type PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import { useSidebarHiddenProjectsStore } from "@/stores/sidebar-hidden-projects-store";
 import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
@@ -18,8 +20,14 @@ interface SidebarModel extends SidebarWorkspacesListResult {
   groupMode: SidebarGroupMode;
   statusGroups: StatusGroup[];
   pinnedGroups: PinnedSidebarGroups;
+  hiddenProjects: SidebarProjectEntry[];
+  hiddenProjectsCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleHiddenProjectsCollapsed: () => void;
+  allWorkspaceGroupsCollapsed: boolean;
+  setAllWorkspaceGroupsCollapsed: (collapsed: boolean) => void;
+  setProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   shortcutModel: SidebarShortcutModel;
 }
 
@@ -45,6 +53,29 @@ export function SidebarModelProvider({
   const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.toggleProjectCollapsed,
+  );
+  const setProjectCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.setProjectCollapsed,
+  );
+  const setWorkspaceGroupsCollapsed = useSidebarCollapsedSectionsStore(
+    (state) => state.setWorkspaceGroupsCollapsed,
+  );
+  const hiddenProjectKeys = useSidebarHiddenProjectsStore((state) => state.hiddenProjectKeys);
+  const hiddenProjectsCollapsed = useSidebarHiddenProjectsStore(
+    (state) => state.hiddenSectionCollapsed,
+  );
+  const setProjectHiddenInStore = useSidebarHiddenProjectsStore((state) => state.setProjectHidden);
+  const toggleHiddenProjectsCollapsed = useSidebarHiddenProjectsStore(
+    (state) => state.toggleHiddenSection,
+  );
+  const setProjectHidden = useCallback(
+    (projectViewKey: string, hidden: boolean) => {
+      setProjectHiddenInStore(projectViewKey, hidden);
+      if (hidden) {
+        setProjectCollapsed(projectViewKey, true);
+      }
+    },
+    [setProjectCollapsed, setProjectHiddenInStore],
   );
   const isStatusMode = groupMode === "status";
   const workspaceEntriesByKey = useSidebarWorkspaceEntries(
@@ -74,6 +105,7 @@ export function SidebarModelProvider({
         projectNamesByViewKey: list.projectNamesByViewKey,
         groupMode,
         pinnedCollapsed,
+        hiddenProjectKeys,
         collapsedProjectKeys,
         collapsedStatusGroupKeys,
       }),
@@ -81,12 +113,37 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       collapsedStatusGroupKeys,
       groupMode,
+      hiddenProjectKeys,
       list.projectNamesByViewKey,
       projects,
       pinnedCollapsed,
       pinnedKeys,
       projectionWorkspaceEntriesByKey,
     ],
+  );
+  const projectGroupKeys = useMemo(
+    () => projection.pinnedGroups.unpinnedProjects.map((project) => project.viewKey),
+    [projection.pinnedGroups.unpinnedProjects],
+  );
+  const statusGroupKeys = useMemo(
+    () => projection.statusGroups.map((group) => group.bucket),
+    [projection.statusGroups],
+  );
+  const activeWorkspaceGroupKeys = groupMode === "status" ? statusGroupKeys : projectGroupKeys;
+  const allWorkspaceGroupsCollapsed =
+    activeWorkspaceGroupKeys.length > 0 &&
+    activeWorkspaceGroupKeys.every((key) =>
+      groupMode === "status" ? collapsedStatusGroupKeys.has(key) : collapsedProjectKeys.has(key),
+    );
+  const setAllWorkspaceGroupsCollapsed = useCallback(
+    (collapsed: boolean) => {
+      setWorkspaceGroupsCollapsed(
+        groupMode === "project" ? projectGroupKeys : [],
+        groupMode === "status" ? statusGroupKeys : [],
+        collapsed,
+      );
+    },
+    [groupMode, projectGroupKeys, setWorkspaceGroupsCollapsed, statusGroupKeys],
   );
   const value = useMemo(
     () => ({
@@ -96,16 +153,27 @@ export function SidebarModelProvider({
       groupMode,
       statusGroups: projection.statusGroups,
       pinnedGroups: projection.pinnedGroups,
+      hiddenProjects: projection.hiddenProjects,
+      hiddenProjectsCollapsed,
       collapsedProjectKeys,
       toggleProjectCollapsed,
+      toggleHiddenProjectsCollapsed,
+      allWorkspaceGroupsCollapsed,
+      setAllWorkspaceGroupsCollapsed,
+      setProjectHidden,
       shortcutModel: projection.shortcutModel,
     }),
     [
       collapsedProjectKeys,
+      allWorkspaceGroupsCollapsed,
       groupMode,
+      hiddenProjectsCollapsed,
       list,
       projects,
       projection,
+      setProjectHidden,
+      setAllWorkspaceGroupsCollapsed,
+      toggleHiddenProjectsCollapsed,
       toggleProjectCollapsed,
       workspaceEntriesByKey,
     ],

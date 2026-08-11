@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_AGENT_INITIAL_PROMPT,
+  applyInstructionTemplateToAgentSystemPrompt,
   applyInstructionTemplateToAgentStep,
   collectWorkflowStepIds,
   countWorkflowSteps,
   createEmptyWorkflowScript,
   createWorkflowStep,
   moveWorkflowStep,
+  updateAgentOutputType,
   validateWorkflowDraft,
 } from "./editor-model";
 
@@ -30,6 +33,7 @@ describe("workflow editor model", () => {
       workflow: "未命名工作流",
       bash: "Bash 命令",
       agent: "Agent",
+      workflowNode: "子工作流",
       switch: "条件分支",
       for: "逐项循环",
     };
@@ -41,6 +45,17 @@ describe("workflow editor model", () => {
     expect(loop.name).toBe("逐项循环");
     expect(loop.type === "for" ? loop.steps[0]?.name : null).toBe("Bash 命令");
     expect(loop.type === "for" ? loop.maxIterations : null).toBe(100);
+  });
+
+  it("creates Workflow nodes that can reference another workflow", () => {
+    const step = createWorkflowStep("workflow", []);
+
+    expect(step).toMatchObject({
+      id: "workflow",
+      name: "Workflow",
+      type: "workflow",
+      workflowPath: "",
+    });
   });
 
   it("creates unique ids across nested workflow steps", () => {
@@ -64,6 +79,29 @@ describe("workflow editor model", () => {
       },
     ];
     expect(createWorkflowStep("agent", existing).id).toBe("agent-2");
+  });
+
+  it("creates Agent nodes with an editable user-defined prompt default", () => {
+    const step = createWorkflowStep("agent", []);
+    expect(step.type).toBe("agent");
+    expect(step.type === "agent" ? step.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
+    expect(step.type === "agent" ? step.outputType : null).toBe("answer");
+    expect(step.type === "agent" ? step.config.systemPrompt : null).toBeUndefined();
+  });
+
+  it("updates the default system prompt when changing Agent node types", () => {
+    const step = createWorkflowStep("agent", []);
+    if (step.type !== "agent") {
+      throw new Error("Expected an Agent step");
+    }
+
+    const controlStep = updateAgentOutputType(step, "control");
+    expect(controlStep.outputType).toBe("control");
+    expect(controlStep.config.systemPrompt).toBe("# 角色\n你的回答必须在下面几个选中中：是、否");
+
+    const answerStep = updateAgentOutputType(controlStep, "answer");
+    expect(answerStep.outputType).toBe("answer");
+    expect(answerStep.config.systemPrompt).toBeUndefined();
   });
 
   it("counts and collects nested steps", () => {
@@ -111,6 +149,32 @@ describe("workflow editor model", () => {
     expect(step.initialPrompt).not.toBe(template.content);
   });
 
+  it("copies a prompt template into an Agent system prompt without linking later edits", () => {
+    const step = createWorkflowStep("agent", []);
+    if (step.type !== "agent") {
+      throw new Error("Expected an Agent step");
+    }
+    const template = {
+      id: "controller",
+      name: "Controller",
+      content: "# Role\nChoose a route for {{customer.name}}.",
+    };
+
+    const copied = applyInstructionTemplateToAgentSystemPrompt(step, template);
+    const edited = {
+      ...copied,
+      config: {
+        ...copied.config,
+        systemPrompt: `${copied.config.systemPrompt}\nOnly answer yes or no.`,
+      },
+    };
+
+    expect(copied.config.systemPrompt).toBe(template.content);
+    expect(edited.config.systemPrompt).toContain("Only answer yes or no.");
+    expect(template.content).toBe("# Role\nChoose a route for {{customer.name}}.");
+    expect(step.config.systemPrompt).toBeUndefined();
+  });
+
   it("creates a valid loop with an editable body node", () => {
     const script = createEmptyWorkflowScript();
     const loop = createWorkflowStep("for", script.steps);
@@ -153,6 +217,21 @@ describe("workflow editor model", () => {
     };
     expect(validateWorkflowDraft(script)).toBe(
       "Workflow default retry maxDelayMs cannot be less than initialDelayMs",
+    );
+  });
+
+  it("rejects a direct self reference", () => {
+    const script = createEmptyWorkflowScript();
+    script.steps = [
+      {
+        id: "self",
+        type: "workflow",
+        workflowPath: "/tmp/current.json",
+      },
+    ];
+
+    expect(validateWorkflowDraft(script, "/tmp/current.json")).toBe(
+      "Workflow step self cannot reference its own workflow",
     );
   });
 });

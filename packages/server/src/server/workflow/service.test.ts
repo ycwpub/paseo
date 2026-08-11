@@ -315,6 +315,174 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("runs another workflow as a node and passes its output to the next parent node", async () => {
+    const home = await createTempHome();
+    const childPath = join(home, "child.json");
+    const parentPath = join(home, "parent.json");
+    await writeFile(
+      childPath,
+      JSON.stringify({
+        version: 1,
+        name: "Child",
+        steps: [
+          {
+            id: "child-transform",
+            type: "bash",
+            initialCommand: nodeCommand(
+              [
+                "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+                "process.stdout.write(JSON.stringify({",
+                '  ...input, control: "child-complete", childValue: `${input.value}-child`',
+                "}));",
+              ].join("\n"),
+            ),
+          },
+        ],
+      }),
+    );
+    await writeFile(
+      parentPath,
+      JSON.stringify({
+        version: 1,
+        name: "Parent",
+        steps: [
+          {
+            id: "child",
+            name: "Shared child",
+            type: "workflow",
+            workflowPath: "child.json",
+          },
+          {
+            id: "parent-finish",
+            type: "bash",
+            initialCommand: nodeCommand(
+              [
+                "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+                "process.stdout.write(JSON.stringify({",
+                '  ...input, control: "parent-complete", parentSaw: input.childValue',
+                "}));",
+              ].join("\n"),
+            ),
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath: parentPath,
+      inputPayload: JSON.stringify({ value: "input" }),
+    });
+
+    expect(run.status).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
+      control: "parent-complete",
+      childValue: "input-child",
+      parentSaw: "input-child",
+    });
+    const workflowNode = run.nodeRuns.find((node) => node.stepType === "workflow");
+    expect(workflowNode).toMatchObject({
+      stepId: "child",
+      workflowPath: childPath,
+      status: "succeeded",
+    });
+    expect(workflowNode?.workflowRunId).toBeTruthy();
+    const childRun = await service.getRun(workflowNode?.workflowRunId ?? "");
+    expect(childRun.status).toBe("succeeded");
+    expect(JSON.parse(childRun.inputPayload ?? "{}")).toEqual({
+      control: "",
+      value: "input",
+    });
+  });
+
+  it("stops the parent workflow when a nested workflow fails", async () => {
+    const home = await createTempHome();
+    const childPath = join(home, "child.json");
+    const parentPath = join(home, "parent.json");
+    const markerPath = join(home, "should-not-run.txt");
+    await writeFile(
+      childPath,
+      JSON.stringify({
+        version: 1,
+        name: "Failing child",
+        steps: [
+          {
+            id: "fail",
+            type: "bash",
+            initialCommand: 'printf \'%s\\n\' \'{"control":"","error":"child failed"}\'',
+          },
+        ],
+      }),
+    );
+    await writeFile(
+      parentPath,
+      JSON.stringify({
+        version: 1,
+        name: "Parent",
+        steps: [
+          { id: "child", type: "workflow", workflowPath: childPath },
+          {
+            id: "must-not-run",
+            type: "bash",
+            initialCommand: nodeCommand(
+              'require("fs").writeFileSync(process.argv[1], "ran"); process.stdout.write("{}");',
+              markerPath,
+            ),
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath: parentPath,
+      inputPayload: "{}",
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("child failed");
+    expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["child"]);
+    await expect(readFile(markerPath, "utf8")).rejects.toThrow();
+  });
+
+  it("rejects indirect workflow cycles without creating an unbounded run chain", async () => {
+    const home = await createTempHome();
+    const firstPath = join(home, "first.json");
+    const secondPath = join(home, "second.json");
+    await writeFile(
+      firstPath,
+      JSON.stringify({
+        version: 1,
+        name: "First",
+        steps: [{ id: "second", type: "workflow", workflowPath: secondPath }],
+      }),
+    );
+    await writeFile(
+      secondPath,
+      JSON.stringify({
+        version: 1,
+        name: "Second",
+        steps: [{ id: "first", type: "workflow", workflowPath: firstPath }],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath: firstPath,
+      inputPayload: "{}",
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.errorCode).toBe("WORKFLOW_CYCLE");
+    expect(run.error).toContain(
+      `Workflow cycle detected: ${firstPath} -> ${secondPath} -> ${firstPath}`,
+    );
+    expect(await service.listRuns()).toHaveLength(2);
+  });
+
   it.each([
     ["invalid JSON", "not json", "valid JSON object"],
     ["a non-object value", "[]", "must be a JSON object"],
@@ -865,6 +1033,54 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns.at(-1)?.status).toBe("cancelled");
   });
 
+  it("cancels an active child workflow when its parent is cancelled", async () => {
+    const home = await createTempHome();
+    const childPath = join(home, "child.json");
+    const parentPath = join(home, "parent.json");
+    await writeFile(
+      childPath,
+      JSON.stringify({
+        version: 1,
+        name: "Waiting child",
+        steps: [
+          {
+            id: "wait",
+            type: "bash",
+            initialCommand: nodeCommand("setTimeout(() => {}, 30_000)"),
+          },
+        ],
+      }),
+    );
+    await writeFile(
+      parentPath,
+      JSON.stringify({
+        version: 1,
+        name: "Parent",
+        steps: [{ id: "child", type: "workflow", workflowPath: childPath }],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const started = await service.runScript({ scriptPath: parentPath, inputPayload: "{}" });
+    let childRunId: string | null = null;
+    for (let index = 0; index < 100; index += 1) {
+      const current = await service.getRun(started.id);
+      childRunId = current.nodeRuns[0]?.workflowRunId ?? null;
+      if (childRunId) {
+        break;
+      }
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
+    }
+
+    expect(childRunId).toBeTruthy();
+    const parentRun = await service.cancelRun(started.id);
+    const childRun = await service.getRun(childRunId ?? "");
+    expect(parentRun.status).toBe("cancelled");
+    expect(childRun.status).toBe("cancelled");
+    expect(childRun.errorCode).toBe("WORKFLOW_CANCELLED");
+  });
+
   it("enforces the workflow-level deadline across running tasks", async () => {
     const home = await createTempHome();
     const inputPath = join(home, "input.txt");
@@ -1287,6 +1503,7 @@ describe("WorkflowService", () => {
             id: "analyze",
             name: "Analyze source",
             type: "agent",
+            outputType: "answer",
             initialPrompt:
               "Read {{inputFilePath}} as {{role}}. Name={{inputFileName}}; control={{control}}; body={{inputFileContent}}; customer={{customer.name}}; first={{records.0.id}}; records={{records}}",
             promptVariables: {
@@ -1295,7 +1512,7 @@ describe("WorkflowService", () => {
             config: {
               provider: "codex",
               cwd: home,
-              systemPrompt: "# Role\nYou are a careful data reviewer.",
+              systemPrompt: "# This must be ignored for Answer nodes",
             },
           },
         ],
@@ -1306,28 +1523,37 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
     expect(run.status).toBe("succeeded");
-    expect(capturedPrompt).toContain(`Read ${upstreamPath} as reviewer.`);
-    expect(capturedPrompt).toContain("Name=source.txt; control=review; body=source body");
-    expect(capturedPrompt).toContain('customer=Alice; first=7; records=[{"id":7},{"id":8}]');
-    expect(capturedPrompt).toContain('"customer":{"name":"Alice"}');
-    expect(capturedPrompt).toContain(
-      `{"control":"review","filePath":"${upstreamPath}","customer":{"name":"Alice"}`,
+    expect(capturedPrompt).toBe(
+      `Read ${upstreamPath} as reviewer. Name=source.txt; control=review; body=source body; customer=Alice; first=7; records=[{"id":7},{"id":8}]`,
     );
-    expect(capturedPrompt).not.toContain(`"control":"review","error":""`);
-    expect(capturedPrompt).toContain(
-      "System prompt delivery: configured separately through the provider's system-instruction",
+    expect(capturedPrompt).not.toContain("You are executing one node in a Paseo workflow.");
+    expect(capturedPrompt).not.toContain("Input JSON payload:");
+    expect(capturedPrompt).not.toContain("System prompt delivery:");
+    expect(capturedPrompt).not.toContain("Your final response MUST");
+    expect(capturedSystemPrompt).toBeUndefined();
+    expect(run.nodeRuns[1]?.agentPrompt).toBe(capturedPrompt);
+    expect(run.nodeRuns[1]?.agentResponse).toBe(
+      JSON.stringify({
+        filePath: outputPath,
+        control: "complete",
+        error: "",
+        reviewedCustomer: "Alice",
+      }),
     );
-    expect(capturedPrompt).not.toContain("You are a careful data reviewer.");
-    expect(capturedPrompt).not.toContain("Input mode:");
-    expect(capturedSystemPrompt).toBe("# Role\nYou are a careful data reviewer.");
-    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
-      control: "complete",
+    expect(run.nodeRuns[1]?.output).toBeNull();
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      control: "",
       error: "",
-      reviewedCustomer: "Alice",
+      answer: JSON.stringify({
+        filePath: outputPath,
+        control: "complete",
+        error: "",
+        reviewedCustomer: "Alice",
+      }),
     });
   });
 
-  it("defaults missing control and error fields in Agent node JSON", async () => {
+  it("converts an Answer Agent node response into the answer field", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "agent-defaults.json");
     const service = new WorkflowService({
@@ -1366,6 +1592,7 @@ describe("WorkflowService", () => {
           {
             id: "agent",
             type: "agent",
+            outputType: "answer",
             initialPrompt: "Return the result",
             config: { provider: "codex", cwd: home },
           },
@@ -1383,20 +1610,21 @@ describe("WorkflowService", () => {
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "",
       error: "",
-      message: "ok",
+      answer: '{"message":"ok"}',
     });
   });
 
-  it("returns a standard error payload for invalid Agent node JSON", async () => {
+  it("converts a Control Agent node response and applies its default system prompt", async () => {
     const home = await createTempHome();
-    const scriptPath = join(home, "invalid-agent-output.json");
+    const scriptPath = join(home, "control-agent-output.json");
+    let capturedSystemPrompt: string | undefined;
     const service = new WorkflowService({
       paseoHome: home,
       logger: pino({ enabled: false }),
       agentManager: {
         runAgent: async () => ({
           sessionId: "session",
-          finalText: "not json",
+          finalText: "是",
           timeline: [],
           canceled: false,
         }),
@@ -1407,10 +1635,13 @@ describe("WorkflowService", () => {
         }),
         cancelAgentRun: async () => ({ status: "settled" }),
       },
-      createAgent: (async () => ({
-        snapshot: { id: "11111111-1111-4111-8111-111111111111" },
-        initialPromptError: null,
-      })) as BoundCreateAgentCommand,
+      createAgent: (async (input) => {
+        capturedSystemPrompt = input.config?.systemPrompt;
+        return {
+          snapshot: { id: "11111111-1111-4111-8111-111111111111" },
+          initialPromptError: null,
+        };
+      }) as BoundCreateAgentCommand,
       createDirectoryWorkspace: async ({ cwd }) => ({ workspaceId: "workspace", cwd }) as never,
       createPaseoWorktreeWorkspace: async () => {
         throw new Error("Worktree creation is not expected in this test");
@@ -1421,12 +1652,13 @@ describe("WorkflowService", () => {
       scriptPath,
       JSON.stringify({
         version: 1,
-        name: "invalid agent output",
+        name: "control agent output",
         steps: [
           {
             id: "agent",
             type: "agent",
-            initialPrompt: "Return the result",
+            outputType: "control",
+            initialPrompt: "Decide whether to continue",
             config: { provider: "codex", cwd: home },
           },
         ],
@@ -1439,13 +1671,87 @@ describe("WorkflowService", () => {
       inputPayload: '{"control":"","error":""}',
     });
 
-    const message = "Workflow node output is not valid JSON";
-    expect(run.status).toBe("failed");
-    expect(run.error).toContain(message);
+    expect(run.status).toBe("succeeded");
+    expect(capturedSystemPrompt).toBe("# 角色\n你的回答必须在下面几个选中中：是、否");
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: expect.stringContaining(message),
+      control: "是",
+      error: "",
     });
+  });
+
+  it("renders Control Agent system prompt variables from the node input", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "control-agent-system-prompt.json");
+    let capturedSystemPrompt: string | undefined;
+    const service = new WorkflowService({
+      paseoHome: home,
+      logger: pino({ enabled: false }),
+      agentManager: {
+        runAgent: async () => ({
+          sessionId: "session",
+          finalText: "通过",
+          timeline: [],
+          canceled: false,
+        }),
+        waitForAgentEvent: async () => ({
+          status: "idle",
+          permission: null,
+          lastMessage: null,
+        }),
+        cancelAgentRun: async () => ({ status: "settled" }),
+      },
+      createAgent: (async (input) => {
+        capturedSystemPrompt = input.config?.systemPrompt;
+        return {
+          snapshot: { id: "11111111-1111-4111-8111-111111111111" },
+          initialPromptError: null,
+        };
+      }) as BoundCreateAgentCommand,
+      createDirectoryWorkspace: async ({ cwd }) => ({ workspaceId: "workspace", cwd }) as never,
+      createPaseoWorktreeWorkspace: async () => {
+        throw new Error("Worktree creation is not expected in this test");
+      },
+      archiveWorkspace: async () => undefined,
+    });
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "control agent system prompt variables",
+        steps: [
+          {
+            id: "agent",
+            name: "Route customer",
+            type: "agent",
+            outputType: "control",
+            initialPrompt: "Choose a route for {{customer.name}} as {{role}}.",
+            promptVariables: {
+              role: "{{customer.type}} reviewer",
+            },
+            config: {
+              provider: "codex",
+              cwd: home,
+              systemPrompt:
+                "# Role\nReview {{customer.name}} as {{role}}. Route={{control}}; node={{stepName}}.",
+            },
+          },
+        ],
+      }),
+    );
+
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify({
+        control: "manual",
+        customer: { name: "Alice", type: "VIP" },
+      }),
+    });
+
+    expect(run.status).toBe("succeeded");
+    expect(capturedSystemPrompt).toBe(
+      "# Role\nReview Alice as VIP reviewer. Route=manual; node=Route customer.",
+    );
   });
 
   it("applies an assistant preset to a workflow Agent node", async () => {

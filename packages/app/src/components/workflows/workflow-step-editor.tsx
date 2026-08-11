@@ -13,14 +13,18 @@ import {
   Repeat2,
   TerminalSquare,
   Trash2,
+  Workflow as WorkflowIcon,
 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
   type WorkflowAgentConfig,
+  type WorkflowAgentOutputType,
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
+  type WorkflowNestedStep,
   type WorkflowRetryPolicy,
+  type WorkflowScriptSummary,
   type WorkflowStep,
   type WorkflowSwitchStep,
 } from "@getpaseo/protocol/workflow/types";
@@ -39,9 +43,11 @@ import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { resolveTeamAssistantIds, resolveTeamLeader } from "@/teams/team-members";
 import {
+  applyInstructionTemplateToAgentSystemPrompt,
   applyInstructionTemplateToAgentStep,
   createWorkflowStep,
   moveWorkflowStep,
+  updateAgentOutputType,
   type WorkflowStepType,
 } from "@/workflows/editor-model";
 
@@ -53,6 +59,10 @@ const STEP_META = {
   agent: {
     labelKey: "workflows.nodes.types.agent",
     icon: Bot,
+  },
+  workflow: {
+    labelKey: "workflows.nodes.types.workflow",
+    icon: WorkflowIcon,
   },
   switch: {
     labelKey: "workflows.nodes.types.switch",
@@ -67,6 +77,10 @@ const STEP_META = {
 function optionalText(value: string): string | undefined {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function optionalMultilineText(value: string): string | undefined {
+  return value.trim().length > 0 ? value : undefined;
 }
 
 function optionalPositiveNumber(value: string): number | undefined {
@@ -117,6 +131,8 @@ interface WorkflowStepListEditorProps {
   teamsLoading?: boolean;
   promptTemplates?: PaseoInstructionTemplate[];
   promptTemplatesLoading?: boolean;
+  workflowScripts?: WorkflowScriptSummary[];
+  currentWorkflowPath?: string | null;
   label?: string;
   description?: string;
   depth?: number;
@@ -135,6 +151,8 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
   teamsLoading = false,
   promptTemplates = [],
   promptTemplatesLoading = false,
+  workflowScripts = [],
+  currentWorkflowPath = null,
   label,
   description,
   depth = 0,
@@ -149,6 +167,7 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           workflow: t("workflows.editor.untitled"),
           bash: t("workflows.nodes.defaultNames.bash"),
           agent: t("workflows.nodes.defaultNames.agent"),
+          workflowNode: t("workflows.nodes.defaultNames.workflow"),
           switch: t("workflows.nodes.defaultNames.switch"),
           for: t("workflows.nodes.defaultNames.for"),
         }),
@@ -189,6 +208,8 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
+          workflowScripts={workflowScripts}
+          currentWorkflowPath={currentWorkflowPath}
           onChange={(nextStep) => {
             const next = [...steps];
             next[index] = nextStep;
@@ -252,6 +273,8 @@ interface WorkflowStepCardProps {
   teamsLoading: boolean;
   promptTemplates: PaseoInstructionTemplate[];
   promptTemplatesLoading: boolean;
+  workflowScripts: WorkflowScriptSummary[];
+  currentWorkflowPath: string | null;
   onChange: (step: WorkflowStep) => void;
   onRemove: () => void;
   onMove: (direction: -1 | 1) => void;
@@ -271,6 +294,8 @@ function WorkflowStepCard({
   teamsLoading,
   promptTemplates,
   promptTemplatesLoading,
+  workflowScripts,
+  currentWorkflowPath,
   onChange,
   onRemove,
   onMove,
@@ -299,6 +324,16 @@ function WorkflowStepCard({
         />
       );
       break;
+    case "workflow":
+      stepFields = (
+        <NestedWorkflowStepFields
+          step={step}
+          workflowScripts={workflowScripts}
+          currentWorkflowPath={currentWorkflowPath}
+          onChange={onChange}
+        />
+      );
+      break;
     case "switch":
       stepFields = (
         <SwitchStepFields
@@ -312,6 +347,8 @@ function WorkflowStepCard({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
+          workflowScripts={workflowScripts}
+          currentWorkflowPath={currentWorkflowPath}
           depth={depth}
           onChange={onChange}
         />
@@ -330,6 +367,8 @@ function WorkflowStepCard({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
+          workflowScripts={workflowScripts}
+          currentWorkflowPath={currentWorkflowPath}
           depth={depth}
           onChange={onChange}
         />
@@ -505,6 +544,81 @@ function includeCurrentStringOption(
   ];
 }
 
+function NestedWorkflowStepFields({
+  step,
+  workflowScripts,
+  currentWorkflowPath,
+  onChange,
+}: {
+  step: WorkflowNestedStep;
+  workflowScripts: WorkflowScriptSummary[];
+  currentWorkflowPath: string | null;
+  onChange: (step: WorkflowNestedStep) => void;
+}) {
+  const { t } = useTranslation();
+  const options = useMemo(
+    () =>
+      includeCurrentStringOption(
+        workflowScripts
+          .filter((script) => script.path !== currentWorkflowPath)
+          .map((script) => ({
+            id: script.path,
+            value: script.path,
+            label: script.name,
+            description: script.description || script.path,
+          })),
+        step.workflowPath,
+      ),
+    [currentWorkflowPath, step.workflowPath, workflowScripts],
+  );
+  const selected = options.find((option) => option.value === step.workflowPath);
+
+  return (
+    <View style={styles.twoColumn}>
+      <View style={styles.columnField}>
+        <Field
+          label={t("workflows.nodes.workflow.workflow")}
+          hint={t("workflows.nodes.workflow.workflowHint")}
+        >
+          <SelectField
+            field={false}
+            label=""
+            value={step.workflowPath}
+            selectedDisplay={optionDisplay(selected)}
+            options={options}
+            onChange={(workflowPath) => onChange({ ...step, workflowPath })}
+            placeholder={t("workflows.nodes.workflow.selectWorkflow")}
+            emptyText={t("workflows.nodes.workflow.noWorkflows")}
+            title={t("workflows.nodes.workflow.workflow")}
+            searchable
+            size="sm"
+            testID={`workflow-step-${step.id}-workflow`}
+          />
+        </Field>
+      </View>
+      <View style={styles.columnField}>
+        <Field
+          label={t("workflows.nodes.common.timeout")}
+          hint={t("workflows.nodes.workflow.timeoutHint")}
+        >
+          <WorkflowTextInput
+            value={formatMillisecondsAsSeconds(step.timeoutMs)}
+            onChangeText={(value) =>
+              onChange({
+                ...step,
+                timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
+              })
+            }
+            placeholder="1800"
+            keyboardType="decimal-pad"
+            size="sm"
+          />
+        </Field>
+      </View>
+    </View>
+  );
+}
+
 function resolveAssistantOrTeamValue(config: WorkflowAgentStep["config"]): string {
   if (config.teamId) {
     return `team:${config.teamId}`;
@@ -516,15 +630,17 @@ function resolveAssistantOrTeamValue(config: WorkflowAgentStep["config"]): strin
 }
 
 function AgentPromptTemplateField({
-  step,
+  stepId,
+  target,
   promptTemplates,
   loading,
-  onChange,
+  onSelect,
 }: {
-  step: WorkflowAgentStep;
+  stepId: string;
+  target: "user" | "system";
   promptTemplates: PaseoInstructionTemplate[];
   loading: boolean;
-  onChange: (step: WorkflowAgentStep) => void;
+  onSelect: (template: PaseoInstructionTemplate) => void;
 }) {
   const { t } = useTranslation();
   const options = useMemo<SelectFieldOption<string>[]>(
@@ -539,7 +655,11 @@ function AgentPromptTemplateField({
   );
   return (
     <Field
-      label={t("workflows.nodes.agent.promptTemplate")}
+      label={t(
+        target === "user"
+          ? "workflows.nodes.agent.promptTemplate"
+          : "workflows.nodes.agent.systemPromptTemplate",
+      )}
       hint={t("workflows.nodes.agent.promptTemplateHint")}
     >
       <SelectField
@@ -551,16 +671,24 @@ function AgentPromptTemplateField({
         onChange={(templateId) => {
           const template = promptTemplates.find((candidate) => candidate.id === templateId);
           if (template) {
-            onChange(applyInstructionTemplateToAgentStep(step, template));
+            onSelect(template);
           }
         }}
-        placeholder={t("workflows.nodes.agent.selectPromptTemplate")}
+        placeholder={t(
+          target === "user"
+            ? "workflows.nodes.agent.selectPromptTemplate"
+            : "workflows.nodes.agent.selectSystemPromptTemplate",
+        )}
         emptyText={t("workflows.nodes.agent.noPromptTemplates")}
-        title={t("workflows.nodes.agent.promptTemplate")}
+        title={t(
+          target === "user"
+            ? "workflows.nodes.agent.promptTemplate"
+            : "workflows.nodes.agent.systemPromptTemplate",
+        )}
         loading={loading}
         searchable
         size="sm"
-        testID={`workflow-agent-${step.id}-prompt-template`}
+        testID={`workflow-agent-${stepId}-${target}-prompt-template`}
       />
     </Field>
   );
@@ -568,9 +696,13 @@ function AgentPromptTemplateField({
 
 function AgentSystemPromptField({
   step,
+  promptTemplates,
+  loading,
   onChange,
 }: {
   step: WorkflowAgentStep;
+  promptTemplates: PaseoInstructionTemplate[];
+  loading: boolean;
   onChange: (step: WorkflowAgentStep) => void;
 }) {
   const { t } = useTranslation();
@@ -578,22 +710,33 @@ function AgentSystemPromptField({
     ? t("workflows.nodes.agent.systemPromptConfiguredHint")
     : t("workflows.nodes.agent.systemPromptHint");
   return (
-    <Field label={t("workflows.nodes.agent.systemPrompt")} hint={hint}>
-      <WorkflowTextInput
-        value={step.config.systemPrompt ?? ""}
-        onChangeText={(systemPrompt) =>
-          onChange(
-            updateAgentConfig(step, {
-              systemPrompt: optionalText(systemPrompt),
-            }),
-          )
+    <>
+      <AgentPromptTemplateField
+        stepId={step.id}
+        target="system"
+        promptTemplates={promptTemplates}
+        loading={loading}
+        onSelect={(template) =>
+          onChange(applyInstructionTemplateToAgentSystemPrompt(step, template))
         }
-        multiline
-        textAlignVertical="top"
-        style={styles.systemPromptInput}
-        placeholder={t("workflows.nodes.agent.systemPromptPlaceholder")}
       />
-    </Field>
+      <Field label={t("workflows.nodes.agent.systemPrompt")} hint={hint}>
+        <WorkflowTextInput
+          value={step.config.systemPrompt ?? ""}
+          onChangeText={(systemPrompt) =>
+            onChange(
+              updateAgentConfig(step, {
+                systemPrompt: optionalMultilineText(systemPrompt),
+              }),
+            )
+          }
+          multiline
+          textAlignVertical="top"
+          style={styles.systemPromptInput}
+          placeholder={t("workflows.nodes.agent.systemPromptPlaceholder")}
+        />
+      </Field>
+    </>
   );
 }
 
@@ -826,13 +969,52 @@ function AgentStepFields({
     [t],
   );
   const selectedIsolation = isolationOptions.find((option) => option.value === isolation);
+  const outputType = step.outputType ?? "answer";
+  const outputTypeOptions = useMemo<SelectFieldOption<WorkflowAgentOutputType>[]>(
+    () => [
+      {
+        id: "answer",
+        value: "answer",
+        label: t("workflows.nodes.agent.outputTypes.answer"),
+        description: t("workflows.nodes.agent.outputTypes.answerDescription"),
+      },
+      {
+        id: "control",
+        value: "control",
+        label: t("workflows.nodes.agent.outputTypes.control"),
+        description: t("workflows.nodes.agent.outputTypes.controlDescription"),
+      },
+    ],
+    [t],
+  );
   return (
     <>
+      <Field
+        label={t("workflows.nodes.agent.outputType")}
+        hint={t("workflows.nodes.agent.outputTypeHint")}
+      >
+        <SelectField
+          field={false}
+          label=""
+          value={outputType}
+          selectedDisplay={optionDisplay(
+            outputTypeOptions.find((option) => option.value === outputType),
+          )}
+          options={outputTypeOptions}
+          onChange={(nextOutputType) => onChange(updateAgentOutputType(step, nextOutputType))}
+          placeholder={t("workflows.nodes.agent.selectOutputType")}
+          emptyText={t("workflows.nodes.agent.noOutputTypes")}
+          title={t("workflows.nodes.agent.outputType")}
+          size="sm"
+          testID={`workflow-agent-${step.id}-output-type`}
+        />
+      </Field>
       <AgentPromptTemplateField
-        step={step}
+        stepId={step.id}
+        target="user"
         promptTemplates={promptTemplates}
         loading={promptTemplatesLoading}
-        onChange={onChange}
+        onSelect={(template) => onChange(applyInstructionTemplateToAgentStep(step, template))}
       />
       <Field label={t("workflows.nodes.agent.initialPrompt")}>
         <WorkflowTextInput
@@ -1117,7 +1299,14 @@ function AgentStepFields({
           </Field>
         </View>
       </View>
-      <AgentSystemPromptField step={step} onChange={onChange} />
+      {outputType === "control" ? (
+        <AgentSystemPromptField
+          step={step}
+          promptTemplates={promptTemplates}
+          loading={promptTemplatesLoading}
+          onChange={onChange}
+        />
+      ) : null}
       <View style={styles.toggleRow}>
         <ToggleField
           label={t("workflows.nodes.agent.archive")}
@@ -1425,6 +1614,8 @@ function SwitchStepFields({
   teamsLoading,
   promptTemplates,
   promptTemplatesLoading,
+  workflowScripts,
+  currentWorkflowPath,
   depth,
   onChange,
 }: {
@@ -1438,6 +1629,8 @@ function SwitchStepFields({
   teamsLoading: boolean;
   promptTemplates: PaseoInstructionTemplate[];
   promptTemplatesLoading: boolean;
+  workflowScripts: WorkflowScriptSummary[];
+  currentWorkflowPath: string | null;
   depth: number;
   onChange: (step: WorkflowSwitchStep) => void;
 }) {
@@ -1494,6 +1687,8 @@ function SwitchStepFields({
               teamsLoading={teamsLoading}
               promptTemplates={promptTemplates}
               promptTemplatesLoading={promptTemplatesLoading}
+              workflowScripts={workflowScripts}
+              currentWorkflowPath={currentWorkflowPath}
               depth={depth + 1}
               onChange={(steps) => {
                 const cases = [...step.cases];
@@ -1530,6 +1725,8 @@ function SwitchStepFields({
             teamsLoading={teamsLoading}
             promptTemplates={promptTemplates}
             promptTemplatesLoading={promptTemplatesLoading}
+            workflowScripts={workflowScripts}
+            currentWorkflowPath={currentWorkflowPath}
             depth={depth + 1}
             onChange={(defaultSteps) => onChange({ ...step, defaultSteps })}
           />
@@ -1550,6 +1747,8 @@ function ForStepFields({
   teamsLoading,
   promptTemplates,
   promptTemplatesLoading,
+  workflowScripts,
+  currentWorkflowPath,
   depth,
   onChange,
 }: {
@@ -1563,6 +1762,8 @@ function ForStepFields({
   teamsLoading: boolean;
   promptTemplates: PaseoInstructionTemplate[];
   promptTemplatesLoading: boolean;
+  workflowScripts: WorkflowScriptSummary[];
+  currentWorkflowPath: string | null;
   depth: number;
   onChange: (step: WorkflowForStep) => void;
 }) {
@@ -1616,6 +1817,8 @@ function ForStepFields({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
+          workflowScripts={workflowScripts}
+          currentWorkflowPath={currentWorkflowPath}
           depth={depth + 1}
           onChange={(steps) => onChange({ ...step, steps })}
         />

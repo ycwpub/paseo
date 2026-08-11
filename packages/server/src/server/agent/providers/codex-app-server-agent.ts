@@ -5842,6 +5842,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     this.activeForegroundTurnId = null;
     this.activeClientMessageId = null;
+    this.currentTurnId = null;
     this.activeTurnStartParams = null;
     this.maxOutputTokensContinuationAttempts = 0;
     this.maxOutputTokensRecoveryInProgress = false;

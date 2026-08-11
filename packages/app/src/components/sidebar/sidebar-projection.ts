@@ -4,6 +4,7 @@ import {
   type PinnedSidebarGroups,
   type PinnedSidebarKeys,
 } from "@/hooks/use-sidebar-pins";
+import { splitHiddenSidebarProjects } from "@/hooks/sidebar-hidden-projects";
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
@@ -17,6 +18,7 @@ import {
 
 export interface SidebarProjection {
   pinnedGroups: PinnedSidebarGroups;
+  hiddenProjects: SidebarProjectEntry[];
   statusGroups: StatusGroup[];
   shortcutModel: SidebarShortcutModel;
 }
@@ -28,11 +30,16 @@ export function buildSidebarProjection(input: {
   projectNamesByViewKey: Map<string, string>;
   groupMode: SidebarGroupMode;
   pinnedCollapsed: boolean;
+  hiddenProjectKeys: ReadonlySet<string>;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedStatusGroupKeys: ReadonlySet<string>;
 }): SidebarProjection {
+  const { visibleProjects, hiddenProjects } = splitHiddenSidebarProjects(
+    input.projects,
+    input.hiddenProjectKeys,
+  );
   const pinnedGroups = splitPinnedSidebarGroups({
-    projects: input.projects,
+    projects: visibleProjects,
     keys: input.pinnedKeys,
   });
   const pinnedWorkspaceKeys = new Set(input.pinnedKeys.pinnedWorkspaceKeys);
@@ -40,7 +47,9 @@ export function buildSidebarProjection(input: {
     input.groupMode === "status"
       ? buildStatusGroups(
           Array.from(input.workspaceEntriesByKey.values()).filter(
-            (workspace) => !pinnedWorkspaceKeys.has(workspace.workspaceKey),
+            (workspace) =>
+              !input.hiddenProjectKeys.has(workspace.projectViewKey) &&
+              !pinnedWorkspaceKeys.has(workspace.workspaceKey),
           ),
           input.projectNamesByViewKey,
         )
@@ -68,6 +77,7 @@ export function buildSidebarProjection(input: {
 
   return {
     pinnedGroups,
+    hiddenProjects,
     statusGroups,
     shortcutModel: buildSidebarShortcutSections({ sections }),
   };

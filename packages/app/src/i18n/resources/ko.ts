@@ -1,6 +1,7 @@
-import type { TranslationResources } from "./en";
+import { en } from "./en";
+import { completeTranslationResource } from "./complete-resource";
 
-export const ko = {
+const koOverrides = {
   common: {
     back: "뒤로",
     loading: "불러오는 중...",
@@ -238,9 +239,18 @@ export const ko = {
     title: "기록",
     empty: "아직 세션이 없습니다",
     noMatches: "일치하는 세션이 없습니다",
+    noProjectSessions: "이 프로젝트의 세션이 없습니다",
     tooManyMatches: "일치 항목이 너무 많습니다 — 검색 범위를 좁히세요",
     hostLoadFailed: "{{host}}: 기록을 불러오지 못했습니다",
     searchPlaceholder: "기록 검색",
+    projectFilter: {
+      label: "프로젝트",
+      title: "프로젝트로 필터링",
+      all: "모든 프로젝트",
+      empty: "사용 가능한 프로젝트가 없습니다",
+      search: "프로젝트 검색",
+      hostCount: "호스트 {{count}}개",
+    },
     actions: {
       loadMore: "더 불러오기",
       clearSearch: "검색 지우기",
@@ -996,6 +1006,8 @@ export const ko = {
       home: "홈",
       settings: "설정",
       closeSidebar: "사이드바 닫기",
+      collapseAllWorkspaces: "모든 워크스페이스 접기",
+      expandAllWorkspaces: "모든 워크스페이스 펼치기",
     },
     help: {
       trigger: "도움말 및 지원",
@@ -1026,8 +1038,13 @@ export const ko = {
         openNewWindowFailed: "새 창을 열 수 없습니다",
         openFolder: "파일 관리자에서 열기",
         openFolderFailed: "폴더를 열 수 없습니다.",
+        hide: "프로젝트 숨기기",
+        show: "프로젝트 표시",
         remove: "프로젝트 제거",
         removing: "제거하는 중...",
+      },
+      hidden: {
+        title: "숨겨진 프로젝트 ({{count}})",
       },
       confirmations: {
         removeTitle: "프로젝트를 제거할까요?",
@@ -2468,4 +2485,6 @@ export const ko = {
       },
     },
   },
-} as unknown as TranslationResources;
+} as const;
+
+export const ko = completeTranslationResource(en, koOverrides);

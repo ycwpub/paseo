@@ -357,6 +357,11 @@ function mergeMutableConfigIntoPersistedConfig(params: {
   };
   const shouldPersistMetadataGeneration =
     metadataGenerationProviders.length > 0 || persisted.agents?.metadataGeneration !== undefined;
+  const legacyRelayEnabled = (mutable.relay as { enabled?: unknown }).enabled;
+  const relayEnabled =
+    typeof legacyRelayEnabled === "boolean"
+      ? legacyRelayEnabled
+      : mutable.relay.endpoints.length > 0 || mutable.relay.local.enabled;
 
   let nextAgents = persistedAgents as PersistedConfig["agents"];
   if (providerOverrides && Object.keys(providerOverrides).length > 0) {
@@ -378,14 +383,6 @@ function mergeMutableConfigIntoPersistedConfig(params: {
     ...persisted,
     daemon: {
       ...persisted.daemon,
-      ...(persistRelayEnabled
-        ? {
-            relay: {
-              ...persisted.daemon?.relay,
-              enabled: mutable.relay.enabled,
-            },
-          }
-        : {}),
       mcp: {
         ...persisted.daemon?.mcp,
         injectIntoAgents: mutable.mcp.injectIntoAgents,
@@ -405,7 +402,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       instructionTemplates: mutable.instructionTemplates,
       relay: {
         ...persisted.daemon?.relay,
-        enabled: mutable.relay.endpoints.length > 0 || mutable.relay.local.enabled,
+        ...(persistRelayEnabled ? { enabled: relayEnabled } : {}),
         endpoints: mutable.relay.endpoints,
         local: mutable.relay.local,
         // Stop persisting the legacy single-relay fields after the first edit.

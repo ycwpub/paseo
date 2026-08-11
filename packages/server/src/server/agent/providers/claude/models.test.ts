@@ -349,6 +349,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       customProvider: { id: "aiden-claude" },
       configDir: aidenConfigDir,
       aidenConfigDir,
+      resolveVersion: async () => "2.1.219",
     });
 
     const { models } = await client.fetchCatalog({
@@ -383,6 +384,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       logger: createTestLogger(),
       configDir: aidenConfigDir,
       aidenConfigDir,
+      resolveVersion: async () => "2.1.219",
     });
 
     const { models } = await client.fetchCatalog({

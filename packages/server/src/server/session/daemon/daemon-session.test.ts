@@ -381,7 +381,7 @@ describe("DaemonSession", () => {
     }
     expect(message.payload.requestId).toBe("p-2");
     expect(message.payload.relayEnabled).toBe(true);
-    expect(message.payload.url.startsWith("https://app.example.test")).toBe(true);
+    expect(message.payload.url.startsWith("https://relay.example.test")).toBe(true);
     expect(typeof message.payload.qr).toBe("string");
     expect(message.payload.offers).toHaveLength(2);
     expect(message.payload.offers.map((offer) => [offer.endpoint, offer.useTls])).toEqual([

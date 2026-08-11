@@ -266,9 +266,18 @@ export const ptBR: TranslationResources = {
     title: "Histórico de agentes",
     empty: "Nenhuma sessão ainda",
     noMatches: "Nenhuma sessão corresponde",
+    noProjectSessions: "Nenhuma sessão para este projeto",
     tooManyMatches: "Muitos resultados — refine a busca",
     hostLoadFailed: "{{host}}: Não foi possível carregar o histórico",
     searchPlaceholder: "Buscar no histórico",
+    projectFilter: {
+      label: "Projeto",
+      title: "Filtrar por projeto",
+      all: "Todos os projetos",
+      empty: "Nenhum projeto disponível",
+      search: "Buscar projetos",
+      hostCount: "{{count}} hosts",
+    },
     actions: {
       loadMore: "Carregar mais",
       clearSearch: "Limpar busca",
@@ -1043,6 +1052,8 @@ export const ptBR: TranslationResources = {
       home: "Início",
       settings: "Configurações",
       closeSidebar: "Fechar barra lateral",
+      collapseAllWorkspaces: "Recolher todos os workspaces",
+      expandAllWorkspaces: "Expandir todos os workspaces",
     },
     help: {
       trigger: "Ajuda e suporte",
@@ -1073,8 +1084,13 @@ export const ptBR: TranslationResources = {
         openNewWindowFailed: "Não foi possível abrir uma nova janela",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Ocultar projeto",
+        show: "Mostrar projeto",
         remove: "Remover projeto",
         removing: "Removendo...",
+      },
+      hidden: {
+        title: "Projetos ocultos ({{count}})",
       },
       confirmations: {
         removeTitle: "Remover projeto?",

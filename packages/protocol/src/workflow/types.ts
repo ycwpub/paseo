@@ -22,6 +22,11 @@ export const WorkflowAgentConfigSchema = ScheduleNewAgentTargetConfigSchema.omit
 });
 export type WorkflowAgentConfig = z.infer<typeof WorkflowAgentConfigSchema>;
 
+export const WorkflowAgentOutputTypeSchema = z.enum(["answer", "control"]);
+export type WorkflowAgentOutputType = z.infer<typeof WorkflowAgentOutputTypeSchema>;
+
+export const DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT = "# 角色\n你的回答必须在下面几个选中中：是、否";
+
 export const WorkflowRetryPolicySchema = z.object({
   maxAttempts: z.number().int().min(1).max(20),
   initialDelayMs: z
@@ -75,11 +80,20 @@ export interface WorkflowAgentStep {
   id: string;
   name?: string;
   type: "agent";
+  outputType?: WorkflowAgentOutputType;
   initialPrompt: string;
   promptVariables?: WorkflowPromptVariables;
   timeoutMs?: number;
   retry?: WorkflowRetryPolicy;
   config: WorkflowAgentConfig;
+}
+
+export interface WorkflowNestedStep {
+  id: string;
+  name?: string;
+  type: "workflow";
+  workflowPath: string;
+  timeoutMs?: number;
 }
 
 export interface WorkflowSwitchCase {
@@ -109,6 +123,7 @@ export interface WorkflowForStep {
 export type WorkflowStep =
   | WorkflowBashStep
   | WorkflowAgentStep
+  | WorkflowNestedStep
   | WorkflowSwitchStep
   | WorkflowForStep;
 
@@ -132,11 +147,19 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       id: WorkflowStepIdSchema,
       name: WorkflowStepNameSchema,
       type: z.literal("agent"),
+      outputType: WorkflowAgentOutputTypeSchema.default("answer"),
       initialPrompt: z.string().trim().min(1),
       promptVariables: WorkflowPromptVariablesSchema.optional(),
       timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
       retry: WorkflowRetryPolicySchema.optional(),
       config: WorkflowAgentConfigSchema,
+    }),
+    z.object({
+      id: WorkflowStepIdSchema,
+      name: WorkflowStepNameSchema,
+      type: z.literal("workflow"),
+      workflowPath: z.string().trim().min(1),
+      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
     }),
     z.object({
       id: WorkflowStepIdSchema,
@@ -205,7 +228,7 @@ export const WorkflowNodeRunSchema = z.object({
   id: z.string(),
   stepId: z.string(),
   stepName: z.string().nullable(),
-  stepType: z.enum(["bash", "agent", "switch", "for"]),
+  stepType: z.enum(["bash", "agent", "workflow", "switch", "for"]),
   iterationPath: z.array(z.number().int().nonnegative()),
   startedAt: z.string(),
   endedAt: z.string().nullable(),
@@ -222,6 +245,10 @@ export const WorkflowNodeRunSchema = z.object({
   error: z.string().nullable(),
   errorCode: z.string().nullable().default(null),
   agentId: z.guid().nullable(),
+  agentPrompt: z.string().nullable().default(null),
+  agentResponse: z.string().nullable().default(null),
+  workflowPath: z.string().nullable().default(null),
+  workflowRunId: z.string().nullable().default(null),
   output: z.string().nullable(),
 });
 export type WorkflowNodeRun = z.infer<typeof WorkflowNodeRunSchema>;

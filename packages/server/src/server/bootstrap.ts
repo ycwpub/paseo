@@ -551,6 +551,28 @@ function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | stri
   return config.trustedProxies ?? ["loopback"];
 }
 
+function resolveInitialRelayEndpoints(
+  config: PaseoDaemonConfig,
+): MutableDaemonConfig["relay"]["endpoints"] {
+  if (config.relayEnabled === false) {
+    return [];
+  }
+  if (config.relayEndpoints !== undefined) {
+    return config.relayEndpoints;
+  }
+  if (!config.relayEndpoint) {
+    return [];
+  }
+  return [
+    {
+      endpoint: config.relayEndpoint,
+      useTls: config.relayUseTls ?? false,
+      ...(config.relayPublicEndpoint ? { publicEndpoint: config.relayPublicEndpoint } : {}),
+      ...(config.relayPublicUseTls !== undefined ? { publicUseTls: config.relayPublicUseTls } : {}),
+    },
+  ];
+}
+
 function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
   const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
     Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
@@ -576,24 +598,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     },
     instructionTemplates: config.instructionTemplates,
     relay: {
-      endpoints:
-        config.relayEnabled === false
-          ? []
-          : (config.relayEndpoints ??
-            (config.relayEndpoint
-              ? [
-                  {
-                    endpoint: config.relayEndpoint,
-                    useTls: config.relayUseTls ?? false,
-                    ...(config.relayPublicEndpoint
-                      ? { publicEndpoint: config.relayPublicEndpoint }
-                      : {}),
-                    ...(config.relayPublicUseTls !== undefined
-                      ? { publicUseTls: config.relayPublicUseTls }
-                      : {}),
-                  },
-                ]
-              : [])),
+      endpoints: resolveInitialRelayEndpoints(config),
       pairingBaseUrls: config.relayPairingBaseUrls ?? [],
       local: config.lanRelay ?? {
         enabled: false,
@@ -1603,18 +1608,6 @@ export async function createPaseoDaemon(
       },
     );
   };
-  const scheduleService = new ScheduleService({
-    paseoHome: config.paseoHome,
-    logger,
-    agentManager,
-    agentStorage,
-    createAgent,
-    createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
-    createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
-    archiveWorkspace: archiveScheduleWorkspaceExternal,
-    assistantStore,
-  });
-  await scheduleService.start();
   const workflowService = new WorkflowService({
     paseoHome: config.paseoHome,
     logger,
@@ -1627,6 +1620,19 @@ export async function createPaseoDaemon(
     teamStore,
   });
   await workflowService.start();
+  const scheduleService = new ScheduleService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    agentStorage,
+    createAgent,
+    createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
+    createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
+    archiveWorkspace: archiveScheduleWorkspaceExternal,
+    assistantStore,
+    workflowService,
+  });
+  await scheduleService.start();
   let inFlightIdleAgentCollection: Promise<void> | null = null;
   const collectIdleAgentRuntimes = async () => {
     const protectedAgentIds = await scheduleService.listActiveAgentTargetIds();

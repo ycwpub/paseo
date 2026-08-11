@@ -802,6 +802,7 @@ describe("ForgeService", () => {
       ttlMs: 0,
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
 

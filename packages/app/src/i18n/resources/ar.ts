@@ -263,9 +263,18 @@ export const ar: TranslationResources = {
     title: "السجل",
     empty: "لا توجد جلسات بعد",
     noMatches: "لا توجد جلسات مطابقة",
+    noProjectSessions: "لا توجد جلسات لهذا المشروع",
     tooManyMatches: "نتائج كثيرة جدًا — ضيّق نطاق البحث",
     hostLoadFailed: "{{host}}: تعذر تحميل السجل",
     searchPlaceholder: "البحث في السجل",
+    projectFilter: {
+      label: "المشروع",
+      title: "تصفية حسب المشروع",
+      all: "كل المشاريع",
+      empty: "لا توجد مشاريع متاحة",
+      search: "البحث في المشاريع",
+      hostCount: "{{count}} مضيفين",
+    },
     actions: {
       loadMore: "تحميل المزيد",
       clearSearch: "مسح البحث",
@@ -1021,6 +1030,8 @@ export const ar: TranslationResources = {
       home: "بيت",
       settings: "إعدادات",
       closeSidebar: "إغلاق الشريط الجانبي",
+      collapseAllWorkspaces: "طي جميع مساحات العمل",
+      expandAllWorkspaces: "توسيع جميع مساحات العمل",
     },
     help: {
       trigger: "المساعدة والدعم",
@@ -1051,8 +1062,13 @@ export const ar: TranslationResources = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "إخفاء المشروع",
+        show: "إظهار المشروع",
         remove: "إزالة المشروع",
         removing: "جارٍ الإزالة...",
+      },
+      hidden: {
+        title: "المشاريع المخفية ({{count}})",
       },
       confirmations: {
         removeTitle: "هل تريد إزالة المشروع؟",

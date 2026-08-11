@@ -265,9 +265,18 @@ export const ru: TranslationResources = {
     title: "История",
     empty: "Сеансов пока нет",
     noMatches: "Нет подходящих сеансов",
+    noProjectSessions: "Для этого проекта нет сеансов",
     tooManyMatches: "Слишком много совпадений — уточните запрос",
     hostLoadFailed: "{{host}}: Не удалось загрузить историю",
     searchPlaceholder: "Поиск по истории",
+    projectFilter: {
+      label: "Проект",
+      title: "Фильтр по проекту",
+      all: "Все проекты",
+      empty: "Нет доступных проектов",
+      search: "Поиск проектов",
+      hostCount: "{{count}} хостов",
+    },
     actions: {
       loadMore: "Загрузить больше",
       clearSearch: "Очистить поиск",
@@ -1043,6 +1052,8 @@ export const ru: TranslationResources = {
       home: "Дом",
       settings: "Настройки",
       closeSidebar: "Закрыть боковую панель",
+      collapseAllWorkspaces: "Свернуть все рабочие пространства",
+      expandAllWorkspaces: "Развернуть все рабочие пространства",
     },
     help: {
       trigger: "Помощь и поддержка",
@@ -1073,8 +1084,13 @@ export const ru: TranslationResources = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
+        hide: "Скрыть проект",
+        show: "Показать проект",
         remove: "Удалить проект",
         removing: "Удаление...",
+      },
+      hidden: {
+        title: "Скрытые проекты ({{count}})",
       },
       confirmations: {
         removeTitle: "Удалить проект?",

@@ -93,7 +93,18 @@ export interface UserMessageItem {
   timestamp: Date;
   images?: UserMessageImageAttachment[];
   attachments?: AgentAttachment[];
+  optimistic?: boolean;
 }
+
+export interface OptimisticUserMessageInput {
+  id: string;
+  text: string;
+  timestamp: Date;
+  images?: UserMessageImageAttachment[];
+  attachments?: AgentAttachment[];
+}
+
+export type OptimisticUserMessagePlacement = "active-head" | "tail";
 
 export interface UserMessageInput {
   id?: string;
@@ -815,35 +826,6 @@ function markThoughtReady(item: ThoughtItem, completedAt: Date = item.timestamp)
   };
 }
 
-function buildUserMessageItem(input: {
-  id: string;
-  text: string;
-  timestamp: Date;
-  optimistic?: UserMessageItem | null;
-}): UserMessageItem {
-  if (input.optimistic) {
-    return {
-      kind: "user_message",
-      id: input.id,
-      text: input.optimistic.text,
-      timestamp: input.optimistic.timestamp,
-      ...(input.optimistic.images && input.optimistic.images.length > 0
-        ? { images: input.optimistic.images }
-        : {}),
-      ...(input.optimistic.attachments && input.optimistic.attachments.length > 0
-        ? { attachments: input.optimistic.attachments }
-        : {}),
-    };
-  }
-
-  return {
-    kind: "user_message",
-    id: input.id,
-    text: input.text,
-    timestamp: input.timestamp,
-  };
-}
-
 export function buildOptimisticUserMessage(input: OptimisticUserMessageInput): UserMessageItem {
   return {
     kind: "user_message",
@@ -1403,7 +1385,15 @@ function reduceTimelineEvent(
   switch (item.type) {
     case "user_message":
       return finalizeActiveThoughts(
-        appendUserMessage(state, item.text, timestamp, item.messageId),
+        appendUserMessage(
+          state,
+          item.text,
+          timestamp,
+          source,
+          item.messageId,
+          item.clientMessageId,
+          timelineCursor,
+        ),
         timestamp,
       );
     case "assistant_message":

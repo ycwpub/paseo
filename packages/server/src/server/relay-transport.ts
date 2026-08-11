@@ -25,7 +25,7 @@ export interface RelayTransportController {
   stop: () => Promise<void>;
 }
 
-type RelaySocketLike = EncryptedWebSocketLike;
+export type RelaySocketLike = EncryptedWebSocketLike;
 
 interface RelayWebSocketLike extends RelaySocketLike {
   terminate: () => void;

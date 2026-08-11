@@ -378,7 +378,6 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
           store,
           daemonStartService,
           shouldStartDaemon: shouldStartBuiltInDaemon,
-          onGateError: (message) => daemonStartService.recordError(message),
         });
       });
   }, []);

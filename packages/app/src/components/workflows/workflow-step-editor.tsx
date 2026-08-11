@@ -1059,7 +1059,11 @@ function AgentStepFields({
               onChange={(sandboxMode) =>
                 onChange(
                   updateAgentConfig(step, {
-                    sandboxMode: optionalText(sandboxMode),
+                    sandboxMode: optionalText(sandboxMode) as
+                      | "read-only"
+                      | "workspace-write"
+                      | "danger-full-access"
+                      | undefined,
                   }),
                 )
               }

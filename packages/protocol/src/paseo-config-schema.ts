@@ -20,6 +20,7 @@ export const PaseoServicePortAllocationSchema = z
     const end = Number(match[2]);
     return start >= 1 && end <= 65_535 && start <= end;
   }, "Expected an inclusive TCP port range from 1-65535");
+export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocationSchema>;
 
 export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
   project: ["{{workspaceDirectory}}"],

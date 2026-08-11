@@ -50,6 +50,7 @@ interface GenericACPAgentClientOptions {
   clientCapabilityMeta?: ACPClientCapabilityMeta;
   configFeatureOptions?: ACPConfigFeatureOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
+  catalogModelResolver?: ACPCatalogModelResolver;
   defaultModes?: AgentMode[];
 }
 
@@ -75,6 +76,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
       clientCapabilityMeta: options.clientCapabilityMeta,
       configFeatureOptions: options.configFeatureOptions,
       extensionCommandsParser: options.extensionCommandsParser,
+      catalogModelResolver: options.catalogModelResolver,
       defaultModes: options.defaultModes,
     });
 

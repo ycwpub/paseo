@@ -20,12 +20,6 @@ import {
 } from "./daemon/local-daemon.js";
 import { getCompleteDaemonPairingOffer } from "./daemon/pair.js";
 import { tryConnectToDaemon } from "../utils/client.js";
-import { formatPairingInstructions } from "../output/pairing.js";
-import {
-  confirmRelayPairing,
-  printDirectConnectionGuidance,
-  resolveLocalPairingOffer,
-} from "./daemon/pair.js";
 
 interface OnboardOptions extends DaemonStartOptions {
   timeout?: string;
@@ -94,6 +88,33 @@ function parseTimeoutMs(raw: string | undefined): number {
   }
 
   return Math.ceil(seconds * 1000);
+}
+
+function toCliOverrides(options: OnboardOptions): CliConfigOverrides {
+  const cliOverrides: CliConfigOverrides = {};
+
+  if (options.listen) {
+    cliOverrides.listen = options.listen;
+  } else if (options.port) {
+    cliOverrides.listen = `127.0.0.1:${options.port}`;
+  }
+  if (options.relay === false) {
+    cliOverrides.relayEnabled = false;
+  }
+  if (options.hostnames) {
+    const raw = options.hostnames.trim();
+    cliOverrides.hostnames =
+      raw.toLowerCase() === "true"
+        ? true
+        : raw
+            .split(",")
+            .map((host) => host.trim())
+            .filter(Boolean);
+  }
+  if (options.mcp === false) {
+    cliOverrides.mcpEnabled = false;
+  }
+  return cliOverrides;
 }
 
 function savePersistedConfig(paseoHome: string, config: OnboardPersistedConfig): void {
@@ -523,6 +544,7 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   }
 
   const voiceEnabled = await resolveAndPersistVoice(paseoHome, options);
+  const config = loadConfig(paseoHome, { cli: toCliOverrides(options) });
   log.message(
     voiceEnabled
       ? "Voice features enabled. Local speech models will be downloaded automatically if missing."

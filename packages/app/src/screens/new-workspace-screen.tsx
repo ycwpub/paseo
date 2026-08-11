@@ -1562,6 +1562,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   );
 }
 
+// oxlint-disable-next-line complexity -- The workspace creation surface coordinates several independent launch modes.
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -1641,7 +1642,6 @@ export function NewWorkspaceScreen({
     terminalTakesPrompt,
     terminalComposerValue,
     terminalPlaceholder,
-    terminalSubmitLabel,
     launchFocusKey,
   } = useTerminalComposerState({ launchTarget, terminalProfiles, terminalPromptText });
 
@@ -2317,35 +2317,64 @@ export function NewWorkspaceScreen({
             <Text style={styles.composerTitle}>{t("newWorkspace.title")}</Text>
           </View>
           {formStack}
-          <Composer
-            externalKeyboardShift
-            agentId={draftKey}
-            serverId={selectedServerId}
-            isPaneFocused={true}
-            onSubmitMessage={handleSubmitNewWorkspace}
-            allowEmptySubmit={true}
-            submitButtonAccessibilityLabel={t("newWorkspace.create")}
-            submitButtonTestID="workspace-create-submit"
-            submitIcon="return"
-            isSubmitLoading={isPending}
-            submitBehavior="preserve-and-lock"
-            blurOnSubmit={true}
-            value={chatDraft.text}
-            onChangeText={chatDraft.setText}
-            attachments={chatDraft.attachments}
-            attachmentScopeKeys={visibleDraftContextScopeKeys}
-            onChangeAttachments={chatDraft.setAttachments}
-            cwd={selectedSourceDirectory ?? ""}
-            clearDraft={handleClearDraft}
-            autoFocus
-            commandDraftConfig={composerState?.commandDraftConfig}
-            agentControls={agentControlsWithDisabled}
-            footer={composerFooter}
-            assistantId={chatDraft.assistantId}
-            onAssistantSelect={chatDraft.setAssistantId}
-            teamId={chatDraft.teamId}
-            onTeamSelect={chatDraft.setTeamId}
-          />
+          {isTerminalLaunch ? (
+            <Composer
+              externalKeyboardShift
+              inputMode="terminal"
+              placeholder={terminalPlaceholder}
+              agentId={draftKey}
+              serverId={selectedServerId}
+              isPaneFocused
+              onSubmitMessage={handleSubmitTerminalLaunch}
+              allowEmptySubmit
+              submitButtonAccessibilityLabel={t("newWorkspace.launch.submit")}
+              submitButtonTestID="new-workspace-launch-submit"
+              isSubmitLoading={isPending}
+              submitBehavior="preserve-and-lock"
+              blurOnSubmit
+              value={terminalComposerValue}
+              onChangeText={setTerminalPromptText}
+              attachments={NO_TERMINAL_ATTACHMENTS}
+              onChangeAttachments={noopChangeAttachments}
+              cwd={selectedSourceDirectory ?? ""}
+              clearDraft={noopClearDraft}
+              autoFocus={terminalTakesPrompt}
+              autoFocusKey={launchFocusKey}
+            />
+          ) : (
+            <Composer
+              externalKeyboardShift
+              agentId={draftKey}
+              serverId={selectedServerId}
+              isPaneFocused
+              onSubmitMessage={handleSubmitNewWorkspace}
+              allowEmptySubmit
+              submitButtonAccessibilityLabel={t("newWorkspace.create")}
+              submitButtonTestID="workspace-create-submit"
+              submitIcon="return"
+              isSubmitLoading={isPending}
+              waitForGithubAutoAttachOnSubmit
+              submitBehavior="preserve-and-lock"
+              blurOnSubmit
+              value={chatDraft.text}
+              onChangeText={chatDraft.setText}
+              attachments={chatDraft.attachments}
+              attachmentScopeKeys={visibleDraftContextScopeKeys}
+              onChangeAttachments={chatDraft.setAttachments}
+              onGithubPrDetected={handleGithubPrDetected}
+              onGithubPrAutoAttach={handleGithubPrAutoAttach}
+              cwd={selectedSourceDirectory ?? ""}
+              clearDraft={handleClearDraft}
+              autoFocus
+              autoFocusKey={launchFocusKey}
+              commandDraftConfig={composerState?.commandDraftConfig}
+              agentControls={agentControlsWithDisabled}
+              assistantId={chatDraft.assistantId}
+              onAssistantSelect={chatDraft.setAssistantId}
+              teamId={chatDraft.teamId}
+              onTeamSelect={chatDraft.setTeamId}
+            />
+          )}
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </ReanimatedAnimated.View>
       </View>

@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   ActivityIndicator,
+  StyleSheet as RNStyleSheet,
   type PressableStateCallbackType,
 } from "react-native";
 import type { TFunction } from "i18next";
@@ -1067,6 +1068,10 @@ interface ComposerProps {
   externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
+  /** Composer presentation mode. */
+  inputMode?: ComposerInputMode;
+  /** Optional placeholder override. */
+  placeholder?: string;
   /** Selected assistant ID for the current draft, if any. */
   assistantId?: string | null;
   /** Called when the user selects or clears an assistant. */
@@ -1265,6 +1270,8 @@ export function Composer({
   inputWrapperStyle,
   externalKeyboardShift,
   isCompactLayout: isCompactLayoutOverride,
+  inputMode = "chat",
+  placeholder,
   assistantId,
   onAssistantSelect: setAssistantId,
   teamId,

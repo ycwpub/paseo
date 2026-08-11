@@ -74,6 +74,7 @@ import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { MarkdownFenceBlock } from "@/components/markdown/fence";
 import type { MarkdownPhase } from "@/components/markdown/fence/types";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import { createAssistantMarkdownParser } from "@/utils/assistant-markdown-parser";
 import { formatActionTimeRange, formatDuration, formatMessageTimestamp } from "@/utils/time";
 import { writeMarkdownToRichClipboard } from "@/utils/rich-clipboard";
 import { getDefaultMarkdownClipboardEnvironment } from "@/utils/rich-clipboard-default-environment";
@@ -1466,6 +1467,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   variant = "answer",
 }: AssistantMessageProps) {
   const markdownParser = useMemo(createAssistantMarkdownParser, []);
+  const phase: MarkdownPhase = "complete";
 
   const fileLinkActions = useAssistantFileLinkActions();
   const handleMarkdownLinkPress = useStableEvent((url: string) => {

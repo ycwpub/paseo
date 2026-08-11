@@ -15,6 +15,7 @@ import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { WorkflowService } from "./workflow/service.js";
+import type { LoopService } from "./loop-service.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
 import {
@@ -106,6 +107,15 @@ import {
   type ApprovedClientAccessRecord,
 } from "./client-access-store.js";
 import { wrapDaemonEncryptedWebSocket } from "./encrypted-websocket.js";
+import {
+  APPLICATION_SOCKET_LEASE_CHECK_INTERVAL_MS,
+  ApplicationSocketLease,
+  MAX_PHYSICAL_SOCKET_BUFFERED_BYTES,
+  outboundFrameByteLength,
+  physicalSocketHasCapacity,
+  sendBoundedPhysicalFrame,
+  sendBoundedPhysicalFrameAndWait,
+} from "./websocket/physical-socket.js";
 
 const WS_CLOSE_DAEMON_AUTH_FAILED = 4401;
 const WS_CLOSE_DIRECT_UPGRADE_DENIED = 4403;
@@ -563,6 +573,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly scheduleService: ScheduleService;
   private readonly workflowService: WorkflowService | null;
+  private readonly loopService: LoopService | null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
   private readonly github: ForgeService;
   private readonly workspaceGitService: WorkspaceGitService;
@@ -676,6 +687,8 @@ export class VoiceAssistantWebSocketServer {
     skillStore?: SkillStore | null,
     daemonKeyPair?: KeyPair,
     workflowService?: WorkflowService | null,
+    loopService?: LoopService | null,
+    workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -695,6 +708,7 @@ export class VoiceAssistantWebSocketServer {
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
     this.workflowService = workflowService ?? null;
+    this.loopService = loopService ?? null;
     this.daemonKeyPair = daemonKeyPair ?? null;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
@@ -1560,6 +1574,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceRegistry: this.workspaceRegistry,
       scheduleService: this.scheduleService,
       workflowService: this.workflowService,
+      loopService: this.loopService ?? undefined,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
       workspaceGitService: this.workspaceGitService,
@@ -1909,6 +1924,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceRecovery: true,
         // COMPAT(workspaceFileEditing): added in v0.2.0, remove after 2027-01-18 once daemon floor >= v0.2.0.
         workspaceFileEditing: true,
+        // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
+        workspaceScriptManagement: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.

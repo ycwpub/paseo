@@ -988,6 +988,11 @@ export const ja: TranslationResources = {
         project: "プロジェクト",
         status: "ステータス",
       },
+      sorting: {
+        label: "並び順",
+        activity: "最近のアクティビティ",
+        manual: "手動",
+      },
       titleSource: {
         label: "タイトル",
         title: "タイトル",

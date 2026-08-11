@@ -12,6 +12,7 @@ import {
   Clock3,
   ExternalLink,
   FileCode2,
+  CircleHelp,
   Play,
   Plus,
   RefreshCw,
@@ -31,6 +32,7 @@ import {
 } from "@getpaseo/protocol/workflow/types";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { WorkflowStepListEditor } from "@/components/workflows/workflow-step-editor";
+import { WorkflowUsageGuide } from "@/components/workflows/workflow-usage-guide";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
@@ -125,6 +127,7 @@ function WorkflowsScreenContent(): ReactElement {
   const [inputJson, setInputJson] = useState(DEFAULT_WORKFLOW_INPUT_JSON);
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [usageGuideVisible, setUsageGuideVisible] = useState(false);
   const requestGeneration = useRef(0);
   const wide = width >= 960;
 
@@ -435,6 +438,15 @@ function WorkflowsScreenContent(): ReactElement {
             <Button
               variant="ghost"
               size="sm"
+              leftIcon={CircleHelp}
+              onPress={() => setUsageGuideVisible(true)}
+              testID="workflows-usage-guide"
+            >
+              {t("workflows.actions.guide")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               leftIcon={RefreshCw}
               onPress={() => void loadScripts()}
               disabled={!client}
@@ -454,6 +466,11 @@ function WorkflowsScreenContent(): ReactElement {
             </Button>
           </View>
         }
+      />
+      <WorkflowUsageGuide
+        visible={usageGuideVisible}
+        scriptPath={draftPath}
+        onClose={() => setUsageGuideVisible(false)}
       />
       <View style={styles.hostBar}>
         {hosts.length > 1 ? (

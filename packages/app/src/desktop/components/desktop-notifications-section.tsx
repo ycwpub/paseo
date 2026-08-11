@@ -75,6 +75,8 @@ export function DesktopNotificationsSection() {
       granted: t("settings.permissions.actions.granted"),
       request: t("settings.permissions.actions.request"),
       requesting: t("settings.permissions.actions.requesting"),
+      busyExtraAction: (label: string) =>
+        t("settings.permissions.actions.busyExtraAction", { label }),
     }),
     [t],
   );

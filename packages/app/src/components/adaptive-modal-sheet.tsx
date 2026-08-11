@@ -714,19 +714,11 @@ export function AdaptiveModalSheet({
         presentation={presentation}
       >
         <AdaptiveBottomSheetInputContext.Provider value>
-          <SheetHeaderView header={header} onClose={onClose} testID={testID} />
-          {scrollable ? (
-            <BottomSheetScrollView
-              contentContainerStyle={bottomSheetContentStyle}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {children}
-            </BottomSheetScrollView>
+          {sizeContentToCurrentSnapPoint ? (
+            <BottomSheetVisibleContent>{sheetContent}</BottomSheetVisibleContent>
           ) : (
-            <View style={bottomSheetStaticContentStyle}>{children}</View>
+            sheetContent
           )}
-          {footer ? <View style={footerStyle}>{footer}</View> : null}
         </AdaptiveBottomSheetInputContext.Provider>
       </IsolatedBottomSheetModal>
     );

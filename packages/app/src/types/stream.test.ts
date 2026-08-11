@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyStreamEvent,
+  appendOptimisticUserMessageToStream,
+  buildOptimisticUserMessage,
   createUserMessage,
   handoffCreatedAgentUserMessageToStream,
   hydrateStreamState,
@@ -13,7 +15,6 @@ import {
   type StreamItem,
   isAgentToolCallItem,
   upsertUserMessage,
-  upsertUserMessageAcrossStream,
 } from "./stream";
 import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
@@ -1433,19 +1434,17 @@ describe("turn lifecycle events", () => {
       timestamp: new Date("2025-01-01T15:03:19Z"),
     };
 
-    const first = upsertUserMessageAcrossStream({
+    const first = appendOptimisticUserMessageToStream({
       tail: [],
       head: [headItem],
-      message: submitted,
-      insert: "head",
-      presentation: "existing",
+      message: optimistic,
+      placement: "active-head",
     });
-    const second = upsertUserMessageAcrossStream({
+    const second = appendOptimisticUserMessageToStream({
       tail: first.tail,
       head: first.head,
-      message: submitted,
-      insert: "head",
-      presentation: "existing",
+      message: optimistic,
+      placement: "active-head",
     });
     assert.deepStrictEqual(first.tail, [headItem, optimistic]);
     assert.deepStrictEqual(first.head, []);

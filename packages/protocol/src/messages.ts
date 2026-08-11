@@ -2617,12 +2617,14 @@ export const FileSubscribeRequestSchema = z.object({
   subscriptionId: z.string(),
   requestId: z.string(),
 });
+export type FileSubscribeRequest = z.infer<typeof FileSubscribeRequestSchema>;
 
 export const FileUnsubscribeRequestSchema = z.object({
   type: z.literal("fs.file.unsubscribe.request"),
   subscriptionId: z.string(),
   requestId: z.string(),
 });
+export type FileUnsubscribeRequest = z.infer<typeof FileUnsubscribeRequestSchema>;
 
 export const FileWriteRequestSchema = z.object({
   type: z.literal("fs.file.write.request"),
@@ -2633,6 +2635,7 @@ export const FileWriteRequestSchema = z.object({
   expectedRevision: z.string().optional(),
   requestId: z.string(),
 });
+export type FileWriteRequest = z.infer<typeof FileWriteRequestSchema>;
 
 export const FileEntryCreateRequestSchema = z.object({
   type: z.literal("fs.entry.create.request"),
@@ -2642,6 +2645,7 @@ export const FileEntryCreateRequestSchema = z.object({
   kind: z.enum(["file", "directory"]),
   requestId: z.string(),
 });
+export type FileEntryCreateRequest = z.infer<typeof FileEntryCreateRequestSchema>;
 
 export const FileEntryRenameRequestSchema = z.object({
   type: z.literal("fs.entry.rename.request"),
@@ -2650,6 +2654,7 @@ export const FileEntryRenameRequestSchema = z.object({
   name: z.string(),
   requestId: z.string(),
 });
+export type FileEntryRenameRequest = z.infer<typeof FileEntryRenameRequestSchema>;
 
 export const FileEntryDuplicateRequestSchema = z.object({
   type: z.literal("fs.entry.duplicate.request"),
@@ -2657,6 +2662,7 @@ export const FileEntryDuplicateRequestSchema = z.object({
   path: z.string(),
   requestId: z.string(),
 });
+export type FileEntryDuplicateRequest = z.infer<typeof FileEntryDuplicateRequestSchema>;
 
 export const FileEntryDeleteRequestSchema = z.object({
   type: z.literal("fs.entry.delete.request"),
@@ -2664,6 +2670,7 @@ export const FileEntryDeleteRequestSchema = z.object({
   path: z.string(),
   requestId: z.string(),
 });
+export type FileEntryDeleteRequest = z.infer<typeof FileEntryDeleteRequestSchema>;
 
 export const ProjectIconRequestSchema = z.object({
   type: z.literal("project_icon_request"),
@@ -3395,6 +3402,16 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceRecovery: z.boolean().optional(),
         // COMPAT(workspaceFileEditing): added in v0.2.0, remove after 2027-01-18 once daemon floor >= v0.2.0.
         workspaceFileEditing: z.boolean().optional(),
+        // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
+        workspaceScriptManagement: z.boolean().optional(),
+        // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
+        projectCustomIcon: z.boolean().optional(),
+        // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
+        fsEntryOps: z.boolean().optional(),
+        // COMPAT(fsEntryDuplicate): added in v0.3.0, remove gate after 2027-02-09.
+        fsEntryDuplicate: z.boolean().optional(),
+        // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
+        checkoutDiscardChanges: z.boolean().optional(),
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: z.boolean().optional(),
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
@@ -6401,6 +6418,8 @@ export type WorkspaceProjectDescriptorPayload = z.infer<
   typeof WorkspaceProjectDescriptorPayloadSchema
 >;
 export type ProjectListResponseMessage = z.infer<typeof ProjectListResponseMessageSchema>;
+export type FileVersion = z.infer<typeof FileVersionSchema>;
+export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
 export type WorkspaceScriptLifecycle = z.infer<typeof WorkspaceScriptLifecycleSchema>;
 export type WorkspaceScriptHealth = z.infer<typeof WorkspaceScriptHealthSchema>;
 export type WorkspaceScriptPayload = z.infer<typeof WorkspaceScriptPayloadSchema>;

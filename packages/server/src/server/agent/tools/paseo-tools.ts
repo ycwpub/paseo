@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ensureValidJson } from "../../json-utils.js";
 import type { Logger } from "pino";
 
-import type { AgentMode, AgentProvider, AgentSessionConfig } from "../agent-sdk-types.js";
+import type { AgentMode, AgentProvider } from "../agent-sdk-types.js";
 import type { AgentManager } from "../agent-manager.js";
 import { AgentProfileSchema } from "@getpaseo/protocol/messages";
 import type { DaemonConfigStore } from "../../daemon-config-store.js";
@@ -672,16 +672,6 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       throw new Error(`Parent agent ${callerAgentId} not found`);
     }
     return parentAgent;
-  };
-
-  const resolveInheritedProviderConfig = (
-    selectedProvider: string,
-  ): Pick<AgentSessionConfig, "providerOptions"> | undefined => {
-    const callerAgent = resolveCallerAgent();
-    if (callerAgent?.provider !== selectedProvider || !callerAgent.config?.providerOptions) {
-      return undefined;
-    }
-    return { providerOptions: callerAgent.config.providerOptions };
   };
 
   const resolveScopedCwd = (requestedCwd?: string, opts?: { required?: boolean }): string => {

@@ -10,7 +10,6 @@ import {
 import { tryConnectToDaemon } from "../../utils/client.js";
 import { resolveLocalDaemonState } from "./local-daemon.js";
 import { addJsonOption } from "../../utils/command-options.js";
-import { formatPairingInstructions } from "../../output/pairing.js";
 
 interface PairOptions {
   home?: string;
@@ -38,10 +37,36 @@ export interface PairingOffer {
   relayEnabled: boolean;
   url: string | null;
   qr: string | null;
+  offers: Array<{
+    endpoint: string;
+    useTls: boolean;
+    pairingBaseUrl?: string;
+    url: string;
+    qr?: string | null;
+  }>;
 }
 
 const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
 const PAIRING_RECONCILE_POLL_MS = 100;
+const RELAY_DOCS_URL = "https://paseo.sh/docs/security";
+
+function createProcessOutput(): PairCommandOutput {
+  return {
+    columns: process.stdout.columns,
+    writeStdout(message) {
+      process.stdout.write(message);
+    },
+    writeStderr(message) {
+      process.stderr.write(message);
+    },
+    setExitCode(code) {
+      process.exitCode = code;
+    },
+    success(message) {
+      log.success(message);
+    },
+  };
+}
 
 type ConnectedDaemonClient = NonNullable<Awaited<ReturnType<typeof tryConnectToDaemon>>>;
 
@@ -96,37 +121,9 @@ export async function resolveLocalPairingOffer(options: {
     );
   }
 
-  const paseoHome = resolvePaseoHome();
-  const state = resolveLocalDaemonState({ home: paseoHome });
-
-  // Try to get the pairing offer from the running daemon first.
-  if (state.running) {
-    const client = await tryConnectToDaemon({ host: state.listen, timeout: 1500 });
-    if (client) {
-      const supportsDaemonStatusRpc =
-        client.getLastServerInfoMessage()?.features?.daemonStatusRpc === true;
-      if (supportsDaemonStatusRpc) {
-        try {
-          const offer = await getCompleteDaemonPairingOffer(client, PAIRING_DAEMON_RPC_TIMEOUT_MS);
-          await client.close().catch(() => {});
-          outputPairingResult(
-            {
-              relayEnabled: offer.relayEnabled,
-              url: offer.url,
-              qr: offer.qr ?? null,
-              offers: offer.offers,
-            },
-            options,
-          );
-          return;
-        } catch {
-          // COMPAT(daemon-rpc-rollout): fall back to CLI-side pairing generation while
-          // old daemons lack daemonStatusRpc. Remove once the daemon floor is past
-          // v0.1.76; pairing should come from daemon.get_pairing_offer.
-        }
-      }
-      await client.close().catch(() => {});
-    }
+  const config = loadConfig(options.paseoHome);
+  if (options.enableRelay && !config.relayEnabled) {
+    throw new Error("Start the daemon before enabling relay for pairing.");
   }
 
   return generateLocalPairingOffer({
@@ -181,6 +178,7 @@ async function resolveDaemonPairingOffer(
       relayEnabled: offer.relayEnabled,
       url: offer.url || null,
       qr: offer.qr ?? null,
+      offers: offer.offers,
     };
   } finally {
     await client.close().catch(() => undefined);
@@ -297,5 +295,5 @@ function outputPairingResult(
       return `\nRelay ${scheme}://${offer.endpoint}\n${qrBlock}${offer.url}\n`;
     })
     .join("");
-  process.stdout.write(offerBlocks || `\nScan to pair:\n${pairing.qr ?? ""}\n${pairing.url}\n`);
+  output.writeStdout(offerBlocks || `\nScan to pair:\n${pairing.qr ?? ""}\n${pairing.url}\n`);
 }

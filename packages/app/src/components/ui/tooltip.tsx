@@ -539,23 +539,22 @@ export function TooltipContent({
   // steal focus / disrupt hover). Rendering via Portal + position:fixed keeps the
   // exact same positioning math as DropdownMenu, without hover feedback loops.
   if (isWeb || ctx.dismissOnTriggerPressOnly) {
-    return (
-      <Portal hostName={bottomSheetInternal?.hostName}>
-        <View pointerEvents="none" style={styles.portalOverlay}>
-          <FloatingSurface
-            pointerEvents="none"
-            entering={FadeIn.duration(80)}
-            exiting={FadeOut.duration(80)}
-            collapsable={false}
-            testID={testID}
-            onLayout={handleLayout}
-            style={contentStyle}
-            frameStyle={frameStyle}
-          >
-            {children}
-          </FloatingSurface>
-        </View>
-      </Portal>
+    return createPortal(
+      <View pointerEvents="none" style={styles.portalOverlay}>
+        <FloatingSurface
+          pointerEvents="none"
+          entering={FadeIn.duration(80)}
+          exiting={FadeOut.duration(80)}
+          collapsable={false}
+          testID={testID}
+          onLayout={handleLayout}
+          style={contentStyle}
+          frameStyle={frameStyle}
+        >
+          {children}
+        </FloatingSurface>
+      </View>,
+      getOverlayRoot(),
     );
   }
 

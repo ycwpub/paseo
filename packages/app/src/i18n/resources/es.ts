@@ -1008,6 +1008,11 @@ export const es: TranslationResources = {
         project: "Proyecto",
         status: "Estado",
       },
+      sorting: {
+        label: "Ordenar por",
+        activity: "Actividad reciente",
+        manual: "Manual",
+      },
       titleSource: {
         label: "Título",
         title: "Título",

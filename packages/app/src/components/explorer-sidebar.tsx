@@ -37,6 +37,15 @@ import { RetainedPanelActivity } from "@/components/retained-panel";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { buildWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
 import { resolveDesktopWorkspaceExplorerWidth } from "@/components/desktop-sidebar-layout";
+import {
+  SIDEBAR_RESIZE_ACTIVATION_OFFSET,
+  SIDEBAR_RESIZE_FAIL_OFFSET,
+} from "@/components/sidebar-resize-handle-layout";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { resolveFocusedChatTarget } from "@/composer/focused-chat-target";
+import { createWorkspaceFileAttachment } from "@/attachments/workspace-file";
+import { useDraftStore } from "@/stores/draft-store";
 
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
@@ -215,9 +224,11 @@ export function ExplorerSidebar({
           scheduleOnRN(hideResizeGrip);
         }),
     [
+      hideResizeGrip,
       isAppSidebarOpen,
       resizeWidth,
       setExplorerWidth,
+      showResizeGrip,
       sidebarWidth,
       viewportWidth,
       visibleExplorerWidth,

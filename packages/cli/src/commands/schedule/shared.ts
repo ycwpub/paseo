@@ -154,6 +154,7 @@ interface ScheduleCreateOptionsInput {
   target?: string;
   provider?: string;
   mode?: string;
+  thinking?: string;
   assistant?: string;
   cwd?: string;
   shell?: string;
@@ -235,8 +236,18 @@ function buildCreateScheduleTarget(input: {
   const { options, cwdInput, scheduleType } = input;
   const targetValue = options.target?.trim();
   const modeId = options.mode?.trim();
+  const thinkingOptionId = options.thinking?.trim();
+  if (options.thinking !== undefined && !thinkingOptionId) {
+    throw {
+      code: "INVALID_THINKING_OPTION",
+      message: "--thinking cannot be empty",
+    } satisfies CommandError;
+  }
   const hasExplicitNewAgentOption =
-    options.provider !== undefined || options.mode !== undefined || options.assistant !== undefined;
+    options.provider !== undefined ||
+    options.mode !== undefined ||
+    options.thinking !== undefined ||
+    options.assistant !== undefined;
   validateCreateScheduleTargetOptions({
     options,
     scheduleType,
@@ -258,6 +269,7 @@ function buildCreateScheduleTarget(input: {
         cwd: cwdInput ?? process.cwd(),
         ...(resolvedProviderModel.model ? { model: resolvedProviderModel.model } : {}),
         ...(modeId ? { modeId } : {}),
+        ...(thinkingOptionId ? { thinkingOptionId } : {}),
         ...(assistantId ? { assistantId } : {}),
       },
     };

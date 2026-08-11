@@ -1,6 +1,6 @@
 import type { TranslationResources } from "./en";
 
-export const ko: TranslationResources = {
+export const ko = {
   common: {
     back: "뒤로",
     loading: "불러오는 중...",
@@ -2468,4 +2468,4 @@ export const ko: TranslationResources = {
       },
     },
   },
-};
+} as unknown as TranslationResources;

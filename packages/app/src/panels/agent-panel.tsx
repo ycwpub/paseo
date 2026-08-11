@@ -20,6 +20,7 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { SidebarCallout } from "@/components/sidebar-callout";
 import { Composer } from "@/composer";
@@ -1202,6 +1203,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     setAttachments,
     clear,
     isHydrated,
+    attachmentFocusRequestId,
     composerState,
     assistantId,
     setAssistantId,
@@ -1230,6 +1232,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setAttachments,
       clear,
       isHydrated,
+      attachmentFocusRequestId,
       composerState,
       assistantId,
       setAssistantId,

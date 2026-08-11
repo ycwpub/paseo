@@ -5,7 +5,7 @@ import { Platform, Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MoreVertical, Pencil, Plus } from "lucide-react-native";
+import { ArrowLeft, MoreVertical, Pencil, Plus, X } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import type {
   PaseoConfigRaw,
@@ -188,6 +188,13 @@ function ProjectSettingsBody({
   isHostGone,
 }: ProjectSettingsBodyProps) {
   const { t } = useTranslation();
+  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
+  const [editSessionId, setEditSessionId] = useState(0);
+  const openEditSheet = useCallback(() => {
+    setEditSessionId((id) => id + 1);
+    setIsEditSheetOpen(true);
+  }, []);
+  const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
   const queryKey = useMemo(
     () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
     [selectedHost.serverId, selectedHost.repoRoot],
@@ -270,9 +277,8 @@ function ProjectSettingsBody({
           </Pressable>
         </View>
         <Text style={styles.projectId} selectable>
-          {t("settings.project.projectId")}: {project.projectKey}
+          {t("settings.project.projectId")}: {selectedHost.projectId}
         </Text>
-        <HostContext hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
       </View>
 
       <ProjectEditSheet
@@ -1583,6 +1589,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
     flexShrink: 1,
+  },
+  editButton: {
+    padding: theme.spacing[1],
   },
   projectId: {
     color: theme.colors.foregroundMuted,

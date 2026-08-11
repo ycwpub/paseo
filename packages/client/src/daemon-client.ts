@@ -860,6 +860,10 @@ export type FetchWorkspacesOptions = Omit<FetchWorkspacesRequest, "type" | "requ
 };
 export type FetchWorkspacesEntry = FetchWorkspacesPayload["entries"][number];
 export type FetchWorkspacesPageInfo = FetchWorkspacesPayload["pageInfo"];
+export type ProjectListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "project.list.response" }
+>["payload"];
 export interface CreateChatRoomOptions {
   name: string;
   purpose?: string | null;
@@ -6408,6 +6412,7 @@ export class DaemonClient {
         [CLIENT_CAPS.terminalReflowableSnapshot]: true,
         [CLIENT_CAPS.providerSubagents]: true,
         [CLIENT_CAPS.projectUpdates]: true,
+        [CLIENT_CAPS.compactProviderSnapshots]: true,
         ...this.config.capabilities,
       },
       ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),

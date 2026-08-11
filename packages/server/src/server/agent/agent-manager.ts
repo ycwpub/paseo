@@ -432,6 +432,21 @@ export interface AgentMetricsSnapshot {
   };
 }
 
+export interface IdleAgentCollectionEntry {
+  agentId: string;
+  provider: AgentProvider;
+  sessionId?: string;
+}
+
+export interface IdleAgentCollectionFailure extends IdleAgentCollectionEntry {
+  error: unknown;
+}
+
+export interface IdleAgentCollectionResult {
+  collected: IdleAgentCollectionEntry[];
+  failures: IdleAgentCollectionFailure[];
+}
+
 type ActiveManagedAgent =
   | ManagedAgentInitializing
   | ManagedAgentIdle
@@ -1577,6 +1592,51 @@ export class AgentManager {
     if (persistError !== undefined) {
       throw persistError;
     }
+  }
+
+  async collectIdleAgents(options: {
+    cutoff: Date;
+    protectedAgentIds: ReadonlySet<string>;
+  }): Promise<IdleAgentCollectionResult> {
+    const result: IdleAgentCollectionResult = { collected: [], failures: [] };
+
+    for (const agent of Array.from(this.agents.values())) {
+      const current = this.agents.get(agent.id);
+      if (!current || !this.isIdleAgentCollectable(current, options)) {
+        continue;
+      }
+
+      const entry: IdleAgentCollectionEntry = {
+        agentId: current.id,
+        provider: current.provider,
+        ...(current.persistence?.sessionId ? { sessionId: current.persistence.sessionId } : {}),
+      };
+      try {
+        await this.closeAgent(current.id);
+        result.collected.push(entry);
+      } catch (error) {
+        result.failures.push({ ...entry, error });
+      }
+    }
+
+    return result;
+  }
+
+  private isIdleAgentCollectable(
+    agent: LiveManagedAgent,
+    options: { cutoff: Date; protectedAgentIds: ReadonlySet<string> },
+  ): agent is ManagedAgentIdle {
+    return (
+      agent.lifecycle === "idle" &&
+      agent.updatedAt.getTime() <= options.cutoff.getTime() &&
+      !agent.internal &&
+      !options.protectedAgentIds.has(agent.id) &&
+      agent.activeForegroundTurnId === null &&
+      !this.runs.hasRun(agent.id) &&
+      !agent.pendingReplacement &&
+      agent.pendingPermissions.size === 0 &&
+      agent.inFlightPermissionResponses.size === 0
+    );
   }
 
   private cancelRunningProviderSubagents(parentAgentId: string): void {

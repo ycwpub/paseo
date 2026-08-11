@@ -22,6 +22,7 @@ export interface DaemonRuntimeConfig {
   relayDeviceType?: RelayDeviceType;
   getLocalRelayStatus?: () => LocalRelayStatus | null;
   deleteLocalRelayHistory?: (historyId: string) => boolean;
+  getRelayConfig: () => DaemonRuntimeConfig["relay"];
   relay: {
     enabled: boolean;
     endpoints: Array<{

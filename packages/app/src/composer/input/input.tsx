@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TextInput,
+  Pressable,
   useWindowDimensions,
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData,
@@ -59,6 +60,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
 import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
@@ -182,7 +184,6 @@ const MIN_INPUT_HEIGHT_DESKTOP = 46;
 const DEFAULT_MAX_INPUT_HEIGHT = 160;
 const MAX_INPUT_VIEWPORT_RATIO = 0.5;
 const MIN_INPUT_HEIGHT = isWeb ? MIN_INPUT_HEIGHT_DESKTOP : MIN_INPUT_HEIGHT_MOBILE;
-const ATTACHMENT_SHEET_SNAP_POINTS = ["34%", "45%"];
 const EXPANDED_EDITOR_SNAP_POINTS = ["70%", "90%"];
 
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
@@ -957,6 +958,15 @@ type PrimaryActionKind = "send" | "active" | "none";
 
 function hasSendableComposerContent(input: {
   value: string;
+  attachments: readonly ComposerAttachment[];
+  hasExternalContent: boolean;
+}): boolean {
+  return input.value.trim().length > 0 || input.attachments.length > 0 || input.hasExternalContent;
+}
+
+function resolvePrimaryActionKind(input: {
+  hasSendableContent: boolean;
+  allowEmptySubmit: boolean;
   isAgentRunning: boolean;
   isSubmitLoading: boolean;
 }): PrimaryActionKind {
@@ -966,29 +976,19 @@ function hasSendableComposerContent(input: {
   return "none";
 }
 
-function applyDictationTranscript(text: string, ctx: DictationTranscriptContext): void {
-  if (!text) return;
-  const shouldPad = ctx.value.length > 0 && !/\s$/.test(ctx.value);
-  const nextValue = `${ctx.value}${shouldPad ? " " : ""}${text}`;
-
-  if (!ctx.autoSend) {
-    ctx.onChangeText(nextValue);
-    return;
-  }
-
-  if (ctx.isAgentRunning && ctx.onQueue) {
-    ctx.onQueue({ text: nextValue, attachments: ctx.attachments, cwd: ctx.cwd });
-    ctx.onChangeText("");
-    return;
-  }
-
-  ctx.onSubmit({
-    text: nextValue,
-    attachments: ctx.attachments,
-    cwd: ctx.cwd,
-    forceSend: ctx.isAgentRunning || undefined,
-  });
+function PrimaryAction({
+  kind,
+  activeActionContent,
+  ...sendButtonProps
+}: {
+  kind: PrimaryActionKind;
+  activeActionContent: React.ReactNode;
+} & React.ComponentProps<typeof SendButtonTooltip>) {
+  if (kind === "active") return activeActionContent;
+  if (kind === "send") return <SendButtonTooltip {...sendButtonProps} />;
+  return null;
 }
+
 interface ToggleRealtimeVoiceContext {
   voice:
     | {
@@ -2026,6 +2026,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const attachmentButton = (
       <AttachmentDropdown
+        visible={mode.showAttachments}
         isConnected={isConnected}
         disabled={disabled}
         attachButtonStyle={attachButtonStyle}
@@ -2045,6 +2046,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           style={expandButtonStyle}
         />
         <VoiceButtonTooltip
+          visible={mode.showVoice}
           onVoicePress={handleVoicePress}
           isDictationStartEnabled={isDictationStartEnabled}
           voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
@@ -2056,8 +2058,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           dictationToggleKeys={dictationToggleKeys}
         />
         {rightContent}
-        <SendButtonTooltip
-          shouldShow={shouldShowSendButton}
+        <PrimaryAction
+          kind={primaryActionKind}
+          activeActionContent={activeActionContent}
+          shouldShow
           canPressLoadingButton={canPressLoadingButton}
           onSubmitLoadingPress={onSubmitLoadingPress}
           onDefaultSendAction={handleDefaultSendAction}
@@ -2066,6 +2070,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           sendButtonCombinedStyle={sendButtonCombinedStyle}
           isSubmitLoading={isSubmitLoading}
           submitIcon={submitIcon}
+          submitLabel={submitLabel}
           submitButtonTestID={submitButtonTestID}
           buttonIconSize={buttonIconSize}
           sendKeys={DEFAULT_SEND_KEYS}
@@ -2422,7 +2427,7 @@ const ThemedMicOff = withUnistyles(MicOff);
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedCornerDownLeft = withUnistyles(CornerDownLeft);
 const ThemedMaximize2 = withUnistyles(Maximize2);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedTextInput = withUnistyles(TextInput);
 
 const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });

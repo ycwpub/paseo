@@ -780,7 +780,7 @@ export class MockLoadTestAgentSession implements AgentSession {
       } else if (this.assistantResponse !== null) {
         this.scheduleSettledAssistantTurn(turn, this.assistantResponse);
       } else if (workflowResult) {
-        this.scheduleStructuredJsonTurn(turn, workflowResult);
+        this.scheduleSettledAssistantTurn(turn, JSON.stringify(workflowResult));
       } else if (structuredBranchName) {
         this.scheduleSettledAssistantTurn(turn, JSON.stringify(structuredBranchName));
       } else if (settledAssistantImageMarkdown) {

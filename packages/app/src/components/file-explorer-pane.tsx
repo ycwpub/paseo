@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -67,7 +68,19 @@ import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-action
 import { usePanelStore, type ExpandedPathsUpdate, type SortOption } from "@/stores/panel-store";
 import { formatTimeAgo } from "@/utils/time";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
-import { filterVisibleExplorerEntries, isHiddenExplorerPath } from "@/file-explorer/visibility";
+import { isHiddenExplorerPath } from "@/file-explorer/visibility";
+import {
+  flattenExplorerTree,
+  reconcileRestoredExpandedPaths,
+  restoreExpandedDirectories,
+  setExpandedDirectoryPath,
+  showHiddenFilesAndRestoreExpandedDirectories,
+  type ExplorerTreeRow,
+} from "@/file-explorer/tree";
+import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
+import { confirmDialog } from "@/utils/confirm-dialog";
+import { useToast } from "@/contexts/toast-context";
+import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import {
   PROJECT_RESOURCE_DIRECTORY_KEYS,
   formatProjectResourceDirectoryPath,
@@ -430,6 +443,7 @@ export function FileExplorerPane({
   onAddToChat,
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const [selectedDirectoryType, setSelectedDirectoryType] =
     useState<PaseoProjectDirectoryKey>("project");
   const [selectedRootIndex, setSelectedRootIndex] = useState(0);
@@ -503,10 +517,6 @@ export function FileExplorerPane({
       }),
     [activeRoot, normalizedWorkspaceRoot, workspaceId],
   );
-  const workspaceScopeId = useMemo(
-    () => `${workspaceId?.trim() || "workspace"}:${activeRoot}`,
-    [activeRoot, workspaceId],
-  );
   const hasWorkspaceScope = Boolean(workspaceStateKey && activeRoot);
   const explorerState = useSessionStore((state) =>
     workspaceStateKey && state.sessions[serverId]
@@ -514,12 +524,36 @@ export function FileExplorerPane({
       : undefined,
   );
 
-  const { requestDirectoryListing, requestFileDownloadToken, selectExplorerEntry } =
-    useFileExplorerActions({
-      serverId,
-      workspaceId: activeRoot === normalizedWorkspaceRoot ? workspaceId : null,
-      workspaceRoot: activeRoot,
-    });
+  const {
+    requestDirectoryListing,
+    createEntry,
+    renameEntry,
+    duplicateEntry,
+    deleteEntry,
+    selectExplorerEntry,
+  } = useFileExplorerActions({
+    serverId,
+    workspaceId: activeRoot === normalizedWorkspaceRoot ? workspaceId : null,
+    workspaceRoot: activeRoot,
+  });
+  const toast = useToast();
+  const isLocalDaemon = useIsLocalDaemon(serverId);
+  const { targets: desktopOpenTargets } = useDesktopOpenTargets({
+    isLocalExecution: isLocalDaemon,
+  });
+  const fileManagerTarget = desktopOpenTargets.find((target) => target.kind === "file-manager");
+  const fsEntryOpsEnabled = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryOps === true,
+  );
+  const fsEntryDuplicateEnabled = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
+  );
+  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
+  const downloadFile = useFileDownload({
+    serverId,
+    workspaceId: activeRoot === normalizedWorkspaceRoot ? workspaceId : null,
+    workspaceRoot: activeRoot,
+  });
   const sortOption = usePanelStore((state) => state.explorerSortOption);
   const showHiddenFiles = usePanelStore((state) => state.explorerShowHiddenFiles);
   const setSortOption = usePanelStore((state) => state.setExplorerSortOption);
@@ -1116,10 +1150,12 @@ export function FileExplorerPane({
           isRootMissing={isRootMissing}
           showInitialLoading={showInitialLoading}
           showBackFromError={showBackFromError}
-          treeRows={treeRows}
+          listRows={listRows}
+          onNewEntryAtRoot={fsEntryOpsEnabled ? handleNewEntry : undefined}
           currentSortLabel={currentSortLabel}
           isRefreshFetching={isRefreshFetching}
           treeListRef={treeListRef}
+          scrollbar={scrollbar}
           renderTreeRow={renderTreeRow}
           handleSortCycle={handleSortCycle}
           handleToggleHiddenFiles={handleToggleHiddenFiles}
@@ -1249,6 +1285,57 @@ function ProjectResourceRootButton({
         </Text>
       ) : null}
     </Pressable>
+  );
+}
+
+interface WebContextMenuEvent {
+  nativeEvent: { pageX: number; pageY: number };
+  target: unknown;
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
+function isFileExplorerRowTarget(target: unknown): boolean {
+  if (!isWeb || typeof Element === "undefined" || !(target instanceof Element)) {
+    return false;
+  }
+  return target.closest('[data-testid^="file-explorer-row-"]') !== null;
+}
+
+function RootCreationContextTarget({
+  children,
+  enabled,
+}: {
+  children: ReactNode;
+  enabled: boolean;
+}) {
+  const contextMenu = useContextMenu();
+  const handleContextMenu = useCallback(
+    (event: WebContextMenuEvent) => {
+      if (!enabled || isFileExplorerRowTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      contextMenu.setAnchorRect({
+        x: event.nativeEvent.pageX,
+        y: event.nativeEvent.pageY,
+        width: 0,
+        height: 0,
+      });
+      contextMenu.setOpen(true);
+    },
+    [contextMenu, enabled],
+  );
+
+  return (
+    <View
+      {...{ onContextMenu: handleContextMenu }}
+      style={styles.rootContextTarget}
+      testID="files-empty-area"
+    >
+      {children}
+    </View>
   );
 }
 

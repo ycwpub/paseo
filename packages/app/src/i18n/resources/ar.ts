@@ -977,6 +977,11 @@ export const ar: TranslationResources = {
         project: "المشروع",
         status: "الحالة",
       },
+      sorting: {
+        label: "الترتيب حسب",
+        activity: "النشاط الأخير",
+        manual: "يدوي",
+      },
       titleSource: {
         label: "العنوان",
         title: "العنوان",

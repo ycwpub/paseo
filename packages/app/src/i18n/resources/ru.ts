@@ -999,6 +999,11 @@ export const ru: TranslationResources = {
         project: "Проект",
         status: "Статус",
       },
+      sorting: {
+        label: "Сортировать по",
+        activity: "Недавняя активность",
+        manual: "Вручную",
+      },
       titleSource: {
         label: "Заголовок",
         title: "Заголовок",

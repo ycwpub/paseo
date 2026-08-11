@@ -22,12 +22,17 @@ import type {
 import { DaemonClient, FileExplorerRequestError } from "./daemon-client.js";
 import type {
   DaemonConnectionTransport,
+  FetchAgentsEntry,
+  FetchAgentsOptions,
+  FetchAgentsPageInfo,
   FetchAgentTimelineCursor,
   FetchAgentTimelineDirection,
   FetchAgentTimelinePayload,
   FetchAgentTimelineProjection,
   WaitForFinishResult,
 } from "./daemon-client.js";
+
+const DEFAULT_WAIT_FOR_FINISH_MS = 10 * 60_000;
 
 export { DaemonClient, FileExplorerRequestError };
 export type {
@@ -578,13 +583,44 @@ function createAgentHandleFactory(daemonClient: DaemonClient): AgentHandleFactor
             }
           }),
       },
-      latest: () => latest,
-      refetch: async (requestId) => {
-        const result = await daemonClient.fetchAgent({
-          agentId: id,
-          requestId,
-        });
-        latest = result?.agent ?? null;
+      get workspaceId() {
+        return current?.workspaceId ?? null;
+      },
+      get cwd() {
+        return current?.cwd ?? null;
+      },
+      get status() {
+        return current?.status ?? null;
+      },
+      current: () => current,
+      refresh: async (requestId) => {
+        const result = await daemonClient.fetchAgent({ agentId: id, requestId });
+        current = result?.agent ?? null;
+        return result;
+      },
+      send: async (text, options) => {
+        await daemonClient.sendAgentMessage(id, text, options);
+      },
+      run: async (text, options) => {
+        const { timeoutMs, ...sendOptions } = options ?? {};
+        await daemonClient.sendAgentMessage(id, text, sendOptions);
+        const result = await daemonClient.waitForFinish(
+          id,
+          timeoutMs ?? DEFAULT_WAIT_FOR_FINISH_MS,
+        );
+        if (result.final) {
+          current = result.final;
+        }
+        return result;
+      },
+      waitForFinish: async (timeoutMs) => {
+        const result = await daemonClient.waitForFinish(
+          id,
+          timeoutMs ?? DEFAULT_WAIT_FOR_FINISH_MS,
+        );
+        if (result.final) {
+          current = result.final;
+        }
         return result;
       },
       archive: async () => {

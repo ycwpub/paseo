@@ -27,18 +27,12 @@ export const ScheduleNewAgentTargetConfigSchema = z.object({
   isolation: z.enum(["local", "worktree"]).optional(),
   assistantId: z.string().trim().min(1).optional(),
   title: z.string().trim().min(1).nullable().optional(),
+  providerOptions: z.record(z.string(), z.json()).optional(),
+  featureValues: z.record(z.string(), z.unknown()).optional(),
   approvalPolicy: z.string().trim().min(1).optional(),
-  sandboxMode: z.string().trim().min(1).optional(),
+  sandboxMode: z.enum(["read-only", "workspace-write", "danger-full-access"]).optional(),
   networkAccess: z.boolean().optional(),
   webSearch: z.boolean().optional(),
-  featureValues: z.record(z.string(), z.unknown()).optional(),
-  extra: z
-    .object({
-      codex: z.record(z.string(), z.unknown()).optional(),
-      claude: z.record(z.string(), z.unknown()).optional(),
-    })
-    .partial()
-    .optional(),
   systemPrompt: z.string().optional(),
   mcpServers: z.record(z.string(), z.unknown()).optional(),
 });

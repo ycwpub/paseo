@@ -1466,12 +1466,8 @@ function buildWorkflowAgentConfig(step: WorkflowAgentStep, cwd: string): AgentSe
     model: step.config.model,
     thinkingOptionId: step.config.thinkingOptionId,
     title: step.config.title,
-    approvalPolicy: step.config.approvalPolicy,
-    sandboxMode: step.config.sandboxMode,
-    networkAccess: step.config.networkAccess,
-    webSearch: step.config.webSearch,
+    providerOptions: step.config.providerOptions,
     featureValues: step.config.featureValues,
-    extra: step.config.extra,
     systemPrompt: step.config.systemPrompt,
     mcpServers: step.config.mcpServers as AgentSessionConfig["mcpServers"],
   };

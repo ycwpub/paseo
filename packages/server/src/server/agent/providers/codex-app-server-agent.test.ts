@@ -631,10 +631,8 @@ describe("Codex app-server provider", () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const session = createSession({
       thinkingOptionId: "medium",
-      extra: {
-        codex: {
-          compact_prompt: "Use the workspace-specific compact prompt.",
-        },
+      providerOptions: {
+        compact_prompt: "Use the workspace-specific compact prompt.",
       },
     });
     session.currentThreadId = null;

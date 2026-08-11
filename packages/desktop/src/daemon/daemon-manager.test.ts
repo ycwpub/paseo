@@ -3,7 +3,6 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
-import { getBundledCliShimPath } from "../integrations/cli-install";
 import { createDaemonCommandHandlers } from "./daemon-manager";
 
 const originalExecPath = process.execPath;
@@ -753,7 +752,7 @@ describe("daemon-manager commands", () => {
         detached: true,
         stdio: ["ignore", "ignore", "ignore"],
         envOverlay: expect.objectContaining({
-          PASEO_CLI: getBundledCliShimPath(),
+          PASEO_DESKTOP_BUILD_ID: currentDesktopBuildId(),
           PASEO_WEB_UI_ENABLED: "false",
         }),
       }),

@@ -30,6 +30,7 @@ import {
   shouldUseTlsForDefaultHostedRelay,
   type RelayEndpointConfig,
 } from "@getpaseo/protocol/daemon-endpoints";
+import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
 
 const DEFAULT_PORT = 6767;
 const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
@@ -798,6 +799,7 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    git: resolveGitProcessConfig(env, persisted),
     clientAccessRequireApproval,
     projectIndexUpdateIntervalMinutes,
     instructionTemplates,
@@ -812,6 +814,7 @@ export function loadConfig(
     staticDir: "public",
     agentClients: {},
     relayEnabled: relay.enabled,
+    relayEnabledMutable: true,
     relayEndpoints: relay.endpoints,
     relayPairingBaseUrls: relay.pairingBaseUrls,
     ...resolveLegacyRelaySummary(relay.endpoints),

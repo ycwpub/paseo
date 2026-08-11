@@ -80,7 +80,9 @@ function parseSentFrame(
   return JSON.parse(data);
 }
 
-async function connectClient(): Promise<{
+async function connectClient(
+  features: Record<string, boolean> = { providersSnapshotCwd: true },
+): Promise<{
   client: PaseoClient;
   ws: FakeWebSocket;
 }> {
@@ -304,7 +306,7 @@ test("workspace handles keep identity and refresh snapshots through existing dri
   expect(workspace.current()).toEqual(openedWorkspace);
 
   const refreshedWorkspace = createWorkspace({ name: "sdk refreshed" });
-  const refetchPromise = workspace?.refetch({
+  const refetchPromise = workspace.refresh({
     requestId: "workspace-refetch-request",
   });
   expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
@@ -999,6 +1001,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       metadataGeneration: { providers: [] },
       relay: {
         endpoints: [],
+        pairingBaseUrls: [],
         local: { enabled: false, listen: "0.0.0.0:6769" },
       },
       autoArchiveAfterMerge: false,
@@ -1060,6 +1063,7 @@ test("config actions delegate to existing daemon config RPCs", async () => {
       metadataGeneration: { providers: [] },
       relay: {
         endpoints: [],
+        pairingBaseUrls: [],
         local: { enabled: false, listen: "0.0.0.0:6769" },
       },
       autoArchiveAfterMerge: false,

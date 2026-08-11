@@ -145,6 +145,7 @@ import {
   type WorkspaceArchiveContext,
 } from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
+import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { WorkflowService } from "./workflow/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
@@ -167,7 +168,7 @@ import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
 import { startLocalRelayServer, type LocalRelayServerController } from "@getpaseo/relay";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
-import type { PushNotificationSender } from "./push/notifications.js";
+import type { PushNotificationSender } from "./push/index.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
@@ -182,7 +183,7 @@ import type {
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
 import type { RelayDeviceType, RelayEndpointConfig } from "@getpaseo/protocol/daemon-endpoints";
-import type { PersistedConfig } from "./persisted-config.js";
+import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
@@ -238,6 +239,8 @@ import { ProjectIndexService } from "./project/project-index-service.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
+const IDLE_AGENT_RUNTIME_TTL_MS = 2 * 60 * 1000;
+const IDLE_AGENT_RUNTIME_SWEEP_INTERVAL_MS = 15 * 1000;
 const DOWNLOAD_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
 
@@ -408,6 +411,10 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   browserToolsEnabled?: boolean;
+  git?: {
+    maxProcessesPerSecond: number;
+    maxProcessConcurrency: number;
+  };
   clientAccessRequireApproval?: boolean;
   projectIndexUpdateIntervalMinutes?: number;
   instructionTemplates?: PaseoInstructionTemplate[];
@@ -422,6 +429,7 @@ export interface PaseoDaemonConfig {
   agentClients: Partial<Record<AgentProvider, AgentClient>>;
   agentStoragePath: string;
   relayEnabled?: boolean;
+  relayEnabledMutable?: boolean;
   relayEndpoints?: RelayEndpointConfig[];
   relayPairingBaseUrls?: string[];
   relayEndpoint?: string;
@@ -558,7 +566,6 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
   );
 
   const initialConfig: MutableDaemonConfig = {
-    relay: { enabled: config.relayEnabled ?? true },
     mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
     browserTools: { enabled: config.browserToolsEnabled ?? false },
     clientAccess: {
@@ -718,6 +725,7 @@ export async function createPaseoDaemon(
     relayDeviceType: resolveRelayServerDeviceType(config.desktopManaged),
     getLocalRelayStatus: () => localRelayServer?.getStatus() ?? null,
     deleteLocalRelayHistory: (historyId) => localRelayServer?.deleteHistory(historyId) ?? false,
+    getRelayConfig: () => daemonRuntimeConfig.relay,
     relay: null,
   };
   let larkChannelService: LarkChannelService;
@@ -1201,6 +1209,10 @@ export async function createPaseoDaemon(
     logger,
   });
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+  const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
+    scriptRuntimeStore.removeForWorkspace(workspaceId);
+    releaseWorkspaceServicePortPlan(workspaceId);
+  };
   const projectIndexService = new ProjectIndexService({
     projectRegistry,
     daemonConfigStore,
@@ -1992,6 +2004,8 @@ export async function createPaseoDaemon(
               skillStore,
               daemonKeyPair.keyPair,
               workflowService,
+              loopService,
+              workspaceSetupRuntime,
             );
             await wsServer.startLanDirectListener();
             await hubRelationships.start();

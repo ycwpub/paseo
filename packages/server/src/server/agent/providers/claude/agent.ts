@@ -1596,6 +1596,12 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
+    let claudeCodeVersion: string | undefined;
+    try {
+      claudeCodeVersion = await this.resolveVersion();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
+    }
     const models = await getClaudeModelsWithSettings(
       this.logger,
       this.configDir,
@@ -1605,6 +1611,7 @@ export class ClaudeAgentClient implements AgentClient {
             configDir: this.aidenConfigDir,
           }
         : undefined,
+      claudeCodeVersion,
     );
     const modes = detectIneligibleAutoModeTransport(
       createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),

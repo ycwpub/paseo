@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { View } from "react-native";
-import { withUnistyles } from "react-native-unistyles";
+import { View, Text } from "react-native";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { RotateCw } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
@@ -66,33 +66,51 @@ function DesktopAttentionSettingsSection() {
   );
 }
 
-const ThemedRotateCw = withUnistyles(RotateCw, (theme) => ({
-  size: theme.iconSize.md,
-  color: theme.colors.foregroundMuted,
-}));
-
 export function DesktopPermissionsSection() {
   const { t } = useTranslation();
+  const { theme } = useUnistyles();
   const {
     isDesktopApp,
     snapshot,
     isRefreshing,
     requestingPermission,
+    testNotificationState,
     refreshPermissions,
     requestPermission,
+    sendTestNotification,
   } = useDesktopPermissions();
+
+  const errorTextStyle = useMemo(
+    () => [styles.errorText, { color: theme.colors.destructive }],
+    [theme.colors.destructive],
+  );
 
   const handleRefreshPress = useCallback(() => {
     void refreshPermissions();
   }, [refreshPermissions]);
 
+  const handleRequestNotifications = useCallback(() => {
+    void requestPermission("notifications");
+  }, [requestPermission]);
+
   const handleRequestMicrophone = useCallback(() => {
     void requestPermission("microphone");
   }, [requestPermission]);
 
-  const isBusy = isRefreshing || requestingPermission !== null;
+  const handleSendTestNotification = useCallback(() => {
+    void sendTestNotification();
+  }, [sendTestNotification]);
 
-  const refreshIcon = useMemo(() => <ThemedRotateCw />, []);
+  const isBusy = isRefreshing || requestingPermission !== null;
+  const notificationsGranted = snapshot?.notifications.state === "granted";
+  const isSendingTestNotification = testNotificationState.status === "sending";
+  const testNotificationError =
+    testNotificationState.status === "error" ? testNotificationState.message : null;
+
+  const refreshIcon = useMemo(
+    () => <RotateCw size={theme.iconSize.md} color={theme.colors.foregroundMuted} />,
+    [theme.iconSize.md, theme.colors.foregroundMuted],
+  );
 
   const refreshButton = useMemo(
     () => (
@@ -115,6 +133,7 @@ export function DesktopPermissionsSection() {
       granted: t("settings.permissions.actions.granted"),
       request: t("settings.permissions.actions.request"),
       requesting: t("settings.permissions.actions.requesting"),
+      busyExtraAction: (label: string) => t("settings.permissions.actions.busySuffix", { label }),
     }),
     [t],
   );
@@ -155,3 +174,11 @@ export function DesktopPermissionsSection() {
     </>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  errorText: {
+    fontSize: theme.fontSize.xs,
+    paddingHorizontal: theme.spacing[4],
+    paddingBottom: theme.spacing[2],
+  },
+}));

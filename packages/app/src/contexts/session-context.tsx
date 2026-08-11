@@ -671,6 +671,8 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     );
     const sync = createViewedTimelineSync({
       initialDeliveryMode,
+      readCursor: (agentId) =>
+        useSessionStore.getState().sessions[serverId]?.agentTimelineCursor.get(agentId) ?? null,
       setSubscription: (agentIds) => client.setAgentTimelineSubscription(agentIds),
       fetchPage: async (agentId, request) => {
         const session = useSessionStore.getState().sessions[serverId];

@@ -221,6 +221,7 @@ import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
+import type { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import type { WorkflowService } from "./workflow/service.js";
 import {
@@ -468,7 +469,7 @@ export interface SessionOptions {
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
   workflowService?: WorkflowService | null;
-  loopService: LoopService;
+  loopService?: LoopService;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
   createAgentMcpTransport?: AgentMcpTransportFactory;
@@ -701,7 +702,7 @@ export class Session {
   private readonly checkoutSession: CheckoutSession;
   private readonly scheduleSession: ScheduleSession;
   private readonly workflowSession: WorkflowSession;
-  private readonly loopSession: LoopSession;
+  private readonly loopSession: LoopSession | null;
   private readonly providerCatalogSession: ProviderCatalogSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
   private readonly agentConfigSession: AgentConfigSession;
@@ -885,11 +886,13 @@ export class Session {
       workflowService,
       logger: this.sessionLogger,
     });
-    this.loopSession = new LoopSession({
-      host: { emit: (msg) => this.emit(msg) },
-      loopService,
-      logger: this.sessionLogger,
-    });
+    this.loopSession = loopService
+      ? new LoopSession({
+          host: { emit: (msg) => this.emit(msg) },
+          loopService,
+          logger: this.sessionLogger,
+        })
+      : null;
     this.providerCatalogSession = new ProviderCatalogSession({
       host: {
         emit: (msg) => this.emit(msg),
@@ -1950,7 +1953,9 @@ export class Session {
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
-      this.dispatchChatScheduleLoopMessage(msg) ??
+      this.dispatchScheduleMessage(msg) ??
+      this.dispatchWorkflowMessage(msg) ??
+      this.dispatchLoopMessage(msg) ??
       this.dispatchAssistantMessage(msg) ??
       this.dispatchChannelMessage(msg) ??
       this.dispatchTeamMessage(msg) ??
@@ -2393,6 +2398,13 @@ export class Session {
         return this.scheduleSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
         return this.scheduleSession.handleScheduleUpdateRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchWorkflowMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "workflow/list":
         return this.workflowSession.handleListRequest(msg);
       case "workflow/inspect":
@@ -2407,16 +2419,23 @@ export class Session {
         return this.workflowSession.handleSaveRequest(msg);
       case "workflow/delete":
         return this.workflowSession.handleDeleteRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchLoopMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       case "loop/run":
-        return this.loopSession.handleRunRequest(msg);
+        return this.loopSession?.handleRunRequest(msg);
       case "loop/list":
-        return this.loopSession.handleListRequest(msg);
+        return this.loopSession?.handleListRequest(msg);
       case "loop/inspect":
-        return this.loopSession.handleInspectRequest(msg);
+        return this.loopSession?.handleInspectRequest(msg);
       case "loop/logs":
-        return this.loopSession.handleLogsRequest(msg);
+        return this.loopSession?.handleLogsRequest(msg);
       case "loop/stop":
-        return this.loopSession.handleStopRequest(msg);
+        return this.loopSession?.handleStopRequest(msg);
       default:
         return undefined;
     }

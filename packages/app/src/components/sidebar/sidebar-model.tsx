@@ -81,7 +81,7 @@ export function SidebarModelProvider({
       collapsedProjectKeys,
       collapsedStatusGroupKeys,
       groupMode,
-      list.projectNamesByKey,
+      list.projectNamesByViewKey,
       projects,
       pinnedCollapsed,
       pinnedKeys,

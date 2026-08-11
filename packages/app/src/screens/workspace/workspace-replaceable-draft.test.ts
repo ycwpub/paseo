@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DraftRecord } from "@/stores/draft-store/state";
 import type { PendingCreateAttempt } from "@/stores/create-flow-store";
-import type { WorkspaceTab } from "@/stores/workspace-tabs-store";
+import type { WorkspaceTab } from "@/workspace-tabs/model";
 import { resolveReplaceableWorkspaceDraftTabId } from "./workspace-replaceable-draft";
 
 const tab: WorkspaceTab = {

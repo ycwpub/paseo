@@ -7,6 +7,7 @@ import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   appendSubmittedUserMessage,
   handoffCreatedAgentUserMessageToStream,
+  removeSubmittedUserMessage,
   settleInactiveAgentStream,
   type StreamItem,
   type UserMessageItem,

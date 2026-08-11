@@ -77,7 +77,7 @@ export async function preparePairingHost(
   await openSettings(page);
   await openSettingsHost(page, daemon.serverId);
   await expect(page.getByTestId("host-page-pair-device-row")).toHaveCount(0);
-  await openSettingsHostSection(page, daemon.serverId, "pair-device");
+  await openSettingsHostSection(page, daemon.serverId, "connections");
   await expect(page.getByTestId("host-page-pair-device-row")).toBeVisible();
 }
 
@@ -198,7 +198,7 @@ export async function expectPairingDisconnected(page: Page): Promise<void> {
 
 export async function switchPairDeviceToHost(page: Page, serverId: string): Promise<void> {
   await selectSettingsHost(page, serverId);
-  await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, "pair-device"));
+  await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, "connections"));
   await expect(page.getByTestId("host-page-pair-device-row")).toBeVisible();
 }
 

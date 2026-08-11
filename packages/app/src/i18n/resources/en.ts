@@ -57,6 +57,49 @@ export const en = {
       cancel: "Cancel",
       retry: "Try again",
       create: "Create one",
+      guide: "Usage guide",
+    },
+    guide: {
+      title: "Workflow usage guide",
+      intro:
+        "A workflow is a reusable JSON script stored on the selected Paseo host. It can be started from Paseo, by an Agent, from the CLI, or from server code.",
+      contract: {
+        title: "Input and output contract",
+        description:
+          'Nodes exchange one JSON object. "control" and "error" are always strings; additional fields are business data passed to downstream nodes.',
+        note: 'A non-empty "error" stops the workflow. Switch and For nodes read "control". Bash and Agent nodes default missing control/error fields to empty strings.',
+      },
+      internal: {
+        title: "Use inside Paseo",
+        visualTitle: "Run from this page",
+        visualDescription:
+          "Select a workflow, enter the initial JSON under Test run, and click Run. The latest run and every node input/output are shown below.",
+        agentTitle: "Run from an Agent",
+        agentDescription:
+          "An Agent can call list_workflows, inspect_workflow, run_workflow, get_workflow_run, and cancel_workflow. Example run_workflow arguments:",
+        serverTitle: "Run from server code",
+        serverDescription:
+          "Internal server integrations can call WorkflowService directly and wait for the terminal result:",
+      },
+      external: {
+        title: "Use outside Paseo",
+        cliTitle: "Run from CLI or a shell script",
+        cliDescription:
+          "Use the CLI for local scripts, CI, cron jobs, and other processes that can connect to the daemon:",
+        backgroundTitle: "Start asynchronously",
+        backgroundDescription:
+          "Use --background to return immediately. The returned run ID can be inspected or cancelled later.",
+        hostNote:
+          "The workflow path is resolved on the daemon host. Use --host with the CLI when connecting to another Paseo daemon.",
+      },
+      nodes: {
+        title: "Node behavior",
+        bash: "• Bash: reads the payload from $PASEO_WORKFLOW_INPUT_JSON or $1. Write the result to $PASEO_WORKFLOW_RESULT_FILE; stdout is parsed only when that file is not created.",
+        agent:
+          "• Agent: receives the payload and must finish with one valid JSON object. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
+        switch: "• Switch: selects the branch whose configured value equals payload.control.",
+        for: '• For: iterates values derived from payload.control. Child nodes may return "continue" or "break".',
+      },
     },
     host: {
       select: "Select host",

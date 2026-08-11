@@ -59,6 +59,48 @@ export const zhCN: TranslationResources = {
       cancel: "取消",
       retry: "重试",
       create: "创建工作流",
+      guide: "使用说明",
+    },
+    guide: {
+      title: "Workflow 使用说明",
+      intro:
+        "Workflow 是保存在所选 Paseo 主机上的可复用 JSON 脚本，可从 Paseo 界面、Agent、CLI 或服务端代码启动。",
+      contract: {
+        title: "输入输出约定",
+        description:
+          "节点之间传递一个 JSON 对象。control 和 error 必须是字符串，其他字段作为业务数据传递给后续节点。",
+        note: "error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 和 Agent 输出缺少 control/error 时会自动补为空字符串。",
+      },
+      internal: {
+        title: "Paseo 内部使用",
+        visualTitle: "从当前页面运行",
+        visualDescription:
+          "选择工作流，在“测试运行”中填写初始 JSON，然后点击“运行”。下方会展示最近一次运行以及每个节点的输入、输出和耗时。",
+        agentTitle: "由 Agent 调用",
+        agentDescription:
+          "Agent 可调用 list_workflows、inspect_workflow、run_workflow、get_workflow_run 和 cancel_workflow。以下是 run_workflow 入参示例：",
+        serverTitle: "服务端代码调用",
+        serverDescription: "Paseo 内部服务可直接调用 WorkflowService，并等待工作流执行完成：",
+      },
+      external: {
+        title: "Paseo 外部使用",
+        cliTitle: "通过 CLI 或 Shell 脚本运行",
+        cliDescription:
+          "本地脚本、CI、定时任务以及其他可连接 Daemon 的进程，都可以通过 Paseo CLI 运行：",
+        backgroundTitle: "异步启动",
+        backgroundDescription:
+          "增加 --background 后会立即返回。之后可以使用返回的 run ID 查询状态或取消运行。",
+        hostNote:
+          "工作流路径是 Daemon 所在主机上的路径。连接其他 Paseo Daemon 时，请为 CLI 增加 --host 参数。",
+      },
+      nodes: {
+        title: "节点行为",
+        bash: "• Bash：从 $PASEO_WORKFLOW_INPUT_JSON 或 $1 读取数据。应将结果写入 $PASEO_WORKFLOW_RESULT_FILE；只有未创建该文件时才解析 stdout。",
+        agent:
+          "• Agent：接收完整 JSON，最终必须只输出一个合法 JSON 对象。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
+        switch: "• Switch：选择配置值与 payload.control 相等的分支。",
+        for: "• For：根据 payload.control 生成循环项，子节点可返回 continue 或 break。",
+      },
     },
     host: {
       select: "选择主机",

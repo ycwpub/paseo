@@ -98,6 +98,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   sidebarChecksDisplay: DEFAULT_SIDEBAR_CHECKS_DISPLAY,
   autoExpandReasoning: false,
   toolCallDetailLevel: "overview",
+  chatOutlineEnabled: true,
+  vimKeybindings: false,
 };
 
 export const DEFAULT_APP_SETTINGS: Settings = {

@@ -77,7 +77,7 @@ export interface StreamRenderInput {
   onNearHistoryStart: () => boolean | Promise<boolean>;
   isLoadingOlderHistory: boolean;
   hasOlderHistory: boolean;
-  olderHistoryProgressKey: string | null;
+  olderHistoryProgressKey?: string | null;
   scrollEnabled: boolean;
   listStyle: StyleProp<ViewStyle>;
   baseListContentContainerStyle: StyleProp<ViewStyle>;

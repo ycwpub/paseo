@@ -11,6 +11,7 @@ interface TimelinePageResult {
 
 interface ViewedTimelineSyncPorts {
   initialDeliveryMode: TimelineDeliveryMode;
+  readCursor(agentId: string): { epoch: string; endSeq: number } | null;
   setSubscription(agentIds: string[]): Promise<void>;
   fetchPage(
     agentId: string,

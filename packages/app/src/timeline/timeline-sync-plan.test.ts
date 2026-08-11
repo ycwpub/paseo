@@ -7,7 +7,6 @@ import {
   isTimelineCatchUpComplete,
   isTimelineResumeSnapshotAuthoritative,
   planTimelineOlderFetch,
-  planTimelinePromptJump,
   planTimelineTailFetch,
 } from "./timeline-sync-plan";
 

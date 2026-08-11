@@ -130,34 +130,6 @@ function parseDesktopDaemonLogs(raw: unknown): DesktopDaemonLogs {
   };
 }
 
-function parseDesktopPairingOffer(raw: unknown): DesktopPairingOffer {
-  if (!isRecord(raw)) {
-    throw new Error("Unexpected desktop daemon pairing response.");
-  }
-  return {
-    relayEnabled: raw.relayEnabled === true,
-    url: toStringOrNull(raw.url),
-    qr: toStringOrNull(raw.qr),
-    offers: Array.isArray(raw.offers)
-      ? raw.offers.flatMap((offer) => {
-          if (!isRecord(offer)) return [];
-          const endpoint = toStringOrNull(offer.endpoint);
-          const url = toStringOrNull(offer.url);
-          if (!endpoint || !url) return [];
-          return [
-            {
-              endpoint,
-              useTls: offer.useTls === true,
-              pairingBaseUrl: toStringOrNull(offer.pairingBaseUrl),
-              url,
-              qr: toStringOrNull(offer.qr),
-            },
-          ];
-        })
-      : [],
-  };
-}
-
 export function shouldUseDesktopDaemon(): boolean {
   return isElectronRuntime();
 }

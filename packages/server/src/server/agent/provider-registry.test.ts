@@ -82,47 +82,26 @@ vi.mock("../../executable-resolution/executable-resolution.js", () => ({
   isCommandAvailable: mockState.isCommandAvailable,
 }));
 
-vi.mock("./providers/claude/agent.js", () => ({
-  ClaudeAgentClient: class ClaudeAgentClient {
-    readonly capabilities = {
-      supportsStreaming: true,
-      supportsSessionPersistence: true,
-      supportsDynamicModes: true,
-      supportsMcpServers: true,
-      supportsReasoningStream: true,
-      supportsToolInvocations: true,
-    };
-    readonly provider = "claude";
-    readonly runtimeSettings?: unknown;
-
-    constructor(options: { runtimeSettings?: unknown; customProvider?: unknown }) {
-      this.runtimeSettings = options.runtimeSettings;
-      mockState.constructorArgs.claude.push({
-        runtimeSettings: options.runtimeSettings,
-        ...(options.customProvider ? { customProvider: options.customProvider } : {}),
-      });
-    }
-
-    async createSession(): Promise<never> {
-      throw new Error("not implemented");
-    }
-
-    async resumeSession(): Promise<never> {
-      throw new Error("not implemented");
-    }
-
-    async fetchCatalog(): Promise<ProviderCatalog> {
-      return {
-        models: mockState.runtimeModels.get(this.provider) ?? [],
-        modes: [],
+vi.mock("./providers/claude/agent.js", async () => {
+  const { resolveConfiguredClaudeModel } = await import("./providers/claude/models.js");
+  return {
+    ClaudeAgentClient: class ClaudeAgentClient {
+      readonly capabilities = {
+        supportsStreaming: true,
+        supportsSessionPersistence: true,
+        supportsDynamicModes: true,
+        supportsMcpServers: true,
+        supportsReasoningStream: true,
+        supportsToolInvocations: true,
       };
       readonly provider = "claude";
       readonly runtimeSettings?: unknown;
 
-      constructor(options: { runtimeSettings?: unknown }) {
+      constructor(options: { runtimeSettings?: unknown; customProvider?: unknown }) {
         this.runtimeSettings = options.runtimeSettings;
         mockState.constructorArgs.claude.push({
           runtimeSettings: options.runtimeSettings,
+          ...(options.customProvider ? { customProvider: options.customProvider } : {}),
         });
       }
 

@@ -10,7 +10,6 @@ import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-servic
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./workspace-registry.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
-import { deriveProjectKey } from "./project-key.js";
 
 let NON_GIT_PROJECT: string;
 let ARCHIVED_PROJECT: string;

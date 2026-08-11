@@ -72,23 +72,6 @@ export type {
   WorkspaceTitleSource,
 };
 
-/**
- * Split a `Settings` patch into the part the app owns. The two halves persist to different
- * places (AsyncStorage vs the Electron settings bridge), and the app's half is exactly the
- * key set of `DEFAULT_CLIENT_SETTINGS` — reading the keys off it means a new app setting
- * flows through here without anyone remembering to widen a hand-written list.
- */
-function pickDefinedAppSettings(updates: Partial<Settings>): Partial<AppSettings> {
-  const appUpdates: Partial<AppSettings> = {};
-  for (const key of Object.keys(DEFAULT_CLIENT_SETTINGS) as (keyof AppSettings)[]) {
-    const value = updates[key];
-    if (value !== undefined) {
-      Object.assign(appUpdates, { [key]: value });
-    }
-  }
-  return appUpdates;
-}
-
 const productionDeps: SettingsDeps = {
   storage: AsyncStorage,
   desktop: {

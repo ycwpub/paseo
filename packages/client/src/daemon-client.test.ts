@@ -39,24 +39,6 @@ function createMockLogger() {
   };
 }
 
-interface TraceRecord {
-  phase: "begin" | "end";
-  name?: string;
-  args?: Record<string, string>;
-}
-
-function createTraceRecorder(): { trace: DaemonClientTrace; records: TraceRecord[] } {
-  const records: TraceRecord[] = [];
-  return {
-    trace: {
-      isEnabled: () => true,
-      beginSection: (name, args) => records.push({ phase: "begin", name, args }),
-      endSection: () => records.push({ phase: "end" }),
-    },
-    records,
-  };
-}
-
 function createMockTransport() {
   const sent: Array<string | Uint8Array | ArrayBuffer> = [];
 

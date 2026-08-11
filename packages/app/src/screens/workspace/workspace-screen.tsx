@@ -1699,6 +1699,7 @@ function useWorkspaceTerminalTabActions({
   };
 }
 
+// oxlint-disable-next-line complexity
 function WorkspaceScreenContent({
   serverId,
   workspaceId,

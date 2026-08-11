@@ -5717,12 +5717,12 @@ export class DaemonClient {
   }
 
   // MCP methods
-  async listMcpServers(): Promise<{
+  async listMcpServers(options?: { refresh?: boolean }): Promise<{
     servers: McpServer[];
     error: string | null;
   }> {
     const result = await this.sendNamespacedCorrelatedSessionRequest<"mcp.list.response">({
-      message: { type: "mcp.list.request" },
+      message: { type: "mcp.list.request", refresh: options?.refresh },
     });
     return { servers: result.servers, error: result.error };
   }
@@ -5765,9 +5765,11 @@ export class DaemonClient {
   }
 
   // Skill methods
-  async listSkills(): Promise<{ skills: Skill[]; error: string | null }> {
+  async listSkills(options?: {
+    refresh?: boolean;
+  }): Promise<{ skills: Skill[]; error: string | null }> {
     const result = await this.sendNamespacedCorrelatedSessionRequest<"skill.list.response">({
-      message: { type: "skill.list.request" },
+      message: { type: "skill.list.request", refresh: options?.refresh },
     });
     return { skills: result.skills, error: result.error };
   }

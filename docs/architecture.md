@@ -91,6 +91,14 @@ facade. App and CLI may import the low-level driver from
 `@getpaseo/client/internal/daemon-client` during migration, while new SDK-shaped
 code imports from `@getpaseo/client`.
 
+### `packages/client-go` — Minimal Go client
+
+An independent Go module for direct daemon WebSocket connections. It currently
+supports the hello handshake, optional daemon-password authentication, active
+agent listing, sending agent messages, and filtered `agent_stream`
+subscriptions. Relay E2EE, terminal binary frames, automatic reconnection, and
+the complete RPC surface remain outside its initial scope.
+
 ### `packages/app` — Mobile + web client (Expo)
 
 Cross-platform React Native app that connects to one or more daemons.

@@ -141,6 +141,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
   const [content, setContent] = useState(DEFAULT_SKILL_CONTENT);
   const [enabled, setEnabled] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [formResetKey, bumpFormResetKey] = useReducer((key: number) => key + 1, 0);
 
   const editingSkill = useMemo(
@@ -247,6 +248,16 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     [skills],
   );
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshMessage(null);
+    try {
+      await skills.refreshSkills();
+      setRefreshMessage("Local Skill and MCP resources scanned.");
+    } catch {
+      // The hook exposes the mutation error below.
+    }
+  }, [skills]);
+
   const canSave = name.trim().length > 0 && content.trim().length > 0 && skills.isConnected;
   const skillListContent = useMemo(() => {
     if (skills.isLoading) {
@@ -300,9 +311,19 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
               Create custom skills, edit their Markdown instructions, and enable or disable them.
             </Text>
           </View>
-          <Button variant="default" onPress={openCreateForm} disabled={!skills.isConnected}>
-            Add skill
-          </Button>
+          <View style={styles.headerActions}>
+            <Button
+              variant="outline"
+              onPress={handleRefresh}
+              loading={skills.isMutating}
+              disabled={!skills.isConnected}
+            >
+              Scan local resources
+            </Button>
+            <Button variant="default" onPress={openCreateForm} disabled={!skills.isConnected}>
+              Add skill
+            </Button>
+          </View>
         </View>
       </SettingsSection>
 
@@ -388,7 +409,11 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
           </Field>
         </View>
         <View style={settingsStyles.card}>{skillListContent}</View>
+        {refreshMessage ? <Text style={styles.sectionMessage}>{refreshMessage}</Text> : null}
         {skills.error ? <Text style={settingsStyles.rowError}>{skills.error.message}</Text> : null}
+        {skills.mutationError ? (
+          <Text style={settingsStyles.rowError}>{skills.mutationError.message}</Text>
+        ) : null}
       </SettingsSection>
     </View>
   );
@@ -410,6 +435,13 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     gap: theme.spacing[1],
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
   },
   formCard: {
     backgroundColor: theme.colors.surface1,
@@ -469,5 +501,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     lineHeight: Math.round(theme.fontSize.xs * 1.4),
     marginTop: theme.spacing[1],
+  },
+  sectionMessage: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    marginTop: theme.spacing[2],
   },
 }));

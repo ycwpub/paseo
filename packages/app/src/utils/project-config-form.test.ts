@@ -5,12 +5,33 @@ import {
   applyDraftToConfig,
   configToDraft,
   instructionTemplateDraftsToConfig,
+  projectDirectoryPathForDisplay,
   type ProjectDirectoryDraft,
 } from "./project-config-form";
 
 function directory(id: string, path: string, enabled = true): ProjectDirectoryDraft {
   return { id, path, enabled };
 }
+
+describe("projectDirectoryPathForDisplay", () => {
+  it("shows the workspace directory placeholder as an absolute path", () => {
+    expect(
+      projectDirectoryPathForDisplay("{{workspaceDirectory}}", "/Users/dev/projects/miniapp"),
+    ).toBe("/Users/dev/projects/miniapp");
+    expect(
+      projectDirectoryPathForDisplay(
+        "{{ workspaceDirectory }}/packages/app",
+        "/Users/dev/projects/miniapp",
+      ),
+    ).toBe("/Users/dev/projects/miniapp/packages/app");
+  });
+
+  it("leaves other variables unchanged", () => {
+    expect(projectDirectoryPathForDisplay("{{docs}}", "/Users/dev/projects/miniapp")).toBe(
+      "{{docs}}",
+    );
+  });
+});
 
 describe("configToDraft", () => {
   it("returns an empty draft for null config", () => {

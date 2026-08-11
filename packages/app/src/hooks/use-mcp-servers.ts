@@ -17,6 +17,7 @@ export interface UseMcpServersResult {
   createServer: (input: McpServerCreateInput) => Promise<McpServer>;
   updateServer: (input: McpServerUpdateInput) => Promise<McpServer>;
   deleteServer: (id: string) => Promise<void>;
+  refreshServers: () => Promise<void>;
   testServer: (id: string) => Promise<{
     status: "connected" | "error";
     tools?: { name: string; description?: string }[];
@@ -97,6 +98,15 @@ export function useMcpServers(
     [client, mutation, query.data],
   );
 
+  const refreshServers = useCallback(async () => {
+    if (!client) return Promise.reject(new Error("Host is disconnected"));
+    await mutation.mutateAsync(async () => {
+      const result = await client.listMcpServers({ refresh: true });
+      if (result.error) throw new Error(result.error);
+      return result.servers;
+    });
+  }, [client, mutation]);
+
   const testServer = useCallback(
     async (id: string) => {
       if (!client) return Promise.reject(new Error("Host is disconnected"));
@@ -115,6 +125,7 @@ export function useMcpServers(
     createServer,
     updateServer,
     deleteServer,
+    refreshServers,
     testServer,
     isMutating: mutation.isPending,
     mutationError: mutation.error,

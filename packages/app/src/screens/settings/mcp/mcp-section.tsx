@@ -170,6 +170,7 @@ export function McpSection({ serverId }: McpSectionProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [testingServerIds, setTestingServerIds] = useState<string[]>([]);
   const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   const editingServer = useMemo(
     () => mcp.servers.find((server) => server.id === editingServerId) ?? null,
@@ -316,6 +317,16 @@ export function McpSection({ serverId }: McpSectionProps) {
     [mcp],
   );
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshMessage(null);
+    try {
+      await mcp.refreshServers();
+      setRefreshMessage("Local Skill and MCP resources scanned.");
+    } catch {
+      // The hook exposes the mutation error below.
+    }
+  }, [mcp]);
+
   const serverListContent = useMemo(() => {
     if (mcp.isLoading) {
       return (
@@ -372,9 +383,19 @@ export function McpSection({ serverId }: McpSectionProps) {
               Import Claude/Codex-style MCP JSON, enable or disable servers, and test connections.
             </Text>
           </View>
-          <Button variant="default" onPress={openCreateEditor} disabled={!mcp.isConnected}>
-            Add from JSON
-          </Button>
+          <View style={styles.headerActions}>
+            <Button
+              variant="outline"
+              onPress={handleRefresh}
+              loading={mcp.isMutating}
+              disabled={!mcp.isConnected}
+            >
+              Scan local resources
+            </Button>
+            <Button variant="default" onPress={openCreateEditor} disabled={!mcp.isConnected}>
+              Add from JSON
+            </Button>
+          </View>
         </View>
       </SettingsSection>
 
@@ -425,8 +446,12 @@ export function McpSection({ serverId }: McpSectionProps) {
           </Field>
         </View>
         <View style={settingsStyles.card}>{serverListContent}</View>
+        {refreshMessage ? <Text style={styles.sectionMessage}>{refreshMessage}</Text> : null}
         {testMessage ? <Text style={styles.sectionMessage}>{testMessage}</Text> : null}
         {mcp.error ? <Text style={settingsStyles.rowError}>{mcp.error.message}</Text> : null}
+        {mcp.mutationError ? (
+          <Text style={settingsStyles.rowError}>{mcp.mutationError.message}</Text>
+        ) : null}
       </SettingsSection>
     </View>
   );
@@ -448,6 +473,13 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     gap: theme.spacing[1],
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
   },
   formCard: {
     backgroundColor: theme.colors.surface1,

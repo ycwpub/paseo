@@ -42,6 +42,7 @@ import {
   applyDraftToConfig,
   configToDraft,
   METADATA_PROMPT_KEYS,
+  projectDirectoryPathForDisplay,
   type LifecycleOriginalKind,
   type MetadataPromptKey,
   type ProjectConfigDraft,
@@ -717,6 +718,7 @@ function ProjectConfigForm({
     <View>
       <ProjectResourcesEditor
         draft={draft}
+        projectDirectoryPath={repoRoot}
         globalIndexInterval={globalIndexInterval}
         globalIndexIntervalText={globalIndexIntervalText}
         validation={projectValidation}
@@ -932,6 +934,7 @@ function validateProjectConfiguration(
 
 interface ProjectResourcesEditorProps {
   draft: ProjectConfigDraft;
+  projectDirectoryPath: string;
   globalIndexInterval: number;
   globalIndexIntervalText: string;
   validation: ProjectConfigurationValidation;
@@ -946,6 +949,7 @@ interface ProjectResourcesEditorProps {
 
 function ProjectResourcesEditor({
   draft,
+  projectDirectoryPath,
   globalIndexInterval,
   globalIndexIntervalText,
   validation,
@@ -971,6 +975,7 @@ function ProjectResourcesEditor({
           directoryKey="project"
           values={draft.projectDirectories.project}
           mode={draft.projectDirectoryMode}
+          projectDirectoryPath={projectDirectoryPath}
           error={validation.projectDirectoryError}
           onModeChange={onDirectoryModeChange}
           onChange={onDirectoryChange}
@@ -1085,6 +1090,7 @@ function DirectoryListSection({
   directoryKey,
   values,
   mode,
+  projectDirectoryPath,
   error,
   onModeChange,
   onChange,
@@ -1095,6 +1101,7 @@ function DirectoryListSection({
   directoryKey: ProjectDirectoryKey;
   values: ProjectDirectoryDraft[];
   mode?: "single" | "multiple";
+  projectDirectoryPath?: string;
   error?: string | null;
   onModeChange?: (value: "single" | "multiple") => void;
   onChange: (key: ProjectDirectoryKey, values: ProjectDirectoryDraft[]) => void;
@@ -1169,7 +1176,11 @@ function DirectoryListSection({
                 testID={`project-directory-enabled-${value.id}`}
               />
               <TextInput
-                value={value.path}
+                value={
+                  projectDirectoryPath
+                    ? projectDirectoryPathForDisplay(value.path, projectDirectoryPath)
+                    : value.path
+                }
                 onChangeText={(next) =>
                   onChange(
                     directoryKey,

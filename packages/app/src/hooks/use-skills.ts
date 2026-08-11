@@ -13,6 +13,7 @@ export interface UseSkillsResult {
   createSkill: (input: SkillCreateInput) => Promise<Skill>;
   updateSkill: (input: SkillUpdateInput) => Promise<Skill>;
   deleteSkill: (id: string) => Promise<void>;
+  refreshSkills: () => Promise<void>;
   isMutating: boolean;
   mutationError: Error | null;
 }
@@ -85,6 +86,15 @@ export function useSkills(serverId: string, options: { enabled?: boolean } = {})
     [client, mutation, query.data],
   );
 
+  const refreshSkills = useCallback(async () => {
+    if (!client) return Promise.reject(new Error("Host is disconnected"));
+    await mutation.mutateAsync(async () => {
+      const result = await client.listSkills({ refresh: true });
+      if (result.error) throw new Error(result.error);
+      return result.skills;
+    });
+  }, [client, mutation]);
+
   return {
     skills: query.data ?? [],
     isLoading: query.isLoading,
@@ -93,6 +103,7 @@ export function useSkills(serverId: string, options: { enabled?: boolean } = {})
     createSkill,
     updateSkill,
     deleteSkill,
+    refreshSkills,
     isMutating: mutation.isPending,
     mutationError: mutation.error,
   };

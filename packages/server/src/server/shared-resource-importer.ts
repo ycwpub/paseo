@@ -483,11 +483,14 @@ function createProviderSources(homeDir: string, codexHome: string): ProviderImpo
     },
     {
       provider: "trae",
-      skillDirs: [path.join(homeDir, ".trae", "skills")],
+      skillDirs: [path.join(homeDir, ".trae", "skills"), path.join(homeDir, ".trae-cn", "skills")],
       mcpConfigFiles: [
         { path: path.join(homeDir, ".trae", "traecli.toml"), format: "toml" },
         { path: path.join(homeDir, ".trae", "traecli.yaml"), format: "yaml" },
         { path: path.join(homeDir, ".trae", "traecli.yml"), format: "yaml" },
+        { path: path.join(homeDir, ".trae-cn", "traecli.toml"), format: "toml" },
+        { path: path.join(homeDir, ".trae-cn", "traecli.yaml"), format: "yaml" },
+        { path: path.join(homeDir, ".trae-cn", "traecli.yml"), format: "yaml" },
       ],
     },
   ];
@@ -512,7 +515,7 @@ function toMcpCreateInput(server: DiscoveredMcpServer): McpServerCreateInput {
   };
 }
 
-export function importProviderResourcesOnStartup(
+export function importProviderResources(
   options: SharedResourceImporterOptions,
 ): SharedResourceImportResult {
   const homeDir = options.homeDir ?? os.homedir();
@@ -568,3 +571,5 @@ export function importProviderResourcesOnStartup(
   }
   return { skillsImported, mcpServersImported };
 }
+
+export const importProviderResourcesOnStartup = importProviderResources;

@@ -21,17 +21,20 @@ export interface McpSessionHost {
 export interface McpSessionOptions {
   host: McpSessionHost;
   store: McpStore;
+  refreshSharedResources?: () => void;
   logger: pino.Logger;
 }
 
 export class McpSession {
   private readonly host: McpSessionHost;
   private readonly store: McpStore;
+  private readonly refreshSharedResources: (() => void) | null;
   private readonly logger: pino.Logger;
 
   constructor(options: McpSessionOptions) {
     this.host = options.host;
     this.store = options.store;
+    this.refreshSharedResources = options.refreshSharedResources ?? null;
     this.logger = options.logger.child({ module: "mcp-session" });
   }
 
@@ -39,6 +42,9 @@ export class McpSession {
     try {
       switch (message.type) {
         case "mcp.list.request":
+          if (message.refresh) {
+            this.refreshSharedResources?.();
+          }
           this.host.emit({
             type: "mcp.list.response",
             payload: {

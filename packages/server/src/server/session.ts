@@ -183,6 +183,7 @@ import { McpStore } from "./mcp/mcp-store.js";
 import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
+import { importProviderResources } from "./shared-resource-importer.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { PushNotifications } from "./push/index.js";
 import {
@@ -969,10 +970,22 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    const refreshSharedResources =
+      mcpStore && skillStore
+        ? () => {
+            importProviderResources({
+              paseoHome: this.paseoHome,
+              mcpStore,
+              skillStore,
+              logger: this.sessionLogger,
+            });
+          }
+        : undefined;
     this.mcpSession = mcpStore
       ? new McpSession({
           host: { emit: (msg) => this.emit(msg) },
           store: mcpStore,
+          refreshSharedResources,
           logger: this.sessionLogger,
         })
       : null;
@@ -980,6 +993,7 @@ export class Session {
       ? new SkillSession({
           host: { emit: (msg) => this.emit(msg) },
           store: skillStore,
+          refreshSharedResources,
           logger: this.sessionLogger,
         })
       : null;

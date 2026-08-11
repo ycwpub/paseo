@@ -20,17 +20,20 @@ export interface SkillSessionHost {
 export interface SkillSessionOptions {
   host: SkillSessionHost;
   store: SkillStore;
+  refreshSharedResources?: () => void;
   logger: pino.Logger;
 }
 
 export class SkillSession {
   private readonly host: SkillSessionHost;
   private readonly store: SkillStore;
+  private readonly refreshSharedResources: (() => void) | null;
   private readonly logger: pino.Logger;
 
   constructor(options: SkillSessionOptions) {
     this.host = options.host;
     this.store = options.store;
+    this.refreshSharedResources = options.refreshSharedResources ?? null;
     this.logger = options.logger.child({ module: "skill-session" });
   }
 
@@ -38,6 +41,9 @@ export class SkillSession {
     try {
       switch (message.type) {
         case "skill.list.request":
+          if (message.refresh) {
+            this.refreshSharedResources?.();
+          }
           this.host.emit({
             type: "skill.list.response",
             payload: {

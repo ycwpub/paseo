@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import { z } from "zod";
+import equal from "fast-deep-equal";
 import {
   SkillSchema,
   SkillCreateInputSchema,
@@ -119,7 +120,7 @@ export class SkillStore {
         );
         return SkillSchema.parse(current);
       }
-      const skill = SkillSchema.parse({
+      const next = SkillSchema.parse({
         ...current,
         name,
         description: input.description ?? current.description,
@@ -131,8 +132,11 @@ export class SkillStore {
         // startup imports. Imported/system skills are enabled by default only
         // when first seen.
         enabled: current.enabled,
-        updatedAt: timestamp,
       });
+      if (equal(current, next)) {
+        return SkillSchema.parse(current);
+      }
+      const skill = SkillSchema.parse({ ...next, updatedAt: timestamp });
       const skills = [...this.payload.skills];
       skills[index] = skill;
       this.replaceAndPersist({ ...this.payload, skills });

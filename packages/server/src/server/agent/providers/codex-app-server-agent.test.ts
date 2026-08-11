@@ -48,6 +48,8 @@ interface CollaborationModeRecord {
 }
 
 interface CodexSessionTestAccess {
+  activeTurnStartParams: Record<string, unknown> | null;
+  maxOutputTokensContinuationAttempts: number;
   ensureThreadLoaded(): Promise<void>;
   handleToolApprovalRequest(params: unknown): Promise<unknown>;
   handleNotification(method: string, params: unknown): void;
@@ -57,6 +59,7 @@ interface CodexSessionTestAccess {
   planModeEnabled: boolean;
   collaborationModes: CollaborationModeRecord[];
   config: AgentSessionConfig;
+  client: CodexClientLike | null;
 }
 
 interface CodexClientLike {
@@ -702,6 +705,69 @@ describe("Codex app-server provider", () => {
     expect((startCall!.params as Record<string, unknown>).ephemeral).toBeUndefined();
   });
 
+  test("sets a concise default compact prompt on Codex threads", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession({ thinkingOptionId: "medium" });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "compact-prompt-thread" } };
+        }
+        if (method === "turn/start") {
+          return {};
+        }
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("keep this thread compact");
+
+    const startCall = requests.find((request) => request.method === "thread/start");
+    expect(startCall?.params).toMatchObject({
+      config: {
+        compact_prompt: expect.stringContaining("Keep the summary under 8,000 tokens"),
+      },
+    });
+  });
+
+  test("allows explicit Codex config to override the default compact prompt", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession({
+      thinkingOptionId: "medium",
+      extra: {
+        codex: {
+          compact_prompt: "Use the workspace-specific compact prompt.",
+        },
+      },
+    });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "custom-compact-prompt-thread" } };
+        }
+        if (method === "turn/start") {
+          return {};
+        }
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("keep the custom compact prompt");
+
+    const startCall = requests.find((request) => request.method === "thread/start");
+    expect(startCall?.params).toMatchObject({
+      config: {
+        compact_prompt: "Use the workspace-specific compact prompt.",
+      },
+    });
+  });
+
   test("disposes an unresponsive app-server child with SIGKILL", async () => {
     vi.useFakeTimers();
     const child = new EventEmitter() as ChildProcessWithoutNullStreams;
@@ -1340,7 +1406,8 @@ describe("Codex app-server provider", () => {
       OPENAI_API_KEY: "sk-custom",
       OPENAI_BASE_URL: "https://custom-relay.example.com",
     });
-    expect(capturedThreadStartConfig(capturedRequests)).toEqual({
+    expect(capturedThreadStartConfig(capturedRequests)).toMatchObject({
+      compact_prompt: expect.stringContaining("Keep the summary under 8,000 tokens"),
       model_provider: "codex-iisb",
       model_providers: {
         "codex-iisb": {
@@ -1360,7 +1427,8 @@ describe("Codex app-server provider", () => {
       "https://custom-relay.example.com/v1/",
     );
 
-    expect(capturedThreadStartConfig(capturedRequests)).toEqual({
+    expect(capturedThreadStartConfig(capturedRequests)).toMatchObject({
+      compact_prompt: expect.stringContaining("Keep the summary under 8,000 tokens"),
       model_provider: "codex-custom",
       model_providers: {
         "codex-custom": expect.objectContaining({
@@ -3958,7 +4026,15 @@ describe("Codex app-server provider", () => {
     expect(session.currentThreadId).toBe("archived-thread-id");
     expect(requests).toEqual([
       { method: "thread/loaded/list", params: {} },
-      { method: "thread/resume", params: { threadId: "archived-thread-id" } },
+      {
+        method: "thread/resume",
+        params: {
+          threadId: "archived-thread-id",
+          config: {
+            compact_prompt: expect.stringContaining("Keep the summary under 8,000 tokens"),
+          },
+        },
+      },
     ]);
   });
 
@@ -4707,6 +4783,214 @@ describe("Codex app-server provider", () => {
         usage: undefined,
       },
     ]);
+  });
+
+  test("automatically continues a Codex turn once after max_output_tokens", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const internals = asInternals(session);
+    internals.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        return {};
+      }),
+    };
+    internals.activeTurnStartParams = {
+      threadId: "test-thread",
+      input: [{ type: "text", text: "original prompt" }],
+      model: "gpt-5.6",
+    };
+    session.subscribe((event) => events.push(event));
+
+    internals.handleNotification("item/started", {
+      threadId: "test-thread",
+      item: {
+        type: "contextCompaction",
+        id: "compact-before-continuation",
+      },
+    });
+    internals.handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: {
+        status: "failed",
+        error: {
+          message:
+            "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens",
+        },
+      },
+    });
+
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toMatchObject({
+      method: "turn/start",
+      params: {
+        threadId: "test-thread",
+        model: "gpt-5.6",
+        input: [
+          {
+            type: "text",
+            text: expect.stringContaining("possibly while compacting the conversation"),
+          },
+        ],
+      },
+    });
+    expect(events.some((event) => event.type === "turn_failed")).toBe(false);
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "compaction",
+          status: "loading",
+        },
+      },
+    ]);
+
+    internals.handleNotification("turn/started", {
+      threadId: "test-thread",
+      turn: { id: "continued-turn" },
+    });
+    internals.handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: { status: "completed", error: null },
+    });
+
+    expect(events.filter((event) => event.type === "turn_completed")).toHaveLength(1);
+    expect(events).toContainEqual({
+      type: "timeline",
+      provider: "codex",
+      turnId: "test-turn",
+      item: {
+        type: "compaction",
+        status: "completed",
+      },
+    });
+    expect(internals.activeTurnStartParams).toBeNull();
+    expect(internals.maxOutputTokensContinuationAttempts).toBe(0);
+  });
+
+  test("surfaces max_output_tokens after the automatic continuation limit", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const internals = asInternals(session);
+    internals.client = {
+      request: vi.fn(async () => ({})),
+    };
+    internals.activeTurnStartParams = {
+      threadId: "test-thread",
+      input: [{ type: "text", text: "original prompt" }],
+    };
+    session.subscribe((event) => events.push(event));
+
+    internals.handleNotification("item/started", {
+      threadId: "test-thread",
+      item: {
+        type: "contextCompaction",
+        id: "compact-before-final-failure",
+      },
+    });
+    const failure = {
+      threadId: "test-thread",
+      turn: {
+        status: "failed",
+        error: { message: "Incomplete response returned, reason: max_output_tokens" },
+      },
+    };
+    internals.handleNotification("turn/completed", failure);
+    await vi.waitFor(() => expect(internals.maxOutputTokensContinuationAttempts).toBe(1));
+    internals.handleNotification("turn/completed", failure);
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "compaction",
+          status: "loading",
+        },
+      },
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "compaction",
+          status: "completed",
+        },
+      },
+      {
+        type: "turn_failed",
+        provider: "codex",
+        turnId: "test-turn",
+        error: "Incomplete response returned, reason: max_output_tokens",
+      },
+    ]);
+  });
+
+  test("settles compaction when the automatic continuation cannot start", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const internals = asInternals(session);
+    internals.client = {
+      request: vi.fn(async () => {
+        throw new Error("app-server disconnected");
+      }),
+    };
+    internals.activeTurnStartParams = {
+      threadId: "test-thread",
+      input: [{ type: "text", text: "original prompt" }],
+    };
+    session.subscribe((event) => events.push(event));
+
+    internals.handleNotification("item/started", {
+      threadId: "test-thread",
+      item: {
+        type: "contextCompaction",
+        id: "compact-before-rejected-continuation",
+      },
+    });
+    internals.handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: {
+        status: "failed",
+        error: { message: "Incomplete response returned, reason: max_output_tokens" },
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(events.at(-1)?.type).toBe("turn_failed");
+    });
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "compaction",
+          status: "loading",
+        },
+      },
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "compaction",
+          status: "completed",
+        },
+      },
+      {
+        type: "turn_failed",
+        provider: "codex",
+        turnId: "test-turn",
+        error: "Codex automatic continuation failed: app-server disconnected",
+      },
+    ]);
+    expect(internals.activeTurnStartParams).toBeNull();
+    expect(internals.maxOutputTokensContinuationAttempts).toBe(0);
   });
 
   test("emits usage_updated on token usage updates and keeps usage on turn completion", () => {

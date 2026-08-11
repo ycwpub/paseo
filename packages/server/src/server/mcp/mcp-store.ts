@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import { z } from "zod";
+import equal from "fast-deep-equal";
 import {
   McpServerSchema,
   McpServerCreateInputSchema,
@@ -104,7 +105,7 @@ export class McpStore {
         );
         return McpServerSchema.parse(current);
       }
-      const server = McpServerSchema.parse({
+      const next = McpServerSchema.parse({
         ...current,
         name: parsed.name,
         description: parsed.description ?? current.description,
@@ -114,8 +115,11 @@ export class McpStore {
         // startup imports. Imported MCP servers are enabled by default only
         // when first seen.
         enabled: current.enabled,
-        updatedAt: timestamp,
       });
+      if (equal(current, next)) {
+        return McpServerSchema.parse(current);
+      }
+      const server = McpServerSchema.parse({ ...next, updatedAt: timestamp });
       const servers = [...this.payload.servers];
       servers[index] = server;
       this.replaceAndPersist({ ...this.payload, servers });

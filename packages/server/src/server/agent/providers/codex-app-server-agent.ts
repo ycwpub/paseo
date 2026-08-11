@@ -239,6 +239,16 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
+const PASEO_COMPACT_PROMPT =
+  "Compact this coding-agent conversation into a concise state summary for later continuation. " +
+  "Do not reproduce the transcript. Keep the summary under 8,000 tokens and preserve only the " +
+  "user's goal, durable instructions and constraints, decisions, modified files and current diff " +
+  "state, commands or tests and their outcomes, unresolved errors, and exact next steps. Deduplicate " +
+  "repeated messages, routing metadata, logs, tool output, and prior summaries. Never quote large " +
+  "blobs; prioritize actionable state when space is limited.";
+const MAX_OUTPUT_TOKENS_CONTINUATION_LIMIT = 1;
+const MAX_OUTPUT_TOKENS_CONTINUATION_PROMPT =
+  "The previous response reached the model output-token limit before the task completed, possibly while compacting the conversation. Continue from the current workspace and conversation state without repeating completed work. Keep any context summary concise and do not reproduce the transcript. Split large patches and command arguments into smaller tool calls, and keep each tool call concise.";
 
 interface CodexAppServerClientLike {
   request(method: string, params?: unknown): Promise<unknown>;
@@ -291,6 +301,14 @@ const MODE_PRESETS: Record<string, CodexModePreset> = {
 
 function isAutoReviewReviewer(value: string | undefined): boolean {
   return value === "auto_review" || value === "guardian_subagent";
+}
+
+function isMaxOutputTokensError(message: string | null): boolean {
+  if (!message) {
+    return false;
+  }
+  const normalized = message.toLowerCase();
+  return normalized.includes("max_output_tokens") || normalized.includes("max output tokens");
 }
 
 function applyApprovalsReviewerParam(
@@ -3174,7 +3192,8 @@ export class CodexAppServerAgentSession implements AgentSession {
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private nextTurnOrdinal = 0;
   private activeForegroundTurnId: string | null = null;
-  private activeClientMessageId: string | null = null;
+  private activeTurnStartParams: Record<string, unknown> | null = null;
+  private maxOutputTokensContinuationAttempts = 0;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
   private planModeEnabled = false;
@@ -3215,6 +3234,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private readonly userMessageTurnIds: string[] = [];
   private pendingManualCompactionStarts = 0;
   private compactionTriggerByItemId = new Map<string, "auto" | "manual">();
+  private activeContextCompactionItemIds = new Set<string>();
   // Codex can report one completed compaction through both channels:
   // `thread/compacted` and a completed `contextCompaction` item.
   private unpairedCompactionNotificationCompletions = 0;
@@ -4010,7 +4030,29 @@ export class CodexAppServerAgentSession implements AgentSession {
       throw new Error("A foreground turn is already active");
     }
 
-    this.dismissPendingPlanApprovals("Dismissed by a new prompt");
+    await this.connect();
+    if (!this.client) {
+      throw new Error("Codex client not initialized");
+    }
+
+    const slashCommand = await this.resolveSlashCommandInvocation(prompt);
+    const effectivePrompt = slashCommand
+      ? await this.buildCommandPromptInput(slashCommand.commandName, slashCommand.args)
+      : prompt;
+
+    if (this.currentThreadId) {
+      await this.ensureThreadLoaded();
+    } else {
+      await this.ensureThread();
+    }
+
+    const turnStart = await this.buildTurnStartParams(effectivePrompt, options);
+
+    const turnId = this.createTurnId();
+    this.activeForegroundTurnId = turnId;
+    this.activeTurnStartParams = turnStart.params;
+    this.maxOutputTokensContinuationAttempts = 0;
+    this.currentTurnId = null;
 
     try {
       await this.connect();
@@ -4060,7 +4102,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.pendingForegroundTurnIdentification?.resolve(null);
       this.pendingForegroundTurnIdentification = null;
       this.activeForegroundTurnId = null;
-      this.activeClientMessageId = null;
+      this.activeTurnStartParams = null;
       throw error;
     }
   }
@@ -4482,21 +4524,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
-    this.activeClientMessageId = null;
-    this.pendingForegroundTurnIdentification?.resolve(null);
-    this.pendingForegroundTurnIdentification = null;
-    await this.disposeClient();
-    this.currentThreadId = null;
-  }
-
-  private clearPendingPermissions(options?: { preservePlanApprovals?: boolean }): void {
-    for (const [requestId, pending] of this.pendingPermissionHandlers) {
-      if (options?.preservePlanApprovals && pending.kind === "plan") {
-        continue;
-      }
-      pending.resolve({ decision: "cancel" });
-      this.pendingPermissionHandlers.delete(requestId);
-      this.pendingPermissions.delete(requestId);
+    this.activeTurnStartParams = null;
+    this.maxOutputTokensContinuationAttempts = 0;
+    this.activeContextCompactionItemIds.clear();
+    if (this.client) {
+      await this.client.dispose();
     }
     this.mcpElicitationPermissionIds.clear();
     this.resolvedPermissionRequests.clear();
@@ -4783,11 +4815,9 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private buildCodexInnerConfig(): Record<string, unknown> | null {
-    const innerConfig: Record<string, unknown> = {};
-    Object.assign(innerConfig, this.providerOptions);
-    if (this.deps.customCodexConfig) {
-      Object.assign(innerConfig, this.deps.customCodexConfig);
-    }
+    const innerConfig: Record<string, unknown> = {
+      compact_prompt: PASEO_COMPACT_PROMPT,
+    };
     if (this.config.mcpServers) {
       const mcpServers: Record<string, CodexMcpServerConfig> = {};
       for (const [name, serverConfig] of Object.entries(this.config.mcpServers)) {
@@ -5167,6 +5197,9 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!this.isContextCompactionItem(item)) {
       return false;
     }
+    if (item.id) {
+      this.activeContextCompactionItemIds.delete(item.id);
+    }
     if (this.unpairedCompactionNotificationCompletions > 0) {
       this.unpairedCompactionNotificationCompletions -= 1;
       return true;
@@ -5406,6 +5439,25 @@ export class CodexAppServerAgentSession implements AgentSession {
     return true;
   }
 
+  private handleStartedContextCompactionItem(item: {
+    id?: string;
+    type?: string;
+    [key: string]: unknown;
+  }): boolean {
+    if (!this.isContextCompactionItem(item)) {
+      return false;
+    }
+    if (item.id) {
+      this.activeContextCompactionItemIds.add(item.id);
+    }
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: this.createContextCompactionTimelineItem("loading", item.id),
+    });
+    return true;
+  }
+
   private shouldSkipCompletedThreadItem(
     timelineItem: AgentTimelineItem,
     normalizedItemType: string | undefined,
@@ -5554,6 +5606,14 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, status);
       return;
     }
+    if (
+      parsed.status === "failed" &&
+      isMaxOutputTokensError(parsed.errorMessage) &&
+      this.tryContinueAfterMaxOutputTokens()
+    ) {
+      return;
+    }
+    this.settleActiveContextCompaction();
     if (parsed.status === "failed") {
       this.emitEvent({
         type: "turn_failed",
@@ -5573,12 +5633,63 @@ export class CodexAppServerAgentSession implements AgentSession {
       });
     }
     this.activeForegroundTurnId = null;
-    this.activeClientMessageId = null;
-    this.currentTurnId = null;
-    this.pendingForegroundTurnIdentification?.resolve(null);
-    this.pendingForegroundTurnIdentification = null;
+    this.activeTurnStartParams = null;
+    this.maxOutputTokensContinuationAttempts = 0;
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.resetTurnTrackingState();
+  }
+
+  private tryContinueAfterMaxOutputTokens(): boolean {
+    if (
+      !this.client ||
+      !this.activeForegroundTurnId ||
+      !this.activeTurnStartParams ||
+      this.maxOutputTokensContinuationAttempts >= MAX_OUTPUT_TOKENS_CONTINUATION_LIMIT
+    ) {
+      return false;
+    }
+
+    this.maxOutputTokensContinuationAttempts += 1;
+    this.currentTurnId = null;
+    const retryParams = {
+      ...this.activeTurnStartParams,
+      input: [toCodexTextInput(MAX_OUTPUT_TOKENS_CONTINUATION_PROMPT)],
+    };
+    this.activeTurnStartParams = retryParams;
+    this.logger.warn(
+      {
+        turnId: this.activeForegroundTurnId,
+        threadId: this.currentThreadId,
+        attempt: this.maxOutputTokensContinuationAttempts,
+      },
+      "Codex reached max_output_tokens; continuing the logical turn automatically",
+    );
+    void this.client.request("turn/start", retryParams, TURN_START_TIMEOUT_MS).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.settleActiveContextCompaction();
+      this.emitEvent({
+        type: "turn_failed",
+        provider: CODEX_PROVIDER,
+        error: `Codex automatic continuation failed: ${message}`,
+      });
+      this.activeForegroundTurnId = null;
+      this.activeTurnStartParams = null;
+      this.maxOutputTokensContinuationAttempts = 0;
+      this.pendingSubAgentNotificationsByThreadId.clear();
+      this.resetTurnTrackingState();
+    });
+    return true;
+  }
+
+  private settleActiveContextCompaction(): void {
+    for (const itemId of this.activeContextCompactionItemIds) {
+      this.emitEvent({
+        type: "timeline",
+        provider: CODEX_PROVIDER,
+        item: this.createContextCompactionTimelineItem("completed", itemId),
+      });
+    }
+    this.activeContextCompactionItemIds.clear();
   }
 
   private resetTurnTrackingState(): void {
@@ -5698,11 +5809,15 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.unpairedCompactionItemCompletions -= 1;
       return;
     }
+    const activeItemId = this.activeContextCompactionItemIds.values().next().value;
+    if (activeItemId) {
+      this.activeContextCompactionItemIds.delete(activeItemId);
+    }
     this.unpairedCompactionNotificationCompletions += 1;
     this.emitEvent({
       type: "timeline",
       provider: CODEX_PROVIDER,
-      item: this.createContextCompactionTimelineItem("completed"),
+      item: this.createContextCompactionTimelineItem("completed", activeItemId),
       ...(parsed.turnId ? { turnId: parsed.turnId } : {}),
     });
   }
@@ -6026,12 +6141,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     ) {
       return;
     }
-    if (this.isContextCompactionItem(parsed.item)) {
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: this.createContextCompactionTimelineItem("loading", parsed.item.id),
-      });
+    if (this.handleStartedContextCompactionItem(parsed.item)) {
       return;
     }
     if (this.handleRegisteredSubAgentActivity(parsed.item)) {

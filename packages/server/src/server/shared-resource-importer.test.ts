@@ -5,7 +5,10 @@ import { afterEach, describe, expect, test } from "vitest";
 import { createTestLogger } from "../test-utils/test-logger.js";
 import { McpStore } from "./mcp/mcp-store.js";
 import { SkillStore } from "./skill/skill-store.js";
-import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
+import {
+  importProviderResources,
+  importProviderResourcesOnStartup,
+} from "./shared-resource-importer.js";
 
 function writeSkill(dir: string, name: string, description: string): void {
   mkdirSync(dir, { recursive: true });
@@ -169,5 +172,71 @@ describe("importProviderResourcesOnStartup", () => {
     expect(skillStore.list()[0]?.enabled).toBe(false);
     expect(mcpStore.list()).toHaveLength(1);
     expect(mcpStore.list()[0]?.enabled).toBe(false);
+  });
+
+  test("discovers resources added after startup without rewriting unchanged entries", () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-resource-importer-refresh-"));
+    const homeDir = path.join(tempRoot, "home");
+    const codexHome = path.join(homeDir, ".codex");
+    const paseoHome = path.join(tempRoot, "paseo-home");
+    const logger = createTestLogger();
+
+    writeSkill(path.join(homeDir, ".agents", "skills", "alpha"), "alpha", "Alpha skill");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(
+      path.join(codexHome, "config.toml"),
+      ["[mcp_servers.node_repl]", 'command = "node"'].join("\n"),
+      "utf8",
+    );
+
+    const mcpStore = new McpStore({ paseoHome, logger });
+    const skillStore = new SkillStore({ paseoHome, logger });
+    importProviderResources({
+      paseoHome,
+      mcpStore,
+      skillStore,
+      logger,
+      homeDir,
+      codexHome,
+    });
+
+    const alphaUpdatedAt = skillStore.list()[0]!.updatedAt;
+    const nodeUpdatedAt = mcpStore.list()[0]!.updatedAt;
+
+    writeSkill(path.join(homeDir, ".trae-cn", "skills", "bravo"), "bravo", "Bravo skill");
+    mkdirSync(path.join(homeDir, ".trae-cn"), { recursive: true });
+    writeFileSync(
+      path.join(homeDir, ".trae-cn", "traecli.yaml"),
+      ["mcpServers:", "  search:", "    command: search-server"].join("\n"),
+      "utf8",
+    );
+
+    importProviderResources({
+      paseoHome,
+      mcpStore,
+      skillStore,
+      logger,
+      homeDir,
+      codexHome,
+    });
+
+    expect(
+      skillStore
+        .list()
+        .map((skill) => skill.name)
+        .sort(),
+    ).toEqual(["alpha", "bravo"]);
+    expect(
+      mcpStore
+        .list()
+        .map((server) => server.name)
+        .sort(),
+    ).toEqual(["node_repl", "search"]);
+    expect(skillStore.list().find((skill) => skill.name === "alpha")?.updatedAt).toBe(
+      alphaUpdatedAt,
+    );
+    expect(mcpStore.list().find((server) => server.name === "node_repl")?.updatedAt).toBe(
+      nodeUpdatedAt,
+    );
   });
 });

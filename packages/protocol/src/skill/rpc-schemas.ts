@@ -10,6 +10,7 @@ const SkillResponsePayloadSchema = z.object({
 export const SkillListRequestSchema = z.object({
   type: z.literal("skill.list.request"),
   requestId: z.string(),
+  refresh: z.boolean().optional(),
 });
 
 export const SkillListResponseSchema = z.object({

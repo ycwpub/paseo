@@ -68,6 +68,10 @@ export interface ProjectConfigDraft {
   projectConfigBase: Record<string, unknown> | undefined;
 }
 
+export function projectDirectoryPathForDisplay(path: string, absoluteDirectory: string): string {
+  return path.replace(/\{\{\s*workspaceDirectory\s*\}\}/gu, absoluteDirectory);
+}
+
 interface LifecycleProjection {
   text: string;
   kind: LifecycleOriginalKind;

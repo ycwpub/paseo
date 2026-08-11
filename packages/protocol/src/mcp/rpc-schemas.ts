@@ -14,6 +14,7 @@ const McpResponsePayloadSchema = z.object({
 export const McpListRequestSchema = z.object({
   type: z.literal("mcp.list.request"),
   requestId: z.string(),
+  refresh: z.boolean().optional(),
 });
 
 export const McpListResponseSchema = z.object({

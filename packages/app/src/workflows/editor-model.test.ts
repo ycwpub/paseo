@@ -46,6 +46,7 @@ describe("workflow editor model", () => {
     expect(loop.name).toBe("逐项循环");
     expect(loop.type === "for" ? loop.steps[0]?.name : null).toBe("Bash 命令");
     expect(loop.type === "for" ? loop.maxIterations : null).toBe(100);
+    expect(loop.type === "for" ? loop.concurrency : null).toBe(1);
   });
 
   it("creates Workflow nodes that can reference another workflow", () => {

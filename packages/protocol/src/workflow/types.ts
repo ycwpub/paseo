@@ -131,6 +131,7 @@ export interface WorkflowForStep {
   steps: WorkflowStep[];
   separator?: string;
   maxIterations?: number;
+  concurrency?: number;
   breakControl?: string;
 }
 
@@ -211,6 +212,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       steps: z.array(WorkflowStepSchema).min(1),
       separator: z.string().min(1).optional(),
       maxIterations: z.number().int().positive().max(10_000).default(100),
+      concurrency: z.number().int().positive().max(100).default(1),
       breakControl: z.string().optional(),
     }),
   ]),

@@ -156,6 +156,7 @@ export function createWorkflowStep(
     name: names.for,
     type,
     maxIterations: 100,
+    concurrency: 1,
     steps: [createWorkflowStep("bash", existingSteps, names)],
   } satisfies WorkflowForStep;
 }

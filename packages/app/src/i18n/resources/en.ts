@@ -459,6 +459,9 @@ export const en = {
         automatic: "Continuous loop",
         maximumIterations: "Maximum iterations",
         maximumIterationsHint: "Maximum number of iterations. Defaults to 100.",
+        concurrency: "Concurrency",
+        concurrencyHint:
+          "Iterations running at once. Defaults to 1. At 1, each iteration receives the previous output; above 1, iterations run independently from the For node input. Maximum 100.",
         breakControl: "Break control value",
         breakControlHint:
           'Stop early when the loop body returns this control value. Defaults to "break".',

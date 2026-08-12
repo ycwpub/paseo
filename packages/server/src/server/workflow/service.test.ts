@@ -1407,6 +1407,66 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(2);
   });
 
+  it("runs for iterations with bounded concurrency and deterministic output ordering", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    const loopCommand = nodeCommand(
+      [
+        'const fs = require("fs");',
+        'const path = require("path");',
+        "const markerDirectory = process.argv[1];",
+        "const input = JSON.parse(process.argv.at(-1));",
+        "fs.writeFileSync(path.join(markerDirectory, `started-${input.loop.index}`), '');",
+        "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
+        "(async () => {",
+        "  const deadline = Date.now() + 2_000;",
+        "  while (fs.readdirSync(markerDirectory).filter((name) => name.startsWith('started-')).length < 2) {",
+        "    if (Date.now() >= deadline) throw new Error('Concurrent iteration did not start');",
+        "    await delay(10);",
+        "  }",
+        "  if (input.loop.index === 0) await delay(100);",
+        "  process.stdout.write(JSON.stringify({",
+        "    ...input, result: input.loop.item, error: ''",
+        "  }));",
+        "})().catch((error) => { console.error(error.message); process.exitCode = 1; });",
+      ].join("\n"),
+      home,
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "concurrent for",
+        steps: [
+          {
+            id: "items",
+            type: "for",
+            separator: ",",
+            concurrency: 2,
+            steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"control":"alpha,beta"}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(run.control).toBe("beta");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
+      control: "beta",
+      result: "beta",
+      loop: { index: 1, item: "beta", count: 2 },
+    });
+    expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(2);
+    expect(run.nodeRuns.find((node) => node.stepId === "items")?.output).toContain("concurrency 2");
+  });
+
   it("lets a for body break early with the standard break control", async () => {
     const home = await createTempHome();
     const inputPath = join(home, "input.txt");

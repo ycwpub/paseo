@@ -58,6 +58,7 @@ import {
   WorkflowCommandExecutionError,
   type WorkflowCommandOutput,
 } from "./command-node.js";
+import { executeForIterations } from "./for-step-execution.js";
 import { WorkflowRunStore } from "./store.js";
 import { findWorkflowStep } from "./workflow-step-search.js";
 
@@ -1030,6 +1031,7 @@ export class WorkflowService {
     state: ExecutionState,
   ): Promise<StepExecutionResult> {
     const maxIterations = step.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+    const concurrency = step.concurrency ?? 1;
     const items = parseForItems(state.payload.control, step.separator, maxIterations);
     if (items.length > maxIterations) {
       throw new WorkflowExecutionError(
@@ -1037,52 +1039,55 @@ export class WorkflowService {
         state,
       );
     }
-    let next = state;
-    let completedIterations = 0;
-    let brokeEarly = false;
-    iterationLoop: for (const [index, item] of items.entries()) {
-      let iterationState: ExecutionState = {
-        ...next,
-        payload: {
-          ...next.payload,
-          control: item.control ?? next.payload.control,
-          error: "",
-          loop: {
-            item: item.value,
-            index,
-            count: items.length,
+    const execution = await executeForIterations({
+      iterationCount: items.length,
+      concurrency,
+      initialState: state,
+      runIteration: async (index, iterationInputState) => {
+        const item = items[index];
+        if (!item) {
+          throw new WorkflowExecutionError(`For step ${step.id} lost iteration ${index}`, state);
+        }
+        let iterationState: ExecutionState = {
+          ...iterationInputState,
+          payload: {
+            ...iterationInputState.payload,
+            control: item.control ?? iterationInputState.payload.control,
+            error: "",
+            loop: {
+              item: item.value,
+              index,
+              count: items.length,
+            },
           },
-        },
-        iterationPath: [...state.iterationPath, index],
-      };
-      for (const childStep of step.steps) {
-        iterationState = await this.executeStep(run, childStep, iterationState);
-        if (
-          iterationState.payload.control === "break" ||
-          iterationState.payload.control === step.breakControl
-        ) {
-          next = iterationState;
-          completedIterations += 1;
-          brokeEarly = true;
-          break iterationLoop;
+          iterationPath: [...state.iterationPath, index],
+        };
+        for (const childStep of step.steps) {
+          iterationState = await this.executeStep(run, childStep, iterationState);
+          if (
+            iterationState.payload.control === "break" ||
+            iterationState.payload.control === step.breakControl
+          ) {
+            return { state: iterationState, signal: "break" };
+          }
+          if (iterationState.payload.control === "continue") {
+            return { state: iterationState, signal: "continue" };
+          }
         }
-        if (iterationState.payload.control === "continue") {
-          next = iterationState;
-          completedIterations += 1;
-          continue iterationLoop;
-        }
-      }
-      next = iterationState;
-      completedIterations += 1;
-    }
-    let output = `Completed ${completedIterations} iteration${completedIterations === 1 ? "" : "s"}`;
+        return { state: iterationState, signal: "complete" };
+      },
+    });
+    let output = `Completed ${execution.completedIterations} iteration${execution.completedIterations === 1 ? "" : "s"}`;
     if (items.length === 0) {
       output = "Skipped loop: 0 items";
-    } else if (brokeEarly) {
-      output = `Stopped after ${completedIterations} of ${items.length} iterations`;
+    } else if (execution.brokeEarly) {
+      output = `Stopped after ${execution.completedIterations} of ${items.length} iterations`;
+    }
+    if (concurrency > 1 && items.length > 0) {
+      output += ` with concurrency ${concurrency}`;
     }
     return {
-      ...next,
+      ...execution.state,
       iterationPath: state.iterationPath,
       agentId: null,
       output,

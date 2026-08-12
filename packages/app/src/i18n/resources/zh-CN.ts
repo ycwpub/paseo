@@ -452,6 +452,9 @@ export const zhCN: TranslationResources = {
         automatic: "连续循环",
         maximumIterations: "最大循环次数",
         maximumIterationsHint: "最多执行的循环次数，默认为 100。",
+        concurrency: "并发度",
+        concurrencyHint:
+          "同时执行的循环次数，默认为 1。为 1 时按顺序执行并把上一轮输出传给下一轮；大于 1 时，各轮基于进入 For 节点时的同一输入独立执行，最大为 100。",
         breakControl: "中断控制值",
         breakControlHint: "循环体返回此 control 值时提前结束，默认为“break”。",
         loopBody: "循环体",

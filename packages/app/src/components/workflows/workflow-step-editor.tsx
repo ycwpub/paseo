@@ -1835,7 +1835,7 @@ function ForStepFields({
   const { t } = useTranslation();
   return (
     <>
-      <View style={styles.twoColumn}>
+      <View style={styles.threeColumn}>
         <View style={styles.columnField}>
           <Field
             label={t("workflows.nodes.for.separator")}
@@ -1862,6 +1862,22 @@ function ForStepFields({
                 onChange({ ...step, maxIterations: optionalPositiveNumber(value) })
               }
               placeholder="100"
+              keyboardType="numeric"
+              size="sm"
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.for.concurrency")}
+            hint={t("workflows.nodes.for.concurrencyHint")}
+          >
+            <WorkflowTextInput
+              value={step.concurrency?.toString() ?? ""}
+              onChangeText={(value) =>
+                onChange({ ...step, concurrency: optionalPositiveNumber(value) })
+              }
+              placeholder="1"
               keyboardType="numeric"
               size="sm"
             />

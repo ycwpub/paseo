@@ -248,7 +248,7 @@ default and can be changed with `caseSensitive`.
 }
 ```
 
-## For and early break
+## For concurrency and early break
 
 When `separator` is non-empty, `for` parses the payload's `control` as:
 
@@ -278,11 +278,22 @@ The other fields from the previous payload are preserved when the iteration star
 can stop the loop early by returning `control: "break"`. Configure a different value with
 `breakControl`.
 
+`concurrency` controls how many iterations run at once and defaults to `1`. At `1`, execution stays
+serial and each iteration receives the previous iteration's output. Above `1`, every iteration
+starts independently from the payload that entered the For node. The loop returns the output from
+the highest completed iteration index, regardless of completion order.
+
+When a concurrent iteration returns the break control, Paseo stops scheduling new iterations.
+Iterations that already started finish. If more than one started iteration returns break, the
+lowest loop index wins and its output becomes the For node output. `continue` only skips the
+remaining body nodes in its own iteration.
+
 ```json
 {
   "id": "iterate",
   "type": "for",
   "maxIterations": 100,
+  "concurrency": 4,
   "breakControl": "stop-now",
   "steps": [
     {
@@ -294,8 +305,8 @@ can stop the loop early by returning `control: "break"`. Configure a different v
 }
 ```
 
-The payload returned by the last completed iteration, including the break control value, is passed
-to the node after the loop.
+The selected serial, highest-index concurrent, or breaking iteration payload is passed to the node
+after the loop.
 
 ## Complete example
 

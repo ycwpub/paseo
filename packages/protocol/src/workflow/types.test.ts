@@ -179,7 +179,24 @@ describe("WorkflowNodeRunSchema", () => {
 });
 
 describe("Workflow For defaults", () => {
-  it("defaults maximum iterations to 100", () => {
+  it("accepts an explicit concurrency up to 100", () => {
+    const script = WorkflowScriptSchema.parse({
+      version: 1,
+      name: "parallel loop",
+      steps: [
+        {
+          id: "loop",
+          type: "for",
+          concurrency: 3,
+          steps: [{ id: "body", type: "bash", initialCommand: "echo body" }],
+        },
+      ],
+    });
+
+    expect(script.steps[0]?.type === "for" ? script.steps[0].concurrency : null).toBe(3);
+  });
+
+  it("defaults maximum iterations to 100 and concurrency to one", () => {
     const script = WorkflowScriptSchema.parse({
       version: 1,
       name: "loop",
@@ -193,5 +210,6 @@ describe("Workflow For defaults", () => {
     });
 
     expect(script.steps[0]?.type === "for" ? script.steps[0].maxIterations : null).toBe(100);
+    expect(script.steps[0]?.type === "for" ? script.steps[0].concurrency : null).toBe(1);
   });
 });

@@ -1125,6 +1125,17 @@ export const ar: TranslationResources = {
         archiving: "أرشفة...",
         hiding: "إخفاء...",
       },
+      bulkArchive: {
+        select: "تحديد مساحات العمل",
+        selected: "تم تحديد {{count}}",
+        cancel: "إلغاء التحديد",
+        title: "أرشفة {{count}} من مساحات العمل؟",
+        message: "ستتم أرشفة مساحات العمل المحددة وإزالتها من الشريط الجانبي.",
+        riskyWorktrees:
+          "تحتوي {{count}} من أشجار العمل المحددة على تغييرات غير ملتزم بها أو غير مدفوعة. قد يتم حذف أدلتها.",
+        confirm: "أرشفة المحدد",
+        failed: "فشلت أرشفة {{count}} من مساحات العمل",
+      },
       confirmations: {
         hideTitle: "إخفاء مساحة العمل؟",
         hideMessage:

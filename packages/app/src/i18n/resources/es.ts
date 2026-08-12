@@ -1156,6 +1156,18 @@ export const es: TranslationResources = {
         archiving: "Archivando...",
         hiding: "Ocultación...",
       },
+      bulkArchive: {
+        select: "Seleccionar espacios de trabajo",
+        selected: "{{count}} seleccionados",
+        cancel: "Cancelar selección",
+        title: "¿Archivar {{count}} espacios de trabajo?",
+        message:
+          "Los espacios de trabajo seleccionados se archivarán y se quitarán de la barra lateral.",
+        riskyWorktrees:
+          "{{count}} worktree(s) seleccionados tienen cambios sin confirmar o sin enviar. Sus directorios podrían eliminarse.",
+        confirm: "Archivar seleccionados",
+        failed: "No se pudieron archivar {{count}} espacios de trabajo",
+      },
       confirmations: {
         hideTitle: "¿Ocultar espacio de trabajo?",
         hideMessage:

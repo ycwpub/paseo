@@ -28,6 +28,10 @@ import {
 import { shouldRenderSyncedStatusLoader } from "@/utils/status-loader";
 import { StatusRing } from "@/components/status-ring";
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
+import {
+  SidebarWorkspaceBulkSelectionIndicator,
+  useSidebarWorkspaceBulkSelection,
+} from "@/components/sidebar/sidebar-workspace-bulk-archive";
 
 // The scrim spans more than the kebab so the fade starts left of the diff stat. Solid from
 // SCRIM_SOLID_OFFSET rightward, which keeps the kebab itself off the gradient entirely.
@@ -86,6 +90,7 @@ export function SidebarWorkspaceRowFrame({
     hoverHandlers: { onPointerEnter: () => void; onPointerLeave: () => void };
   }) => ReactNode;
 }) {
+  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const [isHovered, setIsHovered] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const handlePointerEnter = useCallback(() => {
@@ -106,7 +111,7 @@ export function SidebarWorkspaceRowFrame({
       workspace={workspace}
       prHint={workspace.prHint}
       isDragging={isDragging}
-      disabled={contextMenuOpen}
+      disabled={contextMenuOpen || bulkSelection.active}
     >
       {children({
         isHovered: isHovered && !contextMenuOpen,
@@ -150,6 +155,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   reserveIdleStatusIndicatorSpace?: boolean;
   children?: ReactNode;
 }) {
+  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const {
     settings: { workspaceTitleSource },
   } = useAppSettings();
@@ -162,28 +168,36 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
     ],
     [isHovered, isCreating],
   );
+  let leadingVisual: ReactNode;
+  if (bulkSelection.active) {
+    leadingVisual = <SidebarWorkspaceBulkSelectionIndicator selected={bulkSelection.selected} />;
+  } else if (leadingProjectName) {
+    leadingVisual = (
+      <ProjectStatusIndicator
+        iconDataUri={leadingProjectIconDataUri}
+        displayName={leadingProjectName}
+        projectViewKey={workspace.projectViewKey}
+        statusBucket={workspace.statusBucket}
+        backdrop={backdrop}
+        loading={isLoading}
+        testID={`sidebar-row-project-icon-${workspace.workspaceKey}`}
+      />
+    );
+  } else {
+    leadingVisual = (
+      <WorkspaceStatusIndicator
+        bucket={workspace.statusBucket}
+        workspaceKind={workspace.workspaceKind}
+        loading={isLoading}
+        reserveIdleSpace={reserveIdleStatusIndicatorSpace}
+      />
+    );
+  }
 
   return (
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
-        {leadingProjectName ? (
-          <ProjectStatusIndicator
-            iconDataUri={leadingProjectIconDataUri}
-            displayName={leadingProjectName}
-            projectViewKey={workspace.projectViewKey}
-            statusBucket={workspace.statusBucket}
-            backdrop={backdrop}
-            loading={isLoading}
-            testID={`sidebar-row-project-icon-${workspace.workspaceKey}`}
-          />
-        ) : (
-          <WorkspaceStatusIndicator
-            bucket={workspace.statusBucket}
-            workspaceKind={workspace.workspaceKind}
-            loading={isLoading}
-            reserveIdleSpace={reserveIdleStatusIndicatorSpace}
-          />
-        )}
+        {leadingVisual}
         <View style={styles.workspaceContentColumn}>
           <View style={styles.workspaceTitleRow}>
             <Text style={workspaceBranchTextStyle} numberOfLines={1}>

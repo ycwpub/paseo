@@ -1579,6 +1579,17 @@ export const en = {
         archiving: "Archiving...",
         hiding: "Hiding...",
       },
+      bulkArchive: {
+        select: "Select workspaces",
+        selected: "{{count}} selected",
+        cancel: "Cancel selection",
+        title: "Archive {{count}} workspaces?",
+        message: "The selected workspaces will be archived and removed from the sidebar.",
+        riskyWorktrees:
+          "{{count}} selected worktree(s) have uncommitted or unpushed changes. Their directories may be deleted.",
+        confirm: "Archive selected",
+        failed: "Failed to archive {{count}} workspace(s)",
+      },
       confirmations: {
         hideTitle: "Hide workspace?",
         hideMessage:

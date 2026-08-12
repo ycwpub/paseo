@@ -1147,6 +1147,17 @@ export const ptBR: TranslationResources = {
         archiving: "Arquivando...",
         hiding: "Ocultando...",
       },
+      bulkArchive: {
+        select: "Selecionar workspaces",
+        selected: "{{count}} selecionados",
+        cancel: "Cancelar seleção",
+        title: "Arquivar {{count}} workspaces?",
+        message: "Os workspaces selecionados serão arquivados e removidos da barra lateral.",
+        riskyWorktrees:
+          "{{count}} worktree(s) selecionados têm alterações sem commit ou sem push. Seus diretórios podem ser excluídos.",
+        confirm: "Arquivar selecionados",
+        failed: "Falha ao arquivar {{count}} workspaces",
+      },
       confirmations: {
         hideTitle: "Ocultar workspace?",
         hideMessage:

@@ -1548,6 +1548,16 @@ export const zhCN: TranslationResources = {
         archiving: "正在归档...",
         hiding: "正在隐藏...",
       },
+      bulkArchive: {
+        select: "批量选择 workspace",
+        selected: "已选择 {{count}} 项",
+        cancel: "取消选择",
+        title: "归档 {{count}} 个 workspace？",
+        message: "选中的 workspace 将被归档，并从侧边栏移除。",
+        riskyWorktrees: "其中 {{count}} 个 worktree 存在未提交或未推送的更改，其目录可能会被删除。",
+        confirm: "归档所选项",
+        failed: "{{count}} 个 workspace 归档失败",
+      },
       confirmations: {
         hideTitle: "隐藏 workspace？",
         hideMessage: "从侧边栏隐藏「{{workspaceName}}」？\n\n磁盘上的文件不会被更改。",

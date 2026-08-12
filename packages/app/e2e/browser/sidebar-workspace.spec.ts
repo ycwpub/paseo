@@ -130,6 +130,48 @@ test.describe("Sidebar workspace list", () => {
     }
   });
 
+  test("selects and archives multiple workspaces from the sidebar", async ({ page }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "sidebar-bulk-archive-" });
+    const second = await workspace.client.createWorkspace({
+      source: {
+        kind: "directory",
+        path: workspace.repoPath,
+        projectId: workspace.projectId,
+      },
+      title: "Second bulk archive workspace",
+    });
+    if (!second.workspace) {
+      throw new Error(second.error ?? "Failed to create second workspace");
+    }
+
+    try {
+      await gotoAppShell(page);
+      const firstRow = await waitForSidebarWorkspace(page, workspace.workspaceId);
+      const secondRow = await waitForSidebarWorkspace(page, second.workspace.id);
+
+      await page.getByTestId("sidebar-select-workspaces").click();
+      await firstRow.click();
+      await secondRow.click();
+
+      await expect(firstRow.getByTestId("sidebar-workspace-selected")).toBeVisible();
+      await expect(secondRow.getByTestId("sidebar-workspace-selected")).toBeVisible();
+      await expect(page.getByText("2 selected", { exact: true })).toBeVisible();
+
+      const dialogMessage = page.waitForEvent("dialog").then(async (dialog) => {
+        const message = dialog.message();
+        await dialog.accept();
+        return message;
+      });
+      await page.getByTestId("sidebar-bulk-archive-workspaces").click();
+      expect(await dialogMessage).toContain("Archive 2 workspaces?");
+
+      await expect(firstRow).toHaveCount(0);
+      await expect(secondRow).toHaveCount(0);
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+
   test("non-git project shows directory name", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-directory-", git: false });
 

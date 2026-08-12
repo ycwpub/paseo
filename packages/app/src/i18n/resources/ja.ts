@@ -1136,6 +1136,17 @@ export const ja: TranslationResources = {
         archiving: "アーカイブ中...",
         hiding: "非表示にしています...",
       },
+      bulkArchive: {
+        select: "ワークスペースを選択",
+        selected: "{{count}} 件選択中",
+        cancel: "選択を解除",
+        title: "{{count}} 件のワークスペースをアーカイブしますか？",
+        message: "選択したワークスペースはアーカイブされ、サイドバーから削除されます。",
+        riskyWorktrees:
+          "選択した worktree のうち {{count}} 件に未コミットまたは未プッシュの変更があります。ディレクトリが削除される可能性があります。",
+        confirm: "選択項目をアーカイブ",
+        failed: "{{count}} 件のワークスペースをアーカイブできませんでした",
+      },
       confirmations: {
         hideTitle: "ワークスペースを非表示にしますか？",
         hideMessage:

@@ -1086,6 +1086,17 @@ const koOverrides = {
         archiving: "보관하는 중...",
         hiding: "숨기는 중...",
       },
+      bulkArchive: {
+        select: "워크스페이스 선택",
+        selected: "{{count}}개 선택됨",
+        cancel: "선택 취소",
+        title: "워크스페이스 {{count}}개를 보관할까요?",
+        message: "선택한 워크스페이스가 보관되고 사이드바에서 제거됩니다.",
+        riskyWorktrees:
+          "선택한 worktree 중 {{count}}개에 커밋하지 않았거나 푸시하지 않은 변경 사항이 있습니다. 해당 디렉터리가 삭제될 수 있습니다.",
+        confirm: "선택 항목 보관",
+        failed: "워크스페이스 {{count}}개를 보관하지 못했습니다",
+      },
       confirmations: {
         hideTitle: "워크스페이스를 숨길까요?",
         hideMessage:

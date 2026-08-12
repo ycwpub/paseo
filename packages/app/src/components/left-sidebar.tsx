@@ -1,14 +1,11 @@
 import { router, usePathname } from "expo-router";
 import {
   CalendarClock,
-  ChevronsDown,
-  ChevronsUp,
   FolderPlus,
   GitBranch,
   History,
   Home,
   Plus,
-  Search,
   Server,
   Settings,
   Workflow,
@@ -37,7 +34,6 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -56,7 +52,6 @@ import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { StatusGroup } from "@/hooks/sidebar-status-view-model";
 import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
@@ -79,6 +74,7 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+import { WorkspacesSectionHeader } from "./sidebar/sidebar-workspaces-section-header";
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -1011,94 +1007,6 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
-  const { theme } = useUnistyles();
-  const { t } = useTranslation();
-  const { allWorkspaceGroupsCollapsed, setAllWorkspaceGroupsCollapsed } = useSidebarModel();
-  const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
-  const commandCenterKeys = useShortcutKeys("toggle-command-center");
-  const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const handleToggleAllPress = useCallback(
-    () => setAllWorkspaceGroupsCollapsed(!allWorkspaceGroupsCollapsed),
-    [allWorkspaceGroupsCollapsed, setAllWorkspaceGroupsCollapsed],
-  );
-  const toggleAllLabel = allWorkspaceGroupsCollapsed
-    ? t("sidebar.actions.expandAllWorkspaces")
-    : t("sidebar.actions.collapseAllWorkspaces");
-  const ToggleAllIcon = allWorkspaceGroupsCollapsed ? ChevronsDown : ChevronsUp;
-  const searchButtonStyle = useCallback(
-    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.workspacesHeaderIconButton,
-      (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
-    ],
-    [],
-  );
-
-  return (
-    <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
-      <View style={styles.workspacesSectionActions}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={toggleAllLabel}
-              testID="sidebar-toggle-all-workspaces"
-              style={searchButtonStyle}
-              onPress={handleToggleAllPress}
-            >
-              {({ hovered, pressed }) => (
-                <ToggleAllIcon
-                  size={14}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <IconTooltipContent label={toggleAllLabel} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open command center"
-              testID="sidebar-command-center-search"
-              style={searchButtonStyle}
-              onPress={handleSearchPress}
-            >
-              {({ hovered, pressed }) => (
-                <Search
-                  size={14}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <IconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <View>
-              <SidebarDisplayPreferencesMenu />
-            </View>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <IconTooltipContent label="Display preferences" />
-          </TooltipContent>
-        </Tooltip>
-      </View>
-    </View>
-  );
-}
-
 // Stable element so the sidebar list's listHeaderComponent prop keeps identity across
 // renders (WorkspacesSectionHeader takes no props).
 const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
@@ -1125,39 +1033,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarHeaderGroupBelowChrome: {
     paddingTop: 0,
-  },
-  workspacesSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
-    // Rendered inside the scroll's listContent (paddingHorizontal spacing[2]). The title
-    // lands at spacing[2] left to align with project icons. Settings2's painted path stops
-    // inside its 14px SVG, so 4px aligns the ink rather than the SVG box to the row rail.
-    paddingLeft: theme.spacing[2],
-    paddingRight: 4,
-    paddingTop: theme.spacing[1],
-    paddingBottom: theme.spacing[1],
-  },
-  workspacesSectionTitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
-  },
-  workspacesSectionActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  workspacesHeaderIconButton: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.md,
-  },
-  workspacesHeaderIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   sidebarContent: {
     flex: 1,

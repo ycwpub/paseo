@@ -154,6 +154,7 @@ import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
+import { useSidebarWorkspaceBulkSelection } from "@/components/sidebar/sidebar-workspace-bulk-archive";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -1283,6 +1284,7 @@ function WorkspaceRowWithMenu({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const isArchiving = workspace.archivingAt !== null || isHidingWorkspace;
@@ -1400,7 +1402,7 @@ function WorkspaceRowWithMenu({
         leadingProjectIconDataUri={leadingProjectIconDataUri}
         selected={selected}
         shortcutNumber={shortcutNumber}
-        showShortcutBadge={showShortcutBadge}
+        showShortcutBadge={bulkSelection.active ? false : showShortcutBadge}
         onPress={onPress}
         drag={drag}
         isDragging={isDragging}
@@ -1411,14 +1413,16 @@ function WorkspaceRowWithMenu({
         archiveLabel={t("sidebar.workspace.actions.archive")}
         archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
-        onArchive={handleArchive}
-        onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
-        onCopyPath={handleCopyPath}
-        onRename={handleOpenRename}
-        onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
+        onArchive={bulkSelection.active ? undefined : handleArchive}
+        onCopyBranchName={
+          bulkSelection.active || !canCopyBranchName ? undefined : handleCopyBranchName
+        }
+        onCopyPath={bulkSelection.active ? undefined : handleCopyPath}
+        onRename={bulkSelection.active ? undefined : handleOpenRename}
+        onMarkAsRead={bulkSelection.active || !hasClearableAttention ? undefined : handleMarkAsRead}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
-        isPinned={isPinned}
-        onTogglePin={onTogglePin}
+        isPinned={bulkSelection.active ? undefined : isPinned}
+        onTogglePin={bulkSelection.active ? undefined : onTogglePin}
         reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
       />
       <AdaptiveRenameModal
@@ -1476,13 +1480,35 @@ function WorkspaceRowItem({
   isDragging = false,
   dragHandleProps,
 }: WorkspaceRowItemProps) {
+  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const handlePress = useCallback(() => {
+    if (bulkSelection.active) {
+      if (workspaceEntry?.archivingAt === null) {
+        bulkSelection.toggle();
+      }
+      return;
+    }
     if (!workspace.serverId) {
       return;
     }
     onWorkspacePress?.();
     navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
-  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
+  }, [
+    bulkSelection,
+    onWorkspacePress,
+    workspace.serverId,
+    workspace.workspaceId,
+    workspaceEntry?.archivingAt,
+  ]);
+
+  const selected = bulkSelection.active
+    ? bulkSelection.selected
+    : isWorkspaceSelected({
+        selection: activeWorkspaceSelection,
+        serverId: workspace.serverId,
+        workspaceId: workspace.workspaceId,
+        enabled: selectionEnabled,
+      });
 
   return (
     <WorkspaceRow
@@ -1497,12 +1523,7 @@ function WorkspaceRowItem({
       onToggleWorkspacePin={onToggleWorkspacePin}
       reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
       isCreating={isCreating}
-      selected={isWorkspaceSelected({
-        selection: activeWorkspaceSelection,
-        serverId: workspace.serverId,
-        workspaceId: workspace.workspaceId,
-        enabled: selectionEnabled,
-      })}
+      selected={selected}
       onPress={handlePress}
       drag={drag ?? noop}
       isDragging={isDragging}

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { ScheduleNewAgentTargetConfigSchema } from "../schedule/types.js";
+import { WorkflowEnvironmentSchema } from "./environment.js";
+import { WorkflowInputContractSchema, WorkflowInputPresetSchema } from "./input-contract.js";
 
 export const WorkflowPayloadSchema = z
   .object({
@@ -225,6 +227,9 @@ export const WorkflowScriptSchema = z.object({
     .max(30 * 24 * 60 * 60 * 1000)
     .optional(),
   taskDefaults: WorkflowTaskDefaultsSchema.optional(),
+  inputContract: WorkflowInputContractSchema.optional(),
+  inputPresets: z.array(WorkflowInputPresetSchema).max(100).optional(),
+  environment: WorkflowEnvironmentSchema.optional(),
   labels: z
     .record(z.string().trim().min(1).max(128), z.string().max(512))
     .refine((labels) => Object.keys(labels).length <= 100, {
@@ -279,6 +284,15 @@ export const WorkflowNodeRunSchema = z.object({
   workflowPath: z.string().nullable().default(null),
   workflowRunId: z.string().nullable().default(null),
   output: z.string().nullable(),
+  expandedInstruction: z.string().nullable().optional(),
+  cwd: z.string().nullable().optional(),
+  stdout: z.string().nullable().optional(),
+  stderr: z.string().nullable().optional(),
+  exitCode: z.number().int().nullable().optional(),
+  signal: z.string().nullable().optional(),
+  environmentSource: z.enum(["daemon", "login-shell"]).nullable().optional(),
+  environmentPath: z.string().nullable().optional(),
+  skippedReason: z.string().nullable().optional(),
 });
 export type WorkflowNodeRun = z.infer<typeof WorkflowNodeRunSchema>;
 

@@ -80,6 +80,218 @@ async function createTempHome(): Promise<string> {
 }
 
 describe("WorkflowService", () => {
+  it("validates required workflow input fields before creating a run", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Input contract",
+        inputContract: {
+          properties: {
+            scan_dir_url: { type: "string" },
+            group_ids: { type: "array", default: [] },
+          },
+          required: ["scan_dir_url", "group_ids"],
+        },
+        steps: [{ id: "never", type: "bash", initialCommand: "exit 99" }],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+
+    await expect(
+      service.runScript({
+        scriptPath,
+        inputPayload: '{"control":""}',
+      }),
+    ).rejects.toThrow('Workflow input field "scan_dir_url" is required');
+    expect(await service.listRuns()).toEqual([]);
+  });
+
+  it("applies input defaults and workflow command environment variables", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Input defaults and environment",
+        inputContract: {
+          properties: {
+            mode: { type: "string", default: "scan_only" },
+            max_work_items: { type: "integer", default: 0 },
+          },
+        },
+        environment: {
+          variables: {
+            FIXED_WIKI_URL: "https://example.test/wiki",
+          },
+        },
+        steps: [
+          {
+            id: "inspect",
+            type: "bash",
+            initialCommand: nodeCommand(
+              [
+                "const input = JSON.parse(process.argv.at(-1));",
+                "process.stdout.write(JSON.stringify({",
+                "  ...input,",
+                "  wiki: process.env.FIXED_WIKI_URL",
+                "}));",
+              ].join("\n"),
+            ),
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      control: "",
+      error: "",
+      mode: "scan_only",
+      max_work_items: 0,
+      wiki: "https://example.test/wiki",
+    });
+    expect(run.nodeRuns[0]).toMatchObject({
+      environmentSource: "daemon",
+      exitCode: 0,
+      cwd: home,
+    });
+    expect(run.nodeRuns[0]?.expandedInstruction).toContain("FIXED_WIKI_URL");
+  });
+
+  it("runs a reusable input preset with optional JSON overrides", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Preset run",
+        inputContract: {
+          properties: {
+            mode: { type: "string" },
+            max_work_items: { type: "integer" },
+            wiki_url: { type: "string" },
+          },
+          required: ["mode", "max_work_items", "wiki_url"],
+        },
+        inputPresets: [
+          {
+            id: "scan-only",
+            name: "Scan only",
+            payload: {
+              mode: "scan_only",
+              max_work_items: 0,
+              wiki_url: "https://example.test/wiki",
+            },
+          },
+        ],
+        steps: [
+          {
+            id: "echo",
+            type: "bash",
+            initialCommand: "printf '%s\\n' \"$1\"",
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPresetId: "scan-only",
+      inputPayload: '{"max_work_items":2}',
+    });
+
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      control: "",
+      error: "",
+      mode: "scan_only",
+      max_work_items: 2,
+      wiki_url: "https://example.test/wiki",
+    });
+  });
+
+  it("preserves stdout, stderr, exit status, and the original failure", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Command failure diagnostics",
+        steps: [
+          {
+            id: "fail",
+            type: "bash",
+            initialCommand: nodeCommand(
+              [
+                'process.stdout.write("partial output\\n");',
+                'process.stderr.write("root cause\\n");',
+                "process.exit(7);",
+              ].join("\n"),
+            ),
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("exit code 7: root cause");
+    expect(run.error).not.toContain("JSON");
+    expect(run.nodeRuns[0]).toMatchObject({
+      stdout: "partial output\n",
+      stderr: "root cause\n",
+      exitCode: 7,
+      signal: null,
+      errorCode: "TASK_FAILED",
+    });
+  });
+
+  it("records why a zero-item loop was skipped", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Empty loop",
+        steps: [
+          {
+            id: "items",
+            type: "for",
+            separator: ",",
+            steps: [{ id: "never", type: "bash", initialCommand: "exit 99" }],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+
+    expect(run.status).toBe("succeeded");
+    expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["items"]);
+    expect(run.nodeRuns[0]).toMatchObject({
+      output: "Skipped loop: 0 items",
+      skippedReason: "No loop items were produced",
+    });
+  });
+
   it("creates, updates, lists, and deletes managed workflow scripts", async () => {
     const home = await createTempHome();
     const service = createService(home);

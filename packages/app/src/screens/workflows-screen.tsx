@@ -6,8 +6,6 @@ import { useTranslation } from "react-i18next";
 import {
   Bot,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   Circle,
   Clock3,
   ExternalLink,
@@ -31,8 +29,17 @@ import {
   type WorkflowScriptFile,
   type WorkflowScriptSummary,
 } from "@getpaseo/protocol/workflow/types";
+import {
+  applyWorkflowInputContract,
+  type WorkflowInputContract,
+  type WorkflowInputPreset,
+} from "@getpaseo/protocol/workflow/input-contract";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { WorkflowAgentOutput } from "@/components/workflows/workflow-agent-output";
+import { WorkflowEnvironmentConfiguration } from "@/components/workflows/workflow-environment-configuration";
+import { WorkflowGraph } from "@/components/workflows/workflow-graph";
+import { WorkflowInputConfiguration } from "@/components/workflows/workflow-input-configuration";
+import { WorkflowRunInput } from "@/components/workflows/workflow-run-input";
 import { WorkflowStepListEditor } from "@/components/workflows/workflow-step-editor";
 import { WorkflowUsageGuide } from "@/components/workflows/workflow-usage-guide";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
@@ -57,10 +64,7 @@ import {
   validateWorkflowDraft,
 } from "@/workflows/editor-model";
 import { collectWorkflowRunTargets } from "@/workflows/run-targets";
-import {
-  deriveWorkflowNodeActions,
-  deriveWorkflowNodeIdentity,
-} from "@/workflows/run-node-actions";
+import { deriveWorkflowNodeIdentity } from "@/workflows/run-node-actions";
 import { parseWorkflowProcessOutput } from "@/workflows/run-output";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
@@ -96,6 +100,18 @@ function parseWorkflowInputJson(input: string): {
   };
 }
 
+function createDefaultWorkflowInput(
+  contract: WorkflowInputContract | undefined,
+  presets: WorkflowInputPreset[] | undefined,
+): string {
+  const preset = presets?.[0]?.payload ?? {};
+  const validation = applyWorkflowInputContract(contract, {
+    control: "",
+    ...preset,
+  });
+  return JSON.stringify(validation.payload, null, 2);
+}
+
 export function WorkflowsScreen(): ReactElement {
   const isFocused = useIsFocused();
   if (!isFocused) {
@@ -122,6 +138,10 @@ function WorkflowsScreenContent(): ReactElement {
   const supportsTeams = useHostFeature(selectedHost, "teams");
   const supportsWorkflowPython = useHostFeature(selectedHost, "workflowPython");
   const supportsWorkflowNodeRun = useHostFeature(selectedHost, "workflowNodeRun");
+  const supportsWorkflowInputConfiguration = useHostFeature(
+    selectedHost,
+    "workflowInputConfiguration",
+  );
   const teamsResult = useTeams(selectedHost, {
     enabled: Boolean(selectedHost) && supportsTeams,
   });
@@ -219,6 +239,12 @@ function WorkflowsScreenContent(): ReactElement {
         setDraftPath(payload.script.path);
         setDirty(false);
         setActiveRun(payload.latestRun);
+        setInputJson(
+          createDefaultWorkflowInput(
+            payload.script.script.inputContract,
+            payload.script.script.inputPresets,
+          ),
+        );
       } catch (error) {
         toast.error(error instanceof Error ? error.message : String(error));
       }
@@ -254,6 +280,7 @@ function WorkflowsScreenContent(): ReactElement {
     setDirty(true);
     setActiveRun(null);
     setTargetNodeId("");
+    setInputJson(DEFAULT_WORKFLOW_INPUT_JSON);
   }, [dirty, t]);
 
   const updateDraft = useCallback((next: WorkflowScript) => {
@@ -336,9 +363,17 @@ function WorkflowsScreenContent(): ReactElement {
     let inputPayload: string;
     try {
       const parsedInput = parseWorkflowInputJson(normalizedInput);
-      inputPayload = parsedInput.inputPayload;
+      const parsedPayload = JSON.parse(parsedInput.inputPayload) as Record<string, unknown>;
+      const validation = applyWorkflowInputContract(draft.inputContract, parsedPayload);
+      if (validation.issues.length > 0) {
+        toast.error(validation.issues.map((issue) => issue.message).join("; "));
+        return;
+      }
+      inputPayload = JSON.stringify(validation.payload);
       if (parsedInput.formattedInput) {
         setInputJson(parsedInput.formattedInput);
+      } else if (JSON.stringify(parsedPayload) !== inputPayload) {
+        setInputJson(JSON.stringify(validation.payload, null, 2));
       }
     } catch {
       toast.error(t("workflows.messages.invalidInputJson"));
@@ -704,12 +739,28 @@ function WorkflowsScreenContent(): ReactElement {
                 </View>
               </View>
 
+              {supportsWorkflowInputConfiguration ? (
+                <>
+                  <WorkflowInputConfiguration
+                    contract={draft.inputContract}
+                    presets={draft.inputPresets}
+                    onChangeContract={(inputContract) => updateDraft({ ...draft, inputContract })}
+                    onChangePresets={(inputPresets) => updateDraft({ ...draft, inputPresets })}
+                  />
+                  <WorkflowEnvironmentConfiguration
+                    environment={draft.environment}
+                    onChange={(environment) => updateDraft({ ...draft, environment })}
+                  />
+                </>
+              ) : null}
+
               <View style={styles.sectionHeading}>
                 <View>
                   <Text style={styles.sectionTitle}>{t("workflows.editor.flow")}</Text>
                   <Text style={styles.sectionDescription}>{t("workflows.editor.flowHint")}</Text>
                 </View>
               </View>
+              <WorkflowGraph steps={draft.steps} mode="design" />
               <WorkflowStepListEditor
                 steps={draft.steps}
                 rootSteps={draft.steps}
@@ -748,6 +799,14 @@ function WorkflowsScreenContent(): ReactElement {
                     {t("workflows.actions.run")}
                   </Button>
                 </View>
+                {supportsWorkflowInputConfiguration ? (
+                  <WorkflowRunInput
+                    contract={draft.inputContract}
+                    presets={draft.inputPresets}
+                    inputJson={inputJson}
+                    onChangeInputJson={setInputJson}
+                  />
+                ) : null}
                 <Field
                   label={t("workflows.editor.inputJson")}
                   hint={t("workflows.editor.inputJsonHint")}
@@ -931,21 +990,17 @@ function WorkflowRunPanel({
   cancelling: boolean;
 }) {
   const { t, i18n } = useTranslation();
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   useEffect(() => {
-    setExpandedNodeIds(new Set());
+    setSelectedStepId(null);
   }, [run.id]);
-  const toggleNode = useCallback((nodeId: string) => {
-    setExpandedNodeIds((current) => {
-      const next = new Set(current);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
-      }
-      return next;
-    });
-  }, []);
+  useEffect(() => {
+    if (selectedStepId || run.nodeRuns.length === 0) {
+      return;
+    }
+    const active = run.nodeRuns.find((nodeRun) => nodeRun.status === "running");
+    setSelectedStepId(active?.stepId ?? run.nodeRuns.at(-1)?.stepId ?? null);
+  }, [run.nodeRuns, selectedStepId]);
   let statusIcon: ReactElement;
   if (run.status === "succeeded") {
     statusIcon = <CheckCircle2 size={16} color={styles.runSuccessIcon.color} />;
@@ -996,42 +1051,68 @@ function WorkflowRunPanel({
         <WorkflowRunValue label={t("workflows.run.outputFile")} value={run.outputFilePath} mono />
       ) : null}
       {run.error ? <Text style={styles.runError}>{run.error}</Text> : null}
-      <View style={styles.runNodes}>
-        {run.nodeRuns.map((node) => {
-          const expanded = expandedNodeIds.has(node.id);
-          const { canExpand, canOpenAgent } = deriveWorkflowNodeActions(node);
+      <WorkflowGraph
+        steps={run.scriptSnapshot.steps}
+        nodeRuns={run.nodeRuns}
+        selectedStepId={selectedStepId}
+        onSelectStep={setSelectedStepId}
+        mode="run"
+      />
+      <WorkflowSelectedNodeRuns
+        stepId={selectedStepId}
+        nodeRuns={run.nodeRuns}
+        locale={i18n.language}
+        onOpenAgent={onOpenAgent}
+      />
+    </View>
+  );
+}
+
+function WorkflowSelectedNodeRuns({
+  stepId,
+  nodeRuns,
+  locale,
+  onOpenAgent,
+}: {
+  stepId: string | null;
+  nodeRuns: WorkflowNodeRun[];
+  locale: string;
+  onOpenAgent: (agentId: string) => void;
+}) {
+  const { t } = useTranslation();
+  if (!stepId) {
+    return null;
+  }
+  const selectedRuns = nodeRuns.filter((nodeRun) => nodeRun.stepId === stepId);
+  return (
+    <View style={styles.selectedNodeRuns}>
+      <View style={styles.selectedNodeHeader}>
+        <Text style={styles.sectionTitle}>{t("workflows.graph.nodeDetails")}</Text>
+        <Text style={styles.runNodeId}>{stepId}</Text>
+      </View>
+      {selectedRuns.length === 0 ? (
+        <Text style={styles.selectedNodeEmpty}>{t("workflows.graph.nodeNotRun")}</Text>
+      ) : (
+        selectedRuns.map((node) => {
           const nodeIdentity = deriveWorkflowNodeIdentity(node);
-          const linkedAgentId = canOpenAgent ? node.agentId : null;
-          const nodeTypeIcon = renderWorkflowNodeTypeIcon(node);
-          const expandIcon = expanded ? (
-            <ChevronDown size={13} color={styles.runNodeIcon.color} />
-          ) : (
-            <ChevronRight size={13} color={styles.runNodeIcon.color} />
-          );
+          const linkedAgentId = node.agentId;
           return (
             <View key={node.id} style={styles.runNodeCard}>
               <View style={styles.runNode}>
-                <Pressable
-                  onPress={() => toggleNode(node.id)}
-                  disabled={!canExpand}
-                  style={({ hovered, pressed }) => [
-                    styles.runNodeToggle,
-                    (hovered || pressed) && canExpand ? styles.runNodeInteractive : null,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded }}
-                >
-                  {expandIcon}
-                  {nodeTypeIcon}
+                <View style={styles.runNodeToggle}>
+                  {renderWorkflowNodeTypeIcon(node)}
                   <View style={styles.runNodeIdentity}>
-                    <Text style={styles.runNodeName} numberOfLines={1}>
-                      {t("workflows.nodes.displayName")}: {nodeIdentity.name || "—"}
+                    <Text style={styles.runNodeName} numberOfLines={2}>
+                      {nodeIdentity.name || nodeIdentity.id}
                     </Text>
-                    <Text style={styles.runNodeId} numberOfLines={1}>
-                      {t("workflows.nodes.id")}: {nodeIdentity.id}
+                    <Text style={styles.runNodeId}>
+                      {t("workflows.graph.executionAttempt", {
+                        attempt: node.attempt,
+                        count: node.maxAttempts,
+                      })}
                     </Text>
                   </View>
-                </Pressable>
+                </View>
                 {linkedAgentId ? (
                   <Pressable
                     onPress={() => onOpenAgent(linkedAgentId)}
@@ -1054,15 +1135,14 @@ function WorkflowRunPanel({
                   ]}
                 >
                   {t(`workflows.run.status.${node.status}`)}
-                  {node.maxAttempts > 1 ? ` · ${node.attempt}/${node.maxAttempts}` : ""}
                 </Text>
               </View>
-              <WorkflowNodeCore node={node} locale={i18n.language} expanded={expanded} />
-              {expanded ? <WorkflowNodeDetails node={node} /> : null}
+              <WorkflowNodeCore node={node} locale={locale} expanded />
+              <WorkflowNodeDetails node={node} />
             </View>
           );
-        })}
-      </View>
+        })
+      )}
     </View>
   );
 }
@@ -1124,8 +1204,45 @@ function WorkflowNodeCore({
 
 function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
   const { t } = useTranslation();
+  return (
+    <View style={styles.runNodeDetails}>
+      <WorkflowNodeOutputDetails node={node} />
+      <WorkflowNodeExecutionMetadata node={node} />
+      <WorkflowRunValue
+        label={t("workflows.run.iteration")}
+        value={node.iterationPath.length > 0 ? node.iterationPath.join(" / ") : "—"}
+      />
+      {node.errorCode ? (
+        <WorkflowRunValue label={t("workflows.run.errorCode")} value={node.errorCode} mono />
+      ) : null}
+      {node.workflowPath ? (
+        <WorkflowRunValue label={t("workflows.run.workflow")} value={node.workflowPath} mono />
+      ) : null}
+      {node.workflowRunId ? (
+        <WorkflowRunValue
+          label={t("workflows.run.workflowRunId")}
+          value={node.workflowRunId}
+          mono
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function WorkflowNodeOutputDetails({ node }: { node: WorkflowNodeRun }) {
+  const { t } = useTranslation();
   let outputContent: ReactElement | null = null;
-  if (node.output && node.stepType === "bash") {
+  const isCommandNode = node.stepType === "bash";
+  const hasStructuredProcessOutput = node.stdout !== undefined || node.stderr !== undefined;
+  if (isCommandNode && hasStructuredProcessOutput) {
+    outputContent = (
+      <WorkflowStructuredCommandOutput
+        stdout={node.stdout ?? null}
+        stderr={node.stderr ?? null}
+        executor={node.executor ?? "bash"}
+      />
+    );
+  } else if (node.output && isCommandNode) {
     outputContent = (
       <WorkflowCommandOutput value={node.output} executor={node.executor ?? "bash"} />
     );
@@ -1147,26 +1264,76 @@ function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
       />
     );
   }
+  return outputContent;
+}
+
+function WorkflowNodeExecutionMetadata({ node }: { node: WorkflowNodeRun }) {
+  const { t } = useTranslation();
   return (
-    <View style={styles.runNodeDetails}>
-      {outputContent}
-      <WorkflowRunValue
-        label={t("workflows.run.iteration")}
-        value={node.iterationPath.length > 0 ? node.iterationPath.join(" / ") : "—"}
-      />
-      {node.errorCode ? (
-        <WorkflowRunValue label={t("workflows.run.errorCode")} value={node.errorCode} mono />
-      ) : null}
-      {node.workflowPath ? (
-        <WorkflowRunValue label={t("workflows.run.workflow")} value={node.workflowPath} mono />
-      ) : null}
-      {node.workflowRunId ? (
-        <WorkflowRunValue
-          label={t("workflows.run.workflowRunId")}
-          value={node.workflowRunId}
-          mono
+    <>
+      {node.expandedInstruction ? (
+        <WorkflowPayloadValue
+          label={t("workflows.run.expandedInstruction")}
+          value={node.expandedInstruction}
+          preserveText
         />
       ) : null}
+      {node.cwd ? <WorkflowRunValue label={t("workflows.run.cwd")} value={node.cwd} mono /> : null}
+      {node.environmentSource ? (
+        <WorkflowRunValue
+          label={t("workflows.run.environment")}
+          value={t(`workflows.run.environmentSource.${node.environmentSource}`)}
+        />
+      ) : null}
+      {node.environmentPath ? (
+        <WorkflowRunValue label={t("workflows.run.path")} value={node.environmentPath} mono />
+      ) : null}
+      {node.exitCode !== undefined && node.exitCode !== null ? (
+        <WorkflowRunValue label={t("workflows.run.exitCode")} value={String(node.exitCode)} mono />
+      ) : null}
+      {node.signal ? (
+        <WorkflowRunValue label={t("workflows.run.signal")} value={node.signal} mono />
+      ) : null}
+      {node.skippedReason ? (
+        <WorkflowRunValue label={t("workflows.run.skippedReason")} value={node.skippedReason} />
+      ) : null}
+    </>
+  );
+}
+
+function WorkflowStructuredCommandOutput({
+  stdout,
+  stderr,
+  executor,
+}: {
+  stdout: string | null;
+  stderr: string | null;
+  executor: "bash" | "python";
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.runValue}>
+      <Text style={styles.runValueLabel}>
+        {t(
+          executor === "python"
+            ? "workflows.run.pythonProcessOutput"
+            : "workflows.run.processOutput",
+        )}
+      </Text>
+      <View style={styles.runProcessSections}>
+        <View style={styles.runProcessSection}>
+          <Text style={styles.runProcessLabel}>{t("workflows.run.stdout")}</Text>
+          <Text style={styles.runPayloadValue} selectable>
+            {stdout || "—"}
+          </Text>
+        </View>
+        <View style={styles.runProcessSection}>
+          <Text style={styles.runProcessLabel}>{t("workflows.run.stderr")}</Text>
+          <Text style={styles.runPayloadValue} selectable>
+            {stderr || "—"}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -1683,9 +1850,25 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.statusDanger,
     fontSize: theme.fontSize.xs,
   },
-  runNodes: {
+  selectedNodeRuns: {
     gap: theme.spacing[2],
     marginTop: theme.spacing[1],
+  },
+  selectedNodeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  selectedNodeEmpty: {
+    padding: theme.spacing[4],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    textAlign: "center",
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderStyle: "dashed",
+    borderRadius: theme.borderRadius.lg,
   },
   runNodeCard: {
     overflow: "hidden",

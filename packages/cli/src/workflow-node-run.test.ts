@@ -7,4 +7,12 @@ describe("workflow node run CLI", () => {
 
     expect(run?.helpInformation()).toContain("--node <node-id>");
   });
+
+  it("supports reusable input presets without requiring inline JSON", () => {
+    const run = createWorkflowCommand().commands.find((command) => command.name() === "run");
+    const help = run?.helpInformation() ?? "";
+
+    expect(help).toContain("[input-json]");
+    expect(help).toContain("--preset <preset-id>");
+  });
 });

@@ -2660,19 +2660,33 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         "Run a workflow script or one node with an input JSON payload. By default this waits for the result.",
       inputSchema: {
         scriptPath: z.string().trim().min(1),
-        inputPayload: z.string().trim().min(1),
+        inputPayload: z.string().trim().min(1).optional(),
+        inputPresetId: z.string().trim().min(1).optional(),
         targetNodeId: z.string().trim().min(1).optional(),
         background: z.boolean().optional(),
       },
       outputSchema: WorkflowRunSchema.shape,
     },
-    async ({ scriptPath, inputPayload, targetNodeId, background = false }) => {
+    async ({ scriptPath, inputPayload, inputPresetId, targetNodeId, background = false }) => {
       if (!workflowService) {
         throw new Error("Workflow service is not configured");
       }
+      if (!inputPayload && !inputPresetId) {
+        throw new Error("Workflow input JSON or inputPresetId is required");
+      }
       const run = background
-        ? await workflowService.runScript({ scriptPath, inputPayload, targetNodeId })
-        : await workflowService.runScriptAndWait({ scriptPath, inputPayload, targetNodeId });
+        ? await workflowService.runScript({
+            scriptPath,
+            inputPayload,
+            inputPresetId,
+            targetNodeId,
+          })
+        : await workflowService.runScriptAndWait({
+            scriptPath,
+            inputPayload,
+            inputPresetId,
+            targetNodeId,
+          });
       return {
         content: [],
         structuredContent: ensureValidJson(run),

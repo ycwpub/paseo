@@ -46,6 +46,78 @@ Example payload:
 }
 ```
 
+## Input contracts and presets
+
+`inputContract` is an executable JSON Schema subset. Paseo applies defaults and validates required
+fields, types, allowed values, and additional properties before it creates a run. No node starts
+when validation fails.
+
+```json
+{
+  "inputContract": {
+    "properties": {
+      "scan_dir_url": { "type": "string" },
+      "group_ids": { "type": "array", "default": [] },
+      "mode": {
+        "type": "string",
+        "enum": ["scan_only", "prepare_only", "full"],
+        "default": "scan_only"
+      },
+      "max_work_items": { "type": "integer", "default": 0 }
+    },
+    "required": ["scan_dir_url", "group_ids"],
+    "additionalProperties": true
+  }
+}
+```
+
+Supported property types are `string`, `number`, `integer`, `boolean`, `object`, and `array`.
+The visual editor generates run fields from these properties and keeps the complete JSON payload
+available as an editable preview.
+
+Use `inputPresets` for fixed resources and repeatable smoke or full-run configurations:
+
+```json
+{
+  "inputPresets": [
+    {
+      "id": "scan-only",
+      "name": "Scan only",
+      "payload": {
+        "scan_dir_url": "https://example.test/wiki",
+        "group_ids": [],
+        "mode": "scan_only",
+        "max_work_items": 0
+      }
+    }
+  ]
+}
+```
+
+Preset payloads must satisfy the workflow input contract. The visual editor and CLI copy a preset
+into an editable input payload. Agent tools can pass `inputPresetId` directly.
+
+## Command environment
+
+`environment` configures every Bash and Python node:
+
+```json
+{
+  "environment": {
+    "inherit": "login-shell",
+    "variables": {
+      "FIXED_WIKI_URL": "https://example.test/wiki"
+    }
+  }
+}
+```
+
+- `inherit: "daemon"` uses the environment that started Paseo and is the default.
+- `inherit: "login-shell"` loads the user's login shell environment once, including `PATH`.
+- `variables` overrides inherited values for each command node.
+
+Agent nodes keep their provider-managed environment.
+
 Run history stores the serialized payload in `inputPayload` and `outputPayload` for both the whole
 run and each node attempt. The historical file-path and control fields remain as compatibility
 projections.
@@ -178,11 +250,16 @@ default and can be changed with `caseSensitive`.
 
 ## For and early break
 
-`for` parses the payload's `control` as:
+When `separator` is non-empty, `for` parses the payload's `control` as:
 
 - a JSON array, such as `["a", {"id": 2}]`
 - a non-negative integer count, where `3` produces `0`, `1`, and `2`
-- a comma/newline-separated string, or a custom `separator`
+- a string split by the configured `separator`
+
+When `separator` is empty or omitted, `for` ignores `control` and runs until `maxIterations` is
+reached or a body node returns the configured break control. `maxIterations` defaults to `100`.
+In this mode, `loop.item` is `null`, `loop.index` is the zero-based iteration index, and
+`loop.count` equals `maxIterations`.
 
 Each body iteration receives:
 
@@ -268,6 +345,11 @@ to the node after the loop.
 - Bash, Python, and Agent nodes may override `timeoutMs` and `retry`.
 - Retry uses capped exponential backoff with optional jitter.
 - Every attempt records status, timestamps, attempt number, payloads, error code, and retry delay.
+- Command attempts also record the expanded command or Python code, cwd, environment source, PATH,
+  stdout, stderr, exit code, and signal.
+- A zero-item For node records `Skipped loop: 0 items` and its skip reason.
+- Command failures preserve their original stderr and exit status. Paseo does not attempt to parse a
+  JSON result after a command has already failed.
 - Runs have `running`, `succeeded`, `failed`, `cancelled`, and `timed_out` states.
 - A daemon restart closes in-flight work with `DAEMON_RESTARTED`.
 
@@ -278,6 +360,8 @@ to the node after the loop.
 ```bash
 paseo workflow inspect /absolute/path/workflow.json
 paseo workflow run /absolute/path/workflow.json '{"control":""}'
+paseo workflow run /absolute/path/workflow.json --preset scan-only
+paseo workflow run /absolute/path/workflow.json '{"max_work_items":2}' --preset scan-only
 paseo workflow run /absolute/path/workflow.json '{"control":""}' --node worker
 paseo workflow run /absolute/path/workflow.json '{"control":"","filePath":"/absolute/path/input.txt"}' --background
 paseo workflow cancel <run-id>

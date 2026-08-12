@@ -2,12 +2,13 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-
-const MAX_OUTPUT_CHARS = 200_000;
+import { WorkflowCommandExecutionError, trimWorkflowOutput } from "./command-node.js";
 
 export interface PythonNodeProcessOutput {
   stdout: string;
   stderr: string;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
 }
 
 export interface RunPythonNodeInput {
@@ -16,6 +17,7 @@ export interface RunPythonNodeInput {
   inputJson: string;
   iterationPath: number[];
   cwd: string;
+  env?: NodeJS.ProcessEnv;
   timeoutMs: number;
   runId: string;
   stepId: string;
@@ -43,7 +45,7 @@ function executePythonFile(
     const child = spawn(input.pythonPath, [scriptPath], {
       cwd: input.cwd,
       env: {
-        ...process.env,
+        ...(input.env ?? process.env),
         PASEO_WORKFLOW_ITERATION_PATH: JSON.stringify(input.iterationPath),
         PASEO_WORKFLOW_RUN_ID: input.runId,
         PASEO_WORKFLOW_STEP_ID: input.stepId,
@@ -74,10 +76,10 @@ function executePythonFile(
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
-      stdout = trimOutput(stdout + String(chunk));
+      stdout = trimWorkflowOutput(stdout + String(chunk));
     });
     child.stderr.on("data", (chunk) => {
-      stderr = trimOutput(stderr + String(chunk));
+      stderr = trimWorkflowOutput(stderr + String(chunk));
     });
     child.stdin.on("error", () => {
       // Process exit handling below reports the actionable interpreter error.
@@ -90,24 +92,29 @@ function executePythonFile(
     child.once("close", (exitCode, signal) => {
       clearTimeout(timer);
       close();
+      const output = { stdout, stderr, exitCode, signal };
       if (timedOut) {
-        reject(new Error(`Python workflow node timed out after ${input.timeoutMs}ms`));
+        reject(
+          new WorkflowCommandExecutionError(
+            `Python workflow node timed out after ${input.timeoutMs}ms`,
+            output,
+            true,
+          ),
+        );
       } else if (exitCode !== 0) {
         reject(
-          new Error(
+          new WorkflowCommandExecutionError(
             `Python workflow node failed with ${
               exitCode === null ? `signal ${signal ?? "unknown"}` : `exit code ${exitCode}`
             }${stderr.trim() ? `: ${stderr.trim()}` : ""}`,
+            output,
+            false,
           ),
         );
       } else {
-        resolve({ stdout, stderr });
+        resolve(output);
       }
     });
     child.stdin.end(input.inputJson);
   });
-}
-
-function trimOutput(value: string): string {
-  return value.length <= MAX_OUTPUT_CHARS ? value : value.slice(value.length - MAX_OUTPUT_CHARS);
 }

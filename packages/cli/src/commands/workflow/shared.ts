@@ -6,6 +6,7 @@ import { buildDaemonConnectionCommandError, connectToDaemon } from "../../utils/
 export interface WorkflowCommandOptions extends CommandOptions {
   background?: boolean;
   node?: string;
+  preset?: string;
 }
 
 export async function connectWorkflowClient(host?: string) {

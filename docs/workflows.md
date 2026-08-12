@@ -6,7 +6,7 @@ supported.
 
 ## JSON payload contract
 
-Every Bash or Agent node receives one JSON object serialized as a string. Node input contains
+Every Bash, Python, or Agent node receives one JSON object serialized as a string. Node input contains
 `control` plus business data, but never contains `error`:
 
 ```json
@@ -52,18 +52,11 @@ projections.
 
 ## Bash nodes
 
-Bash nodes receive the same serialized JSON in:
-
-- `$1`
-- `PASEO_WORKFLOW_INPUT_JSON`
-
-When the current payload contains `filePath`, Bash nodes also receive it in:
-
-- `$2` and `PASEO_WORKFLOW_INPUT_FILE`
+Bash nodes receive the serialized JSON as `$1`. Read `filePath`, `control`, and all business data
+from that object.
 
 Runtime metadata also includes:
 
-- `PASEO_WORKFLOW_CONTROL`
 - `PASEO_WORKFLOW_ITERATION_PATH`
 - `PASEO_WORKFLOW_RUN_ID`
 - `PASEO_WORKFLOW_STEP_ID`
@@ -74,8 +67,8 @@ earlier stdout lines. Empty stdout fails the node. Output `control` and `error` 
 provided and default to `""` when omitted. Input JSON never contains `error`.
 
 ```bash
-node - <<'NODE'
-const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);
+node - "$1" <<'NODE'
+const input = JSON.parse(process.argv[2]);
 const output = {
   ...input,
   normalizedCustomer: input.customer.name.trim(),
@@ -107,7 +100,7 @@ For an input containing `{"customer":{"name":"Alice"}}`, this renders `Alice` an
 and arrays are serialized as JSON, and an unknown variable fails the node.
 
 Template values are inserted directly into the shell command. For untrusted or complex data,
-prefer parsing `PASEO_WORKFLOW_INPUT_JSON` instead of interpolating it into shell syntax.
+prefer parsing `$1` instead of interpolating it into shell syntax.
 
 ## Agent nodes
 
@@ -137,6 +130,32 @@ Runtime variables include:
 
 Agent nodes support provider, model, mode, thinking, approval/sandbox, MCP, feature, network, and
 workspace-isolation settings.
+
+## Python nodes
+
+Python nodes run the code stored directly in the workflow script. Paseo writes the code to a
+temporary `.py` file, runs it with `python3`, and removes the file after the process exits. Set
+`pythonPath` when the host uses another interpreter.
+
+The serialized node input is available on stdin.
+
+Runtime metadata uses the same environment variables as Bash nodes. The last non-empty stdout line
+must be one JSON object. Earlier stdout lines and stderr are retained as process output. Empty
+stdout, invalid JSON, a non-zero exit code, or a non-empty output `error` fails the node.
+
+```python
+import json
+import sys
+
+payload = json.load(sys.stdin)
+payload["normalizedCustomer"] = payload["customer"]["name"].strip()
+payload["control"] = "normalized"
+print(json.dumps(payload, ensure_ascii=False))
+```
+
+Python code supports the same `{{path}}` template variables and custom `variables` as Bash nodes.
+Prefer reading structured or untrusted values from the input JSON instead of inserting them into
+Python source.
 
 ## Switch
 
@@ -246,7 +265,7 @@ to the node after the loop.
 
 - A workflow may define a total `timeoutMs`.
 - `taskDefaults` defines default task timeout and retry behavior.
-- Bash and Agent nodes may override `timeoutMs` and `retry`.
+- Bash, Python, and Agent nodes may override `timeoutMs` and `retry`.
 - Retry uses capped exponential backoff with optional jitter.
 - Every attempt records status, timestamps, attempt number, payloads, error code, and retry delay.
 - Runs have `running`, `succeeded`, `failed`, `cancelled`, and `timed_out` states.
@@ -259,10 +278,15 @@ to the node after the loop.
 ```bash
 paseo workflow inspect /absolute/path/workflow.json
 paseo workflow run /absolute/path/workflow.json '{"control":""}'
+paseo workflow run /absolute/path/workflow.json '{"control":""}' --node worker
 paseo workflow run /absolute/path/workflow.json '{"control":"","filePath":"/absolute/path/input.txt"}' --background
 paseo workflow cancel <run-id>
 paseo workflow ls
 ```
+
+Use `--node <node-id>` to run one top-level or nested node directly with the supplied input payload.
+The run skips every other node. Selecting a Switch, For, or Workflow node runs that node's complete
+branch, loop, or child workflow behavior.
 
 Agent tools:
 
@@ -277,6 +301,7 @@ Embedded server usage:
 ```ts
 const run = await daemon.workflowService.runScriptAndWait({
   scriptPath: "/absolute/path/workflow.json",
+  targetNodeId: "worker",
   inputPayload: JSON.stringify({
     control: "",
     customer: {

@@ -67,16 +67,16 @@ export const en = {
         title: "Input and output contract",
         description:
           'Nodes receive one JSON object containing "control" and business data. The framework consumes output "error" and never passes it to downstream node inputs.',
-        note: 'A non-empty output "error" stops the workflow. Switch and For nodes read "control". Bash output defaults missing control/error fields to empty strings; Agent output is written to answer or control according to its node type.',
+        note: 'A non-empty output "error" stops the workflow. Switch and For nodes read "control". Bash and Python outputs default missing control/error fields to empty strings; Agent output is written to answer or control according to its node type.',
       },
       internal: {
         title: "Use inside Paseo",
         visualTitle: "Run from this page",
         visualDescription:
-          "Select a workflow, enter the initial JSON under Test run, and click Run. The latest run and every node input/output are shown below.",
+          "Select a workflow, enter the initial JSON under Test run, choose the whole workflow or one node, and click Run. The latest run and every node input/output are shown below.",
         agentTitle: "Run from an Agent",
         agentDescription:
-          "An Agent can call list_workflows, inspect_workflow, run_workflow, get_workflow_run, and cancel_workflow. Example run_workflow arguments:",
+          "An Agent can call list_workflows, inspect_workflow, run_workflow, get_workflow_run, and cancel_workflow. Set targetNodeId to test one node. Example run_workflow arguments:",
         serverTitle: "Run from server code",
         serverDescription:
           "Internal server integrations can call WorkflowService directly and wait for the terminal result:",
@@ -85,7 +85,7 @@ export const en = {
         title: "Use outside Paseo",
         cliTitle: "Run from CLI or a shell script",
         cliDescription:
-          "Use the CLI for local scripts, CI, cron jobs, and other processes that can connect to the daemon:",
+          "Use the CLI for local scripts, CI, cron jobs, and other processes that can connect to the daemon. Add --node <node-id> to test one node:",
         backgroundTitle: "Start asynchronously",
         backgroundDescription:
           "Use --background to return immediately. The returned run ID can be inspected or cancelled later.",
@@ -94,7 +94,9 @@ export const en = {
       },
       nodes: {
         title: "Node behavior",
-        bash: "• Bash: reads the payload from $PASEO_WORKFLOW_INPUT_JSON or $1. Its last non-empty stdout line must be the result JSON; empty stdout fails the node.",
+        bash: "• Bash: reads the JSON payload from $1. Its last non-empty stdout line must be the result JSON; empty stdout fails the node.",
+        python:
+          "• Python: runs editable Python code with the JSON payload on stdin. Its last non-empty stdout line must be the result JSON.",
         agent:
           "• Agent: Answer nodes write the reply to answer; Control nodes write the reply to control. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
         workflow:
@@ -143,7 +145,7 @@ export const en = {
       workflowTimeout: "Workflow timeout (seconds)",
       workflowTimeoutHint: "Maximum duration for the whole run.",
       taskTimeout: "Task timeout (seconds)",
-      taskTimeoutHint: "Default for Bash, Agent, and Workflow nodes.",
+      taskTimeoutHint: "Default for Bash, Python, Agent, and Workflow nodes.",
       defaultAttempts: "Default attempts",
       defaultAttemptsHint: "Includes the first execution.",
       promptTemplates: "Prompt templates",
@@ -156,8 +158,13 @@ export const en = {
       inputJson: "Input JSON",
       inputJsonHint:
         'Node input contains "control" and business data only. "error" is reserved for framework output handling.',
+      runTarget: "Run target",
+      runTargetHint: "Run the whole workflow, or test one node directly with the input JSON above.",
+      runEntireWorkflow: "Entire workflow",
+      noRunTargets: "No runnable nodes",
       emptyTitle: "Select or create a workflow",
-      emptyDescription: "Build Bash, Agent, Workflow, Switch, and For nodes without editing JSON.",
+      emptyDescription:
+        "Build Bash, Python, Agent, Workflow, Switch, and For nodes without editing JSON.",
     },
     list: {
       title: "Saved workflows",
@@ -170,6 +177,7 @@ export const en = {
       startedAt: "Started",
       endedAt: "Ended",
       duration: "Duration",
+      targetNode: "Target node",
       notFinished: "Not finished",
       input: "Input",
       outputPayload: "Output",
@@ -178,6 +186,7 @@ export const en = {
       control: "Control",
       iteration: "Iteration path",
       processOutput: "Bash output",
+      pythonProcessOutput: "Python output",
       stdout: "Standard output (stdout)",
       stderr: "Error output (stderr)",
       nodeOutput: "Node output",
@@ -205,6 +214,7 @@ export const en = {
       displayName: "Display name",
       defaultNames: {
         bash: "Bash command",
+        python: "Python code",
         agent: "Agent",
         workflow: "Workflow",
         switch: "Switch",
@@ -212,6 +222,7 @@ export const en = {
       },
       types: {
         bash: "Bash",
+        python: "Python",
         agent: "Agent",
         workflow: "Workflow",
         switch: "Switch",
@@ -219,6 +230,7 @@ export const en = {
       },
       typeDescriptions: {
         bash: "Run a shell command",
+        python: "Run Python code",
         agent: "Run an AI agent",
         workflow: "Run another workflow",
         switch: "Branch on control",
@@ -234,8 +246,15 @@ export const en = {
       bash: {
         initialCommand: "Initial command",
         initialCommandHint:
-          "Use the template variables shown below, or read the node input from $PASEO_WORKFLOW_INPUT_JSON or $1. Input never contains error. Output control/error default to empty strings when omitted.",
+          "Use the template variables shown below, or read the node input JSON from $1. Input never contains error. Output control/error default to empty strings when omitted.",
         shell: "Shell",
+      },
+      python: {
+        code: "Python code",
+        codeHint:
+          "Read the input JSON from stdin. Print the result JSON as the last non-empty stdout line. Input never contains error; missing output control/error fields default to empty strings.",
+        interpreter: "Python interpreter",
+        interpreterHint: 'Leave empty to use "python3".',
       },
       workflow: {
         workflow: "Workflow",
@@ -321,9 +340,12 @@ export const en = {
       },
       variables: {
         bashTitle: "Bash variables",
+        pythonTitle: "Python variables",
         agentTitle: "Agent variables",
         bashDescription:
           "Define reusable values for the command. Values may reference payload paths or built-in variables.",
+        pythonDescription:
+          "Define reusable values for the Python code. Values may reference payload paths or built-in variables.",
         agentDescription:
           "Define reusable values for both user and system prompts. Values may reference payload paths or built-in variables.",
         examplesTitle: "Variable examples",
@@ -334,6 +356,7 @@ export const en = {
         payloadExample: "Complete JSON payload",
         customExample: 'Custom variable, for example role = "reviewer"',
         bashUsageExample: "Bash command example:",
+        pythonUsageExample: "Python code example:",
         agentUsageExample: "Agent user or system prompt example:",
         showHelp: "Show variable usage examples",
         add: "Add variable",
@@ -559,6 +582,21 @@ export const en = {
     process: {
       show: "Show process",
       hide: "Hide process",
+      processed: "Processed",
+      processedWithDuration: "Processed {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "Plan",
@@ -2190,6 +2228,7 @@ export const en = {
     projects: "Projects",
     projectList: {
       hostLoadFailed: "Couldn't load projects from host {{hostName}}: {{message}}",
+      hostLoadTimedOut: "Host {{hostName}} did not respond in time. Try again.",
       editProject: "Edit {{projectName}}",
     },
     groupInfo: "About {{title}}",

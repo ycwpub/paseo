@@ -1,12 +1,8 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import {
-  getHostRuntimeStore,
-  isHostRuntimeDirectoryLoading,
-  useHosts,
-  type HostRuntimeSnapshot,
-} from "@/runtime/host-runtime";
+import { getHostRuntimeStore, useHosts, type HostRuntimeSnapshot } from "@/runtime/host-runtime";
+import { isWorkspaceDirectoryLoading } from "@/runtime/workspace-directory-status";
 import {
   useSessionStore,
   type ProjectDescriptor,
@@ -62,14 +58,14 @@ function toProjectHostRuntimeState(
   snapshot: HostRuntimeSnapshot | null,
 ): ProjectHostRuntimeState {
   const isFetching =
-    snapshot?.agentDirectoryStatus === "initial_loading" ||
-    snapshot?.agentDirectoryStatus === "revalidating";
+    snapshot?.workspaceDirectoryStatus === "initial_loading" ||
+    snapshot?.workspaceDirectoryStatus === "revalidating";
   return {
     serverId,
     isOnline: snapshot?.connectionStatus === "online",
-    isLoading: isHostRuntimeDirectoryLoading(snapshot),
+    isLoading: isWorkspaceDirectoryLoading(snapshot),
     isFetching,
-    error: snapshot?.agentDirectoryError ?? null,
+    error: snapshot?.workspaceDirectoryError ?? null,
   };
 }
 
@@ -180,7 +176,7 @@ export function useProjects(options: UseProjectsOptions = {}): UseProjectsResult
   );
   const refetch = useCallback(() => {
     if (!enabled) return;
-    runtime.refreshAllAgentDirectories({ serverIds });
+    runtime.refreshAllProjectDirectories({ serverIds });
   }, [enabled, runtime, serverIds]);
 
   return {

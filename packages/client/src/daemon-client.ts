@@ -1076,6 +1076,7 @@ export interface InspectWorkflowOptions {
 export interface RunWorkflowOptions {
   scriptPath: string;
   inputPayload: string;
+  targetNodeId?: string;
   requestId?: string;
 }
 export interface GetWorkflowRunOptions {
@@ -6080,12 +6081,16 @@ export class DaemonClient {
   }
 
   async workflowRun(options: RunWorkflowOptions): Promise<WorkflowRunPayload> {
+    if (options.targetNodeId && this.lastServerInfoMessage?.features?.workflowNodeRun !== true) {
+      throw new Error("Update the host to run an individual workflow node.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
       message: {
         type: "workflow/run",
         scriptPath: options.scriptPath,
         inputPayload: options.inputPayload,
+        ...(options.targetNodeId ? { targetNodeId: options.targetNodeId } : {}),
       },
       responseType: "workflow/run/response",
     });

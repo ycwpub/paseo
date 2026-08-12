@@ -15,6 +15,7 @@ import {
   type WorkflowNodeResult,
   type WorkflowNodeRun,
   type WorkflowPayload,
+  type WorkflowPythonStep,
   type WorkflowPromptVariables,
   type WorkflowRetryPolicy,
   type WorkflowRun,
@@ -40,9 +41,12 @@ import {
   resolveTeamLeaderCreateContext,
 } from "../team/team-agent-context.js";
 import type { TeamStore } from "../team/team-store.js";
+import { runPythonNode } from "./python-node.js";
 import { WorkflowRunStore } from "./store.js";
+import { findWorkflowStep } from "./workflow-step-search.js";
 
 const DEFAULT_SHELL = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
+const DEFAULT_PYTHON_PATH = process.platform === "win32" ? "python" : "python3";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_ITERATIONS = 100;
 const MAX_OUTPUT_CHARS = 200_000;
@@ -120,7 +124,7 @@ export class WorkflowService {
   private readonly activeRuns = new Map<string, Promise<void>>();
   private readonly activeRunStacks = new Map<string, readonly string[]>();
   private readonly childRunIdsByParent = new Map<string, Set<string>>();
-  private readonly activeBashProcesses = new Map<ChildProcess, string>();
+  private readonly activeCommandProcesses = new Map<ChildProcess, string>();
   private readonly activeAgentIds = new Map<string, Set<string>>();
   private readonly terminationRequests = new Map<
     string,
@@ -177,7 +181,7 @@ export class WorkflowService {
 
   async stop(): Promise<void> {
     this.acceptingRuns = false;
-    for (const child of this.activeBashProcesses.keys()) {
+    for (const child of this.activeCommandProcesses.keys()) {
       child.kill("SIGTERM");
     }
     await Promise.allSettled(this.activeRuns.values());
@@ -276,6 +280,7 @@ export class WorkflowService {
     scriptPath: string;
     inputPayload?: string;
     inputFilePath?: string;
+    targetNodeId?: string;
   }): Promise<WorkflowRun> {
     return this.startScriptRun(input, []);
   }
@@ -285,6 +290,7 @@ export class WorkflowService {
       scriptPath: string;
       inputPayload?: string;
       inputFilePath?: string;
+      targetNodeId?: string;
     },
     parentStack: readonly string[],
   ): Promise<WorkflowRun> {
@@ -292,6 +298,10 @@ export class WorkflowService {
       throw new Error("Workflow service is shutting down");
     }
     const scriptFile = await this.inspectScript(input.scriptPath);
+    const targetNodeId = input.targetNodeId?.trim() || null;
+    if (targetNodeId && !findWorkflowStep(scriptFile.script.steps, targetNodeId)) {
+      throw new Error(`Workflow node not found: ${targetNodeId}`);
+    }
     if (parentStack.includes(scriptFile.path)) {
       throw new Error(`Workflow cycle detected: ${[...parentStack, scriptFile.path].join(" -> ")}`);
     }
@@ -314,6 +324,7 @@ export class WorkflowService {
     const run = await this.store.create({
       scriptPath: scriptFile.path,
       scriptSnapshot: scriptFile.script,
+      targetNodeId,
       status: "running",
       inputPayload: serializeNodeInputPayload(inputPayload),
       outputPayload: null,
@@ -342,6 +353,7 @@ export class WorkflowService {
     scriptPath: string;
     inputPayload?: string;
     inputFilePath?: string;
+    targetNodeId?: string;
   }): Promise<WorkflowRun> {
     const run = await this.runScript(input);
     await this.activeRuns.get(run.id);
@@ -370,7 +382,19 @@ export class WorkflowService {
     }
     try {
       this.assertRunActive(run.id, state);
-      state = await this.executeSteps(run, run.scriptSnapshot.steps, state);
+      if (run.targetNodeId) {
+        const targetStep = findWorkflowStep(run.scriptSnapshot.steps, run.targetNodeId);
+        if (!targetStep) {
+          throw new WorkflowExecutionError(
+            `Workflow node not found: ${run.targetNodeId}`,
+            state,
+            "WORKFLOW_NODE_NOT_FOUND",
+          );
+        }
+        state = await this.executeStep(run, targetStep, state);
+      } else {
+        state = await this.executeSteps(run, run.scriptSnapshot.steps, state);
+      }
       this.assertRunActive(run.id, state);
       await this.finishRun(run.id, {
         status: "succeeded",
@@ -418,7 +442,8 @@ export class WorkflowService {
         id: nodeRunId,
         stepId: step.id,
         stepName: step.name ?? null,
-        stepType: step.type,
+        stepType: step.type === "python" ? "bash" : step.type,
+        ...(step.type === "python" ? { executor: "python" as const } : {}),
         iterationPath: state.iterationPath,
         startedAt: this.now().toISOString(),
         endedAt: null,
@@ -446,6 +471,9 @@ export class WorkflowService {
         switch (step.type) {
           case "bash":
             result = await this.executeBashStep(run, step, state, attempt);
+            break;
+          case "python":
+            result = await this.executePythonStep(run, step, state, attempt);
             break;
           case "agent":
             result = await this.executeAgentStep(run, step, state, attempt);
@@ -487,7 +515,7 @@ export class WorkflowService {
         const canRetry =
           attempt < retry.maxAttempts &&
           executionError.terminalStatus === "failed" &&
-          (step.type === "bash" || step.type === "agent");
+          (step.type === "bash" || step.type === "python" || step.type === "agent");
         const retryDelayMs = canRetry ? calculateRetryDelay(retry, attempt) : null;
         await this.completeNodeRun(run.id, nodeRunId, {
           status:
@@ -531,7 +559,6 @@ export class WorkflowService {
     const output = await runBashInstruction({
       instruction: renderedInstruction,
       inputPayload: state.payload,
-      inputFilePath: getPayloadString(state.payload, "filePath") ?? "",
       iterationPath: state.iterationPath,
       cwd,
       shell: step.shell ?? DEFAULT_SHELL,
@@ -539,10 +566,43 @@ export class WorkflowService {
       runId: run.id,
       stepId: step.id,
       attempt,
-      onSpawn: (child) => this.activeBashProcesses.set(child, run.id),
-      onClose: (child) => this.activeBashProcesses.delete(child),
+      onSpawn: (child) => this.activeCommandProcesses.set(child, run.id),
+      onClose: (child) => this.activeCommandProcesses.delete(child),
     });
-    const result = readBashNodeResult(output.stdout, cwd);
+    const result = readCommandNodeResult(output.stdout, cwd, "Bash");
+    return this.validateNodeResult(result, state, null, formatProcessOutput(output));
+  }
+
+  private async executePythonStep(
+    run: WorkflowRun,
+    step: WorkflowPythonStep,
+    state: ExecutionState,
+    attempt: number,
+  ): Promise<StepExecutionResult> {
+    const code = await renderWorkflowInstruction({
+      template: step.code,
+      variables: step.variables,
+      state,
+      runId: run.id,
+      stepId: step.id,
+      stepName: step.name,
+      attempt,
+    });
+    const cwd = await resolveStepCwd(step.cwd, state.filePath);
+    const output = await runPythonNode({
+      code,
+      pythonPath: step.pythonPath ?? DEFAULT_PYTHON_PATH,
+      inputJson: serializeNodeInputPayload(state.payload),
+      iterationPath: state.iterationPath,
+      cwd,
+      timeoutMs: step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      runId: run.id,
+      stepId: step.id,
+      attempt,
+      onSpawn: (child) => this.activeCommandProcesses.set(child, run.id),
+      onClose: (child) => this.activeCommandProcesses.delete(child),
+    });
+    const result = readCommandNodeResult(output.stdout, cwd, "Python");
     return this.validateNodeResult(result, state, null, formatProcessOutput(output));
   }
 
@@ -995,7 +1055,7 @@ export class WorkflowService {
     for (const waiter of this.terminationWaiters.get(runId) ?? []) {
       waiter();
     }
-    for (const [child, childRunId] of this.activeBashProcesses) {
+    for (const [child, childRunId] of this.activeCommandProcesses) {
       if (childRunId === runId) {
         child.kill("SIGTERM");
       }
@@ -1509,7 +1569,10 @@ function resolveStepRetryPolicy(
   step: WorkflowStep,
 ): ResolvedWorkflowRetryPolicy {
   const defaultRetry = script.taskDefaults?.retry;
-  const stepRetry = step.type === "bash" || step.type === "agent" ? step.retry : undefined;
+  const stepRetry =
+    step.type === "bash" || step.type === "python" || step.type === "agent"
+      ? step.retry
+      : undefined;
   const configured =
     defaultRetry || stepRetry
       ? {
@@ -1590,7 +1653,7 @@ function validateWorkflowScript(script: WorkflowScript): void {
         throw new Error(`Duplicate workflow step id: ${step.id}`);
       }
       ids.add(step.id);
-      if (step.type === "bash" || step.type === "agent") {
+      if (step.type === "bash" || step.type === "python" || step.type === "agent") {
         validateRetryPolicy(
           script.taskDefaults?.retry || step.retry
             ? { ...script.taskDefaults?.retry, ...step.retry }
@@ -1784,12 +1847,16 @@ function parseNodeResultCandidate(candidate: string): WorkflowNodeResult {
   });
 }
 
-function readBashNodeResult(stdout: string, cwd: string): WorkflowNodeResult {
+function readCommandNodeResult(
+  stdout: string,
+  cwd: string,
+  commandType: "Bash" | "Python",
+): WorkflowNodeResult {
   const stdoutResultLine = getLastNonEmptyLine(stdout);
   if (stdoutResultLine === null) {
     return {
       control: "",
-      error: "Bash workflow node produced no stdout result",
+      error: `${commandType} workflow node produced no stdout result`,
     };
   }
   return parseNodeResult(stdoutResultLine, cwd);
@@ -1806,7 +1873,7 @@ function getLastNonEmptyLine(value: string): string | null {
   return null;
 }
 
-interface BashExecutionOutput {
+interface CommandExecutionOutput {
   stdout: string;
   stderr: string;
 }
@@ -1814,7 +1881,6 @@ interface BashExecutionOutput {
 function runBashInstruction(input: {
   instruction: string;
   inputPayload: WorkflowPayload;
-  inputFilePath: string;
   iterationPath: number[];
   cwd: string;
   shell: string;
@@ -1824,20 +1890,17 @@ function runBashInstruction(input: {
   attempt: number;
   onSpawn: (child: ChildProcess) => void;
   onClose: (child: ChildProcess) => void;
-}): Promise<BashExecutionOutput> {
+}): Promise<CommandExecutionOutput> {
   return new Promise((resolvePromise, reject) => {
     const inputJson = serializeNodeInputPayload(input.inputPayload);
     const args =
       process.platform === "win32"
         ? ["/d", "/s", "/c", input.instruction]
-        : ["-c", input.instruction, "paseo-workflow", inputJson, input.inputFilePath];
+        : ["-c", input.instruction, "paseo-workflow", inputJson];
     const child = spawn(input.shell, args, {
       cwd: input.cwd,
       env: {
         ...process.env,
-        PASEO_WORKFLOW_INPUT_JSON: inputJson,
-        PASEO_WORKFLOW_INPUT_FILE: input.inputFilePath,
-        PASEO_WORKFLOW_CONTROL: input.inputPayload.control,
         PASEO_WORKFLOW_ITERATION_PATH: JSON.stringify(input.iterationPath),
         PASEO_WORKFLOW_RUN_ID: input.runId,
         PASEO_WORKFLOW_STEP_ID: input.stepId,
@@ -1888,7 +1951,7 @@ function runBashInstruction(input: {
   });
 }
 
-function formatProcessOutput(output: BashExecutionOutput): string | null {
+function formatProcessOutput(output: CommandExecutionOutput): string | null {
   const sections = [];
   if (output.stdout.trim()) {
     sections.push(`stdout:\n${output.stdout.trimEnd()}`);

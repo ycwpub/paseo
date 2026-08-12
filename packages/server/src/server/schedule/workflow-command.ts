@@ -3,6 +3,7 @@ import { basename } from "node:path";
 export interface ScheduledWorkflowCommand {
   scriptPath: string;
   inputPayload: string;
+  targetNodeId?: string;
   background: boolean;
 }
 
@@ -23,12 +24,22 @@ export function parseScheduledWorkflowCommand(command: string): ScheduledWorkflo
   if (background) {
     args.splice(backgroundIndex, 1);
   }
+  const nodeIndex = args.indexOf("--node");
+  let targetNodeId: string | undefined;
+  if (nodeIndex !== -1) {
+    targetNodeId = args[nodeIndex + 1]?.trim();
+    if (!targetNodeId) {
+      return null;
+    }
+    args.splice(nodeIndex, 2);
+  }
   if (args.length !== 2 || args.some((value) => value.startsWith("--"))) {
     return null;
   }
   return {
     scriptPath: args[0] ?? "",
     inputPayload: args[1] ?? "",
+    ...(targetNodeId ? { targetNodeId } : {}),
     background,
   };
 }

@@ -76,6 +76,18 @@ export interface WorkflowBashStep {
   retry?: WorkflowRetryPolicy;
 }
 
+export interface WorkflowPythonStep {
+  id: string;
+  name?: string;
+  type: "python";
+  code: string;
+  variables?: WorkflowPromptVariables;
+  cwd?: string;
+  pythonPath?: string;
+  timeoutMs?: number;
+  retry?: WorkflowRetryPolicy;
+}
+
 export interface WorkflowAgentStep {
   id: string;
   name?: string;
@@ -122,6 +134,7 @@ export interface WorkflowForStep {
 
 export type WorkflowStep =
   | WorkflowBashStep
+  | WorkflowPythonStep
   | WorkflowAgentStep
   | WorkflowNestedStep
   | WorkflowSwitchStep
@@ -140,6 +153,19 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       variables: WorkflowPromptVariablesSchema.optional(),
       cwd: z.string().trim().min(1).optional(),
       shell: z.string().trim().min(1).optional(),
+      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
+      retry: WorkflowRetryPolicySchema.optional(),
+    }),
+    z.object({
+      id: WorkflowStepIdSchema,
+      name: WorkflowStepNameSchema,
+      type: z.literal("python"),
+      code: z.string().refine((value) => value.trim().length > 0, {
+        message: "Python code is required",
+      }),
+      variables: WorkflowPromptVariablesSchema.optional(),
+      cwd: z.string().trim().min(1).optional(),
+      pythonPath: z.string().trim().min(1).optional(),
       timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
       retry: WorkflowRetryPolicySchema.optional(),
     }),
@@ -229,6 +255,9 @@ export const WorkflowNodeRunSchema = z.object({
   stepId: z.string(),
   stepName: z.string().nullable(),
   stepType: z.enum(["bash", "agent", "workflow", "switch", "for"]),
+  // COMPAT(workflowPython): added in v0.3.2, remove after 2027-02-12 once
+  // clients accept "python" directly in stepType.
+  executor: z.literal("python").optional(),
   iterationPath: z.array(z.number().int().nonnegative()),
   startedAt: z.string(),
   endedAt: z.string().nullable(),
@@ -257,6 +286,8 @@ export const WorkflowRunSchema = z.object({
   id: z.string(),
   scriptPath: z.string(),
   scriptSnapshot: WorkflowScriptSchema,
+  // COMPAT(workflowNodeRun): added in v0.3.2, remove default after 2027-02-12.
+  targetNodeId: z.string().nullable().default(null),
   status: z.enum(["running", "succeeded", "failed", "cancelled", "timed_out"]),
   inputPayload: z.string().nullable().default(null),
   outputPayload: z.string().nullable().default(null),

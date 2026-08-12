@@ -223,6 +223,21 @@ export const ar: TranslationResources = {
     process: {
       show: "إظهار العملية",
       hide: "إخفاء العملية",
+      processed: "تمت المعالجة",
+      processedWithDuration: "تمت المعالجة {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "يخطط",
@@ -1831,6 +1846,7 @@ export const ar: TranslationResources = {
     projects: "المشاريع",
     projectList: {
       hostLoadFailed: "تعذر تحميل المشاريع من المضيف{{hostName}}:{{message}}",
+      hostLoadTimedOut: "لم يستجب المضيف {{hostName}} في الوقت المحدد. حاول مرة أخرى.",
       editProject: "تحرير{{projectName}}",
     },
     groupInfo: "حول{{title}}",

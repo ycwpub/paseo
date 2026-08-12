@@ -11,6 +11,7 @@ class FakeDirectoryClient {
   fetchAgentsCalls = 0;
   fetchWorkspacesCalls = 0;
   listProjectsCalls = 0;
+  projectListError: Error | null = null;
   private pendingWorkspaceFetch: Promise<WorkspaceFetchResult> | null = null;
   private readonly handlers = new Map<
     SessionOutboundMessage["type"],
@@ -68,6 +69,7 @@ class FakeDirectoryClient {
 
   async listProjects(): Promise<ProjectListResult> {
     this.listProjectsCalls += 1;
+    if (this.projectListError) throw this.projectListError;
     return {
       requestId: "projects",
       projects: [
@@ -88,21 +90,26 @@ const serverIds = new Set<string>();
 function createDirectory(serverId: string): {
   client: FakeDirectoryClient;
   directory: DirectorySync;
+  workspaceEvents: string[];
 } {
   serverIds.add(serverId);
   const client = new FakeDirectoryClient();
+  const workspaceEvents: string[] = [];
   const directory = new DirectorySync(serverId, {
     onAgentStoppedRunning: () => undefined,
     markAgentLoading: () => undefined,
     markAgentReady: () => undefined,
     markAgentError: () => undefined,
+    markWorkspaceLoading: () => workspaceEvents.push("loading"),
+    markWorkspaceReady: () => workspaceEvents.push("ready"),
+    markWorkspaceError: (error) => workspaceEvents.push(`error:${error}`),
   });
   directory.connectionChanged({
     client: client as unknown as DaemonClient,
     status: "online",
     source: { clientGeneration: 1, connectionEpoch: 1 },
   });
-  return { client, directory };
+  return { client, directory, workspaceEvents };
 }
 
 afterEach(() => {
@@ -139,7 +146,7 @@ describe("DirectorySync session readiness", () => {
 
   it("fetches the project descriptor channel when the daemon advertises it", async () => {
     const serverId = "project-list";
-    const { client, directory } = createDirectory(serverId);
+    const { client, directory, workspaceEvents } = createDirectory(serverId);
     const store = useSessionStore.getState();
     store.initializeSession(serverId, client as unknown as DaemonClient, 1);
     store.updateSessionServerInfo(serverId, {
@@ -152,10 +159,59 @@ describe("DirectorySync session readiness", () => {
     await directory.refreshWorkspaces();
 
     expect(client.listProjectsCalls).toBe(1);
+    expect(workspaceEvents).toEqual(["loading", "ready"]);
     expect(useSessionStore.getState().sessions[serverId]?.projects.get("project-1")).toMatchObject({
       projectId: "project-1",
       projectKey: "remote:github.com/acme/app",
     });
+    directory.dispose();
+  });
+
+  it("uses the agent directory status lifecycle for legacy project replicas", async () => {
+    const serverId = "legacy-project-directory";
+    const { client, directory, workspaceEvents } = createDirectory(serverId);
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, client as unknown as DaemonClient, 1);
+    store.updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: "legacy",
+      features: {},
+    });
+
+    await directory.refreshAgents();
+
+    expect(workspaceEvents).toEqual(["loading", "ready"]);
+    expect(useSessionStore.getState().sessions[serverId]?.hasHydratedWorkspaces).toBe(true);
+    directory.dispose();
+  });
+
+  it("reports a project directory timeout without clearing the existing replica", async () => {
+    const serverId = "project-list-timeout";
+    const { client, directory, workspaceEvents } = createDirectory(serverId);
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, client as unknown as DaemonClient, 1);
+    store.updateSessionServerInfo(serverId, {
+      serverId,
+      hostname: null,
+      version: "test",
+      features: { workspaceMultiplicity: true, projectList: true },
+    });
+
+    await directory.refreshWorkspaces();
+    client.projectListError = new Error("Timeout waiting for message (60000ms)");
+
+    await expect(directory.refreshWorkspaces()).rejects.toThrow(
+      "Timeout waiting for message (60000ms)",
+    );
+
+    expect(workspaceEvents).toEqual([
+      "loading",
+      "ready",
+      "loading",
+      "error:Timeout waiting for message (60000ms)",
+    ]);
+    expect(useSessionStore.getState().sessions[serverId]?.projects.has("project-1")).toBe(true);
     directory.dispose();
   });
 

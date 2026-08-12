@@ -46,9 +46,7 @@ export function WorkflowUsageGuide({
         <GuideSection title={t("workflows.guide.contract.title")}>
           <Text style={styles.body}>{t("workflows.guide.contract.description")}</Text>
           <CodeExample
-            value={
-              '{\n  "control": "",\n  "error": "",\n  "filePath": "/absolute/path/input.txt"\n}'
-            }
+            value={'{\n  "control": "",\n  "filePath": "/absolute/path/input.txt"\n}'}
             onCopy={copy}
           />
           <Text style={styles.note}>{t("workflows.guide.contract.note")}</Text>
@@ -63,10 +61,14 @@ export function WorkflowUsageGuide({
           </GuideStep>
           <Text style={styles.codeLabel}>run_workflow</Text>
           <CodeExample value={examples.agentTool} onCopy={copy} />
+          <Text style={styles.codeLabel}>run_workflow · targetNodeId</Text>
+          <CodeExample value={examples.agentToolNode} onCopy={copy} />
           <GuideStep title={t("workflows.guide.internal.serverTitle")}>
             {t("workflows.guide.internal.serverDescription")}
           </GuideStep>
           <CodeExample value={examples.server} onCopy={copy} />
+          <Text style={styles.codeLabel}>WorkflowService · targetNodeId</Text>
+          <CodeExample value={examples.serverNode} onCopy={copy} />
         </GuideSection>
 
         <GuideSection title={t("workflows.guide.external.title")}>
@@ -74,6 +76,7 @@ export function WorkflowUsageGuide({
             {t("workflows.guide.external.cliDescription")}
           </GuideStep>
           <CodeExample value={examples.cli} onCopy={copy} />
+          <CodeExample value={examples.cliNode} onCopy={copy} />
           <GuideStep title={t("workflows.guide.external.backgroundTitle")}>
             {t("workflows.guide.external.backgroundDescription")}
           </GuideStep>
@@ -83,6 +86,7 @@ export function WorkflowUsageGuide({
 
         <GuideSection title={t("workflows.guide.nodes.title")}>
           <Text style={styles.body}>{t("workflows.guide.nodes.bash")}</Text>
+          <Text style={styles.body}>{t("workflows.guide.nodes.python")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.agent")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.workflow")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.switch")}</Text>

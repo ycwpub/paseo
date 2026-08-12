@@ -352,8 +352,16 @@ export interface ScheduleServiceOptions {
   archiveWorkspace: (workspaceId: string) => Promise<void>;
   assistantStore?: Pick<AssistantStore, "get">;
   workflowService?: {
-    runScript: (input: { scriptPath: string; inputPayload: string }) => Promise<WorkflowRun>;
-    runScriptAndWait: (input: { scriptPath: string; inputPayload: string }) => Promise<WorkflowRun>;
+    runScript: (input: {
+      scriptPath: string;
+      inputPayload: string;
+      targetNodeId?: string;
+    }) => Promise<WorkflowRun>;
+    runScriptAndWait: (input: {
+      scriptPath: string;
+      inputPayload: string;
+      targetNodeId?: string;
+    }) => Promise<WorkflowRun>;
   } | null;
   now?: () => Date;
   runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;

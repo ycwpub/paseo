@@ -32,6 +32,7 @@ describe("workflow editor model", () => {
     const names = {
       workflow: "未命名工作流",
       bash: "Bash 命令",
+      python: "Python 代码",
       agent: "Agent",
       workflowNode: "子工作流",
       switch: "条件分支",

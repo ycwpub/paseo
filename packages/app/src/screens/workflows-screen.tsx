@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  TerminalSquare,
   Trash2,
   Workflow,
   XCircle,
@@ -55,6 +56,7 @@ import {
   createEmptyWorkflowScript,
   validateWorkflowDraft,
 } from "@/workflows/editor-model";
+import { collectWorkflowRunTargets } from "@/workflows/run-targets";
 import {
   deriveWorkflowNodeActions,
   deriveWorkflowNodeIdentity,
@@ -118,6 +120,8 @@ function WorkflowsScreenContent(): ReactElement {
     enabled: Boolean(selectedHost),
   });
   const supportsTeams = useHostFeature(selectedHost, "teams");
+  const supportsWorkflowPython = useHostFeature(selectedHost, "workflowPython");
+  const supportsWorkflowNodeRun = useHostFeature(selectedHost, "workflowNodeRun");
   const teamsResult = useTeams(selectedHost, {
     enabled: Boolean(selectedHost) && supportsTeams,
   });
@@ -131,6 +135,7 @@ function WorkflowsScreenContent(): ReactElement {
   const [running, setRunning] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [inputJson, setInputJson] = useState(DEFAULT_WORKFLOW_INPUT_JSON);
+  const [targetNodeId, setTargetNodeId] = useState("");
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [usageGuideVisible, setUsageGuideVisible] = useState(false);
@@ -182,6 +187,7 @@ function WorkflowsScreenContent(): ReactElement {
     setSelectedPath(null);
     setDirty(false);
     setActiveRun(null);
+    setTargetNodeId("");
     void loadScripts();
   }, [loadScripts, selectedHost]);
 
@@ -203,6 +209,7 @@ function WorkflowsScreenContent(): ReactElement {
       }
       setSelectedPath(path);
       setActiveRun(null);
+      setTargetNodeId("");
       try {
         const payload = await client.workflowInspect({ scriptPath: path });
         if (payload.error || !payload.script) {
@@ -235,6 +242,7 @@ function WorkflowsScreenContent(): ReactElement {
       createEmptyWorkflowScript({
         workflow: t("workflows.editor.untitled"),
         bash: t("workflows.nodes.defaultNames.bash"),
+        python: t("workflows.nodes.defaultNames.python"),
         agent: t("workflows.nodes.defaultNames.agent"),
         workflowNode: t("workflows.nodes.defaultNames.workflow"),
         switch: t("workflows.nodes.defaultNames.switch"),
@@ -245,6 +253,7 @@ function WorkflowsScreenContent(): ReactElement {
     setSelectedPath(null);
     setDirty(true);
     setActiveRun(null);
+    setTargetNodeId("");
   }, [dirty, t]);
 
   const updateDraft = useCallback((next: WorkflowScript) => {
@@ -344,6 +353,7 @@ function WorkflowsScreenContent(): ReactElement {
       const payload = await client.workflowRun({
         scriptPath: saved.path,
         inputPayload,
+        ...(targetNodeId ? { targetNodeId } : {}),
       });
       if (payload.error || !payload.run) {
         throw new Error(payload.error ?? t("workflows.messages.startFailed"));
@@ -355,7 +365,7 @@ function WorkflowsScreenContent(): ReactElement {
     } finally {
       setRunning(false);
     }
-  }, [client, dirty, draft, draftPath, inputJson, persistDraft, t, toast]);
+  }, [client, dirty, draft, draftPath, inputJson, persistDraft, t, targetNodeId, toast]);
 
   const cancelWorkflow = useCallback(async () => {
     if (!client || activeRun?.status !== "running") {
@@ -435,6 +445,30 @@ function WorkflowsScreenContent(): ReactElement {
   );
   const selectedHostOption = hostOptions.find((option) => option.value === selectedHost);
   const validationError = draft ? validateWorkflowDraft(draft, draftPath) : null;
+  const runTargetOptions = useMemo<SelectFieldOption<string>[]>(() => {
+    if (!draft) {
+      return [];
+    }
+    return [
+      {
+        id: "entire-workflow",
+        value: "",
+        label: t("workflows.editor.runEntireWorkflow"),
+      },
+      ...collectWorkflowRunTargets(draft.steps).map((target) => ({
+        id: target.id,
+        value: target.id,
+        label: target.name ? `${target.name} (${target.id})` : target.id,
+        description: t(`workflows.nodes.types.${target.type}`),
+      })),
+    ];
+  }, [draft, t]);
+  const selectedRunTarget = runTargetOptions.find((option) => option.value === targetNodeId);
+  useEffect(() => {
+    if (targetNodeId && !selectedRunTarget) {
+      setTargetNodeId("");
+    }
+  }, [selectedRunTarget, targetNodeId]);
 
   return (
     <View style={styles.container}>
@@ -527,17 +561,21 @@ function WorkflowsScreenContent(): ReactElement {
                   <View style={styles.editorTitleRow}>
                     <WorkflowTextInput
                       value={draft.name}
-                      onChangeText={(name) => updateDraft({ ...draft, name })}
+                      onChangeText={(name) =>
+                        updateDraft({ ...draft, name: name.replace(/\r?\n/g, " ") })
+                      }
                       placeholder={t("workflows.editor.untitled")}
                       accessibilityLabel={t("workflows.editor.name")}
                       style={styles.editorTitleInput}
+                      multiline
+                      textAlignVertical="top"
                       testID="workflow-name"
                     />
                     {dirty ? (
                       <StatusBadge label={t("workflows.editor.unsaved")} variant="muted" />
                     ) : null}
                   </View>
-                  <Text style={styles.editorPath} numberOfLines={1}>
+                  <Text style={styles.editorPath} selectable>
                     {draftPath ?? t("workflows.editor.generatedFileName")}
                   </Text>
                 </View>
@@ -574,22 +612,25 @@ function WorkflowsScreenContent(): ReactElement {
               ) : null}
 
               <View style={styles.metadataCard}>
-                <View style={styles.metadataCountRow}>
+                <View style={styles.metadataHeader}>
+                  <Text style={styles.metadataLabel}>{t("workflows.editor.description")}</Text>
                   <View style={styles.metadataCount}>
-                    <Text style={styles.metadataCountValue}>{countWorkflowSteps(draft.steps)}</Text>
-                    <Text style={styles.metadataCountLabel}>{t("workflows.editor.nodes")}</Text>
+                    <Text style={styles.metadataCountText}>
+                      {t("workflows.list.nodeCount", {
+                        count: countWorkflowSteps(draft.steps),
+                      })}
+                    </Text>
                   </View>
                 </View>
-                <Field label={t("workflows.editor.description")}>
-                  <WorkflowTextInput
-                    value={draft.description ?? ""}
-                    onChangeText={(description) => updateDraft({ ...draft, description })}
-                    multiline
-                    textAlignVertical="top"
-                    style={styles.descriptionInput}
-                    placeholder={t("workflows.editor.descriptionPlaceholder")}
-                  />
-                </Field>
+                <WorkflowTextInput
+                  value={draft.description ?? ""}
+                  onChangeText={(description) => updateDraft({ ...draft, description })}
+                  multiline
+                  textAlignVertical="top"
+                  style={styles.descriptionInput}
+                  placeholder={t("workflows.editor.descriptionPlaceholder")}
+                  accessibilityLabel={t("workflows.editor.description")}
+                />
                 <View style={styles.policyGrid}>
                   <View style={styles.policyField}>
                     <Field
@@ -682,6 +723,7 @@ function WorkflowsScreenContent(): ReactElement {
                 promptTemplatesLoading={daemonConfig.isLoading}
                 workflowScripts={scripts}
                 currentWorkflowPath={draftPath}
+                allowPython={supportsWorkflowPython}
                 onChange={(steps) => updateDraft({ ...draft, steps })}
                 testID="workflow-step-list"
               />
@@ -721,6 +763,34 @@ function WorkflowsScreenContent(): ReactElement {
                     style={styles.inputJson}
                   />
                 </Field>
+                {supportsWorkflowNodeRun ? (
+                  <Field
+                    label={t("workflows.editor.runTarget")}
+                    hint={t("workflows.editor.runTargetHint")}
+                  >
+                    <SelectField
+                      field={false}
+                      label=""
+                      value={targetNodeId}
+                      selectedDisplay={
+                        selectedRunTarget
+                          ? {
+                              label: selectedRunTarget.label,
+                              description: selectedRunTarget.description,
+                            }
+                          : null
+                      }
+                      options={runTargetOptions}
+                      onChange={setTargetNodeId}
+                      placeholder={t("workflows.editor.runEntireWorkflow")}
+                      emptyText={t("workflows.editor.noRunTargets")}
+                      title={t("workflows.editor.runTarget")}
+                      searchable
+                      size="sm"
+                      testID="workflow-run-target"
+                    />
+                  </Field>
+                ) : null}
                 {activeRun ? (
                   <WorkflowRunPanel
                     run={activeRun}
@@ -823,9 +893,7 @@ function WorkflowListPane({
               <Workflow size={16} color={styles.workflowRowIconColor.color} />
             </View>
             <View style={styles.workflowRowText}>
-              <Text style={styles.workflowRowTitle} numberOfLines={1}>
-                {script.name}
-              </Text>
+              <Text style={styles.workflowRowTitle}>{script.name}</Text>
               <Text style={styles.workflowRowDescription} numberOfLines={2}>
                 {script.description || t("workflows.list.nodeCount", { count: script.stepCount })}
               </Text>
@@ -917,6 +985,9 @@ function WorkflowRunPanel({
           label={t("workflows.run.duration")}
           value={formatWorkflowDuration(run.startedAt, run.endedAt)}
         />
+        {run.targetNodeId ? (
+          <WorkflowRunValue label={t("workflows.run.targetNode")} value={run.targetNodeId} mono />
+        ) : null}
         <WorkflowRunValue label={t("workflows.run.control")} value={run.control || "—"} />
       </View>
       <WorkflowPayloadValue label={t("workflows.run.input")} value={run.inputPayload} />
@@ -931,7 +1002,7 @@ function WorkflowRunPanel({
           const { canExpand, canOpenAgent } = deriveWorkflowNodeActions(node);
           const nodeIdentity = deriveWorkflowNodeIdentity(node);
           const linkedAgentId = canOpenAgent ? node.agentId : null;
-          const nodeTypeIcon = renderWorkflowNodeTypeIcon(node.stepType);
+          const nodeTypeIcon = renderWorkflowNodeTypeIcon(node);
           const expandIcon = expanded ? (
             <ChevronDown size={13} color={styles.runNodeIcon.color} />
           ) : (
@@ -996,12 +1067,20 @@ function WorkflowRunPanel({
   );
 }
 
-function renderWorkflowNodeTypeIcon(stepType: WorkflowNodeRun["stepType"]): ReactElement {
-  if (stepType === "agent") {
+function renderWorkflowNodeTypeIcon(
+  node: Pick<WorkflowNodeRun, "executor" | "stepType">,
+): ReactElement {
+  if (node.stepType === "agent") {
     return <Bot size={13} color={styles.runNodeIcon.color} />;
   }
-  if (stepType === "workflow") {
+  if (node.stepType === "workflow") {
     return <Workflow size={13} color={styles.runNodeIcon.color} />;
+  }
+  if (node.executor === "python") {
+    return <FileCode2 size={13} color={styles.runNodeIcon.color} />;
+  }
+  if (node.stepType === "bash") {
+    return <TerminalSquare size={13} color={styles.runNodeIcon.color} />;
   }
   return <FileCode2 size={13} color={styles.runNodeIcon.color} />;
 }
@@ -1047,7 +1126,9 @@ function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
   const { t } = useTranslation();
   let outputContent: ReactElement | null = null;
   if (node.output && node.stepType === "bash") {
-    outputContent = <WorkflowBashOutput value={node.output} />;
+    outputContent = (
+      <WorkflowCommandOutput value={node.output} executor={node.executor ?? "bash"} />
+    );
   } else if (node.stepType === "agent") {
     outputContent = (
       <WorkflowAgentOutput
@@ -1090,12 +1171,24 @@ function WorkflowNodeDetails({ node }: { node: WorkflowNodeRun }) {
   );
 }
 
-function WorkflowBashOutput({ value }: { value: string }) {
+function WorkflowCommandOutput({
+  value,
+  executor,
+}: {
+  value: string;
+  executor: "bash" | "python";
+}) {
   const { t } = useTranslation();
   const sections = parseWorkflowProcessOutput(value);
   return (
     <View style={styles.runValue}>
-      <Text style={styles.runValueLabel}>{t("workflows.run.processOutput")}</Text>
+      <Text style={styles.runValueLabel}>
+        {t(
+          executor === "python"
+            ? "workflows.run.pythonProcessOutput"
+            : "workflows.run.processOutput",
+        )}
+      </Text>
       <View style={styles.runProcessSections}>
         {sections.map((section) => (
           <View key={section.stream} style={styles.runProcessSection}>
@@ -1422,26 +1515,29 @@ const styles = StyleSheet.create((theme) => ({
   },
   editorTitleRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: theme.spacing[2],
   },
   editorTitleInput: {
     flex: 1,
     minWidth: 120,
-    maxWidth: 480,
-    minHeight: 36,
+    minHeight: 40,
+    maxHeight: 112,
     paddingHorizontal: 0,
-    paddingVertical: 0,
+    paddingVertical: theme.spacing[1],
     borderWidth: 0,
     backgroundColor: "transparent",
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xl,
     fontWeight: theme.fontWeight.semibold,
+    lineHeight: Math.round(theme.fontSize.xl * 1.25),
   },
   editorPath: {
+    flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
+    lineHeight: Math.round(theme.fontSize.xs * 1.45),
   },
   editorActions: {
     flexDirection: "row",
@@ -1474,25 +1570,27 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface1,
   },
-  metadataCountRow: {
+  metadataHeader: {
     flexDirection: "row",
-    justifyContent: "flex-end",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  metadataLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   metadataCount: {
-    width: 72,
-    alignItems: "center",
-    paddingVertical: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
+    flexShrink: 0,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface2,
   },
-  metadataCountValue: {
+  metadataCountText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  metadataCountLabel: {
-    color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
   },
   policyGrid: {
     flexDirection: { xs: "column", md: "row" },

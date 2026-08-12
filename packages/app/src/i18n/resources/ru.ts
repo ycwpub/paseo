@@ -223,6 +223,21 @@ export const ru: TranslationResources = {
     process: {
       show: "Показать процесс",
       hide: "Скрыть процесс",
+      processed: "Обработано",
+      processedWithDuration: "Обработано за {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "План",
@@ -1865,6 +1880,7 @@ export const ru: TranslationResources = {
     projects: "Проекты",
     projectList: {
       hostLoadFailed: "Не удалось загрузить проекты с хоста{{hostName}}:{{message}}.",
+      hostLoadTimedOut: "Хост {{hostName}} не ответил вовремя. Повторите попытку.",
       editProject: "Изменить{{projectName}}",
     },
     groupInfo: "О{{title}}",

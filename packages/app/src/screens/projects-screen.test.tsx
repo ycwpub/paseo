@@ -135,6 +135,10 @@ vi.mock("react-i18next", () => ({
       if (key === "settings.projectList.hostLoadFailed") {
         return `Couldn't load projects from host ${values?.hostName}: ${values?.message}`;
       }
+      if (key === "settings.projectList.hostLoadTimedOut") {
+        return `Host ${values?.hostName} did not respond in time. Try again.`;
+      }
+      if (key === "common.actions.retry") return "Retry";
       if (key === "settings.projectList.editProject") return `Edit ${values?.projectName}`;
       return key;
     },
@@ -365,6 +369,33 @@ describe("ProjectsScreen", () => {
 
     expect(container?.textContent).toContain("No projects yet");
     expect(container?.textContent).not.toContain("Non-GitHub remote projects aren't supported yet");
+  });
+
+  it("shows a retryable timeout instead of an empty state on the first load failure", () => {
+    const refetch = vi.fn();
+    setProjectsState({
+      projects: [],
+      hostErrors: [
+        {
+          serverId: "host-a",
+          serverName: "alpha",
+          message: "Timeout waiting for message (60000ms)",
+        },
+      ],
+      refetch,
+    });
+
+    render();
+
+    expect(container?.textContent).toContain("Host alpha did not respond in time. Try again.");
+    expect(container?.textContent).not.toContain("Timeout waiting for message");
+    expect(container?.textContent).not.toContain("No projects yet");
+
+    const retry = container?.querySelector('[data-testid="projects-host-errors-retry"]');
+    act(() => {
+      retry?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("renders a partial-host-failure banner above the list, naming each failed host", () => {

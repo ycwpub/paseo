@@ -85,6 +85,9 @@ export class DirectorySync {
       markAgentLoading: () => void;
       markAgentReady: () => void;
       markAgentError: (error: string) => void;
+      markWorkspaceLoading: () => void;
+      markWorkspaceReady: () => void;
+      markWorkspaceError: (error: string) => void;
     },
   ) {
     this.agents = new AgentDirectoryReplica(serverId, callbacks.onAgentStoppedRunning);
@@ -175,11 +178,14 @@ export class DirectorySync {
       subscriptionId: null,
       legacy: false,
     }));
+    let refreshesLegacyWorkspaceDirectory = false;
     this.callbacks.markAgentLoading();
     try {
       await this.waitForSession(client, source);
       const session = useSessionStore.getState().sessions[this.serverId];
       if (!input.filter && shouldUseLegacyDaemonWorkspaceDirectory(session?.serverInfo)) {
+        refreshesLegacyWorkspaceDirectory = true;
+        this.callbacks.markWorkspaceLoading();
         const directory = await readLegacyDaemonWorkspaceDirectory({
           client,
           subscribe: input.subscribe,
@@ -214,6 +220,7 @@ export class DirectorySync {
           Array.from(workspaces.values(), legacyProjectDescriptorFromWorkspace),
         );
         store.setHasHydratedWorkspaces(this.serverId, true);
+        this.callbacks.markWorkspaceReady();
       }
       const deltas = completion.snapshot.legacy
         ? completion.deltas.map((delta) =>
@@ -229,7 +236,11 @@ export class DirectorySync {
       const deltas = this.agentTransactions.fail(transaction);
       if (deltas) for (const delta of deltas) this.agents.applyDelta(delta);
       if (!(error instanceof DirectoryRefreshSupersededError)) {
-        this.callbacks.markAgentError(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        this.callbacks.markAgentError(message);
+        if (refreshesLegacyWorkspaceDirectory) {
+          this.callbacks.markWorkspaceError(message);
+        }
       }
       throw error;
     }
@@ -241,6 +252,7 @@ export class DirectorySync {
       workspaces: new Map(),
       projects: new Map(),
     }));
+    this.callbacks.markWorkspaceLoading();
     try {
       await this.waitForSessionMetadata(client, source);
       const serverInfo = useSessionStore.getState().sessions[this.serverId]?.serverInfo;
@@ -268,9 +280,13 @@ export class DirectorySync {
         throw new DirectoryRefreshSupersededError("workspace completion was superseded");
       }
       this.workspaces.commitSnapshot(completion.snapshot, completion.deltas);
+      this.callbacks.markWorkspaceReady();
     } catch (error) {
       const deltas = this.workspaceTransactions.fail(transaction);
       if (deltas) for (const delta of deltas) this.workspaces.applyDelta(delta);
+      if (!(error instanceof DirectoryRefreshSupersededError)) {
+        this.callbacks.markWorkspaceError(error instanceof Error ? error.message : String(error));
+      }
       throw error;
     }
   }

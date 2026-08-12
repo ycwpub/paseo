@@ -2,115 +2,158 @@ import type { StreamItem } from "@/types/stream";
 
 export interface ProcessDisclosure {
   processItemCount: number;
+  turnId: string;
+  isActive: boolean;
+  expanded: boolean;
+  assistantId?: string;
 }
 
 export interface ProcessVisibilityProjection {
   tail: StreamItem[];
   head: StreamItem[];
   disclosureByHostId: Map<string, ProcessDisclosure>;
-  needsAuxiliaryDisclosure: boolean;
+  auxiliaryDisclosure: ProcessDisclosure | null;
 }
 
 interface TurnProjection {
   visibleIds: Set<string>;
   disclosureByHostId: Map<string, ProcessDisclosure>;
-  needsAuxiliaryDisclosure: boolean;
+  auxiliaryDisclosure: ProcessDisclosure | null;
 }
 
 function isResultFallback(item: StreamItem): item is Extract<StreamItem, { kind: "activity_log" }> {
   return item.kind === "activity_log" && item.activityType === "error";
 }
 
-function projectTurn(items: StreamItem[], expanded: boolean, isActive: boolean): TurnProjection {
+function findCompletedResultItems(items: StreamItem[]): StreamItem[] {
+  const finalAssistantIndex = items.findLastIndex((item) => item.kind === "assistant_message");
+  if (finalAssistantIndex >= 0) {
+    let firstAssistantIndex = finalAssistantIndex;
+    while (
+      firstAssistantIndex > 0 &&
+      items[firstAssistantIndex - 1]?.kind === "assistant_message"
+    ) {
+      firstAssistantIndex -= 1;
+    }
+    return items.slice(firstAssistantIndex, finalAssistantIndex + 1);
+  }
+
+  const fallbackResult = items.findLast((item) => isResultFallback(item));
+  return fallbackResult ? [fallbackResult] : [];
+}
+
+function filterVisibleItems(items: StreamItem[], visibleIds: ReadonlySet<string>): StreamItem[] {
+  if (items.every((item) => visibleIds.has(item.id))) {
+    return items;
+  }
+  return items.filter((item) => visibleIds.has(item.id));
+}
+
+function projectTurn(input: {
+  items: StreamItem[];
+  turnId: string | null;
+  isActive: boolean;
+  isTurnExpanded: (turnId: string, isActive: boolean) => boolean;
+}): TurnProjection {
   const visibleIds = new Set<string>();
   const disclosureByHostId = new Map<string, ProcessDisclosure>();
-  if (items.length === 0) {
-    return { visibleIds, disclosureByHostId, needsAuxiliaryDisclosure: false };
+  if (input.items.length === 0) {
+    return { visibleIds, disclosureByHostId, auxiliaryDisclosure: null };
   }
 
-  const finalAssistant = isActive
-    ? undefined
-    : items.findLast((item) => item.kind === "assistant_message");
-  const fallbackResult = finalAssistant
-    ? undefined
-    : items.findLast((item) => isResultFallback(item));
-  const result = finalAssistant ?? fallbackResult;
-  const processItems = result ? items.filter((item) => item.id !== result.id) : items;
+  const turnId = input.turnId ?? input.items[0].id;
+  const expanded = input.isTurnExpanded(turnId, input.isActive);
+  const resultItems = input.isActive ? [] : findCompletedResultItems(input.items);
+  const resultIds = new Set(resultItems.map((item) => item.id));
+  const processItems =
+    resultItems.length > 0 ? input.items.filter((item) => !resultIds.has(item.id)) : input.items;
   const hasProcess = processItems.length > 0;
+  const finalAssistant = resultItems.findLast((item) => item.kind === "assistant_message");
+  const disclosure: ProcessDisclosure = {
+    processItemCount: processItems.length,
+    turnId,
+    isActive: input.isActive,
+    expanded,
+    ...(finalAssistant ? { assistantId: finalAssistant.id } : {}),
+  };
 
   if (expanded) {
-    for (const item of items) {
+    for (const item of input.items) {
       visibleIds.add(item.id);
     }
-    const host = items[0];
+    const host = input.items[0];
     if (hasProcess && host) {
-      disclosureByHostId.set(host.id, { processItemCount: processItems.length });
+      disclosureByHostId.set(host.id, disclosure);
     }
-    return { visibleIds, disclosureByHostId, needsAuxiliaryDisclosure: false };
+    return { visibleIds, disclosureByHostId, auxiliaryDisclosure: null };
   }
 
-  if (result) {
-    visibleIds.add(result.id);
-    if (hasProcess) {
-      disclosureByHostId.set(result.id, { processItemCount: processItems.length });
+  if (resultItems.length > 0) {
+    for (const item of resultItems) {
+      visibleIds.add(item.id);
     }
-    return { visibleIds, disclosureByHostId, needsAuxiliaryDisclosure: false };
+    if (hasProcess) {
+      const resultHost = resultItems[0];
+      if (resultHost) {
+        disclosureByHostId.set(resultHost.id, disclosure);
+      }
+    }
+    return { visibleIds, disclosureByHostId, auxiliaryDisclosure: null };
   }
 
   return {
     visibleIds,
     disclosureByHostId,
-    needsAuxiliaryDisclosure: isActive && hasProcess,
+    auxiliaryDisclosure: input.isActive && hasProcess ? disclosure : null,
   };
 }
 
 export function projectProcessVisibility(input: {
-  expanded: boolean;
   isTurnActive: boolean;
+  isTurnExpanded: (turnId: string, isActive: boolean) => boolean;
   tail: StreamItem[];
   head: StreamItem[];
 }): ProcessVisibilityProjection {
   const allItems = [...input.tail, ...input.head];
   const visibleIds = new Set<string>();
   const disclosureByHostId = new Map<string, ProcessDisclosure>();
-  let needsAuxiliaryDisclosure = false;
+  let auxiliaryDisclosure: ProcessDisclosure | null = null;
   let turnItems: StreamItem[] = [];
+  let turnId: string | null = null;
 
   const flushTurn = (isActive: boolean) => {
-    const projected = projectTurn(turnItems, input.expanded, isActive);
+    const projected = projectTurn({
+      items: turnItems,
+      turnId,
+      isActive,
+      isTurnExpanded: input.isTurnExpanded,
+    });
     for (const id of projected.visibleIds) {
       visibleIds.add(id);
     }
     for (const [id, disclosure] of projected.disclosureByHostId) {
       disclosureByHostId.set(id, disclosure);
     }
-    needsAuxiliaryDisclosure ||= projected.needsAuxiliaryDisclosure;
+    auxiliaryDisclosure = projected.auxiliaryDisclosure ?? auxiliaryDisclosure;
     turnItems = [];
+    turnId = null;
   };
 
   for (const item of allItems) {
     if (item.kind === "user_message") {
       flushTurn(false);
       visibleIds.add(item.id);
+      turnId = item.id;
       continue;
     }
     turnItems.push(item);
   }
   flushTurn(input.isTurnActive);
 
-  if (input.expanded) {
-    return {
-      tail: input.tail,
-      head: input.head,
-      disclosureByHostId,
-      needsAuxiliaryDisclosure: false,
-    };
-  }
-
   return {
-    tail: input.tail.filter((item) => visibleIds.has(item.id)),
-    head: input.head.filter((item) => visibleIds.has(item.id)),
+    tail: filterVisibleItems(input.tail, visibleIds),
+    head: filterVisibleItems(input.head, visibleIds),
     disclosureByHostId,
-    needsAuxiliaryDisclosure,
+    auxiliaryDisclosure,
   };
 }

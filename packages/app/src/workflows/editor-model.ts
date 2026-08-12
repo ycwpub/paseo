@@ -5,6 +5,7 @@ import {
   type WorkflowBashStep,
   type WorkflowForStep,
   type WorkflowNestedStep,
+  type WorkflowPythonStep,
   type WorkflowScript,
   type WorkflowStep,
   type WorkflowSwitchStep,
@@ -13,9 +14,25 @@ import type { PaseoInstructionTemplate } from "@getpaseo/protocol/messages";
 
 export type WorkflowStepType = WorkflowStep["type"];
 
+const WORKFLOW_STEP_TYPES: readonly WorkflowStepType[] = [
+  "bash",
+  "python",
+  "agent",
+  "workflow",
+  "switch",
+  "for",
+];
+
+export function getAvailableWorkflowStepTypes(allowPython: boolean): readonly WorkflowStepType[] {
+  return allowPython
+    ? WORKFLOW_STEP_TYPES
+    : WORKFLOW_STEP_TYPES.filter((type) => type !== "python");
+}
+
 export interface WorkflowDefaultNames {
   workflow: string;
   bash: string;
+  python: string;
   agent: string;
   workflowNode: string;
   switch: string;
@@ -25,6 +42,7 @@ export interface WorkflowDefaultNames {
 const DEFAULT_NAMES: WorkflowDefaultNames = {
   workflow: "Untitled workflow",
   bash: "Bash command",
+  python: "Python code",
   agent: "Agent",
   workflowNode: "Workflow",
   switch: "Switch",
@@ -85,8 +103,22 @@ export function createWorkflowStep(
       id,
       name: names.bash,
       type,
-      initialCommand: "printf '%s\\n' \"$PASEO_WORKFLOW_INPUT_JSON\"",
+      initialCommand: "printf '%s\\n' \"$1\"",
     } satisfies WorkflowBashStep;
+  }
+  if (type === "python") {
+    return {
+      id,
+      name: names.python,
+      type,
+      code: [
+        "import json",
+        "import sys",
+        "",
+        "payload = json.load(sys.stdin)",
+        "print(json.dumps(payload, ensure_ascii=False))",
+      ].join("\n"),
+    } satisfies WorkflowPythonStep;
   }
   if (type === "agent") {
     return {
@@ -235,7 +267,7 @@ export function validateWorkflowDraft(
   // oxlint-disable-next-line complexity -- Recursive validation keeps branch, loop, retry, and self-reference errors in one deterministic traversal.
   const validateSteps = (steps: WorkflowStep[]): string | null => {
     for (const step of steps) {
-      if (step.type === "bash" || step.type === "agent") {
+      if (step.type === "bash" || step.type === "python" || step.type === "agent") {
         const retryError = validateRetryPolicy(
           script.taskDefaults?.retry || step.retry
             ? { ...script.taskDefaults?.retry, ...step.retry }

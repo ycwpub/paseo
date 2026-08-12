@@ -36,6 +36,7 @@ export const WorkflowRunRequestSchema = z.object({
   requestId: z.string(),
   scriptPath: z.string().trim().min(1),
   inputPayload: z.string().trim().min(1),
+  targetNodeId: z.string().trim().min(1).optional(),
 });
 
 export const WorkflowGetRunRequestSchema = z.object({

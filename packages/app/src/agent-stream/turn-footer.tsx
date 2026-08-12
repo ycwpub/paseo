@@ -3,7 +3,6 @@ import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import type { Theme } from "@/styles/theme";
-import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
   collectAssistantTurnContentForStreamRenderStrategy,
@@ -20,6 +19,10 @@ import type { TurnFooterHost } from "./layout";
 import { AssistantForkMenu } from "@/components/assistant-fork-menu";
 import { SyncedLoader } from "@/components/synced-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { collectAssistantTurnItems } from "./turn-items";
+import { TurnHookSummary } from "./turn-hook-summary";
+import { TurnChanges } from "./turn-changes";
+import type { ToastApi } from "@/components/toast-host";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const workingIndicatorColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -41,6 +44,16 @@ export type AssistantTurnForkHandler = (input: {
  */
 export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<void> | void;
 
+export interface TurnChangesContext {
+  serverId: string;
+  cwd: string;
+  isGit: boolean;
+  readOnly: boolean;
+  toast: ToastApi | null;
+  onOpen: (path: string) => void;
+  onReview: (path: string) => void;
+}
+
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
@@ -49,6 +62,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onForkInFlightTurn,
+  changes,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -57,6 +71,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  changes?: TurnChangesContext;
 }) {
   if (isRunning) {
     return (
@@ -75,10 +90,10 @@ export const TurnFooter = memo(function TurnFooter({
     <CompletedTurnFooterRow
       strategy={strategy}
       items={host.items}
-      timing={host.timing}
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
+      changes={changes}
     />
   );
 });
@@ -86,28 +101,38 @@ export const TurnFooter = memo(function TurnFooter({
 export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   strategy,
   items,
-  timing,
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  changes,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
-  timing?: TurnTiming;
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  changes?: TurnChangesContext;
 }) {
+  const turnItems = useMemo(
+    () =>
+      collectAssistantTurnItems({
+        strategy,
+        items,
+        assistantIndex: startIndex,
+      }),
+    [items, startIndex, strategy],
+  );
   return (
     <TurnFooterRow>
       <CompletedTurnFooter
         strategy={strategy}
         items={items}
-        timing={timing}
         startIndex={startIndex}
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
+        turnItems={turnItems}
       />
+      {changes ? <TurnChanges {...changes} items={turnItems} /> : null}
     </TurnFooterRow>
   );
 });
@@ -159,18 +184,19 @@ function RunningTurnFooter({
 function CompletedTurnFooter({
   strategy,
   items,
-  timing,
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  turnItems,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
-  timing?: TurnTiming;
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  turnItems: StreamItem[];
 }) {
+  const hookSummary = useMemo(() => <TurnHookSummary items={turnItems} />, [turnItems]);
   const getContent = useCallback(
     () =>
       collectAssistantTurnContentForStreamRenderStrategy({
@@ -198,9 +224,8 @@ function CompletedTurnFooter({
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
         getContent={getContent}
-        completedAt={timing?.completedAt}
-        durationMs={timing?.durationMs}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
+        trailing={hookSummary}
       />
     </View>
   );
@@ -220,13 +245,14 @@ const stylesheet = StyleSheet.create((theme) => ({
   },
   turnFooterRow: {
     marginTop: theme.spacing[4],
+    gap: theme.spacing[3],
   },
   turnFooterSlot: {
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
     minHeight: 24,
-    paddingBottom: theme.spacing[6],
+    paddingBottom: theme.spacing[2],
   },
   turnFooterContent: {
     height: 24,

@@ -76,6 +76,9 @@ describe("app diagnostics report", () => {
       agentDirectoryStatus: "ready",
       agentDirectoryError: null,
       hasEverLoadedAgentDirectory: true,
+      workspaceDirectoryStatus: "ready",
+      workspaceDirectoryError: null,
+      hasEverLoadedWorkspaceDirectory: true,
       probeByConnectionId: new Map([
         ["direct:secret.example.test:6767", { status: "available", latencyMs: 42 }],
         ["relay:relay.secret.test:443", { status: "available", latencyMs: 8 }],

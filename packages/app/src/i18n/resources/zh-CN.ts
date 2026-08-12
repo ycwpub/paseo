@@ -69,16 +69,16 @@ export const zhCN: TranslationResources = {
         title: "输入输出约定",
         description:
           "节点输入是一个包含 control 和业务数据的 JSON 对象。输出中的 error 由工作流框架消费，不会传给后续节点。",
-        note: "输出 error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 输出缺少 control/error 时会自动补为空字符串；Agent 根据节点类型把回答写入 answer 或 control。",
+        note: "输出 error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 和 Python 输出缺少 control/error 时会自动补为空字符串；Agent 根据节点类型把回答写入 answer 或 control。",
       },
       internal: {
         title: "Paseo 内部使用",
         visualTitle: "从当前页面运行",
         visualDescription:
-          "选择工作流，在“测试运行”中填写初始 JSON，然后点击“运行”。下方会展示最近一次运行以及每个节点的输入、输出和耗时。",
+          "选择工作流，在“测试运行”中填写初始 JSON，选择运行整个 Workflow 或指定节点，然后点击“运行”。下方会展示最近一次运行以及每个节点的输入、输出和耗时。",
         agentTitle: "由 Agent 调用",
         agentDescription:
-          "Agent 可调用 list_workflows、inspect_workflow、run_workflow、get_workflow_run 和 cancel_workflow。以下是 run_workflow 入参示例：",
+          "Agent 可调用 list_workflows、inspect_workflow、run_workflow、get_workflow_run 和 cancel_workflow。设置 targetNodeId 可测试单个节点。以下是 run_workflow 入参示例：",
         serverTitle: "服务端代码调用",
         serverDescription: "Paseo 内部服务可直接调用 WorkflowService，并等待工作流执行完成：",
       },
@@ -86,7 +86,7 @@ export const zhCN: TranslationResources = {
         title: "Paseo 外部使用",
         cliTitle: "通过 CLI 或 Shell 脚本运行",
         cliDescription:
-          "本地脚本、CI、定时任务以及其他可连接 Daemon 的进程，都可以通过 Paseo CLI 运行：",
+          "本地脚本、CI、定时任务以及其他可连接 Daemon 的进程，都可以通过 Paseo CLI 运行；增加 --node <node-id> 可测试单个节点：",
         backgroundTitle: "异步启动",
         backgroundDescription:
           "增加 --background 后会立即返回。之后可以使用返回的 run ID 查询状态或取消运行。",
@@ -95,7 +95,9 @@ export const zhCN: TranslationResources = {
       },
       nodes: {
         title: "节点行为",
-        bash: "• Bash：从 $PASEO_WORKFLOW_INPUT_JSON 或 $1 读取数据。stdout 最后一个非空行必须是结果 JSON；stdout 为空时节点失败。",
+        bash: "• Bash：从 $1 读取 JSON 数据。stdout 最后一个非空行必须是结果 JSON；stdout 为空时节点失败。",
+        python:
+          "• Python：直接运行可编辑的 Python 代码，通过 stdin 读取 JSON 数据；stdout 最后一个非空行必须是结果 JSON。",
         agent:
           "• Agent：Answer 节点把回答写入 answer，Control 节点把回答写入 control。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
         workflow:
@@ -143,7 +145,7 @@ export const zhCN: TranslationResources = {
       workflowTimeout: "工作流超时（秒）",
       workflowTimeoutHint: "整个工作流运行的最长时间。",
       taskTimeout: "任务超时（秒）",
-      taskTimeoutHint: "Bash、Agent 和 Workflow 节点的默认超时时间。",
+      taskTimeoutHint: "Bash、Python、Agent 和 Workflow 节点的默认超时时间。",
       defaultAttempts: "默认尝试次数",
       defaultAttemptsHint: "包含首次执行。",
       promptTemplates: "提示词模板",
@@ -155,8 +157,13 @@ export const zhCN: TranslationResources = {
       testRunHint: "使用初始 JSON 数据在所选主机上运行此工作流。",
       inputJson: "输入 JSON",
       inputJsonHint: "节点输入只包含 control 和业务数据；error 仅用于框架处理节点输出。",
+      runTarget: "运行范围",
+      runTargetHint: "可运行整个 Workflow，或使用上方输入 JSON 直接测试指定节点。",
+      runEntireWorkflow: "整个 Workflow",
+      noRunTargets: "没有可运行的节点",
       emptyTitle: "选择或创建工作流",
-      emptyDescription: "无需编辑 JSON，即可编排 Bash、Agent、Workflow、Switch 和 For 节点。",
+      emptyDescription:
+        "无需编辑 JSON，即可编排 Bash、Python、Agent、Workflow、Switch 和 For 节点。",
     },
     list: {
       title: "已保存的工作流",
@@ -169,6 +176,7 @@ export const zhCN: TranslationResources = {
       startedAt: "开始时间",
       endedAt: "结束时间",
       duration: "耗时",
+      targetNode: "目标节点",
       notFinished: "尚未结束",
       input: "输入",
       outputPayload: "输出",
@@ -177,6 +185,7 @@ export const zhCN: TranslationResources = {
       control: "流程控制",
       iteration: "循环路径",
       processOutput: "Bash 运行输出",
+      pythonProcessOutput: "Python 运行输出",
       stdout: "标准输出（stdout）",
       stderr: "错误输出（stderr）",
       nodeOutput: "节点运行输出",
@@ -204,6 +213,7 @@ export const zhCN: TranslationResources = {
       displayName: "显示名称",
       defaultNames: {
         bash: "Bash 命令",
+        python: "Python 代码",
         agent: "Agent",
         workflow: "子工作流",
         switch: "条件分支",
@@ -211,6 +221,7 @@ export const zhCN: TranslationResources = {
       },
       types: {
         bash: "Bash",
+        python: "Python",
         agent: "Agent",
         workflow: "Workflow",
         switch: "Switch",
@@ -218,6 +229,7 @@ export const zhCN: TranslationResources = {
       },
       typeDescriptions: {
         bash: "执行 Shell 命令",
+        python: "执行 Python 代码",
         agent: "运行 AI Agent",
         workflow: "运行另一个 Workflow",
         switch: "根据 control 选择分支",
@@ -233,8 +245,15 @@ export const zhCN: TranslationResources = {
       bash: {
         initialCommand: "初始命令",
         initialCommandHint:
-          "可使用下方展示的模板变量，或通过 $PASEO_WORKFLOW_INPUT_JSON、$1 读取节点输入；输入中不会包含 error。输出缺少 control/error 时会自动补为空字符串。",
+          "可使用下方展示的模板变量，或通过 $1 读取节点输入 JSON；输入中不会包含 error。输出缺少 control/error 时会自动补为空字符串。",
         shell: "Shell",
+      },
+      python: {
+        code: "Python 代码",
+        codeHint:
+          "通过 stdin 读取输入 JSON，并把结果 JSON 作为 stdout 最后一个非空行输出。输入中不会包含 error；输出缺少 control/error 时会自动补为空字符串。",
+        interpreter: "Python 解释器",
+        interpreterHint: "留空时使用 python3。",
       },
       workflow: {
         workflow: "选择 Workflow",
@@ -318,8 +337,10 @@ export const zhCN: TranslationResources = {
       },
       variables: {
         bashTitle: "Bash 变量",
+        pythonTitle: "Python 变量",
         agentTitle: "Agent 变量",
         bashDescription: "定义命令中可复用的变量，变量值也可引用输入数据路径或内置变量。",
+        pythonDescription: "定义 Python 代码中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         agentDescription:
           "定义用户提示词和系统提示词中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         examplesTitle: "变量使用范例",
@@ -330,6 +351,7 @@ export const zhCN: TranslationResources = {
         payloadExample: "读取完整 JSON 数据",
         customExample: "读取自定义变量，例如 role = reviewer",
         bashUsageExample: "Bash 命令范例：",
+        pythonUsageExample: "Python 代码范例：",
         agentUsageExample: "Agent 用户提示词或系统提示词范例：",
         showHelp: "查看变量使用范例",
         add: "添加变量",
@@ -553,6 +575,21 @@ export const zhCN: TranslationResources = {
     process: {
       show: "展开过程",
       hide: "隐藏过程",
+      processed: "已处理",
+      processedWithDuration: "已处理 {{duration}}",
+    },
+    hooks: {
+      title: "钩子调用",
+      calls_one: "{{count}} 次钩子调用",
+      calls_other: "{{count}} 次钩子调用",
+    },
+    changes: {
+      added: "已新增 {{fileName}}",
+      deleted: "已删除 {{fileName}}",
+      edited: "已编辑 {{fileName}}",
+      undo: "撤销",
+      review: "审核",
+      open: "打开",
     },
     permission: {
       plan: "Plan",
@@ -2147,6 +2184,7 @@ export const zhCN: TranslationResources = {
     projects: "项目",
     projectList: {
       hostLoadFailed: "无法从 Host {{hostName}} 加载 projects：{{message}}",
+      hostLoadTimedOut: "Host {{hostName}} 响应超时，请重试。",
       editProject: "编辑 {{projectName}}",
     },
     groupInfo: "关于 {{title}}",

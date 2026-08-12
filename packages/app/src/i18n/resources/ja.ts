@@ -223,6 +223,21 @@ export const ja: TranslationResources = {
     process: {
       show: "プロセスを表示",
       hide: "プロセスを非表示",
+      processed: "処理済み",
+      processedWithDuration: "処理済み {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "プラン",
@@ -1847,6 +1862,7 @@ export const ja: TranslationResources = {
     projects: "プロジェクト",
     projectList: {
       hostLoadFailed: "ホスト{{hostName}}からプロジェクトを読み込めませんでした: {{message}}",
+      hostLoadTimedOut: "ホスト {{hostName}} が時間内に応答しませんでした。再試行してください。",
       editProject: "{{projectName}}を編集",
     },
     groupInfo: "{{title}}について",

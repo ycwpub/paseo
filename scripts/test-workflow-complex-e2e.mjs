@@ -17,22 +17,12 @@ function shellQuote(value) {
 }
 
 function nodeCommand(source, ...args) {
-  const stdoutCompatibilityPrelude = [
-    'const __paseoFs = require("fs");',
-    "const __paseoWriteFileSync = __paseoFs.writeFileSync.bind(__paseoFs);",
-    "__paseoFs.writeFileSync = (path, data, ...options) => {",
-    "  if (path === process.env.PASEO_WORKFLOW_RESULT_FILE) {",
-    "    process.stdout.write(String(data));",
-    "    return;",
-    "  }",
-    "  return __paseoWriteFileSync(path, data, ...options);",
-    "};",
-  ].join("\n");
   return [
     shellQuote(process.execPath),
     "-e",
-    shellQuote(`${stdoutCompatibilityPrelude}\n${source}`),
+    shellQuote(source),
     ...args.map(shellQuote),
+    '"$1"',
   ].join(" ");
 }
 
@@ -136,7 +126,7 @@ function createComplexWorkflow(paths) {
       '  branches: fs.readFileSync(branchLogPath, "utf8").trim().split("\\n")',
       "};",
       "fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));",
-      "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+      "process.stdout.write(JSON.stringify({",
       '  filePath: reportPath, control: "success", error: ""',
       "}));",
     ].join("\n"),
@@ -158,7 +148,7 @@ function createComplexWorkflow(paths) {
       '  task: initial.task, records: initial.records, preparedBy: "configured-bash"',
       "}, null, 2));",
       'fs.writeFileSync(agentOutputPath, "synthetic agent analysis ready");',
-      "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+      "process.stdout.write(JSON.stringify({",
       '  filePath: agentInputPath, control: "agent", error: ""',
       "}));",
     ].join("\n"),
@@ -171,7 +161,7 @@ function createComplexWorkflow(paths) {
     [
       'const fs = require("fs");',
       "fs.writeFileSync(process.argv[1], process.argv[2]);",
-      "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+      "process.stdout.write(JSON.stringify({",
       '  filePath: process.argv[1], control: "prepare", error: ""',
       "}));",
     ].join("\n"),
@@ -183,10 +173,11 @@ function createComplexWorkflow(paths) {
     [
       'const fs = require("fs");',
       'const path = require("path");',
-      "const inputPath = process.env.PASEO_WORKFLOW_INPUT_FILE;",
-      "const control = process.env.PASEO_WORKFLOW_CONTROL;",
+      "const input = JSON.parse(process.argv.at(-1));",
+      "const inputPath = input.filePath;",
+      "const control = input.control;",
       "fs.appendFileSync(process.argv[1], `${control}|${path.basename(inputPath)}\\n`);",
-      "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+      "process.stdout.write(JSON.stringify({",
       '  filePath: inputPath, control, error: ""',
       "}));",
     ].join("\n"),
@@ -199,7 +190,7 @@ function createComplexWorkflow(paths) {
         'const fs = require("fs");',
         "fs.appendFileSync(process.argv[1], `${process.argv[2]}\\n`);",
         "fs.writeFileSync(process.argv[3], process.argv[4]);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: process.argv[3], control: process.argv[5], error: ""',
         "}));",
       ].join("\n"),
@@ -213,9 +204,9 @@ function createComplexWorkflow(paths) {
   const failCommand = (message) =>
     nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
-        "  filePath: process.env.PASEO_WORKFLOW_INPUT_FILE,",
+        "const input = JSON.parse(process.argv.at(-1));",
+        "process.stdout.write(JSON.stringify({",
+        "  filePath: input.filePath,",
         '  control: "failed",',
         "  error: process.argv[1]",
         "}));",

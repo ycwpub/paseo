@@ -70,6 +70,14 @@ import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { encodeImages } from "@/utils/encode-images";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
 import { ReplicaCache } from "@/runtime/replica-cache";
+import {
+  completeWorkspaceDirectoryRefresh,
+  failWorkspaceDirectoryRefresh,
+  INITIAL_WORKSPACE_DIRECTORY_STATUS,
+  startWorkspaceDirectoryRefresh,
+  workspaceDirectoryConnectionPatch,
+  type HostRuntimeWorkspaceDirectoryStatus,
+} from "@/runtime/workspace-directory-status";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 import { revokePushNotifications } from "@/push-notifications";
 import { createAppWebSocketFactory } from "./websocket-factory";
@@ -102,6 +110,9 @@ export interface HostRuntimeSnapshot {
   agentDirectoryStatus: HostRuntimeAgentDirectoryStatus;
   agentDirectoryError: string | null;
   hasEverLoadedAgentDirectory: boolean;
+  workspaceDirectoryStatus: HostRuntimeWorkspaceDirectoryStatus;
+  workspaceDirectoryError: string | null;
+  hasEverLoadedWorkspaceDirectory: boolean;
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
   connectionEpoch: number;
@@ -617,6 +628,7 @@ export class HostRuntimeController {
       agentDirectoryStatus: "idle",
       agentDirectoryError: null,
       hasEverLoadedAgentDirectory: false,
+      ...INITIAL_WORKSPACE_DIRECTORY_STATUS,
       probeByConnectionId: new Map(),
       clientGeneration: 0,
     };
@@ -743,6 +755,18 @@ export class HostRuntimeController {
       agentDirectoryStatus: this.snapshot.hasEverLoadedAgentDirectory ? "ready" : "idle",
       agentDirectoryError: null,
     });
+  }
+
+  markWorkspaceDirectorySyncLoading(): void {
+    this.updateSnapshot(startWorkspaceDirectoryRefresh(this.snapshot));
+  }
+
+  markWorkspaceDirectorySyncReady(): void {
+    this.updateSnapshot(completeWorkspaceDirectoryRefresh());
+  }
+
+  markWorkspaceDirectorySyncError(error: string): void {
+    this.updateSnapshot(failWorkspaceDirectoryRefresh(this.snapshot, error));
   }
 
   markStartupError(message: string): void {
@@ -1207,6 +1231,15 @@ export class HostRuntimeController {
     return { agentDirectoryStatus: "idle", agentDirectoryError: null };
   }
 
+  private buildWorkspaceDirectoryStatusPatch(): Partial<HostRuntimeSnapshotPatch> {
+    const error =
+      this.connectionMachineState.tag === "error" ? this.connectionMachineState.message : null;
+    return workspaceDirectoryConnectionPatch(this.snapshot, {
+      status: this.snapshot.connectionStatus,
+      error,
+    });
+  }
+
   private async switchToConnection(input: {
     connectionId: string;
     expectedProbeVersion?: number;
@@ -1295,6 +1328,7 @@ export class HostRuntimeController {
       const patch: HostRuntimeSnapshotPatch = {
         ...toSnapshotConnectionPatch(this.connectionMachineState, this.connectionEpoch),
         ...this.buildAgentDirectoryStatusPatch(),
+        ...this.buildWorkspaceDirectoryStatusPatch(),
       };
       this.updateSnapshot(patch);
     });
@@ -1679,6 +1713,9 @@ export class HostRuntimeStore {
       markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
       markAgentReady: () => controller.markAgentDirectorySyncReady(),
       markAgentError: (error) => controller.markAgentDirectorySyncError(error),
+      markWorkspaceLoading: () => controller.markWorkspaceDirectorySyncLoading(),
+      markWorkspaceReady: () => controller.markWorkspaceDirectorySyncReady(),
+      markWorkspaceError: (error) => controller.markWorkspaceDirectorySyncError(error),
     });
     this.directorySyncByServer.set(newServerId, directory);
     controller.adoptReconciledServerId(newServerId);
@@ -2095,6 +2132,9 @@ export class HostRuntimeStore {
           markAgentLoading: () => controller.markAgentDirectorySyncLoading(),
           markAgentReady: () => controller.markAgentDirectorySyncReady(),
           markAgentError: (error) => controller.markAgentDirectorySyncError(error),
+          markWorkspaceLoading: () => controller.markWorkspaceDirectorySyncLoading(),
+          markWorkspaceReady: () => controller.markWorkspaceDirectorySyncReady(),
+          markWorkspaceError: (error) => controller.markWorkspaceDirectorySyncError(error),
         }),
       );
       const initialSnapshot = controller.getSnapshot();
@@ -2181,7 +2221,9 @@ export class HostRuntimeStore {
     if (snapshot.connectionStatus !== "online") {
       return;
     }
-    if (!didTransitionOnline && snapshot.hasEverLoadedAgentDirectory) {
+    const hasLoadedDirectories =
+      snapshot.hasEverLoadedAgentDirectory && snapshot.hasEverLoadedWorkspaceDirectory;
+    if (!didTransitionOnline && hasLoadedDirectories) {
       return;
     }
     if (this.directoryBootstrapInFlight.has(serverId) && !directorySourceChanged) {
@@ -2377,6 +2419,23 @@ export class HostRuntimeStore {
         continue;
       }
       void this.refreshAgentDirectory({ serverId }).catch(() => undefined);
+    }
+  }
+
+  refreshAllProjectDirectories(input?: { serverIds?: string[] }): void {
+    const targetServerIds = input?.serverIds ? new Set(input.serverIds) : null;
+    for (const [serverId] of this.controllers) {
+      if (targetServerIds && !targetServerIds.has(serverId)) {
+        continue;
+      }
+      const serverInfo = useSessionStore.getState().sessions[serverId]?.serverInfo;
+      if (serverInfo === null || serverInfo === undefined) {
+        void this.refreshDirectories(serverId).catch(() => undefined);
+      } else if (serverInfo.features?.workspaceMultiplicity === true) {
+        void this.refreshWorkspaceDirectory({ serverId }).catch(() => undefined);
+      } else {
+        void this.refreshAgentDirectory({ serverId }).catch(() => undefined);
+      }
     }
   }
 

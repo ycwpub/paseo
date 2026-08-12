@@ -225,6 +225,21 @@ export const fr: TranslationResources = {
     process: {
       show: "Afficher le processus",
       hide: "Masquer le processus",
+      processed: "Traité",
+      processedWithDuration: "Traité en {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "Plan",
@@ -1878,6 +1893,7 @@ export const fr: TranslationResources = {
     projects: "Projets",
     projectList: {
       hostLoadFailed: "Impossible de charger les projets depuis l'hôte{{hostName}}:{{message}}",
+      hostLoadTimedOut: "L'hôte {{hostName}} n'a pas répondu à temps. Réessayez.",
       editProject: "Modifier{{projectName}}",
     },
     groupInfo: "À propos de{{title}}",

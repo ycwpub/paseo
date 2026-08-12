@@ -20,6 +20,7 @@ export async function runWorkflowCommand(
     const payload = await client.workflowRun({
       scriptPath: resolveWorkflowCliPath(scriptPath),
       inputPayload,
+      ...(options.node ? { targetNodeId: options.node } : {}),
     });
     if (payload.error || !payload.run) {
       throw new Error(payload.error ?? "Workflow run did not start");

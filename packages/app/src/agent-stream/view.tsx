@@ -101,6 +101,15 @@ import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { deriveStreamTurnTiming } from "@/timeline/turn-time";
+import { ProcessingDisclosure } from "./processing-disclosure";
+import {
+  createProcessExpansionState,
+  isProcessTurnExpanded,
+  toggleProcessTurn,
+  type ProcessExpansionState,
+} from "./process-expansion-state";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 function renderLiveAuxiliaryNode(input: {
   processVisibilityControl: ReactNode;
@@ -157,7 +166,6 @@ function renderStreamItemWithTurnFooter(input: {
     <CompletedTurnFooterRow
       strategy={input.strategy}
       items={footerHost.items}
-      timing={footerHost.timing}
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
@@ -374,33 +382,6 @@ function ScrollNavigationControls({
   );
 }
 
-function ProcessVisibilityControl({
-  expanded,
-  onToggle,
-}: {
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const { t } = useTranslation();
-  const Icon = expanded ? ChevronUp : ChevronDown;
-  const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
-  return (
-    <Pressable
-      style={stylesheet.processVisibilityControl}
-      onPress={onToggle}
-      accessibilityRole="button"
-      accessibilityState={accessibilityState}
-      accessibilityLabel={t(expanded ? "agentStream.process.hide" : "agentStream.process.show")}
-      testID="process-visibility-toggle"
-    >
-      <Text style={stylesheet.processVisibilityText}>
-        {t(expanded ? "agentStream.process.hide" : "agentStream.process.show")}
-      </Text>
-      <Icon size={16} color={stylesheet.processVisibilityIcon.color} />
-    </Pressable>
-  );
-}
-
 const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamViewProps>(
   function AgentStreamView(
     {
@@ -446,9 +427,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
-    const [isProcessExpanded, setIsProcessExpanded] = useState(true);
+    const [processExpansion, setProcessExpansion] = useState<ProcessExpansionState>(
+      createProcessExpansionState,
+    );
     const openFileExplorerForCheckout = usePanelStore((state) => state.openFileExplorerForCheckout);
     const setExplorerTabForCheckout = usePanelStore((state) => state.setExplorerTabForCheckout);
+    const openWorkspaceTabFocused = useWorkspaceLayoutStore((state) => state.openTabFocused);
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -497,11 +481,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
-      setIsProcessExpanded(true);
+      setProcessExpansion(createProcessExpansionState());
     }, [agentId]);
 
-    const toggleProcessVisibility = useCallback(() => {
-      setIsProcessExpanded((expanded) => !expanded);
+    const isTurnProcessExpanded = useCallback(
+      (turnId: string, isActiveTurn: boolean) =>
+        isProcessTurnExpanded(processExpansion, turnId, isActiveTurn),
+      [processExpansion],
+    );
+    const toggleProcessVisibility = useCallback((turnId: string, isActiveTurn: boolean) => {
+      setProcessExpansion((state) => toggleProcessTurn(state, { turnId, isActive: isActiveTurn }));
     }, []);
 
     const handleInlinePathPress = useStableEvent(
@@ -624,12 +613,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const processVisibility = useMemo(
       () =>
         projectProcessVisibility({
-          expanded: isProcessExpanded,
-          isTurnActive: context.status === "running",
+          isTurnActive,
+          isTurnExpanded: isTurnProcessExpanded,
           tail: projectedToolCalls.tail,
           head: projectedToolCalls.head,
         }),
-      [context.status, isProcessExpanded, projectedToolCalls.head, projectedToolCalls.tail],
+      [isTurnActive, isTurnProcessExpanded, projectedToolCalls.head, projectedToolCalls.tail],
     );
 
     const baseRenderModel = useMemo(() => {
@@ -1012,8 +1001,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         const disclosure = processVisibility.disclosureByHostId.get(layoutItem.item.id);
         const contentWithDisclosure = disclosure ? (
           <>
-            <ProcessVisibilityControl
-              expanded={isProcessExpanded}
+            <ProcessingDisclosure
+              expanded={disclosure.expanded}
+              turnId={disclosure.turnId}
+              isActive={disclosure.isActive}
+              durationMs={
+                disclosure.assistantId
+                  ? baseRenderModel.turnTiming.byAssistantId.get(disclosure.assistantId)?.durationMs
+                  : undefined
+              }
               onToggle={toggleProcessVisibility}
             />
             {content}
@@ -1034,7 +1030,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         readOnly,
         renderStreamItemContent,
         processVisibility.disclosureByHostId,
-        isProcessExpanded,
+        baseRenderModel.turnTiming.byAssistantId,
         toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
@@ -1054,6 +1050,50 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }),
       [client, pendingPermissionItems],
     );
+    const handleReviewTurnChange = useStableEvent((path: string) => {
+      const persistenceKey = buildWorkspaceTabPersistenceKey({
+        serverId: resolvedServerId,
+        workspaceId: context.workspaceId ?? workspaceRoot,
+      });
+      if (!isMobile && persistenceKey) {
+        openWorkspaceTabFocused(persistenceKey, {
+          kind: "working_diff",
+          focusPath: path,
+          focusRequestId: Date.now(),
+        });
+        return;
+      }
+      const checkout = {
+        serverId: resolvedServerId,
+        cwd: workspaceRoot,
+        isGit: context.projectPlacement?.checkout?.isGit ?? true,
+      };
+      setExplorerTabForCheckout({ ...checkout, tab: "changes" });
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout,
+      });
+    });
+    const turnChangesContext = useMemo(
+      () => ({
+        serverId: resolvedServerId,
+        cwd: workspaceRoot,
+        isGit: context.projectPlacement?.checkout?.isGit ?? true,
+        readOnly,
+        toast: toast ?? null,
+        onOpen: handleToolCallOpenFile,
+        onReview: handleReviewTurnChange,
+      }),
+      [
+        context.projectPlacement?.checkout?.isGit,
+        handleReviewTurnChange,
+        handleToolCallOpenFile,
+        readOnly,
+        resolvedServerId,
+        toast,
+        workspaceRoot,
+      ],
+    );
     const turnFooterNode = useMemo(
       () =>
         isTurnActive || bottomTurnFooterHost ? (
@@ -1065,6 +1105,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            changes={turnChangesContext}
           />
         ) : null,
       [
@@ -1076,18 +1117,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         bottomTurnFooterHost,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnChangesContext,
       ],
     );
-    const auxiliaryProcessVisibilityControl = useMemo(
-      () =>
-        processVisibility.needsAuxiliaryDisclosure ? (
-          <ProcessVisibilityControl
-            expanded={isProcessExpanded}
-            onToggle={toggleProcessVisibility}
-          />
-        ) : null,
-      [isProcessExpanded, processVisibility.needsAuxiliaryDisclosure, toggleProcessVisibility],
-    );
+    const auxiliaryProcessVisibilityControl = useMemo(() => {
+      const disclosure = processVisibility.auxiliaryDisclosure;
+      if (!disclosure) return null;
+      return (
+        <ProcessingDisclosure
+          expanded={disclosure.expanded}
+          turnId={disclosure.turnId}
+          isActive={disclosure.isActive}
+          onToggle={toggleProcessVisibility}
+        />
+      );
+    }, [processVisibility.auxiliaryDisclosure, toggleProcessVisibility]);
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
         ...baseRenderModel,
@@ -1187,18 +1231,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () => ({
         contentById: projectedToolCalls.historyGroupUpdatesByHostId,
         displayStateById: expandedToolCallGroupIds,
-        globalDisplayState: isMobile !== isProcessExpanded,
+        globalDisplayState: isMobile !== processExpansion.revision,
       }),
       [
         expandedToolCallGroupIds,
         isMobile,
-        isProcessExpanded,
+        processExpansion.revision,
         projectedToolCalls.historyGroupUpdatesByHostId,
       ],
     );
     const liveHeadRowRevision = useMemo(
-      () => ({ expandedToolCallGroupIds, isProcessExpanded }),
-      [expandedToolCallGroupIds, isProcessExpanded],
+      () => ({ expandedToolCallGroupIds, processExpansionRevision: processExpansion.revision }),
+      [expandedToolCallGroupIds, processExpansion.revision],
     );
 
     return (
@@ -1751,21 +1795,6 @@ const stylesheet = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     ...theme.shadow.sm,
-  },
-  processVisibilityControl: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingVertical: theme.spacing[2],
-  },
-  processVisibilityText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: "500",
-  },
-  processVisibilityIcon: {
-    color: theme.colors.foregroundMuted,
   },
   scrollToBottomIcon: {
     color: theme.colors.foreground,

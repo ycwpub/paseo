@@ -8,6 +8,7 @@ import {
   Bot,
   Braces,
   CircleHelp,
+  FileCode2,
   GitBranch,
   Plus,
   Repeat2,
@@ -23,6 +24,7 @@ import {
   type WorkflowBashStep,
   type WorkflowForStep,
   type WorkflowNestedStep,
+  type WorkflowPythonStep,
   type WorkflowRetryPolicy,
   type WorkflowScriptSummary,
   type WorkflowStep,
@@ -39,6 +41,7 @@ import {
 } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { resolveTeamAssistantIds, resolveTeamLeader } from "@/teams/team-members";
@@ -46,6 +49,7 @@ import {
   applyInstructionTemplateToAgentSystemPrompt,
   applyInstructionTemplateToAgentStep,
   createWorkflowStep,
+  getAvailableWorkflowStepTypes,
   moveWorkflowStep,
   updateAgentOutputType,
   type WorkflowStepType,
@@ -55,6 +59,10 @@ const STEP_META = {
   bash: {
     labelKey: "workflows.nodes.types.bash",
     icon: TerminalSquare,
+  },
+  python: {
+    labelKey: "workflows.nodes.types.python",
+    icon: FileCode2,
   },
   agent: {
     labelKey: "workflows.nodes.types.agent",
@@ -133,6 +141,7 @@ interface WorkflowStepListEditorProps {
   promptTemplatesLoading?: boolean;
   workflowScripts?: WorkflowScriptSummary[];
   currentWorkflowPath?: string | null;
+  allowPython?: boolean;
   label?: string;
   description?: string;
   depth?: number;
@@ -153,6 +162,7 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
   promptTemplatesLoading = false,
   workflowScripts = [],
   currentWorkflowPath = null,
+  allowPython = true,
   label,
   description,
   depth = 0,
@@ -166,6 +176,7 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
         createWorkflowStep(type, rootSteps, {
           workflow: t("workflows.editor.untitled"),
           bash: t("workflows.nodes.defaultNames.bash"),
+          python: t("workflows.nodes.defaultNames.python"),
           agent: t("workflows.nodes.defaultNames.agent"),
           workflowNode: t("workflows.nodes.defaultNames.workflow"),
           switch: t("workflows.nodes.defaultNames.switch"),
@@ -210,6 +221,7 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           promptTemplatesLoading={promptTemplatesLoading}
           workflowScripts={workflowScripts}
           currentWorkflowPath={currentWorkflowPath}
+          allowPython={allowPython}
           onChange={(nextStep) => {
             const next = [...steps];
             next[index] = nextStep;
@@ -219,7 +231,7 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           onMove={(direction) => onChange(moveWorkflowStep(steps, index, direction))}
         />
       ))}
-      <AddNodeBar onAdd={addStep} compact={depth > 0} />
+      <AddNodeBar onAdd={addStep} compact={depth > 0} allowPython={allowPython} />
     </View>
   );
 });
@@ -227,9 +239,11 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
 function AddNodeBar({
   onAdd,
   compact,
+  allowPython,
 }: {
   onAdd: (type: WorkflowStepType) => void;
   compact: boolean;
+  allowPython: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -239,7 +253,7 @@ function AddNodeBar({
         <Text style={styles.addNodeLabelText}>{t("workflows.nodes.add")}</Text>
       </View>
       <View style={styles.addNodeActions}>
-        {(Object.keys(STEP_META) as WorkflowStepType[]).map((type) => {
+        {getAvailableWorkflowStepTypes(allowPython).map((type) => {
           const meta = STEP_META[type];
           return (
             <Button
@@ -275,6 +289,7 @@ interface WorkflowStepCardProps {
   promptTemplatesLoading: boolean;
   workflowScripts: WorkflowScriptSummary[];
   currentWorkflowPath: string | null;
+  allowPython: boolean;
   onChange: (step: WorkflowStep) => void;
   onRemove: () => void;
   onMove: (direction: -1 | 1) => void;
@@ -296,6 +311,7 @@ function WorkflowStepCard({
   promptTemplatesLoading,
   workflowScripts,
   currentWorkflowPath,
+  allowPython,
   onChange,
   onRemove,
   onMove,
@@ -307,6 +323,9 @@ function WorkflowStepCard({
   switch (step.type) {
     case "bash":
       stepFields = <BashStepFields step={step} onChange={onChange} />;
+      break;
+    case "python":
+      stepFields = <PythonStepFields step={step} onChange={onChange} />;
       break;
     case "agent":
       stepFields = (
@@ -349,6 +368,7 @@ function WorkflowStepCard({
           promptTemplatesLoading={promptTemplatesLoading}
           workflowScripts={workflowScripts}
           currentWorkflowPath={currentWorkflowPath}
+          allowPython={allowPython}
           depth={depth}
           onChange={onChange}
         />
@@ -369,6 +389,7 @@ function WorkflowStepCard({
           promptTemplatesLoading={promptTemplatesLoading}
           workflowScripts={workflowScripts}
           currentWorkflowPath={currentWorkflowPath}
+          allowPython={allowPython}
           depth={depth}
           onChange={onChange}
         />
@@ -510,6 +531,31 @@ function BashStepFields({
           </Field>
         </View>
       </View>
+      <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
+    </>
+  );
+}
+
+function PythonStepFields({
+  step,
+  onChange,
+}: {
+  step: WorkflowPythonStep;
+  onChange: (step: WorkflowPythonStep) => void;
+}) {
+  return (
+    <>
+      <WorkflowPythonStepFields step={step} onChange={onChange} />
+      <WorkflowVariablesEditor
+        kind="python"
+        variables={step.variables ?? {}}
+        onChange={(variables) =>
+          onChange({
+            ...step,
+            variables: Object.keys(variables).length > 0 ? variables : undefined,
+          })
+        }
+      />
       <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
     </>
   );
@@ -1328,12 +1374,40 @@ function AgentStepFields({
   );
 }
 
-function WorkflowVariableHelp({ kind }: { kind: "bash" | "agent" }) {
+type WorkflowVariableKind = "bash" | "python" | "agent";
+
+const WORKFLOW_VARIABLE_COPY = {
+  bash: {
+    instructionHint: "workflows.nodes.bash.initialCommandHint",
+    description: "workflows.nodes.variables.bashDescription",
+    usageExample: "workflows.nodes.variables.bashUsageExample",
+    title: "workflows.nodes.variables.bashTitle",
+  },
+  python: {
+    instructionHint: "workflows.nodes.python.codeHint",
+    description: "workflows.nodes.variables.pythonDescription",
+    usageExample: "workflows.nodes.variables.pythonUsageExample",
+    title: "workflows.nodes.variables.pythonTitle",
+  },
+  agent: {
+    instructionHint: "workflows.nodes.agent.initialPromptHint",
+    description: "workflows.nodes.variables.agentDescription",
+    usageExample: "workflows.nodes.variables.agentUsageExample",
+    title: "workflows.nodes.variables.agentTitle",
+  },
+} as const;
+
+function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
   const { t } = useTranslation();
-  const usage =
-    kind === "bash"
-      ? `echo '{{customer.name}}' '{{items.0.id}}' '{{control}}'`
-      : `Review {{customer.name}} for item {{items.0.id}}. Current route: {{control}}.`;
+  const copy = WORKFLOW_VARIABLE_COPY[kind];
+  let usage: string;
+  if (kind === "bash") {
+    usage = `echo '{{customer.name}}' '{{items.0.id}}' '{{control}}'`;
+  } else if (kind === "python") {
+    usage = `customer = "{{customer.name}}"\nitem_id = "{{items.0.id}}"`;
+  } else {
+    usage = `Review {{customer.name}} for item {{items.0.id}}. Current route: {{control}}.`;
+  }
   const examples = [
     {
       template: "{{customer.name}}",
@@ -1393,16 +1467,8 @@ function WorkflowVariableHelp({ kind }: { kind: "bash" | "agent" }) {
           <Text style={styles.variableExamplesTitle}>
             {t("workflows.nodes.variables.examplesTitle")}
           </Text>
-          <Text style={styles.variableExamplesDescription}>
-            {kind === "bash"
-              ? t("workflows.nodes.bash.initialCommandHint")
-              : t("workflows.nodes.agent.initialPromptHint")}
-          </Text>
-          <Text style={styles.variableExamplesDescription}>
-            {kind === "bash"
-              ? t("workflows.nodes.variables.bashDescription")
-              : t("workflows.nodes.variables.agentDescription")}
-          </Text>
+          <Text style={styles.variableExamplesDescription}>{t(copy.instructionHint)}</Text>
+          <Text style={styles.variableExamplesDescription}>{t(copy.description)}</Text>
           <Text style={styles.variableExamplesDescription}>
             {t("workflows.nodes.variables.inputExample")}
           </Text>
@@ -1423,11 +1489,7 @@ function WorkflowVariableHelp({ kind }: { kind: "bash" | "agent" }) {
               </View>
             ))}
           </View>
-          <Text style={styles.variableExamplesDescription}>
-            {kind === "bash"
-              ? t("workflows.nodes.variables.bashUsageExample")
-              : t("workflows.nodes.variables.agentUsageExample")}
-          </Text>
+          <Text style={styles.variableExamplesDescription}>{t(copy.usageExample)}</Text>
           <Text style={styles.variableExampleCode} selectable>
             {usage}
           </Text>
@@ -1442,16 +1504,13 @@ function WorkflowVariablesEditor({
   variables,
   onChange,
 }: {
-  kind: "bash" | "agent";
+  kind: WorkflowVariableKind;
   variables: Record<string, string>;
   onChange: (variables: Record<string, string>) => void;
 }) {
   const { t } = useTranslation();
   const entries = Object.entries(variables);
-  const title =
-    kind === "bash"
-      ? t("workflows.nodes.variables.bashTitle")
-      : t("workflows.nodes.variables.agentTitle");
+  const title = t(WORKFLOW_VARIABLE_COPY[kind].title);
   return (
     <View style={styles.variablesSection}>
       <View style={styles.sectionTitleRow}>
@@ -1616,6 +1675,7 @@ function SwitchStepFields({
   promptTemplatesLoading,
   workflowScripts,
   currentWorkflowPath,
+  allowPython,
   depth,
   onChange,
 }: {
@@ -1631,6 +1691,7 @@ function SwitchStepFields({
   promptTemplatesLoading: boolean;
   workflowScripts: WorkflowScriptSummary[];
   currentWorkflowPath: string | null;
+  allowPython: boolean;
   depth: number;
   onChange: (step: WorkflowSwitchStep) => void;
 }) {
@@ -1689,6 +1750,7 @@ function SwitchStepFields({
               promptTemplatesLoading={promptTemplatesLoading}
               workflowScripts={workflowScripts}
               currentWorkflowPath={currentWorkflowPath}
+              allowPython={allowPython}
               depth={depth + 1}
               onChange={(steps) => {
                 const cases = [...step.cases];
@@ -1727,6 +1789,7 @@ function SwitchStepFields({
             promptTemplatesLoading={promptTemplatesLoading}
             workflowScripts={workflowScripts}
             currentWorkflowPath={currentWorkflowPath}
+            allowPython={allowPython}
             depth={depth + 1}
             onChange={(defaultSteps) => onChange({ ...step, defaultSteps })}
           />
@@ -1749,6 +1812,7 @@ function ForStepFields({
   promptTemplatesLoading,
   workflowScripts,
   currentWorkflowPath,
+  allowPython,
   depth,
   onChange,
 }: {
@@ -1764,6 +1828,7 @@ function ForStepFields({
   promptTemplatesLoading: boolean;
   workflowScripts: WorkflowScriptSummary[];
   currentWorkflowPath: string | null;
+  allowPython: boolean;
   depth: number;
   onChange: (step: WorkflowForStep) => void;
 }) {
@@ -1819,6 +1884,7 @@ function ForStepFields({
           promptTemplatesLoading={promptTemplatesLoading}
           workflowScripts={workflowScripts}
           currentWorkflowPath={currentWorkflowPath}
+          allowPython={allowPython}
           depth={depth + 1}
           onChange={(steps) => onChange({ ...step, steps })}
         />

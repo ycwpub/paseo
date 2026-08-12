@@ -223,6 +223,21 @@ export const ptBR: TranslationResources = {
     process: {
       show: "Mostrar processo",
       hide: "Ocultar processo",
+      processed: "Processado",
+      processedWithDuration: "Processado em {{duration}}",
+    },
+    hooks: {
+      title: "Hooks",
+      calls_one: "{{count}} hook call",
+      calls_other: "{{count}} hook calls",
+    },
+    changes: {
+      added: "Added {{fileName}}",
+      deleted: "Deleted {{fileName}}",
+      edited: "Edited {{fileName}}",
+      undo: "Undo",
+      review: "Review",
+      open: "Open",
     },
     permission: {
       plan: "Plano",
@@ -1860,6 +1875,7 @@ export const ptBR: TranslationResources = {
     projects: "Projetos",
     projectList: {
       hostLoadFailed: "Não foi possível carregar projetos do host {{hostName}}: {{message}}",
+      hostLoadTimedOut: "O host {{hostName}} não respondeu a tempo. Tente novamente.",
       editProject: "Editar {{projectName}}",
     },
     groupInfo: "Sobre {{title}}",

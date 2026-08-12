@@ -47,6 +47,14 @@ vi.mock("@/components/retained-panel", () => ({
   useRetainedPanelActive: () => true,
 }));
 
+vi.mock("./turn-hook-summary", () => ({
+  TurnHookSummary: () => null,
+}));
+
+vi.mock("./turn-changes", () => ({
+  TurnChanges: () => null,
+}));
+
 import { TurnFooter } from "./turn-footer";
 
 const unusedRunningTurnStrategy = null as unknown as React.ComponentProps<

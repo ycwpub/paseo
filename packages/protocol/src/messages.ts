@@ -3237,6 +3237,10 @@ export const ServerInfoStatusPayloadSchema = z
         // agentProfiles to one is silently dropped. The client hides the feature
         // rather than letting a save appear to succeed.
         agentProfiles: z.boolean().optional(),
+        // COMPAT(workflowPython): added in v0.3.2, remove gate after 2027-02-12.
+        workflowPython: z.boolean().optional(),
+        // COMPAT(workflowNodeRun): added in v0.3.2, remove gate after 2027-02-12.
+        workflowNodeRun: z.boolean().optional(),
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.

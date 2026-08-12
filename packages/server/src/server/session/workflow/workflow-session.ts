@@ -95,6 +95,7 @@ export class WorkflowSession {
       const run = await this.workflowService.runScript({
         scriptPath: request.scriptPath,
         inputPayload: request.inputPayload,
+        targetNodeId: request.targetNodeId,
       });
       this.host.emit({
         type: "workflow/run/response",

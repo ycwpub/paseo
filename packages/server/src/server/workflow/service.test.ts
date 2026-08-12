@@ -19,22 +19,12 @@ function shellQuote(value: string): string {
 }
 
 function nodeCommand(source: string, ...args: string[]): string {
-  const stdoutCompatibilityPrelude = [
-    'const __paseoFs = require("fs");',
-    "const __paseoWriteFileSync = __paseoFs.writeFileSync.bind(__paseoFs);",
-    "__paseoFs.writeFileSync = (path, data, ...options) => {",
-    "  if (path === process.env.PASEO_WORKFLOW_RESULT_FILE) {",
-    "    process.stdout.write(String(data));",
-    "    return;",
-    "  }",
-    "  return __paseoWriteFileSync(path, data, ...options);",
-    "};",
-  ].join("\n");
   return [
     shellQuote(process.execPath),
     "-e",
-    shellQuote(`${stdoutCompatibilityPrelude}\n${source}`),
+    shellQuote(source),
     ...args.map(shellQuote),
+    '"$1"',
   ].join(" ");
 }
 
@@ -148,11 +138,9 @@ describe("WorkflowService", () => {
             id: "complete",
             type: "bash",
             initialCommand: nodeCommand(
-              [
-                'const fs = require("fs");',
-                "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE,",
-                '  JSON.stringify({ control: "done", error: "" }));',
-              ].join("\n"),
+              ["process.stdout.write(", '  JSON.stringify({ control: "done", error: "" }));'].join(
+                "\n",
+              ),
             ),
           },
         ],
@@ -190,9 +178,8 @@ describe("WorkflowService", () => {
             type: "bash",
             initialCommand: nodeCommand(
               [
-                'const fs = require("fs");',
-                "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
-                "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+                "const input = JSON.parse(process.argv.at(-1));",
+                "process.stdout.write(JSON.stringify({",
                 '  ...input, control: "done", error: "", greeting: `Hello ${input.customer.name}`',
                 "}));",
               ].join("\n"),
@@ -223,6 +210,58 @@ describe("WorkflowService", () => {
     });
   });
 
+  it("runs inline Python code and uses its last stdout line as the node result", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Python node",
+        steps: [
+          {
+            id: "transform",
+            type: "python",
+            code: [
+              "import json",
+              "import sys",
+              "payload = json.load(sys.stdin)",
+              'print("diagnostic output")',
+              "print(json.dumps({",
+              '    **payload, "control": "python-done",',
+              '    "greeting": "Hello " + payload["customer"]["name"],',
+              '    "stdinMatches": True,',
+              "}))",
+            ].join("\n"),
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify({
+        customer: { name: "Alice" },
+      }),
+    });
+
+    expect(run.status).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
+      control: "python-done",
+      error: "",
+      greeting: "Hello Alice",
+      stdinMatches: true,
+    });
+    expect(run.nodeRuns[0]).toMatchObject({
+      stepType: "bash",
+      executor: "python",
+      outputControl: "python-done",
+    });
+    expect(run.nodeRuns[0]?.output).toContain("diagnostic output");
+  });
+
   it("renders payload and custom variables in Bash commands", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
@@ -237,8 +276,7 @@ describe("WorkflowService", () => {
             type: "bash",
             initialCommand: nodeCommand(
               [
-                'const fs = require("fs");',
-                "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+                "process.stdout.write(JSON.stringify({",
                 '  control: "done", error: "", customer: process.argv[1], item: process.argv[2], role: process.argv[3]',
                 "}));",
               ].join("\n"),
@@ -286,7 +324,7 @@ describe("WorkflowService", () => {
           {
             id: "copy",
             type: "bash",
-            initialCommand: "printf '%s\\n' \"$PASEO_WORKFLOW_INPUT_JSON\"",
+            initialCommand: "printf '%s\\n' \"$1\"",
           },
         ],
       }),
@@ -330,7 +368,7 @@ describe("WorkflowService", () => {
             type: "bash",
             initialCommand: nodeCommand(
               [
-                "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+                "const input = JSON.parse(process.argv.at(-1));",
                 "process.stdout.write(JSON.stringify({",
                 '  ...input, control: "child-complete", childValue: `${input.value}-child`',
                 "}));",
@@ -357,7 +395,7 @@ describe("WorkflowService", () => {
             type: "bash",
             initialCommand: nodeCommand(
               [
-                "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+                "const input = JSON.parse(process.argv.at(-1));",
                 "process.stdout.write(JSON.stringify({",
                 '  ...input, control: "parent-complete", parentSaw: input.childValue',
                 "}));",
@@ -520,7 +558,7 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const output = process.argv[1];",
         'fs.writeFileSync(output, "finished");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: output, control: "done", error: ""',
         "}));",
       ].join("\n"),
@@ -531,7 +569,7 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const next = process.argv[1];",
         'fs.writeFileSync(next, "exit 99");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: next, control: "go", error: ""',
         "}));",
       ].join("\n"),
@@ -583,9 +621,9 @@ describe("WorkflowService", () => {
     await writeFile(inputPath, "input");
     const failingCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
-        '  filePath: process.env.PASEO_WORKFLOW_INPUT_FILE, control: "stop", error: "boom"',
+        "const input = JSON.parse(process.argv.at(-1));",
+        "process.stdout.write(JSON.stringify({",
+        '  filePath: input.filePath, control: "stop", error: "boom"',
         "}));",
       ].join("\n"),
     );
@@ -623,23 +661,18 @@ describe("WorkflowService", () => {
     const inputPath = join(home, "input.txt");
     const scriptPath = join(home, "workflow.json");
     await writeFile(inputPath, "input");
-    const prepareCommand = [
-      'test "$1" = "$PASEO_WORKFLOW_INPUT_JSON"',
-      nodeCommand(
-        [
-          'const fs = require("fs");',
-          "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
-          "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
-          '  ...input, customer: { name: "Alice" }, count: 2, control: "next", error: ""',
-          "}));",
-        ].join("\n"),
-      ),
-    ].join(" && ");
+    const prepareCommand = nodeCommand(
+      [
+        "const input = JSON.parse(process.argv.at(-1));",
+        "process.stdout.write(JSON.stringify({",
+        '  ...input, customer: { name: "Alice" }, count: 2, control: "next", error: ""',
+        "}));",
+      ].join("\n"),
+    );
     const consumeCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "const input = JSON.parse(process.argv.at(-1));",
+        "process.stdout.write(JSON.stringify({",
         '  control: "done", error: "", greeting: `Hello ${input.customer.name}`,',
         "  doubled: input.count * 2",
         "}));",
@@ -690,10 +723,6 @@ describe("WorkflowService", () => {
     const scriptPath = join(home, "workflow.json");
     const command = nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
-        '  control: "", error: "", source: "result-file"',
-        "}));",
         'process.stdout.write(JSON.stringify({ control: "ignored", source: "earlier-line" }) + "\\n");',
         'process.stdout.write("diagnostic output\\n");',
         'process.stdout.write(JSON.stringify({ control: "true", source: "stdout" }));',
@@ -913,7 +942,7 @@ describe("WorkflowService", () => {
         "fs.writeFileSync(attemptFile, String(attempt));",
         "if (attempt < 3) process.exit(7);",
         'fs.writeFileSync(outputFile, "done");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: outputFile, control: "complete", error: ""',
         "}));",
       ].join("\n"),
@@ -1122,10 +1151,11 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const log = process.argv[1];",
-        "fs.appendFileSync(log, `${process.env.PASEO_WORKFLOW_CONTROL}\\n`);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
-        "  filePath: process.env.PASEO_WORKFLOW_INPUT_FILE,",
-        "  control: process.env.PASEO_WORKFLOW_CONTROL,",
+        "const input = JSON.parse(process.argv.at(-1));",
+        "fs.appendFileSync(log, `${input.control}\\n`);",
+        "process.stdout.write(JSON.stringify({",
+        "  filePath: input.filePath,",
+        "  control: input.control,",
         '  error: ""',
         "}));",
       ].join("\n"),
@@ -1133,8 +1163,7 @@ describe("WorkflowService", () => {
     );
     const prepareCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  control: \'["alpha","beta"]\', error: ""',
         "}));",
       ].join("\n"),
@@ -1175,8 +1204,7 @@ describe("WorkflowService", () => {
 
     const prepareCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  control: \'["alpha","beta","gamma"]\', error: "", source: "test"',
         "}));",
       ].join("\n"),
@@ -1184,9 +1212,9 @@ describe("WorkflowService", () => {
     const loopCommand = nodeCommand(
       [
         'const fs = require("fs");',
-        "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+        "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}\\n`);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  ...input, control: input.loop.item === "beta" ? "break" : input.control, error: ""',
         "}));",
       ].join("\n"),
@@ -1232,8 +1260,7 @@ describe("WorkflowService", () => {
 
     const prepareCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  control: "alpha,beta,gamma", error: ""',
         "}));",
       ].join("\n"),
@@ -1241,9 +1268,9 @@ describe("WorkflowService", () => {
     const firstCommand = nodeCommand(
       [
         'const fs = require("fs");',
-        "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+        "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  ...input, control: input.loop.item === "beta" ? "continue" : input.control, error: ""',
         "}));",
       ].join("\n"),
@@ -1252,9 +1279,9 @@ describe("WorkflowService", () => {
     const secondCommand = nodeCommand(
       [
         'const fs = require("fs");',
-        "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+        "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify(input));",
+        "process.stdout.write(JSON.stringify(input));",
       ].join("\n"),
       secondLogPath,
     );
@@ -1298,9 +1325,9 @@ describe("WorkflowService", () => {
     const loopCommand = nodeCommand(
       [
         'const fs = require("fs");',
-        "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
+        "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}:${input.loop.count}\\n`);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  ...input, control: input.loop.index === 2 ? "break" : "continue", error: ""',
         "}));",
       ].join("\n"),
@@ -1340,9 +1367,8 @@ describe("WorkflowService", () => {
     await writeFile(inputPath, "input");
     const loopCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "const input = JSON.parse(process.env.PASEO_WORKFLOW_INPUT_JSON);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "const input = JSON.parse(process.argv.at(-1));",
+        "process.stdout.write(JSON.stringify({",
         '  ...input, control: "", error: ""',
         "}));",
       ].join("\n"),
@@ -1385,7 +1411,7 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "fs.writeFileSync(process.argv[1], process.argv[2]);",
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: process.argv[1], control: "ready", error: ""',
         "}));",
       ].join("\n"),
@@ -1395,9 +1421,9 @@ describe("WorkflowService", () => {
     const consumeCommand = nodeCommand(
       [
         'const fs = require("fs");',
-        "const inputPath = process.env.PASEO_WORKFLOW_INPUT_FILE;",
+        "const inputPath = JSON.parse(process.argv.at(-1)).filePath;",
         'fs.writeFileSync(process.argv[1], fs.readFileSync(inputPath, "utf8"));',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: process.argv[1], control: "done", error: ""',
         "}));",
       ].join("\n"),
@@ -1484,8 +1510,7 @@ describe("WorkflowService", () => {
     });
     const prepareCommand = nodeCommand(
       [
-        'const fs = require("fs");',
-        "fs.writeFileSync(process.env.PASEO_WORKFLOW_RESULT_FILE, JSON.stringify({",
+        "process.stdout.write(JSON.stringify({",
         '  filePath: process.argv[1], control: "review", error: "",',
         '  customer: { name: "Alice" }, records: [{ id: 7 }, { id: 8 }]',
         "}));",

@@ -107,6 +107,7 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
 - **NEVER restart the main Paseo daemon on port 6767 without permission** — it manages all running agents. If you're an agent, restarting it kills your own process.
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.
+- **`feature_paseo` branch only — isolate new features from files shared with `main`.** Apply this rule only when `git branch --show-current` returns `feature_paseo`; ignore it on every other branch. Put new UI, state, hooks, services, types, and tests in dedicated new files whenever practical. Keep changes to files shared with `main` limited to the smallest wiring, registration, export, or integration points required. Before adding substantial feature logic to a shared file, extract that logic into a feature-owned module. Do not duplicate existing abstractions or weaken the architecture solely to avoid touching a shared file.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**
 - **NEVER run the full test suite locally.** The test suites are heavy and will freeze the machine, especially if multiple agents run them in parallel. Rules:
   - Run only the specific test file you changed: `npx vitest run <file> --bail=1`

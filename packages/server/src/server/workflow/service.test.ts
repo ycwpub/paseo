@@ -569,54 +569,19 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("runs another workflow as a node and passes its output to the next parent node", async () => {
+  it("rejects scripts that still use the removed Workflow node type", async () => {
     const home = await createTempHome();
-    const childPath = join(home, "child.json");
-    const parentPath = join(home, "parent.json");
+    const scriptPath = join(home, "legacy.json");
     await writeFile(
-      childPath,
+      scriptPath,
       JSON.stringify({
         version: 1,
-        name: "Child",
-        steps: [
-          {
-            id: "child-transform",
-            type: "bash",
-            initialCommand: nodeCommand(
-              [
-                "const input = JSON.parse(process.argv.at(-1));",
-                "__paseoWriteResult({",
-                '  ...input, control: "child-complete", childValue: `${input.value}-child`',
-                "});",
-              ].join("\n"),
-            ),
-          },
-        ],
-      }),
-    );
-    await writeFile(
-      parentPath,
-      JSON.stringify({
-        version: 1,
-        name: "Parent",
+        name: "Legacy nested workflow",
         steps: [
           {
             id: "child",
-            name: "Shared child",
             type: "workflow",
-            workflowPath: "child.json",
-          },
-          {
-            id: "parent-finish",
-            type: "bash",
-            initialCommand: nodeCommand(
-              [
-                "const input = JSON.parse(process.argv.at(-1));",
-                "__paseoWriteResult({",
-                '  ...input, control: "parent-complete", parentSaw: input.childValue',
-                "});",
-              ].join("\n"),
-            ),
+            workflowPath: "/tmp/child.json",
           },
         ],
       }),
@@ -624,117 +589,8 @@ describe("WorkflowService", () => {
 
     const service = createService(home);
     await service.start();
-    const run = await service.runScriptAndWait({
-      scriptPath: parentPath,
-      inputPayload: JSON.stringify({ value: "input" }),
-    });
-
-    expect(run.status).toBe("succeeded");
-    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
-      control: "parent-complete",
-      childValue: "input-child",
-      parentSaw: "input-child",
-    });
-    const workflowNode = run.nodeRuns.find((node) => node.stepType === "workflow");
-    expect(workflowNode).toMatchObject({
-      stepId: "child",
-      workflowPath: childPath,
-      status: "succeeded",
-    });
-    expect(workflowNode?.workflowRunId).toBeTruthy();
-    const childRun = await service.getRun(workflowNode?.workflowRunId ?? "");
-    expect(childRun.status).toBe("succeeded");
-    expect(JSON.parse(childRun.inputPayload ?? "{}")).toEqual({
-      control: "",
-      value: "input",
-    });
-  });
-
-  it("stops the parent workflow when a nested workflow fails", async () => {
-    const home = await createTempHome();
-    const childPath = join(home, "child.json");
-    const parentPath = join(home, "parent.json");
-    const markerPath = join(home, "should-not-run.txt");
-    await writeFile(
-      childPath,
-      JSON.stringify({
-        version: 1,
-        name: "Failing child",
-        steps: [
-          {
-            id: "fail",
-            type: "bash",
-            initialCommand: 'printf "%s\\n" "child failed" >&2; exit 1',
-          },
-        ],
-      }),
-    );
-    await writeFile(
-      parentPath,
-      JSON.stringify({
-        version: 1,
-        name: "Parent",
-        steps: [
-          { id: "child", type: "workflow", workflowPath: childPath },
-          {
-            id: "must-not-run",
-            type: "bash",
-            initialCommand: nodeCommand(
-              'require("fs").writeFileSync(process.argv[1], "ran"); __paseoWriteResult({});',
-              markerPath,
-            ),
-          },
-        ],
-      }),
-    );
-
-    const service = createService(home);
-    await service.start();
-    const run = await service.runScriptAndWait({
-      scriptPath: parentPath,
-      inputPayload: "{}",
-    });
-
-    expect(run.status).toBe("failed");
-    expect(run.error).toContain("child failed");
-    expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["child"]);
-    await expect(readFile(markerPath, "utf8")).rejects.toThrow();
-  });
-
-  it("rejects indirect workflow cycles without creating an unbounded run chain", async () => {
-    const home = await createTempHome();
-    const firstPath = join(home, "first.json");
-    const secondPath = join(home, "second.json");
-    await writeFile(
-      firstPath,
-      JSON.stringify({
-        version: 1,
-        name: "First",
-        steps: [{ id: "second", type: "workflow", workflowPath: secondPath }],
-      }),
-    );
-    await writeFile(
-      secondPath,
-      JSON.stringify({
-        version: 1,
-        name: "Second",
-        steps: [{ id: "first", type: "workflow", workflowPath: firstPath }],
-      }),
-    );
-
-    const service = createService(home);
-    await service.start();
-    const run = await service.runScriptAndWait({
-      scriptPath: firstPath,
-      inputPayload: "{}",
-    });
-
-    expect(run.status).toBe("failed");
-    expect(run.errorCode).toBe("WORKFLOW_CYCLE");
-    expect(run.error).toContain(
-      `Workflow cycle detected: ${firstPath} -> ${secondPath} -> ${firstPath}`,
-    );
-    expect(await service.listRuns()).toHaveLength(2);
+    await expect(service.runScript({ scriptPath, inputPayload: "{}" })).rejects.toThrow();
+    expect(await service.listRuns()).toEqual([]);
   });
 
   it.each([
@@ -1267,54 +1123,6 @@ describe("WorkflowService", () => {
     expect(run.status).toBe("cancelled");
     expect(run.errorCode).toBe("WORKFLOW_CANCELLED");
     expect(run.nodeRuns.at(-1)?.status).toBe("cancelled");
-  });
-
-  it("cancels an active child workflow when its parent is cancelled", async () => {
-    const home = await createTempHome();
-    const childPath = join(home, "child.json");
-    const parentPath = join(home, "parent.json");
-    await writeFile(
-      childPath,
-      JSON.stringify({
-        version: 1,
-        name: "Waiting child",
-        steps: [
-          {
-            id: "wait",
-            type: "bash",
-            initialCommand: nodeCommand("setTimeout(() => {}, 30_000)"),
-          },
-        ],
-      }),
-    );
-    await writeFile(
-      parentPath,
-      JSON.stringify({
-        version: 1,
-        name: "Parent",
-        steps: [{ id: "child", type: "workflow", workflowPath: childPath }],
-      }),
-    );
-
-    const service = createService(home);
-    await service.start();
-    const started = await service.runScript({ scriptPath: parentPath, inputPayload: "{}" });
-    let childRunId: string | null = null;
-    for (let index = 0; index < 100; index += 1) {
-      const current = await service.getRun(started.id);
-      childRunId = current.nodeRuns[0]?.workflowRunId ?? null;
-      if (childRunId) {
-        break;
-      }
-      await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
-    }
-
-    expect(childRunId).toBeTruthy();
-    const parentRun = await service.cancelRun(started.id);
-    const childRun = await service.getRun(childRunId ?? "");
-    expect(parentRun.status).toBe("cancelled");
-    expect(childRun.status).toBe("cancelled");
-    expect(childRun.errorCode).toBe("WORKFLOW_CANCELLED");
   });
 
   it("enforces the workflow-level deadline across running tasks", async () => {

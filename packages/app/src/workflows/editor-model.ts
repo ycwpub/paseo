@@ -4,7 +4,6 @@ import {
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
-  type WorkflowNestedStep,
   type WorkflowPythonStep,
   type WorkflowScript,
   type WorkflowStep,
@@ -26,7 +25,6 @@ const WORKFLOW_STEP_TYPES: readonly WorkflowStepType[] = [
   "bash",
   "python",
   "agent",
-  "workflow",
   "switch",
   "for",
 ];
@@ -42,7 +40,6 @@ export interface WorkflowDefaultNames {
   bash: string;
   python: string;
   agent: string;
-  workflowNode: string;
   switch: string;
   for: string;
 }
@@ -52,7 +49,6 @@ const DEFAULT_NAMES: WorkflowDefaultNames = {
   bash: "Bash command",
   python: "Python code",
   agent: "Agent",
-  workflowNode: "Workflow",
   switch: "Switch",
   for: "For each",
 };
@@ -133,14 +129,6 @@ export function createWorkflowStep(
         archiveOnFinish: true,
       },
     } satisfies WorkflowAgentStep;
-  }
-  if (type === "workflow") {
-    return {
-      id,
-      name: names.workflowNode,
-      type,
-      workflowPath: "",
-    } satisfies WorkflowNestedStep;
   }
   if (type === "switch") {
     return {
@@ -248,10 +236,7 @@ export function countWorkflowSteps(steps: WorkflowStep[]): number {
   }, 0);
 }
 
-export function validateWorkflowDraft(
-  script: WorkflowScript,
-  currentWorkflowPath?: string | null,
-): string | null {
+export function validateWorkflowDraft(script: WorkflowScript): string | null {
   const parsed = WorkflowScriptSchema.safeParse(script);
   if (!parsed.success) {
     return parsed.error.issues[0]?.message ?? "Workflow is invalid";
@@ -278,13 +263,6 @@ export function validateWorkflowDraft(
         if (retryError) {
           return retryError;
         }
-      }
-      if (
-        step.type === "workflow" &&
-        currentWorkflowPath &&
-        step.workflowPath.trim() === currentWorkflowPath.trim()
-      ) {
-        return `Workflow step ${step.id} cannot reference its own workflow`;
       }
       if (step.type === "switch") {
         const cases = new Set<string>();

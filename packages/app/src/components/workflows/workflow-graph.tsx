@@ -9,7 +9,6 @@ import {
   GitBranch,
   Repeat2,
   TerminalSquare,
-  Workflow,
 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { WorkflowNodeRun, WorkflowStep } from "@getpaseo/protocol/workflow/types";
@@ -277,9 +276,6 @@ function renderStepIcon(node: WorkflowGraphNode): ReactElement {
   const props = { size: 13, color: styles.nodeIcon.color };
   if (node.stepType === "agent") {
     return <Bot {...props} />;
-  }
-  if (node.stepType === "workflow") {
-    return <Workflow {...props} />;
   }
   if (node.stepType === "switch") {
     return <GitBranch {...props} />;

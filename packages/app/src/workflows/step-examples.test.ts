@@ -18,6 +18,7 @@ describe("workflow step examples", () => {
     expect(python.type === "python" ? python.code : null).toBe(DEFAULT_PYTHON_CODE);
     expect(agent.type === "agent" ? agent.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
     expect(getWorkflowStepExamples(bash).initialValue).toBe(DEFAULT_BASH_INITIAL_COMMAND);
+    expect(getWorkflowStepExamples(bash).composition).toContain("delete output.error");
     expect(getWorkflowStepExamples(python).initialValue).toBe(DEFAULT_PYTHON_CODE);
     expect(getWorkflowStepExamples(agent).initialValue).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
   });
@@ -50,7 +51,7 @@ describe("workflow step examples", () => {
   });
 
   it("provides valid JSON input and output examples for every node type", () => {
-    for (const type of ["bash", "python", "agent", "workflow", "switch", "for"] as const) {
+    for (const type of ["bash", "python", "agent", "switch", "for"] as const) {
       const examples = getWorkflowStepExamples(createWorkflowStep(type, []));
       expect(() => JSON.parse(examples.input)).not.toThrow();
       expect(() => JSON.parse(examples.output)).not.toThrow();

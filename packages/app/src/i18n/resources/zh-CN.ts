@@ -95,13 +95,11 @@ export const zhCN: TranslationResources = {
       },
       nodes: {
         title: "节点行为",
-        bash: "• Bash：通过 stdin 读取 JSON 数据，stdout/stderr 只记录日志，向文件描述符 3 写入唯一结果 JSON。",
+        bash: "• Bash：通过 stdin 读取 JSON 数据，stdout/stderr 只记录日志，向文件描述符 3 写入唯一结果 JSON。需要组合工作流时，在 Bash 中调用 paseo workflow run，并把子流程 outputPayload 转发到文件描述符 3。",
         python:
           "• Python：直接运行可编辑代码，通过 stdin 读取 JSON 数据，向文件描述符 3 写入唯一结果 JSON。",
         agent:
           "• Agent：Answer 节点把回答写入 answer，Control 节点把回答写入 control。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
-        workflow:
-          "• Workflow：运行同一主机上的另一个 Workflow。当前数据作为子流程输入，子流程输出作为节点输出；循环引用和过深嵌套会被拒绝。",
         switch: "• Switch：选择配置值与 payload.control 相等的分支。",
         for: "• For：根据 payload.control 生成循环项，子节点可返回 continue 或 break。",
       },
@@ -283,7 +281,6 @@ export const zhCN: TranslationResources = {
         bash: "Bash 命令",
         python: "Python 代码",
         agent: "Agent",
-        workflow: "子工作流",
         switch: "条件分支",
         for: "逐项循环",
       },
@@ -291,7 +288,6 @@ export const zhCN: TranslationResources = {
         bash: "Bash",
         python: "Python",
         agent: "Agent",
-        workflow: "Workflow",
         switch: "Switch",
         for: "For",
       },
@@ -299,7 +295,6 @@ export const zhCN: TranslationResources = {
         bash: "执行 Shell 命令",
         python: "执行 Python 代码",
         agent: "运行 AI Agent",
-        workflow: "运行另一个 Workflow",
         switch: "根据 control 选择分支",
         for: "遍历 control",
       },
@@ -310,6 +305,9 @@ export const zhCN: TranslationResources = {
         outputTitle: "如何输出数据",
         initialValueTitle: "新建节点的初始示例",
         initialValueDescription: "创建节点时会自动填入此示例，可直接修改。",
+        compositionTitle: "运行另一个 Workflow",
+        compositionDescription:
+          "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 转发到文件描述符 3。",
         bash: {
           input: "通过 stdin 读取一个 JSON 对象。输入包含 control 和业务字段，不包含 error。",
           output:
@@ -325,10 +323,6 @@ export const zhCN: TranslationResources = {
             "节点输入 JSON 会加入 Workflow 提示词上下文。使用 payload、control 或嵌套字段模板变量把数据插入提示词。",
           output: "Answer 节点会把 Agent 最终回答自动包装到 answer 字段中。",
           controlOutput: "Control 节点会把 Agent 最终回答自动包装到 control 字段中。",
-        },
-        workflow: {
-          input: "当前节点的完整输入 JSON 会直接作为子 Workflow 的输入。",
-          output: "子 Workflow 成功完成后的最终 JSON 会直接成为当前节点的输出。",
         },
         switch: {
           input: "读取输入 JSON 的 control 字符串，并与各分支的匹配值比较。",
@@ -365,14 +359,6 @@ export const zhCN: TranslationResources = {
           "通过 stdin 读取输入 JSON，并向文件描述符 3 写入一个结果 JSON 对象。stdout/stderr 仅用于日志；结果不能包含 error。",
         interpreter: "Python 解释器",
         interpreterHint: "留空时使用 python3。",
-      },
-      workflow: {
-        workflow: "选择 Workflow",
-        workflowHint:
-          "当前节点输入 JSON 会作为子 Workflow 输入，子 Workflow 输出会成为当前节点输出。",
-        selectWorkflow: "选择要运行的 Workflow",
-        noWorkflows: "没有其他可用 Workflow。",
-        timeoutHint: "等待子 Workflow 完成的最长时间；留空使用默认任务超时。",
       },
       agent: {
         promptTemplate: "提示词模板",

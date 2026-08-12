@@ -14,7 +14,6 @@ import {
   Repeat2,
   TerminalSquare,
   Trash2,
-  Workflow as WorkflowIcon,
 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
@@ -23,10 +22,8 @@ import {
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
-  type WorkflowNestedStep,
   type WorkflowPythonStep,
   type WorkflowRetryPolicy,
-  type WorkflowScriptSummary,
   type WorkflowStep,
   type WorkflowSwitchStep,
 } from "@getpaseo/protocol/workflow/types";
@@ -69,10 +66,6 @@ const STEP_META = {
   agent: {
     labelKey: "workflows.nodes.types.agent",
     icon: Bot,
-  },
-  workflow: {
-    labelKey: "workflows.nodes.types.workflow",
-    icon: WorkflowIcon,
   },
   switch: {
     labelKey: "workflows.nodes.types.switch",
@@ -141,8 +134,6 @@ interface WorkflowStepListEditorProps {
   teamsLoading?: boolean;
   promptTemplates?: PaseoInstructionTemplate[];
   promptTemplatesLoading?: boolean;
-  workflowScripts?: WorkflowScriptSummary[];
-  currentWorkflowPath?: string | null;
   allowPython?: boolean;
   label?: string;
   description?: string;
@@ -162,8 +153,6 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
   teamsLoading = false,
   promptTemplates = [],
   promptTemplatesLoading = false,
-  workflowScripts = [],
-  currentWorkflowPath = null,
   allowPython = true,
   label,
   description,
@@ -180,7 +169,6 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           bash: t("workflows.nodes.defaultNames.bash"),
           python: t("workflows.nodes.defaultNames.python"),
           agent: t("workflows.nodes.defaultNames.agent"),
-          workflowNode: t("workflows.nodes.defaultNames.workflow"),
           switch: t("workflows.nodes.defaultNames.switch"),
           for: t("workflows.nodes.defaultNames.for"),
         }),
@@ -221,8 +209,6 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
-          workflowScripts={workflowScripts}
-          currentWorkflowPath={currentWorkflowPath}
           allowPython={allowPython}
           onChange={(nextStep) => {
             const next = [...steps];
@@ -289,8 +275,6 @@ interface WorkflowStepCardProps {
   teamsLoading: boolean;
   promptTemplates: PaseoInstructionTemplate[];
   promptTemplatesLoading: boolean;
-  workflowScripts: WorkflowScriptSummary[];
-  currentWorkflowPath: string | null;
   allowPython: boolean;
   onChange: (step: WorkflowStep) => void;
   onRemove: () => void;
@@ -311,8 +295,6 @@ function WorkflowStepCard({
   teamsLoading,
   promptTemplates,
   promptTemplatesLoading,
-  workflowScripts,
-  currentWorkflowPath,
   allowPython,
   onChange,
   onRemove,
@@ -345,16 +327,6 @@ function WorkflowStepCard({
         />
       );
       break;
-    case "workflow":
-      stepFields = (
-        <NestedWorkflowStepFields
-          step={step}
-          workflowScripts={workflowScripts}
-          currentWorkflowPath={currentWorkflowPath}
-          onChange={onChange}
-        />
-      );
-      break;
     case "switch":
       stepFields = (
         <SwitchStepFields
@@ -368,8 +340,6 @@ function WorkflowStepCard({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
-          workflowScripts={workflowScripts}
-          currentWorkflowPath={currentWorkflowPath}
           allowPython={allowPython}
           depth={depth}
           onChange={onChange}
@@ -389,8 +359,6 @@ function WorkflowStepCard({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
-          workflowScripts={workflowScripts}
-          currentWorkflowPath={currentWorkflowPath}
           allowPython={allowPython}
           depth={depth}
           onChange={onChange}
@@ -594,81 +562,6 @@ function includeCurrentStringOption(
       description: currentValue,
     },
   ];
-}
-
-function NestedWorkflowStepFields({
-  step,
-  workflowScripts,
-  currentWorkflowPath,
-  onChange,
-}: {
-  step: WorkflowNestedStep;
-  workflowScripts: WorkflowScriptSummary[];
-  currentWorkflowPath: string | null;
-  onChange: (step: WorkflowNestedStep) => void;
-}) {
-  const { t } = useTranslation();
-  const options = useMemo(
-    () =>
-      includeCurrentStringOption(
-        workflowScripts
-          .filter((script) => script.path !== currentWorkflowPath)
-          .map((script) => ({
-            id: script.path,
-            value: script.path,
-            label: script.name,
-            description: script.description || script.path,
-          })),
-        step.workflowPath,
-      ),
-    [currentWorkflowPath, step.workflowPath, workflowScripts],
-  );
-  const selected = options.find((option) => option.value === step.workflowPath);
-
-  return (
-    <View style={styles.twoColumn}>
-      <View style={styles.columnField}>
-        <Field
-          label={t("workflows.nodes.workflow.workflow")}
-          hint={t("workflows.nodes.workflow.workflowHint")}
-        >
-          <SelectField
-            field={false}
-            label=""
-            value={step.workflowPath}
-            selectedDisplay={optionDisplay(selected)}
-            options={options}
-            onChange={(workflowPath) => onChange({ ...step, workflowPath })}
-            placeholder={t("workflows.nodes.workflow.selectWorkflow")}
-            emptyText={t("workflows.nodes.workflow.noWorkflows")}
-            title={t("workflows.nodes.workflow.workflow")}
-            searchable
-            size="sm"
-            testID={`workflow-step-${step.id}-workflow`}
-          />
-        </Field>
-      </View>
-      <View style={styles.columnField}>
-        <Field
-          label={t("workflows.nodes.common.timeout")}
-          hint={t("workflows.nodes.workflow.timeoutHint")}
-        >
-          <WorkflowTextInput
-            value={formatMillisecondsAsSeconds(step.timeoutMs)}
-            onChangeText={(value) =>
-              onChange({
-                ...step,
-                timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
-              })
-            }
-            placeholder="1800"
-            keyboardType="decimal-pad"
-            size="sm"
-          />
-        </Field>
-      </View>
-    </View>
-  );
 }
 
 function resolveAssistantOrTeamValue(config: WorkflowAgentStep["config"]): string {
@@ -1683,8 +1576,6 @@ function SwitchStepFields({
   teamsLoading,
   promptTemplates,
   promptTemplatesLoading,
-  workflowScripts,
-  currentWorkflowPath,
   allowPython,
   depth,
   onChange,
@@ -1699,8 +1590,6 @@ function SwitchStepFields({
   teamsLoading: boolean;
   promptTemplates: PaseoInstructionTemplate[];
   promptTemplatesLoading: boolean;
-  workflowScripts: WorkflowScriptSummary[];
-  currentWorkflowPath: string | null;
   allowPython: boolean;
   depth: number;
   onChange: (step: WorkflowSwitchStep) => void;
@@ -1758,8 +1647,6 @@ function SwitchStepFields({
               teamsLoading={teamsLoading}
               promptTemplates={promptTemplates}
               promptTemplatesLoading={promptTemplatesLoading}
-              workflowScripts={workflowScripts}
-              currentWorkflowPath={currentWorkflowPath}
               allowPython={allowPython}
               depth={depth + 1}
               onChange={(steps) => {
@@ -1797,8 +1684,6 @@ function SwitchStepFields({
             teamsLoading={teamsLoading}
             promptTemplates={promptTemplates}
             promptTemplatesLoading={promptTemplatesLoading}
-            workflowScripts={workflowScripts}
-            currentWorkflowPath={currentWorkflowPath}
             allowPython={allowPython}
             depth={depth + 1}
             onChange={(defaultSteps) => onChange({ ...step, defaultSteps })}
@@ -1820,8 +1705,6 @@ function ForStepFields({
   teamsLoading,
   promptTemplates,
   promptTemplatesLoading,
-  workflowScripts,
-  currentWorkflowPath,
   allowPython,
   depth,
   onChange,
@@ -1836,8 +1719,6 @@ function ForStepFields({
   teamsLoading: boolean;
   promptTemplates: PaseoInstructionTemplate[];
   promptTemplatesLoading: boolean;
-  workflowScripts: WorkflowScriptSummary[];
-  currentWorkflowPath: string | null;
   allowPython: boolean;
   depth: number;
   onChange: (step: WorkflowForStep) => void;
@@ -1908,8 +1789,6 @@ function ForStepFields({
           teamsLoading={teamsLoading}
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
-          workflowScripts={workflowScripts}
-          currentWorkflowPath={currentWorkflowPath}
           allowPython={allowPython}
           depth={depth + 1}
           onChange={(steps) => onChange({ ...step, steps })}

@@ -88,7 +88,6 @@ export function WorkflowUsageGuide({
           <Text style={styles.body}>{t("workflows.guide.nodes.bash")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.python")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.agent")}</Text>
-          <Text style={styles.body}>{t("workflows.guide.nodes.workflow")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.switch")}</Text>
           <Text style={styles.body}>{t("workflows.guide.nodes.for")}</Text>
         </GuideSection>

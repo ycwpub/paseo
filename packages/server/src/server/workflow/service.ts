@@ -11,7 +11,6 @@ import {
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
-  type WorkflowNestedStep,
   type WorkflowNodeResult,
   type WorkflowNodeRun,
   type WorkflowPayload,
@@ -38,7 +37,7 @@ import { buildAssistantInitialPrompt } from "../assistants/assistant-prompt.js";
 import type { AssistantStore } from "../assistants/assistant-store.js";
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
-import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
+import { expandUserPath } from "../path-utils.js";
 import { writeJsonFileAtomic } from "../atomic-file.js";
 import {
   clearTeamIdentityLabels,
@@ -106,8 +105,6 @@ interface StepExecutionResult extends ExecutionState {
   agentId: string | null;
   agentPrompt?: string | null;
   agentResponse?: string | null;
-  workflowPath?: string | null;
-  workflowRunId?: string | null;
   output: string | null;
   diagnostics?: WorkflowNodeDiagnostics;
 }
@@ -156,8 +153,6 @@ export class WorkflowService {
   private readonly teamStore: WorkflowServiceOptions["teamStore"];
   private readonly now: () => Date;
   private readonly activeRuns = new Map<string, Promise<void>>();
-  private readonly activeRunStacks = new Map<string, readonly string[]>();
-  private readonly childRunIdsByParent = new Map<string, Set<string>>();
   private readonly activeCommandProcesses = new Map<ChildProcess, string>();
   private readonly activeAgentIds = new Map<string, Set<string>>();
   private readonly terminationRequests = new Map<
@@ -317,19 +312,16 @@ export class WorkflowService {
     inputPresetId?: string;
     targetNodeId?: string;
   }): Promise<WorkflowRun> {
-    return this.startScriptRun(input, []);
+    return this.startScriptRun(input);
   }
 
-  private async startScriptRun(
-    input: {
-      scriptPath: string;
-      inputPayload?: string;
-      inputFilePath?: string;
-      inputPresetId?: string;
-      targetNodeId?: string;
-    },
-    parentStack: readonly string[],
-  ): Promise<WorkflowRun> {
+  private async startScriptRun(input: {
+    scriptPath: string;
+    inputPayload?: string;
+    inputFilePath?: string;
+    inputPresetId?: string;
+    targetNodeId?: string;
+  }): Promise<WorkflowRun> {
     if (!this.acceptingRuns) {
       throw new Error("Workflow service is shutting down");
     }
@@ -337,12 +329,6 @@ export class WorkflowService {
     const targetNodeId = input.targetNodeId?.trim() || null;
     if (targetNodeId && !findWorkflowStep(scriptFile.script.steps, targetNodeId)) {
       throw new Error(`Workflow node not found: ${targetNodeId}`);
-    }
-    if (parentStack.includes(scriptFile.path)) {
-      throw new Error(`Workflow cycle detected: ${[...parentStack, scriptFile.path].join(" -> ")}`);
-    }
-    if (parentStack.length >= MAX_WORKFLOW_DEPTH) {
-      throw new Error(`Workflow execution nesting exceeds ${MAX_WORKFLOW_DEPTH} levels`);
     }
     let inputPayload: WorkflowPayload;
     let inputFilePath: string;
@@ -395,10 +381,8 @@ export class WorkflowService {
       endedAt: null,
       nodeRuns: [],
     });
-    this.activeRunStacks.set(run.id, [...parentStack, scriptFile.path]);
     const task = this.executeRun(run).finally(() => {
       this.activeRuns.delete(run.id);
-      this.activeRunStacks.delete(run.id);
     });
     this.activeRuns.set(run.id, task);
     void task.catch((error) => {
@@ -521,7 +505,7 @@ export class WorkflowService {
         agentId: null,
         agentPrompt: null,
         agentResponse: null,
-        workflowPath: step.type === "workflow" ? step.workflowPath : null,
+        workflowPath: null,
         workflowRunId: null,
         output: null,
         expandedInstruction: null,
@@ -546,15 +530,20 @@ export class WorkflowService {
           case "agent":
             result = await this.executeAgentStep(run, step, state, attempt);
             break;
-          case "workflow":
-            result = await this.executeNestedWorkflowStep(run, step, state, nodeRunId);
-            break;
           case "switch":
             result = await this.executeSwitchStep(run, step, state);
             break;
           case "for":
             result = await this.executeForStep(run, step, state);
             break;
+          default: {
+            const unsupportedStep: never = step;
+            throw new Error(
+              `Unsupported workflow step type: ${String(
+                (unsupportedStep as { type?: unknown }).type,
+              )}`,
+            );
+          }
         }
         this.assertRunActive(run.id, result);
         await this.completeNodeRun(run.id, nodeRunId, {
@@ -567,8 +556,6 @@ export class WorkflowService {
           agentId: result.agentId,
           agentPrompt: result.agentPrompt ?? null,
           agentResponse: result.agentResponse ?? null,
-          ...(result.workflowPath !== undefined ? { workflowPath: result.workflowPath } : {}),
-          ...(result.workflowRunId !== undefined ? { workflowRunId: result.workflowRunId } : {}),
           output: result.output,
           retryDelayMs: null,
           ...result.diagnostics,
@@ -866,107 +853,6 @@ export class WorkflowService {
     }
   }
 
-  private async executeNestedWorkflowStep(
-    run: WorkflowRun,
-    step: WorkflowNestedStep,
-    state: ExecutionState,
-    nodeRunId: string,
-  ): Promise<StepExecutionResult> {
-    const workflowPath = resolveNestedWorkflowPath(step.workflowPath, dirname(run.scriptPath));
-    const stack = this.activeRunStacks.get(run.id) ?? [resolveWorkflowPath(run.scriptPath)];
-    if (stack.includes(workflowPath)) {
-      throw new WorkflowExecutionError(
-        `Workflow cycle detected: ${[...stack, workflowPath].join(" -> ")}`,
-        state,
-        "WORKFLOW_CYCLE",
-      );
-    }
-    if (stack.length >= MAX_WORKFLOW_DEPTH) {
-      throw new WorkflowExecutionError(
-        `Workflow execution nesting exceeds ${MAX_WORKFLOW_DEPTH} levels`,
-        state,
-        "WORKFLOW_DEPTH_EXCEEDED",
-      );
-    }
-
-    const childRun = await this.startScriptRun(
-      {
-        scriptPath: workflowPath,
-        inputPayload: serializeNodeInputPayload(state.payload),
-      },
-      stack,
-    );
-    this.trackChildRun(run.id, childRun.id);
-    await this.updateNodeRun(run.id, nodeRunId, {
-      workflowPath,
-      workflowRunId: childRun.id,
-    });
-
-    const timeoutMs =
-      step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    try {
-      const childTask = this.activeRuns.get(childRun.id);
-      if (childTask) {
-        await withTimeout(
-          childTask,
-          timeoutMs,
-          () =>
-            this.requestTermination(
-              childRun.id,
-              "timed_out",
-              `Nested workflow timed out after ${timeoutMs}ms`,
-            ),
-          `Nested workflow node timed out after ${timeoutMs}ms`,
-        );
-      }
-      const completed = await this.getRun(childRun.id);
-      const childPayload = parseStoredPayload(completed.outputPayload);
-      if (completed.status !== "succeeded") {
-        const message = completed.error ?? `Nested workflow ${workflowPath} failed`;
-        const terminalStatus: WorkflowTerminalStatus =
-          completed.status === "running" ? "failed" : completed.status;
-        const failedPayload = {
-          ...(childPayload ?? state.payload),
-          error: message,
-        };
-        throw new WorkflowExecutionError(
-          message,
-          {
-            ...state,
-            payload: failedPayload,
-            filePath:
-              completed.outputFilePath ?? resolvePayloadFilePath(failedPayload, state.filePath),
-            hasFileOutput:
-              completed.outputFilePath !== null ||
-              getPayloadString(failedPayload, "filePath") !== null,
-          },
-          completed.errorCode ?? "NESTED_WORKFLOW_FAILED",
-          terminalStatus,
-        );
-      }
-      if (!childPayload) {
-        throw new WorkflowExecutionError(
-          `Nested workflow ${workflowPath} produced no valid JSON output`,
-          state,
-          "NESTED_WORKFLOW_INVALID_OUTPUT",
-        );
-      }
-      const result = await this.validateNodeResult(
-        childPayload,
-        state,
-        null,
-        `Workflow run ${childRun.id}`,
-      );
-      return {
-        ...result,
-        workflowPath,
-        workflowRunId: childRun.id,
-      };
-    } finally {
-      this.untrackChildRun(run.id, childRun.id);
-    }
-  }
-
   private resolveAgentIdentityContext(
     step: WorkflowAgentStep,
     prompt: string,
@@ -1192,11 +1078,6 @@ export class WorkflowService {
       return;
     }
     this.terminationRequests.set(runId, { status, message });
-    await Promise.allSettled(
-      [...(this.childRunIdsByParent.get(runId) ?? [])].map((childRunId) =>
-        this.requestTermination(childRunId, status, message),
-      ),
-    );
     for (const waiter of this.terminationWaiters.get(runId) ?? []) {
       waiter();
     }
@@ -1223,20 +1104,6 @@ export class WorkflowService {
     agents?.delete(agentId);
     if (agents?.size === 0) {
       this.activeAgentIds.delete(runId);
-    }
-  }
-
-  private trackChildRun(parentRunId: string, childRunId: string): void {
-    const childRunIds = this.childRunIdsByParent.get(parentRunId) ?? new Set<string>();
-    childRunIds.add(childRunId);
-    this.childRunIdsByParent.set(parentRunId, childRunIds);
-  }
-
-  private untrackChildRun(parentRunId: string, childRunId: string): void {
-    const childRunIds = this.childRunIdsByParent.get(parentRunId);
-    childRunIds?.delete(childRunId);
-    if (childRunIds?.size === 0) {
-      this.childRunIdsByParent.delete(parentRunId);
     }
   }
 
@@ -1322,8 +1189,7 @@ export class WorkflowService {
       | "environmentSource"
       | "environmentPath"
       | "skippedReason"
-    > &
-      Partial<Pick<WorkflowNodeRun, "workflowPath" | "workflowRunId">>,
+    >,
   ): Promise<void> {
     const updated = await this.store.update(runId, (run) => ({
       ...run,
@@ -1338,22 +1204,6 @@ export class WorkflowService {
               endedAt: this.now().toISOString(),
             }
           : nodeRun,
-      ),
-    }));
-    if (!updated) {
-      throw new Error(`Workflow run not found: ${runId}`);
-    }
-  }
-
-  private async updateNodeRun(
-    runId: string,
-    nodeRunId: string,
-    patch: Partial<WorkflowNodeRun>,
-  ): Promise<void> {
-    const updated = await this.store.update(runId, (run) => ({
-      ...run,
-      nodeRuns: run.nodeRuns.map((nodeRun) =>
-        nodeRun.id === nodeRunId ? { ...nodeRun, ...patch } : nodeRun,
       ),
     }));
     if (!updated) {
@@ -1457,10 +1307,6 @@ function slugifyWorkflowName(name: string): string {
 
 function resolveWorkflowPath(path: string): string {
   return resolve(expandUserPath(path.trim()));
-}
-
-function resolveNestedWorkflowPath(path: string, parentDirectory: string): string {
-  return resolvePathFromBase(parentDirectory, path);
 }
 
 function createInitialPayload(inputFilePath: string): WorkflowPayload {

@@ -28,13 +28,12 @@ describe("workflow editor model", () => {
     });
   });
 
-  it("uses localized names for newly created workflows and nested nodes", () => {
+  it("uses localized names for newly created workflows and nested control nodes", () => {
     const names = {
       workflow: "未命名工作流",
       bash: "Bash 命令",
       python: "Python 代码",
       agent: "Agent",
-      workflowNode: "子工作流",
       switch: "条件分支",
       for: "逐项循环",
     };
@@ -47,17 +46,6 @@ describe("workflow editor model", () => {
     expect(loop.type === "for" ? loop.steps[0]?.name : null).toBe("Bash 命令");
     expect(loop.type === "for" ? loop.maxIterations : null).toBe(100);
     expect(loop.type === "for" ? loop.concurrency : null).toBe(1);
-  });
-
-  it("creates Workflow nodes that can reference another workflow", () => {
-    const step = createWorkflowStep("workflow", []);
-
-    expect(step).toMatchObject({
-      id: "workflow",
-      name: "Workflow",
-      type: "workflow",
-      workflowPath: "",
-    });
   });
 
   it("creates unique ids across nested workflow steps", () => {
@@ -219,21 +207,6 @@ describe("workflow editor model", () => {
     };
     expect(validateWorkflowDraft(script)).toBe(
       "Workflow default retry maxDelayMs cannot be less than initialDelayMs",
-    );
-  });
-
-  it("rejects a direct self reference", () => {
-    const script = createEmptyWorkflowScript();
-    script.steps = [
-      {
-        id: "self",
-        type: "workflow",
-        workflowPath: "/tmp/current.json",
-      },
-    ];
-
-    expect(validateWorkflowDraft(script, "/tmp/current.json")).toBe(
-      "Workflow step self cannot reference its own workflow",
     );
   });
 });

@@ -270,7 +270,6 @@ function WorkflowsScreenContent(): ReactElement {
         bash: t("workflows.nodes.defaultNames.bash"),
         python: t("workflows.nodes.defaultNames.python"),
         agent: t("workflows.nodes.defaultNames.agent"),
-        workflowNode: t("workflows.nodes.defaultNames.workflow"),
         switch: t("workflows.nodes.defaultNames.switch"),
         for: t("workflows.nodes.defaultNames.for"),
       }),
@@ -292,7 +291,7 @@ function WorkflowsScreenContent(): ReactElement {
     if (!client || !draft) {
       return null;
     }
-    const validationError = validateWorkflowDraft(draft, draftPath);
+    const validationError = validateWorkflowDraft(draft);
     if (validationError) {
       toast.error(validationError);
       return null;
@@ -479,7 +478,7 @@ function WorkflowsScreenContent(): ReactElement {
     [hosts],
   );
   const selectedHostOption = hostOptions.find((option) => option.value === selectedHost);
-  const validationError = draft ? validateWorkflowDraft(draft, draftPath) : null;
+  const validationError = draft ? validateWorkflowDraft(draft) : null;
   const runTargetOptions = useMemo<SelectFieldOption<string>[]>(() => {
     if (!draft) {
       return [];
@@ -772,8 +771,6 @@ function WorkflowsScreenContent(): ReactElement {
                 teamsLoading={teamsResult.isLoading}
                 promptTemplates={daemonConfig.config?.instructionTemplates ?? []}
                 promptTemplatesLoading={daemonConfig.isLoading}
-                workflowScripts={scripts}
-                currentWorkflowPath={draftPath}
                 allowPython={supportsWorkflowPython}
                 onChange={(steps) => updateDraft({ ...draft, steps })}
                 testID="workflow-step-list"

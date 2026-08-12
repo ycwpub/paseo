@@ -25,10 +25,6 @@ const STEP_HELP_COPY = {
     input: "workflows.nodes.help.agent.input",
     output: "workflows.nodes.help.agent.output",
   },
-  workflow: {
-    input: "workflows.nodes.help.workflow.input",
-    output: "workflows.nodes.help.workflow.output",
-  },
   switch: {
     input: "workflows.nodes.help.switch.input",
     output: "workflows.nodes.help.switch.output",
@@ -93,6 +89,13 @@ export function WorkflowStepHelp({ step, typeLabel }: WorkflowStepHelpProps): Re
               title={t("workflows.nodes.help.initialValueTitle")}
               description={t("workflows.nodes.help.initialValueDescription")}
               example={examples.initialValue}
+            />
+          ) : null}
+          {examples.composition ? (
+            <HelpSection
+              title={t("workflows.nodes.help.compositionTitle")}
+              description={t("workflows.nodes.help.compositionDescription")}
+              example={examples.composition}
             />
           ) : null}
         </View>

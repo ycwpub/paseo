@@ -42,5 +42,6 @@ describe("Python workflow editor model", () => {
   it("hides Python nodes when the connected daemon does not advertise support", () => {
     expect(getAvailableWorkflowStepTypes(false)).not.toContain("python");
     expect(getAvailableWorkflowStepTypes(true)).toContain("python");
+    expect(getAvailableWorkflowStepTypes(true)).not.toContain("workflow");
   });
 });

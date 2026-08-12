@@ -102,14 +102,6 @@ export interface WorkflowAgentStep {
   config: WorkflowAgentConfig;
 }
 
-export interface WorkflowNestedStep {
-  id: string;
-  name?: string;
-  type: "workflow";
-  workflowPath: string;
-  timeoutMs?: number;
-}
-
 export interface WorkflowSwitchCase {
   equals: string;
   steps: WorkflowStep[];
@@ -139,7 +131,6 @@ export type WorkflowStep =
   | WorkflowBashStep
   | WorkflowPythonStep
   | WorkflowAgentStep
-  | WorkflowNestedStep
   | WorkflowSwitchStep
   | WorkflowForStep;
 
@@ -182,13 +173,6 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
       retry: WorkflowRetryPolicySchema.optional(),
       config: WorkflowAgentConfigSchema,
-    }),
-    z.object({
-      id: WorkflowStepIdSchema,
-      name: WorkflowStepNameSchema,
-      type: z.literal("workflow"),
-      workflowPath: z.string().trim().min(1),
-      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
     }),
     z.object({
       id: WorkflowStepIdSchema,

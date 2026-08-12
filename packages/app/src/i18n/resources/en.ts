@@ -94,13 +94,11 @@ export const en = {
       },
       nodes: {
         title: "Node behavior",
-        bash: "• Bash: reads JSON from stdin, uses stdout/stderr only for logs, and writes exactly one result JSON object to file descriptor 3.",
+        bash: "• Bash: reads JSON from stdin, uses stdout/stderr only for logs, and writes exactly one result JSON object to file descriptor 3. Compose workflows by calling paseo workflow run from Bash and forwarding the child outputPayload to file descriptor 3.",
         python:
           "• Python: runs editable code, reads JSON from stdin, and writes exactly one result JSON object to file descriptor 3.",
         agent:
           "• Agent: Answer nodes write the reply to answer; Control nodes write the reply to control. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
-        workflow:
-          "• Workflow: runs another workflow on the same host. The current payload becomes its input, and the child output becomes this node's output. Cycles and excessive nesting are rejected.",
         switch: "• Switch: selects the branch whose configured value equals payload.control.",
         for: '• For: iterates values derived from payload.control. Child nodes may return "continue" or "break".',
       },
@@ -286,7 +284,6 @@ export const en = {
         bash: "Bash command",
         python: "Python code",
         agent: "Agent",
-        workflow: "Workflow",
         switch: "Switch",
         for: "For each",
       },
@@ -294,7 +291,6 @@ export const en = {
         bash: "Bash",
         python: "Python",
         agent: "Agent",
-        workflow: "Workflow",
         switch: "Switch",
         for: "For",
       },
@@ -302,7 +298,6 @@ export const en = {
         bash: "Run a shell command",
         python: "Run Python code",
         agent: "Run an AI agent",
-        workflow: "Run another workflow",
         switch: "Branch on control",
         for: "Iterate over control",
       },
@@ -314,6 +309,9 @@ export const en = {
         initialValueTitle: "Initial example for new nodes",
         initialValueDescription:
           "New nodes are prefilled with this example and remain fully editable.",
+        compositionTitle: "Run another workflow",
+        compositionDescription:
+          "Use a Bash node to call paseo workflow run, then forward the successful child outputPayload to file descriptor 3.",
         bash: {
           input:
             'Read one JSON object from stdin. Input contains "control" and business fields, but never "error".',
@@ -332,11 +330,6 @@ export const en = {
           output: 'Answer nodes automatically wrap the final Agent reply in the "answer" field.',
           controlOutput:
             'Control nodes automatically wrap the final Agent reply in the "control" field.',
-        },
-        workflow: {
-          input: "The complete node input JSON is passed directly to the child workflow.",
-          output:
-            "The final JSON from the successfully completed child workflow becomes this node's output.",
         },
         switch: {
           input:
@@ -375,15 +368,6 @@ export const en = {
           'Read input JSON from stdin and write one result JSON object to file descriptor 3. stdout/stderr are logs only; the result must not contain "error".',
         interpreter: "Python interpreter",
         interpreterHint: 'Leave empty to use "python3".',
-      },
-      workflow: {
-        workflow: "Workflow",
-        workflowHint:
-          "The current node input JSON becomes the child workflow input, and its output becomes this node's output.",
-        selectWorkflow: "Choose a workflow to run",
-        noWorkflows: "No other workflows are available.",
-        timeoutHint:
-          "Maximum time to wait for the child workflow. Leave blank to use the default task timeout.",
       },
       agent: {
         promptTemplate: "Prompt template",

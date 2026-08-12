@@ -11,6 +11,24 @@ fs.writeSync(3, JSON.stringify({
 }));
 NODE`;
 
+export const BASH_CHILD_WORKFLOW_EXAMPLE = `input="$(cat)"
+run_json="$(paseo workflow run /absolute/path/child.json "$input" \\
+  --host "\${PASEO_LISTEN:-127.0.0.1:6767}" --json)"
+
+node - "$run_json" <<'NODE'
+const fs = require("node:fs");
+const run = JSON.parse(process.argv[2]);
+
+if (run.status !== "succeeded" || !run.outputPayload) {
+  console.error(run.error ?? "Child workflow failed");
+  process.exit(1);
+}
+
+const output = JSON.parse(run.outputPayload);
+delete output.error;
+fs.writeSync(3, JSON.stringify(output));
+NODE`;
+
 export const DEFAULT_PYTHON_CODE = `import json
 import os
 import sys
@@ -51,6 +69,7 @@ export interface WorkflowStepExamples {
   input: string;
   output: string;
   initialValue?: string;
+  composition?: string;
 }
 
 export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExamples {
@@ -59,6 +78,7 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
       input: STANDARD_INPUT_EXAMPLE,
       output: COMMAND_OUTPUT_EXAMPLE,
       initialValue: DEFAULT_BASH_INITIAL_COMMAND,
+      composition: BASH_CHILD_WORKFLOW_EXAMPLE,
     };
   }
   if (step.type === "python") {
@@ -74,19 +94,6 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
       input: STANDARD_INPUT_EXAMPLE,
       output: JSON.stringify({ [outputField]: "Agent reply" }, null, 2),
       initialValue: DEFAULT_AGENT_INITIAL_PROMPT,
-    };
-  }
-  if (step.type === "workflow") {
-    return {
-      input: STANDARD_INPUT_EXAMPLE,
-      output: JSON.stringify(
-        {
-          control: "done",
-          childResult: "The child workflow output",
-        },
-        null,
-        2,
-      ),
     };
   }
   if (step.type === "switch") {

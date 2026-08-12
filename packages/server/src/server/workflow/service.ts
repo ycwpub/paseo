@@ -51,13 +51,13 @@ import {
   type ResolvedWorkflowCommandEnvironment,
 } from "./command-environment.js";
 import {
-  formatLegacyProcessOutput,
-  parseCommandNodeResult,
+  formatCommandProcessOutput,
   runBashWorkflowNode,
   serializeWorkflowNodeInput,
   WorkflowCommandExecutionError,
   type WorkflowCommandOutput,
 } from "./command-node.js";
+import { parseCommandNodeResult } from "./command-result.js";
 import { executeForIterations } from "./for-step-execution.js";
 import { WorkflowRunStore } from "./store.js";
 import { findWorkflowStep } from "./workflow-step-search.js";
@@ -653,12 +653,16 @@ export class WorkflowService {
       output,
       environment,
     });
-    const result = parseCommandNodeResult(output.stdout, "Bash");
+    const result = parseCommandNodeResult({
+      resultJson: output.resultJson,
+      resultExceededLimit: output.resultExceededLimit,
+      commandType: "Bash",
+    });
     return this.validateNodeResult(
       result,
       state,
       null,
-      formatLegacyProcessOutput(output),
+      formatCommandProcessOutput(output),
       null,
       null,
       diagnostics,
@@ -708,12 +712,16 @@ export class WorkflowService {
       output,
       environment,
     });
-    const result = parseCommandNodeResult(output.stdout, "Python");
+    const result = parseCommandNodeResult({
+      resultJson: output.resultJson,
+      resultExceededLimit: output.resultExceededLimit,
+      commandType: "Python",
+    });
     return this.validateNodeResult(
       result,
       state,
       null,
-      formatLegacyProcessOutput(output),
+      formatCommandProcessOutput(output),
       null,
       null,
       diagnostics,

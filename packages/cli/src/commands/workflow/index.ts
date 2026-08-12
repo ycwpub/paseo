@@ -5,20 +5,29 @@ import { runWorkflowInspectCommand } from "./inspect.js";
 import { runWorkflowLsCommand } from "./ls.js";
 import { runWorkflowCommand } from "./run.js";
 import { runWorkflowCancelCommand } from "./cancel.js";
+import { runWorkflowProtocolCommand } from "./protocol.js";
 
 export function createWorkflowCommand(): Command {
-  const workflow = new Command("workflow").description("Run reusable Paseo workflow scripts");
+  const workflow = new Command("workflow")
+    .description("Run reusable Paseo workflow scripts")
+    .addHelpText(
+      "after",
+      "\nCommand-node protocol: JSON input on stdin, logs on stdout/stderr, one result JSON on file descriptor 3.\nRun `paseo workflow protocol --json` for machine-readable capability details.",
+    );
 
-  addJsonAndDaemonHostOptions(
-    workflow
-      .command("run")
-      .description("Run a workflow script with an input JSON payload")
-      .argument("<script>", "Workflow JSON script path on the daemon host")
-      .argument("[input-json]", 'Initial JSON object with optional string field "control"')
-      .option("--preset <preset-id>", "Start from a reusable input preset defined by the workflow")
-      .option("--node <node-id>", "Run only the workflow node with this ID")
-      .option("--background", "Return immediately after starting the workflow"),
-  ).action(withOutput(runWorkflowCommand));
+  const run = workflow
+    .command("run")
+    .description("Run a workflow script with an input JSON payload")
+    .argument("<script>", "Workflow JSON script path on the daemon host")
+    .argument("[input-json]", 'Initial JSON object with optional string field "control"')
+    .option("--preset <preset-id>", "Start from a reusable input preset defined by the workflow")
+    .option("--node <node-id>", "Run only the workflow node with this ID")
+    .option("--background", "Return immediately after starting the workflow")
+    .addHelpText(
+      "after",
+      "\nBash/Python protocol: read JSON from stdin; write logs to stdout/stderr; write exactly one result JSON to file descriptor 3. stdout is never parsed as a result.",
+    );
+  addJsonAndDaemonHostOptions(run).action(withOutput(runWorkflowCommand));
 
   addJsonAndDaemonHostOptions(
     workflow.command("ls").description("List installed workflows"),
@@ -37,6 +46,12 @@ export function createWorkflowCommand(): Command {
       .description("Cancel a running workflow")
       .argument("<run-id>", "Workflow run ID"),
   ).action(withOutput(runWorkflowCancelCommand));
+
+  addJsonAndDaemonHostOptions(
+    workflow
+      .command("protocol")
+      .description("Show the Workflow command-node protocol supported by the connected daemon"),
+  ).action(withOutput(runWorkflowProtocolCommand));
 
   return workflow;
 }

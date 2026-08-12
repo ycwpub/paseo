@@ -17,12 +17,18 @@ function shellQuote(value) {
 }
 
 function nodeCommand(source, ...args) {
+  const wrappedSource = [
+    'const __paseoFs = require("fs");',
+    'process.argv.push(__paseoFs.readFileSync(0, "utf8"));',
+    "const __paseoWriteResult = (value) =>",
+    "  __paseoFs.writeSync(3, JSON.stringify(value));",
+    source,
+  ].join("\n");
   return [
     shellQuote(process.execPath),
     "-e",
-    shellQuote(source),
+    shellQuote(wrappedSource),
     ...args.map(shellQuote),
-    '"$1"',
   ].join(" ");
 }
 
@@ -126,9 +132,9 @@ function createComplexWorkflow(paths) {
       '  branches: fs.readFileSync(branchLogPath, "utf8").trim().split("\\n")',
       "};",
       "fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));",
-      "process.stdout.write(JSON.stringify({",
-      '  filePath: reportPath, control: "success", error: ""',
-      "}));",
+      "__paseoWriteResult({",
+      '  filePath: reportPath, control: "success"',
+      "});",
     ].join("\n"),
     paths.finalReport,
     paths.input,
@@ -148,9 +154,9 @@ function createComplexWorkflow(paths) {
       '  task: initial.task, records: initial.records, preparedBy: "configured-bash"',
       "}, null, 2));",
       'fs.writeFileSync(agentOutputPath, "synthetic agent analysis ready");',
-      "process.stdout.write(JSON.stringify({",
-      '  filePath: agentInputPath, control: "agent", error: ""',
-      "}));",
+      "__paseoWriteResult({",
+      '  filePath: agentInputPath, control: "agent"',
+      "});",
     ].join("\n"),
     paths.input,
     paths.agentInput,
@@ -161,9 +167,9 @@ function createComplexWorkflow(paths) {
     [
       'const fs = require("fs");',
       "fs.writeFileSync(process.argv[1], process.argv[2]);",
-      "process.stdout.write(JSON.stringify({",
-      '  filePath: process.argv[1], control: "prepare", error: ""',
-      "}));",
+      "__paseoWriteResult({",
+      '  filePath: process.argv[1], control: "prepare"',
+      "});",
     ].join("\n"),
     paths.prepareInstruction,
     prepareDataCommand,
@@ -177,11 +183,20 @@ function createComplexWorkflow(paths) {
       "const inputPath = input.filePath;",
       "const control = input.control;",
       "fs.appendFileSync(process.argv[1], `${control}|${path.basename(inputPath)}\\n`);",
-      "process.stdout.write(JSON.stringify({",
-      '  filePath: inputPath, control, error: ""',
-      "}));",
+      "__paseoWriteResult({",
+      "  filePath: inputPath, control",
+      "});",
     ].join("\n"),
     paths.loopLog,
+  );
+
+  const prepareLoopCommand = nodeCommand(
+    [
+      "__paseoWriteResult({",
+      `  filePath: ${JSON.stringify(paths.agentOutput)},`,
+      '  control: \'["red","green","blue"]\'',
+      "});",
+    ].join("\n"),
   );
 
   const branchCommand = (branch, instructionPath, instruction, control) =>
@@ -190,9 +205,9 @@ function createComplexWorkflow(paths) {
         'const fs = require("fs");',
         "fs.appendFileSync(process.argv[1], `${process.argv[2]}\\n`);",
         "fs.writeFileSync(process.argv[3], process.argv[4]);",
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: process.argv[3], control: process.argv[5], error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        "  filePath: process.argv[3], control: process.argv[5]",
+        "});",
       ].join("\n"),
       paths.branchLog,
       branch,
@@ -203,14 +218,7 @@ function createComplexWorkflow(paths) {
 
   const failCommand = (message) =>
     nodeCommand(
-      [
-        "const input = JSON.parse(process.argv.at(-1));",
-        "process.stdout.write(JSON.stringify({",
-        "  filePath: input.filePath,",
-        '  control: "failed",',
-        "  error: process.argv[1]",
-        "}));",
-      ].join("\n"),
+      ["process.stderr.write(process.argv[1] + '\\n');", "process.exit(1);"].join("\n"),
       message,
     );
 
@@ -261,7 +269,6 @@ function createComplexWorkflow(paths) {
           `MOCK_WORKFLOW_RESULT: ${JSON.stringify({
             filePath: paths.agentOutput,
             control: '["red","green","blue"]',
-            error: "",
           })}`,
         ].join("\n"),
         promptVariables: {
@@ -274,6 +281,12 @@ function createComplexWorkflow(paths) {
           cwd: paths.workspace,
           archiveOnFinish: true,
         },
+      },
+      {
+        id: "prepare-loop",
+        name: "Prepare loop control",
+        type: "bash",
+        initialCommand: prepareLoopCommand,
       },
       {
         id: "iterate-colors",
@@ -452,7 +465,7 @@ async function main() {
         filePath: paths.input,
       }),
     ]);
-    assert.equal(run.status, "succeeded");
+    assert.equal(run.status, "succeeded", JSON.stringify(run, null, 2));
     assert.equal(run.outputFilePath, paths.finalReport);
     assert.equal(run.control, "success");
     assert.equal(run.error, null);
@@ -463,7 +476,7 @@ async function main() {
       "framework error leaked into a node input payload",
     );
     assert(run.nodeRuns.every((node) => typeof node.outputPayload === "string"));
-    assert.equal(run.nodeRuns.length, 16);
+    assert.equal(run.nodeRuns.length, 17);
     assert.deepEqual(
       run.nodeRuns
         .filter((node) => node.stepId === "record-iteration")

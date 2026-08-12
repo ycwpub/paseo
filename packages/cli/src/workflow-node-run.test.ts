@@ -15,4 +15,28 @@ describe("workflow node run CLI", () => {
     expect(help).toContain("[input-json]");
     expect(help).toContain("--preset <preset-id>");
   });
+
+  it("publishes the command-node protocol through help and a discovery command", () => {
+    const workflow = createWorkflowCommand();
+    const run = workflow.commands.find((command) => command.name() === "run");
+    let workflowHelp = "";
+    let runHelp = "";
+
+    expect(workflow.commands.map((command) => command.name())).toContain("protocol");
+    workflow.configureOutput({
+      writeOut(value) {
+        workflowHelp += value;
+      },
+    });
+    workflow.outputHelp();
+    run?.configureOutput({
+      writeOut(value) {
+        runHelp += value;
+      },
+    });
+    run?.outputHelp();
+    expect(workflowHelp).toContain("paseo workflow protocol --json");
+    expect(runHelp).toContain("file descriptor 3");
+    expect(runHelp).toContain("stdout is never parsed as a result");
+  });
 });

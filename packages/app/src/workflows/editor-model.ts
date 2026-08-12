@@ -11,6 +11,14 @@ import {
   type WorkflowSwitchStep,
 } from "@getpaseo/protocol/workflow/types";
 import type { PaseoInstructionTemplate } from "@getpaseo/protocol/messages";
+import {
+  DEFAULT_AGENT_INITIAL_PROMPT,
+  DEFAULT_BASH_INITIAL_COMMAND,
+  DEFAULT_PYTHON_CODE,
+  DEFAULT_SWITCH_CONTROL,
+} from "@/workflows/step-examples";
+
+export { DEFAULT_AGENT_INITIAL_PROMPT } from "@/workflows/step-examples";
 
 export type WorkflowStepType = WorkflowStep["type"];
 
@@ -48,8 +56,6 @@ const DEFAULT_NAMES: WorkflowDefaultNames = {
   switch: "Switch",
   for: "For each",
 };
-
-export const DEFAULT_AGENT_INITIAL_PROMPT = "[User] // 用户的提示词，替换该行";
 
 export function createEmptyWorkflowScript(
   names: WorkflowDefaultNames = DEFAULT_NAMES,
@@ -103,7 +109,7 @@ export function createWorkflowStep(
       id,
       name: names.bash,
       type,
-      initialCommand: "printf '%s\\n' \"$1\"",
+      initialCommand: DEFAULT_BASH_INITIAL_COMMAND,
     } satisfies WorkflowBashStep;
   }
   if (type === "python") {
@@ -111,13 +117,7 @@ export function createWorkflowStep(
       id,
       name: names.python,
       type,
-      code: [
-        "import json",
-        "import sys",
-        "",
-        "payload = json.load(sys.stdin)",
-        "print(json.dumps(payload, ensure_ascii=False))",
-      ].join("\n"),
+      code: DEFAULT_PYTHON_CODE,
     } satisfies WorkflowPythonStep;
   }
   if (type === "agent") {
@@ -147,7 +147,7 @@ export function createWorkflowStep(
       id,
       name: names.switch,
       type,
-      cases: [{ equals: "success", steps: [] }],
+      cases: [{ equals: DEFAULT_SWITCH_CONTROL, steps: [] }],
       defaultSteps: [],
     } satisfies WorkflowSwitchStep;
   }

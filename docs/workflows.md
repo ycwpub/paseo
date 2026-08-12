@@ -19,10 +19,10 @@ Every Bash, Python, or Agent node receives one JSON object serialized as a strin
 ```
 
 - `control` drives `switch` and `for`.
-- Bash and Agent outputs may include `error`. The workflow framework consumes it instead of passing
-  it to the next node.
-- A non-empty output `error` stops the workflow immediately.
-- Missing output `control` and `error` fields default to `""`.
+- Node results never include `error`. The workflow framework owns failures, exit status, and parsing
+  errors.
+- Bash and Python report failure with a non-zero exit code and write diagnostics to stderr.
+- Missing result `control` defaults to `""`.
 - Any other JSON fields are business data and are passed to the next node unchanged when the node
   includes them in its output.
 - A run starts from a JSON payload supplied by the visual editor, CLI, RPC client, or Agent tool.
@@ -124,8 +124,9 @@ projections.
 
 ## Bash nodes
 
-Bash nodes receive the serialized JSON as `$1`. Read `filePath`, `control`, and all business data
-from that object.
+Bash nodes receive the serialized JSON on stdin. Read `filePath`, `control`, and all business data
+from that object. stdout and stderr are log streams. Write exactly one result JSON document to file
+descriptor `3`.
 
 Runtime metadata also includes:
 
@@ -134,20 +135,22 @@ Runtime metadata also includes:
 - `PASEO_WORKFLOW_STEP_ID`
 - `PASEO_WORKFLOW_ATTEMPT`
 
-The command must print one valid JSON object as the last non-empty stdout line. Paseo ignores all
-earlier stdout lines. Empty stdout fails the node. Output `control` and `error` must be strings when
-provided and default to `""` when omitted. Input JSON never contains `error`.
+An empty result channel, multiple JSON documents, invalid JSON, a non-object result, or a result
+containing the reserved `error` field fails the node. `control` must be a string when provided and
+defaults to `""`.
 
 ```bash
-node - "$1" <<'NODE'
+input="$(cat)"
+node - "$input" <<'NODE'
+const fs = require("fs");
 const input = JSON.parse(process.argv[2]);
 const output = {
   ...input,
   normalizedCustomer: input.customer.name.trim(),
   control: "normalized",
-  error: "",
 };
-console.log(JSON.stringify(output));
+console.log("normalized customer");
+fs.writeSync(3, JSON.stringify(output));
 NODE
 ```
 
@@ -172,13 +175,12 @@ For an input containing `{"customer":{"name":"Alice"}}`, this renders `Alice` an
 and arrays are serialized as JSON, and an unknown variable fails the node.
 
 Template values are inserted directly into the shell command. For untrusted or complex data,
-prefer parsing `$1` instead of interpolating it into shell syntax.
+prefer parsing stdin instead of interpolating it into shell syntax.
 
 ## Agent nodes
 
-Agent nodes receive the complete node input JSON, without `error`, in their workflow prompt and
-must finish with only one valid JSON object. Output `control` and `error` default to `""` when
-omitted.
+Agent nodes receive the complete node input JSON, without `error`, in their workflow prompt. Answer
+nodes store the response in `answer`; Control nodes store the response in `control`.
 
 Payload data can be inserted into `initialPrompt` with nested paths:
 
@@ -211,18 +213,21 @@ temporary `.py` file, runs it with `python3`, and removes the file after the pro
 
 The serialized node input is available on stdin.
 
-Runtime metadata uses the same environment variables as Bash nodes. The last non-empty stdout line
-must be one JSON object. Earlier stdout lines and stderr are retained as process output. Empty
-stdout, invalid JSON, a non-zero exit code, or a non-empty output `error` fails the node.
+Runtime metadata uses the same environment variables as Bash nodes. stdout and stderr are retained
+as process output. Write exactly one result JSON document to file descriptor `3`. An empty or
+invalid result channel, a reserved `error` field, or a non-zero exit code fails the node.
 
 ```python
 import json
+import os
 import sys
 
 payload = json.load(sys.stdin)
 payload["normalizedCustomer"] = payload["customer"]["name"].strip()
 payload["control"] = "normalized"
-print(json.dumps(payload, ensure_ascii=False))
+print("normalized customer")
+with os.fdopen(3, "w") as result:
+    json.dump(payload, result, ensure_ascii=False)
 ```
 
 Python code supports the same `{{path}}` template variables and custom `variables` as Bash nodes.
@@ -370,6 +375,8 @@ after the loop.
 
 ```bash
 paseo workflow inspect /absolute/path/workflow.json
+paseo workflow protocol
+paseo workflow protocol --json
 paseo workflow run /absolute/path/workflow.json '{"control":""}'
 paseo workflow run /absolute/path/workflow.json --preset scan-only
 paseo workflow run /absolute/path/workflow.json '{"max_work_items":2}' --preset scan-only
@@ -378,6 +385,12 @@ paseo workflow run /absolute/path/workflow.json '{"control":"","filePath":"/abso
 paseo workflow cancel <run-id>
 paseo workflow ls
 ```
+
+`paseo workflow protocol --json` reports the command-node protocol expected by the CLI and whether
+the connected daemon advertises support. External tools should require
+`daemonSupported: true`, `version: 2`, and `legacyStdoutResult: false` before running workflows that
+contain Bash or Python nodes. A new CLI refuses to start a workflow against a daemon that does not
+advertise the fd 3 result protocol.
 
 Use `--node <node-id>` to run one top-level or nested node directly with the supplied input payload.
 The run skips every other node. Selecting a Switch, For, or Workflow node runs that node's complete

@@ -1,15 +1,15 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import {
-  WorkflowNodeResultSchema,
-  type WorkflowNodeResult,
-  type WorkflowPayload,
-} from "@getpaseo/protocol/workflow/types";
+import { Readable } from "node:stream";
+import type { WorkflowPayload } from "@getpaseo/protocol/workflow/types";
+import { MAX_WORKFLOW_RESULT_CHARS, WORKFLOW_RESULT_FILE_DESCRIPTOR } from "./command-result.js";
 
 const MAX_OUTPUT_CHARS = 200_000;
 
 export interface WorkflowCommandOutput {
   stdout: string;
   stderr: string;
+  resultJson: string;
+  resultExceededLimit: boolean;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
 }
@@ -43,7 +43,7 @@ export function runBashWorkflowNode(input: {
     const args =
       process.platform === "win32"
         ? ["/d", "/s", "/c", input.instruction]
-        : ["-c", input.instruction, "paseo-workflow", input.inputJson];
+        : ["-c", input.instruction, "paseo-workflow"];
     const child = spawn(input.shell, args, {
       cwd: input.cwd,
       env: {
@@ -53,12 +53,20 @@ export function runBashWorkflowNode(input: {
         PASEO_WORKFLOW_STEP_ID: input.stepId,
         PASEO_WORKFLOW_ATTEMPT: String(input.attempt),
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    const resultStream = child.stdio[WORKFLOW_RESULT_FILE_DESCRIPTOR];
+    if (!(resultStream instanceof Readable) || !child.stdin || !child.stdout || !child.stderr) {
+      child.kill();
+      reject(new Error("Workflow command process did not expose the required stdio streams"));
+      return;
+    }
     input.onSpawn(child);
     let stdout = "";
     let stderr = "";
+    let resultJson = "";
+    let resultExceededLimit = false;
     let timedOut = false;
     let closed = false;
     const close = () => {
@@ -81,6 +89,19 @@ export function runBashWorkflowNode(input: {
     child.stderr.on("data", (chunk) => {
       stderr = trimWorkflowOutput(stderr + String(chunk));
     });
+    resultStream.setEncoding("utf8");
+    resultStream.on("data", (chunk) => {
+      const next = resultJson + String(chunk);
+      if (next.length > MAX_WORKFLOW_RESULT_CHARS) {
+        resultExceededLimit = true;
+        resultJson = next.slice(0, MAX_WORKFLOW_RESULT_CHARS);
+        return;
+      }
+      resultJson = next;
+    });
+    child.stdin.on("error", () => {
+      // Process exit handling below reports the actionable shell error.
+    });
     child.once("error", (error) => {
       clearTimeout(timer);
       close();
@@ -89,7 +110,14 @@ export function runBashWorkflowNode(input: {
     child.once("close", (exitCode, signal) => {
       clearTimeout(timer);
       close();
-      const output = { stdout, stderr, exitCode, signal };
+      const output = {
+        stdout,
+        stderr,
+        resultJson,
+        resultExceededLimit,
+        exitCode,
+        signal,
+      };
       if (timedOut) {
         reject(
           new WorkflowCommandExecutionError(
@@ -114,50 +142,7 @@ export function runBashWorkflowNode(input: {
       }
       resolvePromise(output);
     });
-  });
-}
-
-export function parseCommandNodeResult(
-  stdout: string,
-  commandType: "Bash" | "Python",
-): WorkflowNodeResult {
-  const resultLine = getLastNonEmptyLine(stdout);
-  if (resultLine === null) {
-    return {
-      control: "",
-      error: `${commandType} workflow node produced no stdout result`,
-    };
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(resultLine);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      control: "",
-      error: `Workflow node output is not valid JSON: ${message}`,
-    };
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return {
-      control: "",
-      error: "Workflow node output must be a JSON object",
-    };
-  }
-  const payload = parsed as Record<string, unknown>;
-  for (const field of ["control", "error"] as const) {
-    const value = payload[field];
-    if (value !== undefined && typeof value !== "string") {
-      return {
-        control: "",
-        error: `Workflow node output field "${field}" must be a string`,
-      };
-    }
-  }
-  return WorkflowNodeResultSchema.parse({
-    ...payload,
-    control: payload.control ?? "",
-    error: payload.error ?? "",
+    child.stdin.end(input.inputJson);
   });
 }
 
@@ -166,7 +151,7 @@ export function serializeWorkflowNodeInput(payload: WorkflowPayload): string {
   return JSON.stringify(nodeInput);
 }
 
-export function formatLegacyProcessOutput(output: WorkflowCommandOutput): string | null {
+export function formatCommandProcessOutput(output: WorkflowCommandOutput): string | null {
   const sections = [];
   if (output.stdout.trim()) {
     sections.push(`stdout:\n${output.stdout.trimEnd()}`);
@@ -179,15 +164,4 @@ export function formatLegacyProcessOutput(output: WorkflowCommandOutput): string
 
 export function trimWorkflowOutput(value: string): string {
   return value.length <= MAX_OUTPUT_CHARS ? value : value.slice(value.length - MAX_OUTPUT_CHARS);
-}
-
-function getLastNonEmptyLine(value: string): string | null {
-  const lines = value.split(/\r?\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index]?.trim();
-    if (line) {
-      return line;
-    }
-  }
-  return null;
 }

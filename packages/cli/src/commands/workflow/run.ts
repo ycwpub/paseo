@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { SingleResult } from "../../output/index.js";
 import type { WorkflowRun } from "@getpaseo/protocol/workflow/types";
 import { workflowRunSchema } from "./schema.js";
+import { assertWorkflowCommandProtocol } from "./protocol.js";
 import {
   connectWorkflowClient,
   resolveWorkflowCliPath,
@@ -17,6 +18,7 @@ export async function runWorkflowCommand(
 ): Promise<SingleResult<WorkflowRun>> {
   const client = await connectWorkflowClient(options.host);
   try {
+    assertWorkflowCommandProtocol(client.getLastServerInfoMessage());
     const resolvedScriptPath = resolveWorkflowCliPath(scriptPath);
     const resolvedInputPayload = await resolveWorkflowInputPayload({
       client,

@@ -41,7 +41,9 @@ import {
 } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
 import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
+import { WorkflowStepHelp } from "@/components/workflows/workflow-step-help";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { resolveTeamAssistantIds, resolveTeamLeader } from "@/teams/team-members";
@@ -410,6 +412,7 @@ function WorkflowStepCard({
           </Text>
         </View>
         <View style={styles.stepHeaderActions}>
+          <WorkflowStepHelp step={step} typeLabel={t(meta.labelKey)} />
           <IconButton
             label={t("workflows.nodes.moveUp")}
             icon={ArrowUp}
@@ -471,14 +474,17 @@ function BashStepFields({
   return (
     <>
       <Field label={t("workflows.nodes.bash.initialCommand")}>
-        <WorkflowTextInput
+        <WorkflowExpandableTextInput
           value={step.initialCommand}
           onChangeText={(initialCommand) => onChange({ ...step, initialCommand })}
+          editorTitle={t("workflows.nodes.bash.initialCommand")}
+          monospace
           multiline
           textAlignVertical="top"
           style={styles.codeInput}
           autoCapitalize="none"
           autoCorrect={false}
+          testID={`workflow-bash-${step.id}-command`}
         />
       </Field>
       <WorkflowVariablesEditor
@@ -767,7 +773,7 @@ function AgentSystemPromptField({
         }
       />
       <Field label={t("workflows.nodes.agent.systemPrompt")} hint={hint}>
-        <WorkflowTextInput
+        <WorkflowExpandableTextInput
           value={step.config.systemPrompt ?? ""}
           onChangeText={(systemPrompt) =>
             onChange(
@@ -776,10 +782,12 @@ function AgentSystemPromptField({
               }),
             )
           }
+          editorTitle={t("workflows.nodes.agent.systemPrompt")}
           multiline
           textAlignVertical="top"
           style={styles.systemPromptInput}
           placeholder={t("workflows.nodes.agent.systemPromptPlaceholder")}
+          testID={`workflow-agent-${step.id}-system-prompt`}
         />
       </Field>
     </>
@@ -1063,12 +1071,14 @@ function AgentStepFields({
         onSelect={(template) => onChange(applyInstructionTemplateToAgentStep(step, template))}
       />
       <Field label={t("workflows.nodes.agent.initialPrompt")}>
-        <WorkflowTextInput
+        <WorkflowExpandableTextInput
           value={step.initialPrompt}
           onChangeText={(initialPrompt) => onChange({ ...step, initialPrompt })}
+          editorTitle={t("workflows.nodes.agent.initialPrompt")}
           multiline
           textAlignVertical="top"
           style={styles.promptInput}
+          testID={`workflow-agent-${step.id}-initial-prompt`}
         />
       </Field>
       <WorkflowVariablesEditor
@@ -1402,9 +1412,9 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
   const copy = WORKFLOW_VARIABLE_COPY[kind];
   let usage: string;
   if (kind === "bash") {
-    usage = `echo '{{customer.name}}' '{{items.0.id}}' '{{control}}'`;
+    usage = `input="$(cat)"\necho '{{customer.name}}' '{{items.0.id}}' '{{control}}'\nprintf '{"control":"done"}\\n' >&3`;
   } else if (kind === "python") {
-    usage = `customer = "{{customer.name}}"\nitem_id = "{{items.0.id}}"`;
+    usage = `customer = "{{customer.name}}"\nitem_id = "{{items.0.id}}"\nwith os.fdopen(3, "w") as result:\n    json.dump({"control": "done"}, result)`;
   } else {
     usage = `Review {{customer.name}} for item {{items.0.id}}. Current route: {{control}}.`;
   }
@@ -1473,7 +1483,7 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
             {t("workflows.nodes.variables.inputExample")}
           </Text>
           <Text style={styles.variableExampleCode} selectable>
-            {'{"customer":{"name":"Alice"},"items":[{"id":7}],"control":"review","error":""}'}
+            {'{"customer":{"name":"Alice"},"items":[{"id":7}],"control":"review"}'}
           </Text>
           <View style={styles.variableExampleRows}>
             {examples.map((example) => (

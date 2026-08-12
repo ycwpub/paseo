@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import type { WorkflowPythonStep } from "@getpaseo/protocol/workflow/types";
 import { Field } from "@/components/ui/form-field";
+import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 
 export function WorkflowPythonStepFields({
@@ -18,14 +19,17 @@ export function WorkflowPythonStepFields({
   return (
     <>
       <Field label={t("workflows.nodes.python.code")} hint={t("workflows.nodes.python.codeHint")}>
-        <WorkflowTextInput
+        <WorkflowExpandableTextInput
           value={step.code}
           onChangeText={(code) => onChange({ ...step, code })}
+          editorTitle={t("workflows.nodes.python.code")}
+          monospace
           multiline
           textAlignVertical="top"
           style={styles.codeInput}
           autoCapitalize="none"
           autoCorrect={false}
+          testID={`workflow-python-${step.id}-code`}
         />
       </Field>
       <View style={styles.threeColumn}>

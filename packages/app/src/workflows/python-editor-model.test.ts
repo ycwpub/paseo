@@ -6,7 +6,7 @@ import {
 } from "./editor-model";
 
 describe("Python workflow editor model", () => {
-  it("creates an editable Python node with a JSON pass-through example", () => {
+  it("creates an editable Python node with an fd 3 result example", () => {
     const step = createWorkflowStep("python", []);
 
     expect(step.type).toBe("python");
@@ -15,7 +15,9 @@ describe("Python workflow editor model", () => {
     }
     expect(step.name).toBe("Python code");
     expect(step.code).toContain("json.load(sys.stdin)");
-    expect(step.code).toContain("json.dumps(payload");
+    expect(step.code).toContain('payload["control"] = "done"');
+    expect(step.code).toContain('os.fdopen(3, "w")');
+    expect(step.code).toContain("json.dump(payload, result");
   });
 
   it("accepts Python variables, timeout, and retry settings", () => {

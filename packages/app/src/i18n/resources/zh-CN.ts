@@ -68,8 +68,8 @@ export const zhCN: TranslationResources = {
       contract: {
         title: "输入输出约定",
         description:
-          "节点输入是一个包含 control 和业务数据的 JSON 对象。输出中的 error 由工作流框架消费，不会传给后续节点。",
-        note: "输出 error 非空时立即中断流程；Switch 和 For 根据 control 判断。Bash 和 Python 输出缺少 control/error 时会自动补为空字符串；Agent 根据节点类型把回答写入 answer 或 control。",
+          "节点输入是一个包含 control 和业务数据的 JSON 对象。error、退出码和解析错误由工作流框架管理，不属于节点业务结果。",
+        note: "Switch 和 For 根据 control 判断。Bash 和 Python 通过 stdin 读取输入，并向文件描述符 3 写入唯一结果 JSON；control 缺失时自动补为空字符串。",
       },
       internal: {
         title: "Paseo 内部使用",
@@ -95,9 +95,9 @@ export const zhCN: TranslationResources = {
       },
       nodes: {
         title: "节点行为",
-        bash: "• Bash：从 $1 读取 JSON 数据。stdout 最后一个非空行必须是结果 JSON；stdout 为空时节点失败。",
+        bash: "• Bash：通过 stdin 读取 JSON 数据，stdout/stderr 只记录日志，向文件描述符 3 写入唯一结果 JSON。",
         python:
-          "• Python：直接运行可编辑的 Python 代码，通过 stdin 读取 JSON 数据；stdout 最后一个非空行必须是结果 JSON。",
+          "• Python：直接运行可编辑代码，通过 stdin 读取 JSON 数据，向文件描述符 3 写入唯一结果 JSON。",
         agent:
           "• Agent：Answer 节点把回答写入 answer，Control 节点把回答写入 control。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
         workflow:
@@ -303,6 +303,49 @@ export const zhCN: TranslationResources = {
         switch: "根据 control 选择分支",
         for: "遍历 control",
       },
+      help: {
+        show: "查看 {{type}} 节点输入输出说明",
+        title: "{{type}} 节点输入输出",
+        inputTitle: "如何读取输入",
+        outputTitle: "如何输出数据",
+        initialValueTitle: "新建节点的初始示例",
+        initialValueDescription: "创建节点时会自动填入此示例，可直接修改。",
+        bash: {
+          input: "通过 stdin 读取一个 JSON 对象。输入包含 control 和业务字段，不包含 error。",
+          output:
+            "stdout 和 stderr 仅用于日志。必须向文件描述符 3 写入唯一 JSON 对象；不能输出 error，失败时写 stderr 并返回非零退出码。",
+        },
+        python: {
+          input: "通过 sys.stdin 读取一个 JSON 对象。输入包含 control 和业务字段，不包含 error。",
+          output:
+            "stdout 和 stderr 仅用于日志。必须向文件描述符 3 写入唯一 JSON 对象；不能输出 error，失败时抛出异常或返回非零退出码。",
+        },
+        agent: {
+          input:
+            "节点输入 JSON 会加入 Workflow 提示词上下文。使用 payload、control 或嵌套字段模板变量把数据插入提示词。",
+          output: "Answer 节点会把 Agent 最终回答自动包装到 answer 字段中。",
+          controlOutput: "Control 节点会把 Agent 最终回答自动包装到 control 字段中。",
+        },
+        workflow: {
+          input: "当前节点的完整输入 JSON 会直接作为子 Workflow 的输入。",
+          output: "子 Workflow 成功完成后的最终 JSON 会直接成为当前节点的输出。",
+        },
+        switch: {
+          input: "读取输入 JSON 的 control 字符串，并与各分支的匹配值比较。",
+          output: "Switch 自身不改写数据；被选中分支的最终 JSON 会成为节点输出。",
+        },
+        for: {
+          input:
+            "读取 control 生成循环项；未配置分隔符时按最大次数循环。循环体还会收到 loop.item、loop.index 和 loop.count。",
+          output:
+            "串行循环返回最后一次迭代结果；并发循环返回最高已完成索引的结果。循环体返回 break 可提前结束。",
+        },
+      },
+      expandedEditor: {
+        open: "放大编辑{{field}}",
+        subtitle: "在大文本框中编辑，内容会实时同步到节点。",
+        done: "完成",
+      },
       common: {
         workingDirectory: "工作目录",
         inputFileDirectory: "输入文件所在目录",
@@ -313,13 +356,13 @@ export const zhCN: TranslationResources = {
       bash: {
         initialCommand: "初始命令",
         initialCommandHint:
-          "可使用下方展示的模板变量，或通过 $1 读取节点输入 JSON；输入中不会包含 error。输出缺少 control/error 时会自动补为空字符串。",
+          "可使用下方展示的模板变量，或通过 stdin 读取节点输入 JSON。stdout/stderr 仅用于日志；必须向文件描述符 3 写入一个 JSON 对象，且不能包含 error。",
         shell: "Shell",
       },
       python: {
         code: "Python 代码",
         codeHint:
-          "通过 stdin 读取输入 JSON，并把结果 JSON 作为 stdout 最后一个非空行输出。输入中不会包含 error；输出缺少 control/error 时会自动补为空字符串。",
+          "通过 stdin 读取输入 JSON，并向文件描述符 3 写入一个结果 JSON 对象。stdout/stderr 仅用于日志；结果不能包含 error。",
         interpreter: "Python 解释器",
         interpreterHint: "留空时使用 python3。",
       },

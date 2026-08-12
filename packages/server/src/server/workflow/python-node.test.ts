@@ -24,12 +24,12 @@ describe("runPythonNode", () => {
         "import sys",
         "stdin_payload = json.load(sys.stdin)",
         'print("diagnostic")',
-        "print(json.dumps({",
-        '    "control": "done",',
-        '    "error": "",',
-        '    "stdin": stdin_payload["customer"],',
-        '    "attempt": os.environ["PASEO_WORKFLOW_ATTEMPT"],',
-        "}))",
+        'with os.fdopen(3, "w") as result:',
+        "    json.dump({",
+        '        "control": "done",',
+        '        "stdin": stdin_payload["customer"],',
+        '        "attempt": os.environ["PASEO_WORKFLOW_ATTEMPT"],',
+        "    }, result)",
       ].join("\n"),
       pythonPath: "python3",
       inputJson: '{"control":"","customer":"Alice"}',
@@ -44,10 +44,13 @@ describe("runPythonNode", () => {
     });
 
     expect(output.stderr).toBe("");
-    expect(output.stdout.trim().split("\n")).toEqual([
-      "diagnostic",
-      '{"control": "done", "error": "", "stdin": "Alice", "attempt": "3"}',
-    ]);
+    expect(output.stdout).toBe("diagnostic\n");
+    expect(JSON.parse(output.resultJson)).toEqual({
+      control: "done",
+      stdin: "Alice",
+      attempt: "3",
+    });
+    expect(output.resultExceededLimit).toBe(false);
     expect(spawned).toEqual([]);
   });
 

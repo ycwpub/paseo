@@ -17,14 +17,18 @@ function shellQuote(value: string): string {
 }
 
 function nodeCommand(source: string): string {
-  return [shellQuote(process.execPath), "-e", shellQuote(source), '"$1"'].join(" ");
+  const wrappedSource = [
+    'const fs = require("fs");',
+    'const input = JSON.parse(fs.readFileSync(0, "utf8"));',
+    source,
+  ].join("\n");
+  return [shellQuote(process.execPath), "-e", shellQuote(wrappedSource)].join(" ");
 }
 
 function appendVisitCommand(label: string): string {
   return nodeCommand(
     [
-      "const input = JSON.parse(process.argv[1]);",
-      "process.stdout.write(JSON.stringify({",
+      "fs.writeSync(3, JSON.stringify({",
       `  ...input, control: ${JSON.stringify(label)},`,
       `  visited: [...(input.visited ?? []), ${JSON.stringify(label)}]`,
       "}));",

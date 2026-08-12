@@ -2,11 +2,15 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { Readable } from "node:stream";
 import { WorkflowCommandExecutionError, trimWorkflowOutput } from "./command-node.js";
+import { MAX_WORKFLOW_RESULT_CHARS, WORKFLOW_RESULT_FILE_DESCRIPTOR } from "./command-result.js";
 
 export interface PythonNodeProcessOutput {
   stdout: string;
   stderr: string;
+  resultJson: string;
+  resultExceededLimit: boolean;
   exitCode: number | null;
   signal: NodeJS.Signals | null;
 }
@@ -52,12 +56,20 @@ function executePythonFile(
         PASEO_WORKFLOW_ATTEMPT: String(input.attempt),
         PYTHONPATH: [input.cwd, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
       },
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    const resultStream = child.stdio[WORKFLOW_RESULT_FILE_DESCRIPTOR];
+    if (!(resultStream instanceof Readable) || !child.stdin || !child.stdout || !child.stderr) {
+      child.kill();
+      reject(new Error("Python workflow process did not expose the required stdio streams"));
+      return;
+    }
     input.onSpawn(child);
     let stdout = "";
     let stderr = "";
+    let resultJson = "";
+    let resultExceededLimit = false;
     let timedOut = false;
     let closed = false;
     const close = () => {
@@ -81,6 +93,16 @@ function executePythonFile(
     child.stderr.on("data", (chunk) => {
       stderr = trimWorkflowOutput(stderr + String(chunk));
     });
+    resultStream.setEncoding("utf8");
+    resultStream.on("data", (chunk) => {
+      const next = resultJson + String(chunk);
+      if (next.length > MAX_WORKFLOW_RESULT_CHARS) {
+        resultExceededLimit = true;
+        resultJson = next.slice(0, MAX_WORKFLOW_RESULT_CHARS);
+        return;
+      }
+      resultJson = next;
+    });
     child.stdin.on("error", () => {
       // Process exit handling below reports the actionable interpreter error.
     });
@@ -92,7 +114,14 @@ function executePythonFile(
     child.once("close", (exitCode, signal) => {
       clearTimeout(timer);
       close();
-      const output = { stdout, stderr, exitCode, signal };
+      const output = {
+        stdout,
+        stderr,
+        resultJson,
+        resultExceededLimit,
+        exitCode,
+        signal,
+      };
       if (timedOut) {
         reject(
           new WorkflowCommandExecutionError(

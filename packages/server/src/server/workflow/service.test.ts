@@ -19,12 +19,18 @@ function shellQuote(value: string): string {
 }
 
 function nodeCommand(source: string, ...args: string[]): string {
+  const wrappedSource = [
+    'const __paseoFs = require("fs");',
+    'process.argv.push(__paseoFs.readFileSync(0, "utf8"));',
+    "const __paseoWriteResult = (value) =>",
+    "  __paseoFs.writeSync(3, JSON.stringify(value));",
+    source,
+  ].join("\n");
   return [
     shellQuote(process.execPath),
     "-e",
-    shellQuote(source),
+    shellQuote(wrappedSource),
     ...args.map(shellQuote),
-    '"$1"',
   ].join(" ");
 }
 
@@ -137,10 +143,10 @@ describe("WorkflowService", () => {
             initialCommand: nodeCommand(
               [
                 "const input = JSON.parse(process.argv.at(-1));",
-                "process.stdout.write(JSON.stringify({",
+                "__paseoWriteResult({",
                 "  ...input,",
                 "  wiki: process.env.FIXED_WIKI_URL",
-                "}));",
+                "});",
               ].join("\n"),
             ),
           },
@@ -198,7 +204,7 @@ describe("WorkflowService", () => {
           {
             id: "echo",
             type: "bash",
-            initialCommand: "printf '%s\\n' \"$1\"",
+            initialCommand: "cat >&3",
           },
         ],
       }),
@@ -349,11 +355,7 @@ describe("WorkflowService", () => {
           {
             id: "complete",
             type: "bash",
-            initialCommand: nodeCommand(
-              ["process.stdout.write(", '  JSON.stringify({ control: "done", error: "" }));'].join(
-                "\n",
-              ),
-            ),
+            initialCommand: nodeCommand(['__paseoWriteResult({ control: "done" });'].join("\n")),
           },
         ],
       }),
@@ -391,9 +393,9 @@ describe("WorkflowService", () => {
             initialCommand: nodeCommand(
               [
                 "const input = JSON.parse(process.argv.at(-1));",
-                "process.stdout.write(JSON.stringify({",
-                '  ...input, control: "done", error: "", greeting: `Hello ${input.customer.name}`',
-                "}));",
+                "__paseoWriteResult({",
+                '  ...input, control: "done", greeting: `Hello ${input.customer.name}`',
+                "});",
               ].join("\n"),
             ),
           },
@@ -422,7 +424,7 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("runs inline Python code and uses its last stdout line as the node result", async () => {
+  it("runs inline Python code and reads its structured result from file descriptor 3", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -436,14 +438,16 @@ describe("WorkflowService", () => {
             type: "python",
             code: [
               "import json",
+              "import os",
               "import sys",
               "payload = json.load(sys.stdin)",
               'print("diagnostic output")',
-              "print(json.dumps({",
-              '    **payload, "control": "python-done",',
-              '    "greeting": "Hello " + payload["customer"]["name"],',
-              '    "stdinMatches": True,',
-              "}))",
+              'with os.fdopen(3, "w") as result:',
+              "    json.dump({",
+              '        **payload, "control": "python-done",',
+              '        "greeting": "Hello " + payload["customer"]["name"],',
+              '        "stdinMatches": True,',
+              "    }, result)",
             ].join("\n"),
           },
         ],
@@ -488,9 +492,9 @@ describe("WorkflowService", () => {
             type: "bash",
             initialCommand: nodeCommand(
               [
-                "process.stdout.write(JSON.stringify({",
-                '  control: "done", error: "", customer: process.argv[1], item: process.argv[2], role: process.argv[3]',
-                "}));",
+                "__paseoWriteResult({",
+                '  control: "done", customer: process.argv[1], item: process.argv[2], role: process.argv[3]',
+                "});",
               ].join("\n"),
               "{{customer.name}}",
               "{{items.0.id}}",
@@ -536,7 +540,7 @@ describe("WorkflowService", () => {
           {
             id: "copy",
             type: "bash",
-            initialCommand: "printf '%s\\n' \"$1\"",
+            initialCommand: "cat >&3",
           },
         ],
       }),
@@ -581,9 +585,9 @@ describe("WorkflowService", () => {
             initialCommand: nodeCommand(
               [
                 "const input = JSON.parse(process.argv.at(-1));",
-                "process.stdout.write(JSON.stringify({",
+                "__paseoWriteResult({",
                 '  ...input, control: "child-complete", childValue: `${input.value}-child`',
-                "}));",
+                "});",
               ].join("\n"),
             ),
           },
@@ -608,9 +612,9 @@ describe("WorkflowService", () => {
             initialCommand: nodeCommand(
               [
                 "const input = JSON.parse(process.argv.at(-1));",
-                "process.stdout.write(JSON.stringify({",
+                "__paseoWriteResult({",
                 '  ...input, control: "parent-complete", parentSaw: input.childValue',
-                "}));",
+                "});",
               ].join("\n"),
             ),
           },
@@ -660,7 +664,7 @@ describe("WorkflowService", () => {
           {
             id: "fail",
             type: "bash",
-            initialCommand: 'printf \'%s\\n\' \'{"control":"","error":"child failed"}\'',
+            initialCommand: 'printf "%s\\n" "child failed" >&2; exit 1',
           },
         ],
       }),
@@ -676,7 +680,7 @@ describe("WorkflowService", () => {
             id: "must-not-run",
             type: "bash",
             initialCommand: nodeCommand(
-              'require("fs").writeFileSync(process.argv[1], "ran"); process.stdout.write("{}");',
+              'require("fs").writeFileSync(process.argv[1], "ran"); __paseoWriteResult({});',
               markerPath,
             ),
           },
@@ -770,9 +774,9 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const output = process.argv[1];",
         'fs.writeFileSync(output, "finished");',
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: output, control: "done", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  filePath: output, control: "done"',
+        "});",
       ].join("\n"),
       finalPath,
     );
@@ -781,9 +785,9 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const next = process.argv[1];",
         'fs.writeFileSync(next, "exit 99");',
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: next, control: "go", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  filePath: next, control: "go"',
+        "});",
       ].join("\n"),
       nextInstructionPath,
     );
@@ -825,19 +829,14 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["prepare", "route", "finish"]);
   });
 
-  it("stops immediately when a node returns a non-empty error", async () => {
+  it("stops immediately when a node exits with an error", async () => {
     const home = await createTempHome();
     const inputPath = join(home, "input.txt");
     const markerPath = join(home, "should-not-exist");
     const scriptPath = join(home, "workflow.json");
     await writeFile(inputPath, "input");
     const failingCommand = nodeCommand(
-      [
-        "const input = JSON.parse(process.argv.at(-1));",
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: input.filePath, control: "stop", error: "boom"',
-        "}));",
-      ].join("\n"),
+      ['process.stderr.write("boom\\n");', "process.exit(9);"].join("\n"),
     );
     await writeFile(
       scriptPath,
@@ -863,7 +862,7 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
     expect(run.status).toBe("failed");
-    expect(run.error).toBe("boom");
+    expect(run.error).toContain("exit code 9: boom");
     expect(run.nodeRuns).toHaveLength(1);
     await expect(readFile(markerPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -876,18 +875,18 @@ describe("WorkflowService", () => {
     const prepareCommand = nodeCommand(
       [
         "const input = JSON.parse(process.argv.at(-1));",
-        "process.stdout.write(JSON.stringify({",
-        '  ...input, customer: { name: "Alice" }, count: 2, control: "next", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  ...input, customer: { name: "Alice" }, count: 2, control: "next"',
+        "});",
       ].join("\n"),
     );
     const consumeCommand = nodeCommand(
       [
         "const input = JSON.parse(process.argv.at(-1));",
-        "process.stdout.write(JSON.stringify({",
-        '  control: "done", error: "", greeting: `Hello ${input.customer.name}`,',
+        "__paseoWriteResult({",
+        '  control: "done", greeting: `Hello ${input.customer.name}`,',
         "  doubled: input.count * 2",
-        "}));",
+        "});",
       ].join("\n"),
     );
     await writeFile(
@@ -930,21 +929,21 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("uses the last non-empty stdout line as the node result", async () => {
+  it("keeps stdout as logs and reads the structured result only from file descriptor 3", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     const command = nodeCommand(
       [
-        'process.stdout.write(JSON.stringify({ control: "ignored", source: "earlier-line" }) + "\\n");',
+        'process.stdout.write(\'{"control":"ignored","source":"stdout-log"}\\n\');',
         'process.stdout.write("diagnostic output\\n");',
-        'process.stdout.write(JSON.stringify({ control: "true", source: "stdout" }));',
+        'require("fs").writeSync(3, JSON.stringify({ control: "true", source: "fd3" }));',
       ].join("\n"),
     );
     await writeFile(
       scriptPath,
       JSON.stringify({
         version: 1,
-        name: "stdout result",
+        name: "result channel",
         steps: [
           {
             id: "stdout-control",
@@ -966,12 +965,13 @@ describe("WorkflowService", () => {
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "true",
       error: "",
-      source: "stdout",
+      source: "fd3",
     });
     expect(run.nodeRuns[0]?.outputControl).toBe("true");
+    expect(run.nodeRuns[0]?.stdout).toContain('"source":"stdout-log"');
   });
 
-  it("fails when stdout is empty", async () => {
+  it("fails when the result channel is empty", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -997,20 +997,20 @@ describe("WorkflowService", () => {
     });
 
     expect(run.status).toBe("failed");
-    expect(run.error).toBe("Bash workflow node produced no stdout result");
+    expect(run.error).toBe("Bash workflow node did not write a result to file descriptor 3");
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "",
-      error: "Bash workflow node produced no stdout result",
+      error: "Bash workflow node did not write a result to file descriptor 3",
     });
   });
 
-  it("does not scan earlier stdout lines when the last line is not valid JSON", async () => {
+  it("fails when the result channel is not valid JSON", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     const command = nodeCommand(
       [
-        'process.stdout.write(JSON.stringify({ control: "ignored", error: "" }) + "\\n");',
-        'process.stdout.write("diagnostic output");',
+        'process.stdout.write("diagnostic output\\n");',
+        'require("fs").writeSync(3, "not-json");',
       ].join("\n"),
     );
     await writeFile(
@@ -1036,30 +1036,25 @@ describe("WorkflowService", () => {
     });
 
     expect(run.status).toBe("failed");
-    expect(run.error).toContain("Workflow node output is not valid JSON");
+    expect(run.error).toContain("Workflow node result is not valid JSON");
     expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({
       control: "",
-      error: expect.stringContaining("Workflow node output is not valid JSON"),
+      error: expect.stringContaining("Workflow node result is not valid JSON"),
     });
   });
 
   it.each([
     [
       "control",
-      '{"error":"","message":"missing control"}',
+      '{"message":"missing control"}',
       { control: "", error: "", message: "missing control" },
     ],
     [
-      "error",
-      '{"control":"next","message":"missing error"}',
-      { control: "next", error: "", message: "missing error" },
+      "no framework fields",
+      '{"message":"business data only"}',
+      { control: "", error: "", message: "business data only" },
     ],
-    [
-      "control and error",
-      '{"message":"missing both"}',
-      { control: "", error: "", message: "missing both" },
-    ],
-  ])("defaults missing %s fields in Bash node JSON", async (_label, output, expected) => {
+  ])("defaults missing %s in Bash node JSON", async (_label, output, expected) => {
     const home = await createTempHome();
     const inputPath = join(home, "input.txt");
     const scriptPath = join(home, "workflow.json");
@@ -1073,7 +1068,7 @@ describe("WorkflowService", () => {
           {
             id: "normalize",
             type: "bash",
-            initialCommand: `printf '%s\\n' ${shellQuote(output)}`,
+            initialCommand: `printf '%s\\n' ${shellQuote(output)} >&3`,
           },
         ],
       }),
@@ -1088,16 +1083,16 @@ describe("WorkflowService", () => {
   });
 
   it.each([
-    ["invalid JSON", "not json", "Workflow node output is not valid JSON"],
+    ["invalid JSON", "not json", "Workflow node result is not valid JSON"],
     [
       "a non-string control field",
-      '{"control":[],"error":""}',
-      'Workflow node output field "control" must be a string',
+      '{"control":[]}',
+      'Workflow node result field "control" must be a string',
     ],
     [
-      "a non-string error field",
-      '{"control":"","error":false}',
-      'Workflow node output field "error" must be a string',
+      "the reserved error field",
+      '{"control":"","error":"failed"}',
+      'Workflow node result must not contain reserved field "error"',
     ],
   ])(
     "returns a standard error payload for Bash output with %s",
@@ -1115,7 +1110,7 @@ describe("WorkflowService", () => {
             {
               id: "invalid",
               type: "bash",
-              initialCommand: `printf '%s\\n' ${shellQuote(output)}`,
+              initialCommand: `printf '%s\\n' ${shellQuote(output)} >&3`,
             },
           ],
         }),
@@ -1154,9 +1149,9 @@ describe("WorkflowService", () => {
         "fs.writeFileSync(attemptFile, String(attempt));",
         "if (attempt < 3) process.exit(7);",
         'fs.writeFileSync(outputFile, "done");',
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: outputFile, control: "complete", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  filePath: outputFile, control: "complete"',
+        "});",
       ].join("\n"),
       attemptPath,
       outputPath,
@@ -1365,20 +1360,15 @@ describe("WorkflowService", () => {
         "const log = process.argv[1];",
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(log, `${input.control}\\n`);",
-        "process.stdout.write(JSON.stringify({",
+        "__paseoWriteResult({",
         "  filePath: input.filePath,",
         "  control: input.control,",
-        '  error: ""',
-        "}));",
+        "});",
       ].join("\n"),
       loopLogPath,
     );
     const prepareCommand = nodeCommand(
-      [
-        "process.stdout.write(JSON.stringify({",
-        '  control: \'["alpha","beta"]\', error: ""',
-        "}));",
-      ].join("\n"),
+      ["__paseoWriteResult({", '  control: \'["alpha","beta"]\'', "});"].join("\n"),
     );
     await writeFile(
       scriptPath,
@@ -1425,9 +1415,9 @@ describe("WorkflowService", () => {
         "    await delay(10);",
         "  }",
         "  if (input.loop.index === 0) await delay(100);",
-        "  process.stdout.write(JSON.stringify({",
-        "    ...input, result: input.loop.item, error: ''",
-        "  }));",
+        "  __paseoWriteResult({",
+        "    ...input, result: input.loop.item",
+        "  });",
         "})().catch((error) => { console.error(error.message); process.exitCode = 1; });",
       ].join("\n"),
       home,
@@ -1476,9 +1466,9 @@ describe("WorkflowService", () => {
 
     const prepareCommand = nodeCommand(
       [
-        "process.stdout.write(JSON.stringify({",
-        '  control: \'["alpha","beta","gamma"]\', error: "", source: "test"',
-        "}));",
+        "__paseoWriteResult({",
+        '  control: \'["alpha","beta","gamma"]\', source: "test"',
+        "});",
       ].join("\n"),
     );
     const loopCommand = nodeCommand(
@@ -1486,9 +1476,9 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}\\n`);",
-        "process.stdout.write(JSON.stringify({",
-        '  ...input, control: input.loop.item === "beta" ? "break" : input.control, error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  ...input, control: input.loop.item === "beta" ? "break" : input.control',
+        "});",
       ].join("\n"),
       loopLogPath,
     );
@@ -1531,20 +1521,16 @@ describe("WorkflowService", () => {
     await writeFile(inputPath, "input");
 
     const prepareCommand = nodeCommand(
-      [
-        "process.stdout.write(JSON.stringify({",
-        '  control: "alpha,beta,gamma", error: ""',
-        "}));",
-      ].join("\n"),
+      ["__paseoWriteResult({", '  control: "alpha,beta,gamma"', "});"].join("\n"),
     );
     const firstCommand = nodeCommand(
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
-        "process.stdout.write(JSON.stringify({",
-        '  ...input, control: input.loop.item === "beta" ? "continue" : input.control, error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  ...input, control: input.loop.item === "beta" ? "continue" : input.control',
+        "});",
       ].join("\n"),
       firstLogPath,
     );
@@ -1553,7 +1539,7 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
-        "process.stdout.write(JSON.stringify(input));",
+        "__paseoWriteResult(input);",
       ].join("\n"),
       secondLogPath,
     );
@@ -1599,9 +1585,9 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}:${input.loop.count}\\n`);",
-        "process.stdout.write(JSON.stringify({",
-        '  ...input, control: input.loop.index === 2 ? "break" : "continue", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  ...input, control: input.loop.index === 2 ? "break" : "continue"',
+        "});",
       ].join("\n"),
       loopLogPath,
     );
@@ -1640,9 +1626,9 @@ describe("WorkflowService", () => {
     const loopCommand = nodeCommand(
       [
         "const input = JSON.parse(process.argv.at(-1));",
-        "process.stdout.write(JSON.stringify({",
-        '  ...input, control: "", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  ...input, control: ""',
+        "});",
       ].join("\n"),
     );
     await writeFile(
@@ -1683,9 +1669,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "fs.writeFileSync(process.argv[1], process.argv[2]);",
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: process.argv[1], control: "ready", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  filePath: process.argv[1], control: "ready"',
+        "});",
       ].join("\n"),
       upstreamPath,
       "upstream data that is not a shell command",
@@ -1695,9 +1681,9 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const inputPath = JSON.parse(process.argv.at(-1)).filePath;",
         'fs.writeFileSync(process.argv[1], fs.readFileSync(inputPath, "utf8"));',
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: process.argv[1], control: "done", error: ""',
-        "}));",
+        "__paseoWriteResult({",
+        '  filePath: process.argv[1], control: "done"',
+        "});",
       ].join("\n"),
       finalPath,
     );
@@ -1782,10 +1768,10 @@ describe("WorkflowService", () => {
     });
     const prepareCommand = nodeCommand(
       [
-        "process.stdout.write(JSON.stringify({",
-        '  filePath: process.argv[1], control: "review", error: "",',
+        "__paseoWriteResult({",
+        '  filePath: process.argv[1], control: "review",',
         '  customer: { name: "Alice" }, records: [{ id: 7 }, { id: 8 }]',
-        "}));",
+        "});",
       ].join("\n"),
       upstreamPath,
     );

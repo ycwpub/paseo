@@ -66,8 +66,8 @@ export const en = {
       contract: {
         title: "Input and output contract",
         description:
-          'Nodes receive one JSON object containing "control" and business data. The framework consumes output "error" and never passes it to downstream node inputs.',
-        note: 'A non-empty output "error" stops the workflow. Switch and For nodes read "control". Bash and Python outputs default missing control/error fields to empty strings; Agent output is written to answer or control according to its node type.',
+          'Nodes receive one JSON object containing "control" and business data. The workflow framework owns errors, exit status, and result parsing; they are not business output fields.',
+        note: 'Switch and For nodes read "control". Bash and Python read input from stdin and write exactly one result JSON object to file descriptor 3. Missing "control" defaults to an empty string.',
       },
       internal: {
         title: "Use inside Paseo",
@@ -94,9 +94,9 @@ export const en = {
       },
       nodes: {
         title: "Node behavior",
-        bash: "• Bash: reads the JSON payload from $1. Its last non-empty stdout line must be the result JSON; empty stdout fails the node.",
+        bash: "• Bash: reads JSON from stdin, uses stdout/stderr only for logs, and writes exactly one result JSON object to file descriptor 3.",
         python:
-          "• Python: runs editable Python code with the JSON payload on stdin. Its last non-empty stdout line must be the result JSON.",
+          "• Python: runs editable code, reads JSON from stdin, and writes exactly one result JSON object to file descriptor 3.",
         agent:
           "• Agent: Answer nodes write the reply to answer; Control nodes write the reply to control. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
         workflow:
@@ -306,6 +306,56 @@ export const en = {
         switch: "Branch on control",
         for: "Iterate over control",
       },
+      help: {
+        show: "Show {{type}} node input and output help",
+        title: "{{type}} node input and output",
+        inputTitle: "Read input",
+        outputTitle: "Write output",
+        initialValueTitle: "Initial example for new nodes",
+        initialValueDescription:
+          "New nodes are prefilled with this example and remain fully editable.",
+        bash: {
+          input:
+            'Read one JSON object from stdin. Input contains "control" and business fields, but never "error".',
+          output:
+            'stdout and stderr are logs only. Write exactly one JSON object to file descriptor 3. Never return "error"; write diagnostics to stderr and exit non-zero on failure.',
+        },
+        python: {
+          input:
+            'Read one JSON object from sys.stdin. Input contains "control" and business fields, but never "error".',
+          output:
+            'stdout and stderr are logs only. Write exactly one JSON object to file descriptor 3. Never return "error"; raise an exception or exit non-zero on failure.',
+        },
+        agent: {
+          input:
+            "The node input JSON is added to the workflow prompt context. Insert payload, control, or nested fields with template variables.",
+          output: 'Answer nodes automatically wrap the final Agent reply in the "answer" field.',
+          controlOutput:
+            'Control nodes automatically wrap the final Agent reply in the "control" field.',
+        },
+        workflow: {
+          input: "The complete node input JSON is passed directly to the child workflow.",
+          output:
+            "The final JSON from the successfully completed child workflow becomes this node's output.",
+        },
+        switch: {
+          input:
+            'Read the input JSON "control" string and compare it with each configured case value.',
+          output:
+            "Switch does not rewrite data. The selected branch's final JSON becomes the node output.",
+        },
+        for: {
+          input:
+            'Build loop items from "control". With no separator, run up to the maximum iteration count. The body also receives loop.item, loop.index, and loop.count.',
+          output:
+            'Serial loops return the final iteration result. Concurrent loops return the highest completed index. A body result with "break" stops scheduling new iterations.',
+        },
+      },
+      expandedEditor: {
+        open: "Expand {{field}}",
+        subtitle: "Edit in a larger text area. Changes are synchronized with the node immediately.",
+        done: "Done",
+      },
       common: {
         workingDirectory: "Working directory",
         inputFileDirectory: "Input file directory",
@@ -316,13 +366,13 @@ export const en = {
       bash: {
         initialCommand: "Initial command",
         initialCommandHint:
-          "Use the template variables shown below, or read the node input JSON from $1. Input never contains error. Output control/error default to empty strings when omitted.",
+          'Use the template variables below or read node input JSON from stdin. stdout/stderr are logs only. Write one JSON object to file descriptor 3; the result must not contain "error".',
         shell: "Shell",
       },
       python: {
         code: "Python code",
         codeHint:
-          "Read the input JSON from stdin. Print the result JSON as the last non-empty stdout line. Input never contains error; missing output control/error fields default to empty strings.",
+          'Read input JSON from stdin and write one result JSON object to file descriptor 3. stdout/stderr are logs only; the result must not contain "error".',
         interpreter: "Python interpreter",
         interpreterHint: 'Leave empty to use "python3".',
       },

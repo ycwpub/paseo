@@ -134,7 +134,7 @@ function WorkflowGraphNodeCard({
           </View>
           {icon}
           <View style={styles.nodeText}>
-            <Text style={styles.nodeName} numberOfLines={2}>
+            <Text style={styles.nodeName} numberOfLines={1}>
               {node.stepName || node.stepId}
             </Text>
             <Text style={styles.nodeId} numberOfLines={1}>
@@ -149,14 +149,11 @@ function WorkflowGraphNodeCard({
           />
         ) : null}
       </View>
-      <View style={styles.dependencyRow}>
-        <Text style={styles.metaLabel}>{t("workflows.graph.dependencies")}</Text>
-        <Text style={styles.metaValue} numberOfLines={2}>
-          {node.dependencies.length > 0
-            ? node.dependencies.join(", ")
-            : t("workflows.graph.startNode")}
-        </Text>
-      </View>
+      <Text style={styles.dependencyText} numberOfLines={1}>
+        {node.dependencies.length > 0
+          ? `${t("workflows.graph.dependencies")} · ${node.dependencies.join(", ")}`
+          : t("workflows.graph.startNode")}
+      </Text>
       {mode === "run" ? <WorkflowGraphRunPreview node={node} /> : null}
     </>
   );
@@ -185,12 +182,9 @@ function WorkflowGraphRunPreview({ node }: { node: WorkflowGraphNode }) {
   const latest = node.latestRun;
   return (
     <View style={styles.runPreview}>
-      <View style={styles.runCountRow}>
-        <Text style={styles.metaLabel}>{t("workflows.graph.executions")}</Text>
-        <Text style={styles.metaValue}>
-          {t("workflows.graph.executionCount", { count: node.runs.length })}
-        </Text>
-      </View>
+      <Text style={styles.runCount}>
+        {t("workflows.graph.executionCount", { count: node.runs.length })}
+      </Text>
       <GraphPayloadPreview label={t("workflows.run.input")} value={latest?.inputPayload ?? null} />
       <GraphPayloadPreview
         label={t("workflows.run.outputPayload")}
@@ -209,7 +203,7 @@ function GraphPayloadPreview({ label, value }: { label: string; value: string | 
   return (
     <View style={styles.payloadRow}>
       <Text style={styles.payloadLabel}>{label}</Text>
-      <Text style={styles.payloadValue} numberOfLines={2}>
+      <Text style={styles.payloadValue} numberOfLines={1}>
         {compactPayload(value)}
       </Text>
     </View>
@@ -280,7 +274,7 @@ function SequenceConnector() {
 }
 
 function renderStepIcon(node: WorkflowGraphNode): ReactElement {
-  const props = { size: 14, color: styles.nodeIcon.color };
+  const props = { size: 13, color: styles.nodeIcon.color };
   if (node.stepType === "agent") {
     return <Bot {...props} />;
   }
@@ -353,8 +347,8 @@ function compactPayload(value: string | null): string {
 
 const styles = StyleSheet.create((theme) => ({
   card: {
-    gap: theme.spacing[3],
-    padding: theme.spacing[4],
+    gap: theme.spacing[2],
+    padding: theme.spacing[3],
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
@@ -382,21 +376,21 @@ const styles = StyleSheet.create((theme) => ({
   },
   scrollContent: {
     minWidth: "100%",
-    paddingHorizontal: theme.spacing[2],
-    paddingBottom: theme.spacing[2],
+    paddingHorizontal: theme.spacing[1],
+    paddingBottom: theme.spacing[1],
     alignItems: "center",
   },
   sequence: {
-    minWidth: 248,
+    minWidth: 208,
     alignItems: "center",
   },
   sequenceItem: {
     alignItems: "center",
   },
   node: {
-    width: 248,
-    gap: theme.spacing[3],
-    padding: theme.spacing[3],
+    width: 208,
+    gap: theme.spacing[2],
+    padding: theme.spacing[2],
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
@@ -414,7 +408,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   nodeHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
@@ -426,8 +420,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   order: {
-    width: 26,
-    height: 26,
+    width: 22,
+    height: 22,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.full,
@@ -451,25 +445,17 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.normal,
   },
   nodeId: {
-    marginTop: theme.spacing[1],
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
-  dependencyRow: {
-    gap: theme.spacing[1],
-  },
-  metaLabel: {
+  dependencyText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  metaValue: {
-    color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   connector: {
-    height: 38,
+    height: 26,
     alignItems: "center",
     justifyContent: "flex-end",
   },
@@ -486,7 +472,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   forkStem: {
     width: theme.borderWidth[1],
-    height: theme.spacing[4],
+    height: theme.spacing[3],
     backgroundColor: theme.colors.borderAccent,
   },
   branchHeading: {
@@ -506,23 +492,23 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   branchRow: {
-    marginTop: theme.spacing[2],
+    marginTop: theme.spacing[1],
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: theme.spacing[4],
-    padding: theme.spacing[3],
+    gap: theme.spacing[3],
+    padding: theme.spacing[2],
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface0,
   },
   branch: {
-    width: 264,
+    width: 224,
     alignItems: "center",
     gap: theme.spacing[2],
   },
   branchLabelRow: {
-    minHeight: 26,
+    minHeight: 22,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
@@ -536,8 +522,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   emptyBranch: {
-    width: 248,
-    minHeight: 64,
+    width: 208,
+    minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
     padding: theme.spacing[3],
@@ -561,24 +547,29 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   runPreview: {
-    gap: theme.spacing[2],
-    paddingTop: theme.spacing[2],
+    gap: theme.spacing[1],
+    paddingTop: theme.spacing[1],
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
-  runCountRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
+  runCount: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
   },
   payloadRow: {
-    gap: theme.spacing[1],
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
   },
   payloadLabel: {
+    minWidth: 28,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
   payloadValue: {
+    flex: 1,
+    minWidth: 0,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,

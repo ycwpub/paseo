@@ -362,6 +362,7 @@ export const zhCN: TranslationResources = {
         },
       },
       expandedEditor: {
+        defaultTitle: "输入内容",
         open: "放大编辑{{field}}",
         subtitle: "在大文本框中编辑，内容会实时同步到节点。",
         done: "完成",

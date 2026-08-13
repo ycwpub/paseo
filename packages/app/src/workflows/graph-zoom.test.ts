@@ -3,6 +3,7 @@ import {
   DEFAULT_WORKFLOW_GRAPH_ZOOM,
   MAX_WORKFLOW_GRAPH_ZOOM,
   MIN_WORKFLOW_GRAPH_ZOOM,
+  calculateWorkflowGraphZoomGeometry,
   clampWorkflowGraphZoom,
   formatWorkflowGraphZoom,
   zoomWorkflowGraphIn,
@@ -23,5 +24,14 @@ describe("workflow graph zoom", () => {
 
   it("formats zoom as a percentage", () => {
     expect(formatWorkflowGraphZoom(1.25)).toBe("125%");
+  });
+
+  it("shrinks graph content without shrinking its viewport", () => {
+    expect(calculateWorkflowGraphZoomGeometry(1200, 480, 0.5)).toEqual({
+      scale: 0.5,
+      contentWidth: 600,
+      contentHeight: 240,
+      viewportHeight: 480,
+    });
   });
 });

@@ -30,6 +30,7 @@ import {
   type WorkflowGraphLayoutNode,
 } from "@/workflows/graph-layout";
 import {
+  calculateWorkflowGraphZoomGeometry,
   DEFAULT_WORKFLOW_GRAPH_ZOOM,
   formatWorkflowGraphZoom,
   zoomWorkflowGraphIn,
@@ -145,21 +146,25 @@ function WorkflowGraphSurface({
   const zoomIn = useCallback(() => setZoom((current) => zoomWorkflowGraphIn(current)), []);
   const zoomOut = useCallback(() => setZoom((current) => zoomWorkflowGraphOut(current)), []);
   const resetZoom = useCallback(() => setZoom(DEFAULT_WORKFLOW_GRAPH_ZOOM), []);
+  const zoomGeometry = useMemo(
+    () => calculateWorkflowGraphZoomGeometry(layout.width, layout.height, zoom),
+    [layout.height, layout.width, zoom],
+  );
   const graphScaleStyle = useMemo(
     () => ({
       width: layout.width,
       height: layout.height,
-      transform: [{ scale: zoom }],
+      transform: [{ scale: zoomGeometry.scale }],
       transformOrigin: "0px 0px",
     }),
-    [layout.height, layout.width, zoom],
+    [layout.height, layout.width, zoomGeometry.scale],
   );
   const scaledCanvasStyle = useMemo(
     () => ({
-      width: layout.width * zoom,
-      height: layout.height * zoom,
+      width: zoomGeometry.contentWidth,
+      height: zoomGeometry.contentHeight,
     }),
-    [layout.height, layout.width, zoom],
+    [zoomGeometry.contentHeight, zoomGeometry.contentWidth],
   );
 
   return (
@@ -228,48 +233,57 @@ function WorkflowGraphSurface({
           ) : null}
         </View>
       </View>
-      <ScrollView
-        style={presentation === "full" ? styles.fullGraphVerticalViewport : undefined}
-        contentContainerStyle={styles.verticalScrollContent}
-        showsVerticalScrollIndicator
-        nestedScrollEnabled
+      <View
+        style={[
+          styles.canvasViewport,
+          presentation === "full"
+            ? styles.fullGraphCanvasViewport
+            : { height: zoomGeometry.viewportHeight },
+        ]}
       >
         <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator
-          contentContainerStyle={styles.scrollContent}
+          style={styles.graphVerticalViewport}
+          contentContainerStyle={styles.verticalScrollContent}
+          showsVerticalScrollIndicator
           nestedScrollEnabled
         >
-          <View style={scaledCanvasStyle}>
-            <View style={[styles.canvas, graphScaleStyle]}>
-              <WorkflowGraphEdges
-                width={layout.width}
-                height={layout.height}
-                edges={layout.edges}
-                nodeById={nodeById}
-                mode={mode}
-              />
-              {layout.edges.map((edge) => (
-                <WorkflowGraphEdgeLabel
-                  key={`label:${edge.id}`}
-                  edge={edge}
-                  source={nodeById.get(edge.from) ?? null}
-                />
-              ))}
-              {layout.nodes.map((positioned) => (
-                <WorkflowGraphCanvasNode
-                  key={positioned.id}
-                  positioned={positioned}
-                  order={orderByStepId.get(positioned.id) ?? 0}
-                  selected={selectedStepId === positioned.id}
-                  onSelectStep={onSelectStep}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            contentContainerStyle={styles.scrollContent}
+            nestedScrollEnabled
+          >
+            <View style={scaledCanvasStyle}>
+              <View style={[styles.canvas, graphScaleStyle]}>
+                <WorkflowGraphEdges
+                  width={layout.width}
+                  height={layout.height}
+                  edges={layout.edges}
+                  nodeById={nodeById}
                   mode={mode}
                 />
-              ))}
+                {layout.edges.map((edge) => (
+                  <WorkflowGraphEdgeLabel
+                    key={`label:${edge.id}`}
+                    edge={edge}
+                    source={nodeById.get(edge.from) ?? null}
+                  />
+                ))}
+                {layout.nodes.map((positioned) => (
+                  <WorkflowGraphCanvasNode
+                    key={positioned.id}
+                    positioned={positioned}
+                    order={orderByStepId.get(positioned.id) ?? 0}
+                    selected={selectedStepId === positioned.id}
+                    onSelectStep={onSelectStep}
+                    mode={mode}
+                  />
+                ))}
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </ScrollView>
-      </ScrollView>
+      </View>
       {mode === "run" ? (
         <Text style={styles.footerHint}>{t("workflows.graph.selectNodeHint")}</Text>
       ) : null}
@@ -716,7 +730,19 @@ const styles = StyleSheet.create((theme) => ({
     flexWrap: "wrap",
     gap: theme.spacing[1],
   },
-  fullGraphVerticalViewport: {
+  canvasViewport: {
+    width: "100%",
+    minHeight: 0,
+    overflow: "hidden",
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: theme.colors.surface0,
+  },
+  fullGraphCanvasViewport: {
+    flex: 1,
+  },
+  graphVerticalViewport: {
     flex: 1,
     minHeight: 0,
   },
@@ -738,11 +764,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   canvas: {
     position: "relative",
-    overflow: "hidden",
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface0,
   },
   edgeLayer: {
     position: "absolute",

@@ -373,6 +373,7 @@ export const en = {
         },
       },
       expandedEditor: {
+        defaultTitle: "Input content",
         open: "Expand {{field}}",
         subtitle: "Edit in a larger text area. Changes are synchronized with the node immediately.",
         done: "Done",

@@ -1,0 +1,196 @@
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  type ComponentProps,
+  type ReactElement,
+} from "react";
+import { useWindowDimensions, View, type StyleProp, type ViewStyle } from "react-native";
+import { useTranslation } from "react-i18next";
+import { Maximize2 } from "lucide-react-native";
+import { StyleSheet } from "react-native-unistyles";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { Button } from "@/components/ui/button";
+import { FormTextInput } from "@/components/ui/form-field";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { isWeb } from "@/constants/platform";
+import { calculateExpandedWorkflowEditorHeight } from "@/workflows/expanded-editor-layout";
+
+const EXPANDED_EDITOR_SNAP_POINTS = ["90%"];
+
+export type WorkflowTextInputExpansionProps = ComponentProps<typeof FormTextInput> & {
+  editorTitle?: string;
+  expandable?: boolean;
+  monospace?: boolean;
+};
+
+export function WorkflowTextInputExpansion({
+  value,
+  onChangeText,
+  editorTitle,
+  expandable = true,
+  monospace = false,
+  accessibilityLabel,
+  multiline,
+  size,
+  style,
+  testID,
+  ...inputProps
+}: WorkflowTextInputExpansionProps): ReactElement {
+  const { t } = useTranslation();
+  const { height: viewportHeight } = useWindowDimensions();
+  const [isExpanded, setIsExpanded] = useState(false);
+  const expandedEditorHeight = useMemo(
+    () => calculateExpandedWorkflowEditorHeight(viewportHeight),
+    [viewportHeight],
+  );
+  const resolvedEditorTitle =
+    editorTitle || accessibilityLabel || t("workflows.nodes.expandedEditor.defaultTitle");
+  const header = useMemo<SheetHeader>(
+    () => ({
+      title: resolvedEditorTitle,
+      subtitle: t("workflows.nodes.expandedEditor.subtitle"),
+    }),
+    [resolvedEditorTitle, t],
+  );
+  const openEditor = useCallback(() => setIsExpanded(true), []);
+  const closeEditor = useCallback(() => setIsExpanded(false), []);
+  const openLabel = t("workflows.nodes.expandedEditor.open", {
+    field: resolvedEditorTitle,
+  });
+  const footer = useMemo(
+    () => (
+      <View style={styles.footer}>
+        <Button variant="default" size="sm" onPress={closeEditor}>
+          {t("workflows.nodes.expandedEditor.done")}
+        </Button>
+      </View>
+    ),
+    [closeEditor, t],
+  );
+  let expandButtonPlacement: StyleProp<ViewStyle> = styles.expandButtonDefault;
+  if (multiline) {
+    expandButtonPlacement = styles.expandButtonMultiline;
+  } else if (size === "sm") {
+    expandButtonPlacement = styles.expandButtonSmall;
+  }
+
+  if (!expandable) {
+    return (
+      <FormTextInput
+        {...inputProps}
+        value={value}
+        onChangeText={onChangeText}
+        accessibilityLabel={accessibilityLabel}
+        multiline={multiline}
+        size={size}
+        style={style}
+        testID={testID}
+        controlled
+      />
+    );
+  }
+
+  return (
+    <>
+      <View style={styles.inputContainer}>
+        <FormTextInput
+          {...inputProps}
+          value={value}
+          onChangeText={onChangeText}
+          accessibilityLabel={accessibilityLabel}
+          multiline={multiline}
+          size={size}
+          style={[style, styles.collapsedInput]}
+          testID={testID}
+          controlled
+        />
+        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="xs"
+              leftIcon={Maximize2}
+              accessibilityLabel={openLabel}
+              onPress={openEditor}
+              style={[styles.expandButton, expandButtonPlacement]}
+              testID={testID ? `${testID}-expand` : undefined}
+            />
+          </TooltipTrigger>
+          <TooltipContent side="top" align="end" offset={6}>
+            {openLabel}
+          </TooltipContent>
+        </Tooltip>
+      </View>
+      <AdaptiveModalSheet
+        visible={isExpanded}
+        header={header}
+        onClose={closeEditor}
+        desktopMaxWidth={960}
+        snapPoints={EXPANDED_EDITOR_SNAP_POINTS}
+        scrollable={false}
+        contentStyle={styles.sheetContent}
+        footer={footer}
+        testID={testID ? `${testID}-expanded-editor` : "workflow-expanded-editor"}
+      >
+        <View style={[styles.expandedEditor, { height: expandedEditorHeight }]}>
+          <FormTextInput
+            {...inputProps}
+            value={value}
+            onChangeText={onChangeText}
+            accessibilityLabel={accessibilityLabel}
+            multiline
+            size={size}
+            textAlignVertical="top"
+            autoFocus={isWeb}
+            style={[styles.expandedInput, monospace && styles.monospaceInput]}
+            testID={testID ? `${testID}-expanded-input` : "workflow-expanded-input"}
+            controlled
+          />
+        </View>
+      </AdaptiveModalSheet>
+    </>
+  );
+}
+
+const styles = StyleSheet.create((theme) => ({
+  inputContainer: {
+    position: "relative",
+  },
+  collapsedInput: {
+    paddingRight: theme.spacing[12],
+  },
+  expandButton: {
+    position: "absolute",
+    right: theme.spacing[1],
+    zIndex: 1,
+  },
+  expandButtonSmall: {
+    top: theme.spacing[0.5],
+  },
+  expandButtonDefault: {
+    top: theme.spacing[2],
+  },
+  expandButtonMultiline: {
+    top: theme.spacing[1],
+  },
+  sheetContent: {
+    flex: 1,
+  },
+  expandedEditor: {
+    width: "100%",
+  },
+  expandedInput: {
+    flex: 1,
+    height: "100%",
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.5),
+  },
+  monospaceInput: {
+    fontFamily: "monospace",
+  },
+  footer: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+}));

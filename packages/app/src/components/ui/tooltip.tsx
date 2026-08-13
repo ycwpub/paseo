@@ -461,6 +461,7 @@ export function TooltipContent({
   style,
   testID,
   maxWidth = 280,
+  interactive = false,
 }: PropsWithChildren<{
   side?: Side;
   align?: Align;
@@ -468,6 +469,8 @@ export function TooltipContent({
   style?: StyleProp<ViewStyle>;
   testID?: string;
   maxWidth?: number;
+  /** Allow controls and scrolling inside the floating surface. */
+  interactive?: boolean;
 }>): ReactElement | null {
   const ctx = useTooltipContext("TooltipContent");
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
@@ -540,9 +543,9 @@ export function TooltipContent({
   // exact same positioning math as DropdownMenu, without hover feedback loops.
   if (isWeb || ctx.dismissOnTriggerPressOnly) {
     return createPortal(
-      <View pointerEvents="none" style={styles.portalOverlay}>
+      <View pointerEvents={interactive ? "box-none" : "none"} style={styles.portalOverlay}>
         <FloatingSurface
-          pointerEvents="none"
+          pointerEvents={interactive ? "auto" : "none"}
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}
@@ -568,7 +571,7 @@ export function TooltipContent({
     >
       <Pressable style={styles.overlay} onPress={handleDismiss}>
         <FloatingSurface
-          pointerEvents="none"
+          pointerEvents={interactive ? "auto" : "none"}
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}

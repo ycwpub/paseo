@@ -123,7 +123,7 @@ function buildSequence(
           label,
           nodes: built.nodes,
         });
-        branchTerminals.push(...terminalDependencies(built.terminalIds, step.id, "sequence", null));
+        branchTerminals.push(...branchTerminalDependencies(built, step.id, label));
       }
       const defaultBuilt = buildSequence(
         step.defaultSteps ?? [],
@@ -136,9 +136,7 @@ function buildSequence(
         label: "",
         nodes: defaultBuilt.nodes,
       });
-      branchTerminals.push(
-        ...terminalDependencies(defaultBuilt.terminalIds, step.id, "sequence", null),
-      );
+      branchTerminals.push(...branchTerminalDependencies(defaultBuilt, step.id, null));
       dependencies = deduplicateDependencies(branchTerminals);
       continue;
     }
@@ -179,14 +177,19 @@ function buildSequence(
   };
 }
 
-function terminalDependencies(
-  terminalIds: string[],
+function branchTerminalDependencies(
+  built: BuildSequenceResult,
   fallbackStepId: string,
-  kind: WorkflowGraphEdge["kind"],
-  label: string | null,
+  branchLabel: string | null,
 ): IncomingDependency[] {
-  const ids = terminalIds.length > 0 ? terminalIds : [fallbackStepId];
-  return ids.map((stepId) => ({ stepId, kind, label }));
+  if (built.nodes.length === 0) {
+    return [{ stepId: fallbackStepId, kind: "branch", label: branchLabel }];
+  }
+  return built.terminalIds.map((stepId) => ({
+    stepId,
+    kind: "sequence",
+    label: null,
+  }));
 }
 
 function groupRunsByStepId(nodeRuns: WorkflowNodeRun[]): Map<string, WorkflowNodeRun[]> {

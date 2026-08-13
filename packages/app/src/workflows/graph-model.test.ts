@@ -37,7 +37,7 @@ describe("workflow graph model", () => {
       { from: "route", to: "reject", kind: "branch", label: "no" },
       { from: "approve", to: "loop", kind: "sequence", label: null },
       { from: "reject", to: "loop", kind: "sequence", label: null },
-      { from: "route", to: "loop", kind: "sequence", label: null },
+      { from: "route", to: "loop", kind: "branch", label: null },
       { from: "loop", to: "worker", kind: "branch", label: null },
       { from: "worker", to: "loop", kind: "loop_back", label: null },
       { from: "loop", to: "finish", kind: "sequence", label: null },

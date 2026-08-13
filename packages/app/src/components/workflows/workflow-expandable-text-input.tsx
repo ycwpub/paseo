@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState, type ComponentProps, type ReactElement } from "react";
-import { View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Maximize2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 import { isWeb } from "@/constants/platform";
+import { calculateExpandedWorkflowEditorHeight } from "@/workflows/expanded-editor-layout";
 
 const EXPANDED_EDITOR_SNAP_POINTS = ["90%"];
 
@@ -31,7 +32,12 @@ export function WorkflowExpandableTextInput({
   ...inputProps
 }: WorkflowExpandableTextInputProps): ReactElement {
   const { t } = useTranslation();
+  const { height: viewportHeight } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(false);
+  const expandedEditorHeight = useMemo(
+    () => calculateExpandedWorkflowEditorHeight(viewportHeight),
+    [viewportHeight],
+  );
   const header = useMemo<SheetHeader>(
     () => ({
       title: editorTitle,
@@ -91,7 +97,7 @@ export function WorkflowExpandableTextInput({
         footer={footer}
         testID={testID ? `${testID}-expanded-editor` : "workflow-expanded-editor"}
       >
-        <View style={styles.expandedEditor}>
+        <View style={[styles.expandedEditor, { height: expandedEditorHeight }]}>
           <WorkflowTextInput
             {...inputProps}
             value={value}
@@ -125,12 +131,11 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   expandedEditor: {
-    flex: 1,
-    minHeight: 360,
+    width: "100%",
   },
   expandedInput: {
     flex: 1,
-    minHeight: 360,
+    height: "100%",
     fontSize: theme.fontSize.sm,
     lineHeight: Math.round(theme.fontSize.sm * 1.5),
   },

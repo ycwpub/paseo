@@ -16,6 +16,7 @@ import {
   DEFAULT_PYTHON_CODE,
   DEFAULT_SWITCH_CONTROL,
 } from "@/workflows/step-examples";
+import { validateWorkflowSequenceLinks } from "@/workflows/sequence-links";
 
 export { DEFAULT_AGENT_INITIAL_PROMPT } from "@/workflows/step-examples";
 
@@ -252,6 +253,10 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
   }
   // oxlint-disable-next-line complexity -- Recursive validation keeps branch, loop, retry, and self-reference errors in one deterministic traversal.
   const validateSteps = (steps: WorkflowStep[]): string | null => {
+    const sequenceError = validateWorkflowSequenceLinks(steps);
+    if (sequenceError) {
+      return sequenceError;
+    }
     for (const step of steps) {
       if (step.type === "bash" || step.type === "python" || step.type === "agent") {
         const retryError = validateRetryPolicy(

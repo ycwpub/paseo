@@ -1,5 +1,5 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- Recursive workflow controls bind edits to their current node and branch values. */
-import { memo, useCallback, useMemo, type ReactElement } from "react";
+import { memo, useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import {
@@ -29,6 +29,7 @@ import {
 } from "@getpaseo/protocol/workflow/types";
 import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import type { Assistant, PaseoInstructionTemplate, Team } from "@getpaseo/protocol/messages";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
 import {
@@ -39,6 +40,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
+import { WorkflowDownstreamField } from "@/components/workflows/workflow-downstream-field";
 import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
 import { WorkflowStepHelp } from "@/components/workflows/workflow-step-help";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
@@ -53,6 +55,10 @@ import {
   updateAgentOutputType,
   type WorkflowStepType,
 } from "@/workflows/editor-model";
+import {
+  removeWorkflowSequenceStep,
+  replaceWorkflowSequenceStep,
+} from "@/workflows/sequence-links";
 
 const STEP_META = {
   bash: {
@@ -160,19 +166,19 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
   testID,
 }: WorkflowStepListEditorProps): ReactElement {
   const { t } = useTranslation();
+  const [newStepIndex, setNewStepIndex] = useState<number | null>(null);
   const addStep = useCallback(
     (type: WorkflowStepType) => {
-      onChange([
-        ...steps,
-        createWorkflowStep(type, rootSteps, {
-          workflow: t("workflows.editor.untitled"),
-          bash: t("workflows.nodes.defaultNames.bash"),
-          python: t("workflows.nodes.defaultNames.python"),
-          agent: t("workflows.nodes.defaultNames.agent"),
-          switch: t("workflows.nodes.defaultNames.switch"),
-          for: t("workflows.nodes.defaultNames.for"),
-        }),
-      ]);
+      const step = createWorkflowStep(type, rootSteps, {
+        workflow: t("workflows.editor.untitled"),
+        bash: t("workflows.nodes.defaultNames.bash"),
+        python: t("workflows.nodes.defaultNames.python"),
+        agent: t("workflows.nodes.defaultNames.agent"),
+        switch: t("workflows.nodes.defaultNames.switch"),
+        for: t("workflows.nodes.defaultNames.for"),
+      });
+      setNewStepIndex(steps.length);
+      onChange([...steps, step]);
     },
     [onChange, rootSteps, steps, t],
   );
@@ -201,6 +207,8 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           total={steps.length}
           depth={depth}
           rootSteps={rootSteps}
+          siblingSteps={steps}
+          initiallyOpen={newStepIndex === index}
           providerEntries={providerEntries}
           providersLoading={providersLoading}
           assistants={assistants}
@@ -210,13 +218,10 @@ export const WorkflowStepListEditor = memo(function WorkflowStepListEditor({
           promptTemplates={promptTemplates}
           promptTemplatesLoading={promptTemplatesLoading}
           allowPython={allowPython}
-          onChange={(nextStep) => {
-            const next = [...steps];
-            next[index] = nextStep;
-            onChange(next);
-          }}
-          onRemove={() => onChange(steps.filter((_, candidateIndex) => candidateIndex !== index))}
+          onChange={(nextStep) => onChange(replaceWorkflowSequenceStep(steps, index, nextStep))}
+          onRemove={() => onChange(removeWorkflowSequenceStep(steps, index))}
           onMove={(direction) => onChange(moveWorkflowStep(steps, index, direction))}
+          onDetailsClose={() => setNewStepIndex(null)}
         />
       ))}
       <AddNodeBar onAdd={addStep} compact={depth > 0} allowPython={allowPython} />
@@ -267,6 +272,8 @@ interface WorkflowStepCardProps {
   total: number;
   depth: number;
   rootSteps: WorkflowStep[];
+  siblingSteps: WorkflowStep[];
+  initiallyOpen: boolean;
   providerEntries: ProviderSnapshotEntry[];
   providersLoading: boolean;
   assistants: Assistant[];
@@ -279,6 +286,7 @@ interface WorkflowStepCardProps {
   onChange: (step: WorkflowStep) => void;
   onRemove: () => void;
   onMove: (direction: -1 | 1) => void;
+  onDetailsClose: () => void;
 }
 
 function WorkflowStepCard({
@@ -287,6 +295,8 @@ function WorkflowStepCard({
   total,
   depth,
   rootSteps,
+  siblingSteps,
+  initiallyOpen,
   providerEntries,
   providersLoading,
   assistants,
@@ -299,10 +309,24 @@ function WorkflowStepCard({
   onChange,
   onRemove,
   onMove,
+  onDetailsClose,
 }: WorkflowStepCardProps): ReactElement {
   const { t } = useTranslation();
+  const [detailsVisible, setDetailsVisible] = useState(initiallyOpen);
   const meta = STEP_META[step.type];
   const Icon = meta.icon;
+  const openDetails = useCallback(() => setDetailsVisible(true), []);
+  const closeDetails = useCallback(() => {
+    setDetailsVisible(false);
+    onDetailsClose();
+  }, [onDetailsClose]);
+  const detailsHeader = useMemo<SheetHeader>(
+    () => ({
+      title: step.name || step.id,
+      subtitle: `${t(meta.labelKey)} · ${step.id}`,
+    }),
+    [meta.labelKey, step.id, step.name, t],
+  );
   let stepFields: ReactElement;
   switch (step.type) {
     case "bash":
@@ -368,66 +392,103 @@ function WorkflowStepCard({
   }
 
   return (
-    <View style={[styles.stepCard, depth > 0 && styles.stepCardNested]}>
-      <View style={styles.stepHeader}>
-        <View style={styles.stepTypeIcon}>
-          <Icon size={16} color={styles.stepTypeIconColor.color} />
-        </View>
-        <View style={styles.stepHeaderText}>
-          <Text style={styles.stepType}>{t(meta.labelKey)}</Text>
-          <Text style={styles.stepSummary} numberOfLines={1}>
-            {step.name || step.id}
-          </Text>
-        </View>
-        <View style={styles.stepHeaderActions}>
-          <WorkflowStepHelp step={step} typeLabel={t(meta.labelKey)} />
-          <IconButton
-            label={t("workflows.nodes.moveUp")}
-            icon={ArrowUp}
-            disabled={index === 0}
-            onPress={() => onMove(-1)}
-          />
-          <IconButton
-            label={t("workflows.nodes.moveDown")}
-            icon={ArrowDown}
-            disabled={index === total - 1}
-            onPress={() => onMove(1)}
-          />
-          <IconButton
-            label={t("workflows.nodes.delete")}
-            icon={Trash2}
-            destructive
-            onPress={onRemove}
-          />
+    <>
+      <View style={[styles.stepCard, depth > 0 && styles.stepCardNested]}>
+        <View style={styles.stepHeader}>
+          <Pressable
+            onPress={openDetails}
+            style={({ hovered, pressed }) => [
+              styles.stepHeaderMain,
+              hovered && styles.stepHeaderMainHovered,
+              pressed && styles.stepHeaderMainPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={t("workflows.nodes.openDetails", {
+              name: step.name || step.id,
+            })}
+            testID={`workflow-step-${step.id}-open`}
+          >
+            <View style={styles.stepTypeIcon}>
+              <Icon size={16} color={styles.stepTypeIconColor.color} />
+            </View>
+            <View style={styles.stepHeaderText}>
+              <View style={styles.stepTitleRow}>
+                <Text style={styles.stepType}>{t(meta.labelKey)}</Text>
+                <Text style={styles.stepSummary} numberOfLines={2}>
+                  {step.name || step.id}
+                </Text>
+              </View>
+              <Text style={styles.stepId} numberOfLines={1}>
+                {step.id}
+              </Text>
+            </View>
+          </Pressable>
+          <View style={styles.stepHeaderActions}>
+            <WorkflowStepHelp step={step} typeLabel={t(meta.labelKey)} />
+            <IconButton
+              label={t("workflows.nodes.moveUp")}
+              icon={ArrowUp}
+              disabled={index === 0}
+              onPress={() => onMove(-1)}
+            />
+            <IconButton
+              label={t("workflows.nodes.moveDown")}
+              icon={ArrowDown}
+              disabled={index === total - 1}
+              onPress={() => onMove(1)}
+            />
+            <IconButton
+              label={t("workflows.nodes.delete")}
+              icon={Trash2}
+              destructive
+              onPress={onRemove}
+            />
+          </View>
         </View>
       </View>
 
-      <View style={styles.stepFields}>
-        <View style={styles.twoColumn}>
-          <View style={styles.columnField}>
-            <Field label={t("workflows.nodes.id")}>
-              <WorkflowTextInput
-                value={step.id}
-                onChangeText={(id) => onChange({ ...step, id })}
-                autoCapitalize="none"
-                size="sm"
-                testID={`workflow-step-${step.id}-id`}
+      <AdaptiveModalSheet
+        visible={detailsVisible}
+        header={detailsHeader}
+        onClose={closeDetails}
+        desktopMaxWidth={1080}
+        snapPoints={["90%", "95%"]}
+        testID={`workflow-step-${step.id}-details`}
+      >
+        <View style={styles.stepFields}>
+          <View style={styles.threeColumn}>
+            <View style={styles.columnField}>
+              <Field label={t("workflows.nodes.id")}>
+                <WorkflowTextInput
+                  value={step.id}
+                  onChangeText={(id) => onChange({ ...step, id })}
+                  autoCapitalize="none"
+                  size="sm"
+                  testID={`workflow-step-${step.id}-id`}
+                />
+              </Field>
+            </View>
+            <View style={styles.columnField}>
+              <Field label={t("workflows.nodes.displayName")}>
+                <WorkflowTextInput
+                  value={step.name ?? ""}
+                  onChangeText={(name) => onChange({ ...step, name: optionalText(name) })}
+                  size="sm"
+                />
+              </Field>
+            </View>
+            <View style={styles.columnField}>
+              <WorkflowDownstreamField
+                step={step}
+                siblingSteps={siblingSteps}
+                onChange={onChange}
               />
-            </Field>
+            </View>
           </View>
-          <View style={styles.columnField}>
-            <Field label={t("workflows.nodes.displayName")}>
-              <WorkflowTextInput
-                value={step.name ?? ""}
-                onChangeText={(name) => onChange({ ...step, name: optionalText(name) })}
-                size="sm"
-              />
-            </Field>
-          </View>
+          {stepFields}
         </View>
-        {stepFields}
-      </View>
-    </View>
+      </AdaptiveModalSheet>
+    </>
   );
 }
 
@@ -1926,13 +1987,27 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   stepHeader: {
-    minHeight: 48,
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
+    padding: theme.spacing[2],
+  },
+  stepHeaderMain: {
+    minWidth: 0,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+  },
+  stepHeaderMainHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  stepHeaderMainPressed: {
+    opacity: theme.opacity[50],
   },
   stepTypeIcon: {
     width: 28,
@@ -1948,8 +2023,12 @@ const styles = StyleSheet.create((theme) => ({
   stepHeaderText: {
     flex: 1,
     minWidth: 0,
+    gap: 2,
+  },
+  stepTitleRow: {
     flexDirection: "row",
     alignItems: "baseline",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
   stepType: {
@@ -1959,8 +2038,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   stepSummary: {
     flex: 1,
+    minWidth: 160,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+  },
+  stepId: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: 10,
+    fontFamily: theme.fontFamily.mono,
   },
   stepHeaderActions: {
     flexDirection: "row",

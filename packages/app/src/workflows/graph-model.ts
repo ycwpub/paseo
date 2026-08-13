@@ -1,4 +1,5 @@
 import type { WorkflowNodeRun, WorkflowStep } from "@getpaseo/protocol/workflow/types";
+import { resolveWorkflowSequenceTarget } from "./sequence-links";
 
 export type WorkflowGraphStatus = WorkflowNodeRun["status"] | "not_run" | "skipped";
 
@@ -30,11 +31,19 @@ export interface WorkflowGraphEdge {
 export interface WorkflowGraphModel {
   nodes: WorkflowGraphNode[];
   edges: WorkflowGraphEdge[];
+  entryStepId: string | null;
+  terminals: WorkflowGraphTerminal[];
+}
+
+export interface WorkflowGraphTerminal {
+  stepId: string;
+  kind: WorkflowGraphEdge["kind"];
+  label: string | null;
 }
 
 interface BuildSequenceResult {
   nodes: WorkflowGraphNode[];
-  terminalIds: string[];
+  terminals: IncomingDependency[];
 }
 
 interface BuildContext {
@@ -55,9 +64,12 @@ export function buildWorkflowGraphModel(
   const runsByStepId = groupRunsByStepId(nodeRuns);
   const edges: WorkflowGraphEdge[] = [];
   const built = buildSequence(steps, [], { edges, runsByStepId });
+  applyGraphDependencies(built.nodes, edges);
   return {
     nodes: built.nodes,
     edges,
+    entryStepId: steps[0]?.id ?? null,
+    terminals: built.terminals,
   };
 }
 
@@ -85,22 +97,14 @@ function buildSequence(
   context: BuildContext,
 ): BuildSequenceResult {
   const nodes: WorkflowGraphNode[] = [];
-  let dependencies = incoming;
+  const completionByIndex: IncomingDependency[][] = [];
   for (const step of steps) {
-    for (const dependency of dependencies) {
-      context.edges.push({
-        from: dependency.stepId,
-        to: step.id,
-        kind: dependency.kind,
-        label: dependency.label,
-      });
-    }
     const runs = context.runsByStepId.get(step.id) ?? [];
     const node: WorkflowGraphNode = {
       stepId: step.id,
       stepName: step.name ?? null,
       stepType: step.type,
-      dependencies: unique(dependencies.map((dependency) => dependency.stepId)),
+      dependencies: [],
       branches: [],
       runs,
       latestRun: runs.at(-1) ?? null,
@@ -123,7 +127,7 @@ function buildSequence(
           label,
           nodes: built.nodes,
         });
-        branchTerminals.push(...branchTerminalDependencies(built, step.id, label));
+        branchTerminals.push(...built.terminals);
       }
       const defaultBuilt = buildSequence(
         step.defaultSteps ?? [],
@@ -136,8 +140,8 @@ function buildSequence(
         label: "",
         nodes: defaultBuilt.nodes,
       });
-      branchTerminals.push(...branchTerminalDependencies(defaultBuilt, step.id, null));
-      dependencies = deduplicateDependencies(branchTerminals);
+      branchTerminals.push(...defaultBuilt.terminals);
+      completionByIndex.push(deduplicateDependencies(branchTerminals));
       continue;
     }
 
@@ -153,10 +157,10 @@ function buildSequence(
         label: "",
         nodes: built.nodes,
       });
-      for (const terminalId of built.terminalIds) {
-        if (terminalId !== step.id) {
+      for (const terminal of built.terminals) {
+        if (terminal.stepId !== step.id) {
           context.edges.push({
-            from: terminalId,
+            from: terminal.stepId,
             to: step.id,
             kind: "loop_back",
             label: null,
@@ -165,31 +169,80 @@ function buildSequence(
       }
     }
 
-    dependencies = [{ stepId: step.id, kind: "sequence", label: null }];
+    completionByIndex.push([{ stepId: step.id, kind: "sequence", label: null }]);
   }
 
+  const firstStep = steps[0];
+  if (firstStep) {
+    addDependencyEdges(incoming, firstStep.id, context);
+  }
+  for (const [index, completion] of completionByIndex.entries()) {
+    const target = resolveWorkflowSequenceTarget(steps, index);
+    if (target) {
+      addDependencyEdges(completion, target.step.id, context);
+    }
+  }
+  const terminalIndex = findReachableTerminalIndex(steps);
   return {
     nodes,
-    terminalIds:
-      steps.length === 0
-        ? unique(incoming.map((dependency) => dependency.stepId))
-        : unique(dependencies.map((dependency) => dependency.stepId)),
+    terminals:
+      terminalIndex === null
+        ? deduplicateDependencies(incoming)
+        : deduplicateDependencies(completionByIndex[terminalIndex] ?? []),
   };
 }
 
-function branchTerminalDependencies(
-  built: BuildSequenceResult,
-  fallbackStepId: string,
-  branchLabel: string | null,
-): IncomingDependency[] {
-  if (built.nodes.length === 0) {
-    return [{ stepId: fallbackStepId, kind: "branch", label: branchLabel }];
+function addDependencyEdges(
+  dependencies: IncomingDependency[],
+  targetStepId: string,
+  context: BuildContext,
+): void {
+  for (const dependency of dependencies) {
+    context.edges.push({
+      from: dependency.stepId,
+      to: targetStepId,
+      kind: dependency.kind,
+      label: dependency.label,
+    });
   }
-  return built.terminalIds.map((stepId) => ({
-    stepId,
-    kind: "sequence",
-    label: null,
-  }));
+}
+
+function findReachableTerminalIndex(steps: readonly WorkflowStep[]): number | null {
+  if (steps.length === 0) {
+    return null;
+  }
+  const visited = new Set<number>();
+  let index = 0;
+  while (!visited.has(index)) {
+    visited.add(index);
+    const target = resolveWorkflowSequenceTarget(steps, index);
+    if (!target) {
+      return index;
+    }
+    index = target.index;
+  }
+  return index;
+}
+
+function applyGraphDependencies(nodes: WorkflowGraphNode[], edges: WorkflowGraphEdge[]): void {
+  const incoming = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (edge.kind === "loop_back") {
+      continue;
+    }
+    const dependencies = incoming.get(edge.to) ?? [];
+    dependencies.push(edge.from);
+    incoming.set(edge.to, dependencies);
+  }
+  const visit = (sequence: WorkflowGraphNode[]) => {
+    for (const node of sequence) {
+      node.dependencies = unique(incoming.get(node.stepId) ?? []);
+      for (const branch of node.branches) {
+        visit(branch.nodes);
+      }
+    }
+  };
+  visit(nodes);
 }
 
 function groupRunsByStepId(nodeRuns: WorkflowNodeRun[]): Map<string, WorkflowNodeRun[]> {

@@ -196,6 +196,60 @@ describe("workflow editor model", () => {
     expect(validateWorkflowDraft(script)).toBe("Duplicate workflow step id: bash");
   });
 
+  it("validates downstream links within each workflow sequence", () => {
+    const script = createEmptyWorkflowScript();
+    script.steps = [
+      {
+        id: "first",
+        type: "bash",
+        initialCommand: "true",
+        nextStepId: "third",
+      },
+      {
+        id: "second",
+        type: "bash",
+        initialCommand: "true",
+        nextStepId: null,
+      },
+      {
+        id: "third",
+        type: "bash",
+        initialCommand: "true",
+        nextStepId: "second",
+      },
+    ];
+    expect(validateWorkflowDraft(script)).toBeNull();
+
+    script.steps[2] = { ...script.steps[2]!, nextStepId: "first" };
+    expect(validateWorkflowDraft(script)).toContain("cycle");
+  });
+
+  it("rejects downstream links that cross nested sequence boundaries", () => {
+    const script = createEmptyWorkflowScript();
+    script.steps = [
+      {
+        id: "route",
+        type: "switch",
+        cases: [
+          {
+            equals: "yes",
+            steps: [
+              {
+                id: "nested",
+                type: "bash",
+                initialCommand: "true",
+                nextStepId: "finish",
+              },
+            ],
+          },
+        ],
+      },
+      { id: "finish", type: "bash", initialCommand: "true" },
+    ];
+
+    expect(validateWorkflowDraft(script)).toContain("missing downstream step: finish");
+  });
+
   it("reports invalid retry backoff ranges before save", () => {
     const script = createEmptyWorkflowScript();
     script.taskDefaults = {

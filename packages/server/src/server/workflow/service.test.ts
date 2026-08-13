@@ -685,6 +685,89 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["prepare", "route", "finish"]);
   });
 
+  it("executes nodes by configured downstream links instead of list order", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    const appendStep = (step: string) =>
+      nodeCommand(
+        [
+          "const input = JSON.parse(process.argv.at(-1));",
+          `const visited = [...(input.visited ?? []), ${JSON.stringify(step)}];`,
+          "__paseoWriteResult({ ...input, visited });",
+        ].join("\n"),
+      );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Explicit downstream graph",
+        steps: [
+          {
+            id: "first",
+            type: "bash",
+            initialCommand: appendStep("first"),
+            nextStepId: "third",
+          },
+          {
+            id: "skipped",
+            type: "bash",
+            initialCommand: appendStep("skipped"),
+            nextStepId: null,
+          },
+          {
+            id: "third",
+            type: "bash",
+            initialCommand: appendStep("third"),
+            nextStepId: "finish",
+          },
+          {
+            id: "finish",
+            type: "bash",
+            initialCommand: appendStep("finish"),
+            nextStepId: null,
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+
+    expect(run.status).toBe("succeeded");
+    expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["first", "third", "finish"]);
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
+      visited: ["first", "third", "finish"],
+    });
+  });
+
+  it("rejects a workflow before creating a run when downstream links are invalid", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        version: 1,
+        name: "Invalid downstream graph",
+        steps: [
+          {
+            id: "first",
+            type: "bash",
+            initialCommand: nodeCommand('__paseoWriteResult({ control: "unexpected" });'),
+            nextStepId: "missing",
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    await expect(service.runScript({ scriptPath, inputPayload: "{}" })).rejects.toThrow(
+      "missing downstream step: missing",
+    );
+    expect(await service.listRuns()).toEqual([]);
+  });
+
   it("stops immediately when a node exits with an error", async () => {
     const home = await createTempHome();
     const inputPath = join(home, "input.txt");

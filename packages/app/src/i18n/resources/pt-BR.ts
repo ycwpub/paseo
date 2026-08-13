@@ -47,7 +47,38 @@ export const ptBR: TranslationResources = {
       idle: "Ocioso",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plano completo",
+      fullViewTitle: "Grafo completo do workflow",
+      fullViewHint:
+        "Inspecione o grafo de dependências e o caminho de execução, aplique zoom ou abra um nó.",
+      zoomIn: "Ampliar o grafo do workflow",
+      zoomOut: "Reduzir o grafo do workflow",
+      resetZoom: "Redefinir o zoom do grafo",
+      nodeName: "Nome do nó",
+      nodeId: "ID do nó",
+      nodeType: "Tipo do nó",
+      configuration: "Configuração completa do nó",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      openDetails: "Abrir detalhes do nó {{name}}",
+      downstream: {
+        label: "Próximo nó",
+        hint: "Escolha o nó do mesmo nível que será executado após este nó.",
+        sequential: "Seguir a ordem da lista",
+        sequentialDescription: "Executar o próximo nó da lista.",
+        end: "Encerrar sequência",
+        endDescription: "Encerrar esta sequência após a conclusão do nó atual.",
+        missing: "Nó ausente: {{id}}",
+        placeholder: "Selecionar próximo nó",
+        empty: "Nenhum próximo nó disponível",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",

@@ -21,6 +21,7 @@ describe("WorkflowScriptSchema", () => {
         {
           id: "prepare",
           type: "bash",
+          nextStepId: "route",
           initialCommand: "echo prepare",
           variables: { customerName: "{{customer.name}}" },
           retry: { maxAttempts: 2 },
@@ -69,6 +70,7 @@ describe("WorkflowScriptSchema", () => {
     expect(parsed.version).toBe(1);
     expect(parsed.steps).toHaveLength(2);
     expect(parsed.taskDefaults?.retry?.maxAttempts).toBe(3);
+    expect(parsed.steps[0]?.nextStepId).toBe("route");
     expect(
       parsed.steps[1]?.type === "switch" &&
         parsed.steps[1].cases[0]?.steps[0]?.type === "agent" &&

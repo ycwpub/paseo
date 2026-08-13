@@ -47,7 +47,38 @@ export const es: TranslationResources = {
       idle: "Inactivo",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plan completo",
+      fullViewTitle: "Grafo completo del flujo de trabajo",
+      fullViewHint:
+        "Inspecciona el grafo de dependencias y la ruta de ejecución, amplíalo o abre un nodo.",
+      zoomIn: "Ampliar el grafo del flujo de trabajo",
+      zoomOut: "Reducir el grafo del flujo de trabajo",
+      resetZoom: "Restablecer el zoom del grafo",
+      nodeName: "Nombre del nodo",
+      nodeId: "ID del nodo",
+      nodeType: "Tipo de nodo",
+      configuration: "Configuración completa del nodo",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      openDetails: "Abrir los detalles del nodo {{name}}",
+      downstream: {
+        label: "Nodo siguiente",
+        hint: "Elige el nodo del mismo nivel que se ejecutará al terminar este nodo.",
+        sequential: "Seguir el orden de la lista",
+        sequentialDescription: "Ejecutar el siguiente nodo de la lista.",
+        end: "Finalizar la secuencia",
+        endDescription: "Finalizar esta secuencia al completar el nodo actual.",
+        missing: "Falta el nodo: {{id}}",
+        placeholder: "Seleccionar nodo siguiente",
+        empty: "No hay nodos siguientes disponibles",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",

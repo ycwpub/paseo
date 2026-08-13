@@ -48,7 +48,38 @@ export const fr: TranslationResources = {
       idle: "Inactif",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plan complet",
+      fullViewTitle: "Graphe complet du workflow",
+      fullViewHint:
+        "Inspectez le graphe des dépendances et le chemin d’exécution, zoomez ou ouvrez un nœud.",
+      zoomIn: "Agrandir le graphe du workflow",
+      zoomOut: "Réduire le graphe du workflow",
+      resetZoom: "Réinitialiser le zoom du graphe",
+      nodeName: "Nom du nœud",
+      nodeId: "ID du nœud",
+      nodeType: "Type de nœud",
+      configuration: "Configuration complète du nœud",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      openDetails: "Ouvrir les détails du nœud {{name}}",
+      downstream: {
+        label: "Nœud suivant",
+        hint: "Choisissez le nœud de même niveau à exécuter après celui-ci.",
+        sequential: "Suivre l’ordre de la liste",
+        sequentialDescription: "Exécuter le nœud suivant de la liste.",
+        end: "Terminer la séquence",
+        endDescription: "Terminer cette séquence après le nœud actuel.",
+        missing: "Nœud manquant : {{id}}",
+        placeholder: "Sélectionner le nœud suivant",
+        empty: "Aucun nœud suivant disponible",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Basculer la barre latérale",

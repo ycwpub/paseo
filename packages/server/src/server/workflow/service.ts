@@ -60,6 +60,7 @@ import { parseCommandNodeResult } from "./command-result.js";
 import { executeForIterations } from "./for-step-execution.js";
 import { WorkflowRunStore } from "./store.js";
 import { findWorkflowStep } from "./workflow-step-search.js";
+import { resolveNextWorkflowStep, validateWorkflowSequenceLinks } from "./workflow-sequence.js";
 
 const DEFAULT_SHELL = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
 const DEFAULT_PYTHON_PATH = process.platform === "win32" ? "python" : "python3";
@@ -464,9 +465,28 @@ export class WorkflowService {
     initialState: ExecutionState,
   ): Promise<ExecutionState> {
     let state = initialState;
-    for (const step of steps) {
+    const linkError = validateWorkflowSequenceLinks(steps);
+    if (linkError) {
+      throw new WorkflowExecutionError(linkError, state, "WORKFLOW_INVALID_GRAPH");
+    }
+    const visited = new Set<number>();
+    let index: number | null = steps.length > 0 ? 0 : null;
+    while (index !== null) {
+      if (visited.has(index)) {
+        throw new WorkflowExecutionError(
+          `Workflow sequence contains a cycle at step ${steps[index]?.id ?? index}`,
+          state,
+          "WORKFLOW_INVALID_GRAPH",
+        );
+      }
+      visited.add(index);
+      const step = steps[index];
+      if (!step) {
+        break;
+      }
       this.assertRunActive(run.id, state);
       state = await this.executeStep(run, step, state);
+      index = resolveNextWorkflowStep(steps, index)?.index ?? null;
     }
     return state;
   }
@@ -956,7 +976,25 @@ export class WorkflowService {
           },
           iterationPath: [...state.iterationPath, index],
         };
-        for (const childStep of step.steps) {
+        const linkError = validateWorkflowSequenceLinks(step.steps);
+        if (linkError) {
+          throw new WorkflowExecutionError(linkError, iterationState, "WORKFLOW_INVALID_GRAPH");
+        }
+        const visited = new Set<number>();
+        let childIndex: number | null = step.steps.length > 0 ? 0 : null;
+        while (childIndex !== null) {
+          if (visited.has(childIndex)) {
+            throw new WorkflowExecutionError(
+              `Workflow sequence contains a cycle at step ${step.steps[childIndex]?.id ?? childIndex}`,
+              iterationState,
+              "WORKFLOW_INVALID_GRAPH",
+            );
+          }
+          visited.add(childIndex);
+          const childStep = step.steps[childIndex];
+          if (!childStep) {
+            break;
+          }
           iterationState = await this.executeStep(run, childStep, iterationState);
           if (
             iterationState.payload.control === "break" ||
@@ -967,6 +1005,7 @@ export class WorkflowService {
           if (iterationState.payload.control === "continue") {
             return { state: iterationState, signal: "continue" };
           }
+          childIndex = resolveNextWorkflowStep(step.steps, childIndex)?.index ?? null;
         }
         return { state: iterationState, signal: "complete" };
       },
@@ -1678,6 +1717,10 @@ function validateWorkflowScript(script: WorkflowScript): void {
   const visit = (steps: WorkflowStep[], depth: number): void => {
     if (depth > MAX_WORKFLOW_DEPTH) {
       throw new Error(`Workflow nesting exceeds ${MAX_WORKFLOW_DEPTH} levels`);
+    }
+    const linkError = validateWorkflowSequenceLinks(steps);
+    if (linkError) {
+      throw new Error(linkError);
     }
     for (const step of steps) {
       count += 1;

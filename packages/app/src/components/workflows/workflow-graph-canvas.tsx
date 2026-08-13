@@ -1,19 +1,24 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- Workflow graph positions and node selection styles are derived from the stable layout model. */
-import { useMemo, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
   CircleStop,
   FileCode2,
   GitBranch,
+  Maximize2,
   Play,
   Repeat2,
   TerminalSquare,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { StyleSheet } from "react-native-unistyles";
 import type { WorkflowNodeRun, WorkflowStep } from "@getpaseo/protocol/workflow/types";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { Button } from "@/components/ui/button";
 import {
   buildWorkflowGraphModel,
   type WorkflowGraphNode,
@@ -24,6 +29,14 @@ import {
   type WorkflowGraphLayoutEdge,
   type WorkflowGraphLayoutNode,
 } from "@/workflows/graph-layout";
+import {
+  DEFAULT_WORKFLOW_GRAPH_ZOOM,
+  formatWorkflowGraphZoom,
+  zoomWorkflowGraphIn,
+  zoomWorkflowGraphOut,
+} from "@/workflows/graph-zoom";
+
+const FULL_GRAPH_SNAP_POINTS = ["95%"];
 
 export function WorkflowGraph({
   steps,
@@ -39,6 +52,81 @@ export function WorkflowGraph({
   mode: "design" | "run";
 }): ReactElement {
   const { t } = useTranslation();
+  const { height: windowHeight } = useWindowDimensions();
+  const [fullGraphVisible, setFullGraphVisible] = useState(false);
+  const fullGraphHeight = Math.max(420, Math.min(900, Math.round(windowHeight * 0.72)));
+  const openFullGraph = useCallback(() => setFullGraphVisible(true), []);
+  const closeFullGraph = useCallback(() => setFullGraphVisible(false), []);
+  const selectFromFullGraph = useCallback(
+    (stepId: string) => {
+      closeFullGraph();
+      onSelectStep?.(stepId);
+    },
+    [closeFullGraph, onSelectStep],
+  );
+  const fullGraphHeader = useMemo<SheetHeader>(
+    () => ({
+      title: t("workflows.graph.fullViewTitle"),
+      subtitle: t("workflows.graph.fullViewHint"),
+    }),
+    [t],
+  );
+
+  return (
+    <>
+      <WorkflowGraphSurface
+        steps={steps}
+        nodeRuns={nodeRuns}
+        selectedStepId={selectedStepId}
+        onSelectStep={onSelectStep}
+        onOpenFullGraph={openFullGraph}
+        mode={mode}
+      />
+      <AdaptiveModalSheet
+        visible={fullGraphVisible}
+        header={fullGraphHeader}
+        onClose={closeFullGraph}
+        desktopMaxWidth={1600}
+        snapPoints={FULL_GRAPH_SNAP_POINTS}
+        scrollable={false}
+        contentStyle={styles.fullGraphSheetContent}
+        testID="workflow-full-graph"
+      >
+        <WorkflowGraphSurface
+          steps={steps}
+          nodeRuns={nodeRuns}
+          selectedStepId={selectedStepId}
+          onSelectStep={onSelectStep ? selectFromFullGraph : undefined}
+          mode={mode}
+          presentation="full"
+          viewportHeight={fullGraphHeight}
+        />
+      </AdaptiveModalSheet>
+    </>
+  );
+}
+
+function WorkflowGraphSurface({
+  steps,
+  nodeRuns,
+  selectedStepId,
+  onSelectStep,
+  onOpenFullGraph,
+  mode,
+  presentation = "embedded",
+  viewportHeight,
+}: {
+  steps: WorkflowStep[];
+  nodeRuns: WorkflowNodeRun[];
+  selectedStepId: string | null;
+  onSelectStep?: (stepId: string) => void;
+  onOpenFullGraph?: () => void;
+  mode: "design" | "run";
+  presentation?: "embedded" | "full";
+  viewportHeight?: number;
+}): ReactElement {
+  const { t } = useTranslation();
+  const [zoom, setZoom] = useState(DEFAULT_WORKFLOW_GRAPH_ZOOM);
   const model = useMemo(() => buildWorkflowGraphModel(steps, nodeRuns), [nodeRuns, steps]);
   const layout = useMemo(() => layoutWorkflowGraph(model), [model]);
   const orderByStepId = useMemo(
@@ -54,9 +142,34 @@ export function WorkflowGraph({
     () => new Map(layout.nodes.map((node) => [node.id, node])),
     [layout.nodes],
   );
+  const zoomIn = useCallback(() => setZoom((current) => zoomWorkflowGraphIn(current)), []);
+  const zoomOut = useCallback(() => setZoom((current) => zoomWorkflowGraphOut(current)), []);
+  const resetZoom = useCallback(() => setZoom(DEFAULT_WORKFLOW_GRAPH_ZOOM), []);
+  const graphScaleStyle = useMemo(
+    () => ({
+      width: layout.width,
+      height: layout.height,
+      transform: [{ scale: zoom }],
+      transformOrigin: "0px 0px",
+    }),
+    [layout.height, layout.width, zoom],
+  );
+  const scaledCanvasStyle = useMemo(
+    () => ({
+      width: layout.width * zoom,
+      height: layout.height * zoom,
+    }),
+    [layout.height, layout.width, zoom],
+  );
 
   return (
-    <View style={styles.card}>
+    <View
+      style={[
+        styles.card,
+        presentation === "full" && styles.fullGraphCard,
+        viewportHeight ? { height: viewportHeight } : null,
+      ]}
+    >
       <View style={styles.header}>
         <View style={styles.heading}>
           <View style={styles.titleRow}>
@@ -74,38 +187,88 @@ export function WorkflowGraph({
           </Text>
         </View>
       </View>
-      {mode === "run" ? <WorkflowGraphLegend /> : null}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={[styles.canvas, { width: layout.width, height: layout.height }]}>
-          <WorkflowGraphEdges
-            width={layout.width}
-            height={layout.height}
-            edges={layout.edges}
-            nodeById={nodeById}
-            mode={mode}
+      <View style={styles.graphToolbar}>
+        {mode === "run" ? <WorkflowGraphLegend /> : <View style={styles.toolbarSpacer} />}
+        <View style={styles.graphActions}>
+          <Button
+            variant="ghost"
+            size="xs"
+            leftIcon={ZoomOut}
+            onPress={zoomOut}
+            accessibilityLabel={t("workflows.graph.zoomOut")}
+            testID="workflow-graph-zoom-out"
           />
-          {layout.edges.map((edge) => (
-            <WorkflowGraphEdgeLabel
-              key={`label:${edge.id}`}
-              edge={edge}
-              source={nodeById.get(edge.from) ?? null}
-            />
-          ))}
-          {layout.nodes.map((positioned) => (
-            <WorkflowGraphCanvasNode
-              key={positioned.id}
-              positioned={positioned}
-              order={orderByStepId.get(positioned.id) ?? 0}
-              selected={selectedStepId === positioned.id}
-              onSelectStep={onSelectStep}
-              mode={mode}
-            />
-          ))}
+          <Button
+            variant="ghost"
+            size="xs"
+            onPress={resetZoom}
+            accessibilityLabel={t("workflows.graph.resetZoom")}
+            testID="workflow-graph-reset-zoom"
+          >
+            {formatWorkflowGraphZoom(zoom)}
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            leftIcon={ZoomIn}
+            onPress={zoomIn}
+            accessibilityLabel={t("workflows.graph.zoomIn")}
+            testID="workflow-graph-zoom-in"
+          />
+          {onOpenFullGraph ? (
+            <Button
+              variant="outline"
+              size="xs"
+              leftIcon={Maximize2}
+              onPress={onOpenFullGraph}
+              testID="workflow-graph-open-full"
+            >
+              {t("workflows.graph.fullView")}
+            </Button>
+          ) : null}
         </View>
+      </View>
+      <ScrollView
+        style={presentation === "full" ? styles.fullGraphVerticalViewport : undefined}
+        contentContainerStyle={styles.verticalScrollContent}
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+      >
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          contentContainerStyle={styles.scrollContent}
+          nestedScrollEnabled
+        >
+          <View style={scaledCanvasStyle}>
+            <View style={[styles.canvas, graphScaleStyle]}>
+              <WorkflowGraphEdges
+                width={layout.width}
+                height={layout.height}
+                edges={layout.edges}
+                nodeById={nodeById}
+                mode={mode}
+              />
+              {layout.edges.map((edge) => (
+                <WorkflowGraphEdgeLabel
+                  key={`label:${edge.id}`}
+                  edge={edge}
+                  source={nodeById.get(edge.from) ?? null}
+                />
+              ))}
+              {layout.nodes.map((positioned) => (
+                <WorkflowGraphCanvasNode
+                  key={positioned.id}
+                  positioned={positioned}
+                  order={orderByStepId.get(positioned.id) ?? 0}
+                  selected={selectedStepId === positioned.id}
+                  onSelectStep={onSelectStep}
+                  mode={mode}
+                />
+              ))}
+            </View>
+          </View>
+        </ScrollView>
       </ScrollView>
       {mode === "run" ? (
         <Text style={styles.footerHint}>{t("workflows.graph.selectNodeHint")}</Text>
@@ -477,6 +640,14 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
   },
+  fullGraphCard: {
+    flex: 1,
+    minHeight: 0,
+  },
+  fullGraphSheetContent: {
+    flex: 1,
+    minHeight: 0,
+  },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -519,6 +690,7 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fontFamily.mono,
   },
   legend: {
+    flex: 1,
     minHeight: 22,
     flexDirection: "row",
     alignItems: "center",
@@ -528,6 +700,28 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface2,
+  },
+  graphToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
+  },
+  toolbarSpacer: {
+    flex: 1,
+  },
+  graphActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
+  },
+  fullGraphVerticalViewport: {
+    flex: 1,
+    minHeight: 0,
+  },
+  verticalScrollContent: {
+    minHeight: "100%",
   },
   legendItem: {
     flexDirection: "row",

@@ -133,6 +133,24 @@ describe("workflow graph layout", () => {
     ).toBe(true);
   });
 
+  it("lays out explicit downstream links and connects the reachable terminal to end", () => {
+    const layout = createLayout([
+      { id: "first", type: "bash", initialCommand: "true", nextStepId: "third" },
+      { id: "second", type: "bash", initialCommand: "true", nextStepId: null },
+      { id: "third", type: "bash", initialCommand: "true", nextStepId: "second" },
+    ]);
+
+    expect(node(layout, "first")).toMatchObject({ rank: 1 });
+    expect(node(layout, "third")).toMatchObject({ rank: 2 });
+    expect(node(layout, "second")).toMatchObject({ rank: 3 });
+    expect(layout.edges.map((edge) => [edge.from, edge.to])).toEqual([
+      ["__workflow_start__", "first"],
+      ["first", "third"],
+      ["third", "second"],
+      ["second", "__workflow_end__"],
+    ]);
+  });
+
   it("uses stable fixed-size nodes without overlaps", () => {
     const layout = createLayout([
       {

@@ -69,6 +69,7 @@ export type WorkflowPromptVariables = z.infer<typeof WorkflowPromptVariablesSche
 export interface WorkflowBashStep {
   id: string;
   name?: string;
+  nextStepId?: string | null;
   type: "bash";
   initialCommand: string;
   variables?: WorkflowPromptVariables;
@@ -81,6 +82,7 @@ export interface WorkflowBashStep {
 export interface WorkflowPythonStep {
   id: string;
   name?: string;
+  nextStepId?: string | null;
   type: "python";
   code: string;
   variables?: WorkflowPromptVariables;
@@ -93,6 +95,7 @@ export interface WorkflowPythonStep {
 export interface WorkflowAgentStep {
   id: string;
   name?: string;
+  nextStepId?: string | null;
   type: "agent";
   outputType?: WorkflowAgentOutputType;
   initialPrompt: string;
@@ -110,6 +113,7 @@ export interface WorkflowSwitchCase {
 export interface WorkflowSwitchStep {
   id: string;
   name?: string;
+  nextStepId?: string | null;
   type: "switch";
   cases: WorkflowSwitchCase[];
   defaultSteps?: WorkflowStep[];
@@ -119,6 +123,7 @@ export interface WorkflowSwitchStep {
 export interface WorkflowForStep {
   id: string;
   name?: string;
+  nextStepId?: string | null;
   type: "for";
   steps: WorkflowStep[];
   separator?: string;
@@ -142,6 +147,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     z.object({
       id: WorkflowStepIdSchema,
       name: WorkflowStepNameSchema,
+      nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("bash"),
       initialCommand: z.string().trim().min(1),
       variables: WorkflowPromptVariablesSchema.optional(),
@@ -153,6 +159,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     z.object({
       id: WorkflowStepIdSchema,
       name: WorkflowStepNameSchema,
+      nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("python"),
       code: z.string().refine((value) => value.trim().length > 0, {
         message: "Python code is required",
@@ -166,6 +173,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     z.object({
       id: WorkflowStepIdSchema,
       name: WorkflowStepNameSchema,
+      nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("agent"),
       outputType: WorkflowAgentOutputTypeSchema.default("answer"),
       initialPrompt: z.string().trim().min(1),
@@ -177,6 +185,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     z.object({
       id: WorkflowStepIdSchema,
       name: WorkflowStepNameSchema,
+      nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("switch"),
       cases: z
         .array(
@@ -192,6 +201,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
     z.object({
       id: WorkflowStepIdSchema,
       name: WorkflowStepNameSchema,
+      nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("for"),
       steps: z.array(WorkflowStepSchema).min(1),
       separator: z.string().min(1).optional(),

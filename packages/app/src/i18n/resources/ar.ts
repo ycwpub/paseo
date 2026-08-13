@@ -47,7 +47,37 @@ export const ar: TranslationResources = {
       idle: "عاطل",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "الخطة الكاملة",
+      fullViewTitle: "مخطط سير العمل الكامل",
+      fullViewHint: "افحص مخطط التبعيات ومسار التنفيذ بالكامل، وكبّره أو افتح عقدة.",
+      zoomIn: "تكبير مخطط سير العمل",
+      zoomOut: "تصغير مخطط سير العمل",
+      resetZoom: "إعادة ضبط تكبير مخطط سير العمل",
+      nodeName: "اسم العقدة",
+      nodeId: "معرّف العقدة",
+      nodeType: "نوع العقدة",
+      configuration: "إعدادات العقدة الكاملة",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      openDetails: "فتح تفاصيل العقدة {{name}}",
+      downstream: {
+        label: "العقدة التالية",
+        hint: "اختر العقدة الشقيقة التي ستعمل بعد اكتمال هذه العقدة.",
+        sequential: "اتباع ترتيب القائمة",
+        sequentialDescription: "تشغيل العقدة التالية في القائمة.",
+        end: "إنهاء التسلسل",
+        endDescription: "إنهاء هذا التسلسل بعد اكتمال العقدة الحالية.",
+        missing: "العقدة مفقودة: {{id}}",
+        placeholder: "اختر العقدة التالية",
+        empty: "لا توجد عقد تالية متاحة",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "تبديل الشريط الجانبي",

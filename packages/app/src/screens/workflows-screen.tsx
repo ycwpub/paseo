@@ -28,6 +28,7 @@ import {
   type WorkflowScript,
   type WorkflowScriptFile,
   type WorkflowScriptSummary,
+  type WorkflowStep,
 } from "@getpaseo/protocol/workflow/types";
 import {
   applyWorkflowInputContract,
@@ -40,9 +41,11 @@ import { WorkflowEnvironmentConfiguration } from "@/components/workflows/workflo
 import { WorkflowGraph } from "@/components/workflows/workflow-graph";
 import { WorkflowInputConfiguration } from "@/components/workflows/workflow-input-configuration";
 import { WorkflowRunInput } from "@/components/workflows/workflow-run-input";
+import { WorkflowStepDetailsSheet } from "@/components/workflows/workflow-step-details-sheet";
 import { WorkflowStepListEditor } from "@/components/workflows/workflow-step-editor";
 import { WorkflowUsageGuide } from "@/components/workflows/workflow-usage-guide";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -66,6 +69,7 @@ import {
 import { collectWorkflowRunTargets } from "@/workflows/run-targets";
 import { deriveWorkflowNodeIdentity } from "@/workflows/run-node-actions";
 import { parseWorkflowProcessOutput } from "@/workflows/run-output";
+import { findWorkflowStep } from "@/workflows/step-lookup";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
@@ -159,6 +163,7 @@ function WorkflowsScreenContent(): ReactElement {
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [usageGuideVisible, setUsageGuideVisible] = useState(false);
+  const [selectedDesignStepId, setSelectedDesignStepId] = useState<string | null>(null);
   const requestGeneration = useRef(0);
   const wide = width >= 960;
 
@@ -208,6 +213,7 @@ function WorkflowsScreenContent(): ReactElement {
     setDirty(false);
     setActiveRun(null);
     setTargetNodeId("");
+    setSelectedDesignStepId(null);
     void loadScripts();
   }, [loadScripts, selectedHost]);
 
@@ -230,6 +236,7 @@ function WorkflowsScreenContent(): ReactElement {
       setSelectedPath(path);
       setActiveRun(null);
       setTargetNodeId("");
+      setSelectedDesignStepId(null);
       try {
         const payload = await client.workflowInspect({ scriptPath: path });
         if (payload.error || !payload.script) {
@@ -279,6 +286,7 @@ function WorkflowsScreenContent(): ReactElement {
     setDirty(true);
     setActiveRun(null);
     setTargetNodeId("");
+    setSelectedDesignStepId(null);
     setInputJson(DEFAULT_WORKFLOW_INPUT_JSON);
   }, [dirty, t]);
 
@@ -343,6 +351,7 @@ function WorkflowsScreenContent(): ReactElement {
       setSelectedPath(null);
       setDirty(false);
       setActiveRun(null);
+      setSelectedDesignStepId(null);
       await loadScripts();
       toast.show(t("workflows.messages.deleted"), { variant: "success" });
     } catch (error) {
@@ -759,7 +768,17 @@ function WorkflowsScreenContent(): ReactElement {
                   <Text style={styles.sectionDescription}>{t("workflows.editor.flowHint")}</Text>
                 </View>
               </View>
-              <WorkflowGraph steps={draft.steps} mode="design" />
+              <WorkflowGraph
+                steps={draft.steps}
+                selectedStepId={selectedDesignStepId}
+                onSelectStep={setSelectedDesignStepId}
+                mode="design"
+              />
+              <WorkflowStepDetailsSheet
+                steps={draft.steps}
+                stepId={selectedDesignStepId}
+                onClose={() => setSelectedDesignStepId(null)}
+              />
               <WorkflowStepListEditor
                 steps={draft.steps}
                 rootSteps={draft.steps}
@@ -988,16 +1007,10 @@ function WorkflowRunPanel({
 }) {
   const { t, i18n } = useTranslation();
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const closeSelectedStep = useCallback(() => setSelectedStepId(null), []);
   useEffect(() => {
     setSelectedStepId(null);
   }, [run.id]);
-  useEffect(() => {
-    if (selectedStepId || run.nodeRuns.length === 0) {
-      return;
-    }
-    const active = run.nodeRuns.find((nodeRun) => nodeRun.status === "running");
-    setSelectedStepId(active?.stepId ?? run.nodeRuns.at(-1)?.stepId ?? null);
-  }, [run.nodeRuns, selectedStepId]);
   let statusIcon: ReactElement;
   if (run.status === "succeeded") {
     statusIcon = <CheckCircle2 size={16} color={styles.runSuccessIcon.color} />;
@@ -1057,9 +1070,11 @@ function WorkflowRunPanel({
       />
       <WorkflowSelectedNodeRuns
         stepId={selectedStepId}
+        steps={run.scriptSnapshot.steps}
         nodeRuns={run.nodeRuns}
         locale={i18n.language}
         onOpenAgent={onOpenAgent}
+        onClose={closeSelectedStep}
       />
     </View>
   );
@@ -1067,80 +1082,117 @@ function WorkflowRunPanel({
 
 function WorkflowSelectedNodeRuns({
   stepId,
+  steps,
   nodeRuns,
   locale,
   onOpenAgent,
+  onClose,
 }: {
   stepId: string | null;
+  steps: WorkflowStep[];
   nodeRuns: WorkflowNodeRun[];
   locale: string;
   onOpenAgent: (agentId: string) => void;
+  onClose: () => void;
 }) {
   const { t } = useTranslation();
-  if (!stepId) {
-    return null;
-  }
   const selectedRuns = nodeRuns.filter((nodeRun) => nodeRun.stepId === stepId);
+  const selectedNode = selectedRuns.at(-1);
+  const selectedStep = findWorkflowStep(steps, stepId);
+  let selectedStepType: string | undefined = selectedStep?.type;
+  if (selectedNode) {
+    selectedStepType = selectedNode.executor === "python" ? "python" : selectedNode.stepType;
+  }
+  const header = useMemo<SheetHeader>(
+    () => ({
+      title:
+        selectedNode?.stepName ||
+        selectedStep?.name ||
+        selectedNode?.stepId ||
+        selectedStep?.id ||
+        t("workflows.graph.nodeDetails"),
+      subtitle:
+        selectedNode || selectedStep
+          ? `${t(`workflows.nodes.types.${selectedStepType}`)} · ${
+              selectedNode?.stepId || selectedStep?.id
+            }`
+          : t("workflows.graph.nodeDetails"),
+    }),
+    [selectedNode, selectedStep, selectedStepType, t],
+  );
   return (
-    <View style={styles.selectedNodeRuns}>
-      <View style={styles.selectedNodeHeader}>
-        <Text style={styles.sectionTitle}>{t("workflows.graph.nodeDetails")}</Text>
-        <Text style={styles.runNodeId}>{stepId}</Text>
-      </View>
-      {selectedRuns.length === 0 ? (
-        <Text style={styles.selectedNodeEmpty}>{t("workflows.graph.nodeNotRun")}</Text>
-      ) : (
-        selectedRuns.map((node) => {
-          const nodeIdentity = deriveWorkflowNodeIdentity(node);
-          const linkedAgentId = node.agentId;
-          return (
-            <View key={node.id} style={styles.runNodeCard}>
-              <View style={styles.runNode}>
-                <View style={styles.runNodeToggle}>
-                  {renderWorkflowNodeTypeIcon(node)}
-                  <View style={styles.runNodeIdentity}>
-                    <Text style={styles.runNodeName} numberOfLines={2}>
-                      {nodeIdentity.name || nodeIdentity.id}
-                    </Text>
-                    <Text style={styles.runNodeId}>
-                      {t("workflows.graph.executionAttempt", {
-                        attempt: node.attempt,
-                        count: node.maxAttempts,
-                      })}
-                    </Text>
+    <AdaptiveModalSheet
+      visible={Boolean(stepId)}
+      header={header}
+      onClose={onClose}
+      desktopMaxWidth={960}
+      snapPoints={["90%", "95%"]}
+      testID="workflow-node-details"
+    >
+      <View style={styles.selectedNodeRuns}>
+        {selectedRuns.length === 0 ? (
+          <>
+            <Text style={styles.selectedNodeEmpty}>{t("workflows.graph.nodeNotRun")}</Text>
+            {selectedStep ? (
+              <WorkflowPayloadValue
+                label={t("workflows.graph.configuration")}
+                value={JSON.stringify(selectedStep)}
+              />
+            ) : null}
+          </>
+        ) : (
+          selectedRuns.map((node) => {
+            const nodeIdentity = deriveWorkflowNodeIdentity(node);
+            const linkedAgentId = node.agentId;
+            return (
+              <View key={node.id} style={styles.runNodeCard}>
+                <View style={styles.runNode}>
+                  <View style={styles.runNodeToggle}>
+                    {renderWorkflowNodeTypeIcon(node)}
+                    <View style={styles.runNodeIdentity}>
+                      <Text style={styles.runNodeName} numberOfLines={2}>
+                        {nodeIdentity.name || nodeIdentity.id}
+                      </Text>
+                      <Text style={styles.runNodeId}>
+                        {t("workflows.graph.executionAttempt", {
+                          attempt: node.attempt,
+                          count: node.maxAttempts,
+                        })}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                {linkedAgentId ? (
-                  <Pressable
-                    onPress={() => onOpenAgent(linkedAgentId)}
-                    style={({ hovered, pressed }) => [
-                      styles.runNodeAgentLink,
-                      (hovered || pressed) && styles.runNodeInteractive,
+                  {linkedAgentId ? (
+                    <Pressable
+                      onPress={() => onOpenAgent(linkedAgentId)}
+                      style={({ hovered, pressed }) => [
+                        styles.runNodeAgentLink,
+                        (hovered || pressed) && styles.runNodeInteractive,
+                      ]}
+                      accessibilityRole="button"
+                    >
+                      <ExternalLink size={12} color={styles.runNodeIcon.color} />
+                    </Pressable>
+                  ) : null}
+                  <Text
+                    style={[
+                      styles.runNodeStatus,
+                      (node.status === "failed" ||
+                        node.status === "cancelled" ||
+                        node.status === "timed_out") &&
+                        styles.runNodeStatusFailed,
                     ]}
-                    accessibilityRole="button"
                   >
-                    <ExternalLink size={12} color={styles.runNodeIcon.color} />
-                  </Pressable>
-                ) : null}
-                <Text
-                  style={[
-                    styles.runNodeStatus,
-                    (node.status === "failed" ||
-                      node.status === "cancelled" ||
-                      node.status === "timed_out") &&
-                      styles.runNodeStatusFailed,
-                  ]}
-                >
-                  {t(`workflows.run.status.${node.status}`)}
-                </Text>
+                    {t(`workflows.run.status.${node.status}`)}
+                  </Text>
+                </View>
+                <WorkflowNodeCore node={node} locale={locale} expanded />
+                <WorkflowNodeDetails node={node} />
               </View>
-              <WorkflowNodeCore node={node} locale={locale} expanded />
-              <WorkflowNodeDetails node={node} />
-            </View>
-          );
-        })
-      )}
-    </View>
+            );
+          })
+        )}
+      </View>
+    </AdaptiveModalSheet>
   );
 }
 
@@ -1850,12 +1902,6 @@ const styles = StyleSheet.create((theme) => ({
   selectedNodeRuns: {
     gap: theme.spacing[2],
     marginTop: theme.spacing[1],
-  },
-  selectedNodeHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[3],
   },
   selectedNodeEmpty: {
     padding: theme.spacing[4],

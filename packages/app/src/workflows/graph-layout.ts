@@ -44,7 +44,7 @@ interface FlattenedNode {
 
 export function layoutWorkflowGraph(model: WorkflowGraphModel): WorkflowGraphLayout {
   const flattened = flattenGraphNodes(model.nodes);
-  const ranks = calculateRanks(flattened, model.edges);
+  const ranks = calculateRanks(flattened, model.edges, model.entryStepId);
   const realNodes = flattened.map(({ node, lane }) =>
     createLayoutNode(node.stepId, "step", node, (ranks.get(node.stepId) ?? 0) + 1, lane),
   );
@@ -53,7 +53,7 @@ export function layoutWorkflowGraph(model: WorkflowGraphModel): WorkflowGraphLay
   const end = createLayoutNode("__workflow_end__", "end", null, maxRank + 1, 0);
   const nodes = [start, ...realNodes, end];
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const graphEdges = addBoundaryEdges(model.nodes, model.edges);
+  const graphEdges = addBoundaryEdges(model);
   const edges = graphEdges.flatMap((edge, index) => {
     const from = nodeById.get(edge.from);
     const to = nodeById.get(edge.to);
@@ -103,8 +103,12 @@ function flattenGraphNodes(nodes: WorkflowGraphNode[]): FlattenedNode[] {
   return flattened;
 }
 
-function calculateRanks(nodes: FlattenedNode[], edges: WorkflowGraphEdge[]): Map<string, number> {
-  const ranks = new Map(nodes.map(({ node }) => [node.stepId, 0]));
+function calculateRanks(
+  nodes: FlattenedNode[],
+  edges: WorkflowGraphEdge[],
+  entryStepId: string | null,
+): Map<string, number> {
+  const ranks = new Map<string, number>();
   const order = new Map(nodes.map(({ node }, index) => [node.stepId, index]));
   const forwardEdges = edges
     .filter((edge) => edge.kind !== "loop_back")
@@ -113,22 +117,43 @@ function calculateRanks(nodes: FlattenedNode[], edges: WorkflowGraphEdge[]): Map
         (order.get(left.from) ?? Number.MAX_SAFE_INTEGER) -
         (order.get(right.from) ?? Number.MAX_SAFE_INTEGER),
     );
-  for (let pass = 0; pass < nodes.length; pass += 1) {
+  if (entryStepId) {
+    ranks.set(entryStepId, 0);
+  }
+  for (const { node } of nodes) {
+    if (!ranks.has(node.stepId)) {
+      const maxRank = Math.max(-1, ...ranks.values());
+      ranks.set(node.stepId, maxRank + 1);
+    }
+    propagateRanks(ranks, forwardEdges, nodes.length);
+  }
+  return ranks;
+}
+
+function propagateRanks(
+  ranks: Map<string, number>,
+  edges: WorkflowGraphEdge[],
+  nodeCount: number,
+): void {
+  for (let pass = 0; pass < nodeCount; pass += 1) {
     let changed = false;
-    for (const edge of forwardEdges) {
+    for (const edge of edges) {
       const fromRank = ranks.get(edge.from);
       const toRank = ranks.get(edge.to);
-      if (fromRank === undefined || toRank === undefined || toRank > fromRank) {
+      if (fromRank === undefined) {
         continue;
       }
-      ranks.set(edge.to, fromRank + 1);
+      const requiredRank = fromRank + 1;
+      if (toRank !== undefined && toRank >= requiredRank) {
+        continue;
+      }
+      ranks.set(edge.to, requiredRank);
       changed = true;
     }
     if (!changed) {
       break;
     }
   }
-  return ranks;
 }
 
 function createLayoutNode(
@@ -154,11 +179,8 @@ function createLayoutNode(
   };
 }
 
-function addBoundaryEdges(
-  nodes: WorkflowGraphNode[],
-  edges: WorkflowGraphEdge[],
-): WorkflowGraphEdge[] {
-  if (nodes.length === 0) {
+function addBoundaryEdges(model: WorkflowGraphModel): WorkflowGraphEdge[] {
+  if (!model.entryStepId) {
     return [
       {
         from: "__workflow_start__",
@@ -168,20 +190,15 @@ function addBoundaryEdges(
       },
     ];
   }
-  const first = nodes[0];
-  if (!first) {
-    return edges;
-  }
-  const terminals = terminalDependenciesForSequence(nodes);
   return [
     {
       from: "__workflow_start__",
-      to: first.stepId,
+      to: model.entryStepId,
       kind: "sequence",
       label: null,
     },
-    ...edges,
-    ...terminals.map(
+    ...model.edges,
+    ...model.terminals.map(
       (terminal): WorkflowGraphEdge => ({
         from: terminal.stepId,
         to: "__workflow_end__",
@@ -190,30 +207,6 @@ function addBoundaryEdges(
       }),
     ),
   ];
-}
-
-function terminalDependenciesForSequence(
-  nodes: WorkflowGraphNode[],
-): Array<Pick<WorkflowGraphEdge, "kind" | "label"> & { stepId: string }> {
-  const terminal = nodes.at(-1);
-  if (!terminal) {
-    return [];
-  }
-  if (terminal.stepType !== "switch") {
-    return [{ stepId: terminal.stepId, kind: "sequence", label: null }];
-  }
-  return terminal.branches.flatMap((branch) => {
-    if (branch.nodes.length > 0) {
-      return terminalDependenciesForSequence(branch.nodes);
-    }
-    return [
-      {
-        stepId: terminal.stepId,
-        kind: "branch" as const,
-        label: branch.kind === "case" ? branch.label : null,
-      },
-    ];
-  });
 }
 
 function routeEdge(

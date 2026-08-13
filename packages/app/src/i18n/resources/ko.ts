@@ -48,6 +48,34 @@ const koOverrides = {
       idle: "대기 중",
     },
   },
+  workflows: {
+    graph: {
+      fullView: "전체 계획",
+      fullViewTitle: "전체 워크플로 그래프",
+      fullViewHint: "전체 종속성 그래프와 실행 경로를 확인하고 확대하거나 노드를 열 수 있습니다.",
+      zoomIn: "워크플로 그래프 확대",
+      zoomOut: "워크플로 그래프 축소",
+      resetZoom: "워크플로 그래프 확대/축소 초기화",
+      nodeName: "노드 이름",
+      nodeId: "노드 ID",
+      nodeType: "노드 유형",
+      configuration: "전체 노드 구성",
+    },
+    nodes: {
+      openDetails: "{{name}} 노드 세부 정보 열기",
+      downstream: {
+        label: "다음 노드",
+        hint: "이 노드가 완료된 후 실행할 같은 수준의 노드를 선택하세요.",
+        sequential: "목록 순서 따르기",
+        sequentialDescription: "목록의 다음 노드를 실행합니다.",
+        end: "시퀀스 종료",
+        endDescription: "현재 노드가 완료되면 이 시퀀스를 종료합니다.",
+        missing: "노드 없음: {{id}}",
+        placeholder: "다음 노드 선택",
+        empty: "선택할 수 있는 다음 노드가 없습니다",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "사이드바 토글",

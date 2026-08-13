@@ -32,14 +32,14 @@ describe("workflow graph model", () => {
     const model = buildWorkflowGraphModel(steps);
 
     expect(model.edges).toEqual([
-      { from: "prepare", to: "route", kind: "sequence", label: null },
       { from: "route", to: "approve", kind: "branch", label: "yes" },
       { from: "route", to: "reject", kind: "branch", label: "no" },
+      { from: "loop", to: "worker", kind: "branch", label: null },
+      { from: "worker", to: "loop", kind: "loop_back", label: null },
+      { from: "prepare", to: "route", kind: "sequence", label: null },
       { from: "approve", to: "loop", kind: "sequence", label: null },
       { from: "reject", to: "loop", kind: "sequence", label: null },
       { from: "route", to: "loop", kind: "branch", label: null },
-      { from: "loop", to: "worker", kind: "branch", label: null },
-      { from: "worker", to: "loop", kind: "loop_back", label: null },
       { from: "loop", to: "finish", kind: "sequence", label: null },
     ]);
     expect(findWorkflowGraphNode(model.nodes, "loop")?.dependencies).toEqual([
@@ -67,6 +67,52 @@ describe("workflow graph model", () => {
     expect(worker?.runs.map((run) => run.id)).toEqual(["first", "second"]);
     expect(worker?.latestRun?.id).toBe("second");
     expect(pending?.status).toBe("not_run");
+  });
+
+  it("uses explicit downstream links instead of list order", () => {
+    const steps: WorkflowStep[] = [
+      { id: "first", type: "bash", initialCommand: "true", nextStepId: "third" },
+      { id: "second", type: "bash", initialCommand: "true", nextStepId: null },
+      { id: "third", type: "bash", initialCommand: "true", nextStepId: "second" },
+    ];
+
+    const model = buildWorkflowGraphModel(steps);
+
+    expect(model.edges).toEqual([
+      { from: "first", to: "third", kind: "sequence", label: null },
+      { from: "third", to: "second", kind: "sequence", label: null },
+    ]);
+    expect(model.entryStepId).toBe("first");
+    expect(model.terminals).toEqual([{ stepId: "second", kind: "sequence", label: null }]);
+    expect(findWorkflowGraphNode(model.nodes, "second")?.dependencies).toEqual(["third"]);
+  });
+
+  it("connects switch branch terminals to an explicitly selected downstream node", () => {
+    const steps: WorkflowStep[] = [
+      {
+        id: "route",
+        type: "switch",
+        nextStepId: "finish",
+        cases: [
+          {
+            equals: "yes",
+            steps: [{ id: "approve", type: "bash", initialCommand: "true" }],
+          },
+        ],
+        defaultSteps: [],
+      },
+      { id: "skipped", type: "bash", initialCommand: "true", nextStepId: null },
+      { id: "finish", type: "bash", initialCommand: "true", nextStepId: null },
+    ];
+
+    const model = buildWorkflowGraphModel(steps);
+
+    expect(model.edges).toEqual([
+      { from: "route", to: "approve", kind: "branch", label: "yes" },
+      { from: "approve", to: "finish", kind: "sequence", label: null },
+      { from: "route", to: "finish", kind: "branch", label: null },
+    ]);
+    expect(model.terminals).toEqual([{ stepId: "finish", kind: "sequence", label: null }]);
   });
 });
 

@@ -47,7 +47,37 @@ export const ja: TranslationResources = {
       idle: "アイドル",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "全体プラン",
+      fullViewTitle: "ワークフロー全体図",
+      fullViewHint: "依存関係と実行経路の全体図を確認し、拡大縮小やノードの表示ができます。",
+      zoomIn: "ワークフロー図を拡大",
+      zoomOut: "ワークフロー図を縮小",
+      resetZoom: "ワークフロー図の倍率をリセット",
+      nodeName: "ノード名",
+      nodeId: "ノードID",
+      nodeType: "ノード種別",
+      configuration: "ノードの完全な設定",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      openDetails: "{{name}}ノードの詳細を開く",
+      downstream: {
+        label: "次のノード",
+        hint: "このノードの完了後に実行する同階層のノードを選択します。",
+        sequential: "リスト順に実行",
+        sequentialDescription: "リスト内の次のノードを実行します。",
+        end: "シーケンスを終了",
+        endDescription: "現在のノードの完了後にこのシーケンスを終了します。",
+        missing: "ノードがありません：{{id}}",
+        placeholder: "次のノードを選択",
+        empty: "選択できる次のノードがありません",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "サイドバーを切り替え",

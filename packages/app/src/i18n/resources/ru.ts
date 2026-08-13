@@ -47,7 +47,38 @@ export const ru: TranslationResources = {
       idle: "Праздный",
     },
   },
-  workflows: en.workflows,
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Полный план",
+      fullViewTitle: "Полный граф рабочего процесса",
+      fullViewHint:
+        "Просматривайте граф зависимостей и путь выполнения, масштабируйте его или открывайте узлы.",
+      zoomIn: "Увеличить граф рабочего процесса",
+      zoomOut: "Уменьшить граф рабочего процесса",
+      resetZoom: "Сбросить масштаб графа",
+      nodeName: "Имя узла",
+      nodeId: "ID узла",
+      nodeType: "Тип узла",
+      configuration: "Полная конфигурация узла",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      openDetails: "Открыть сведения об узле {{name}}",
+      downstream: {
+        label: "Следующий узел",
+        hint: "Выберите узел того же уровня, который запустится после завершения текущего.",
+        sequential: "Следовать порядку списка",
+        sequentialDescription: "Запустить следующий узел в списке.",
+        end: "Завершить последовательность",
+        endDescription: "Завершить последовательность после текущего узла.",
+        missing: "Узел отсутствует: {{id}}",
+        placeholder: "Выберите следующий узел",
+        empty: "Нет доступных следующих узлов",
+      },
+    },
+  },
   shell: {
     menu: {
       toggleSidebar: "Переключить боковую панель",

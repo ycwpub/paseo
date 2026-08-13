@@ -30,7 +30,9 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("@/components/message", () => ({
-  AssistantTurnFooter: () => null,
+  AssistantTurnFooter: ({ timestamp }: { timestamp: Date }) => (
+    <span data-testid="completed-turn-timestamp">{timestamp.toISOString()}</span>
+  ),
   LiveElapsed: () => <span data-testid="running-turn-timestamp" />,
   STREAM_METADATA_FONT_SIZE: 11,
 }));
@@ -56,10 +58,28 @@ vi.mock("./turn-changes", () => ({
 }));
 
 import { TurnFooter } from "./turn-footer";
+import { resolveStreamRenderStrategy } from "./strategy-resolver";
+import type { StreamItem } from "@/types/stream";
 
 const unusedRunningTurnStrategy = null as unknown as React.ComponentProps<
   typeof TurnFooter
 >["strategy"];
+const completedTurnStrategy = resolveStreamRenderStrategy({
+  platform: "web",
+  isMobileBreakpoint: false,
+});
+const completedTurnTimestamp = new Date("2026-08-13T08:15:30.000Z");
+const completedAssistantMessage: Extract<StreamItem, { kind: "assistant_message" }> = {
+  kind: "assistant_message",
+  id: "assistant-1",
+  text: "Completed answer",
+  timestamp: completedTurnTimestamp,
+};
+const completedTurnHost = {
+  itemId: completedAssistantMessage.id,
+  items: [completedAssistantMessage],
+  startIndex: 0,
+};
 
 describe("TurnFooter", () => {
   let root: Root | null = null;
@@ -109,5 +129,27 @@ describe("TurnFooter", () => {
       "running-turn-fork",
       "running-turn-timestamp",
     ]);
+  });
+
+  it("passes the final assistant message send time to the completed footer", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        <TurnFooter
+          isRunning={false}
+          inFlightTurnStartedAt={null}
+          host={completedTurnHost}
+          strategy={completedTurnStrategy}
+          supportsTimelineCursor
+        />,
+      );
+    });
+
+    expect(container.querySelector('[data-testid="completed-turn-timestamp"]')?.textContent).toBe(
+      completedTurnTimestamp.toISOString(),
+    );
   });
 });

@@ -570,6 +570,7 @@ interface AssistantTurnFooterProps {
   getContent: () => string;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
   trailing?: ReactNode;
+  timestamp: Date;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -585,6 +586,11 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     marginTop: 0,
     marginLeft: -theme.spacing[1],
   },
+  timestamp: {
+    color: theme.colors.foregroundMuted,
+    fontSize: STREAM_METADATA_FONT_SIZE,
+    fontVariant: ["tabular-nums"],
+  },
 }));
 
 /**
@@ -594,6 +600,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   getContent,
   onFork,
   trailing,
+  timestamp,
 }: AssistantTurnFooterProps) {
   const handleFork = useCallback(
     (target: AssistantForkTarget) => {
@@ -602,6 +609,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     [onFork],
   );
   const canFork = Boolean(onFork);
+  const formattedTimestamp = useMemo(() => formatMessageTimestamp(timestamp), [timestamp]);
 
   return (
     <View style={assistantTurnFooterStylesheet.container}>
@@ -611,6 +619,9 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
       />
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
       {trailing}
+      <Text style={assistantTurnFooterStylesheet.timestamp} testID="assistant-message-timestamp">
+        {formattedTimestamp}
+      </Text>
     </View>
   );
 });

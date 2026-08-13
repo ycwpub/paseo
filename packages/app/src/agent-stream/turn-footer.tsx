@@ -220,12 +220,17 @@ function CompletedTurnFooter({
     },
     [boundary, onForkAssistantTurn],
   );
+  const assistantMessage = items[startIndex];
+  if (!assistantMessage || assistantMessage.kind !== "assistant_message") {
+    return null;
+  }
   return (
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
         getContent={getContent}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
         trailing={hookSummary}
+        timestamp={assistantMessage.timestamp}
       />
     </View>
   );

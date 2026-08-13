@@ -65,6 +65,18 @@ export const ru: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      contract: {
+        title: "Контракт данных узла",
+        description: "Передавайте только нужные поля и проверяйте вход и выход.",
+        inputs: "Сопоставление входа (JSON)",
+        inputsHint:
+          "Полное выражение, например {{nodes.scan.outputs.items}}, сохраняет исходный тип.",
+        inputSchema: "Схема входа",
+        outputSchema: "Схема выхода",
+        schemaHint: "Необязательно. Paseo проверит объект перед продолжением.",
+        invalidJson: "Введите корректный JSON.",
+        objectRequired: "Значение должно быть JSON-объектом.",
+      },
       openDetails: "Открыть сведения об узле {{name}}",
       downstream: {
         label: "Следующий узел",

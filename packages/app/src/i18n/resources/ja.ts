@@ -64,6 +64,17 @@ export const ja: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      contract: {
+        title: "ノードデータ契約",
+        description: "必要なフィールドだけをマッピングし、入出力を検証します。",
+        inputs: "入力マッピング（JSON）",
+        inputsHint: "{{nodes.scan.outputs.items}} のような式全体では元の型が保持されます。",
+        inputSchema: "入力スキーマ",
+        outputSchema: "出力スキーマ",
+        schemaHint: "任意。続行前に Paseo が検証します。",
+        invalidJson: "有効な JSON を入力してください。",
+        objectRequired: "JSON オブジェクトが必要です。",
+      },
       openDetails: "{{name}}ノードの詳細を開く",
       downstream: {
         label: "次のノード",

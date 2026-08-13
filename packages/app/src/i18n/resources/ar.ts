@@ -64,6 +64,17 @@ export const ar: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      contract: {
+        title: "عقد بيانات العقدة",
+        description: "اربط الحقول المطلوبة فقط وتحقق من المدخلات والمخرجات.",
+        inputs: "ربط المدخلات (JSON)",
+        inputsHint: "يحافظ التعبير الكامل مثل {{nodes.scan.outputs.items}} على النوع الأصلي.",
+        inputSchema: "مخطط الإدخال",
+        outputSchema: "مخطط الإخراج",
+        schemaHint: "اختياري. يتحقق Paseo قبل المتابعة.",
+        invalidJson: "أدخل JSON صالحًا.",
+        objectRequired: "يجب أن تكون القيمة كائن JSON.",
+      },
       openDetails: "فتح تفاصيل العقدة {{name}}",
       downstream: {
         label: "العقدة التالية",

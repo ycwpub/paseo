@@ -1,5 +1,5 @@
 const DEFAULT_WORKFLOW_PATH = "/absolute/path/workflow.json";
-const DEFAULT_INPUT_PAYLOAD = '{"control":"","filePath":"/absolute/path/input.txt"}';
+const DEFAULT_INPUT_PAYLOAD = '{"project":"paseo","filePath":"/absolute/path/input.txt"}';
 
 function quoteShellArgument(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;

@@ -4,47 +4,63 @@ Paseo workflows are versioned JSON scripts that can be run by the daemon, CLI, v
 Paseo MCP tools. Reusable scripts live under `~/.paseo/workflows/`; absolute script paths are also
 supported.
 
-## JSON payload contract
+## Workflow v2 contract
 
-Every Bash, Python, or Agent node receives one JSON object serialized as a string. Node input contains
-`control` plus business data, but never contains `error`:
+New workflows use an explicit, versioned resource:
 
 ```json
 {
-  "control": "",
-  "customer": {
-    "name": "Alice"
+  "apiVersion": "paseo.sh/workflow/v1",
+  "kind": "Workflow",
+  "version": 2
+}
+```
+
+Each executable node can declare `inputs`, `inputSchema`, and `outputSchema`. `inputs` maps workflow
+inputs, current data, or prior node outputs into the exact business object the node receives:
+
+```json
+{
+  "inputs": {
+    "project": "{{workflow.inputs.project}}",
+    "alerts": "{{nodes.scan.outputs.alerts}}"
   }
 }
 ```
 
-- `control` drives `switch` and `for`.
-- Node results never include `error`. The workflow framework owns failures, exit status, and parsing
-  errors.
-- Bash and Python report failure with a non-zero exit code and write diagnostics to stderr.
-- Missing result `control` defaults to `""`.
-- Any other JSON fields are business data and are passed to the next node unchanged when the node
-  includes them in its output.
-- A run starts from a JSON payload supplied by the visual editor, CLI, RPC client, or Agent tool.
-- `filePath` is optional. When present, relative paths are resolved from the workflow script's
-  directory and can be used as file context by Bash and Agent nodes.
+A whole `{{expression}}` preserves arrays, objects, booleans, and numbers. Expressions embedded in
+larger strings are stringified. Available roots are `workflow.inputs`, `nodes.<id>.outputs`,
+`input`, `payload`, and fields on the current input.
 
-Example payload:
+Bash and Python read mapped business data from stdin. stdout/stderr are logs. File descriptor `3`
+must contain exactly one v2 result envelope:
 
 ```json
 {
-  "control": "review",
-  "filePath": "/absolute/path/input.csv",
-  "customer": {
-    "name": "Alice"
+  "outputs": {
+    "alerts": []
   },
-  "records": [
+  "artifacts": [
     {
-      "id": 7
+      "name": "report",
+      "uri": "file:///tmp/report.json",
+      "mediaType": "application/json"
     }
-  ]
+  ],
+  "flow": {
+    "action": "next"
+  }
 }
 ```
+
+- `outputs` contains business data only.
+- `artifacts` describes files or external resources produced by the node.
+- `flow.action` is `next`, `continue`, `break`, or `branch`. The framework consumes flow control
+  instead of forwarding it as business input.
+- Node results never contain `error`. Bash/Python fail with a non-zero exit code and stderr;
+  Agent/provider failures are recorded by the framework with status, error code, and message.
+
+Version 1 files remain readable for compatibility, but the visual editor creates version 2.
 
 ## Input contracts and presets
 
@@ -124,9 +140,8 @@ projections.
 
 ## Bash nodes
 
-Bash nodes receive the serialized JSON on stdin. Read `filePath`, `control`, and all business data
-from that object. stdout and stderr are log streams. Write exactly one result JSON document to file
-descriptor `3`.
+Bash nodes receive mapped business JSON on stdin. stdout and stderr are log streams. Write exactly
+one v2 result envelope to file descriptor `3`.
 
 Runtime metadata also includes:
 
@@ -144,13 +159,13 @@ input="$(cat)"
 node - "$input" <<'NODE'
 const fs = require("fs");
 const input = JSON.parse(process.argv[2]);
-const output = {
-  ...input,
-  normalizedCustomer: input.customer.name.trim(),
-  control: "normalized",
-};
 console.log("normalized customer");
-fs.writeSync(3, JSON.stringify(output));
+fs.writeSync(3, JSON.stringify({
+  outputs: {
+    normalizedCustomer: input.customer.name.trim()
+  },
+  flow: { action: "next" }
+}));
 NODE
 ```
 
@@ -223,11 +238,14 @@ import os
 import sys
 
 payload = json.load(sys.stdin)
-payload["normalizedCustomer"] = payload["customer"]["name"].strip()
-payload["control"] = "normalized"
 print("normalized customer")
 with os.fdopen(3, "w") as result:
-    json.dump(payload, result, ensure_ascii=False)
+    json.dump({
+        "outputs": {
+            "normalizedCustomer": payload["customer"]["name"].strip()
+        },
+        "flow": {"action": "next"},
+    }, result, ensure_ascii=False)
 ```
 
 Python code supports the same `{{path}}` template variables and custom `variables` as Bash nodes.
@@ -236,13 +254,14 @@ Python source.
 
 ## Switch
 
-`switch` compares its cases with the payload's `control` string. Matching is case-insensitive by
-default and can be changed with `caseSensitive`.
+`switch` resolves `switchOn` and compares the native value with its cases. String matching is
+case-insensitive by default and can be changed with `caseSensitive`.
 
 ```json
 {
   "id": "route",
   "type": "switch",
+  "switchOn": "{{nodes.classify.outputs.decision}}",
   "cases": [
     {
       "equals": "review",
@@ -255,22 +274,13 @@ default and can be changed with `caseSensitive`.
 
 ## For concurrency and early break
 
-When `separator` is non-empty, `for` parses the payload's `control` as:
-
-- a JSON array, such as `["a", {"id": 2}]`
-- a non-negative integer count, where `3` produces `0`, `1`, and `2`
-- a string split by the configured `separator`
-
-When `separator` is empty or omitted, `for` ignores `control` and runs until `maxIterations` is
-reached or a body node returns the configured break control. `maxIterations` defaults to `100`.
-In this mode, `loop.item` is `null`, `loop.index` is the zero-based iteration index, and
-`loop.count` equals `maxIterations`.
+`for.items` must resolve to an array. `maxIterations` defaults to `100`; `concurrency` defaults to
+`1`.
 
 Each body iteration receives:
 
 ```json
 {
-  "control": "current item serialized as a string",
   "loop": {
     "item": "the original JSON value",
     "index": 0,
@@ -278,6 +288,9 @@ Each body iteration receives:
   }
 }
 ```
+
+A body node returns `flow.action: "continue"` to skip the remaining body nodes or
+`flow.action: "break"` to stop scheduling new iterations.
 
 The other fields from the previous payload are preserved when the iteration starts. A body node
 can stop the loop early by returning `control: "break"`. Configure a different value with

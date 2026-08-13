@@ -46,7 +46,7 @@ export function WorkflowUsageGuide({
         <GuideSection title={t("workflows.guide.contract.title")}>
           <Text style={styles.body}>{t("workflows.guide.contract.description")}</Text>
           <CodeExample
-            value={'{\n  "control": "",\n  "filePath": "/absolute/path/input.txt"\n}'}
+            value={'{\n  "project": "paseo",\n  "filePath": "/absolute/path/input.txt"\n}'}
             onCopy={copy}
           />
           <Text style={styles.note}>{t("workflows.guide.contract.note")}</Text>

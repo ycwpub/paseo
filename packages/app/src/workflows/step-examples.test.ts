@@ -18,7 +18,7 @@ describe("workflow step examples", () => {
     expect(python.type === "python" ? python.code : null).toBe(DEFAULT_PYTHON_CODE);
     expect(agent.type === "agent" ? agent.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
     expect(getWorkflowStepExamples(bash).initialValue).toBe(DEFAULT_BASH_INITIAL_COMMAND);
-    expect(getWorkflowStepExamples(bash).composition).toContain("delete output.error");
+    expect(getWorkflowStepExamples(bash).composition).toContain("outputs: output");
     expect(getWorkflowStepExamples(python).initialValue).toBe(DEFAULT_PYTHON_CODE);
     expect(getWorkflowStepExamples(agent).initialValue).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
   });
@@ -31,10 +31,12 @@ describe("workflow step examples", () => {
     const control = updateAgentOutputType(answer, "control");
 
     expect(JSON.parse(getWorkflowStepExamples(answer).output)).toEqual({
-      answer: "Agent reply",
+      outputs: { answer: "Agent reply" },
+      flow: { action: "next" },
     });
     expect(JSON.parse(getWorkflowStepExamples(control).output)).toEqual({
-      control: "Agent reply",
+      outputs: { control: "Agent reply" },
+      flow: { action: "branch", value: "Agent reply" },
     });
   });
 

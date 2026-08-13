@@ -6,8 +6,11 @@ const fs = require("node:fs");
 const input = JSON.parse(process.argv[2]);
 
 fs.writeSync(3, JSON.stringify({
-  ...input,
-  control: "done"
+  outputs: {
+    ...input,
+    status: "done"
+  },
+  flow: { action: "next" }
 }));
 NODE`;
 
@@ -25,8 +28,10 @@ if (run.status !== "succeeded" || !run.outputPayload) {
 }
 
 const output = JSON.parse(run.outputPayload);
-delete output.error;
-fs.writeSync(3, JSON.stringify(output));
+fs.writeSync(3, JSON.stringify({
+  outputs: output,
+  flow: { action: "next" }
+}));
 NODE`;
 
 export const DEFAULT_PYTHON_CODE = `import json
@@ -34,10 +39,11 @@ import os
 import sys
 
 payload = json.load(sys.stdin)
-payload["control"] = "done"
-
 with os.fdopen(3, "w") as result:
-    json.dump(payload, result, ensure_ascii=False)`;
+    json.dump({
+        "outputs": {**payload, "status": "done"},
+        "flow": {"action": "next"},
+    }, result, ensure_ascii=False)`;
 
 export const DEFAULT_AGENT_INITIAL_PROMPT = `[User]
 请处理以下工作流输入：
@@ -47,7 +53,6 @@ export const DEFAULT_SWITCH_CONTROL = "done";
 
 const STANDARD_INPUT_EXAMPLE = JSON.stringify(
   {
-    control: "",
     customer: { name: "Alice" },
     items: [{ id: 7 }],
   },
@@ -57,9 +62,11 @@ const STANDARD_INPUT_EXAMPLE = JSON.stringify(
 
 const COMMAND_OUTPUT_EXAMPLE = JSON.stringify(
   {
-    control: "done",
-    customer: { name: "Alice" },
-    items: [{ id: 7 }],
+    outputs: {
+      customer: { name: "Alice" },
+      items: [{ id: 7 }],
+    },
+    flow: { action: "next" },
   },
   null,
   2,
@@ -92,7 +99,17 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
     const outputField = (step.outputType ?? "answer") === "control" ? "control" : "answer";
     return {
       input: STANDARD_INPUT_EXAMPLE,
-      output: JSON.stringify({ [outputField]: "Agent reply" }, null, 2),
+      output: JSON.stringify(
+        {
+          outputs: { [outputField]: "Agent reply" },
+          flow:
+            outputField === "control"
+              ? { action: "branch", value: "Agent reply" }
+              : { action: "next" },
+        },
+        null,
+        2,
+      ),
       initialValue: DEFAULT_AGENT_INITIAL_PROMPT,
     };
   }
@@ -108,7 +125,6 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
       ),
       output: JSON.stringify(
         {
-          control: "done",
           reviewed: true,
         },
         null,
@@ -119,20 +135,18 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
   return {
     input: JSON.stringify(
       {
-        control: "",
-        batchId: "batch-001",
+        items: ["alpha", "beta"],
       },
       null,
       2,
     ),
     output: JSON.stringify(
       {
-        control: "break",
-        batchId: "batch-001",
-        loop: {
-          item: null,
-          index: 0,
-          count: 100,
+        outputs: {
+          item: "beta",
+        },
+        flow: {
+          action: "break",
         },
       },
       null,

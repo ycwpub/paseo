@@ -41,6 +41,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
 import { WorkflowDownstreamField } from "@/components/workflows/workflow-downstream-field";
+import { WorkflowNodeContractFields } from "@/components/workflows/workflow-node-contract-fields";
 import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
 import { WorkflowStepHelp } from "@/components/workflows/workflow-step-help";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
@@ -526,6 +527,12 @@ function BashStepFields({
           })
         }
       />
+      <WorkflowNodeContractFields
+        inputs={step.inputs}
+        inputSchema={step.inputSchema}
+        outputSchema={step.outputSchema}
+        onChange={(contract) => onChange({ ...step, ...contract })}
+      />
       <View style={styles.threeColumn}>
         <View style={styles.columnField}>
           <Field label={t("workflows.nodes.common.workingDirectory")}>
@@ -590,6 +597,12 @@ function PythonStepFields({
             variables: Object.keys(variables).length > 0 ? variables : undefined,
           })
         }
+      />
+      <WorkflowNodeContractFields
+        inputs={step.inputs}
+        inputSchema={step.inputSchema}
+        outputSchema={step.outputSchema}
+        onChange={(contract) => onChange({ ...step, ...contract })}
       />
       <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
     </>
@@ -1317,6 +1330,12 @@ function AgentStepFields({
           onChange={onChange}
         />
       ) : null}
+      <WorkflowNodeContractFields
+        inputs={step.inputs}
+        inputSchema={step.inputSchema}
+        outputSchema={step.outputSchema}
+        onChange={(contract) => onChange({ ...step, ...contract })}
+      />
       <View style={styles.toggleRow}>
         <ToggleField
           label={t("workflows.nodes.agent.archive")}
@@ -1658,6 +1677,18 @@ function SwitchStepFields({
   const { t } = useTranslation();
   return (
     <>
+      <Field
+        label={t("workflows.nodes.switch.switchOn")}
+        hint={t("workflows.nodes.switch.switchOnHint")}
+      >
+        <WorkflowTextInput
+          value={step.switchOn ?? ""}
+          onChangeText={(switchOn) => onChange({ ...step, switchOn: optionalText(switchOn) })}
+          placeholder="{{nodes.classify.outputs.decision}}"
+          size="sm"
+          autoCapitalize="none"
+        />
+      </Field>
       <ToggleField
         label={t("workflows.nodes.switch.caseSensitive")}
         value={step.caseSensitive ?? false}
@@ -1789,17 +1820,13 @@ function ForStepFields({
     <>
       <View style={styles.threeColumn}>
         <View style={styles.columnField}>
-          <Field
-            label={t("workflows.nodes.for.separator")}
-            hint={t("workflows.nodes.for.separatorHint")}
-          >
+          <Field label={t("workflows.nodes.for.items")} hint={t("workflows.nodes.for.itemsHint")}>
             <WorkflowTextInput
-              value={step.separator ?? ""}
-              onChangeText={(separator) =>
-                onChange({ ...step, separator: optionalText(separator) })
-              }
-              placeholder={t("workflows.nodes.for.automatic")}
+              value={step.items ?? ""}
+              onChangeText={(items) => onChange({ ...step, items: optionalText(items) })}
+              placeholder="{{nodes.scan.outputs.items}}"
               size="sm"
+              autoCapitalize="none"
             />
           </Field>
         </View>

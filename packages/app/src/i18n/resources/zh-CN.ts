@@ -68,8 +68,8 @@ export const zhCN: TranslationResources = {
       contract: {
         title: "输入输出约定",
         description:
-          "节点输入是一个包含 control 和业务数据的 JSON 对象。error、退出码和解析错误由工作流框架管理，不属于节点业务结果。",
-        note: "Switch 和 For 根据 control 判断。Bash 和 Python 通过 stdin 读取输入，并向文件描述符 3 写入唯一结果 JSON；control 缺失时自动补为空字符串。",
+          "节点接收显式映射后的业务 JSON；流程控制、失败信息和产物由框架独立管理，不混入业务输出。",
+        note: "Bash 和 Python 读取 stdin，并向文件描述符 3 写入包含 outputs、可选 artifacts 和 flow 的 v2 结果信封。Switch 使用 switchOn，For 使用 items。",
       },
       internal: {
         title: "Paseo 内部使用",
@@ -100,8 +100,8 @@ export const zhCN: TranslationResources = {
           "• Python：直接运行可编辑代码，通过 stdin 读取 JSON 数据，向文件描述符 3 写入唯一结果 JSON。",
         agent:
           "• Agent：Answer 节点把回答写入 answer，Control 节点把回答写入 control。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
-        switch: "• Switch：选择配置值与 payload.control 相等的分支。",
-        for: "• For：根据 payload.control 生成循环项，子节点可返回 continue 或 break。",
+        switch: "• Switch：解析 switchOn，并选择匹配的分支。",
+        for: "• For：解析 items 得到数组；子节点通过 flow.action 返回 continue 或 break。",
       },
     },
     host: {
@@ -225,7 +225,7 @@ export const zhCN: TranslationResources = {
       testRun: "测试运行",
       testRunHint: "使用初始 JSON 数据在所选主机上运行此工作流。",
       inputJson: "输入 JSON",
-      inputJsonHint: "节点输入只包含 control 和业务数据；error 仅用于框架处理节点输出。",
+      inputJsonHint: "填写 Workflow 业务输入；每个节点通过输入映射选择自己接收的字段。",
       runTarget: "运行范围",
       runTargetHint: "可运行整个 Workflow，或使用上方输入 JSON 直接测试指定节点。",
       runEntireWorkflow: "整个 Workflow",
@@ -321,8 +321,19 @@ export const zhCN: TranslationResources = {
         bash: "执行 Shell 命令",
         python: "执行 Python 代码",
         agent: "运行 AI Agent",
-        switch: "根据 control 选择分支",
-        for: "遍历 control",
+        switch: "根据显式表达式选择分支",
+        for: "遍历显式数组",
+      },
+      contract: {
+        title: "节点数据契约",
+        description: "只映射当前节点需要的字段，并使用 JSON Schema 校验输入和输出。",
+        inputs: "输入映射（JSON）",
+        inputsHint: "完整表达式会保留原始类型，例如 {{nodes.scan.outputs.items}}。",
+        inputSchema: "输入 Schema（JSON Schema）",
+        outputSchema: "输出 Schema（JSON Schema）",
+        schemaHint: "可选。Paseo 会在继续执行前校验对象。",
+        invalidJson: "请输入合法 JSON。",
+        objectRequired: "必须填写 JSON 对象。",
       },
       help: {
         show: "查看 {{type}} 节点输入输出说明",
@@ -335,14 +346,14 @@ export const zhCN: TranslationResources = {
         compositionDescription:
           "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 转发到文件描述符 3。",
         bash: {
-          input: "通过 stdin 读取一个 JSON 对象。输入包含 control 和业务字段，不包含 error。",
+          input: "通过 stdin 读取输入映射生成的业务 JSON 对象。",
           output:
-            "stdout 和 stderr 仅用于日志。必须向文件描述符 3 写入唯一 JSON 对象；不能输出 error，失败时写 stderr 并返回非零退出码。",
+            'stdout/stderr 仅用于日志；向文件描述符 3 写入 {"outputs":{},"artifacts":[],"flow":{"action":"next"}}。失败时返回非零退出码。',
         },
         python: {
-          input: "通过 sys.stdin 读取一个 JSON 对象。输入包含 control 和业务字段，不包含 error。",
+          input: "通过 sys.stdin 读取输入映射生成的业务 JSON 对象。",
           output:
-            "stdout 和 stderr 仅用于日志。必须向文件描述符 3 写入唯一 JSON 对象；不能输出 error，失败时抛出异常或返回非零退出码。",
+            "向文件描述符 3 写入 v2 结果信封；只有 For 循环体可使用 flow.action 的 break 或 continue。",
         },
         agent: {
           input:
@@ -351,12 +362,11 @@ export const zhCN: TranslationResources = {
           controlOutput: "Control 节点会把 Agent 最终回答自动包装到 control 字段中。",
         },
         switch: {
-          input: "读取输入 JSON 的 control 字符串，并与各分支的匹配值比较。",
+          input: "解析 switchOn 表达式，并把得到的原始值与各分支匹配值比较。",
           output: "Switch 自身不改写数据；被选中分支的最终 JSON 会成为节点输出。",
         },
         for: {
-          input:
-            "读取 control 生成循环项；未配置分隔符时按最大次数循环。循环体还会收到 loop.item、loop.index 和 loop.count。",
+          input: "解析 items 表达式得到数组。循环体会收到 loop.item、loop.index 和 loop.count。",
           output:
             "串行循环返回最后一次迭代结果；并发循环返回最高已完成索引的结果。循环体返回 break 可提前结束。",
         },
@@ -494,6 +504,8 @@ export const zhCN: TranslationResources = {
         jitter: "为重试延迟添加随机抖动",
       },
       switch: {
+        switchOn: "取值表达式",
+        switchOnHint: "指定要比较的值，例如 {{nodes.classify.outputs.decision}}。",
         caseSensitive: "区分大小写",
         controlEquals: "control 等于",
         deleteBranch: "删除分支",
@@ -502,6 +514,8 @@ export const zhCN: TranslationResources = {
         defaultDescription: "没有匹配条件时执行，可以为空。",
       },
       for: {
+        items: "循环项表达式",
+        itemsHint: "必须解析为数组，例如 {{nodes.scan.outputs.items}}。",
         separator: "分隔符",
         separatorHint:
           "留空进入连续循环，直到达到最大循环次数或任一节点返回 break；填写后按分隔符拆分 control。",

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MAX_WORKFLOW_RESULT_CHARS, parseCommandNodeResult } from "./command-result.js";
+import {
+  MAX_WORKFLOW_RESULT_CHARS,
+  parseCommandNodeResult,
+  parseCommandNodeResultEnvelope,
+} from "./command-result.js";
 
 describe("parseCommandNodeResult", () => {
   it("parses one complete JSON document and adds framework-owned defaults", () => {
@@ -57,5 +61,34 @@ describe("parseCommandNodeResult", () => {
       control: "",
       error: `Bash workflow node result exceeded ${MAX_WORKFLOW_RESULT_CHARS} characters`,
     });
+  });
+});
+
+describe("parseCommandNodeResultEnvelope", () => {
+  it("parses the v2 business output and flow envelope", () => {
+    expect(
+      parseCommandNodeResultEnvelope({
+        resultJson: JSON.stringify({
+          outputs: { approved: true },
+          flow: { action: "branch", value: "approved" },
+        }),
+        resultExceededLimit: false,
+        commandType: "Bash",
+      }),
+    ).toEqual({
+      outputs: { approved: true },
+      artifacts: [],
+      flow: { action: "branch", value: "approved" },
+    });
+  });
+
+  it("rejects a bare business object in v2", () => {
+    expect(() =>
+      parseCommandNodeResultEnvelope({
+        resultJson: '{"approved":true}',
+        resultExceededLimit: false,
+        commandType: "Python",
+      }),
+    ).toThrow("must use the v2 envelope");
   });
 });

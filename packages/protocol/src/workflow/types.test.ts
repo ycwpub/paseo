@@ -2,6 +2,51 @@ import { describe, expect, it } from "vitest";
 import { WorkflowNodeRunSchema, WorkflowPayloadSchema, WorkflowScriptSchema } from "./types.js";
 
 describe("WorkflowScriptSchema", () => {
+  it("accepts the v2 workflow metadata and explicit node contracts", () => {
+    const parsed = WorkflowScriptSchema.parse({
+      apiVersion: "paseo.sh/workflow/v1",
+      kind: "Workflow",
+      version: 2,
+      name: "structured workflow",
+      steps: [
+        {
+          id: "prepare",
+          type: "bash",
+          initialCommand: "cat",
+          inputs: {
+            project: "{{workflow.inputs.project}}",
+          },
+          inputSchema: {
+            type: "object",
+            required: ["project"],
+          },
+          outputSchema: {
+            type: "object",
+            required: ["items"],
+          },
+        },
+        {
+          id: "route",
+          type: "switch",
+          switchOn: "{{nodes.prepare.outputs.route}}",
+          cases: [{ equals: "process", steps: [] }],
+        },
+        {
+          id: "loop",
+          type: "for",
+          items: "{{nodes.prepare.outputs.items}}",
+          steps: [{ id: "body", type: "bash", initialCommand: "cat" }],
+        },
+      ],
+    });
+
+    expect(parsed.version).toBe(2);
+    expect(parsed.apiVersion).toBe("paseo.sh/workflow/v1");
+    expect(parsed.steps[0]?.type === "bash" ? parsed.steps[0].inputs : null).toEqual({
+      project: "{{workflow.inputs.project}}",
+    });
+  });
+
   it("accepts nested bash, agent, switch, and for steps", () => {
     const parsed = WorkflowScriptSchema.parse({
       version: 1,

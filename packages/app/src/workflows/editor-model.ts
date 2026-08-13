@@ -58,7 +58,9 @@ export function createEmptyWorkflowScript(
   names: WorkflowDefaultNames = DEFAULT_NAMES,
 ): WorkflowScript {
   return {
-    version: 1,
+    apiVersion: "paseo.sh/workflow/v1",
+    kind: "Workflow",
+    version: 2,
     name: names.workflow,
     description: "",
     timeoutMs: 24 * 60 * 60 * 1000,
@@ -136,6 +138,7 @@ export function createWorkflowStep(
       id,
       name: names.switch,
       type,
+      switchOn: "{{control}}",
       cases: [{ equals: DEFAULT_SWITCH_CONTROL, steps: [] }],
       defaultSteps: [],
     } satisfies WorkflowSwitchStep;
@@ -144,6 +147,7 @@ export function createWorkflowStep(
     id,
     name: names.for,
     type,
+    items: "{{items}}",
     maxIterations: 100,
     concurrency: 1,
     steps: [createWorkflowStep("bash", existingSteps, names)],
@@ -247,6 +251,12 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
   if (duplicate) {
     return `Duplicate workflow step id: ${duplicate}`;
   }
+  if (
+    script.version === 2 &&
+    (script.apiVersion !== "paseo.sh/workflow/v1" || script.kind !== "Workflow")
+  ) {
+    return "Workflow v2 requires apiVersion paseo.sh/workflow/v1 and kind Workflow";
+  }
   const defaultRetryError = validateRetryPolicy(script.taskDefaults?.retry, "Workflow default");
   if (defaultRetryError) {
     return defaultRetryError;
@@ -286,10 +296,16 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
         if (defaultError) {
           return defaultError;
         }
+        if (script.version === 2 && !step.switchOn) {
+          return `Workflow v2 switch step ${step.id} requires a value expression`;
+        }
       } else if (step.type === "for") {
         const loopError = validateSteps(step.steps);
         if (loopError) {
           return loopError;
+        }
+        if (script.version === 2 && !step.items) {
+          return `Workflow v2 for step ${step.id} requires an items expression`;
         }
       }
     }

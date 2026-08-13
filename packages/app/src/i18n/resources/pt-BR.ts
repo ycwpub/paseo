@@ -65,6 +65,18 @@ export const ptBR: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      contract: {
+        title: "Contrato de dados do nó",
+        description: "Mapeie apenas os campos necessários e valide entrada e saída.",
+        inputs: "Mapeamento de entrada (JSON)",
+        inputsHint:
+          "Expressões completas como {{nodes.scan.outputs.items}} preservam o tipo nativo.",
+        inputSchema: "Esquema de entrada",
+        outputSchema: "Esquema de saída",
+        schemaHint: "Opcional. O Paseo valida antes de continuar.",
+        invalidJson: "Digite um JSON válido.",
+        objectRequired: "O valor deve ser um objeto JSON.",
+      },
       openDetails: "Abrir detalhes do nó {{name}}",
       downstream: {
         label: "Próximo nó",

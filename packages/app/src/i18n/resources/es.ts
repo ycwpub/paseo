@@ -65,6 +65,18 @@ export const es: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      contract: {
+        title: "Contrato de datos del nodo",
+        description: "Mapea solo los campos necesarios y valida entrada y salida con JSON Schema.",
+        inputs: "Mapeo de entrada (JSON)",
+        inputsHint:
+          "Las expresiones completas como {{nodes.scan.outputs.items}} conservan el tipo original.",
+        inputSchema: "Esquema de entrada",
+        outputSchema: "Esquema de salida",
+        schemaHint: "Opcional. Paseo valida el objeto antes de continuar.",
+        invalidJson: "Introduce JSON válido.",
+        objectRequired: "El valor debe ser un objeto JSON.",
+      },
       openDetails: "Abrir los detalles del nodo {{name}}",
       downstream: {
         label: "Nodo siguiente",

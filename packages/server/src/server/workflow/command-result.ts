@@ -2,6 +2,10 @@ import {
   WorkflowNodeResultSchema,
   type WorkflowNodeResult,
 } from "@getpaseo/protocol/workflow/types";
+import {
+  WorkflowNodeResultEnvelopeSchema,
+  type WorkflowNodeResultEnvelope,
+} from "@getpaseo/protocol/workflow/data-contract";
 
 export const WORKFLOW_RESULT_FILE_DESCRIPTOR = 3;
 export const MAX_WORKFLOW_RESULT_CHARS = 200_000;
@@ -52,9 +56,43 @@ export function parseCommandNodeResult(input: ParseCommandNodeResultInput): Work
   });
 }
 
+export function parseCommandNodeResultEnvelope(
+  input: ParseCommandNodeResultInput,
+): WorkflowNodeResultEnvelope {
+  const parsed = parseResultJson(input);
+  const result = WorkflowNodeResultEnvelopeSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      `Workflow node result must use the v2 envelope {"outputs":{},"artifacts":[],"flow":{"action":"next"}}: ${result.error.issues
+        .map((issue) => issue.message)
+        .join("; ")}`,
+    );
+  }
+  return result.data;
+}
+
 function frameworkError(message: string): WorkflowNodeResult {
   return {
     control: "",
     error: message,
   };
+}
+
+function parseResultJson(input: ParseCommandNodeResultInput): unknown {
+  if (input.resultExceededLimit) {
+    throw new Error(
+      `${input.commandType} workflow node result exceeded ${MAX_WORKFLOW_RESULT_CHARS} characters`,
+    );
+  }
+  if (!input.resultJson.trim()) {
+    throw new Error(
+      `${input.commandType} workflow node did not write a result to file descriptor ${WORKFLOW_RESULT_FILE_DESCRIPTOR}`,
+    );
+  }
+  try {
+    return JSON.parse(input.resultJson);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Workflow node result is not valid JSON: ${message}`, { cause: error });
+  }
 }

@@ -66,8 +66,8 @@ export const en = {
       contract: {
         title: "Input and output contract",
         description:
-          'Nodes receive one JSON object containing "control" and business data. The workflow framework owns errors, exit status, and result parsing; they are not business output fields.',
-        note: 'Switch and For nodes read "control". Bash and Python read input from stdin and write exactly one result JSON object to file descriptor 3. Missing "control" defaults to an empty string.',
+          "Nodes receive explicitly mapped business JSON. Framework flow, failures, and artifacts are separate from business outputs.",
+        note: 'Bash and Python read stdin and write a v2 envelope with "outputs", optional "artifacts", and "flow" to file descriptor 3. Switch uses switchOn; For uses items.',
       },
       internal: {
         title: "Use inside Paseo",
@@ -99,8 +99,8 @@ export const en = {
           "• Python: runs editable code, reads JSON from stdin, and writes exactly one result JSON object to file descriptor 3.",
         agent:
           "• Agent: Answer nodes write the reply to answer; Control nodes write the reply to control. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
-        switch: "• Switch: selects the branch whose configured value equals payload.control.",
-        for: '• For: iterates values derived from payload.control. Child nodes may return "continue" or "break".',
+        switch: "• Switch: resolves switchOn and selects the matching branch.",
+        for: "• For: resolves items to an array. Child nodes use flow.action to continue or break.",
       },
     },
     host: {
@@ -230,7 +230,7 @@ export const en = {
       testRunHint: "Run this workflow on the selected host with an initial JSON payload.",
       inputJson: "Input JSON",
       inputJsonHint:
-        'Node input contains "control" and business data only. "error" is reserved for framework output handling.',
+        "Enter workflow business inputs. Node mappings select the fields each node receives.",
       runTarget: "Run target",
       runTargetHint: "Run the whole workflow, or test one node directly with the input JSON above.",
       runEntireWorkflow: "Entire workflow",
@@ -326,8 +326,21 @@ export const en = {
         bash: "Run a shell command",
         python: "Run Python code",
         agent: "Run an AI agent",
-        switch: "Branch on control",
-        for: "Iterate over control",
+        switch: "Branch on an explicit expression",
+        for: "Iterate over an explicit array",
+      },
+      contract: {
+        title: "Node data contract",
+        description:
+          "Map only the fields this node needs, then validate input and output with JSON Schema.",
+        inputs: "Input mapping (JSON)",
+        inputsHint:
+          "Whole expressions preserve native types. Example: {{nodes.scan.outputs.items}}.",
+        inputSchema: "Input schema (JSON Schema)",
+        outputSchema: "Output schema (JSON Schema)",
+        schemaHint: "Optional. Paseo validates the object before continuing.",
+        invalidJson: "Enter valid JSON.",
+        objectRequired: "The value must be a JSON object.",
       },
       help: {
         show: "Show {{type}} node input and output help",
@@ -341,16 +354,14 @@ export const en = {
         compositionDescription:
           "Use a Bash node to call paseo workflow run, then forward the successful child outputPayload to file descriptor 3.",
         bash: {
-          input:
-            'Read one JSON object from stdin. Input contains "control" and business fields, but never "error".',
+          input: "Read the mapped business input object from stdin.",
           output:
-            'stdout and stderr are logs only. Write exactly one JSON object to file descriptor 3. Never return "error"; write diagnostics to stderr and exit non-zero on failure.',
+            'stdout and stderr are logs only. Write {"outputs":{},"artifacts":[],"flow":{"action":"next"}} to file descriptor 3. Exit non-zero on failure.',
         },
         python: {
-          input:
-            'Read one JSON object from sys.stdin. Input contains "control" and business fields, but never "error".',
+          input: "Read the mapped business input object from sys.stdin.",
           output:
-            'stdout and stderr are logs only. Write exactly one JSON object to file descriptor 3. Never return "error"; raise an exception or exit non-zero on failure.',
+            'Write the v2 result envelope to file descriptor 3. Use flow.action "break" or "continue" only inside a For body.',
         },
         agent: {
           input:
@@ -360,14 +371,13 @@ export const en = {
             'Control nodes automatically wrap the final Agent reply in the "control" field.',
         },
         switch: {
-          input:
-            'Read the input JSON "control" string and compare it with each configured case value.',
+          input: "Resolve switchOn, then compare the native value with each configured case.",
           output:
             "Switch does not rewrite data. The selected branch's final JSON becomes the node output.",
         },
         for: {
           input:
-            'Build loop items from "control". With no separator, run up to the maximum iteration count. The body also receives loop.item, loop.index, and loop.count.',
+            "Resolve items to an array. The body receives loop.item, loop.index, and loop.count.",
           output:
             'Serial loops return the final iteration result. Concurrent loops return the highest completed index. A body result with "break" stops scheduling new iterations.',
         },
@@ -508,6 +518,9 @@ export const en = {
         jitter: "Add jitter to retry delays",
       },
       switch: {
+        switchOn: "Value expression",
+        switchOnHint:
+          "Select the value to compare, for example {{nodes.classify.outputs.decision}}.",
         caseSensitive: "Case-sensitive matching",
         controlEquals: "control equals",
         deleteBranch: "Delete branch",
@@ -516,6 +529,8 @@ export const en = {
         defaultDescription: "Runs when no case matches. It may be empty.",
       },
       for: {
+        items: "Items expression",
+        itemsHint: "Must resolve to an array, for example {{nodes.scan.outputs.items}}.",
         separator: "Separator",
         separatorHint:
           'Leave empty to repeat until the maximum is reached or a node returns "break"; otherwise control is split using this separator.',

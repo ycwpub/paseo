@@ -66,6 +66,18 @@ export const fr: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      contract: {
+        title: "Contrat de données du nœud",
+        description: "Mappez uniquement les champs requis et validez les entrées et sorties.",
+        inputs: "Mappage d’entrée (JSON)",
+        inputsHint:
+          "Une expression complète comme {{nodes.scan.outputs.items}} conserve son type natif.",
+        inputSchema: "Schéma d’entrée",
+        outputSchema: "Schéma de sortie",
+        schemaHint: "Facultatif. Paseo valide l’objet avant de continuer.",
+        invalidJson: "Saisissez un JSON valide.",
+        objectRequired: "La valeur doit être un objet JSON.",
+      },
       openDetails: "Ouvrir les détails du nœud {{name}}",
       downstream: {
         label: "Nœud suivant",

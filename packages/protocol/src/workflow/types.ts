@@ -1,5 +1,13 @@
 import { z } from "zod";
 import { ScheduleNewAgentTargetConfigSchema } from "../schedule/types.js";
+import {
+  WorkflowArtifactSchema,
+  WorkflowInputMappingSchema,
+  WorkflowJsonSchemaSchema,
+  type WorkflowArtifact,
+  type WorkflowInputMapping,
+  type WorkflowJsonSchema,
+} from "./data-contract.js";
 import { WorkflowEnvironmentSchema } from "./environment.js";
 import { WorkflowInputContractSchema, WorkflowInputPresetSchema } from "./input-contract.js";
 
@@ -72,6 +80,9 @@ export interface WorkflowBashStep {
   nextStepId?: string | null;
   type: "bash";
   initialCommand: string;
+  inputs?: WorkflowInputMapping;
+  inputSchema?: WorkflowJsonSchema;
+  outputSchema?: WorkflowJsonSchema;
   variables?: WorkflowPromptVariables;
   cwd?: string;
   shell?: string;
@@ -85,6 +96,9 @@ export interface WorkflowPythonStep {
   nextStepId?: string | null;
   type: "python";
   code: string;
+  inputs?: WorkflowInputMapping;
+  inputSchema?: WorkflowJsonSchema;
+  outputSchema?: WorkflowJsonSchema;
   variables?: WorkflowPromptVariables;
   cwd?: string;
   pythonPath?: string;
@@ -99,6 +113,9 @@ export interface WorkflowAgentStep {
   type: "agent";
   outputType?: WorkflowAgentOutputType;
   initialPrompt: string;
+  inputs?: WorkflowInputMapping;
+  inputSchema?: WorkflowJsonSchema;
+  outputSchema?: WorkflowJsonSchema;
   promptVariables?: WorkflowPromptVariables;
   timeoutMs?: number;
   retry?: WorkflowRetryPolicy;
@@ -115,6 +132,7 @@ export interface WorkflowSwitchStep {
   name?: string;
   nextStepId?: string | null;
   type: "switch";
+  switchOn?: string;
   cases: WorkflowSwitchCase[];
   defaultSteps?: WorkflowStep[];
   caseSensitive?: boolean;
@@ -125,6 +143,7 @@ export interface WorkflowForStep {
   name?: string;
   nextStepId?: string | null;
   type: "for";
+  items?: string;
   steps: WorkflowStep[];
   separator?: string;
   maxIterations?: number;
@@ -150,6 +169,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("bash"),
       initialCommand: z.string().trim().min(1),
+      inputs: WorkflowInputMappingSchema.optional(),
+      inputSchema: WorkflowJsonSchemaSchema.optional(),
+      outputSchema: WorkflowJsonSchemaSchema.optional(),
       variables: WorkflowPromptVariablesSchema.optional(),
       cwd: z.string().trim().min(1).optional(),
       shell: z.string().trim().min(1).optional(),
@@ -164,6 +186,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       code: z.string().refine((value) => value.trim().length > 0, {
         message: "Python code is required",
       }),
+      inputs: WorkflowInputMappingSchema.optional(),
+      inputSchema: WorkflowJsonSchemaSchema.optional(),
+      outputSchema: WorkflowJsonSchemaSchema.optional(),
       variables: WorkflowPromptVariablesSchema.optional(),
       cwd: z.string().trim().min(1).optional(),
       pythonPath: z.string().trim().min(1).optional(),
@@ -177,6 +202,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       type: z.literal("agent"),
       outputType: WorkflowAgentOutputTypeSchema.default("answer"),
       initialPrompt: z.string().trim().min(1),
+      inputs: WorkflowInputMappingSchema.optional(),
+      inputSchema: WorkflowJsonSchemaSchema.optional(),
+      outputSchema: WorkflowJsonSchemaSchema.optional(),
       promptVariables: WorkflowPromptVariablesSchema.optional(),
       timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
       retry: WorkflowRetryPolicySchema.optional(),
@@ -187,6 +215,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       name: WorkflowStepNameSchema,
       nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("switch"),
+      switchOn: z.string().trim().min(1).optional(),
       cases: z
         .array(
           z.object({
@@ -203,6 +232,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
       name: WorkflowStepNameSchema,
       nextStepId: WorkflowStepIdSchema.nullable().optional(),
       type: z.literal("for"),
+      items: z.string().trim().min(1).optional(),
       steps: z.array(WorkflowStepSchema).min(1),
       separator: z.string().min(1).optional(),
       maxIterations: z.number().int().positive().max(10_000).default(100),
@@ -213,7 +243,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
 );
 
 export const WorkflowScriptSchema = z.object({
-  version: z.literal(1),
+  apiVersion: z.literal("paseo.sh/workflow/v1").optional(),
+  kind: z.literal("Workflow").optional(),
+  version: z.union([z.literal(1), z.literal(2)]),
   name: z.string().trim().min(1).max(256),
   description: z.string().max(4_000).nullable().optional(),
   timeoutMs: z
@@ -289,6 +321,7 @@ export const WorkflowNodeRunSchema = z.object({
   environmentSource: z.enum(["daemon", "login-shell"]).nullable().optional(),
   environmentPath: z.string().nullable().optional(),
   skippedReason: z.string().nullable().optional(),
+  artifacts: z.array(WorkflowArtifactSchema).optional(),
 });
 export type WorkflowNodeRun = z.infer<typeof WorkflowNodeRunSchema>;
 
@@ -306,6 +339,7 @@ export const WorkflowRunSchema = z.object({
   control: z.string(),
   error: z.string().nullable(),
   errorCode: z.string().nullable().default(null),
+  artifacts: z.array(WorkflowArtifactSchema).optional(),
   startedAt: z.string(),
   endedAt: z.string().nullable(),
   nodeRuns: z.array(WorkflowNodeRunSchema),
@@ -316,3 +350,5 @@ export const StoredWorkflowRunsSchema = z.object({
   runs: z.array(WorkflowRunSchema),
 });
 export type StoredWorkflowRuns = z.infer<typeof StoredWorkflowRunsSchema>;
+
+export type { WorkflowArtifact };

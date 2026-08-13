@@ -7,7 +7,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => ({
-  View: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  View: ({ children, style }: { children?: React.ReactNode; style?: unknown }) => (
+    <div data-style={JSON.stringify(style)}>{children}</div>
+  ),
   useWindowDimensions: () => ({ height: 900, width: 1200 }),
 }));
 
@@ -21,15 +23,18 @@ vi.mock("@/components/ui/form-field", () => ({
     controlled,
     testID,
     onChangeText,
+    style,
   }: {
     value?: string;
     controlled?: boolean;
     testID?: string;
     onChangeText?: (value: string) => void;
+    style?: unknown;
   }) => (
     <input
       data-testid={testID}
       data-controlled={controlled ? "true" : "false"}
+      data-style={JSON.stringify(style)}
       onChange={(event) => onChangeText?.(event.target.value)}
       value={value ?? ""}
     />
@@ -62,13 +67,21 @@ vi.mock("@/components/ui/button", () => ({
     onPress,
     accessibilityLabel,
     testID,
+    style,
   }: {
     children?: React.ReactNode;
     onPress?: () => void;
     accessibilityLabel?: string;
     testID?: string;
+    style?: unknown;
   }) => (
-    <button type="button" aria-label={accessibilityLabel} data-testid={testID} onClick={onPress}>
+    <button
+      type="button"
+      aria-label={accessibilityLabel}
+      data-style={JSON.stringify(style)}
+      data-testid={testID}
+      onClick={onPress}
+    >
       {children}
     </button>
   ),
@@ -117,14 +130,36 @@ describe("WorkflowTextInput", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    const expandButton = screen.getByTestId("workflow-field-expand");
+    expect(
+      screen.getByTestId("workflow-field").parentElement?.getAttribute("data-style"),
+    ).toContain('"flex":1');
+    expect(expandButton.getAttribute("data-style")).toContain('"right":12');
+    expect(expandButton.getAttribute("data-style")).toContain('"backgroundColor":"#f4f4f5"');
+    fireEvent.click(expandButton);
 
     expect(screen.getByTestId("workflow-field-expanded-editor")).toBeTruthy();
     const expandedInput = screen.getByTestId("workflow-field-expanded-input");
     expect(expandedInput).toHaveProperty("value", "Long workflow content");
+    expect(expandedInput.getAttribute("data-style")).toContain('"height":504');
+    expect(expandedInput.getAttribute("data-style")).toContain('"minHeight":504');
 
     fireEvent.change(expandedInput, { target: { value: "Updated in large editor" } });
 
     expect(onChangeText).toHaveBeenCalledWith("Updated in large editor");
+  });
+
+  it("keeps short scalar fields compact when expansion is disabled", () => {
+    render(
+      <WorkflowTextInput
+        value="86400"
+        testID="workflow-timeout"
+        keyboardType="numeric"
+        expandable={false}
+      />,
+    );
+
+    expect(screen.getByTestId("workflow-timeout")).toHaveProperty("value", "86400");
+    expect(screen.queryByTestId("workflow-timeout-expand")).toBeNull();
   });
 });

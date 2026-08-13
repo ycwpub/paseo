@@ -38,6 +38,7 @@ import {
 import { MenuHeader } from "@/components/headers/menu-header";
 import { WorkflowAgentOutput } from "@/components/workflows/workflow-agent-output";
 import { WorkflowEnvironmentConfiguration } from "@/components/workflows/workflow-environment-configuration";
+import { WorkflowExpandableReadonlyValue } from "@/components/workflows/workflow-expandable-readonly-value";
 import { WorkflowGraph } from "@/components/workflows/workflow-graph";
 import { WorkflowInputConfiguration } from "@/components/workflows/workflow-input-configuration";
 import { WorkflowRunInput } from "@/components/workflows/workflow-run-input";
@@ -609,9 +610,8 @@ function WorkflowsScreenContent(): ReactElement {
                       }
                       placeholder={t("workflows.editor.untitled")}
                       accessibilityLabel={t("workflows.editor.name")}
+                      editorTitle={t("workflows.editor.name")}
                       style={styles.editorTitleInput}
-                      multiline
-                      textAlignVertical="top"
                       testID="workflow-name"
                     />
                     {dirty ? (
@@ -691,6 +691,7 @@ function WorkflowsScreenContent(): ReactElement {
                         placeholder="86400"
                         keyboardType="decimal-pad"
                         size="sm"
+                        expandable={false}
                       />
                     </Field>
                   </View>
@@ -713,6 +714,7 @@ function WorkflowsScreenContent(): ReactElement {
                         placeholder="1800"
                         keyboardType="decimal-pad"
                         size="sm"
+                        expandable={false}
                       />
                     </Field>
                   </View>
@@ -741,6 +743,7 @@ function WorkflowsScreenContent(): ReactElement {
                         placeholder="3"
                         keyboardType="numeric"
                         size="sm"
+                        expandable={false}
                       />
                     </Field>
                   </View>
@@ -1055,8 +1058,12 @@ function WorkflowRunPanel({
         ) : null}
         <WorkflowRunValue label={t("workflows.run.control")} value={run.control || "—"} />
       </View>
-      <WorkflowPayloadValue label={t("workflows.run.input")} value={run.inputPayload} />
-      <WorkflowPayloadValue label={t("workflows.run.outputPayload")} value={run.outputPayload} />
+      <WorkflowPayloadValue label={t("workflows.run.input")} value={run.inputPayload} compact />
+      <WorkflowPayloadValue
+        label={t("workflows.run.outputPayload")}
+        value={run.outputPayload}
+        compact
+      />
       {run.outputFilePath ? (
         <WorkflowRunValue label={t("workflows.run.outputFile")} value={run.outputFilePath} mono />
       ) : null}
@@ -1372,15 +1379,17 @@ function WorkflowStructuredCommandOutput({
       <View style={styles.runProcessSections}>
         <View style={styles.runProcessSection}>
           <Text style={styles.runProcessLabel}>{t("workflows.run.stdout")}</Text>
-          <Text style={styles.runPayloadValue} selectable>
-            {stdout || "—"}
-          </Text>
+          <WorkflowExpandableReadonlyValue
+            label={t("workflows.run.stdout")}
+            value={stdout || "—"}
+          />
         </View>
         <View style={styles.runProcessSection}>
           <Text style={styles.runProcessLabel}>{t("workflows.run.stderr")}</Text>
-          <Text style={styles.runPayloadValue} selectable>
-            {stderr || "—"}
-          </Text>
+          <WorkflowExpandableReadonlyValue
+            label={t("workflows.run.stderr")}
+            value={stderr || "—"}
+          />
         </View>
       </View>
     </View>
@@ -1409,9 +1418,10 @@ function WorkflowCommandOutput({
         {sections.map((section) => (
           <View key={section.stream} style={styles.runProcessSection}>
             <Text style={styles.runProcessLabel}>{t(`workflows.run.${section.stream}`)}</Text>
-            <Text style={styles.runPayloadValue} selectable>
-              {section.value || "—"}
-            </Text>
+            <WorkflowExpandableReadonlyValue
+              label={t(`workflows.run.${section.stream}`)}
+              value={section.value || "—"}
+            />
           </View>
         ))}
       </View>
@@ -1433,13 +1443,17 @@ function WorkflowPayloadValue({
   return (
     <View style={styles.runValue}>
       <Text style={styles.runValueLabel}>{label}</Text>
-      <Text
-        style={[styles.runPayloadValue, compact && styles.runPayloadValueCompact]}
-        numberOfLines={compact ? 3 : undefined}
-        selectable
-      >
-        {preserveText ? value || "—" : formatWorkflowPayload(value)}
-      </Text>
+      {compact ? (
+        <WorkflowExpandableReadonlyValue
+          label={label}
+          value={preserveText ? value || "—" : formatWorkflowPayload(value)}
+          previewLines={4}
+        />
+      ) : (
+        <Text style={styles.runPayloadValue} selectable>
+          {preserveText ? value || "—" : formatWorkflowPayload(value)}
+        </Text>
+      )}
     </View>
   );
 }
@@ -1736,9 +1750,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   editorTitleInput: {
     flex: 1,
-    minWidth: 120,
+    width: "100%",
+    minWidth: 0,
     minHeight: 40,
-    maxHeight: 112,
     paddingHorizontal: 0,
     paddingVertical: theme.spacing[1],
     borderWidth: 0,

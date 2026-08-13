@@ -44,6 +44,13 @@ export function WorkflowTextInputExpansion({
     () => calculateExpandedWorkflowEditorHeight(viewportHeight),
     [viewportHeight],
   );
+  const expandedInputSizeStyle = useMemo(
+    () => ({
+      height: expandedEditorHeight,
+      minHeight: expandedEditorHeight,
+    }),
+    [expandedEditorHeight],
+  );
   const resolvedEditorTitle =
     editorTitle || accessibilityLabel || t("workflows.nodes.expandedEditor.defaultTitle");
   const header = useMemo<SheetHeader>(
@@ -143,7 +150,11 @@ export function WorkflowTextInputExpansion({
             size={size}
             textAlignVertical="top"
             autoFocus={isWeb}
-            style={[styles.expandedInput, monospace && styles.monospaceInput]}
+            style={[
+              styles.expandedInput,
+              expandedInputSizeStyle,
+              monospace && styles.monospaceInput,
+            ]}
             testID={testID ? `${testID}-expanded-input` : "workflow-expanded-input"}
             controlled
           />
@@ -155,15 +166,19 @@ export function WorkflowTextInputExpansion({
 
 const styles = StyleSheet.create((theme) => ({
   inputContainer: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     position: "relative",
   },
   collapsedInput: {
-    paddingRight: theme.spacing[12],
+    paddingRight: theme.spacing[16],
   },
   expandButton: {
     position: "absolute",
-    right: theme.spacing[1],
-    zIndex: 1,
+    right: theme.spacing[3],
+    zIndex: 2,
+    backgroundColor: theme.colors.surface2,
   },
   expandButtonSmall: {
     top: theme.spacing[0.5],
@@ -181,8 +196,7 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
   },
   expandedInput: {
-    flex: 1,
-    height: "100%",
+    width: "100%",
     fontSize: theme.fontSize.sm,
     lineHeight: Math.round(theme.fontSize.sm * 1.5),
   },

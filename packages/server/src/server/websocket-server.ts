@@ -1978,6 +1978,7 @@ export class VoiceAssistantWebSocketServer {
         workflowInputConfiguration: true,
         // COMPAT(workflowCommandResultFd3): added in v0.3.2, remove gate after 2027-02-12.
         workflowCommandResultFd3: true,
+        workflowProtocolVersion: 1,
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.

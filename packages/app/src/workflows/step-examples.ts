@@ -1,49 +1,62 @@
 import type { WorkflowStep } from "@getpaseo/protocol/workflow/types";
 
-export const DEFAULT_BASH_INITIAL_COMMAND = `input="$(cat)"
-node - "$input" <<'NODE'
-const fs = require("node:fs");
-const input = JSON.parse(process.argv[2]);
-
-fs.writeSync(3, JSON.stringify({
-  outputs: {
-    ...input,
+export const DEFAULT_BASH_INITIAL_COMMAND = `output="$(node - "$input" <<'NODE'
+const envelope = JSON.parse(process.argv[2]);
+console.log(JSON.stringify({
+  data: {
+    ...envelope.data,
     status: "done"
   },
-  flow: { action: "next" }
+  modify: {
+    workflow: { var: {} },
+    node: { var: {} }
+  },
+  base_resp: {
+    status_code: 0,
+    status_msg: "",
+    forbid_retry: 0
+  },
+  artifacts: []
 }));
-NODE`;
+NODE
+)"`;
 
-export const BASH_CHILD_WORKFLOW_EXAMPLE = `input="$(cat)"
-run_json="$(paseo workflow run /absolute/path/child.json "$input" \\
+export const BASH_CHILD_WORKFLOW_EXAMPLE = `child_run="$(paseo workflow run /absolute/path/child.json "$input" \\
   --host "\${PASEO_LISTEN:-127.0.0.1:6767}" --json)"
-
-node - "$run_json" <<'NODE'
-const fs = require("node:fs");
+output="$(node - "$child_run" <<'NODE'
 const run = JSON.parse(process.argv[2]);
-
 if (run.status !== "succeeded" || !run.outputPayload) {
-  console.error(run.error ?? "Child workflow failed");
-  process.exit(1);
+  throw new Error(run.error || "Child workflow failed");
 }
-
-const output = JSON.parse(run.outputPayload);
-fs.writeSync(3, JSON.stringify({
-  outputs: output,
-  flow: { action: "next" }
+process.stdout.write(JSON.stringify({
+  data: JSON.parse(run.outputPayload),
+  modify: {
+    workflow: { var: {} },
+    node: { var: {} }
+  },
+  base_resp: {
+    status_code: 0,
+    status_msg: "",
+    forbid_retry: 0
+  },
+  artifacts: run.artifacts || []
 }));
-NODE`;
+NODE
+)"`;
 
-export const DEFAULT_PYTHON_CODE = `import json
-import os
-import sys
-
-payload = json.load(sys.stdin)
-with os.fdopen(3, "w") as result:
-    json.dump({
-        "outputs": {**payload, "status": "done"},
-        "flow": {"action": "next"},
-    }, result, ensure_ascii=False)`;
+export const DEFAULT_PYTHON_CODE = `output = {
+    "data": {**input["data"], "status": "done"},
+    "modify": {
+        "workflow": {"var": {}},
+        "node": {"var": {}},
+    },
+    "base_resp": {
+        "status_code": 0,
+        "status_msg": "",
+        "forbid_retry": 0,
+    },
+    "artifacts": [],
+}`;
 
 export const DEFAULT_AGENT_INITIAL_PROMPT = `[User]
 请处理以下工作流输入：
@@ -53,8 +66,16 @@ export const DEFAULT_SWITCH_CONTROL = "done";
 
 const STANDARD_INPUT_EXAMPLE = JSON.stringify(
   {
-    customer: { name: "Alice" },
-    items: [{ id: 7 }],
+    data: {
+      customer: { name: "Alice" },
+      items: [{ id: 7 }],
+    },
+    workflow: {
+      var: { traceId: "trace-1" },
+    },
+    node: {
+      var: { counter: "0" },
+    },
   },
   null,
   2,
@@ -62,11 +83,20 @@ const STANDARD_INPUT_EXAMPLE = JSON.stringify(
 
 const COMMAND_OUTPUT_EXAMPLE = JSON.stringify(
   {
-    outputs: {
+    data: {
       customer: { name: "Alice" },
       items: [{ id: 7 }],
     },
-    flow: { action: "next" },
+    modify: {
+      workflow: { var: {} },
+      node: { var: {} },
+    },
+    base_resp: {
+      status_code: 0,
+      status_msg: "",
+      forbid_retry: 0,
+    },
+    artifacts: [],
   },
   null,
   2,
@@ -96,57 +126,27 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
     };
   }
   if (step.type === "agent") {
-    const outputField = (step.outputType ?? "answer") === "control" ? "control" : "answer";
     return {
       input: STANDARD_INPUT_EXAMPLE,
-      output: JSON.stringify(
-        {
-          outputs: { [outputField]: "Agent reply" },
-          flow:
-            outputField === "control"
-              ? { action: "branch", value: "Agent reply" }
-              : { action: "next" },
-        },
-        null,
-        2,
-      ),
+      output:
+        (step.outputMode ?? "normal") === "normal"
+          ? JSON.stringify({ data: { answer: "Agent reply" } }, null, 2)
+          : COMMAND_OUTPUT_EXAMPLE,
       initialValue: DEFAULT_AGENT_INITIAL_PROMPT,
     };
   }
   if (step.type === "switch") {
     return {
-      input: JSON.stringify(
-        {
-          control: DEFAULT_SWITCH_CONTROL,
-          customer: { name: "Alice" },
-        },
-        null,
-        2,
-      ),
-      output: JSON.stringify(
-        {
-          reviewed: true,
-        },
-        null,
-        2,
-      ),
+      input: STANDARD_INPUT_EXAMPLE,
+      output: JSON.stringify({ matched: DEFAULT_SWITCH_CONTROL }, null, 2),
     };
   }
   return {
-    input: JSON.stringify(
-      {
-        items: ["alpha", "beta"],
-      },
-      null,
-      2,
-    ),
+    input: STANDARD_INPUT_EXAMPLE,
     output: JSON.stringify(
       {
-        outputs: {
-          item: "beta",
-        },
-        flow: {
-          action: "break",
+        data: {
+          control: "break",
         },
       },
       null,

@@ -6,6 +6,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type {
   WorkflowInputMapping,
   WorkflowJsonSchema,
+  WorkflowVariableDefinitions,
 } from "@getpaseo/protocol/workflow/data-contract";
 import { Field } from "@/components/ui/form-field";
 import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
@@ -14,10 +15,12 @@ interface WorkflowNodeContractFieldsProps {
   inputs: WorkflowInputMapping | undefined;
   inputSchema: WorkflowJsonSchema | undefined;
   outputSchema: WorkflowJsonSchema | undefined;
+  variables: WorkflowVariableDefinitions | undefined;
   onChange: (value: {
     inputs?: WorkflowInputMapping;
     inputSchema?: WorkflowJsonSchema;
     outputSchema?: WorkflowJsonSchema;
+    variables?: WorkflowVariableDefinitions;
   }) => void;
 }
 
@@ -25,6 +28,7 @@ export function WorkflowNodeContractFields({
   inputs,
   inputSchema,
   outputSchema,
+  variables,
   onChange,
 }: WorkflowNodeContractFieldsProps): ReactElement {
   const { t } = useTranslation();
@@ -39,7 +43,21 @@ export function WorkflowNodeContractFields({
         hint={t("workflows.nodes.contract.inputsHint")}
         value={inputs}
         placeholder={'{\n  "project": "{{workflow.inputs.project}}"\n}'}
-        onChange={(next) => onChange({ inputs: next, inputSchema, outputSchema })}
+        onChange={(next) => onChange({ inputs: next, inputSchema, outputSchema, variables })}
+      />
+      <WorkflowJsonObjectField
+        label={t("workflows.inputContract.nodeVariables")}
+        hint={t("workflows.inputContract.nodeVariablesHint")}
+        value={variables}
+        placeholder={'{\n  "counter": { "type": "int64", "default": "0" }\n}'}
+        onChange={(next) =>
+          onChange({
+            inputs,
+            inputSchema,
+            outputSchema,
+            variables: next as WorkflowVariableDefinitions | undefined,
+          })
+        }
       />
       <View style={styles.columns}>
         <View style={styles.column}>
@@ -48,7 +66,7 @@ export function WorkflowNodeContractFields({
             hint={t("workflows.nodes.contract.schemaHint")}
             value={inputSchema}
             placeholder={'{\n  "type": "object"\n}'}
-            onChange={(next) => onChange({ inputs, inputSchema: next, outputSchema })}
+            onChange={(next) => onChange({ inputs, inputSchema: next, outputSchema, variables })}
           />
         </View>
         <View style={styles.column}>
@@ -57,7 +75,7 @@ export function WorkflowNodeContractFields({
             hint={t("workflows.nodes.contract.schemaHint")}
             value={outputSchema}
             placeholder={'{\n  "type": "object"\n}'}
-            onChange={(next) => onChange({ inputs, inputSchema, outputSchema: next })}
+            onChange={(next) => onChange({ inputs, inputSchema, outputSchema: next, variables })}
           />
         </View>
       </View>

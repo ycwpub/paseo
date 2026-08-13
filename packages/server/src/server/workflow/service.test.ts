@@ -21,18 +21,41 @@ function shellQuote(value: string): string {
 function nodeCommand(source: string, ...args: string[]): string {
   const wrappedSource = [
     'const __paseoFs = require("fs");',
-    'process.argv.push(__paseoFs.readFileSync(0, "utf8"));',
+    "const __paseoInputEnvelope = JSON.parse(process.argv.at(-1));",
+    "process.argv[process.argv.length - 1] = JSON.stringify(__paseoInputEnvelope.data);",
     "const __paseoWriteResult = (value) =>",
-    "  __paseoFs.writeSync(3, JSON.stringify(value));",
+    "  __paseoFs.writeFileSync(process.env.PASEO_TEST_RESULT_FILE, JSON.stringify({",
+    "    data: value,",
+    "    modify: { workflow: { var: {} }, node: { var: {} } },",
+    '    base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },',
+    "    artifacts: [],",
+    "  }));",
     source,
   ].join("\n");
-  return [
+  const command = [
     shellQuote(process.execPath),
     "-e",
     shellQuote(wrappedSource),
     ...args.map(shellQuote),
+    '"$input"',
   ].join(" ");
+  return [
+    '__paseo_test_result="$(mktemp)"',
+    `PASEO_TEST_RESULT_FILE="$__paseo_test_result" ${command}`,
+    "__paseo_test_status=$?",
+    "if [ $__paseo_test_status -ne 0 ]; then",
+    '  rm -f "$__paseo_test_result"',
+    "  exit $__paseo_test_status",
+    "fi",
+    'output="$(cat "$__paseo_test_result")"',
+    'rm -f "$__paseo_test_result"',
+  ].join("\n");
 }
+
+const workflowV1 = {
+  apiVersion: "paseo.sh/workflow/v1",
+  kind: "Workflow",
+} as const;
 
 function createAssistant(id: string, name: string, prompt: string): Assistant {
   return {
@@ -92,16 +115,25 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Input contract",
-        inputContract: {
-          properties: {
-            scan_dir_url: { type: "string" },
-            group_ids: { type: "array", default: [] },
+        steps: [
+          {
+            id: "never",
+            type: "bash",
+            inputSchema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                scan_dir_url: { type: "string" },
+                group_ids: { type: "array" },
+              },
+              required: ["scan_dir_url", "group_ids"],
+            },
+            initialCommand: "exit 99",
           },
-          required: ["scan_dir_url", "group_ids"],
-        },
-        steps: [{ id: "never", type: "bash", initialCommand: "exit 99" }],
+        ],
       }),
     );
 
@@ -111,26 +143,21 @@ describe("WorkflowService", () => {
     await expect(
       service.runScript({
         scriptPath,
-        inputPayload: '{"control":""}',
+        inputPayload: "{}",
       }),
-    ).rejects.toThrow('Workflow input field "scan_dir_url" is required');
+    ).rejects.toThrow("scan_dir_url");
     expect(await service.listRuns()).toEqual([]);
   });
 
-  it("applies input defaults and workflow command environment variables", async () => {
+  it("validates schema input and applies workflow command environment variables", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
-        name: "Input defaults and environment",
-        inputContract: {
-          properties: {
-            mode: { type: "string", default: "scan_only" },
-            max_work_items: { type: "integer", default: 0 },
-          },
-        },
+        name: "Input schema and environment",
         environment: {
           variables: {
             FIXED_WIKI_URL: "https://example.test/wiki",
@@ -140,6 +167,15 @@ describe("WorkflowService", () => {
           {
             id: "inspect",
             type: "bash",
+            inputSchema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                mode: { type: "string" },
+                max_work_items: { type: "integer" },
+              },
+              required: ["mode", "max_work_items"],
+            },
             initialCommand: nodeCommand(
               [
                 "const input = JSON.parse(process.argv.at(-1));",
@@ -156,11 +192,12 @@ describe("WorkflowService", () => {
 
     const service = createService(home);
     await service.start();
-    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"mode":"scan_only","max_work_items":0}',
+    });
 
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: "",
       mode: "scan_only",
       max_work_items: 0,
       wiki: "https://example.test/wiki",
@@ -179,16 +216,9 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Preset run",
-        inputContract: {
-          properties: {
-            mode: { type: "string" },
-            max_work_items: { type: "integer" },
-            wiki_url: { type: "string" },
-          },
-          required: ["mode", "max_work_items", "wiki_url"],
-        },
         inputPresets: [
           {
             id: "scan-only",
@@ -204,7 +234,19 @@ describe("WorkflowService", () => {
           {
             id: "echo",
             type: "bash",
-            initialCommand: "cat >&3",
+            inputSchema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                mode: { type: "string" },
+                max_work_items: { type: "integer" },
+                wiki_url: { type: "string" },
+              },
+              required: ["mode", "max_work_items", "wiki_url"],
+            },
+            initialCommand: nodeCommand(
+              "const input = JSON.parse(process.argv.at(-1)); __paseoWriteResult(input);",
+            ),
           },
         ],
       }),
@@ -219,8 +261,6 @@ describe("WorkflowService", () => {
     });
 
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: "",
       mode: "scan_only",
       max_work_items: 2,
       wiki_url: "https://example.test/wiki",
@@ -233,6 +273,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Command failure diagnostics",
         steps: [
@@ -273,13 +314,15 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Empty loop",
         steps: [
           {
             id: "items",
             type: "for",
-            separator: ",",
+            mode: "items",
+            items: "{{data.items}}",
             steps: [{ id: "never", type: "bash", initialCommand: "exit 99" }],
           },
         ],
@@ -288,9 +331,12 @@ describe("WorkflowService", () => {
 
     const service = createService(home);
     await service.start();
-    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":[]}',
+    });
 
-    expect(run.status).toBe("succeeded");
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["items"]);
     expect(run.nodeRuns[0]).toMatchObject({
       output: "Skipped loop: 0 items",
@@ -305,6 +351,7 @@ describe("WorkflowService", () => {
 
     const created = await service.saveScript({
       script: {
+        ...workflowV1,
         version: 1,
         name: "Visual workflow",
         steps: [{ id: "prepare", type: "bash", initialCommand: "echo prepare" }],
@@ -335,6 +382,7 @@ describe("WorkflowService", () => {
       service.saveScript({
         scriptPath: join(home, "outside.json"),
         script: {
+          ...workflowV1,
           version: 1,
           name: "Outside",
           steps: [{ id: "step", type: "bash", initialCommand: "echo blocked" }],
@@ -349,6 +397,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Latest run",
         steps: [
@@ -384,6 +433,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "JSON input",
         steps: [
@@ -430,6 +480,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Python node",
         steps: [
@@ -437,17 +488,19 @@ describe("WorkflowService", () => {
             id: "transform",
             type: "python",
             code: [
-              "import json",
-              "import os",
-              "import sys",
-              "payload = json.load(sys.stdin)",
+              'payload = input["data"]',
               'print("diagnostic output")',
-              'with os.fdopen(3, "w") as result:',
-              "    json.dump({",
-              '        **payload, "control": "python-done",',
+              "output = {",
+              '    "data": {',
+              "        **payload,",
+              '        "control": "python-done",',
               '        "greeting": "Hello " + payload["customer"]["name"],',
-              '        "stdinMatches": True,',
-              "    }, result)",
+              '        "stdinMatches": input["data"] == payload,',
+              "    },",
+              '    "modify": {"workflow": {"var": {}}, "node": {"var": {}}},',
+              '    "base_resp": {"status_code": 0, "status_msg": "", "forbid_retry": 0},',
+              '    "artifacts": [],',
+              "}",
             ].join("\n"),
           },
         ],
@@ -466,14 +519,13 @@ describe("WorkflowService", () => {
     expect(run.status).toBe("succeeded");
     expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
       control: "python-done",
-      error: "",
       greeting: "Hello Alice",
       stdinMatches: true,
     });
     expect(run.nodeRuns[0]).toMatchObject({
       stepType: "bash",
       executor: "python",
-      outputControl: "python-done",
+      outputControl: "",
     });
     expect(run.nodeRuns[0]?.output).toContain("diagnostic output");
   });
@@ -484,6 +536,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Bash variables",
         steps: [
@@ -496,12 +549,12 @@ describe("WorkflowService", () => {
                 '  control: "done", customer: process.argv[1], item: process.argv[2], role: process.argv[3]',
                 "});",
               ].join("\n"),
-              "{{customer.name}}",
-              "{{items.0.id}}",
+              "{{data.customer.name}}",
+              "{{data.items.0.id}}",
               "{{role}}",
             ),
-            variables: {
-              role: "{{customer.name}}-reviewer",
+            templateVariables: {
+              role: "{{data.customer.name}}-reviewer",
             },
           },
         ],
@@ -513,14 +566,12 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({
       scriptPath,
       inputPayload: JSON.stringify({
-        control: "",
-        error: "",
         customer: { name: "Alice" },
         items: [{ id: 7 }],
       }),
     });
 
-    expect(run.status).toBe("succeeded");
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
     expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
       customer: "Alice",
       item: "7",
@@ -528,19 +579,22 @@ describe("WorkflowService", () => {
     });
   });
 
-  it("defaults control and removes framework error from initial node input", async () => {
+  it("passes initial data through the node input envelope", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Default input fields",
         steps: [
           {
             id: "copy",
             type: "bash",
-            initialCommand: "cat >&3",
+            initialCommand: nodeCommand(
+              "const input = JSON.parse(process.argv.at(-1)); __paseoWriteResult(input);",
+            ),
           },
         ],
       }),
@@ -550,21 +604,19 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: '{"customer":"Alice","error":"must-not-reach-node"}',
+      inputPayload: '{"customer":"Alice"}',
     });
 
-    expect(run.status).toBe("succeeded");
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
     expect(JSON.parse(run.inputPayload ?? "{}")).toEqual({
-      control: "",
       customer: "Alice",
     });
     expect(JSON.parse(run.nodeRuns[0]?.inputPayload ?? "{}")).toEqual({
-      control: "",
-      customer: "Alice",
+      data: { customer: "Alice" },
+      workflow: { var: {} },
+      node: { var: {} },
     });
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: "",
       customer: "Alice",
     });
   });
@@ -575,6 +627,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Legacy nested workflow",
         steps: [
@@ -596,7 +649,6 @@ describe("WorkflowService", () => {
   it.each([
     ["invalid JSON", "not json", "valid JSON object"],
     ["a non-object value", "[]", "must be a JSON object"],
-    ["a non-string control field", '{"control":[]}', 'field "control" must be a string'],
   ])(
     "rejects initial payloads with %s before creating a run",
     async (_label, inputPayload, error) => {
@@ -605,6 +657,7 @@ describe("WorkflowService", () => {
       await writeFile(
         scriptPath,
         JSON.stringify({
+          ...workflowV1,
           version: 1,
           name: "Invalid JSON input",
           steps: [{ id: "noop", type: "bash", initialCommand: "echo noop" }],
@@ -650,6 +703,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "bash chain",
         steps: [
@@ -680,7 +734,7 @@ describe("WorkflowService", () => {
 
     expect(run.status).toBe("succeeded");
     expect(run.outputFilePath).toBe(finalPath);
-    expect(run.control).toBe("done");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({ control: "done" });
     expect(await readFile(finalPath, "utf8")).toBe("finished");
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["prepare", "route", "finish"]);
   });
@@ -699,6 +753,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Explicit downstream graph",
         steps: [
@@ -747,6 +802,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "Invalid downstream graph",
         steps: [
@@ -780,6 +836,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "error",
         steps: [
@@ -831,6 +888,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "json payload",
         steps: [
@@ -856,31 +914,39 @@ describe("WorkflowService", () => {
     expect(run.outputFilePath).toBeNull();
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "done",
-      error: "",
       greeting: "Hello Alice",
       doubled: 4,
     });
     expect(JSON.parse(run.nodeRuns[1]?.inputPayload ?? "{}")).toEqual({
-      customer: { name: "Alice" },
-      count: 2,
-      control: "next",
-      filePath: inputPath,
+      data: {
+        customer: { name: "Alice" },
+        count: 2,
+        control: "next",
+        filePath: inputPath,
+      },
+      workflow: { var: {} },
+      node: { var: {} },
     });
   });
 
   it("keeps stdout as logs and reads the structured result only from file descriptor 3", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
-    const command = nodeCommand(
-      [
-        'process.stdout.write(\'{"control":"ignored","source":"stdout-log"}\\n\');',
-        'process.stdout.write("diagnostic output\\n");',
-        'require("fs").writeSync(3, JSON.stringify({ control: "true", source: "fd3" }));',
-      ].join("\n"),
-    );
+    const result = JSON.stringify({
+      data: { control: "true", source: "fd3" },
+      modify: { workflow: { var: {} }, node: { var: {} } },
+      base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
+      artifacts: [],
+    });
+    const command = [
+      `printf '%s\\n' ${shellQuote('{"control":"ignored","source":"stdout-log"}')}`,
+      `printf '%s\\n' ${shellQuote("diagnostic output")}`,
+      `output=${shellQuote(result)}`,
+    ].join("\n");
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "result channel",
         steps: [
@@ -897,25 +963,25 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: JSON.stringify({ control: "", error: "" }),
+      inputPayload: "{}",
     });
 
-    expect(run.status).toBe("succeeded");
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "true",
-      error: "",
       source: "fd3",
     });
-    expect(run.nodeRuns[0]?.outputControl).toBe("true");
+    expect(run.nodeRuns[0]?.outputControl).toBe("");
     expect(run.nodeRuns[0]?.stdout).toContain('"source":"stdout-log"');
   });
 
-  it("fails when the result channel is empty", async () => {
+  it("fails when the Bash output variable is empty", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "result file fallback",
         steps: [
@@ -932,29 +998,25 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: JSON.stringify({ control: "", error: "" }),
+      inputPayload: "{}",
     });
 
     expect(run.status).toBe("failed");
-    expect(run.error).toBe("Bash workflow node did not write a result to file descriptor 3");
-    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: "Bash workflow node did not write a result to file descriptor 3",
-    });
+    expect(run.error).toContain("Workflow Bash output variable output is empty");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({});
   });
 
   it("fails when the result channel is not valid JSON", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
-    const command = nodeCommand(
-      [
-        'process.stdout.write("diagnostic output\\n");',
-        'require("fs").writeSync(3, "not-json");',
-      ].join("\n"),
-    );
+    const command = [
+      `printf '%s\\n' ${shellQuote("diagnostic output")}`,
+      `output=${shellQuote("not-json")}`,
+    ].join("\n");
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "last stdout line",
         steps: [
@@ -971,43 +1033,39 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: JSON.stringify({ control: "", error: "" }),
+      inputPayload: "{}",
     });
 
     expect(run.status).toBe("failed");
     expect(run.error).toContain("Workflow node result is not valid JSON");
-    expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: expect.stringContaining("Workflow node result is not valid JSON"),
-    });
+    expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({});
   });
 
   it.each([
     [
-      "control",
-      '{"message":"missing control"}',
-      { control: "", error: "", message: "missing control" },
+      "base response and mutation fields",
+      '{"data":{"message":"defaults applied"}}',
+      { message: "defaults applied" },
     ],
     [
-      "no framework fields",
-      '{"message":"business data only"}',
-      { control: "", error: "", message: "business data only" },
+      "artifacts",
+      '{"data":{"message":"business data"},"artifacts":[]}',
+      { message: "business data" },
     ],
-  ])("defaults missing %s in Bash node JSON", async (_label, output, expected) => {
+  ])("defaults missing %s in a Bash result envelope", async (_label, output, expected) => {
     const home = await createTempHome();
-    const inputPath = join(home, "input.txt");
     const scriptPath = join(home, "workflow.json");
-    await writeFile(inputPath, "input");
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "invalid payload",
         steps: [
           {
             id: "normalize",
             type: "bash",
-            initialCommand: `printf '%s\\n' ${shellQuote(output)} >&3`,
+            initialCommand: `output=${shellQuote(output)}`,
           },
         ],
       }),
@@ -1015,41 +1073,40 @@ describe("WorkflowService", () => {
 
     const service = createService(home);
     await service.start();
-    const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
 
-    expect(run.status).toBe("succeeded");
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual(expected);
   });
 
   it.each([
     ["invalid JSON", "not json", "Workflow node result is not valid JSON"],
     [
-      "a non-string control field",
-      '{"control":[]}',
-      'Workflow node result field "control" must be a string',
+      "a bare data object",
+      '{"message":"missing envelope"}',
+      "Workflow node result must use the envelope",
     ],
     [
-      "the reserved error field",
-      '{"control":"","error":"failed"}',
-      'Workflow node result must not contain reserved field "error"',
+      "the removed flow field",
+      '{"data":{},"flow":{"control":"break"}}',
+      "Workflow node result must use the envelope",
     ],
   ])(
     "returns a standard error payload for Bash output with %s",
     async (_label, output, message) => {
       const home = await createTempHome();
-      const inputPath = join(home, "input.txt");
       const scriptPath = join(home, "workflow.json");
-      await writeFile(inputPath, "input");
       await writeFile(
         scriptPath,
         JSON.stringify({
+          ...workflowV1,
           version: 1,
           name: "invalid payload",
           steps: [
             {
               id: "invalid",
               type: "bash",
-              initialCommand: `printf '%s\\n' ${shellQuote(output)} >&3`,
+              initialCommand: `output=${shellQuote(output)}`,
             },
           ],
         }),
@@ -1057,18 +1114,12 @@ describe("WorkflowService", () => {
 
       const service = createService(home);
       await service.start();
-      const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
+      const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
 
       expect(run.status).toBe("failed");
       expect(run.error).toContain(message);
-      expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-        control: "",
-        error: expect.stringContaining(message),
-      });
-      expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({
-        control: "",
-        error: expect.stringContaining(message),
-      });
+      expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({});
+      expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({});
     },
   );
 
@@ -1098,6 +1149,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "retry",
         taskDefaults: {
@@ -1144,13 +1196,14 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "timeout",
         steps: [
           {
             id: "slow",
             type: "bash",
-            initialCommand: nodeCommand("setTimeout(() => {}, 5_000)"),
+            initialCommand: "while :; do :; done",
             timeoutMs: 25,
             retry: {
               maxAttempts: 2,
@@ -1179,13 +1232,14 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "cancel",
         steps: [
           {
             id: "wait",
             type: "bash",
-            initialCommand: nodeCommand("setTimeout(() => {}, 30_000)"),
+            initialCommand: "while :; do :; done",
           },
         ],
       }),
@@ -1216,6 +1270,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "workflow deadline",
         timeoutMs: 25,
@@ -1223,7 +1278,7 @@ describe("WorkflowService", () => {
           {
             id: "wait",
             type: "bash",
-            initialCommand: nodeCommand("setTimeout(() => {}, 30_000)"),
+            initialCommand: "while :; do :; done",
           },
         ],
       }),
@@ -1250,20 +1305,21 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const log = process.argv[1];",
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(log, `${input.control}\\n`);",
+        "fs.appendFileSync(log, `${input.loop.item}\\n`);",
         "__paseoWriteResult({",
         "  filePath: input.filePath,",
-        "  control: input.control,",
+        "  control: input.loop.item,",
         "});",
       ].join("\n"),
       loopLogPath,
     );
     const prepareCommand = nodeCommand(
-      ["__paseoWriteResult({", '  control: \'["alpha","beta"]\'', "});"].join("\n"),
+      ["__paseoWriteResult({", '  items: ["alpha", "beta"]', "});"].join("\n"),
     );
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "for",
         steps: [
@@ -1271,7 +1327,8 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            separator: ",",
+            mode: "items",
+            items: "{{data.items}}",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
         ],
@@ -1283,7 +1340,7 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
     expect(run.status).toBe("succeeded");
-    expect(run.control).toBe("beta");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({ control: "beta" });
     expect(await readFile(loopLogPath, "utf8")).toBe("alpha\nbeta\n");
     expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(2);
   });
@@ -1307,7 +1364,7 @@ describe("WorkflowService", () => {
         "  }",
         "  if (input.loop.index === 0) await delay(100);",
         "  __paseoWriteResult({",
-        "    ...input, result: input.loop.item",
+        "    ...input, control: input.loop.item, result: input.loop.item",
         "  });",
         "})().catch((error) => { console.error(error.message); process.exitCode = 1; });",
       ].join("\n"),
@@ -1316,13 +1373,15 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "concurrent for",
         steps: [
           {
             id: "items",
             type: "for",
-            separator: ",",
+            mode: "items",
+            items: "{{data.items}}",
             concurrency: 2,
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
@@ -1334,11 +1393,10 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: '{"control":"alpha,beta"}',
+      inputPayload: '{"items":["alpha","beta"]}',
     });
 
     expect(run.status, run.error ?? undefined).toBe("succeeded");
-    expect(run.control).toBe("beta");
     expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
       control: "beta",
       result: "beta",
@@ -1356,11 +1414,9 @@ describe("WorkflowService", () => {
     await writeFile(inputPath, "input");
 
     const prepareCommand = nodeCommand(
-      [
-        "__paseoWriteResult({",
-        '  control: \'["alpha","beta","gamma"]\', source: "test"',
-        "});",
-      ].join("\n"),
+      ["__paseoWriteResult({", '  items: ["alpha", "beta", "gamma"], source: "test"', "});"].join(
+        "\n",
+      ),
     );
     const loopCommand = nodeCommand(
       [
@@ -1368,7 +1424,7 @@ describe("WorkflowService", () => {
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: input.loop.item === "beta" ? "break" : input.control',
+        '  ...input, control: input.loop.item === "beta" ? "break" : ""',
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1376,6 +1432,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "for break",
         steps: [
@@ -1383,7 +1440,9 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            separator: ",",
+            mode: "items",
+            items: "{{data.items}}",
+            forControl: "{{data.control}}",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
         ],
@@ -1395,7 +1454,7 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
     expect(run.status).toBe("succeeded");
-    expect(run.control).toBe("break");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({ control: "break" });
     expect(await readFile(loopLogPath, "utf8")).toBe("0:alpha\n1:beta\n");
     expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(2);
     expect(run.nodeRuns.find((node) => node.stepId === "items")?.output).toContain(
@@ -1412,7 +1471,7 @@ describe("WorkflowService", () => {
     await writeFile(inputPath, "input");
 
     const prepareCommand = nodeCommand(
-      ["__paseoWriteResult({", '  control: "alpha,beta,gamma"', "});"].join("\n"),
+      ["__paseoWriteResult({", '  items: ["alpha", "beta", "gamma"]', "});"].join("\n"),
     );
     const firstCommand = nodeCommand(
       [
@@ -1420,7 +1479,7 @@ describe("WorkflowService", () => {
         "const input = JSON.parse(process.argv.at(-1));",
         "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: input.loop.item === "beta" ? "continue" : input.control',
+        '  ...input, control: input.loop.item === "beta" ? "continue" : ""',
         "});",
       ].join("\n"),
       firstLogPath,
@@ -1437,6 +1496,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "for continue",
         steps: [
@@ -1444,7 +1504,9 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            separator: ",",
+            mode: "items",
+            items: "{{data.items}}",
+            forControl: "{{data.control}}",
             steps: [
               { id: "first", type: "bash", initialCommand: firstCommand },
               { id: "second", type: "bash", initialCommand: secondCommand },
@@ -1485,12 +1547,15 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "continuous for",
         steps: [
           {
             id: "loop",
             type: "for",
+            mode: "while",
+            forControl: "{{data.control}}",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
         ],
@@ -1514,23 +1579,25 @@ describe("WorkflowService", () => {
     const inputPath = join(home, "input.txt");
     const scriptPath = join(home, "workflow.json");
     await writeFile(inputPath, "input");
-    const loopCommand = nodeCommand(
-      [
-        "const input = JSON.parse(process.argv.at(-1));",
-        "__paseoWriteResult({",
-        '  ...input, control: ""',
-        "});",
-      ].join("\n"),
-    );
+    const loopCommand = `output=${shellQuote(
+      JSON.stringify({
+        data: {},
+        modify: { workflow: { var: {} }, node: { var: {} } },
+        base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
+        artifacts: [],
+      }),
+    )}`;
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "default continuous limit",
         steps: [
           {
             id: "loop",
             type: "for",
+            mode: "while",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
         ],
@@ -1581,6 +1648,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "configured command",
         steps: [
@@ -1669,6 +1737,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "agent variables",
         steps: [
@@ -1677,16 +1746,16 @@ describe("WorkflowService", () => {
             id: "analyze",
             name: "Analyze source",
             type: "agent",
-            outputType: "answer",
+            outputMode: "normal",
             initialPrompt:
-              "Read {{inputFilePath}} as {{role}}. Name={{inputFileName}}; control={{control}}; body={{inputFileContent}}; customer={{customer.name}}; first={{records.0.id}}; records={{records}}",
-            promptVariables: {
+              "Read {{inputFilePath}} as {{role}}. Name={{inputFileName}}; control={{data.control}}; body={{inputFileContent}}; customer={{data.customer.name}}; first={{data.records.0.id}}; records={{data.records}}",
+            templateVariables: {
               role: "reviewer",
             },
             config: {
               provider: "codex",
               cwd: home,
-              systemPrompt: "# This must be ignored for Answer nodes",
+              systemPrompt: "# Review {{data.customer.name}}",
             },
           },
         ],
@@ -1696,7 +1765,7 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
-    expect(run.status).toBe("succeeded");
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
     expect(capturedPrompt).toBe(
       `Read ${upstreamPath} as reviewer. Name=source.txt; control=review; body=source body; customer=Alice; first=7; records=[{"id":7},{"id":8}]`,
     );
@@ -1704,7 +1773,7 @@ describe("WorkflowService", () => {
     expect(capturedPrompt).not.toContain("Input JSON payload:");
     expect(capturedPrompt).not.toContain("System prompt delivery:");
     expect(capturedPrompt).not.toContain("Your final response MUST");
-    expect(capturedSystemPrompt).toBeUndefined();
+    expect(capturedSystemPrompt).toBe("# Review Alice");
     expect(run.nodeRuns[1]?.agentPrompt).toBe(capturedPrompt);
     expect(run.nodeRuns[1]?.agentResponse).toBe(
       JSON.stringify({
@@ -1716,8 +1785,6 @@ describe("WorkflowService", () => {
     );
     expect(run.nodeRuns[1]?.output).toBeNull();
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: "",
       answer: JSON.stringify({
         filePath: outputPath,
         control: "complete",
@@ -1760,13 +1827,14 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "agent defaults",
         steps: [
           {
             id: "agent",
             type: "agent",
-            outputType: "answer",
+            outputMode: "normal",
             initialPrompt: "Return the result",
             config: { provider: "codex", cwd: home },
           },
@@ -1777,18 +1845,16 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: '{"control":"","error":""}',
+      inputPayload: "{}",
     });
 
     expect(run.status).toBe("succeeded");
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
-      control: "",
-      error: "",
       answer: '{"message":"ok"}',
     });
   });
 
-  it("converts a Control Agent node response and applies its default system prompt", async () => {
+  it("uses a custom Agent result envelope for flow-control data", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "control-agent-output.json");
     let capturedSystemPrompt: string | undefined;
@@ -1798,7 +1864,12 @@ describe("WorkflowService", () => {
       agentManager: {
         runAgent: async () => ({
           sessionId: "session",
-          finalText: "是",
+          finalText: JSON.stringify({
+            data: { control: "是" },
+            modify: { workflow: { var: {} }, node: { var: {} } },
+            base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
+            artifacts: [],
+          }),
           timeline: [],
           canceled: false,
         }),
@@ -1825,15 +1896,20 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "control agent output",
         steps: [
           {
             id: "agent",
             type: "agent",
-            outputType: "control",
+            outputMode: "custom",
             initialPrompt: "Decide whether to continue",
-            config: { provider: "codex", cwd: home },
+            config: {
+              provider: "codex",
+              cwd: home,
+              systemPrompt: "# 角色\n你的回答必须在下面几个选中中：是、否",
+            },
           },
         ],
       }),
@@ -1842,14 +1918,13 @@ describe("WorkflowService", () => {
     await service.start();
     const run = await service.runScriptAndWait({
       scriptPath,
-      inputPayload: '{"control":"","error":""}',
+      inputPayload: "{}",
     });
 
     expect(run.status).toBe("succeeded");
     expect(capturedSystemPrompt).toBe("# 角色\n你的回答必须在下面几个选中中：是、否");
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "是",
-      error: "",
     });
   });
 
@@ -1863,7 +1938,12 @@ describe("WorkflowService", () => {
       agentManager: {
         runAgent: async () => ({
           sessionId: "session",
-          finalText: "通过",
+          finalText: JSON.stringify({
+            data: { control: "通过" },
+            modify: { workflow: { var: {} }, node: { var: {} } },
+            base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
+            artifacts: [],
+          }),
           timeline: [],
           canceled: false,
         }),
@@ -1890,6 +1970,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "control agent system prompt variables",
         steps: [
@@ -1897,16 +1978,16 @@ describe("WorkflowService", () => {
             id: "agent",
             name: "Route customer",
             type: "agent",
-            outputType: "control",
-            initialPrompt: "Choose a route for {{customer.name}} as {{role}}.",
-            promptVariables: {
-              role: "{{customer.type}} reviewer",
+            outputMode: "custom",
+            initialPrompt: "Choose a route for {{data.customer.name}} as {{role}}.",
+            templateVariables: {
+              role: "{{data.customer.type}} reviewer",
             },
             config: {
               provider: "codex",
               cwd: home,
               systemPrompt:
-                "# Role\nReview {{customer.name}} as {{role}}. Route={{control}}; node={{stepName}}.",
+                "# Role\nReview {{data.customer.name}} as {{role}}. Route={{data.control}}; node={{stepName}}.",
             },
           },
         ],
@@ -1977,6 +2058,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "assistant workflow",
         steps: [
@@ -2083,6 +2165,7 @@ describe("WorkflowService", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
+        ...workflowV1,
         version: 1,
         name: "team workflow",
         steps: [

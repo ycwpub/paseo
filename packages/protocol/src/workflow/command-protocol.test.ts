@@ -6,7 +6,7 @@ describe("workflow command result protocol capability", () => {
     const current = ServerInfoStatusPayloadSchema.parse({
       status: "server_info",
       serverId: "current",
-      features: { workflowCommandResultFd3: true },
+      features: { workflowCommandResultFd3: true, workflowProtocolVersion: 1 },
     });
     const older = ServerInfoStatusPayloadSchema.parse({
       status: "server_info",
@@ -14,6 +14,8 @@ describe("workflow command result protocol capability", () => {
     });
 
     expect(current.features?.workflowCommandResultFd3).toBe(true);
+    expect(current.features?.workflowProtocolVersion).toBe(1);
     expect(older.features?.workflowCommandResultFd3).toBeUndefined();
+    expect(older.features?.workflowProtocolVersion).toBeUndefined();
   });
 });

@@ -18,7 +18,7 @@ import {
 import { StyleSheet } from "react-native-unistyles";
 import {
   type WorkflowAgentConfig,
-  type WorkflowAgentOutputType,
+  type WorkflowAgentOutputMode,
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
@@ -53,7 +53,7 @@ import {
   createWorkflowStep,
   getAvailableWorkflowStepTypes,
   moveWorkflowStep,
-  updateAgentOutputType,
+  updateAgentOutputMode,
   type WorkflowStepType,
 } from "@/workflows/editor-model";
 import {
@@ -517,13 +517,42 @@ function BashStepFields({
           testID={`workflow-bash-${step.id}-command`}
         />
       </Field>
+      <View style={styles.threeColumn}>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.common.inputVariable")}
+            hint={t("workflows.nodes.common.bashInputVariableHint")}
+          >
+            <WorkflowTextInput
+              value={step.inputVariable ?? "input"}
+              onChangeText={(inputVariable) => onChange({ ...step, inputVariable })}
+              size="sm"
+              autoCapitalize="none"
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.common.outputVariable")}
+            hint={t("workflows.nodes.common.bashOutputVariableHint")}
+          >
+            <WorkflowTextInput
+              value={step.outputVariable ?? "output"}
+              onChangeText={(outputVariable) => onChange({ ...step, outputVariable })}
+              size="sm"
+              autoCapitalize="none"
+            />
+          </Field>
+        </View>
+      </View>
       <WorkflowVariablesEditor
         kind="bash"
-        variables={step.variables ?? {}}
-        onChange={(variables) =>
+        variables={step.templateVariables ?? {}}
+        onChange={(templateVariables) =>
           onChange({
             ...step,
-            variables: Object.keys(variables).length > 0 ? variables : undefined,
+            templateVariables:
+              Object.keys(templateVariables).length > 0 ? templateVariables : undefined,
           })
         }
       />
@@ -531,6 +560,7 @@ function BashStepFields({
         inputs={step.inputs}
         inputSchema={step.inputSchema}
         outputSchema={step.outputSchema}
+        variables={step.variables}
         onChange={(contract) => onChange({ ...step, ...contract })}
       />
       <View style={styles.threeColumn}>
@@ -585,16 +615,46 @@ function PythonStepFields({
   step: WorkflowPythonStep;
   onChange: (step: WorkflowPythonStep) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <WorkflowPythonStepFields step={step} onChange={onChange} />
+      <View style={styles.threeColumn}>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.common.inputVariable")}
+            hint={t("workflows.nodes.common.pythonInputVariableHint")}
+          >
+            <WorkflowTextInput
+              value={step.inputVariable ?? "input"}
+              onChangeText={(inputVariable) => onChange({ ...step, inputVariable })}
+              size="sm"
+              autoCapitalize="none"
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.common.outputVariable")}
+            hint={t("workflows.nodes.common.pythonOutputVariableHint")}
+          >
+            <WorkflowTextInput
+              value={step.outputVariable ?? "output"}
+              onChangeText={(outputVariable) => onChange({ ...step, outputVariable })}
+              size="sm"
+              autoCapitalize="none"
+            />
+          </Field>
+        </View>
+      </View>
       <WorkflowVariablesEditor
         kind="python"
-        variables={step.variables ?? {}}
-        onChange={(variables) =>
+        variables={step.templateVariables ?? {}}
+        onChange={(templateVariables) =>
           onChange({
             ...step,
-            variables: Object.keys(variables).length > 0 ? variables : undefined,
+            templateVariables:
+              Object.keys(templateVariables).length > 0 ? templateVariables : undefined,
           })
         }
       />
@@ -602,6 +662,7 @@ function PythonStepFields({
         inputs={step.inputs}
         inputSchema={step.inputSchema}
         outputSchema={step.outputSchema}
+        variables={step.variables}
         onChange={(contract) => onChange({ ...step, ...contract })}
       />
       <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
@@ -990,20 +1051,20 @@ function AgentStepFields({
     [t],
   );
   const selectedIsolation = isolationOptions.find((option) => option.value === isolation);
-  const outputType = step.outputType ?? "answer";
-  const outputTypeOptions = useMemo<SelectFieldOption<WorkflowAgentOutputType>[]>(
+  const outputMode = step.outputMode ?? "normal";
+  const outputModeOptions = useMemo<SelectFieldOption<WorkflowAgentOutputMode>[]>(
     () => [
       {
-        id: "answer",
-        value: "answer",
-        label: t("workflows.nodes.agent.outputTypes.answer"),
-        description: t("workflows.nodes.agent.outputTypes.answerDescription"),
+        id: "normal",
+        value: "normal",
+        label: t("workflows.nodes.agent.outputTypes.normal"),
+        description: t("workflows.nodes.agent.outputTypes.normalDescription"),
       },
       {
-        id: "control",
-        value: "control",
-        label: t("workflows.nodes.agent.outputTypes.control"),
-        description: t("workflows.nodes.agent.outputTypes.controlDescription"),
+        id: "custom",
+        value: "custom",
+        label: t("workflows.nodes.agent.outputTypes.custom"),
+        description: t("workflows.nodes.agent.outputTypes.customDescription"),
       },
     ],
     [t],
@@ -1017,12 +1078,12 @@ function AgentStepFields({
         <SelectField
           field={false}
           label=""
-          value={outputType}
+          value={outputMode}
           selectedDisplay={optionDisplay(
-            outputTypeOptions.find((option) => option.value === outputType),
+            outputModeOptions.find((option) => option.value === outputMode),
           )}
-          options={outputTypeOptions}
-          onChange={(nextOutputType) => onChange(updateAgentOutputType(step, nextOutputType))}
+          options={outputModeOptions}
+          onChange={(nextOutputMode) => onChange(updateAgentOutputMode(step, nextOutputMode))}
           placeholder={t("workflows.nodes.agent.selectOutputType")}
           emptyText={t("workflows.nodes.agent.noOutputTypes")}
           title={t("workflows.nodes.agent.outputType")}
@@ -1050,11 +1111,12 @@ function AgentStepFields({
       </Field>
       <WorkflowVariablesEditor
         kind="agent"
-        variables={step.promptVariables ?? {}}
-        onChange={(promptVariables) =>
+        variables={step.templateVariables ?? {}}
+        onChange={(templateVariables) =>
           onChange({
             ...step,
-            promptVariables: Object.keys(promptVariables).length > 0 ? promptVariables : undefined,
+            templateVariables:
+              Object.keys(templateVariables).length > 0 ? templateVariables : undefined,
           })
         }
       />
@@ -1322,18 +1384,17 @@ function AgentStepFields({
           </Field>
         </View>
       </View>
-      {outputType === "control" ? (
-        <AgentSystemPromptField
-          step={step}
-          promptTemplates={promptTemplates}
-          loading={promptTemplatesLoading}
-          onChange={onChange}
-        />
-      ) : null}
+      <AgentSystemPromptField
+        step={step}
+        promptTemplates={promptTemplates}
+        loading={promptTemplatesLoading}
+        onChange={onChange}
+      />
       <WorkflowNodeContractFields
         inputs={step.inputs}
         inputSchema={step.inputSchema}
         outputSchema={step.outputSchema}
+        variables={step.variables}
         onChange={(contract) => onChange({ ...step, ...contract })}
       />
       <View style={styles.toggleRow}>
@@ -1682,9 +1743,9 @@ function SwitchStepFields({
         hint={t("workflows.nodes.switch.switchOnHint")}
       >
         <WorkflowTextInput
-          value={step.switchOn ?? ""}
-          onChangeText={(switchOn) => onChange({ ...step, switchOn: optionalText(switchOn) })}
-          placeholder="{{nodes.classify.outputs.decision}}"
+          value={step.switchVar ?? ""}
+          onChangeText={(switchVar) => onChange({ ...step, switchVar: optionalText(switchVar) })}
+          placeholder="{{data.answer}}"
           size="sm"
           autoCapitalize="none"
         />
@@ -1693,6 +1754,13 @@ function SwitchStepFields({
         label={t("workflows.nodes.switch.caseSensitive")}
         value={step.caseSensitive ?? false}
         onChange={(caseSensitive) => onChange({ ...step, caseSensitive })}
+      />
+      <WorkflowNodeContractFields
+        inputs={undefined}
+        inputSchema={step.inputSchema}
+        outputSchema={undefined}
+        variables={step.variables}
+        onChange={({ inputSchema, variables }) => onChange({ ...step, inputSchema, variables })}
       />
       <View style={styles.branches}>
         {step.cases.map((candidate, index) => (
@@ -1703,10 +1771,10 @@ function SwitchStepFields({
               <View style={styles.branchCondition}>
                 <Braces size={14} color={styles.branchConditionIcon.color} />
                 <Text style={styles.branchConditionLabel}>
-                  {t("workflows.nodes.switch.controlEquals")}
+                  {t("workflows.nodes.switch.valueEquals")}
                 </Text>
                 <WorkflowTextInput
-                  value={candidate.equals}
+                  value={String(candidate.equals)}
                   onChangeText={(equals) => {
                     const cases = [...step.cases];
                     cases[index] = { ...candidate, equals };
@@ -1816,20 +1884,52 @@ function ForStepFields({
   onChange: (step: WorkflowForStep) => void;
 }) {
   const { t } = useTranslation();
+  const mode = step.mode ?? "items";
+  const modeOptions = useMemo<SelectFieldOption<"items" | "while">[]>(
+    () => [
+      { id: "items", value: "items", label: t("workflows.nodes.for.modeItems") },
+      { id: "while", value: "while", label: t("workflows.nodes.for.modeWhile") },
+    ],
+    [t],
+  );
   return (
     <>
       <View style={styles.threeColumn}>
         <View style={styles.columnField}>
-          <Field label={t("workflows.nodes.for.items")} hint={t("workflows.nodes.for.itemsHint")}>
-            <WorkflowTextInput
-              value={step.items ?? ""}
-              onChangeText={(items) => onChange({ ...step, items: optionalText(items) })}
-              placeholder="{{nodes.scan.outputs.items}}"
+          <Field label={t("workflows.nodes.for.mode")}>
+            <SelectField
+              field={false}
+              label=""
+              value={mode}
+              selectedDisplay={optionDisplay(modeOptions.find((option) => option.value === mode))}
+              options={modeOptions}
+              onChange={(nextMode) =>
+                onChange({
+                  ...step,
+                  mode: nextMode,
+                  concurrency: nextMode === "while" ? 1 : step.concurrency,
+                })
+              }
+              placeholder={t("workflows.nodes.for.selectMode")}
+              emptyText=""
+              title={t("workflows.nodes.for.mode")}
               size="sm"
-              autoCapitalize="none"
             />
           </Field>
         </View>
+        {mode === "items" ? (
+          <View style={styles.columnField}>
+            <Field label={t("workflows.nodes.for.items")} hint={t("workflows.nodes.for.itemsHint")}>
+              <WorkflowTextInput
+                value={step.items ?? ""}
+                onChangeText={(items) => onChange({ ...step, items: optionalText(items) })}
+                placeholder="{{data.items}}"
+                size="sm"
+                autoCapitalize="none"
+              />
+            </Field>
+          </View>
+        ) : null}
         <View style={styles.columnField}>
           <Field
             label={t("workflows.nodes.for.maximumIterations")}
@@ -1859,10 +1959,27 @@ function ForStepFields({
               placeholder="1"
               keyboardType="numeric"
               size="sm"
+              editable={mode !== "while"}
             />
           </Field>
         </View>
       </View>
+      <Field label={t("workflows.nodes.for.control")} hint={t("workflows.nodes.for.controlHint")}>
+        <WorkflowTextInput
+          value={step.forControl ?? ""}
+          onChangeText={(forControl) => onChange({ ...step, forControl: optionalText(forControl) })}
+          placeholder="{{data.control}}"
+          size="sm"
+          autoCapitalize="none"
+        />
+      </Field>
+      <WorkflowNodeContractFields
+        inputs={undefined}
+        inputSchema={step.inputSchema}
+        outputSchema={undefined}
+        variables={step.variables}
+        onChange={({ inputSchema, variables }) => onChange({ ...step, inputSchema, variables })}
+      />
       <View style={styles.branchCard}>
         <WorkflowStepListEditor
           label={t("workflows.nodes.for.loopBody")}

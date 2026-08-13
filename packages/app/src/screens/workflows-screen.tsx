@@ -28,11 +28,7 @@ import {
   type WorkflowScriptSummary,
   type WorkflowStep,
 } from "@getpaseo/protocol/workflow/types";
-import {
-  applyWorkflowInputContract,
-  type WorkflowInputContract,
-  type WorkflowInputPreset,
-} from "@getpaseo/protocol/workflow/input-contract";
+import type { WorkflowInputPreset } from "@getpaseo/protocol/workflow/input-contract";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { WorkflowAgentOutput } from "@/components/workflows/workflow-agent-output";
 import { WorkflowEditorToolbar } from "@/components/workflows/workflow-editor-toolbar";
@@ -75,9 +71,7 @@ import { findWorkflowStep } from "@/workflows/step-lookup";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
-const DEFAULT_WORKFLOW_INPUT_JSON = `{
-  "control": ""
-}`;
+const DEFAULT_WORKFLOW_INPUT_JSON = "{}";
 
 function parseWorkflowInputJson(input: string): {
   inputPayload: string;
@@ -86,36 +80,16 @@ function parseWorkflowInputJson(input: string): {
   const rawPayload: unknown = JSON.parse(input);
   const isPayloadObject =
     typeof rawPayload === "object" && rawPayload !== null && !Array.isArray(rawPayload);
-  const rawRecord = isPayloadObject ? (rawPayload as Record<string, unknown>) : null;
-  const missingControl = rawRecord && !Object.hasOwn(rawRecord, "control");
-  const hasFrameworkError = rawRecord && Object.hasOwn(rawRecord, "error");
-  const { error: _frameworkError, ...nodeInput } = rawRecord ?? {};
-  const normalizedPayload = rawRecord
-    ? {
-        ...nodeInput,
-        control: Object.hasOwn(nodeInput, "control") ? nodeInput.control : "",
-        error: "",
-      }
-    : rawPayload;
-  const parsed = WorkflowPayloadSchema.parse(normalizedPayload);
-  const { error: _internalError, ...parsedNodeInput } = parsed;
+  const parsed = WorkflowPayloadSchema.parse(rawPayload);
   return {
-    inputPayload: JSON.stringify(parsedNodeInput),
-    formattedInput:
-      missingControl || hasFrameworkError ? JSON.stringify(parsedNodeInput, null, 2) : null,
+    inputPayload: JSON.stringify(parsed),
+    formattedInput: isPayloadObject ? null : JSON.stringify(parsed, null, 2),
   };
 }
 
-function createDefaultWorkflowInput(
-  contract: WorkflowInputContract | undefined,
-  presets: WorkflowInputPreset[] | undefined,
-): string {
+function createDefaultWorkflowInput(presets: WorkflowInputPreset[] | undefined): string {
   const preset = presets?.[0]?.payload ?? {};
-  const validation = applyWorkflowInputContract(contract, {
-    control: "",
-    ...preset,
-  });
-  return JSON.stringify(validation.payload, null, 2);
+  return JSON.stringify(preset, null, 2);
 }
 
 export function WorkflowsScreen(): ReactElement {
@@ -257,12 +231,7 @@ function WorkflowsScreenContent(): ReactElement {
         setDraftPath(payload.script.path);
         setDirty(false);
         setActiveRun(payload.latestRun);
-        setInputJson(
-          createDefaultWorkflowInput(
-            payload.script.script.inputContract,
-            payload.script.script.inputPresets,
-          ),
-        );
+        setInputJson(createDefaultWorkflowInput(payload.script.script.inputPresets));
       } catch (error) {
         if (generation !== inspectGeneration.current) {
           return;
@@ -396,16 +365,9 @@ function WorkflowsScreenContent(): ReactElement {
     try {
       const parsedInput = parseWorkflowInputJson(normalizedInput);
       const parsedPayload = JSON.parse(parsedInput.inputPayload) as Record<string, unknown>;
-      const validation = applyWorkflowInputContract(draft.inputContract, parsedPayload);
-      if (validation.issues.length > 0) {
-        toast.error(validation.issues.map((issue) => issue.message).join("; "));
-        return;
-      }
-      inputPayload = JSON.stringify(validation.payload);
+      inputPayload = JSON.stringify(parsedPayload);
       if (parsedInput.formattedInput) {
         setInputJson(parsedInput.formattedInput);
-      } else if (JSON.stringify(parsedPayload) !== inputPayload) {
-        setInputJson(JSON.stringify(validation.payload, null, 2));
       }
     } catch {
       toast.error(t("workflows.messages.invalidInputJson"));
@@ -742,9 +704,13 @@ function WorkflowsScreenContent(): ReactElement {
                 {supportsWorkflowInputConfiguration ? (
                   <>
                     <WorkflowInputConfiguration
-                      contract={draft.inputContract}
+                      variables={draft.variables}
+                      outputSchema={draft.outputSchema}
                       presets={draft.inputPresets}
-                      onChangeContract={(inputContract) => updateDraft({ ...draft, inputContract })}
+                      onChangeVariables={(variables) => updateDraft({ ...draft, variables })}
+                      onChangeOutputSchema={(outputSchema) =>
+                        updateDraft({ ...draft, outputSchema })
+                      }
                       onChangePresets={(inputPresets) => updateDraft({ ...draft, inputPresets })}
                     />
                     <WorkflowEnvironmentConfiguration
@@ -809,7 +775,6 @@ function WorkflowsScreenContent(): ReactElement {
                   </View>
                   {supportsWorkflowInputConfiguration ? (
                     <WorkflowRunInput
-                      contract={draft.inputContract}
                       presets={draft.inputPresets}
                       inputJson={inputJson}
                       onChangeInputJson={setInputJson}

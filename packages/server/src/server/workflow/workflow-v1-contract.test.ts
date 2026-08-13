@@ -16,23 +16,17 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-function nodeCommand(source: string): string {
-  return [
-    shellQuote(process.execPath),
-    "-e",
-    shellQuote(
-      [
-        'const fs = require("node:fs");',
-        'const input = JSON.parse(fs.readFileSync(0, "utf8"));',
-        "const writeResult = (value) => fs.writeSync(3, JSON.stringify(value));",
-        source,
-      ].join("\n"),
-    ),
-  ].join(" ");
+function nodeOutputCommand(source: string): string {
+  const program = [
+    "const input = JSON.parse(process.argv[1]);",
+    source,
+    "process.stdout.write(JSON.stringify(output));",
+  ].join("\n");
+  return `output="$(${shellQuote(process.execPath)} -e ${shellQuote(program)} "$input")"`;
 }
 
 async function createService(): Promise<{ home: string; service: WorkflowService }> {
-  const home = await mkdtemp(join(tmpdir(), "paseo-workflow-v2-"));
+  const home = await mkdtemp(join(tmpdir(), "paseo-workflow-v1-"));
   tempDirs.push(home);
   const service = new WorkflowService({
     paseoHome: home,
@@ -60,8 +54,8 @@ async function createService(): Promise<{ home: string; service: WorkflowService
   return { home, service };
 }
 
-describe("WorkflowService v2 data contract", () => {
-  it("maps explicit inputs, validates schemas, branches, loops, and stores artifacts", async () => {
+describe("WorkflowService version 1 data contract", () => {
+  it("validates schemas, maps variables, branches, loops, and stores artifacts", async () => {
     const { home, service } = await createService();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -69,31 +63,43 @@ describe("WorkflowService v2 data contract", () => {
       JSON.stringify({
         apiVersion: "paseo.sh/workflow/v1",
         kind: "Workflow",
-        version: 2,
+        version: 1,
         name: "Structured workflow",
-        inputContract: {
+        variables: {
+          traceId: { type: "string", default: "" },
+        },
+        outputSchema: {
+          type: "object",
+          required: ["project", "item", "index", "traceId", "control"],
           properties: {
             project: { type: "string" },
+            item: { type: "string" },
+            index: { type: "integer" },
+            traceId: { type: "string" },
+            control: { const: "break" },
           },
-          required: ["project"],
         },
         steps: [
           {
             id: "prepare",
             type: "bash",
-            initialCommand: nodeCommand(`
-writeResult({
-  outputs: {
-    project: input.project,
+            initialCommand: nodeOutputCommand(`
+output = {
+  data: {
+    project: input.data.project,
     route: "process",
     items: ["alpha", "beta", "gamma"]
+  },
+  modify: {
+    workflow: { var: { traceId: "trace-1" } },
+    node: { var: {} }
   },
   artifacts: [{
     name: "manifest",
     uri: "file:///tmp/manifest.json",
     mediaType: "application/json"
   }]
-});`),
+};`),
             inputs: {
               project: "{{workflow.inputs.project}}",
             },
@@ -103,11 +109,10 @@ writeResult({
               properties: {
                 project: { type: "string" },
               },
-              additionalProperties: false,
             },
             outputSchema: {
               type: "object",
-              required: ["route", "items"],
+              required: ["project", "route", "items"],
               properties: {
                 project: { type: "string" },
                 route: { const: "process" },
@@ -118,7 +123,7 @@ writeResult({
           {
             id: "route",
             type: "switch",
-            switchOn: "{{nodes.prepare.outputs.route}}",
+            switchVar: "{{data.route}}",
             cases: [
               {
                 equals: "process",
@@ -126,7 +131,9 @@ writeResult({
                   {
                     id: "loop",
                     type: "for",
-                    items: "{{nodes.prepare.outputs.items}}",
+                    mode: "items",
+                    items: "{{data.items}}",
+                    forControl: "{{data.control}}",
                     maxIterations: 10,
                     concurrency: 1,
                     steps: [
@@ -135,20 +142,20 @@ writeResult({
                         type: "bash",
                         inputs: {
                           project: "{{workflow.inputs.project}}",
-                          item: "{{loop.item}}",
-                          index: "{{loop.index}}",
+                          item: "{{data.loop.item}}",
+                          index: "{{data.loop.index}}",
+                          traceId: "{{workflow.var.traceId}}",
                         },
-                        initialCommand: nodeCommand(`
-writeResult({
-  outputs: {
-    project: input.project,
-    item: input.item,
-    index: input.index
-  },
-  flow: {
-    action: input.item === "beta" ? "break" : "next"
+                        initialCommand: nodeOutputCommand(`
+output = {
+  data: {
+    project: input.data.project,
+    item: input.data.item,
+    index: input.data.index,
+    traceId: input.data.traceId,
+    control: input.data.item === "beta" ? "break" : ""
   }
-});`),
+};`),
                       },
                     ],
                   },
@@ -171,8 +178,9 @@ writeResult({
       project: "paseo",
       item: "beta",
       index: 1,
+      traceId: "trace-1",
+      control: "break",
     });
-    expect(run.control).toBe("");
     expect(run.artifacts).toEqual([
       {
         name: "manifest",
@@ -186,7 +194,7 @@ writeResult({
     expect(run.nodeRuns.filter((node) => node.stepId === "process-item")).toHaveLength(2);
   });
 
-  it("rejects the legacy bare result shape in v2", async () => {
+  it("rejects removed bare result shapes", async () => {
     const { home, service } = await createService();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -194,13 +202,13 @@ writeResult({
       JSON.stringify({
         apiVersion: "paseo.sh/workflow/v1",
         kind: "Workflow",
-        version: 2,
+        version: 1,
         name: "Invalid result",
         steps: [
           {
             id: "invalid",
             type: "bash",
-            initialCommand: nodeCommand("writeResult({ answer: 'legacy' });"),
+            initialCommand: nodeOutputCommand("output = { answer: 'legacy' };"),
           },
         ],
       }),
@@ -212,6 +220,46 @@ writeResult({
     });
 
     expect(run.status).toBe("failed");
-    expect(run.error).toContain("must use the v2 envelope");
+    expect(run.error).toContain("must use the envelope");
+  });
+
+  it("does not retry when base_resp forbids retry", async () => {
+    const { home, service } = await createService();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        apiVersion: "paseo.sh/workflow/v1",
+        kind: "Workflow",
+        version: 1,
+        name: "No retry",
+        steps: [
+          {
+            id: "fail",
+            type: "bash",
+            retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 1, jitter: false },
+            initialCommand: nodeOutputCommand(`
+output = {
+  data: {},
+  base_resp: {
+    status_code: 7,
+    status_msg: "permanent failure",
+    forbid_retry: 1
+  }
+};`),
+          },
+        ],
+      }),
+    );
+
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: "{}",
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toBe("permanent failure");
+    expect(run.nodeRuns).toHaveLength(1);
+    expect(run.nodeRuns[0]?.attempt).toBe(1);
   });
 });

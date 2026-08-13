@@ -43,7 +43,7 @@ export function WorkflowStepHelp({ step, typeLabel }: WorkflowStepHelpProps): Re
   const examples = getWorkflowStepExamples(step);
   const copy = STEP_HELP_COPY[step.type];
   const outputDescriptionKey =
-    step.type === "agent" && (step.outputType ?? "answer") === "control"
+    step.type === "agent" && (step.outputMode ?? "normal") === "custom"
       ? "workflows.nodes.help.agent.controlOutput"
       : copy.output;
   const closeHelp = useCallback(() => setIsOpen(false), []);

@@ -2,93 +2,91 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_WORKFLOW_RESULT_CHARS,
   parseCommandNodeResult,
-  parseCommandNodeResultEnvelope,
+  WorkflowNodeBusinessError,
 } from "./command-result.js";
 
 describe("parseCommandNodeResult", () => {
-  it("parses one complete JSON document and adds framework-owned defaults", () => {
+  it("parses the version 1 result envelope and applies framework defaults", () => {
     expect(
       parseCommandNodeResult({
         resultJson: JSON.stringify({
-          control: "next",
-          customer: { name: "Alice" },
+          data: {
+            customer: { name: "Alice" },
+          },
         }),
         resultExceededLimit: false,
         commandType: "Bash",
       }),
     ).toEqual({
-      control: "next",
-      error: "",
-      customer: { name: "Alice" },
+      data: {
+        customer: { name: "Alice" },
+      },
+      modify: {
+        workflow: { var: {} },
+        node: { var: {} },
+      },
+      base_resp: {
+        status_code: 0,
+        status_msg: "",
+        forbid_retry: 0,
+      },
+      artifacts: [],
     });
   });
 
-  it("does not treat stdout-shaped text or multiple JSON documents as a result", () => {
-    const result = parseCommandNodeResult({
-      resultJson: '{"control":"first"}\n{"control":"second"}',
-      resultExceededLimit: false,
-      commandType: "Bash",
-    });
-
-    expect(result).toEqual({
-      control: "",
-      error: expect.stringContaining("Workflow node result is not valid JSON"),
-    });
+  it("rejects multiple JSON documents", () => {
+    expect(() =>
+      parseCommandNodeResult({
+        resultJson: '{"data":{"value":"first"}}\n{"data":{"value":"second"}}',
+        resultExceededLimit: false,
+        commandType: "Bash",
+      }),
+    ).toThrow("Workflow node result is not valid JSON");
   });
 
-  it("reserves error reporting for the workflow framework", () => {
-    const result = parseCommandNodeResult({
-      resultJson: '{"control":"","error":"failed"}',
-      resultExceededLimit: false,
-      commandType: "Python",
-    });
+  it("rejects removed flow control", () => {
+    expect(() =>
+      parseCommandNodeResult({
+        resultJson: '{"data":{},"flow":{"action":"next"}}',
+        resultExceededLimit: false,
+        commandType: "Python",
+      }),
+    ).toThrow("must use the envelope");
+  });
 
-    expect(result).toEqual({
-      control: "",
-      error:
-        'Workflow node result must not contain reserved field "error"; use a non-zero exit code and stderr to report failure',
+  it("reports base_resp failures with retry policy", () => {
+    let thrown: unknown;
+    try {
+      parseCommandNodeResult({
+        resultJson: JSON.stringify({
+          data: {},
+          base_resp: {
+            status_code: 7,
+            status_msg: "do not retry",
+            forbid_retry: 1,
+          },
+        }),
+        resultExceededLimit: false,
+        commandType: "Bash",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(WorkflowNodeBusinessError);
+    expect(thrown).toMatchObject({
+      message: "do not retry",
+      forbidRetry: true,
     });
   });
 
   it("fails explicit result overflow instead of parsing truncated JSON", () => {
-    expect(
+    expect(() =>
       parseCommandNodeResult({
         resultJson: "x".repeat(MAX_WORKFLOW_RESULT_CHARS),
         resultExceededLimit: true,
         commandType: "Bash",
       }),
-    ).toEqual({
-      control: "",
-      error: `Bash workflow node result exceeded ${MAX_WORKFLOW_RESULT_CHARS} characters`,
-    });
-  });
-});
-
-describe("parseCommandNodeResultEnvelope", () => {
-  it("parses the v2 business output and flow envelope", () => {
-    expect(
-      parseCommandNodeResultEnvelope({
-        resultJson: JSON.stringify({
-          outputs: { approved: true },
-          flow: { action: "branch", value: "approved" },
-        }),
-        resultExceededLimit: false,
-        commandType: "Bash",
-      }),
-    ).toEqual({
-      outputs: { approved: true },
-      artifacts: [],
-      flow: { action: "branch", value: "approved" },
-    });
-  });
-
-  it("rejects a bare business object in v2", () => {
-    expect(() =>
-      parseCommandNodeResultEnvelope({
-        resultJson: '{"approved":true}',
-        resultExceededLimit: false,
-        commandType: "Python",
-      }),
-    ).toThrow("must use the v2 envelope");
+    ).toThrow(`Bash workflow node result exceeded ${MAX_WORKFLOW_RESULT_CHARS} characters`);
   });
 });

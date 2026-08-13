@@ -6,7 +6,7 @@ import {
 } from "./editor-model";
 
 describe("Python workflow editor model", () => {
-  it("creates an editable Python node with an fd 3 result example", () => {
+  it("creates an editable Python node with an output variable example", () => {
     const step = createWorkflowStep("python", []);
 
     expect(step.type).toBe("python");
@@ -14,15 +14,17 @@ describe("Python workflow editor model", () => {
       throw new Error("Expected a Python step");
     }
     expect(step.name).toBe("Python code");
-    expect(step.code).toContain("json.load(sys.stdin)");
-    expect(step.code).toContain('payload["control"] = "done"');
-    expect(step.code).toContain('os.fdopen(3, "w")');
-    expect(step.code).toContain("json.dump(payload, result");
+    expect(step.code).toContain('input["data"]');
+    expect(step.code).toContain('"status": "done"');
+    expect(step.code).toContain("output = {");
+    expect(step.code).not.toContain("os.fdopen");
   });
 
   it("accepts Python variables, timeout, and retry settings", () => {
     expect(
       validateWorkflowDraft({
+        apiVersion: "paseo.sh/workflow/v1",
+        kind: "Workflow",
         version: 1,
         name: "Python",
         steps: [
@@ -30,7 +32,7 @@ describe("Python workflow editor model", () => {
             id: "transform",
             type: "python",
             code: 'print("{{customer.name}}")',
-            variables: { label: "{{customer.name}}-customer" },
+            templateVariables: { label: "{{customer.name}}-customer" },
             timeoutMs: 10_000,
             retry: { maxAttempts: 2 },
           },

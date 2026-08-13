@@ -4,23 +4,18 @@ import {
   WorkflowArtifactSchema,
   WorkflowInputMappingSchema,
   WorkflowJsonSchemaSchema,
+  WorkflowVariableDefinitionsSchema,
   type WorkflowArtifact,
   type WorkflowInputMapping,
   type WorkflowJsonSchema,
+  type WorkflowVariableDefinitions,
 } from "./data-contract.js";
 import { WorkflowEnvironmentSchema } from "./environment.js";
-import { WorkflowInputContractSchema, WorkflowInputPresetSchema } from "./input-contract.js";
+import { WorkflowInputPresetSchema } from "./input-contract.js";
 
-export const WorkflowPayloadSchema = z
-  .object({
-    control: z.string().default(""),
-    error: z.string().default(""),
-  })
-  .catchall(z.unknown());
+export const WorkflowPayloadSchema = z.record(z.string(), z.unknown());
 export type WorkflowPayload = z.infer<typeof WorkflowPayloadSchema>;
 
-// Keep the historical name as an alias for callers that still model an executable
-// node's payload as its result.
 export const WorkflowNodeResultSchema = WorkflowPayloadSchema;
 export type WorkflowNodeResult = z.infer<typeof WorkflowNodeResultSchema>;
 
@@ -32,10 +27,8 @@ export const WorkflowAgentConfigSchema = ScheduleNewAgentTargetConfigSchema.omit
 });
 export type WorkflowAgentConfig = z.infer<typeof WorkflowAgentConfigSchema>;
 
-export const WorkflowAgentOutputTypeSchema = z.enum(["answer", "control"]);
-export type WorkflowAgentOutputType = z.infer<typeof WorkflowAgentOutputTypeSchema>;
-
-export const DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT = "# 角色\n你的回答必须在下面几个选中中：是、否";
+export const WorkflowAgentOutputModeSchema = z.enum(["normal", "custom"]);
+export type WorkflowAgentOutputMode = z.infer<typeof WorkflowAgentOutputModeSchema>;
 
 export const WorkflowRetryPolicySchema = z.object({
   maxAttempts: z.number().int().min(1).max(20),
@@ -67,12 +60,12 @@ export const WorkflowTaskDefaultsSchema = z.object({
 });
 export type WorkflowTaskDefaults = z.infer<typeof WorkflowTaskDefaultsSchema>;
 
-export const WorkflowPromptVariablesSchema = z
+export const WorkflowTemplateVariablesSchema = z
   .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]*$/), z.string().max(20_000))
   .refine((variables) => Object.keys(variables).length <= 100, {
     message: "Workflow template variables cannot exceed 100 entries",
   });
-export type WorkflowPromptVariables = z.infer<typeof WorkflowPromptVariablesSchema>;
+export type WorkflowTemplateVariables = z.infer<typeof WorkflowTemplateVariablesSchema>;
 
 export interface WorkflowBashStep {
   id: string;
@@ -83,7 +76,10 @@ export interface WorkflowBashStep {
   inputs?: WorkflowInputMapping;
   inputSchema?: WorkflowJsonSchema;
   outputSchema?: WorkflowJsonSchema;
-  variables?: WorkflowPromptVariables;
+  variables?: WorkflowVariableDefinitions;
+  templateVariables?: WorkflowTemplateVariables;
+  inputVariable?: string;
+  outputVariable?: string;
   cwd?: string;
   shell?: string;
   timeoutMs?: number;
@@ -99,7 +95,10 @@ export interface WorkflowPythonStep {
   inputs?: WorkflowInputMapping;
   inputSchema?: WorkflowJsonSchema;
   outputSchema?: WorkflowJsonSchema;
-  variables?: WorkflowPromptVariables;
+  variables?: WorkflowVariableDefinitions;
+  templateVariables?: WorkflowTemplateVariables;
+  inputVariable?: string;
+  outputVariable?: string;
   cwd?: string;
   pythonPath?: string;
   timeoutMs?: number;
@@ -111,19 +110,20 @@ export interface WorkflowAgentStep {
   name?: string;
   nextStepId?: string | null;
   type: "agent";
-  outputType?: WorkflowAgentOutputType;
+  outputMode?: WorkflowAgentOutputMode;
   initialPrompt: string;
   inputs?: WorkflowInputMapping;
   inputSchema?: WorkflowJsonSchema;
   outputSchema?: WorkflowJsonSchema;
-  promptVariables?: WorkflowPromptVariables;
+  variables?: WorkflowVariableDefinitions;
+  templateVariables?: WorkflowTemplateVariables;
   timeoutMs?: number;
   retry?: WorkflowRetryPolicy;
   config: WorkflowAgentConfig;
 }
 
 export interface WorkflowSwitchCase {
-  equals: string;
+  equals: string | number | boolean;
   steps: WorkflowStep[];
 }
 
@@ -132,7 +132,9 @@ export interface WorkflowSwitchStep {
   name?: string;
   nextStepId?: string | null;
   type: "switch";
-  switchOn?: string;
+  switchVar?: string;
+  variables?: WorkflowVariableDefinitions;
+  inputSchema?: WorkflowJsonSchema;
   cases: WorkflowSwitchCase[];
   defaultSteps?: WorkflowStep[];
   caseSensitive?: boolean;
@@ -143,12 +145,14 @@ export interface WorkflowForStep {
   name?: string;
   nextStepId?: string | null;
   type: "for";
+  mode?: "items" | "while";
   items?: string;
+  forControl?: string;
+  variables?: WorkflowVariableDefinitions;
+  inputSchema?: WorkflowJsonSchema;
   steps: WorkflowStep[];
-  separator?: string;
   maxIterations?: number;
   concurrency?: number;
-  breakControl?: string;
 }
 
 export type WorkflowStep =
@@ -163,109 +167,147 @@ const WorkflowStepNameSchema = z.string().trim().min(1).max(256).optional();
 
 export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
   z.discriminatedUnion("type", [
-    z.object({
-      id: WorkflowStepIdSchema,
-      name: WorkflowStepNameSchema,
-      nextStepId: WorkflowStepIdSchema.nullable().optional(),
-      type: z.literal("bash"),
-      initialCommand: z.string().trim().min(1),
-      inputs: WorkflowInputMappingSchema.optional(),
-      inputSchema: WorkflowJsonSchemaSchema.optional(),
-      outputSchema: WorkflowJsonSchemaSchema.optional(),
-      variables: WorkflowPromptVariablesSchema.optional(),
-      cwd: z.string().trim().min(1).optional(),
-      shell: z.string().trim().min(1).optional(),
-      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
-      retry: WorkflowRetryPolicySchema.optional(),
-    }),
-    z.object({
-      id: WorkflowStepIdSchema,
-      name: WorkflowStepNameSchema,
-      nextStepId: WorkflowStepIdSchema.nullable().optional(),
-      type: z.literal("python"),
-      code: z.string().refine((value) => value.trim().length > 0, {
-        message: "Python code is required",
-      }),
-      inputs: WorkflowInputMappingSchema.optional(),
-      inputSchema: WorkflowJsonSchemaSchema.optional(),
-      outputSchema: WorkflowJsonSchemaSchema.optional(),
-      variables: WorkflowPromptVariablesSchema.optional(),
-      cwd: z.string().trim().min(1).optional(),
-      pythonPath: z.string().trim().min(1).optional(),
-      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
-      retry: WorkflowRetryPolicySchema.optional(),
-    }),
-    z.object({
-      id: WorkflowStepIdSchema,
-      name: WorkflowStepNameSchema,
-      nextStepId: WorkflowStepIdSchema.nullable().optional(),
-      type: z.literal("agent"),
-      outputType: WorkflowAgentOutputTypeSchema.default("answer"),
-      initialPrompt: z.string().trim().min(1),
-      inputs: WorkflowInputMappingSchema.optional(),
-      inputSchema: WorkflowJsonSchemaSchema.optional(),
-      outputSchema: WorkflowJsonSchemaSchema.optional(),
-      promptVariables: WorkflowPromptVariablesSchema.optional(),
-      timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
-      retry: WorkflowRetryPolicySchema.optional(),
-      config: WorkflowAgentConfigSchema,
-    }),
-    z.object({
-      id: WorkflowStepIdSchema,
-      name: WorkflowStepNameSchema,
-      nextStepId: WorkflowStepIdSchema.nullable().optional(),
-      type: z.literal("switch"),
-      switchOn: z.string().trim().min(1).optional(),
-      cases: z
-        .array(
-          z.object({
-            equals: z.string(),
-            steps: z.array(WorkflowStepSchema),
-          }),
-        )
-        .min(1),
-      defaultSteps: z.array(WorkflowStepSchema).optional(),
-      caseSensitive: z.boolean().optional(),
-    }),
-    z.object({
-      id: WorkflowStepIdSchema,
-      name: WorkflowStepNameSchema,
-      nextStepId: WorkflowStepIdSchema.nullable().optional(),
-      type: z.literal("for"),
-      items: z.string().trim().min(1).optional(),
-      steps: z.array(WorkflowStepSchema).min(1),
-      separator: z.string().min(1).optional(),
-      maxIterations: z.number().int().positive().max(10_000).default(100),
-      concurrency: z.number().int().positive().max(100).default(1),
-      breakControl: z.string().optional(),
-    }),
+    z
+      .object({
+        id: WorkflowStepIdSchema,
+        name: WorkflowStepNameSchema,
+        nextStepId: WorkflowStepIdSchema.nullable().optional(),
+        type: z.literal("bash"),
+        initialCommand: z.string().trim().min(1),
+        inputs: WorkflowInputMappingSchema.optional(),
+        inputSchema: WorkflowJsonSchemaSchema.optional(),
+        outputSchema: WorkflowJsonSchemaSchema.optional(),
+        variables: WorkflowVariableDefinitionsSchema.optional(),
+        templateVariables: WorkflowTemplateVariablesSchema.optional(),
+        inputVariable: z
+          .string()
+          .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+          .default("input"),
+        outputVariable: z
+          .string()
+          .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+          .default("output"),
+        cwd: z.string().trim().min(1).optional(),
+        shell: z.string().trim().min(1).optional(),
+        timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
+        retry: WorkflowRetryPolicySchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        id: WorkflowStepIdSchema,
+        name: WorkflowStepNameSchema,
+        nextStepId: WorkflowStepIdSchema.nullable().optional(),
+        type: z.literal("python"),
+        code: z.string().refine((value) => value.trim().length > 0, {
+          message: "Python code is required",
+        }),
+        inputs: WorkflowInputMappingSchema.optional(),
+        inputSchema: WorkflowJsonSchemaSchema.optional(),
+        outputSchema: WorkflowJsonSchemaSchema.optional(),
+        variables: WorkflowVariableDefinitionsSchema.optional(),
+        templateVariables: WorkflowTemplateVariablesSchema.optional(),
+        inputVariable: z
+          .string()
+          .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+          .default("input"),
+        outputVariable: z
+          .string()
+          .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+          .default("output"),
+        cwd: z.string().trim().min(1).optional(),
+        pythonPath: z.string().trim().min(1).optional(),
+        timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
+        retry: WorkflowRetryPolicySchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        id: WorkflowStepIdSchema,
+        name: WorkflowStepNameSchema,
+        nextStepId: WorkflowStepIdSchema.nullable().optional(),
+        type: z.literal("agent"),
+        outputMode: WorkflowAgentOutputModeSchema.default("normal"),
+        initialPrompt: z.string().trim().min(1),
+        inputs: WorkflowInputMappingSchema.optional(),
+        inputSchema: WorkflowJsonSchemaSchema.optional(),
+        outputSchema: WorkflowJsonSchemaSchema.optional(),
+        variables: WorkflowVariableDefinitionsSchema.optional(),
+        templateVariables: WorkflowTemplateVariablesSchema.optional(),
+        timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
+        retry: WorkflowRetryPolicySchema.optional(),
+        config: WorkflowAgentConfigSchema,
+      })
+      .strict(),
+    z
+      .object({
+        id: WorkflowStepIdSchema,
+        name: WorkflowStepNameSchema,
+        nextStepId: WorkflowStepIdSchema.nullable().optional(),
+        type: z.literal("switch"),
+        switchVar: z.string().trim().min(1).default("{{data.control}}"),
+        variables: WorkflowVariableDefinitionsSchema.optional(),
+        inputSchema: WorkflowJsonSchemaSchema.optional(),
+        cases: z
+          .array(
+            z
+              .object({
+                equals: z.union([z.string(), z.number(), z.boolean()]),
+                steps: z.array(WorkflowStepSchema),
+              })
+              .strict(),
+          )
+          .min(1),
+        defaultSteps: z.array(WorkflowStepSchema).optional(),
+        caseSensitive: z.boolean().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        id: WorkflowStepIdSchema,
+        name: WorkflowStepNameSchema,
+        nextStepId: WorkflowStepIdSchema.nullable().optional(),
+        type: z.literal("for"),
+        mode: z.enum(["items", "while"]).default("items"),
+        items: z.string().trim().min(1).optional(),
+        forControl: z.string().trim().min(1).optional(),
+        variables: WorkflowVariableDefinitionsSchema.optional(),
+        inputSchema: WorkflowJsonSchemaSchema.optional(),
+        steps: z.array(WorkflowStepSchema).min(1),
+        maxIterations: z.number().int().positive().max(10_000).default(100),
+        concurrency: z.number().int().positive().max(100).default(1),
+      })
+      .strict(),
   ]),
 );
 
-export const WorkflowScriptSchema = z.object({
-  apiVersion: z.literal("paseo.sh/workflow/v1").optional(),
-  kind: z.literal("Workflow").optional(),
-  version: z.union([z.literal(1), z.literal(2)]),
-  name: z.string().trim().min(1).max(256),
-  description: z.string().max(4_000).nullable().optional(),
-  timeoutMs: z
-    .number()
-    .int()
-    .positive()
-    .max(30 * 24 * 60 * 60 * 1000)
-    .optional(),
-  taskDefaults: WorkflowTaskDefaultsSchema.optional(),
-  inputContract: WorkflowInputContractSchema.optional(),
-  inputPresets: z.array(WorkflowInputPresetSchema).max(100).optional(),
-  environment: WorkflowEnvironmentSchema.optional(),
-  labels: z
-    .record(z.string().trim().min(1).max(128), z.string().max(512))
-    .refine((labels) => Object.keys(labels).length <= 100, {
-      message: "Workflow labels cannot exceed 100 entries",
-    })
-    .optional(),
-  steps: z.array(WorkflowStepSchema).min(1),
-});
+export const WorkflowScriptSchema = z
+  .object({
+    apiVersion: z.literal("paseo.sh/workflow/v1"),
+    kind: z.literal("Workflow"),
+    version: z.literal(1),
+    name: z.string().trim().min(1).max(256),
+    description: z.string().max(4_000).nullable().optional(),
+    timeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .max(30 * 24 * 60 * 60 * 1000)
+      .optional(),
+    taskDefaults: WorkflowTaskDefaultsSchema.optional(),
+    variables: WorkflowVariableDefinitionsSchema.optional(),
+    outputSchema: WorkflowJsonSchemaSchema.optional(),
+    inputPresets: z.array(WorkflowInputPresetSchema).max(100).optional(),
+    environment: WorkflowEnvironmentSchema.optional(),
+    labels: z
+      .record(z.string().trim().min(1).max(128), z.string().max(512))
+      .refine((labels) => Object.keys(labels).length <= 100, {
+        message: "Workflow labels cannot exceed 100 entries",
+      })
+      .optional(),
+    steps: z.array(WorkflowStepSchema).min(1),
+  })
+  .strict();
 export type WorkflowScript = z.infer<typeof WorkflowScriptSchema>;
 
 export const WorkflowScriptFileSchema = z.object({

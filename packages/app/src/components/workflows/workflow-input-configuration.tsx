@@ -3,26 +3,25 @@ import { useEffect, useState, type ReactElement } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
+import type { WorkflowInputPreset } from "@getpaseo/protocol/workflow/input-contract";
 import type {
-  WorkflowInputContract,
-  WorkflowInputPreset,
-} from "@getpaseo/protocol/workflow/input-contract";
+  WorkflowJsonSchema,
+  WorkflowVariableDefinitions,
+} from "@getpaseo/protocol/workflow/data-contract";
 import { Field } from "@/components/ui/form-field";
 import { WorkflowTextInput } from "./workflow-text-input";
 
-const CONTRACT_PLACEHOLDER = `{
+const VARIABLES_PLACEHOLDER = `{
+  "traceId": { "type": "string", "default": "" },
+  "counter": { "type": "int64", "default": "0" }
+}`;
+
+const OUTPUT_SCHEMA_PLACEHOLDER = `{
+  "type": "object",
   "properties": {
-    "scan_dir_url": { "type": "string" },
-    "group_ids": { "type": "array", "default": [] },
-    "mode": {
-      "type": "string",
-      "enum": ["scan_only", "prepare_only", "full"],
-      "default": "scan_only"
-    },
-    "max_work_items": { "type": "integer", "default": 0 }
+    "answer": { "type": "string" }
   },
-  "required": ["scan_dir_url", "group_ids"],
-  "additionalProperties": true
+  "required": ["answer"]
 }`;
 
 const PRESETS_PLACEHOLDER = `[
@@ -39,39 +38,62 @@ const PRESETS_PLACEHOLDER = `[
 ]`;
 
 export function WorkflowInputConfiguration({
-  contract,
+  variables,
+  outputSchema,
   presets,
-  onChangeContract,
+  onChangeVariables,
+  onChangeOutputSchema,
   onChangePresets,
 }: {
-  contract: WorkflowInputContract | undefined;
+  variables: WorkflowVariableDefinitions | undefined;
+  outputSchema: WorkflowJsonSchema | undefined;
   presets: WorkflowInputPreset[] | undefined;
-  onChangeContract: (contract: WorkflowInputContract | undefined) => void;
+  onChangeVariables: (variables: WorkflowVariableDefinitions | undefined) => void;
+  onChangeOutputSchema: (schema: WorkflowJsonSchema | undefined) => void;
   onChangePresets: (presets: WorkflowInputPreset[] | undefined) => void;
 }): ReactElement {
   const { t } = useTranslation();
-  const [contractText, setContractText] = useState(formatJson(contract));
+  const [variablesText, setVariablesText] = useState(formatJson(variables));
+  const [outputSchemaText, setOutputSchemaText] = useState(formatJson(outputSchema));
   const [presetsText, setPresetsText] = useState(formatJson(presets));
-  const [contractError, setContractError] = useState<string | null>(null);
+  const [variablesError, setVariablesError] = useState<string | null>(null);
+  const [outputSchemaError, setOutputSchemaError] = useState<string | null>(null);
   const [presetsError, setPresetsError] = useState<string | null>(null);
 
-  useEffect(() => setContractText(formatJson(contract)), [contract]);
+  useEffect(() => setVariablesText(formatJson(variables)), [variables]);
+  useEffect(() => setOutputSchemaText(formatJson(outputSchema)), [outputSchema]);
   useEffect(() => setPresetsText(formatJson(presets)), [presets]);
 
-  function commitContract(): void {
-    const parsed = parseOptionalObject(contractText);
+  function commitVariables(): void {
+    const parsed = parseOptionalObject(
+      variablesText,
+      t("workflows.inputContract.invalidVariables"),
+    );
     if (!parsed.ok) {
-      setContractError(parsed.error ?? "Invalid input contract");
+      setVariablesError(parsed.error ?? t("workflows.inputContract.invalidVariables"));
       return;
     }
-    setContractError(null);
-    onChangeContract(parsed.value as WorkflowInputContract | undefined);
+    setVariablesError(null);
+    onChangeVariables(parsed.value as WorkflowVariableDefinitions | undefined);
+  }
+
+  function commitOutputSchema(): void {
+    const parsed = parseOptionalObject(
+      outputSchemaText,
+      t("workflows.inputContract.invalidOutputSchema"),
+    );
+    if (!parsed.ok) {
+      setOutputSchemaError(parsed.error ?? t("workflows.inputContract.invalidOutputSchema"));
+      return;
+    }
+    setOutputSchemaError(null);
+    onChangeOutputSchema(parsed.value as WorkflowJsonSchema | undefined);
   }
 
   function commitPresets(): void {
-    const parsed = parseOptionalArray(presetsText);
+    const parsed = parseOptionalArray(presetsText, t("workflows.inputContract.invalidPresets"));
     if (!parsed.ok) {
-      setPresetsError(parsed.error ?? "Invalid input presets");
+      setPresetsError(parsed.error ?? t("workflows.inputContract.invalidPresets"));
       return;
     }
     setPresetsError(null);
@@ -89,10 +111,10 @@ export function WorkflowInputConfiguration({
         hint={t("workflows.inputContract.contractHint")}
       >
         <WorkflowTextInput
-          value={contractText}
-          onChangeText={setContractText}
-          onBlur={commitContract}
-          placeholder={CONTRACT_PLACEHOLDER}
+          value={variablesText}
+          onChangeText={setVariablesText}
+          onBlur={commitVariables}
+          placeholder={VARIABLES_PLACEHOLDER}
           multiline
           textAlignVertical="top"
           autoCapitalize="none"
@@ -100,7 +122,24 @@ export function WorkflowInputConfiguration({
           style={styles.jsonInput}
         />
       </Field>
-      {contractError ? <Text style={styles.error}>{contractError}</Text> : null}
+      {variablesError ? <Text style={styles.error}>{variablesError}</Text> : null}
+      <Field
+        label={t("workflows.inputContract.outputSchema")}
+        hint={t("workflows.inputContract.outputSchemaHint")}
+      >
+        <WorkflowTextInput
+          value={outputSchemaText}
+          onChangeText={setOutputSchemaText}
+          onBlur={commitOutputSchema}
+          placeholder={OUTPUT_SCHEMA_PLACEHOLDER}
+          multiline
+          textAlignVertical="top"
+          autoCapitalize="none"
+          autoCorrect={false}
+          style={styles.jsonInput}
+        />
+      </Field>
+      {outputSchemaError ? <Text style={styles.error}>{outputSchemaError}</Text> : null}
       <Field
         label={t("workflows.inputContract.presets")}
         hint={t("workflows.inputContract.presetsHint")}
@@ -128,7 +167,7 @@ interface JsonParseResult {
   error?: string;
 }
 
-function parseOptionalObject(value: string): JsonParseResult {
+function parseOptionalObject(value: string, shapeError: string): JsonParseResult {
   if (!value.trim()) {
     return { ok: true, value: undefined };
   }
@@ -137,15 +176,15 @@ function parseOptionalObject(value: string): JsonParseResult {
     (parsed) => {
       return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
     },
-    "Input contract must be a JSON object",
+    shapeError,
   );
 }
 
-function parseOptionalArray(value: string): JsonParseResult {
+function parseOptionalArray(value: string, shapeError: string): JsonParseResult {
   if (!value.trim()) {
     return { ok: true, value: undefined };
   }
-  return parseJsonShape(value, Array.isArray, "Input presets must be a JSON array");
+  return parseJsonShape(value, Array.isArray, shapeError);
 }
 
 function parseJsonShape(

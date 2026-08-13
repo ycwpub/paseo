@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createWorkflowStep, updateAgentOutputType } from "./editor-model";
+import { createWorkflowStep, updateAgentOutputMode } from "./editor-model";
 import {
   DEFAULT_AGENT_INITIAL_PROMPT,
   DEFAULT_BASH_INITIAL_COMMAND,
@@ -18,25 +18,36 @@ describe("workflow step examples", () => {
     expect(python.type === "python" ? python.code : null).toBe(DEFAULT_PYTHON_CODE);
     expect(agent.type === "agent" ? agent.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
     expect(getWorkflowStepExamples(bash).initialValue).toBe(DEFAULT_BASH_INITIAL_COMMAND);
-    expect(getWorkflowStepExamples(bash).composition).toContain("outputs: output");
+    expect(getWorkflowStepExamples(bash).composition).toContain("paseo workflow run");
     expect(getWorkflowStepExamples(python).initialValue).toBe(DEFAULT_PYTHON_CODE);
     expect(getWorkflowStepExamples(agent).initialValue).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
   });
 
-  it("keeps Agent output examples aligned with the selected node type", () => {
-    const answer = createWorkflowStep("agent", []);
-    if (answer.type !== "agent") {
+  it("keeps Agent output examples aligned with the selected output mode", () => {
+    const normal = createWorkflowStep("agent", []);
+    if (normal.type !== "agent") {
       throw new Error("Expected an Agent step");
     }
-    const control = updateAgentOutputType(answer, "control");
+    const custom = updateAgentOutputMode(normal, "custom");
 
-    expect(JSON.parse(getWorkflowStepExamples(answer).output)).toEqual({
-      outputs: { answer: "Agent reply" },
-      flow: { action: "next" },
+    expect(JSON.parse(getWorkflowStepExamples(normal).output)).toEqual({
+      data: { answer: "Agent reply" },
     });
-    expect(JSON.parse(getWorkflowStepExamples(control).output)).toEqual({
-      outputs: { control: "Agent reply" },
-      flow: { action: "branch", value: "Agent reply" },
+    expect(JSON.parse(getWorkflowStepExamples(custom).output)).toEqual({
+      data: {
+        customer: { name: "Alice" },
+        items: [{ id: 7 }],
+      },
+      modify: {
+        workflow: { var: {} },
+        node: { var: {} },
+      },
+      base_resp: {
+        status_code: 0,
+        status_msg: "",
+        forbid_retry: 0,
+      },
+      artifacts: [],
     });
   });
 
@@ -48,8 +59,11 @@ describe("workflow step examples", () => {
 
     expect(step.cases).toEqual([{ equals: DEFAULT_SWITCH_CONTROL, steps: [] }]);
     expect(JSON.parse(getWorkflowStepExamples(step).input)).toMatchObject({
-      control: DEFAULT_SWITCH_CONTROL,
+      data: {
+        customer: { name: "Alice" },
+      },
     });
+    expect(step.switchVar).toBe("{{data.control}}");
   });
 
   it("provides valid JSON input and output examples for every node type", () => {

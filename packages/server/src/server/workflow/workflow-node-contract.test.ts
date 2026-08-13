@@ -16,5 +16,8 @@ describe("validateWorkflowNodeData", () => {
     expect(() => validateWorkflowNodeData(schema, { count: 0 }, "Node input")).toThrow(
       "Node input failed schema validation",
     );
+    expect(() =>
+      validateWorkflowNodeData(schema, { count: 2, undeclared: true }, "Node input"),
+    ).toThrow("must NOT have additional properties");
   });
 });

@@ -6,7 +6,6 @@ import {
 } from "@/components/workflows/workflow-text-input";
 
 const MIN_TITLE_HEIGHT = 40;
-const MAX_TITLE_HEIGHT = 112;
 
 export function WorkflowWrappingTitleInput({
   onChangeText,
@@ -24,9 +23,9 @@ export function WorkflowWrappingTitleInput({
   );
   const handleContentSizeChange = useCallback(
     (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
-      const nextHeight = Math.min(
-        MAX_TITLE_HEIGHT,
-        Math.max(MIN_TITLE_HEIGHT, Math.ceil(event.nativeEvent.contentSize.height)),
+      const nextHeight = Math.max(
+        MIN_TITLE_HEIGHT,
+        Math.ceil(event.nativeEvent.contentSize.height),
       );
       setContentHeight(nextHeight);
       onContentSizeChange?.(event);
@@ -37,7 +36,6 @@ export function WorkflowWrappingTitleInput({
     () => ({
       height: contentHeight,
       minHeight: MIN_TITLE_HEIGHT,
-      maxHeight: MAX_TITLE_HEIGHT,
     }),
     [contentHeight],
   );
@@ -49,7 +47,7 @@ export function WorkflowWrappingTitleInput({
       onContentSizeChange={handleContentSizeChange}
       multiline
       numberOfLines={1}
-      scrollEnabled={contentHeight >= MAX_TITLE_HEIGHT}
+      scrollEnabled={false}
       textAlignVertical="top"
       style={[style, contentSizeStyle]}
     />

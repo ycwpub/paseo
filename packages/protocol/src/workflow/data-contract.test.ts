@@ -1,11 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { WorkflowNodeResultEnvelopeSchema } from "./data-contract.js";
+import {
+  isWorkflowInt64,
+  WorkflowNodeInputEnvelopeSchema,
+  WorkflowNodeResultEnvelopeSchema,
+  WorkflowVariableDefinitionSchema,
+} from "./data-contract.js";
+
+describe("WorkflowNodeInputEnvelopeSchema", () => {
+  it("accepts data plus workflow and node variables", () => {
+    expect(
+      WorkflowNodeInputEnvelopeSchema.parse({
+        data: { approved: true },
+        workflow: { var: { traceId: "trace-1", counter: "7" } },
+        node: { var: { cursor: "next" } },
+      }),
+    ).toEqual({
+      data: { approved: true },
+      workflow: { var: { traceId: "trace-1", counter: "7" } },
+      node: { var: { cursor: "next" } },
+    });
+  });
+
+  it("rejects fields outside the version 1 envelope", () => {
+    expect(
+      WorkflowNodeInputEnvelopeSchema.safeParse({
+        data: {},
+        workflow: { var: {} },
+        node: { var: {} },
+        flow: { action: "next" },
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe("WorkflowNodeResultEnvelopeSchema", () => {
-  it("separates business outputs, artifacts, and flow control", () => {
+  it("separates data, variable modifications, base response, and artifacts", () => {
     expect(
       WorkflowNodeResultEnvelopeSchema.parse({
-        outputs: { approved: true },
+        data: { approved: true },
+        modify: {
+          workflow: { var: { counter: "8" } },
+          node: { var: { cursor: "done" } },
+        },
+        base_resp: {
+          status_code: 0,
+          status_msg: "",
+          forbid_retry: 0,
+        },
         artifacts: [
           {
             name: "report",
@@ -14,10 +55,18 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
             size: 42,
           },
         ],
-        flow: { action: "branch", value: "approved" },
       }),
     ).toEqual({
-      outputs: { approved: true },
+      data: { approved: true },
+      modify: {
+        workflow: { var: { counter: "8" } },
+        node: { var: { cursor: "done" } },
+      },
+      base_resp: {
+        status_code: 0,
+        status_msg: "",
+        forbid_retry: 0,
+      },
       artifacts: [
         {
           name: "report",
@@ -26,15 +75,56 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
           size: 42,
         },
       ],
-      flow: { action: "branch", value: "approved" },
     });
   });
 
-  it("defaults optional framework fields without adding them to outputs", () => {
-    expect(WorkflowNodeResultEnvelopeSchema.parse({ outputs: { answer: "ok" } })).toEqual({
-      outputs: { answer: "ok" },
+  it("defaults optional framework fields and rejects removed flow control", () => {
+    expect(WorkflowNodeResultEnvelopeSchema.parse({ data: { answer: "ok" } })).toEqual({
+      data: { answer: "ok" },
+      modify: {
+        workflow: { var: {} },
+        node: { var: {} },
+      },
+      base_resp: {
+        status_code: 0,
+        status_msg: "",
+        forbid_retry: 0,
+      },
       artifacts: [],
-      flow: { action: "next" },
     });
+    expect(
+      WorkflowNodeResultEnvelopeSchema.safeParse({
+        data: {},
+        flow: { action: "next" },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("Workflow int64 variables", () => {
+  it("accepts signed 64-bit decimal strings and rejects invalid values", () => {
+    expect(isWorkflowInt64("-9223372036854775808")).toBe(true);
+    expect(isWorkflowInt64("9223372036854775807")).toBe(true);
+    expect(isWorkflowInt64("9223372036854775808")).toBe(false);
+    expect(isWorkflowInt64("01")).toBe(false);
+    expect(isWorkflowInt64("1.5")).toBe(false);
+  });
+
+  it("validates int64 defaults", () => {
+    expect(
+      WorkflowVariableDefinitionSchema.parse({
+        type: "int64",
+        default: "42",
+      }),
+    ).toEqual({
+      type: "int64",
+      default: "42",
+    });
+    expect(
+      WorkflowVariableDefinitionSchema.safeParse({
+        type: "int64",
+        default: "9223372036854775808",
+      }).success,
+    ).toBe(false);
   });
 });

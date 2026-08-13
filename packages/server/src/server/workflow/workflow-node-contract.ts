@@ -49,7 +49,10 @@ function getValidator(schema: WorkflowJsonSchema): ValidateFunction {
   if (cached) {
     return cached;
   }
-  const validate = ajv.compile(schema);
+  const validate = ajv.compile({
+    ...schema,
+    additionalProperties: false,
+  });
   validatorCache.set(schema, validate);
   return validate;
 }

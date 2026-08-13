@@ -8,7 +8,7 @@ import {
   createEmptyWorkflowScript,
   createWorkflowStep,
   moveWorkflowStep,
-  updateAgentOutputType,
+  updateAgentOutputMode,
   validateWorkflowDraft,
 } from "./editor-model";
 
@@ -75,23 +75,23 @@ describe("workflow editor model", () => {
     const step = createWorkflowStep("agent", []);
     expect(step.type).toBe("agent");
     expect(step.type === "agent" ? step.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
-    expect(step.type === "agent" ? step.outputType : null).toBe("answer");
+    expect(step.type === "agent" ? step.outputMode : null).toBe("normal");
     expect(step.type === "agent" ? step.config.systemPrompt : null).toBeUndefined();
   });
 
-  it("updates the default system prompt when changing Agent node types", () => {
+  it("updates Agent output mode without changing the system prompt", () => {
     const step = createWorkflowStep("agent", []);
     if (step.type !== "agent") {
       throw new Error("Expected an Agent step");
     }
 
-    const controlStep = updateAgentOutputType(step, "control");
-    expect(controlStep.outputType).toBe("control");
-    expect(controlStep.config.systemPrompt).toBe("# 角色\n你的回答必须在下面几个选中中：是、否");
+    const customStep = updateAgentOutputMode(step, "custom");
+    expect(customStep.outputMode).toBe("custom");
+    expect(customStep.config.systemPrompt).toBeUndefined();
 
-    const answerStep = updateAgentOutputType(controlStep, "answer");
-    expect(answerStep.outputType).toBe("answer");
-    expect(answerStep.config.systemPrompt).toBeUndefined();
+    const normalStep = updateAgentOutputMode(customStep, "normal");
+    expect(normalStep.outputMode).toBe("normal");
+    expect(normalStep.config.systemPrompt).toBeUndefined();
   });
 
   it("counts and collects nested steps", () => {
@@ -184,7 +184,7 @@ describe("workflow editor model", () => {
       throw new Error("Expected a Bash step");
     }
     step.initialCommand = "echo '{{customer.name}}' '{{role}}'";
-    step.variables = {
+    step.templateVariables = {
       role: "{{customer.name}}-reviewer",
     };
     expect(validateWorkflowDraft(script)).toBeNull();

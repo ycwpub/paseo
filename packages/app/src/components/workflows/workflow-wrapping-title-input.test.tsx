@@ -60,7 +60,7 @@ import { WorkflowWrappingTitleInput } from "./workflow-wrapping-title-input";
 describe("WorkflowWrappingTitleInput", () => {
   afterEach(cleanup);
 
-  it("wraps and grows the title until the maximum visible height", () => {
+  it("wraps and grows to show the complete title without internal scrolling", () => {
     render(<WorkflowWrappingTitleInput value="a long workflow title" />);
 
     const title = screen.getByTestId("workflow-title");
@@ -73,8 +73,8 @@ describe("WorkflowWrappingTitleInput", () => {
     expect(title.getAttribute("data-scroll-enabled")).toBe("false");
 
     fireEvent.click(screen.getByTestId("overflow-title"));
-    expect(title.getAttribute("data-style")).toContain('"height":112');
-    expect(title.getAttribute("data-scroll-enabled")).toBe("true");
+    expect(title.getAttribute("data-style")).toContain('"height":180');
+    expect(title.getAttribute("data-scroll-enabled")).toBe("false");
   });
 
   it("resets the measured height before remeasuring edited content", () => {

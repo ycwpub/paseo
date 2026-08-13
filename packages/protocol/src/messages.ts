@@ -3245,6 +3245,8 @@ export const ServerInfoStatusPayloadSchema = z
         workflowInputConfiguration: z.boolean().optional(),
         // COMPAT(workflowCommandResultFd3): added in v0.3.2, remove gate after 2027-02-12.
         workflowCommandResultFd3: z.boolean().optional(),
+        // Workflow protocol is intentionally strict. Clients must match this exact version.
+        workflowProtocolVersion: z.number().int().positive().optional(),
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: z.boolean().optional(),
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.

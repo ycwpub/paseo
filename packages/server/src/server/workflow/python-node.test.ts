@@ -19,20 +19,19 @@ describe("runPythonNode", () => {
     const spawned: unknown[] = [];
     const output = await runPythonNode({
       code: [
-        "import json",
         "import os",
-        "import sys",
-        "stdin_payload = json.load(sys.stdin)",
         'print("diagnostic")',
-        'with os.fdopen(3, "w") as result:',
-        "    json.dump({",
-        '        "control": "done",',
-        '        "stdin": stdin_payload["customer"],',
+        "response = {",
+        '    "data": {',
+        '        "customer": request["data"]["customer"],',
         '        "attempt": os.environ["PASEO_WORKFLOW_ATTEMPT"],',
-        "    }, result)",
+        "    }",
+        "}",
       ].join("\n"),
+      inputVariable: "request",
+      outputVariable: "response",
       pythonPath: "python3",
-      inputJson: '{"control":"","customer":"Alice"}',
+      inputJson: '{"data":{"customer":"Alice"},"workflow":{"var":{}},"node":{"var":{}}}',
       iterationPath: [2],
       cwd,
       timeoutMs: 10_000,
@@ -46,9 +45,10 @@ describe("runPythonNode", () => {
     expect(output.stderr).toBe("");
     expect(output.stdout).toBe("diagnostic\n");
     expect(JSON.parse(output.resultJson)).toEqual({
-      control: "done",
-      stdin: "Alice",
-      attempt: "3",
+      data: {
+        customer: "Alice",
+        attempt: "3",
+      },
     });
     expect(output.resultExceededLimit).toBe(false);
     expect(spawned).toEqual([]);
@@ -61,8 +61,10 @@ describe("runPythonNode", () => {
     await expect(
       runPythonNode({
         code: 'raise RuntimeError("broken node")',
+        inputVariable: "input",
+        outputVariable: "output",
         pythonPath: "python3",
-        inputJson: '{"control":""}',
+        inputJson: '{"data":{},"workflow":{"var":{}},"node":{"var":{}}}',
         iterationPath: [],
         cwd,
         timeoutMs: 10_000,

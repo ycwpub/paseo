@@ -68,8 +68,8 @@ export const zhCN: TranslationResources = {
       contract: {
         title: "输入输出约定",
         description:
-          "节点接收显式映射后的业务 JSON；流程控制、失败信息和产物由框架独立管理，不混入业务输出。",
-        note: "Bash 和 Python 读取 stdin，并向文件描述符 3 写入包含 outputs、可选 artifacts 和 flow 的 v2 结果信封。Switch 使用 switchOn，For 使用 items。",
+          "节点接收包含 data、工作流变量和节点变量的输入信封；失败信息和产物独立于 data 中用户自定义的流程字段。",
+        note: 'Bash 和 Python 从 stdin 读取 {"data":{},"workflow":{"var":{}},"node":{"var":{}}，并通过配置的输出变量返回 {"data":{},"modify":{},"base_resp":{},"artifacts":[]}。',
       },
       internal: {
         title: "Paseo 内部使用",
@@ -99,9 +99,9 @@ export const zhCN: TranslationResources = {
         python:
           "• Python：直接运行可编辑代码，通过 stdin 读取 JSON 数据，向文件描述符 3 写入唯一结果 JSON。",
         agent:
-          "• Agent：Answer 节点把回答写入 answer，Control 节点把回答写入 control。每个节点可独立配置 Provider、模型、模式、助手/团队、系统提示词和隔离方式。",
-        switch: "• Switch：解析 switchOn，并选择匹配的分支。",
-        for: "• For：解析 items 得到数组；子节点通过 flow.action 返回 continue 或 break。",
+          "• Agent：普通模式把最终回答写入 data.answer；自定义模式要求 Agent 返回完整结果信封。",
+        switch: "• Switch：解析 switchVar，并选择匹配的分支。",
+        for: "• For：遍历数组或串行持续循环；break 和 continue 从配置的 data 表达式读取。",
       },
     },
     host: {
@@ -113,11 +113,18 @@ export const zhCN: TranslationResources = {
       hint: "工作流保存在所选主机的 ~/.paseo/workflows 目录中。",
     },
     inputContract: {
-      title: "输入契约与参数预设",
-      description: "定义必填字段、类型、默认值和可复用输入。Paseo 会在任何节点启动前完成校验。",
-      contract: "输入契约（JSON Schema 子集）",
-      contractHint:
-        "支持 properties、required、additionalProperties，以及 string、number、integer、boolean、object、array 类型。",
+      title: "工作流数据契约",
+      description:
+        "工作流输入 Schema 等于第一个节点的输入 Schema；在此声明共享变量、最终输出 Schema 和输入预设。",
+      contract: "工作流变量",
+      contractHint: '变量类型支持 "string" 和 "int64"，int64 使用十进制字符串。',
+      outputSchema: "工作流输出 Schema",
+      outputSchemaHint: "工作流成功结束前会校验最终 data。",
+      nodeVariables: "节点变量",
+      nodeVariablesHint: '声明当前节点可读写的变量，类型支持 "string" 和 "int64"。',
+      invalidVariables: "工作流变量必须是 JSON 对象。",
+      invalidOutputSchema: "工作流输出 Schema 必须是 JSON 对象。",
+      invalidPresets: "输入预设必须是 JSON 数组。",
       presets: "输入参数预设",
       presetsHint: "可保存固定资源地址，以及仅扫描、仅准备、完整运行等可复用输入。",
       preset: "输入参数预设",
@@ -195,7 +202,7 @@ export const zhCN: TranslationResources = {
       saved: "工作流已保存",
       deleted: "工作流已删除",
       inputRequired: "请输入 JSON 对象",
-      invalidInputJson: "输入必须是合法的 JSON 对象；control 如有提供，必须是字符串",
+      invalidInputJson: "输入必须是符合第一个节点输入 Schema 的合法 JSON 对象",
       startFailed: "无法启动工作流",
       started: "工作流已启动",
       cancelFailed: "无法取消工作流运行",
@@ -326,7 +333,7 @@ export const zhCN: TranslationResources = {
       },
       contract: {
         title: "节点数据契约",
-        description: "只映射当前节点需要的字段，并使用 JSON Schema 校验输入和输出。",
+        description: "只映射当前节点需要的 data 字段，声明节点变量，并使用 JSON Schema 校验 data。",
         inputs: "输入映射（JSON）",
         inputsHint: "完整表达式会保留原始类型，例如 {{nodes.scan.outputs.items}}。",
         inputSchema: "输入 Schema（JSON Schema）",
@@ -346,23 +353,22 @@ export const zhCN: TranslationResources = {
         compositionDescription:
           "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 转发到文件描述符 3。",
         bash: {
-          input: "通过 stdin 读取输入映射生成的业务 JSON 对象。",
+          input: "配置的输入变量接收 stdin 中的 {data、workflow.var、node.var}。",
           output:
-            'stdout/stderr 仅用于日志；向文件描述符 3 写入 {"outputs":{},"artifacts":[],"flow":{"action":"next"}}。失败时返回非零退出码。',
+            "把完整 version 1 结果信封赋值给配置的输出变量，Paseo 自动写入文件描述符 3；stdout/stderr 仅用于日志。",
         },
         python: {
-          input: "通过 sys.stdin 读取输入映射生成的业务 JSON 对象。",
-          output:
-            "向文件描述符 3 写入 v2 结果信封；只有 For 循环体可使用 flow.action 的 break 或 continue。",
+          input: "配置的输入变量接收解析后的 {data、workflow.var、node.var} 对象。",
+          output: "把完整 version 1 结果信封赋值给配置的输出变量，Paseo 自动序列化到文件描述符 3。",
         },
         agent: {
           input:
-            "节点输入 JSON 会加入 Workflow 提示词上下文。使用 payload、control 或嵌套字段模板变量把数据插入提示词。",
-          output: "Answer 节点会把 Agent 最终回答自动包装到 answer 字段中。",
-          controlOutput: "Control 节点会把 Agent 最终回答自动包装到 control 字段中。",
+            "用户提示词和系统提示词可通过 data、workflow.var、node.var、payload 和 inputJson 使用节点输入信封。",
+          output: '普通模式把 Agent 最终回答包装为 {"data":{"answer":"..."}}。',
+          controlOutput: "自定义模式要求 Agent 最终回答是完整的 version 1 结果信封。",
         },
         switch: {
-          input: "解析 switchOn 表达式，并把得到的原始值与各分支匹配值比较。",
+          input: "解析 switchVar 表达式，并把得到的原始值与各分支匹配值比较。",
           output: "Switch 自身不改写数据；被选中分支的最终 JSON 会成为节点输出。",
         },
         for: {
@@ -383,17 +389,23 @@ export const zhCN: TranslationResources = {
         timeout: "超时时间（秒）",
         providerDefault: "使用 Provider 默认值",
         optional: "可选",
+        inputVariable: "输入变量",
+        bashInputVariableHint: "执行命令前，把 stdin JSON 字符串赋值给此变量。",
+        pythonInputVariableHint: "执行代码前，把解析后的 stdin JSON 对象赋值给此变量。",
+        outputVariable: "输出变量",
+        bashOutputVariableHint: "命令结束时必须包含结果信封 JSON 字符串。",
+        pythonOutputVariableHint: "代码结束时必须包含结果信封对象。",
       },
       bash: {
         initialCommand: "初始命令",
         initialCommandHint:
-          "可使用下方展示的模板变量，或通过 stdin 读取节点输入 JSON。stdout/stderr 仅用于日志；必须向文件描述符 3 写入一个 JSON 对象，且不能包含 error。",
+          "可使用模板变量或配置的输入变量；把 version 1 结果信封写入配置的输出变量，stdout/stderr 仅用于日志。",
         shell: "Shell",
       },
       python: {
         code: "Python 代码",
         codeHint:
-          "通过 stdin 读取输入 JSON，并向文件描述符 3 写入一个结果 JSON 对象。stdout/stderr 仅用于日志；结果不能包含 error。",
+          "读取配置的输入变量，并把 version 1 结果信封赋值给配置的输出变量；stdout/stderr 仅用于日志。",
         interpreter: "Python 解释器",
         interpreterHint: "留空时使用 python3。",
       },
@@ -405,15 +417,14 @@ export const zhCN: TranslationResources = {
         selectSystemPromptTemplate: "选择要复制到系统提示词的模板",
         noPromptTemplates: "当前主机尚未配置提示词模板。",
         outputType: "Agent 节点类型",
-        outputTypeHint:
-          "Answer 节点把 Agent 回答写入 answer；Control 节点把 Agent 回答写入 control。",
+        outputTypeHint: "普通模式把最终回答写入 data.answer；自定义模式要求完整结果信封。",
         selectOutputType: "选择 Agent 节点类型",
         noOutputTypes: "暂无 Agent 节点类型。",
         outputTypes: {
-          answer: "Answer 节点",
-          answerDescription: '把 Agent 回答转换为 {"answer":"Agent 回答"}。',
-          control: "Control 节点",
-          controlDescription: '把 Agent 回答转换为 {"control":"Agent 回答"}。',
+          normal: "普通模式",
+          normalDescription: '把 Agent 回答转换为 {"data":{"answer":"Agent 回答"}}。',
+          custom: "自定义模式",
+          customDescription: "把 Agent 回答直接作为完整结果信封。",
         },
         initialPrompt: "初始提示词",
         initialPromptHint:
@@ -505,28 +516,30 @@ export const zhCN: TranslationResources = {
       },
       switch: {
         switchOn: "取值表达式",
-        switchOnHint: "指定要比较的值，例如 {{nodes.classify.outputs.decision}}。",
+        switchOnHint: "指定要比较的值，例如 {{data.decision}}。",
         caseSensitive: "区分大小写",
-        controlEquals: "control 等于",
+        valueEquals: "值等于",
         deleteBranch: "删除分支",
         addBranch: "添加分支",
         defaultBranch: "默认分支",
         defaultDescription: "没有匹配条件时执行，可以为空。",
       },
       for: {
+        mode: "循环类型",
+        modeItems: "数组",
+        modeWhile: "持续循环",
+        selectMode: "选择循环类型",
         items: "循环项表达式",
-        itemsHint: "必须解析为数组，例如 {{nodes.scan.outputs.items}}。",
-        separator: "分隔符",
-        separatorHint:
-          "留空进入连续循环，直到达到最大循环次数或任一节点返回 break；填写后按分隔符拆分 control。",
+        itemsHint: "必须解析为数组，例如 {{data.items}}。",
         automatic: "连续循环",
         maximumIterations: "最大循环次数",
         maximumIterationsHint: "最多执行的循环次数，默认为 100。",
         concurrency: "并发度",
         concurrencyHint:
           "同时执行的循环次数，默认为 1。为 1 时按顺序执行并把上一轮输出传给下一轮；大于 1 时，各轮基于进入 For 节点时的同一输入独立执行，最大为 100。",
-        breakControl: "中断控制值",
-        breakControlHint: "循环体返回此 control 值时提前结束，默认为“break”。",
+        control: "循环控制表达式",
+        controlHint:
+          "读取用户定义的 data 字段；值为 break 时结束循环，continue 时跳过本轮剩余节点，空值时正常继续。",
         loopBody: "循环体",
         loopDescription:
           "control 返回 continue 时跳过本轮剩余节点，返回 break 时结束循环。\nloop.item：当前循环项；连续循环时为 null。\nloop.index：当前循环序号，从 0 开始。\nloop.count：计划执行的总次数；连续循环时等于最大循环次数。",

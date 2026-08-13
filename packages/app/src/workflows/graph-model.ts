@@ -115,7 +115,7 @@ function buildSequence(
     if (step.type === "switch") {
       const branchTerminals: IncomingDependency[] = [];
       for (const [index, candidate] of step.cases.entries()) {
-        const label = candidate.equals;
+        const label = String(candidate.equals);
         const built = buildSequence(
           candidate.steps,
           [{ stepId: step.id, kind: "branch", label }],

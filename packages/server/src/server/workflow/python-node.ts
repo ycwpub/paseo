@@ -17,6 +17,8 @@ export interface PythonNodeProcessOutput {
 
 export interface RunPythonNodeInput {
   code: string;
+  inputVariable: string;
+  outputVariable: string;
   pythonPath: string;
   inputJson: string;
   iterationPath: number[];
@@ -34,11 +36,27 @@ export async function runPythonNode(input: RunPythonNodeInput): Promise<PythonNo
   const tempDirectory = await mkdtemp(join(tmpdir(), "paseo-workflow-python-"));
   const scriptPath = join(tempDirectory, "node.py");
   try {
-    await writeFile(scriptPath, input.code, "utf8");
+    await writeFile(scriptPath, buildPythonWrapper(input), "utf8");
     return await executePythonFile(input, scriptPath);
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });
   }
+}
+
+function buildPythonWrapper(input: RunPythonNodeInput): string {
+  const source = JSON.stringify(input.code);
+  return [
+    "import json",
+    "import os",
+    "import sys",
+    `${input.inputVariable} = json.load(sys.stdin)`,
+    `${input.outputVariable} = None`,
+    `exec(compile(${source}, "<paseo-workflow-node>", "exec"), globals(), globals())`,
+    `if ${input.outputVariable} is None:`,
+    `    raise RuntimeError("Workflow Python output variable ${input.outputVariable} was not assigned")`,
+    'with os.fdopen(3, "w") as __paseo_result:',
+    `    json.dump(${input.outputVariable}, __paseo_result, ensure_ascii=False)`,
+  ].join("\n");
 }
 
 function executePythonFile(

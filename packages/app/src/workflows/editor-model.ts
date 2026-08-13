@@ -1,5 +1,4 @@
 import {
-  DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT,
   WorkflowScriptSchema,
   type WorkflowAgentStep,
   type WorkflowBashStep,
@@ -60,7 +59,7 @@ export function createEmptyWorkflowScript(
   return {
     apiVersion: "paseo.sh/workflow/v1",
     kind: "Workflow",
-    version: 2,
+    version: 1,
     name: names.workflow,
     description: "",
     timeoutMs: 24 * 60 * 60 * 1000,
@@ -124,7 +123,7 @@ export function createWorkflowStep(
       id,
       name: names.agent,
       type,
-      outputType: "answer",
+      outputMode: "normal",
       initialPrompt: DEFAULT_AGENT_INITIAL_PROMPT,
       config: {
         provider: "codex",
@@ -138,7 +137,7 @@ export function createWorkflowStep(
       id,
       name: names.switch,
       type,
-      switchOn: "{{control}}",
+      switchVar: "{{data.control}}",
       cases: [{ equals: DEFAULT_SWITCH_CONTROL, steps: [] }],
       defaultSteps: [],
     } satisfies WorkflowSwitchStep;
@@ -147,7 +146,9 @@ export function createWorkflowStep(
     id,
     name: names.for,
     type,
-    items: "{{items}}",
+    mode: "items",
+    items: "{{data.items}}",
+    forControl: "{{data.control}}",
     maxIterations: 100,
     concurrency: 1,
     steps: [createWorkflowStep("bash", existingSteps, names)],
@@ -210,17 +211,13 @@ export function applyInstructionTemplateToAgentSystemPrompt(
   };
 }
 
-export function updateAgentOutputType(
+export function updateAgentOutputMode(
   step: WorkflowAgentStep,
-  outputType: "answer" | "control",
+  outputMode: "normal" | "custom",
 ): WorkflowAgentStep {
   return {
     ...step,
-    outputType,
-    config: {
-      ...step.config,
-      systemPrompt: outputType === "control" ? DEFAULT_CONTROL_AGENT_SYSTEM_PROMPT : undefined,
-    },
+    outputMode,
   };
 }
 
@@ -251,11 +248,8 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
   if (duplicate) {
     return `Duplicate workflow step id: ${duplicate}`;
   }
-  if (
-    script.version === 2 &&
-    (script.apiVersion !== "paseo.sh/workflow/v1" || script.kind !== "Workflow")
-  ) {
-    return "Workflow v2 requires apiVersion paseo.sh/workflow/v1 and kind Workflow";
+  if (script.apiVersion !== "paseo.sh/workflow/v1" || script.kind !== "Workflow") {
+    return "Workflow version 1 requires apiVersion paseo.sh/workflow/v1 and kind Workflow";
   }
   const defaultRetryError = validateRetryPolicy(script.taskDefaults?.retry, "Workflow default");
   if (defaultRetryError) {
@@ -282,7 +276,10 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
       if (step.type === "switch") {
         const cases = new Set<string>();
         for (const candidate of step.cases) {
-          const normalized = step.caseSensitive ? candidate.equals : candidate.equals.toLowerCase();
+          const normalized =
+            typeof candidate.equals === "string" && !step.caseSensitive
+              ? candidate.equals.toLowerCase()
+              : JSON.stringify(candidate.equals);
           if (cases.has(normalized)) {
             return `Switch step ${step.id} has duplicate case: ${candidate.equals}`;
           }
@@ -296,16 +293,19 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
         if (defaultError) {
           return defaultError;
         }
-        if (script.version === 2 && !step.switchOn) {
-          return `Workflow v2 switch step ${step.id} requires a value expression`;
+        if (!step.switchVar) {
+          return `Switch step ${step.id} requires a value expression`;
         }
       } else if (step.type === "for") {
         const loopError = validateSteps(step.steps);
         if (loopError) {
           return loopError;
         }
-        if (script.version === 2 && !step.items) {
-          return `Workflow v2 for step ${step.id} requires an items expression`;
+        if ((step.mode ?? "items") === "items" && !step.items) {
+          return `For step ${step.id} in items mode requires an items expression`;
+        }
+        if ((step.mode ?? "items") === "while" && (step.concurrency ?? 1) !== 1) {
+          return `For step ${step.id} in while mode requires concurrency 1`;
         }
       }
     }

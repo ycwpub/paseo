@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { Readable } from "node:stream";
-import type { WorkflowPayload } from "@getpaseo/protocol/workflow/types";
+import type { WorkflowNodeInputEnvelope } from "@getpaseo/protocol/workflow/data-contract";
 import { MAX_WORKFLOW_RESULT_CHARS, WORKFLOW_RESULT_FILE_DESCRIPTOR } from "./command-result.js";
 
 const MAX_OUTPUT_CHARS = 200_000;
@@ -27,6 +27,8 @@ export class WorkflowCommandExecutionError extends Error {
 
 export function runBashWorkflowNode(input: {
   instruction: string;
+  inputVariable: string;
+  outputVariable: string;
   inputJson: string;
   iterationPath: number[];
   cwd: string;
@@ -40,10 +42,15 @@ export function runBashWorkflowNode(input: {
   onClose: (child: ChildProcess) => void;
 }): Promise<WorkflowCommandOutput> {
   return new Promise((resolvePromise, reject) => {
+    const wrappedInstruction = buildBashWrapper(
+      input.instruction,
+      input.inputVariable,
+      input.outputVariable,
+    );
     const args =
       process.platform === "win32"
-        ? ["/d", "/s", "/c", input.instruction]
-        : ["-c", input.instruction, "paseo-workflow"];
+        ? ["/d", "/s", "/c", wrappedInstruction]
+        : ["-c", wrappedInstruction, "paseo-workflow"];
     const child = spawn(input.shell, args, {
       cwd: input.cwd,
       env: {
@@ -146,9 +153,8 @@ export function runBashWorkflowNode(input: {
   });
 }
 
-export function serializeWorkflowNodeInput(payload: WorkflowPayload): string {
-  const { error: _frameworkError, ...nodeInput } = payload;
-  return JSON.stringify(nodeInput);
+export function serializeWorkflowNodeInput(input: WorkflowNodeInputEnvelope): string {
+  return JSON.stringify(input);
 }
 
 export function formatCommandProcessOutput(output: WorkflowCommandOutput): string | null {
@@ -164,4 +170,24 @@ export function formatCommandProcessOutput(output: WorkflowCommandOutput): strin
 
 export function trimWorkflowOutput(value: string): string {
   return value.length <= MAX_OUTPUT_CHARS ? value : value.slice(value.length - MAX_OUTPUT_CHARS);
+}
+
+function buildBashWrapper(
+  instruction: string,
+  inputVariable: string,
+  outputVariable: string,
+): string {
+  if (process.platform === "win32") {
+    throw new Error("Workflow Bash input/output variables are not supported on Windows");
+  }
+  return [
+    `${inputVariable}="$(cat)"`,
+    `${outputVariable}=""`,
+    instruction,
+    `if [ -z "\${${outputVariable}}" ]; then`,
+    `  echo 'Workflow Bash output variable ${outputVariable} is empty' >&2`,
+    "  exit 1",
+    "fi",
+    `printf '%s' "\${${outputVariable}}" >&3`,
+  ].join("\n");
 }

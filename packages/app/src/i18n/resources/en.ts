@@ -66,8 +66,8 @@ export const en = {
       contract: {
         title: "Input and output contract",
         description:
-          "Nodes receive explicitly mapped business JSON. Framework flow, failures, and artifacts are separate from business outputs.",
-        note: 'Bash and Python read stdin and write a v2 envelope with "outputs", optional "artifacts", and "flow" to file descriptor 3. Switch uses switchOn; For uses items.',
+          "Nodes receive a data envelope with workflow and node variables. Failures and artifacts stay separate from user-defined flow fields in data.",
+        note: 'Bash and Python read {"data":{},"workflow":{"var":{}},"node":{"var":{}} from stdin. Their configured output variable must contain {"data":{},"modify":{},"base_resp":{},"artifacts":[]} and is written to file descriptor 3.',
       },
       internal: {
         title: "Use inside Paseo",
@@ -98,9 +98,9 @@ export const en = {
         python:
           "• Python: runs editable code, reads JSON from stdin, and writes exactly one result JSON object to file descriptor 3.",
         agent:
-          "• Agent: Answer nodes write the reply to answer; Control nodes write the reply to control. Provider, model, mode, assistant/team, system prompt, and isolation are configurable per node.",
-        switch: "• Switch: resolves switchOn and selects the matching branch.",
-        for: "• For: resolves items to an array. Child nodes use flow.action to continue or break.",
+          "• Agent: Normal mode writes the final reply to data.answer. Custom mode requires the Agent to return the complete result envelope.",
+        switch: "• Switch: resolves switchVar and selects the matching branch.",
+        for: "• For: iterates an array or runs a serial while loop. break and continue come from the configured data expression.",
       },
     },
     host: {
@@ -112,12 +112,19 @@ export const en = {
       hint: "Workflows are stored on the selected host under ~/.paseo/workflows.",
     },
     inputContract: {
-      title: "Input contract and presets",
+      title: "Workflow data contract",
       description:
-        "Define required fields, types, defaults, and reusable payloads. Paseo validates the payload before any node starts.",
-      contract: "Input contract (JSON Schema subset)",
-      contractHint:
-        "Use properties, required, and additionalProperties. Supported types: string, number, integer, boolean, object, and array.",
+        "The first node input schema is the workflow input schema. Define shared variables, the final output schema, and reusable payloads here.",
+      contract: "Workflow variables",
+      contractHint: 'Variable types are "string" and "int64". int64 values use decimal strings.',
+      outputSchema: "Workflow output schema",
+      outputSchemaHint: "Paseo validates the final data object before the run succeeds.",
+      nodeVariables: "Node variables",
+      nodeVariablesHint:
+        'Declare variables readable and writable by this node. Types are "string" and "int64".',
+      invalidVariables: "Workflow variables must be a JSON object.",
+      invalidOutputSchema: "Workflow output schema must be a JSON object.",
+      invalidPresets: "Input presets must be a JSON array.",
       presets: "Input presets",
       presetsHint:
         "Store fixed resource URLs and smoke, prepare-only, or full-run payloads as reusable presets.",
@@ -198,8 +205,7 @@ export const en = {
       saved: "Workflow saved",
       deleted: "Workflow deleted",
       inputRequired: "Enter an input JSON object",
-      invalidInputJson:
-        'Input must be a valid JSON object; "control" must be a string when provided',
+      invalidInputJson: "Input must be a valid JSON object matching the first node input schema",
       startFailed: "Workflow could not be started",
       started: "Workflow started",
       cancelFailed: "Workflow run could not be cancelled",
@@ -332,7 +338,7 @@ export const en = {
       contract: {
         title: "Node data contract",
         description:
-          "Map only the fields this node needs, then validate input and output with JSON Schema.",
+          "Map only the data fields this node needs, declare node variables, then validate data with JSON Schema.",
         inputs: "Input mapping (JSON)",
         inputsHint:
           "Whole expressions preserve native types. Example: {{nodes.scan.outputs.items}}.",
@@ -354,24 +360,26 @@ export const en = {
         compositionDescription:
           "Use a Bash node to call paseo workflow run, then forward the successful child outputPayload to file descriptor 3.",
         bash: {
-          input: "Read the mapped business input object from stdin.",
+          input:
+            "The configured input variable receives {data, workflow.var, node.var} from stdin.",
           output:
-            'stdout and stderr are logs only. Write {"outputs":{},"artifacts":[],"flow":{"action":"next"}} to file descriptor 3. Exit non-zero on failure.',
+            "Assign the complete version 1 result envelope to the configured output variable. Paseo writes it to file descriptor 3. stdout/stderr remain logs.",
         },
         python: {
-          input: "Read the mapped business input object from sys.stdin.",
+          input:
+            "The configured input variable receives the parsed {data, workflow.var, node.var} object.",
           output:
-            'Write the v2 result envelope to file descriptor 3. Use flow.action "break" or "continue" only inside a For body.',
+            "Assign the complete version 1 result envelope to the configured output variable. Paseo serializes it to file descriptor 3.",
         },
         agent: {
           input:
-            "The node input JSON is added to the workflow prompt context. Insert payload, control, or nested fields with template variables.",
-          output: 'Answer nodes automatically wrap the final Agent reply in the "answer" field.',
+            "The node input envelope is available to user and system prompt templates through data, workflow.var, node.var, payload, and inputJson.",
+          output: 'Normal mode wraps the final Agent reply as {"data":{"answer":"..."}}.',
           controlOutput:
-            'Control nodes automatically wrap the final Agent reply in the "control" field.',
+            "Custom mode requires the final Agent reply to be a complete version 1 result envelope.",
         },
         switch: {
-          input: "Resolve switchOn, then compare the native value with each configured case.",
+          input: "Resolve switchVar, then compare the native value with each configured case.",
           output:
             "Switch does not rewrite data. The selected branch's final JSON becomes the node output.",
         },
@@ -394,17 +402,24 @@ export const en = {
         timeout: "Timeout (seconds)",
         providerDefault: "Provider default",
         optional: "Optional",
+        inputVariable: "Input variable",
+        bashInputVariableHint: "Receives the stdin JSON string before the command runs.",
+        pythonInputVariableHint: "Receives the parsed stdin JSON object before the code runs.",
+        outputVariable: "Output variable",
+        bashOutputVariableHint:
+          "Must contain the result envelope JSON string when the command ends.",
+        pythonOutputVariableHint: "Must contain the result envelope object when the code ends.",
       },
       bash: {
         initialCommand: "Initial command",
         initialCommandHint:
-          'Use the template variables below or read node input JSON from stdin. stdout/stderr are logs only. Write one JSON object to file descriptor 3; the result must not contain "error".',
+          "Use template variables or the configured input variable. Set the configured output variable to the version 1 result envelope; stdout/stderr are logs.",
         shell: "Shell",
       },
       python: {
         code: "Python code",
         codeHint:
-          'Read input JSON from stdin and write one result JSON object to file descriptor 3. stdout/stderr are logs only; the result must not contain "error".',
+          "Read the configured input variable and assign the version 1 result envelope to the configured output variable. stdout/stderr are logs.",
         interpreter: "Python interpreter",
         interpreterHint: 'Leave empty to use "python3".',
       },
@@ -418,14 +433,14 @@ export const en = {
         noPromptTemplates: "No prompt templates are configured on this host.",
         outputType: "Agent node type",
         outputTypeHint:
-          "Answer writes the Agent reply to answer. Control writes the Agent reply to control.",
+          "Normal mode writes the final reply to data.answer. Custom mode expects a complete result envelope.",
         selectOutputType: "Select an Agent node type",
         noOutputTypes: "No Agent node types are available.",
         outputTypes: {
-          answer: "Answer",
-          answerDescription: 'Converts the Agent reply to {"answer":"Agent reply"}.',
-          control: "Control",
-          controlDescription: 'Converts the Agent reply to {"control":"Agent reply"}.',
+          normal: "Normal",
+          normalDescription: 'Converts the Agent reply to {"data":{"answer":"Agent reply"}}.',
+          custom: "Custom",
+          customDescription: "Uses the Agent reply as the complete result envelope.",
         },
         initialPrompt: "Initial prompt",
         initialPromptHint:
@@ -519,30 +534,30 @@ export const en = {
       },
       switch: {
         switchOn: "Value expression",
-        switchOnHint:
-          "Select the value to compare, for example {{nodes.classify.outputs.decision}}.",
+        switchOnHint: "Select the value to compare, for example {{data.decision}}.",
         caseSensitive: "Case-sensitive matching",
-        controlEquals: "control equals",
+        valueEquals: "Value equals",
         deleteBranch: "Delete branch",
         addBranch: "Add branch",
         defaultBranch: "Default branch",
         defaultDescription: "Runs when no case matches. It may be empty.",
       },
       for: {
+        mode: "Loop type",
+        modeItems: "Array",
+        modeWhile: "Continuous loop",
+        selectMode: "Select loop type",
         items: "Items expression",
-        itemsHint: "Must resolve to an array, for example {{nodes.scan.outputs.items}}.",
-        separator: "Separator",
-        separatorHint:
-          'Leave empty to repeat until the maximum is reached or a node returns "break"; otherwise control is split using this separator.',
+        itemsHint: "Must resolve to an array, for example {{data.items}}.",
         automatic: "Continuous loop",
         maximumIterations: "Maximum iterations",
         maximumIterationsHint: "Maximum number of iterations. Defaults to 100.",
         concurrency: "Concurrency",
         concurrencyHint:
           "Iterations running at once. Defaults to 1. At 1, each iteration receives the previous output; above 1, iterations run independently from the For node input. Maximum 100.",
-        breakControl: "Break control value",
-        breakControlHint:
-          'Stop early when the loop body returns this control value. Defaults to "break".',
+        control: "Loop control expression",
+        controlHint:
+          'Resolve a user-defined data field. "break" stops the loop, "continue" skips the remaining body nodes, and an empty value continues normally.',
         loopBody: "Loop body",
         loopDescription:
           'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.item: current parsed item, or null in continuous mode.\nloop.index: zero-based iteration index.\nloop.count: planned iteration count; in continuous mode, the maximum iteration count.',

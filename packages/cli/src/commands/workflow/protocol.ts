@@ -9,13 +9,14 @@ import type {
 } from "../../output/index.js";
 import { connectWorkflowClient, type WorkflowCommandOptions } from "./shared.js";
 
-export const WORKFLOW_COMMAND_PROTOCOL_VERSION = 2;
+export const WORKFLOW_COMMAND_PROTOCOL_VERSION = 1;
 
 export interface WorkflowCommandProtocolInfo {
   protocol: "paseo.workflow.command-result";
   version: number;
   daemonSupported: boolean;
   daemonVersion: string | null;
+  daemonProtocolVersion: number | null;
   inputTransport: "stdin";
   inputFormat: "one JSON object";
   stdout: "logs";
@@ -23,8 +24,10 @@ export interface WorkflowCommandProtocolInfo {
   resultTransport: "file descriptor 3";
   resultFormat: "one JSON object";
   failureSignal: "non-zero exit code";
-  reservedResultFields: ["error"];
-  defaultResultFields: { control: "" };
+  inputEnvelope: "{data,workflow.var,node.var}";
+  resultEnvelope: "{data,modify,base_resp,artifacts}";
+  flowControl: "user-defined fields in data";
+  variableTypes: ["string", "int64 decimal string"];
   legacyStdoutResult: false;
 }
 
@@ -34,8 +37,11 @@ export function buildWorkflowCommandProtocolInfo(
   return {
     protocol: "paseo.workflow.command-result",
     version: WORKFLOW_COMMAND_PROTOCOL_VERSION,
-    daemonSupported: serverInfo?.features?.workflowCommandResultFd3 === true,
+    daemonSupported:
+      serverInfo?.features?.workflowCommandResultFd3 === true &&
+      serverInfo.features.workflowProtocolVersion === WORKFLOW_COMMAND_PROTOCOL_VERSION,
     daemonVersion: serverInfo?.version ?? null,
+    daemonProtocolVersion: serverInfo?.features?.workflowProtocolVersion ?? null,
     inputTransport: "stdin",
     inputFormat: "one JSON object",
     stdout: "logs",
@@ -43,21 +49,27 @@ export function buildWorkflowCommandProtocolInfo(
     resultTransport: "file descriptor 3",
     resultFormat: "one JSON object",
     failureSignal: "non-zero exit code",
-    reservedResultFields: ["error"],
-    defaultResultFields: { control: "" },
+    inputEnvelope: "{data,workflow.var,node.var}",
+    resultEnvelope: "{data,modify,base_resp,artifacts}",
+    flowControl: "user-defined fields in data",
+    variableTypes: ["string", "int64 decimal string"],
     legacyStdoutResult: false,
   };
 }
 
 export function assertWorkflowCommandProtocol(serverInfo: ServerInfoStatusPayload | null): void {
-  if (serverInfo?.features?.workflowCommandResultFd3 === true) {
+  if (
+    serverInfo?.features?.workflowCommandResultFd3 === true &&
+    serverInfo.features.workflowProtocolVersion === WORKFLOW_COMMAND_PROTOCOL_VERSION
+  ) {
     return;
   }
   const error: CommandError = {
     code: "WORKFLOW_COMMAND_PROTOCOL_UNSUPPORTED",
-    message: "The connected daemon does not support Workflow command protocol version 2",
-    details:
-      "Update the Paseo daemon. Bash and Python nodes now read JSON from stdin and write their only result JSON to file descriptor 3. stdout/stderr are logs and are never parsed as results.",
+    message: "The connected daemon does not support Workflow command protocol version 1",
+    details: `Update the Paseo daemon. The daemon advertises Workflow protocol version ${
+      serverInfo?.features?.workflowProtocolVersion ?? "unknown"
+    }, but this CLI requires version ${WORKFLOW_COMMAND_PROTOCOL_VERSION}. Bash and Python nodes read {data,workflow.var,node.var} from stdin and write {data,modify,base_resp,artifacts} to file descriptor 3. stdout/stderr are logs and are never parsed as results.`,
   };
   throw error;
 }
@@ -82,6 +94,11 @@ const workflowCommandProtocolSchema: OutputSchema<WorkflowCommandProtocolInfo> =
     { header: "VERSION", field: "version", width: 7 },
     { header: "DAEMON SUPPORT", field: "daemonSupported", width: 14 },
     { header: "DAEMON VERSION", field: (info) => info.daemonVersion ?? "-", width: 16 },
+    {
+      header: "DAEMON PROTOCOL",
+      field: (info) => info.daemonProtocolVersion ?? "-",
+      width: 15,
+    },
   ],
   renderHuman: renderWorkflowCommandProtocol,
 };
@@ -99,12 +116,15 @@ function renderWorkflowCommandProtocol(
     `Version: ${info.version}`,
     `Daemon support: ${info.daemonSupported ? "yes" : "no"}`,
     `Daemon version: ${info.daemonVersion ?? "unknown"}`,
+    `Daemon protocol version: ${info.daemonProtocolVersion ?? "unknown"}`,
     `Input: ${info.inputTransport}, ${info.inputFormat}`,
     `Logs: stdout=${info.stdout}, stderr=${info.stderr}`,
     `Result: ${info.resultTransport}, ${info.resultFormat}`,
     `Failure: ${info.failureSignal}`,
-    `Reserved result fields: ${info.reservedResultFields.join(", ")}`,
-    `Default result fields: control=""`,
+    `Input envelope: ${info.inputEnvelope}`,
+    `Result envelope: ${info.resultEnvelope}`,
+    `Flow control: ${info.flowControl}`,
+    `Variable types: ${info.variableTypes.join(", ")}`,
     `Legacy stdout result: ${info.legacyStdoutResult ? "enabled" : "disabled"}`,
   ].join("\n");
 }

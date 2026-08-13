@@ -19,7 +19,7 @@ export function createWorkflowCommand(): Command {
     .command("run")
     .description("Run a workflow script with an input JSON payload")
     .argument("<script>", "Workflow JSON script path on the daemon host")
-    .argument("[input-json]", 'Initial JSON object with optional string field "control"')
+    .argument("[input-json]", "Initial JSON object matching the first node input schema")
     .option("--preset <preset-id>", "Start from a reusable input preset defined by the workflow")
     .option("--node <node-id>", "Run only the workflow node with this ID")
     .option("--background", "Return immediately after starting the workflow")

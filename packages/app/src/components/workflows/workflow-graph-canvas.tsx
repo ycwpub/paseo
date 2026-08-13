@@ -663,7 +663,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   header: {
-    flexDirection: "row",
+    flexDirection: { xs: "column", md: "row" },
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: theme.spacing[3],
@@ -691,7 +691,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
   },
   headerMeta: {
-    alignItems: "flex-end",
+    alignItems: { xs: "flex-start", md: "flex-end" },
     gap: theme.spacing[1],
   },
   direction: {

@@ -24,17 +24,20 @@ vi.mock("@/components/ui/form-field", () => ({
     testID,
     onChangeText,
     style,
+    textInputStyle,
   }: {
     value?: string;
     controlled?: boolean;
     testID?: string;
     onChangeText?: (value: string) => void;
     style?: unknown;
+    textInputStyle?: unknown;
   }) => (
     <input
       data-testid={testID}
       data-controlled={controlled ? "true" : "false"}
       data-style={JSON.stringify(style)}
+      data-text-input-style={JSON.stringify(textInputStyle)}
       onChange={(event) => onChangeText?.(event.target.value)}
       value={value ?? ""}
     />
@@ -136,6 +139,9 @@ describe("WorkflowTextInput", () => {
     ).toContain('"flex":1');
     expect(expandButton.getAttribute("data-style")).toContain('"right":12');
     expect(expandButton.getAttribute("data-style")).toContain('"backgroundColor":"#f4f4f5"');
+    expect(screen.getByTestId("workflow-field").getAttribute("data-text-input-style")).toContain(
+      '"paddingRight":64',
+    );
     fireEvent.click(expandButton);
 
     expect(screen.getByTestId("workflow-field-expanded-editor")).toBeTruthy();
@@ -147,6 +153,7 @@ describe("WorkflowTextInput", () => {
     fireEvent.change(expandedInput, { target: { value: "Updated in large editor" } });
 
     expect(onChangeText).toHaveBeenCalledWith("Updated in large editor");
+    expect(expandedInput).toHaveProperty("value", "Updated in large editor");
   });
 
   it("keeps short scalar fields compact when expansion is disabled", () => {

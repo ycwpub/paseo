@@ -211,21 +211,21 @@ function parseFieldValue(value: string, property: WorkflowInputProperty): unknow
 
 const styles = StyleSheet.create((theme) => ({
   container: {
-    gap: 12,
+    gap: theme.spacing[3],
   },
   fields: {
-    gap: 10,
-    padding: 12,
-    borderWidth: 1,
+    gap: theme.spacing[3],
+    padding: theme.spacing[3],
+    borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    borderRadius: 10,
+    borderRadius: theme.borderRadius.md,
   },
   issues: {
-    gap: 4,
+    gap: theme.spacing[1],
   },
   issue: {
-    marginTop: 4,
-    fontSize: 12,
+    marginTop: theme.spacing[1],
+    fontSize: theme.fontSize.xs,
     color: theme.colors.destructive,
   },
 }));

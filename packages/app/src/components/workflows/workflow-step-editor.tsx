@@ -1941,8 +1941,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   addNodeBar: {
     minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: { xs: "column", md: "row" },
+    alignItems: { xs: "stretch", md: "center" },
     justifyContent: "space-between",
     gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
@@ -1973,7 +1973,7 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "flex-end",
+    justifyContent: { xs: "flex-start", md: "flex-end" },
     gap: theme.spacing[1],
   },
   stepCard: {
@@ -1990,6 +1990,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
     padding: theme.spacing[2],
   },
@@ -2034,22 +2035,24 @@ const styles = StyleSheet.create((theme) => ({
   stepType: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.semibold,
+    fontWeight: theme.fontWeight.medium,
   },
   stepSummary: {
     flex: 1,
-    minWidth: 160,
+    minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
   stepId: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: 10,
+    fontSize: theme.fontSize.xs,
     fontFamily: theme.fontFamily.mono,
   },
   stepHeaderActions: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+    marginLeft: "auto",
     gap: theme.spacing[1],
   },
   iconButton: {

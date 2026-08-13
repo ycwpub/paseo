@@ -167,31 +167,30 @@ function formatJson(value: unknown): string {
 
 const styles = StyleSheet.create((theme) => ({
   card: {
-    gap: 14,
-    padding: 16,
-    borderWidth: 1,
+    gap: theme.spacing[4],
+    padding: theme.spacing[4],
+    borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
-    borderRadius: 12,
+    borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface0,
   },
   title: {
-    fontSize: 15,
-    fontWeight: "600",
     color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
   },
   description: {
-    marginTop: 4,
-    fontSize: 12,
-    lineHeight: 18,
-    color: theme.colors.mutedForeground,
+    marginTop: theme.spacing[1],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    lineHeight: Math.round(theme.fontSize.xs * 1.4),
   },
   jsonInput: {
     minHeight: 150,
     fontFamily: "monospace",
   },
   error: {
-    marginTop: -8,
-    fontSize: 12,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.destructive,
   },
 }));

@@ -38,14 +38,14 @@ export function Field({ label, children, hint, error, testID }: FieldProps) {
   const subtext = useMemo(() => {
     if (error) {
       return (
-        <Text numberOfLines={1} style={styles.errorText} testID={errorTestID}>
+        <Text style={styles.errorText} testID={errorTestID}>
           {error}
         </Text>
       );
     }
     if (hint) {
       return (
-        <Text numberOfLines={1} style={styles.hintText} testID={hintTestID}>
+        <Text style={styles.hintText} testID={hintTestID}>
           {hint}
         </Text>
       );
@@ -64,6 +64,7 @@ export function Field({ label, children, hint, error, testID }: FieldProps) {
 
 type FormTextInputProps = AdaptiveTextInputProps & {
   size?: FieldControlSize;
+  textInputStyle?: AdaptiveTextInputProps["style"];
 };
 
 type FlatFormTextInputStyle = ViewStyle & TextStyle;
@@ -152,7 +153,7 @@ function assignTextInputRef(forwardedRef: ForwardedRef<TextInput>, node: TextInp
 }
 
 export const FormTextInput = forwardRef<TextInput, FormTextInputProps>(function FormTextInput(
-  { size = "md", style, onFocus, onBlur, editable, ...props },
+  { size = "md", style, textInputStyle, onFocus, onBlur, editable, ...props },
   ref,
 ) {
   const [focused, setFocused] = useState(false);
@@ -181,8 +182,8 @@ export const FormTextInput = forwardRef<TextInput, FormTextInputProps>(function 
     [onBlur],
   );
   const inputStyle = useMemo(
-    () => [formInputStyles.input, inputSizeStyle, splitStyle.inputStyle],
-    [inputSizeStyle, splitStyle.inputStyle],
+    () => [formInputStyles.input, inputSizeStyle, splitStyle.inputStyle, textInputStyle],
+    [inputSizeStyle, splitStyle.inputStyle, textInputStyle],
   ) as AdaptiveTextInputProps["style"];
   const chromeStyle = useCallback(
     ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [

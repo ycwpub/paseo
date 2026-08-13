@@ -1,5 +1,6 @@
 import React, {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type ComponentProps,
@@ -34,12 +35,19 @@ export function WorkflowTextInputExpansion({
   multiline,
   size,
   style,
+  textInputStyle,
   testID,
   ...inputProps
 }: WorkflowTextInputExpansionProps): ReactElement {
   const { t } = useTranslation();
   const { height: viewportHeight } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedValue, setExpandedValue] = useState(value ?? "");
+  useEffect(() => {
+    if (!isExpanded) {
+      setExpandedValue(value ?? "");
+    }
+  }, [isExpanded, value]);
   const expandedEditorHeight = useMemo(
     () => calculateExpandedWorkflowEditorHeight(viewportHeight),
     [viewportHeight],
@@ -60,8 +68,18 @@ export function WorkflowTextInputExpansion({
     }),
     [resolvedEditorTitle, t],
   );
-  const openEditor = useCallback(() => setIsExpanded(true), []);
+  const openEditor = useCallback(() => {
+    setExpandedValue(value ?? "");
+    setIsExpanded(true);
+  }, [value]);
   const closeEditor = useCallback(() => setIsExpanded(false), []);
+  const handleExpandedChangeText = useCallback(
+    (nextValue: string) => {
+      setExpandedValue(nextValue);
+      onChangeText?.(nextValue);
+    },
+    [onChangeText],
+  );
   const openLabel = t("workflows.nodes.expandedEditor.open", {
     field: resolvedEditorTitle,
   });
@@ -92,6 +110,7 @@ export function WorkflowTextInputExpansion({
         multiline={multiline}
         size={size}
         style={style}
+        textInputStyle={textInputStyle}
         testID={testID}
         controlled
       />
@@ -108,7 +127,8 @@ export function WorkflowTextInputExpansion({
           accessibilityLabel={accessibilityLabel}
           multiline={multiline}
           size={size}
-          style={[style, styles.collapsedInput]}
+          style={style}
+          textInputStyle={[textInputStyle, styles.collapsedInputText]}
           testID={testID}
           controlled
         />
@@ -143,8 +163,8 @@ export function WorkflowTextInputExpansion({
         <View style={[styles.expandedEditor, { height: expandedEditorHeight }]}>
           <FormTextInput
             {...inputProps}
-            value={value}
-            onChangeText={onChangeText}
+            value={expandedValue}
+            onChangeText={handleExpandedChangeText}
             accessibilityLabel={accessibilityLabel}
             multiline
             size={size}
@@ -155,6 +175,7 @@ export function WorkflowTextInputExpansion({
               expandedInputSizeStyle,
               monospace && styles.monospaceInput,
             ]}
+            textInputStyle={textInputStyle}
             testID={testID ? `${testID}-expanded-input` : "workflow-expanded-input"}
             controlled
           />
@@ -171,8 +192,8 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 0,
     position: "relative",
   },
-  collapsedInput: {
-    paddingRight: theme.spacing[16],
+  collapsedInputText: {
+    paddingRight: theme.spacing[8] + theme.spacing[8],
   },
   expandButton: {
     position: "absolute",

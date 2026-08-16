@@ -37,19 +37,19 @@ export function WorkflowEditorToolbar({
 }): ReactElement {
   return (
     <View style={styles.toolbar}>
-      <View style={styles.titleGroup}>
-        <View style={styles.titleRow} testID="workflow-title-row">
-          <WorkflowWrappingTitleInput
-            value={name}
-            onChangeText={onChangeName}
-            placeholder={untitledPlaceholder}
-            accessibilityLabel={nameLabel}
-            editorTitle={nameLabel}
-            expandable={false}
-            style={styles.titleInput}
-            testID="workflow-name"
-          />
-        </View>
+      <View style={styles.titleRow} testID="workflow-title-row">
+        <WorkflowWrappingTitleInput
+          value={name}
+          onChangeText={onChangeName}
+          placeholder={untitledPlaceholder}
+          accessibilityLabel={nameLabel}
+          editorTitle={nameLabel}
+          expandable={false}
+          style={styles.titleInput}
+          testID="workflow-name"
+        />
+      </View>
+      <View style={styles.pathActionsRow} testID="workflow-path-actions-row">
         <Text
           style={[styles.path, path ? styles.pathValue : styles.pathHint]}
           selectable={Boolean(path)}
@@ -57,30 +57,30 @@ export function WorkflowEditorToolbar({
         >
           {path ?? generatedPathLabel}
         </Text>
-      </View>
-      <View style={styles.actions}>
-        {path ? (
-          <Button variant="outline" size="sm" leftIcon={Trash2} onPress={onDelete}>
-            {deleteLabel}
-          </Button>
-        ) : null}
-        <View style={styles.saveGroup} testID="workflow-save-group">
-          {dirty ? (
-            <View testID="workflow-save-status">
-              <StatusBadge label={unsavedLabel} variant="muted" />
-            </View>
+        <View style={styles.actions}>
+          {path ? (
+            <Button variant="outline" size="sm" leftIcon={Trash2} onPress={onDelete}>
+              {deleteLabel}
+            </Button>
           ) : null}
-          <Button
-            variant="default"
-            size="sm"
-            leftIcon={Save}
-            onPress={onSave}
-            loading={saving}
-            disabled={!dirty && Boolean(path)}
-            testID="workflow-save"
-          >
-            {saveLabel}
-          </Button>
+          <View style={styles.saveGroup} testID="workflow-save-group">
+            {dirty ? (
+              <View testID="workflow-save-status">
+                <StatusBadge label={unsavedLabel} variant="muted" />
+              </View>
+            ) : null}
+            <Button
+              variant="default"
+              size="sm"
+              leftIcon={Save}
+              onPress={onSave}
+              loading={saving}
+              disabled={!dirty && Boolean(path)}
+              testID="workflow-save"
+            >
+              {saveLabel}
+            </Button>
+          </View>
         </View>
       </View>
     </View>
@@ -89,22 +89,16 @@ export function WorkflowEditorToolbar({
 
 const styles = StyleSheet.create((theme) => ({
   toolbar: {
-    flexDirection: { xs: "column", md: "row" },
-    alignItems: { xs: "stretch", md: "center" },
-    justifyContent: "space-between",
-    gap: theme.spacing[3],
+    gap: theme.spacing[1],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[4] },
     paddingVertical: theme.spacing[3],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
   },
-  titleGroup: {
-    flex: 1,
-    minWidth: 0,
-    gap: theme.spacing[1],
-  },
   titleRow: {
+    width: "100%",
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
   },
@@ -122,7 +116,17 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     lineHeight: Math.round(theme.fontSize.lg * 1.5),
   },
+  pathActionsRow: {
+    width: "100%",
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
   path: {
+    minWidth: 0,
+    flex: 1,
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
@@ -135,10 +139,10 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: theme.fontFamily.ui,
   },
   actions: {
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
   saveGroup: {

@@ -110,6 +110,14 @@ describe("WorkflowEditorToolbar", () => {
     expect(screen.getByText("/tmp/long-workflow.json")).toBeTruthy();
     expect(screen.getByTestId("workflow-name").getAttribute("data-expandable")).toBe("false");
     expect(screen.getByTestId("workflow-title-row").textContent).not.toContain("Unsaved");
+    const pathActionsRow = screen.getByTestId("workflow-path-actions-row");
+    expect(pathActionsRow.textContent).toContain("/tmp/long-workflow.json");
+    expect(pathActionsRow.textContent).toContain("Delete");
+    expect(pathActionsRow.textContent).toContain("Unsaved");
+    expect(pathActionsRow.textContent).toContain("Save");
+    expect(screen.getByTestId("workflow-title-row").parentElement).toBe(
+      pathActionsRow.parentElement,
+    );
     expect(screen.getByTestId("workflow-save-group").textContent).toContain("Unsaved");
 
     fireEvent.change(screen.getByTestId("workflow-name"), { target: { value: "Renamed" } });

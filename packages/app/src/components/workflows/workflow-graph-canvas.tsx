@@ -1,6 +1,6 @@
-/* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- Workflow graph positions and node selection styles are derived from the stable layout model. */
-import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+/* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- Workflow graph positions, drag handlers, and node selection styles are derived from the stable layout model. */
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { PanResponder, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import {
   Bot,
@@ -10,6 +10,7 @@ import {
   Maximize2,
   Play,
   Repeat2,
+  RotateCcw,
   TerminalSquare,
   ZoomIn,
   ZoomOut,
@@ -26,9 +27,21 @@ import {
 } from "@/workflows/graph-model";
 import {
   layoutWorkflowGraph,
+  type WorkflowGraphEdgeHandle,
+  type WorkflowGraphEdgeHandleId,
   type WorkflowGraphLayoutEdge,
   type WorkflowGraphLayoutNode,
+  type WorkflowGraphLayoutOverrides,
+  type WorkflowGraphPoint,
 } from "@/workflows/graph-layout";
+import {
+  EMPTY_WORKFLOW_GRAPH_LAYOUT,
+  hasWorkflowGraphLayoutOverrides,
+  loadWorkflowGraphLayout,
+  moveWorkflowGraphEdgeHandle,
+  moveWorkflowGraphNode,
+  saveWorkflowGraphLayout,
+} from "@/workflows/graph-layout-preferences";
 import {
   calculateWorkflowGraphZoomGeometry,
   DEFAULT_WORKFLOW_GRAPH_ZOOM,
@@ -45,19 +58,71 @@ export function WorkflowGraph({
   selectedStepId = null,
   onSelectStep,
   mode,
+  layoutKey = null,
 }: {
   steps: WorkflowStep[];
   nodeRuns?: WorkflowNodeRun[];
   selectedStepId?: string | null;
   onSelectStep?: (stepId: string) => void;
   mode: "design" | "run";
+  layoutKey?: string | null;
 }): ReactElement {
   const { t } = useTranslation();
   const { height: windowHeight } = useWindowDimensions();
   const [fullGraphVisible, setFullGraphVisible] = useState(false);
+  const [layoutOverrides, setLayoutOverrides] = useState<WorkflowGraphLayoutOverrides>(
+    EMPTY_WORKFLOW_GRAPH_LAYOUT,
+  );
+  const layoutOverridesRef = useRef(layoutOverrides);
   const fullGraphHeight = Math.max(420, Math.min(900, Math.round(windowHeight * 0.72)));
   const openFullGraph = useCallback(() => setFullGraphVisible(true), []);
   const closeFullGraph = useCallback(() => setFullGraphVisible(false), []);
+  useEffect(() => {
+    let active = true;
+    layoutOverridesRef.current = EMPTY_WORKFLOW_GRAPH_LAYOUT;
+    setLayoutOverrides(EMPTY_WORKFLOW_GRAPH_LAYOUT);
+    const loadLayout = async () => {
+      const loaded = await loadWorkflowGraphLayout(layoutKey);
+      if (active) {
+        layoutOverridesRef.current = loaded;
+        setLayoutOverrides(loaded);
+      }
+    };
+    void loadLayout();
+    return () => {
+      active = false;
+    };
+  }, [layoutKey]);
+  const updateLayoutOverrides = useCallback(
+    (updater: (current: WorkflowGraphLayoutOverrides) => WorkflowGraphLayoutOverrides) => {
+      setLayoutOverrides((current) => {
+        const next = updater(current);
+        layoutOverridesRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+  const moveNode = useCallback(
+    (nodeId: string, point: WorkflowGraphPoint) =>
+      updateLayoutOverrides((current) => moveWorkflowGraphNode(current, nodeId, point)),
+    [updateLayoutOverrides],
+  );
+  const moveEdgeHandle = useCallback(
+    (edgeId: string, handleId: WorkflowGraphEdgeHandleId, point: WorkflowGraphPoint) =>
+      updateLayoutOverrides((current) =>
+        moveWorkflowGraphEdgeHandle(current, edgeId, handleId, point),
+      ),
+    [updateLayoutOverrides],
+  );
+  const commitLayout = useCallback(() => {
+    void saveWorkflowGraphLayout(layoutKey, layoutOverridesRef.current);
+  }, [layoutKey]);
+  const resetLayout = useCallback(() => {
+    layoutOverridesRef.current = EMPTY_WORKFLOW_GRAPH_LAYOUT;
+    setLayoutOverrides(EMPTY_WORKFLOW_GRAPH_LAYOUT);
+    void saveWorkflowGraphLayout(layoutKey, EMPTY_WORKFLOW_GRAPH_LAYOUT);
+  }, [layoutKey]);
   const selectFromFullGraph = useCallback(
     (stepId: string) => {
       closeFullGraph();
@@ -82,6 +147,11 @@ export function WorkflowGraph({
         onSelectStep={onSelectStep}
         onOpenFullGraph={openFullGraph}
         mode={mode}
+        layoutOverrides={layoutOverrides}
+        onMoveNode={moveNode}
+        onMoveEdgeHandle={moveEdgeHandle}
+        onCommitLayout={commitLayout}
+        onResetLayout={resetLayout}
       />
       <AdaptiveModalSheet
         visible={fullGraphVisible}
@@ -99,6 +169,11 @@ export function WorkflowGraph({
           selectedStepId={selectedStepId}
           onSelectStep={onSelectStep ? selectFromFullGraph : undefined}
           mode={mode}
+          layoutOverrides={layoutOverrides}
+          onMoveNode={moveNode}
+          onMoveEdgeHandle={moveEdgeHandle}
+          onCommitLayout={commitLayout}
+          onResetLayout={resetLayout}
           presentation="full"
           viewportHeight={fullGraphHeight}
         />
@@ -114,6 +189,11 @@ function WorkflowGraphSurface({
   onSelectStep,
   onOpenFullGraph,
   mode,
+  layoutOverrides,
+  onMoveNode,
+  onMoveEdgeHandle,
+  onCommitLayout,
+  onResetLayout,
   presentation = "embedded",
   viewportHeight,
 }: {
@@ -123,13 +203,25 @@ function WorkflowGraphSurface({
   onSelectStep?: (stepId: string) => void;
   onOpenFullGraph?: () => void;
   mode: "design" | "run";
+  layoutOverrides: WorkflowGraphLayoutOverrides;
+  onMoveNode: (nodeId: string, point: WorkflowGraphPoint) => void;
+  onMoveEdgeHandle: (
+    edgeId: string,
+    handleId: WorkflowGraphEdgeHandleId,
+    point: WorkflowGraphPoint,
+  ) => void;
+  onCommitLayout: () => void;
+  onResetLayout: () => void;
   presentation?: "embedded" | "full";
   viewportHeight?: number;
 }): ReactElement {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(DEFAULT_WORKFLOW_GRAPH_ZOOM);
   const model = useMemo(() => buildWorkflowGraphModel(steps, nodeRuns), [nodeRuns, steps]);
-  const layout = useMemo(() => layoutWorkflowGraph(model), [model]);
+  const layout = useMemo(
+    () => layoutWorkflowGraph(model, layoutOverrides),
+    [layoutOverrides, model],
+  );
   const orderByStepId = useMemo(
     () =>
       new Map(
@@ -220,6 +312,17 @@ function WorkflowGraphSurface({
             accessibilityLabel={t("workflows.graph.zoomIn")}
             testID="workflow-graph-zoom-in"
           />
+          {hasWorkflowGraphLayoutOverrides(layoutOverrides) ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              leftIcon={RotateCcw}
+              onPress={onResetLayout}
+              testID="workflow-graph-reset-layout"
+            >
+              {t("workflows.graph.resetLayout")}
+            </Button>
+          ) : null}
           {onOpenFullGraph ? (
             <Button
               variant="outline"
@@ -269,6 +372,20 @@ function WorkflowGraphSurface({
                     source={nodeById.get(edge.from) ?? null}
                   />
                 ))}
+                {mode === "design"
+                  ? layout.edges.flatMap((edge) =>
+                      edge.handles.map((handle) => (
+                        <WorkflowGraphEdgeDragHandle
+                          key={`${edge.id}:${handle.id}`}
+                          edgeId={edge.id}
+                          handle={handle}
+                          zoom={zoomGeometry.scale}
+                          onMove={onMoveEdgeHandle}
+                          onCommit={onCommitLayout}
+                        />
+                      )),
+                    )
+                  : null}
                 {layout.nodes.map((positioned) => (
                   <WorkflowGraphCanvasNode
                     key={positioned.id}
@@ -277,6 +394,10 @@ function WorkflowGraphSurface({
                     selected={selectedStepId === positioned.id}
                     onSelectStep={onSelectStep}
                     mode={mode}
+                    zoom={zoomGeometry.scale}
+                    draggable={mode === "design"}
+                    onMove={onMoveNode}
+                    onCommit={onCommitLayout}
                   />
                 ))}
               </View>
@@ -376,12 +497,20 @@ function WorkflowGraphCanvasNode({
   selected,
   onSelectStep,
   mode,
+  zoom,
+  draggable,
+  onMove,
+  onCommit,
 }: {
   positioned: WorkflowGraphLayoutNode;
   order: number;
   selected: boolean;
   onSelectStep: ((stepId: string) => void) | undefined;
   mode: "design" | "run";
+  zoom: number;
+  draggable: boolean;
+  onMove: (nodeId: string, point: WorkflowGraphPoint) => void;
+  onCommit: () => void;
 }) {
   const position = {
     left: positioned.x,
@@ -392,41 +521,175 @@ function WorkflowGraphCanvasNode({
   if (positioned.kind !== "step" || !positioned.node) {
     return <WorkflowBoundaryNode positioned={positioned} position={position} />;
   }
-  const node = positioned.node;
+  return (
+    <WorkflowGraphStepNode
+      positioned={positioned}
+      node={positioned.node}
+      position={position}
+      order={order}
+      selected={selected}
+      onSelectStep={onSelectStep}
+      mode={mode}
+      zoom={zoom}
+      draggable={draggable}
+      onMove={onMove}
+      onCommit={onCommit}
+    />
+  );
+}
+
+function WorkflowGraphStepNode({
+  positioned,
+  node,
+  position,
+  order,
+  selected,
+  onSelectStep,
+  mode,
+  zoom,
+  draggable,
+  onMove,
+  onCommit,
+}: {
+  positioned: WorkflowGraphLayoutNode;
+  node: WorkflowGraphNode;
+  position: { left: number; top: number; width: number; height: number };
+  order: number;
+  selected: boolean;
+  onSelectStep: ((stepId: string) => void) | undefined;
+  mode: "design" | "run";
+  zoom: number;
+  draggable: boolean;
+  onMove: (nodeId: string, point: WorkflowGraphPoint) => void;
+  onCommit: () => void;
+}) {
   const content = <WorkflowStepNodeContent node={node} order={order} mode={mode} />;
-  if (!onSelectStep) {
-    return (
-      <View
-        style={[
-          styles.node,
-          statusNodeStyle(node.status, mode),
-          selected && styles.nodeSelected,
-          position,
-        ]}
-      >
-        <WorkflowNodePorts />
-        {content}
-      </View>
-    );
+  const currentPositionRef = useRef({ x: positioned.x, y: positioned.y });
+  const dragOriginRef = useRef(currentPositionRef.current);
+  const zoomRef = useRef(zoom);
+  const onMoveRef = useRef(onMove);
+  const onCommitRef = useRef(onCommit);
+  currentPositionRef.current = { x: positioned.x, y: positioned.y };
+  zoomRef.current = zoom;
+  onMoveRef.current = onMove;
+  onCommitRef.current = onCommit;
+  const dragResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          draggable && Math.abs(gesture.dx) + Math.abs(gesture.dy) > 4,
+        onPanResponderGrant: () => {
+          dragOriginRef.current = currentPositionRef.current;
+        },
+        onPanResponderMove: (_, gesture) => {
+          onMoveRef.current(node.stepId, {
+            x: dragOriginRef.current.x + gesture.dx / zoomRef.current,
+            y: dragOriginRef.current.y + gesture.dy / zoomRef.current,
+          });
+        },
+        onPanResponderRelease: () => onCommitRef.current(),
+        onPanResponderTerminate: () => onCommitRef.current(),
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [draggable, node.stepId],
+  );
+  const nodeStyle = [
+    styles.node,
+    styles.nodeInDragFrame,
+    statusNodeStyle(node.status, mode),
+    selected && styles.nodeSelected,
+  ];
+  return (
+    <View
+      style={[styles.nodeDragFrame, position]}
+      {...(draggable ? dragResponder.panHandlers : {})}
+    >
+      {onSelectStep ? (
+        <Pressable
+          onPress={() => onSelectStep(node.stepId)}
+          style={({ hovered, pressed }) => [
+            nodeStyle,
+            hovered && styles.nodeHovered,
+            pressed && styles.nodePressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ selected }}
+          accessibilityLabel={`${node.stepName || node.stepId}, ${node.stepType}`}
+        >
+          <WorkflowNodePorts />
+          {content}
+        </Pressable>
+      ) : (
+        <View style={nodeStyle}>
+          <WorkflowNodePorts />
+          {content}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function WorkflowGraphEdgeDragHandle({
+  edgeId,
+  handle,
+  zoom,
+  onMove,
+  onCommit,
+}: {
+  edgeId: string;
+  handle: WorkflowGraphEdgeHandle;
+  zoom: number;
+  onMove: (edgeId: string, handleId: WorkflowGraphEdgeHandleId, point: WorkflowGraphPoint) => void;
+  onCommit: () => void;
+}) {
+  const currentPointRef = useRef({ x: handle.x, y: handle.y });
+  const dragOriginRef = useRef(currentPointRef.current);
+  const zoomRef = useRef(zoom);
+  const onMoveRef = useRef(onMove);
+  const onCommitRef = useRef(onCommit);
+  currentPointRef.current = { x: handle.x, y: handle.y };
+  zoomRef.current = zoom;
+  onMoveRef.current = onMove;
+  onCommitRef.current = onCommit;
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragOriginRef.current = currentPointRef.current;
+        },
+        onPanResponderMove: (_, gesture) => {
+          const nextX =
+            handle.axis === "y"
+              ? dragOriginRef.current.x
+              : dragOriginRef.current.x + gesture.dx / zoomRef.current;
+          const nextY =
+            handle.axis === "x"
+              ? dragOriginRef.current.y
+              : dragOriginRef.current.y + gesture.dy / zoomRef.current;
+          onMoveRef.current(edgeId, handle.id, { x: nextX, y: nextY });
+        },
+        onPanResponderRelease: () => onCommitRef.current(),
+        onPanResponderTerminate: () => onCommitRef.current(),
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [edgeId, handle.axis, handle.id],
+  );
+  let axisStyle = styles.edgeDragHandleFree;
+  if (handle.axis === "x") {
+    axisStyle = styles.edgeDragHandleHorizontal;
+  } else if (handle.axis === "y") {
+    axisStyle = styles.edgeDragHandleVertical;
   }
   return (
-    <Pressable
-      onPress={() => onSelectStep(node.stepId)}
-      style={({ hovered, pressed }) => [
-        styles.node,
-        statusNodeStyle(node.status, mode),
-        selected && styles.nodeSelected,
-        hovered && styles.nodeHovered,
-        pressed && styles.nodePressed,
-        position,
-      ]}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={`${node.stepName || node.stepId}, ${node.stepType}`}
-    >
-      <WorkflowNodePorts />
-      {content}
-    </Pressable>
+    <View
+      {...responder.panHandlers}
+      style={[styles.edgeDragHandle, axisStyle, { left: handle.x - 7, top: handle.y - 7 }]}
+      accessibilityRole="adjustable"
+      accessibilityLabel="Drag workflow connection"
+      testID={`workflow-edge-handle-${edgeId}-${handle.id}`}
+    />
   );
 }
 
@@ -815,6 +1078,33 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     backgroundColor: theme.colors.surface1,
+  },
+  nodeDragFrame: {
+    position: "absolute",
+    zIndex: 2,
+  },
+  nodeInDragFrame: {
+    position: "relative",
+    width: "100%",
+    height: "100%",
+  },
+  edgeDragHandle: {
+    position: "absolute",
+    zIndex: 3,
+    width: 14,
+    height: 14,
+    borderWidth: 2,
+    borderColor: theme.colors.surface0,
+    borderRadius: theme.borderRadius.full,
+  },
+  edgeDragHandleFree: {
+    backgroundColor: theme.colors.accentBright,
+  },
+  edgeDragHandleHorizontal: {
+    backgroundColor: theme.colors.foregroundMuted,
+  },
+  edgeDragHandleVertical: {
+    backgroundColor: theme.colors.foregroundMuted,
   },
   nodeSelected: {
     borderWidth: 2,

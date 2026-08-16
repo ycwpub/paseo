@@ -150,7 +150,8 @@ export const en = {
     },
     graph: {
       title: "Workflow graph",
-      designHint: "Shows node dependencies, execution order, branches, merges, and loop bodies.",
+      designHint:
+        "Shows dependencies, order, branches, merges, and loops. Drag nodes or connection handles to adjust the layout.",
       runHint:
         "Shows live status, active paths, duration, and execution count. Select a node for I/O.",
       nodeCount: "{{count}} nodes",
@@ -179,6 +180,7 @@ export const en = {
       zoomIn: "Zoom in workflow graph",
       zoomOut: "Zoom out workflow graph",
       resetZoom: "Reset workflow graph zoom",
+      resetLayout: "Reset layout",
       nodeName: "Node name",
       nodeId: "Node ID",
       nodeType: "Node type",

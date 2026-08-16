@@ -116,6 +116,7 @@ describe("workflow graph layout", () => {
     expect(innerLoopBack.labelY).toBeGreaterThan(deepestNodeBottom);
     expect(outerLoopBack.labelY).toBeGreaterThan(innerLoopBack.labelY);
     expect(outerLoopBack.labelY - innerLoopBack.labelY).toBeGreaterThanOrEqual(28);
+    expect(loopRoutesCross(layout, innerLoopBack, outerLoopBack)).toBe(false);
     expect(layout.height).toBeGreaterThan(outerLoopBack.labelY);
   });
 
@@ -219,6 +220,26 @@ describe("workflow graph layout", () => {
       }
     }
   });
+
+  it("applies manual node and edge positions to the generated graph", () => {
+    const model = buildWorkflowGraphModel([
+      { id: "first", type: "bash", initialCommand: "true" },
+      { id: "second", type: "bash", initialCommand: "true" },
+    ]);
+    const automatic = layoutWorkflowGraph(model);
+    const edge = findEdge(automatic, "first", "second", "sequence");
+    const layout = layoutWorkflowGraph(model, {
+      nodes: { first: { x: 240, y: 180 } },
+      edges: { [edge.id]: { control: { x: 520, y: 260 } } },
+    });
+
+    expect(node(layout, "first")).toMatchObject({ x: 240, y: 180 });
+    expect(findEdge(layout, "first", "second", "sequence")).toMatchObject({
+      labelX: 520,
+      labelY: 260,
+      route: { kind: "forward", controlX: 520, controlY: 260 },
+    });
+  });
 });
 
 function createLayout(steps: WorkflowStep[]) {
@@ -254,5 +275,63 @@ function overlaps(left: ReturnType<typeof node>, right: ReturnType<typeof node>)
     right.x + right.width <= left.x ||
     left.y + left.height <= right.y ||
     right.y + right.height <= left.y
+  );
+}
+
+interface Segment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function loopRoutesCross(
+  layout: ReturnType<typeof createLayout>,
+  left: ReturnType<typeof findEdge>,
+  right: ReturnType<typeof findEdge>,
+): boolean {
+  const leftSegments = loopSegments(layout, left);
+  const rightSegments = loopSegments(layout, right);
+  return leftSegments.some((leftSegment) =>
+    rightSegments.some((rightSegment) => orthogonalSegmentsCross(leftSegment, rightSegment)),
+  );
+}
+
+function loopSegments(
+  layout: ReturnType<typeof createLayout>,
+  edge: ReturnType<typeof findEdge>,
+): Segment[] {
+  if (edge.route.kind !== "loop_back") {
+    return [];
+  }
+  const source = node(layout, edge.from);
+  const target = node(layout, edge.to);
+  const sourceX = source.x + source.width;
+  const sourceY = source.y + source.height / 2;
+  const targetX = target.x;
+  const targetY = target.y + target.height / 2;
+  const { sourceTurnX, targetTurnX, channelY } = edge.route;
+  return [
+    { x1: sourceX, y1: sourceY, x2: sourceTurnX, y2: sourceY },
+    { x1: sourceTurnX, y1: sourceY, x2: sourceTurnX, y2: channelY },
+    { x1: sourceTurnX, y1: channelY, x2: targetTurnX, y2: channelY },
+    { x1: targetTurnX, y1: channelY, x2: targetTurnX, y2: targetY },
+    { x1: targetTurnX, y1: targetY, x2: targetX, y2: targetY },
+  ];
+}
+
+function orthogonalSegmentsCross(left: Segment, right: Segment): boolean {
+  const leftHorizontal = left.y1 === left.y2;
+  const rightHorizontal = right.y1 === right.y2;
+  if (leftHorizontal === rightHorizontal) {
+    return false;
+  }
+  const horizontal = leftHorizontal ? left : right;
+  const vertical = leftHorizontal ? right : left;
+  return (
+    vertical.x1 > Math.min(horizontal.x1, horizontal.x2) &&
+    vertical.x1 < Math.max(horizontal.x1, horizontal.x2) &&
+    horizontal.y1 > Math.min(vertical.y1, vertical.y2) &&
+    horizontal.y1 < Math.max(vertical.y1, vertical.y2)
   );
 }

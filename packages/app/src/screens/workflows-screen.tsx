@@ -818,6 +818,7 @@ function WorkflowsScreenContent(): ReactElement {
                   selectedStepId={selectedDesignStepId}
                   onSelectStep={setSelectedDesignStepId}
                   mode="design"
+                  layoutKey={draftPath ?? `draft:${draft.name}`}
                 />
                 <WorkflowStepDetailsSheet
                   steps={draft.steps}
@@ -1192,6 +1193,7 @@ function WorkflowRunPanel({
         selectedStepId={selectedStepId}
         onSelectStep={setSelectedStepId}
         mode="run"
+        layoutKey={run.scriptPath}
       />
       <WorkflowSelectedNodeRuns
         stepId={selectedStepId}

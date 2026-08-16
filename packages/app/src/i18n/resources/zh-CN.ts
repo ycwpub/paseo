@@ -149,7 +149,8 @@ export const zhCN: TranslationResources = {
     },
     graph: {
       title: "Workflow 编排图",
-      designHint: "展示节点依赖、执行顺序、条件分支、汇合点和循环体。",
+      designHint:
+        "展示节点依赖、执行顺序、条件分支、汇合点和循环体；可拖拽节点和连线圆点调整布局。",
       runHint: "实时展示节点状态、执行路径、耗时和次数；点击节点查看完整输入输出。",
       nodeCount: "{{count}} 个节点",
       leftToRight: "从左到右",
@@ -176,6 +177,7 @@ export const zhCN: TranslationResources = {
       zoomIn: "放大编排图",
       zoomOut: "缩小编排图",
       resetZoom: "重置编排图缩放",
+      resetLayout: "重置布局",
       nodeName: "节点名称",
       nodeId: "节点 ID",
       nodeType: "节点类型",

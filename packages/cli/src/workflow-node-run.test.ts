@@ -6,6 +6,8 @@ describe("workflow node run CLI", () => {
     const run = createWorkflowCommand().commands.find((command) => command.name() === "run");
 
     expect(run?.helpInformation()).toContain("--node <node-id>");
+    expect(run?.helpInformation()).toContain("--input-type <type>");
+    expect(run?.helpInformation()).toContain("upstream-output or node-input");
   });
 
   it("supports reusable input presets without requiring inline JSON", () => {

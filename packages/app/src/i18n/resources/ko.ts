@@ -76,6 +76,18 @@ const koOverrides = {
           single: "단일 실행",
           singleDescription: "실행할 때마다 새 에이전트를 생성하며 재사용하지 않습니다.",
         },
+        subsequentPromptMode: "첫 실행 이후 프롬프트",
+        subsequentPromptModeHint:
+          "이미 초기화된 에이전트를 다시 호출할 때 보낼 프롬프트를 선택합니다.",
+        selectSubsequentPromptMode: "후속 프롬프트 방식 선택",
+        subsequentPromptModes: {
+          reuseInitial: "초기 프롬프트 재사용",
+          reuseInitialDescription: "현재 노드 입력으로 초기 프롬프트를 다시 렌더링합니다.",
+          custom: "사용자 지정 프롬프트",
+          customDescription: "첫 호출 이후에는 별도로 설정한 프롬프트를 사용합니다.",
+        },
+        subsequentPrompt: "사용자 지정 후속 프롬프트",
+        subsequentPromptHint: "초기 프롬프트와 동일한 입력 데이터 및 템플릿 변수를 지원합니다.",
         archiveAtLifecycleEnd: "에이전트 수명 주기가 끝나면 자동 보관",
       },
       openDetails: "{{name}} 노드 세부 정보 열기",

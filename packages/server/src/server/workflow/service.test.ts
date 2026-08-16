@@ -2132,6 +2132,8 @@ describe("WorkflowService", () => {
                 id: "review",
                 type: "agent",
                 lifecycle: "for",
+                subsequentPromptMode: "custom",
+                subsequentPrompt: "continue {{loop.item}}",
                 initialPrompt: "review {{loop.item}}",
                 config: { provider: "codex", cwd: home },
               },
@@ -2155,7 +2157,7 @@ describe("WorkflowService", () => {
     });
 
     expect(run.status, run.error ?? undefined).toBe("succeeded");
-    expect(prompts).toEqual(["review alpha", "review beta", "after loop"]);
+    expect(prompts).toEqual(["review alpha", "continue beta", "after loop"]);
     expect(createdAgentIds).toHaveLength(2);
     expect(
       run.nodeRuns.filter((node) => node.stepId === "review").map((node) => node.agentId),

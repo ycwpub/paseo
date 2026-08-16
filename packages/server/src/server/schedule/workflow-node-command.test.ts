@@ -16,12 +16,13 @@ describe("scheduled workflow node commands", () => {
 
     expect(
       parseScheduledWorkflowCommand(
-        `paseo workflow run --node worker "/tmp/flow.json" '{}' --background`,
+        `paseo workflow run --node worker --input-type node-input "/tmp/flow.json" '{}' --background`,
       ),
     ).toEqual({
       scriptPath: "/tmp/flow.json",
       inputPayload: "{}",
       targetNodeId: "worker",
+      targetInputMode: "node_input",
       background: true,
     });
   });
@@ -30,5 +31,18 @@ describe("scheduled workflow node commands", () => {
     expect(parseScheduledWorkflowCommand(`paseo workflow run "/tmp/flow.json" '{}' --node`)).toBe(
       null,
     );
+  });
+
+  it("rejects input types without a node or with an unknown value", () => {
+    expect(
+      parseScheduledWorkflowCommand(
+        `paseo workflow run "/tmp/flow.json" '{}' --input-type node-input`,
+      ),
+    ).toBeNull();
+    expect(
+      parseScheduledWorkflowCommand(
+        `paseo workflow run "/tmp/flow.json" '{}' --node worker --input-type direct`,
+      ),
+    ).toBeNull();
   });
 });

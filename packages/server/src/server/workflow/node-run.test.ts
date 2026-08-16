@@ -43,6 +43,26 @@ function appendVisitCommand(label: string): string {
   );
 }
 
+function echoNodeInputCommand(): string {
+  return nodeCommand(
+    ["process.stdout.write(JSON.stringify({", "  data: { received: input }", "}));"].join("\n"),
+  );
+}
+
+function modifyVariablesCommand(): string {
+  return nodeCommand(
+    [
+      "process.stdout.write(JSON.stringify({",
+      "  data: { status: 'done' },",
+      "  modify: {",
+      "    workflow: { var: { trace: 'updated' } },",
+      "    loop: { var: { cursor: '1' } }",
+      "  }",
+      "}));",
+    ].join("\n"),
+  );
+}
+
 async function createService(): Promise<{ home: string; service: WorkflowService }> {
   const home = await mkdtemp(join(tmpdir(), "paseo-workflow-node-run-"));
   tempDirs.push(home);
@@ -97,12 +117,190 @@ describe("WorkflowService node runs", () => {
 
     expect(run.status).toBe("succeeded");
     expect(run.targetNodeId).toBe("worker");
+    expect(run.targetInputMode).toBe("upstream_output");
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["worker"]);
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "worker",
       customer: "Alice",
       visited: ["worker"],
     });
+  });
+
+  it("passes a complete node input directly without mapping or variable filling", async () => {
+    const { home, service } = await createService();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        name: "Direct node input",
+        variables: {
+          trace: { type: "string", default: "framework-trace" },
+        },
+        steps: [
+          {
+            id: "worker",
+            type: "bash",
+            initialCommand: echoNodeInputCommand(),
+            inputs: {
+              mappedCustomer: "{{data.customer}}",
+            },
+            inputSchema: {
+              type: "object",
+              required: ["customer"],
+              properties: {
+                customer: { type: "string" },
+              },
+            },
+            variables: {
+              role: { type: "string", default: "framework-role" },
+            },
+          },
+        ],
+      }),
+    );
+    const directInput = {
+      data: { customer: "Alice" },
+      workflow: { var: { trace: "manual-trace" } },
+      loop: { item: "manual-item", index: 2, count: 4 },
+      node: { var: { role: "manual-role" } },
+    };
+
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify(directInput),
+      targetNodeId: "worker",
+      targetInputMode: "node_input",
+    });
+
+    expect(run.status).toBe("succeeded");
+    expect(run.targetInputMode).toBe("node_input");
+    expect(JSON.parse(run.inputPayload ?? "{}")).toEqual(directInput);
+    expect(JSON.parse(run.nodeRuns[0]?.inputPayload ?? "{}")).toEqual(directInput);
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({ received: directInput });
+  });
+
+  it("requires a target node and a complete envelope for direct node input", async () => {
+    const { home, service } = await createService();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        name: "Direct node validation",
+        steps: [{ id: "worker", type: "bash", initialCommand: echoNodeInputCommand() }],
+      }),
+    );
+
+    await expect(
+      service.runScript({
+        scriptPath,
+        inputPayload: '{"data":{},"workflow":{"var":{}},"node":{"var":{}}}',
+        targetInputMode: "node_input",
+      }),
+    ).rejects.toThrow("Direct node input requires a target workflow node");
+    await expect(
+      service.runScript({
+        scriptPath,
+        inputPayload: '{"data":{}}',
+        targetNodeId: "worker",
+        targetInputMode: "node_input",
+      }),
+    ).rejects.toThrow("Direct node input must contain data, workflow.var, and node.var objects");
+    expect(await service.listRuns()).toEqual([]);
+  });
+
+  it("records the complete node output envelope including variable modifications", async () => {
+    const { home, service } = await createService();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        name: "Complete node output",
+        variables: {
+          trace: { type: "string", default: "initial" },
+        },
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            mode: "array",
+            items: "{{data.items}}",
+            loopVariables: {
+              cursor: { type: "string", default: "0" },
+            },
+            steps: [
+              {
+                id: "worker",
+                type: "bash",
+                initialCommand: modifyVariablesCommand(),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":[1]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({ status: "done" });
+    const workerRun = run.nodeRuns.find((node) => node.stepId === "worker");
+    expect(JSON.parse(workerRun?.outputPayload ?? "{}")).toEqual({
+      data: { status: "done" },
+      modify: {
+        workflow: { var: { trace: "updated" } },
+        loop: { var: { cursor: "1" } },
+      },
+      base_resp: {
+        status_code: 0,
+        status_msg: "",
+        forbid_retry: 0,
+      },
+    });
+  });
+
+  it("treats a missing For control field as an empty control value", async () => {
+    const { home, service } = await createService();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        name: "Optional For control",
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            mode: "array",
+            items: "{{data.items}}",
+            forControl: "{{data.control}}",
+            steps: [
+              {
+                id: "worker",
+                type: "bash",
+                initialCommand: nodeCommand(
+                  "process.stdout.write(JSON.stringify({ data: { status: 'done' } }));",
+                ),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":[1,2]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(run.nodeRuns.filter((node) => node.stepId === "worker")).toHaveLength(2);
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({ status: "done" });
   });
 
   it("finds and runs a nested node directly", async () => {

@@ -69,7 +69,7 @@ describe("DaemonClient workflow node runs", () => {
     });
     clients.push(client);
     const connecting = client.connect();
-    mock.open({ workflowNodeRun: true });
+    mock.open({ workflowNodeRun: true, workflowNodeInputMode: true });
     await connecting;
 
     const result = client.workflowRun({
@@ -77,6 +77,7 @@ describe("DaemonClient workflow node runs", () => {
       scriptPath: "/tmp/workflow.json",
       inputPayload: "{}",
       targetNodeId: "worker",
+      targetInputMode: "node_input",
     });
     await Promise.resolve();
     const request = JSON.parse(mock.sent[0] ?? "{}").message;
@@ -100,6 +101,7 @@ describe("DaemonClient workflow node runs", () => {
       scriptPath: "/tmp/workflow.json",
       inputPayload: "{}",
       targetNodeId: "worker",
+      targetInputMode: "node_input",
     });
   });
 
@@ -123,6 +125,30 @@ describe("DaemonClient workflow node runs", () => {
         targetNodeId: "worker",
       }),
     ).rejects.toThrow("Update the host to run an individual workflow node.");
+    expect(mock.sent).toEqual([]);
+  });
+
+  it("rejects direct node input before dispatch when the daemon does not advertise it", async () => {
+    const mock = createTransport();
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "workflow_node_input_legacy",
+      transportFactory: () => mock.transport,
+      reconnect: { enabled: false },
+    });
+    clients.push(client);
+    const connecting = client.connect();
+    mock.open({ workflowNodeRun: true });
+    await connecting;
+
+    await expect(
+      client.workflowRun({
+        scriptPath: "/tmp/workflow.json",
+        inputPayload: '{"data":{},"workflow":{"var":{}},"node":{"var":{}}}',
+        targetNodeId: "worker",
+        targetInputMode: "node_input",
+      }),
+    ).rejects.toThrow("Update the host to pass a complete input directly");
     expect(mock.sent).toEqual([]);
   });
 });

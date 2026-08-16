@@ -229,7 +229,13 @@ Agent nodes require a final answer. A missing final answer fails the node.
 
 Calls that reuse one Agent are serialized, including calls from parallel For iterations. The Agent's
 workspace, provider configuration, and rendered system prompt are fixed by the first execution that
-initializes the lifecycle. Each execution still renders and sends its current user prompt.
+initializes the lifecycle. `subsequentPromptMode` controls the prompt sent after the first call:
+
+- `reuse_initial` (default): render `initialPrompt` again from the current node input.
+- `custom`: render and send `subsequentPrompt`; reusable Agent nodes require this field in custom
+  mode.
+
+Single-lifecycle Agents always use `initialPrompt`.
 
 `config.archiveOnFinish` now applies when the selected Agent lifecycle ends. When enabled, Paseo
 archives the Agent workspace after the Workflow, For invocation, or single execution finishes.
@@ -311,7 +317,7 @@ The body receives the innermost Loop scope:
 
 - `break`: stop scheduling iterations
 - `continue`: skip the remaining nodes in the current iteration
-- empty: run the next body node
+- empty or missing field: run the next body node
 
 Any other non-empty control value fails the For node, so misspelled control values do not silently
 change execution.
@@ -369,6 +375,23 @@ paseo workflow run /absolute/path/workflow.json \
 
 Use `--node <node-id>` to test one node and `--background` to return before completion. Use
 `--preset <preset-id>` to start from a saved input preset.
+
+Single-node runs support two input types:
+
+- `--input-type upstream-output` (default) treats the JSON as the previous node's `data`, or as the
+  original Workflow input when there is no previous node. Paseo applies the node's `inputs` mapping
+  and fills `workflow.var`, `loop`, and `node.var`.
+- `--input-type node-input` treats the JSON as the complete node input envelope and passes it
+  directly to the selected node. Paseo does not apply input mapping or fill any variables.
+
+```bash
+paseo workflow run /absolute/path/workflow.json \
+  '{"data":{"project":"paseo"},"workflow":{"var":{}},"node":{"var":{}}}' \
+  --node review \
+  --input-type node-input
+```
+
+`node-input` requires `--node` and cannot be combined with `--preset`.
 
 ```bash
 paseo workflow inspect /absolute/path/workflow.json

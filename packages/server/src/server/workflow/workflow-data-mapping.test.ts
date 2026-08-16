@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolveWorkflowExpression, resolveWorkflowNodeInput } from "./workflow-data-mapping.js";
+import {
+  resolveOptionalWorkflowExpression,
+  resolveWorkflowExpression,
+  resolveWorkflowNodeInput,
+} from "./workflow-data-mapping.js";
 
 const context = {
   workflowInputs: { project: "paseo", threshold: 3 },
@@ -66,5 +70,10 @@ describe("workflow data mapping", () => {
     expect(() =>
       resolveWorkflowNodeInput({ value: "{{nodes.missing.outputs.value}}" }, context),
     ).toThrow("Workflow expression path not found");
+  });
+
+  it("allows optional expressions to resolve missing paths as undefined", () => {
+    expect(resolveOptionalWorkflowExpression("{{data.control}}", context)).toBeUndefined();
+    expect(resolveOptionalWorkflowExpression("{{data.approved}}", context)).toBe(true);
   });
 });

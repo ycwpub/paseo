@@ -3,16 +3,17 @@ import { WorkflowRunRequestSchema } from "./rpc-schemas.js";
 import { WorkflowRunSchema } from "./types.js";
 
 describe("workflow node runs", () => {
-  it("accepts a target node ID on workflow run requests", () => {
-    expect(
-      WorkflowRunRequestSchema.parse({
-        type: "workflow/run",
-        requestId: "request-run",
-        scriptPath: "/tmp/workflow.json",
-        inputPayload: '{"control":""}',
-        targetNodeId: "worker",
-      }).targetNodeId,
-    ).toBe("worker");
+  it("accepts a target node ID and input mode on workflow run requests", () => {
+    const request = WorkflowRunRequestSchema.parse({
+      type: "workflow/run",
+      requestId: "request-run",
+      scriptPath: "/tmp/workflow.json",
+      inputPayload: '{"data":{"control":""},"workflow":{"var":{}},"node":{"var":{}}}',
+      targetNodeId: "worker",
+      targetInputMode: "node_input",
+    });
+    expect(request.targetNodeId).toBe("worker");
+    expect(request.targetInputMode).toBe("node_input");
 
     expect(
       WorkflowRunRequestSchema.safeParse({
@@ -21,6 +22,15 @@ describe("workflow node runs", () => {
         scriptPath: "/tmp/workflow.json",
         inputPayload: '{"control":""}',
         targetNodeId: "   ",
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowRunRequestSchema.safeParse({
+        type: "workflow/run",
+        requestId: "request-run",
+        scriptPath: "/tmp/workflow.json",
+        inputPayload: '{"data":{},"workflow":{"var":{}},"node":{"var":{}}}',
+        targetInputMode: "node_input",
       }).success,
     ).toBe(false);
   });
@@ -47,5 +57,6 @@ describe("workflow node runs", () => {
     });
 
     expect(run.targetNodeId).toBeNull();
+    expect(run.targetInputMode).toBe("upstream_output");
   });
 });

@@ -51,26 +51,37 @@ export function WorkflowTextInputExpansion({
   const { height: viewportHeight } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedValue, setExpandedValue] = useState(value ?? "");
-  const expandedInputRef = useRef<TextInput>(null);
+  const expandedInputElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const expandedValueRef = useRef(value ?? "");
+  const isComposingRef = useRef(false);
+  const onChangeTextRef = useRef(onChangeText);
+  onChangeTextRef.current = onChangeText;
   useEffect(() => {
     if (!isExpanded) {
-      setExpandedValue(value ?? "");
+      const nextValue = value ?? "";
+      expandedValueRef.current = nextValue;
+      setExpandedValue(nextValue);
     }
   }, [isExpanded, value]);
-  useEffect(() => {
-    if (!isWeb || !isExpanded) {
+  const syncExpandedValue = useCallback((nextValue: string) => {
+    if (expandedValueRef.current === nextValue) {
       return;
     }
-    const input = expandedInputRef.current as unknown as
-      | HTMLInputElement
-      | HTMLTextAreaElement
-      | null;
-    if (!input) {
-      return;
-    }
-    const handleKeyDown = (rawEvent: Event) => {
+    expandedValueRef.current = nextValue;
+    setExpandedValue(nextValue);
+    onChangeTextRef.current?.(nextValue);
+  }, []);
+  const handleExpandedInputKeyDown = useCallback(
+    (rawEvent: Event) => {
       const event = rawEvent as KeyboardEvent;
+      if (isComposingRef.current || event.isComposing || event.keyCode === 229) {
+        return;
+      }
       if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      const input = expandedInputElementRef.current;
+      if (!input) {
         return;
       }
       event.preventDefault();
@@ -81,16 +92,73 @@ export function WorkflowTextInputExpansion({
         selectionEnd: input.selectionEnd ?? input.value.length,
         outdent: event.shiftKey,
       });
-      setExpandedValue(edit.value);
-      onChangeText?.(edit.value);
+      syncExpandedValue(edit.value);
       requestAnimationFrame(() => {
         input.focus();
         input.setSelectionRange(edit.selectionStart, edit.selectionEnd);
       });
-    };
-    input.addEventListener("keydown", handleKeyDown);
-    return () => input.removeEventListener("keydown", handleKeyDown);
-  }, [isExpanded, onChangeText]);
+    },
+    [syncExpandedValue],
+  );
+  const handleExpandedCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+  const handleExpandedCompositionEnd = useCallback(
+    (rawEvent: Event) => {
+      isComposingRef.current = false;
+      const input = rawEvent.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
+      if (input) {
+        syncExpandedValue(input.value);
+      }
+    },
+    [syncExpandedValue],
+  );
+  const setExpandedInputRef = useCallback(
+    (node: TextInput | null) => {
+      expandedInputElementRef.current?.removeEventListener(
+        "keydown",
+        handleExpandedInputKeyDown,
+        true,
+      );
+      expandedInputElementRef.current?.removeEventListener(
+        "compositionstart",
+        handleExpandedCompositionStart,
+      );
+      expandedInputElementRef.current?.removeEventListener(
+        "compositionend",
+        handleExpandedCompositionEnd,
+      );
+      const input = node as unknown as HTMLInputElement | HTMLTextAreaElement | null;
+      if (!isWeb || !input || typeof input.addEventListener !== "function") {
+        expandedInputElementRef.current = null;
+        return;
+      }
+      expandedInputElementRef.current = input;
+      input.addEventListener("keydown", handleExpandedInputKeyDown, true);
+      input.addEventListener("compositionstart", handleExpandedCompositionStart);
+      input.addEventListener("compositionend", handleExpandedCompositionEnd);
+    },
+    [handleExpandedCompositionEnd, handleExpandedCompositionStart, handleExpandedInputKeyDown],
+  );
+  useEffect(
+    () => () => {
+      expandedInputElementRef.current?.removeEventListener(
+        "keydown",
+        handleExpandedInputKeyDown,
+        true,
+      );
+      expandedInputElementRef.current?.removeEventListener(
+        "compositionstart",
+        handleExpandedCompositionStart,
+      );
+      expandedInputElementRef.current?.removeEventListener(
+        "compositionend",
+        handleExpandedCompositionEnd,
+      );
+      expandedInputElementRef.current = null;
+    },
+    [handleExpandedCompositionEnd, handleExpandedCompositionStart, handleExpandedInputKeyDown],
+  );
   const expandedEditorHeight = useMemo(
     () => calculateExpandedWorkflowEditorHeight(viewportHeight),
     [viewportHeight],
@@ -112,16 +180,24 @@ export function WorkflowTextInputExpansion({
     [resolvedEditorTitle, t],
   );
   const openEditor = useCallback(() => {
-    setExpandedValue(value ?? "");
+    const nextValue = value ?? "";
+    expandedValueRef.current = nextValue;
+    setExpandedValue(nextValue);
     setIsExpanded(true);
   }, [value]);
-  const closeEditor = useCallback(() => setIsExpanded(false), []);
+  const closeEditor = useCallback(() => {
+    isComposingRef.current = false;
+    setIsExpanded(false);
+  }, []);
   const handleExpandedChangeText = useCallback(
     (nextValue: string) => {
-      setExpandedValue(nextValue);
-      onChangeText?.(nextValue);
+      if (isComposingRef.current) {
+        setExpandedValue(nextValue);
+        return;
+      }
+      syncExpandedValue(nextValue);
     },
-    [onChangeText],
+    [syncExpandedValue],
   );
   const openLabel = t("workflows.nodes.expandedEditor.open", {
     field: resolvedEditorTitle,
@@ -206,7 +282,7 @@ export function WorkflowTextInputExpansion({
         <View style={[styles.expandedEditor, { height: expandedEditorHeight }]}>
           <FormTextInput
             {...inputProps}
-            ref={expandedInputRef}
+            ref={setExpandedInputRef}
             value={expandedValue}
             onChangeText={handleExpandedChangeText}
             accessibilityLabel={accessibilityLabel}

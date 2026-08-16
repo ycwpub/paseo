@@ -79,6 +79,19 @@ export const ja: TranslationResources = {
           single: "単一実行",
           singleDescription: "実行ごとに新しいエージェントを作成し、再利用しません。",
         },
+        subsequentPromptMode: "2 回目以降のプロンプト",
+        subsequentPromptModeHint:
+          "初期化済みのエージェントを再度呼び出すときに送信する内容を選択します。",
+        selectSubsequentPromptMode: "2 回目以降のプロンプト動作を選択",
+        subsequentPromptModes: {
+          reuseInitial: "初期プロンプトを再利用",
+          reuseInitialDescription: "現在のノード入力で初期プロンプトを再レンダリングします。",
+          custom: "カスタムプロンプト",
+          customDescription: "初回以降の呼び出しでは別のプロンプトを使用します。",
+        },
+        subsequentPrompt: "カスタムの後続プロンプト",
+        subsequentPromptHint:
+          "初期プロンプトと同じ入力データおよびテンプレート変数を利用できます。",
         archiveAtLifecycleEnd: "エージェントのライフサイクル終了時に自動アーカイブ",
       },
       contract: {

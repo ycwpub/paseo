@@ -5,7 +5,8 @@ import {
   type WorkflowTextInputProps,
 } from "@/components/workflows/workflow-text-input";
 
-const MIN_TITLE_HEIGHT = 40;
+const MIN_TITLE_HEIGHT = 48;
+const TITLE_CONTENT_HEIGHT_BUFFER = 8;
 
 export function WorkflowWrappingTitleInput({
   onChangeText,
@@ -25,7 +26,7 @@ export function WorkflowWrappingTitleInput({
     (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
       const nextHeight = Math.max(
         MIN_TITLE_HEIGHT,
-        Math.ceil(event.nativeEvent.contentSize.height),
+        Math.ceil(event.nativeEvent.contentSize.height) + TITLE_CONTENT_HEIGHT_BUFFER,
       );
       setContentHeight(nextHeight);
       onContentSizeChange?.(event);

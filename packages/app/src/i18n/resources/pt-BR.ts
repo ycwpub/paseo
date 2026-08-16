@@ -81,6 +81,20 @@ export const ptBR: TranslationResources = {
           single: "Execução única",
           singleDescription: "Criar um novo agente a cada execução, sem reutilização.",
         },
+        subsequentPromptMode: "Prompt após a primeira chamada",
+        subsequentPromptModeHint:
+          "Escolha o que enviar quando este nó chamar um agente já inicializado.",
+        selectSubsequentPromptMode: "Selecionar comportamento do prompt seguinte",
+        subsequentPromptModes: {
+          reuseInitial: "Reutilizar prompt inicial",
+          reuseInitialDescription:
+            "Renderizar novamente o prompt inicial com a entrada atual do nó.",
+          custom: "Prompt personalizado",
+          customDescription: "Usar um prompt separado em cada chamada após a primeira.",
+        },
+        subsequentPrompt: "Prompt seguinte personalizado",
+        subsequentPromptHint:
+          "Aceita os mesmos dados de entrada e variáveis de modelo do prompt inicial.",
         archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
       },
       contract: {

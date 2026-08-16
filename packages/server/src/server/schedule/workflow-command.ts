@@ -1,9 +1,11 @@
 import { basename } from "node:path";
+import type { WorkflowTargetInputMode } from "@getpaseo/protocol/workflow/types";
 
 export interface ScheduledWorkflowCommand {
   scriptPath: string;
   inputPayload: string;
   targetNodeId?: string;
+  targetInputMode?: WorkflowTargetInputMode;
   background: boolean;
 }
 
@@ -19,19 +21,9 @@ export function parseScheduledWorkflowCommand(command: string): ScheduledWorkflo
     return null;
   }
   const args = tokens.slice(3);
-  const backgroundIndex = args.indexOf("--background");
-  const background = backgroundIndex !== -1;
-  if (background) {
-    args.splice(backgroundIndex, 1);
-  }
-  const nodeIndex = args.indexOf("--node");
-  let targetNodeId: string | undefined;
-  if (nodeIndex !== -1) {
-    targetNodeId = args[nodeIndex + 1]?.trim();
-    if (!targetNodeId) {
-      return null;
-    }
-    args.splice(nodeIndex, 2);
+  const options = parseScheduledWorkflowOptions(args);
+  if (!options) {
+    return null;
   }
   if (args.length !== 2 || args.some((value) => value.startsWith("--"))) {
     return null;
@@ -39,9 +31,68 @@ export function parseScheduledWorkflowCommand(command: string): ScheduledWorkflo
   return {
     scriptPath: args[0] ?? "",
     inputPayload: args[1] ?? "",
-    ...(targetNodeId ? { targetNodeId } : {}),
-    background,
+    ...(options.targetNodeId ? { targetNodeId: options.targetNodeId } : {}),
+    ...(options.targetInputMode ? { targetInputMode: options.targetInputMode } : {}),
+    background: options.background,
   };
+}
+
+function parseScheduledWorkflowOptions(
+  args: string[],
+): Pick<ScheduledWorkflowCommand, "background" | "targetNodeId" | "targetInputMode"> | null {
+  const background = consumeFlag(args, "--background");
+  const targetNodeId = consumeOption(args, "--node");
+  if (targetNodeId === null) {
+    return null;
+  }
+  const inputType = consumeOption(args, "--input-type");
+  if (inputType === null) {
+    return null;
+  }
+  if (inputType !== undefined && !targetNodeId) {
+    return null;
+  }
+  const targetInputMode = parseTargetInputMode(inputType);
+  if (inputType !== undefined && !targetInputMode) {
+    return null;
+  }
+  return {
+    background,
+    ...(targetNodeId ? { targetNodeId } : {}),
+    ...(targetInputMode ? { targetInputMode } : {}),
+  };
+}
+
+function consumeFlag(args: string[], name: string): boolean {
+  const index = args.indexOf(name);
+  if (index === -1) {
+    return false;
+  }
+  args.splice(index, 1);
+  return true;
+}
+
+function consumeOption(args: string[], name: string): string | null | undefined {
+  const index = args.indexOf(name);
+  if (index === -1) {
+    return undefined;
+  }
+  const value = args[index + 1]?.trim();
+  if (!value || value.startsWith("--")) {
+    return null;
+  }
+  args.splice(index, 2);
+  return value;
+}
+
+function parseTargetInputMode(value: string | undefined): WorkflowTargetInputMode | undefined {
+  if (value === "upstream-output") {
+    return "upstream_output";
+  }
+  if (value === "node-input") {
+    return "node_input";
+  }
+  return undefined;
 }
 
 function isPaseoExecutable(value: string): boolean {

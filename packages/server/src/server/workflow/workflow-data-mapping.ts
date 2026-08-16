@@ -34,6 +34,27 @@ export function resolveWorkflowExpression(
   return resolveTemplateValue(expression, createExpressionRoot(context));
 }
 
+export function resolveOptionalWorkflowExpression(
+  expression: string,
+  context: WorkflowDataMappingContext,
+): unknown {
+  try {
+    return resolveWorkflowExpression(expression, context);
+  } catch (error) {
+    if (error instanceof WorkflowExpressionPathNotFoundError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+class WorkflowExpressionPathNotFoundError extends Error {
+  constructor(path: string) {
+    super(`Workflow expression path not found: ${path}`);
+    this.name = "WorkflowExpressionPathNotFoundError";
+  }
+}
+
 function createExpressionRoot(context: WorkflowDataMappingContext): Record<string, unknown> {
   const nodes = Object.fromEntries(
     Object.entries(context.nodeOutputs).map(([nodeId, outputs]) => [nodeId, { outputs }]),
@@ -90,7 +111,7 @@ function resolveRequiredPath(root: Record<string, unknown>, path: string): unkno
     if (Array.isArray(current) && /^\d+$/.test(segment)) {
       const index = Number(segment);
       if (index >= current.length) {
-        throw new Error(`Workflow expression path not found: ${path}`);
+        throw new WorkflowExpressionPathNotFoundError(path);
       }
       current = current[index];
       continue;
@@ -100,7 +121,7 @@ function resolveRequiredPath(root: Record<string, unknown>, path: string): unkno
       current === null ||
       !Object.prototype.hasOwnProperty.call(current, segment)
     ) {
-      throw new Error(`Workflow expression path not found: ${path}`);
+      throw new WorkflowExpressionPathNotFoundError(path);
     }
     current = (current as Record<string, unknown>)[segment];
   }

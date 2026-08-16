@@ -112,7 +112,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     width: "100%",
     minWidth: 0,
-    minHeight: 40,
+    minHeight: 48,
     paddingHorizontal: 0,
     paddingVertical: 0,
     borderWidth: 0,
@@ -120,7 +120,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
-    lineHeight: Math.round(theme.fontSize.lg * 1.3),
+    lineHeight: Math.round(theme.fontSize.lg * 1.5),
   },
   path: {
     flexShrink: 1,

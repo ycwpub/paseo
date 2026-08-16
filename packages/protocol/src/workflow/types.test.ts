@@ -130,21 +130,45 @@ describe("WorkflowScriptSchema", () => {
       ],
     });
 
-    expect(
-      parsed.steps[0]?.type === "switch" &&
-        parsed.steps[0].cases[0]?.steps[0]?.type === "agent" &&
-        parsed.steps[0].cases[0].steps[0].outputMode,
-    ).toBe("normal");
-    expect(
-      parsed.steps[0]?.type === "switch" &&
-        parsed.steps[0].cases[0]?.steps[0]?.type === "agent" &&
-        parsed.steps[0].cases[0].steps[0].lifecycle,
-    ).toBe("single");
-    expect(
-      parsed.steps[0]?.type === "switch" &&
-        parsed.steps[0].defaultSteps?.[0]?.type === "for" &&
-        parsed.steps[0].defaultSteps[0].concurrency,
-    ).toBe(1);
+    const route = parsed.steps[0];
+    if (route?.type !== "switch") {
+      throw new Error("Expected a Switch step");
+    }
+    const analyze = route.cases[0]?.steps[0];
+    if (analyze?.type !== "agent") {
+      throw new Error("Expected a nested Agent step");
+    }
+    const loop = route.defaultSteps?.[0];
+    if (loop?.type !== "for") {
+      throw new Error("Expected a nested For step");
+    }
+    expect(analyze.outputMode).toBe("normal");
+    expect(analyze.lifecycle).toBe("single");
+    expect(analyze.subsequentPromptMode).toBe("reuse_initial");
+    expect(loop.concurrency).toBe(1);
+  });
+
+  it("requires a custom subsequent prompt for reusable Agent nodes", () => {
+    const parsed = WorkflowScriptSchema.safeParse({
+      ...workflowIdentity,
+      version: 1,
+      name: "custom subsequent prompt",
+      steps: [
+        {
+          id: "agent",
+          type: "agent",
+          lifecycle: "workflow",
+          subsequentPromptMode: "custom",
+          initialPrompt: "First",
+          config: { provider: "codex" },
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.path).toContain("subsequentPrompt");
+    }
   });
 
   it("rejects removed protocol shapes and versions", () => {

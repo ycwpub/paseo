@@ -48,6 +48,7 @@ import {
   WorkflowRunSchema,
   WorkflowScriptFileSchema,
   WorkflowScriptSummarySchema,
+  WorkflowTargetInputModeSchema,
 } from "@getpaseo/protocol/workflow/types";
 import {
   ScheduleRunSchema,
@@ -2663,11 +2664,19 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         inputPayload: z.string().trim().min(1).optional(),
         inputPresetId: z.string().trim().min(1).optional(),
         targetNodeId: z.string().trim().min(1).optional(),
+        targetInputMode: WorkflowTargetInputModeSchema.optional(),
         background: z.boolean().optional(),
       },
       outputSchema: WorkflowRunSchema.shape,
     },
-    async ({ scriptPath, inputPayload, inputPresetId, targetNodeId, background = false }) => {
+    async ({
+      scriptPath,
+      inputPayload,
+      inputPresetId,
+      targetNodeId,
+      targetInputMode,
+      background = false,
+    }) => {
       if (!workflowService) {
         throw new Error("Workflow service is not configured");
       }
@@ -2680,12 +2689,14 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
             inputPayload,
             inputPresetId,
             targetNodeId,
+            targetInputMode,
           })
         : await workflowService.runScriptAndWait({
             scriptPath,
             inputPayload,
             inputPresetId,
             targetNodeId,
+            targetInputMode,
           });
       return {
         content: [],

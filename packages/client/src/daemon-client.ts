@@ -1077,6 +1077,7 @@ export interface RunWorkflowOptions {
   scriptPath: string;
   inputPayload: string;
   targetNodeId?: string;
+  targetInputMode?: import("@getpaseo/protocol/workflow/types").WorkflowTargetInputMode;
   requestId?: string;
 }
 export interface GetWorkflowRunOptions {
@@ -6084,6 +6085,12 @@ export class DaemonClient {
     if (options.targetNodeId && this.lastServerInfoMessage?.features?.workflowNodeRun !== true) {
       throw new Error("Update the host to run an individual workflow node.");
     }
+    if (
+      options.targetInputMode === "node_input" &&
+      this.lastServerInfoMessage?.features?.workflowNodeInputMode !== true
+    ) {
+      throw new Error("Update the host to pass a complete input directly to a workflow node.");
+    }
     return this.sendCorrelatedSessionRequest({
       requestId: options.requestId,
       message: {
@@ -6091,6 +6098,7 @@ export class DaemonClient {
         scriptPath: options.scriptPath,
         inputPayload: options.inputPayload,
         ...(options.targetNodeId ? { targetNodeId: options.targetNodeId } : {}),
+        ...(options.targetInputMode ? { targetInputMode: options.targetInputMode } : {}),
       },
       responseType: "workflow/run/response",
     });

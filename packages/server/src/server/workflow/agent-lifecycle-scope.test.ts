@@ -32,6 +32,27 @@ describe("WorkflowAgentLifecycleScope", () => {
     expect(created).toBe(1);
   });
 
+  it("reports the serialized invocation index for a reused resource", async () => {
+    const scope = new WorkflowAgentLifecycleScope<{ id: string }>();
+    const invocations: Array<{ index: number; isFirst: boolean }> = [];
+    const execute = () =>
+      scope.withResource({
+        key: "review",
+        create: async () => ({ id: "agent" }),
+        run: async (_resource, invocation) => {
+          invocations.push(invocation);
+        },
+      });
+
+    await execute();
+    await execute();
+
+    expect(invocations).toEqual([
+      { index: 0, isFirst: true },
+      { index: 1, isFirst: false },
+    ]);
+  });
+
   it("serializes concurrent runs that reuse one Agent", async () => {
     const scope = new WorkflowAgentLifecycleScope<{ id: string }>();
     const order: string[] = [];

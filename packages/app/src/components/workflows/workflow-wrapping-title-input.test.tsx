@@ -66,14 +66,14 @@ describe("WorkflowWrappingTitleInput", () => {
     const title = screen.getByTestId("workflow-title");
     expect(title.getAttribute("data-multiline")).toBe("true");
     expect(title.getAttribute("data-number-of-lines")).toBe("1");
-    expect(title.getAttribute("data-style")).toContain('"height":40');
+    expect(title.getAttribute("data-style")).toContain('"height":48');
 
     fireEvent.click(screen.getByTestId("grow-title"));
-    expect(title.getAttribute("data-style")).toContain('"height":86');
+    expect(title.getAttribute("data-style")).toContain('"height":94');
     expect(title.getAttribute("data-scroll-enabled")).toBe("false");
 
     fireEvent.click(screen.getByTestId("overflow-title"));
-    expect(title.getAttribute("data-style")).toContain('"height":180');
+    expect(title.getAttribute("data-style")).toContain('"height":188');
     expect(title.getAttribute("data-scroll-enabled")).toBe("false");
   });
 
@@ -85,11 +85,11 @@ describe("WorkflowWrappingTitleInput", () => {
 
     const title = screen.getByTestId("workflow-title");
     fireEvent.click(screen.getByTestId("grow-title"));
-    expect(title.getAttribute("data-style")).toContain('"height":86');
+    expect(title.getAttribute("data-style")).toContain('"height":94');
 
     fireEvent.change(title, { target: { value: "short" } });
 
     expect(onChangeText).toHaveBeenCalledWith("short");
-    expect(title.getAttribute("data-style")).toContain('"height":40');
+    expect(title.getAttribute("data-style")).toContain('"height":48');
   });
 });

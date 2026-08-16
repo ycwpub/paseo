@@ -108,6 +108,7 @@ describe("workflow editor model", () => {
     const step = createWorkflowStep("agent", []);
     expect(step.type).toBe("agent");
     expect(step.type === "agent" ? step.lifecycle : null).toBe("single");
+    expect(step.type === "agent" ? step.subsequentPromptMode : null).toBe("reuse_initial");
     expect(step.type === "agent" ? step.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
     expect(step.type === "agent" ? step.outputMode : null).toBe("normal");
     expect(step.type === "agent" ? step.config.systemPrompt : null).toBeUndefined();

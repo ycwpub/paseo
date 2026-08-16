@@ -96,6 +96,7 @@ export class WorkflowSession {
         scriptPath: request.scriptPath,
         inputPayload: request.inputPayload,
         targetNodeId: request.targetNodeId,
+        targetInputMode: request.targetInputMode,
       });
       this.host.emit({
         type: "workflow/run/response",

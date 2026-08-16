@@ -31,6 +31,8 @@ export interface WorkflowCommandProtocolInfo {
   forExecutionModes: ["serial", "parallel"];
   parallelLoopVariableModification: false;
   agentLifecycles: ["workflow", "for", "single"];
+  agentSubsequentPromptModes: ["reuse_initial", "custom"];
+  targetNodeInputModes: ["upstream_output", "node_input"];
   legacyStdoutResult: false;
 }
 
@@ -59,6 +61,8 @@ export function buildWorkflowCommandProtocolInfo(
     forExecutionModes: ["serial", "parallel"],
     parallelLoopVariableModification: false,
     agentLifecycles: ["workflow", "for", "single"],
+    agentSubsequentPromptModes: ["reuse_initial", "custom"],
+    targetNodeInputModes: ["upstream_output", "node_input"],
     legacyStdoutResult: false,
   };
 }
@@ -136,6 +140,8 @@ function renderWorkflowCommandProtocol(
       info.parallelLoopVariableModification ? "enabled" : "disabled"
     }`,
     `Agent lifecycles: ${info.agentLifecycles.join(", ")}`,
+    `Agent non-first prompt modes: ${info.agentSubsequentPromptModes.join(", ")}`,
+    `Target node input modes: ${info.targetNodeInputModes.join(", ")}`,
     `Legacy stdout result: ${info.legacyStdoutResult ? "enabled" : "disabled"}`,
   ].join("\n");
 }

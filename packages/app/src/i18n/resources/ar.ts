@@ -79,6 +79,17 @@ export const ar: TranslationResources = {
           single: "تنفيذ واحد",
           singleDescription: "إنشاء وكيل جديد لكل تنفيذ دون إعادة استخدام.",
         },
+        subsequentPromptMode: "مطالبة ما بعد الاستدعاء الأول",
+        subsequentPromptModeHint: "اختر ما سيتم إرساله عند استدعاء وكيل تمت تهيئته مسبقًا.",
+        selectSubsequentPromptMode: "اختر سلوك المطالبة اللاحقة",
+        subsequentPromptModes: {
+          reuseInitial: "إعادة استخدام المطالبة الأولية",
+          reuseInitialDescription: "إعادة عرض المطالبة الأولية باستخدام مدخلات العقدة الحالية.",
+          custom: "مطالبة مخصصة",
+          customDescription: "استخدام مطالبة مستقلة لكل استدعاء بعد الأول.",
+        },
+        subsequentPrompt: "المطالبة اللاحقة المخصصة",
+        subsequentPromptHint: "تدعم نفس بيانات الإدخال ومتغيرات القالب الخاصة بالمطالبة الأولية.",
         archiveAtLifecycleEnd: "أرشفة الوكيل تلقائيًا عند انتهاء دورة حياته",
       },
       contract: {

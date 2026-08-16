@@ -27,7 +27,9 @@ import {
   type WorkflowScriptFile,
   type WorkflowScriptSummary,
   type WorkflowStep,
+  type WorkflowTargetInputMode,
 } from "@getpaseo/protocol/workflow/types";
+import { WorkflowNodeInputEnvelopeSchema } from "@getpaseo/protocol/workflow/data-contract";
 import type { WorkflowInputPreset } from "@getpaseo/protocol/workflow/input-contract";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { WorkflowAgentOutput } from "@/components/workflows/workflow-agent-output";
@@ -74,6 +76,15 @@ import { updateWorkflowStepById } from "@/workflows/workflow-step-tree";
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
 const DEFAULT_WORKFLOW_INPUT_JSON = "{}";
+const DEFAULT_WORKFLOW_NODE_INPUT_JSON = JSON.stringify(
+  {
+    data: {},
+    workflow: { var: {} },
+    node: { var: {} },
+  },
+  null,
+  2,
+);
 
 function parseWorkflowInputJson(input: string): {
   inputPayload: string;
@@ -120,6 +131,7 @@ function WorkflowsScreenContent(): ReactElement {
   const supportsTeams = useHostFeature(selectedHost, "teams");
   const supportsWorkflowPython = useHostFeature(selectedHost, "workflowPython");
   const supportsWorkflowNodeRun = useHostFeature(selectedHost, "workflowNodeRun");
+  const supportsWorkflowNodeInputMode = useHostFeature(selectedHost, "workflowNodeInputMode");
   const supportsWorkflowInputConfiguration = useHostFeature(
     selectedHost,
     "workflowInputConfiguration",
@@ -138,6 +150,8 @@ function WorkflowsScreenContent(): ReactElement {
   const [cancelling, setCancelling] = useState(false);
   const [inputJson, setInputJson] = useState(DEFAULT_WORKFLOW_INPUT_JSON);
   const [targetNodeId, setTargetNodeId] = useState("");
+  const [targetInputMode, setTargetInputMode] =
+    useState<WorkflowTargetInputMode>("upstream_output");
   const [activeRun, setActiveRun] = useState<WorkflowRun | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [inspectingPath, setInspectingPath] = useState<string | null>(null);
@@ -195,6 +209,7 @@ function WorkflowsScreenContent(): ReactElement {
     setDirty(false);
     setActiveRun(null);
     setTargetNodeId("");
+    setTargetInputMode("upstream_output");
     setSelectedDesignStepId(null);
     void loadScripts();
   }, [loadScripts, selectedHost]);
@@ -219,6 +234,7 @@ function WorkflowsScreenContent(): ReactElement {
       setInspectingPath(path);
       setActiveRun(null);
       setTargetNodeId("");
+      setTargetInputMode("upstream_output");
       setSelectedDesignStepId(null);
       try {
         const payload = await client.workflowInspect({ scriptPath: path });
@@ -275,6 +291,7 @@ function WorkflowsScreenContent(): ReactElement {
     setDirty(true);
     setActiveRun(null);
     setTargetNodeId("");
+    setTargetInputMode("upstream_output");
     setSelectedDesignStepId(null);
     setInputJson(DEFAULT_WORKFLOW_INPUT_JSON);
   }, [dirty, t]);
@@ -381,12 +398,22 @@ function WorkflowsScreenContent(): ReactElement {
     try {
       const parsedInput = parseWorkflowInputJson(normalizedInput);
       const parsedPayload = JSON.parse(parsedInput.inputPayload) as Record<string, unknown>;
-      inputPayload = JSON.stringify(parsedPayload);
+      if (targetNodeId && targetInputMode === "node_input") {
+        inputPayload = JSON.stringify(WorkflowNodeInputEnvelopeSchema.parse(parsedPayload));
+      } else {
+        inputPayload = JSON.stringify(parsedPayload);
+      }
       if (parsedInput.formattedInput) {
         setInputJson(parsedInput.formattedInput);
       }
     } catch {
-      toast.error(t("workflows.messages.invalidInputJson"));
+      toast.error(
+        t(
+          targetNodeId && targetInputMode === "node_input"
+            ? "workflows.messages.invalidNodeInputJson"
+            : "workflows.messages.invalidInputJson",
+        ),
+      );
       return;
     }
     const saved = dirty || !draftPath ? await persistDraft() : { path: draftPath, script: draft };
@@ -399,6 +426,7 @@ function WorkflowsScreenContent(): ReactElement {
         scriptPath: saved.path,
         inputPayload,
         ...(targetNodeId ? { targetNodeId } : {}),
+        ...(targetNodeId ? { targetInputMode } : {}),
       });
       if (payload.error || !payload.run) {
         throw new Error(payload.error ?? t("workflows.messages.startFailed"));
@@ -410,7 +438,18 @@ function WorkflowsScreenContent(): ReactElement {
     } finally {
       setRunning(false);
     }
-  }, [client, dirty, draft, draftPath, inputJson, persistDraft, t, targetNodeId, toast]);
+  }, [
+    client,
+    dirty,
+    draft,
+    draftPath,
+    inputJson,
+    persistDraft,
+    t,
+    targetInputMode,
+    targetNodeId,
+    toast,
+  ]);
 
   const cancelWorkflow = useCallback(async () => {
     if (!client || activeRun?.status !== "running") {
@@ -509,6 +548,36 @@ function WorkflowsScreenContent(): ReactElement {
     ];
   }, [draft, t]);
   const selectedRunTarget = runTargetOptions.find((option) => option.value === targetNodeId);
+  const targetInputModeOptions = useMemo<SelectFieldOption<WorkflowTargetInputMode>[]>(
+    () => [
+      {
+        id: "upstream_output",
+        value: "upstream_output",
+        label: t("workflows.editor.inputModes.upstreamOutput"),
+        description: t("workflows.editor.inputModes.upstreamOutputDescription"),
+      },
+      {
+        id: "node_input",
+        value: "node_input",
+        label: t("workflows.editor.inputModes.nodeInput"),
+        description: t("workflows.editor.inputModes.nodeInputDescription"),
+      },
+    ],
+    [t],
+  );
+  const selectedTargetInputMode = targetInputModeOptions.find(
+    (option) => option.value === targetInputMode,
+  );
+  let testRunHintKey:
+    | "workflows.editor.testRunHint"
+    | "workflows.editor.testRunUpstreamHint"
+    | "workflows.editor.testRunNodeInputHint" = "workflows.editor.testRunHint";
+  if (targetNodeId) {
+    testRunHintKey =
+      targetInputMode === "node_input"
+        ? "workflows.editor.testRunNodeInputHint"
+        : "workflows.editor.testRunUpstreamHint";
+  }
   useEffect(() => {
     if (targetNodeId && !selectedRunTarget) {
       setTargetNodeId("");
@@ -784,9 +853,7 @@ function WorkflowsScreenContent(): ReactElement {
                   <View style={styles.runHeader}>
                     <View>
                       <Text style={styles.sectionTitle}>{t("workflows.editor.testRun")}</Text>
-                      <Text style={styles.sectionDescription}>
-                        {t("workflows.editor.testRunHint")}
-                      </Text>
+                      <Text style={styles.sectionDescription}>{t(testRunHintKey)}</Text>
                     </View>
                     <Button
                       variant="default"
@@ -800,28 +867,6 @@ function WorkflowsScreenContent(): ReactElement {
                       {t("workflows.actions.run")}
                     </Button>
                   </View>
-                  {supportsWorkflowInputConfiguration ? (
-                    <WorkflowRunInput
-                      presets={draft.inputPresets}
-                      inputJson={inputJson}
-                      onChangeInputJson={setInputJson}
-                    />
-                  ) : null}
-                  <Field
-                    label={t("workflows.editor.inputJson")}
-                    hint={t("workflows.editor.inputJsonHint")}
-                  >
-                    <WorkflowTextInput
-                      value={inputJson}
-                      onChangeText={setInputJson}
-                      placeholder={DEFAULT_WORKFLOW_INPUT_JSON}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      multiline
-                      textAlignVertical="top"
-                      style={styles.inputJson}
-                    />
-                  </Field>
                   {supportsWorkflowNodeRun ? (
                     <Field
                       label={t("workflows.editor.runTarget")}
@@ -840,7 +885,12 @@ function WorkflowsScreenContent(): ReactElement {
                             : null
                         }
                         options={runTargetOptions}
-                        onChange={setTargetNodeId}
+                        onChange={(nextTargetNodeId) => {
+                          setTargetNodeId(nextTargetNodeId);
+                          if (!nextTargetNodeId) {
+                            setTargetInputMode("upstream_output");
+                          }
+                        }}
                         placeholder={t("workflows.editor.runEntireWorkflow")}
                         emptyText={t("workflows.editor.noRunTargets")}
                         title={t("workflows.editor.runTarget")}
@@ -850,6 +900,76 @@ function WorkflowsScreenContent(): ReactElement {
                       />
                     </Field>
                   ) : null}
+                  {supportsWorkflowNodeInputMode && targetNodeId ? (
+                    <Field
+                      label={t("workflows.editor.inputMode")}
+                      hint={t("workflows.editor.inputModeHint")}
+                    >
+                      <SelectField
+                        field={false}
+                        label=""
+                        value={targetInputMode}
+                        selectedDisplay={
+                          selectedTargetInputMode
+                            ? {
+                                label: selectedTargetInputMode.label,
+                                description: selectedTargetInputMode.description,
+                              }
+                            : null
+                        }
+                        options={targetInputModeOptions}
+                        onChange={(nextMode) => {
+                          setTargetInputMode(nextMode);
+                          if (
+                            nextMode === "node_input" &&
+                            inputJson.trim() === DEFAULT_WORKFLOW_INPUT_JSON
+                          ) {
+                            setInputJson(DEFAULT_WORKFLOW_NODE_INPUT_JSON);
+                          }
+                        }}
+                        placeholder={t("workflows.editor.selectInputMode")}
+                        emptyText=""
+                        title={t("workflows.editor.inputMode")}
+                        size="sm"
+                        testID="workflow-run-input-mode"
+                      />
+                    </Field>
+                  ) : null}
+                  {supportsWorkflowInputConfiguration &&
+                  !(targetNodeId && targetInputMode === "node_input") ? (
+                    <WorkflowRunInput
+                      presets={draft.inputPresets}
+                      inputJson={inputJson}
+                      onChangeInputJson={setInputJson}
+                    />
+                  ) : null}
+                  <Field
+                    label={t(
+                      targetNodeId && targetInputMode === "node_input"
+                        ? "workflows.editor.nodeInputJson"
+                        : "workflows.editor.inputJson",
+                    )}
+                    hint={t(
+                      targetNodeId && targetInputMode === "node_input"
+                        ? "workflows.editor.nodeInputJsonHint"
+                        : "workflows.editor.inputJsonHint",
+                    )}
+                  >
+                    <WorkflowTextInput
+                      value={inputJson}
+                      onChangeText={setInputJson}
+                      placeholder={
+                        targetNodeId && targetInputMode === "node_input"
+                          ? DEFAULT_WORKFLOW_NODE_INPUT_JSON
+                          : DEFAULT_WORKFLOW_INPUT_JSON
+                      }
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      multiline
+                      textAlignVertical="top"
+                      style={styles.inputJson}
+                    />
+                  </Field>
                   {activeRun ? (
                     <WorkflowRunPanel
                       run={activeRun}

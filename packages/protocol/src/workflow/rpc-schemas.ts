@@ -4,6 +4,7 @@ import {
   WorkflowScriptFileSchema,
   WorkflowScriptSchema,
   WorkflowScriptSummarySchema,
+  WorkflowTargetInputModeSchema,
   type WorkflowScript,
 } from "./types.js";
 
@@ -31,13 +32,24 @@ export const WorkflowInspectRequestSchema = z.object({
   scriptPath: z.string().trim().min(1),
 });
 
-export const WorkflowRunRequestSchema = z.object({
-  type: z.literal("workflow/run"),
-  requestId: z.string(),
-  scriptPath: z.string().trim().min(1),
-  inputPayload: z.string().trim().min(1),
-  targetNodeId: z.string().trim().min(1).optional(),
-});
+export const WorkflowRunRequestSchema = z
+  .object({
+    type: z.literal("workflow/run"),
+    requestId: z.string(),
+    scriptPath: z.string().trim().min(1),
+    inputPayload: z.string().trim().min(1),
+    targetNodeId: z.string().trim().min(1).optional(),
+    targetInputMode: WorkflowTargetInputModeSchema.optional(),
+  })
+  .superRefine((request, context) => {
+    if (request.targetInputMode === "node_input" && !request.targetNodeId) {
+      context.addIssue({
+        code: "custom",
+        path: ["targetNodeId"],
+        message: "Direct node input requires a target workflow node",
+      });
+    }
+  });
 
 export const WorkflowGetRunRequestSchema = z.object({
   type: z.literal("workflow/get-run"),

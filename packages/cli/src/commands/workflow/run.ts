@@ -6,6 +6,7 @@ import { assertWorkflowCommandProtocol } from "./protocol.js";
 import {
   connectWorkflowClient,
   resolveWorkflowCliPath,
+  resolveWorkflowTargetInputMode,
   toWorkflowCommandError,
   type WorkflowCommandOptions,
 } from "./shared.js";
@@ -20,6 +21,10 @@ export async function runWorkflowCommand(
   try {
     assertWorkflowCommandProtocol(client.getLastServerInfoMessage());
     const resolvedScriptPath = resolveWorkflowCliPath(scriptPath);
+    const targetInputMode = resolveWorkflowTargetInputMode(options.inputType, options.node);
+    if (targetInputMode === "node_input" && options.preset) {
+      throw new Error("--preset cannot be used with --input-type node-input");
+    }
     const resolvedInputPayload = await resolveWorkflowInputPayload({
       client,
       scriptPath: resolvedScriptPath,
@@ -30,6 +35,7 @@ export async function runWorkflowCommand(
       scriptPath: resolvedScriptPath,
       inputPayload: resolvedInputPayload,
       ...(options.node ? { targetNodeId: options.node } : {}),
+      ...(targetInputMode ? { targetInputMode } : {}),
     });
     if (payload.error || !payload.run) {
       throw new Error(payload.error ?? "Workflow run did not start");

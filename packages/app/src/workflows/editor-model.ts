@@ -124,6 +124,7 @@ export function createWorkflowStep(
       name: names.agent,
       type,
       lifecycle: "single",
+      subsequentPromptMode: "reuse_initial",
       outputMode: "normal",
       initialPrompt: DEFAULT_AGENT_INITIAL_PROMPT,
       config: {

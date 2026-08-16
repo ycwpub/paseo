@@ -35,6 +35,14 @@ export type WorkflowAgentOutputMode = z.infer<typeof WorkflowAgentOutputModeSche
 export const WorkflowAgentLifecycleSchema = z.enum(["workflow", "for", "single"]);
 export type WorkflowAgentLifecycle = z.infer<typeof WorkflowAgentLifecycleSchema>;
 
+export const WorkflowTargetInputModeSchema = z.enum(["upstream_output", "node_input"]);
+export type WorkflowTargetInputMode = z.infer<typeof WorkflowTargetInputModeSchema>;
+
+export const WorkflowAgentSubsequentPromptModeSchema = z.enum(["reuse_initial", "custom"]);
+export type WorkflowAgentSubsequentPromptMode = z.infer<
+  typeof WorkflowAgentSubsequentPromptModeSchema
+>;
+
 export const WorkflowRetryPolicySchema = z.object({
   maxAttempts: z.number().int().min(1).max(20),
   initialDelayMs: z
@@ -116,6 +124,8 @@ export interface WorkflowAgentStep {
   nextStepId?: string | null;
   type: "agent";
   lifecycle?: WorkflowAgentLifecycle;
+  subsequentPromptMode?: WorkflowAgentSubsequentPromptMode;
+  subsequentPrompt?: string;
   outputMode?: WorkflowAgentOutputMode;
   initialPrompt: string;
   inputs?: WorkflowInputMapping;
@@ -236,6 +246,8 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         nextStepId: WorkflowStepIdSchema.nullable().optional(),
         type: z.literal("agent"),
         lifecycle: WorkflowAgentLifecycleSchema.default("single"),
+        subsequentPromptMode: WorkflowAgentSubsequentPromptModeSchema.default("reuse_initial"),
+        subsequentPrompt: z.string().trim().min(1).optional(),
         outputMode: WorkflowAgentOutputModeSchema.default("normal"),
         initialPrompt: z.string().trim().min(1),
         inputs: WorkflowInputMappingSchema.optional(),
@@ -247,7 +259,20 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         retry: WorkflowRetryPolicySchema.optional(),
         config: WorkflowAgentConfigSchema,
       })
-      .strict(),
+      .strict()
+      .superRefine((step, context) => {
+        if (
+          step.lifecycle !== "single" &&
+          step.subsequentPromptMode === "custom" &&
+          !step.subsequentPrompt
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["subsequentPrompt"],
+            message: "Custom subsequent prompt is required when Agent reuse is enabled",
+          });
+        }
+      }),
     z
       .object({
         id: WorkflowStepIdSchema,
@@ -384,6 +409,7 @@ export const WorkflowRunSchema = z.object({
   scriptSnapshot: WorkflowScriptSchema,
   // COMPAT(workflowNodeRun): added in v0.3.2, remove default after 2027-02-12.
   targetNodeId: z.string().nullable().default(null),
+  targetInputMode: WorkflowTargetInputModeSchema.default("upstream_output"),
   status: z.enum(["running", "succeeded", "failed", "cancelled", "timed_out"]),
   inputPayload: z.string().nullable().default(null),
   outputPayload: z.string().nullable().default(null),

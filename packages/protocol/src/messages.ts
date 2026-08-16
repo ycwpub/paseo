@@ -3241,6 +3241,8 @@ export const ServerInfoStatusPayloadSchema = z
         workflowPython: z.boolean().optional(),
         // COMPAT(workflowNodeRun): added in v0.3.2, remove gate after 2027-02-12.
         workflowNodeRun: z.boolean().optional(),
+        // COMPAT(workflowNodeInputMode): added in v0.3.2, remove gate after 2027-02-16.
+        workflowNodeInputMode: z.boolean().optional(),
         // COMPAT(workflowInputConfiguration): added in v0.3.2, remove gate after 2027-02-12.
         workflowInputConfiguration: z.boolean().optional(),
         // COMPAT(workflowCommandResultFd3): added in v0.3.2, remove gate after 2027-02-12.

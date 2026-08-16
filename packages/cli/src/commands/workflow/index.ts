@@ -22,6 +22,10 @@ export function createWorkflowCommand(): Command {
     .argument("[input-json]", "Initial JSON object matching the first node input schema")
     .option("--preset <preset-id>", "Start from a reusable input preset defined by the workflow")
     .option("--node <node-id>", "Run only the workflow node with this ID")
+    .option(
+      "--input-type <type>",
+      "Node input type: upstream-output or node-input (requires --node)",
+    )
     .option("--background", "Return immediately after starting the workflow")
     .addHelpText(
       "after",

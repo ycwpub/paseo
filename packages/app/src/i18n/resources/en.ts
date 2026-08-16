@@ -206,6 +206,8 @@ export const en = {
       deleted: "Workflow deleted",
       inputRequired: "Enter an input JSON object",
       invalidInputJson: "Input must be a valid JSON object matching the first node input schema",
+      invalidNodeInputJson:
+        "Direct node input must contain data, workflow.var, and node.var objects",
       startFailed: "Workflow could not be started",
       started: "Workflow started",
       cancelFailed: "Workflow run could not be cancelled",
@@ -234,13 +236,31 @@ export const en = {
       flowHint: "JSON payloads pass automatically from top to bottom.",
       testRun: "Test run",
       testRunHint: "Run this workflow on the selected host with an initial JSON payload.",
+      testRunUpstreamHint:
+        "Test the selected node using the previous node output or the original Workflow input.",
+      testRunNodeInputHint:
+        "Test the selected node by passing its complete input directly, without framework mapping or variable filling.",
       inputJson: "Input JSON",
+      nodeInputJson: "Node input JSON",
       inputJsonHint:
         "Enter workflow business inputs. Node mappings select the fields each node receives.",
+      nodeInputJsonHint:
+        "Enter the complete node input JSON. Paseo passes it directly without input mapping or filling Workflow, Loop, or Node variables.",
       runTarget: "Run target",
-      runTargetHint: "Run the whole workflow, or test one node directly with the input JSON above.",
+      runTargetHint: "Run the whole workflow, or test one node with the configured input JSON.",
       runEntireWorkflow: "Entire workflow",
       noRunTargets: "No runnable nodes",
+      inputMode: "Input type",
+      inputModeHint: "Choose how the JSON above becomes the selected node input.",
+      selectInputMode: "Select input type",
+      inputModes: {
+        upstreamOutput: "Previous node output / Workflow original input",
+        upstreamOutputDescription:
+          "Apply input mapping and let Paseo fill Workflow, Loop, and Node variables.",
+        nodeInput: "This node's input",
+        nodeInputDescription:
+          "Pass the complete node input directly without mapping or variable filling.",
+      },
       emptyTitle: "Select or create a workflow",
       emptyDescription:
         "Build Bash, Python, Agent, Workflow, Switch, and For nodes without editing JSON.",
@@ -479,6 +499,19 @@ export const en = {
           single: "Single execution",
           singleDescription: "Create a new Agent for every execution without reuse.",
         },
+        subsequentPromptMode: "Non-first prompt",
+        subsequentPromptModeHint:
+          "Choose what to send when this node invokes an Agent that was already initialized.",
+        selectSubsequentPromptMode: "Select the non-first prompt behavior",
+        subsequentPromptModes: {
+          reuseInitial: "Reuse initial prompt",
+          reuseInitialDescription: "Render the initial prompt again using the current node input.",
+          custom: "Custom prompt",
+          customDescription: "Use a separate prompt for every invocation after the first.",
+        },
+        subsequentPrompt: "Custom non-first prompt",
+        subsequentPromptHint:
+          "Supports the same payload and template variables as the initial prompt.",
         timeoutHint: "Leave empty to use the workflow task default.",
         provider: "Provider",
         model: "Model",
@@ -598,7 +631,7 @@ export const en = {
           "Iterations running at once in Parallel mode. Defaults to 1, maximum 100. Every iteration starts from the same For input.data.",
         control: "Loop control expression",
         controlHint:
-          'Resolve a user-defined data field. "break" stops the loop, "continue" skips the remaining body nodes, and an empty value continues normally.',
+          'Resolve a user-defined data field. "break" stops the loop, "continue" skips the remaining body nodes, and an empty or missing field continues normally.',
         loopBody: "Loop body",
         loopDescription:
           'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.item: array item; remaining number before the iteration; or true in True mode.\nloop.index: zero-based iteration index.\nloop.count: array length, initial number, or the True-mode maximum (0 when unlimited).\nEach iteration starts from the For input.data. Use custom loop variables to carry state into the next iteration.',

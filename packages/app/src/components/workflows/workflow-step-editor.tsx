@@ -41,6 +41,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
+import { WorkflowAgentSubsequentPromptFields } from "@/components/workflows/workflow-agent-subsequent-prompt-fields";
 import { WorkflowDownstreamField } from "@/components/workflows/workflow-downstream-field";
 import { WorkflowLoopVariableFields } from "@/components/workflows/workflow-loop-variable-fields";
 import { WorkflowNodeContractFields } from "@/components/workflows/workflow-node-contract-fields";
@@ -1252,6 +1253,7 @@ function AgentStepFields({
           </View>
         </View>
       </View>
+      <WorkflowAgentSubsequentPromptFields step={step} onChange={onChange} />
       <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
       <View style={styles.threeColumn}>
         <View style={styles.columnField}>

@@ -35,6 +35,8 @@ describe("Workflow command protocol CLI", () => {
       forExecutionModes: ["serial", "parallel"],
       parallelLoopVariableModification: false,
       agentLifecycles: ["workflow", "for", "single"],
+      agentSubsequentPromptModes: ["reuse_initial", "custom"],
+      targetNodeInputModes: ["upstream_output", "node_input"],
       legacyStdoutResult: false,
     });
   });

@@ -82,6 +82,20 @@ export const fr: TranslationResources = {
           single: "Exécution unique",
           singleDescription: "Créer un nouvel agent à chaque exécution, sans réutilisation.",
         },
+        subsequentPromptMode: "Prompt après le premier appel",
+        subsequentPromptModeHint:
+          "Choisissez le prompt envoyé lorsque ce nœud appelle un agent déjà initialisé.",
+        selectSubsequentPromptMode: "Sélectionner le comportement du prompt suivant",
+        subsequentPromptModes: {
+          reuseInitial: "Réutiliser le prompt initial",
+          reuseInitialDescription:
+            "Rendre à nouveau le prompt initial avec les données actuelles du nœud.",
+          custom: "Prompt personnalisé",
+          customDescription: "Utiliser un prompt distinct pour chaque appel après le premier.",
+        },
+        subsequentPrompt: "Prompt suivant personnalisé",
+        subsequentPromptHint:
+          "Prend en charge les mêmes données et variables de modèle que le prompt initial.",
         archiveAtLifecycleEnd: "Archiver automatiquement à la fin du cycle de vie de l’agent",
       },
       contract: {

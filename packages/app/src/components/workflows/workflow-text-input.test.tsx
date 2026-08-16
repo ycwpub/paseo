@@ -194,4 +194,75 @@ describe("WorkflowTextInput", () => {
     expect(allowedBrowserDefault).toBe(false);
     expect(document.activeElement).toBe(expandedInput);
   });
+
+  it("uses Shift+Tab to outdent inside the expanded editor instead of moving focus", () => {
+    const onChangeText = vi.fn();
+    render(
+      <WorkflowTextInput
+        value={'[\n  "item"\n]'}
+        onChangeText={onChangeText}
+        testID="workflow-field"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    const expandedInput = screen.getByTestId(
+      "workflow-field-expanded-input",
+    ) as HTMLTextAreaElement;
+    expandedInput.focus();
+    expandedInput.setSelectionRange(2, 10);
+
+    const allowedBrowserDefault = fireEvent.keyDown(expandedInput, {
+      key: "Tab",
+      shiftKey: true,
+    });
+
+    expect(onChangeText).toHaveBeenLastCalledWith('[\n"item"\n]');
+    expect(allowedBrowserDefault).toBe(false);
+    expect(document.activeElement).toBe(expandedInput);
+  });
+
+  it("preserves Chinese IME composition until the candidate is committed", () => {
+    const onChangeText = vi.fn();
+    render(<WorkflowTextInput value="" onChangeText={onChangeText} testID="workflow-field" />);
+    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    const expandedInput = screen.getByTestId(
+      "workflow-field-expanded-input",
+    ) as HTMLTextAreaElement;
+
+    fireEvent.compositionStart(expandedInput);
+    fireEvent.change(expandedInput, { target: { value: "women" } });
+
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(expandedInput).toHaveProperty("value", "women");
+
+    expandedInput.value = "我们";
+    fireEvent.compositionEnd(expandedInput);
+
+    expect(onChangeText).toHaveBeenCalledTimes(1);
+    expect(onChangeText).toHaveBeenLastCalledWith("我们");
+    expect(expandedInput).toHaveProperty("value", "我们");
+  });
+
+  it("does not apply Tab indentation while an IME composition is active", () => {
+    const onChangeText = vi.fn();
+    render(
+      <WorkflowTextInput value={"[\n]"} onChangeText={onChangeText} testID="workflow-field" />,
+    );
+    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    const expandedInput = screen.getByTestId(
+      "workflow-field-expanded-input",
+    ) as HTMLTextAreaElement;
+    expandedInput.setSelectionRange(2, 2);
+    fireEvent.compositionStart(expandedInput);
+
+    const allowedBrowserDefault = fireEvent.keyDown(expandedInput, {
+      key: "Tab",
+      isComposing: true,
+      keyCode: 229,
+    });
+
+    expect(allowedBrowserDefault).toBe(true);
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(expandedInput).toHaveProperty("value", "[\n]");
+  });
 });

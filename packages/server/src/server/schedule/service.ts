@@ -29,7 +29,7 @@ import type {
   UpdateScheduleNewAgentConfig,
 } from "@getpaseo/protocol/schedule/types";
 import type { FirstAgentContext } from "@getpaseo/protocol/messages";
-import type { WorkflowRun } from "@getpaseo/protocol/workflow/types";
+import type { WorkflowRun, WorkflowTargetInputMode } from "@getpaseo/protocol/workflow/types";
 import { parseScheduledWorkflowCommand } from "./workflow-command.js";
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
@@ -356,11 +356,13 @@ export interface ScheduleServiceOptions {
       scriptPath: string;
       inputPayload: string;
       targetNodeId?: string;
+      targetInputMode?: WorkflowTargetInputMode;
     }) => Promise<WorkflowRun>;
     runScriptAndWait: (input: {
       scriptPath: string;
       inputPayload: string;
       targetNodeId?: string;
+      targetInputMode?: WorkflowTargetInputMode;
     }) => Promise<WorkflowRun>;
   } | null;
   now?: () => Date;

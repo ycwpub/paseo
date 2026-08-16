@@ -82,6 +82,20 @@ export const ru: TranslationResources = {
           singleDescription:
             "Создавать нового агента для каждого запуска без повторного использования.",
         },
+        subsequentPromptMode: "Промпт после первого вызова",
+        subsequentPromptModeHint:
+          "Выберите, что отправлять при повторном вызове уже созданного агента.",
+        selectSubsequentPromptMode: "Выберите режим последующего промпта",
+        subsequentPromptModes: {
+          reuseInitial: "Повторять начальный промпт",
+          reuseInitialDescription:
+            "Повторно формировать начальный промпт из текущих входных данных узла.",
+          custom: "Свой промпт",
+          customDescription: "Использовать отдельный промпт для каждого вызова после первого.",
+        },
+        subsequentPrompt: "Свой последующий промпт",
+        subsequentPromptHint:
+          "Поддерживает те же входные данные и переменные шаблона, что и начальный промпт.",
         archiveAtLifecycleEnd:
           "Автоматически архивировать после завершения жизненного цикла агента",
       },

@@ -20,11 +20,14 @@ import {
   type WorkflowScriptSummary,
   type WorkflowStep,
   type WorkflowSwitchStep,
+  type WorkflowTargetInputMode,
 } from "@getpaseo/protocol/workflow/types";
 import {
+  WorkflowNodeInputEnvelopeSchema,
   WorkflowNodeResultEnvelopeSchema,
   type WorkflowArtifact,
   type WorkflowData,
+  type WorkflowNodeInputEnvelope,
   type WorkflowNodeResultEnvelope,
 } from "@getpaseo/protocol/workflow/data-contract";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
@@ -57,6 +60,7 @@ import {
 } from "./command-node.js";
 import { parseCommandNodeResult, WorkflowNodeBusinessError } from "./command-result.js";
 import { WorkflowAgentLifecycleScope } from "./agent-lifecycle-scope.js";
+import { resolveWorkflowAgentInvocationPrompt } from "./agent-invocation-prompt.js";
 import { executeForIterations } from "./for-step-execution.js";
 import {
   resolveWorkflowForExecutionConfig,
@@ -64,7 +68,11 @@ import {
 } from "./for-step-execution-mode.js";
 import { createWorkflowForIterationPlan, WorkflowForPlanError } from "./for-step-plan.js";
 import { WorkflowRunStore } from "./store.js";
-import { resolveWorkflowExpression, resolveWorkflowNodeInput } from "./workflow-data-mapping.js";
+import {
+  resolveOptionalWorkflowExpression,
+  resolveWorkflowExpression,
+  resolveWorkflowNodeInput,
+} from "./workflow-data-mapping.js";
 import { validateWorkflowNodeData, validateWorkflowNodeSchema } from "./workflow-node-contract.js";
 import { type WorkflowLoopContext, WorkflowVariableState } from "./workflow-variable-state.js";
 import { findWorkflowStep } from "./workflow-step-search.js";
@@ -114,6 +122,8 @@ interface ExecutionState {
   loopContext: WorkflowLoopContext | null;
   workflowAgentScope: WorkflowAgentLifecycleScope<WorkflowAgentResource>;
   forAgentScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null;
+  directNodeInput: WorkflowNodeInputEnvelope | null;
+  directNodeInputStepId: string | null;
 }
 
 interface WorkflowAgentResource {
@@ -125,6 +135,7 @@ interface WorkflowAgentResource {
 interface StepExecutionResult extends ExecutionState {
   agentId: string | null;
   nodeArtifacts?: WorkflowArtifact[];
+  nodeOutputPayload: string;
   agentPrompt?: string | null;
   agentResponse?: string | null;
   output: string | null;
@@ -160,6 +171,20 @@ class WorkflowExecutionError extends Error {
     super(message);
     this.name = "WorkflowExecutionError";
   }
+}
+
+interface WorkflowRunInput {
+  scriptPath: string;
+  inputPayload?: string;
+  inputFilePath?: string;
+  inputPresetId?: string;
+  targetNodeId?: string;
+  targetInputMode?: WorkflowTargetInputMode;
+}
+
+interface ResolvedWorkflowRunInput {
+  storedInput: WorkflowPayload | WorkflowNodeInputEnvelope;
+  inputFilePath: string;
 }
 
 export class WorkflowService {
@@ -333,71 +358,40 @@ export class WorkflowService {
     return this.getRun(runId);
   }
 
-  async runScript(input: {
-    scriptPath: string;
-    inputPayload?: string;
-    inputFilePath?: string;
-    inputPresetId?: string;
-    targetNodeId?: string;
-  }): Promise<WorkflowRun> {
+  async runScript(input: WorkflowRunInput): Promise<WorkflowRun> {
     return this.startScriptRun(input);
   }
 
-  private async startScriptRun(input: {
-    scriptPath: string;
-    inputPayload?: string;
-    inputFilePath?: string;
-    inputPresetId?: string;
-    targetNodeId?: string;
-  }): Promise<WorkflowRun> {
+  private async startScriptRun(input: WorkflowRunInput): Promise<WorkflowRun> {
     if (!this.acceptingRuns) {
       throw new Error("Workflow service is shutting down");
     }
     const scriptFile = await this.inspectScript(input.scriptPath);
     const targetNodeId = input.targetNodeId?.trim() || null;
-    if (targetNodeId && !findWorkflowStep(scriptFile.script.steps, targetNodeId)) {
+    const targetStep = targetNodeId
+      ? findWorkflowStep(scriptFile.script.steps, targetNodeId)
+      : null;
+    if (targetNodeId && !targetStep) {
       throw new Error(`Workflow node not found: ${targetNodeId}`);
     }
-    let inputPayload: WorkflowPayload;
-    let inputFilePath: string;
-    if (input.inputPresetId) {
-      const preset = scriptFile.script.inputPresets?.find(
-        (candidate) => candidate.id === input.inputPresetId,
-      );
-      if (!preset) {
-        throw new Error(`Workflow input preset not found: ${input.inputPresetId}`);
-      }
-      const presetPayload = parseInitialPayload(
-        JSON.stringify(preset.payload),
-        dirname(scriptFile.path),
-      );
-      const overridePayload = input.inputPayload
-        ? parseInitialPayload(input.inputPayload, dirname(scriptFile.path))
-        : null;
-      inputPayload = WorkflowPayloadSchema.parse({
-        ...presetPayload,
-        ...overridePayload,
-      });
-      inputFilePath = getPayloadString(inputPayload, "filePath") ?? "";
-    } else if (input.inputPayload !== undefined) {
-      inputPayload = parseInitialPayload(input.inputPayload, dirname(scriptFile.path));
-      inputFilePath = getPayloadString(inputPayload, "filePath") ?? "";
-    } else if (input.inputFilePath !== undefined) {
-      inputFilePath = resolveWorkflowPath(input.inputFilePath);
-      await assertExistingPath(inputFilePath, "Workflow input");
-      inputPayload = createInitialPayload(inputFilePath);
-    } else {
-      throw new Error("Workflow input JSON is required");
+    const targetInputMode = input.targetInputMode ?? "upstream_output";
+    if (targetInputMode === "node_input" && !targetStep) {
+      throw new Error("Direct node input requires a target workflow node");
     }
-    inputPayload = validateInitialWorkflowInput(scriptFile.script, inputPayload);
-    inputFilePath = getPayloadString(inputPayload, "filePath") ?? "";
+    const { storedInput, inputFilePath } = await resolveWorkflowRunInput({
+      input,
+      scriptFile,
+      targetStep,
+      targetInputMode,
+    });
     const startedAt = this.now().toISOString();
     const run = await this.store.create({
       scriptPath: scriptFile.path,
       scriptSnapshot: scriptFile.script,
       targetNodeId,
+      targetInputMode,
       status: "running",
-      inputPayload: serializePayload(inputPayload),
+      inputPayload: JSON.stringify(storedInput),
       outputPayload: null,
       inputFilePath,
       outputFilePath: null,
@@ -418,21 +412,19 @@ export class WorkflowService {
     return run;
   }
 
-  async runScriptAndWait(input: {
-    scriptPath: string;
-    inputPayload?: string;
-    inputFilePath?: string;
-    inputPresetId?: string;
-    targetNodeId?: string;
-  }): Promise<WorkflowRun> {
+  async runScriptAndWait(input: WorkflowRunInput): Promise<WorkflowRun> {
     const run = await this.runScript(input);
     await this.activeRuns.get(run.id);
     return this.getRun(run.id);
   }
 
   private async executeRun(run: WorkflowRun): Promise<void> {
+    const directNodeInput =
+      run.targetInputMode === "node_input" ? parseStoredDirectNodeInput(run.inputPayload) : null;
     const initialPayload =
-      parseStoredPayload(run.inputPayload) ?? createInitialPayload(run.inputFilePath);
+      directNodeInput?.data ??
+      parseStoredPayload(run.inputPayload) ??
+      createInitialPayload(run.inputFilePath);
     const workflowAgentScope = new WorkflowAgentLifecycleScope<WorkflowAgentResource>();
     let state: ExecutionState = {
       payload: initialPayload,
@@ -449,6 +441,8 @@ export class WorkflowService {
       loopContext: null,
       workflowAgentScope,
       forAgentScope: null,
+      directNodeInput,
+      directNodeInputStepId: directNodeInput ? run.targetNodeId : null,
     };
     let workflowTimeout: NodeJS.Timeout | null = null;
     if (run.scriptSnapshot.timeoutMs) {
@@ -537,7 +531,7 @@ export class WorkflowService {
     step: WorkflowStep,
     state: ExecutionState,
   ): Promise<ExecutionState> {
-    const stepInputState = prepareWorkflowStepInput(run.scriptSnapshot, step, state);
+    const stepInputState = prepareWorkflowStepInput(run, step, state);
     const retry = resolveStepRetryPolicy(run.scriptSnapshot, step);
     for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
       this.assertRunActive(run.id, stepInputState);
@@ -617,7 +611,7 @@ export class WorkflowService {
         this.assertRunActive(run.id, completedState);
         await this.completeNodeRun(run.id, nodeRunId, {
           status: "succeeded",
-          outputPayload: serializePayload(completedState.payload),
+          outputPayload: completedState.nodeOutputPayload,
           outputFilePath: completedState.hasFileOutput ? completedState.filePath : null,
           outputControl: "",
           error: null,
@@ -690,9 +684,7 @@ export class WorkflowService {
         instruction: renderedInstruction,
         inputVariable: step.inputVariable ?? "input",
         outputVariable: step.outputVariable ?? "output",
-        inputJson: serializeWorkflowNodeInput(
-          state.variableState.createNodeInput(step.id, state.payload, state.loopContext),
-        ),
+        inputJson: serializeWorkflowNodeInput(resolveNodeInputEnvelope(step.id, state)),
         iterationPath: state.iterationPath,
         cwd,
         shell: step.shell ?? DEFAULT_SHELL,
@@ -753,9 +745,7 @@ export class WorkflowService {
         inputVariable: step.inputVariable ?? "input",
         outputVariable: step.outputVariable ?? "output",
         pythonPath: step.pythonPath ?? DEFAULT_PYTHON_PATH,
-        inputJson: serializeWorkflowNodeInput(
-          state.variableState.createNodeInput(step.id, state.payload, state.loopContext),
-        ),
+        inputJson: serializeWorkflowNodeInput(resolveNodeInputEnvelope(step.id, state)),
         iterationPath: state.iterationPath,
         cwd,
         env: environment.env,
@@ -808,6 +798,18 @@ export class WorkflowService {
       stepName: step.name,
       attempt,
     });
+    const renderedSubsequentInstruction =
+      step.subsequentPromptMode === "custom" && step.subsequentPrompt
+        ? await renderWorkflowInstruction({
+            template: step.subsequentPrompt,
+            variables: step.templateVariables,
+            state,
+            runId: run.id,
+            stepId: step.id,
+            stepName: step.name,
+            attempt,
+          })
+        : undefined;
     const renderedSystemPrompt = step.config.systemPrompt
       ? await renderWorkflowInstruction({
           template: step.config.systemPrompt,
@@ -824,11 +826,14 @@ export class WorkflowService {
       "paseo.workflow-step": step.id,
       "paseo.workflow-attempt": String(attempt),
     };
-    const { prompt, labels } = this.resolveAgentIdentityContext(
+    const { prompt: initialPrompt, labels } = this.resolveAgentIdentityContext(
       step,
       renderedInstruction,
       baseLabels,
     );
+    const subsequentPrompt = renderedSubsequentInstruction
+      ? this.resolveAgentIdentityContext(step, renderedSubsequentInstruction, baseLabels).prompt
+      : undefined;
     const lifecycle = step.lifecycle ?? "single";
     let inheritedScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null = null;
     if (lifecycle === "workflow") {
@@ -846,13 +851,19 @@ export class WorkflowService {
             run,
             step,
             cwd,
-            prompt,
+            prompt: initialPrompt,
             renderedInstruction,
             renderedSystemPrompt,
             labels,
           }),
-        run: async (resource) => {
+        run: async (resource, invocation) => {
           const activeAgentId = resource.agentId;
+          const prompt = resolveWorkflowAgentInvocationPrompt({
+            step,
+            isFirstInvocation: invocation.isFirst,
+            initialPrompt,
+            subsequentPrompt,
+          });
           this.trackActiveAgent(run.id, activeAgentId);
           try {
             return await this.runWorkflowAgentResource({
@@ -1105,6 +1116,7 @@ export class WorkflowService {
     return {
       ...next,
       agentId: null,
+      nodeOutputPayload: serializeNodeDataEnvelope(next.payload),
       output: selected
         ? `Matched ${formatWorkflowValue(switchValue)} to ${JSON.stringify(selected.equals)}`
         : `Used default branch for ${formatWorkflowValue(switchValue)}`,
@@ -1222,6 +1234,7 @@ export class WorkflowService {
       loopContext: parentLoopContext,
       forAgentScope: parentForAgentScope,
       agentId: null,
+      nodeOutputPayload: serializeNodeDataEnvelope(execution.state.payload),
       output,
       diagnostics: {
         skippedReason: plan.iterationCount === 0 ? "No loop items were produced" : null,
@@ -1288,6 +1301,7 @@ export class WorkflowService {
       filePath: resolvePayloadFilePath(payload, state.filePath),
       hasFileOutput,
       agentId,
+      nodeOutputPayload: serializeNodeResultEnvelope(result),
       agentPrompt,
       agentResponse,
       output,
@@ -1424,6 +1438,8 @@ export class WorkflowService {
       loopContext: null,
       workflowAgentScope: new WorkflowAgentLifecycleScope<WorkflowAgentResource>(),
       forAgentScope: null,
+      directNodeInput: null,
+      directNodeInputStepId: null,
     });
   }
 
@@ -1597,6 +1613,77 @@ function createInitialPayload(inputFilePath: string): WorkflowPayload {
   return inputFilePath ? { filePath: inputFilePath } : {};
 }
 
+async function resolveWorkflowRunInput(options: {
+  input: WorkflowRunInput;
+  scriptFile: WorkflowScriptFile;
+  targetStep: WorkflowStep | null;
+  targetInputMode: WorkflowTargetInputMode;
+}): Promise<ResolvedWorkflowRunInput> {
+  if (options.targetInputMode === "node_input") {
+    if (!options.targetStep) {
+      throw new Error("Direct node input requires a target workflow node");
+    }
+    return resolveDirectWorkflowRunInput(options.input, options.scriptFile, options.targetStep);
+  }
+  return resolveUpstreamWorkflowRunInput(options.input, options.scriptFile);
+}
+
+function resolveDirectWorkflowRunInput(
+  input: WorkflowRunInput,
+  scriptFile: WorkflowScriptFile,
+  targetStep: WorkflowStep,
+): ResolvedWorkflowRunInput {
+  if (input.inputPresetId) {
+    throw new Error("Workflow input presets cannot be used with direct node input");
+  }
+  if (input.inputPayload === undefined) {
+    throw new Error("Direct node input JSON is required");
+  }
+  const directInput = parseDirectNodeInput(input.inputPayload, dirname(scriptFile.path));
+  validateWorkflowNodeData(targetStep.inputSchema, directInput.data, "Workflow node input");
+  return {
+    storedInput: directInput,
+    inputFilePath: getPayloadString(directInput.data, "filePath") ?? "",
+  };
+}
+
+async function resolveUpstreamWorkflowRunInput(
+  input: WorkflowRunInput,
+  scriptFile: WorkflowScriptFile,
+): Promise<ResolvedWorkflowRunInput> {
+  const baseDirectory = dirname(scriptFile.path);
+  let inputPayload: WorkflowPayload;
+  if (input.inputPresetId) {
+    const preset = scriptFile.script.inputPresets?.find(
+      (candidate) => candidate.id === input.inputPresetId,
+    );
+    if (!preset) {
+      throw new Error(`Workflow input preset not found: ${input.inputPresetId}`);
+    }
+    const presetPayload = parseInitialPayload(JSON.stringify(preset.payload), baseDirectory);
+    const overridePayload = input.inputPayload
+      ? parseInitialPayload(input.inputPayload, baseDirectory)
+      : null;
+    inputPayload = WorkflowPayloadSchema.parse({
+      ...presetPayload,
+      ...overridePayload,
+    });
+  } else if (input.inputPayload !== undefined) {
+    inputPayload = parseInitialPayload(input.inputPayload, baseDirectory);
+  } else if (input.inputFilePath !== undefined) {
+    const inputFilePath = resolveWorkflowPath(input.inputFilePath);
+    await assertExistingPath(inputFilePath, "Workflow input");
+    inputPayload = createInitialPayload(inputFilePath);
+  } else {
+    throw new Error("Workflow input JSON is required");
+  }
+  const validatedInput = validateInitialWorkflowInput(scriptFile.script, inputPayload);
+  return {
+    storedInput: validatedInput,
+    inputFilePath: getPayloadString(validatedInput, "filePath") ?? "",
+  };
+}
+
 function parseInitialPayload(inputPayload: string, baseDirectory: string): WorkflowPayload {
   let parsed: unknown;
   try {
@@ -1609,6 +1696,28 @@ function parseInitialPayload(inputPayload: string, baseDirectory: string): Workf
     throw new Error("Workflow input must be a JSON object", { cause: result.error });
   }
   return normalizePayloadPaths(result.data, baseDirectory);
+}
+
+function parseDirectNodeInput(
+  inputPayload: string,
+  baseDirectory: string,
+): WorkflowNodeInputEnvelope {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(inputPayload);
+  } catch (error) {
+    throw new Error("Direct node input must be valid JSON", { cause: error });
+  }
+  const result = WorkflowNodeInputEnvelopeSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new Error("Direct node input must contain data, workflow.var, and node.var objects", {
+      cause: result.error,
+    });
+  }
+  return {
+    ...result.data,
+    data: normalizePayloadPaths(result.data.data, baseDirectory),
+  };
 }
 
 function validateInitialWorkflowInput(
@@ -1647,17 +1756,45 @@ function serializePayload(payload: WorkflowPayload): string {
   return JSON.stringify(payload);
 }
 
+function serializeNodeDataEnvelope(data: WorkflowPayload): string {
+  return JSON.stringify({ data });
+}
+
+function serializeNodeResultEnvelope(result: WorkflowNodeResultEnvelope): string {
+  return JSON.stringify({
+    data: result.data,
+    modify: result.modify,
+    base_resp: result.base_resp,
+  });
+}
+
 function serializeNodeInput(_run: WorkflowRun, step: WorkflowStep, state: ExecutionState): string {
-  return JSON.stringify(
-    state.variableState.createNodeInput(step.id, state.payload, state.loopContext),
-  );
+  return JSON.stringify(resolveNodeInputEnvelope(step.id, state));
 }
 
 function prepareWorkflowStepInput(
-  _script: WorkflowScript,
+  run: WorkflowRun,
   step: WorkflowStep,
   state: ExecutionState,
 ): ExecutionState {
+  if (
+    run.targetInputMode === "node_input" &&
+    run.targetNodeId === step.id &&
+    state.directNodeInput
+  ) {
+    validateWorkflowNodeData(
+      step.inputSchema,
+      state.directNodeInput.data,
+      `Workflow node ${step.id} input`,
+    );
+    const payload = state.directNodeInput.data;
+    return {
+      ...state,
+      payload,
+      filePath: resolvePayloadFilePath(payload, state.filePath),
+      hasFileOutput: getPayloadString(payload, "filePath") !== null,
+    };
+  }
   const inputs =
     step.type === "bash" || step.type === "python" || step.type === "agent"
       ? step.inputs
@@ -1677,14 +1814,25 @@ function prepareWorkflowStepInput(
 }
 
 function createDataMappingContext(state: ExecutionState, stepId: string) {
+  const directInput = state.directNodeInputStepId === stepId ? state.directNodeInput : null;
   return {
     workflowInputs: state.workflowInputs,
     currentInput: state.payload,
     nodeOutputs: state.nodeOutputs,
-    workflowVariables: state.variableState.snapshotWorkflow(),
-    loopVariables: state.variableState.snapshotLoop(state.loopContext),
-    nodeVariables: state.variableState.snapshotNode(stepId),
+    workflowVariables: directInput?.workflow.var ?? state.variableState.snapshotWorkflow(),
+    loopVariables: directInput?.loop ?? state.variableState.snapshotLoop(state.loopContext),
+    nodeVariables: directInput?.node.var ?? state.variableState.snapshotNode(stepId),
   };
+}
+
+function resolveNodeInputEnvelope(
+  stepId: string,
+  state: ExecutionState,
+): WorkflowNodeInputEnvelope {
+  if (state.directNodeInputStepId === stepId && state.directNodeInput) {
+    return structuredClone(state.directNodeInput);
+  }
+  return state.variableState.createNodeInput(stepId, state.payload, state.loopContext);
 }
 
 function parseStoredPayload(value: string | null): WorkflowPayload | null {
@@ -1696,6 +1844,17 @@ function parseStoredPayload(value: string | null): WorkflowPayload | null {
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
+  }
+}
+
+function parseStoredDirectNodeInput(value: string | null): WorkflowNodeInputEnvelope {
+  if (!value) {
+    throw new Error("Persisted direct node input is missing");
+  }
+  try {
+    return WorkflowNodeInputEnvelopeSchema.parse(JSON.parse(value));
+  } catch (error) {
+    throw new Error("Persisted direct node input is invalid", { cause: error });
   }
 }
 
@@ -1755,11 +1914,7 @@ async function renderWorkflowInstruction(input: {
   stepName: string | undefined;
   attempt: number;
 }): Promise<string> {
-  const nodeInputPayload = input.state.variableState.createNodeInput(
-    input.stepId,
-    input.state.payload,
-    input.state.loopContext,
-  );
+  const nodeInputPayload = resolveNodeInputEnvelope(input.stepId, input.state);
   const customVariables = input.variables ?? {};
   const templates = [input.template, ...Object.values(customVariables)];
   const needsInputContent = templates.some((template) =>
@@ -2163,7 +2318,7 @@ function resolveForControl(step: WorkflowForStep, state: ExecutionState): string
   if (!step.forControl) {
     return "";
   }
-  const value = resolveWorkflowExpression(
+  const value = resolveOptionalWorkflowExpression(
     step.forControl,
     createDataMappingContext(state, step.id),
   );

@@ -5,6 +5,8 @@ import { WorkflowNodeRunSchema, WorkflowScriptSchema } from "./types.js";
 describe("Python workflow protocol", () => {
   it("accepts an editable Python node with execution settings", () => {
     const script = WorkflowScriptSchema.parse({
+      apiVersion: "paseo.sh/workflow/v1",
+      kind: "Workflow",
       version: 1,
       name: "Python workflow",
       steps: [
@@ -13,7 +15,7 @@ describe("Python workflow protocol", () => {
           name: "Transform payload",
           type: "python",
           code: 'print("{\\"answer\\":\\"ok\\"}")',
-          variables: { customer: "{{customer.name}}" },
+          variables: { customer: { type: "string", default: "Alice" } },
           pythonPath: "/usr/bin/python3",
           cwd: "/tmp",
           timeoutMs: 30_000,

@@ -29,7 +29,7 @@ describe("Workflow command protocol CLI", () => {
       resultFormat: "one JSON object",
       failureSignal: "non-zero exit code",
       inputEnvelope: "{data,workflow.var,node.var}",
-      resultEnvelope: "{data,modify,base_resp,artifacts}",
+      resultEnvelope: "{data,modify?,base_resp?}",
       flowControl: "user-defined fields in data",
       variableTypes: ["string", "int64 decimal string"],
       legacyStdoutResult: false,

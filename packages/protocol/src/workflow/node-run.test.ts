@@ -25,13 +25,15 @@ describe("workflow node runs", () => {
     ).toBe(false);
   });
 
-  it("defaults targetNodeId for runs persisted by older daemons", () => {
+  it("defaults a missing targetNodeId for persisted version 1 runs", () => {
     const run = WorkflowRunSchema.parse({
       id: "run-1",
       scriptPath: "/tmp/workflow.json",
       scriptSnapshot: {
+        apiVersion: "paseo.sh/workflow/v1",
+        kind: "Workflow",
         version: 1,
-        name: "Compatibility",
+        name: "Version 1",
         steps: [{ id: "worker", type: "bash", initialCommand: "echo '{}'" }],
       },
       status: "succeeded",

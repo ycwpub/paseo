@@ -34,56 +34,38 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
 });
 
 describe("WorkflowNodeResultEnvelopeSchema", () => {
-  it("separates data, variable modifications, base response, and artifacts", () => {
+  it("requires data, supports Workflow variable updates, and fills framework fields", () => {
     expect(
       WorkflowNodeResultEnvelopeSchema.parse({
         data: { approved: true },
         modify: {
           workflow: { var: { counter: "8" } },
-          node: { var: { cursor: "done" } },
         },
         base_resp: {
           status_code: 0,
           status_msg: "",
           forbid_retry: 0,
         },
-        artifacts: [
-          {
-            name: "report",
-            uri: "file:///tmp/report.json",
-            mediaType: "application/json",
-            size: 42,
-          },
-        ],
       }),
     ).toEqual({
       data: { approved: true },
       modify: {
         workflow: { var: { counter: "8" } },
-        node: { var: { cursor: "done" } },
       },
       base_resp: {
         status_code: 0,
         status_msg: "",
         forbid_retry: 0,
       },
-      artifacts: [
-        {
-          name: "report",
-          uri: "file:///tmp/report.json",
-          mediaType: "application/json",
-          size: 42,
-        },
-      ],
+      artifacts: [],
     });
   });
 
-  it("defaults optional framework fields and rejects removed flow control", () => {
+  it("defaults optional fields and rejects framework-owned or unsupported fields", () => {
     expect(WorkflowNodeResultEnvelopeSchema.parse({ data: { answer: "ok" } })).toEqual({
       data: { answer: "ok" },
       modify: {
         workflow: { var: {} },
-        node: { var: {} },
       },
       base_resp: {
         status_code: 0,
@@ -98,6 +80,22 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
         flow: { action: "next" },
       }).success,
     ).toBe(false);
+    expect(
+      WorkflowNodeResultEnvelopeSchema.safeParse({
+        data: {},
+        modify: {
+          workflow: { var: {} },
+          node: { var: { cursor: "next" } },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowNodeResultEnvelopeSchema.safeParse({
+        data: {},
+        artifacts: [],
+      }).success,
+    ).toBe(false);
+    expect(WorkflowNodeResultEnvelopeSchema.safeParse({}).success).toBe(false);
   });
 });
 

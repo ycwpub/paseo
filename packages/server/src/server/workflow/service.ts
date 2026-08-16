@@ -1122,7 +1122,7 @@ export class WorkflowService {
     diagnostics: WorkflowNodeDiagnostics = {},
   ): Promise<StepExecutionResult> {
     validateWorkflowNodeData(step.outputSchema, result.data, `Workflow node ${step.id} output`);
-    await state.variableState.apply(step.id, result.modify);
+    await state.variableState.apply(result.modify);
     const payload = normalizePayloadPaths(
       WorkflowPayloadSchema.parse(result.data),
       dirname(state.filePath),
@@ -1980,7 +1980,6 @@ function createAgentNodeResultEnvelope(
     data: { answer: response },
     modify: {
       workflow: { var: {} },
-      node: { var: {} },
     },
     base_resp: {
       status_code: 0,

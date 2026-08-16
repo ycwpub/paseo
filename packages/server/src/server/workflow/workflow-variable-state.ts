@@ -39,15 +39,10 @@ export class WorkflowVariableState {
     };
   }
 
-  async apply(stepId: string, modification: WorkflowVariableModification): Promise<void> {
+  async apply(modification: WorkflowVariableModification): Promise<void> {
     await this.withLock(async () => {
-      const nodeDefinitions = this.nodeDefinitions.get(stepId) ?? {};
       validateVariableUpdate("workflow", this.workflowDefinitions, modification.workflow.var);
-      validateVariableUpdate("node", nodeDefinitions, modification.node.var);
       Object.assign(this.workflowValues, modification.workflow.var);
-      const nodeValues = this.nodeValues.get(stepId) ?? {};
-      Object.assign(nodeValues, modification.node.var);
-      this.nodeValues.set(stepId, nodeValues);
     });
   }
 
@@ -105,7 +100,7 @@ function createInitialValues(definitions: WorkflowVariableDefinitions): Workflow
 }
 
 function validateVariableUpdate(
-  scope: "workflow" | "node",
+  scope: "workflow",
   definitions: WorkflowVariableDefinitions,
   values: WorkflowVariableValues,
 ): void {

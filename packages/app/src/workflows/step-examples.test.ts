@@ -19,6 +19,12 @@ describe("workflow step examples", () => {
     expect(agent.type === "agent" ? agent.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
     expect(getWorkflowStepExamples(bash).initialValue).toBe(DEFAULT_BASH_INITIAL_COMMAND);
     expect(getWorkflowStepExamples(bash).composition).toContain("paseo workflow run");
+    expect(DEFAULT_BASH_INITIAL_COMMAND).toContain('output="$(jq');
+    expect(DEFAULT_BASH_INITIAL_COMMAND).not.toContain("node ");
+    expect(DEFAULT_BASH_INITIAL_COMMAND).not.toContain(">&3");
+    expect(getWorkflowStepExamples(bash).composition).toContain('output="$(jq');
+    expect(getWorkflowStepExamples(bash).composition).not.toContain("node ");
+    expect(getWorkflowStepExamples(bash).composition).not.toContain(">&3");
     expect(getWorkflowStepExamples(python).initialValue).toBe(DEFAULT_PYTHON_CODE);
     expect(getWorkflowStepExamples(agent).initialValue).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
   });
@@ -38,16 +44,6 @@ describe("workflow step examples", () => {
         customer: { name: "Alice" },
         items: [{ id: 7 }],
       },
-      modify: {
-        workflow: { var: {} },
-        node: { var: {} },
-      },
-      base_resp: {
-        status_code: 0,
-        status_msg: "",
-        forbid_retry: 0,
-      },
-      artifacts: [],
     });
   });
 

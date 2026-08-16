@@ -120,6 +120,18 @@ describe("translation resources", () => {
     expect(zhCN.workflows.title).toBe("工作流");
     expect(zhCN.workflows.editor.workflowTimeout).toBe("工作流超时（秒）");
     expect(zhCN.workflows.nodes.bash.initialCommand).toBe("初始命令");
+    expect(zhCN.workflows.nodes.common.bashInputVariableHint).toBe(
+      "执行命令前，Paseo 把框架组装的节点输入 JSON 字符串赋值给此变量。",
+    );
+    expect(zhCN.workflows.nodes.common.pythonInputVariableHint).toBe(
+      "执行代码前，Paseo 把框架组装并解析后的节点输入对象赋值给此变量。",
+    );
+    expect(zhCN.workflows.nodes.common.bashOutputVariableHint).toBe(
+      "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
+    );
+    expect(zhCN.workflows.nodes.common.pythonOutputVariableHint).toBe(
+      "代码执行成功前，需将包含必填 JSON 对象 data 的结果对象赋值给此变量。",
+    );
     expect(zhCN.workflows.nodes.variables.examplesTitle).toBe("变量使用范例");
     expect(zhCN.workflows.nodes.agent.selectProvider).toBe("选择 Provider");
     expect(zhCN.workflows.nodes.for.loopBody).toBe("循环体");

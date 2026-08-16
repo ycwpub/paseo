@@ -68,8 +68,8 @@ export const zhCN: TranslationResources = {
       contract: {
         title: "输入输出约定",
         description:
-          "节点接收包含 data、工作流变量和节点变量的输入信封；失败信息和产物独立于 data 中用户自定义的流程字段。",
-        note: 'Bash 和 Python 从 stdin 读取 {"data":{},"workflow":{"var":{}},"node":{"var":{}}，并通过配置的输出变量返回 {"data":{},"modify":{},"base_resp":{},"artifacts":[]}。',
+          "节点输入由 Paseo 自动组装：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由 Workflow 框架填充。",
+        note: '节点必须输出 {"data":{}}，data 必须是 JSON 对象。仅修改 Workflow 变量时输出 modify，仅报告业务错误时输出 base_resp；node.var 只读，artifacts 由框架自动填充。',
       },
       internal: {
         title: "Paseo 内部使用",
@@ -95,9 +95,9 @@ export const zhCN: TranslationResources = {
       },
       nodes: {
         title: "节点行为",
-        bash: "• Bash：通过 stdin 读取 JSON 数据，stdout/stderr 只记录日志，向文件描述符 3 写入唯一结果 JSON。需要组合工作流时，在 Bash 中调用 paseo workflow run，并把子流程 outputPayload 转发到文件描述符 3。",
+        bash: "• Bash：框架把输入 JSON 赋值给配置的输入变量；脚本把唯一结果 JSON 字符串赋值给配置的输出变量。Paseo 自动将其写入文件描述符 3，stdout/stderr 仅用于日志。",
         python:
-          "• Python：直接运行可编辑代码，通过 stdin 读取 JSON 数据，向文件描述符 3 写入唯一结果 JSON。",
+          "• Python：框架把解析后的输入对象赋值给配置的输入变量；代码把唯一结果对象赋值给配置的输出变量。Paseo 自动将其序列化到文件描述符 3。",
         agent:
           "• Agent：普通模式把最终回答写入 data.answer；自定义模式要求 Agent 返回完整结果信封。",
         switch: "• Switch：解析 switchVar，并选择匹配的分支。",
@@ -351,21 +351,25 @@ export const zhCN: TranslationResources = {
         initialValueDescription: "创建节点时会自动填入此示例，可直接修改。",
         compositionTitle: "运行另一个 Workflow",
         compositionDescription:
-          "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 转发到文件描述符 3。",
+          "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 赋值给配置的输出变量。",
         bash: {
-          input: "配置的输入变量接收 stdin 中的 {data、workflow.var、node.var}。",
+          input:
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。配置的输入变量接收 stdin 中的完整 JSON 字符串。",
           output:
-            "把完整 version 1 结果信封赋值给配置的输出变量，Paseo 自动写入文件描述符 3；stdout/stderr 仅用于日志。",
+            "输出必须包含 JSON 对象 data。仅修改 Workflow 变量时增加 modify.workflow.var，仅报告业务错误时增加 base_resp。node.var 只读，artifacts 由框架填充，无需输出。Paseo 会把配置的输出变量写入文件描述符 3；stdout/stderr 仅用于日志。",
         },
         python: {
-          input: "配置的输入变量接收解析后的 {data、workflow.var、node.var} 对象。",
-          output: "把完整 version 1 结果信封赋值给配置的输出变量，Paseo 自动序列化到文件描述符 3。",
+          input:
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。配置的输入变量接收解析后的完整对象。",
+          output:
+            "输出必须包含 JSON 对象 data。仅修改 Workflow 变量时增加 modify.workflow.var，仅报告业务错误时增加 base_resp。node.var 只读，artifacts 由框架填充，无需输出。Paseo 会把配置的输出变量序列化到文件描述符 3。",
         },
         agent: {
           input:
-            "用户提示词和系统提示词可通过 data、workflow.var、node.var、payload 和 inputJson 使用节点输入信封。",
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。用户提示词和系统提示词可通过 data、workflow.var、node.var、payload 和 inputJson 读取。",
           output: '普通模式把 Agent 最终回答包装为 {"data":{"answer":"..."}}。',
-          controlOutput: "自定义模式要求 Agent 最终回答是完整的 version 1 结果信封。",
+          controlOutput:
+            "自定义模式要求 Agent 最终回答包含 JSON 对象 data；modify 和 base_resp 按需输出，不能修改 node.var，也不需要输出 artifacts。",
         },
         switch: {
           input: "解析 switchVar 表达式，并把得到的原始值与各分支匹配值比较。",
@@ -390,22 +394,24 @@ export const zhCN: TranslationResources = {
         providerDefault: "使用 Provider 默认值",
         optional: "可选",
         inputVariable: "输入变量",
-        bashInputVariableHint: "执行命令前，把 stdin JSON 字符串赋值给此变量。",
-        pythonInputVariableHint: "执行代码前，把解析后的 stdin JSON 对象赋值给此变量。",
+        bashInputVariableHint: "执行命令前，Paseo 把框架组装的节点输入 JSON 字符串赋值给此变量。",
+        pythonInputVariableHint: "执行代码前，Paseo 把框架组装并解析后的节点输入对象赋值给此变量。",
         outputVariable: "输出变量",
-        bashOutputVariableHint: "命令结束时必须包含结果信封 JSON 字符串。",
-        pythonOutputVariableHint: "代码结束时必须包含结果信封对象。",
+        bashOutputVariableHint:
+          "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
+        pythonOutputVariableHint:
+          "代码执行成功前，需将包含必填 JSON 对象 data 的结果对象赋值给此变量。",
       },
       bash: {
         initialCommand: "初始命令",
         initialCommandHint:
-          "可使用模板变量或配置的输入变量；把 version 1 结果信封写入配置的输出变量，stdout/stderr 仅用于日志。",
+          "可使用模板变量或配置的输入变量；输出必须包含 JSON 对象 data，modify 和 base_resp 按需增加，stdout/stderr 仅用于日志。",
         shell: "Shell",
       },
       python: {
         code: "Python 代码",
         codeHint:
-          "读取配置的输入变量，并把 version 1 结果信封赋值给配置的输出变量；stdout/stderr 仅用于日志。",
+          "读取配置的输入变量，并把包含必填 JSON 对象 data 的结果赋值给配置的输出变量；modify 和 base_resp 按需增加，stdout/stderr 仅用于日志。",
         interpreter: "Python 解释器",
         interpreterHint: "留空时使用 python3。",
       },
@@ -417,14 +423,16 @@ export const zhCN: TranslationResources = {
         selectSystemPromptTemplate: "选择要复制到系统提示词的模板",
         noPromptTemplates: "当前主机尚未配置提示词模板。",
         outputType: "Agent 节点类型",
-        outputTypeHint: "普通模式把最终回答写入 data.answer；自定义模式要求完整结果信封。",
+        outputTypeHint:
+          "普通模式把最终回答写入 data.answer；自定义模式要求返回包含必填 JSON 对象 data 的结果。",
         selectOutputType: "选择 Agent 节点类型",
         noOutputTypes: "暂无 Agent 节点类型。",
         outputTypes: {
           normal: "普通模式",
           normalDescription: '把 Agent 回答转换为 {"data":{"answer":"Agent 回答"}}。',
           custom: "自定义模式",
-          customDescription: "把 Agent 回答直接作为完整结果信封。",
+          customDescription:
+            "把 Agent 回答解析为节点结果；data 必填，modify 和 base_resp 按需输出。",
         },
         initialPrompt: "初始提示词",
         initialPromptHint:

@@ -75,10 +75,10 @@ Every executable node receives one JSON object:
 }
 ```
 
-- `data` is the original Workflow input or the previous node's `data`, after the node's `inputs`
-  mapping.
-- `workflow.var` contains Workflow variables.
-- `node.var` contains variables declared by the current node.
+- Paseo fills `data` from the previous node output's `data`; for the first node, it uses the
+  original Workflow input. The node's `inputs` mapping is applied afterward.
+- Paseo fills `workflow.var` with the current Workflow-variable values.
+- Paseo fills `node.var` with variables declared by the current node.
 - A node's `inputSchema` validates `data`, not the outer envelope.
 - Expressions can read `data.*`, `workflow.var.*`, `node.var.*`,
   `workflow.inputs.*`, and `nodes.<id>.outputs.*`.
@@ -92,40 +92,50 @@ Bash, Python, and custom Agent nodes return:
   "data": {
     "answer": "done",
     "control": ""
+  }
+}
+```
+
+`data` is required and must be a JSON object. It becomes the next node's `data`.
+
+To update declared Workflow variables, add the optional `modify` field:
+
+```json
+{
+  "data": {
+    "answer": "done"
   },
   "modify": {
     "workflow": {
       "var": {
         "counter": "1"
       }
-    },
-    "node": {
-      "var": {
-        "cursor": "next"
-      }
     }
-  },
-  "base_resp": {
-    "status_code": 0,
-    "status_msg": "",
-    "forbid_retry": 0
-  },
-  "artifacts": [
-    {
-      "name": "report",
-      "uri": "file:///tmp/report.json",
-      "mediaType": "application/json"
-    }
-  ]
+  }
 }
 ```
 
-- `data` becomes the next node's `data`.
-- `modify` can update declared Workflow and node variables. Undeclared variables and invalid
-  `int64` values fail the node.
+Node variables are read-only and cannot be modified by node output. Undeclared Workflow variables
+and invalid `int64` values fail the node.
+
+For a business error, add the optional `base_resp` field:
+
+```json
+{
+  "data": {},
+  "base_resp": {
+    "status_code": 1001,
+    "status_msg": "validation failed",
+    "forbid_retry": 1
+  }
+}
+```
+
 - `base_resp.status_code != 0` fails the node. `status_msg` is the failure message.
 - `base_resp.forbid_retry != 0` prevents the configured retry policy from retrying the node.
-- `artifacts` are retained on the node run and the Workflow run.
+- Omit `base_resp` for successful results.
+- `artifacts` are owned and populated by the Workflow framework. Node result JSON must not output
+  an `artifacts` field.
 - Flow control is not a framework field. Put fields such as `control` in `data`, then point Switch
   or For at them.
 
@@ -135,8 +145,8 @@ is atomic; when iterations assign the same variable, the last committed assignme
 
 ## Bash
 
-Bash reads the input envelope from stdin. stdout and stderr are logs. File descriptor 3 is the only
-structured result channel.
+Bash reads the input envelope from stdin. stdout and stderr are logs. Assign the result JSON string
+to the configured output variable; Paseo writes that variable to file descriptor 3.
 
 Set `inputVariable` and `outputVariable` on the node. They default to `input` and `output`.
 Paseo wraps the command as follows:
@@ -150,29 +160,14 @@ output=""
 printf '%s' "$output" >&3
 ```
 
-Example user command:
+Example user command (requires `jq`):
 
 ```bash
-output="$(node - "$input" <<'NODE'
-const input = JSON.parse(process.argv[2]);
-process.stdout.write(JSON.stringify({
-  data: {
-    ...input.data,
-    answer: "done"
-  },
-  modify: {
-    workflow: { var: {} },
-    node: { var: {} }
-  },
-  base_resp: {
-    status_code: 0,
-    status_msg: "",
-    forbid_retry: 0
-  },
-  artifacts: []
-}));
-NODE
-)"
+output="$(jq -c '
+{
+  data: ((.data // {}) + {answer: "done"})
+}
+' <<< "$input")"
 ```
 
 A non-zero process exit code fails the node before Paseo reads `base_resp`.
@@ -188,16 +183,6 @@ output = {
         **input["data"],
         "answer": "done",
     },
-    "modify": {
-        "workflow": {"var": {}},
-        "node": {"var": {}},
-    },
-    "base_resp": {
-        "status_code": 0,
-        "status_msg": "",
-        "forbid_retry": 0,
-    },
-    "artifacts": [],
 }
 ```
 

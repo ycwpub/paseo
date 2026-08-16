@@ -55,7 +55,7 @@ async function createService(): Promise<{ home: string; service: WorkflowService
 }
 
 describe("WorkflowService version 1 data contract", () => {
-  it("validates schemas, maps variables, branches, loops, and stores artifacts", async () => {
+  it("validates schemas, maps variables, branches, loops, and fills artifacts", async () => {
     const { home, service } = await createService();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -91,14 +91,8 @@ output = {
     items: ["alpha", "beta", "gamma"]
   },
   modify: {
-    workflow: { var: { traceId: "trace-1" } },
-    node: { var: {} }
-  },
-  artifacts: [{
-    name: "manifest",
-    uri: "file:///tmp/manifest.json",
-    mediaType: "application/json"
-  }]
+    workflow: { var: { traceId: "trace-1" } }
+  }
 };`),
             inputs: {
               project: "{{workflow.inputs.project}}",
@@ -181,16 +175,8 @@ output = {
       traceId: "trace-1",
       control: "break",
     });
-    expect(run.artifacts).toEqual([
-      {
-        name: "manifest",
-        uri: "file:///tmp/manifest.json",
-        mediaType: "application/json",
-      },
-    ]);
-    expect(run.nodeRuns.find((node) => node.stepId === "prepare")?.artifacts).toEqual(
-      run.artifacts,
-    );
+    expect(run.artifacts).toEqual([]);
+    expect(run.nodeRuns.find((node) => node.stepId === "prepare")?.artifacts).toEqual([]);
     expect(run.nodeRuns.filter((node) => node.stepId === "process-item")).toHaveLength(2);
   });
 

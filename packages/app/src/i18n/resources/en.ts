@@ -66,8 +66,8 @@ export const en = {
       contract: {
         title: "Input and output contract",
         description:
-          "Nodes receive a data envelope with workflow and node variables. Failures and artifacts stay separate from user-defined flow fields in data.",
-        note: 'Bash and Python read {"data":{},"workflow":{"var":{}},"node":{"var":{}} from stdin. Their configured output variable must contain {"data":{},"modify":{},"base_resp":{},"artifacts":[]} and is written to file descriptor 3.',
+          "Paseo assembles every node input: data comes from the previous node output data, or the initial Workflow input for the first node; the Workflow framework fills workflow.var and node.var.",
+        note: 'Every node result must contain {"data":{}} with a JSON object. Include modify only to update Workflow variables and base_resp only to report a business error. node.var is read-only, and the framework fills artifacts.',
       },
       internal: {
         title: "Use inside Paseo",
@@ -94,9 +94,9 @@ export const en = {
       },
       nodes: {
         title: "Node behavior",
-        bash: "• Bash: reads JSON from stdin, uses stdout/stderr only for logs, and writes exactly one result JSON object to file descriptor 3. Compose workflows by calling paseo workflow run from Bash and forwarding the child outputPayload to file descriptor 3.",
+        bash: "• Bash: receives the input JSON in the configured input variable and assigns exactly one result JSON string to the configured output variable. Paseo writes it to file descriptor 3; stdout/stderr are logs.",
         python:
-          "• Python: runs editable code, reads JSON from stdin, and writes exactly one result JSON object to file descriptor 3.",
+          "• Python: receives the parsed input object in the configured input variable and assigns exactly one result object to the configured output variable. Paseo serializes it to file descriptor 3.",
         agent:
           "• Agent: Normal mode writes the final reply to data.answer. Custom mode requires the Agent to return the complete result envelope.",
         switch: "• Switch: resolves switchVar and selects the matching branch.",
@@ -358,25 +358,25 @@ export const en = {
           "New nodes are prefilled with this example and remain fully editable.",
         compositionTitle: "Run another workflow",
         compositionDescription:
-          "Use a Bash node to call paseo workflow run, then forward the successful child outputPayload to file descriptor 3.",
+          "Use a Bash node to call paseo workflow run, then assign the successful child outputPayload to the configured output variable.",
         bash: {
           input:
-            "The configured input variable receives {data, workflow.var, node.var} from stdin.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. The configured input variable receives the complete JSON string from stdin.",
           output:
-            "Assign the complete version 1 result envelope to the configured output variable. Paseo writes it to file descriptor 3. stdout/stderr remain logs.",
+            "The result must contain a JSON object in data. Add modify.workflow.var only when updating Workflow variables and base_resp only when reporting a business error. node.var is read-only, and the framework fills artifacts, so do not output them. Paseo writes the configured output variable to file descriptor 3; stdout/stderr remain logs.",
         },
         python: {
           input:
-            "The configured input variable receives the parsed {data, workflow.var, node.var} object.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. The configured input variable receives the complete parsed object.",
           output:
-            "Assign the complete version 1 result envelope to the configured output variable. Paseo serializes it to file descriptor 3.",
+            "The result must contain a JSON object in data. Add modify.workflow.var only when updating Workflow variables and base_resp only when reporting a business error. node.var is read-only, and the framework fills artifacts, so do not output them. Paseo serializes the configured output variable to file descriptor 3.",
         },
         agent: {
           input:
-            "The node input envelope is available to user and system prompt templates through data, workflow.var, node.var, payload, and inputJson.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. User and system prompts can read it through data, workflow.var, node.var, payload, and inputJson.",
           output: 'Normal mode wraps the final Agent reply as {"data":{"answer":"..."}}.',
           controlOutput:
-            "Custom mode requires the final Agent reply to be a complete version 1 result envelope.",
+            "Custom mode requires the final Agent reply to contain a JSON object in data. Include modify and base_resp only when needed; do not modify node.var or output artifacts.",
         },
         switch: {
           input: "Resolve switchVar, then compare the native value with each configured case.",
@@ -403,23 +403,26 @@ export const en = {
         providerDefault: "Provider default",
         optional: "Optional",
         inputVariable: "Input variable",
-        bashInputVariableHint: "Receives the stdin JSON string before the command runs.",
-        pythonInputVariableHint: "Receives the parsed stdin JSON object before the code runs.",
+        bashInputVariableHint:
+          "Before the command runs, Paseo assigns the framework-assembled node input JSON string to this variable.",
+        pythonInputVariableHint:
+          "Before the code runs, Paseo assigns the parsed framework-assembled node input object to this variable.",
         outputVariable: "Output variable",
         bashOutputVariableHint:
-          "Must contain the result envelope JSON string when the command ends.",
-        pythonOutputVariableHint: "Must contain the result envelope object when the code ends.",
+          "Before the command succeeds, assign a result JSON string containing the required data object to this variable.",
+        pythonOutputVariableHint:
+          "Before the code succeeds, assign a result object containing the required data object to this variable.",
       },
       bash: {
         initialCommand: "Initial command",
         initialCommandHint:
-          "Use template variables or the configured input variable. Set the configured output variable to the version 1 result envelope; stdout/stderr are logs.",
+          "Use template variables or the configured input variable. The result must contain a data object; add modify and base_resp only when needed. stdout/stderr are logs.",
         shell: "Shell",
       },
       python: {
         code: "Python code",
         codeHint:
-          "Read the configured input variable and assign the version 1 result envelope to the configured output variable. stdout/stderr are logs.",
+          "Read the configured input variable and assign a result containing the required data object to the configured output variable. Add modify and base_resp only when needed; stdout/stderr are logs.",
         interpreter: "Python interpreter",
         interpreterHint: 'Leave empty to use "python3".',
       },
@@ -433,14 +436,15 @@ export const en = {
         noPromptTemplates: "No prompt templates are configured on this host.",
         outputType: "Agent node type",
         outputTypeHint:
-          "Normal mode writes the final reply to data.answer. Custom mode expects a complete result envelope.",
+          "Normal mode writes the final reply to data.answer. Custom mode expects a result containing the required data object.",
         selectOutputType: "Select an Agent node type",
         noOutputTypes: "No Agent node types are available.",
         outputTypes: {
           normal: "Normal",
           normalDescription: 'Converts the Agent reply to {"data":{"answer":"Agent reply"}}.',
           custom: "Custom",
-          customDescription: "Uses the Agent reply as the complete result envelope.",
+          customDescription:
+            "Parses the Agent reply as the node result. data is required; modify and base_resp are optional.",
         },
         initialPrompt: "Initial prompt",
         initialPromptHint:

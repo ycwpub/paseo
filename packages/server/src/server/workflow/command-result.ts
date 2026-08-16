@@ -47,7 +47,7 @@ export function parseCommandNodeResult(
   const result = WorkflowNodeResultEnvelopeSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
-      `Workflow node result must use the envelope {"data":{},"modify":{"workflow":{"var":{}},"node":{"var":{}}},"base_resp":{"status_code":0,"status_msg":"","forbid_retry":0},"artifacts":[]}: ${result.error.issues
+      `Workflow node result must use the envelope {"data":{},"modify":{"workflow":{"var":{}}},"base_resp":{"status_code":0,"status_msg":"","forbid_retry":0}}. data is required; modify and base_resp are optional: ${result.error.issues
         .map((issue) => issue.message)
         .join("; ")}`,
     );

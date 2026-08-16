@@ -25,7 +25,7 @@ export interface WorkflowCommandProtocolInfo {
   resultFormat: "one JSON object";
   failureSignal: "non-zero exit code";
   inputEnvelope: "{data,workflow.var,node.var}";
-  resultEnvelope: "{data,modify,base_resp,artifacts}";
+  resultEnvelope: "{data,modify?,base_resp?}";
   flowControl: "user-defined fields in data";
   variableTypes: ["string", "int64 decimal string"];
   legacyStdoutResult: false;
@@ -50,7 +50,7 @@ export function buildWorkflowCommandProtocolInfo(
     resultFormat: "one JSON object",
     failureSignal: "non-zero exit code",
     inputEnvelope: "{data,workflow.var,node.var}",
-    resultEnvelope: "{data,modify,base_resp,artifacts}",
+    resultEnvelope: "{data,modify?,base_resp?}",
     flowControl: "user-defined fields in data",
     variableTypes: ["string", "int64 decimal string"],
     legacyStdoutResult: false,
@@ -69,7 +69,7 @@ export function assertWorkflowCommandProtocol(serverInfo: ServerInfoStatusPayloa
     message: "The connected daemon does not support Workflow command protocol version 1",
     details: `Update the Paseo daemon. The daemon advertises Workflow protocol version ${
       serverInfo?.features?.workflowProtocolVersion ?? "unknown"
-    }, but this CLI requires version ${WORKFLOW_COMMAND_PROTOCOL_VERSION}. Bash and Python nodes read {data,workflow.var,node.var} from stdin and write {data,modify,base_resp,artifacts} to file descriptor 3. stdout/stderr are logs and are never parsed as results.`,
+    }, but this CLI requires version ${WORKFLOW_COMMAND_PROTOCOL_VERSION}. Bash and Python nodes read {data,workflow.var,node.var} from stdin and write {data,modify?,base_resp?} to file descriptor 3. data is required; node.var is read-only; artifacts are framework-owned. stdout/stderr are logs and are never parsed as results.`,
   };
   throw error;
 }

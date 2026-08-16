@@ -71,17 +71,10 @@ export const WorkflowVariableModificationSchema = z
       })
       .strict()
       .default({ var: {} }),
-    node: z
-      .object({
-        var: WorkflowVariableValuesSchema.default({}),
-      })
-      .strict()
-      .default({ var: {} }),
   })
   .strict()
   .default({
     workflow: { var: {} },
-    node: { var: {} },
   });
 export type WorkflowVariableModification = z.infer<typeof WorkflowVariableModificationSchema>;
 
@@ -112,12 +105,15 @@ export type WorkflowArtifact = z.infer<typeof WorkflowArtifactSchema>;
 
 export const WorkflowNodeResultEnvelopeSchema = z
   .object({
-    data: WorkflowDataSchema.default({}),
+    data: WorkflowDataSchema,
     modify: WorkflowVariableModificationSchema,
     base_resp: WorkflowBaseResponseSchema,
-    artifacts: z.array(WorkflowArtifactSchema).max(1_000).default([]),
   })
-  .strict();
+  .strict()
+  .transform((result) => ({
+    ...result,
+    artifacts: [] as WorkflowArtifact[],
+  }));
 export type WorkflowNodeResultEnvelope = z.infer<typeof WorkflowNodeResultEnvelopeSchema>;
 
 export function isWorkflowInt64(value: string): boolean {

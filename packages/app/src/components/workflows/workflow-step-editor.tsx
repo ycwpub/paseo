@@ -1446,9 +1446,9 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
   const copy = WORKFLOW_VARIABLE_COPY[kind];
   let usage: string;
   if (kind === "bash") {
-    usage = `input="$(cat)"\necho '{{customer.name}}' '{{items.0.id}}' '{{control}}'\nprintf '{"control":"done"}\\n' >&3`;
+    usage = `echo '{{customer.name}}' '{{items.0.id}}' '{{control}}'\noutput='{"data":{"control":"done"}}'`;
   } else if (kind === "python") {
-    usage = `customer = "{{customer.name}}"\nitem_id = "{{items.0.id}}"\nwith os.fdopen(3, "w") as result:\n    json.dump({"control": "done"}, result)`;
+    usage = `customer = "{{customer.name}}"\nitem_id = "{{items.0.id}}"\noutput = {"data": {"control": "done"}}`;
   } else {
     usage = `Review {{customer.name}} for item {{items.0.id}}. Current route: {{control}}.`;
   }

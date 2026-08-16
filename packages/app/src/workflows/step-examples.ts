@@ -1,61 +1,23 @@
 import type { WorkflowStep } from "@getpaseo/protocol/workflow/types";
 
-export const DEFAULT_BASH_INITIAL_COMMAND = `output="$(node - "$input" <<'NODE'
-const envelope = JSON.parse(process.argv[2]);
-console.log(JSON.stringify({
-  data: {
-    ...envelope.data,
-    status: "done"
-  },
-  modify: {
-    workflow: { var: {} },
-    node: { var: {} }
-  },
-  base_resp: {
-    status_code: 0,
-    status_msg: "",
-    forbid_retry: 0
-  },
-  artifacts: []
-}));
-NODE
-)"`;
+export const DEFAULT_BASH_INITIAL_COMMAND = `output="$(jq -c '
+{
+  data: ((.data // {}) + {status: "done"})
+}
+' <<< "$input")"`;
 
 export const BASH_CHILD_WORKFLOW_EXAMPLE = `child_run="$(paseo workflow run /absolute/path/child.json "$input" \\
   --host "\${PASEO_LISTEN:-127.0.0.1:6767}" --json)"
-output="$(node - "$child_run" <<'NODE'
-const run = JSON.parse(process.argv[2]);
-if (run.status !== "succeeded" || !run.outputPayload) {
-  throw new Error(run.error || "Child workflow failed");
-}
-process.stdout.write(JSON.stringify({
-  data: JSON.parse(run.outputPayload),
-  modify: {
-    workflow: { var: {} },
-    node: { var: {} }
-  },
-  base_resp: {
-    status_code: 0,
-    status_msg: "",
-    forbid_retry: 0
-  },
-  artifacts: run.artifacts || []
-}));
-NODE
-)"`;
+output="$(jq -ce '
+if .status == "succeeded" and ((.outputPayload | type) == "string") then
+  {data: (.outputPayload | fromjson)}
+else
+  error(.error // "Child workflow failed")
+end
+' <<< "$child_run")"`;
 
 export const DEFAULT_PYTHON_CODE = `output = {
     "data": {**input["data"], "status": "done"},
-    "modify": {
-        "workflow": {"var": {}},
-        "node": {"var": {}},
-    },
-    "base_resp": {
-        "status_code": 0,
-        "status_msg": "",
-        "forbid_retry": 0,
-    },
-    "artifacts": [],
 }`;
 
 export const DEFAULT_AGENT_INITIAL_PROMPT = `[User]
@@ -87,16 +49,6 @@ const COMMAND_OUTPUT_EXAMPLE = JSON.stringify(
       customer: { name: "Alice" },
       items: [{ id: 7 }],
     },
-    modify: {
-      workflow: { var: {} },
-      node: { var: {} },
-    },
-    base_resp: {
-      status_code: 0,
-      status_msg: "",
-      forbid_retry: 0,
-    },
-    artifacts: [],
   },
   null,
   2,

@@ -7,6 +7,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { WorkflowService } from "./service.js";
 
 const tempDirs: string[] = [];
+const workflowV1 = {
+  apiVersion: "paseo.sh/workflow/v1",
+  kind: "Workflow",
+  version: 1,
+} as const;
 
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
@@ -17,20 +22,22 @@ function shellQuote(value: string): string {
 }
 
 function nodeCommand(source: string): string {
-  const wrappedSource = [
-    'const fs = require("fs");',
-    'const input = JSON.parse(fs.readFileSync(0, "utf8"));',
-    source,
-  ].join("\n");
-  return [shellQuote(process.execPath), "-e", shellQuote(wrappedSource)].join(" ");
+  const wrappedSource = ["const input = JSON.parse(process.argv[1]);", source].join("\n");
+  const command = [shellQuote(process.execPath), "-e", shellQuote(wrappedSource), '"$input"'].join(
+    " ",
+  );
+  return `output="$(${command})"`;
 }
 
 function appendVisitCommand(label: string): string {
   return nodeCommand(
     [
-      "fs.writeSync(3, JSON.stringify({",
-      `  ...input, control: ${JSON.stringify(label)},`,
-      `  visited: [...(input.visited ?? []), ${JSON.stringify(label)}]`,
+      "process.stdout.write(JSON.stringify({",
+      "  data: {",
+      "    ...input.data,",
+      `    control: ${JSON.stringify(label)},`,
+      `    visited: [...(input.data.visited ?? []), ${JSON.stringify(label)}]`,
+      "  }",
       "}));",
     ].join("\n"),
   );
@@ -72,7 +79,7 @@ describe("WorkflowService node runs", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
-        version: 1,
+        ...workflowV1,
         name: "Single node",
         steps: [
           { id: "first", type: "bash", initialCommand: appendVisitCommand("first") },
@@ -93,7 +100,6 @@ describe("WorkflowService node runs", () => {
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["worker"]);
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       control: "worker",
-      error: "",
       customer: "Alice",
       visited: ["worker"],
     });
@@ -105,7 +111,7 @@ describe("WorkflowService node runs", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
-        version: 1,
+        ...workflowV1,
         name: "Nested target",
         steps: [
           {
@@ -118,6 +124,7 @@ describe("WorkflowService node runs", () => {
                   {
                     id: "loop",
                     type: "for",
+                    items: "{{data.items}}",
                     steps: [
                       {
                         id: "worker",
@@ -153,7 +160,7 @@ describe("WorkflowService node runs", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
-        version: 1,
+        ...workflowV1,
         name: "Switch target",
         steps: [
           {
@@ -203,7 +210,7 @@ describe("WorkflowService node runs", () => {
     await writeFile(
       scriptPath,
       JSON.stringify({
-        version: 1,
+        ...workflowV1,
         name: "Unknown target",
         steps: [{ id: "worker", type: "bash", initialCommand: appendVisitCommand("worker") }],
       }),

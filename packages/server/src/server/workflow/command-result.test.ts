@@ -23,7 +23,6 @@ describe("parseCommandNodeResult", () => {
       },
       modify: {
         workflow: { var: {} },
-        node: { var: {} },
       },
       base_resp: {
         status_code: 0,
@@ -52,6 +51,22 @@ describe("parseCommandNodeResult", () => {
         commandType: "Python",
       }),
     ).toThrow("must use the envelope");
+  });
+
+  it("requires data and rejects node variable modifications and artifacts", () => {
+    for (const resultJson of [
+      "{}",
+      '{"data":{},"modify":{"node":{"var":{"cursor":"next"}}}}',
+      '{"data":{},"artifacts":[]}',
+    ]) {
+      expect(() =>
+        parseCommandNodeResult({
+          resultJson,
+          resultExceededLimit: false,
+          commandType: "Bash",
+        }),
+      ).toThrow("must use the envelope");
+    }
   });
 
   it("reports base_resp failures with retry policy", () => {

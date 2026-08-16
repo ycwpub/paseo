@@ -26,9 +26,6 @@ function nodeCommand(source: string, ...args: string[]): string {
     "const __paseoWriteResult = (value) =>",
     "  __paseoFs.writeFileSync(process.env.PASEO_TEST_RESULT_FILE, JSON.stringify({",
     "    data: value,",
-    "    modify: { workflow: { var: {} }, node: { var: {} } },",
-    '    base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },',
-    "    artifacts: [],",
     "  }));",
     source,
   ].join("\n");
@@ -497,9 +494,6 @@ describe("WorkflowService", () => {
               '        "greeting": "Hello " + payload["customer"]["name"],',
               '        "stdinMatches": input["data"] == payload,',
               "    },",
-              '    "modify": {"workflow": {"var": {}}, "node": {"var": {}}},',
-              '    "base_resp": {"status_code": 0, "status_msg": "", "forbid_retry": 0},',
-              '    "artifacts": [],',
               "}",
             ].join("\n"),
           },
@@ -934,9 +928,6 @@ describe("WorkflowService", () => {
     const scriptPath = join(home, "workflow.json");
     const result = JSON.stringify({
       data: { control: "true", source: "fd3" },
-      modify: { workflow: { var: {} }, node: { var: {} } },
-      base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
-      artifacts: [],
     });
     const command = [
       `printf '%s\\n' ${shellQuote('{"control":"ignored","source":"stdout-log"}')}`,
@@ -1041,18 +1032,7 @@ describe("WorkflowService", () => {
     expect(JSON.parse(run.nodeRuns[0]?.outputPayload ?? "{}")).toEqual({});
   });
 
-  it.each([
-    [
-      "base response and mutation fields",
-      '{"data":{"message":"defaults applied"}}',
-      { message: "defaults applied" },
-    ],
-    [
-      "artifacts",
-      '{"data":{"message":"business data"},"artifacts":[]}',
-      { message: "business data" },
-    ],
-  ])("defaults missing %s in a Bash result envelope", async (_label, output, expected) => {
+  it("defaults optional fields in a Bash result envelope", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
     await writeFile(
@@ -1065,7 +1045,7 @@ describe("WorkflowService", () => {
           {
             id: "normalize",
             type: "bash",
-            initialCommand: `output=${shellQuote(output)}`,
+            initialCommand: `output=${shellQuote('{"data":{"message":"defaults applied"}}')}`,
           },
         ],
       }),
@@ -1076,7 +1056,7 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
 
     expect(run.status, run.error ?? undefined).toBe("succeeded");
-    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual(expected);
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({ message: "defaults applied" });
   });
 
   it.each([
@@ -1582,9 +1562,6 @@ describe("WorkflowService", () => {
     const loopCommand = `output=${shellQuote(
       JSON.stringify({
         data: {},
-        modify: { workflow: { var: {} }, node: { var: {} } },
-        base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
-        artifacts: [],
       }),
     )}`;
     await writeFile(
@@ -1866,9 +1843,6 @@ describe("WorkflowService", () => {
           sessionId: "session",
           finalText: JSON.stringify({
             data: { control: "是" },
-            modify: { workflow: { var: {} }, node: { var: {} } },
-            base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
-            artifacts: [],
           }),
           timeline: [],
           canceled: false,
@@ -1940,9 +1914,6 @@ describe("WorkflowService", () => {
           sessionId: "session",
           finalText: JSON.stringify({
             data: { control: "通过" },
-            modify: { workflow: { var: {} }, node: { var: {} } },
-            base_resp: { status_code: 0, status_msg: "", forbid_retry: 0 },
-            artifacts: [],
           }),
           timeline: [],
           canceled: false,

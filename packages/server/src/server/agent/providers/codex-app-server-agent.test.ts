@@ -539,6 +539,47 @@ describe("Codex app-server provider", () => {
     expect(params?.developerInstructions).toContain("Never expose hidden chain-of-thought");
   });
 
+  test("collaboration mode keeps concise commentary progress updates", async () => {
+    const session = createSession({
+      systemPrompt: "Project-specific instructions.",
+      daemonAppendSystemPrompt: "Daemon-specific instructions.",
+    });
+    asInternals(session).collaborationModes = [
+      {
+        name: "Code",
+        mode: "code",
+        developer_instructions: "Built-in code mode instructions.",
+      },
+    ];
+    asInternals(session).refreshResolvedCollaborationMode();
+    const request = vi.fn(async (method: string) => {
+      if (method === "thread/loaded/list") {
+        return { data: ["test-thread"] };
+      }
+      if (method === "turn/start") {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.activeForegroundTurnId = null;
+    session.client = createStub<CodexClientLike>({ request });
+
+    await session.startTurn("Inspect the repository");
+
+    const turnStartCall = request.mock.calls.find(([method]) => method === "turn/start");
+    const params = turnStartCall?.[1] as Record<string, unknown> | undefined;
+    const collaborationMode = params?.collaborationMode as
+      | { settings?: { developer_instructions?: unknown } }
+      | undefined;
+    const developerInstructions = collaborationMode?.settings?.developer_instructions;
+    expect(developerInstructions).toEqual(expect.any(String));
+    expect(developerInstructions).toContain("Built-in code mode instructions.");
+    expect(developerInstructions).toContain("Project-specific instructions.");
+    expect(developerInstructions).toContain("Daemon-specific instructions.");
+    expect(developerInstructions).toContain("brief progress updates sent as commentary messages");
+    expect(developerInstructions).toContain("Never expose hidden chain-of-thought");
+  });
+
   test("passes ephemeral: true to thread/start when constructed as ephemeral", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const fakeClient: CodexClientLike = {

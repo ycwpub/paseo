@@ -22,6 +22,8 @@ vi.mock("@/components/ui/form-field", () => ({
     HTMLTextAreaElement,
     {
       value?: string;
+      initialValue?: string;
+      resetKey?: string | number;
       controlled?: boolean;
       testID?: string;
       onChangeText?: (value: string) => void;
@@ -29,18 +31,21 @@ vi.mock("@/components/ui/form-field", () => ({
       textInputStyle?: unknown;
     }
   >(function MockFormTextInput(
-    { value, controlled, testID, onChangeText, style, textInputStyle },
+    { value, initialValue, resetKey, controlled, testID, onChangeText, style, textInputStyle },
     ref,
   ) {
     return (
       <textarea
+        key={resetKey}
         ref={ref}
         data-testid={testID}
         data-controlled={controlled ? "true" : "false"}
+        data-reset-key={resetKey}
         data-style={JSON.stringify(style)}
         data-text-input-style={JSON.stringify(textInputStyle)}
+        defaultValue={controlled ? undefined : (initialValue ?? "")}
         onChange={(event) => onChangeText?.(event.target.value)}
-        value={value ?? ""}
+        value={controlled ? (value ?? "") : undefined}
       />
     );
   }),
@@ -325,6 +330,7 @@ describe("WorkflowTextInput", () => {
     const expandedInput = screen.getByTestId(
       "workflow-field-expanded-input",
     ) as HTMLTextAreaElement;
+    expect(expandedInput.getAttribute("data-controlled")).toBe("false");
 
     fireEvent.compositionStart(expandedInput);
     fireEvent.change(expandedInput, { target: { value: "women" } });

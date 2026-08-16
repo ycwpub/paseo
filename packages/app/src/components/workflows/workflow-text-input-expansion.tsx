@@ -58,7 +58,8 @@ export function WorkflowTextInputExpansion({
   const { height: viewportHeight } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(false);
   const [collapsedValue, setCollapsedValue] = useState(value ?? "");
-  const [expandedValue, setExpandedValue] = useState(value ?? "");
+  const [expandedInitialValue, setExpandedInitialValue] = useState(value ?? "");
+  const [expandedResetKey, setExpandedResetKey] = useState(0);
   const collapsedInputElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const expandedInputElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const collapsedValueRef = useRef(value ?? "");
@@ -79,12 +80,10 @@ export function WorkflowTextInputExpansion({
     if (!isExpanded) {
       const nextValue = value ?? "";
       expandedValueRef.current = nextValue;
-      setExpandedValue(nextValue);
     }
   }, [isExpanded, value]);
   const updateExpandedDraft = useCallback((nextValue: string) => {
     expandedValueRef.current = nextValue;
-    setExpandedValue(nextValue);
   }, []);
   const syncCollapsedValue = useCallback((nextValue: string) => {
     const changed = collapsedValueRef.current !== nextValue;
@@ -159,6 +158,7 @@ export function WorkflowTextInputExpansion({
         selectionEnd: input.selectionEnd ?? input.value.length,
         outdent: event.shiftKey,
       });
+      input.value = edit.value;
       updateExpandedDraft(edit.value);
       requestAnimationFrame(() => {
         input.focus();
@@ -264,16 +264,14 @@ export function WorkflowTextInputExpansion({
   const openEditor = useCallback(() => {
     const nextValue = isWeb ? collapsedValueRef.current : (value ?? "");
     expandedValueRef.current = nextValue;
-    setExpandedValue(nextValue);
+    setExpandedInitialValue(nextValue);
+    setExpandedResetKey((current) => current + 1);
     setIsExpanded(true);
   }, [value]);
   const closeEditor = useCallback(() => {
     expandedIsComposingRef.current = false;
-    const committedValue = value ?? "";
-    expandedValueRef.current = committedValue;
-    setExpandedValue(committedValue);
     setIsExpanded(false);
-  }, [value]);
+  }, []);
   const completeEditor = useCallback(() => {
     expandedIsComposingRef.current = false;
     const nextValue =
@@ -281,7 +279,6 @@ export function WorkflowTextInputExpansion({
         ? expandedInputElementRef.current.value
         : expandedValueRef.current;
     expandedValueRef.current = nextValue;
-    setExpandedValue(nextValue);
     collapsedValueRef.current = nextValue;
     setCollapsedValue(nextValue);
     if (nextValue !== (value ?? "")) {
@@ -382,7 +379,8 @@ export function WorkflowTextInputExpansion({
           <FormTextInput
             {...inputProps}
             ref={setExpandedInputRef}
-            value={expandedValue}
+            initialValue={expandedInitialValue}
+            resetKey={expandedResetKey}
             onChangeText={handleExpandedChangeText}
             accessibilityLabel={accessibilityLabel}
             multiline
@@ -396,7 +394,6 @@ export function WorkflowTextInputExpansion({
             ]}
             textInputStyle={[textInputStyle, WEB_TAB_WIDTH_STYLE]}
             testID={testID ? `${testID}-expanded-input` : "workflow-expanded-input"}
-            controlled
           />
         </View>
       </AdaptiveModalSheet>

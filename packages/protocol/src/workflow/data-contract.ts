@@ -3,6 +3,7 @@ import { z } from "zod";
 const WORKFLOW_INT64_MIN = -(1n << 63n);
 const WORKFLOW_INT64_MAX = (1n << 63n) - 1n;
 const WORKFLOW_VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
+const WORKFLOW_LOOP_BUILT_IN_VARIABLES = new Set(["item", "index", "count"]);
 
 export const WorkflowDataSchema = z.record(z.string(), z.unknown());
 export type WorkflowData = z.infer<typeof WorkflowDataSchema>;
@@ -47,8 +48,52 @@ export const WorkflowVariableDefinitionsSchema = z
   });
 export type WorkflowVariableDefinitions = z.infer<typeof WorkflowVariableDefinitionsSchema>;
 
+export const WorkflowLoopVariableDefinitionsSchema = WorkflowVariableDefinitionsSchema.refine(
+  (definitions) =>
+    Object.keys(definitions).every((name) => !WORKFLOW_LOOP_BUILT_IN_VARIABLES.has(name)),
+  {
+    message: "Loop variable names item, index, and count are reserved",
+  },
+);
+export type WorkflowLoopVariableDefinitions = z.infer<typeof WorkflowLoopVariableDefinitionsSchema>;
+
 export const WorkflowVariableValuesSchema = z.record(z.string(), z.string());
 export type WorkflowVariableValues = z.infer<typeof WorkflowVariableValuesSchema>;
+
+export const WorkflowLoopInputSchema = z
+  .record(z.string(), z.unknown())
+  .superRefine((value, context) => {
+    if (!Object.prototype.hasOwnProperty.call(value, "item")) {
+      context.addIssue({ code: "custom", path: ["item"], message: "loop.item is required" });
+    }
+    if (!Number.isInteger(value.index) || typeof value.index !== "number" || value.index < 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["index"],
+        message: "loop.index must be a non-negative integer",
+      });
+    }
+    if (!Number.isInteger(value.count) || typeof value.count !== "number" || value.count < 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["count"],
+        message: "loop.count must be a non-negative integer",
+      });
+    }
+    for (const [name, variableValue] of Object.entries(value)) {
+      if (WORKFLOW_LOOP_BUILT_IN_VARIABLES.has(name)) {
+        continue;
+      }
+      if (typeof variableValue !== "string") {
+        context.addIssue({
+          code: "custom",
+          path: [name],
+          message: `loop.${name} must be a string`,
+        });
+      }
+    }
+  });
+export type WorkflowLoopInput = z.infer<typeof WorkflowLoopInputSchema>;
 
 export const WorkflowNodeInputEnvelopeSchema = z
   .object({
@@ -56,6 +101,7 @@ export const WorkflowNodeInputEnvelopeSchema = z
     workflow: z.object({
       var: WorkflowVariableValuesSchema,
     }),
+    loop: WorkflowLoopInputSchema.optional(),
     node: z.object({
       var: WorkflowVariableValuesSchema,
     }),
@@ -71,10 +117,17 @@ export const WorkflowVariableModificationSchema = z
       })
       .strict()
       .default({ var: {} }),
+    loop: z
+      .object({
+        var: WorkflowVariableValuesSchema.default({}),
+      })
+      .strict()
+      .default({ var: {} }),
   })
   .strict()
   .default({
     workflow: { var: {} },
+    loop: { var: {} },
   });
 export type WorkflowVariableModification = z.infer<typeof WorkflowVariableModificationSchema>;
 

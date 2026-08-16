@@ -125,7 +125,7 @@ output = {
                   {
                     id: "loop",
                     type: "for",
-                    mode: "items",
+                    mode: "array",
                     items: "{{data.items}}",
                     forControl: "{{data.control}}",
                     maxIterations: 10,
@@ -136,8 +136,8 @@ output = {
                         type: "bash",
                         inputs: {
                           project: "{{workflow.inputs.project}}",
-                          item: "{{data.loop.item}}",
-                          index: "{{data.loop.index}}",
+                          item: "{{loop.item}}",
+                          index: "{{loop.index}}",
                           traceId: "{{workflow.var.traceId}}",
                         },
                         initialCommand: nodeOutputCommand(`

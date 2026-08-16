@@ -65,6 +65,24 @@ export const es: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Ciclo de vida del agente",
+        lifecycleHint:
+          "Controla cuánto tiempo este nodo reutiliza el mismo agente. Las llamadas reutilizadas se ejecutan en orden.",
+        selectLifecycle: "Seleccionar ciclo de vida del agente",
+        lifecycleOptions: {
+          workflow: "Workflow completo",
+          workflowDescription:
+            "Se crea en la primera ejecución, se reutiliza y se libera cuando termina el Workflow.",
+          for: "Bucle For actual",
+          forDescription:
+            "Se crea en la primera iteración, se reutiliza dentro del bucle For actual y se libera al salir.",
+          single: "Ejecución única",
+          singleDescription: "Crear un agente nuevo para cada ejecución, sin reutilizarlo.",
+        },
+        archiveAtLifecycleEnd: "Archivar automáticamente al finalizar el ciclo de vida del agente",
+      },
       contract: {
         title: "Contrato de datos del nodo",
         description: "Mapea solo los campos necesarios y valida entrada y salida con JSON Schema.",

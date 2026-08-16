@@ -13,6 +13,12 @@ const context = {
   workflowVariables: {
     traceId: "trace-1",
   },
+  loopVariables: {
+    item: { id: 7 },
+    index: 1,
+    count: 3,
+    cursor: "next-loop",
+  },
   nodeVariables: {
     cursor: "next",
   },
@@ -27,6 +33,8 @@ describe("workflow data mapping", () => {
           alerts: "{{nodes.scan.outputs.alerts}}",
           approved: "{{approved}}",
           traceId: "{{workflow.var.traceId}}",
+          loopItem: "{{loop.item}}",
+          loopCursor: "{{loop.cursor}}",
           cursor: "{{node.var.cursor}}",
           label: "{{workflow.inputs.project}}: {{nodes.scan.outputs.summary}}",
         },
@@ -37,6 +45,8 @@ describe("workflow data mapping", () => {
       alerts: [{ id: 7 }],
       approved: true,
       traceId: "trace-1",
+      loopItem: { id: 7 },
+      loopCursor: "next-loop",
       cursor: "next",
       label: "paseo: one alert",
     });

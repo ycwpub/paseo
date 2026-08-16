@@ -4,10 +4,12 @@ import {
   WorkflowArtifactSchema,
   WorkflowInputMappingSchema,
   WorkflowJsonSchemaSchema,
+  WorkflowLoopVariableDefinitionsSchema,
   WorkflowVariableDefinitionsSchema,
   type WorkflowArtifact,
   type WorkflowInputMapping,
   type WorkflowJsonSchema,
+  type WorkflowLoopVariableDefinitions,
   type WorkflowVariableDefinitions,
 } from "./data-contract.js";
 import { WorkflowEnvironmentSchema } from "./environment.js";
@@ -29,6 +31,9 @@ export type WorkflowAgentConfig = z.infer<typeof WorkflowAgentConfigSchema>;
 
 export const WorkflowAgentOutputModeSchema = z.enum(["normal", "custom"]);
 export type WorkflowAgentOutputMode = z.infer<typeof WorkflowAgentOutputModeSchema>;
+
+export const WorkflowAgentLifecycleSchema = z.enum(["workflow", "for", "single"]);
+export type WorkflowAgentLifecycle = z.infer<typeof WorkflowAgentLifecycleSchema>;
 
 export const WorkflowRetryPolicySchema = z.object({
   maxAttempts: z.number().int().min(1).max(20),
@@ -110,6 +115,7 @@ export interface WorkflowAgentStep {
   name?: string;
   nextStepId?: string | null;
   type: "agent";
+  lifecycle?: WorkflowAgentLifecycle;
   outputMode?: WorkflowAgentOutputMode;
   initialPrompt: string;
   inputs?: WorkflowInputMapping;
@@ -145,9 +151,11 @@ export interface WorkflowForStep {
   name?: string;
   nextStepId?: string | null;
   type: "for";
-  mode?: "items" | "while";
+  mode?: "array" | "number" | "true";
+  executionMode?: "serial" | "parallel";
   items?: string;
   forControl?: string;
+  loopVariables?: WorkflowLoopVariableDefinitions;
   variables?: WorkflowVariableDefinitions;
   inputSchema?: WorkflowJsonSchema;
   steps: WorkflowStep[];
@@ -227,6 +235,7 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         name: WorkflowStepNameSchema,
         nextStepId: WorkflowStepIdSchema.nullable().optional(),
         type: z.literal("agent"),
+        lifecycle: WorkflowAgentLifecycleSchema.default("single"),
         outputMode: WorkflowAgentOutputModeSchema.default("normal"),
         initialPrompt: z.string().trim().min(1),
         inputs: WorkflowInputMappingSchema.optional(),
@@ -268,13 +277,15 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         name: WorkflowStepNameSchema,
         nextStepId: WorkflowStepIdSchema.nullable().optional(),
         type: z.literal("for"),
-        mode: z.enum(["items", "while"]).default("items"),
+        mode: z.enum(["array", "number", "true"]).default("array"),
+        executionMode: z.enum(["serial", "parallel"]).default("serial"),
         items: z.string().trim().min(1).optional(),
         forControl: z.string().trim().min(1).optional(),
+        loopVariables: WorkflowLoopVariableDefinitionsSchema.optional(),
         variables: WorkflowVariableDefinitionsSchema.optional(),
         inputSchema: WorkflowJsonSchemaSchema.optional(),
         steps: z.array(WorkflowStepSchema).min(1),
-        maxIterations: z.number().int().positive().max(10_000).default(100),
+        maxIterations: z.number().int().nonnegative().max(10_000).default(100),
         concurrency: z.number().int().positive().max(100).default(1),
       })
       .strict(),

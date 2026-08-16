@@ -7,7 +7,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => ({
-  View: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) => (
+    <div data-testid={testID}>{children}</div>
+  ),
   Text: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
 }));
 
@@ -29,9 +31,9 @@ vi.mock("react-native-unistyles", () => ({
         borderWidth: { 1: 1 },
         colors: { border: "#ddd", surface0: "#fff", foreground: "#111", foregroundMuted: "#666" },
         borderRadius: { lg: 8 },
-        fontSize: { xs: 12, xl: 20 },
-        fontWeight: { normal: "400" },
-        fontFamily: { mono: "monospace" },
+        fontSize: { xs: 12, lg: 18 },
+        fontWeight: { normal: "400", medium: "500" },
+        fontFamily: { mono: "monospace", ui: "sans-serif" },
       }),
   },
 }));
@@ -107,6 +109,8 @@ describe("WorkflowEditorToolbar", () => {
     expect(screen.getByText("Unsaved")).toBeTruthy();
     expect(screen.getByText("/tmp/long-workflow.json")).toBeTruthy();
     expect(screen.getByTestId("workflow-name").getAttribute("data-expandable")).toBe("false");
+    expect(screen.getByTestId("workflow-title-row").textContent).not.toContain("Unsaved");
+    expect(screen.getByTestId("workflow-save-group").textContent).toContain("Unsaved");
 
     fireEvent.change(screen.getByTestId("workflow-name"), { target: { value: "Renamed" } });
     fireEvent.click(screen.getByText("Delete"));

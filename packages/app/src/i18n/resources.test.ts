@@ -120,11 +120,24 @@ describe("translation resources", () => {
     expect(zhCN.workflows.title).toBe("工作流");
     expect(zhCN.workflows.editor.workflowTimeout).toBe("工作流超时（秒）");
     expect(zhCN.workflows.nodes.bash.initialCommand).toBe("初始命令");
+    expect(zhCN.workflows.nodes.contract.inputs).toBe("input.data 映射（可选）");
+    expect(zhCN.workflows.nodes.contract.inputsHint).toBe(
+      "在节点执行前生成本节点的 input.data。留空时沿用上一个节点的 output.data；可用于筛选、重命名或组合字段。例如：{{nodes.scan.outputs.items}}。",
+    );
+    expect(zhCN.workflows.nodes.contract.inputSchema).toBe("input.data Schema 校验");
+    expect(zhCN.workflows.nodes.contract.outputSchema).toBe("output.data Schema 校验（可选）");
+    expect(zhCN.workflows.nodes.contractHints.inputSchema).toBe(
+      "校验完成映射后，本节点实际接收的 input.data",
+    );
+    expect(zhCN.workflows.nodes.contractHints.outputSchema).toBe(
+      "校验本节点生成的 output.data，用于及时定位输出格式错误；不替代下游节点的 input.data Schema 校验。",
+    );
+    expect(zhCN.workflows.nodes.schemaCompatibility.title).toBe("data Schema 兼容性提示");
     expect(zhCN.workflows.nodes.common.bashInputVariableHint).toBe(
-      "执行命令前，Paseo 把框架组装的节点输入 JSON 字符串赋值给此变量。",
+      "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 变量位于 input.workflow.var，最内层 For 作用域位于 input.loop，节点常量位于 input.node.var。",
     );
     expect(zhCN.workflows.nodes.common.pythonInputVariableHint).toBe(
-      "执行代码前，Paseo 把框架组装并解析后的节点输入对象赋值给此变量。",
+      'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 作用域位于 input["loop"]，节点常量位于 input["node"]["var"]。',
     );
     expect(zhCN.workflows.nodes.common.bashOutputVariableHint).toBe(
       "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
@@ -134,7 +147,15 @@ describe("translation resources", () => {
     );
     expect(zhCN.workflows.nodes.variables.examplesTitle).toBe("变量使用范例");
     expect(zhCN.workflows.nodes.agent.selectProvider).toBe("选择 Provider");
+    expect(zhCN.workflows.nodes.agent.lifecycle).toBe("Agent 生命周期");
+    expect(zhCN.workflows.nodes.agent.lifecycleOptions.workflow).toBe("整个 Workflow");
+    expect(zhCN.workflows.nodes.agent.archiveAtLifecycleEnd).toBe("Agent 生命周期结束后自动归档");
     expect(zhCN.workflows.nodes.for.loopBody).toBe("循环体");
+    expect(zhCN.workflows.nodes.for.executionMode).toBe("执行模式");
+    expect(zhCN.workflows.nodes.for.executionParallel).toBe("并行");
+    expect(zhCN.workflows.nodes.for.parallelLoopVariablesHint).toContain(
+      "不允许通过 modify.loop.var 修改",
+    );
   });
 
   it("keeps non-English supported languages translated beyond fallback labels", () => {

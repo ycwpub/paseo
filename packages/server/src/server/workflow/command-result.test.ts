@@ -23,6 +23,7 @@ describe("parseCommandNodeResult", () => {
       },
       modify: {
         workflow: { var: {} },
+        loop: { var: {} },
       },
       base_resp: {
         status_code: 0,

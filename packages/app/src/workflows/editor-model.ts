@@ -123,6 +123,7 @@ export function createWorkflowStep(
       id,
       name: names.agent,
       type,
+      lifecycle: "single",
       outputMode: "normal",
       initialPrompt: DEFAULT_AGENT_INITIAL_PROMPT,
       config: {
@@ -146,7 +147,8 @@ export function createWorkflowStep(
     id,
     name: names.for,
     type,
-    mode: "items",
+    mode: "array",
+    executionMode: "serial",
     items: "{{data.items}}",
     forControl: "{{data.control}}",
     maxIterations: 100,
@@ -256,7 +258,7 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
     return defaultRetryError;
   }
   // oxlint-disable-next-line complexity -- Recursive validation keeps branch, loop, retry, and self-reference errors in one deterministic traversal.
-  const validateSteps = (steps: WorkflowStep[]): string | null => {
+  const validateSteps = (steps: WorkflowStep[], insideFor = false): string | null => {
     const sequenceError = validateWorkflowSequenceLinks(steps);
     if (sequenceError) {
       return sequenceError;
@@ -272,6 +274,9 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
         if (retryError) {
           return retryError;
         }
+        if (step.type === "agent" && (step.lifecycle ?? "single") === "for" && !insideFor) {
+          return `Agent step ${step.id} with For lifecycle must be inside a For loop`;
+        }
       }
       if (step.type === "switch") {
         const cases = new Set<string>();
@@ -284,12 +289,12 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
             return `Switch step ${step.id} has duplicate case: ${candidate.equals}`;
           }
           cases.add(normalized);
-          const branchError = validateSteps(candidate.steps);
+          const branchError = validateSteps(candidate.steps, insideFor);
           if (branchError) {
             return branchError;
           }
         }
-        const defaultError = validateSteps(step.defaultSteps ?? []);
+        const defaultError = validateSteps(step.defaultSteps ?? [], insideFor);
         if (defaultError) {
           return defaultError;
         }
@@ -297,15 +302,20 @@ export function validateWorkflowDraft(script: WorkflowScript): string | null {
           return `Switch step ${step.id} requires a value expression`;
         }
       } else if (step.type === "for") {
-        const loopError = validateSteps(step.steps);
+        const loopError = validateSteps(step.steps, true);
         if (loopError) {
           return loopError;
         }
-        if ((step.mode ?? "items") === "items" && !step.items) {
-          return `For step ${step.id} in items mode requires an items expression`;
+        const mode = step.mode ?? "array";
+        if (mode !== "true" && !step.items) {
+          return `For step ${step.id} in ${mode} mode requires an items expression`;
         }
-        if ((step.mode ?? "items") === "while" && (step.concurrency ?? 1) !== 1) {
-          return `For step ${step.id} in while mode requires concurrency 1`;
+        const executionMode = step.executionMode ?? "serial";
+        if (executionMode === "serial" && (step.concurrency ?? 1) !== 1) {
+          return `For step ${step.id} in serial mode requires concurrency 1`;
+        }
+        if (executionMode === "parallel" && mode === "true" && (step.maxIterations ?? 100) === 0) {
+          return `For step ${step.id} cannot run an unlimited True loop in parallel`;
         }
       }
     }

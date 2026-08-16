@@ -66,6 +66,24 @@ export const fr: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Cycle de vie de l’agent",
+        lifecycleHint:
+          "Définit la durée de réutilisation du même agent par ce nœud. Les appels réutilisés sont exécutés dans l’ordre.",
+        selectLifecycle: "Sélectionner le cycle de vie de l’agent",
+        lifecycleOptions: {
+          workflow: "Workflow entier",
+          workflowDescription:
+            "Créé lors de la première exécution, réutilisé, puis libéré à la fin du Workflow.",
+          for: "Boucle For actuelle",
+          forDescription:
+            "Créé à la première itération, réutilisé dans la boucle For actuelle, puis libéré à sa sortie.",
+          single: "Exécution unique",
+          singleDescription: "Créer un nouvel agent à chaque exécution, sans réutilisation.",
+        },
+        archiveAtLifecycleEnd: "Archiver automatiquement à la fin du cycle de vie de l’agent",
+      },
       contract: {
         title: "Contrat de données du nœud",
         description: "Mappez uniquement les champs requis et validez les entrées et sorties.",

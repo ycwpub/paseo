@@ -12,11 +12,13 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
       WorkflowNodeInputEnvelopeSchema.parse({
         data: { approved: true },
         workflow: { var: { traceId: "trace-1", counter: "7" } },
+        loop: { item: "alpha", index: 0, count: 2, cursor: "next" },
         node: { var: { cursor: "next" } },
       }),
     ).toEqual({
       data: { approved: true },
       workflow: { var: { traceId: "trace-1", counter: "7" } },
+      loop: { item: "alpha", index: 0, count: 2, cursor: "next" },
       node: { var: { cursor: "next" } },
     });
   });
@@ -40,6 +42,7 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
         data: { approved: true },
         modify: {
           workflow: { var: { counter: "8" } },
+          loop: { var: { cursor: "next" } },
         },
         base_resp: {
           status_code: 0,
@@ -51,6 +54,7 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
       data: { approved: true },
       modify: {
         workflow: { var: { counter: "8" } },
+        loop: { var: { cursor: "next" } },
       },
       base_resp: {
         status_code: 0,
@@ -66,6 +70,7 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
       data: { answer: "ok" },
       modify: {
         workflow: { var: {} },
+        loop: { var: {} },
       },
       base_resp: {
         status_code: 0,
@@ -85,6 +90,7 @@ describe("WorkflowNodeResultEnvelopeSchema", () => {
         data: {},
         modify: {
           workflow: { var: {} },
+          loop: { var: {} },
           node: { var: { cursor: "next" } },
         },
       }).success,

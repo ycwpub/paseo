@@ -44,8 +44,41 @@ describe("workflow editor model", () => {
     expect(script.steps[0]?.name).toBe("Bash 命令");
     expect(loop.name).toBe("逐项循环");
     expect(loop.type === "for" ? loop.steps[0]?.name : null).toBe("Bash 命令");
+    expect(loop.type === "for" ? loop.mode : null).toBe("array");
+    expect(loop.type === "for" ? loop.executionMode : null).toBe("serial");
+    expect(loop.type === "for" ? loop.items : null).toBe("{{data.items}}");
     expect(loop.type === "for" ? loop.maxIterations : null).toBe(100);
     expect(loop.type === "for" ? loop.concurrency : null).toBe(1);
+  });
+
+  it("validates serial and unlimited parallel For execution settings", () => {
+    const script = createEmptyWorkflowScript();
+    const loop = createWorkflowStep("for", script.steps);
+    if (loop.type !== "for") {
+      throw new Error("Expected a For step");
+    }
+
+    expect(
+      validateWorkflowDraft({
+        ...script,
+        steps: [{ ...loop, executionMode: "serial", concurrency: 2 }],
+      }),
+    ).toContain("serial mode requires concurrency 1");
+    expect(
+      validateWorkflowDraft({
+        ...script,
+        steps: [
+          {
+            ...loop,
+            mode: "true",
+            items: undefined,
+            executionMode: "parallel",
+            concurrency: 1,
+            maxIterations: 0,
+          },
+        ],
+      }),
+    ).toContain("cannot run an unlimited True loop in parallel");
   });
 
   it("creates unique ids across nested workflow steps", () => {
@@ -74,9 +107,38 @@ describe("workflow editor model", () => {
   it("creates Agent nodes with an editable user-defined prompt default", () => {
     const step = createWorkflowStep("agent", []);
     expect(step.type).toBe("agent");
+    expect(step.type === "agent" ? step.lifecycle : null).toBe("single");
     expect(step.type === "agent" ? step.initialPrompt : null).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
     expect(step.type === "agent" ? step.outputMode : null).toBe("normal");
     expect(step.type === "agent" ? step.config.systemPrompt : null).toBeUndefined();
+  });
+
+  it("requires For-lifecycle Agent nodes to be nested inside a For loop", () => {
+    const script = createEmptyWorkflowScript();
+    const agent = createWorkflowStep("agent", script.steps);
+    if (agent.type !== "agent") {
+      throw new Error("Expected an Agent step");
+    }
+
+    expect(
+      validateWorkflowDraft({
+        ...script,
+        steps: [{ ...agent, lifecycle: "for" }],
+      }),
+    ).toContain("must be inside a For loop");
+    expect(
+      validateWorkflowDraft({
+        ...script,
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            items: "{{data.items}}",
+            steps: [{ ...agent, lifecycle: "for" }],
+          },
+        ],
+      }),
+    ).toBeNull();
   });
 
   it("updates Agent output mode without changing the system prompt", () => {

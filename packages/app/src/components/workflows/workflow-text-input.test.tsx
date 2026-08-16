@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop -- Test adapters bridge DOM events to React Native callbacks. */
-import React from "react";
+import React, { forwardRef } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,31 +18,37 @@ vi.mock("@/constants/platform", () => ({
 }));
 
 vi.mock("@/components/ui/form-field", () => ({
-  FormTextInput: ({
-    value,
-    controlled,
-    testID,
-    onChangeText,
-    style,
-    textInputStyle,
-  }: {
-    value?: string;
-    controlled?: boolean;
-    testID?: string;
-    onChangeText?: (value: string) => void;
-    style?: unknown;
-    textInputStyle?: unknown;
-  }) => (
-    <input
-      data-testid={testID}
-      data-controlled={controlled ? "true" : "false"}
-      data-style={JSON.stringify(style)}
-      data-text-input-style={JSON.stringify(textInputStyle)}
-      onChange={(event) => onChangeText?.(event.target.value)}
-      value={value ?? ""}
-    />
-  ),
+  FormTextInput: forwardRef<
+    HTMLTextAreaElement,
+    {
+      value?: string;
+      controlled?: boolean;
+      testID?: string;
+      onChangeText?: (value: string) => void;
+      style?: unknown;
+      textInputStyle?: unknown;
+    }
+  >(function MockFormTextInput(
+    { value, controlled, testID, onChangeText, style, textInputStyle },
+    ref,
+  ) {
+    return (
+      <textarea
+        ref={ref}
+        data-testid={testID}
+        data-controlled={controlled ? "true" : "false"}
+        data-style={JSON.stringify(style)}
+        data-text-input-style={JSON.stringify(textInputStyle)}
+        onChange={(event) => onChangeText?.(event.target.value)}
+        value={value ?? ""}
+      />
+    );
+  }),
 }));
+
+vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback): number =>
+  window.setTimeout(callback, 0),
+);
 
 vi.mock("@/components/adaptive-modal-sheet", () => ({
   AdaptiveModalSheet: ({
@@ -168,5 +174,24 @@ describe("WorkflowTextInput", () => {
 
     expect(screen.getByTestId("workflow-timeout")).toHaveProperty("value", "86400");
     expect(screen.queryByTestId("workflow-timeout-expand")).toBeNull();
+  });
+
+  it("uses Tab to indent inside the expanded editor instead of moving focus", () => {
+    const onChangeText = vi.fn();
+    render(
+      <WorkflowTextInput value={"[\n]"} onChangeText={onChangeText} testID="workflow-field" />,
+    );
+    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    const expandedInput = screen.getByTestId(
+      "workflow-field-expanded-input",
+    ) as HTMLTextAreaElement;
+    expandedInput.focus();
+    expandedInput.setSelectionRange(2, 2);
+
+    const allowedBrowserDefault = fireEvent.keyDown(expandedInput, { key: "Tab" });
+
+    expect(onChangeText).toHaveBeenLastCalledWith("[\n  ]");
+    expect(allowedBrowserDefault).toBe(false);
+    expect(document.activeElement).toBe(expandedInput);
   });
 });

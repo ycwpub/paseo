@@ -18,6 +18,7 @@ import {
 import { StyleSheet } from "react-native-unistyles";
 import {
   type WorkflowAgentConfig,
+  type WorkflowAgentLifecycle,
   type WorkflowAgentOutputMode,
   type WorkflowAgentStep,
   type WorkflowBashStep,
@@ -41,6 +42,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
 import { WorkflowDownstreamField } from "@/components/workflows/workflow-downstream-field";
+import { WorkflowLoopVariableFields } from "@/components/workflows/workflow-loop-variable-fields";
 import { WorkflowNodeContractFields } from "@/components/workflows/workflow-node-contract-fields";
 import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
 import { WorkflowStepHelp } from "@/components/workflows/workflow-step-help";
@@ -100,6 +102,15 @@ function optionalPositiveNumber(value: string): number | undefined {
   }
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined;
+}
+
+function optionalNonNegativeInteger(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function optionalPositiveDecimal(value: string): number | undefined {
@@ -290,44 +301,40 @@ interface WorkflowStepCardProps {
   onDetailsClose: () => void;
 }
 
-function WorkflowStepCard({
+export interface WorkflowStepEditorFieldsProps {
+  step: WorkflowStep;
+  depth: number;
+  rootSteps: WorkflowStep[];
+  siblingSteps: WorkflowStep[];
+  providerEntries?: ProviderSnapshotEntry[];
+  providersLoading?: boolean;
+  assistants?: Assistant[];
+  assistantsLoading?: boolean;
+  teams?: Team[];
+  teamsLoading?: boolean;
+  promptTemplates?: PaseoInstructionTemplate[];
+  promptTemplatesLoading?: boolean;
+  allowPython?: boolean;
+  onChange: (step: WorkflowStep) => void;
+}
+
+export function WorkflowStepEditorFields({
   step,
-  index,
-  total,
   depth,
   rootSteps,
   siblingSteps,
-  initiallyOpen,
-  providerEntries,
-  providersLoading,
-  assistants,
-  assistantsLoading,
-  teams,
-  teamsLoading,
-  promptTemplates,
-  promptTemplatesLoading,
-  allowPython,
+  providerEntries = [],
+  providersLoading = false,
+  assistants = [],
+  assistantsLoading = false,
+  teams = [],
+  teamsLoading = false,
+  promptTemplates = [],
+  promptTemplatesLoading = false,
+  allowPython = true,
   onChange,
-  onRemove,
-  onMove,
-  onDetailsClose,
-}: WorkflowStepCardProps): ReactElement {
+}: WorkflowStepEditorFieldsProps): ReactElement {
   const { t } = useTranslation();
-  const [detailsVisible, setDetailsVisible] = useState(initiallyOpen);
-  const meta = STEP_META[step.type];
-  const Icon = meta.icon;
-  const openDetails = useCallback(() => setDetailsVisible(true), []);
-  const closeDetails = useCallback(() => {
-    setDetailsVisible(false);
-    onDetailsClose();
-  }, [onDetailsClose]);
-  const detailsHeader = useMemo<SheetHeader>(
-    () => ({
-      title: step.name || step.id,
-      subtitle: `${t(meta.labelKey)} · ${step.id}`,
-    }),
-    [meta.labelKey, step.id, step.name, t],
-  );
   let stepFields: ReactElement;
   switch (step.type) {
     case "bash":
@@ -393,6 +400,77 @@ function WorkflowStepCard({
   }
 
   return (
+    <View style={styles.stepFields}>
+      <View style={styles.threeColumn}>
+        <View style={styles.columnField}>
+          <Field label={t("workflows.nodes.id")}>
+            <WorkflowTextInput
+              value={step.id}
+              onChangeText={(id) => onChange({ ...step, id })}
+              autoCapitalize="none"
+              size="sm"
+              testID={`workflow-step-${step.id}-id`}
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <Field label={t("workflows.nodes.displayName")}>
+            <WorkflowTextInput
+              value={step.name ?? ""}
+              onChangeText={(name) => onChange({ ...step, name: optionalText(name) })}
+              size="sm"
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <WorkflowDownstreamField step={step} siblingSteps={siblingSteps} onChange={onChange} />
+        </View>
+      </View>
+      {stepFields}
+    </View>
+  );
+}
+
+function WorkflowStepCard({
+  step,
+  index,
+  total,
+  depth,
+  rootSteps,
+  siblingSteps,
+  initiallyOpen,
+  providerEntries,
+  providersLoading,
+  assistants,
+  assistantsLoading,
+  teams,
+  teamsLoading,
+  promptTemplates,
+  promptTemplatesLoading,
+  allowPython,
+  onChange,
+  onRemove,
+  onMove,
+  onDetailsClose,
+}: WorkflowStepCardProps): ReactElement {
+  const { t } = useTranslation();
+  const [detailsVisible, setDetailsVisible] = useState(initiallyOpen);
+  const meta = STEP_META[step.type];
+  const Icon = meta.icon;
+  const openDetails = useCallback(() => setDetailsVisible(true), []);
+  const closeDetails = useCallback(() => {
+    setDetailsVisible(false);
+    onDetailsClose();
+  }, [onDetailsClose]);
+  const detailsHeader = useMemo<SheetHeader>(
+    () => ({
+      title: step.name || step.id,
+      subtitle: `${t(meta.labelKey)} · ${step.id}`,
+    }),
+    [meta.labelKey, step.id, step.name, t],
+  );
+
+  return (
     <>
       <View style={[styles.stepCard, depth > 0 && styles.stepCardNested]}>
         <View style={styles.stepHeader}>
@@ -456,38 +534,22 @@ function WorkflowStepCard({
         snapPoints={["90%", "95%"]}
         testID={`workflow-step-${step.id}-details`}
       >
-        <View style={styles.stepFields}>
-          <View style={styles.threeColumn}>
-            <View style={styles.columnField}>
-              <Field label={t("workflows.nodes.id")}>
-                <WorkflowTextInput
-                  value={step.id}
-                  onChangeText={(id) => onChange({ ...step, id })}
-                  autoCapitalize="none"
-                  size="sm"
-                  testID={`workflow-step-${step.id}-id`}
-                />
-              </Field>
-            </View>
-            <View style={styles.columnField}>
-              <Field label={t("workflows.nodes.displayName")}>
-                <WorkflowTextInput
-                  value={step.name ?? ""}
-                  onChangeText={(name) => onChange({ ...step, name: optionalText(name) })}
-                  size="sm"
-                />
-              </Field>
-            </View>
-            <View style={styles.columnField}>
-              <WorkflowDownstreamField
-                step={step}
-                siblingSteps={siblingSteps}
-                onChange={onChange}
-              />
-            </View>
-          </View>
-          {stepFields}
-        </View>
+        <WorkflowStepEditorFields
+          step={step}
+          depth={depth}
+          rootSteps={rootSteps}
+          siblingSteps={siblingSteps}
+          providerEntries={providerEntries}
+          providersLoading={providersLoading}
+          assistants={assistants}
+          assistantsLoading={assistantsLoading}
+          teams={teams}
+          teamsLoading={teamsLoading}
+          promptTemplates={promptTemplates}
+          promptTemplatesLoading={promptTemplatesLoading}
+          allowPython={allowPython}
+          onChange={onChange}
+        />
       </AdaptiveModalSheet>
     </>
   );
@@ -1069,6 +1131,30 @@ function AgentStepFields({
     ],
     [t],
   );
+  const lifecycle = step.lifecycle ?? "single";
+  const lifecycleOptions = useMemo<SelectFieldOption<WorkflowAgentLifecycle>[]>(
+    () => [
+      {
+        id: "workflow",
+        value: "workflow",
+        label: t("workflows.nodes.agent.lifecycleOptions.workflow"),
+        description: t("workflows.nodes.agent.lifecycleOptions.workflowDescription"),
+      },
+      {
+        id: "for",
+        value: "for",
+        label: t("workflows.nodes.agent.lifecycleOptions.for"),
+        description: t("workflows.nodes.agent.lifecycleOptions.forDescription"),
+      },
+      {
+        id: "single",
+        value: "single",
+        label: t("workflows.nodes.agent.lifecycleOptions.single"),
+        description: t("workflows.nodes.agent.lifecycleOptions.singleDescription"),
+      },
+    ],
+    [t],
+  );
   return (
     <>
       <Field
@@ -1122,24 +1208,48 @@ function AgentStepFields({
       />
       <View style={styles.policySection}>
         <Text style={styles.sectionTitle}>{t("workflows.nodes.agent.executionPolicy")}</Text>
-        <View style={styles.policyField}>
-          <Field
-            label={t("workflows.nodes.common.timeout")}
-            hint={t("workflows.nodes.agent.timeoutHint")}
-          >
-            <WorkflowTextInput
-              value={formatMillisecondsAsSeconds(step.timeoutMs)}
-              onChangeText={(value) =>
-                onChange({
-                  ...step,
-                  timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
-                })
-              }
-              placeholder="1800"
-              keyboardType="decimal-pad"
-              size="sm"
-            />
-          </Field>
+        <View style={styles.twoColumn}>
+          <View style={styles.columnField}>
+            <Field
+              label={t("workflows.nodes.agent.lifecycle")}
+              hint={t("workflows.nodes.agent.lifecycleHint")}
+            >
+              <SelectField
+                field={false}
+                label=""
+                value={lifecycle}
+                selectedDisplay={optionDisplay(
+                  lifecycleOptions.find((option) => option.value === lifecycle),
+                )}
+                options={lifecycleOptions}
+                onChange={(nextLifecycle) => onChange({ ...step, lifecycle: nextLifecycle })}
+                placeholder={t("workflows.nodes.agent.selectLifecycle")}
+                emptyText=""
+                title={t("workflows.nodes.agent.lifecycle")}
+                size="sm"
+                testID={`workflow-agent-${step.id}-lifecycle`}
+              />
+            </Field>
+          </View>
+          <View style={styles.columnField}>
+            <Field
+              label={t("workflows.nodes.common.timeout")}
+              hint={t("workflows.nodes.agent.timeoutHint")}
+            >
+              <WorkflowTextInput
+                value={formatMillisecondsAsSeconds(step.timeoutMs)}
+                onChangeText={(value) =>
+                  onChange({
+                    ...step,
+                    timeoutMs: optionalPositiveSecondsAsMilliseconds(value),
+                  })
+                }
+                placeholder="1800"
+                keyboardType="decimal-pad"
+                size="sm"
+              />
+            </Field>
+          </View>
         </View>
       </View>
       <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
@@ -1399,7 +1509,7 @@ function AgentStepFields({
       />
       <View style={styles.toggleRow}>
         <ToggleField
-          label={t("workflows.nodes.agent.archive")}
+          label={t("workflows.nodes.agent.archiveAtLifecycleEnd")}
           value={step.config.archiveOnFinish ?? true}
           onChange={(archiveOnFinish) => onChange(updateAgentConfig(step, { archiveOnFinish }))}
         />
@@ -1884,11 +1994,20 @@ function ForStepFields({
   onChange: (step: WorkflowForStep) => void;
 }) {
   const { t } = useTranslation();
-  const mode = step.mode ?? "items";
-  const modeOptions = useMemo<SelectFieldOption<"items" | "while">[]>(
+  const mode = step.mode ?? "array";
+  const executionMode = step.executionMode ?? "serial";
+  const modeOptions = useMemo<SelectFieldOption<"array" | "number" | "true">[]>(
     () => [
-      { id: "items", value: "items", label: t("workflows.nodes.for.modeItems") },
-      { id: "while", value: "while", label: t("workflows.nodes.for.modeWhile") },
+      { id: "array", value: "array", label: t("workflows.nodes.for.modeArray") },
+      { id: "number", value: "number", label: t("workflows.nodes.for.modeNumber") },
+      { id: "true", value: "true", label: t("workflows.nodes.for.modeTrue") },
+    ],
+    [t],
+  );
+  const executionModeOptions = useMemo<SelectFieldOption<"serial" | "parallel">[]>(
+    () => [
+      { id: "serial", value: "serial", label: t("workflows.nodes.for.executionSerial") },
+      { id: "parallel", value: "parallel", label: t("workflows.nodes.for.executionParallel") },
     ],
     [t],
   );
@@ -1907,7 +2026,12 @@ function ForStepFields({
                 onChange({
                   ...step,
                   mode: nextMode,
-                  concurrency: nextMode === "while" ? 1 : step.concurrency,
+                  items:
+                    nextMode === "true"
+                      ? undefined
+                      : (step.items ??
+                        (nextMode === "array" ? "{{data.items}}" : "{{data.count}}")),
+                  concurrency: executionMode === "serial" ? 1 : (step.concurrency ?? 1),
                 })
               }
               placeholder={t("workflows.nodes.for.selectMode")}
@@ -1917,13 +2041,40 @@ function ForStepFields({
             />
           </Field>
         </View>
-        {mode === "items" ? (
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.for.executionMode")}
+            hint={t("workflows.nodes.for.executionModeHint")}
+          >
+            <SelectField
+              field={false}
+              label=""
+              value={executionMode}
+              selectedDisplay={optionDisplay(
+                executionModeOptions.find((option) => option.value === executionMode),
+              )}
+              options={executionModeOptions}
+              onChange={(nextExecutionMode) =>
+                onChange({
+                  ...step,
+                  executionMode: nextExecutionMode,
+                  concurrency: nextExecutionMode === "serial" ? 1 : (step.concurrency ?? 1),
+                })
+              }
+              placeholder={t("workflows.nodes.for.selectExecutionMode")}
+              emptyText=""
+              title={t("workflows.nodes.for.executionMode")}
+              size="sm"
+            />
+          </Field>
+        </View>
+        {mode !== "true" ? (
           <View style={styles.columnField}>
             <Field label={t("workflows.nodes.for.items")} hint={t("workflows.nodes.for.itemsHint")}>
               <WorkflowTextInput
                 value={step.items ?? ""}
                 onChangeText={(items) => onChange({ ...step, items: optionalText(items) })}
-                placeholder="{{data.items}}"
+                placeholder={mode === "array" ? "{{data.items}}" : "{{data.count}}"}
                 size="sm"
                 autoCapitalize="none"
               />
@@ -1938,7 +2089,7 @@ function ForStepFields({
             <WorkflowTextInput
               value={step.maxIterations?.toString() ?? ""}
               onChangeText={(value) =>
-                onChange({ ...step, maxIterations: optionalPositiveNumber(value) })
+                onChange({ ...step, maxIterations: optionalNonNegativeInteger(value) })
               }
               placeholder="100"
               keyboardType="numeric"
@@ -1946,23 +2097,24 @@ function ForStepFields({
             />
           </Field>
         </View>
-        <View style={styles.columnField}>
-          <Field
-            label={t("workflows.nodes.for.concurrency")}
-            hint={t("workflows.nodes.for.concurrencyHint")}
-          >
-            <WorkflowTextInput
-              value={step.concurrency?.toString() ?? ""}
-              onChangeText={(value) =>
-                onChange({ ...step, concurrency: optionalPositiveNumber(value) })
-              }
-              placeholder="1"
-              keyboardType="numeric"
-              size="sm"
-              editable={mode !== "while"}
-            />
-          </Field>
-        </View>
+        {executionMode === "parallel" ? (
+          <View style={styles.columnField}>
+            <Field
+              label={t("workflows.nodes.for.concurrency")}
+              hint={t("workflows.nodes.for.concurrencyHint")}
+            >
+              <WorkflowTextInput
+                value={step.concurrency?.toString() ?? "1"}
+                onChangeText={(value) =>
+                  onChange({ ...step, concurrency: optionalPositiveNumber(value) })
+                }
+                placeholder="1"
+                keyboardType="numeric"
+                size="sm"
+              />
+            </Field>
+          </View>
+        ) : null}
       </View>
       <Field label={t("workflows.nodes.for.control")} hint={t("workflows.nodes.for.controlHint")}>
         <WorkflowTextInput
@@ -1979,6 +2131,11 @@ function ForStepFields({
         outputSchema={undefined}
         variables={step.variables}
         onChange={({ inputSchema, variables }) => onChange({ ...step, inputSchema, variables })}
+      />
+      <WorkflowLoopVariableFields
+        value={step.loopVariables}
+        modificationAllowed={executionMode === "serial"}
+        onChange={(loopVariables) => onChange({ ...step, loopVariables })}
       />
       <View style={styles.branchCard}>
         <WorkflowStepListEditor

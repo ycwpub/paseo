@@ -6,7 +6,7 @@ export interface ForIterationResult<State> {
 }
 
 interface ForIterationExecutionInput<State> {
-  iterationCount: number;
+  iterationCount: number | null;
   concurrency: number;
   initialState: State;
   runIteration: (index: number, state: State) => Promise<ForIterationResult<State>>;
@@ -42,7 +42,13 @@ export async function executeForIterations<State>(
   if (input.concurrency === 1) {
     return executeSerialIterations(input);
   }
-  return executeConcurrentIterations(input);
+  if (input.iterationCount === null) {
+    throw new Error("Unlimited For execution requires concurrency 1");
+  }
+  return executeConcurrentIterations({
+    ...input,
+    iterationCount: input.iterationCount,
+  });
 }
 
 async function executeSerialIterations<State>(
@@ -50,8 +56,9 @@ async function executeSerialIterations<State>(
 ): Promise<ForIterationExecutionResult<State>> {
   let state = input.initialState;
   let completedIterations = 0;
-  for (let index = 0; index < input.iterationCount; index += 1) {
-    const iteration = await input.runIteration(index, state);
+  let index = 0;
+  while (input.iterationCount === null || index < input.iterationCount) {
+    const iteration = await input.runIteration(index, input.initialState);
     state = iteration.state;
     completedIterations += 1;
     if (iteration.signal === "break") {
@@ -62,6 +69,7 @@ async function executeSerialIterations<State>(
         breakIndex: index,
       };
     }
+    index += 1;
   }
   return {
     state,
@@ -72,7 +80,7 @@ async function executeSerialIterations<State>(
 }
 
 async function executeConcurrentIterations<State>(
-  input: ForIterationExecutionInput<State>,
+  input: ForIterationExecutionInput<State> & { iterationCount: number },
 ): Promise<ForIterationExecutionResult<State>> {
   const results: IndexedIterationResult<State>[] = [];
   const failures: IndexedIterationFailure[] = [];

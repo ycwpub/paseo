@@ -35,6 +35,12 @@ const STANDARD_INPUT_EXAMPLE = JSON.stringify(
     workflow: {
       var: { traceId: "trace-1" },
     },
+    loop: {
+      item: { id: 7 },
+      index: 0,
+      count: 1,
+      i: "0",
+    },
     node: {
       var: { counter: "0" },
     },

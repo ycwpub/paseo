@@ -64,6 +64,23 @@ export const ar: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "دورة حياة الوكيل",
+        lifecycleHint:
+          "تحدد مدة إعادة استخدام عقدة الوكيل للوكيل نفسه. تُنفذ استدعاءات الوكيل المعاد استخدامه بالتتابع.",
+        selectLifecycle: "اختر دورة حياة الوكيل",
+        lifecycleOptions: {
+          workflow: "سير العمل بالكامل",
+          workflowDescription: "يُنشأ عند أول تنفيذ، ثم يُعاد استخدامه ويُحرر عند انتهاء سير العمل.",
+          for: "حلقة For الحالية",
+          forDescription:
+            "يُنشأ عند أول تكرار، ويُعاد استخدامه داخل حلقة For الحالية، ثم يُحرر عند الخروج منها.",
+          single: "تنفيذ واحد",
+          singleDescription: "إنشاء وكيل جديد لكل تنفيذ دون إعادة استخدام.",
+        },
+        archiveAtLifecycleEnd: "أرشفة الوكيل تلقائيًا عند انتهاء دورة حياته",
+      },
       contract: {
         title: "عقد بيانات العقدة",
         description: "اربط الحقول المطلوبة فقط وتحقق من المدخلات والمخرجات.",

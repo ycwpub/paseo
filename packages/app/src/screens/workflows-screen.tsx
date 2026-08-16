@@ -37,6 +37,7 @@ import { WorkflowExpandableReadonlyValue } from "@/components/workflows/workflow
 import { WorkflowGraph } from "@/components/workflows/workflow-graph";
 import { WorkflowInputConfiguration } from "@/components/workflows/workflow-input-configuration";
 import { WorkflowRunInput } from "@/components/workflows/workflow-run-input";
+import { WorkflowSchemaCompatibilityAlert } from "@/components/workflows/workflow-schema-compatibility-alert";
 import { WorkflowStepDetailsSheet } from "@/components/workflows/workflow-step-details-sheet";
 import { WorkflowStepListEditor } from "@/components/workflows/workflow-step-editor";
 import { WorkflowUsageGuide } from "@/components/workflows/workflow-usage-guide";
@@ -68,6 +69,7 @@ import { collectWorkflowRunTargets } from "@/workflows/run-targets";
 import { deriveWorkflowNodeIdentity } from "@/workflows/run-node-actions";
 import { parseWorkflowProcessOutput } from "@/workflows/run-output";
 import { findWorkflowStep } from "@/workflows/step-lookup";
+import { updateWorkflowStepById } from "@/workflows/workflow-step-tree";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
@@ -281,6 +283,20 @@ function WorkflowsScreenContent(): ReactElement {
     setDraft(next);
     setDirty(true);
   }, []);
+
+  const updateSelectedDesignStep = useCallback(
+    (nextStep: WorkflowStep) => {
+      if (!draft || selectedDesignStepId === null) {
+        return;
+      }
+      updateDraft({
+        ...draft,
+        steps: updateWorkflowStepById(draft.steps, selectedDesignStepId, nextStep),
+      });
+      setSelectedDesignStepId(nextStep.id);
+    },
+    [draft, selectedDesignStepId, updateDraft],
+  );
 
   const persistDraft = useCallback(async (): Promise<WorkflowScriptFile | null> => {
     if (!client || !draft) {
@@ -605,6 +621,7 @@ function WorkflowsScreenContent(): ReactElement {
                 showsVerticalScrollIndicator={false}
               >
                 {validationError ? <Alert variant="error" description={validationError} /> : null}
+                <WorkflowSchemaCompatibilityAlert script={draft} />
 
                 <View style={styles.metadataCard}>
                   <View style={styles.metadataHeader}>
@@ -735,6 +752,16 @@ function WorkflowsScreenContent(): ReactElement {
                 <WorkflowStepDetailsSheet
                   steps={draft.steps}
                   stepId={selectedDesignStepId}
+                  providerEntries={providersSnapshot.entries ?? []}
+                  providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
+                  assistants={assistantsResult.assistants}
+                  assistantsLoading={assistantsResult.isLoading}
+                  teams={teamsResult.teams}
+                  teamsLoading={teamsResult.isLoading}
+                  promptTemplates={daemonConfig.config?.instructionTemplates ?? []}
+                  promptTemplatesLoading={daemonConfig.isLoading}
+                  allowPython={supportsWorkflowPython}
+                  onChange={updateSelectedDesignStep}
                   onClose={() => setSelectedDesignStepId(null)}
                 />
                 <WorkflowStepListEditor

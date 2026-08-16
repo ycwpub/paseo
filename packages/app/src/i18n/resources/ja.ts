@@ -64,6 +64,23 @@ export const ja: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "エージェントのライフサイクル",
+        lifecycleHint:
+          "このエージェントノードが同じエージェントを再利用する期間を指定します。再利用時の呼び出しは順番に実行されます。",
+        selectLifecycle: "エージェントのライフサイクルを選択",
+        lifecycleOptions: {
+          workflow: "Workflow 全体",
+          workflowDescription: "初回実行時に作成して再利用し、Workflow の終了時に解放します。",
+          for: "現在の For ループ",
+          forDescription:
+            "最初の反復で作成し、現在の For ループ内で再利用して、ループ終了時に解放します。",
+          single: "単一実行",
+          singleDescription: "実行ごとに新しいエージェントを作成し、再利用しません。",
+        },
+        archiveAtLifecycleEnd: "エージェントのライフサイクル終了時に自動アーカイブ",
+      },
       contract: {
         title: "ノードデータ契約",
         description: "必要なフィールドだけをマッピングし、入出力を検証します。",

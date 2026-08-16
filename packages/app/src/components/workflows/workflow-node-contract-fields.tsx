@@ -63,7 +63,7 @@ export function WorkflowNodeContractFields({
         <View style={styles.column}>
           <WorkflowJsonObjectField
             label={t("workflows.nodes.contract.inputSchema")}
-            hint={t("workflows.nodes.contract.schemaHint")}
+            hint={t("workflows.nodes.contractHints.inputSchema")}
             value={inputSchema}
             placeholder={'{\n  "type": "object"\n}'}
             onChange={(next) => onChange({ inputs, inputSchema: next, outputSchema, variables })}
@@ -72,7 +72,7 @@ export function WorkflowNodeContractFields({
         <View style={styles.column}>
           <WorkflowJsonObjectField
             label={t("workflows.nodes.contract.outputSchema")}
-            hint={t("workflows.nodes.contract.schemaHint")}
+            hint={t("workflows.nodes.contractHints.outputSchema")}
             value={outputSchema}
             placeholder={'{\n  "type": "object"\n}'}
             onChange={(next) => onChange({ inputs, inputSchema, outputSchema: next, variables })}
@@ -83,7 +83,7 @@ export function WorkflowNodeContractFields({
   );
 }
 
-function WorkflowJsonObjectField({
+export function WorkflowJsonObjectField({
   label,
   hint,
   value,

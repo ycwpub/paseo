@@ -1,5 +1,9 @@
-import type { WorkflowData, WorkflowInputMapping } from "@getpaseo/protocol/workflow/data-contract";
-import type { WorkflowVariableValues } from "@getpaseo/protocol/workflow/data-contract";
+import type {
+  WorkflowData,
+  WorkflowInputMapping,
+  WorkflowLoopInput,
+  WorkflowVariableValues,
+} from "@getpaseo/protocol/workflow/data-contract";
 
 const WHOLE_EXPRESSION_PATTERN = /^\s*{{\s*([^{}]+?)\s*}}\s*$/;
 const INLINE_EXPRESSION_PATTERN = /{{\s*([^{}]+?)\s*}}/g;
@@ -9,6 +13,7 @@ export interface WorkflowDataMappingContext {
   currentInput: WorkflowData;
   nodeOutputs: Record<string, WorkflowData>;
   workflowVariables: WorkflowVariableValues;
+  loopVariables: WorkflowLoopInput | undefined;
   nodeVariables: WorkflowVariableValues;
 }
 
@@ -33,7 +38,7 @@ function createExpressionRoot(context: WorkflowDataMappingContext): Record<strin
   const nodes = Object.fromEntries(
     Object.entries(context.nodeOutputs).map(([nodeId, outputs]) => [nodeId, { outputs }]),
   );
-  return {
+  const root: Record<string, unknown> = {
     workflow: {
       inputs: context.workflowInputs,
       var: context.workflowVariables,
@@ -45,6 +50,10 @@ function createExpressionRoot(context: WorkflowDataMappingContext): Record<strin
     payload: context.currentInput,
     ...context.currentInput,
   };
+  if (context.loopVariables) {
+    root.loop = context.loopVariables;
+  }
+  return root;
 }
 
 function resolveMappingValue(value: unknown, root: Record<string, unknown>): unknown {

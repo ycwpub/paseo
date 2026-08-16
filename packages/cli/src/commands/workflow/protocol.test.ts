@@ -28,10 +28,13 @@ describe("Workflow command protocol CLI", () => {
       resultTransport: "file descriptor 3",
       resultFormat: "one JSON object",
       failureSignal: "non-zero exit code",
-      inputEnvelope: "{data,workflow.var,node.var}",
-      resultEnvelope: "{data,modify?,base_resp?}",
+      inputEnvelope: "{data,workflow.var,loop?,node.var}",
+      resultEnvelope: "{data,modify.workflow.var?,modify.loop.var?,base_resp?}",
       flowControl: "user-defined fields in data",
       variableTypes: ["string", "int64 decimal string"],
+      forExecutionModes: ["serial", "parallel"],
+      parallelLoopVariableModification: false,
+      agentLifecycles: ["workflow", "for", "single"],
       legacyStdoutResult: false,
     });
   });

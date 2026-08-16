@@ -56,18 +56,23 @@ import {
   type WorkflowCommandOutput,
 } from "./command-node.js";
 import { parseCommandNodeResult, WorkflowNodeBusinessError } from "./command-result.js";
+import { WorkflowAgentLifecycleScope } from "./agent-lifecycle-scope.js";
 import { executeForIterations } from "./for-step-execution.js";
+import {
+  resolveWorkflowForExecutionConfig,
+  WorkflowForExecutionModeError,
+} from "./for-step-execution-mode.js";
+import { createWorkflowForIterationPlan, WorkflowForPlanError } from "./for-step-plan.js";
 import { WorkflowRunStore } from "./store.js";
 import { resolveWorkflowExpression, resolveWorkflowNodeInput } from "./workflow-data-mapping.js";
 import { validateWorkflowNodeData, validateWorkflowNodeSchema } from "./workflow-node-contract.js";
-import { WorkflowVariableState } from "./workflow-variable-state.js";
+import { type WorkflowLoopContext, WorkflowVariableState } from "./workflow-variable-state.js";
 import { findWorkflowStep } from "./workflow-step-search.js";
 import { resolveNextWorkflowStep, validateWorkflowSequenceLinks } from "./workflow-sequence.js";
 
 const DEFAULT_SHELL = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
 const DEFAULT_PYTHON_PATH = process.platform === "win32" ? "python" : "python3";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
-const DEFAULT_MAX_ITERATIONS = 100;
 const MAX_OUTPUT_CHARS = 200_000;
 const MAX_WORKFLOW_STEPS = 1_000;
 const MAX_WORKFLOW_DEPTH = 20;
@@ -106,6 +111,15 @@ interface ExecutionState {
   filePath: string;
   hasFileOutput: boolean;
   iterationPath: number[];
+  loopContext: WorkflowLoopContext | null;
+  workflowAgentScope: WorkflowAgentLifecycleScope<WorkflowAgentResource>;
+  forAgentScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null;
+}
+
+interface WorkflowAgentResource {
+  agentId: string;
+  workspace: PersistedWorkspaceRecord;
+  archiveOnLifecycleEnd: boolean;
 }
 
 interface StepExecutionResult extends ExecutionState {
@@ -419,6 +433,7 @@ export class WorkflowService {
   private async executeRun(run: WorkflowRun): Promise<void> {
     const initialPayload =
       parseStoredPayload(run.inputPayload) ?? createInitialPayload(run.inputFilePath);
+    const workflowAgentScope = new WorkflowAgentLifecycleScope<WorkflowAgentResource>();
     let state: ExecutionState = {
       payload: initialPayload,
       workflowInputs: { ...initialPayload },
@@ -431,6 +446,9 @@ export class WorkflowService {
       filePath: run.inputFilePath || run.scriptPath,
       hasFileOutput: false,
       iterationPath: [],
+      loopContext: null,
+      workflowAgentScope,
+      forAgentScope: null,
     };
     let workflowTimeout: NodeJS.Timeout | null = null;
     if (run.scriptSnapshot.timeoutMs) {
@@ -472,6 +490,7 @@ export class WorkflowService {
     } catch (error) {
       await this.finishRun(run.id, buildFailedRunResult(run.scriptSnapshot, error, state));
     } finally {
+      await this.closeAgentLifecycleScope(run, workflowAgentScope, "workflow");
       if (workflowTimeout) {
         clearTimeout(workflowTimeout);
       }
@@ -672,7 +691,7 @@ export class WorkflowService {
         inputVariable: step.inputVariable ?? "input",
         outputVariable: step.outputVariable ?? "output",
         inputJson: serializeWorkflowNodeInput(
-          state.variableState.createNodeInput(step.id, state.payload),
+          state.variableState.createNodeInput(step.id, state.payload, state.loopContext),
         ),
         iterationPath: state.iterationPath,
         cwd,
@@ -735,7 +754,7 @@ export class WorkflowService {
         outputVariable: step.outputVariable ?? "output",
         pythonPath: step.pythonPath ?? DEFAULT_PYTHON_PATH,
         inputJson: serializeWorkflowNodeInput(
-          state.variableState.createNodeInput(step.id, state.payload),
+          state.variableState.createNodeInput(step.id, state.payload, state.loopContext),
         ),
         iterationPath: state.iterationPath,
         cwd,
@@ -772,7 +791,7 @@ export class WorkflowService {
     });
   }
 
-  // oxlint-disable-next-line complexity -- Agent task execution intentionally centralizes workspace lifecycle, timeout cancellation, provider result validation, and archival.
+  // oxlint-disable-next-line complexity -- Agent task execution centralizes prompt rendering, lifecycle reuse, timeout cancellation, and provider result validation.
   private async executeAgentStep(
     run: WorkflowRun,
     step: WorkflowAgentStep,
@@ -810,15 +829,80 @@ export class WorkflowService {
       renderedInstruction,
       baseLabels,
     );
-    let workspace: PersistedWorkspaceRecord | null = null;
-    let agentId: string | null = null;
+    const lifecycle = step.lifecycle ?? "single";
+    let inheritedScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null = null;
+    if (lifecycle === "workflow") {
+      inheritedScope = state.workflowAgentScope;
+    } else if (lifecycle === "for") {
+      inheritedScope = state.forAgentScope;
+    }
+    const scope = inheritedScope ?? new WorkflowAgentLifecycleScope<WorkflowAgentResource>();
+    const ownsScope = inheritedScope === null;
     try {
-      workspace =
-        (step.config.isolation ?? "local") === "worktree"
-          ? (await this.createPaseoWorktreeWorkspace({ cwd, firstAgentContext: { prompt } }))
-              .workspace
-          : await this.createDirectoryWorkspace({ cwd, firstAgentContext: { prompt } });
-      const config = buildWorkflowAgentConfig(step, workspace.cwd, renderedSystemPrompt);
+      return await scope.withResource({
+        key: step.id,
+        create: () =>
+          this.createWorkflowAgentResource({
+            run,
+            step,
+            cwd,
+            prompt,
+            renderedInstruction,
+            renderedSystemPrompt,
+            labels,
+          }),
+        run: async (resource) => {
+          const activeAgentId = resource.agentId;
+          this.trackActiveAgent(run.id, activeAgentId);
+          try {
+            return await this.runWorkflowAgentResource({
+              run,
+              step,
+              state,
+              prompt,
+              cwd: resource.workspace.cwd,
+              agentId: activeAgentId,
+            });
+          } finally {
+            this.untrackActiveAgent(run.id, activeAgentId);
+          }
+        },
+      });
+    } finally {
+      if (ownsScope) {
+        await this.closeAgentLifecycleScope(run, scope, lifecycle);
+      }
+    }
+  }
+
+  private async createWorkflowAgentResource(input: {
+    run: WorkflowRun;
+    step: WorkflowAgentStep;
+    cwd: string;
+    prompt: string;
+    renderedInstruction: string;
+    renderedSystemPrompt: string | undefined;
+    labels: Record<string, string>;
+  }): Promise<WorkflowAgentResource> {
+    const workspace =
+      (input.step.config.isolation ?? "local") === "worktree"
+        ? (
+            await this.createPaseoWorktreeWorkspace({
+              cwd: input.cwd,
+              firstAgentContext: { prompt: input.prompt },
+            })
+          ).workspace
+        : await this.createDirectoryWorkspace({
+            cwd: input.cwd,
+            firstAgentContext: { prompt: input.prompt },
+          });
+    const archiveOnLifecycleEnd = input.step.config.archiveOnFinish ?? true;
+    try {
+      const config = buildWorkflowAgentConfig(
+        input.step,
+        workspace.cwd,
+        input.renderedSystemPrompt,
+      );
       const created = await this.createAgent({
         kind: "mcp",
         provider: formatProviderModel(config.provider, config.model),
@@ -827,10 +911,10 @@ export class WorkflowService {
         workspaceId: workspace.workspaceId,
         title:
           resolveCreateAgentTitles({
-            configTitle: step.config.title,
-            initialPrompt: renderedInstruction,
-          }).provisionalTitle ?? `Workflow: ${step.name ?? step.id}`,
-        labels,
+            configTitle: input.step.config.title,
+            initialPrompt: input.renderedInstruction,
+          }).provisionalTitle ?? `Workflow: ${input.step.name ?? input.step.id}`,
+        labels: input.labels,
         mode: config.modeId,
         thinking: config.thinkingOptionId,
         features: config.featureValues,
@@ -839,79 +923,125 @@ export class WorkflowService {
         background: true,
         notifyOnFinish: false,
       });
-      agentId = created.snapshot.id;
-      const activeAgentId = agentId;
-      this.trackActiveAgent(run.id, activeAgentId);
       if (created.initialPromptError) {
         throw created.initialPromptError;
       }
-      const timeoutMs =
-        step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-      const { result, waitResult } = await withTimeout(
-        (async () => {
-          const agentResult = await this.agentManager.runAgent(activeAgentId, prompt);
-          const agentWaitResult = await this.agentManager.waitForAgentEvent(activeAgentId, {
-            waitForActive: true,
-          });
-          return { result: agentResult, waitResult: agentWaitResult };
-        })(),
-        timeoutMs,
-        async () => {
-          await this.agentManager.cancelAgentRun(activeAgentId).catch((error) => {
-            this.logger.warn(
-              { err: error, runId: run.id, stepId: step.id, agentId: activeAgentId },
-              "Failed to cancel timed out workflow agent",
-            );
-          });
-        },
-        `Agent workflow node timed out after ${timeoutMs}ms`,
-      );
-      if (result.canceled) {
-        throw new Error(`Workflow agent ${agentId} was canceled`);
-      }
-      if (waitResult.permission) {
-        throw new Error(`Workflow agent ${agentId} is waiting for permission`);
-      }
-      if (waitResult.status === "error") {
-        throw new Error(waitResult.lastMessage ?? `Workflow agent ${agentId} failed`);
-      }
-      const responseText = result.finalText ?? waitResult.lastMessage ?? "";
-      if (!responseText.trim()) {
-        throw new Error(`Workflow agent ${agentId} did not return a final answer`);
-      }
-      const parsed = createAgentNodeResultEnvelope(step, responseText);
-      const timelineText = curateAgentActivity(result.timeline, {
-        includeKinds: ["reasoning", "tool_call", "todo", "error", "compaction"],
-      });
-      const processOutput =
-        timelineText === "No activity to display." ? null : trimOutput(timelineText);
-      const diagnostics = {
-        expandedInstruction: trimOutput(prompt),
-        cwd,
+      return {
+        agentId: created.snapshot.id,
+        workspace,
+        archiveOnLifecycleEnd,
       };
-      return this.validateNodeResultEnvelope(
-        parsed,
-        step,
-        state,
-        agentId,
-        processOutput,
-        trimOutput(prompt),
-        trimOutput(responseText),
-        diagnostics,
-      );
-    } finally {
-      if (agentId) {
-        this.untrackActiveAgent(run.id, agentId);
-      }
-      if (workspace && (step.config.archiveOnFinish ?? true)) {
-        await this.archiveWorkspace(workspace.workspaceId).catch((error) => {
+    } catch (error) {
+      if (archiveOnLifecycleEnd) {
+        await this.archiveWorkspace(workspace.workspaceId).catch((archiveError) => {
           this.logger.warn(
-            { err: error, runId: run.id, stepId: step.id, workspaceId: workspace?.workspaceId },
-            "Failed to archive workflow agent workspace",
+            {
+              err: archiveError,
+              runId: input.run.id,
+              stepId: input.step.id,
+              workspaceId: workspace.workspaceId,
+            },
+            "Failed to archive uninitialized workflow Agent workspace",
           );
         });
       }
+      throw error;
     }
+  }
+
+  private async runWorkflowAgentResource(input: {
+    run: WorkflowRun;
+    step: WorkflowAgentStep;
+    state: ExecutionState;
+    prompt: string;
+    cwd: string;
+    agentId: string;
+  }): Promise<StepExecutionResult> {
+    const timeoutMs =
+      input.step.timeoutMs ??
+      input.run.scriptSnapshot.taskDefaults?.timeoutMs ??
+      DEFAULT_TIMEOUT_MS;
+    const { result, waitResult } = await withTimeout(
+      (async () => {
+        const agentResult = await this.agentManager.runAgent(input.agentId, input.prompt);
+        const agentWaitResult = await this.agentManager.waitForAgentEvent(input.agentId, {
+          waitForActive: true,
+        });
+        return { result: agentResult, waitResult: agentWaitResult };
+      })(),
+      timeoutMs,
+      async () => {
+        await this.agentManager.cancelAgentRun(input.agentId).catch((error) => {
+          this.logger.warn(
+            {
+              err: error,
+              runId: input.run.id,
+              stepId: input.step.id,
+              agentId: input.agentId,
+            },
+            "Failed to cancel timed out workflow agent",
+          );
+        });
+      },
+      `Agent workflow node timed out after ${timeoutMs}ms`,
+    );
+    if (result.canceled) {
+      throw new Error(`Workflow agent ${input.agentId} was canceled`);
+    }
+    if (waitResult.permission) {
+      throw new Error(`Workflow agent ${input.agentId} is waiting for permission`);
+    }
+    if (waitResult.status === "error") {
+      throw new Error(waitResult.lastMessage ?? `Workflow agent ${input.agentId} failed`);
+    }
+    const responseText = result.finalText ?? waitResult.lastMessage ?? "";
+    if (!responseText.trim()) {
+      throw new Error(`Workflow agent ${input.agentId} did not return a final answer`);
+    }
+    const parsed = createAgentNodeResultEnvelope(input.step, responseText);
+    const timelineText = curateAgentActivity(result.timeline, {
+      includeKinds: ["reasoning", "tool_call", "todo", "error", "compaction"],
+    });
+    const processOutput =
+      timelineText === "No activity to display." ? null : trimOutput(timelineText);
+    const diagnostics = {
+      expandedInstruction: trimOutput(input.prompt),
+      cwd: input.cwd,
+    };
+    return this.validateNodeResultEnvelope(
+      parsed,
+      input.step,
+      input.state,
+      input.agentId,
+      processOutput,
+      trimOutput(input.prompt),
+      trimOutput(responseText),
+      diagnostics,
+    );
+  }
+
+  private async closeAgentLifecycleScope(
+    run: WorkflowRun,
+    scope: WorkflowAgentLifecycleScope<WorkflowAgentResource>,
+    lifecycle: string,
+  ): Promise<void> {
+    await scope.close(async (resource) => {
+      if (!resource.archiveOnLifecycleEnd) {
+        return;
+      }
+      await this.archiveWorkspace(resource.workspace.workspaceId).catch((error) => {
+        this.logger.warn(
+          {
+            err: error,
+            runId: run.id,
+            agentId: resource.agentId,
+            workspaceId: resource.workspace.workspaceId,
+            lifecycle,
+          },
+          "Failed to archive workflow Agent workspace at lifecycle end",
+        );
+      });
+    });
   }
 
   private resolveAgentIdentityContext(
@@ -986,93 +1116,115 @@ export class WorkflowService {
     step: WorkflowForStep,
     state: ExecutionState,
   ): Promise<StepExecutionResult> {
-    const maxIterations = step.maxIterations ?? DEFAULT_MAX_ITERATIONS;
-    const concurrency = step.concurrency ?? 1;
-    if ((step.mode ?? "items") === "while" && concurrency !== 1) {
-      throw new WorkflowExecutionError(
-        `For step ${step.id} in while mode requires concurrency 1`,
-        state,
-        "WORKFLOW_INVALID_GRAPH",
-      );
+    let executionConfig;
+    try {
+      executionConfig = resolveWorkflowForExecutionConfig(step);
+    } catch (error) {
+      if (error instanceof WorkflowForExecutionModeError) {
+        throw new WorkflowExecutionError(error.message, state, "WORKFLOW_INVALID_GRAPH");
+      }
+      throw error;
     }
-    const items = resolveForItems(step, state);
-    if (items.length > maxIterations) {
-      throw new WorkflowExecutionError(
-        `For step ${step.id} produced ${items.length} iterations; maximum is ${maxIterations}`,
-        state,
-      );
+    const { concurrency } = executionConfig;
+    let plan;
+    try {
+      plan = createWorkflowForIterationPlan({
+        step,
+        resolveExpression: (expression) =>
+          resolveWorkflowExpression(expression, createDataMappingContext(state, step.id)),
+      });
+    } catch (error) {
+      if (error instanceof WorkflowForPlanError) {
+        throw new WorkflowExecutionError(error.message, state, error.code);
+      }
+      throw error;
     }
-    const execution = await executeForIterations({
-      iterationCount: items.length,
-      concurrency,
-      initialState: state,
-      runIteration: async (index, iterationInputState) => {
-        const item = items[index];
-        if (!item) {
-          throw new WorkflowExecutionError(`For step ${step.id} lost iteration ${index}`, state);
-        }
-        let iterationState: ExecutionState = {
-          ...iterationInputState,
-          payload: {
-            ...iterationInputState.payload,
-            loop: {
-              item: item.value,
-              index,
-              count: items.length,
-            },
-          },
-          iterationPath: [...state.iterationPath, index],
-        };
-        const linkError = validateWorkflowSequenceLinks(step.steps);
-        if (linkError) {
-          throw new WorkflowExecutionError(linkError, iterationState, "WORKFLOW_INVALID_GRAPH");
-        }
-        const visited = new Set<number>();
-        let childIndex: number | null = step.steps.length > 0 ? 0 : null;
-        while (childIndex !== null) {
-          if (visited.has(childIndex)) {
-            throw new WorkflowExecutionError(
-              `Workflow sequence contains a cycle at step ${step.steps[childIndex]?.id ?? childIndex}`,
-              iterationState,
-              "WORKFLOW_INVALID_GRAPH",
-            );
+    const parentLoopContext = state.loopContext;
+    const parentForAgentScope = state.forAgentScope;
+    const forAgentScope = new WorkflowAgentLifecycleScope<WorkflowAgentResource>();
+    const loopScope = state.variableState.createLoopScope(step.loopVariables);
+    const loopInputData = structuredClone(state.payload);
+    const loopInputNodeOutputs = structuredClone(state.nodeOutputs);
+    let execution;
+    try {
+      execution = await executeForIterations({
+        iterationCount: plan.iterationCount,
+        concurrency,
+        initialState: state,
+        runIteration: async (index) => {
+          const loopContext: WorkflowLoopContext = {
+            scope: loopScope,
+            item: plan.itemAt(index),
+            index,
+            count: plan.count,
+            modificationAllowed: executionConfig.loopVariableModificationAllowed,
+          };
+          let iterationState: ExecutionState = {
+            ...state,
+            payload: structuredClone(loopInputData),
+            nodeOutputs: structuredClone(loopInputNodeOutputs),
+            iterationPath: [...state.iterationPath, index],
+            loopContext,
+            forAgentScope,
+          };
+          const linkError = validateWorkflowSequenceLinks(step.steps);
+          if (linkError) {
+            throw new WorkflowExecutionError(linkError, iterationState, "WORKFLOW_INVALID_GRAPH");
           }
-          visited.add(childIndex);
-          const childStep = step.steps[childIndex];
-          if (!childStep) {
-            break;
+          const visited = new Set<number>();
+          let childIndex: number | null = step.steps.length > 0 ? 0 : null;
+          while (childIndex !== null) {
+            if (visited.has(childIndex)) {
+              throw new WorkflowExecutionError(
+                `Workflow sequence contains a cycle at step ${step.steps[childIndex]?.id ?? childIndex}`,
+                iterationState,
+                "WORKFLOW_INVALID_GRAPH",
+              );
+            }
+            visited.add(childIndex);
+            const childStep = step.steps[childIndex];
+            if (!childStep) {
+              break;
+            }
+            iterationState = await this.executeStep(run, childStep, iterationState);
+            const control = resolveForControl(step, iterationState);
+            const shouldBreak = control === "break";
+            if (shouldBreak) {
+              return { state: iterationState, signal: "break" };
+            }
+            const shouldContinue = control === "continue";
+            if (shouldContinue) {
+              return { state: iterationState, signal: "continue" };
+            }
+            childIndex = resolveNextWorkflowStep(step.steps, childIndex)?.index ?? null;
           }
-          iterationState = await this.executeStep(run, childStep, iterationState);
-          const control = resolveForControl(step, iterationState);
-          const shouldBreak = control === "break";
-          if (shouldBreak) {
-            return { state: iterationState, signal: "break" };
-          }
-          const shouldContinue = control === "continue";
-          if (shouldContinue) {
-            return { state: iterationState, signal: "continue" };
-          }
-          childIndex = resolveNextWorkflowStep(step.steps, childIndex)?.index ?? null;
-        }
-        return { state: iterationState, signal: "complete" };
-      },
-    });
+          return { state: iterationState, signal: "complete" };
+        },
+      });
+    } finally {
+      await this.closeAgentLifecycleScope(run, forAgentScope, "for");
+    }
     let output = `Completed ${execution.completedIterations} iteration${execution.completedIterations === 1 ? "" : "s"}`;
-    if (items.length === 0) {
+    if (plan.iterationCount === 0) {
       output = "Skipped loop: 0 items";
     } else if (execution.brokeEarly) {
-      output = `Stopped after ${execution.completedIterations} of ${items.length} iterations`;
+      output =
+        plan.iterationCount === null
+          ? `Stopped after ${execution.completedIterations} iterations`
+          : `Stopped after ${execution.completedIterations} of ${plan.iterationCount} iterations`;
     }
-    if (concurrency > 1 && items.length > 0) {
-      output += ` with concurrency ${concurrency}`;
+    if (executionConfig.mode === "parallel" && plan.iterationCount !== 0) {
+      output += ` in parallel with concurrency ${concurrency}`;
     }
     return {
       ...execution.state,
       iterationPath: state.iterationPath,
+      loopContext: parentLoopContext,
+      forAgentScope: parentForAgentScope,
       agentId: null,
       output,
       diagnostics: {
-        skippedReason: items.length === 0 ? "No loop items were produced" : null,
+        skippedReason: plan.iterationCount === 0 ? "No loop items were produced" : null,
       },
     };
   }
@@ -1122,7 +1274,7 @@ export class WorkflowService {
     diagnostics: WorkflowNodeDiagnostics = {},
   ): Promise<StepExecutionResult> {
     validateWorkflowNodeData(step.outputSchema, result.data, `Workflow node ${step.id} output`);
-    await state.variableState.apply(result.modify);
+    await state.variableState.apply(result.modify, state.loopContext);
     const payload = normalizePayloadPaths(
       WorkflowPayloadSchema.parse(result.data),
       dirname(state.filePath),
@@ -1269,6 +1421,9 @@ export class WorkflowService {
           "filePath",
         ) !== null || run.outputFilePath !== null,
       iterationPath: [],
+      loopContext: null,
+      workflowAgentScope: new WorkflowAgentLifecycleScope<WorkflowAgentResource>(),
+      forAgentScope: null,
     });
   }
 
@@ -1493,7 +1648,9 @@ function serializePayload(payload: WorkflowPayload): string {
 }
 
 function serializeNodeInput(_run: WorkflowRun, step: WorkflowStep, state: ExecutionState): string {
-  return JSON.stringify(state.variableState.createNodeInput(step.id, state.payload));
+  return JSON.stringify(
+    state.variableState.createNodeInput(step.id, state.payload, state.loopContext),
+  );
 }
 
 function prepareWorkflowStepInput(
@@ -1525,6 +1682,7 @@ function createDataMappingContext(state: ExecutionState, stepId: string) {
     currentInput: state.payload,
     nodeOutputs: state.nodeOutputs,
     workflowVariables: state.variableState.snapshotWorkflow(),
+    loopVariables: state.variableState.snapshotLoop(state.loopContext),
     nodeVariables: state.variableState.snapshotNode(stepId),
   };
 }
@@ -1600,6 +1758,7 @@ async function renderWorkflowInstruction(input: {
   const nodeInputPayload = input.state.variableState.createNodeInput(
     input.stepId,
     input.state.payload,
+    input.state.loopContext,
   );
   const customVariables = input.variables ?? {};
   const templates = [input.template, ...Object.values(customVariables)];
@@ -1816,7 +1975,7 @@ function validateWorkflowScript(script: WorkflowScript): void {
   }
   validateRetryPolicy(script.taskDefaults?.retry, "Workflow default");
   // oxlint-disable-next-line complexity -- Recursive validation keeps graph, retry, schema, branch, and loop checks deterministic.
-  const visit = (steps: WorkflowStep[], depth: number): void => {
+  const visit = (steps: WorkflowStep[], depth: number, insideFor = false): void => {
     if (depth > MAX_WORKFLOW_DEPTH) {
       throw new Error(`Workflow nesting exceeds ${MAX_WORKFLOW_DEPTH} levels`);
     }
@@ -1842,6 +2001,9 @@ function validateWorkflowScript(script: WorkflowScript): void {
           `Workflow step ${step.id}`,
         );
         validateWorkflowNodeSchema(step.outputSchema, `Workflow step ${step.id} outputSchema`);
+        if (step.type === "agent" && (step.lifecycle ?? "single") === "for" && !insideFor) {
+          throw new Error(`Agent step ${step.id} with For lifecycle must be inside a For loop`);
+        }
       }
       if (step.type === "switch") {
         const normalizedCases = new Set<string>();
@@ -1854,17 +2016,23 @@ function validateWorkflowScript(script: WorkflowScript): void {
             throw new Error(`Switch step ${step.id} has duplicate case: ${candidate.equals}`);
           }
           normalizedCases.add(normalized);
-          visit(candidate.steps, depth + 1);
+          visit(candidate.steps, depth + 1, insideFor);
         }
-        visit(step.defaultSteps ?? [], depth + 1);
+        visit(step.defaultSteps ?? [], depth + 1, insideFor);
       } else if (step.type === "for") {
-        if ((step.mode ?? "items") === "items" && !step.items) {
-          throw new Error(`For step ${step.id} in items mode requires items`);
+        const mode = step.mode ?? "array";
+        if (mode !== "true" && !step.items) {
+          throw new Error(`For step ${step.id} in ${mode} mode requires items`);
         }
-        if ((step.mode ?? "items") === "while" && (step.concurrency ?? 1) !== 1) {
-          throw new Error(`For step ${step.id} in while mode requires concurrency 1`);
+        try {
+          resolveWorkflowForExecutionConfig(step);
+        } catch (error) {
+          if (error instanceof WorkflowForExecutionModeError) {
+            throw new Error(error.message, { cause: error });
+          }
+          throw error;
         }
-        visit(step.steps, depth + 1);
+        visit(step.steps, depth + 1, true);
       }
     }
   };
@@ -1980,6 +2148,7 @@ function createAgentNodeResultEnvelope(
     data: { answer: response },
     modify: {
       workflow: { var: {} },
+      loop: { var: {} },
     },
     base_resp: {
       status_code: 0,
@@ -1988,34 +2157,6 @@ function createAgentNodeResultEnvelope(
     },
     artifacts: [],
   };
-}
-
-interface WorkflowForItem {
-  value: unknown;
-}
-
-function resolveForItems(step: WorkflowForStep, state: ExecutionState): WorkflowForItem[] {
-  if ((step.mode ?? "items") === "while") {
-    return Array.from({ length: step.maxIterations ?? DEFAULT_MAX_ITERATIONS }, () => ({
-      value: null,
-    }));
-  }
-  if (!step.items) {
-    throw new WorkflowExecutionError(
-      `For step ${step.id} in items mode requires items`,
-      state,
-      "WORKFLOW_INVALID_GRAPH",
-    );
-  }
-  const value = resolveWorkflowExpression(step.items, createDataMappingContext(state, step.id));
-  if (!Array.isArray(value)) {
-    throw new WorkflowExecutionError(
-      `For step ${step.id} items expression must resolve to an array`,
-      state,
-      "WORKFLOW_INVALID_INPUT",
-    );
-  }
-  return value.map((item) => ({ value: item }));
 }
 
 function resolveForControl(step: WorkflowForStep, state: ExecutionState): string {

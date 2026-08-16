@@ -100,7 +100,7 @@ export const en = {
         agent:
           "• Agent: Normal mode writes the final reply to data.answer. Custom mode requires the Agent to return the complete result envelope.",
         switch: "• Switch: resolves switchVar and selects the matching branch.",
-        for: "• For: iterates an array or runs a serial while loop. break and continue come from the configured data expression.",
+        for: "• For: iterates an array, counts down a number, or runs continuously. Each iteration starts from the For node input.data; use loop variables for cross-iteration state.",
       },
     },
     host: {
@@ -117,11 +117,11 @@ export const en = {
         "The first node input schema is the workflow input schema. Define shared variables, the final output schema, and reusable payloads here.",
       contract: "Workflow variables",
       contractHint: 'Variable types are "string" and "int64". int64 values use decimal strings.',
-      outputSchema: "Workflow output schema",
-      outputSchemaHint: "Paseo validates the final data object before the run succeeds.",
+      outputSchema: "Workflow output.data schema",
+      outputSchemaHint: "Validates the final output.data before the Workflow succeeds",
       nodeVariables: "Node variables",
       nodeVariablesHint:
-        'Declare variables readable and writable by this node. Types are "string" and "int64".',
+        'Declare read-only constants visible only to this node. Types are "string" and "int64".',
       invalidVariables: "Workflow variables must be a JSON object.",
       invalidOutputSchema: "Workflow output schema must be a JSON object.",
       invalidPresets: "Input presets must be a JSON array.",
@@ -216,7 +216,7 @@ export const en = {
     editor: {
       untitled: "Untitled workflow",
       unsaved: "Unsaved",
-      generatedFileName: "A file name will be generated when this workflow is saved.",
+      generatedFileName: "A file name will be generated on first save",
       name: "Workflow name",
       nodes: "nodes",
       description: "Description",
@@ -338,15 +338,30 @@ export const en = {
       contract: {
         title: "Node data contract",
         description:
-          "Map only the data fields this node needs, declare node variables, then validate data with JSON Schema.",
-        inputs: "Input mapping (JSON)",
+          "Build input.data, declare node variables, and validate the input.data and output.data objects.",
+        inputs: "input.data mapping (optional)",
         inputsHint:
-          "Whole expressions preserve native types. Example: {{nodes.scan.outputs.items}}.",
-        inputSchema: "Input schema (JSON Schema)",
-        outputSchema: "Output schema (JSON Schema)",
+          "Builds this node's input.data before execution. Leave empty to use the previous node's output.data. Use it to select, rename, or combine fields. Example: {{nodes.scan.outputs.items}}.",
+        inputSchema: "input.data schema validation",
+        outputSchema: "output.data schema validation (optional)",
         schemaHint: "Optional. Paseo validates the object before continuing.",
         invalidJson: "Enter valid JSON.",
         objectRequired: "The value must be a JSON object.",
+      },
+      contractHints: {
+        inputSchema: "Validates the input.data received by this node after mapping",
+        outputSchema:
+          "Validates the output.data produced by this node so output errors are attributed here. It does not replace downstream input.data schema validation.",
+      },
+      schemaCompatibility: {
+        title: "data schema compatibility warnings",
+        workflowOutput: "Workflow output.data",
+        requiredNotGuaranteed:
+          '{{source}} → {{target}}: the output.data schema does not guarantee required field "{{path}}"',
+        fieldNotAccepted:
+          '{{source}} → {{target}}: output.data may contain field "{{path}}", but the downstream input.data schema does not accept it',
+        typeMismatch:
+          '{{source}} → {{target}}: output.data field "{{path}}" is {{outputTypes}}, but the downstream input.data schema expects {{inputTypes}}',
       },
       help: {
         show: "Show {{type}} node input and output help",
@@ -361,22 +376,22 @@ export const en = {
           "Use a Bash node to call paseo workflow run, then assign the successful child outputPayload to the configured output variable.",
         bash: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. The configured input variable receives the complete JSON string from stdin.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop scope. The configured input variable receives the complete JSON string from stdin.",
           output:
-            "The result must contain a JSON object in data. Add modify.workflow.var only when updating Workflow variables and base_resp only when reporting a business error. node.var is read-only, and the framework fills artifacts, so do not output them. Paseo writes the configured output variable to file descriptor 3; stdout/stderr remain logs.",
+            "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo writes the configured output variable to file descriptor 3; stdout/stderr remain logs.",
         },
         python: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. The configured input variable receives the complete parsed object.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop scope. The configured input variable receives the complete parsed object.",
           output:
-            "The result must contain a JSON object in data. Add modify.workflow.var only when updating Workflow variables and base_resp only when reporting a business error. node.var is read-only, and the framework fills artifacts, so do not output them. Paseo serializes the configured output variable to file descriptor 3.",
+            "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo serializes the configured output variable to file descriptor 3.",
         },
         agent: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. User and system prompts can read it through data, workflow.var, node.var, payload, and inputJson.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop scope. User and system prompts can read data, workflow.var, loop, node.var, payload, and inputJson.",
           output: 'Normal mode wraps the final Agent reply as {"data":{"answer":"..."}}.',
           controlOutput:
-            "Custom mode requires the final Agent reply to contain a JSON object in data. Include modify and base_resp only when needed; do not modify node.var or output artifacts.",
+            "Custom mode requires the final Agent reply to contain a JSON object in data. Include modify.workflow.var or modify.loop.var only when needed; do not modify node.var or loop.item/index/count, and do not output artifacts.",
         },
         switch: {
           input: "Resolve switchVar, then compare the native value with each configured case.",
@@ -385,9 +400,9 @@ export const en = {
         },
         for: {
           input:
-            "Resolve items to an array. The body receives loop.item, loop.index, and loop.count.",
+            "Array mode requires a JSON array; Number mode requires a non-negative integer; True mode runs continuously. Every iteration's first body node receives the original For input.data plus the innermost loop scope.",
           output:
-            'Serial loops return the final iteration result. Concurrent loops return the highest completed index. A body result with "break" stops scheduling new iterations.',
+            'The final completed iteration becomes the For output. A "break" result stops scheduling iterations; "continue" skips the remaining body nodes. Persist cross-iteration state through custom loop variables.',
         },
       },
       expandedEditor: {
@@ -404,9 +419,9 @@ export const en = {
         optional: "Optional",
         inputVariable: "Input variable",
         bashInputVariableHint:
-          "Before the command runs, Paseo assigns the framework-assembled node input JSON string to this variable.",
+          'Variable name that receives the complete node input JSON string in the Bash command. For the default variable "input", mapped data is under input.data, Workflow variables under input.workflow.var, the innermost For scope under input.loop, and node constants under input.node.var.',
         pythonInputVariableHint:
-          "Before the code runs, Paseo assigns the parsed framework-assembled node input object to this variable.",
+          'Variable name that receives the complete parsed node input object in Python. For the default variable "input", mapped data is under input["data"], Workflow variables under input["workflow"]["var"], the innermost For scope under input["loop"], and node constants under input["node"]["var"].',
         outputVariable: "Output variable",
         bashOutputVariableHint:
           "Before the command succeeds, assign a result JSON string containing the required data object to this variable.",
@@ -450,6 +465,20 @@ export const en = {
         initialPromptHint:
           "Insert payload values with the template variables shown below. The examples cover nested fields, arrays, built-ins, and custom variables.",
         executionPolicy: "Execution policy",
+        lifecycle: "Agent lifecycle",
+        lifecycleHint:
+          "Controls how long this Agent node reuses the same Agent. Reused Agent calls run in order.",
+        selectLifecycle: "Select Agent lifecycle",
+        lifecycleOptions: {
+          workflow: "Entire Workflow",
+          workflowDescription:
+            "Create on first execution, reuse it, and release it when the Workflow ends.",
+          for: "Current For loop",
+          forDescription:
+            "Create on the first iteration, reuse it within the current For loop, and release it when the loop exits.",
+          single: "Single execution",
+          singleDescription: "Create a new Agent for every execution without reuse.",
+        },
         timeoutHint: "Leave empty to use the workflow task default.",
         provider: "Provider",
         model: "Model",
@@ -471,6 +500,7 @@ export const en = {
         systemPromptConfiguredHint:
           "Configured. Template variables are rendered at runtime and sent separately through the provider's system-instruction channel.",
         archive: "Archive agent after completion",
+        archiveAtLifecycleEnd: "Automatically archive when the Agent lifecycle ends",
         network: "Allow network access",
         webSearch: "Allow web search",
         selectProvider: "Select a provider",
@@ -548,23 +578,38 @@ export const en = {
       },
       for: {
         mode: "Loop type",
-        modeItems: "Array",
-        modeWhile: "Continuous loop",
+        modeArray: "Array",
+        modeNumber: "Number",
+        modeTrue: "True",
         selectMode: "Select loop type",
-        items: "Items expression",
-        itemsHint: "Must resolve to an array, for example {{data.items}}.",
-        automatic: "Continuous loop",
+        executionMode: "Execution mode",
+        executionModeHint:
+          "Serial runs iterations in order; Parallel runs multiple iterations at once.",
+        executionSerial: "Serial",
+        executionParallel: "Parallel",
+        selectExecutionMode: "Select execution mode",
+        items: "Loop items expression",
+        itemsHint:
+          "Array mode must resolve to a JSON array; Number mode must resolve to a non-negative integer.",
         maximumIterations: "Maximum iterations",
-        maximumIterationsHint: "Maximum number of iterations. Defaults to 100.",
+        maximumIterationsHint: "Maximum number of iterations. Defaults to 100; 0 means unlimited.",
         concurrency: "Concurrency",
         concurrencyHint:
-          "Iterations running at once. Defaults to 1. At 1, each iteration receives the previous output; above 1, iterations run independently from the For node input. Maximum 100.",
+          "Iterations running at once in Parallel mode. Defaults to 1, maximum 100. Every iteration starts from the same For input.data.",
         control: "Loop control expression",
         controlHint:
           'Resolve a user-defined data field. "break" stops the loop, "continue" skips the remaining body nodes, and an empty value continues normally.',
         loopBody: "Loop body",
         loopDescription:
-          'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.item: current parsed item, or null in continuous mode.\nloop.index: zero-based iteration index.\nloop.count: planned iteration count; in continuous mode, the maximum iteration count.',
+          'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.item: array item; remaining number before the iteration; or true in True mode.\nloop.index: zero-based iteration index.\nloop.count: array length, initial number, or the True-mode maximum (0 when unlimited).\nEach iteration starts from the For input.data. Use custom loop variables to carry state into the next iteration.',
+        loopVariables: "For loop variables",
+        loopVariablesHint:
+          "Shared only inside this For loop. Nested For bodies see only the innermost loop scope. Serial mode can update them through modify.loop.var.",
+        parallelLoopVariablesHint:
+          "Parallel iterations can read initial Loop variable values, but cannot update them through modify.loop.var, preventing concurrent conflicts.",
+        loopVariableDefinitions: "Custom loop variables",
+        loopVariableDefinitionsHint:
+          'Declare additional loop.* variables using "string" or "int64". item, index, and count are built-in and read-only.',
       },
     },
   },

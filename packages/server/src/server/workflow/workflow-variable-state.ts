@@ -1,5 +1,7 @@
 import type {
   WorkflowData,
+  WorkflowLoopInput,
+  WorkflowLoopVariableDefinitions,
   WorkflowNodeInputEnvelope,
   WorkflowVariableDefinitions,
   WorkflowVariableModification,
@@ -7,6 +9,45 @@ import type {
 } from "@getpaseo/protocol/workflow/data-contract";
 import { isWorkflowInt64 } from "@getpaseo/protocol/workflow/data-contract";
 import type { WorkflowStep } from "@getpaseo/protocol/workflow/types";
+
+export interface WorkflowLoopContext {
+  scope: WorkflowLoopVariableScope;
+  item: unknown;
+  index: number;
+  count: number;
+  modificationAllowed: boolean;
+}
+
+export class WorkflowLoopVariableScope {
+  private readonly definitions: WorkflowLoopVariableDefinitions;
+  private readonly values: WorkflowVariableValues;
+
+  constructor(definitions: WorkflowLoopVariableDefinitions | undefined) {
+    this.definitions = definitions ?? {};
+    this.values = createInitialValues(this.definitions);
+  }
+
+  createInput(context: Pick<WorkflowLoopContext, "item" | "index" | "count">): WorkflowLoopInput {
+    return {
+      item: structuredClone(context.item),
+      index: context.index,
+      count: context.count,
+      ...this.values,
+    };
+  }
+
+  validate(values: WorkflowVariableValues): void {
+    validateVariableUpdate("loop", this.definitions, values);
+  }
+
+  assign(values: WorkflowVariableValues): void {
+    Object.assign(this.values, values);
+  }
+
+  snapshot(): WorkflowVariableValues {
+    return { ...this.values };
+  }
+}
 
 export class WorkflowVariableState {
   private readonly workflowDefinitions: WorkflowVariableDefinitions;
@@ -27,8 +68,18 @@ export class WorkflowVariableState {
     );
   }
 
-  createNodeInput(stepId: string, data: WorkflowData): WorkflowNodeInputEnvelope {
-    return {
+  createLoopScope(
+    definitions: WorkflowLoopVariableDefinitions | undefined,
+  ): WorkflowLoopVariableScope {
+    return new WorkflowLoopVariableScope(definitions);
+  }
+
+  createNodeInput(
+    stepId: string,
+    data: WorkflowData,
+    loopContext: WorkflowLoopContext | null = null,
+  ): WorkflowNodeInputEnvelope {
+    const input: WorkflowNodeInputEnvelope = {
       data: structuredClone(data),
       workflow: {
         var: { ...this.workflowValues },
@@ -37,12 +88,30 @@ export class WorkflowVariableState {
         var: { ...this.nodeValues.get(stepId) },
       },
     };
+    if (loopContext) {
+      input.loop = loopContext.scope.createInput(loopContext);
+    }
+    return input;
   }
 
-  async apply(modification: WorkflowVariableModification): Promise<void> {
+  async apply(
+    modification: WorkflowVariableModification,
+    loopContext: WorkflowLoopContext | null = null,
+  ): Promise<void> {
     await this.withLock(async () => {
       validateVariableUpdate("workflow", this.workflowDefinitions, modification.workflow.var);
+      const loopValues = modification.loop.var;
+      if (Object.keys(loopValues).length > 0) {
+        if (!loopContext) {
+          throw new Error("Cannot modify loop variables outside a For loop");
+        }
+        if (!loopContext.modificationAllowed) {
+          throw new Error("Cannot modify loop variables in parallel For execution");
+        }
+        loopContext.scope.validate(loopValues);
+      }
       Object.assign(this.workflowValues, modification.workflow.var);
+      loopContext?.scope.assign(loopValues);
     });
   }
 
@@ -52,6 +121,10 @@ export class WorkflowVariableState {
 
   snapshotNode(stepId: string): WorkflowVariableValues {
     return { ...this.nodeValues.get(stepId) };
+  }
+
+  snapshotLoop(loopContext: WorkflowLoopContext | null): WorkflowLoopInput | undefined {
+    return loopContext?.scope.createInput(loopContext);
   }
 
   private async withLock<T>(operation: () => Promise<T> | T): Promise<T> {
@@ -100,7 +173,7 @@ function createInitialValues(definitions: WorkflowVariableDefinitions): Workflow
 }
 
 function validateVariableUpdate(
-  scope: "workflow",
+  scope: "workflow" | "loop",
   definitions: WorkflowVariableDefinitions,
   values: WorkflowVariableValues,
 ): void {

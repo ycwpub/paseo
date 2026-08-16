@@ -39,7 +39,7 @@ async function waitForCount(values: readonly unknown[], count: number): Promise<
 }
 
 describe("executeForIterations", () => {
-  it("preserves serial state chaining when concurrency is one", async () => {
+  it("starts every serial iteration from the initial state", async () => {
     const receivedValues: number[] = [];
 
     const execution = await executeForIterations({
@@ -55,12 +55,31 @@ describe("executeForIterations", () => {
       },
     });
 
-    expect(receivedValues).toEqual([0, 1, 2]);
+    expect(receivedValues).toEqual([0, 0, 0]);
     expect(execution).toEqual({
-      state: { value: 3 },
+      state: { value: 1 },
       completedIterations: 3,
       brokeEarly: false,
       breakIndex: null,
+    });
+  });
+
+  it("runs an unlimited serial loop until break", async () => {
+    const execution = await executeForIterations({
+      iterationCount: null,
+      concurrency: 1,
+      initialState: { value: 0 },
+      runIteration: async (index) => ({
+        state: { value: index + 1 },
+        signal: index === 2 ? "break" : "complete",
+      }),
+    });
+
+    expect(execution).toEqual({
+      state: { value: 3 },
+      completedIterations: 3,
+      brokeEarly: true,
+      breakIndex: 2,
     });
   });
 

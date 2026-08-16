@@ -62,6 +62,22 @@ const koOverrides = {
       configuration: "전체 노드 구성",
     },
     nodes: {
+      agent: {
+        lifecycle: "에이전트 수명 주기",
+        lifecycleHint:
+          "이 에이전트 노드가 동일한 에이전트를 재사용하는 기간을 정합니다. 재사용되는 에이전트 호출은 순서대로 실행됩니다.",
+        selectLifecycle: "에이전트 수명 주기 선택",
+        lifecycleOptions: {
+          workflow: "전체 Workflow",
+          workflowDescription: "첫 실행 시 생성하여 재사용하고 Workflow가 끝나면 해제합니다.",
+          for: "현재 For 루프",
+          forDescription:
+            "첫 반복에서 생성하여 현재 For 루프 안에서 재사용하고 루프를 벗어나면 해제합니다.",
+          single: "단일 실행",
+          singleDescription: "실행할 때마다 새 에이전트를 생성하며 재사용하지 않습니다.",
+        },
+        archiveAtLifecycleEnd: "에이전트 수명 주기가 끝나면 자동 보관",
+      },
       openDetails: "{{name}} 노드 세부 정보 열기",
       downstream: {
         label: "다음 노드",

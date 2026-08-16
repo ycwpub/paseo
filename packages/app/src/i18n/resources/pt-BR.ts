@@ -65,6 +65,24 @@ export const ptBR: TranslationResources = {
     },
     nodes: {
       ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Ciclo de vida do agente",
+        lifecycleHint:
+          "Controla por quanto tempo este nó reutiliza o mesmo agente. As chamadas reutilizadas são executadas em ordem.",
+        selectLifecycle: "Selecionar ciclo de vida do agente",
+        lifecycleOptions: {
+          workflow: "Workflow inteiro",
+          workflowDescription:
+            "Cria na primeira execução, reutiliza e libera quando o Workflow termina.",
+          for: "Loop For atual",
+          forDescription:
+            "Cria na primeira iteração, reutiliza no loop For atual e libera ao sair do loop.",
+          single: "Execução única",
+          singleDescription: "Criar um novo agente a cada execução, sem reutilização.",
+        },
+        archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
+      },
       contract: {
         title: "Contrato de dados do nó",
         description: "Mapeie apenas os campos necessários e valide entrada e saída.",

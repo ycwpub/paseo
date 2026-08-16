@@ -124,6 +124,7 @@ describe("WorkflowService node runs", () => {
                   {
                     id: "loop",
                     type: "for",
+                    mode: "array",
                     items: "{{data.items}}",
                     steps: [
                       {

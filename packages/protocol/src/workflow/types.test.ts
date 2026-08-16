@@ -63,9 +63,12 @@ describe("WorkflowScriptSchema", () => {
         {
           id: "loop",
           type: "for",
-          mode: "items",
+          mode: "array",
           items: "{{data.items}}",
           forControl: "{{data.control}}",
+          loopVariables: {
+            cursor: { type: "string", default: "" },
+          },
           steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
         },
       ],
@@ -77,7 +80,7 @@ describe("WorkflowScriptSchema", () => {
     expect(parsed.steps[1]?.type === "switch" ? parsed.steps[1].switchVar : null).toBe(
       "{{data.route}}",
     );
-    expect(parsed.steps[2]?.type === "for" ? parsed.steps[2].mode : null).toBe("items");
+    expect(parsed.steps[2]?.type === "for" ? parsed.steps[2].mode : null).toBe("array");
   });
 
   it("accepts nested Agent, Switch, and For steps with defaults", () => {
@@ -111,7 +114,7 @@ describe("WorkflowScriptSchema", () => {
             {
               id: "loop",
               type: "for",
-              mode: "while",
+              mode: "true",
               maxIterations: 10,
               forControl: "{{data.control}}",
               steps: [
@@ -132,6 +135,11 @@ describe("WorkflowScriptSchema", () => {
         parsed.steps[0].cases[0]?.steps[0]?.type === "agent" &&
         parsed.steps[0].cases[0].steps[0].outputMode,
     ).toBe("normal");
+    expect(
+      parsed.steps[0]?.type === "switch" &&
+        parsed.steps[0].cases[0]?.steps[0]?.type === "agent" &&
+        parsed.steps[0].cases[0].steps[0].lifecycle,
+    ).toBe("single");
     expect(
       parsed.steps[0]?.type === "switch" &&
         parsed.steps[0].defaultSteps?.[0]?.type === "for" &&
@@ -237,7 +245,7 @@ describe("WorkflowNodeRunSchema", () => {
 });
 
 describe("Workflow For defaults", () => {
-  it("defaults maximum iterations to 100 and concurrency to one", () => {
+  it("defaults to serial execution with 100 maximum iterations and concurrency one", () => {
     const script = WorkflowScriptSchema.parse({
       ...workflowIdentity,
       version: 1,
@@ -253,6 +261,67 @@ describe("Workflow For defaults", () => {
     });
 
     expect(script.steps[0]?.type === "for" ? script.steps[0].maxIterations : null).toBe(100);
+    expect(script.steps[0]?.type === "for" ? script.steps[0].executionMode : null).toBe("serial");
     expect(script.steps[0]?.type === "for" ? script.steps[0].concurrency : null).toBe(1);
+  });
+
+  it("accepts explicit parallel For execution", () => {
+    const script = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
+      version: 1,
+      name: "parallel loop",
+      steps: [
+        {
+          id: "loop",
+          type: "for",
+          executionMode: "parallel",
+          items: "{{data.items}}",
+          concurrency: 4,
+          steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+        },
+      ],
+    });
+
+    expect(script.steps[0]).toMatchObject({
+      type: "for",
+      executionMode: "parallel",
+      concurrency: 4,
+    });
+  });
+
+  it("accepts zero as an unlimited loop cap and reserves built-in loop variable names", () => {
+    const parsed = WorkflowScriptSchema.parse({
+      ...workflowIdentity,
+      version: 1,
+      name: "unlimited loop",
+      steps: [
+        {
+          id: "loop",
+          type: "for",
+          mode: "true",
+          maxIterations: 0,
+          steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+        },
+      ],
+    });
+    expect(parsed.steps[0]?.type === "for" ? parsed.steps[0].maxIterations : null).toBe(0);
+
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 1,
+        name: "reserved loop variable",
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            loopVariables: {
+              item: { type: "string" },
+            },
+            steps: [{ id: "body", type: "bash", initialCommand: "output='{}'" }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

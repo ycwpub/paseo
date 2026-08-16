@@ -67,6 +67,14 @@ Every executable node receives one JSON object:
       "traceId": "trace-1"
     }
   },
+  "loop": {
+    "item": {
+      "id": 7
+    },
+    "index": 0,
+    "count": 3,
+    "i": "0"
+  },
   "node": {
     "var": {
       "cursor": "0"
@@ -78,10 +86,18 @@ Every executable node receives one JSON object:
 - Paseo fills `data` from the previous node output's `data`; for the first node, it uses the
   original Workflow input. The node's `inputs` mapping is applied afterward.
 - Paseo fills `workflow.var` with the current Workflow-variable values.
+- Inside a For body, Paseo fills `loop` with the innermost For scope. It is absent outside For.
 - Paseo fills `node.var` with variables declared by the current node.
 - A node's `inputSchema` validates `data`, not the outer envelope.
-- Expressions can read `data.*`, `workflow.var.*`, `node.var.*`,
+- Expressions can read `data.*`, `workflow.var.*`, `loop.*`, `node.var.*`,
   `workflow.inputs.*`, and `nodes.<id>.outputs.*`.
+
+The three variable scopes have different ownership:
+
+- `workflow.var` is global to the run. Every node can read and modify declared values.
+- `loop.*` is shared only inside its For invocation. Nested For bodies see only the innermost
+  scope.
+- `node.var` contains read-only constants visible only to the current node.
 
 ## Node result
 
@@ -110,13 +126,20 @@ To update declared Workflow variables, add the optional `modify` field:
       "var": {
         "counter": "1"
       }
+    },
+    "loop": {
+      "var": {
+        "i": "1"
+      }
     }
   }
 }
 ```
 
-Node variables are read-only and cannot be modified by node output. Undeclared Workflow variables
-and invalid `int64` values fail the node.
+Use `modify.loop.var` only inside a serial For to update custom Loop variables. Parallel For
+iterations can read custom Loop variable initial values but cannot modify them. `loop.item`,
+`loop.index`, and `loop.count` are built-in and cannot be declared or modified. Node variables are
+read-only. Undeclared variables and invalid `int64` values fail the node.
 
 For a business error, add the optional `base_resp` field:
 
@@ -140,8 +163,9 @@ For a business error, add the optional `base_resp` field:
   or For at them.
 
 Variable updates are committed only after the result envelope and output schema pass validation.
-Concurrent For iterations serialize shared Workflow-variable commits with a lock. Each assignment
-is atomic; when iterations assign the same variable, the last committed assignment is retained.
+Parallel For iterations serialize shared Workflow-variable commits with a lock. Each assignment is
+atomic; when iterations assign the same Workflow variable, the last committed assignment is
+retained. Loop-variable updates exist only in serial For execution.
 
 ## Bash
 
@@ -196,6 +220,20 @@ Agent nodes require a final answer. A missing final answer fails the node.
   `{"data":{"answer":"Agent answer"}}`.
 - `outputMode: "custom"` parses the final answer as the complete node result envelope.
 
+`lifecycle` controls Agent reuse and defaults to `single`:
+
+- `workflow`: create the Agent on the node's first execution and reuse it until the Workflow ends.
+- `for`: create the Agent on its first execution in the innermost containing For invocation and
+  reuse it until that For invocation exits. A For-lifecycle Agent must be nested inside For.
+- `single`: create a new Agent for every node execution.
+
+Calls that reuse one Agent are serialized, including calls from parallel For iterations. The Agent's
+workspace, provider configuration, and rendered system prompt are fixed by the first execution that
+initializes the lifecycle. Each execution still renders and sends its current user prompt.
+
+`config.archiveOnFinish` now applies when the selected Agent lifecycle ends. When enabled, Paseo
+archives the Agent workspace after the Workflow, For invocation, or single execution finishes.
+
 User and system prompts support the same template variables. `{{data.project}}`,
 `{{workflow.var.traceId}}`, `{{node.var.cursor}}`, `{{payload}}`, and `{{inputJson}}` are available.
 Custom `templateVariables` can compose those values.
@@ -223,7 +261,7 @@ Case values can be strings, numbers, or booleans.
 
 ## For
 
-For supports two modes.
+For supports three modes. `maxIterations` defaults to `100`; `0` means no limit.
 
 ### Array mode
 
@@ -231,25 +269,43 @@ For supports two modes.
 {
   "id": "items",
   "type": "for",
-  "mode": "items",
+  "mode": "array",
+  "executionMode": "parallel",
   "items": "{{data.items}}",
   "forControl": "{{data.control}}",
   "maxIterations": 100,
   "concurrency": 4,
+  "loopVariables": {
+    "i": {
+      "type": "int64",
+      "default": "0"
+    }
+  },
   "steps": []
 }
 ```
 
-The body receives:
+The expression must resolve to a JSON array.
 
-- `data.loop.item`: current array item
-- `data.loop.index`: zero-based index
-- `data.loop.count`: total planned iterations
+### Number mode
 
-### Continuous mode
+`mode: "number"` requires the expression to resolve to a non-negative integer. For an initial value
+of `3`, `loop.item` is `3`, `2`, then `1`. Paseo checks the value before each iteration and stops at
+zero.
 
-`mode: "while"` runs until `maxIterations` or `break`. Continuous mode is serial and requires
-`concurrency: 1`.
+### True mode
+
+`mode: "true"` does not use an items expression. It runs until `maxIterations`, `break`,
+cancellation, or the Workflow timeout. With `maxIterations: 0`, it has no iteration limit. An
+unlimited True loop requires serial execution. A bounded True loop can use either execution mode.
+
+The body receives the innermost Loop scope:
+
+- `loop.item`: the array item, the current Number-mode value, or `true`
+- `loop.index`: zero-based iteration index
+- `loop.count`: array length, initial Number-mode value, or the True-mode maximum; `0` means
+  unlimited
+- custom declared values such as `loop.i`
 
 `forControl` reads a user-defined value after each body node:
 
@@ -260,8 +316,20 @@ The body receives:
 Any other non-empty control value fails the For node, so misspelled control values do not silently
 change execution.
 
-Array mode supports concurrency from 1 to 100. Concurrent iterations start from the For node's
-input data. Workflow-variable commits are serialized; iteration `data` remains isolated.
+Every iteration's first body node starts from the For node's original `input.data`. The previous
+iteration's output does not become the next iteration's input. In serial execution, use custom Loop
+variables for cross-iteration state.
+
+`executionMode` defaults to `serial`:
+
+- `serial` runs one iteration at a time in index order. `concurrency` must be `1`. Nodes can update
+  declared custom Loop variables through `modify.loop.var`.
+- `parallel` runs multiple iterations at once. `concurrency` defaults to `1` and accepts values from
+  `1` to `100`. Iterations can read custom Loop variable initial values, but any non-empty
+  `modify.loop.var` fails the node to prevent concurrent state conflicts.
+
+Parallel iterations start from the same For input data. Workflow variable commits remain serialized;
+iteration `data` remains isolated. Parallel True loops require a finite `maxIterations`.
 
 ## Protocol discovery
 

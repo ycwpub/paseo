@@ -27,6 +27,8 @@ function nodeCommand(source: string, ...args: string[]): string {
     "  __paseoFs.writeFileSync(process.env.PASEO_TEST_RESULT_FILE, JSON.stringify({",
     "    data: value,",
     "  }));",
+    "const __paseoWriteEnvelope = (value) =>",
+    "  __paseoFs.writeFileSync(process.env.PASEO_TEST_RESULT_FILE, JSON.stringify(value));",
     source,
   ].join("\n");
   const command = [
@@ -318,7 +320,7 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            mode: "items",
+            mode: "array",
             items: "{{data.items}}",
             steps: [{ id: "never", type: "bash", initialCommand: "exit 99" }],
           },
@@ -1285,10 +1287,10 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const log = process.argv[1];",
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(log, `${input.loop.item}\\n`);",
+        "fs.appendFileSync(log, `${__paseoInputEnvelope.loop.item}\\n`);",
         "__paseoWriteResult({",
         "  filePath: input.filePath,",
-        "  control: input.loop.item,",
+        "  control: __paseoInputEnvelope.loop.item,",
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1307,7 +1309,7 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            mode: "items",
+            mode: "array",
             items: "{{data.items}}",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
@@ -1325,6 +1327,144 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(2);
   });
 
+  it("counts down numbers, resets input.data, and carries state through loop variables", async () => {
+    const home = await createTempHome();
+    const loopLogPath = join(home, "number-loop.log");
+    const scriptPath = join(home, "workflow.json");
+    const loopCommand = nodeCommand(
+      [
+        'const fs = require("fs");',
+        "const input = __paseoInputEnvelope;",
+        "fs.appendFileSync(",
+        "  process.argv[1],",
+        "  `${input.data.seed}:${input.loop.item}:${input.loop.index}:${input.loop.count}:${input.loop.i}\\n`,",
+        ");",
+        "__paseoWriteEnvelope({",
+        "  data: {",
+        "    seed: `changed-${input.loop.index}`,",
+        '    control: input.loop.item === 1 ? "break" : ""',
+        "  },",
+        "  modify: {",
+        "    loop: { var: { i: String(Number(input.loop.i) + 1) } }",
+        "  }",
+        "});",
+      ].join("\n"),
+      loopLogPath,
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "number for",
+        steps: [
+          {
+            id: "countdown",
+            type: "for",
+            mode: "number",
+            items: "{{data.remaining}}",
+            forControl: "{{data.control}}",
+            loopVariables: {
+              i: { type: "int64", default: "0" },
+            },
+            steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"remaining":3,"seed":"same"}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(await readFile(loopLogPath, "utf8")).toBe("same:3:0:3:0\nsame:2:1:3:1\nsame:1:2:3:2\n");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      seed: "changed-2",
+      control: "break",
+    });
+  });
+
+  it("exposes only the innermost loop scope and restores the outer scope afterward", async () => {
+    const home = await createTempHome();
+    const loopLogPath = join(home, "nested-loop.log");
+    const scriptPath = join(home, "workflow.json");
+    const innerCommand = nodeCommand(
+      [
+        'const fs = require("fs");',
+        "const input = __paseoInputEnvelope;",
+        "fs.appendFileSync(",
+        "  process.argv[1],",
+        '  `inner:${Object.keys(input.loop).sort().join(",")}\\n`,',
+        ");",
+        "__paseoWriteEnvelope({",
+        "  data: { ...input.data, innerDone: true },",
+        '  modify: { loop: { var: { inner: "updated" } } }',
+        "});",
+      ].join("\n"),
+      loopLogPath,
+    );
+    const outerCommand = nodeCommand(
+      [
+        'const fs = require("fs");',
+        "const input = __paseoInputEnvelope;",
+        "fs.appendFileSync(",
+        "  process.argv[1],",
+        '  `outer:${Object.keys(input.loop).sort().join(",")}\\n`,',
+        ");",
+        "__paseoWriteResult(input.data);",
+      ].join("\n"),
+      loopLogPath,
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "nested for scopes",
+        steps: [
+          {
+            id: "outer",
+            type: "for",
+            mode: "array",
+            items: "{{data.outerItems}}",
+            loopVariables: {
+              outer: { type: "string", default: "outer" },
+            },
+            steps: [
+              {
+                id: "inner",
+                type: "for",
+                mode: "array",
+                items: "{{data.innerItems}}",
+                loopVariables: {
+                  inner: { type: "string", default: "inner" },
+                },
+                steps: [{ id: "inner-body", type: "bash", initialCommand: innerCommand }],
+              },
+              { id: "outer-tail", type: "bash", initialCommand: outerCommand },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"outerItems":["a"],"innerItems":["b"]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(await readFile(loopLogPath, "utf8")).toBe(
+      "inner:count,index,inner,item\nouter:count,index,item,outer\n",
+    );
+  });
+
   it("runs for iterations with bounded concurrency and deterministic output ordering", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");
@@ -1334,7 +1474,7 @@ describe("WorkflowService", () => {
         'const path = require("path");',
         "const markerDirectory = process.argv[1];",
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.writeFileSync(path.join(markerDirectory, `started-${input.loop.index}`), '');",
+        "fs.writeFileSync(path.join(markerDirectory, `started-${__paseoInputEnvelope.loop.index}`), '');",
         "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
         "(async () => {",
         "  const deadline = Date.now() + 2_000;",
@@ -1342,9 +1482,9 @@ describe("WorkflowService", () => {
         "    if (Date.now() >= deadline) throw new Error('Concurrent iteration did not start');",
         "    await delay(10);",
         "  }",
-        "  if (input.loop.index === 0) await delay(100);",
+        "  if (__paseoInputEnvelope.loop.index === 0) await delay(100);",
         "  __paseoWriteResult({",
-        "    ...input, control: input.loop.item, result: input.loop.item",
+        "    ...input, control: __paseoInputEnvelope.loop.item, result: __paseoInputEnvelope.loop.item",
         "  });",
         "})().catch((error) => { console.error(error.message); process.exitCode = 1; });",
       ].join("\n"),
@@ -1360,7 +1500,8 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            mode: "items",
+            mode: "array",
+            executionMode: "parallel",
             items: "{{data.items}}",
             concurrency: 2,
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
@@ -1380,10 +1521,102 @@ describe("WorkflowService", () => {
     expect(JSON.parse(run.outputPayload ?? "{}")).toMatchObject({
       control: "beta",
       result: "beta",
-      loop: { index: 1, item: "beta", count: 2 },
     });
     expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(2);
     expect(run.nodeRuns.find((node) => node.stepId === "items")?.output).toContain("concurrency 2");
+  });
+
+  it("exposes defined Loop variables as read-only input to parallel iterations", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    const loopCommand = nodeCommand(
+      [
+        "__paseoWriteResult({",
+        "  item: __paseoInputEnvelope.loop.item,",
+        "  cursor: __paseoInputEnvelope.loop.cursor",
+        "});",
+      ].join("\n"),
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "parallel read-only loop variables",
+        steps: [
+          {
+            id: "items",
+            type: "for",
+            mode: "array",
+            executionMode: "parallel",
+            items: "{{data.items}}",
+            concurrency: 2,
+            loopVariables: {
+              cursor: { type: "string", default: "start" },
+            },
+            steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":["alpha","beta"]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      item: "beta",
+      cursor: "start",
+    });
+  });
+
+  it("rejects Loop variable modifications from parallel For iterations", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    const loopCommand = nodeCommand(
+      [
+        "__paseoWriteEnvelope({",
+        "  data: __paseoInputEnvelope.data,",
+        '  modify: { loop: { var: { cursor: "next" } } }',
+        "});",
+      ].join("\n"),
+    );
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "parallel loop variables",
+        steps: [
+          {
+            id: "items",
+            type: "for",
+            mode: "array",
+            executionMode: "parallel",
+            items: "{{data.items}}",
+            concurrency: 2,
+            loopVariables: {
+              cursor: { type: "string", default: "start" },
+            },
+            steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":["alpha","beta"]}',
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toContain("Cannot modify loop variables in parallel For execution");
   });
 
   it("lets a for body break early with the standard break control", async () => {
@@ -1402,9 +1635,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.index}:${__paseoInputEnvelope.loop.item}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: input.loop.item === "beta" ? "break" : ""',
+        '  ...input, control: __paseoInputEnvelope.loop.item === "beta" ? "break" : ""',
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1420,7 +1653,7 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            mode: "items",
+            mode: "array",
             items: "{{data.items}}",
             forControl: "{{data.control}}",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
@@ -1457,9 +1690,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.item}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: input.loop.item === "beta" ? "continue" : ""',
+        '  ...input, control: __paseoInputEnvelope.loop.item === "beta" ? "continue" : ""',
         "});",
       ].join("\n"),
       firstLogPath,
@@ -1468,7 +1701,7 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${input.loop.item}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.item}\\n`);",
         "__paseoWriteResult(input);",
       ].join("\n"),
       secondLogPath,
@@ -1484,7 +1717,7 @@ describe("WorkflowService", () => {
           {
             id: "items",
             type: "for",
-            mode: "items",
+            mode: "array",
             items: "{{data.items}}",
             forControl: "{{data.control}}",
             steps: [
@@ -1517,9 +1750,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${input.loop.index}:${input.loop.item}:${input.loop.count}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.index}:${__paseoInputEnvelope.loop.item}:${__paseoInputEnvelope.loop.count}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: input.loop.index === 2 ? "break" : "continue"',
+        '  ...input, control: __paseoInputEnvelope.loop.index === 2 ? "break" : "continue"',
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1534,7 +1767,8 @@ describe("WorkflowService", () => {
           {
             id: "loop",
             type: "for",
-            mode: "while",
+            mode: "true",
+            maxIterations: 0,
             forControl: "{{data.control}}",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
@@ -1547,10 +1781,10 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
     expect(run.status).toBe("succeeded");
-    expect(await readFile(loopLogPath, "utf8")).toBe("0:null:100\n1:null:100\n2:null:100\n");
+    expect(await readFile(loopLogPath, "utf8")).toBe("0:true:0\n1:true:0\n2:true:0\n");
     expect(run.nodeRuns.filter((node) => node.stepId === "each")).toHaveLength(3);
     expect(run.nodeRuns.find((node) => node.stepId === "loop")?.output).toContain(
-      "Stopped after 3 of 100",
+      "Stopped after 3 iterations",
     );
   });
 
@@ -1574,7 +1808,7 @@ describe("WorkflowService", () => {
           {
             id: "loop",
             type: "for",
-            mode: "while",
+            mode: "true",
             steps: [{ id: "each", type: "bash", initialCommand: loopCommand }],
           },
         ],
@@ -1829,6 +2063,271 @@ describe("WorkflowService", () => {
     expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
       answer: '{"message":"ok"}',
     });
+  });
+
+  it("reuses a For-lifecycle Agent until the loop exits, then archives it", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "for-agent-lifecycle.json");
+    const createdAgentIds: string[] = [];
+    const archivedWorkspaceIds: string[] = [];
+    const prompts: string[] = [];
+    const service = new WorkflowService({
+      paseoHome: home,
+      logger: pino({ enabled: false }),
+      agentManager: {
+        runAgent: async (agentId, prompt) => {
+          const text = typeof prompt === "string" ? prompt : prompt.text;
+          prompts.push(text);
+          if (text === "after loop") {
+            expect(archivedWorkspaceIds).toEqual(["workspace-1"]);
+          }
+          return {
+            sessionId: agentId,
+            finalText: "ok",
+            timeline: [],
+            canceled: false,
+          };
+        },
+        waitForAgentEvent: async () => ({
+          status: "idle",
+          permission: null,
+          lastMessage: null,
+        }),
+        cancelAgentRun: async () => ({ status: "settled" }),
+      },
+      createAgent: (async () => {
+        const index = createdAgentIds.length + 1;
+        const agentId = `11111111-1111-4111-8111-${String(index).padStart(12, "0")}`;
+        createdAgentIds.push(agentId);
+        return {
+          snapshot: { id: agentId },
+          initialPromptError: null,
+        };
+      }) as BoundCreateAgentCommand,
+      createDirectoryWorkspace: async ({ cwd }) =>
+        ({
+          workspaceId: `workspace-${createdAgentIds.length + 1}`,
+          cwd,
+        }) as never,
+      createPaseoWorktreeWorkspace: async () => {
+        throw new Error("Worktree creation is not expected in this test");
+      },
+      archiveWorkspace: async (workspaceId) => {
+        archivedWorkspaceIds.push(workspaceId);
+      },
+    });
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "For Agent lifecycle",
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            items: "{{data.items}}",
+            steps: [
+              {
+                id: "review",
+                type: "agent",
+                lifecycle: "for",
+                initialPrompt: "review {{loop.item}}",
+                config: { provider: "codex", cwd: home },
+              },
+            ],
+          },
+          {
+            id: "after",
+            type: "agent",
+            lifecycle: "single",
+            initialPrompt: "after loop",
+            config: { provider: "codex", cwd: home, archiveOnFinish: false },
+          },
+        ],
+      }),
+    );
+
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":["alpha","beta"]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(prompts).toEqual(["review alpha", "review beta", "after loop"]);
+    expect(createdAgentIds).toHaveLength(2);
+    expect(
+      run.nodeRuns.filter((node) => node.stepId === "review").map((node) => node.agentId),
+    ).toEqual([createdAgentIds[0], createdAgentIds[0]]);
+    expect(archivedWorkspaceIds).toEqual(["workspace-1"]);
+  });
+
+  it("creates and archives a new Agent for every single-lifecycle execution", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "single-agent-lifecycle.json");
+    let created = 0;
+    const archivedWorkspaceIds: string[] = [];
+    const service = new WorkflowService({
+      paseoHome: home,
+      logger: pino({ enabled: false }),
+      agentManager: {
+        runAgent: async (agentId) => ({
+          sessionId: agentId,
+          finalText: "ok",
+          timeline: [],
+          canceled: false,
+        }),
+        waitForAgentEvent: async () => ({
+          status: "idle",
+          permission: null,
+          lastMessage: null,
+        }),
+        cancelAgentRun: async () => ({ status: "settled" }),
+      },
+      createAgent: (async () => {
+        created += 1;
+        return {
+          snapshot: {
+            id: `22222222-2222-4222-8222-${String(created).padStart(12, "0")}`,
+          },
+          initialPromptError: null,
+        };
+      }) as BoundCreateAgentCommand,
+      createDirectoryWorkspace: async ({ cwd }) =>
+        ({ workspaceId: `workspace-${created + 1}`, cwd }) as never,
+      createPaseoWorktreeWorkspace: async () => {
+        throw new Error("Worktree creation is not expected in this test");
+      },
+      archiveWorkspace: async (workspaceId) => {
+        archivedWorkspaceIds.push(workspaceId);
+      },
+    });
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "Single Agent lifecycle",
+        steps: [
+          {
+            id: "loop",
+            type: "for",
+            items: "{{data.items}}",
+            steps: [
+              {
+                id: "review",
+                type: "agent",
+                lifecycle: "single",
+                initialPrompt: "review {{loop.item}}",
+                config: { provider: "codex", cwd: home },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"items":["alpha","beta"]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(created).toBe(2);
+    expect(new Set(run.nodeRuns.map((node) => node.agentId).filter(Boolean)).size).toBe(2);
+    expect(archivedWorkspaceIds).toEqual(["workspace-1", "workspace-2"]);
+  });
+
+  it("reuses a Workflow-lifecycle Agent across nested For invocations", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow-agent-lifecycle.json");
+    let created = 0;
+    let invocationCount = 0;
+    const archivedWorkspaceIds: string[] = [];
+    const service = new WorkflowService({
+      paseoHome: home,
+      logger: pino({ enabled: false }),
+      agentManager: {
+        runAgent: async (agentId) => {
+          invocationCount += 1;
+          expect(archivedWorkspaceIds).toEqual([]);
+          return {
+            sessionId: agentId,
+            finalText: "ok",
+            timeline: [],
+            canceled: false,
+          };
+        },
+        waitForAgentEvent: async () => ({
+          status: "idle",
+          permission: null,
+          lastMessage: null,
+        }),
+        cancelAgentRun: async () => ({ status: "settled" }),
+      },
+      createAgent: (async () => {
+        created += 1;
+        return {
+          snapshot: { id: "33333333-3333-4333-8333-333333333333" },
+          initialPromptError: null,
+        };
+      }) as BoundCreateAgentCommand,
+      createDirectoryWorkspace: async ({ cwd }) =>
+        ({ workspaceId: "workflow-workspace", cwd }) as never,
+      createPaseoWorktreeWorkspace: async () => {
+        throw new Error("Worktree creation is not expected in this test");
+      },
+      archiveWorkspace: async (workspaceId) => {
+        archivedWorkspaceIds.push(workspaceId);
+      },
+    });
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "Workflow Agent lifecycle",
+        steps: [
+          {
+            id: "outer",
+            type: "for",
+            items: "{{data.outer}}",
+            steps: [
+              {
+                id: "inner",
+                type: "for",
+                items: "{{data.inner}}",
+                steps: [
+                  {
+                    id: "review",
+                    type: "agent",
+                    lifecycle: "workflow",
+                    initialPrompt: "review",
+                    config: { provider: "codex", cwd: home },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: '{"outer":[1,2],"inner":["a","b"]}',
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(invocationCount).toBe(4);
+    expect(created).toBe(1);
+    expect(new Set(run.nodeRuns.map((node) => node.agentId).filter(Boolean))).toEqual(
+      new Set(["33333333-3333-4333-8333-333333333333"]),
+    );
+    expect(archivedWorkspaceIds).toEqual(["workflow-workspace"]);
   });
 
   it("uses a custom Agent result envelope for flow-control data", async () => {

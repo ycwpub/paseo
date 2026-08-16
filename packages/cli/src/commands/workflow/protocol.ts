@@ -24,10 +24,13 @@ export interface WorkflowCommandProtocolInfo {
   resultTransport: "file descriptor 3";
   resultFormat: "one JSON object";
   failureSignal: "non-zero exit code";
-  inputEnvelope: "{data,workflow.var,node.var}";
-  resultEnvelope: "{data,modify?,base_resp?}";
+  inputEnvelope: "{data,workflow.var,loop?,node.var}";
+  resultEnvelope: "{data,modify.workflow.var?,modify.loop.var?,base_resp?}";
   flowControl: "user-defined fields in data";
   variableTypes: ["string", "int64 decimal string"];
+  forExecutionModes: ["serial", "parallel"];
+  parallelLoopVariableModification: false;
+  agentLifecycles: ["workflow", "for", "single"];
   legacyStdoutResult: false;
 }
 
@@ -49,10 +52,13 @@ export function buildWorkflowCommandProtocolInfo(
     resultTransport: "file descriptor 3",
     resultFormat: "one JSON object",
     failureSignal: "non-zero exit code",
-    inputEnvelope: "{data,workflow.var,node.var}",
-    resultEnvelope: "{data,modify?,base_resp?}",
+    inputEnvelope: "{data,workflow.var,loop?,node.var}",
+    resultEnvelope: "{data,modify.workflow.var?,modify.loop.var?,base_resp?}",
     flowControl: "user-defined fields in data",
     variableTypes: ["string", "int64 decimal string"],
+    forExecutionModes: ["serial", "parallel"],
+    parallelLoopVariableModification: false,
+    agentLifecycles: ["workflow", "for", "single"],
     legacyStdoutResult: false,
   };
 }
@@ -69,7 +75,7 @@ export function assertWorkflowCommandProtocol(serverInfo: ServerInfoStatusPayloa
     message: "The connected daemon does not support Workflow command protocol version 1",
     details: `Update the Paseo daemon. The daemon advertises Workflow protocol version ${
       serverInfo?.features?.workflowProtocolVersion ?? "unknown"
-    }, but this CLI requires version ${WORKFLOW_COMMAND_PROTOCOL_VERSION}. Bash and Python nodes read {data,workflow.var,node.var} from stdin and write {data,modify?,base_resp?} to file descriptor 3. data is required; node.var is read-only; artifacts are framework-owned. stdout/stderr are logs and are never parsed as results.`,
+    }, but this CLI requires version ${WORKFLOW_COMMAND_PROTOCOL_VERSION}. Bash and Python nodes read {data,workflow.var,loop?,node.var} from stdin and write {data,modify.workflow.var?,modify.loop.var?,base_resp?} to file descriptor 3. data is required; node.var and loop.item/index/count are read-only; artifacts are framework-owned. stdout/stderr are logs and are never parsed as results.`,
   };
   throw error;
 }
@@ -125,6 +131,11 @@ function renderWorkflowCommandProtocol(
     `Result envelope: ${info.resultEnvelope}`,
     `Flow control: ${info.flowControl}`,
     `Variable types: ${info.variableTypes.join(", ")}`,
+    `For execution modes: ${info.forExecutionModes.join(", ")}`,
+    `Parallel Loop variable modification: ${
+      info.parallelLoopVariableModification ? "enabled" : "disabled"
+    }`,
+    `Agent lifecycles: ${info.agentLifecycles.join(", ")}`,
     `Legacy stdout result: ${info.legacyStdoutResult ? "enabled" : "disabled"}`,
   ].join("\n");
 }

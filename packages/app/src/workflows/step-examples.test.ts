@@ -58,6 +58,12 @@ describe("workflow step examples", () => {
       data: {
         customer: { name: "Alice" },
       },
+      loop: {
+        item: { id: 7 },
+        index: 0,
+        count: 1,
+        i: "0",
+      },
     });
     expect(step.switchVar).toBe("{{data.control}}");
   });

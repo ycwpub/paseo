@@ -2,11 +2,18 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type ReactElement,
 } from "react";
-import { useWindowDimensions, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  useWindowDimensions,
+  View,
+  type StyleProp,
+  type TextInput,
+  type ViewStyle,
+} from "react-native";
 import { useTranslation } from "react-i18next";
 import { Maximize2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -16,6 +23,7 @@ import { FormTextInput } from "@/components/ui/form-field";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
 import { calculateExpandedWorkflowEditorHeight } from "@/workflows/expanded-editor-layout";
+import { applyWorkflowTextIndentation } from "@/workflows/workflow-text-indentation";
 
 const EXPANDED_EDITOR_SNAP_POINTS = ["90%"];
 
@@ -43,11 +51,46 @@ export function WorkflowTextInputExpansion({
   const { height: viewportHeight } = useWindowDimensions();
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedValue, setExpandedValue] = useState(value ?? "");
+  const expandedInputRef = useRef<TextInput>(null);
   useEffect(() => {
     if (!isExpanded) {
       setExpandedValue(value ?? "");
     }
   }, [isExpanded, value]);
+  useEffect(() => {
+    if (!isWeb || !isExpanded) {
+      return;
+    }
+    const input = expandedInputRef.current as unknown as
+      | HTMLInputElement
+      | HTMLTextAreaElement
+      | null;
+    if (!input) {
+      return;
+    }
+    const handleKeyDown = (rawEvent: Event) => {
+      const event = rawEvent as KeyboardEvent;
+      if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const edit = applyWorkflowTextIndentation({
+        value: input.value,
+        selectionStart: input.selectionStart ?? input.value.length,
+        selectionEnd: input.selectionEnd ?? input.value.length,
+        outdent: event.shiftKey,
+      });
+      setExpandedValue(edit.value);
+      onChangeText?.(edit.value);
+      requestAnimationFrame(() => {
+        input.focus();
+        input.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+      });
+    };
+    input.addEventListener("keydown", handleKeyDown);
+    return () => input.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded, onChangeText]);
   const expandedEditorHeight = useMemo(
     () => calculateExpandedWorkflowEditorHeight(viewportHeight),
     [viewportHeight],
@@ -163,6 +206,7 @@ export function WorkflowTextInputExpansion({
         <View style={[styles.expandedEditor, { height: expandedEditorHeight }]}>
           <FormTextInput
             {...inputProps}
+            ref={expandedInputRef}
             value={expandedValue}
             onChangeText={handleExpandedChangeText}
             accessibilityLabel={accessibilityLabel}

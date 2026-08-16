@@ -43,14 +43,20 @@ vi.mock("@/components/workflows/workflow-wrapping-title-input", () => ({
     value,
     onChangeText,
     expandable,
+    style,
+    textInputStyle,
   }: {
     value: string;
     onChangeText: (value: string) => void;
     expandable?: boolean;
+    style?: unknown;
+    textInputStyle?: unknown;
   }) => (
     <input
       data-testid="workflow-name"
       data-expandable={expandable ? "true" : "false"}
+      data-style={JSON.stringify(style)}
+      data-text-input-style={JSON.stringify(textInputStyle)}
       value={value}
       onChange={(event) => onChangeText(event.target.value)}
     />
@@ -108,7 +114,11 @@ describe("WorkflowEditorToolbar", () => {
 
     expect(screen.getByText("Unsaved")).toBeTruthy();
     expect(screen.getByText("/tmp/long-workflow.json")).toBeTruthy();
-    expect(screen.getByTestId("workflow-name").getAttribute("data-expandable")).toBe("false");
+    const nameInput = screen.getByTestId("workflow-name");
+    expect(nameInput.getAttribute("data-expandable")).toBe("false");
+    expect(nameInput.getAttribute("data-style")).toContain('"width":"100%"');
+    expect(nameInput.getAttribute("data-style")).toContain('"maxWidth":"100%"');
+    expect(nameInput.getAttribute("data-text-input-style")).toContain('"width":"100%"');
     expect(screen.getByTestId("workflow-title-row").textContent).not.toContain("Unsaved");
     const pathActionsRow = screen.getByTestId("workflow-path-actions-row");
     expect(pathActionsRow.textContent).toContain("/tmp/long-workflow.json");

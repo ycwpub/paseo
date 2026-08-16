@@ -46,6 +46,7 @@ export function WorkflowEditorToolbar({
           editorTitle={nameLabel}
           expandable={false}
           style={styles.titleInput}
+          textInputStyle={styles.titleInputText}
           testID="workflow-name"
         />
       </View>
@@ -104,7 +105,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   titleInput: {
     flex: 1,
+    alignSelf: "stretch",
     width: "100%",
+    maxWidth: "100%",
     minWidth: 0,
     minHeight: 48,
     paddingHorizontal: 0,
@@ -115,6 +118,14 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.lg,
     fontWeight: theme.fontWeight.medium,
     lineHeight: Math.round(theme.fontSize.lg * 1.5),
+  },
+  titleInputText: {
+    flex: 1,
+    alignSelf: "stretch",
+    width: "100%",
+    minWidth: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   pathActionsRow: {
     width: "100%",

@@ -29,10 +29,12 @@ export class WorkflowLoopVariableScope {
 
   createInput(context: Pick<WorkflowLoopContext, "item" | "index" | "count">): WorkflowLoopInput {
     return {
-      item: structuredClone(context.item),
-      index: context.index,
-      count: context.count,
-      ...this.values,
+      var: {
+        item: structuredClone(context.item),
+        index: context.index,
+        count: context.count,
+        ...this.values,
+      },
     };
   }
 

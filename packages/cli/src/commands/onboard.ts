@@ -348,6 +348,14 @@ function printNextSteps(pairingUrl: string | null, paseoHome: string, richUi: bo
   renderNote(quickReferenceLines.join("\n"), "CLI quick reference");
 }
 
+function finishOnboardWithoutPairing(message: string, paseoHome: string, richUi: boolean): void {
+  log.warn(message);
+  printNextSteps(null, paseoHome, richUi);
+  if (richUi) {
+    outro("Paseo daemon is running.");
+  }
+}
+
 export function onboardCommand(): Command {
   return new Command("onboard")
     .description("Run first-time setup, start daemon, and print pairing instructions")
@@ -558,6 +566,15 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     richUi,
   });
 
+  if (options.relay === false) {
+    finishOnboardWithoutPairing(
+      "Relay pairing was skipped because --no-relay was specified.",
+      paseoHome,
+      richUi,
+    );
+    return;
+  }
+
   const pairing = normalizeOnboardPairingOffer(
     await getOnboardPairingOffer({
       paseoHome,
@@ -567,18 +584,20 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   );
 
   if (!pairing.relayEnabled) {
-    log.warn("Relay is disabled; pairing offer is unavailable for this daemon.");
-    printNextSteps(null, paseoHome, richUi);
-    if (richUi) outro("Paseo daemon is running.");
+    finishOnboardWithoutPairing(
+      "Relay is disabled; pairing offer is unavailable for this daemon.",
+      paseoHome,
+      richUi,
+    );
     return;
   }
 
   if (!pairing.url) {
-    log.warn("Relay pairing URL is unavailable for this daemon configuration.");
-    printNextSteps(null, paseoHome, richUi);
-    if (richUi) {
-      outro("Paseo daemon is running.");
-    }
+    finishOnboardWithoutPairing(
+      "Relay pairing URL is unavailable for this daemon configuration.",
+      paseoHome,
+      richUi,
+    );
     return;
   }
 

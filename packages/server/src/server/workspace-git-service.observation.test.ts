@@ -908,11 +908,12 @@ describe("WorkspaceGitService checkout observation", () => {
     const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await vi.waitFor(() => {
       expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
+      expect(getWatcherSubscribeCallCount(watcher, GIT_DIR)).toBeGreaterThan(0);
     });
 
     watcher.records
-      .find((record) => record.directory === GIT_DIR)
-      ?.callback(null, [
+      .find((record) => record.directory === GIT_DIR)!
+      .callback(null, [
         { path: path.join(GIT_DIR, "refs", "remotes", "origin", "main"), type: "update" },
       ]);
     await vi.advanceTimersByTimeAsync(1_000);

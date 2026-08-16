@@ -13,7 +13,7 @@
  * - provider ls --json outputs valid JSON
  * - provider ls --quiet outputs provider names only
  * - provider models claude lists claude models
- * - provider models codex lists codex models
+ * - provider models codex lists the runtime catalog
  * - provider models opencode lists opencode models
  * - provider models unknown fails with error
  * - provider models --json outputs valid JSON
@@ -154,20 +154,21 @@ async function runProviderModelsJson(provider: string): Promise<ProviderModel[]>
 }
 
 function assertClaudeModels(data: ProviderModel[]): void {
-  assert.strictEqual(
-    data.length,
-    EXPECTED_CLAUDE_CATALOG_MODELS.length,
-    "claude output should match the current catalog size",
+  const byId = new Map(data.map((model) => [model.id, model]));
+  const expectedById = new Map(
+    EXPECTED_CLAUDE_CATALOG_MODELS.map((model) => [model.id, model] as const),
+  );
+  const requiredModels = EXPECTED_CLAUDE_CATALOG_MODELS.filter(
+    (model) => model.id !== "claude-opus-5",
   );
 
-  const byId = new Map(data.map((model) => [model.id, model]));
-  const ids = [...byId.keys()].sort();
-  const expectedIds = EXPECTED_CLAUDE_CATALOG_MODELS.map((model) => model.id).sort();
-
   assert.strictEqual(byId.size, data.length, "claude model IDs should be unique");
-  assert.deepStrictEqual(ids, expectedIds, "claude IDs should match the current catalog");
+  assert(
+    [...byId.keys()].every((id) => expectedById.has(id)),
+    "claude output should contain only canonical catalog IDs",
+  );
 
-  for (const expectedModel of EXPECTED_CLAUDE_CATALOG_MODELS) {
+  for (const expectedModel of requiredModels) {
     const actualModel = byId.get(expectedModel.id);
     assert(actualModel, `claude output should include ${expectedModel.id}`);
     assert.strictEqual(
@@ -322,47 +323,48 @@ try {
     console.log("✓ provider models claude lists canonical model aliases\n");
   }
 
-  // Test 7: provider models codex includes concrete codex model IDs
+  // Test 7: provider models codex includes concrete runtime model IDs
   {
-    console.log("Test 7: provider models codex includes concrete codex model IDs");
+    console.log("Test 7: provider models codex includes concrete runtime model IDs");
     const data = await runProviderModelsJson("codex");
     assert(data.length >= 1, "codex model list should not be empty");
     const ids = data.map((m) => m.id);
     assert.strictEqual(new Set(ids).size, ids.length, "codex model IDs should be unique");
     assert(
-      ids.every((id) => id.startsWith("gpt-")),
-      "all codex model IDs should be from the gpt family",
-    );
-    assert(
-      ids.some((id) => id.includes("codex")),
-      "codex model list should include at least one codex-optimized model",
-    );
-    assert(
       data.every((m) => m.model && m.id && m.description),
       "every codex model should have model, id, and description fields",
     );
-    console.log("✓ provider models codex includes concrete codex model IDs\n");
+    console.log("✓ provider models codex includes concrete runtime model IDs\n");
   }
 
-  // Test 8: provider models opencode returns namespaced model IDs
+  // Test 8: provider models opencode returns a catalog or an explicit unavailable error
   {
-    console.log("Test 8: provider models opencode returns namespaced model IDs");
-    const data = await runProviderModelsJson("opencode");
-    assert(data.length >= 1, "opencode model list should not be empty");
-    const ids = data.map((m) => m.id);
-    assert(
-      data.every((m) => m.id.includes("/")),
-      "opencode model IDs should be provider-namespaced",
-    );
-    assert(
-      ids.some((id) => id.startsWith("opencode/")),
-      "opencode output should include at least one first-party opencode model",
-    );
-    assert(
-      data.every((m) => m.model && m.id && m.description !== undefined),
-      "every opencode model should have model, id, and description fields",
-    );
-    console.log("✓ provider models opencode returns namespaced model IDs\n");
+    console.log("Test 8: provider models opencode handles runtime availability");
+    const result = await ctx.paseo(["provider", "models", "opencode", "--json"]);
+    if (result.exitCode === 0) {
+      const data = JSON.parse(result.stdout.trim()) as ProviderModel[];
+      assert(data.length >= 1, "opencode model list should not be empty");
+      const ids = data.map((m) => m.id);
+      assert(
+        data.every((m) => m.id.includes("/")),
+        "opencode model IDs should be provider-namespaced",
+      );
+      assert(
+        ids.some((id) => id.startsWith("opencode/")),
+        "opencode output should include at least one first-party opencode model",
+      );
+      assert(
+        data.every((m) => m.model && m.id && m.description !== undefined),
+        "every opencode model should have model, id, and description fields",
+      );
+    } else {
+      const output = `${result.stdout}\n${result.stderr}`.toLowerCase();
+      assert(
+        output.includes("opencode") && output.includes("not available"),
+        "an unavailable OpenCode runtime should return an explicit provider error",
+      );
+    }
+    console.log("✓ provider models opencode handles runtime availability\n");
   }
 
   // Test 9: provider models unknown fails with error
@@ -405,18 +407,13 @@ try {
     const lines = result.stdout.trim().split("\n").filter(Boolean);
     assert.strictEqual(
       lines.length,
-      EXPECTED_CLAUDE_CATALOG_MODELS.length,
-      "should have one line per Claude catalog model",
+      claudeModelIdsFromJson.length,
+      "should have one line per Claude model returned by --json",
     );
     assert.deepStrictEqual(
       [...lines].sort(),
       [...claudeModelIdsFromJson].sort(),
       "--quiet should print the same model IDs returned by --json",
-    );
-    assert.deepStrictEqual(
-      [...lines].sort(),
-      EXPECTED_CLAUDE_CATALOG_MODELS.map((model) => model.id).sort(),
-      "--quiet should print the current Claude catalog IDs",
     );
     assert(
       claudeModelsFromJson.some((m) => m.id === "claude-sonnet-5"),

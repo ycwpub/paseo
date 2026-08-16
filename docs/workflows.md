@@ -67,13 +67,20 @@ Every executable node receives one JSON object:
       "traceId": "trace-1"
     }
   },
+  "project": {
+    "var": {
+      "serviceName": "checkout"
+    }
+  },
   "loop": {
-    "item": {
-      "id": 7
-    },
-    "index": 0,
-    "count": 3,
-    "i": "0"
+    "var": {
+      "item": {
+        "id": 7
+      },
+      "index": 0,
+      "count": 3,
+      "i": "0"
+    }
   },
   "node": {
     "var": {
@@ -86,16 +93,20 @@ Every executable node receives one JSON object:
 - Paseo fills `data` from the previous node output's `data`; for the first node, it uses the
   original Workflow input. The node's `inputs` mapping is applied afterward.
 - Paseo fills `workflow.var` with the current Workflow-variable values.
-- Inside a For body, Paseo fills `loop` with the innermost For scope. It is absent outside For.
+- For Agent nodes, Paseo fills `project.var` from the selected Project. It is absent from other
+  framework-created node inputs.
+- Inside a For body, Paseo fills `loop.var` with the innermost For scope. `loop` is absent outside
+  For.
 - Paseo fills `node.var` with variables declared by the current node.
 - A node's `inputSchema` validates `data`, not the outer envelope.
-- Expressions can read `data.*`, `workflow.var.*`, `loop.*`, `node.var.*`,
+- Expressions can read `data.*`, `workflow.var.*`, `loop.var.*`, `node.var.*`,
   `workflow.inputs.*`, and `nodes.<id>.outputs.*`.
 
-The three variable scopes have different ownership:
+The four variable scopes have different ownership:
 
 - `workflow.var` is global to the run. Every node can read and modify declared values.
-- `loop.*` is shared only inside its For invocation. Nested For bodies see only the innermost
+- `project.var` is read-only Project configuration available to Agent prompts.
+- `loop.var.*` is shared only inside its For invocation. Nested For bodies see only the innermost
   scope.
 - `node.var` contains read-only constants visible only to the current node.
 
@@ -137,8 +148,9 @@ To update declared Workflow variables, add the optional `modify` field:
 ```
 
 Use `modify.loop.var` only inside a serial For to update custom Loop variables. Parallel For
-iterations can read custom Loop variable initial values but cannot modify them. `loop.item`,
-`loop.index`, and `loop.count` are built-in and cannot be declared or modified. Node variables are
+iterations can read custom Loop variable initial values but cannot modify them. `item`, `index`,
+and `count` are built-in and cannot be declared or modified. These values are
+exposed as `loop.var.item`, `loop.var.index`, and `loop.var.count` in node input. Node variables are
 read-only. Undeclared variables and invalid `int64` values fail the node.
 
 For a business error, add the optional `base_resp` field:
@@ -240,9 +252,9 @@ Single-lifecycle Agents always use `initialPrompt`.
 `config.archiveOnFinish` now applies when the selected Agent lifecycle ends. When enabled, Paseo
 archives the Agent workspace after the Workflow, For invocation, or single execution finishes.
 
-User and system prompts support the same template variables. `{{data.project}}`,
-`{{workflow.var.traceId}}`, `{{node.var.cursor}}`, `{{payload}}`, and `{{inputJson}}` are available.
-Custom `templateVariables` can compose those values.
+User and system prompts resolve paths from the same node input. For example:
+`{{data.project}}`, `{{workflow.var.traceId}}`, `{{project.var.serviceName}}`,
+`{{loop.var.item}}`, and `{{node.var.cursor}}`. `{{input}}` renders the complete input envelope.
 
 ## Switch
 
@@ -296,8 +308,8 @@ The expression must resolve to a JSON array.
 ### Number mode
 
 `mode: "number"` requires the expression to resolve to a non-negative integer. For an initial value
-of `3`, `loop.item` is `3`, `2`, then `1`. Paseo checks the value before each iteration and stops at
-zero.
+of `3`, `loop.var.item` is `3`, `2`, then `1`. Paseo checks the value before each iteration and
+stops at zero.
 
 ### True mode
 
@@ -307,11 +319,11 @@ unlimited True loop requires serial execution. A bounded True loop can use eithe
 
 The body receives the innermost Loop scope:
 
-- `loop.item`: the array item, the current Number-mode value, or `true`
-- `loop.index`: zero-based iteration index
-- `loop.count`: array length, initial Number-mode value, or the True-mode maximum; `0` means
+- `loop.var.item`: the array item, the current Number-mode value, or `true`
+- `loop.var.index`: zero-based iteration index
+- `loop.var.count`: array length, initial Number-mode value, or the True-mode maximum; `0` means
   unlimited
-- custom declared values such as `loop.i`
+- custom declared values such as `loop.var.i`
 
 `forControl` reads a user-defined value after each body node:
 
@@ -345,8 +357,19 @@ External callers can inspect the exact contract supported by the connected daemo
 paseo workflow protocol --json
 ```
 
-The CLI requires the daemon to advertise `workflowProtocolVersion: 1`. A daemon that only supports
-an older fd 3 result contract is rejected instead of being treated as compatible.
+The JSON response includes the Workflow definition schema, executable-node input schema,
+executable-node result schema, variable-scope rules, Agent prompt paths, For semantics, and
+transport details. Use local discovery when no daemon is running:
+
+```bash
+paseo workflow protocol --local --json
+```
+
+The contract uses a `version.revision` pair. The version changes for an incompatible Workflow
+format; the revision changes whenever observable v1 execution semantics change. The CLI requires
+the daemon to advertise both the current `workflowProtocolVersion` and
+`workflowProtocolRevision`. A daemon missing either value is rejected instead of being treated as
+compatible.
 
 ## Schemas and mappings
 

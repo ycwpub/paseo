@@ -60,10 +60,12 @@ describe("WorkflowVariableState", () => {
         },
       ).loop,
     ).toEqual({
-      item: "outer-item",
-      index: 0,
-      count: 1,
-      outer: "outer",
+      var: {
+        item: "outer-item",
+        index: 0,
+        count: 1,
+        outer: "outer",
+      },
     });
     expect(
       state.createNodeInput(
@@ -78,10 +80,12 @@ describe("WorkflowVariableState", () => {
         },
       ).loop,
     ).toEqual({
-      item: "inner-item",
-      index: 1,
-      count: 2,
-      inner: "inner",
+      var: {
+        item: "inner-item",
+        index: 1,
+        count: 2,
+        inner: "inner",
+      },
     });
   });
 

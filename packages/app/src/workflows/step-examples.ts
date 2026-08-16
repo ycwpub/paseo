@@ -22,7 +22,7 @@ export const DEFAULT_PYTHON_CODE = `output = {
 
 export const DEFAULT_AGENT_INITIAL_PROMPT = `[User]
 请处理以下工作流输入：
-{{payload}}`;
+{{input}}`;
 
 export const DEFAULT_SWITCH_CONTROL = "done";
 
@@ -36,10 +36,40 @@ const STANDARD_INPUT_EXAMPLE = JSON.stringify(
       var: { traceId: "trace-1" },
     },
     loop: {
-      item: { id: 7 },
-      index: 0,
-      count: 1,
-      i: "0",
+      var: {
+        item: { id: 7 },
+        index: 0,
+        count: 1,
+        i: "0",
+      },
+    },
+    node: {
+      var: { counter: "0" },
+    },
+  },
+  null,
+  2,
+);
+
+const AGENT_INPUT_EXAMPLE = JSON.stringify(
+  {
+    data: {
+      customer: { name: "Alice" },
+      items: [{ id: 7 }],
+    },
+    workflow: {
+      var: { traceId: "trace-1" },
+    },
+    project: {
+      var: { serviceName: "checkout" },
+    },
+    loop: {
+      var: {
+        item: { id: 7 },
+        index: 0,
+        count: 1,
+        i: "0",
+      },
     },
     node: {
       var: { counter: "0" },
@@ -85,7 +115,7 @@ export function getWorkflowStepExamples(step: WorkflowStep): WorkflowStepExample
   }
   if (step.type === "agent") {
     return {
-      input: STANDARD_INPUT_EXAMPLE,
+      input: AGENT_INPUT_EXAMPLE,
       output:
         (step.outputMode ?? "normal") === "normal"
           ? JSON.stringify({ data: { answer: "Agent reply" } }, null, 2)

@@ -136,8 +136,8 @@ output = {
                         type: "bash",
                         inputs: {
                           project: "{{workflow.inputs.project}}",
-                          item: "{{loop.item}}",
-                          index: "{{loop.index}}",
+                          item: "{{loop.var.item}}",
+                          index: "{{loop.var.index}}",
                           traceId: "{{workflow.var.traceId}}",
                         },
                         initialCommand: nodeOutputCommand(`

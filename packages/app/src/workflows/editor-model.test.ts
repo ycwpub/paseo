@@ -210,7 +210,7 @@ describe("workflow editor model", () => {
     const template = {
       id: "controller",
       name: "Controller",
-      content: "# Role\nChoose a route for {{customer.name}}.",
+      content: "# Role\nChoose a route for {{data.customer.name}}.",
     };
 
     const copied = applyInstructionTemplateToAgentSystemPrompt(step, template);
@@ -224,7 +224,7 @@ describe("workflow editor model", () => {
 
     expect(copied.config.systemPrompt).toBe(template.content);
     expect(edited.config.systemPrompt).toContain("Only answer yes or no.");
-    expect(template.content).toBe("# Role\nChoose a route for {{customer.name}}.");
+    expect(template.content).toBe("# Role\nChoose a route for {{data.customer.name}}.");
     expect(step.config.systemPrompt).toBeUndefined();
   });
 

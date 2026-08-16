@@ -27,6 +27,11 @@ describe("workflow step examples", () => {
     expect(getWorkflowStepExamples(bash).composition).not.toContain(">&3");
     expect(getWorkflowStepExamples(python).initialValue).toBe(DEFAULT_PYTHON_CODE);
     expect(getWorkflowStepExamples(agent).initialValue).toBe(DEFAULT_AGENT_INITIAL_PROMPT);
+    expect(JSON.parse(getWorkflowStepExamples(agent).input)).toMatchObject({
+      project: { var: { serviceName: "checkout" } },
+    });
+    expect(DEFAULT_AGENT_INITIAL_PROMPT).toContain("{{input}}");
+    expect(DEFAULT_AGENT_INITIAL_PROMPT).not.toContain("{{payload}}");
   });
 
   it("keeps Agent output examples aligned with the selected output mode", () => {
@@ -59,10 +64,12 @@ describe("workflow step examples", () => {
         customer: { name: "Alice" },
       },
       loop: {
-        item: { id: 7 },
-        index: 0,
-        count: 1,
-        i: "0",
+        var: {
+          item: { id: 7 },
+          index: 0,
+          count: 1,
+          i: "0",
+        },
       },
     });
     expect(step.switchVar).toBe("{{data.control}}");

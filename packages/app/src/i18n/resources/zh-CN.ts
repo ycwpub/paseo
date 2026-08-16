@@ -199,6 +199,7 @@ export const zhCN: TranslationResources = {
     messages: {
       notFound: "未找到工作流",
       saveFailed: "无法保存工作流",
+      fieldRequired: "该字段不能为空",
       saved: "工作流已保存",
       deleted: "工作流已删除",
       inputRequired: "请输入 JSON 对象",
@@ -387,22 +388,22 @@ export const zhCN: TranslationResources = {
           "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 赋值给配置的输出变量。",
         bash: {
           input:
-            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop 作用域。配置的输入变量接收 stdin 中的完整 JSON 字符串。",
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop.var 对象。配置的输入变量接收 stdin 中的完整 JSON 字符串。",
           output:
-            "输出必须包含 JSON 对象 data。修改 Workflow 变量使用 modify.workflow.var，修改最内层 For 的自定义变量使用 modify.loop.var。node.var 和 loop.item/index/count 只读。仅报告业务错误时增加 base_resp；artifacts 由框架填充。Paseo 会把配置的输出变量写入文件描述符 3；stdout/stderr 仅用于日志。",
+            "输出必须包含 JSON 对象 data。修改 Workflow 变量使用 modify.workflow.var，修改最内层 For 的自定义变量使用 modify.loop.var。node.var 和 loop.var.item/index/count 只读。仅报告业务错误时增加 base_resp；artifacts 由框架填充。Paseo 会把配置的输出变量写入文件描述符 3；stdout/stderr 仅用于日志。",
         },
         python: {
           input:
-            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop 作用域。配置的输入变量接收解析后的完整对象。",
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop.var 对象。配置的输入变量接收解析后的完整对象。",
           output:
-            "输出必须包含 JSON 对象 data。修改 Workflow 变量使用 modify.workflow.var，修改最内层 For 的自定义变量使用 modify.loop.var。node.var 和 loop.item/index/count 只读。仅报告业务错误时增加 base_resp；artifacts 由框架填充。Paseo 会把配置的输出变量序列化到文件描述符 3。",
+            "输出必须包含 JSON 对象 data。修改 Workflow 变量使用 modify.workflow.var，修改最内层 For 的自定义变量使用 modify.loop.var。node.var 和 loop.var.item/index/count 只读。仅报告业务错误时增加 base_resp；artifacts 由框架填充。Paseo 会把配置的输出变量序列化到文件描述符 3。",
         },
         agent: {
           input:
-            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop 作用域。用户提示词和系统提示词可读取 data、workflow.var、loop、node.var、payload 和 inputJson。",
+            "Paseo 统一组装一个节点 input：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var、node.var 由框架填充，project.var 来自 Agent 选择的 Project，For 内还会填充最内层 loop.var。提示词直接使用 data.*、workflow.var.*、project.var.*、loop.var.*、node.var.* 读取字段；只有需要完整对象时才使用 {{input}}。",
           output: '普通模式把 Agent 最终回答包装为 {"data":{"answer":"..."}}。',
           controlOutput:
-            "自定义模式要求 Agent 最终回答包含 JSON 对象 data；modify.workflow.var、modify.loop.var 和 base_resp 按需输出，不能修改 node.var 或 loop.item/index/count，也不需要输出 artifacts。",
+            "自定义模式要求 Agent 最终回答包含 JSON 对象 data；modify.workflow.var、modify.loop.var 和 base_resp 按需输出，不能修改 node.var 或 loop.var.item/index/count，也不需要输出 artifacts。",
         },
         switch: {
           input: "解析 switchVar 表达式，并把得到的原始值与各分支匹配值比较。",
@@ -410,7 +411,7 @@ export const zhCN: TranslationResources = {
         },
         for: {
           input:
-            "数组模式要求 JSON 数组；数字模式要求非负整数；True 模式持续循环。每轮首个循环体节点都会收到 For 原始 input.data 和最内层 loop 作用域。",
+            "数组模式要求 JSON 数组；数字模式要求非负整数；True 模式持续循环。每轮首个循环体节点都会收到 For 原始 input.data 和最内层 loop.var 对象。",
           output:
             "最后完成的一轮作为 For 输出。break 会停止循环，continue 会跳过本轮剩余节点；跨轮状态通过自定义 loop 变量传递。",
         },
@@ -418,7 +419,7 @@ export const zhCN: TranslationResources = {
       expandedEditor: {
         defaultTitle: "输入内容",
         open: "放大编辑{{field}}",
-        subtitle: "在大文本框中编辑，内容会实时同步到节点。",
+        subtitle: "在大文本框中编辑，点击“完成”后才会同步到节点。",
         done: "完成",
       },
       common: {
@@ -429,9 +430,9 @@ export const zhCN: TranslationResources = {
         optional: "可选",
         inputVariable: "输入变量",
         bashInputVariableHint:
-          "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 变量位于 input.workflow.var，最内层 For 作用域位于 input.loop，节点常量位于 input.node.var。",
+          "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
         pythonInputVariableHint:
-          'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 作用域位于 input["loop"]，节点常量位于 input["node"]["var"]。',
+          'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 变量位于 input["loop"]["var"]，节点常量位于 input["node"]["var"]。',
         outputVariable: "输出变量",
         bashOutputVariableHint:
           "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
@@ -472,7 +473,7 @@ export const zhCN: TranslationResources = {
         },
         initialPrompt: "初始提示词",
         initialPromptHint:
-          "使用下方展示的模板变量插入数据。范例包含嵌套字段、数组、内置变量和自定义变量。",
+          "所有变量均来自节点 input，分别通过 data.*、workflow.var.*、project.var.*、loop.var.*、node.var.* 路径读取。",
         executionPolicy: "执行策略",
         lifecycle: "Agent 生命周期",
         lifecycleHint:
@@ -496,7 +497,7 @@ export const zhCN: TranslationResources = {
           customDescription: "首次调用之后，每次都使用单独配置的非首次提示词。",
         },
         subsequentPrompt: "自定义非首次提示词",
-        subsequentPromptHint: "支持与初始提示词相同的输入数据和模板变量。",
+        subsequentPromptHint: "使用与初始提示词相同的节点 input 路径。",
         timeoutHint: "留空则使用工作流的默认任务超时。",
         provider: "Provider",
         model: "模型",
@@ -514,7 +515,7 @@ export const zhCN: TranslationResources = {
         systemPrompt: "系统提示词",
         systemPromptPlaceholder: "可选的附加系统提示词",
         systemPromptHint:
-          "支持与用户提示词相同的模板变量；通过 Provider 的系统指令通道独立发送，不会追加到界面可见的用户提示词中。",
+          "使用与用户提示词相同的节点 input 路径；通过 Provider 的系统指令通道独立发送，不会追加到界面可见的用户提示词中。",
         systemPromptConfiguredHint:
           "已配置，运行时会替换模板变量，并通过 Provider 的系统指令通道独立发送。",
         archive: "完成后归档 Agent",
@@ -551,11 +552,11 @@ export const zhCN: TranslationResources = {
       variables: {
         bashTitle: "Bash 变量",
         pythonTitle: "Python 变量",
-        agentTitle: "Agent 变量",
+        agentTitle: "Agent 输入变量",
         bashDescription: "定义命令中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         pythonDescription: "定义 Python 代码中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         agentDescription:
-          "定义用户提示词和系统提示词中可复用的变量，变量值也可引用输入数据路径或内置变量。",
+          "Agent 提示词只从节点 input 读取变量：业务数据使用 data.*，Workflow 变量使用 workflow.var.*，Agent 选择的 Project 变量使用 project.var.*，最内层 For 变量使用 loop.var.*，节点常量使用 node.var.*。Project 变量在 Project 设置中定义，节点常量在下方“节点数据契约”中定义。",
         examplesTitle: "变量使用范例",
         inputExample: "假设输入 JSON 为：",
         nestedObjectExample: "读取嵌套对象字段",
@@ -615,15 +616,15 @@ export const zhCN: TranslationResources = {
           "读取用户定义的 data 字段；值为 break 时结束循环，continue 时跳过本轮剩余节点，字段为空或不存在时正常继续。",
         loopBody: "循环体",
         loopDescription:
-          "control 返回 continue 时跳过本轮剩余节点，返回 break 时结束循环。\nloop.item：数组元素；数字模式下为本轮执行前的剩余值；True 模式下为 true。\nloop.index：当前循环序号，从 0 开始。\nloop.count：数组长度、数字初始值或 True 模式最大次数（不限制时为 0）。\n每轮都从 For 节点的 input.data 开始；需要把状态传给下一轮时，请使用自定义 loop 变量。",
+          "control 返回 continue 时跳过本轮剩余节点，返回 break 时结束循环。\nloop.var.item：数组元素；数字模式下为本轮执行前的剩余值；True 模式下为 true。\nloop.var.index：当前循环序号，从 0 开始。\nloop.var.count：数组长度、数字初始值或 True 模式最大次数（不限制时为 0）。\n每轮都从 For 节点的 input.data 开始；需要把状态传给下一轮时，请使用自定义 loop.var 变量。",
         loopVariables: "For 循环变量",
         loopVariablesHint:
-          "仅 For 循环内部共享；嵌套 For 中只能看到最内层循环变量。串行模式下可通过 modify.loop.var 修改。",
+          "统一存放在 loop.var，仅 For 循环内部共享；嵌套 For 中只能看到最内层 loop.var。串行模式下可通过 modify.loop.var 修改自定义变量。",
         parallelLoopVariablesHint:
           "并行模式下每轮可以读取 Loop 变量初始值，但不允许通过 modify.loop.var 修改，避免并发冲突。",
         loopVariableDefinitions: "自定义循环变量",
         loopVariableDefinitionsHint:
-          '可声明额外的 loop.* 变量，类型支持 "string" 和 "int64"；item、index、count 为只读内置变量。',
+          '可声明额外的 loop.var.* 变量，类型支持 "string" 和 "int64"；item、index、count 为只读内置变量。',
       },
     },
   },

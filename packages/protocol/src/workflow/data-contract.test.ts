@@ -7,18 +7,20 @@ import {
 } from "./data-contract.js";
 
 describe("WorkflowNodeInputEnvelopeSchema", () => {
-  it("accepts data plus workflow and node variables", () => {
+  it("accepts data plus workflow, project, loop, and node variables", () => {
     expect(
       WorkflowNodeInputEnvelopeSchema.parse({
         data: { approved: true },
         workflow: { var: { traceId: "trace-1", counter: "7" } },
-        loop: { item: "alpha", index: 0, count: 2, cursor: "next" },
+        project: { var: { serviceName: "checkout" } },
+        loop: { var: { item: "alpha", index: 0, count: 2, cursor: "next" } },
         node: { var: { cursor: "next" } },
       }),
     ).toEqual({
       data: { approved: true },
       workflow: { var: { traceId: "trace-1", counter: "7" } },
-      loop: { item: "alpha", index: 0, count: 2, cursor: "next" },
+      project: { var: { serviceName: "checkout" } },
+      loop: { var: { item: "alpha", index: 0, count: 2, cursor: "next" } },
       node: { var: { cursor: "next" } },
     });
   });
@@ -32,6 +34,25 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
         flow: { action: "next" },
       }).success,
     ).toBe(false);
+  });
+
+  it("requires all For loop variables under loop.var", () => {
+    expect(
+      WorkflowNodeInputEnvelopeSchema.safeParse({
+        data: {},
+        workflow: { var: {} },
+        loop: { item: "alpha", index: 0, count: 1 },
+        node: { var: {} },
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowNodeInputEnvelopeSchema.safeParse({
+        data: {},
+        workflow: { var: {} },
+        loop: { var: { item: "alpha", index: 0, count: 1 } },
+        node: { var: {} },
+      }).success,
+    ).toBe(true);
   });
 });
 

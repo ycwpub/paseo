@@ -1,4 +1,6 @@
-const INDENT = "  ";
+export const WORKFLOW_TEXT_TAB_SIZE = 4;
+
+const INDENT = " ".repeat(WORKFLOW_TEXT_TAB_SIZE);
 
 export interface WorkflowTextIndentationEdit {
   value: string;
@@ -71,11 +73,14 @@ function outdentSelection(
   selectionEnd: number,
 ): WorkflowTextIndentationEdit {
   const removals = selectedLineStarts(value, selectionStart, selectionEnd).flatMap((lineStart) => {
-    if (value.startsWith(INDENT, lineStart)) {
-      return [{ start: lineStart, length: INDENT.length }];
-    }
-    if (value[lineStart] === "\t" || value[lineStart] === " ") {
+    if (value[lineStart] === "\t") {
       return [{ start: lineStart, length: 1 }];
+    }
+    const leadingSpaces = value
+      .slice(lineStart, lineStart + INDENT.length)
+      .match(/^ +/)?.[0].length;
+    if (leadingSpaces) {
+      return [{ start: lineStart, length: leadingSpaces }];
     }
     return [];
   });

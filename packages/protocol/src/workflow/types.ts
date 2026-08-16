@@ -14,6 +14,11 @@ import {
 } from "./data-contract.js";
 import { WorkflowEnvironmentSchema } from "./environment.js";
 import { WorkflowInputPresetSchema } from "./input-contract.js";
+import {
+  WORKFLOW_PROTOCOL_API_VERSION,
+  WORKFLOW_PROTOCOL_KIND,
+  WORKFLOW_PROTOCOL_VERSION,
+} from "./protocol-version.js";
 
 export const WorkflowPayloadSchema = z.record(z.string(), z.unknown());
 export type WorkflowPayload = z.infer<typeof WorkflowPayloadSchema>;
@@ -132,7 +137,6 @@ export interface WorkflowAgentStep {
   inputSchema?: WorkflowJsonSchema;
   outputSchema?: WorkflowJsonSchema;
   variables?: WorkflowVariableDefinitions;
-  templateVariables?: WorkflowTemplateVariables;
   timeoutMs?: number;
   retry?: WorkflowRetryPolicy;
   config: WorkflowAgentConfig;
@@ -254,7 +258,6 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
         inputSchema: WorkflowJsonSchemaSchema.optional(),
         outputSchema: WorkflowJsonSchemaSchema.optional(),
         variables: WorkflowVariableDefinitionsSchema.optional(),
-        templateVariables: WorkflowTemplateVariablesSchema.optional(),
         timeoutMs: WorkflowTaskDefaultsSchema.shape.timeoutMs,
         retry: WorkflowRetryPolicySchema.optional(),
         config: WorkflowAgentConfigSchema,
@@ -319,9 +322,9 @@ export const WorkflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() =>
 
 export const WorkflowScriptSchema = z
   .object({
-    apiVersion: z.literal("paseo.sh/workflow/v1"),
-    kind: z.literal("Workflow"),
-    version: z.literal(1),
+    apiVersion: z.literal(WORKFLOW_PROTOCOL_API_VERSION),
+    kind: z.literal(WORKFLOW_PROTOCOL_KIND),
+    version: z.literal(WORKFLOW_PROTOCOL_VERSION),
     name: z.string().trim().min(1).max(256),
     description: z.string().max(4_000).nullable().optional(),
     timeoutMs: z

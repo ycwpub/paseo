@@ -1287,10 +1287,10 @@ describe("WorkflowService", () => {
         'const fs = require("fs");',
         "const log = process.argv[1];",
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(log, `${__paseoInputEnvelope.loop.item}\\n`);",
+        "fs.appendFileSync(log, `${__paseoInputEnvelope.loop.var.item}\\n`);",
         "__paseoWriteResult({",
         "  filePath: input.filePath,",
-        "  control: __paseoInputEnvelope.loop.item,",
+        "  control: __paseoInputEnvelope.loop.var.item,",
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1337,15 +1337,15 @@ describe("WorkflowService", () => {
         "const input = __paseoInputEnvelope;",
         "fs.appendFileSync(",
         "  process.argv[1],",
-        "  `${input.data.seed}:${input.loop.item}:${input.loop.index}:${input.loop.count}:${input.loop.i}\\n`,",
+        "  `${input.data.seed}:${input.loop.var.item}:${input.loop.var.index}:${input.loop.var.count}:${input.loop.var.i}\\n`,",
         ");",
         "__paseoWriteEnvelope({",
         "  data: {",
-        "    seed: `changed-${input.loop.index}`,",
-        '    control: input.loop.item === 1 ? "break" : ""',
+        "    seed: `changed-${input.loop.var.index}`,",
+        '    control: input.loop.var.item === 1 ? "break" : ""',
         "  },",
         "  modify: {",
-        "    loop: { var: { i: String(Number(input.loop.i) + 1) } }",
+        "    loop: { var: { i: String(Number(input.loop.var.i) + 1) } }",
         "  }",
         "});",
       ].join("\n"),
@@ -1398,7 +1398,7 @@ describe("WorkflowService", () => {
         "const input = __paseoInputEnvelope;",
         "fs.appendFileSync(",
         "  process.argv[1],",
-        '  `inner:${Object.keys(input.loop).sort().join(",")}\\n`,',
+        '  `inner:${Object.keys(input.loop.var).sort().join(",")}\\n`,',
         ");",
         "__paseoWriteEnvelope({",
         "  data: { ...input.data, innerDone: true },",
@@ -1413,7 +1413,7 @@ describe("WorkflowService", () => {
         "const input = __paseoInputEnvelope;",
         "fs.appendFileSync(",
         "  process.argv[1],",
-        '  `outer:${Object.keys(input.loop).sort().join(",")}\\n`,',
+        '  `outer:${Object.keys(input.loop.var).sort().join(",")}\\n`,',
         ");",
         "__paseoWriteResult(input.data);",
       ].join("\n"),
@@ -1474,7 +1474,7 @@ describe("WorkflowService", () => {
         'const path = require("path");',
         "const markerDirectory = process.argv[1];",
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.writeFileSync(path.join(markerDirectory, `started-${__paseoInputEnvelope.loop.index}`), '');",
+        "fs.writeFileSync(path.join(markerDirectory, `started-${__paseoInputEnvelope.loop.var.index}`), '');",
         "const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));",
         "(async () => {",
         "  const deadline = Date.now() + 2_000;",
@@ -1482,9 +1482,9 @@ describe("WorkflowService", () => {
         "    if (Date.now() >= deadline) throw new Error('Concurrent iteration did not start');",
         "    await delay(10);",
         "  }",
-        "  if (__paseoInputEnvelope.loop.index === 0) await delay(100);",
+        "  if (__paseoInputEnvelope.loop.var.index === 0) await delay(100);",
         "  __paseoWriteResult({",
-        "    ...input, control: __paseoInputEnvelope.loop.item, result: __paseoInputEnvelope.loop.item",
+        "    ...input, control: __paseoInputEnvelope.loop.var.item, result: __paseoInputEnvelope.loop.var.item",
         "  });",
         "})().catch((error) => { console.error(error.message); process.exitCode = 1; });",
       ].join("\n"),
@@ -1532,8 +1532,8 @@ describe("WorkflowService", () => {
     const loopCommand = nodeCommand(
       [
         "__paseoWriteResult({",
-        "  item: __paseoInputEnvelope.loop.item,",
-        "  cursor: __paseoInputEnvelope.loop.cursor",
+        "  item: __paseoInputEnvelope.loop.var.item,",
+        "  cursor: __paseoInputEnvelope.loop.var.cursor",
         "});",
       ].join("\n"),
     );
@@ -1635,9 +1635,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.index}:${__paseoInputEnvelope.loop.item}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.var.index}:${__paseoInputEnvelope.loop.var.item}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: __paseoInputEnvelope.loop.item === "beta" ? "break" : ""',
+        '  ...input, control: __paseoInputEnvelope.loop.var.item === "beta" ? "break" : ""',
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1690,9 +1690,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.item}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.var.item}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: __paseoInputEnvelope.loop.item === "beta" ? "continue" : ""',
+        '  ...input, control: __paseoInputEnvelope.loop.var.item === "beta" ? "continue" : ""',
         "});",
       ].join("\n"),
       firstLogPath,
@@ -1701,7 +1701,7 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.item}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.var.item}\\n`);",
         "__paseoWriteResult(input);",
       ].join("\n"),
       secondLogPath,
@@ -1750,9 +1750,9 @@ describe("WorkflowService", () => {
       [
         'const fs = require("fs");',
         "const input = JSON.parse(process.argv.at(-1));",
-        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.index}:${__paseoInputEnvelope.loop.item}:${__paseoInputEnvelope.loop.count}\\n`);",
+        "fs.appendFileSync(process.argv[1], `${__paseoInputEnvelope.loop.var.index}:${__paseoInputEnvelope.loop.var.item}:${__paseoInputEnvelope.loop.var.count}\\n`);",
         "__paseoWriteResult({",
-        '  ...input, control: __paseoInputEnvelope.loop.index === 2 ? "break" : "continue"',
+        '  ...input, control: __paseoInputEnvelope.loop.var.index === 2 ? "break" : "continue"',
         "});",
       ].join("\n"),
       loopLogPath,
@@ -1935,6 +1935,10 @@ describe("WorkflowService", () => {
         throw new Error("Worktree creation is not expected in this test");
       },
       archiveWorkspace: async () => undefined,
+      resolveAgentProjectVariables: async () => ({
+        serviceName: "checkout",
+        owner: "payments",
+      }),
     });
     const prepareCommand = nodeCommand(
       [
@@ -1951,6 +1955,9 @@ describe("WorkflowService", () => {
         ...workflowV1,
         version: 1,
         name: "agent variables",
+        variables: {
+          traceId: { type: "string", default: "trace-1" },
+        },
         steps: [
           { id: "prepare", type: "bash", initialCommand: prepareCommand },
           {
@@ -1959,14 +1966,15 @@ describe("WorkflowService", () => {
             type: "agent",
             outputMode: "normal",
             initialPrompt:
-              "Read {{inputFilePath}} as {{role}}. Name={{inputFileName}}; control={{data.control}}; body={{inputFileContent}}; customer={{data.customer.name}}; first={{data.records.0.id}}; records={{data.records}}",
-            templateVariables: {
-              role: "reviewer",
+              "Path={{data.filePath}}; project={{project.var.serviceName}}; owner={{project.var.owner}}; role={{node.var.role}}; trace={{workflow.var.traceId}}; control={{data.control}}; customer={{data.customer.name}}; first={{data.records.0.id}}; records={{data.records}}; envelope={{input}}",
+            variables: {
+              role: { type: "string", default: "reviewer" },
             },
             config: {
               provider: "codex",
               cwd: home,
-              systemPrompt: "# Review {{data.customer.name}}",
+              systemPrompt:
+                "# Review {{data.customer.name}} for {{project.var.serviceName}} as {{node.var.role}}",
             },
           },
         ],
@@ -1977,14 +1985,28 @@ describe("WorkflowService", () => {
     const run = await service.runScriptAndWait({ scriptPath, inputFilePath: inputPath });
 
     expect(run.status, run.error ?? undefined).toBe("succeeded");
-    expect(capturedPrompt).toBe(
-      `Read ${upstreamPath} as reviewer. Name=source.txt; control=review; body=source body; customer=Alice; first=7; records=[{"id":7},{"id":8}]`,
+    expect(capturedPrompt).toContain(
+      `Path=${upstreamPath}; project=checkout; owner=payments; role=reviewer; trace=trace-1; control=review; customer=Alice; first=7; records=[{"id":7},{"id":8}]; envelope=`,
     );
+    expect(JSON.parse(capturedPrompt.split("; envelope=")[1] ?? "{}")).toEqual({
+      data: {
+        filePath: upstreamPath,
+        control: "review",
+        customer: { name: "Alice" },
+        records: [{ id: 7 }, { id: 8 }],
+      },
+      workflow: { var: { traceId: "trace-1" } },
+      project: { var: { serviceName: "checkout", owner: "payments" } },
+      node: { var: { role: "reviewer" } },
+    });
     expect(capturedPrompt).not.toContain("You are executing one node in a Paseo workflow.");
     expect(capturedPrompt).not.toContain("Input JSON payload:");
     expect(capturedPrompt).not.toContain("System prompt delivery:");
     expect(capturedPrompt).not.toContain("Your final response MUST");
-    expect(capturedSystemPrompt).toBe("# Review Alice");
+    expect(capturedSystemPrompt).toBe("# Review Alice for checkout as reviewer");
+    expect(JSON.parse(run.nodeRuns[1]?.inputPayload ?? "{}")).toMatchObject({
+      project: { var: { serviceName: "checkout", owner: "payments" } },
+    });
     expect(run.nodeRuns[1]?.agentPrompt).toBe(capturedPrompt);
     expect(run.nodeRuns[1]?.agentResponse).toBe(
       JSON.stringify({
@@ -2115,6 +2137,7 @@ describe("WorkflowService", () => {
       archiveWorkspace: async (workspaceId) => {
         archivedWorkspaceIds.push(workspaceId);
       },
+      resolveAgentProjectVariables: async () => ({ serviceName: "checkout" }),
     });
     await writeFile(
       scriptPath,
@@ -2133,8 +2156,8 @@ describe("WorkflowService", () => {
                 type: "agent",
                 lifecycle: "for",
                 subsequentPromptMode: "custom",
-                subsequentPrompt: "continue {{loop.item}}",
-                initialPrompt: "review {{loop.item}}",
+                subsequentPrompt: "continue {{loop.var.item}} for {{project.var.serviceName}}",
+                initialPrompt: "review {{loop.var.item}} for {{project.var.serviceName}}",
                 config: { provider: "codex", cwd: home },
               },
             ],
@@ -2157,7 +2180,11 @@ describe("WorkflowService", () => {
     });
 
     expect(run.status, run.error ?? undefined).toBe("succeeded");
-    expect(prompts).toEqual(["review alpha", "continue beta", "after loop"]);
+    expect(prompts).toEqual([
+      "review alpha for checkout",
+      "continue beta for checkout",
+      "after loop",
+    ]);
     expect(createdAgentIds).toHaveLength(2);
     expect(
       run.nodeRuns.filter((node) => node.stepId === "review").map((node) => node.agentId),
@@ -2221,7 +2248,7 @@ describe("WorkflowService", () => {
                 id: "review",
                 type: "agent",
                 lifecycle: "single",
-                initialPrompt: "review {{loop.item}}",
+                initialPrompt: "review {{loop.var.item}}",
                 config: { provider: "codex", cwd: home },
               },
             ],
@@ -2451,15 +2478,16 @@ describe("WorkflowService", () => {
             name: "Route customer",
             type: "agent",
             outputMode: "custom",
-            initialPrompt: "Choose a route for {{data.customer.name}} as {{role}}.",
-            templateVariables: {
-              role: "{{data.customer.type}} reviewer",
+            initialPrompt:
+              "Choose a route for {{data.customer.name}} as {{node.var.role}} ({{data.customer.type}}).",
+            variables: {
+              role: { type: "string", default: "reviewer" },
             },
             config: {
               provider: "codex",
               cwd: home,
               systemPrompt:
-                "# Role\nReview {{data.customer.name}} as {{role}}. Route={{data.control}}; node={{stepName}}.",
+                "# Role\nReview {{data.customer.name}} as {{node.var.role}}. Route={{data.control}}.",
             },
           },
         ],
@@ -2476,9 +2504,7 @@ describe("WorkflowService", () => {
     });
 
     expect(run.status).toBe("succeeded");
-    expect(capturedSystemPrompt).toBe(
-      "# Role\nReview Alice as VIP reviewer. Route=manual; node=Route customer.",
-    );
+    expect(capturedSystemPrompt).toBe("# Role\nReview Alice as reviewer. Route=manual.");
   });
 
   it("applies an assistant preset to a workflow Agent node", async () => {

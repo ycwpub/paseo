@@ -91,6 +91,10 @@ import {
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import type { BrowserAutomationExecuteResponse } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import {
+  WORKFLOW_PROTOCOL_REVISION,
+  WORKFLOW_PROTOCOL_VERSION,
+} from "@getpaseo/protocol/workflow/protocol-version";
+import {
   BrowserAutomationHostCapabilitySchema,
   type BrowserAutomationHostCapability,
 } from "@getpaseo/protocol/browser-automation/capabilities";
@@ -1980,7 +1984,9 @@ export class VoiceAssistantWebSocketServer {
         workflowInputConfiguration: true,
         // COMPAT(workflowCommandResultFd3): added in v0.3.2, remove gate after 2027-02-12.
         workflowCommandResultFd3: true,
-        workflowProtocolVersion: 1,
+        workflowProtocolVersion: WORKFLOW_PROTOCOL_VERSION,
+        // COMPAT(workflowProtocolRevision): added in v0.3.2, remove gate after 2027-02-16.
+        workflowProtocolRevision: WORKFLOW_PROTOCOL_REVISION,
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.

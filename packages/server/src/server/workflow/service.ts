@@ -29,6 +29,7 @@ import {
   type WorkflowData,
   type WorkflowNodeInputEnvelope,
   type WorkflowNodeResultEnvelope,
+  type WorkflowVariableValues,
 } from "@getpaseo/protocol/workflow/data-contract";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import type { AgentManager } from "../agent/agent-manager.js";
@@ -105,6 +106,7 @@ export interface WorkflowServiceOptions {
     input: WorkflowWorkspaceCreateInput,
   ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   archiveWorkspace: (workspaceId: string) => Promise<void>;
+  resolveAgentProjectVariables?: (cwd: string) => Promise<WorkflowVariableValues>;
   assistantStore?: Pick<AssistantStore, "get">;
   teamStore?: Pick<TeamStore, "get">;
   now?: () => Date;
@@ -197,6 +199,9 @@ export class WorkflowService {
   private readonly createDirectoryWorkspace: WorkflowServiceOptions["createDirectoryWorkspace"];
   private readonly createPaseoWorktreeWorkspace: WorkflowServiceOptions["createPaseoWorktreeWorkspace"];
   private readonly archiveWorkspace: WorkflowServiceOptions["archiveWorkspace"];
+  private readonly resolveAgentProjectVariables: NonNullable<
+    WorkflowServiceOptions["resolveAgentProjectVariables"]
+  >;
   private readonly assistantStore: WorkflowServiceOptions["assistantStore"];
   private readonly teamStore: WorkflowServiceOptions["teamStore"];
   private readonly now: () => Date;
@@ -225,6 +230,7 @@ export class WorkflowService {
     this.createDirectoryWorkspace = options.createDirectoryWorkspace;
     this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
+    this.resolveAgentProjectVariables = options.resolveAgentProjectVariables ?? (async () => ({}));
     this.assistantStore = options.assistantStore;
     this.teamStore = options.teamStore;
     this.now = options.now ?? (() => new Date());
@@ -584,7 +590,7 @@ export class WorkflowService {
             result = await this.executePythonStep(run, step, stepInputState, attempt);
             break;
           case "agent":
-            result = await this.executeAgentStep(run, step, stepInputState, attempt);
+            result = await this.executeAgentStep(run, step, stepInputState, attempt, nodeRunId);
             break;
           case "switch":
             result = await this.executeSwitchStep(run, step, stepInputState);
@@ -787,38 +793,31 @@ export class WorkflowService {
     step: WorkflowAgentStep,
     state: ExecutionState,
     attempt: number,
+    nodeRunId: string,
   ): Promise<StepExecutionResult> {
     const cwd = await resolveStepCwd(step.config.cwd, state.filePath);
-    const renderedInstruction = await renderWorkflowInstruction({
+    const nodeInput = {
+      ...resolveNodeInputEnvelope(step.id, state),
+      project: {
+        var: await this.resolveAgentProjectVariables(cwd),
+      },
+    } satisfies WorkflowNodeInputEnvelope;
+    await this.updateNodeRunInput(run.id, nodeRunId, JSON.stringify(nodeInput));
+    const renderedInstruction = renderAgentInstruction({
       template: step.initialPrompt,
-      variables: step.templateVariables,
-      state,
-      runId: run.id,
-      stepId: step.id,
-      stepName: step.name,
-      attempt,
+      input: nodeInput,
     });
     const renderedSubsequentInstruction =
       step.subsequentPromptMode === "custom" && step.subsequentPrompt
-        ? await renderWorkflowInstruction({
+        ? renderAgentInstruction({
             template: step.subsequentPrompt,
-            variables: step.templateVariables,
-            state,
-            runId: run.id,
-            stepId: step.id,
-            stepName: step.name,
-            attempt,
+            input: nodeInput,
           })
         : undefined;
     const renderedSystemPrompt = step.config.systemPrompt
-      ? await renderWorkflowInstruction({
+      ? renderAgentInstruction({
           template: step.config.systemPrompt,
-          variables: step.templateVariables,
-          state,
-          runId: run.id,
-          stepId: step.id,
-          stepName: step.name,
-          attempt,
+          input: nodeInput,
         })
       : undefined;
     const baseLabels = {
@@ -1456,6 +1455,22 @@ export class WorkflowService {
     }
   }
 
+  private async updateNodeRunInput(
+    runId: string,
+    nodeRunId: string,
+    inputPayload: string,
+  ): Promise<void> {
+    const updated = await this.store.update(runId, (run) => ({
+      ...run,
+      nodeRuns: run.nodeRuns.map((nodeRun) =>
+        nodeRun.id === nodeRunId ? { ...nodeRun, inputPayload } : nodeRun,
+      ),
+    }));
+    if (!updated) {
+      throw new Error(`Workflow run not found: ${runId}`);
+    }
+  }
+
   private async completeNodeRun(
     runId: string,
     nodeRunId: string,
@@ -1952,6 +1967,16 @@ async function renderWorkflowInstruction(input: {
   );
 }
 
+function renderAgentInstruction(input: {
+  template: string;
+  input: WorkflowNodeInputEnvelope;
+}): string {
+  return renderPromptTemplate(input.template, (variableName) => {
+    const inputValue = getAgentInputPath(input.input, variableName);
+    return inputValue.found ? stringifyPromptValue(inputValue.value) : undefined;
+  });
+}
+
 function renderPromptTemplate(
   template: string,
   resolveVariable: (name: string) => string | undefined,
@@ -1990,11 +2015,28 @@ function getPayloadPath(
   payload: Record<string, unknown>,
   requestedPath: string,
 ): { found: boolean; value: unknown } {
-  const path = requestedPath === "payload" ? "" : requestedPath.replace(/^payload\./, "");
-  if (!path) {
-    return { found: true, value: payload };
+  const path =
+    requestedPath === "payload" || requestedPath === "input"
+      ? ""
+      : requestedPath.replace(/^(?:payload|input)\./, "");
+  return getObjectPath(payload, path);
+}
+
+function getAgentInputPath(
+  input: WorkflowNodeInputEnvelope,
+  requestedPath: string,
+): { found: boolean; value: unknown } {
+  if (requestedPath === "input") {
+    return { found: true, value: input };
   }
-  let current: unknown = payload;
+  return getObjectPath(input, requestedPath);
+}
+
+function getObjectPath(value: object, path: string): { found: boolean; value: unknown } {
+  if (!path) {
+    return { found: true, value };
+  }
+  let current: unknown = value;
   for (const segment of path.split(".")) {
     if (Array.isArray(current) && /^\d+$/.test(segment)) {
       const index = Number(segment);

@@ -202,6 +202,7 @@ export const en = {
     messages: {
       notFound: "Workflow was not found",
       saveFailed: "Workflow could not be saved",
+      fieldRequired: "This field is required",
       saved: "Workflow saved",
       deleted: "Workflow deleted",
       inputRequired: "Enter an input JSON object",
@@ -396,22 +397,22 @@ export const en = {
           "Use a Bash node to call paseo workflow run, then assign the successful child outputPayload to the configured output variable.",
         bash: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop scope. The configured input variable receives the complete JSON string from stdin.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop.var object. The configured input variable receives the complete JSON string from stdin.",
           output:
-            "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo writes the configured output variable to file descriptor 3; stdout/stderr remain logs.",
+            "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.var.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo writes the configured output variable to file descriptor 3; stdout/stderr remain logs.",
         },
         python: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop scope. The configured input variable receives the complete parsed object.",
+            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop.var object. The configured input variable receives the complete parsed object.",
           output:
-            "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo serializes the configured output variable to file descriptor 3.",
+            "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.var.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo serializes the configured output variable to file descriptor 3.",
         },
         agent: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop scope. User and system prompts can read data, workflow.var, loop, node.var, payload, and inputJson.",
+            "Paseo assembles one node input object: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var, project.var comes from the selected Project, and inside For it fills the innermost loop.var. Prompts read these fields directly with data.*, workflow.var.*, project.var.*, loop.var.*, and node.var.*. Use {{input}} only when the complete object is needed.",
           output: 'Normal mode wraps the final Agent reply as {"data":{"answer":"..."}}.',
           controlOutput:
-            "Custom mode requires the final Agent reply to contain a JSON object in data. Include modify.workflow.var or modify.loop.var only when needed; do not modify node.var or loop.item/index/count, and do not output artifacts.",
+            "Custom mode requires the final Agent reply to contain a JSON object in data. Include modify.workflow.var or modify.loop.var only when needed; do not modify node.var or loop.var.item/index/count, and do not output artifacts.",
         },
         switch: {
           input: "Resolve switchVar, then compare the native value with each configured case.",
@@ -420,7 +421,7 @@ export const en = {
         },
         for: {
           input:
-            "Array mode requires a JSON array; Number mode requires a non-negative integer; True mode runs continuously. Every iteration's first body node receives the original For input.data plus the innermost loop scope.",
+            "Array mode requires a JSON array; Number mode requires a non-negative integer; True mode runs continuously. Every iteration's first body node receives the original For input.data plus the innermost loop.var object.",
           output:
             'The final completed iteration becomes the For output. A "break" result stops scheduling iterations; "continue" skips the remaining body nodes. Persist cross-iteration state through custom loop variables.',
         },
@@ -428,7 +429,7 @@ export const en = {
       expandedEditor: {
         defaultTitle: "Input content",
         open: "Expand {{field}}",
-        subtitle: "Edit in a larger text area. Changes are synchronized with the node immediately.",
+        subtitle: "Edit in a larger text area. Changes are applied only when you select Done.",
         done: "Done",
       },
       common: {
@@ -439,9 +440,9 @@ export const en = {
         optional: "Optional",
         inputVariable: "Input variable",
         bashInputVariableHint:
-          'Variable name that receives the complete node input JSON string in the Bash command. For the default variable "input", mapped data is under input.data, Workflow variables under input.workflow.var, the innermost For scope under input.loop, and node constants under input.node.var.',
+          'Variable name that receives the complete node input JSON string in the Bash command. For the default variable "input", mapped data is under input.data, Workflow variables under input.workflow.var, the innermost For variables under input.loop.var, and node constants under input.node.var.',
         pythonInputVariableHint:
-          'Variable name that receives the complete parsed node input object in Python. For the default variable "input", mapped data is under input["data"], Workflow variables under input["workflow"]["var"], the innermost For scope under input["loop"], and node constants under input["node"]["var"].',
+          'Variable name that receives the complete parsed node input object in Python. For the default variable "input", mapped data is under input["data"], Workflow variables under input["workflow"]["var"], the innermost For variables under input["loop"]["var"], and node constants under input["node"]["var"].',
         outputVariable: "Output variable",
         bashOutputVariableHint:
           "Before the command succeeds, assign a result JSON string containing the required data object to this variable.",
@@ -483,7 +484,7 @@ export const en = {
         },
         initialPrompt: "Initial prompt",
         initialPromptHint:
-          "Insert payload values with the template variables shown below. The examples cover nested fields, arrays, built-ins, and custom variables.",
+          "All variables come from the node input. Use data.*, workflow.var.*, project.var.*, loop.var.*, and node.var.* paths.",
         executionPolicy: "Execution policy",
         lifecycle: "Agent lifecycle",
         lifecycleHint:
@@ -510,8 +511,7 @@ export const en = {
           customDescription: "Use a separate prompt for every invocation after the first.",
         },
         subsequentPrompt: "Custom non-first prompt",
-        subsequentPromptHint:
-          "Supports the same payload and template variables as the initial prompt.",
+        subsequentPromptHint: "Uses the same node input paths as the initial prompt.",
         timeoutHint: "Leave empty to use the workflow task default.",
         provider: "Provider",
         model: "Model",
@@ -529,7 +529,7 @@ export const en = {
         systemPrompt: "System prompt",
         systemPromptPlaceholder: "Optional additional system prompt",
         systemPromptHint:
-          "Supports the same template variables as the user prompt and is sent separately through the provider's system-instruction channel.",
+          "Uses the same node input paths as the user prompt and is sent separately through the provider's system-instruction channel.",
         systemPromptConfiguredHint:
           "Configured. Template variables are rendered at runtime and sent separately through the provider's system-instruction channel.",
         archive: "Archive agent after completion",
@@ -566,13 +566,13 @@ export const en = {
       variables: {
         bashTitle: "Bash variables",
         pythonTitle: "Python variables",
-        agentTitle: "Agent variables",
+        agentTitle: "Agent input variables",
         bashDescription:
           "Define reusable values for the command. Values may reference payload paths or built-in variables.",
         pythonDescription:
           "Define reusable values for the Python code. Values may reference payload paths or built-in variables.",
         agentDescription:
-          "Define reusable values for both user and system prompts. Values may reference payload paths or built-in variables.",
+          "Agent prompts use the node input as their only variable source. Read business data from data.*, Workflow variables from workflow.var.*, selected Project variables from project.var.*, the innermost For variables from loop.var.*, and node constants from node.var.*. Define Project variables in Project settings and node constants in the node data contract below.",
         examplesTitle: "Variable examples",
         inputExample: "With this input JSON:",
         nestedObjectExample: "Nested object field",
@@ -634,15 +634,15 @@ export const en = {
           'Resolve a user-defined data field. "break" stops the loop, "continue" skips the remaining body nodes, and an empty or missing field continues normally.',
         loopBody: "Loop body",
         loopDescription:
-          'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.item: array item; remaining number before the iteration; or true in True mode.\nloop.index: zero-based iteration index.\nloop.count: array length, initial number, or the True-mode maximum (0 when unlimited).\nEach iteration starts from the For input.data. Use custom loop variables to carry state into the next iteration.',
+          'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.var.item: array item; remaining number before the iteration; or true in True mode.\nloop.var.index: zero-based iteration index.\nloop.var.count: array length, initial number, or the True-mode maximum (0 when unlimited).\nEach iteration starts from the For input.data. Use custom loop.var variables to carry state into the next iteration.',
         loopVariables: "For loop variables",
         loopVariablesHint:
-          "Shared only inside this For loop. Nested For bodies see only the innermost loop scope. Serial mode can update them through modify.loop.var.",
+          "Stored under loop.var and shared only inside this For loop. Nested For bodies see only the innermost loop.var object. Serial mode can update custom variables through modify.loop.var.",
         parallelLoopVariablesHint:
           "Parallel iterations can read initial Loop variable values, but cannot update them through modify.loop.var, preventing concurrent conflicts.",
         loopVariableDefinitions: "Custom loop variables",
         loopVariableDefinitionsHint:
-          'Declare additional loop.* variables using "string" or "int64". item, index, and count are built-in and read-only.',
+          'Declare additional loop.var.* variables using "string" or "int64". item, index, and count are built-in and read-only.',
       },
     },
   },

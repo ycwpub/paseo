@@ -100,7 +100,9 @@ describe("WorkflowScriptSchema", () => {
                   id: "analyze",
                   type: "agent",
                   initialPrompt: "Analyze {{data.input}}",
-                  templateVariables: { language: "Chinese" },
+                  variables: {
+                    language: { type: "string", default: "Chinese" },
+                  },
                   config: {
                     provider: "codex",
                     assistantId: "assistant-leader",
@@ -145,7 +147,27 @@ describe("WorkflowScriptSchema", () => {
     expect(analyze.outputMode).toBe("normal");
     expect(analyze.lifecycle).toBe("single");
     expect(analyze.subsequentPromptMode).toBe("reuse_initial");
+    expect(analyze.variables?.language).toEqual({ type: "string", default: "Chinese" });
     expect(loop.concurrency).toBe(1);
+  });
+
+  it("rejects legacy Agent template variables", () => {
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...workflowIdentity,
+        version: 1,
+        name: "legacy Agent variables",
+        steps: [
+          {
+            id: "agent",
+            type: "agent",
+            initialPrompt: "Review {{node.var.role}}",
+            templateVariables: { role: "reviewer" },
+            config: { provider: "codex" },
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("requires a custom subsequent prompt for reusable Agent nodes", () => {
@@ -215,11 +237,10 @@ describe("WorkflowScriptSchema", () => {
         name: "invalid variable",
         steps: [
           {
-            id: "agent",
-            type: "agent",
-            initialPrompt: "Analyze",
+            id: "bash",
+            type: "bash",
+            initialCommand: "true",
             templateVariables: { "not valid": "value" },
-            config: { provider: "codex" },
           },
         ],
       }).success,

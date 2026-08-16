@@ -148,6 +148,7 @@ import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { WorkflowService } from "./workflow/service.js";
+import { resolveWorkflowProjectVariables } from "./workflow/workflow-project-variables.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
@@ -1616,6 +1617,8 @@ export async function createPaseoDaemon(
     createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
+    resolveAgentProjectVariables: (cwd) =>
+      resolveWorkflowProjectVariables({ cwd, projectRegistry, logger }),
     assistantStore,
     teamStore,
   });

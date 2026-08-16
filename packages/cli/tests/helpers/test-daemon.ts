@@ -249,6 +249,7 @@ export async function startTestDaemon(options?: {
         ...TEST_DAEMON_ENV_DEFAULTS,
         PASEO_HOME: paseoHome,
         PASEO_LISTEN: `${TEST_DAEMON_HOST}:${port}`,
+        CLAUDE_CONFIG_DIR: join(paseoHome, "claude-config"),
         // Force no TTY to prevent QR code output
         CI: "true",
         ...options?.env,

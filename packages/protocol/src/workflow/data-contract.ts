@@ -61,38 +61,44 @@ export const WorkflowVariableValuesSchema = z.record(z.string(), z.string());
 export type WorkflowVariableValues = z.infer<typeof WorkflowVariableValuesSchema>;
 
 export const WorkflowLoopInputSchema = z
-  .record(z.string(), z.unknown())
-  .superRefine((value, context) => {
-    if (!Object.prototype.hasOwnProperty.call(value, "item")) {
-      context.addIssue({ code: "custom", path: ["item"], message: "loop.item is required" });
-    }
-    if (!Number.isInteger(value.index) || typeof value.index !== "number" || value.index < 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["index"],
-        message: "loop.index must be a non-negative integer",
-      });
-    }
-    if (!Number.isInteger(value.count) || typeof value.count !== "number" || value.count < 0) {
-      context.addIssue({
-        code: "custom",
-        path: ["count"],
-        message: "loop.count must be a non-negative integer",
-      });
-    }
-    for (const [name, variableValue] of Object.entries(value)) {
-      if (WORKFLOW_LOOP_BUILT_IN_VARIABLES.has(name)) {
-        continue;
-      }
-      if (typeof variableValue !== "string") {
+  .object({
+    var: z.record(z.string(), z.unknown()).superRefine((value, context) => {
+      if (!Object.prototype.hasOwnProperty.call(value, "item")) {
         context.addIssue({
           code: "custom",
-          path: [name],
-          message: `loop.${name} must be a string`,
+          path: ["item"],
+          message: "loop.var.item is required",
         });
       }
-    }
-  });
+      if (!Number.isInteger(value.index) || typeof value.index !== "number" || value.index < 0) {
+        context.addIssue({
+          code: "custom",
+          path: ["index"],
+          message: "loop.var.index must be a non-negative integer",
+        });
+      }
+      if (!Number.isInteger(value.count) || typeof value.count !== "number" || value.count < 0) {
+        context.addIssue({
+          code: "custom",
+          path: ["count"],
+          message: "loop.var.count must be a non-negative integer",
+        });
+      }
+      for (const [name, variableValue] of Object.entries(value)) {
+        if (WORKFLOW_LOOP_BUILT_IN_VARIABLES.has(name)) {
+          continue;
+        }
+        if (typeof variableValue !== "string") {
+          context.addIssue({
+            code: "custom",
+            path: [name],
+            message: `loop.var.${name} must be a string`,
+          });
+        }
+      }
+    }),
+  })
+  .strict();
 export type WorkflowLoopInput = z.infer<typeof WorkflowLoopInputSchema>;
 
 export const WorkflowNodeInputEnvelopeSchema = z
@@ -101,6 +107,12 @@ export const WorkflowNodeInputEnvelopeSchema = z
     workflow: z.object({
       var: WorkflowVariableValuesSchema,
     }),
+    project: z
+      .object({
+        var: WorkflowVariableValuesSchema,
+      })
+      .strict()
+      .optional(),
     loop: WorkflowLoopInputSchema.optional(),
     node: z.object({
       var: WorkflowVariableValuesSchema,
@@ -156,17 +168,23 @@ export const WorkflowArtifactSchema = z
   .strict();
 export type WorkflowArtifact = z.infer<typeof WorkflowArtifactSchema>;
 
-export const WorkflowNodeResultEnvelopeSchema = z
+export const WorkflowNodeResultTransportSchema = z
   .object({
     data: WorkflowDataSchema,
-    modify: WorkflowVariableModificationSchema,
-    base_resp: WorkflowBaseResponseSchema,
+    modify: WorkflowVariableModificationSchema.optional(),
+    base_resp: WorkflowBaseResponseSchema.optional(),
   })
-  .strict()
-  .transform((result) => ({
-    ...result,
+  .strict();
+export type WorkflowNodeResultTransport = z.infer<typeof WorkflowNodeResultTransportSchema>;
+
+export const WorkflowNodeResultEnvelopeSchema = WorkflowNodeResultTransportSchema.transform(
+  (result) => ({
+    data: result.data,
+    modify: WorkflowVariableModificationSchema.parse(result.modify),
+    base_resp: WorkflowBaseResponseSchema.parse(result.base_resp),
     artifacts: [] as WorkflowArtifact[],
-  }));
+  }),
+);
 export type WorkflowNodeResultEnvelope = z.infer<typeof WorkflowNodeResultEnvelopeSchema>;
 
 export function isWorkflowInt64(value: string): boolean {

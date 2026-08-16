@@ -85,8 +85,8 @@ try {
     );
     assert.strictEqual(
       result.stdout.match(/#offer=/g)?.length,
-      2,
-      "output should include one pairing offer per Relay",
+      4,
+      "output should include every Relay and pairing frontend combination",
     );
     console.log("✓ relay config and daemon pair print every Relay\n");
   }
@@ -111,15 +111,40 @@ try {
     assert.strictEqual(pairing.relayEnabled, true, "pairing should report relay enabled");
     assert.match(pairing.url, /#offer=/, "pairing URL should include offer fragment");
     assert.strictEqual(typeof pairing.qr, "string", "pairing should include QR content");
-    assert.strictEqual(pairing.offers.length, 2, "pairing should include every Relay");
+    assert.strictEqual(
+      pairing.offers.length,
+      4,
+      "pairing should include every Relay and pairing frontend combination",
+    );
     assert.deepStrictEqual(
-      pairing.offers.map((offer: { endpoint: string; useTls: boolean }) => ({
-        endpoint: offer.endpoint,
-        useTls: offer.useTls,
-      })),
+      pairing.offers.map(
+        (offer: { endpoint: string; useTls: boolean; pairingBaseUrl: string }) => ({
+          endpoint: offer.endpoint,
+          useTls: offer.useTls,
+          pairingBaseUrl: offer.pairingBaseUrl,
+        }),
+      ),
       [
-        { endpoint: "relay.example.com:443", useTls: true },
-        { endpoint: "192.168.1.20:6769", useTls: true },
+        {
+          endpoint: "relay.example.com:443",
+          useTls: true,
+          pairingBaseUrl: "https://connect.example.com",
+        },
+        {
+          endpoint: "relay.example.com:443",
+          useTls: true,
+          pairingBaseUrl: "https://192.168.1.20:6769",
+        },
+        {
+          endpoint: "192.168.1.20:6769",
+          useTls: true,
+          pairingBaseUrl: "https://connect.example.com",
+        },
+        {
+          endpoint: "192.168.1.20:6769",
+          useTls: true,
+          pairingBaseUrl: "https://192.168.1.20:6769",
+        },
       ],
     );
     assert(

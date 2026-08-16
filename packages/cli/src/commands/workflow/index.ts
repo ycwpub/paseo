@@ -12,7 +12,7 @@ export function createWorkflowCommand(): Command {
     .description("Run reusable Paseo workflow scripts")
     .addHelpText(
       "after",
-      "\nCommand-node protocol: JSON input on stdin, logs on stdout/stderr, one result JSON on file descriptor 3.\nRun `paseo workflow protocol --json` for machine-readable capability details.",
+      "\nCommand-node protocol: JSON input on stdin, logs on stdout/stderr, one result JSON on file descriptor 3.\nRun `paseo workflow protocol --json` to inspect the connected daemon or add `--local` to inspect the CLI's bundled schemas without a daemon.",
     );
 
   const run = workflow
@@ -54,7 +54,8 @@ export function createWorkflowCommand(): Command {
   addJsonAndDaemonHostOptions(
     workflow
       .command("protocol")
-      .description("Show the Workflow command-node protocol supported by the connected daemon"),
+      .description("Show the complete machine-readable Workflow protocol")
+      .option("--local", "Inspect the CLI's bundled protocol without connecting to a daemon"),
   ).action(withOutput(runWorkflowProtocolCommand));
 
   return workflow;

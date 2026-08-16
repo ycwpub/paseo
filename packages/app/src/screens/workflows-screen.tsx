@@ -62,16 +62,13 @@ import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { storeFetchedAgentDetail } from "@/utils/store-fetched-agent-detail";
-import {
-  countWorkflowSteps,
-  createEmptyWorkflowScript,
-  validateWorkflowDraft,
-} from "@/workflows/editor-model";
+import { countWorkflowSteps, createEmptyWorkflowScript } from "@/workflows/editor-model";
 import { collectWorkflowRunTargets } from "@/workflows/run-targets";
 import { deriveWorkflowNodeIdentity } from "@/workflows/run-node-actions";
 import { parseWorkflowProcessOutput } from "@/workflows/run-output";
 import { findWorkflowStep } from "@/workflows/step-lookup";
 import { updateWorkflowStepById } from "@/workflows/workflow-step-tree";
+import { getWorkflowDraftValidationPresentation } from "@/workflows/workflow-validation-error";
 
 type LoadState = "idle" | "loading" | "loaded" | "error";
 
@@ -319,9 +316,12 @@ function WorkflowsScreenContent(): ReactElement {
     if (!client || !draft) {
       return null;
     }
-    const validationError = validateWorkflowDraft(draft);
-    if (validationError) {
-      toast.error(validationError);
+    const validation = getWorkflowDraftValidationPresentation(draft, t);
+    if (validation) {
+      if (validation.stepId) {
+        setSelectedDesignStepId(validation.stepId);
+      }
+      toast.error(validation.message);
       return null;
     }
     setSaving(true);
@@ -528,7 +528,8 @@ function WorkflowsScreenContent(): ReactElement {
     [hosts],
   );
   const selectedHostOption = hostOptions.find((option) => option.value === selectedHost);
-  const validationError = draft ? validateWorkflowDraft(draft) : null;
+  const validation = draft ? getWorkflowDraftValidationPresentation(draft, t) : null;
+  const validationError = validation?.message ?? null;
   const runTargetOptions = useMemo<SelectFieldOption<string>[]>(() => {
     if (!draft) {
       return [];

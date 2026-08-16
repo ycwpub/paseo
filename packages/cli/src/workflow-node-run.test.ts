@@ -38,6 +38,10 @@ describe("workflow node run CLI", () => {
     });
     run?.outputHelp();
     expect(workflowHelp).toContain("paseo workflow protocol --json");
+    expect(workflowHelp).toContain("--local");
+    expect(
+      run?.parent?.commands.find((command) => command.name() === "protocol")?.helpInformation(),
+    ).toContain("--local");
     expect(runHelp).toContain("file descriptor 3");
     expect(runHelp).toContain("stdout is never parsed as a result");
   });

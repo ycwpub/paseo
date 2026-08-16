@@ -1196,17 +1196,15 @@ function AgentStepFields({
           testID={`workflow-agent-${step.id}-initial-prompt`}
         />
       </Field>
-      <WorkflowVariablesEditor
-        kind="agent"
-        variables={step.templateVariables ?? {}}
-        onChange={(templateVariables) =>
-          onChange({
-            ...step,
-            templateVariables:
-              Object.keys(templateVariables).length > 0 ? templateVariables : undefined,
-          })
-        }
-      />
+      <View style={styles.variablesSection}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>{t("workflows.nodes.variables.agentTitle")}</Text>
+          <WorkflowVariableHelp kind="agent" />
+        </View>
+        <Text style={styles.variableExamplesDescription}>
+          {t("workflows.nodes.variables.agentDescription")}
+        </Text>
+      </View>
       <View style={styles.policySection}>
         <Text style={styles.sectionTitle}>{t("workflows.nodes.agent.executionPolicy")}</Text>
         <View style={styles.twoColumn}>
@@ -1562,35 +1560,90 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
   } else if (kind === "python") {
     usage = `customer = "{{customer.name}}"\nitem_id = "{{items.0.id}}"\noutput = {"data": {"control": "done"}}`;
   } else {
-    usage = `Review {{customer.name}} for item {{items.0.id}}. Current route: {{control}}.`;
+    usage =
+      "Review {{data.customer.name}} for item {{data.items.0.id}}. " +
+      "Project: {{project.var.serviceName}}. Role: {{node.var.role}}. " +
+      "Loop item: {{loop.var.item}}.";
   }
-  const examples = [
-    {
-      template: "{{customer.name}}",
-      result: "Alice",
-      description: t("workflows.nodes.variables.nestedObjectExample"),
-    },
-    {
-      template: "{{items.0.id}}",
-      result: "7",
-      description: t("workflows.nodes.variables.arrayExample"),
-    },
-    {
-      template: "{{control}}",
-      result: "review",
-      description: t("workflows.nodes.variables.controlExample"),
-    },
-    {
-      template: "{{payload}}",
-      result: '{"control":"review",...}',
-      description: t("workflows.nodes.variables.payloadExample"),
-    },
-    {
-      template: "{{role}}",
-      result: "reviewer",
-      description: t("workflows.nodes.variables.customExample"),
-    },
-  ];
+  const examples =
+    kind === "agent"
+      ? [
+          {
+            template: "{{data.customer.name}}",
+            result: "Alice",
+            description: t("workflows.nodes.variables.nestedObjectExample"),
+          },
+          {
+            template: "{{data.items.0.id}}",
+            result: "7",
+            description: t("workflows.nodes.variables.arrayExample"),
+          },
+          {
+            template: "{{workflow.var.traceId}}",
+            result: "trace-1",
+            description: "workflow.var",
+          },
+          {
+            template: "{{project.var.serviceName}}",
+            result: "checkout",
+            description: "project.var",
+          },
+          {
+            template: "{{loop.var.item}}",
+            result: '{"id":7}',
+            description: "loop.var",
+          },
+          {
+            template: "{{node.var.role}}",
+            result: "reviewer",
+            description: t("workflows.nodes.variables.customExample"),
+          },
+          {
+            template: "{{input}}",
+            result: '{"data":{...},"workflow":{...},...}',
+            description: t("workflows.nodes.variables.payloadExample"),
+          },
+        ]
+      : [
+          {
+            template: "{{customer.name}}",
+            result: "Alice",
+            description: t("workflows.nodes.variables.nestedObjectExample"),
+          },
+          {
+            template: "{{items.0.id}}",
+            result: "7",
+            description: t("workflows.nodes.variables.arrayExample"),
+          },
+          {
+            template: "{{control}}",
+            result: "review",
+            description: t("workflows.nodes.variables.controlExample"),
+          },
+          {
+            template: "{{payload}}",
+            result: '{"control":"review",...}',
+            description: t("workflows.nodes.variables.payloadExample"),
+          },
+          {
+            template: "{{role}}",
+            result: "reviewer",
+            description: t("workflows.nodes.variables.customExample"),
+          },
+        ];
+  const inputExample =
+    kind === "agent"
+      ? `{
+  "data": {
+    "customer": { "name": "Alice" },
+    "items": [{ "id": 7 }]
+  },
+  "workflow": { "var": { "traceId": "trace-1" } },
+  "project": { "var": { "serviceName": "checkout" } },
+  "loop": { "var": { "item": { "id": 7 }, "index": 0, "count": 1 } },
+  "node": { "var": { "role": "reviewer" } }
+}`
+      : '{"customer":{"name":"Alice"},"items":[{"id":7}],"control":"review"}';
   return (
     <Tooltip
       delayDuration={0}
@@ -1629,7 +1682,7 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
             {t("workflows.nodes.variables.inputExample")}
           </Text>
           <Text style={styles.variableExampleCode} selectable>
-            {'{"customer":{"name":"Alice"},"items":[{"id":7}],"control":"review"}'}
+            {inputExample}
           </Text>
           <View style={styles.variableExampleRows}>
             {examples.map((example) => (

@@ -162,7 +162,7 @@ describe("WorkflowService node runs", () => {
     const directInput = {
       data: { customer: "Alice" },
       workflow: { var: { trace: "manual-trace" } },
-      loop: { item: "manual-item", index: 2, count: 4 },
+      loop: { var: { item: "manual-item", index: 2, count: 4 } },
       node: { var: { role: "manual-role" } },
     };
 

@@ -55,17 +55,33 @@ vi.mock("@/components/adaptive-modal-sheet", () => ({
     visible,
     children,
     footer,
+    footerContainerStyle,
+    onClose,
     testID,
   }: {
     visible: boolean;
     children?: React.ReactNode;
     footer?: React.ReactNode;
+    footerContainerStyle?: unknown;
+    onClose?: () => void;
     testID?: string;
   }) =>
     visible ? (
       <section data-testid={testID}>
         {children}
-        {footer}
+        <div
+          data-testid={testID ? `${testID}-footer` : undefined}
+          data-style={JSON.stringify(footerContainerStyle)}
+        >
+          {footer}
+        </div>
+        <button
+          type="button"
+          data-testid={testID ? `${testID}-close` : undefined}
+          onClick={onClose}
+        >
+          Close
+        </button>
       </section>
     ) : null,
 }));
@@ -129,7 +145,7 @@ describe("WorkflowTextInput", () => {
     expect(input.getAttribute("data-controlled")).toBe("true");
   });
 
-  it("lets every workflow input open and edit in a larger text area", () => {
+  it("applies large-editor changes only after Done is selected", () => {
     const onChangeText = vi.fn();
     render(
       <WorkflowTextInput
@@ -158,8 +174,43 @@ describe("WorkflowTextInput", () => {
 
     fireEvent.change(expandedInput, { target: { value: "Updated in large editor" } });
 
-    expect(onChangeText).toHaveBeenCalledWith("Updated in large editor");
+    expect(onChangeText).not.toHaveBeenCalled();
     expect(expandedInput).toHaveProperty("value", "Updated in large editor");
+    expect(
+      screen.getByTestId("workflow-field-expanded-editor-footer").getAttribute("data-style"),
+    ).toContain('"justifyContent":"flex-end"');
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    expect(onChangeText).toHaveBeenCalledTimes(1);
+    expect(onChangeText).toHaveBeenCalledWith("Updated in large editor");
+    expect(screen.queryByTestId("workflow-field-expanded-editor")).toBeNull();
+  });
+
+  it("discards the large-editor draft when the sheet is closed", () => {
+    const onChangeText = vi.fn();
+    render(
+      <WorkflowTextInput
+        value="Original content"
+        onChangeText={onChangeText}
+        testID="workflow-field"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    fireEvent.change(screen.getByTestId("workflow-field-expanded-input"), {
+      target: { value: "Discard this draft" },
+    });
+
+    fireEvent.click(screen.getByTestId("workflow-field-expanded-editor-close"));
+
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(screen.getByTestId("workflow-field")).toHaveProperty("value", "Original content");
+
+    fireEvent.click(screen.getByTestId("workflow-field-expand"));
+    expect(screen.getByTestId("workflow-field-expanded-input")).toHaveProperty(
+      "value",
+      "Original content",
+    );
   });
 
   it("keeps short scalar fields compact when expansion is disabled", () => {
@@ -176,6 +227,43 @@ describe("WorkflowTextInput", () => {
     expect(screen.queryByTestId("workflow-timeout-expand")).toBeNull();
   });
 
+  it("preserves Chinese IME composition in the normal editor until a candidate is committed", () => {
+    const onChangeText = vi.fn();
+    const view = render(
+      <WorkflowTextInput
+        value="# "
+        onChangeText={onChangeText}
+        testID="workflow-system-prompt"
+        multiline
+      />,
+    );
+    const input = screen.getByTestId("workflow-system-prompt") as HTMLTextAreaElement;
+
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "# shu" } });
+
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(input).toHaveProperty("value", "# shu");
+
+    view.rerender(
+      <WorkflowTextInput
+        value="# "
+        onChangeText={onChangeText}
+        testID="workflow-system-prompt"
+        multiline
+      />,
+    );
+    expect(input).toHaveProperty("value", "# shu");
+
+    input.value = "# 输";
+    fireEvent.compositionEnd(input);
+    fireEvent.change(input, { target: { value: "# 输" } });
+
+    expect(onChangeText).toHaveBeenCalledTimes(1);
+    expect(onChangeText).toHaveBeenLastCalledWith("# 输");
+    expect(input).toHaveProperty("value", "# 输");
+  });
+
   it("uses Tab to indent inside the expanded editor instead of moving focus", () => {
     const onChangeText = vi.fn();
     render(
@@ -190,16 +278,21 @@ describe("WorkflowTextInput", () => {
 
     const allowedBrowserDefault = fireEvent.keyDown(expandedInput, { key: "Tab" });
 
-    expect(onChangeText).toHaveBeenLastCalledWith("[\n  ]");
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(expandedInput).toHaveProperty("value", "[\n    ]");
+    expect(expandedInput.getAttribute("data-text-input-style")).toContain('"tabSize":4');
     expect(allowedBrowserDefault).toBe(false);
     expect(document.activeElement).toBe(expandedInput);
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onChangeText).toHaveBeenLastCalledWith("[\n    ]");
   });
 
   it("uses Shift+Tab to outdent inside the expanded editor instead of moving focus", () => {
     const onChangeText = vi.fn();
     render(
       <WorkflowTextInput
-        value={'[\n  "item"\n]'}
+        value={'[\n    "item"\n]'}
         onChangeText={onChangeText}
         testID="workflow-field"
       />,
@@ -209,16 +302,20 @@ describe("WorkflowTextInput", () => {
       "workflow-field-expanded-input",
     ) as HTMLTextAreaElement;
     expandedInput.focus();
-    expandedInput.setSelectionRange(2, 10);
+    expandedInput.setSelectionRange(2, 12);
 
     const allowedBrowserDefault = fireEvent.keyDown(expandedInput, {
       key: "Tab",
       shiftKey: true,
     });
 
-    expect(onChangeText).toHaveBeenLastCalledWith('[\n"item"\n]');
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(expandedInput).toHaveProperty("value", '[\n"item"\n]');
     expect(allowedBrowserDefault).toBe(false);
     expect(document.activeElement).toBe(expandedInput);
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onChangeText).toHaveBeenLastCalledWith('[\n"item"\n]');
   });
 
   it("preserves Chinese IME composition until the candidate is committed", () => {
@@ -238,9 +335,13 @@ describe("WorkflowTextInput", () => {
     expandedInput.value = "我们";
     fireEvent.compositionEnd(expandedInput);
 
+    expect(onChangeText).not.toHaveBeenCalled();
+    expect(expandedInput).toHaveProperty("value", "我们");
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
     expect(onChangeText).toHaveBeenCalledTimes(1);
     expect(onChangeText).toHaveBeenLastCalledWith("我们");
-    expect(expandedInput).toHaveProperty("value", "我们");
   });
 
   it("does not apply Tab indentation while an IME composition is active", () => {

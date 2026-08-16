@@ -1,5 +1,9 @@
 import type { Command } from "commander";
 import type { ServerInfoStatusPayload } from "@getpaseo/protocol/messages";
+import {
+  WORKFLOW_PROTOCOL_REVISION,
+  WORKFLOW_PROTOCOL_VERSION,
+} from "@getpaseo/protocol/workflow/protocol-version";
 import type {
   AnyCommandResult,
   CommandError,
@@ -7,91 +11,60 @@ import type {
   OutputSchema,
   SingleResult,
 } from "../../output/index.js";
+import {
+  buildWorkflowProtocolManifest,
+  daemonSupportsWorkflowProtocol,
+  type WorkflowProtocolManifest,
+} from "./protocol-manifest.js";
 import { connectWorkflowClient, type WorkflowCommandOptions } from "./shared.js";
 
-export const WORKFLOW_COMMAND_PROTOCOL_VERSION = 1;
+export { WORKFLOW_PROTOCOL_REVISION, WORKFLOW_PROTOCOL_VERSION };
+export type WorkflowCommandProtocolInfo = WorkflowProtocolManifest;
 
-export interface WorkflowCommandProtocolInfo {
-  protocol: "paseo.workflow.command-result";
-  version: number;
-  daemonSupported: boolean;
-  daemonVersion: string | null;
-  daemonProtocolVersion: number | null;
-  inputTransport: "stdin";
-  inputFormat: "one JSON object";
-  stdout: "logs";
-  stderr: "diagnostics";
-  resultTransport: "file descriptor 3";
-  resultFormat: "one JSON object";
-  failureSignal: "non-zero exit code";
-  inputEnvelope: "{data,workflow.var,loop?,node.var}";
-  resultEnvelope: "{data,modify.workflow.var?,modify.loop.var?,base_resp?}";
-  flowControl: "user-defined fields in data";
-  variableTypes: ["string", "int64 decimal string"];
-  forExecutionModes: ["serial", "parallel"];
-  parallelLoopVariableModification: false;
-  agentLifecycles: ["workflow", "for", "single"];
-  agentSubsequentPromptModes: ["reuse_initial", "custom"];
-  targetNodeInputModes: ["upstream_output", "node_input"];
-  legacyStdoutResult: false;
+interface WorkflowProtocolCommandOptions extends WorkflowCommandOptions {
+  local?: boolean;
 }
 
 export function buildWorkflowCommandProtocolInfo(
   serverInfo: ServerInfoStatusPayload | null,
+  daemonChecked = true,
 ): WorkflowCommandProtocolInfo {
-  return {
-    protocol: "paseo.workflow.command-result",
-    version: WORKFLOW_COMMAND_PROTOCOL_VERSION,
-    daemonSupported:
-      serverInfo?.features?.workflowCommandResultFd3 === true &&
-      serverInfo.features.workflowProtocolVersion === WORKFLOW_COMMAND_PROTOCOL_VERSION,
-    daemonVersion: serverInfo?.version ?? null,
-    daemonProtocolVersion: serverInfo?.features?.workflowProtocolVersion ?? null,
-    inputTransport: "stdin",
-    inputFormat: "one JSON object",
-    stdout: "logs",
-    stderr: "diagnostics",
-    resultTransport: "file descriptor 3",
-    resultFormat: "one JSON object",
-    failureSignal: "non-zero exit code",
-    inputEnvelope: "{data,workflow.var,loop?,node.var}",
-    resultEnvelope: "{data,modify.workflow.var?,modify.loop.var?,base_resp?}",
-    flowControl: "user-defined fields in data",
-    variableTypes: ["string", "int64 decimal string"],
-    forExecutionModes: ["serial", "parallel"],
-    parallelLoopVariableModification: false,
-    agentLifecycles: ["workflow", "for", "single"],
-    agentSubsequentPromptModes: ["reuse_initial", "custom"],
-    targetNodeInputModes: ["upstream_output", "node_input"],
-    legacyStdoutResult: false,
-  };
+  return buildWorkflowProtocolManifest({ serverInfo, daemonChecked });
 }
 
 export function assertWorkflowCommandProtocol(serverInfo: ServerInfoStatusPayload | null): void {
-  if (
-    serverInfo?.features?.workflowCommandResultFd3 === true &&
-    serverInfo.features.workflowProtocolVersion === WORKFLOW_COMMAND_PROTOCOL_VERSION
-  ) {
+  if (daemonSupportsWorkflowProtocol(serverInfo)) {
     return;
   }
   const error: CommandError = {
     code: "WORKFLOW_COMMAND_PROTOCOL_UNSUPPORTED",
-    message: "The connected daemon does not support Workflow command protocol version 1",
-    details: `Update the Paseo daemon. The daemon advertises Workflow protocol version ${
+    message: `The connected daemon does not support Workflow protocol ${WORKFLOW_PROTOCOL_VERSION}.${WORKFLOW_PROTOCOL_REVISION}`,
+    details: `Update the Paseo daemon. It advertises Workflow protocol ${
       serverInfo?.features?.workflowProtocolVersion ?? "unknown"
-    }, but this CLI requires version ${WORKFLOW_COMMAND_PROTOCOL_VERSION}. Bash and Python nodes read {data,workflow.var,loop?,node.var} from stdin and write {data,modify.workflow.var?,modify.loop.var?,base_resp?} to file descriptor 3. data is required; node.var and loop.item/index/count are read-only; artifacts are framework-owned. stdout/stderr are logs and are never parsed as results.`,
+    }.${serverInfo?.features?.workflowProtocolRevision ?? "unknown"}, but this CLI requires ${WORKFLOW_PROTOCOL_VERSION}.${WORKFLOW_PROTOCOL_REVISION}. Run \`paseo workflow protocol --local --json\` to inspect the CLI's complete Workflow definition, node input, and node result schemas.`,
   };
   throw error;
 }
 
 export async function runWorkflowProtocolCommand(
-  options: WorkflowCommandOptions,
+  options: WorkflowProtocolCommandOptions,
   _command: Command,
 ): Promise<SingleResult<WorkflowCommandProtocolInfo>> {
+  if (options.local) {
+    return {
+      type: "single",
+      data: buildWorkflowCommandProtocolInfo(null, false),
+      schema: workflowCommandProtocolSchema,
+    };
+  }
+
   const client = await connectWorkflowClient(options.host);
   try {
-    const info = buildWorkflowCommandProtocolInfo(client.getLastServerInfoMessage());
-    return { type: "single", data: info, schema: workflowCommandProtocolSchema };
+    return {
+      type: "single",
+      data: buildWorkflowCommandProtocolInfo(client.getLastServerInfoMessage()),
+      schema: workflowCommandProtocolSchema,
+    };
   } finally {
     await client.close().catch(() => {});
   }
@@ -100,15 +73,15 @@ export async function runWorkflowProtocolCommand(
 const workflowCommandProtocolSchema: OutputSchema<WorkflowCommandProtocolInfo> = {
   idField: "protocol",
   columns: [
-    { header: "PROTOCOL", field: "protocol", width: 31 },
-    { header: "VERSION", field: "version", width: 7 },
-    { header: "DAEMON SUPPORT", field: "daemonSupported", width: 14 },
-    { header: "DAEMON VERSION", field: (info) => info.daemonVersion ?? "-", width: 16 },
+    { header: "PROTOCOL", field: "protocol", width: 20 },
+    { header: "VERSION", field: (info) => `${info.version}.${info.revision}`, width: 9 },
+    { header: "DAEMON CHECKED", field: (info) => info.daemon.checked, width: 14 },
     {
-      header: "DAEMON PROTOCOL",
-      field: (info) => info.daemonProtocolVersion ?? "-",
-      width: 15,
+      header: "DAEMON SUPPORT",
+      field: (info) => info.daemon.supported ?? "-",
+      width: 14,
     },
+    { header: "DAEMON VERSION", field: (info) => info.daemon.version ?? "-", width: 16 },
   ],
   renderHuman: renderWorkflowCommandProtocol,
 };
@@ -121,27 +94,29 @@ function renderWorkflowCommandProtocol(
   if (!info) {
     return "";
   }
+  let daemonStatus = "unsupported";
+  if (!info.daemon.checked) {
+    daemonStatus = "not checked (--local)";
+  } else if (info.daemon.supported) {
+    daemonStatus = "supported";
+  }
   return [
     `Protocol: ${info.protocol}`,
-    `Version: ${info.version}`,
-    `Daemon support: ${info.daemonSupported ? "yes" : "no"}`,
-    `Daemon version: ${info.daemonVersion ?? "unknown"}`,
-    `Daemon protocol version: ${info.daemonProtocolVersion ?? "unknown"}`,
-    `Input: ${info.inputTransport}, ${info.inputFormat}`,
-    `Logs: stdout=${info.stdout}, stderr=${info.stderr}`,
-    `Result: ${info.resultTransport}, ${info.resultFormat}`,
-    `Failure: ${info.failureSignal}`,
-    `Input envelope: ${info.inputEnvelope}`,
-    `Result envelope: ${info.resultEnvelope}`,
-    `Flow control: ${info.flowControl}`,
-    `Variable types: ${info.variableTypes.join(", ")}`,
-    `For execution modes: ${info.forExecutionModes.join(", ")}`,
-    `Parallel Loop variable modification: ${
-      info.parallelLoopVariableModification ? "enabled" : "disabled"
-    }`,
-    `Agent lifecycles: ${info.agentLifecycles.join(", ")}`,
-    `Agent non-first prompt modes: ${info.agentSubsequentPromptModes.join(", ")}`,
-    `Target node input modes: ${info.targetNodeInputModes.join(", ")}`,
-    `Legacy stdout result: ${info.legacyStdoutResult ? "enabled" : "disabled"}`,
+    `API version: ${info.apiVersion}`,
+    `Contract: ${info.version}.${info.revision}`,
+    `Daemon: ${daemonStatus}`,
+    `Daemon version: ${info.daemon.version ?? "unknown"}`,
+    `Daemon contract: ${info.daemon.protocolVersion ?? "unknown"}.${info.daemon.protocolRevision ?? "unknown"}`,
+    `Workflow nodes: ${info.workflowDefinition.nodeTypes.join(", ")}`,
+    `Command input: ${info.commandNode.input.transport}, ${info.commandNode.input.cardinality}`,
+    `Command logs: stdout=${info.commandNode.logs.stdout}, stderr=${info.commandNode.logs.stderr}`,
+    `Command result: ${info.commandNode.result.transport}, ${info.commandNode.result.cardinality}`,
+    `Process failure: ${info.commandNode.processFailure}`,
+    `Variable scopes: ${Object.values(info.variables)
+      .map((scope) => scope.inputPath)
+      .join(", ")}`,
+    `Agent prompt paths: ${info.agent.promptPaths.join(", ")}, ${info.agent.completeInputAlias}`,
+    `For modes: ${info.forNode.modes.join(", ")}; execution=${info.forNode.executionModes.join(", ")}`,
+    "JSON output includes exact Workflow definition, node input, and node result JSON Schemas.",
   ].join("\n");
 }

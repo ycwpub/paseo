@@ -9,7 +9,8 @@ const COLUMN_GAP = 72;
 const ROW_GAP = 36;
 const CANVAS_PADDING_X = 32;
 const CANVAS_PADDING_Y = 28;
-const LOOP_GUTTER = 42;
+const LOOP_ROUTE_CLEARANCE = 18;
+const LOOP_CHANNEL_GAP = 28;
 
 export interface WorkflowGraphLayoutNode {
   id: string;
@@ -54,13 +55,14 @@ export function layoutWorkflowGraph(model: WorkflowGraphModel): WorkflowGraphLay
   const nodes = [start, ...realNodes, end];
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const graphEdges = addBoundaryEdges(model);
+  const loopReturnYByEdgeIndex = allocateLoopBackChannels(model, graphEdges, nodeById);
   const edges = graphEdges.flatMap((edge, index) => {
     const from = nodeById.get(edge.from);
     const to = nodeById.get(edge.to);
     if (!from || !to) {
       return [];
     }
-    const route = routeEdge(from, to, edge.kind);
+    const route = routeEdge(from, to, edge.kind, loopReturnYByEdgeIndex.get(index));
     return [
       {
         ...edge,
@@ -69,15 +71,14 @@ export function layoutWorkflowGraph(model: WorkflowGraphModel): WorkflowGraphLay
       },
     ];
   });
-  const laneCount = Math.max(1, ...realNodes.map((node) => node.lane + 1));
   const contentWidth = Math.max(...nodes.map((node) => node.x + node.width));
+  const contentBottom = Math.max(
+    ...nodes.map((node) => node.y + node.height),
+    ...edges.map((edge) => edge.labelY + (edge.kind === "loop_back" ? 10 : 0)),
+  );
   return {
     width: contentWidth + CANVAS_PADDING_X,
-    height:
-      CANVAS_PADDING_Y * 2 +
-      laneCount * WORKFLOW_GRAPH_NODE_HEIGHT +
-      Math.max(0, laneCount - 1) * ROW_GAP +
-      (edges.some((edge) => edge.kind === "loop_back") ? LOOP_GUTTER : 0),
+    height: contentBottom + CANVAS_PADDING_Y,
     nodes,
     edges,
   };
@@ -213,13 +214,15 @@ function routeEdge(
   from: WorkflowGraphLayoutNode,
   to: WorkflowGraphLayoutNode,
   kind: WorkflowGraphEdge["kind"],
+  loopReturnY?: number,
 ): Pick<WorkflowGraphLayoutEdge, "path" | "labelX" | "labelY"> {
   const sourceX = from.x + from.width;
   const sourceY = from.y + from.height / 2;
   const targetX = to.x;
   const targetY = to.y + to.height / 2;
   if (kind === "loop_back") {
-    const returnY = Math.max(from.y + from.height, to.y + to.height) + LOOP_GUTTER / 2;
+    const returnY =
+      loopReturnY ?? Math.max(from.y + from.height, to.y + to.height) + LOOP_ROUTE_CLEARANCE;
     const sourceTurnX = sourceX + COLUMN_GAP / 2;
     const targetTurnX = targetX - COLUMN_GAP / 2;
     return {
@@ -234,4 +237,105 @@ function routeEdge(
     labelX: middleX,
     labelY: (sourceY + targetY) / 2,
   };
+}
+
+interface LoopChannelCandidate {
+  edgeIndex: number;
+  baseY: number;
+  startX: number;
+  endX: number;
+  targetLane: number;
+}
+
+interface AssignedLoopChannel {
+  y: number;
+  startX: number;
+  endX: number;
+}
+
+function allocateLoopBackChannels(
+  model: WorkflowGraphModel,
+  edges: WorkflowGraphEdge[],
+  nodeById: Map<string, WorkflowGraphLayoutNode>,
+): Map<number, number> {
+  const subtreeBottomByStepId = calculateSubtreeBottomByStepId(model.nodes, nodeById);
+  const candidates = edges.flatMap((edge, edgeIndex): LoopChannelCandidate[] => {
+    if (edge.kind !== "loop_back") {
+      return [];
+    }
+    const from = nodeById.get(edge.from);
+    const to = nodeById.get(edge.to);
+    if (!from || !to) {
+      return [];
+    }
+    const sourceX = from.x + from.width;
+    const sourceTurnX = sourceX + COLUMN_GAP / 2;
+    const targetTurnX = to.x - COLUMN_GAP / 2;
+    return [
+      {
+        edgeIndex,
+        baseY:
+          Math.max(subtreeBottomByStepId.get(edge.to) ?? to.y + to.height, from.y + from.height) +
+          LOOP_ROUTE_CLEARANCE,
+        startX: Math.min(targetTurnX, sourceX),
+        endX: Math.max(sourceTurnX, to.x),
+        targetLane: to.lane,
+      },
+    ];
+  });
+  candidates.sort(
+    (left, right) =>
+      left.baseY - right.baseY ||
+      right.targetLane - left.targetLane ||
+      left.endX - left.startX - (right.endX - right.startX) ||
+      left.edgeIndex - right.edgeIndex,
+  );
+
+  const assigned: AssignedLoopChannel[] = [];
+  const returnYByEdgeIndex = new Map<number, number>();
+  for (const candidate of candidates) {
+    let y = candidate.baseY;
+    while (true) {
+      const conflicts = assigned.filter(
+        (channel) =>
+          horizontalRangesOverlap(candidate, channel) && Math.abs(channel.y - y) < LOOP_CHANNEL_GAP,
+      );
+      if (conflicts.length === 0) {
+        break;
+      }
+      y = Math.max(...conflicts.map((channel) => channel.y)) + LOOP_CHANNEL_GAP;
+    }
+    assigned.push({ y, startX: candidate.startX, endX: candidate.endX });
+    returnYByEdgeIndex.set(candidate.edgeIndex, y);
+  }
+  return returnYByEdgeIndex;
+}
+
+function calculateSubtreeBottomByStepId(
+  nodes: WorkflowGraphNode[],
+  nodeById: Map<string, WorkflowGraphLayoutNode>,
+): Map<string, number> {
+  const result = new Map<string, number>();
+  const visit = (node: WorkflowGraphNode): number => {
+    const positioned = nodeById.get(node.stepId);
+    let bottom = positioned ? positioned.y + positioned.height : 0;
+    for (const branch of node.branches) {
+      for (const child of branch.nodes) {
+        bottom = Math.max(bottom, visit(child));
+      }
+    }
+    result.set(node.stepId, bottom);
+    return bottom;
+  };
+  for (const node of nodes) {
+    visit(node);
+  }
+  return result;
+}
+
+function horizontalRangesOverlap(
+  left: Pick<LoopChannelCandidate, "startX" | "endX">,
+  right: Pick<AssignedLoopChannel, "startX" | "endX">,
+): boolean {
+  return left.startX < right.endX && right.startX < left.endX;
 }

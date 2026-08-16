@@ -84,6 +84,41 @@ describe("workflow graph layout", () => {
     ).toBe(true);
   });
 
+  it("routes nested loop-back edges below their full subtrees on separate channels", () => {
+    const layout = createLayout([
+      {
+        id: "outer",
+        type: "for",
+        steps: [
+          {
+            id: "inner",
+            type: "for",
+            steps: [
+              { id: "work", type: "agent", initialPrompt: "work", config: { provider: "codex" } },
+              {
+                id: "review",
+                type: "agent",
+                initialPrompt: "review",
+                config: { provider: "codex" },
+              },
+            ],
+          },
+          { id: "close", type: "bash", initialCommand: "true" },
+        ],
+      },
+      { id: "finish", type: "bash", initialCommand: "true" },
+    ]);
+
+    const innerLoopBack = findEdge(layout, "review", "inner", "loop_back");
+    const outerLoopBack = findEdge(layout, "close", "outer", "loop_back");
+    const deepestNodeBottom = node(layout, "review").y + WORKFLOW_GRAPH_NODE_HEIGHT;
+
+    expect(innerLoopBack.labelY).toBeGreaterThan(deepestNodeBottom);
+    expect(outerLoopBack.labelY).toBeGreaterThan(innerLoopBack.labelY);
+    expect(outerLoopBack.labelY - innerLoopBack.labelY).toBeGreaterThanOrEqual(28);
+    expect(layout.height).toBeGreaterThan(outerLoopBack.labelY);
+  });
+
   it("connects a terminal loop controller to workflow end", () => {
     const layout = createLayout([
       {
@@ -194,6 +229,21 @@ function node(layout: ReturnType<typeof createLayout>, id: string) {
   const result = layout.nodes.find((candidate) => candidate.id === id);
   if (!result) {
     throw new Error(`Missing layout node: ${id}`);
+  }
+  return result;
+}
+
+function findEdge(
+  layout: ReturnType<typeof createLayout>,
+  from: string,
+  to: string,
+  kind: "sequence" | "branch" | "loop_back",
+) {
+  const result = layout.edges.find(
+    (candidate) => candidate.from === from && candidate.to === to && candidate.kind === kind,
+  );
+  if (!result) {
+    throw new Error(`Missing layout edge: ${from} -> ${to} (${kind})`);
   }
   return result;
 }

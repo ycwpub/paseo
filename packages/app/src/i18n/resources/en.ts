@@ -66,7 +66,7 @@ export const en = {
       contract: {
         title: "Input and output contract",
         description:
-          "Paseo assembles every node input: data comes from the previous node output data, or the initial Workflow input for the first node; the Workflow framework fills workflow.var and node.var.",
+          "Paseo assembles every node input: data comes from the previous node output data, origin_input keeps the original Workflow launch input unchanged, and the Workflow framework fills workflow.var and node.var.",
         note: 'Every node result must contain {"data":{}} with a JSON object. Include modify only to update Workflow variables and base_resp only to report a business error. node.var is read-only, and the framework fills artifacts.',
       },
       internal: {
@@ -210,7 +210,7 @@ export const en = {
       inputRequired: "Enter an input JSON object",
       invalidInputJson: "Input must be a valid JSON object matching the first node input schema",
       invalidNodeInputJson:
-        "Direct node input must contain data, workflow.var, and node.var objects",
+        "Direct node input must contain data, origin_input, workflow.var, and node.var objects",
       startFailed: "Workflow could not be started",
       started: "Workflow started",
       cancelFailed: "Workflow run could not be cancelled",
@@ -248,7 +248,7 @@ export const en = {
       inputJsonHint:
         "Enter workflow business inputs. Node mappings select the fields each node receives.",
       nodeInputJsonHint:
-        "Enter the complete node input JSON. Paseo passes it directly without input mapping or filling Workflow, Loop, or Node variables.",
+        "Enter the complete node input JSON, including origin_input. Paseo passes it directly without input mapping or filling Workflow, Loop, or Node variables.",
       runTarget: "Run target",
       runTargetHint: "Run the whole workflow, or test one node with the configured input JSON.",
       runEntireWorkflow: "Entire workflow",
@@ -262,7 +262,7 @@ export const en = {
           "Apply input mapping and let Paseo fill Workflow, Loop, and Node variables.",
         nodeInput: "This node's input",
         nodeInputDescription:
-          "Pass the complete node input directly without mapping or variable filling.",
+          "Pass the complete node input, including origin_input, without mapping or variable filling.",
       },
       emptyTitle: "Select or create a workflow",
       emptyDescription:
@@ -399,19 +399,19 @@ export const en = {
           "Use a Bash node to call paseo workflow run, then assign the successful child outputPayload to the configured output variable.",
         bash: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop.var object. The configured input variable receives the complete JSON string from stdin.",
+            "Paseo assembles the node input: data comes from the previous node output data, origin_input keeps the original Workflow launch input unchanged, and the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop.var object. The configured input variable receives the complete JSON string from stdin.",
           output:
             "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.var.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo writes the configured output variable to file descriptor 3; stdout/stderr remain logs.",
         },
         python: {
           input:
-            "Paseo assembles the node input: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop.var object. The configured input variable receives the complete parsed object.",
+            "Paseo assembles the node input: data comes from the previous node output data, origin_input keeps the original Workflow launch input unchanged, and the framework fills workflow.var and node.var. Inside For, it also fills the innermost loop.var object. The configured input variable receives the complete parsed object.",
           output:
             "The result must contain a JSON object in data. Use modify.workflow.var for Workflow variables and modify.loop.var for custom variables of the innermost For loop. node.var and loop.var.item/index/count are read-only. Add base_resp only for a business error; the framework fills artifacts. Paseo serializes the configured output variable to file descriptor 3.",
         },
         agent: {
           input:
-            "Paseo assembles one node input object: data comes from the previous node output data, or the initial Workflow input for the first node; the framework fills workflow.var and node.var, project.var comes from the selected Project, and inside For it fills the innermost loop.var. Prompts read these fields directly with data.*, workflow.var.*, project.var.*, loop.var.*, and node.var.*. Use {{input}} only when the complete object is needed.",
+            "Paseo assembles one node input object: data comes from the previous node output data, origin_input keeps the original Workflow launch input unchanged, the framework fills workflow.var and node.var, project.var comes from the selected Project, and inside For it fills the innermost loop.var. Prompts read these fields directly with data.*, origin_input.*, workflow.var.*, project.var.*, loop.var.*, and node.var.*. Use {{input}} only when the complete object is needed.",
           output: 'Normal mode wraps the final Agent reply as {"data":{"answer":"..."}}.',
           controlOutput:
             "Custom mode requires the final Agent reply to contain a JSON object in data. Include modify.workflow.var or modify.loop.var only when needed; do not modify node.var or loop.var.item/index/count, and do not output artifacts.",
@@ -442,9 +442,9 @@ export const en = {
         optional: "Optional",
         inputVariable: "Input variable",
         bashInputVariableHint:
-          'Variable name that receives the complete node input JSON string in the Bash command. For the default variable "input", mapped data is under input.data, Workflow variables under input.workflow.var, the innermost For variables under input.loop.var, and node constants under input.node.var.',
+          'Variable name that receives the complete node input JSON string in the Bash command. For the default variable "input", mapped data is under input.data, the original Workflow input under input.origin_input, Workflow variables under input.workflow.var, the innermost For variables under input.loop.var, and node constants under input.node.var.',
         pythonInputVariableHint:
-          'Variable name that receives the complete parsed node input object in Python. For the default variable "input", mapped data is under input["data"], Workflow variables under input["workflow"]["var"], the innermost For variables under input["loop"]["var"], and node constants under input["node"]["var"].',
+          'Variable name that receives the complete parsed node input object in Python. For the default variable "input", mapped data is under input["data"], the original Workflow input under input["origin_input"], Workflow variables under input["workflow"]["var"], the innermost For variables under input["loop"]["var"], and node constants under input["node"]["var"].',
         outputVariable: "Output variable",
         bashOutputVariableHint:
           "Before the command succeeds, assign a result JSON string containing the required data object to this variable.",
@@ -486,7 +486,7 @@ export const en = {
         },
         initialPrompt: "Initial prompt",
         initialPromptHint:
-          "All variables come from the node input. Use data.*, workflow.var.*, project.var.*, loop.var.*, and node.var.* paths.",
+          "All variables come from the node input. Use data.*, origin_input.*, workflow.var.*, project.var.*, loop.var.*, and node.var.* paths.",
         executionPolicy: "Execution policy",
         lifecycle: "Agent lifecycle",
         lifecycleHint:
@@ -574,7 +574,7 @@ export const en = {
         pythonDescription:
           "Define reusable values for the Python code. Values may reference payload paths or built-in variables.",
         agentDescription:
-          "Agent prompts use the node input as their only variable source. Read business data from data.*, Workflow variables from workflow.var.*, selected Project variables from project.var.*, the innermost For variables from loop.var.*, and node constants from node.var.*. Define Project variables in Project settings and node constants in the node data contract below.",
+          "Agent prompts use the node input as their only variable source. Read current business data from data.*, the original Workflow launch input from origin_input.*, Workflow variables from workflow.var.*, selected Project variables from project.var.*, the innermost For variables from loop.var.*, and node constants from node.var.*. Define Project variables in Project settings and node constants in the node data contract below.",
         examplesTitle: "Variable examples",
         inputExample: "With this input JSON:",
         nestedObjectExample: "Nested object field",

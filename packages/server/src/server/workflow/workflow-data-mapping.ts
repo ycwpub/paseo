@@ -60,6 +60,7 @@ function createExpressionRoot(context: WorkflowDataMappingContext): Record<strin
     Object.entries(context.nodeOutputs).map(([nodeId, outputs]) => [nodeId, { outputs }]),
   );
   const root: Record<string, unknown> = {
+    origin_input: context.workflowInputs,
     workflow: {
       inputs: context.workflowInputs,
       var: context.workflowVariables,

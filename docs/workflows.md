@@ -62,6 +62,10 @@ Every executable node receives one JSON object:
   "data": {
     "project": "paseo"
   },
+  "origin_input": {
+    "project": "paseo",
+    "requestId": "request-1"
+  },
   "workflow": {
     "var": {
       "traceId": "trace-1"
@@ -92,6 +96,8 @@ Every executable node receives one JSON object:
 
 - Paseo fills `data` from the previous node output's `data`; for the first node, it uses the
   original Workflow input. The node's `inputs` mapping is applied afterward.
+- Paseo fills `origin_input` with the original Workflow launch input. It is read-only and remains
+  unchanged for every node and every For iteration.
 - Paseo fills `workflow.var` with the current Workflow-variable values.
 - For Agent nodes, Paseo fills `project.var` from the selected Project. It is absent from other
   framework-created node inputs.
@@ -99,7 +105,7 @@ Every executable node receives one JSON object:
   For.
 - Paseo fills `node.var` with variables declared by the current node.
 - A node's `inputSchema` validates `data`, not the outer envelope.
-- Expressions can read `data.*`, `workflow.var.*`, `loop.var.*`, `node.var.*`,
+- Expressions can read `data.*`, `origin_input.*`, `workflow.var.*`, `loop.var.*`, `node.var.*`,
   `workflow.inputs.*`, and `nodes.<id>.outputs.*`.
 
 The four variable scopes have different ownership:
@@ -253,7 +259,8 @@ Single-lifecycle Agents always use `initialPrompt`.
 archives the Agent workspace after the Workflow, For invocation, or single execution finishes.
 
 User and system prompts resolve paths from the same node input. For example:
-`{{data.project}}`, `{{workflow.var.traceId}}`, `{{project.var.serviceName}}`,
+`{{data.project}}`, `{{origin_input.requestId}}`, `{{workflow.var.traceId}}`,
+`{{project.var.serviceName}}`,
 `{{loop.var.item}}`, and `{{node.var.cursor}}`. `{{input}}` renders the complete input envelope.
 
 ## Switch
@@ -409,12 +416,13 @@ Single-node runs support two input types:
 
 ```bash
 paseo workflow run /absolute/path/workflow.json \
-  '{"data":{"project":"paseo"},"workflow":{"var":{}},"node":{"var":{}}}' \
+  '{"data":{"project":"paseo"},"origin_input":{"project":"paseo"},"workflow":{"var":{}},"node":{"var":{}}}' \
   --node review \
   --input-type node-input
 ```
 
-`node-input` requires `--node` and cannot be combined with `--preset`.
+`node-input` requires `--node`, requires the caller to provide `origin_input`, and cannot be
+combined with `--preset`.
 
 ```bash
 paseo workflow inspect /absolute/path/workflow.json

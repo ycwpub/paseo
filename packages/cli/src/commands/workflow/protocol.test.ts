@@ -44,13 +44,21 @@ describe("Workflow protocol CLI", () => {
         legacyStdoutResult: false,
       },
       variables: {
+        originInput: { inputPath: "origin_input", mutable: false },
         workflow: { inputPath: "workflow.var", modifyPath: "modify.workflow.var" },
         project: { inputPath: "project.var", modifyPath: null },
         loop: { inputPath: "loop.var", modifyPath: "modify.loop.var" },
         node: { inputPath: "node.var", modifyPath: null },
       },
       agent: {
-        promptPaths: ["data.*", "workflow.var.*", "project.var.*", "loop.var.*", "node.var.*"],
+        promptPaths: [
+          "data.*",
+          "origin_input.*",
+          "workflow.var.*",
+          "project.var.*",
+          "loop.var.*",
+          "node.var.*",
+        ],
         completeInputAlias: "{{input}}",
       },
     });
@@ -66,10 +74,11 @@ describe("Workflow protocol CLI", () => {
       type: "object",
       properties: {
         data: { type: "object" },
+        origin_input: { type: "object" },
         project: { type: "object" },
         loop: { type: "object" },
       },
-      required: ["data", "workflow", "node"],
+      required: ["data", "origin_input", "workflow", "node"],
       additionalProperties: false,
     });
     expect(info.schemas.nodeResult).toMatchObject({

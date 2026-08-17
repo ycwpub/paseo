@@ -104,6 +104,7 @@ export type WorkflowLoopInput = z.infer<typeof WorkflowLoopInputSchema>;
 export const WorkflowNodeInputEnvelopeSchema = z
   .object({
     data: WorkflowDataSchema,
+    origin_input: WorkflowDataSchema,
     workflow: z.object({
       var: WorkflowVariableValuesSchema,
     }),

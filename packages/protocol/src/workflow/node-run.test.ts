@@ -8,7 +8,8 @@ describe("workflow node runs", () => {
       type: "workflow/run",
       requestId: "request-run",
       scriptPath: "/tmp/workflow.json",
-      inputPayload: '{"data":{"control":""},"workflow":{"var":{}},"node":{"var":{}}}',
+      inputPayload:
+        '{"data":{"control":""},"origin_input":{"requestId":"request-1"},"workflow":{"var":{}},"node":{"var":{}}}',
       targetNodeId: "worker",
       targetInputMode: "node_input",
     });
@@ -29,7 +30,7 @@ describe("workflow node runs", () => {
         type: "workflow/run",
         requestId: "request-run",
         scriptPath: "/tmp/workflow.json",
-        inputPayload: '{"data":{},"workflow":{"var":{}},"node":{"var":{}}}',
+        inputPayload: '{"data":{},"origin_input":{},"workflow":{"var":{}},"node":{"var":{}}}',
         targetInputMode: "node_input",
       }).success,
     ).toBe(false);

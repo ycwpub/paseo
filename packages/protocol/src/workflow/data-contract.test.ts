@@ -11,6 +11,7 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
     expect(
       WorkflowNodeInputEnvelopeSchema.parse({
         data: { approved: true },
+        origin_input: { project: "paseo", requestId: "request-1" },
         workflow: { var: { traceId: "trace-1", counter: "7" } },
         project: { var: { serviceName: "checkout" } },
         loop: { var: { item: "alpha", index: 0, count: 2, cursor: "next" } },
@@ -18,6 +19,7 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
       }),
     ).toEqual({
       data: { approved: true },
+      origin_input: { project: "paseo", requestId: "request-1" },
       workflow: { var: { traceId: "trace-1", counter: "7" } },
       project: { var: { serviceName: "checkout" } },
       loop: { var: { item: "alpha", index: 0, count: 2, cursor: "next" } },
@@ -29,6 +31,7 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
     expect(
       WorkflowNodeInputEnvelopeSchema.safeParse({
         data: {},
+        origin_input: {},
         workflow: { var: {} },
         node: { var: {} },
         flow: { action: "next" },
@@ -40,6 +43,7 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
     expect(
       WorkflowNodeInputEnvelopeSchema.safeParse({
         data: {},
+        origin_input: {},
         workflow: { var: {} },
         loop: { item: "alpha", index: 0, count: 1 },
         node: { var: {} },
@@ -48,11 +52,22 @@ describe("WorkflowNodeInputEnvelopeSchema", () => {
     expect(
       WorkflowNodeInputEnvelopeSchema.safeParse({
         data: {},
+        origin_input: {},
         workflow: { var: {} },
         loop: { var: { item: "alpha", index: 0, count: 1 } },
         node: { var: {} },
       }).success,
     ).toBe(true);
+  });
+
+  it("requires the immutable original Workflow input", () => {
+    expect(
+      WorkflowNodeInputEnvelopeSchema.safeParse({
+        data: {},
+        workflow: { var: {} },
+        node: { var: {} },
+      }).success,
+    ).toBe(false);
   });
 });
 

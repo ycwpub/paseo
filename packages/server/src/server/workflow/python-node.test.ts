@@ -31,7 +31,8 @@ describe("runPythonNode", () => {
       inputVariable: "request",
       outputVariable: "response",
       pythonPath: "python3",
-      inputJson: '{"data":{"customer":"Alice"},"workflow":{"var":{}},"node":{"var":{}}}',
+      inputJson:
+        '{"data":{"customer":"Alice"},"origin_input":{"customer":"Alice"},"workflow":{"var":{}},"node":{"var":{}}}',
       iterationPath: [2],
       cwd,
       timeoutMs: 10_000,
@@ -64,7 +65,7 @@ describe("runPythonNode", () => {
         inputVariable: "input",
         outputVariable: "output",
         pythonPath: "python3",
-        inputJson: '{"data":{},"workflow":{"var":{}},"node":{"var":{}}}',
+        inputJson: '{"data":{},"origin_input":{},"workflow":{"var":{}},"node":{"var":{}}}',
         iterationPath: [],
         cwd,
         timeoutMs: 10_000,

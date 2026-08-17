@@ -32,6 +32,10 @@ const STANDARD_INPUT_EXAMPLE = JSON.stringify(
       customer: { name: "Alice" },
       items: [{ id: 7 }],
     },
+    origin_input: {
+      requestId: "request-1",
+      customer: { name: "Alice" },
+    },
     workflow: {
       var: { traceId: "trace-1" },
     },
@@ -56,6 +60,10 @@ const AGENT_INPUT_EXAMPLE = JSON.stringify(
     data: {
       customer: { name: "Alice" },
       items: [{ id: 7 }],
+    },
+    origin_input: {
+      requestId: "request-1",
+      customer: { name: "Alice" },
     },
     workflow: {
       var: { traceId: "trace-1" },

@@ -36,6 +36,7 @@ describe("workflow data mapping", () => {
       resolveWorkflowNodeInput(
         {
           project: "{{workflow.inputs.project}}",
+          originalThreshold: "{{origin_input.threshold}}",
           alerts: "{{nodes.scan.outputs.alerts}}",
           approved: "{{approved}}",
           traceId: "{{workflow.var.traceId}}",
@@ -48,6 +49,7 @@ describe("workflow data mapping", () => {
       ),
     ).toEqual({
       project: "paseo",
+      originalThreshold: 3,
       alerts: [{ id: 7 }],
       approved: true,
       traceId: "trace-1",

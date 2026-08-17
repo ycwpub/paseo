@@ -161,6 +161,7 @@ describe("WorkflowService node runs", () => {
     );
     const directInput = {
       data: { customer: "Alice" },
+      origin_input: { requestId: "request-1", customer: "Original Alice" },
       workflow: { var: { trace: "manual-trace" } },
       loop: { var: { item: "manual-item", index: 2, count: 4 } },
       node: { var: { role: "manual-role" } },
@@ -206,8 +207,82 @@ describe("WorkflowService node runs", () => {
         targetNodeId: "worker",
         targetInputMode: "node_input",
       }),
-    ).rejects.toThrow("Direct node input must contain data, workflow.var, and node.var objects");
+    ).rejects.toThrow(
+      "Direct node input must contain data, origin_input, workflow.var, and node.var objects",
+    );
     expect(await service.listRuns()).toEqual([]);
+  });
+
+  it("keeps the original Workflow input available to every node and For iteration", async () => {
+    const { home, service } = await createService();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        name: "Original input",
+        steps: [
+          {
+            id: "prepare",
+            type: "bash",
+            initialCommand: appendVisitCommand("prepare"),
+          },
+          {
+            id: "route",
+            type: "switch",
+            switchVar: "{{data.route}}",
+            cases: [
+              {
+                equals: "review",
+                steps: [
+                  {
+                    id: "branch",
+                    type: "bash",
+                    initialCommand: appendVisitCommand("branch"),
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            id: "items",
+            type: "for",
+            mode: "array",
+            items: "{{data.items}}",
+            steps: [
+              {
+                id: "worker",
+                type: "bash",
+                initialCommand: appendVisitCommand("worker"),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const originalInput = {
+      requestId: "request-1",
+      route: "review",
+      items: [{ id: 1 }, { id: 2 }],
+    };
+
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify(originalInput),
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(run.nodeRuns.map((nodeRun) => nodeRun.stepId)).toEqual([
+      "prepare",
+      "route",
+      "branch",
+      "items",
+      "worker",
+      "worker",
+    ]);
+    for (const nodeRun of run.nodeRuns) {
+      expect(JSON.parse(nodeRun.inputPayload ?? "{}").origin_input).toEqual(originalInput);
+    }
   });
 
   it("records the complete node output envelope including variable modifications", async () => {

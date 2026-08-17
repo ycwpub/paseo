@@ -609,6 +609,7 @@ describe("WorkflowService", () => {
     });
     expect(JSON.parse(run.nodeRuns[0]?.inputPayload ?? "{}")).toEqual({
       data: { customer: "Alice" },
+      origin_input: { customer: "Alice" },
       workflow: { var: {} },
       node: { var: {} },
     });
@@ -918,6 +919,9 @@ describe("WorkflowService", () => {
         customer: { name: "Alice" },
         count: 2,
         control: "next",
+        filePath: inputPath,
+      },
+      origin_input: {
         filePath: inputPath,
       },
       workflow: { var: {} },
@@ -1994,6 +1998,9 @@ describe("WorkflowService", () => {
         control: "review",
         customer: { name: "Alice" },
         records: [{ id: 7 }, { id: 8 }],
+      },
+      origin_input: {
+        filePath: inputPath,
       },
       workflow: { var: { traceId: "trace-1" } },
       project: { var: { serviceName: "checkout", owner: "payments" } },

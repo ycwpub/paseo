@@ -79,10 +79,12 @@ export class WorkflowVariableState {
   createNodeInput(
     stepId: string,
     data: WorkflowData,
+    originInput: WorkflowData,
     loopContext: WorkflowLoopContext | null = null,
   ): WorkflowNodeInputEnvelope {
     const input: WorkflowNodeInputEnvelope = {
       data: structuredClone(data),
+      origin_input: structuredClone(originInput),
       workflow: {
         var: { ...this.workflowValues },
       },

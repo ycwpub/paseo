@@ -68,7 +68,7 @@ export const zhCN: TranslationResources = {
       contract: {
         title: "输入输出约定",
         description:
-          "节点输入由 Paseo 自动组装：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由 Workflow 框架填充。",
+          "节点输入由 Paseo 自动组装：data 来自前一个节点输出的 data，origin_input 始终保存 Workflow 启动时的原始输入；workflow.var 和 node.var 由 Workflow 框架填充。",
         note: '节点必须输出 {"data":{}}，data 必须是 JSON 对象。仅修改 Workflow 变量时输出 modify，仅报告业务错误时输出 base_resp；node.var 只读，artifacts 由框架自动填充。',
       },
       internal: {
@@ -206,7 +206,8 @@ export const zhCN: TranslationResources = {
       deleted: "工作流已删除",
       inputRequired: "请输入 JSON 对象",
       invalidInputJson: "输入必须是符合第一个节点输入 Schema 的合法 JSON 对象",
-      invalidNodeInputJson: "本节点 input 必须包含 data、workflow.var 和 node.var 对象",
+      invalidNodeInputJson:
+        "本节点 input 必须包含 data、origin_input、workflow.var 和 node.var 对象",
       startFailed: "无法启动工作流",
       started: "工作流已启动",
       cancelFailed: "无法取消工作流运行",
@@ -242,7 +243,7 @@ export const zhCN: TranslationResources = {
       nodeInputJson: "本节点 input JSON",
       inputJsonHint: "填写 Workflow 业务输入；每个节点通过输入映射选择自己接收的字段。",
       nodeInputJsonHint:
-        "填写本节点完整的 input JSON；Paseo 会直接传给本节点，不执行字段映射，也不填充 Workflow、Loop 和 Node 变量。",
+        "填写本节点完整的 input JSON，包括 origin_input；Paseo 会直接传给本节点，不执行字段映射，也不填充 Workflow、Loop 和 Node 变量。",
       runTarget: "运行范围",
       runTargetHint: "可运行整个 Workflow，或使用配置的输入 JSON 测试指定节点。",
       runEntireWorkflow: "整个 Workflow",
@@ -254,7 +255,8 @@ export const zhCN: TranslationResources = {
         upstreamOutput: "前一节点 output / Workflow 原始输入",
         upstreamOutputDescription: "执行字段映射，并由 Paseo 填充 Workflow、Loop 和 Node 变量。",
         nodeInput: "本节点 input",
-        nodeInputDescription: "将完整节点 input 直接传入，不执行映射，也不填充变量。",
+        nodeInputDescription:
+          "将包含 origin_input 的完整节点 input 直接传入，不执行映射，也不填充变量。",
       },
       emptyTitle: "选择或创建工作流",
       emptyDescription:
@@ -390,19 +392,19 @@ export const zhCN: TranslationResources = {
           "使用 Bash 节点调用 paseo workflow run，并把成功子流程的 outputPayload 赋值给配置的输出变量。",
         bash: {
           input:
-            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop.var 对象。配置的输入变量接收 stdin 中的完整 JSON 字符串。",
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，origin_input 始终保存 Workflow 启动时的原始输入，workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop.var 对象。配置的输入变量接收 stdin 中的完整 JSON 字符串。",
           output:
             "输出必须包含 JSON 对象 data。修改 Workflow 变量使用 modify.workflow.var，修改最内层 For 的自定义变量使用 modify.loop.var。node.var 和 loop.var.item/index/count 只读。仅报告业务错误时增加 base_resp；artifacts 由框架填充。Paseo 会把配置的输出变量写入文件描述符 3；stdout/stderr 仅用于日志。",
         },
         python: {
           input:
-            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop.var 对象。配置的输入变量接收解析后的完整对象。",
+            "Paseo 自动组装节点输入：data 来自前一个节点输出的 data，origin_input 始终保存 Workflow 启动时的原始输入，workflow.var 和 node.var 由框架填充。在 For 内还会填充最内层 loop.var 对象。配置的输入变量接收解析后的完整对象。",
           output:
             "输出必须包含 JSON 对象 data。修改 Workflow 变量使用 modify.workflow.var，修改最内层 For 的自定义变量使用 modify.loop.var。node.var 和 loop.var.item/index/count 只读。仅报告业务错误时增加 base_resp；artifacts 由框架填充。Paseo 会把配置的输出变量序列化到文件描述符 3。",
         },
         agent: {
           input:
-            "Paseo 统一组装一个节点 input：data 来自前一个节点输出的 data，首节点使用 Workflow 初始输入；workflow.var、node.var 由框架填充，project.var 来自 Agent 选择的 Project，For 内还会填充最内层 loop.var。提示词直接使用 data.*、workflow.var.*、project.var.*、loop.var.*、node.var.* 读取字段；只有需要完整对象时才使用 {{input}}。",
+            "Paseo 统一组装一个节点 input：data 来自前一个节点输出的 data，origin_input 始终保存 Workflow 启动时的原始输入，workflow.var、node.var 由框架填充，project.var 来自 Agent 选择的 Project，For 内还会填充最内层 loop.var。提示词直接使用 data.*、origin_input.*、workflow.var.*、project.var.*、loop.var.*、node.var.* 读取字段；只有需要完整对象时才使用 {{input}}。",
           output: '普通模式把 Agent 最终回答包装为 {"data":{"answer":"..."}}。',
           controlOutput:
             "自定义模式要求 Agent 最终回答包含 JSON 对象 data；modify.workflow.var、modify.loop.var 和 base_resp 按需输出，不能修改 node.var 或 loop.var.item/index/count，也不需要输出 artifacts。",
@@ -432,9 +434,9 @@ export const zhCN: TranslationResources = {
         optional: "可选",
         inputVariable: "输入变量",
         bashInputVariableHint:
-          "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
+          "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 原始输入位于 input.origin_input，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
         pythonInputVariableHint:
-          'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 变量位于 input["loop"]["var"]，节点常量位于 input["node"]["var"]。',
+          'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 原始输入位于 input["origin_input"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 变量位于 input["loop"]["var"]，节点常量位于 input["node"]["var"]。',
         outputVariable: "输出变量",
         bashOutputVariableHint:
           "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
@@ -475,7 +477,7 @@ export const zhCN: TranslationResources = {
         },
         initialPrompt: "初始提示词",
         initialPromptHint:
-          "所有变量均来自节点 input，分别通过 data.*、workflow.var.*、project.var.*、loop.var.*、node.var.* 路径读取。",
+          "所有变量均来自节点 input，分别通过 data.*、origin_input.*、workflow.var.*、project.var.*、loop.var.*、node.var.* 路径读取。",
         executionPolicy: "执行策略",
         lifecycle: "Agent 生命周期",
         lifecycleHint:
@@ -558,7 +560,7 @@ export const zhCN: TranslationResources = {
         bashDescription: "定义命令中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         pythonDescription: "定义 Python 代码中可复用的变量，变量值也可引用输入数据路径或内置变量。",
         agentDescription:
-          "Agent 提示词只从节点 input 读取变量：业务数据使用 data.*，Workflow 变量使用 workflow.var.*，Agent 选择的 Project 变量使用 project.var.*，最内层 For 变量使用 loop.var.*，节点常量使用 node.var.*。Project 变量在 Project 设置中定义，节点常量在下方“节点数据契约”中定义。",
+          "Agent 提示词只从节点 input 读取变量：当前业务数据使用 data.*，Workflow 启动时的原始输入使用 origin_input.*，Workflow 变量使用 workflow.var.*，Agent 选择的 Project 变量使用 project.var.*，最内层 For 变量使用 loop.var.*，节点常量使用 node.var.*。Project 变量在 Project 设置中定义，节点常量在下方“节点数据契约”中定义。",
         examplesTitle: "变量使用范例",
         inputExample: "假设输入 JSON 为：",
         nestedObjectExample: "读取嵌套对象字段",

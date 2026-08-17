@@ -76,6 +76,7 @@ const DEFAULT_WORKFLOW_INPUT_JSON = "{}";
 const DEFAULT_WORKFLOW_NODE_INPUT_JSON = JSON.stringify(
   {
     data: {},
+    origin_input: {},
     workflow: { var: {} },
     node: { var: {} },
   },

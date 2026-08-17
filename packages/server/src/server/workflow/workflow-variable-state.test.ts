@@ -20,8 +20,9 @@ describe("WorkflowVariableState", () => {
       ],
     );
 
-    expect(state.createNodeInput("worker", { task: "scan" })).toEqual({
+    expect(state.createNodeInput("worker", { task: "scan" }, { requestId: "request-1" })).toEqual({
       data: { task: "scan" },
+      origin_input: { requestId: "request-1" },
       workflow: {
         var: {
           counter: "0",
@@ -51,6 +52,7 @@ describe("WorkflowVariableState", () => {
       state.createNodeInput(
         "worker",
         {},
+        { requestId: "request-1" },
         {
           scope: outerScope,
           item: "outer-item",
@@ -71,6 +73,7 @@ describe("WorkflowVariableState", () => {
       state.createNodeInput(
         "worker",
         {},
+        { requestId: "request-1" },
         {
           scope: innerScope,
           item: "inner-item",

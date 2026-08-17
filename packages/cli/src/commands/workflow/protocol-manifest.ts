@@ -55,6 +55,12 @@ export interface WorkflowProtocolManifest {
     legacyStdoutResult: false;
   };
   variables: {
+    originInput: {
+      inputPath: "origin_input";
+      readable: true;
+      mutable: false;
+      availability: "all nodes";
+    };
     workflow: {
       inputPath: "workflow.var";
       modifyPath: "modify.workflow.var";
@@ -99,7 +105,14 @@ export interface WorkflowProtocolManifest {
     outputModes: ["normal", "custom"];
     lifecycles: ["workflow", "for", "single"];
     subsequentPromptModes: ["reuse_initial", "custom"];
-    promptPaths: ["data.*", "workflow.var.*", "project.var.*", "loop.var.*", "node.var.*"];
+    promptPaths: [
+      "data.*",
+      "origin_input.*",
+      "workflow.var.*",
+      "project.var.*",
+      "loop.var.*",
+      "node.var.*",
+    ];
     completeInputAlias: "{{input}}";
   };
   forNode: {
@@ -176,6 +189,12 @@ export function buildWorkflowProtocolManifest(input: {
       legacyStdoutResult: false,
     },
     variables: {
+      originInput: {
+        inputPath: "origin_input",
+        readable: true,
+        mutable: false,
+        availability: "all nodes",
+      },
       workflow: {
         inputPath: "workflow.var",
         modifyPath: "modify.workflow.var",
@@ -220,7 +239,14 @@ export function buildWorkflowProtocolManifest(input: {
       outputModes: ["normal", "custom"],
       lifecycles: ["workflow", "for", "single"],
       subsequentPromptModes: ["reuse_initial", "custom"],
-      promptPaths: ["data.*", "workflow.var.*", "project.var.*", "loop.var.*", "node.var.*"],
+      promptPaths: [
+        "data.*",
+        "origin_input.*",
+        "workflow.var.*",
+        "project.var.*",
+        "loop.var.*",
+        "node.var.*",
+      ],
       completeInputAlias: "{{input}}",
     },
     forNode: {
@@ -245,6 +271,7 @@ export function buildWorkflowProtocolManifest(input: {
     examples: {
       nodeInput: {
         data: { task: "review" },
+        origin_input: { task: "review", requestId: "request-1" },
         workflow: { var: { traceId: "trace-1" } },
         project: { var: { serviceName: "checkout" } },
         loop: { var: { item: { id: 7 }, index: 0, count: 1, cursor: "0" } },

@@ -1562,6 +1562,7 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
   } else {
     usage =
       "Review {{data.customer.name}} for item {{data.items.0.id}}. " +
+      "Original request: {{origin_input.requestId}}. " +
       "Project: {{project.var.serviceName}}. Role: {{node.var.role}}. " +
       "Loop item: {{loop.var.item}}.";
   }
@@ -1577,6 +1578,11 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
             template: "{{data.items.0.id}}",
             result: "7",
             description: t("workflows.nodes.variables.arrayExample"),
+          },
+          {
+            template: "{{origin_input.requestId}}",
+            result: "request-1",
+            description: "origin_input",
           },
           {
             template: "{{workflow.var.traceId}}",
@@ -1600,7 +1606,7 @@ function WorkflowVariableHelp({ kind }: { kind: WorkflowVariableKind }) {
           },
           {
             template: "{{input}}",
-            result: '{"data":{...},"workflow":{...},...}',
+            result: '{"data":{...},"origin_input":{...},"workflow":{...},...}',
             description: t("workflows.nodes.variables.payloadExample"),
           },
         ]

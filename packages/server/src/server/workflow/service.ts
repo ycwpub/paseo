@@ -431,10 +431,11 @@ export class WorkflowService {
       directNodeInput?.data ??
       parseStoredPayload(run.inputPayload) ??
       createInitialPayload(run.inputFilePath);
+    const originInput = directNodeInput?.origin_input ?? initialPayload;
     const workflowAgentScope = new WorkflowAgentLifecycleScope<WorkflowAgentResource>();
     let state: ExecutionState = {
       payload: initialPayload,
-      workflowInputs: { ...initialPayload },
+      workflowInputs: structuredClone(originInput),
       nodeOutputs: {},
       variableState: new WorkflowVariableState(
         run.scriptSnapshot.variables,
@@ -1414,11 +1415,16 @@ export class WorkflowService {
       timer.unref?.();
     });
     const run = await this.getRun(runId);
+    const directNodeInput =
+      run.targetInputMode === "node_input" ? parseStoredDirectNodeInput(run.inputPayload) : null;
     const storedInput =
-      parseStoredPayload(run.inputPayload) ?? createInitialPayload(run.inputFilePath);
+      directNodeInput?.data ??
+      parseStoredPayload(run.inputPayload) ??
+      createInitialPayload(run.inputFilePath);
+    const originInput = directNodeInput?.origin_input ?? storedInput;
     this.assertRunActive(runId, {
       payload: parseStoredPayload(run.outputPayload) ?? storedInput,
-      workflowInputs: storedInput,
+      workflowInputs: structuredClone(originInput),
       nodeOutputs: {},
       variableState: new WorkflowVariableState(
         run.scriptSnapshot.variables,
@@ -1725,9 +1731,12 @@ function parseDirectNodeInput(
   }
   const result = WorkflowNodeInputEnvelopeSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error("Direct node input must contain data, workflow.var, and node.var objects", {
-      cause: result.error,
-    });
+    throw new Error(
+      "Direct node input must contain data, origin_input, workflow.var, and node.var objects",
+      {
+        cause: result.error,
+      },
+    );
   }
   return {
     ...result.data,
@@ -1847,7 +1856,12 @@ function resolveNodeInputEnvelope(
   if (state.directNodeInputStepId === stepId && state.directNodeInput) {
     return structuredClone(state.directNodeInput);
   }
-  return state.variableState.createNodeInput(stepId, state.payload, state.loopContext);
+  return state.variableState.createNodeInput(
+    stepId,
+    state.payload,
+    state.workflowInputs,
+    state.loopContext,
+  );
 }
 
 function parseStoredPayload(value: string | null): WorkflowPayload | null {

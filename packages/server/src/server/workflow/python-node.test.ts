@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -37,6 +37,8 @@ describe("runPythonNode", () => {
       cwd,
       timeoutMs: 10_000,
       runId: "run-1",
+      runDir: cwd,
+      artifactDir: join(cwd, "artifacts"),
       stepId: "python-1",
       attempt: 3,
       onSpawn: (child) => spawned.push(child),
@@ -55,6 +57,47 @@ describe("runPythonNode", () => {
     expect(spawned).toEqual([]);
   });
 
+  it("invokes a declared module function with the parsed node input", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "paseo-python-module-test-"));
+    tempDirectories.push(cwd);
+    await writeFile(
+      join(cwd, "workflow_node.py"),
+      [
+        "def run_node(request):",
+        "    return {",
+        '        "data": {',
+        '            "customer": request["data"]["customer"],',
+        '            "mode": "module",',
+        "        }",
+        "    }",
+      ].join("\n"),
+    );
+
+    const output = await runPythonNode({
+      module: "workflow_node",
+      function: "run_node",
+      inputVariable: "request",
+      outputVariable: "response",
+      pythonPath: "python3",
+      inputJson:
+        '{"data":{"customer":"Alice"},"origin_input":{"customer":"Alice"},"workflow":{"var":{}},"node":{"var":{}}}',
+      iterationPath: [],
+      cwd,
+      timeoutMs: 10_000,
+      runId: "run-module",
+      runDir: cwd,
+      artifactDir: join(cwd, "artifacts"),
+      stepId: "python-module",
+      attempt: 1,
+      onSpawn: () => undefined,
+      onClose: () => undefined,
+    });
+
+    expect(JSON.parse(output.resultJson)).toEqual({
+      data: { customer: "Alice", mode: "module" },
+    });
+  });
+
   it("reports Python failures with stderr", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "paseo-python-node-test-"));
     tempDirectories.push(cwd);
@@ -70,6 +113,8 @@ describe("runPythonNode", () => {
         cwd,
         timeoutMs: 10_000,
         runId: "run-2",
+        runDir: cwd,
+        artifactDir: join(cwd, "artifacts"),
         stepId: "python-2",
         attempt: 1,
         onSpawn: () => undefined,

@@ -97,6 +97,29 @@ export const ptBR: TranslationResources = {
           "Aceita os mesmos dados de entrada e variáveis de modelo do prompt inicial.",
         archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
       },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variáveis de ambiente do nó (JSON)",
+        environmentHint:
+          "Valores de texto opcionais substituem o ambiente de comandos do Workflow neste nó.",
+        environmentStringValues: "Os valores das variáveis de ambiente devem ser textos.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Módulo Python",
+        moduleHint: "Caminho de módulo opcional; configure-o junto com uma função.",
+        function: "Função Python",
+        functionHint:
+          "Recebe toda a entrada do nó e retorna o resultado; aceita funções assíncronas.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condição de parada",
+        breakWhenHint: "A expressão deve retornar um booleano; true encerra o loop.",
+        continueWhen: "Condição de continuação",
+        continueWhenHint:
+          "A expressão deve retornar um booleano; true ignora os nós restantes desta iteração.",
+      },
       contract: {
         title: "Contrato de dados do nó",
         description: "Mapeie apenas os campos necessários e valide entrada e saída.",

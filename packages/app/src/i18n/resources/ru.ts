@@ -99,6 +99,29 @@ export const ru: TranslationResources = {
         archiveAtLifecycleEnd:
           "Автоматически архивировать после завершения жизненного цикла агента",
       },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Переменные окружения узла (JSON)",
+        environmentHint:
+          "Необязательные строки переопределяют окружение команд Workflow для этого узла.",
+        environmentStringValues: "Значения переменных окружения должны быть строками.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Модуль Python",
+        moduleHint: "Необязательный путь модуля; задаётся вместе с функцией.",
+        function: "Функция Python",
+        functionHint:
+          "Получает полный вход узла и возвращает результат; поддерживает асинхронные функции.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Условие остановки",
+        breakWhenHint: "Выражение должно вернуть boolean; true завершает цикл.",
+        continueWhen: "Условие продолжения",
+        continueWhenHint:
+          "Выражение должно вернуть boolean; true пропускает оставшиеся узлы текущей итерации.",
+      },
       contract: {
         title: "Контракт данных узла",
         description: "Передавайте только нужные поля и проверяйте вход и выход.",

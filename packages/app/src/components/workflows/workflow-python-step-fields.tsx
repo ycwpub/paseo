@@ -6,6 +6,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type { WorkflowPythonStep } from "@getpaseo/protocol/workflow/types";
 import { Field } from "@/components/ui/form-field";
 import { WorkflowExpandableTextInput } from "@/components/workflows/workflow-expandable-text-input";
+import { WorkflowNodeEnvironmentField } from "@/components/workflows/workflow-node-environment-field";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
 
 export function WorkflowPythonStepFields({
@@ -20,8 +21,14 @@ export function WorkflowPythonStepFields({
     <>
       <Field label={t("workflows.nodes.python.code")} hint={t("workflows.nodes.python.codeHint")}>
         <WorkflowExpandableTextInput
-          value={step.code}
-          onChangeText={(code) => onChange({ ...step, code })}
+          value={step.code ?? ""}
+          onChangeText={(code) =>
+            onChange({
+              ...step,
+              code: optionalText(code),
+              ...(code.trim() ? { module: undefined, function: undefined } : {}),
+            })
+          }
           editorTitle={t("workflows.nodes.python.code")}
           monospace
           multiline
@@ -32,6 +39,50 @@ export function WorkflowPythonStepFields({
           testID={`workflow-python-${step.id}-code`}
         />
       </Field>
+      <View style={styles.twoColumn}>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.python.module")}
+            hint={t("workflows.nodes.python.moduleHint")}
+          >
+            <WorkflowTextInput
+              value={step.module ?? ""}
+              onChangeText={(module) =>
+                onChange({
+                  ...step,
+                  code: module.trim() ? undefined : step.code,
+                  module: optionalText(module),
+                })
+              }
+              placeholder="scripts.prepare"
+              size="sm"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.python.function")}
+            hint={t("workflows.nodes.python.functionHint")}
+          >
+            <WorkflowTextInput
+              value={step.function ?? ""}
+              onChangeText={(functionName) =>
+                onChange({
+                  ...step,
+                  code: functionName.trim() ? undefined : step.code,
+                  function: optionalText(functionName),
+                })
+              }
+              placeholder="run_node"
+              size="sm"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </Field>
+        </View>
+      </View>
       <View style={styles.threeColumn}>
         <View style={styles.columnField}>
           <Field label={t("workflows.nodes.common.workingDirectory")}>
@@ -78,6 +129,10 @@ export function WorkflowPythonStepFields({
           </Field>
         </View>
       </View>
+      <WorkflowNodeEnvironmentField
+        value={step.env}
+        onChange={(env) => onChange({ ...step, env })}
+      />
     </>
   );
 }
@@ -104,6 +159,11 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: Math.round(theme.fontSize.xs * 1.5),
   },
   threeColumn: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+  },
+  twoColumn: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing[3],

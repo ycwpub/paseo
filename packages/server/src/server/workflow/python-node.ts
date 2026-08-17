@@ -16,7 +16,9 @@ export interface PythonNodeProcessOutput {
 }
 
 export interface RunPythonNodeInput {
-  code: string;
+  code?: string;
+  module?: string;
+  function?: string;
   inputVariable: string;
   outputVariable: string;
   pythonPath: string;
@@ -26,6 +28,8 @@ export interface RunPythonNodeInput {
   env?: NodeJS.ProcessEnv;
   timeoutMs: number;
   runId: string;
+  runDir: string;
+  artifactDir: string;
   stepId: string;
   attempt: number;
   onSpawn: (child: ChildProcess) => void;
@@ -44,19 +48,44 @@ export async function runPythonNode(input: RunPythonNodeInput): Promise<PythonNo
 }
 
 function buildPythonWrapper(input: RunPythonNodeInput): string {
-  const source = JSON.stringify(input.code);
-  return [
+  const prelude = [
+    "import asyncio",
+    "import importlib",
+    "import inspect",
     "import json",
     "import os",
     "import sys",
     `${input.inputVariable} = json.load(sys.stdin)`,
     `${input.outputVariable} = None`,
-    `exec(compile(${source}, "<paseo-workflow-node>", "exec"), globals(), globals())`,
+  ];
+  const invocation = input.code
+    ? [
+        `exec(compile(${JSON.stringify(input.code)}, "<paseo-workflow-node>", "exec"), globals(), globals())`,
+      ]
+    : buildModuleInvocation(input);
+  return [
+    ...prelude,
+    ...invocation,
     `if ${input.outputVariable} is None:`,
     `    raise RuntimeError("Workflow Python output variable ${input.outputVariable} was not assigned")`,
     'with os.fdopen(3, "w") as __paseo_result:',
     `    json.dump(${input.outputVariable}, __paseo_result, ensure_ascii=False)`,
   ].join("\n");
+}
+
+function buildModuleInvocation(input: RunPythonNodeInput): string[] {
+  if (!input.module || !input.function) {
+    throw new Error("Python workflow node requires code or module and function");
+  }
+  return [
+    `__paseo_target = importlib.import_module(${JSON.stringify(input.module)})`,
+    `for __paseo_segment in ${JSON.stringify(input.function.split("."))}:`,
+    "    __paseo_target = getattr(__paseo_target, __paseo_segment)",
+    `__paseo_value = __paseo_target(${input.inputVariable})`,
+    "if inspect.isawaitable(__paseo_value):",
+    "    __paseo_value = asyncio.run(__paseo_value)",
+    `${input.outputVariable} = __paseo_value`,
+  ];
 }
 
 function executePythonFile(
@@ -70,9 +99,13 @@ function executePythonFile(
         ...(input.env ?? process.env),
         PASEO_WORKFLOW_ITERATION_PATH: JSON.stringify(input.iterationPath),
         PASEO_WORKFLOW_RUN_ID: input.runId,
+        PASEO_WORKFLOW_RUN_DIR: input.runDir,
+        PASEO_WORKFLOW_ARTIFACT_DIR: input.artifactDir,
         PASEO_WORKFLOW_STEP_ID: input.stepId,
         PASEO_WORKFLOW_ATTEMPT: String(input.attempt),
-        PYTHONPATH: [input.cwd, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
+        PYTHONPATH: [input.cwd, input.env?.PYTHONPATH ?? process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(delimiter),
       },
       stdio: ["pipe", "pipe", "pipe", "pipe"],
       windowsHide: true,

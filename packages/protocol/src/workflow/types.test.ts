@@ -28,6 +28,9 @@ describe("WorkflowScriptSchema", () => {
           id: "prepare",
           type: "bash",
           initialCommand: 'output="{\\"data\\":{}}"',
+          env: { FIXED_WIKI_URL: "https://example.test/wiki" },
+          sideEffects: ["wiki_read"],
+          idempotencyKey: "{{origin_input.requestId}}",
           inputVariable: "request",
           outputVariable: "response",
           templateVariables: {
@@ -66,6 +69,8 @@ describe("WorkflowScriptSchema", () => {
           mode: "array",
           items: "{{data.items}}",
           forControl: "{{data.control}}",
+          breakWhen: "{{data.review_passed}}",
+          continueWhen: "{{data.skip_remaining}}",
           loopVariables: {
             cursor: { type: "string", default: "" },
           },
@@ -77,10 +82,14 @@ describe("WorkflowScriptSchema", () => {
     expect(parsed.version).toBe(1);
     expect(parsed.variables?.counter).toEqual({ type: "int64", default: "0" });
     expect(parsed.steps[0]?.type === "bash" ? parsed.steps[0].inputVariable : null).toBe("request");
+    expect(parsed.steps[0]?.sideEffects).toEqual(["wiki_read"]);
     expect(parsed.steps[1]?.type === "switch" ? parsed.steps[1].switchVar : null).toBe(
       "{{data.route}}",
     );
     expect(parsed.steps[2]?.type === "for" ? parsed.steps[2].mode : null).toBe("array");
+    expect(parsed.steps[2]?.type === "for" ? parsed.steps[2].breakWhen : null).toBe(
+      "{{data.review_passed}}",
+    );
   });
 
   it("accepts nested Agent, Switch, and For steps with defaults", () => {

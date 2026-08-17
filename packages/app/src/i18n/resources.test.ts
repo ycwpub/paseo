@@ -134,10 +134,10 @@ describe("translation resources", () => {
     );
     expect(zhCN.workflows.nodes.schemaCompatibility.title).toBe("data Schema 兼容性提示");
     expect(zhCN.workflows.nodes.common.bashInputVariableHint).toBe(
-      "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
+      "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 原始输入位于 input.origin_input，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
     );
     expect(zhCN.workflows.nodes.common.pythonInputVariableHint).toBe(
-      'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 变量位于 input["loop"]["var"]，节点常量位于 input["node"]["var"]。',
+      'Python 代码中接收解析后完整节点输入对象的变量名。以默认变量 input 为例：映射数据位于 input["data"]，Workflow 原始输入位于 input["origin_input"]，Workflow 变量位于 input["workflow"]["var"]，最内层 For 变量位于 input["loop"]["var"]，节点常量位于 input["node"]["var"]。',
     );
     expect(zhCN.workflows.nodes.common.bashOutputVariableHint).toBe(
       "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
@@ -156,6 +156,7 @@ describe("translation resources", () => {
     expect(zhCN.workflows.nodes.for.loopBody).toBe("循环体");
     expect(zhCN.workflows.nodes.for.executionMode).toBe("执行模式");
     expect(zhCN.workflows.nodes.for.executionParallel).toBe("并行");
+    expect(zhCN.workflows.nodes.for.breakWhen).toBe("结束条件");
     expect(zhCN.workflows.nodes.for.parallelLoopVariablesHint).toContain(
       "不允许通过 modify.loop.var 修改",
     );

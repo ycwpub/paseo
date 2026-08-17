@@ -1,5 +1,6 @@
 import Ajv, { type ErrorObject, type Options as AjvOptions, type ValidateFunction } from "ajv";
 import type { WorkflowData, WorkflowJsonSchema } from "@getpaseo/protocol/workflow/data-contract";
+import { WorkflowOutputValidationError } from "./workflow-output-validation-error.js";
 
 const AjvConstructor = Ajv as unknown as {
   new (options?: AjvOptions): {
@@ -17,6 +18,23 @@ export function validateWorkflowNodeData(
   data: WorkflowData,
   label: string,
 ): void {
+  validateData(schema, data, label, false);
+}
+
+export function validateWorkflowNodeOutput(
+  schema: WorkflowJsonSchema | undefined,
+  data: WorkflowData,
+  label: string,
+): void {
+  validateData(schema, data, label, true);
+}
+
+function validateData(
+  schema: WorkflowJsonSchema | undefined,
+  data: WorkflowData,
+  label: string,
+  output: boolean,
+): void {
   if (!schema) {
     return;
   }
@@ -24,7 +42,11 @@ export function validateWorkflowNodeData(
   if (validate(data)) {
     return;
   }
-  throw new Error(`${label} failed schema validation: ${formatErrors(validate.errors)}`);
+  const message = `${label} failed schema validation: ${formatErrors(validate.errors)}`;
+  if (output) {
+    throw new WorkflowOutputValidationError(message);
+  }
+  throw new Error(message);
 }
 
 export function validateWorkflowNodeSchema(

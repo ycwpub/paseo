@@ -98,6 +98,30 @@ export const fr: TranslationResources = {
           "Prend en charge les mêmes données et variables de modèle que le prompt initial.",
         archiveAtLifecycleEnd: "Archiver automatiquement à la fin du cycle de vie de l’agent",
       },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variables d’environnement du nœud (JSON)",
+        environmentHint:
+          "Les valeurs textuelles facultatives remplacent l’environnement de commande du Workflow pour ce nœud.",
+        environmentStringValues:
+          "Les valeurs des variables d’environnement doivent être des chaînes.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Module Python",
+        moduleHint: "Chemin de module facultatif à configurer avec une fonction.",
+        function: "Fonction Python",
+        functionHint:
+          "Reçoit l’entrée complète du nœud et renvoie son résultat ; les fonctions asynchrones sont prises en charge.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condition d’arrêt",
+        breakWhenHint: "L’expression doit renvoyer un booléen ; true arrête la boucle.",
+        continueWhen: "Condition de poursuite",
+        continueWhenHint:
+          "L’expression doit renvoyer un booléen ; true ignore les nœuds restants de cette itération.",
+      },
       contract: {
         title: "Contrat de données du nœud",
         description: "Mappez uniquement les champs requis et validez les entrées et sorties.",

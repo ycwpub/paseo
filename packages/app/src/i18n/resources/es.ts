@@ -98,6 +98,29 @@ export const es: TranslationResources = {
           "Admite los mismos datos de entrada y variables de plantilla que el prompt inicial.",
         archiveAtLifecycleEnd: "Archivar automáticamente al finalizar el ciclo de vida del agente",
       },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variables de entorno del nodo (JSON)",
+        environmentHint:
+          "Los valores de texto opcionales reemplazan el entorno de comandos del Workflow para este nodo.",
+        environmentStringValues: "Los valores de las variables de entorno deben ser texto.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Módulo de Python",
+        moduleHint: "Ruta de módulo opcional; configúrala junto con una función.",
+        function: "Función de Python",
+        functionHint:
+          "Recibe la entrada completa del nodo y devuelve el resultado; admite funciones asíncronas.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condición de finalización",
+        breakWhenHint: "La expresión debe devolver un booleano; true termina el bucle.",
+        continueWhen: "Condición de continuación",
+        continueWhenHint:
+          "La expresión debe devolver un booleano; true omite los nodos restantes de esta iteración.",
+      },
       contract: {
         title: "Contrato de datos del nodo",
         description: "Mapea solo los campos necesarios y valida entrada y salida con JSON Schema.",

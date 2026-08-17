@@ -442,6 +442,9 @@ export const zhCN: TranslationResources = {
           "命令执行成功前，需将包含必填 JSON 对象 data 的结果字符串赋值给此变量。",
         pythonOutputVariableHint:
           "代码执行成功前，需将包含必填 JSON 对象 data 的结果对象赋值给此变量。",
+        environment: "节点环境变量覆盖（JSON）",
+        environmentHint: "可选。字符串值会覆盖 Workflow 命令环境，仅作用于当前命令节点。",
+        environmentStringValues: "环境变量的值必须是字符串。",
       },
       bash: {
         initialCommand: "初始命令",
@@ -452,7 +455,11 @@ export const zhCN: TranslationResources = {
       python: {
         code: "Python 代码",
         codeHint:
-          "读取配置的输入变量，并把包含必填 JSON 对象 data 的结果赋值给配置的输出变量；modify 和 base_resp 按需增加，stdout/stderr 仅用于日志。",
+          "可填写内联代码，或留空并配置 Python 模块和函数。内联代码读取输入变量并为输出变量赋值。",
+        module: "Python 模块",
+        moduleHint: "可选的点分模块路径；使用时需同时配置函数，并代替内联代码。",
+        function: "Python 函数",
+        functionHint: "函数接收解析后的完整节点输入，并返回节点结果对象；支持异步函数。",
         interpreter: "Python 解释器",
         interpreterHint: "留空时使用 python3。",
       },
@@ -618,6 +625,10 @@ export const zhCN: TranslationResources = {
         control: "循环控制表达式",
         controlHint:
           "读取用户定义的 data 字段；值为 break 时结束循环，continue 时跳过本轮剩余节点，字段为空或不存在时正常继续。",
+        breakWhen: "结束条件",
+        breakWhenHint: "可选表达式，必须解析为布尔值；为 true 时在当前循环体节点执行后结束循环。",
+        continueWhen: "跳过条件",
+        continueWhenHint: "可选表达式，必须解析为布尔值；为 true 时跳过本轮后续循环体节点。",
         loopBody: "循环体",
         loopDescription:
           "control 返回 continue 时跳过本轮剩余节点，返回 break 时结束循环。\nloop.var.item：数组元素；数字模式下为本轮执行前的剩余值；True 模式下为 true。\nloop.var.index：当前循环序号，从 0 开始。\nloop.var.count：数组长度、数字初始值或 True 模式最大次数（不限制时为 0）。\n每轮都从 For 节点的 input.data 开始；需要把状态传给下一轮时，请使用自定义 loop.var 变量。",

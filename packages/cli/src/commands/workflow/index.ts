@@ -6,6 +6,9 @@ import { runWorkflowLsCommand } from "./ls.js";
 import { runWorkflowCommand } from "./run.js";
 import { runWorkflowCancelCommand } from "./cancel.js";
 import { runWorkflowProtocolCommand } from "./protocol.js";
+import { runWorkflowPlanCommand } from "./plan.js";
+import { runWorkflowStatusCommand } from "./status.js";
+import { runWorkflowLogsCommand } from "./logs.js";
 
 export function createWorkflowCommand(): Command {
   const workflow = new Command("workflow")
@@ -43,6 +46,28 @@ export function createWorkflowCommand(): Command {
       .description("Inspect and validate a workflow script")
       .argument("<script>", "Workflow JSON script path on the daemon host"),
   ).action(withOutput(runWorkflowInspectCommand));
+
+  addJsonAndDaemonHostOptions(
+    workflow
+      .command("plan")
+      .description("Validate a workflow and show its node graph and declared side effects")
+      .argument("<script>", "Workflow JSON script path on the daemon host"),
+  ).action(withOutput(runWorkflowPlanCommand));
+
+  addJsonAndDaemonHostOptions(
+    workflow
+      .command("status")
+      .description("Inspect a workflow run")
+      .argument("<run-id>", "Workflow run ID"),
+  ).action(withOutput(runWorkflowStatusCommand));
+
+  addJsonAndDaemonHostOptions(
+    workflow
+      .command("logs")
+      .description("Show workflow node inputs, outputs, diagnostics, and errors")
+      .argument("<run-id>", "Workflow run ID")
+      .option("--node <node-id>", "Only show attempts for this node ID"),
+  ).action(withOutput(runWorkflowLogsCommand));
 
   addJsonAndDaemonHostOptions(
     workflow

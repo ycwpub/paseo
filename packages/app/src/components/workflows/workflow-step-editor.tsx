@@ -45,6 +45,7 @@ import { WorkflowAgentSubsequentPromptFields } from "@/components/workflows/work
 import { WorkflowDownstreamField } from "@/components/workflows/workflow-downstream-field";
 import { WorkflowLoopVariableFields } from "@/components/workflows/workflow-loop-variable-fields";
 import { WorkflowNodeContractFields } from "@/components/workflows/workflow-node-contract-fields";
+import { WorkflowNodeEnvironmentField } from "@/components/workflows/workflow-node-environment-field";
 import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
 import { WorkflowStepHelp } from "@/components/workflows/workflow-step-help";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
@@ -666,6 +667,10 @@ function BashStepFields({
           </Field>
         </View>
       </View>
+      <WorkflowNodeEnvironmentField
+        value={step.env}
+        onChange={(env) => onChange({ ...step, env })}
+      />
       <RetryPolicyFields retry={step.retry} onChange={(retry) => onChange({ ...step, retry })} />
     </>
   );
@@ -2186,6 +2191,40 @@ function ForStepFields({
           autoCapitalize="none"
         />
       </Field>
+      <View style={styles.twoColumn}>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.for.breakWhen")}
+            hint={t("workflows.nodes.for.breakWhenHint")}
+          >
+            <WorkflowTextInput
+              value={step.breakWhen ?? ""}
+              onChangeText={(breakWhen) =>
+                onChange({ ...step, breakWhen: optionalText(breakWhen) })
+              }
+              placeholder="{{data.review_passed}}"
+              size="sm"
+              autoCapitalize="none"
+            />
+          </Field>
+        </View>
+        <View style={styles.columnField}>
+          <Field
+            label={t("workflows.nodes.for.continueWhen")}
+            hint={t("workflows.nodes.for.continueWhenHint")}
+          >
+            <WorkflowTextInput
+              value={step.continueWhen ?? ""}
+              onChangeText={(continueWhen) =>
+                onChange({ ...step, continueWhen: optionalText(continueWhen) })
+              }
+              placeholder="{{data.skip_remaining}}"
+              size="sm"
+              autoCapitalize="none"
+            />
+          </Field>
+        </View>
+      </View>
       <WorkflowNodeContractFields
         inputs={undefined}
         inputSchema={step.inputSchema}

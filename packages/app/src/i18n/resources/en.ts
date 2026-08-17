@@ -450,6 +450,10 @@ export const en = {
           "Before the command succeeds, assign a result JSON string containing the required data object to this variable.",
         pythonOutputVariableHint:
           "Before the code succeeds, assign a result object containing the required data object to this variable.",
+        environment: "Node environment overrides (JSON)",
+        environmentHint:
+          "Optional string values merged over the Workflow command environment for this command node.",
+        environmentStringValues: "Environment variable values must be strings.",
       },
       bash: {
         initialCommand: "Initial command",
@@ -460,7 +464,13 @@ export const en = {
       python: {
         code: "Python code",
         codeHint:
-          "Read the configured input variable and assign a result containing the required data object to the configured output variable. Add modify and base_resp only when needed; stdout/stderr are logs.",
+          "Define inline code, or leave it empty and configure a module and function. Inline code reads the input variable and assigns the output variable.",
+        module: "Python module",
+        moduleHint:
+          "Optional dotted module path. Configure it together with a function instead of inline code.",
+        function: "Python function",
+        functionHint:
+          "Function that receives the complete parsed node input and returns the node result object. Async functions are supported.",
         interpreter: "Python interpreter",
         interpreterHint: 'Leave empty to use "python3".',
       },
@@ -634,6 +644,12 @@ export const en = {
         control: "Loop control expression",
         controlHint:
           'Resolve a user-defined data field. "break" stops the loop, "continue" skips the remaining body nodes, and an empty or missing field continues normally.',
+        breakWhen: "Break condition",
+        breakWhenHint:
+          "Optional expression that must resolve to a boolean. True ends the loop after the current body node.",
+        continueWhen: "Continue condition",
+        continueWhenHint:
+          "Optional expression that must resolve to a boolean. True skips the remaining body nodes for this iteration.",
         loopBody: "Loop body",
         loopDescription:
           'A "continue" control skips the remaining nodes in the current iteration; "break" ends the loop.\nloop.var.item: array item; remaining number before the iteration; or true in True mode.\nloop.var.index: zero-based iteration index.\nloop.var.count: array length, initial number, or the True-mode maximum (0 when unlimited).\nEach iteration starts from the For input.data. Use custom loop.var variables to carry state into the next iteration.',

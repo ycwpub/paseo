@@ -23,12 +23,13 @@ When the desktop app finds installed Paseo skills, it keeps the bundled skills u
 
 ## `/paseo`, Paseo Reference
 
-The foundational skill. Paseo reference for managing agents and workspaces. Load it when an agent needs to create agents, send them prompts, or manage workspace isolation.
+The foundational skill. Paseo reference for discovering and running installed Workflows, managing agents and workspaces, and operating schedules. Load it when an agent should check for a reusable automation, create agents, send prompts, or manage workspace isolation.
 
 Not typically invoked directly by users, it's a reference that other skills depend on.
 
 ```
 /paseo show me the Paseo CLI surface for creating an agent in a worktree-isolated workspace
+/paseo discover whether an installed Workflow can process these alert groups
 ```
 
 ## `/paseo-handoff`, Task Handoff

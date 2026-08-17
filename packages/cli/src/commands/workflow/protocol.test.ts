@@ -43,6 +43,18 @@ describe("Workflow protocol CLI", () => {
         result: { transport: "file descriptor 3", schema: "#/schemas/nodeResult" },
         legacyStdoutResult: false,
       },
+      pythonNode: {
+        executionModes: ["inline", "module-function"],
+        nodeEnvironmentOverrides: true,
+      },
+      runtime: {
+        defaultCwd: "isolated run directory",
+        templateVariables: expect.arrayContaining([
+          "run.dir",
+          "run.artifacts_dir",
+          "attempt.index",
+        ]),
+      },
       variables: {
         originInput: { inputPath: "origin_input", mutable: false },
         workflow: { inputPath: "workflow.var", modifyPath: "modify.workflow.var" },
@@ -60,6 +72,13 @@ describe("Workflow protocol CLI", () => {
           "node.var.*",
         ],
         completeInputAlias: "{{input}}",
+        outputValidationRepair: "retry prompt includes the JSON Schema validator error",
+      },
+      forNode: {
+        conditionFields: ["breakWhen", "continueWhen"],
+      },
+      safety: {
+        fields: ["sideEffects", "requiresWriteBack", "idempotencyKey", "rollbackHint"],
       },
     });
     expect(info.schemas.workflow).toMatchObject({

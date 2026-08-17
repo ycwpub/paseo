@@ -1,6 +1,6 @@
 ---
 name: paseo
-description: Paseo reference for managing workspaces, workspace scripts, agents, schedules, and heartbeats.
+description: Paseo reference for discovering and running reusable workflows, managing workspaces and workspace scripts, creating and controlling agents, and managing schedules and heartbeats. Use when an agent should check whether Paseo already has an installed workflow for a repeatable or multi-step task, invoke or inspect a workflow, delegate work to another agent, or operate any Paseo resource.
 ---
 
 Paseo is a daemon that supervises AI coding agents on your machine. Control it through tools or a CLI.
@@ -136,6 +136,58 @@ Discover with `paseo --help` and `paseo <cmd> --help`.
 - Windows: `C:\Program Files\Paseo\resources\bin\paseo.cmd`
 
 The desktop app's first-run hook (`installCli`) symlinks this to `~/.local/bin/paseo` (macOS/Linux) or drops a `.cmd` trampoline (Windows) and adds `~/.local/bin` to PATH via shell rc files. If that didn't take, offer to symlink it — don't do it silently.
+
+## Workflows
+
+Workflows are reusable multi-node automations stored under the daemon's
+`$PASEO_HOME/workflows` directory. Discover them through Paseo instead of scanning the directory
+yourself.
+
+Before building an ad hoc multi-step solution or creating an Agent for a task that looks reusable,
+check installed Workflows once. Strong signals include requests for a runbook, pipeline, batch
+operation, repeated diagnosis, multi-stage processing, or an explicitly named Workflow. Skip this
+check for trivial one-step tasks.
+
+When an installed Workflow clearly matches, run that Workflow instead of manually reproducing its
+nodes, reordering its steps, or creating replacement Agents. The Workflow definition owns the
+process. Use a single-node run only when the user asks to test or debug that node. If no Workflow
+matches, continue with normal tools rather than forcing an unrelated Workflow.
+
+Prefer the Agent tools when available:
+
+1. Call **`list_workflows`** to get each Workflow's absolute path, name, description, node count,
+   and modification time.
+2. Call **`inspect_workflow`** with a candidate `scriptPath`. Read its description, first-node input
+   schema, input presets, steps, and side effects. Do not guess the input or run a Workflow from its
+   name alone.
+3. Call **`run_workflow`** with the inspected absolute `scriptPath` and either:
+   - `inputPayload`: a JSON-object string such as `{"project":"paseo"}`, or
+   - `inputPresetId`: an inspected preset ID, optionally with `inputPayload` overrides.
+4. Read `status`, `outputPayload`, `error`, and `nodeRuns` from the result. `outputPayload` is the
+   final `data` object serialized as JSON.
+5. Use **`get_workflow_run`** for a background run and **`cancel_workflow`** only when cancellation
+   is needed.
+
+Run synchronously by default. Use `background: true` for long-running work when the caller does not
+need the result immediately. Inspect unfamiliar Workflows before execution because Bash, Python,
+and Agent nodes can have external side effects.
+
+If Workflow tools are unavailable, use the equivalent CLI:
+
+```bash
+paseo workflow ls --json
+paseo workflow inspect /absolute/path/workflow.json --json
+paseo workflow plan /absolute/path/workflow.json --json
+paseo workflow run /absolute/path/workflow.json '{"project":"paseo"}' --json
+paseo workflow run /absolute/path/workflow.json --preset smoke --json
+paseo workflow run /absolute/path/workflow.json '{"project":"paseo"}' --background --json
+paseo workflow status <run-id> --json
+paseo workflow logs <run-id> --node <node-id> --json
+```
+
+The path is resolved on the daemon host. Use `--host <host:port>` for a remote daemon. Use
+`paseo workflow protocol --json` before authoring or debugging a Workflow to obtain the exact
+definition, node-input, and node-result schemas supported by the connected daemon.
 
 ## Ops and debugging
 

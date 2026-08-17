@@ -68,16 +68,30 @@ import {
   WorkflowForExecutionModeError,
 } from "./for-step-execution-mode.js";
 import { createWorkflowForIterationPlan, WorkflowForPlanError } from "./for-step-plan.js";
+import { resolveWorkflowForControl, WorkflowForConditionError } from "./for-step-condition.js";
 import { WorkflowRunStore } from "./store.js";
 import {
   resolveOptionalWorkflowExpression,
   resolveWorkflowExpression,
   resolveWorkflowNodeInput,
 } from "./workflow-data-mapping.js";
-import { validateWorkflowNodeData, validateWorkflowNodeSchema } from "./workflow-node-contract.js";
+import {
+  validateWorkflowNodeData,
+  validateWorkflowNodeOutput,
+  validateWorkflowNodeSchema,
+} from "./workflow-node-contract.js";
 import { type WorkflowLoopContext, WorkflowVariableState } from "./workflow-variable-state.js";
 import { findWorkflowStep } from "./workflow-step-search.js";
 import { resolveNextWorkflowStep, validateWorkflowSequenceLinks } from "./workflow-sequence.js";
+import { discoverNewWorkflowArtifacts } from "./workflow-artifacts.js";
+import {
+  appendWorkflowOutputRepairPrompt,
+  WorkflowOutputValidationError,
+} from "./workflow-output-validation-error.js";
+import {
+  createWorkflowRuntimeDirectories,
+  type WorkflowRuntimeDirectories,
+} from "./workflow-runtime-directory.js";
 
 const DEFAULT_SHELL = process.platform === "win32" ? "cmd.exe" : "/bin/bash";
 const DEFAULT_PYTHON_PATH = process.platform === "win32" ? "python" : "python3";
@@ -126,6 +140,7 @@ interface ExecutionState {
   forAgentScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null;
   directNodeInput: WorkflowNodeInputEnvelope | null;
   directNodeInputStepId: string | null;
+  runtime: WorkflowRuntimeDirectories;
 }
 
 interface WorkflowAgentResource {
@@ -192,7 +207,7 @@ interface ResolvedWorkflowRunInput {
 export class WorkflowService {
   private readonly logger: Logger;
   private readonly workflowsDir: string;
-  private readonly runArtifactsDir: string;
+  private readonly runDataDir: string;
   private readonly store: WorkflowRunStore;
   private readonly agentManager: WorkflowAgentManager;
   private readonly createAgent: BoundCreateAgentCommand;
@@ -218,7 +233,7 @@ export class WorkflowService {
   constructor(options: WorkflowServiceOptions) {
     this.logger = options.logger.child({ module: "workflow-service" });
     this.workflowsDir = join(options.paseoHome, "workflows");
-    this.runArtifactsDir = join(options.paseoHome, "workflow-run-artifacts");
+    this.runDataDir = join(options.paseoHome, "workflow-run-data");
     this.store = new WorkflowRunStore(join(options.paseoHome, "workflow-runs"), (invalidRun) => {
       this.logger.warn(
         { err: invalidRun.error, path: invalidRun.filePath },
@@ -238,7 +253,7 @@ export class WorkflowService {
 
   async start(): Promise<void> {
     await mkdir(this.workflowsDir, { recursive: true });
-    await mkdir(this.runArtifactsDir, { recursive: true });
+    await mkdir(this.runDataDir, { recursive: true });
     const now = this.now().toISOString();
     const runs = await this.store.list();
     await Promise.all(
@@ -391,11 +406,13 @@ export class WorkflowService {
       targetInputMode,
     });
     const startedAt = this.now().toISOString();
-    const run = await this.store.create({
+    let run = await this.store.create({
       scriptPath: scriptFile.path,
       scriptSnapshot: scriptFile.script,
       targetNodeId,
       targetInputMode,
+      runDir: null,
+      artifactDir: null,
       status: "running",
       inputPayload: JSON.stringify(storedInput),
       outputPayload: null,
@@ -408,6 +425,16 @@ export class WorkflowService {
       endedAt: null,
       nodeRuns: [],
     });
+    const runtime = await createWorkflowRuntimeDirectories(this.runDataDir, run.id);
+    const preparedRun = await this.store.update(run.id, (current) => ({
+      ...current,
+      runDir: runtime.runDir,
+      artifactDir: runtime.artifactDir,
+    }));
+    if (!preparedRun) {
+      throw new Error(`Workflow run not found after runtime directory creation: ${run.id}`);
+    }
+    run = preparedRun;
     const task = this.executeRun(run).finally(() => {
       this.activeRuns.delete(run.id);
     });
@@ -425,6 +452,10 @@ export class WorkflowService {
   }
 
   private async executeRun(run: WorkflowRun): Promise<void> {
+    const runtime =
+      run.runDir && run.artifactDir
+        ? { runDir: run.runDir, artifactDir: run.artifactDir }
+        : await createWorkflowRuntimeDirectories(this.runDataDir, run.id);
     const directNodeInput =
       run.targetInputMode === "node_input" ? parseStoredDirectNodeInput(run.inputPayload) : null;
     const initialPayload =
@@ -450,6 +481,7 @@ export class WorkflowService {
       forAgentScope: null,
       directNodeInput,
       directNodeInputStepId: directNodeInput ? run.targetNodeId : null,
+      runtime,
     };
     let workflowTimeout: NodeJS.Timeout | null = null;
     if (run.scriptSnapshot.timeoutMs) {
@@ -540,6 +572,7 @@ export class WorkflowService {
   ): Promise<ExecutionState> {
     const stepInputState = prepareWorkflowStepInput(run, step, state);
     const retry = resolveStepRetryPolicy(run.scriptSnapshot, step);
+    let outputValidationError: string | null = null;
     for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
       this.assertRunActive(run.id, stepInputState);
       const nodeRunId = randomUUID();
@@ -591,7 +624,14 @@ export class WorkflowService {
             result = await this.executePythonStep(run, step, stepInputState, attempt);
             break;
           case "agent":
-            result = await this.executeAgentStep(run, step, stepInputState, attempt, nodeRunId);
+            result = await this.executeAgentStep(
+              run,
+              step,
+              stepInputState,
+              attempt,
+              nodeRunId,
+              outputValidationError,
+            );
             break;
           case "switch":
             result = await this.executeSwitchStep(run, step, stepInputState);
@@ -608,8 +648,14 @@ export class WorkflowService {
             );
           }
         }
+        const discoveredArtifacts = await discoverNewWorkflowArtifacts(
+          result.runtime.artifactDir,
+          result.artifacts,
+        );
         const completedState: StepExecutionResult = {
           ...result,
+          artifacts: [...result.artifacts, ...discoveredArtifacts],
+          nodeArtifacts: [...(result.nodeArtifacts ?? []), ...discoveredArtifacts],
           nodeOutputs: {
             ...result.nodeOutputs,
             [step.id]: { ...result.payload },
@@ -633,7 +679,34 @@ export class WorkflowService {
         });
         return completedState;
       } catch (error) {
-        const executionError = this.normalizeExecutionError(error, run.id, stepInputState);
+        const normalizedError = this.normalizeExecutionError(error, run.id, stepInputState);
+        const failedArtifacts = await discoverNewWorkflowArtifacts(
+          normalizedError.state.runtime.artifactDir,
+          normalizedError.state.artifacts,
+        ).catch((artifactError) => {
+          this.logger.warn(
+            { err: artifactError, runId: run.id, stepId: step.id },
+            "Failed to collect Workflow artifacts after node failure",
+          );
+          return [];
+        });
+        const executionError =
+          failedArtifacts.length === 0
+            ? normalizedError
+            : new WorkflowExecutionError(
+                normalizedError.message,
+                {
+                  ...normalizedError.state,
+                  artifacts: [...normalizedError.state.artifacts, ...failedArtifacts],
+                },
+                normalizedError.code,
+                normalizedError.terminalStatus,
+                normalizedError.diagnostics,
+                normalizedError.forbidRetry,
+              );
+        if (step.type === "agent" && executionError.code === "WORKFLOW_OUTPUT_VALIDATION_FAILED") {
+          outputValidationError = executionError.message;
+        }
         const canRetry =
           attempt < retry.maxAttempts &&
           executionError.terminalStatus === "failed" &&
@@ -653,7 +726,7 @@ export class WorkflowService {
           agentResponse: null,
           output: null,
           retryDelayMs,
-          artifacts: [],
+          artifacts: failedArtifacts,
           ...executionError.diagnostics,
         });
         if (!canRetry) {
@@ -678,13 +751,21 @@ export class WorkflowService {
       template: step.initialCommand,
       variables: step.templateVariables,
       state,
-      runId: run.id,
+      run,
       stepId: step.id,
       stepName: step.name,
       attempt,
     });
-    const cwd = await resolveStepCwd(step.cwd, state.filePath);
+    const cwd = await resolveStepCwd(step.cwd, state.runtime.runDir);
     const environment = await resolveWorkflowCommandEnvironment(run.scriptSnapshot.environment);
+    const nodeEnvironment = {
+      ...environment,
+      env: {
+        ...environment.env,
+        ...step.env,
+      },
+      path: step.env?.PATH?.trim() || environment.path,
+    };
     let output: WorkflowCommandOutput;
     try {
       output = await runBashWorkflowNode({
@@ -695,23 +776,31 @@ export class WorkflowService {
         iterationPath: state.iterationPath,
         cwd,
         shell: step.shell ?? DEFAULT_SHELL,
-        env: environment.env,
+        env: nodeEnvironment.env,
         timeoutMs:
           step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         runId: run.id,
+        runDir: state.runtime.runDir,
+        artifactDir: state.runtime.artifactDir,
         stepId: step.id,
         attempt,
         onSpawn: (child) => this.activeCommandProcesses.set(child, run.id),
         onClose: (child) => this.activeCommandProcesses.delete(child),
       });
     } catch (error) {
-      throwCommandFailure({ error, state, instruction: renderedInstruction, cwd, environment });
+      throwCommandFailure({
+        error,
+        state,
+        instruction: renderedInstruction,
+        cwd,
+        environment: nodeEnvironment,
+      });
     }
     const diagnostics = createCommandDiagnostics({
       instruction: renderedInstruction,
       cwd,
       output,
-      environment,
+      environment: nodeEnvironment,
     });
     return this.parseAndValidateNodeEnvelope({
       parse: () =>
@@ -734,44 +823,65 @@ export class WorkflowService {
     state: ExecutionState,
     attempt: number,
   ): Promise<StepExecutionResult> {
-    const code = await renderWorkflowInstruction({
-      template: step.code,
-      variables: step.templateVariables,
-      state,
-      runId: run.id,
-      stepId: step.id,
-      stepName: step.name,
-      attempt,
-    });
-    const cwd = await resolveStepCwd(step.cwd, state.filePath);
+    const code = step.code
+      ? await renderWorkflowInstruction({
+          template: step.code,
+          variables: step.templateVariables,
+          state,
+          run,
+          stepId: step.id,
+          stepName: step.name,
+          attempt,
+        })
+      : undefined;
+    const cwd = await resolveStepCwd(step.cwd, state.runtime.runDir);
     const environment = await resolveWorkflowCommandEnvironment(run.scriptSnapshot.environment);
+    const nodeEnvironment = {
+      ...environment,
+      env: {
+        ...environment.env,
+        ...step.env,
+      },
+      path: step.env?.PATH?.trim() || environment.path,
+    };
+    const instruction = code ?? `${step.module}:${step.function}`;
     let output: WorkflowCommandOutput;
     try {
       output = await runPythonNode({
         code,
+        module: step.module,
+        function: step.function,
         inputVariable: step.inputVariable ?? "input",
         outputVariable: step.outputVariable ?? "output",
         pythonPath: step.pythonPath ?? DEFAULT_PYTHON_PATH,
         inputJson: serializeWorkflowNodeInput(resolveNodeInputEnvelope(step.id, state)),
         iterationPath: state.iterationPath,
         cwd,
-        env: environment.env,
+        env: nodeEnvironment.env,
         timeoutMs:
           step.timeoutMs ?? run.scriptSnapshot.taskDefaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         runId: run.id,
+        runDir: state.runtime.runDir,
+        artifactDir: state.runtime.artifactDir,
         stepId: step.id,
         attempt,
         onSpawn: (child) => this.activeCommandProcesses.set(child, run.id),
         onClose: (child) => this.activeCommandProcesses.delete(child),
       });
     } catch (error) {
-      throwCommandFailure({ error, state, instruction: code, cwd, environment });
+      throwCommandFailure({
+        error,
+        state,
+        instruction,
+        cwd,
+        environment: nodeEnvironment,
+      });
     }
     const diagnostics = createCommandDiagnostics({
-      instruction: code,
+      instruction,
       cwd,
       output,
-      environment,
+      environment: nodeEnvironment,
     });
     return this.parseAndValidateNodeEnvelope({
       parse: () =>
@@ -795,8 +905,9 @@ export class WorkflowService {
     state: ExecutionState,
     attempt: number,
     nodeRunId: string,
+    outputValidationError: string | null,
   ): Promise<StepExecutionResult> {
-    const cwd = await resolveStepCwd(step.config.cwd, state.filePath);
+    const cwd = await resolveStepCwd(step.config.cwd, state.runtime.runDir);
     const nodeInput = {
       ...resolveNodeInputEnvelope(step.id, state),
       project: {
@@ -807,20 +918,30 @@ export class WorkflowService {
     const renderedInstruction = renderAgentInstruction({
       template: step.initialPrompt,
       input: nodeInput,
+      builtInVariables: createRuntimeTemplateVariables(run, step, state, attempt),
     });
     const renderedSubsequentInstruction =
       step.subsequentPromptMode === "custom" && step.subsequentPrompt
         ? renderAgentInstruction({
             template: step.subsequentPrompt,
             input: nodeInput,
+            builtInVariables: createRuntimeTemplateVariables(run, step, state, attempt),
           })
         : undefined;
     const renderedSystemPrompt = step.config.systemPrompt
       ? renderAgentInstruction({
           template: step.config.systemPrompt,
           input: nodeInput,
+          builtInVariables: createRuntimeTemplateVariables(run, step, state, attempt),
         })
       : undefined;
+    const repairedInstruction = outputValidationError
+      ? appendWorkflowOutputRepairPrompt(renderedInstruction, outputValidationError)
+      : renderedInstruction;
+    const repairedSubsequentInstruction =
+      outputValidationError && renderedSubsequentInstruction
+        ? appendWorkflowOutputRepairPrompt(renderedSubsequentInstruction, outputValidationError)
+        : renderedSubsequentInstruction;
     const baseLabels = {
       "paseo.workflow-run": run.id,
       "paseo.workflow-step": step.id,
@@ -828,11 +949,11 @@ export class WorkflowService {
     };
     const { prompt: initialPrompt, labels } = this.resolveAgentIdentityContext(
       step,
-      renderedInstruction,
+      repairedInstruction,
       baseLabels,
     );
-    const subsequentPrompt = renderedSubsequentInstruction
-      ? this.resolveAgentIdentityContext(step, renderedSubsequentInstruction, baseLabels).prompt
+    const subsequentPrompt = repairedSubsequentInstruction
+      ? this.resolveAgentIdentityContext(step, repairedSubsequentInstruction, baseLabels).prompt
       : undefined;
     const lifecycle = step.lifecycle ?? "single";
     let inheritedScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null = null;
@@ -1116,6 +1237,7 @@ export class WorkflowService {
     return {
       ...next,
       agentId: null,
+      nodeArtifacts: [],
       nodeOutputPayload: serializeNodeDataEnvelope(next.payload),
       output: selected
         ? `Matched ${formatWorkflowValue(switchValue)} to ${JSON.stringify(selected.equals)}`
@@ -1234,6 +1356,7 @@ export class WorkflowService {
       loopContext: parentLoopContext,
       forAgentScope: parentForAgentScope,
       agentId: null,
+      nodeArtifacts: [],
       nodeOutputPayload: serializeNodeDataEnvelope(execution.state.payload),
       output,
       diagnostics: {
@@ -1286,7 +1409,7 @@ export class WorkflowService {
     agentResponse: string | null = null,
     diagnostics: WorkflowNodeDiagnostics = {},
   ): Promise<StepExecutionResult> {
-    validateWorkflowNodeData(step.outputSchema, result.data, `Workflow node ${step.id} output`);
+    validateWorkflowNodeOutput(step.outputSchema, result.data, `Workflow node ${step.id} output`);
     await state.variableState.apply(result.modify, state.loopContext);
     const payload = normalizePayloadPaths(
       WorkflowPayloadSchema.parse(result.data),
@@ -1340,10 +1463,17 @@ export class WorkflowService {
     }
     const message = error instanceof Error ? error.message : String(error);
     const timedOut = /timed out after \d+ms/i.test(message);
+    const outputValidationFailed = error instanceof WorkflowOutputValidationError;
+    let code = "TASK_FAILED";
+    if (timedOut) {
+      code = "TASK_TIMEOUT";
+    } else if (outputValidationFailed) {
+      code = "WORKFLOW_OUTPUT_VALIDATION_FAILED";
+    }
     return new WorkflowExecutionError(
       message,
       state,
-      timedOut ? "TASK_TIMEOUT" : "TASK_FAILED",
+      code,
       "failed",
       {},
       error instanceof WorkflowNodeBusinessError && error.forbidRetry,
@@ -1422,6 +1552,10 @@ export class WorkflowService {
       parseStoredPayload(run.inputPayload) ??
       createInitialPayload(run.inputFilePath);
     const originInput = directNodeInput?.origin_input ?? storedInput;
+    const runtime =
+      run.runDir && run.artifactDir
+        ? { runDir: run.runDir, artifactDir: run.artifactDir }
+        : await createWorkflowRuntimeDirectories(this.runDataDir, run.id);
     this.assertRunActive(runId, {
       payload: parseStoredPayload(run.outputPayload) ?? storedInput,
       workflowInputs: structuredClone(originInput),
@@ -1445,6 +1579,7 @@ export class WorkflowService {
       forAgentScope: null,
       directNodeInput: null,
       directNodeInputStepId: null,
+      runtime,
     });
   }
 
@@ -1938,7 +2073,7 @@ async function renderWorkflowInstruction(input: {
   template: string;
   variables: WorkflowTemplateVariables | undefined;
   state: ExecutionState;
-  runId: string;
+  run: WorkflowRun;
   stepId: string;
   stepName: string | undefined;
   attempt: number;
@@ -1951,6 +2086,12 @@ async function renderWorkflowInstruction(input: {
   );
   const inputFilePath = getPayloadString(input.state.payload, "filePath") ?? "";
   const builtInVariables: Record<string, string> = {
+    ...createRuntimeTemplateVariables(
+      input.run,
+      { id: input.stepId, name: input.stepName },
+      input.state,
+      input.attempt,
+    ),
     inputFilePath,
     inputDirectory: inputFilePath ? dirname(inputFilePath) : "",
     inputFileName: inputFilePath ? basename(inputFilePath) : "",
@@ -1960,7 +2101,7 @@ async function renderWorkflowInstruction(input: {
     payload: JSON.stringify(nodeInputPayload),
     data: JSON.stringify(nodeInputPayload.data),
     iterationPath: JSON.stringify(input.state.iterationPath),
-    runId: input.runId,
+    runId: input.run.id,
     stepId: input.stepId,
     stepName: input.stepName ?? input.stepId,
     attempt: String(input.attempt),
@@ -1984,11 +2125,30 @@ async function renderWorkflowInstruction(input: {
 function renderAgentInstruction(input: {
   template: string;
   input: WorkflowNodeInputEnvelope;
+  builtInVariables: Record<string, string>;
 }): string {
   return renderPromptTemplate(input.template, (variableName) => {
     const inputValue = getAgentInputPath(input.input, variableName);
-    return inputValue.found ? stringifyPromptValue(inputValue.value) : undefined;
+    return inputValue.found
+      ? stringifyPromptValue(inputValue.value)
+      : input.builtInVariables[variableName];
   });
+}
+
+function createRuntimeTemplateVariables(
+  run: WorkflowRun,
+  step: Pick<WorkflowStep, "id" | "name">,
+  state: ExecutionState,
+  attempt: number,
+): Record<string, string> {
+  return {
+    "workflow.cwd": dirname(run.scriptPath),
+    "run.id": run.id,
+    "run.dir": state.runtime.runDir,
+    "run.artifacts_dir": state.runtime.artifactDir,
+    "node.id": step.id,
+    "attempt.index": String(attempt),
+  };
 }
 
 function renderPromptTemplate(
@@ -2343,9 +2503,21 @@ function createAgentNodeResultEnvelope(
     try {
       parsed = JSON.parse(response);
     } catch (error) {
-      throw new Error("Custom Agent output must be a JSON result envelope", { cause: error });
+      throw new WorkflowOutputValidationError(
+        "Custom Agent output must be a JSON result envelope",
+        { cause: error },
+      );
     }
-    const result = WorkflowNodeResultEnvelopeSchema.parse(parsed);
+    const parsedResult = WorkflowNodeResultEnvelopeSchema.safeParse(parsed);
+    if (!parsedResult.success) {
+      throw new WorkflowOutputValidationError(
+        `Custom Agent output does not match the Workflow result envelope: ${parsedResult.error.issues
+          .map((issue) => issue.message)
+          .join("; ")}`,
+        { cause: parsedResult.error },
+      );
+    }
+    const result = parsedResult.data;
     if (result.base_resp.status_code !== 0) {
       throw new WorkflowNodeBusinessError(
         result.base_resp.status_msg ||
@@ -2371,24 +2543,18 @@ function createAgentNodeResultEnvelope(
 }
 
 function resolveForControl(step: WorkflowForStep, state: ExecutionState): string {
-  if (!step.forControl) {
-    return "";
+  try {
+    return resolveWorkflowForControl({
+      step,
+      resolveOptional: (expression) =>
+        resolveOptionalWorkflowExpression(expression, createDataMappingContext(state, step.id)),
+    });
+  } catch (error) {
+    if (!(error instanceof WorkflowForConditionError)) {
+      throw error;
+    }
+    throw new WorkflowExecutionError(error.message, state, "WORKFLOW_INVALID_INPUT");
   }
-  const value = resolveOptionalWorkflowExpression(
-    step.forControl,
-    createDataMappingContext(state, step.id),
-  );
-  if (value === null || value === undefined || value === "") {
-    return "";
-  }
-  if (value !== "break" && value !== "continue") {
-    throw new WorkflowExecutionError(
-      `For step ${step.id} control must resolve to "break", "continue", or an empty value`,
-      state,
-      "WORKFLOW_INVALID_INPUT",
-    );
-  }
-  return value;
 }
 
 function workflowValuesEqual(left: unknown, right: unknown, caseSensitive: boolean): boolean {

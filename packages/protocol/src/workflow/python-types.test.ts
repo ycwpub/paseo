@@ -18,6 +18,7 @@ describe("Python workflow protocol", () => {
           variables: { customer: { type: "string", default: "Alice" } },
           pythonPath: "/usr/bin/python3",
           cwd: "/tmp",
+          env: { MODE: "review" },
           timeoutMs: 30_000,
           retry: { maxAttempts: 2 },
         },
@@ -28,8 +29,68 @@ describe("Python workflow protocol", () => {
       id: "transform",
       type: "python",
       pythonPath: "/usr/bin/python3",
+      env: { MODE: "review" },
       timeoutMs: 30_000,
     });
+  });
+
+  it("accepts a Python module function instead of inline code", () => {
+    const script = WorkflowScriptSchema.parse({
+      apiVersion: "paseo.sh/workflow/v1",
+      kind: "Workflow",
+      version: 1,
+      name: "Python module workflow",
+      steps: [
+        {
+          id: "prepare",
+          type: "python",
+          module: "scripts.prepare_auto_troubleshoot",
+          function: "run_node",
+        },
+      ],
+    });
+
+    expect(script.steps[0]).toMatchObject({
+      type: "python",
+      module: "scripts.prepare_auto_troubleshoot",
+      function: "run_node",
+    });
+  });
+
+  it("requires exactly one Python execution mode", () => {
+    const base = {
+      apiVersion: "paseo.sh/workflow/v1",
+      kind: "Workflow",
+      version: 1,
+      name: "Invalid Python workflow",
+    } as const;
+
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...base,
+        steps: [
+          {
+            id: "both",
+            type: "python",
+            code: 'output = {"data": {}}',
+            module: "scripts.prepare",
+            function: "run_node",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...base,
+        steps: [{ id: "missing-function", type: "python", module: "scripts.prepare" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      WorkflowScriptSchema.safeParse({
+        ...base,
+        steps: [{ id: "missing-mode", type: "python" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps Python run records compatible with clients that know Bash nodes", () => {

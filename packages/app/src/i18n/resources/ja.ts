@@ -94,6 +94,27 @@ export const ja: TranslationResources = {
           "初期プロンプトと同じ入力データおよびテンプレート変数を利用できます。",
         archiveAtLifecycleEnd: "エージェントのライフサイクル終了時に自動アーカイブ",
       },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "ノード環境変数（JSON）",
+        environmentHint: "任意の文字列値で、このノードの Workflow コマンド環境を上書きします。",
+        environmentStringValues: "環境変数の値は文字列である必要があります。",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Python モジュール",
+        moduleHint: "任意のモジュールパスです。関数と一緒に設定します。",
+        function: "Python 関数",
+        functionHint: "完全なノード入力を受け取り、結果を返します。非同期関数にも対応します。",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "終了条件",
+        breakWhenHint: "式は真偽値を返す必要があり、true の場合はループを終了します。",
+        continueWhen: "継続条件",
+        continueWhenHint:
+          "式は真偽値を返す必要があり、true の場合は現在の反復の残りのノードをスキップします。",
+      },
       contract: {
         title: "ノードデータ契約",
         description: "必要なフィールドだけをマッピングし、入出力を検証します。",

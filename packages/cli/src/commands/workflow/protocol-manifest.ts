@@ -54,6 +54,30 @@ export interface WorkflowProtocolManifest {
     processFailure: "non-zero exit code";
     legacyStdoutResult: false;
   };
+  pythonNode: {
+    executionModes: ["inline", "module-function"];
+    moduleFunctionContract: "function(node_input) -> node_result or awaitable node_result";
+    nodeEnvironmentOverrides: true;
+  };
+  runtime: {
+    defaultCwd: "isolated run directory";
+    artifactDirectory: "framework-managed directory discovered recursively after each attempt";
+    templateVariables: [
+      "workflow.cwd",
+      "run.id",
+      "run.dir",
+      "run.artifacts_dir",
+      "node.id",
+      "attempt.index",
+    ];
+    environmentVariables: [
+      "PASEO_WORKFLOW_RUN_ID",
+      "PASEO_WORKFLOW_RUN_DIR",
+      "PASEO_WORKFLOW_ARTIFACT_DIR",
+      "PASEO_WORKFLOW_STEP_ID",
+      "PASEO_WORKFLOW_ATTEMPT",
+    ];
+  };
   variables: {
     originInput: {
       inputPath: "origin_input";
@@ -114,12 +138,18 @@ export interface WorkflowProtocolManifest {
       "node.var.*",
     ];
     completeInputAlias: "{{input}}";
+    outputValidationRepair: "retry prompt includes the JSON Schema validator error";
   };
   forNode: {
     modes: ["array", "number", "true"];
     executionModes: ["serial", "parallel"];
     controls: ["break", "continue", ""];
+    conditionFields: ["breakWhen", "continueWhen"];
     parallelLoopVariableModification: false;
+  };
+  safety: {
+    fields: ["sideEffects", "requiresWriteBack", "idempotencyKey", "rollbackHint"];
+    enforcement: "declarative metadata surfaced by workflow plan";
   };
   singleNodeRun: {
     inputModes: ["upstream_output", "node_input"];
@@ -188,6 +218,30 @@ export function buildWorkflowProtocolManifest(input: {
       processFailure: "non-zero exit code",
       legacyStdoutResult: false,
     },
+    pythonNode: {
+      executionModes: ["inline", "module-function"],
+      moduleFunctionContract: "function(node_input) -> node_result or awaitable node_result",
+      nodeEnvironmentOverrides: true,
+    },
+    runtime: {
+      defaultCwd: "isolated run directory",
+      artifactDirectory: "framework-managed directory discovered recursively after each attempt",
+      templateVariables: [
+        "workflow.cwd",
+        "run.id",
+        "run.dir",
+        "run.artifacts_dir",
+        "node.id",
+        "attempt.index",
+      ],
+      environmentVariables: [
+        "PASEO_WORKFLOW_RUN_ID",
+        "PASEO_WORKFLOW_RUN_DIR",
+        "PASEO_WORKFLOW_ARTIFACT_DIR",
+        "PASEO_WORKFLOW_STEP_ID",
+        "PASEO_WORKFLOW_ATTEMPT",
+      ],
+    },
     variables: {
       originInput: {
         inputPath: "origin_input",
@@ -248,12 +302,18 @@ export function buildWorkflowProtocolManifest(input: {
         "node.var.*",
       ],
       completeInputAlias: "{{input}}",
+      outputValidationRepair: "retry prompt includes the JSON Schema validator error",
     },
     forNode: {
       modes: ["array", "number", "true"],
       executionModes: ["serial", "parallel"],
       controls: ["break", "continue", ""],
+      conditionFields: ["breakWhen", "continueWhen"],
       parallelLoopVariableModification: false,
+    },
+    safety: {
+      fields: ["sideEffects", "requiresWriteBack", "idempotencyKey", "rollbackHint"],
+      enforcement: "declarative metadata surfaced by workflow plan",
     },
     singleNodeRun: {
       inputModes: ["upstream_output", "node_input"],

@@ -45,4 +45,14 @@ describe("workflow node run CLI", () => {
     expect(runHelp).toContain("file descriptor 3");
     expect(runHelp).toContain("stdout is never parsed as a result");
   });
+
+  it("exposes run planning, status inspection, and node logs", () => {
+    const workflow = createWorkflowCommand();
+    const commands = workflow.commands.map((command) => command.name());
+
+    expect(commands).toEqual(expect.arrayContaining(["plan", "status", "logs"]));
+    expect(
+      workflow.commands.find((command) => command.name() === "logs")?.helpInformation(),
+    ).toContain("--node <node-id>");
+  });
 });

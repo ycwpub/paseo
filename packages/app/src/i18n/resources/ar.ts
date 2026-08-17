@@ -92,6 +92,26 @@ export const ar: TranslationResources = {
         subsequentPromptHint: "تدعم نفس بيانات الإدخال ومتغيرات القالب الخاصة بالمطالبة الأولية.",
         archiveAtLifecycleEnd: "أرشفة الوكيل تلقائيًا عند انتهاء دورة حياته",
       },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "متغيرات بيئة العقدة (JSON)",
+        environmentHint: "تتجاوز القيم النصية الاختيارية بيئة أوامر Workflow لهذه العقدة.",
+        environmentStringValues: "يجب أن تكون قيم متغيرات البيئة نصوصًا.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "وحدة Python",
+        moduleHint: "مسار وحدة اختياري؛ اضبطه مع دالة.",
+        function: "دالة Python",
+        functionHint: "تستقبل إدخال العقدة الكامل وتعيد النتيجة؛ الدوال غير المتزامنة مدعومة.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "شرط الإنهاء",
+        breakWhenHint: "يجب أن يعيد التعبير قيمة منطقية؛ true تنهي الحلقة.",
+        continueWhen: "شرط المتابعة",
+        continueWhenHint: "يجب أن يعيد التعبير قيمة منطقية؛ true تتخطى بقية عقد التكرار الحالي.",
+      },
       contract: {
         title: "عقد بيانات العقدة",
         description: "اربط الحقول المطلوبة فقط وتحقق من المدخلات والمخرجات.",

@@ -36,6 +36,8 @@ export function runBashWorkflowNode(input: {
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
   runId: string;
+  runDir: string;
+  artifactDir: string;
   stepId: string;
   attempt: number;
   onSpawn: (child: ChildProcess) => void;
@@ -57,6 +59,8 @@ export function runBashWorkflowNode(input: {
         ...input.env,
         PASEO_WORKFLOW_ITERATION_PATH: JSON.stringify(input.iterationPath),
         PASEO_WORKFLOW_RUN_ID: input.runId,
+        PASEO_WORKFLOW_RUN_DIR: input.runDir,
+        PASEO_WORKFLOW_ARTIFACT_DIR: input.artifactDir,
         PASEO_WORKFLOW_STEP_ID: input.stepId,
         PASEO_WORKFLOW_ATTEMPT: String(input.attempt),
       },

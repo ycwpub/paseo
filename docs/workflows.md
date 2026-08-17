@@ -4,6 +4,47 @@ Paseo workflows are reusable JSON scripts stored on the daemon host under
 `~/.paseo/workflows`. You can create and run them from the Workflow page, call them from an Agent,
 or invoke them with `paseo workflow`.
 
+## Agent discovery
+
+Paseo exposes Workflows directly to Agents through `list_workflows`, `inspect_workflow`,
+`run_workflow`, `get_workflow_run`, and `cancel_workflow`. Agents should use these tools instead of
+scanning `~/.paseo/workflows` themselves.
+
+Discovery is on demand. `list_workflows` reads the daemon's Workflow directory when called, so a
+new valid Workflow becomes discoverable without restarting the daemon. Invalid files are omitted
+from the list and reported in the daemon log.
+
+For a repeatable or multi-step task, an Agent should:
+
+1. Call `list_workflows` once and compare names and descriptions with the request.
+2. Call `inspect_workflow` for plausible candidates. Inspect the full definition, especially the
+   first node's `inputSchema`, `inputPresets`, provider configuration, and nodes with external side
+   effects.
+3. Call `run_workflow` only after selecting a matching definition. Pass `inputPayload` as a
+   serialized JSON object, or pass an inspected `inputPresetId`.
+4. Read `status`, `outputPayload`, `error`, and `nodeRuns`. The successful `outputPayload` is the
+   final Workflow `data` object serialized as JSON.
+5. For `background: true`, keep the returned run ID and use `get_workflow_run` when the result is
+   needed. Use `cancel_workflow` to stop an active run.
+
+Agents should not run a Workflow from its name alone or invent input fields. They should skip
+discovery for trivial one-step tasks and avoid repeatedly listing Workflows during the same task.
+When a matching Workflow exists, the Agent should run it instead of reproducing, reordering, or
+skipping its nodes manually. Single-node execution is for explicit testing and debugging, not a
+replacement for the defined process. If no Workflow matches, the Agent continues with its normal
+tools.
+
+The CLI provides the same discovery path when Agent tools are unavailable:
+
+```bash
+paseo workflow ls --json
+paseo workflow inspect /absolute/path/workflow.json --json
+paseo workflow run /absolute/path/workflow.json '{"project":"paseo"}' --json
+```
+
+The `scriptPath` is absolute on the daemon host. Add `--host <host:port>` when discovering or
+running Workflows on another daemon.
+
 ## Version 1
 
 The current contract is `version: 1`. It does not read earlier Workflow result shapes.
@@ -230,6 +271,26 @@ output = {
 
 A non-zero interpreter exit code fails the node.
 
+Python nodes support either inline `code` or a declared module entrypoint. Configure exactly one
+mode:
+
+```json
+{
+  "id": "prepare",
+  "type": "python",
+  "cwd": "/path/to/project",
+  "module": "scripts.prepare_auto_troubleshoot",
+  "function": "run_node",
+  "env": {
+    "MODE": "review"
+  }
+}
+```
+
+The function receives the complete node input object and returns the complete node result object.
+It may return an awaitable. Bash and Python nodes can define `env`; these string values override
+the Workflow command environment for that node.
+
 ## Agent
 
 Agent nodes require a final answer. A missing final answer fails the node.
@@ -237,6 +298,10 @@ Agent nodes require a final answer. A missing final answer fails the node.
 - `outputMode: "normal"` converts the final answer to
   `{"data":{"answer":"Agent answer"}}`.
 - `outputMode: "custom"` parses the final answer as the complete node result envelope.
+
+When a custom Agent result or its `outputSchema` is invalid, the configured node retry policy can
+ask the Agent to correct it. The retry prompt includes the validator error. The node fails after
+`retry.maxAttempts`; schema correction has no separate retry counter.
 
 `lifecycle` controls Agent reuse and defaults to `single`:
 
@@ -341,6 +406,19 @@ The body receives the innermost Loop scope:
 Any other non-empty control value fails the For node, so misspelled control values do not silently
 change execution.
 
+Use `breakWhen` and `continueWhen` when the control is already boolean:
+
+```json
+{
+  "forControl": "{{data.control}}",
+  "breakWhen": "{{data.review_passed}}",
+  "continueWhen": "{{data.skip_remaining}}"
+}
+```
+
+`forControl` takes precedence when it returns `break` or `continue`. The condition fields must
+resolve to booleans; missing values are false.
+
 Every iteration's first body node starts from the For node's original `input.data`. The previous
 iteration's output does not become the next iteration's input. In serial execution, use custom Loop
 variables for cross-iteration state.
@@ -355,6 +433,46 @@ variables for cross-iteration state.
 
 Parallel iterations start from the same For input data. Workflow variable commits remain serialized;
 iteration `data` remains isolated. Parallel True loops require a finite `maxIterations`.
+
+## Run directories and artifacts
+
+Each run owns an isolated directory under `$PASEO_HOME/workflow-run-data/<run-id>`. Bash, Python,
+and Agent nodes use it as their default working directory. Set a node `cwd` when it must execute in
+a Project or repository.
+
+The run's `artifacts` subdirectory is framework-owned. Write files under
+`PASEO_WORKFLOW_ARTIFACT_DIR`; Paseo discovers them recursively after every successful or failed
+attempt, attaches them to the run and node attempt, and keeps them available to the UI and clients.
+Do not return `artifacts` in node result JSON.
+
+Runtime templates expose:
+
+- `{{workflow.cwd}}`: directory containing the Workflow definition
+- `{{run.id}}`: run ID
+- `{{run.dir}}`: isolated run directory
+- `{{run.artifacts_dir}}`: artifact directory
+- `{{node.id}}`: current node ID
+- `{{attempt.index}}`: one-based attempt index
+
+Command nodes also receive `PASEO_WORKFLOW_RUN_ID`, `PASEO_WORKFLOW_RUN_DIR`,
+`PASEO_WORKFLOW_ARTIFACT_DIR`, `PASEO_WORKFLOW_STEP_ID`, and `PASEO_WORKFLOW_ATTEMPT`.
+
+## Side-effect declarations
+
+Nodes can declare external effects without putting provider-specific behavior in the framework:
+
+```json
+{
+  "sideEffects": ["lark_doc_update", "bamboo_card_update"],
+  "requiresWriteBack": true,
+  "idempotencyKey": "{{origin_input.requestId}}",
+  "rollbackHint": "Restore the previous document version, then reset the card status."
+}
+```
+
+These fields are metadata. `paseo workflow plan` surfaces them before execution. The Workflow
+author remains responsible for enforcing idempotency and write authorization inside the node.
+Paseo does not automatically roll back external systems.
 
 ## Protocol discovery
 
@@ -426,6 +544,10 @@ combined with `--preset`.
 
 ```bash
 paseo workflow inspect /absolute/path/workflow.json
+paseo workflow plan /absolute/path/workflow.json
+paseo workflow status <run-id>
+paseo workflow logs <run-id>
+paseo workflow logs <run-id> --node <node-id>
 paseo workflow ls
 paseo workflow cancel <run-id>
 paseo workflow protocol --json
@@ -433,3 +555,19 @@ paseo workflow protocol --json
 
 The Workflow path is resolved on the daemon host. Add `--host` when the CLI connects to another
 daemon.
+
+`plan` validates through the daemon, expands the node graph, and lists declared side effects. It
+does not execute a subset of nodes because skipped Agent or write nodes would leave downstream
+inputs undefined. `status` returns the complete run record. `logs` shows each attempt's input,
+output, timestamps, command diagnostics, Agent ID, errors, and artifacts.
+
+## Deliberate boundaries
+
+- Failure retries use the node `retry` policy. Conditional repetition uses For with
+  `breakWhen`/`continueWhen`; Paseo does not add a second Retry container with overlapping
+  semantics.
+- Python can reference a module and function explicitly. Paseo does not silently move long code or
+  prompts out of the Workflow JSON because that would make a definition non-atomic and
+  path-dependent.
+- Recovery remains explicit. Declare `rollbackHint` or model recovery as normal nodes after human
+  confirmation. The framework does not infer or automatically execute compensating writes.

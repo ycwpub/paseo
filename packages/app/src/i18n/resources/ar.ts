@@ -277,6 +277,23 @@ export const ar: TranslationResources = {
       title_mr: "إرفاق المشكلة أو MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "الذاكرة العامة متوقفة",
+    globalDisabledDescription:
+      "سيتم حفظ السياسة، لكن Paseo لن يستخدمها حتى يتم تفعيل الذاكرة في إعدادات المضيف.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "قواعد الذاكرة",
+      description: "إدارة المعلومات الدائمة التي يمكن لكل نطاق ذاكرة حفظها.",
+      scopeType: "نطاق الذاكرة",
+      target: "الهدف",
+      selectTarget: "اختر هدفًا",
+      instructionsTitle: "ما الذي يجب حفظه",
+      save: "حفظ القواعد",
+      saved: "تم الحفظ",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "مزود",
@@ -308,12 +325,33 @@ export const ar: TranslationResources = {
       model: "تغيير النموذج",
       mode: "تغيير الوضع",
     },
+    memory: {
+      title: "ذاكرة المحادثة",
+      open: "إعداد ذاكرة المحادثة",
+      enabledTitle: "استخدام الذاكرة في هذه المحادثة",
+      enabledHint:
+        "عند الإيقاف، لا يقرأ هذا الوكيل الذاكرة الحالية ولا يتعلم ذاكرة جديدة من المحادثة.",
+      instructionsTitle: "ماذا يجب أن يتذكر Paseo من هذه المحادثة؟",
+      instructionsHint:
+        "حدد الاستنتاجات المؤكدة أو التفضيلات المتكررة أو القرارات. تبقى السجلات المؤقتة والتخمينات والأسرار مستبعدة.",
+      instructionsPlaceholder:
+        "مثال: تذكر الأسباب المؤكدة والقرارات النهائية وتجاهل التجارب الوسيطة.",
+      save: "حفظ",
+      saving: "جارٍ الحفظ...",
+      saved: "تم الحفظ",
+      saveError: "تعذر حفظ ذاكرة المحادثة",
+    },
   },
   agentStream: {
     empty: "ابدأ الدردشة مع هذا الوكيل...",
     scrollToBottom: "قم بالتمرير إلى الأسفل",
     scrollToOldest: "انتقل إلى الرسالة الأولى",
     locatingOldest: "جارٍ تحديد الرسالة الأولى",
+    reasoningTranslation: {
+      translating: "جارٍ ترجمة التفكير إلى الصينية...",
+      failed: "فشلت ترجمة التفكير.",
+      unavailable: "خادم Paseo الحالي لا يدعم ترجمة التفكير.",
+    },
     process: {
       show: "إظهار العملية",
       hide: "إخفاء العملية",
@@ -2121,6 +2159,19 @@ export const ar: TranslationResources = {
       refreshAccessibility: "تحديث إذن الإشعارات",
       playSound: "تشغيل صوت",
       playSoundHint: "تشغيل صوت عند وصول إشعار سطح مكتب",
+      island: "تذكيرات Dynamic Island",
+      islandHint: "عرض حالة Agent مختصرة أعلى الشاشة",
+      islandShowWhenFocused: "العرض عندما يكون Paseo في الواجهة",
+      islandShowWhenFocusedHint: "إبقاء التذكيرات ظاهرة أثناء استخدام Paseo",
+      islandWorking: "جارٍ تنفيذ المهمة...",
+      islandTest: "اختبار الجزيرة الديناميكية",
+      islandTestHint: "عرض تذكير الجزيرة الديناميكية أعلى الشاشة الحالية",
+      islandTestTitle: "الجزيرة الديناميكية لـ Paseo",
+      islandTestBody: "تُعرض الجزيرة الديناميكية بشكل صحيح",
+      islandTestSuccess: "تم عرض الجزيرة الديناميكية",
+      islandTestSuccessHint: "يظهر التذكير أعلى مساحة العمل في الشاشة الحالية.",
+      islandTestFailed: "تعذر عرض الجزيرة الديناميكية",
+      islandTestFailedHint: "تأكد من تفعيلها وافحص سجلات [island] في سجل سطح المكتب.",
       test: "اختبار الإشعار",
       testHint: "إرسال إشعار باستخدام هذه الإعدادات",
       permissionRequired: "اسمح بالوصول إلى الإشعارات قبل الاختبار",
@@ -2136,8 +2187,10 @@ export const ar: TranslationResources = {
       agents: "Agents",
       metadata: "البيانات الوصفية",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "خوادم MCP",
       skills: "المهارات",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "مقدمي الخدمات",
       channels: "القنوات",
@@ -2216,6 +2269,10 @@ export const ar: TranslationResources = {
       autoExpandReasoning: {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "ترجمة تفكير Aiden Claude إلى الصينية",
+        description: "عرض الترجمة الصينية المبسطة فقط، أو النص الأصلي عند إيقافها.",
       },
       toolCallDetail: {
         label: "عرض استدعاءات الأدوات",
@@ -2873,6 +2930,21 @@ export const ar: TranslationResources = {
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "ذاكرة المشروع",
+        info: "تحكم في ذاكرة هذا المشروع وحدد المعرفة الدائمة التي يجب أن يتعلمها Paseo.",
+        enabledTitle: "استخدام الذاكرة لهذا المشروع",
+        enabledHint:
+          "عند الإيقاف، لا تقرأ الوكلاء ذاكرة المشروع ولا تنشئها. تبقى الذاكرة العامة متاحة.",
+        instructionsTitle: "ماذا يجب أن يتذكر Paseo لهذا المشروع؟",
+        instructionsHint: "صف الاتفاقيات وقرارات البنية والإجراءات المتكررة وحقائق البيئة المستقرة.",
+        instructionsPlaceholder:
+          "مثال: تذكر قرارات البنية وإجراءات الإصدار وتجاهل الأعطال المؤقتة والسجلات والأسرار.",
+        save: "حفظ",
+        saving: "جارٍ الحفظ...",
+        saved: "تم الحفظ",
+        saveError: "تعذر حفظ ذاكرة المشروع",
+      },
       rename: {
         renamedToast: "تمت إعادة تسمية المشروع",
         errorFallback: "تعذرت إعادة تسمية المشروع",

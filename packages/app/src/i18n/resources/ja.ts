@@ -280,6 +280,23 @@ export const ja: TranslationResources = {
       title_mr: "イシューまたはMRを添付",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "グローバルメモリは無効です",
+    globalDisabledDescription:
+      "設定は保存されますが、ホスト設定でメモリを有効にするまで Paseo は使用しません。",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "メモリルール",
+      description: "各メモリ範囲に保存する永続的な情報を管理します。",
+      scopeType: "メモリ範囲",
+      target: "対象",
+      selectTarget: "対象を選択",
+      instructionsTitle: "保存する情報",
+      save: "ルールを保存",
+      saved: "保存済み",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "プロバイダー",
@@ -311,12 +328,32 @@ export const ja: TranslationResources = {
       model: "モデルを変更",
       mode: "権限モードを変更",
     },
+    memory: {
+      title: "会話メモリ",
+      open: "会話メモリを設定",
+      enabledTitle: "この会話でメモリを使用",
+      enabledHint:
+        "無効にすると、このエージェントは既存メモリを参照せず、会話から新しいメモリも学習しません。",
+      instructionsTitle: "この会話から Paseo に何を記憶させますか？",
+      instructionsHint:
+        "確定した結論、繰り返し現れる設定、最終決定など長期的な情報を指定します。一時ログ、推測、秘密情報は除外されます。",
+      instructionsPlaceholder: "例：確定した原因と最終決定を記憶し、途中の実験は無視する。",
+      save: "保存",
+      saving: "保存中...",
+      saved: "保存しました",
+      saveError: "会話メモリを保存できませんでした",
+    },
   },
   agentStream: {
     empty: "このエージェントとチャットを始めましょう...",
     scrollToBottom: "下にスクロール",
     scrollToOldest: "最初のメッセージに移動",
     locatingOldest: "最初のメッセージを検索中",
+    reasoningTranslation: {
+      translating: "思考プロセスを中国語に翻訳しています...",
+      failed: "思考プロセスの翻訳に失敗しました。",
+      unavailable: "現在の Paseo サーバーは思考翻訳に対応していません。",
+    },
     process: {
       show: "プロセスを表示",
       hide: "プロセスを非表示",
@@ -2142,6 +2179,20 @@ export const ja: TranslationResources = {
       refreshAccessibility: "通知の権限を更新",
       playSound: "サウンドを再生",
       playSoundHint: "デスクトップ通知が届いたときにサウンドを再生します",
+      island: "Dynamic Island リマインダー",
+      islandHint: "画面上部にコンパクトな Agent ステータスを表示します",
+      islandShowWhenFocused: "Paseo が前面でも表示",
+      islandShowWhenFocusedHint: "Paseo の操作中もリマインダーを表示します",
+      islandWorking: "タスクを処理しています...",
+      islandTest: "Dynamic Island をテスト",
+      islandTestHint: "現在の画面上部に Dynamic Island リマインダーを表示します",
+      islandTestTitle: "Paseo Dynamic Island",
+      islandTestBody: "Dynamic Island は正常に表示されています",
+      islandTestSuccess: "Dynamic Island を表示しました",
+      islandTestSuccessHint: "現在の画面の作業領域上部にリマインダーを表示しました。",
+      islandTestFailed: "Dynamic Island を表示できません",
+      islandTestFailedHint:
+        "有効になっていることとデスクトップログの [island] を確認してください。",
       test: "通知をテスト",
       testHint: "現在の設定でテスト通知を送信します",
       permissionRequired: "テストする前に通知へのアクセスを許可してください",
@@ -2157,8 +2208,10 @@ export const ja: TranslationResources = {
       agents: "エージェント",
       metadata: "メタデータ",
       assistants: "アシスタント",
+      memory: "メモリ",
       mcp: "MCPサーバー",
       skills: "スキル",
+      plugins: "プラグイン",
       workspaces: "ワークスペース",
       providers: "プロバイダー",
       channels: "チャンネル",
@@ -2236,6 +2289,10 @@ export const ja: TranslationResources = {
       autoExpandReasoning: {
         label: "常に思考プロセスを展開",
         description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "Aiden Claude の思考を中国語に翻訳",
+        description: "簡体字中国語の翻訳のみを表示し、オフの場合は原文を表示します。",
       },
       toolCallDetail: {
         label: "ツール呼び出しの表示",
@@ -2901,6 +2958,22 @@ export const ja: TranslationResources = {
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "プロジェクトメモリ",
+        info: "このプロジェクト固有のメモリを制御し、Paseo が学習する長期的な知識を定義します。",
+        enabledTitle: "このプロジェクトでメモリを使用",
+        enabledHint:
+          "無効にすると、エージェントはプロジェクトメモリを参照・作成しません。グローバルメモリは引き続き利用できます。",
+        instructionsTitle: "このプロジェクトについて何を記憶させますか？",
+        instructionsHint:
+          "規約、アーキテクチャ決定、繰り返し使う手順、安定した環境情報を記述します。",
+        instructionsPlaceholder:
+          "例：アーキテクチャ決定とリリース手順を記憶し、一時的な障害、ログ、秘密情報は無視する。",
+        save: "保存",
+        saving: "保存中...",
+        saved: "保存しました",
+        saveError: "プロジェクトメモリを保存できませんでした",
+      },
       rename: {
         renamedToast: "プロジェクト名を変更しました",
         errorFallback: "プロジェクト名を変更できませんでした",

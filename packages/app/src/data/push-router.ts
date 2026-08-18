@@ -12,6 +12,7 @@ import { larkChannelQueryKey } from "@/data/lark-channel";
 import { teamsQueryKey } from "@/data/team";
 import { mcpServersQueryKey } from "@/data/mcp";
 import { skillsQueryKey } from "@/data/skill";
+import { pluginsQueryKey } from "@/data/plugin";
 import { providerSnapshotCache, type ProviderSnapshotCache } from "@/data/provider-snapshot-cache";
 import {
   normalizeProvidersSnapshotCwd,
@@ -148,6 +149,12 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
     domain: "skill",
     invalidate: ({ queryClient, serverId }) => {
       void queryClient.invalidateQueries({ queryKey: skillsQueryKey(serverId) });
+    },
+  },
+  {
+    domain: "plugin",
+    invalidate: ({ queryClient, serverId }) => {
+      void queryClient.invalidateQueries({ queryKey: pluginsQueryKey(serverId) });
     },
   },
   {

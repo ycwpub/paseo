@@ -1,0 +1,9 @@
+{
+  "apps": {
+    "reconciliation-console": {
+      "id": "reconciliation-console",
+      "category": "Finance",
+      "document": "./apps/reconciliation-console.json"
+    }
+  }
+}

@@ -286,6 +286,23 @@ export const ptBR: TranslationResources = {
       title_mr: "Anexar issue ou MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "A memória global está desativada",
+    globalDisabledDescription:
+      "A política será salva, mas o Paseo só a usará depois que a Memória for ativada nas configurações do host.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Regras de memória",
+      description: "Gerencie as informações duráveis que cada escopo de memória pode salvar.",
+      scopeType: "Escopo da memória",
+      target: "Destino",
+      selectTarget: "Selecione um destino",
+      instructionsTitle: "O que deve ser salvo",
+      save: "Salvar regras",
+      saved: "Salvo",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Provedor",
@@ -317,12 +334,33 @@ export const ptBR: TranslationResources = {
       model: "Alterar modelo",
       mode: "Alterar modo de permissão",
     },
+    memory: {
+      title: "Memória da conversa",
+      open: "Configurar memória da conversa",
+      enabledTitle: "Usar memória nesta conversa",
+      enabledHint:
+        "Quando desativada, este agente não lê memórias existentes nem aprende novas memórias da conversa.",
+      instructionsTitle: "O que o Paseo deve lembrar desta conversa?",
+      instructionsHint:
+        "Defina tópicos duradouros, como conclusões confirmadas, preferências recorrentes ou decisões. Logs temporários, suposições e segredos continuam excluídos.",
+      instructionsPlaceholder:
+        "Exemplo: lembrar causas confirmadas e decisões finais; ignorar experimentos intermediários.",
+      save: "Salvar",
+      saving: "Salvando...",
+      saved: "Salvo",
+      saveError: "Não foi possível salvar a memória da conversa",
+    },
   },
   agentStream: {
     empty: "Comece a conversar com este agente...",
     scrollToBottom: "Rolar para o fim",
     scrollToOldest: "Ir para a primeira mensagem",
     locatingOldest: "Localizando a primeira mensagem",
+    reasoningTranslation: {
+      translating: "Traduzindo o raciocínio para chinês...",
+      failed: "Falha ao traduzir o raciocínio.",
+      unavailable: "Este servidor Paseo não oferece tradução do raciocínio.",
+    },
     process: {
       show: "Mostrar processo",
       hide: "Ocultar processo",
@@ -2162,6 +2200,19 @@ export const ptBR: TranslationResources = {
       refreshAccessibility: "Atualizar permissão de notificações",
       playSound: "Reproduzir som",
       playSoundHint: "Reproduz um som quando chega uma notificação da área de trabalho",
+      island: "Lembretes Dynamic Island",
+      islandHint: "Mostra o status compacto do Agent no topo da tela",
+      islandShowWhenFocused: "Mostrar com o Paseo em foco",
+      islandShowWhenFocusedHint: "Mantém os lembretes visíveis enquanto você usa o Paseo",
+      islandWorking: "Processando a tarefa...",
+      islandTest: "Testar Dynamic Island",
+      islandTestHint: "Mostra um lembrete Dynamic Island no topo da tela atual",
+      islandTestTitle: "Dynamic Island do Paseo",
+      islandTestBody: "A Dynamic Island está sendo exibida corretamente",
+      islandTestSuccess: "Dynamic Island exibida",
+      islandTestSuccessHint: "O lembrete aparece no topo da área de trabalho da tela atual.",
+      islandTestFailed: "Não foi possível exibir a Dynamic Island",
+      islandTestFailedHint: "Confirme que ela está ativa e verifique os registros [island].",
       test: "Testar notificação",
       testHint: "Envia uma notificação usando estas configurações",
       permissionRequired: "Permita o acesso às notificações antes de testar",
@@ -2177,8 +2228,10 @@ export const ptBR: TranslationResources = {
       agents: "Agentes",
       metadata: "Metadados",
       assistants: "Assistentes",
+      memory: "Memória",
       mcp: "Servidores MCP",
       skills: "Habilidades",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Provedores",
       channels: "Canais",
@@ -2259,6 +2312,11 @@ export const ptBR: TranslationResources = {
         label: "Sempre expandir raciocínio",
         description:
           "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "Traduzir o raciocínio do Aiden Claude para chinês",
+        description:
+          "Mostra apenas a tradução em chinês simplificado; desativado, mostra o texto original.",
       },
       toolCallDetail: {
         label: "Exibição de chamadas de ferramentas",
@@ -2923,6 +2981,22 @@ export const ptBR: TranslationResources = {
       backToProjects: "Voltar para projetos",
       switchHost: "Trocar host",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Memória do projeto",
+        info: "Controle a memória deste projeto e defina quais conhecimentos duradouros o Paseo deve aprender.",
+        enabledTitle: "Usar memória neste projeto",
+        enabledHint:
+          "Quando desativada, os agentes não leem nem criam memórias do projeto. A memória global continua disponível.",
+        instructionsTitle: "O que o Paseo deve lembrar deste projeto?",
+        instructionsHint:
+          "Descreva convenções, decisões de arquitetura, procedimentos recorrentes e fatos estáveis do ambiente.",
+        instructionsPlaceholder:
+          "Exemplo: lembrar decisões de arquitetura e procedimentos de lançamento; ignorar falhas temporárias, logs e segredos.",
+        save: "Salvar",
+        saving: "Salvando...",
+        saved: "Salvo",
+        saveError: "Não foi possível salvar a memória do projeto",
+      },
       rename: {
         renamedToast: "Projeto renomeado",
         errorFallback: "Não foi possível renomear projeto",

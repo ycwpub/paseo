@@ -1,0 +1,9 @@
+{
+  "apps": {
+    "development-console": {
+      "id": "development-console",
+      "category": "Development",
+      "document": "./apps/development-console.json"
+    }
+  }
+}

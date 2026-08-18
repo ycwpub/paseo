@@ -56,7 +56,7 @@ function formatTags(tags: string[] | undefined): string {
 
 function skillSourceLabel(skill: Skill): string {
   if (skill.source === "builtin") return "Built-in";
-  if (skill.source === "marketplace") return "Marketplace";
+  if (skill.source === "marketplace") return skill.pluginName ?? "Plugin";
   return "Custom";
 }
 
@@ -73,7 +73,7 @@ function SkillRow({
   onEdit: (skill: Skill) => void;
   onDelete: (skill: Skill) => void;
 }) {
-  const isReadOnly = skill.source === "builtin";
+  const isReadOnly = skill.source !== "user";
   const handleToggle = useCallback(
     (enabled: boolean) => onToggleEnabled(skill, enabled),
     [onToggleEnabled, skill],

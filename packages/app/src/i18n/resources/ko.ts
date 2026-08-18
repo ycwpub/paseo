@@ -223,6 +223,22 @@ const koOverrides = {
       title_mr: "이슈 또는 MR 첨부",
     },
   },
+  memoryPolicies: {
+    globalDisabledTitle: "전역 메모리가 꺼져 있습니다",
+    globalDisabledDescription:
+      "정책은 저장되지만 호스트 설정에서 메모리를 켜기 전까지 Paseo가 사용하지 않습니다.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "메모리 규칙",
+      description: "각 메모리 범위에 저장할 영구 정보를 관리합니다.",
+      scopeType: "메모리 범위",
+      target: "대상",
+      selectTarget: "대상 선택",
+      instructionsTitle: "저장할 정보",
+      save: "규칙 저장",
+      saved: "저장됨",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "프로바이더",
@@ -253,6 +269,21 @@ const koOverrides = {
       thinking: "사고 모드",
       model: "모델 변경",
       mode: "모드 변경",
+    },
+    memory: {
+      title: "대화 메모리",
+      open: "대화 메모리 설정",
+      enabledTitle: "이 대화에서 메모리 사용",
+      enabledHint:
+        "끄면 이 에이전트는 기존 메모리를 읽지 않고 대화에서 새 메모리를 학습하지 않습니다.",
+      instructionsTitle: "Paseo가 이 대화에서 무엇을 기억해야 하나요?",
+      instructionsHint:
+        "확인된 결론, 반복되는 선호, 최종 결정처럼 오래 유지할 정보를 지정하세요. 임시 로그, 추측, 비밀은 제외됩니다.",
+      instructionsPlaceholder: "예: 확인된 원인과 최종 결정을 기억하고 중간 실험은 무시합니다.",
+      save: "저장",
+      saving: "저장 중...",
+      saved: "저장됨",
+      saveError: "대화 메모리를 저장할 수 없습니다",
     },
   },
   agentStream: {
@@ -2003,6 +2034,20 @@ const koOverrides = {
       refreshAccessibility: "알림 권한 새로 고침",
       playSound: "소리 재생",
       playSoundHint: "데스크톱 알림이 도착하면 소리를 재생합니다",
+      island: "Dynamic Island 알림",
+      islandHint: "화면 상단에 간결한 에이전트 상태 알림을 표시합니다",
+      islandShowWhenFocused: "Paseo가 활성화되어 있어도 표시",
+      islandShowWhenFocusedHint: "Paseo를 사용하는 동안에도 알림을 계속 표시합니다",
+      islandWorking: "작업을 처리하는 중...",
+      islandTest: "Dynamic Island 테스트",
+      islandTestHint: "현재 화면 상단에 Dynamic Island 알림을 표시합니다",
+      islandTestTitle: "Paseo Dynamic Island",
+      islandTestBody: "Dynamic Island가 정상적으로 표시됩니다",
+      islandTestSuccess: "Dynamic Island를 표시했습니다",
+      islandTestSuccessHint: "현재 화면 작업 영역 상단에 알림이 표시됩니다.",
+      islandTestFailed: "Dynamic Island를 표시할 수 없습니다",
+      islandTestFailedHint:
+        "기능이 켜져 있는지 확인하고 데스크톱 로그의 [island] 항목을 확인하세요.",
       test: "알림 테스트",
       testHint: "현재 설정으로 테스트 알림을 보냅니다",
       permissionRequired: "테스트하기 전에 알림 접근을 허용하세요",
@@ -2017,6 +2062,7 @@ const koOverrides = {
       connections: "연결",
       agents: "에이전트",
       metadata: "메타데이터",
+      plugins: "플러그인",
       workspaces: "워크스페이스",
       providers: "프로바이더",
       usage: "사용량",
@@ -2643,6 +2689,21 @@ const koOverrides = {
     project: {
       noEditableTarget: "이 호스트에서는 이 프로젝트를 편집할 수 없습니다.",
       backToProjects: "프로젝트로 돌아가기",
+      memory: {
+        title: "프로젝트 메모리",
+        info: "이 프로젝트의 메모리 사용 여부와 Paseo가 학습할 장기 지식을 설정합니다.",
+        enabledTitle: "이 프로젝트에서 메모리 사용",
+        enabledHint:
+          "끄면 에이전트가 프로젝트 메모리를 읽거나 만들지 않습니다. 전역 메모리는 계속 사용할 수 있습니다.",
+        instructionsTitle: "Paseo가 이 프로젝트에서 무엇을 기억해야 하나요?",
+        instructionsHint: "규칙, 아키텍처 결정, 반복 절차, 안정적인 환경 정보를 설명하세요.",
+        instructionsPlaceholder:
+          "예: 아키텍처 결정과 릴리스 절차를 기억하고 임시 오류, 로그, 비밀은 무시합니다.",
+        save: "저장",
+        saving: "저장 중...",
+        saved: "저장됨",
+        saveError: "프로젝트 메모리를 저장할 수 없습니다",
+      },
       edit: {
         title: "프로젝트 편집",
         name: "이름",

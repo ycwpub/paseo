@@ -1,9 +1,10 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Assistant, Team } from "@getpaseo/protocol/messages";
+import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import type { BoundCreateAgentCommand } from "../agent/create-agent/create.js";
 import { WorkflowService } from "./service.js";
 
@@ -204,8 +205,8 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns[0]).toMatchObject({
       environmentSource: "daemon",
       exitCode: 0,
-      cwd: home,
     });
+    expect(run.nodeRuns[0]?.cwd).toContain(join(home, "workflow-run-data"));
     expect(run.nodeRuns[0]?.expandedInstruction).toContain("FIXED_WIKI_URL");
   });
 
@@ -2031,6 +2032,106 @@ describe("WorkflowService", () => {
         error: "",
         reviewedCustomer: "Alice",
       }),
+    });
+  });
+
+  it("renders Agent provider, model, title, mode, thinking, and cwd from workflow input", async () => {
+    const home = await createTempHome();
+    const repositoryPath = join(home, "repository");
+    const scriptPath = join(home, "dynamic-agent-config.json");
+    await mkdir(repositoryPath);
+    let capturedConfig: AgentSessionConfig | undefined;
+    const service = new WorkflowService({
+      paseoHome: home,
+      logger: pino({ enabled: false }),
+      agentManager: {
+        runAgent: async () => ({
+          sessionId: "session",
+          finalText: "done",
+          timeline: [],
+          canceled: false,
+        }),
+        waitForAgentEvent: async () => ({
+          status: "idle",
+          permission: null,
+          lastMessage: null,
+        }),
+        cancelAgentRun: async () => ({ status: "settled" }),
+      },
+      createAgent: (async (input) => {
+        capturedConfig = input.config;
+        return {
+          snapshot: { id: "11111111-1111-4111-8111-111111111111" },
+          initialPromptError: null,
+        };
+      }) as BoundCreateAgentCommand,
+      createDirectoryWorkspace: async ({ cwd }) => ({ workspaceId: "workspace", cwd }) as never,
+      createPaseoWorktreeWorkspace: async () => {
+        throw new Error("Worktree creation is not expected in this test");
+      },
+      archiveWorkspace: async () => undefined,
+      resolveAgentProjectVariables: async (cwd) => ({
+        resolvedRepository: cwd,
+      }),
+    });
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "dynamic agent config",
+        steps: [
+          {
+            id: "agent",
+            type: "agent",
+            outputMode: "normal",
+            initialPrompt: "Repository={{project.var.resolvedRepository}}",
+            config: {
+              provider: "{{origin_input.agent.provider}}",
+              model: "{{origin_input.agent.model}}",
+              cwd: "{{origin_input.repository_path}}",
+              title: "{{origin_input.agent.title}}",
+              modeId: "{{origin_input.agent.mode}}",
+              thinkingOptionId: "{{origin_input.agent.thinking}}",
+              approvalPolicy: "never",
+              sandboxMode: "workspace-write",
+              networkAccess: true,
+              webSearch: false,
+            },
+          },
+        ],
+      }),
+    );
+
+    await service.start();
+    const run = await service.runScriptAndWait({
+      scriptPath,
+      inputPayload: JSON.stringify({
+        repository_path: repositoryPath,
+        agent: {
+          provider: "codex",
+          model: "gpt-5.6",
+          title: "Byte development",
+          mode: "full-access",
+          thinking: "high",
+        },
+      }),
+    });
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(capturedConfig).toMatchObject({
+      provider: "codex",
+      model: "gpt-5.6",
+      cwd: repositoryPath,
+      title: "Byte development",
+      modeId: "full-access",
+      thinkingOptionId: "high",
+      providerOptions: {
+        approval_policy: "never",
+        sandbox_mode: "workspace-write",
+        sandbox_workspace_write: { network_access: true },
+        web_search: "disabled",
+      },
     });
   });
 

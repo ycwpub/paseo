@@ -45,6 +45,56 @@ export const en = {
       idle: "Idle",
     },
   },
+  memoryPolicies: {
+    globalDisabledTitle: "Global memory is off",
+    globalDisabledDescription:
+      "This policy is saved, but Paseo will not use it until Memory is enabled in host settings.",
+    users: {
+      title: "Global memory user",
+      description:
+        "Agents only read and learn global memory for the selected user. Project, Workspace, and Assistant memory remains shared.",
+      currentUser: "Current user",
+      deleteUser: "Delete current user",
+      newUserName: "New user name",
+      newUserPlaceholder: "For example: Alex",
+      createAndSwitch: "Create and switch",
+      selectUser: "Select a user",
+      noUsers: "No users",
+      deleteTitle: 'Delete global memory user "{{name}}"?',
+      deleteDescription:
+        "This user's global memories, summary, and extraction rules will be permanently deleted. Other memory scopes are not affected.",
+      deleteConfirm: "Delete user",
+    },
+    scopeManager: {
+      title: "Memory rules",
+      description:
+        "Manage which durable information Global, Project, Workspace, and Assistant memory may save.",
+      scopeType: "Memory scope",
+      target: "Target",
+      selectScopeType: "Select a memory scope",
+      selectTarget: "Select a target",
+      noScopes: "No memory scopes",
+      noTargets: "No matching Projects, Workspaces, or Assistants",
+      types: {
+        global: "Global",
+        project: "Project",
+        workspace: "Workspace",
+        assistant: "Assistant",
+      },
+      enabledTitle: "{{scope}} memory",
+      enabledHint:
+        "Use memory from this scope in matching conversations and allow automatic learning into it.",
+      instructionsTitle: "What should be saved",
+      instructionsHint:
+        "Describe the durable information that belongs in this scope. These rules guide learning and are not added to visible Agent prompts.",
+      instructionsPlaceholder:
+        "Example: Save confirmed conventions, reusable procedures, and stable decisions. Ignore temporary failures and one-off requests.",
+      save: "Save rules",
+      saving: "Saving…",
+      saved: "Saved",
+      saveError: "Unable to save memory rules",
+    },
+  },
   workflows: {
     title: "Workflows",
     actions: {
@@ -843,12 +893,33 @@ export const en = {
       model: "Change model",
       mode: "Change mode",
     },
+    memory: {
+      title: "Conversation memory",
+      open: "Configure conversation memory",
+      enabledTitle: "Use memory in this conversation",
+      enabledHint:
+        "When off, this Agent neither reads existing memory nor learns new memory from the conversation.",
+      instructionsTitle: "What should Paseo remember from this conversation?",
+      instructionsHint:
+        "Add durable topics to prioritize, such as confirmed conclusions, recurring preferences, or decisions. Temporary logs, guesses, and secrets are still excluded.",
+      instructionsPlaceholder:
+        "Example: Remember confirmed root causes and final decisions. Ignore intermediate experiments.",
+      save: "Save",
+      saving: "Saving...",
+      saved: "Saved",
+      saveError: "Couldn't save conversation memory",
+    },
   },
   agentStream: {
     empty: "Start chatting with this agent...",
     scrollToBottom: "Scroll to bottom",
     scrollToOldest: "Jump to first message",
     locatingOldest: "Locating first message",
+    reasoningTranslation: {
+      translating: "Translating reasoning to Chinese...",
+      failed: "Reasoning translation failed.",
+      unavailable: "This Paseo server does not support reasoning translation.",
+    },
     process: {
       show: "Show process",
       hide: "Hide process",
@@ -2714,6 +2785,19 @@ export const en = {
       refreshAccessibility: "Refresh notification permission",
       playSound: "Play sound",
       playSoundHint: "Play a sound when a desktop notification arrives",
+      island: "Dynamic Island reminders",
+      islandHint: "Show compact Agent status reminders at the top of the screen",
+      islandShowWhenFocused: "Show while Paseo is focused",
+      islandShowWhenFocusedHint: "Keep reminders visible while you are working in Paseo",
+      islandWorking: "Working on the task...",
+      islandTest: "Test Dynamic Island",
+      islandTestHint: "Show a Dynamic Island reminder at the top of the current screen",
+      islandTestTitle: "Paseo Dynamic Island",
+      islandTestBody: "Dynamic Island is displaying correctly",
+      islandTestSuccess: "Dynamic Island displayed",
+      islandTestSuccessHint: "The reminder is visible at the top of the current screen work area.",
+      islandTestFailed: "Dynamic Island could not be displayed",
+      islandTestFailedHint: "Make sure it is enabled and inspect [island] entries in desktop logs.",
       test: "Test notification",
       testHint: "Send a notification using these settings",
       permissionRequired: "Allow notification access before testing",
@@ -2729,8 +2813,10 @@ export const en = {
       agents: "Agents",
       metadata: "Metadata",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "MCP Servers",
       skills: "Skills",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Providers",
       channels: "Channels",
@@ -2863,6 +2949,11 @@ export const en = {
       autoExpandReasoning: {
         label: "Always expand reasoning",
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "Translate Aiden Claude reasoning to Chinese",
+        description:
+          "Show only the Simplified Chinese translation of Aiden Claude reasoning. Turn this off to show the original text.",
       },
       toolCallDetail: {
         label: "Tool call display",
@@ -3525,6 +3616,22 @@ export const en = {
       backToProjects: "Back to projects",
       switchHost: "Switch host",
       projectId: "Project ID",
+      memory: {
+        title: "Project memory",
+        info: "Control whether this Project contributes scoped memory and define what durable Project knowledge Paseo should learn.",
+        enabledTitle: "Use memory for this Project",
+        enabledHint:
+          "When off, Agents in this Project do not read or create Project-scoped memory. Global memory remains available.",
+        instructionsTitle: "What should Paseo remember for this Project?",
+        instructionsHint:
+          "Describe durable Project knowledge such as conventions, architecture decisions, recurring procedures, and stable environment facts.",
+        instructionsPlaceholder:
+          "Example: Remember architecture decisions and release procedures. Ignore temporary failures, raw logs, and secrets.",
+        save: "Save",
+        saving: "Saving...",
+        saved: "Saved",
+        saveError: "Couldn't save Project memory",
+      },
       rename: {
         renamedToast: "Project renamed",
         errorFallback: "Couldn't rename project",

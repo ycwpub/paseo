@@ -85,7 +85,9 @@ import { InstructionTemplatesSection } from "./agents/instruction-templates-sect
 export {
   HostAssistantsPage,
   HostChannelsPage,
+  HostMemoryPage,
   HostMcpPage,
+  HostPluginsPage,
   HostSkillsPage,
 } from "./host-resource-pages";
 

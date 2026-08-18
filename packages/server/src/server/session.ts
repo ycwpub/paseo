@@ -181,6 +181,8 @@ import type { LarkChannelService } from "./channels/lark/lark-channel-service.js
 import { AssistantSession } from "./assistants/assistant-session.js";
 import type { AssistantStore } from "./assistants/assistant-store.js";
 import { buildAssistantInitialPrompt } from "./assistants/assistant-prompt.js";
+import { MemorySession } from "./memory/memory-session.js";
+import type { PaseoMemoryService } from "./memory/memory-service.js";
 import { TeamStore } from "./team/team-store.js";
 import { TeamSession } from "./team/team-session.js";
 import {
@@ -191,6 +193,13 @@ import { McpStore } from "./mcp/mcp-store.js";
 import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
+import type { PluginService } from "./plugin/plugin-service.js";
+import { PluginSession } from "./plugin/plugin-session.js";
+import {
+  createAidenClaudeReasoningTranslationService,
+  type ReasoningTranslationService,
+} from "./reasoning-translation/reasoning-translation-service.js";
+import { ReasoningTranslationSession } from "./reasoning-translation/reasoning-translation-session.js";
 import { importProviderResources } from "./shared-resource-importer.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { PushNotifications } from "./push/index.js";
@@ -560,9 +569,11 @@ export interface SessionOptions {
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
   larkChannelService?: LarkChannelService | null;
   assistantStore?: AssistantStore | null;
+  memoryService?: PaseoMemoryService | null;
   teamStore?: TeamStore | null;
   mcpStore?: McpStore | null;
   skillStore?: SkillStore | null;
+  pluginService?: PluginService | null;
 }
 
 export type SessionLifecycleIntent =
@@ -784,11 +795,14 @@ export class Session {
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly larkChannelSession: LarkChannelSession | null;
   private readonly assistantSession: AssistantSession | null;
+  private readonly memorySession: MemorySession | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
   private readonly teamStore: TeamStore | null;
   private readonly mcpSession: McpSession | null;
   private readonly skillSession: SkillSession | null;
+  private readonly pluginSession: PluginSession | null;
+  private readonly reasoningTranslationSession: ReasoningTranslationSession;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
@@ -853,9 +867,11 @@ export class Session {
       getWebSocketRuntimeMetrics,
       larkChannelService,
       assistantStore,
+      memoryService,
       teamStore,
       mcpStore,
       skillStore,
+      pluginService,
     } = options;
     this.clientId = clientId;
     this.scopes = [...scopes];
@@ -1066,6 +1082,24 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    this.memorySession = memoryService
+      ? new MemorySession({
+          emit: (msg) => this.emit(msg),
+          service: memoryService,
+          logger: this.sessionLogger,
+        })
+      : null;
+    const reasoningTranslationService: ReasoningTranslationService =
+      createAidenClaudeReasoningTranslationService({
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+    this.reasoningTranslationSession = new ReasoningTranslationSession({
+      emit: (msg) => this.emit(msg),
+      service: reasoningTranslationService,
+      logger: this.sessionLogger,
+    });
     this.assistantStore = assistantStore ?? null;
     this.teamStore = teamStore ?? null;
 
@@ -1103,6 +1137,16 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    this.pluginSession =
+      pluginService && mcpStore && skillStore
+        ? new PluginSession({
+            host: { emit: (msg) => this.emit(msg) },
+            service: pluginService,
+            mcpStore,
+            skillStore,
+            logger: this.sessionLogger,
+          })
+        : null;
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.terminalController = new TerminalSessionController({
@@ -2066,10 +2110,13 @@ export class Session {
       this.dispatchWorkflowMessage(msg) ??
       this.dispatchLoopMessage(msg) ??
       this.dispatchAssistantMessage(msg) ??
+      this.dispatchMemoryMessage(msg) ??
       this.dispatchChannelMessage(msg) ??
       this.dispatchTeamMessage(msg) ??
       this.dispatchMcpMessage(msg) ??
       this.dispatchSkillMessage(msg) ??
+      this.dispatchPluginMessage(msg) ??
+      this.dispatchReasoningTranslationMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
   }
@@ -2794,6 +2841,17 @@ export class Session {
     }
   }
 
+  private dispatchMemoryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "memory.get_state.request":
+      case "memory.update_state.request":
+      case "memory.clear.request":
+        return this.memorySession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchChannelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "channel.lark.get_status.request":
@@ -2806,6 +2864,12 @@ export class Session {
       case "channel.lark.approve_pairing.request":
       case "channel.lark.reject_pairing.request":
       case "channel.lark.revoke_user.request":
+      case "channel.lark.directory.resolve_users.request":
+      case "channel.lark.directory.resolve_chats.request":
+      case "channel.lark.reminder.list.request":
+      case "channel.lark.reminder.create.request":
+      case "channel.lark.reminder.set_enabled.request":
+      case "channel.lark.reminder.delete.request":
         return this.larkChannelSession?.handleRequest(msg);
       default:
         return undefined;
@@ -2850,6 +2914,33 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "plugin.list.request":
+      case "plugin.marketplace.add.request":
+      case "plugin.marketplace.remove.request":
+      case "plugin.install.request":
+      case "plugin.set_enabled.request":
+      case "plugin.uninstall.request":
+      case "plugin.app.get.request":
+      case "plugin.app.generate.request":
+      case "plugin.app.action.submit.request":
+      case "plugin.app.job.get.request":
+        return this.pluginSession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchReasoningTranslationMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
+    if (msg.type === "reasoning.translate.request") {
+      return this.reasoningTranslationSession.handleRequest(msg);
+    }
+    return undefined;
   }
 
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {

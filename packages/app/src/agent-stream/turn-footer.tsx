@@ -5,6 +5,7 @@ import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { SPACING, type Theme } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
+import type { PaseoMemoryState } from "@getpaseo/protocol/messages";
 import {
   collectAssistantResponseContentForStreamRenderStrategy,
   type StreamStrategy,
@@ -23,6 +24,7 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { collectAssistantTurnItems } from "./turn-items";
 import { TurnHookSummary } from "./turn-hook-summary";
 import { TurnChanges } from "./turn-changes";
+import { TurnMemorySources } from "./turn-memory-sources";
 import type { ToastApi } from "@/components/toast-host";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
@@ -56,6 +58,17 @@ export interface TurnChangesContext {
   onReview: (path: string) => void;
 }
 
+export interface TurnMemoryContext {
+  agentId: string;
+  state: PaseoMemoryState | null;
+  isMutating: boolean;
+  error: string | null;
+  onFeedback: (
+    id: string,
+    value: "helpful" | "unhelpful" | "outdated" | "incorrect",
+  ) => Promise<void>;
+}
+
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
@@ -65,6 +78,7 @@ export const TurnFooter = memo(function TurnFooter({
   onForkAssistantTurn,
   onForkInFlightTurn,
   changes,
+  memory,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -74,6 +88,7 @@ export const TurnFooter = memo(function TurnFooter({
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
   changes?: TurnChangesContext;
+  memory?: TurnMemoryContext;
 }) {
   if (isRunning) {
     return (
@@ -96,6 +111,7 @@ export const TurnFooter = memo(function TurnFooter({
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
       changes={changes}
+      memory={memory}
     />
   );
 });
@@ -107,6 +123,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   supportsTimelineCursor,
   onForkAssistantTurn,
   changes,
+  memory,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -114,6 +131,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   changes?: TurnChangesContext;
+  memory?: TurnMemoryContext;
 }) {
   const turnItems = useMemo(
     () =>
@@ -135,9 +153,24 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         turnItems={turnItems}
       />
       {changes ? <TurnChanges {...changes} items={turnItems} /> : null}
+      {memory ? (
+        <TurnMemorySources
+          agentId={memory.agentId}
+          assistantMessageId={resolveAssistantMessageId(items, startIndex)}
+          memory={memory.state}
+          isMutating={memory.isMutating}
+          error={memory.error}
+          onFeedback={memory.onFeedback}
+        />
+      ) : null}
     </TurnFooterRow>
   );
 });
+
+function resolveAssistantMessageId(items: StreamItem[], startIndex: number): string | undefined {
+  const item = items[startIndex];
+  return item?.kind === "assistant_message" ? item.messageId : undefined;
+}
 
 const WorkingIndicator = memo(function WorkingIndicator({
   inFlightTurnStartedAt = null,

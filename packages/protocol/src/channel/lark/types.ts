@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LarkDirectorySchema } from "./directory-types.js";
 
 export const LarkChannelDomainSchema = z.enum(["feishu", "lark"]);
 export type LarkChannelDomain = z.infer<typeof LarkChannelDomainSchema>;
@@ -114,5 +115,7 @@ export const LarkChannelStatusSchema = LarkChannelBotStatusSchema.omit({
 }).extend({
   activeBotId: z.string().nullable().default(null),
   bots: z.array(LarkChannelBotStatusSchema).default([]),
+  // COMPAT(larkDirectory): added in v0.3.2, remove optional parsing after 2027-02-19.
+  directory: LarkDirectorySchema.optional(),
 });
 export type LarkChannelStatus = z.infer<typeof LarkChannelStatusSchema>;

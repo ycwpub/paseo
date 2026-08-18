@@ -89,6 +89,10 @@ describe("desktop-settings", () => {
       attention: {
         soundVolume: 0.5,
       },
+      island: {
+        enabled: true,
+        showWhenFocused: true,
+      },
     });
   });
 
@@ -114,6 +118,10 @@ describe("desktop-settings", () => {
       },
       attention: {
         soundVolume: 0.75,
+      },
+      island: {
+        enabled: true,
+        showWhenFocused: true,
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
@@ -285,6 +293,10 @@ describe("desktop-settings", () => {
       attention: {
         soundVolume: 0.5,
       },
+      island: {
+        enabled: true,
+        showWhenFocused: true,
+      },
     });
     expect(ignoredSecondMigration).toEqual(migrated);
   });
@@ -372,5 +384,20 @@ describe("desktop-settings", () => {
 
     expect(persisted.settings.releaseChannel).toBe("stable");
     expect(persisted.settings.tray).toEqual({ enabled: true });
+  });
+
+  it("persists Dynamic Island reminder preferences", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    const settings = await store.patch({
+      island: { enabled: false, showWhenFocused: false },
+    });
+
+    expect(settings.island).toEqual({
+      enabled: false,
+      showWhenFocused: false,
+    });
   });
 });

@@ -77,6 +77,7 @@ import {
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
   type TurnContentStrategy,
+  type TurnMemoryContext,
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem } from "./layout";
@@ -100,7 +101,9 @@ import {
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useForkAgent } from "@/hooks/use-fork-agent";
+import { useMemory } from "@/hooks/use-memory";
 import { isWeb } from "@/constants/platform";
+import { useHostFeature } from "@/runtime/host-features";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -161,6 +164,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  memory?: TurnMemoryContext;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -174,6 +178,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      memory={input.memory}
     />
   ) : null;
   const content = (
@@ -330,6 +335,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
   ) {
     const { t } = useTranslation();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
+    const translateAidenClaudeReasoning = useSettings(
+      (settings) => settings.aidenClaudeTranslateReasoningToChinese,
+    );
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
@@ -356,6 +364,38 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
+    const supportsMemory = useHostFeature(resolvedServerId, "memory");
+    const supportsReasoningTranslation = useHostFeature(resolvedServerId, "reasoningTranslation");
+    const {
+      memory: memoryState,
+      updateMemory,
+      isMutating: isMemoryMutating,
+      mutationError: memoryMutationError,
+      error: memoryError,
+    } = useMemory(resolvedServerId, { enabled: supportsMemory });
+    const handleMemoryFeedback = useCallback(
+      async (id: string, value: "helpful" | "unhelpful" | "outdated" | "incorrect") => {
+        await updateMemory({ feedback: [{ id, value }] });
+      },
+      [updateMemory],
+    );
+    const turnMemoryContext = useMemo<TurnMemoryContext>(
+      () => ({
+        agentId,
+        state: memoryState,
+        isMutating: isMemoryMutating,
+        error: memoryMutationError?.message ?? memoryError?.message ?? null,
+        onFeedback: handleMemoryFeedback,
+      }),
+      [
+        agentId,
+        handleMemoryFeedback,
+        isMemoryMutating,
+        memoryError,
+        memoryMutationError,
+        memoryState,
+      ],
+    );
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
     const sessionStreamHead = useSessionStore((state) =>
@@ -743,31 +783,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
-        if (!autoExpandReasoning) {
-          return (
-            <AssistantFileLinkResolverProvider
-              client={client}
-              serverId={resolvedServerId}
-              workspaceRoot={workspaceRoot}
-              onOpenWorkspaceFile={handleInlinePathPress}
-              toast={toast}
-            >
-              <AssistantMessage
-                occurrenceKey={createAssistantImageOccurrenceKey({
-                  agentId,
-                  itemId: item.id,
-                })}
-                message={item.text}
-                timestamp={item.timestamp.getTime()}
-                workspaceRoot={workspaceRoot}
-                serverId={resolvedServerId}
-                client={client}
-                spacing={layoutItem.assistantSpacing}
-                variant="reasoning"
-              />
-            </AssistantFileLinkResolverProvider>
-          );
-        }
         return (
           <ThoughtSlot
             itemId={item.id}
@@ -783,10 +798,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         agentId,
         autoExpandReasoning,
         client,
+        context.provider,
         handleInlinePathPress,
         resolvedServerId,
         setInlineDetailsExpanded,
+        supportsReasoningTranslation,
         toast,
+        translateAidenClaudeReasoning,
         workspaceRoot,
       ],
     );
@@ -979,6 +997,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          memory: turnMemoryContext,
         });
       },
       [
@@ -990,6 +1009,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnMemoryContext,
       ],
     );
 
@@ -1062,6 +1082,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
             changes={turnChangesContext}
+            memory={turnMemoryContext}
           />
         ) : null,
       [
@@ -1074,6 +1095,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
         supportsAgentForkContextCursor,
         turnChangesContext,
+        turnMemoryContext,
       ],
     );
     const auxiliaryProcessVisibilityControl = useMemo(() => {

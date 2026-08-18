@@ -42,6 +42,10 @@ const DEFAULT_DESKTOP: DesktopSettings = {
   attention: {
     soundVolume: 0.5,
   },
+  island: {
+    enabled: true,
+    showWhenFocused: true,
+  },
 };
 
 export function createFakeDesktopBridge(

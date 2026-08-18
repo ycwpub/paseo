@@ -289,6 +289,23 @@ export const fr: TranslationResources = {
       title_mr: "Joindre le problème ou MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "La mémoire globale est désactivée",
+    globalDisabledDescription:
+      "Cette règle est enregistrée, mais Paseo ne l'utilisera qu'après activation de la mémoire dans les réglages de l'hôte.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Règles de mémoire",
+      description: "Gérez les informations durables que chaque portée de mémoire peut enregistrer.",
+      scopeType: "Portée de la mémoire",
+      target: "Cible",
+      selectTarget: "Sélectionner une cible",
+      instructionsTitle: "Informations à enregistrer",
+      save: "Enregistrer les règles",
+      saved: "Enregistré",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Fournisseur",
@@ -320,12 +337,33 @@ export const fr: TranslationResources = {
       model: "Changer de modèle",
       mode: "Changer de mode",
     },
+    memory: {
+      title: "Mémoire de la conversation",
+      open: "Configurer la mémoire de la conversation",
+      enabledTitle: "Utiliser la mémoire dans cette conversation",
+      enabledHint:
+        "Si elle est désactivée, cet agent ne lit aucune mémoire existante et n'apprend rien de cette conversation.",
+      instructionsTitle: "Que doit retenir Paseo de cette conversation ?",
+      instructionsHint:
+        "Indiquez les conclusions confirmées, préférences récurrentes ou décisions à conserver. Les journaux temporaires, suppositions et secrets restent exclus.",
+      instructionsPlaceholder:
+        "Exemple : retenir les causes confirmées et les décisions finales, ignorer les essais intermédiaires.",
+      save: "Enregistrer",
+      saving: "Enregistrement...",
+      saved: "Enregistré",
+      saveError: "Impossible d'enregistrer la mémoire de la conversation",
+    },
   },
   agentStream: {
     empty: "Commencez à discuter avec cet agent...",
     scrollToBottom: "Faire défiler vers le bas",
     scrollToOldest: "Aller au premier message",
     locatingOldest: "Recherche du premier message",
+    reasoningTranslation: {
+      translating: "Traduction du raisonnement en chinois...",
+      failed: "Échec de la traduction du raisonnement.",
+      unavailable: "Ce serveur Paseo ne prend pas en charge la traduction du raisonnement.",
+    },
     process: {
       show: "Afficher le processus",
       hide: "Masquer le processus",
@@ -2183,6 +2221,19 @@ export const fr: TranslationResources = {
       refreshAccessibility: "Actualiser l’autorisation des notifications",
       playSound: "Émettre un son",
       playSoundHint: "Émet un son lorsqu’une notification de bureau arrive",
+      island: "Rappels Dynamic Island",
+      islandHint: "Affiche un état compact de l’Agent en haut de l’écran",
+      islandShowWhenFocused: "Afficher quand Paseo est au premier plan",
+      islandShowWhenFocusedHint: "Conserve les rappels visibles pendant l’utilisation de Paseo",
+      islandWorking: "Traitement de la tâche...",
+      islandTest: "Tester Dynamic Island",
+      islandTestHint: "Affiche un rappel Dynamic Island en haut de l’écran actuel",
+      islandTestTitle: "Dynamic Island de Paseo",
+      islandTestBody: "Dynamic Island s’affiche correctement",
+      islandTestSuccess: "Dynamic Island affichée",
+      islandTestSuccessHint: "Le rappel est visible en haut de la zone de travail actuelle.",
+      islandTestFailed: "Impossible d’afficher Dynamic Island",
+      islandTestFailedHint: "Vérifiez son activation et les entrées [island] du journal desktop.",
       test: "Tester la notification",
       testHint: "Envoie une notification avec ces réglages",
       permissionRequired: "Autorisez l’accès aux notifications avant le test",
@@ -2198,8 +2249,10 @@ export const fr: TranslationResources = {
       agents: "Agents",
       metadata: "Métadonnées",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "Serveurs MCP",
       skills: "Compétences",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Fournisseurs",
       channels: "Canaux",
@@ -2280,6 +2333,11 @@ export const fr: TranslationResources = {
       autoExpandReasoning: {
         label: "Toujours afficher le raisonnement",
         description: "Afficher le raisonnement de l'agent entièrement développé par défaut",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "Traduire le raisonnement Aiden Claude en chinois",
+        description:
+          "Afficher uniquement la traduction en chinois simplifié, sinon le texte original.",
       },
       toolCallDetail: {
         label: "Affichage des appels d’outils",
@@ -2948,6 +3006,22 @@ export const fr: TranslationResources = {
       backToProjects: "Retour aux projets",
       switchHost: "Changer d'hôte",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Mémoire du projet",
+        info: "Contrôlez la mémoire propre à ce projet et définissez les connaissances durables que Paseo doit apprendre.",
+        enabledTitle: "Utiliser la mémoire pour ce projet",
+        enabledHint:
+          "Si elle est désactivée, les agents ne lisent ni ne créent de mémoire de projet. La mémoire globale reste disponible.",
+        instructionsTitle: "Que doit retenir Paseo pour ce projet ?",
+        instructionsHint:
+          "Décrivez les conventions, décisions d'architecture, procédures récurrentes et faits stables de l'environnement.",
+        instructionsPlaceholder:
+          "Exemple : retenir les décisions d'architecture et les procédures de publication, ignorer les erreurs temporaires, journaux et secrets.",
+        save: "Enregistrer",
+        saving: "Enregistrement...",
+        saved: "Enregistré",
+        saveError: "Impossible d'enregistrer la mémoire du projet",
+      },
       rename: {
         renamedToast: "Projet renommé",
         errorFallback: "Impossible de renommer le projet",

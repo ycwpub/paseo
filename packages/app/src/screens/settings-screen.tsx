@@ -114,7 +114,9 @@ import {
   HostSettingsPage,
   HostProvidersPage,
   HostAssistantsPage,
+  HostMemoryPage,
   HostMcpPage,
+  HostPluginsPage,
   HostSkillsPage,
   HostChannelsPage,
   HostUsagePage,
@@ -200,8 +202,10 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
   { id: "assistants", labelKey: "settings.hostSections.assistants", icon: Bot },
+  { id: "memory", labelKey: "settings.hostSections.memory", icon: Brain },
   { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
   { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
+  { id: "plugins", labelKey: "settings.hostSections.plugins", icon: Puzzle },
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "channels", labelKey: "settings.hostSections.channels", icon: MessageCircle },
@@ -230,10 +234,14 @@ function renderHostSettingsContent(
       return <MetadataGenerationPage serverId={view.serverId} />;
     case "assistants":
       return <HostAssistantsPage serverId={view.serverId} />;
+    case "memory":
+      return <HostMemoryPage serverId={view.serverId} />;
     case "mcp":
       return <HostMcpPage serverId={view.serverId} />;
     case "skills":
       return <HostSkillsPage serverId={view.serverId} />;
+    case "plugins":
+      return <HostPluginsPage serverId={view.serverId} />;
     case "workspaces":
       return <HostWorkspacesPage serverId={view.serverId} />;
     case "providers":

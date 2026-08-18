@@ -287,6 +287,23 @@ export const es: TranslationResources = {
       title_mr: "Adjuntar problema o MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "La memoria global está desactivada",
+    globalDisabledDescription:
+      "La política se guardará, pero Paseo no la usará hasta que actives Memoria en la configuración del host.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Reglas de memoria",
+      description: "Gestiona la información duradera que puede guardar cada ámbito de memoria.",
+      scopeType: "Ámbito de memoria",
+      target: "Destino",
+      selectTarget: "Selecciona un destino",
+      instructionsTitle: "Qué se debe guardar",
+      save: "Guardar reglas",
+      saved: "Guardado",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Proveedor",
@@ -318,12 +335,33 @@ export const es: TranslationResources = {
       model: "Cambiar modelo",
       mode: "Cambiar modo",
     },
+    memory: {
+      title: "Memoria de la conversación",
+      open: "Configurar memoria de la conversación",
+      enabledTitle: "Usar memoria en esta conversación",
+      enabledHint:
+        "Si se desactiva, este agente no leerá memoria existente ni aprenderá memoria nueva de la conversación.",
+      instructionsTitle: "¿Qué debe recordar Paseo de esta conversación?",
+      instructionsHint:
+        "Indica temas duraderos como conclusiones confirmadas, preferencias recurrentes o decisiones. Los registros temporales, suposiciones y secretos se excluyen.",
+      instructionsPlaceholder:
+        "Ejemplo: recordar causas confirmadas y decisiones finales; ignorar experimentos intermedios.",
+      save: "Guardar",
+      saving: "Guardando...",
+      saved: "Guardado",
+      saveError: "No se pudo guardar la memoria de la conversación",
+    },
   },
   agentStream: {
     empty: "Comience a chatear con este agente...",
     scrollToBottom: "Desplazarse hacia abajo",
     scrollToOldest: "Ir al primer mensaje",
     locatingOldest: "Buscando el primer mensaje",
+    reasoningTranslation: {
+      translating: "Traduciendo el razonamiento al chino...",
+      failed: "No se pudo traducir el razonamiento.",
+      unavailable: "Este servidor de Paseo no admite la traducción del razonamiento.",
+    },
     process: {
       show: "Mostrar proceso",
       hide: "Ocultar proceso",
@@ -2178,6 +2216,21 @@ export const es: TranslationResources = {
       refreshAccessibility: "Actualizar permiso de notificaciones",
       playSound: "Reproducir sonido",
       playSoundHint: "Reproduce un sonido cuando llega una notificación de escritorio",
+      island: "Recordatorios Dynamic Island",
+      islandHint: "Muestra estados compactos del Agent en la parte superior de la pantalla",
+      islandShowWhenFocused: "Mostrar con Paseo en primer plano",
+      islandShowWhenFocusedHint: "Mantiene los recordatorios visibles mientras usas Paseo",
+      islandWorking: "Procesando la tarea...",
+      islandTest: "Probar Dynamic Island",
+      islandTestHint:
+        "Muestra un recordatorio de Dynamic Island en la parte superior de la pantalla",
+      islandTestTitle: "Dynamic Island de Paseo",
+      islandTestBody: "Dynamic Island se muestra correctamente",
+      islandTestSuccess: "Dynamic Island mostrada",
+      islandTestSuccessHint: "El recordatorio aparece en la parte superior del área de trabajo.",
+      islandTestFailed: "No se pudo mostrar Dynamic Island",
+      islandTestFailedHint:
+        "Comprueba que esté activada y revisa las entradas [island] del registro.",
       test: "Probar notificación",
       testHint: "Envía una notificación con esta configuración",
       permissionRequired: "Permite el acceso a las notificaciones antes de probar",
@@ -2193,8 +2246,10 @@ export const es: TranslationResources = {
       agents: "Agents",
       metadata: "Metadatos",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "Servidores MCP",
       skills: "Habilidades",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Proveedores",
       channels: "Canales",
@@ -2277,6 +2332,11 @@ export const es: TranslationResources = {
         label: "Siempre expandir razonamiento",
         description:
           "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "Traducir el razonamiento de Aiden Claude al chino",
+        description:
+          "Muestra solo la traducción al chino simplificado; al desactivarlo muestra el texto original.",
       },
       toolCallDetail: {
         label: "Visualización de llamadas a herramientas",
@@ -2940,6 +3000,22 @@ export const es: TranslationResources = {
       backToProjects: "Volver a proyectos",
       switchHost: "Cambiar de anfitrión",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Memoria del proyecto",
+        info: "Controla la memoria de este proyecto y define qué conocimiento duradero debe aprender Paseo.",
+        enabledTitle: "Usar memoria para este proyecto",
+        enabledHint:
+          "Si se desactiva, los agentes no leerán ni crearán memoria del proyecto. La memoria global seguirá disponible.",
+        instructionsTitle: "¿Qué debe recordar Paseo para este proyecto?",
+        instructionsHint:
+          "Describe convenciones, decisiones de arquitectura, procedimientos recurrentes y datos estables del entorno.",
+        instructionsPlaceholder:
+          "Ejemplo: recordar decisiones de arquitectura y procesos de publicación; ignorar fallos temporales, registros y secretos.",
+        save: "Guardar",
+        saving: "Guardando...",
+        saved: "Guardado",
+        saveError: "No se pudo guardar la memoria del proyecto",
+      },
       rename: {
         renamedToast: "Proyecto renombrado",
         errorFallback: "No se pudo cambiar el nombre del proyecto",
@@ -3002,7 +3078,12 @@ export const es: TranslationResources = {
       },
       resources: en.settings.project.resources,
       indexSkill: en.settings.project.indexSkill,
-      variables: en.settings.project.variables,
+      variables: {
+        ...en.settings.project.variables,
+        title: "Variables del proyecto",
+        info: "Las variables están disponibles en las plantillas como {{variableName}}.",
+        empty: "No hay variables configuradas.",
+      },
       instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Generación de metadatos",

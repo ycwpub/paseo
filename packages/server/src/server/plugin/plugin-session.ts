@@ -1,0 +1,285 @@
+import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type pino from "pino";
+import type { McpStore } from "../mcp/mcp-store.js";
+import type { SkillStore } from "../skill/skill-store.js";
+import type { PluginService } from "./plugin-service.js";
+
+export type PluginSessionRequest = Extract<
+  SessionInboundMessage,
+  {
+    type:
+      | "plugin.list.request"
+      | "plugin.marketplace.add.request"
+      | "plugin.marketplace.remove.request"
+      | "plugin.install.request"
+      | "plugin.set_enabled.request"
+      | "plugin.uninstall.request"
+      | "plugin.app.get.request"
+      | "plugin.app.generate.request"
+      | "plugin.app.action.submit.request"
+      | "plugin.app.job.get.request";
+  }
+>;
+
+export interface PluginSessionHost {
+  emit(message: SessionOutboundMessage): void;
+}
+
+export class PluginSession {
+  private readonly host: PluginSessionHost;
+  private readonly service: PluginService;
+  private readonly mcpStore: McpStore;
+  private readonly skillStore: SkillStore;
+  private readonly logger: pino.Logger;
+
+  constructor(options: {
+    host: PluginSessionHost;
+    service: PluginService;
+    mcpStore: McpStore;
+    skillStore: SkillStore;
+    logger: pino.Logger;
+  }) {
+    this.host = options.host;
+    this.service = options.service;
+    this.mcpStore = options.mcpStore;
+    this.skillStore = options.skillStore;
+    this.logger = options.logger.child({ module: "plugin-session" });
+  }
+
+  async handleRequest(message: PluginSessionRequest): Promise<void> {
+    try {
+      switch (message.type) {
+        case "plugin.list.request": {
+          const state = message.refresh ? this.service.refresh() : this.service.getState();
+          this.host.emit({
+            type: "plugin.list.response",
+            payload: { requestId: message.requestId, ...state, error: null },
+          });
+          return;
+        }
+        case "plugin.marketplace.add.request": {
+          const result = this.service.addMarketplace(message.path);
+          this.emitChanged(result.state);
+          this.host.emit({
+            type: "plugin.marketplace.add.response",
+            payload: {
+              requestId: message.requestId,
+              marketplace: result.marketplace,
+              ...result.state,
+              error: null,
+            },
+          });
+          return;
+        }
+        case "plugin.marketplace.remove.request": {
+          const result = this.service.removeMarketplace(message.marketplaceId);
+          this.emitChanged(result.state);
+          this.host.emit({
+            type: "plugin.marketplace.remove.response",
+            payload: {
+              requestId: message.requestId,
+              marketplaceId: message.marketplaceId,
+              ok: result.ok,
+              ...result.state,
+              error: result.ok ? null : "Marketplace not found or cannot be removed",
+            },
+          });
+          return;
+        }
+        case "plugin.install.request": {
+          const result = await this.service.install(message.source);
+          this.emitResourceChanges();
+          this.emitChanged(result.state);
+          this.host.emit({
+            type: "plugin.install.response",
+            payload: {
+              requestId: message.requestId,
+              plugin: result.plugin,
+              state: result.state,
+              error: null,
+            },
+          });
+          return;
+        }
+        case "plugin.set_enabled.request": {
+          const result = await this.service.setEnabled(message.pluginId, message.enabled);
+          this.emitResourceChanges();
+          this.emitChanged(result.state);
+          this.host.emit({
+            type: "plugin.set_enabled.response",
+            payload: {
+              requestId: message.requestId,
+              plugin: result.plugin,
+              state: result.state,
+              error: null,
+            },
+          });
+          return;
+        }
+        case "plugin.uninstall.request": {
+          const result = await this.service.uninstall(message.pluginId);
+          this.emitResourceChanges();
+          this.emitChanged(result.state);
+          this.host.emit({
+            type: "plugin.uninstall.response",
+            payload: {
+              requestId: message.requestId,
+              pluginId: message.pluginId,
+              ok: result.ok,
+              ...result.state,
+              error: result.ok ? null : "Plugin not found",
+            },
+          });
+          return;
+        }
+        case "plugin.app.get.request": {
+          this.host.emit({
+            type: "plugin.app.get.response",
+            payload: {
+              requestId: message.requestId,
+              app: this.service.getApp(message.pluginId, message.appId),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "plugin.app.generate.request": {
+          this.host.emit({
+            type: "plugin.app.generate.response",
+            payload: {
+              requestId: message.requestId,
+              app: await this.service.generateApp(message.pluginId, message.appId, message.prompt),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "plugin.app.action.submit.request": {
+          this.host.emit({
+            type: "plugin.app.action.submit.response",
+            payload: {
+              requestId: message.requestId,
+              job: await this.service.submitAppAction({
+                pluginId: message.pluginId,
+                appId: message.appId,
+                componentId: message.componentId,
+                form: message.form,
+              }),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "plugin.app.job.get.request": {
+          const job = this.service.getAppJob(message.processId);
+          this.host.emit({
+            type: "plugin.app.job.get.response",
+            payload: {
+              requestId: message.requestId,
+              job,
+              error: job ? null : "Plugin app processing job not found",
+            },
+          });
+          return;
+        }
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      this.logger.warn({ err: error, requestType: message.type }, "Plugin RPC failed");
+      this.emitError(message, messageText);
+    }
+  }
+
+  private emitChanged(state = this.service.getState()): void {
+    this.host.emit({ type: "plugin.changed", payload: state });
+  }
+
+  private emitResourceChanges(): void {
+    this.host.emit({
+      type: "skill.changed",
+      payload: { skills: this.skillStore.list() },
+    });
+    this.host.emit({
+      type: "mcp.changed",
+      payload: { servers: this.mcpStore.list() },
+    });
+  }
+
+  private emitError(message: PluginSessionRequest, error: string): void {
+    const state = this.service.getState();
+    switch (message.type) {
+      case "plugin.list.request":
+        this.host.emit({
+          type: "plugin.list.response",
+          payload: { requestId: message.requestId, ...state, error },
+        });
+        return;
+      case "plugin.marketplace.add.request":
+        this.host.emit({
+          type: "plugin.marketplace.add.response",
+          payload: { requestId: message.requestId, marketplace: null, ...state, error },
+        });
+        return;
+      case "plugin.marketplace.remove.request":
+        this.host.emit({
+          type: "plugin.marketplace.remove.response",
+          payload: {
+            requestId: message.requestId,
+            marketplaceId: message.marketplaceId,
+            ok: false,
+            ...state,
+            error,
+          },
+        });
+        return;
+      case "plugin.install.request":
+        this.host.emit({
+          type: "plugin.install.response",
+          payload: { requestId: message.requestId, plugin: null, state, error },
+        });
+        return;
+      case "plugin.set_enabled.request":
+        this.host.emit({
+          type: "plugin.set_enabled.response",
+          payload: { requestId: message.requestId, plugin: null, state, error },
+        });
+        return;
+      case "plugin.uninstall.request":
+        this.host.emit({
+          type: "plugin.uninstall.response",
+          payload: {
+            requestId: message.requestId,
+            pluginId: message.pluginId,
+            ok: false,
+            ...state,
+            error,
+          },
+        });
+        return;
+      case "plugin.app.get.request":
+        this.host.emit({
+          type: "plugin.app.get.response",
+          payload: { requestId: message.requestId, app: null, error },
+        });
+        return;
+      case "plugin.app.generate.request":
+        this.host.emit({
+          type: "plugin.app.generate.response",
+          payload: { requestId: message.requestId, app: null, error },
+        });
+        return;
+      case "plugin.app.action.submit.request":
+        this.host.emit({
+          type: "plugin.app.action.submit.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.get.request":
+        this.host.emit({
+          type: "plugin.app.job.get.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+    }
+  }
+}

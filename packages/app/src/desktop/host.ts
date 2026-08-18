@@ -64,6 +64,23 @@ export interface DesktopAttentionBridge {
   signal?: (reason: "finished" | "intervention") => Promise<boolean>;
 }
 
+export type DesktopIslandKind = "running" | "finished" | "error" | "permission" | "info";
+
+export interface DesktopIslandPayload {
+  id?: string;
+  kind: DesktopIslandKind;
+  title: string;
+  body?: string;
+  data?: Record<string, unknown>;
+  durationMs?: number;
+}
+
+export interface DesktopIslandBridge {
+  show?: (payload: DesktopIslandPayload) => Promise<boolean>;
+  dismiss?: (id?: string) => Promise<boolean>;
+  clear?: () => Promise<boolean>;
+}
+
 export interface DesktopOpenerBridge {
   openUrl?: (url: string) => Promise<void>;
 }
@@ -187,6 +204,7 @@ export interface DesktopHostBridge {
   dialog?: DesktopDialogBridge;
   notification?: DesktopNotificationBridge;
   attention?: DesktopAttentionBridge;
+  island?: DesktopIslandBridge;
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
   webUtils?: DesktopWebUtilsBridge;

@@ -39,6 +39,7 @@ import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-run
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { ProjectMemoryCard } from "@/screens/settings/memory/project-memory-card";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   applyDraftToConfig,
@@ -311,6 +312,8 @@ function ProjectSettingsBody({
         supportsCustomIcon={supportsCustomIcon}
         snapshot={editSnapshot}
       />
+
+      <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
 
       {renderContent({
         readQuery,

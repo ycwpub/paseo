@@ -91,6 +91,7 @@ import {
   type DraftAgentProfileControls,
 } from "@/agent-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
+import { ConversationMemoryControl } from "@/composer/agent-controls/conversation-memory-control";
 
 interface AgentControlOption {
   id: string;

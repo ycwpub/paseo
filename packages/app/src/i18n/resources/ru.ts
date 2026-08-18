@@ -290,6 +290,24 @@ export const ru: TranslationResources = {
       title_mr: "Прикрепить задачу или MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "Глобальная память отключена",
+    globalDisabledDescription:
+      "Политика сохранится, но Paseo начнёт использовать её только после включения памяти в настройках хоста.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Правила памяти",
+      description:
+        "Управляйте долговременными сведениями, которые может сохранять каждая область памяти.",
+      scopeType: "Область памяти",
+      target: "Объект",
+      selectTarget: "Выберите объект",
+      instructionsTitle: "Что сохранять",
+      save: "Сохранить правила",
+      saved: "Сохранено",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Провайдер",
@@ -321,12 +339,33 @@ export const ru: TranslationResources = {
       model: "Изменить модель",
       mode: "Изменить режим",
     },
+    memory: {
+      title: "Память разговора",
+      open: "Настроить память разговора",
+      enabledTitle: "Использовать память в этом разговоре",
+      enabledHint:
+        "Если отключено, агент не читает существующую память и не извлекает новую память из разговора.",
+      instructionsTitle: "Что Paseo должен запомнить из этого разговора?",
+      instructionsHint:
+        "Укажите подтверждённые выводы, повторяющиеся предпочтения и решения. Временные журналы, догадки и секреты по-прежнему исключаются.",
+      instructionsPlaceholder:
+        "Пример: запоминать подтверждённые причины и окончательные решения, игнорировать промежуточные эксперименты.",
+      save: "Сохранить",
+      saving: "Сохранение...",
+      saved: "Сохранено",
+      saveError: "Не удалось сохранить память разговора",
+    },
   },
   agentStream: {
     empty: "Начните общаться с этим агентом...",
     scrollToBottom: "Прокрутить вниз",
     scrollToOldest: "Перейти к первому сообщению",
     locatingOldest: "Поиск первого сообщения",
+    reasoningTranslation: {
+      translating: "Перевод рассуждений на китайский...",
+      failed: "Не удалось перевести рассуждения.",
+      unavailable: "Этот сервер Paseo не поддерживает перевод рассуждений.",
+    },
     process: {
       show: "Показать процесс",
       hide: "Скрыть процесс",
@@ -2156,6 +2195,19 @@ export const ru: TranslationResources = {
       refreshAccessibility: "Обновить разрешение на уведомления",
       playSound: "Воспроизводить звук",
       playSoundHint: "Воспроизводит звук при получении уведомления на компьютере",
+      island: "Напоминания Dynamic Island",
+      islandHint: "Показывает компактный статус Agent в верхней части экрана",
+      islandShowWhenFocused: "Показывать, когда Paseo в фокусе",
+      islandShowWhenFocusedHint: "Оставляет напоминания видимыми во время работы в Paseo",
+      islandWorking: "Выполняется задача...",
+      islandTest: "Проверить Dynamic Island",
+      islandTestHint: "Показывает напоминание Dynamic Island вверху текущего экрана",
+      islandTestTitle: "Dynamic Island Paseo",
+      islandTestBody: "Dynamic Island отображается корректно",
+      islandTestSuccess: "Dynamic Island отображён",
+      islandTestSuccessHint: "Напоминание видно вверху рабочей области текущего экрана.",
+      islandTestFailed: "Не удалось показать Dynamic Island",
+      islandTestFailedHint: "Убедитесь, что он включён, и проверьте записи [island] в журнале.",
       test: "Проверить уведомление",
       testHint: "Отправляет уведомление с текущими настройками",
       permissionRequired: "Разрешите доступ к уведомлениям перед проверкой",
@@ -2241,6 +2293,11 @@ export const ru: TranslationResources = {
         label: "Всегда разворачивать размышления",
         description:
           "По умолчанию полностью разворачивать блоки размышлений и хода рассуждений агента",
+      },
+      aidenClaudeReasoningTranslation: {
+        label: "Переводить рассуждения Aiden Claude на китайский",
+        description:
+          "Показывать только перевод на упрощённый китайский; иначе показывать оригинал.",
       },
       toolCallDetail: {
         label: "Отображение вызовов инструментов",

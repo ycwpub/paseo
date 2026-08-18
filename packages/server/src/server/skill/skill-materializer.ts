@@ -12,6 +12,7 @@ import path from "node:path";
 import type pino from "pino";
 import type { Skill } from "@getpaseo/protocol/messages";
 import { ensurePrivateDirectory, writePrivateFileAtomicSync } from "../private-files.js";
+import { copyPluginSkillSource } from "./plugin-skill-source.js";
 
 export interface SkillMaterializerSyncOptions {
   /**
@@ -188,7 +189,9 @@ export class SkillMaterializer {
 
       const linkName = sanitizePathSegment(name);
       const sourceDir = path.join(this.sourceRoot, `${linkName}-${skill.id}`);
-      ensurePrivateDirectory(sourceDir);
+      if (!copyPluginSkillSource(skill, sourceDir)) {
+        ensurePrivateDirectory(sourceDir);
+      }
       writePrivateFileAtomicSync(path.join(sourceDir, "SKILL.md"), formatSkillMarkdown(skill));
       result.push({ skill, sourceDir, linkName });
     }

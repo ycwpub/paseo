@@ -633,9 +633,11 @@ export class VoiceAssistantWebSocketServer {
   private readonly hubRelationships: HubRelationshipManagement | null;
   private readonly larkChannelService: LarkChannelService | null;
   private readonly assistantStore: AssistantStore | null;
+  private readonly memoryService: PaseoMemoryService | null;
   private readonly teamStore: TeamStore | null;
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
+  private readonly pluginService: PluginService | null;
   private readonly clientAccessStore: ClientAccessStore;
   private readonly daemonKeyPair: KeyPair | null;
   private readonly directUpgradeTokens = new Map<
@@ -1691,9 +1693,11 @@ export class VoiceAssistantWebSocketServer {
       getWebSocketRuntimeMetrics: () => this.lastRuntimeMetricsSnapshot,
       larkChannelService: this.larkChannelService,
       assistantStore: this.assistantStore,
+      memoryService: this.memoryService,
       teamStore: this.teamStore,
       mcpStore: this.mcpStore,
       skillStore: this.skillStore,
+      pluginService: this.pluginService,
     });
   }
 
@@ -1992,14 +1996,29 @@ export class VoiceAssistantWebSocketServer {
         agentConfigApply: true,
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
         larkChannel: true,
+        larkReminders: true,
+        // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
+        larkDirectory: true,
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: true,
+        // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
+        memory: true,
+        // COMPAT(memoryPolicies): added in v0.3.2, remove gate after 2027-02-18.
+        memoryPolicies: true,
+        // COMPAT(memoryScopePolicies): added in v0.3.2, remove gate after 2027-02-18.
+        memoryScopePolicies: true,
+        // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
+        memoryUsers: true,
+        // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
+        reasoningTranslation: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
         teams: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         mcpServers: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         skills: true,
+        // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
+        plugins: true,
       },
     };
   }

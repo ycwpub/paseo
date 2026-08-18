@@ -197,6 +197,10 @@ export function useSettings<TSelected>(
       if (updates.autoExpandReasoning !== undefined) {
         appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
       }
+      if (updates.aidenClaudeTranslateReasoningToChinese !== undefined) {
+        appUpdates.aidenClaudeTranslateReasoningToChinese =
+          updates.aidenClaudeTranslateReasoningToChinese;
+      }
       if (updates.toolCallDetailLevel !== undefined) {
         appUpdates.toolCallDetailLevel = updates.toolCallDetailLevel;
       }

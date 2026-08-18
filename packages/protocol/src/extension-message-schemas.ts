@@ -1,4 +1,14 @@
 import {
+  PluginAppActionSubmitRequestSchema,
+  PluginAppActionSubmitResponseSchema,
+  PluginAppGenerateRequestSchema,
+  PluginAppGenerateResponseSchema,
+  PluginAppGetRequestSchema,
+  PluginAppGetResponseSchema,
+  PluginAppJobGetRequestSchema,
+  PluginAppJobGetResponseSchema,
+} from "./plugin/app-rpc-schemas.js";
+import {
   AssistantChangedMessageSchema,
   AssistantCreateRequestSchema,
   AssistantCreateResponseSchema,
@@ -9,6 +19,12 @@ import {
   AssistantUpdateRequestSchema,
   AssistantUpdateResponseSchema,
 } from "./assistant/rpc-schemas.js";
+import {
+  LarkDirectoryResolveChatsRequestSchema,
+  LarkDirectoryResolveChatsResponseSchema,
+  LarkDirectoryResolveUsersRequestSchema,
+  LarkDirectoryResolveUsersResponseSchema,
+} from "./channel/lark/directory-rpc-schemas.js";
 import {
   LarkChannelApprovePairingRequestSchema,
   LarkChannelApprovePairingResponseSchema,
@@ -32,6 +48,17 @@ import {
   LarkChannelTestConnectionRequestSchema,
   LarkChannelTestConnectionResponseSchema,
 } from "./channel/lark/rpc-schemas.js";
+import {
+  LarkReminderChangedMessageSchema,
+  LarkReminderCreateRequestSchema,
+  LarkReminderCreateResponseSchema,
+  LarkReminderDeleteRequestSchema,
+  LarkReminderDeleteResponseSchema,
+  LarkReminderListRequestSchema,
+  LarkReminderListResponseSchema,
+  LarkReminderSetEnabledRequestSchema,
+  LarkReminderSetEnabledResponseSchema,
+} from "./channel/lark/reminder-rpc-schemas.js";
 import {
   DaemonClientAccessApproveRequestSchema,
   DaemonClientAccessApproveResponseSchema,
@@ -60,6 +87,14 @@ import {
   McpUpdateResponseSchema,
 } from "./mcp/rpc-schemas.js";
 import {
+  MemoryClearRequestSchema,
+  MemoryClearResponseSchema,
+  MemoryGetStateRequestSchema,
+  MemoryGetStateResponseSchema,
+  MemoryUpdateStateRequestSchema,
+  MemoryUpdateStateResponseSchema,
+} from "./memory/rpc-schemas.js";
+import {
   SkillChangedMessageSchema,
   SkillCreateRequestSchema,
   SkillCreateResponseSchema,
@@ -70,6 +105,21 @@ import {
   SkillUpdateRequestSchema,
   SkillUpdateResponseSchema,
 } from "./skill/rpc-schemas.js";
+import {
+  PluginChangedMessageSchema,
+  PluginInstallRequestSchema,
+  PluginInstallResponseSchema,
+  PluginListRequestSchema,
+  PluginListResponseSchema,
+  PluginMarketplaceAddRequestSchema,
+  PluginMarketplaceAddResponseSchema,
+  PluginMarketplaceRemoveRequestSchema,
+  PluginMarketplaceRemoveResponseSchema,
+  PluginSetEnabledRequestSchema,
+  PluginSetEnabledResponseSchema,
+  PluginUninstallRequestSchema,
+  PluginUninstallResponseSchema,
+} from "./plugin/rpc-schemas.js";
 import {
   TeamChangedMessageSchema,
   TeamCreateRequestSchema,
@@ -103,6 +153,10 @@ import {
   WorkflowSaveRequestSchema,
   WorkflowSaveResponseSchema,
 } from "./workflow/rpc-schemas.js";
+import {
+  ReasoningTranslateRequestSchema,
+  ReasoningTranslateResponseSchema,
+} from "./reasoning-translation/rpc-schemas.js";
 
 /**
  * Branch-owned RPC registrations live here so the central protocol unions only
@@ -113,6 +167,9 @@ export const ExtensionSessionInboundSchemas = [
   AssistantCreateRequestSchema,
   AssistantUpdateRequestSchema,
   AssistantDeleteRequestSchema,
+  MemoryGetStateRequestSchema,
+  MemoryUpdateStateRequestSchema,
+  MemoryClearRequestSchema,
   LarkChannelGetStatusRequestSchema,
   LarkChannelApplyBotRequestSchema,
   LarkChannelGetBotApplicationRequestSchema,
@@ -123,6 +180,12 @@ export const ExtensionSessionInboundSchemas = [
   LarkChannelApprovePairingRequestSchema,
   LarkChannelRejectPairingRequestSchema,
   LarkChannelRevokeUserRequestSchema,
+  LarkDirectoryResolveUsersRequestSchema,
+  LarkDirectoryResolveChatsRequestSchema,
+  LarkReminderListRequestSchema,
+  LarkReminderCreateRequestSchema,
+  LarkReminderSetEnabledRequestSchema,
+  LarkReminderDeleteRequestSchema,
   DaemonClientAccessListRequestSchema,
   DaemonClientAccessApproveRequestSchema,
   DaemonClientAccessSetPausedRequestSchema,
@@ -152,6 +215,17 @@ export const ExtensionSessionInboundSchemas = [
   SkillCreateRequestSchema,
   SkillUpdateRequestSchema,
   SkillDeleteRequestSchema,
+  PluginListRequestSchema,
+  PluginMarketplaceAddRequestSchema,
+  PluginMarketplaceRemoveRequestSchema,
+  PluginInstallRequestSchema,
+  PluginSetEnabledRequestSchema,
+  PluginUninstallRequestSchema,
+  PluginAppGetRequestSchema,
+  PluginAppGenerateRequestSchema,
+  PluginAppActionSubmitRequestSchema,
+  PluginAppJobGetRequestSchema,
+  ReasoningTranslateRequestSchema,
 ] as const;
 
 export const ExtensionSessionOutboundSchemas = [
@@ -160,6 +234,9 @@ export const ExtensionSessionOutboundSchemas = [
   AssistantUpdateResponseSchema,
   AssistantDeleteResponseSchema,
   AssistantChangedMessageSchema,
+  MemoryGetStateResponseSchema,
+  MemoryUpdateStateResponseSchema,
+  MemoryClearResponseSchema,
   LarkChannelGetStatusResponseSchema,
   LarkChannelApplyBotResponseSchema,
   LarkChannelGetBotApplicationResponseSchema,
@@ -171,6 +248,13 @@ export const ExtensionSessionOutboundSchemas = [
   LarkChannelRejectPairingResponseSchema,
   LarkChannelRevokeUserResponseSchema,
   LarkChannelStatusChangedMessageSchema,
+  LarkDirectoryResolveUsersResponseSchema,
+  LarkDirectoryResolveChatsResponseSchema,
+  LarkReminderListResponseSchema,
+  LarkReminderCreateResponseSchema,
+  LarkReminderSetEnabledResponseSchema,
+  LarkReminderDeleteResponseSchema,
+  LarkReminderChangedMessageSchema,
   DaemonClientAccessListResponseSchema,
   DaemonClientAccessApproveResponseSchema,
   DaemonClientAccessSetPausedResponseSchema,
@@ -203,4 +287,16 @@ export const ExtensionSessionOutboundSchemas = [
   SkillUpdateResponseSchema,
   SkillDeleteResponseSchema,
   SkillChangedMessageSchema,
+  PluginListResponseSchema,
+  PluginMarketplaceAddResponseSchema,
+  PluginMarketplaceRemoveResponseSchema,
+  PluginInstallResponseSchema,
+  PluginSetEnabledResponseSchema,
+  PluginUninstallResponseSchema,
+  PluginChangedMessageSchema,
+  PluginAppGetResponseSchema,
+  PluginAppGenerateResponseSchema,
+  PluginAppActionSubmitResponseSchema,
+  PluginAppJobGetResponseSchema,
+  ReasoningTranslateResponseSchema,
 ] as const;

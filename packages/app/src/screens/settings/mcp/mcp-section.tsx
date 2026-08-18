@@ -103,6 +103,7 @@ function McpServerRow({
   onEdit: (server: McpServer) => void;
   onDelete: (server: McpServer) => void;
 }) {
+  const isPluginOwned = Boolean(server.pluginId);
   const handleToggle = useCallback(
     (enabled: boolean) => {
       onToggleEnabled(server, enabled);
@@ -130,6 +131,7 @@ function McpServerRow({
           <Text style={[styles.statusBadge, server.enabled ? null : styles.statusBadgeMuted]}>
             {statusLabel(server)}
           </Text>
+          {server.pluginName ? <Text style={styles.statusBadge}>{server.pluginName}</Text> : null}
         </View>
         {server.description ? (
           <Text style={settingsStyles.rowHint} numberOfLines={2}>
@@ -150,10 +152,10 @@ function McpServerRow({
         <Button size="sm" variant="outline" onPress={handleTest} loading={isTesting}>
           Test
         </Button>
-        <Button size="sm" variant="outline" onPress={handleEdit}>
+        <Button size="sm" variant="outline" onPress={handleEdit} disabled={isPluginOwned}>
           Edit
         </Button>
-        <Button size="sm" variant="destructive" onPress={handleDelete}>
+        <Button size="sm" variant="destructive" onPress={handleDelete} disabled={isPluginOwned}>
           Delete
         </Button>
       </View>

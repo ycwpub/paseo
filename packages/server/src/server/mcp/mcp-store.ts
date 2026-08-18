@@ -49,6 +49,11 @@ function isImportedOriginalJson(originalJson: string | undefined): boolean {
   }
 }
 
+export interface ImportedMcpServerInput extends McpServerCreateInput {
+  pluginId?: string;
+  pluginName?: string;
+}
+
 export class McpStore {
   private readonly filePath: string;
   private readonly logger: pino.Logger;
@@ -89,7 +94,7 @@ export class McpStore {
     return server;
   }
 
-  upsertImported(input: McpServerCreateInput): McpServer {
+  upsertImported(input: ImportedMcpServerInput): McpServer {
     this.ensureLoaded();
     const parsed = McpServerCreateInputSchema.parse(input);
     const timestamp = nowMs();
@@ -98,6 +103,16 @@ export class McpStore {
     );
     if (index >= 0) {
       const current = this.payload.servers[index]!;
+      if (
+        (input.pluginId && current.pluginId !== input.pluginId) ||
+        (!input.pluginId && current.pluginId)
+      ) {
+        this.logger.warn(
+          { name: parsed.name, pluginId: input.pluginId, existingPluginId: current.pluginId },
+          "Skipping imported MCP server because another plugin owns the name",
+        );
+        return McpServerSchema.parse(current);
+      }
       if (!isImportedOriginalJson(current.originalJson)) {
         this.logger.warn(
           { name: parsed.name, existingServerId: current.id },
@@ -111,6 +126,8 @@ export class McpStore {
         description: parsed.description ?? current.description,
         transport: parsed.transport,
         originalJson: parsed.originalJson ?? current.originalJson,
+        pluginId: input.pluginId,
+        pluginName: input.pluginName,
         // Preserve the user's existing enabled/disabled choice on repeated
         // startup imports. Imported MCP servers are enabled by default only
         // when first seen.
@@ -136,6 +153,8 @@ export class McpStore {
       createdAt: timestamp,
       updatedAt: timestamp,
       originalJson: parsed.originalJson ?? "{}",
+      pluginId: input.pluginId,
+      pluginName: input.pluginName,
     });
     this.replaceAndPersist({ ...this.payload, servers: [...this.payload.servers, server] });
     return server;

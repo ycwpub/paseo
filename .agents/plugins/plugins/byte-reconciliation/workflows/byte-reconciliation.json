@@ -1,0 +1,315 @@
+{
+  "apiVersion": "paseo.sh/workflow/v1",
+  "kind": "Workflow",
+  "version": 1,
+  "name": "字节对账生成、测试与比对",
+  "description": "通过 Agent 生成或修改仓库对账实现和 FundEye/Fullink/TCheck 规则草稿，并执行受控测试与只读 Diff 比对。",
+  "timeoutMs": 86400000,
+  "taskDefaults": {
+    "timeoutMs": 3600000,
+    "retry": {
+      "maxAttempts": 2,
+      "initialDelayMs": 1000,
+      "maxDelayMs": 5000,
+      "backoffMultiplier": 2,
+      "jitter": true
+    }
+  },
+  "variables": {
+    "analysis_summary": { "type": "string", "default": "" },
+    "design_summary": { "type": "string", "default": "" },
+    "platform_summary": { "type": "string", "default": "" },
+    "repository_summary": { "type": "string", "default": "" },
+    "local_test_summary": { "type": "string", "default": "" },
+    "remote_test_summary": { "type": "string", "default": "" },
+    "compare_summary": { "type": "string", "default": "" },
+    "review_summary": { "type": "string", "default": "" }
+  },
+  "steps": [
+    {
+      "id": "analysis",
+      "name": "分析对账需求和现状",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "分析用户的对账需求，并阅读当前仓库的相关实现。如果提供 rule_id，使用已安装的 bytedcli FundEye skill 只读查询规则详情。明确上下游数据源、关联键、去重键、金额和时间精度、时间窗口、触发方式、异常定义、容忍策略、输出字段、告警和验收标准。不得修改仓库或平台。\n\n需求：\n{{origin_input.request}}\n\n最终只输出：{\"data\":{\"stage\":\"analysis\",\"summary\":\"完整分析\"},\"modify\":{\"workflow\":{\"var\":{\"analysis_summary\":\"完整分析\"}}}}。不要输出 Markdown 代码围栏。",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "request",
+          "repository_path",
+          "agent_provider",
+          "platform_action",
+          "product_type"
+        ],
+        "properties": {
+          "request": { "type": "string", "minLength": 1 },
+          "repository_path": { "type": "string", "minLength": 1 },
+          "agent_provider": { "type": "string", "minLength": 1 },
+          "agent_model": { "type": "string" },
+          "approve_repository_changes": { "type": "boolean" },
+          "approve_local_test": { "type": "boolean" },
+          "local_test_command": { "type": "string" },
+          "platform_action": {
+            "type": "string",
+            "enum": [
+              "none",
+              "tcheck_create",
+              "tcheck_draft",
+              "fullink_single_create",
+              "fullink_double_create",
+              "fullink_udf_create",
+              "fullink_single_update",
+              "fullink_double_update",
+              "fullink_udf_update"
+            ]
+          },
+          "product_type": { "type": "string", "enum": ["fullink", "tcheck"] },
+          "sitename": { "type": "string" },
+          "rule_id": { "type": "string" },
+          "rule_owner": { "type": "string" },
+          "scene_name": { "type": "string" },
+          "scene_id": { "type": "string" },
+          "sub_rule_id": { "type": "string" },
+          "approve_platform_write": { "type": "boolean" },
+          "remote_test_mode": {
+            "type": "string",
+            "enum": ["none", "fullink_double_debug", "tcheck_record_list"]
+          },
+          "approve_remote_test": { "type": "boolean" },
+          "rule_version": { "type": "string" },
+          "edge_seq": { "type": "integer", "minimum": 1 },
+          "upstream_data_json": { "type": "string" },
+          "downstream_data_json": { "type": "string" },
+          "record_date": { "type": "string" },
+          "compare_start": { "type": "string" },
+          "compare_end": { "type": "string" },
+          "alarm_order_id": { "type": "string" },
+          "memory_global": { "type": "boolean" },
+          "memory_project": { "type": "boolean" },
+          "project_id": { "type": "string" },
+          "memory_assistant": { "type": "boolean" },
+          "assistant_id": { "type": "string" },
+          "memory_instructions": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节对账 · 需求分析",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": true,
+        "webSearch": false,
+        "systemPrompt": "你是资深资金安全与对账架构师。使用 FundEye 能力时只允许只读查询，不得创建、更新、发布、处理 Diff 或重跑记录。最终回答必须严格符合指定 JSON。"
+      }
+    },
+    {
+      "id": "proposal",
+      "name": "生成对账方案和平台 Payload",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "根据需求分析设计可执行的对账方案。若 platform_action 不是 none，必须依据 FundEye/Fullink/TCheck skill 生成对应的合法 platform_payload JSON 对象，但不得执行平台写操作。Fullink 优先使用子规则模型；TCheck 修改只生成 save-draft 的增量字段。若信息不足，不得臆造字段，应把缺失项写入方案，并令 platform_payload 为包含 missing_fields 的对象。\n\n用户选择的平台操作：{{origin_input.platform_action}}\n产品类型：{{origin_input.product_type}}\n需求分析：\n{{workflow.var.analysis_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"proposal\",\"platform_action\":\"与用户选择完全一致\",\"platform_payload\":{},\"summary\":\"完整方案\"},\"modify\":{\"workflow\":{\"var\":{\"design_summary\":\"完整方案\"}}}}。platform_payload 必须是 JSON 对象，不要输出代码围栏。",
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节对账 · 规则设计",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": false,
+        "webSearch": false,
+        "systemPrompt": "你是 FundEye、Fullink 和 TCheck 规则设计专家。只生成方案和 payload，不执行命令、不修改文件。严格遵循 bytedcli FundEye skill 的数据模型与安全约束。"
+      }
+    },
+    {
+      "id": "platform_apply",
+      "name": "受控写入 FundEye",
+      "type": "bash",
+      "cwd": "{{workflow.cwd}}/..",
+      "initialCommand": "output=\"$(python3 scripts/fundeye_stage.py apply <<< \"$input\")\"",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 },
+      "sideEffects": ["fundeye_rule_write"],
+      "requiresWriteBack": true
+    },
+    {
+      "id": "repository_mode",
+      "name": "仓库修改审批",
+      "type": "switch",
+      "switchVar": "{{origin_input.approve_repository_changes}}",
+      "cases": [
+        {
+          "equals": true,
+          "steps": [
+            {
+              "id": "repository_change",
+              "name": "生成或修改仓库对账实现",
+              "type": "agent",
+              "lifecycle": "single",
+              "outputMode": "custom",
+              "initialPrompt": "根据对账需求和设计，在当前仓库生成或修改对账代码、SQL、配置和测试样例。保留用户已有改动，优先新增文件降低 rebase 冲突；不要提交、推送或调用 FundEye 写接口。本阶段只修改仓库，不运行用户未授权的测试命令。\n\n需求分析：\n{{workflow.var.analysis_summary}}\n\n规则设计：\n{{workflow.var.design_summary}}\n\n平台阶段：\n{{workflow.var.platform_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"repository\",\"summary\":\"修改文件、实现内容和待测试项\"},\"modify\":{\"workflow\":{\"var\":{\"repository_summary\":\"修改文件、实现内容和待测试项\"}}}}。不要输出代码围栏。",
+              "retry": { "maxAttempts": 1 },
+              "config": {
+                "provider": "{{origin_input.agent_provider}}",
+                "model": "{{origin_input.agent_model}}",
+                "cwd": "{{origin_input.repository_path}}",
+                "title": "字节对账 · 生成或修改",
+                "archiveOnFinish": true,
+                "isolation": "local",
+                "approvalPolicy": "never",
+                "sandboxMode": "workspace-write",
+                "networkAccess": false,
+                "webSearch": false,
+                "systemPrompt": "你是对账研发 Agent。用户只授权修改当前仓库，未授权提交、推送、平台写入或发布。最终回答必须严格符合指定 JSON。"
+              }
+            }
+          ]
+        }
+      ],
+      "defaultSteps": [
+        {
+          "id": "repository_plan",
+          "name": "仓库修改计划（只读）",
+          "type": "agent",
+          "lifecycle": "single",
+          "outputMode": "custom",
+          "initialPrompt": "用户没有授权修改仓库。根据需求和方案生成具体文件级修改计划、SQL/代码结构和测试点，不得写文件。\n\n需求分析：\n{{workflow.var.analysis_summary}}\n\n规则设计：\n{{workflow.var.design_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"repository\",\"summary\":\"只读修改计划；未修改仓库\"},\"modify\":{\"workflow\":{\"var\":{\"repository_summary\":\"只读修改计划；未修改仓库\"}}}}。不要输出代码围栏。",
+          "config": {
+            "provider": "{{origin_input.agent_provider}}",
+            "model": "{{origin_input.agent_model}}",
+            "cwd": "{{origin_input.repository_path}}",
+            "title": "字节对账 · 修改计划",
+            "archiveOnFinish": true,
+            "isolation": "local",
+            "approvalPolicy": "never",
+            "sandboxMode": "read-only",
+            "networkAccess": false,
+            "webSearch": false,
+            "systemPrompt": "你是只读对账研发规划 Agent。严禁修改文件。最终回答必须严格符合指定 JSON。"
+          }
+        }
+      ]
+    },
+    {
+      "id": "local_test_mode",
+      "name": "本地测试审批",
+      "type": "switch",
+      "switchVar": "{{origin_input.approve_local_test}}",
+      "cases": [
+        {
+          "equals": true,
+          "steps": [
+            {
+              "id": "local_test",
+              "name": "执行本地测试",
+              "type": "agent",
+              "lifecycle": "single",
+              "outputMode": "custom",
+              "initialPrompt": "测试当前仓库的对账实现。若用户提供 local_test_command，原样执行该命令；否则根据改动选择最小必要的编译、单测、样例数据和边界测试。不得修改业务代码；若测试框架生成临时产物，应清理。不得访问或修改 FundEye。\n\n用户测试命令：\n{{origin_input.local_test_command}}\n\n实现结果：\n{{workflow.var.repository_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"local_test\",\"summary\":\"命令、通过项、失败项、样例比对和风险\"},\"modify\":{\"workflow\":{\"var\":{\"local_test_summary\":\"命令、通过项、失败项、样例比对和风险\"}}}}。不要输出代码围栏。",
+              "retry": { "maxAttempts": 1 },
+              "config": {
+                "provider": "{{origin_input.agent_provider}}",
+                "model": "{{origin_input.agent_model}}",
+                "cwd": "{{origin_input.repository_path}}",
+                "title": "字节对账 · 本地测试",
+                "archiveOnFinish": true,
+                "isolation": "local",
+                "approvalPolicy": "never",
+                "sandboxMode": "workspace-write",
+                "networkAccess": false,
+                "webSearch": false,
+                "systemPrompt": "你是对账测试 Agent。只运行本地测试，不修改业务实现，不调用外部平台。最终回答必须严格符合指定 JSON。"
+              }
+            }
+          ]
+        }
+      ],
+      "defaultSteps": [
+        {
+          "id": "local_test_plan",
+          "name": "本地测试计划",
+          "type": "agent",
+          "lifecycle": "single",
+          "outputMode": "custom",
+          "initialPrompt": "用户没有授权执行本地测试。根据方案和实现结果生成测试矩阵，包括正常、缺失、重复、乱序、精度、时区、迟到数据和大数据量场景，不执行命令。\n\n实现结果：\n{{workflow.var.repository_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"local_test\",\"summary\":\"只读测试计划；未执行命令\"},\"modify\":{\"workflow\":{\"var\":{\"local_test_summary\":\"只读测试计划；未执行命令\"}}}}。不要输出代码围栏。",
+          "config": {
+            "provider": "{{origin_input.agent_provider}}",
+            "model": "{{origin_input.agent_model}}",
+            "cwd": "{{origin_input.repository_path}}",
+            "title": "字节对账 · 测试计划",
+            "archiveOnFinish": true,
+            "isolation": "local",
+            "approvalPolicy": "never",
+            "sandboxMode": "read-only",
+            "networkAccess": false,
+            "webSearch": false,
+            "systemPrompt": "你是只读对账测试规划 Agent。不得执行命令。最终回答必须严格符合指定 JSON。"
+          }
+        }
+      ]
+    },
+    {
+      "id": "remote_test",
+      "name": "FundEye 平台测试",
+      "type": "bash",
+      "cwd": "{{workflow.cwd}}/..",
+      "initialCommand": "output=\"$(python3 scripts/fundeye_stage.py test <<< \"$input\")\"",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 },
+      "sideEffects": ["fundeye_debug"],
+      "requiresWriteBack": true
+    },
+    {
+      "id": "compare",
+      "name": "FundEye Diff 比对",
+      "type": "bash",
+      "cwd": "{{workflow.cwd}}/..",
+      "initialCommand": "output=\"$(python3 scripts/fundeye_stage.py compare <<< \"$input\")\"",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 }
+    },
+    {
+      "id": "review",
+      "name": "汇总测试与比对结论",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "综合需求、规则设计、仓库修改、平台写入、本地测试、平台测试和 Diff 数据，给出最终审核结论。区分已验证事实、未执行计划和待人工确认项；说明是否满足验收标准，并列出阻断发布的问题。不得修改任何内容。\n\n需求分析：{{workflow.var.analysis_summary}}\n规则设计：{{workflow.var.design_summary}}\n平台写入：{{workflow.var.platform_summary}}\n仓库实现：{{workflow.var.repository_summary}}\n本地测试：{{workflow.var.local_test_summary}}\n平台测试：{{workflow.var.remote_test_summary}}\nDiff 比对：{{workflow.var.compare_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"review\",\"summary\":\"最终结论\"},\"modify\":{\"workflow\":{\"var\":{\"review_summary\":\"最终结论\"}}}}。不要输出代码围栏。",
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节对账 · 测试比对结论",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": false,
+        "webSearch": false,
+        "systemPrompt": "你是独立的对账审核专家。不得把未执行步骤写成已通过。最终回答必须严格符合指定 JSON。"
+      }
+    },
+    {
+      "id": "finalize",
+      "name": "输出结果并沉淀记忆",
+      "type": "python",
+      "module": "scripts.finalize",
+      "function": "run_node",
+      "cwd": "{{workflow.cwd}}/..",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 }
+    }
+  ]
+}

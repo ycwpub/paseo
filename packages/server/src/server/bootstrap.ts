@@ -1238,6 +1238,17 @@ export async function createPaseoDaemon(
   } catch (error) {
     logger.warn({ err: error }, "Failed to import provider MCP servers and skills during startup");
   }
+  const pluginService = new PluginService({
+    paseoHome: config.paseoHome,
+    logger,
+    mcpStore,
+    skillStore,
+  });
+  try {
+    pluginService.initialize();
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to initialize plugins during daemon startup");
+  }
   try {
     skillMaterializer.sync(skillStore.list());
   } catch (error) {
@@ -1574,7 +1585,42 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
+  const larkChannelAdapter = new OfficialLarkChannelClientAdapter({ logger });
+  const larkDirectoryStore = new LarkDirectoryStore({
+    paseoHome: config.paseoHome,
+    logger,
+  });
+  const larkDirectoryService = new LarkDirectoryService(
+    larkChannelStore,
+    larkDirectoryStore,
+    larkChannelAdapter,
+  );
+  const larkReminderService = new LarkReminderService({
+    paseoHome: config.paseoHome,
+    channelStore: larkChannelStore,
+    adapter: larkChannelAdapter,
+    logger,
+    emitChanged: (reminders) => {
+      wsServer?.broadcast(
+        wrapSessionMessage({
+          type: "channel.lark.reminder.changed",
+          payload: { reminders },
+        }),
+      );
+    },
+  });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
+  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger });
+  const memoryService = new PaseoMemoryService({
+    store: memoryStore,
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => daemonConfigStore.get(),
+    resolveProjectId: async (workspaceId) =>
+      (await workspaceRegistry.get(workspaceId))?.projectId ?? null,
+    logger,
+  });
+  memoryService.start();
   const teamStore = new TeamStore({
     paseoHome: config.paseoHome,
     logger,
@@ -1582,13 +1628,15 @@ export async function createPaseoDaemon(
   });
   larkChannelService = new LarkChannelService({
     store: larkChannelStore,
-    adapter: new OfficialLarkChannelClientAdapter({ logger }),
+    adapter: larkChannelAdapter,
     agentManager,
     agentStorage,
     createAgent,
     assistantStore,
     teamStore,
     logger,
+    reminderService: larkReminderService,
+    directoryService: larkDirectoryService,
     host: {
       emitStatusChanged: (status) => {
         wsServer?.broadcast(
@@ -1684,6 +1732,23 @@ export async function createPaseoDaemon(
     teamStore,
   });
   await workflowService.start();
+  const pluginHttpServiceManager = new PluginHttpServiceManager({
+    paseoHome: config.paseoHome,
+    logger,
+    workflowService,
+    memoryWriter: new PluginWorkflowMemoryStoreWriter(memoryStore),
+  });
+  const pluginAppService = new PluginAppService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => daemonConfigStore.get(),
+    httpRuntime: pluginHttpServiceManager,
+    resolveApp: (pluginId, appId) => pluginService.resolveAppContext(pluginId, appId),
+    listHttpTargets: () => pluginService.listEnabledHttpTargets(),
+  });
+  pluginService.attachAppRuntime(pluginAppService);
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,
     logger,
@@ -2002,6 +2067,7 @@ export async function createPaseoDaemon(
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
             const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
+            await pluginService.attachHttpRuntime(pluginHttpServiceManager);
 
             if (boundListenTarget.type === "tcp") {
               logger.info(

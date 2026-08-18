@@ -1,0 +1,247 @@
+{
+  "apiVersion": "paseo.sh/workflow/v1",
+  "kind": "Workflow",
+  "version": 1,
+  "name": "字节开发全流程",
+  "description": "PRD、技术方案、Agent 指令、开发、Review、BITS 部署、测试和发布的一体化流程。BITS 写操作受显式审批字段保护。",
+  "timeoutMs": 86400000,
+  "taskDefaults": {
+    "timeoutMs": 3600000,
+    "retry": {
+      "maxAttempts": 2,
+      "initialDelayMs": 1000,
+      "maxDelayMs": 5000,
+      "backoffMultiplier": 2,
+      "jitter": true
+    }
+  },
+  "variables": {
+    "prd_analysis": { "type": "string", "default": "" },
+    "technical_design": { "type": "string", "default": "" },
+    "agent_instruction": { "type": "string", "default": "" },
+    "development_summary": { "type": "string", "default": "" },
+    "review_summary": { "type": "string", "default": "" },
+    "deploy_summary": { "type": "string", "default": "" },
+    "test_summary": { "type": "string", "default": "" },
+    "release_summary": { "type": "string", "default": "" }
+  },
+  "steps": [
+    {
+      "id": "prd",
+      "name": "PRD 分析",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "分析下面的 PRD，明确目标、用户价值、范围、非目标、依赖、风险、验收标准和待确认项。内容必须具体、可执行，长度不超过 12000 字符。\n\nPRD：\n{{origin_input.prd}}\n\n最终只输出一个 JSON 对象：{\"data\":{\"stage\":\"prd\",\"summary\":\"完整分析\"},\"modify\":{\"workflow\":{\"var\":{\"prd_analysis\":\"完整分析\"}}}}。summary 与 prd_analysis 内容保持一致，不要输出 Markdown 代码围栏。",
+      "inputSchema": {
+        "type": "object",
+        "required": ["prd", "repository_path", "agent_provider"],
+        "properties": {
+          "prd": { "type": "string", "minLength": 1 },
+          "repository_path": { "type": "string", "minLength": 1 },
+          "agent_provider": { "type": "string", "minLength": 1 },
+          "agent_model": { "type": "string" },
+          "approve_development": { "type": "boolean" },
+          "bits_dev_task_id": { "type": "string" },
+          "bits_psm": { "type": "string" },
+          "bits_project_type": { "type": "string" },
+          "bits_phase": { "type": "string" },
+          "target_branch": { "type": "string" },
+          "control_plane": { "type": "string" },
+          "release_ticket_id": { "type": "string" },
+          "approve_deploy": { "type": "boolean" },
+          "approve_test": { "type": "boolean" },
+          "approve_release": { "type": "boolean" },
+          "memory_global": { "type": "boolean" },
+          "memory_project": { "type": "boolean" },
+          "project_id": { "type": "string" },
+          "memory_assistant": { "type": "boolean" },
+          "assistant_id": { "type": "string" },
+          "memory_instructions": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节开发 · PRD 分析",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": false,
+        "webSearch": false,
+        "systemPrompt": "你是资深产品与研发负责人。只分析输入，不修改文件，不执行外部写操作。最终回答必须严格符合用户指定的 Workflow JSON 结果格式。"
+      }
+    },
+    {
+      "id": "technical_design",
+      "name": "技术方案",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "基于 PRD 分析和当前仓库，设计可落地的技术方案。必须检查代码结构和现有约束，覆盖架构、数据模型、接口、兼容性、灰度、监控、回滚、安全、测试与拆分任务。不要修改文件。\n\nPRD 分析：\n{{workflow.var.prd_analysis}}\n\n最终只输出：{\"data\":{\"stage\":\"technical_design\",\"summary\":\"完整技术方案\"},\"modify\":{\"workflow\":{\"var\":{\"technical_design\":\"完整技术方案\"}}}}。内容不超过 12000 字符，不要输出代码围栏。",
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节开发 · 技术方案",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": false,
+        "webSearch": false,
+        "systemPrompt": "你是资深架构师。先阅读仓库再设计，不修改文件。最终回答必须严格符合用户指定的 Workflow JSON 结果格式。"
+      }
+    },
+    {
+      "id": "agent_instruction",
+      "name": "生成 Agent 指令",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "把 PRD 和技术方案转换为一个开发 Agent 可直接执行的指令。指令要包含目标、约束、修改范围、推荐步骤、禁止事项、验证命令、完成标准和交付清单；要求保留用户已有改动并优先新增文件降低 rebase 冲突。\n\nPRD：\n{{workflow.var.prd_analysis}}\n\n技术方案：\n{{workflow.var.technical_design}}\n\n最终只输出：{\"data\":{\"stage\":\"agent_instruction\",\"summary\":\"完整 Agent 指令\"},\"modify\":{\"workflow\":{\"var\":{\"agent_instruction\":\"完整 Agent 指令\"}}}}。内容不超过 12000 字符，不要输出代码围栏。",
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节开发 · Agent 指令",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": false,
+        "webSearch": false,
+        "systemPrompt": "你是研发任务编排专家。只生成指令，不修改文件。最终回答必须严格符合用户指定的 Workflow JSON 结果格式。"
+      }
+    },
+    {
+      "id": "development_mode",
+      "name": "开发审批",
+      "type": "switch",
+      "switchVar": "{{origin_input.approve_development}}",
+      "cases": [
+        {
+          "equals": true,
+          "steps": [
+            {
+              "id": "development",
+              "name": "执行开发",
+              "type": "agent",
+              "lifecycle": "single",
+              "outputMode": "custom",
+              "initialPrompt": "严格执行下面的开发指令，在当前仓库完成实现。先检查工作区并保留用户已有改动；优先把新增能力放在新增文件中；运行必要的类型检查和测试；不要提交、推送、部署或发布；不要执行 BITS 写操作。\n\n开发指令：\n{{workflow.var.agent_instruction}}\n\n最终只输出：{\"data\":{\"stage\":\"development\",\"summary\":\"修改文件、核心实现、测试结果和遗留风险\"},\"modify\":{\"workflow\":{\"var\":{\"development_summary\":\"修改文件、核心实现、测试结果和遗留风险\"}}}}。内容不超过 12000 字符，不要输出代码围栏。",
+              "retry": { "maxAttempts": 1 },
+              "config": {
+                "provider": "{{origin_input.agent_provider}}",
+                "model": "{{origin_input.agent_model}}",
+                "cwd": "{{origin_input.repository_path}}",
+                "title": "字节开发 · 开发",
+                "archiveOnFinish": true,
+                "isolation": "local",
+                "approvalPolicy": "never",
+                "sandboxMode": "workspace-write",
+                "networkAccess": true,
+                "webSearch": false,
+                "systemPrompt": "你是开发执行 Agent。用户已在本次运行中明确允许修改代码，但没有允许提交、推送、部署或发布。最终回答必须严格符合用户指定的 Workflow JSON 结果格式。"
+              }
+            }
+          ]
+        }
+      ],
+      "defaultSteps": [
+        {
+          "id": "development_plan",
+          "name": "开发计划（只读）",
+          "type": "agent",
+          "lifecycle": "single",
+          "outputMode": "custom",
+          "initialPrompt": "用户没有授权修改代码。阅读仓库并根据下面指令生成具体开发计划、预期修改文件和验证命令，但不得修改任何文件。\n\n开发指令：\n{{workflow.var.agent_instruction}}\n\n最终只输出：{\"data\":{\"stage\":\"development\",\"summary\":\"只读开发计划；未修改代码\"},\"modify\":{\"workflow\":{\"var\":{\"development_summary\":\"只读开发计划；未修改代码\"}}}}。内容不超过 12000 字符，不要输出代码围栏。",
+          "config": {
+            "provider": "{{origin_input.agent_provider}}",
+            "model": "{{origin_input.agent_model}}",
+            "cwd": "{{origin_input.repository_path}}",
+            "title": "字节开发 · 只读开发计划",
+            "archiveOnFinish": true,
+            "isolation": "local",
+            "approvalPolicy": "never",
+            "sandboxMode": "read-only",
+            "networkAccess": false,
+            "webSearch": false,
+            "systemPrompt": "你是只读开发规划 Agent。严禁修改文件。最终回答必须严格符合用户指定的 Workflow JSON 结果格式。"
+          }
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "name": "代码 Review",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "custom",
+      "initialPrompt": "Review 当前仓库与本次需求相关的改动。优先遵循 bits-code-guard 的审查方法；可只读查询 bytedcli code-review 规则，但不得在 MR 留评论或执行外部写操作。检查正确性、兼容性、安全、并发、错误处理、测试和可维护性。若本次未授权开发，则 Review 技术方案和开发计划的一致性。\n\n技术方案：\n{{workflow.var.technical_design}}\n\n开发结果：\n{{workflow.var.development_summary}}\n\n最终只输出：{\"data\":{\"stage\":\"review\",\"summary\":\"按严重度列出问题、结论和修复建议\"},\"modify\":{\"workflow\":{\"var\":{\"review_summary\":\"按严重度列出问题、结论和修复建议\"}}}}。内容不超过 12000 字符，不要输出代码围栏。",
+      "config": {
+        "provider": "{{origin_input.agent_provider}}",
+        "model": "{{origin_input.agent_model}}",
+        "cwd": "{{origin_input.repository_path}}",
+        "title": "字节开发 · Review",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": true,
+        "webSearch": false,
+        "systemPrompt": "你是独立代码审查 Agent。只读审查，不修改代码，不对外写入评论。最终回答必须严格符合用户指定的 Workflow JSON 结果格式。"
+      }
+    },
+    {
+      "id": "deploy",
+      "name": "BITS 部署",
+      "type": "bash",
+      "cwd": "{{workflow.cwd}}/..",
+      "initialCommand": "output=\"$(python3 scripts/bits_stage.py deploy <<< \"$input\")\"",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 },
+      "sideEffects": ["bits_deploy"],
+      "requiresWriteBack": true
+    },
+    {
+      "id": "test",
+      "name": "BITS 测试",
+      "type": "bash",
+      "cwd": "{{workflow.cwd}}/..",
+      "initialCommand": "output=\"$(python3 scripts/bits_stage.py test <<< \"$input\")\"",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 },
+      "sideEffects": ["bits_quick_run"],
+      "requiresWriteBack": true
+    },
+    {
+      "id": "release",
+      "name": "BITS 发布",
+      "type": "bash",
+      "cwd": "{{workflow.cwd}}/..",
+      "initialCommand": "output=\"$(python3 scripts/bits_stage.py release <<< \"$input\")\"",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 },
+      "sideEffects": ["bits_publish"],
+      "requiresWriteBack": true
+    },
+    {
+      "id": "finalize",
+      "name": "汇总与记忆",
+      "type": "python",
+      "module": "scripts.finalize",
+      "function": "run_node",
+      "cwd": "{{workflow.cwd}}/..",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 }
+    }
+  ]
+}

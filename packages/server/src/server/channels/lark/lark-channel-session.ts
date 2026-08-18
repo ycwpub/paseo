@@ -16,7 +16,13 @@ export type LarkChannelSessionRequest = Extract<
       | "channel.lark.set_enabled.request"
       | "channel.lark.approve_pairing.request"
       | "channel.lark.reject_pairing.request"
-      | "channel.lark.revoke_user.request";
+      | "channel.lark.revoke_user.request"
+      | "channel.lark.directory.resolve_users.request"
+      | "channel.lark.directory.resolve_chats.request"
+      | "channel.lark.reminder.list.request"
+      | "channel.lark.reminder.create.request"
+      | "channel.lark.reminder.set_enabled.request"
+      | "channel.lark.reminder.delete.request";
   }
 >;
 
@@ -33,7 +39,13 @@ type LarkChannelResponse = Extract<
       | "channel.lark.set_enabled.response"
       | "channel.lark.approve_pairing.response"
       | "channel.lark.reject_pairing.response"
-      | "channel.lark.revoke_user.response";
+      | "channel.lark.revoke_user.response"
+      | "channel.lark.directory.resolve_users.response"
+      | "channel.lark.directory.resolve_chats.response"
+      | "channel.lark.reminder.list.response"
+      | "channel.lark.reminder.create.response"
+      | "channel.lark.reminder.set_enabled.response"
+      | "channel.lark.reminder.delete.response";
   }
 >;
 
@@ -177,6 +189,91 @@ export class LarkChannelSession {
             },
           });
           return;
+        case "channel.lark.directory.resolve_users.request": {
+          const users = await this.service.resolveDirectoryUsers(message.appId, message.emails);
+          this.emitResponse({
+            type: "channel.lark.directory.resolve_users.response",
+            payload: {
+              requestId: message.requestId,
+              users,
+              status: this.service.getStatus(),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "channel.lark.directory.resolve_chats.request": {
+          const chats = await this.service.resolveDirectoryChats(message.appId, message.query);
+          this.emitResponse({
+            type: "channel.lark.directory.resolve_chats.response",
+            payload: {
+              requestId: message.requestId,
+              chats,
+              status: this.service.getStatus(),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "channel.lark.reminder.list.request":
+          this.emitResponse({
+            type: "channel.lark.reminder.list.response",
+            payload: {
+              requestId: message.requestId,
+              reminders: this.service.listReminders(),
+              error: null,
+            },
+          });
+          return;
+        case "channel.lark.reminder.create.request": {
+          const reminder = this.service.createReminder({
+            name: message.name,
+            botId: message.botId,
+            chatId: message.chatId,
+            targetOpenIds: message.targetOpenIds,
+            message: message.message,
+            frequencySeconds: message.frequencySeconds,
+            sender: message.sender,
+            enabled: message.enabled,
+          });
+          this.emitResponse({
+            type: "channel.lark.reminder.create.response",
+            payload: {
+              requestId: message.requestId,
+              reminder,
+              reminders: this.service.listReminders(),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "channel.lark.reminder.set_enabled.request": {
+          const reminder = this.service.setReminderEnabled(message.reminderId, message.enabled);
+          this.emitResponse({
+            type: "channel.lark.reminder.set_enabled.response",
+            payload: {
+              requestId: message.requestId,
+              reminder,
+              reminders: this.service.listReminders(),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "channel.lark.reminder.delete.request": {
+          const ok = this.service.deleteReminder(message.reminderId);
+          this.emitResponse({
+            type: "channel.lark.reminder.delete.response",
+            payload: {
+              requestId: message.requestId,
+              reminderId: message.reminderId,
+              ok,
+              reminders: this.service.listReminders(),
+              error: ok ? null : "Lark reminder not found",
+            },
+          });
+          return;
+        }
       }
     } catch (error) {
       this.logger.warn({ err: error, requestType: message.type }, "Lark channel RPC failed");
@@ -230,6 +327,68 @@ export class LarkChannelSession {
         return;
       case "channel.lark.revoke_user.request":
         this.emitResponse({ type: "channel.lark.revoke_user.response", payload });
+        return;
+      case "channel.lark.directory.resolve_users.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_users.response",
+          payload: {
+            requestId: message.requestId,
+            users: [],
+            status: this.service.getStatus(),
+            error,
+          },
+        });
+        return;
+      case "channel.lark.directory.resolve_chats.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_chats.response",
+          payload: {
+            requestId: message.requestId,
+            chats: [],
+            status: this.service.getStatus(),
+            error,
+          },
+        });
+        return;
+      case "channel.lark.reminder.list.request":
+        this.emitResponse({
+          type: "channel.lark.reminder.list.response",
+          payload: { requestId: message.requestId, reminders: this.service.listReminders(), error },
+        });
+        return;
+      case "channel.lark.reminder.create.request":
+        this.emitResponse({
+          type: "channel.lark.reminder.create.response",
+          payload: {
+            requestId: message.requestId,
+            reminder: null,
+            reminders: this.service.listReminders(),
+            error,
+          },
+        });
+        return;
+      case "channel.lark.reminder.set_enabled.request":
+        this.emitResponse({
+          type: "channel.lark.reminder.set_enabled.response",
+          payload: {
+            requestId: message.requestId,
+            reminder: null,
+            reminders: this.service.listReminders(),
+            error,
+          },
+        });
+        return;
+      case "channel.lark.reminder.delete.request":
+        this.emitResponse({
+          type: "channel.lark.reminder.delete.response",
+          payload: {
+            requestId: message.requestId,
+            reminderId: message.reminderId,
+            ok: false,
+            reminders: this.service.listReminders(),
+            error,
+          },
+        });
         return;
     }
   }

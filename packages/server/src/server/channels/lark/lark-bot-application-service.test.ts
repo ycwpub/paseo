@@ -58,6 +58,8 @@ describe("LarkBotApplicationService", () => {
               "im:message.group_msg",
               "im:message.group_at_msg.include_bot:readonly",
               "im:chat.members:read",
+              "im:chat:read",
+              "contact:user.id:readonly",
             ],
             user: ["im:message.group_msg:get_as_user"],
           },

@@ -27,8 +27,23 @@ export interface LarkMessageListOptions {
   pageSize?: number;
 }
 
+export interface LarkChatMessageListOptions extends LarkMessageListOptions {
+  startTime?: number;
+}
+
 export interface LarkMessageGetOptions {
   userCardContent?: boolean;
+}
+
+export interface LarkResolvedUser {
+  email: string;
+  openId: string;
+}
+
+export interface LarkResolvedChat {
+  groupId: string;
+  chatId: string;
+  name: string;
 }
 
 export interface LarkChannelClientAdapter {
@@ -38,6 +53,12 @@ export interface LarkChannelClientAdapter {
     handler: (event: NormalizedLarkMessageEvent) => Promise<void>,
   ): Promise<LarkChannelEventSubscription>;
   sendText(config: StoredLarkChannelConfig, chatId: string, text: string): Promise<void>;
+  sendTextAsUser?(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    text: string,
+    userAccessToken: string,
+  ): Promise<void>;
   replyToMessageInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -59,6 +80,16 @@ export interface LarkChannelClientAdapter {
     threadId: string,
     options?: LarkMessageListOptions,
   ): Promise<unknown[]>;
+  listChatMessages?(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    options?: LarkChatMessageListOptions,
+  ): Promise<unknown[]>;
+  resolveUsersByEmails?(
+    config: StoredLarkChannelConfig,
+    emails: readonly string[],
+  ): Promise<LarkResolvedUser[]>;
+  resolveChats?(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]>;
 }
 
 function requireCredentials(config: StoredLarkChannelConfig): { appId: string; appSecret: string } {
@@ -270,6 +301,29 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     assertSuccess(result);
   }
 
+  async sendTextAsUser(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    text: string,
+    userAccessToken: string,
+  ): Promise<void> {
+    const client = createClient(config);
+    const result = await client.im.v1.message.create(
+      {
+        params: {
+          receive_id_type: "chat_id",
+        },
+        data: {
+          receive_id: chatId,
+          msg_type: "text",
+          content: JSON.stringify({ text }),
+        },
+      },
+      lark.withUserAccessToken(userAccessToken),
+    );
+    assertSuccess(result);
+  }
+
   async replyToMessageInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -332,6 +386,55 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     });
   }
 
+  async resolveUsersByEmails(
+    config: StoredLarkChannelConfig,
+    emails: readonly string[],
+  ): Promise<LarkResolvedUser[]> {
+    const client = createClient(config);
+    try {
+      const result = await client.contact.v3.user.batchGetId({
+        data: { emails: [...emails] },
+        params: { user_id_type: "open_id" },
+      });
+      assertSuccess(result);
+      return (result.data?.user_list ?? []).flatMap((user) =>
+        user.email && user.user_id ? [{ email: user.email, openId: user.user_id }] : [],
+      );
+    } catch (error) {
+      throw describeLarkError(error);
+    }
+  }
+
+  async resolveChats(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]> {
+    const client = createClient(config);
+    try {
+      if (/^oc_[A-Za-z0-9_-]+$/u.test(query)) {
+        const result = await client.im.v1.chat.get({ path: { chat_id: query } });
+        assertSuccess(result);
+        return [
+          {
+            groupId: query,
+            chatId: query,
+            name: result.data?.name?.trim() || query,
+          },
+        ];
+      }
+      const result = await client.im.v1.chat.search({
+        params: { query, page_size: 50, user_id_type: "open_id" },
+      });
+      assertSuccess(result);
+      const chats = (result.data?.items ?? []).flatMap((chat) =>
+        chat.chat_id && chat.name
+          ? [{ groupId: chat.chat_id, chatId: chat.chat_id, name: chat.name }]
+          : [],
+      );
+      const exact = chats.filter((chat) => chat.name.trim() === query);
+      return exact.length > 0 ? exact : chats;
+    } catch (error) {
+      throw describeLarkError(error);
+    }
+  }
+
   async getMessage(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -372,6 +475,34 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       if (!unlimited && items.length >= pageSize) {
         break;
       }
+    } while (pageToken);
+    return unlimited ? items : items.slice(0, pageSize);
+  }
+
+  async listChatMessages(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    options: LarkChatMessageListOptions = {},
+  ): Promise<unknown[]> {
+    const client = createClient(config);
+    const pageSize = options.pageSize ?? 0;
+    const unlimited = wantsAllMessages(pageSize);
+    const items: unknown[] = [];
+    let pageToken: string | undefined;
+    do {
+      const result = await larkGet(client, "/open-apis/im/v1/messages", {
+        container_id_type: "chat",
+        container_id: chatId,
+        page_size: getPageSize(pageSize, unlimited),
+        sort_type: "ByCreateTimeAsc",
+        with_sender_name: "true",
+        ...(options.startTime !== undefined ? { start_time: options.startTime } : {}),
+        ...(pageToken ? { page_token: pageToken } : {}),
+      });
+      assertSuccess(result);
+      items.push(...messageListItems(result));
+      pageToken = result.data?.page_token;
+      if (!unlimited && items.length >= pageSize) break;
     } while (pageToken);
     return unlimited ? items : items.slice(0, pageSize);
   }

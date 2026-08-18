@@ -82,6 +82,7 @@ export interface AppSettings {
   sidebarRowItems: SidebarRowItems;
   sidebarChecksDisplay: SidebarChecksDisplay;
   autoExpandReasoning: boolean;
+  aidenClaudeTranslateReasoningToChinese: boolean;
   toolCallDetailLevel: ToolCallDetailLevel;
   chatOutlineEnabled: boolean;
   vimKeybindings: boolean;

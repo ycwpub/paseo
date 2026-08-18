@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
+import { clearDesktopIsland, requestDesktopIsland } from "@/desktop/island/desktop-island";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 
@@ -30,6 +31,9 @@ export function DesktopNotificationsSection() {
     requestPermission,
     sendTestNotification,
   } = useDesktopPermissions();
+  const [islandTestState, setIslandTestState] = useState<"idle" | "sending" | "success" | "error">(
+    "idle",
+  );
 
   const handleRefreshPress = useCallback(() => {
     void refreshPermissions();
@@ -48,9 +52,44 @@ export function DesktopNotificationsSection() {
     [updateSettings],
   );
 
+  const handleIslandEnabledChange = useCallback(
+    (enabled: boolean) => {
+      if (!enabled) {
+        clearDesktopIsland();
+      }
+      void updateSettings({ island: { enabled } }).catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      });
+    },
+    [updateSettings],
+  );
+
+  const handleIslandShowWhenFocusedChange = useCallback(
+    (showWhenFocused: boolean) => {
+      void updateSettings({ island: { showWhenFocused } }).catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      });
+    },
+    [updateSettings],
+  );
+
   const handleSendTestNotification = useCallback(() => {
     void sendTestNotification();
   }, [sendTestNotification]);
+
+  const handleSendTestIsland = useCallback(() => {
+    setIslandTestState("sending");
+    void requestDesktopIsland({
+      id: "paseo:island:test",
+      kind: "info",
+      title: t("settings.notifications.islandTestTitle"),
+      body: t("settings.notifications.islandTestBody"),
+      durationMs: 10_000,
+    }).then((shown) => {
+      setIslandTestState(shown ? "success" : "error");
+      return undefined;
+    });
+  }, [t]);
 
   const isPermissionBusy = isRefreshing || requestingPermission !== null;
   const isSendingTestNotification = testNotificationState.status === "sending";
@@ -112,6 +151,53 @@ export function DesktopNotificationsSection() {
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.island")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.notifications.islandHint")}</Text>
+          </View>
+          <Switch
+            value={settings.island.enabled}
+            onValueChange={handleIslandEnabledChange}
+            disabled={isSaving}
+            accessibilityLabel={t("settings.notifications.island")}
+            testID="desktop-notifications-island-switch"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.notifications.islandShowWhenFocused")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.notifications.islandShowWhenFocusedHint")}
+            </Text>
+          </View>
+          <Switch
+            value={settings.island.showWhenFocused}
+            onValueChange={handleIslandShowWhenFocusedChange}
+            disabled={isSaving || !settings.island.enabled}
+            accessibilityLabel={t("settings.notifications.islandShowWhenFocused")}
+            testID="desktop-notifications-island-focused-switch"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.islandTest")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.notifications.islandTestHint")}</Text>
+          </View>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={handleSendTestIsland}
+            disabled={!settings.island.enabled || isSaving || islandTestState === "sending"}
+            testID="desktop-notifications-island-test"
+          >
+            {islandTestState === "sending"
+              ? t("settings.notifications.sending")
+              : t("settings.notifications.send")}
+          </Button>
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.notifications.test")}</Text>
             <Text style={settingsStyles.rowHint}>
               {notificationsGranted
@@ -145,6 +231,22 @@ export function DesktopNotificationsSection() {
           title={t("settings.notifications.sendFailedTitle")}
           description={testNotificationState.message}
           testID="desktop-notifications-test-error"
+        />
+      ) : null}
+      {islandTestState === "success" ? (
+        <Alert
+          variant="success"
+          title={t("settings.notifications.islandTestSuccess")}
+          description={t("settings.notifications.islandTestSuccessHint")}
+          testID="desktop-notifications-island-test-success"
+        />
+      ) : null}
+      {islandTestState === "error" ? (
+        <Alert
+          variant="error"
+          title={t("settings.notifications.islandTestFailed")}
+          description={t("settings.notifications.islandTestFailedHint")}
+          testID="desktop-notifications-island-test-error"
         />
       ) : null}
     </SettingsSection>

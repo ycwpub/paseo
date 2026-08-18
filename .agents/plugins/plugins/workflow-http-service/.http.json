@@ -1,0 +1,10 @@
+{
+  "services": {
+    "processor": {
+      "host": "127.0.0.1",
+      "port": 0,
+      "path": "/process",
+      "workflow": "./workflows/process-request.json"
+    }
+  }
+}

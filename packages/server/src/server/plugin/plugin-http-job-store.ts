@@ -1,0 +1,113 @@
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { PluginHttpJobSchema, type PluginHttpJob } from "@getpaseo/protocol/messages";
+import {
+  ensurePrivateDirectory,
+  ensurePrivateFile,
+  writePrivateFileAtomicSync,
+} from "../private-files.js";
+
+type PluginHttpJobUpdater = (job: PluginHttpJob) => PluginHttpJob;
+
+const JOB_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
+export class PluginHttpJobStore {
+  private readonly mutations = new Map<string, Promise<unknown>>();
+
+  constructor(private readonly directory: string) {}
+
+  initialize(now = new Date().toISOString()): void {
+    ensurePrivateDirectory(this.directory);
+    for (const entry of readdirSync(this.directory, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      const id = entry.name.slice(0, -".json".length);
+      let job: PluginHttpJob | null = null;
+      try {
+        job = this.get(id);
+      } catch {
+        continue;
+      }
+      if (!job || (job.status !== "queued" && job.status !== "running")) continue;
+      this.write({
+        ...job,
+        status: "failed",
+        error: "Daemon restarted before the HTTP processing job completed",
+        errorCode: "DAEMON_RESTARTED",
+        endedAt: now,
+      });
+    }
+  }
+
+  async create(input: {
+    pluginId: string;
+    serviceName: string;
+    input: unknown;
+    createdAt: string;
+  }): Promise<PluginHttpJob> {
+    const job = PluginHttpJobSchema.parse({
+      id: randomUUID(),
+      pluginId: input.pluginId,
+      serviceName: input.serviceName,
+      status: "queued",
+      input: input.input,
+      result: null,
+      workflowRunId: null,
+      error: null,
+      errorCode: null,
+      createdAt: input.createdAt,
+      startedAt: null,
+      endedAt: null,
+    });
+    await this.serialize(job.id, () => {
+      this.write(job);
+      return Promise.resolve();
+    });
+    return job;
+  }
+
+  get(id: string): PluginHttpJob | null {
+    const filePath = this.filePath(id);
+    if (!filePath || !existsSync(filePath)) return null;
+    ensurePrivateFile(filePath);
+    return PluginHttpJobSchema.parse(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
+  }
+
+  async update(id: string, updater: PluginHttpJobUpdater): Promise<PluginHttpJob | null> {
+    return this.serialize(id, () => {
+      const current = this.get(id);
+      if (!current) return Promise.resolve(null);
+      const updated = PluginHttpJobSchema.parse(updater(current));
+      if (updated.id !== id) {
+        throw new Error(`Plugin HTTP job update cannot change id: ${id}`);
+      }
+      this.write(updated);
+      return Promise.resolve(updated);
+    });
+  }
+
+  private filePath(id: string): string | null {
+    return JOB_ID_PATTERN.test(id) ? path.join(this.directory, `${id}.json`) : null;
+  }
+
+  private write(job: PluginHttpJob): void {
+    ensurePrivateDirectory(this.directory);
+    const filePath = this.filePath(job.id);
+    if (!filePath) throw new Error(`Invalid Plugin HTTP job ID: ${job.id}`);
+    writePrivateFileAtomicSync(filePath, JSON.stringify(job, null, 2));
+  }
+
+  private async serialize<T>(id: string, mutation: () => Promise<T>): Promise<T> {
+    const previous = this.mutations.get(id) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(mutation);
+    this.mutations.set(id, next);
+    try {
+      return await next;
+    } finally {
+      if (this.mutations.get(id) === next) {
+        this.mutations.delete(id);
+      }
+    }
+  }
+}

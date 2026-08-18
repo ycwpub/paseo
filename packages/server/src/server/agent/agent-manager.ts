@@ -748,6 +748,7 @@ export class AgentManager {
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
   private readonly beforeSteerUnavailableFallback?: AgentManagerOptions["beforeSteerUnavailableFallback"];
   private acceptingAgentRegistrations = true;
+  private promptContextComposer: AgentPromptContextComposer | null = null;
 
   constructor(options: AgentManagerOptions) {
     this.idFactory = options?.idFactory ?? (() => randomUUID());
@@ -867,6 +868,10 @@ export class AgentManager {
 
   setAppendSystemPrompt(prompt: string | null | undefined): void {
     this.appendSystemPrompt = prompt ?? "";
+  }
+
+  setPromptContextComposer(composer: AgentPromptContextComposer | null): void {
+    this.promptContextComposer = composer;
   }
 
   public getMetricsSnapshot(): AgentMetricsSnapshot {

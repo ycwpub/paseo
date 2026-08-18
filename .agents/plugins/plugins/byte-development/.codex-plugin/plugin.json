@@ -1,0 +1,32 @@
+{
+  "name": "byte-development",
+  "version": "0.1.0",
+  "description": "ByteDance development lifecycle orchestration from PRD through release.",
+  "author": {
+    "name": "Paseo"
+  },
+  "keywords": ["bytedance", "bits", "development", "workflow", "review", "release"],
+  "skills": "./skills/",
+  "httpServices": "./.http.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "字节开发",
+    "shortDescription": "PRD 到发布的字节研发全流程",
+    "longDescription": "通过 Paseo Agent、Workflow、BITS 和分层记忆完成 PRD、技术方案、Agent 指令、开发、Review、部署、测试和发布。",
+    "developerName": "Paseo",
+    "category": "Development",
+    "capabilities": [
+      "PRD 分析",
+      "技术方案",
+      "Agent 开发",
+      "代码 Review",
+      "BITS 部署测试发布",
+      "项目/助手/全局记忆"
+    ],
+    "defaultPrompt": [
+      "使用字节开发插件为当前需求生成技术方案并制定安全的研发流程。",
+      "检查当前 BITS Dev Task 状态，并给出部署、测试、发布前的确认清单。",
+      "Review 当前仓库改动，并把可复用的架构决策写入项目记忆。"
+    ]
+  }
+}

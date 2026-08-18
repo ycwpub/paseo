@@ -18,6 +18,10 @@ export interface DesktopSettings {
   attention: {
     soundVolume: number;
   };
+  island: {
+    enabled: boolean;
+    showWhenFocused: boolean;
+  };
 }
 
 interface DesktopSettingsPatch {
@@ -25,6 +29,7 @@ interface DesktopSettingsPatch {
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
   attention?: Partial<DesktopSettings["attention"]>;
+  island?: Partial<DesktopSettings["island"]>;
 }
 
 export interface DesktopSettingsStore {
@@ -44,6 +49,10 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   },
   attention: {
     soundVolume: 0.5,
+  },
+  island: {
+    enabled: true,
+    showWhenFocused: true,
   },
 };
 
@@ -191,6 +200,21 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
+  if (isRecord(input.island)) {
+    const islandPatch: Partial<DesktopSettings["island"]> = {};
+    const enabled = coerceBoolean(input.island.enabled);
+    if (enabled !== null) {
+      islandPatch.enabled = enabled;
+    }
+    const showWhenFocused = coerceBoolean(input.island.showWhenFocused);
+    if (showWhenFocused !== null) {
+      islandPatch.showWhenFocused = showWhenFocused;
+    }
+    if (Object.keys(islandPatch).length > 0) {
+      patch.island = islandPatch;
+    }
+  }
+
   return patch;
 }
 
@@ -225,6 +249,7 @@ function mergeDesktopSettings(
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
     attention: { ...current.attention, ...patch.attention },
+    island: { ...current.island, ...patch.island },
   };
 }
 

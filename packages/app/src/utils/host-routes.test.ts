@@ -249,6 +249,7 @@ describe("host settings section slugs", () => {
     expect(normalizeHostSectionSlug("relay")).toBe("relay");
     expect(normalizeHostSectionSlug("agents")).toBe("agents");
     expect(normalizeHostSectionSlug("metadata")).toBe("metadata");
+    expect(normalizeHostSectionSlug("plugins")).toBe("plugins");
     expect(normalizeHostSectionSlug("workspaces")).toBe("workspaces");
     expect(normalizeHostSectionSlug("projects")).toBe("projects");
     expect(normalizeHostSectionSlug("providers")).toBe("providers");

@@ -1,0 +1,296 @@
+{
+  "version": 1,
+  "title": "字节对账",
+  "description": "通过对话描述对账需求，生成或修改仓库内对账实现及 FundEye/Fullink/TCheck 规则草稿，然后执行本地测试、平台调试和差异比对。所有写操作默认关闭。",
+  "components": [
+    {
+      "id": "requirement_heading",
+      "type": "heading",
+      "text": "对账需求",
+      "level": 2
+    },
+    {
+      "id": "request",
+      "type": "textarea",
+      "label": "对账需求 / 修改说明",
+      "required": true,
+      "placeholder": "描述上下游数据源、关联键、核对逻辑、金额精度、时间窗口、异常输出和验收标准",
+      "description": "可在插件聊天中反复补充需求；不要填写 Token、Cookie、JWT 或其他密钥。"
+    },
+    {
+      "id": "repository_path",
+      "type": "text_input",
+      "label": "代码仓库绝对路径",
+      "required": true,
+      "placeholder": "/absolute/path/to/repository"
+    },
+    {
+      "id": "agent_provider",
+      "type": "text_input",
+      "label": "Agent Provider",
+      "required": true,
+      "defaultValue": "codex"
+    },
+    {
+      "id": "agent_model",
+      "type": "text_input",
+      "label": "Agent Model（可选）",
+      "defaultValue": "",
+      "description": "留空时使用 Provider 默认模型。"
+    },
+    {
+      "id": "repository_heading",
+      "type": "heading",
+      "text": "仓库生成与修改",
+      "level": 2
+    },
+    {
+      "id": "approve_repository_changes",
+      "type": "checkbox",
+      "label": "允许修改仓库内的对账代码或配置",
+      "defaultValue": false,
+      "description": "关闭时只生成修改方案，不写文件。"
+    },
+    {
+      "id": "approve_local_test",
+      "type": "checkbox",
+      "label": "允许执行本地测试",
+      "defaultValue": false,
+      "description": "只执行仓库内测试，不触发 FundEye 平台操作。"
+    },
+    {
+      "id": "local_test_command",
+      "type": "textarea",
+      "label": "本地测试命令（可选）",
+      "defaultValue": "",
+      "placeholder": "例如：npm test -- reconciliation",
+      "description": "留空时由 Agent 根据仓库结构选择最小必要测试。"
+    },
+    {
+      "id": "fundeye_heading",
+      "type": "heading",
+      "text": "FundEye / Fullink / TCheck",
+      "level": 2
+    },
+    {
+      "id": "platform_action",
+      "type": "select",
+      "label": "平台规则操作",
+      "defaultValue": "none",
+      "options": [
+        { "label": "不修改平台规则", "value": "none" },
+        { "label": "创建 TCheck 规则", "value": "tcheck_create" },
+        { "label": "保存 TCheck 修改草稿", "value": "tcheck_draft" },
+        { "label": "创建 Fullink 单流子规则", "value": "fullink_single_create" },
+        { "label": "创建 Fullink 双流子规则", "value": "fullink_double_create" },
+        { "label": "创建 Fullink UDF 子规则", "value": "fullink_udf_create" },
+        { "label": "更新 Fullink 单流子规则", "value": "fullink_single_update" },
+        { "label": "更新 Fullink 双流子规则", "value": "fullink_double_update" },
+        { "label": "更新 Fullink UDF 子规则", "value": "fullink_udf_update" }
+      ],
+      "description": "Agent 根据聊天生成结构化 payload；框架只允许这里列出的命令。"
+    },
+    {
+      "id": "product_type",
+      "type": "select",
+      "label": "规则产品",
+      "defaultValue": "fullink",
+      "options": [
+        { "label": "Fullink", "value": "fullink" },
+        { "label": "TCheck", "value": "tcheck" }
+      ]
+    },
+    {
+      "id": "sitename",
+      "type": "select",
+      "label": "站点",
+      "defaultValue": "cn",
+      "options": [
+        { "label": "中国", "value": "cn" },
+        { "label": "新加坡", "value": "sg" },
+        { "label": "美国 TTP", "value": "us-ttp" },
+        { "label": "欧洲 TTP", "value": "eu-ttp" },
+        { "label": "火山云", "value": "volc" }
+      ]
+    },
+    {
+      "id": "rule_id",
+      "type": "text_input",
+      "label": "现有 Rule ID（修改、测试或比对时填写）",
+      "defaultValue": ""
+    },
+    {
+      "id": "rule_owner",
+      "type": "text_input",
+      "label": "规则 Owner（创建 TCheck 时填写）",
+      "defaultValue": ""
+    },
+    {
+      "id": "scene_name",
+      "type": "text_input",
+      "label": "Fullink Scene 名称（创建时填写）",
+      "defaultValue": ""
+    },
+    {
+      "id": "scene_id",
+      "type": "text_input",
+      "label": "Fullink Scene ID（追加或更新时填写）",
+      "defaultValue": ""
+    },
+    {
+      "id": "sub_rule_id",
+      "type": "text_input",
+      "label": "Fullink 子规则 ID / Edge Seq（更新时填写）",
+      "defaultValue": ""
+    },
+    {
+      "id": "approve_platform_write",
+      "type": "checkbox",
+      "label": "确认写入 FundEye 草稿或子规则",
+      "defaultValue": false,
+      "description": "关闭时仅生成并展示 payload；本插件不自动发布 TCheck 规则。"
+    },
+    {
+      "id": "test_heading",
+      "type": "heading",
+      "text": "平台测试与比对",
+      "level": 2
+    },
+    {
+      "id": "remote_test_mode",
+      "type": "select",
+      "label": "平台测试方式",
+      "defaultValue": "none",
+      "options": [
+        { "label": "不执行平台测试", "value": "none" },
+        { "label": "Fullink 双流 Debug", "value": "fullink_double_debug" },
+        { "label": "查询 TCheck 核对记录", "value": "tcheck_record_list" }
+      ]
+    },
+    {
+      "id": "approve_remote_test",
+      "type": "checkbox",
+      "label": "确认执行 Fullink 平台 Debug",
+      "defaultValue": false,
+      "description": "TCheck 核对记录查询是只读操作，不需要该确认。"
+    },
+    {
+      "id": "rule_version",
+      "type": "text_input",
+      "label": "Rule Version（Fullink Debug）",
+      "defaultValue": ""
+    },
+    {
+      "id": "edge_seq",
+      "type": "number_input",
+      "label": "Edge Seq（Fullink Debug）",
+      "defaultValue": 1,
+      "min": 1
+    },
+    {
+      "id": "upstream_data_json",
+      "type": "textarea",
+      "label": "上游样例 JSON（Fullink Debug）",
+      "defaultValue": ""
+    },
+    {
+      "id": "downstream_data_json",
+      "type": "textarea",
+      "label": "下游样例 JSON（Fullink Debug）",
+      "defaultValue": ""
+    },
+    {
+      "id": "record_date",
+      "type": "text_input",
+      "label": "核对记录日期（可选，YYYY-MM-DD）",
+      "defaultValue": ""
+    },
+    {
+      "id": "compare_start",
+      "type": "text_input",
+      "label": "Diff 开始时间（可选）",
+      "defaultValue": "",
+      "placeholder": "YYYY-MM-DD HH:mm:ss"
+    },
+    {
+      "id": "compare_end",
+      "type": "text_input",
+      "label": "Diff 结束时间（可选）",
+      "defaultValue": "",
+      "placeholder": "YYYY-MM-DD HH:mm:ss"
+    },
+    {
+      "id": "alarm_order_id",
+      "type": "text_input",
+      "label": "Alarm Order ID（可选）",
+      "defaultValue": ""
+    },
+    {
+      "id": "memory_heading",
+      "type": "heading",
+      "text": "对账知识记忆",
+      "level": 2
+    },
+    {
+      "id": "memory_project",
+      "type": "checkbox",
+      "label": "写入项目记忆",
+      "defaultValue": false
+    },
+    {
+      "id": "project_id",
+      "type": "text_input",
+      "label": "Project ID",
+      "defaultValue": ""
+    },
+    {
+      "id": "memory_assistant",
+      "type": "checkbox",
+      "label": "写入助手记忆",
+      "defaultValue": false
+    },
+    {
+      "id": "assistant_id",
+      "type": "text_input",
+      "label": "Assistant ID",
+      "defaultValue": ""
+    },
+    {
+      "id": "memory_global",
+      "type": "checkbox",
+      "label": "写入全局记忆",
+      "defaultValue": false
+    },
+    {
+      "id": "memory_instructions",
+      "type": "textarea",
+      "label": "记忆规范",
+      "defaultValue": "只保存稳定的对账口径、字段语义、关联键、精度规则、测试方法、异常分类和修复经验；不保存样例中的个人数据、密钥、原始大日志或瞬时 Diff。"
+    },
+    {
+      "id": "safety",
+      "type": "text",
+      "text": "安全边界：默认只生成方案；平台写入必须明确勾选；不自动发布规则、不处理或重试 Diff、不重跑历史核对；FundEye 调用统一使用 bytedcli。"
+    },
+    {
+      "id": "run",
+      "type": "button",
+      "label": "生成 / 修改并测试对账",
+      "variant": "primary",
+      "action": {
+        "type": "http_service",
+        "serviceName": "reconciliation"
+      }
+    },
+    {
+      "id": "status",
+      "type": "status",
+      "label": "执行状态"
+    },
+    {
+      "id": "result",
+      "type": "result",
+      "label": "对账方案、测试和比对结果"
+    }
+  ]
+}

@@ -230,6 +230,7 @@ import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { LarkChannelStore } from "./channels/lark/lark-channel-store.js";
 import { OfficialLarkChannelClientAdapter } from "./channels/lark/lark-client-adapter.js";
 import { LarkChannelService } from "./channels/lark/lark-channel-service.js";
+import { LarkReminderService } from "./channels/lark/lark-reminder-service.js";
 import { AssistantStore } from "./assistants/assistant-store.js";
 import { PaseoMemoryStore } from "./memory/memory-store.js";
 import { PaseoMemoryService } from "./memory/memory-service.js";
@@ -237,6 +238,10 @@ import { TeamStore } from "./team/team-store.js";
 import { McpStore } from "./mcp/mcp-store.js";
 import { SkillMaterializer } from "./skill/skill-materializer.js";
 import { SkillStore } from "./skill/skill-store.js";
+import { PluginService } from "./plugin/plugin-service.js";
+import { PluginHttpServiceManager } from "./plugin/plugin-http-service-manager.js";
+import { PluginAppService } from "./plugin/plugin-app-service.js";
+import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
 import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
 import { ProjectIndexService } from "./project/project-index-service.js";
 
@@ -1180,6 +1185,17 @@ export async function createPaseoDaemon(
   } catch (error) {
     logger.warn({ err: error }, "Failed to import provider MCP servers and skills during startup");
   }
+  const pluginService = new PluginService({
+    paseoHome: config.paseoHome,
+    logger,
+    mcpStore,
+    skillStore,
+  });
+  try {
+    pluginService.initialize();
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to initialize plugins during daemon startup");
+  }
   try {
     skillMaterializer.sync(skillStore.list());
   } catch (error) {
@@ -1515,6 +1531,21 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
+  const larkChannelAdapter = new OfficialLarkChannelClientAdapter({ logger });
+  const larkReminderService = new LarkReminderService({
+    paseoHome: config.paseoHome,
+    channelStore: larkChannelStore,
+    adapter: larkChannelAdapter,
+    logger,
+    emitChanged: (reminders) => {
+      wsServer?.broadcast(
+        wrapSessionMessage({
+          type: "channel.lark.reminder.changed",
+          payload: { reminders },
+        }),
+      );
+    },
+  });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
   const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger });
   const memoryService = new PaseoMemoryService({
@@ -1522,6 +1553,8 @@ export async function createPaseoDaemon(
     agentManager,
     providerSnapshotManager,
     readDaemonConfig: () => daemonConfigStore.get(),
+    resolveProjectId: async (workspaceId) =>
+      (await workspaceRegistry.get(workspaceId))?.projectId ?? null,
     logger,
   });
   memoryService.start();
@@ -1532,13 +1565,14 @@ export async function createPaseoDaemon(
   });
   larkChannelService = new LarkChannelService({
     store: larkChannelStore,
-    adapter: new OfficialLarkChannelClientAdapter({ logger }),
+    adapter: larkChannelAdapter,
     agentManager,
     agentStorage,
     createAgent,
     assistantStore,
     teamStore,
     logger,
+    reminderService: larkReminderService,
     host: {
       emitStatusChanged: (status) => {
         wsServer?.broadcast(
@@ -1634,6 +1668,23 @@ export async function createPaseoDaemon(
     teamStore,
   });
   await workflowService.start();
+  const pluginHttpServiceManager = new PluginHttpServiceManager({
+    paseoHome: config.paseoHome,
+    logger,
+    workflowService,
+    memoryWriter: new PluginWorkflowMemoryStoreWriter(memoryStore),
+  });
+  const pluginAppService = new PluginAppService({
+    paseoHome: config.paseoHome,
+    logger,
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => daemonConfigStore.get(),
+    httpRuntime: pluginHttpServiceManager,
+    resolveApp: (pluginId, appId) => pluginService.resolveAppContext(pluginId, appId),
+    listHttpTargets: () => pluginService.listEnabledHttpTargets(),
+  });
+  pluginService.attachAppRuntime(pluginAppService);
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,
     logger,
@@ -1943,6 +1994,7 @@ export async function createPaseoDaemon(
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
             const appBaseUrl = config.appBaseUrl ?? "https://app.paseo.sh";
+            await pluginService.attachHttpRuntime(pluginHttpServiceManager);
 
             if (boundListenTarget.type === "tcp") {
               logger.info(
@@ -2022,6 +2074,7 @@ export async function createPaseoDaemon(
               teamStore,
               mcpStore,
               skillStore,
+              pluginService,
               daemonKeyPair.keyPair,
               workflowService,
               loopService,
@@ -2060,6 +2113,7 @@ export async function createPaseoDaemon(
       scriptHealthMonitor.start();
       await larkChannelService.start();
     } catch (error) {
+      await pluginHttpServiceManager.stop().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
       if (mainStarted) {
         httpServer.closeAllConnections();
@@ -2086,6 +2140,7 @@ export async function createPaseoDaemon(
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     speechService.stop();
+    await pluginHttpServiceManager.stop().catch(() => undefined);
     await workflowService.stop().catch(() => undefined);
     await scheduleService.stop().catch(() => undefined);
     relayReconcileStopped = true;

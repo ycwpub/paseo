@@ -2,6 +2,8 @@ import type pino from "pino";
 import type {
   LarkChannelAuthorizedUser,
   LarkChannelStatus,
+  LarkReminder,
+  LarkReminderCreateInput,
   SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
 import type { AgentManager, AgentManagerEvent } from "../../agent/agent-manager.js";
@@ -47,6 +49,7 @@ import {
   type LarkSubstituteTrigger,
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
+import type { LarkReminderService } from "./lark-reminder-service.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -317,6 +320,7 @@ export class LarkChannelService {
   private readonly teamStore: TeamStore;
   private readonly logger: pino.Logger;
   private readonly host: LarkChannelServiceHost;
+  private readonly reminderService: LarkReminderService | null;
   private readonly subscriptions = new Map<string, LarkChannelEventSubscription>();
   private readonly runtimes = new Map<string, LarkChannelRuntimeStatusInput>();
   private readonly botIdentities = new Map<string, LarkChannelBotInfo>();
@@ -335,6 +339,7 @@ export class LarkChannelService {
     teamStore: TeamStore;
     logger: pino.Logger;
     host: LarkChannelServiceHost;
+    reminderService?: LarkReminderService | null;
   }) {
     this.store = options.store;
     this.adapter = options.adapter;
@@ -345,6 +350,7 @@ export class LarkChannelService {
     this.teamStore = options.teamStore;
     this.logger = options.logger.child({ module: "lark-channel-service" });
     this.host = options.host;
+    this.reminderService = options.reminderService ?? null;
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
       void this.handleAgentManagerEvent(event);
     });
@@ -358,6 +364,7 @@ export class LarkChannelService {
   }
 
   async start(): Promise<void> {
+    this.reminderService?.start();
     this.reconnectEventCutoff ??= Date.now() - RECONNECT_EVENT_GRACE_MS;
     const bots = this.store.getBots();
     if (bots.length === 0) {
@@ -370,6 +377,7 @@ export class LarkChannelService {
   }
 
   async stop(): Promise<void> {
+    this.reminderService?.stop();
     for (const subscription of this.subscriptions.values()) {
       subscription.close();
     }
@@ -404,6 +412,7 @@ export class LarkChannelService {
     if (!this.store.deleteBot(botId)) {
       throw new Error("Lark bot not found");
     }
+    this.reminderService?.handleBotDeleted(botId);
     this.emitStatusChanged();
     return this.getStatus();
   }
@@ -477,12 +486,32 @@ export class LarkChannelService {
     return this.getStatus();
   }
 
+  listReminders(): LarkReminder[] {
+    return this.reminderService?.list() ?? [];
+  }
+
+  createReminder(input: LarkReminderCreateInput): LarkReminder {
+    if (!this.reminderService) throw new Error("Lark reminders are unavailable");
+    return this.reminderService.create(input);
+  }
+
+  setReminderEnabled(reminderId: string, enabled: boolean): LarkReminder {
+    if (!this.reminderService) throw new Error("Lark reminders are unavailable");
+    return this.reminderService.setEnabled(reminderId, enabled);
+  }
+
+  deleteReminder(reminderId: string): boolean {
+    if (!this.reminderService) throw new Error("Lark reminders are unavailable");
+    return this.reminderService.delete(reminderId);
+  }
+
   async handleIncomingEvent(botId: string, event: NormalizedLarkMessageEvent): Promise<void> {
     const now = Date.now();
     const storedBot = this.store.getBot(botId);
     if (!storedBot) {
       return;
     }
+    this.reminderService?.handleIncomingEvent(botId, event);
     const config = storedBot.config;
     if (!config.enabled) {
       return;

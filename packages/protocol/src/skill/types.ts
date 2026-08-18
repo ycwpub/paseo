@@ -9,6 +9,8 @@ export const SkillSchema = z.object({
   enabled: z.boolean(),
   content: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  pluginId: z.string().optional(),
+  pluginName: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

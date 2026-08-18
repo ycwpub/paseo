@@ -33,6 +33,7 @@ import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
+import { LarkReminderSection } from "./lark-reminder-section";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
@@ -1490,6 +1491,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         users={selectedBotStatus?.authorizedUsers ?? EMPTY_AUTHORIZED_USERS}
         onRevoke={handleRevokeUser}
       />
+      <LarkReminderSection serverId={serverId} bots={botStatuses} />
     </View>
   );
 }

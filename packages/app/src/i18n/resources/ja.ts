@@ -275,6 +275,23 @@ export const ja: TranslationResources = {
       title_mr: "イシューまたはMRを添付",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "グローバルメモリは無効です",
+    globalDisabledDescription:
+      "設定は保存されますが、ホスト設定でメモリを有効にするまで Paseo は使用しません。",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "メモリルール",
+      description: "各メモリ範囲に保存する永続的な情報を管理します。",
+      scopeType: "メモリ範囲",
+      target: "対象",
+      selectTarget: "対象を選択",
+      instructionsTitle: "保存する情報",
+      save: "ルールを保存",
+      saved: "保存済み",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "プロバイダー",
@@ -305,6 +322,21 @@ export const ja: TranslationResources = {
       thinking: "思考モード",
       model: "モデルを変更",
       mode: "権限モードを変更",
+    },
+    memory: {
+      title: "会話メモリ",
+      open: "会話メモリを設定",
+      enabledTitle: "この会話でメモリを使用",
+      enabledHint:
+        "無効にすると、このエージェントは既存メモリを参照せず、会話から新しいメモリも学習しません。",
+      instructionsTitle: "この会話から Paseo に何を記憶させますか？",
+      instructionsHint:
+        "確定した結論、繰り返し現れる設定、最終決定など長期的な情報を指定します。一時ログ、推測、秘密情報は除外されます。",
+      instructionsPlaceholder: "例：確定した原因と最終決定を記憶し、途中の実験は無視する。",
+      save: "保存",
+      saving: "保存中...",
+      saved: "保存しました",
+      saveError: "会話メモリを保存できませんでした",
     },
   },
   agentStream: {
@@ -2009,6 +2041,7 @@ export const ja: TranslationResources = {
       memory: "メモリ",
       mcp: "MCPサーバー",
       skills: "スキル",
+      plugins: "プラグイン",
       workspaces: "ワークスペース",
       providers: "プロバイダー",
       channels: "チャンネル",
@@ -2718,6 +2751,22 @@ export const ja: TranslationResources = {
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "プロジェクトメモリ",
+        info: "このプロジェクト固有のメモリを制御し、Paseo が学習する長期的な知識を定義します。",
+        enabledTitle: "このプロジェクトでメモリを使用",
+        enabledHint:
+          "無効にすると、エージェントはプロジェクトメモリを参照・作成しません。グローバルメモリは引き続き利用できます。",
+        instructionsTitle: "このプロジェクトについて何を記憶させますか？",
+        instructionsHint:
+          "規約、アーキテクチャ決定、繰り返し使う手順、安定した環境情報を記述します。",
+        instructionsPlaceholder:
+          "例：アーキテクチャ決定とリリース手順を記憶し、一時的な障害、ログ、秘密情報は無視する。",
+        save: "保存",
+        saving: "保存中...",
+        saved: "保存しました",
+        saveError: "プロジェクトメモリを保存できませんでした",
+      },
       rename: {
         renamedToast: "プロジェクト名を変更しました",
         errorFallback: "プロジェクト名を変更できませんでした",

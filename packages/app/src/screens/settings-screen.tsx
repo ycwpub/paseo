@@ -114,6 +114,7 @@ import {
   HostAssistantsPage,
   HostMemoryPage,
   HostMcpPage,
+  HostPluginsPage,
   HostSkillsPage,
   HostChannelsPage,
   HostUsagePage,
@@ -206,6 +207,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "memory", labelKey: "settings.hostSections.memory", icon: Brain },
   { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
   { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
+  { id: "plugins", labelKey: "settings.hostSections.plugins", icon: Puzzle },
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "channels", labelKey: "settings.hostSections.channels", icon: MessageCircle },
@@ -239,6 +241,8 @@ function renderHostSettingsContent(
       return <HostMcpPage serverId={view.serverId} />;
     case "skills":
       return <HostSkillsPage serverId={view.serverId} />;
+    case "plugins":
+      return <HostPluginsPage serverId={view.serverId} />;
     case "workspaces":
       return <HostWorkspacesPage serverId={view.serverId} />;
     case "providers":

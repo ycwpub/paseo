@@ -106,6 +106,7 @@ import type { PaseoMemoryService } from "./memory/memory-service.js";
 import type { TeamStore } from "./team/team-store.js";
 import type { McpStore } from "./mcp/mcp-store.js";
 import type { SkillStore } from "./skill/skill-store.js";
+import type { PluginService } from "./plugin/plugin-service.js";
 import {
   CLIENT_ACCESS_HISTORY_RETENTION_DAYS,
   ClientAccessStore,
@@ -629,6 +630,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly teamStore: TeamStore | null;
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
+  private readonly pluginService: PluginService | null;
   private readonly clientAccessStore: ClientAccessStore;
   private readonly daemonKeyPair: KeyPair | null;
   private readonly directUpgradeTokens = new Map<
@@ -691,6 +693,7 @@ export class VoiceAssistantWebSocketServer {
     teamStore?: TeamStore | null,
     mcpStore?: McpStore | null,
     skillStore?: SkillStore | null,
+    pluginService?: PluginService | null,
     daemonKeyPair?: KeyPair,
     workflowService?: WorkflowService | null,
     loopService?: LoopService | null,
@@ -715,6 +718,7 @@ export class VoiceAssistantWebSocketServer {
     this.teamStore = teamStore ?? null;
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
+    this.pluginService = pluginService ?? null;
     this.workflowService = workflowService ?? null;
     this.loopService = loopService ?? null;
     this.daemonKeyPair = daemonKeyPair ?? null;
@@ -1642,6 +1646,7 @@ export class VoiceAssistantWebSocketServer {
       teamStore: this.teamStore,
       mcpStore: this.mcpStore,
       skillStore: this.skillStore,
+      pluginService: this.pluginService,
     });
   }
 
@@ -1996,16 +2001,23 @@ export class VoiceAssistantWebSocketServer {
         agentConfigApply: true,
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
         larkChannel: true,
+        larkReminders: true,
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: true,
         // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
         memory: true,
+        // COMPAT(memoryPolicies): added in v0.3.2, remove gate after 2027-02-18.
+        memoryPolicies: true,
+        // COMPAT(memoryScopePolicies): added in v0.3.2, remove gate after 2027-02-18.
+        memoryScopePolicies: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
         teams: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         mcpServers: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         skills: true,
+        // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
+        plugins: true,
       },
     };
   }

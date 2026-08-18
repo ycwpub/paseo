@@ -21,9 +21,16 @@ import {
   McpServerCreateInput,
   McpServerUpdateInput,
   PaseoMemoryUpdateInput,
+  PluginInstallSource,
+  PluginAppState,
+  PluginHttpJob,
+  PluginMarketplaceSummary,
+  PluginState,
+  PluginSummary,
   Skill,
   SkillCreateInput,
   SkillUpdateInput,
+  type LarkReminderCreateInput,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import { DaemonResourceRpcClient } from "./daemon-resource-rpc-client.js";
@@ -649,6 +656,22 @@ type LarkChannelRevokeUserPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.revoke_user.response" }
 >["payload"];
+type LarkReminderListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.reminder.list.response" }
+>["payload"];
+type LarkReminderCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.reminder.create.response" }
+>["payload"];
+type LarkReminderSetEnabledPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.reminder.set_enabled.response" }
+>["payload"];
+type LarkReminderDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.reminder.delete.response" }
+>["payload"];
 type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
 type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
 type LoopInspectPayload = Extract<
@@ -957,6 +980,18 @@ export interface GetLarkBotApplicationOptions {
 }
 export interface DeleteLarkBotOptions {
   botId: string;
+  requestId?: string;
+}
+export interface CreateLarkReminderOptions extends LarkReminderCreateInput {
+  requestId?: string;
+}
+export interface SetLarkReminderEnabledOptions {
+  reminderId: string;
+  enabled: boolean;
+  requestId?: string;
+}
+export interface DeleteLarkReminderOptions {
+  reminderId: string;
   requestId?: string;
 }
 export interface RunLoopOptions {
@@ -5908,6 +5943,78 @@ export class DaemonClient {
     return this.resourceRpc.deleteSkill(id);
   }
 
+  async listPlugins(options?: {
+    refresh?: boolean;
+  }): Promise<PluginState & { error: string | null }> {
+    return this.resourceRpc.listPlugins(options);
+  }
+
+  async addPluginMarketplace(path: string): Promise<
+    PluginState & {
+      marketplace: PluginMarketplaceSummary | null;
+      error: string | null;
+    }
+  > {
+    return this.resourceRpc.addPluginMarketplace(path);
+  }
+
+  async removePluginMarketplace(
+    marketplaceId: string,
+  ): Promise<PluginState & { ok: boolean; error: string | null }> {
+    return this.resourceRpc.removePluginMarketplace(marketplaceId);
+  }
+
+  async installPlugin(source: PluginInstallSource): Promise<{
+    plugin: PluginSummary | null;
+    state: PluginState;
+    error: string | null;
+  }> {
+    return this.resourceRpc.installPlugin(source);
+  }
+
+  async setPluginEnabled(
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<{ plugin: PluginSummary | null; state: PluginState; error: string | null }> {
+    return this.resourceRpc.setPluginEnabled(pluginId, enabled);
+  }
+
+  async uninstallPlugin(
+    pluginId: string,
+  ): Promise<PluginState & { ok: boolean; error: string | null }> {
+    return this.resourceRpc.uninstallPlugin(pluginId);
+  }
+
+  async getPluginApp(
+    pluginId: string,
+    appId: string,
+  ): Promise<{ app: PluginAppState | null; error: string | null }> {
+    return this.resourceRpc.getPluginApp(pluginId, appId);
+  }
+
+  async generatePluginApp(
+    pluginId: string,
+    appId: string,
+    prompt: string,
+  ): Promise<{ app: PluginAppState | null; error: string | null }> {
+    return this.resourceRpc.generatePluginApp(pluginId, appId, prompt);
+  }
+
+  async submitPluginAppAction(input: {
+    pluginId: string;
+    appId: string;
+    componentId: string;
+    form: Record<string, unknown>;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.submitPluginAppAction(input);
+  }
+
+  async getPluginAppJob(
+    processId: string,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.getPluginAppJob(processId);
+  }
+
   async getLarkChannelStatus(
     options?: LarkChannelRequestOptions,
   ): Promise<LarkChannelGetStatusPayload> {
@@ -5960,6 +6067,24 @@ export class DaemonClient {
 
   async revokeLarkUser(options: RevokeLarkUserOptions): Promise<LarkChannelRevokeUserPayload> {
     return this.resourceRpc.revokeLarkUser(options);
+  }
+
+  async listLarkReminders(requestId?: string): Promise<LarkReminderListPayload> {
+    return this.resourceRpc.listLarkReminders(requestId);
+  }
+
+  async createLarkReminder(options: CreateLarkReminderOptions): Promise<LarkReminderCreatePayload> {
+    return this.resourceRpc.createLarkReminder(options);
+  }
+
+  async setLarkReminderEnabled(
+    options: SetLarkReminderEnabledOptions,
+  ): Promise<LarkReminderSetEnabledPayload> {
+    return this.resourceRpc.setLarkReminderEnabled(options);
+  }
+
+  async deleteLarkReminder(options: DeleteLarkReminderOptions): Promise<LarkReminderDeletePayload> {
+    return this.resourceRpc.deleteLarkReminder(options);
   }
 
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {

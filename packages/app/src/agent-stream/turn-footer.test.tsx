@@ -57,6 +57,10 @@ vi.mock("./turn-changes", () => ({
   TurnChanges: () => null,
 }));
 
+vi.mock("./turn-memory-sources", () => ({
+  TurnMemorySources: () => null,
+}));
+
 import { TurnFooter } from "./turn-footer";
 import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import type { StreamItem } from "@/types/stream";

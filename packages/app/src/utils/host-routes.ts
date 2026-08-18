@@ -522,6 +522,7 @@ export const HOST_SECTION_SLUGS = [
   "memory",
   "mcp",
   "skills",
+  "plugins",
   "workspaces",
   "providers",
   "channels",

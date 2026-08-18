@@ -3,6 +3,12 @@ import type {
   McpServerCreateInput,
   McpServerUpdateInput,
   PaseoMemoryUpdateInput,
+  PluginAppState,
+  PluginHttpJob,
+  PluginInstallSource,
+  PluginMarketplaceSummary,
+  PluginState,
+  PluginSummary,
   SessionInboundMessage,
   SessionOutboundMessage,
   Skill,
@@ -18,14 +24,17 @@ import type {
   ApproveLarkPairingOptions,
   AssistantRequestOptions,
   ConfigureLarkChannelOptions,
+  CreateLarkReminderOptions,
   CreateAssistantOptions,
   DeleteAssistantOptions,
   DeleteLarkBotOptions,
+  DeleteLarkReminderOptions,
   GetLarkBotApplicationOptions,
   LarkChannelRequestOptions,
   RejectLarkPairingOptions,
   RevokeLarkUserOptions,
   SetLarkChannelEnabledOptions,
+  SetLarkReminderEnabledOptions,
   UpdateAssistantOptions,
 } from "./daemon-client.js";
 
@@ -231,6 +240,138 @@ export class DaemonResourceRpcClient {
     return { ok: result.ok, error: result.error };
   }
 
+  async listPlugins(options?: {
+    refresh?: boolean;
+  }): Promise<PluginState & { error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.list.request", refresh: options?.refresh },
+      responseType: "plugin.list.response",
+    });
+    return {
+      plugins: result.plugins,
+      marketplaces: result.marketplaces,
+      error: result.error,
+    };
+  }
+
+  async addPluginMarketplace(path: string): Promise<
+    PluginState & {
+      marketplace: PluginMarketplaceSummary | null;
+      error: string | null;
+    }
+  > {
+    const result = await this.request({
+      message: { type: "plugin.marketplace.add.request", path },
+      responseType: "plugin.marketplace.add.response",
+    });
+    return {
+      marketplace: result.marketplace,
+      plugins: result.plugins,
+      marketplaces: result.marketplaces,
+      error: result.error,
+    };
+  }
+
+  async removePluginMarketplace(
+    marketplaceId: string,
+  ): Promise<PluginState & { ok: boolean; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.marketplace.remove.request", marketplaceId },
+      responseType: "plugin.marketplace.remove.response",
+    });
+    return {
+      ok: result.ok,
+      plugins: result.plugins,
+      marketplaces: result.marketplaces,
+      error: result.error,
+    };
+  }
+
+  async installPlugin(source: PluginInstallSource): Promise<{
+    plugin: PluginSummary | null;
+    state: PluginState;
+    error: string | null;
+  }> {
+    const result = await this.request({
+      message: { type: "plugin.install.request", source },
+      responseType: "plugin.install.response",
+    });
+    return { plugin: result.plugin, state: result.state, error: result.error };
+  }
+
+  async setPluginEnabled(
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<{ plugin: PluginSummary | null; state: PluginState; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.set_enabled.request", pluginId, enabled },
+      responseType: "plugin.set_enabled.response",
+    });
+    return { plugin: result.plugin, state: result.state, error: result.error };
+  }
+
+  async uninstallPlugin(
+    pluginId: string,
+  ): Promise<PluginState & { ok: boolean; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.uninstall.request", pluginId },
+      responseType: "plugin.uninstall.response",
+    });
+    return {
+      ok: result.ok,
+      plugins: result.plugins,
+      marketplaces: result.marketplaces,
+      error: result.error,
+    };
+  }
+
+  async getPluginApp(
+    pluginId: string,
+    appId: string,
+  ): Promise<{ app: PluginAppState | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.get.request", pluginId, appId },
+      responseType: "plugin.app.get.response",
+    });
+    return { app: result.app, error: result.error };
+  }
+
+  async generatePluginApp(
+    pluginId: string,
+    appId: string,
+    prompt: string,
+  ): Promise<{ app: PluginAppState | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.generate.request", pluginId, appId, prompt },
+      responseType: "plugin.app.generate.response",
+      timeout: 180_000,
+    });
+    return { app: result.app, error: result.error };
+  }
+
+  async submitPluginAppAction(input: {
+    pluginId: string;
+    appId: string;
+    componentId: string;
+    form: Record<string, unknown>;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.action.submit.request", ...input },
+      responseType: "plugin.app.action.submit.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async getPluginAppJob(
+    processId: string,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.get.request", processId },
+      responseType: "plugin.app.job.get.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
   getLarkChannelStatus(options?: LarkChannelRequestOptions) {
     return this.request({
       requestId: options?.requestId,
@@ -328,6 +469,46 @@ export class DaemonResourceRpcClient {
         userId: options.userId,
       },
       responseType: "channel.lark.revoke_user.response",
+    });
+  }
+
+  listLarkReminders(requestId?: string) {
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.reminder.list.request" },
+      responseType: "channel.lark.reminder.list.response",
+    });
+  }
+
+  createLarkReminder(options: CreateLarkReminderOptions) {
+    const { requestId, ...reminder } = options;
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.reminder.create.request", ...reminder },
+      responseType: "channel.lark.reminder.create.response",
+    });
+  }
+
+  setLarkReminderEnabled(options: SetLarkReminderEnabledOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.reminder.set_enabled.request",
+        reminderId: options.reminderId,
+        enabled: options.enabled,
+      },
+      responseType: "channel.lark.reminder.set_enabled.response",
+    });
+  }
+
+  deleteLarkReminder(options: DeleteLarkReminderOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.reminder.delete.request",
+        reminderId: options.reminderId,
+      },
+      responseType: "channel.lark.reminder.delete.response",
     });
   }
 }

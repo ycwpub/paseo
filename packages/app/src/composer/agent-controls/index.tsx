@@ -83,6 +83,7 @@ import {
   type AgentProfilePicker,
 } from "@/agent-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
+import { ConversationMemoryControl } from "@/composer/agent-controls/conversation-memory-control";
 
 interface AgentControlOption {
   id: string;
@@ -1662,30 +1663,33 @@ export const AgentControls = memo(function AgentControls({
   }
 
   return (
-    <ControlledAgentControls
-      provider={agent.provider}
-      modelSelectorProviders={agentModelSelectorProviders}
-      modelOptions={modelOptions}
-      selectedModelId={modelSelection.activeModelId ?? undefined}
-      onSelectModel={handleSelectModel}
-      agentProfiles={agentProfiles}
-      onApplyAgentProfile={agentProfiles?.applyProfile}
-      onEditAgentProfiles={handleEditAgentProfiles}
-      thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
-      selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
-      onSelectThinkingOption={handleSelectThinkingOption}
-      features={agent.features}
-      onSetFeature={handleSetFeature}
-      isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
-      onModelSelectorOpen={handleModelSelectorOpen}
-      onRetryModelProvider={handleRetryModelProvider}
-      isRetryingModelProvider={snapshotIsRefreshing}
-      onDropdownClose={onDropdownClose}
-      disabled={!client}
-      modeControl={modeControl}
-      modelSelectorServerId={serverId}
-      isCompactLayout={isCompactLayout}
-    />
+    <>
+      <ControlledAgentControls
+        provider={agent.provider}
+        modelSelectorProviders={agentModelSelectorProviders}
+        modelOptions={modelOptions}
+        selectedModelId={modelSelection.activeModelId ?? undefined}
+        onSelectModel={handleSelectModel}
+        agentProfiles={agentProfiles}
+        onApplyAgentProfile={agentProfiles?.applyProfile}
+        onEditAgentProfiles={handleEditAgentProfiles}
+        thinkingOptions={thinkingOptions.length > 1 ? thinkingOptions : undefined}
+        selectedThinkingOptionId={modelSelection.selectedThinkingId ?? undefined}
+        onSelectThinkingOption={handleSelectThinkingOption}
+        features={agent.features}
+        onSetFeature={handleSetFeature}
+        isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
+        onModelSelectorOpen={handleModelSelectorOpen}
+        onRetryModelProvider={handleRetryModelProvider}
+        isRetryingModelProvider={snapshotIsRefreshing}
+        onDropdownClose={onDropdownClose}
+        disabled={!client}
+        modeControl={modeControl}
+        modelSelectorServerId={serverId}
+        isCompactLayout={isCompactLayout}
+      />
+      <ConversationMemoryControl serverId={serverId} agentId={agentId} />
+    </>
   );
 });
 

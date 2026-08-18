@@ -282,6 +282,23 @@ export const es: TranslationResources = {
       title_mr: "Adjuntar problema o MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "La memoria global está desactivada",
+    globalDisabledDescription:
+      "La política se guardará, pero Paseo no la usará hasta que actives Memoria en la configuración del host.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Reglas de memoria",
+      description: "Gestiona la información duradera que puede guardar cada ámbito de memoria.",
+      scopeType: "Ámbito de memoria",
+      target: "Destino",
+      selectTarget: "Selecciona un destino",
+      instructionsTitle: "Qué se debe guardar",
+      save: "Guardar reglas",
+      saved: "Guardado",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Proveedor",
@@ -312,6 +329,22 @@ export const es: TranslationResources = {
       thinking: "Modo de pensamiento",
       model: "Cambiar modelo",
       mode: "Cambiar modo",
+    },
+    memory: {
+      title: "Memoria de la conversación",
+      open: "Configurar memoria de la conversación",
+      enabledTitle: "Usar memoria en esta conversación",
+      enabledHint:
+        "Si se desactiva, este agente no leerá memoria existente ni aprenderá memoria nueva de la conversación.",
+      instructionsTitle: "¿Qué debe recordar Paseo de esta conversación?",
+      instructionsHint:
+        "Indica temas duraderos como conclusiones confirmadas, preferencias recurrentes o decisiones. Los registros temporales, suposiciones y secretos se excluyen.",
+      instructionsPlaceholder:
+        "Ejemplo: recordar causas confirmadas y decisiones finales; ignorar experimentos intermedios.",
+      save: "Guardar",
+      saving: "Guardando...",
+      saved: "Guardado",
+      saveError: "No se pudo guardar la memoria de la conversación",
     },
   },
   agentStream: {
@@ -2044,6 +2077,7 @@ export const es: TranslationResources = {
       memory: "Memory",
       mcp: "Servidores MCP",
       skills: "Habilidades",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Proveedores",
       channels: "Canales",
@@ -2754,6 +2788,22 @@ export const es: TranslationResources = {
       backToProjects: "Volver a proyectos",
       switchHost: "Cambiar de anfitrión",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Memoria del proyecto",
+        info: "Controla la memoria de este proyecto y define qué conocimiento duradero debe aprender Paseo.",
+        enabledTitle: "Usar memoria para este proyecto",
+        enabledHint:
+          "Si se desactiva, los agentes no leerán ni crearán memoria del proyecto. La memoria global seguirá disponible.",
+        instructionsTitle: "¿Qué debe recordar Paseo para este proyecto?",
+        instructionsHint:
+          "Describe convenciones, decisiones de arquitectura, procedimientos recurrentes y datos estables del entorno.",
+        instructionsPlaceholder:
+          "Ejemplo: recordar decisiones de arquitectura y procesos de publicación; ignorar fallos temporales, registros y secretos.",
+        save: "Guardar",
+        saving: "Guardando...",
+        saved: "Guardado",
+        saveError: "No se pudo guardar la memoria del proyecto",
+      },
       rename: {
         renamedToast: "Proyecto renombrado",
         errorFallback: "No se pudo cambiar el nombre del proyecto",

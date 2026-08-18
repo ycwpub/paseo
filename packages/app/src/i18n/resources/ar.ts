@@ -272,6 +272,23 @@ export const ar: TranslationResources = {
       title_mr: "إرفاق المشكلة أو MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "الذاكرة العامة متوقفة",
+    globalDisabledDescription:
+      "سيتم حفظ السياسة، لكن Paseo لن يستخدمها حتى يتم تفعيل الذاكرة في إعدادات المضيف.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "قواعد الذاكرة",
+      description: "إدارة المعلومات الدائمة التي يمكن لكل نطاق ذاكرة حفظها.",
+      scopeType: "نطاق الذاكرة",
+      target: "الهدف",
+      selectTarget: "اختر هدفًا",
+      instructionsTitle: "ما الذي يجب حفظه",
+      save: "حفظ القواعد",
+      saved: "تم الحفظ",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "مزود",
@@ -302,6 +319,22 @@ export const ar: TranslationResources = {
       thinking: "وضع التفكير",
       model: "تغيير النموذج",
       mode: "تغيير الوضع",
+    },
+    memory: {
+      title: "ذاكرة المحادثة",
+      open: "إعداد ذاكرة المحادثة",
+      enabledTitle: "استخدام الذاكرة في هذه المحادثة",
+      enabledHint:
+        "عند الإيقاف، لا يقرأ هذا الوكيل الذاكرة الحالية ولا يتعلم ذاكرة جديدة من المحادثة.",
+      instructionsTitle: "ماذا يجب أن يتذكر Paseo من هذه المحادثة؟",
+      instructionsHint:
+        "حدد الاستنتاجات المؤكدة أو التفضيلات المتكررة أو القرارات. تبقى السجلات المؤقتة والتخمينات والأسرار مستبعدة.",
+      instructionsPlaceholder:
+        "مثال: تذكر الأسباب المؤكدة والقرارات النهائية وتجاهل التجارب الوسيطة.",
+      save: "حفظ",
+      saving: "جارٍ الحفظ...",
+      saved: "تم الحفظ",
+      saveError: "تعذر حفظ ذاكرة المحادثة",
     },
   },
   agentStream: {
@@ -1990,6 +2023,7 @@ export const ar: TranslationResources = {
       memory: "Memory",
       mcp: "خوادم MCP",
       skills: "المهارات",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "مقدمي الخدمات",
       channels: "القنوات",
@@ -2690,6 +2724,21 @@ export const ar: TranslationResources = {
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "ذاكرة المشروع",
+        info: "تحكم في ذاكرة هذا المشروع وحدد المعرفة الدائمة التي يجب أن يتعلمها Paseo.",
+        enabledTitle: "استخدام الذاكرة لهذا المشروع",
+        enabledHint:
+          "عند الإيقاف، لا تقرأ الوكلاء ذاكرة المشروع ولا تنشئها. تبقى الذاكرة العامة متاحة.",
+        instructionsTitle: "ماذا يجب أن يتذكر Paseo لهذا المشروع؟",
+        instructionsHint: "صف الاتفاقيات وقرارات البنية والإجراءات المتكررة وحقائق البيئة المستقرة.",
+        instructionsPlaceholder:
+          "مثال: تذكر قرارات البنية وإجراءات الإصدار وتجاهل الأعطال المؤقتة والسجلات والأسرار.",
+        save: "حفظ",
+        saving: "جارٍ الحفظ...",
+        saved: "تم الحفظ",
+        saveError: "تعذر حفظ ذاكرة المشروع",
+      },
       rename: {
         renamedToast: "تمت إعادة تسمية المشروع",
         errorFallback: "تعذرت إعادة تسمية المشروع",

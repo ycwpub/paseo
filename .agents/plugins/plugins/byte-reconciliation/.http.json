@@ -1,0 +1,13 @@
+{
+  "services": {
+    "reconciliation": {
+      "host": "127.0.0.1",
+      "port": 0,
+      "path": "/byte-reconciliation",
+      "workflow": "./workflows/byte-reconciliation.json",
+      "memory": {
+        "outputPath": "memory"
+      }
+    }
+  }
+}

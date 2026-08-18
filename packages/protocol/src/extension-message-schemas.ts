@@ -1,4 +1,14 @@
 import {
+  PluginAppActionSubmitRequestSchema,
+  PluginAppActionSubmitResponseSchema,
+  PluginAppGenerateRequestSchema,
+  PluginAppGenerateResponseSchema,
+  PluginAppGetRequestSchema,
+  PluginAppGetResponseSchema,
+  PluginAppJobGetRequestSchema,
+  PluginAppJobGetResponseSchema,
+} from "./plugin/app-rpc-schemas.js";
+import {
   AssistantChangedMessageSchema,
   AssistantCreateRequestSchema,
   AssistantCreateResponseSchema,
@@ -32,6 +42,17 @@ import {
   LarkChannelTestConnectionRequestSchema,
   LarkChannelTestConnectionResponseSchema,
 } from "./channel/lark/rpc-schemas.js";
+import {
+  LarkReminderChangedMessageSchema,
+  LarkReminderCreateRequestSchema,
+  LarkReminderCreateResponseSchema,
+  LarkReminderDeleteRequestSchema,
+  LarkReminderDeleteResponseSchema,
+  LarkReminderListRequestSchema,
+  LarkReminderListResponseSchema,
+  LarkReminderSetEnabledRequestSchema,
+  LarkReminderSetEnabledResponseSchema,
+} from "./channel/lark/reminder-rpc-schemas.js";
 import {
   DaemonClientAccessApproveRequestSchema,
   DaemonClientAccessApproveResponseSchema,
@@ -78,6 +99,21 @@ import {
   SkillUpdateRequestSchema,
   SkillUpdateResponseSchema,
 } from "./skill/rpc-schemas.js";
+import {
+  PluginChangedMessageSchema,
+  PluginInstallRequestSchema,
+  PluginInstallResponseSchema,
+  PluginListRequestSchema,
+  PluginListResponseSchema,
+  PluginMarketplaceAddRequestSchema,
+  PluginMarketplaceAddResponseSchema,
+  PluginMarketplaceRemoveRequestSchema,
+  PluginMarketplaceRemoveResponseSchema,
+  PluginSetEnabledRequestSchema,
+  PluginSetEnabledResponseSchema,
+  PluginUninstallRequestSchema,
+  PluginUninstallResponseSchema,
+} from "./plugin/rpc-schemas.js";
 import {
   TeamChangedMessageSchema,
   TeamCreateRequestSchema,
@@ -134,6 +170,10 @@ export const ExtensionSessionInboundSchemas = [
   LarkChannelApprovePairingRequestSchema,
   LarkChannelRejectPairingRequestSchema,
   LarkChannelRevokeUserRequestSchema,
+  LarkReminderListRequestSchema,
+  LarkReminderCreateRequestSchema,
+  LarkReminderSetEnabledRequestSchema,
+  LarkReminderDeleteRequestSchema,
   DaemonClientAccessListRequestSchema,
   DaemonClientAccessApproveRequestSchema,
   DaemonClientAccessSetPausedRequestSchema,
@@ -163,6 +203,16 @@ export const ExtensionSessionInboundSchemas = [
   SkillCreateRequestSchema,
   SkillUpdateRequestSchema,
   SkillDeleteRequestSchema,
+  PluginListRequestSchema,
+  PluginMarketplaceAddRequestSchema,
+  PluginMarketplaceRemoveRequestSchema,
+  PluginInstallRequestSchema,
+  PluginSetEnabledRequestSchema,
+  PluginUninstallRequestSchema,
+  PluginAppGetRequestSchema,
+  PluginAppGenerateRequestSchema,
+  PluginAppActionSubmitRequestSchema,
+  PluginAppJobGetRequestSchema,
 ] as const;
 
 export const ExtensionSessionOutboundSchemas = [
@@ -185,6 +235,11 @@ export const ExtensionSessionOutboundSchemas = [
   LarkChannelRejectPairingResponseSchema,
   LarkChannelRevokeUserResponseSchema,
   LarkChannelStatusChangedMessageSchema,
+  LarkReminderListResponseSchema,
+  LarkReminderCreateResponseSchema,
+  LarkReminderSetEnabledResponseSchema,
+  LarkReminderDeleteResponseSchema,
+  LarkReminderChangedMessageSchema,
   DaemonClientAccessListResponseSchema,
   DaemonClientAccessApproveResponseSchema,
   DaemonClientAccessSetPausedResponseSchema,
@@ -217,4 +272,15 @@ export const ExtensionSessionOutboundSchemas = [
   SkillUpdateResponseSchema,
   SkillDeleteResponseSchema,
   SkillChangedMessageSchema,
+  PluginListResponseSchema,
+  PluginMarketplaceAddResponseSchema,
+  PluginMarketplaceRemoveResponseSchema,
+  PluginInstallResponseSchema,
+  PluginSetEnabledResponseSchema,
+  PluginUninstallResponseSchema,
+  PluginChangedMessageSchema,
+  PluginAppGetResponseSchema,
+  PluginAppGenerateResponseSchema,
+  PluginAppActionSubmitResponseSchema,
+  PluginAppJobGetResponseSchema,
 ] as const;

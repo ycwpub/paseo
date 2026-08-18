@@ -47,6 +47,38 @@ export const zhCN: TranslationResources = {
       idle: "空闲",
     },
   },
+  memoryPolicies: {
+    globalDisabledTitle: "全局记忆未开启",
+    globalDisabledDescription:
+      "当前策略会正常保存，但需要先在 Host 的记忆设置中开启记忆，Paseo 才会使用它。",
+    scopeManager: {
+      title: "记忆规范",
+      description: "统一管理全局、Project、Workspace 和助手记忆允许保存的长期信息。",
+      scopeType: "记忆范围",
+      target: "管理对象",
+      selectScopeType: "选择记忆范围",
+      selectTarget: "选择管理对象",
+      noScopes: "没有可用的记忆范围",
+      noTargets: "没有匹配的 Project、Workspace 或助手",
+      types: {
+        global: "全局",
+        project: "Project",
+        workspace: "Workspace",
+        assistant: "助手",
+      },
+      enabledTitle: "{{scope}}记忆",
+      enabledHint: "在匹配的会话中读取该范围的记忆，并允许自动学习新记忆到该范围。",
+      instructionsTitle: "保存哪些信息",
+      instructionsHint:
+        "描述适合保存到该范围的长期信息。该规范只指导记忆提取，不会作为指令加入 Agent 的可见提示词。",
+      instructionsPlaceholder:
+        "例如：保存已确认的规范、可复用流程和稳定决策；忽略临时错误和一次性请求。",
+      save: "保存规范",
+      saving: "保存中…",
+      saved: "已保存",
+      saveError: "无法保存记忆规范",
+    },
+  },
   workflows: {
     title: "工作流",
     actions: {
@@ -816,6 +848,20 @@ export const zhCN: TranslationResources = {
       thinking: "Thinking mode",
       model: "切换 Model",
       mode: "更改模式",
+    },
+    memory: {
+      title: "会话记忆",
+      open: "配置会话记忆",
+      enabledTitle: "在当前会话中使用记忆",
+      enabledHint: "关闭后，当前 Agent 不会读取已有记忆，也不会从当前会话学习新记忆。",
+      instructionsTitle: "Paseo 应该从当前会话记住什么？",
+      instructionsHint:
+        "填写需要优先沉淀的长期信息，例如已确认的结论、反复出现的偏好或最终决策。临时日志、猜测和密钥仍会被排除。",
+      instructionsPlaceholder: "例如：记住已确认的根因和最终决策，忽略中间实验过程。",
+      save: "保存",
+      saving: "正在保存...",
+      saved: "已保存",
+      saveError: "无法保存会话记忆",
     },
   },
   agentStream: {
@@ -2489,6 +2535,7 @@ export const zhCN: TranslationResources = {
       memory: "记忆",
       mcp: "MCP 服务",
       skills: "技能",
+      plugins: "插件",
       workspaces: "Workspaces",
       providers: "Providers",
       channels: "渠道",
@@ -3180,6 +3227,21 @@ export const zhCN: TranslationResources = {
       backToProjects: "返回 Projects",
       switchHost: "切换 Host",
       projectId: "Project ID",
+      memory: {
+        title: "Project 记忆",
+        info: "控制当前 Project 是否使用独立作用域的记忆，并定义 Paseo 应沉淀哪些长期 Project 知识。",
+        enabledTitle: "为当前 Project 开启记忆",
+        enabledHint:
+          "关闭后，当前 Project 中的 Agent 不再读取或创建 Project 作用域的记忆；全局记忆仍可使用。",
+        instructionsTitle: "Paseo 应该为当前 Project 记住什么？",
+        instructionsHint:
+          "填写需要长期保留的 Project 知识，例如开发规范、架构决策、重复流程和稳定的环境事实。",
+        instructionsPlaceholder: "例如：记住架构决策和发布流程，忽略临时故障、原始日志和密钥。",
+        save: "保存",
+        saving: "正在保存...",
+        saved: "已保存",
+        saveError: "无法保存 Project 记忆",
+      },
       rename: {
         renamedToast: "Project 已重命名",
         errorFallback: "无法重命名 Project",

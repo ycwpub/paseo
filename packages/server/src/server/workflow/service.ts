@@ -6,6 +6,7 @@ import type { Logger } from "pino";
 import {
   WorkflowPayloadSchema,
   WorkflowScriptSchema,
+  type WorkflowAgentConfig,
   type WorkflowAgentStep,
   type WorkflowBashStep,
   type WorkflowForStep,
@@ -447,8 +448,12 @@ export class WorkflowService {
 
   async runScriptAndWait(input: WorkflowRunInput): Promise<WorkflowRun> {
     const run = await this.runScript(input);
-    await this.activeRuns.get(run.id);
-    return this.getRun(run.id);
+    return this.waitForRun(run.id);
+  }
+
+  async waitForRun(runId: string): Promise<WorkflowRun> {
+    await this.activeRuns.get(runId);
+    return this.getRun(runId);
   }
 
   private async executeRun(run: WorkflowRun): Promise<void> {
@@ -907,32 +912,43 @@ export class WorkflowService {
     nodeRunId: string,
     outputValidationError: string | null,
   ): Promise<StepExecutionResult> {
-    const cwd = await resolveStepCwd(step.config.cwd, state.runtime.runDir);
+    const baseNodeInput = resolveNodeInputEnvelope(step.id, state);
+    const builtInVariables = createRuntimeTemplateVariables(run, step, state, attempt);
+    const renderedCwd = step.config.cwd
+      ? renderAgentInstruction({
+          template: step.config.cwd,
+          input: baseNodeInput,
+          builtInVariables,
+        })
+      : undefined;
+    const cwd = await resolveStepCwd(renderedCwd, state.runtime.runDir);
     const nodeInput = {
-      ...resolveNodeInputEnvelope(step.id, state),
+      ...baseNodeInput,
       project: {
         var: await this.resolveAgentProjectVariables(cwd),
       },
     } satisfies WorkflowNodeInputEnvelope;
+    const resolvedConfig = resolveWorkflowAgentConfig(step.config, nodeInput, builtInVariables);
+    const resolvedStep = { ...step, config: resolvedConfig };
     await this.updateNodeRunInput(run.id, nodeRunId, JSON.stringify(nodeInput));
     const renderedInstruction = renderAgentInstruction({
       template: step.initialPrompt,
       input: nodeInput,
-      builtInVariables: createRuntimeTemplateVariables(run, step, state, attempt),
+      builtInVariables,
     });
     const renderedSubsequentInstruction =
       step.subsequentPromptMode === "custom" && step.subsequentPrompt
         ? renderAgentInstruction({
             template: step.subsequentPrompt,
             input: nodeInput,
-            builtInVariables: createRuntimeTemplateVariables(run, step, state, attempt),
+            builtInVariables,
           })
         : undefined;
     const renderedSystemPrompt = step.config.systemPrompt
       ? renderAgentInstruction({
           template: step.config.systemPrompt,
           input: nodeInput,
-          builtInVariables: createRuntimeTemplateVariables(run, step, state, attempt),
+          builtInVariables,
         })
       : undefined;
     const repairedInstruction = outputValidationError
@@ -948,12 +964,13 @@ export class WorkflowService {
       "paseo.workflow-attempt": String(attempt),
     };
     const { prompt: initialPrompt, labels } = this.resolveAgentIdentityContext(
-      step,
+      resolvedStep,
       repairedInstruction,
       baseLabels,
     );
     const subsequentPrompt = repairedSubsequentInstruction
-      ? this.resolveAgentIdentityContext(step, repairedSubsequentInstruction, baseLabels).prompt
+      ? this.resolveAgentIdentityContext(resolvedStep, repairedSubsequentInstruction, baseLabels)
+          .prompt
       : undefined;
     const lifecycle = step.lifecycle ?? "single";
     let inheritedScope: WorkflowAgentLifecycleScope<WorkflowAgentResource> | null = null;
@@ -970,7 +987,7 @@ export class WorkflowService {
         create: () =>
           this.createWorkflowAgentResource({
             run,
-            step,
+            step: resolvedStep,
             cwd,
             prompt: initialPrompt,
             renderedInstruction,
@@ -980,7 +997,7 @@ export class WorkflowService {
         run: async (resource, invocation) => {
           const activeAgentId = resource.agentId;
           const prompt = resolveWorkflowAgentInvocationPrompt({
-            step,
+            step: resolvedStep,
             isFirstInvocation: invocation.isFirst,
             initialPrompt,
             subsequentPrompt,
@@ -989,7 +1006,7 @@ export class WorkflowService {
           try {
             return await this.runWorkflowAgentResource({
               run,
-              step,
+              step: resolvedStep,
               state,
               prompt,
               cwd: resource.workspace.cwd,
@@ -2135,6 +2152,37 @@ function renderAgentInstruction(input: {
   });
 }
 
+function resolveWorkflowAgentConfig(
+  config: WorkflowAgentConfig,
+  input: WorkflowNodeInputEnvelope,
+  builtInVariables: Record<string, string>,
+): WorkflowAgentConfig {
+  const render = (template: string): string =>
+    renderAgentInstruction({
+      template,
+      input,
+      builtInVariables,
+    });
+  const renderOptional = (template: string | undefined): string | undefined => {
+    if (template === undefined) return undefined;
+    const rendered = render(template);
+    return rendered.trim().length > 0 ? rendered : undefined;
+  };
+  const provider = render(config.provider);
+  if (!provider.trim()) {
+    throw new Error("Workflow Agent provider resolved to an empty value");
+  }
+  return {
+    ...config,
+    provider,
+    cwd: renderOptional(config.cwd),
+    modeId: renderOptional(config.modeId),
+    model: renderOptional(config.model),
+    thinkingOptionId: renderOptional(config.thinkingOptionId),
+    title: config.title === null ? null : renderOptional(config.title),
+  };
+}
+
 function createRuntimeTemplateVariables(
   run: WorkflowRun,
   step: Pick<WorkflowStep, "id" | "name">,
@@ -2486,11 +2534,44 @@ function buildWorkflowAgentConfig(
     model: step.config.model,
     thinkingOptionId: step.config.thinkingOptionId,
     title: step.config.title,
-    providerOptions: step.config.providerOptions,
+    providerOptions: resolveWorkflowAgentProviderOptions(step.config),
     featureValues: step.config.featureValues,
     systemPrompt,
     mcpServers: step.config.mcpServers as AgentSessionConfig["mcpServers"],
   };
+}
+
+function resolveWorkflowAgentProviderOptions(
+  config: WorkflowAgentConfig,
+): AgentSessionConfig["providerOptions"] {
+  const providerOptions = { ...config.providerOptions };
+  if (!config.provider.toLowerCase().includes("codex")) {
+    return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
+  }
+  if (config.approvalPolicy && providerOptions.approval_policy === undefined) {
+    providerOptions.approval_policy = config.approvalPolicy;
+  }
+  if (config.sandboxMode && providerOptions.sandbox_mode === undefined) {
+    providerOptions.sandbox_mode = config.sandboxMode;
+  }
+  if (config.networkAccess !== undefined) {
+    const workspaceWrite =
+      typeof providerOptions.sandbox_workspace_write === "object" &&
+      providerOptions.sandbox_workspace_write !== null &&
+      !Array.isArray(providerOptions.sandbox_workspace_write)
+        ? providerOptions.sandbox_workspace_write
+        : {};
+    if (!("network_access" in workspaceWrite)) {
+      providerOptions.sandbox_workspace_write = {
+        ...workspaceWrite,
+        network_access: config.networkAccess,
+      };
+    }
+  }
+  if (config.webSearch !== undefined && providerOptions.web_search === undefined) {
+    providerOptions.web_search = config.webSearch ? "live" : "disabled";
+  }
+  return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
 }
 
 function createAgentNodeResultEnvelope(

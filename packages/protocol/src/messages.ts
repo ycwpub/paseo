@@ -3255,16 +3255,25 @@ export const ServerInfoStatusPayloadSchema = z
         agentConfigApply: z.boolean().optional(),
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
         larkChannel: z.boolean().optional(),
+        // COMPAT(larkReminders): added on 2026-08-18. Older daemons do not
+        // understand the reminder RPCs, so clients must gate the management UI.
+        larkReminders: z.boolean().optional(),
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: z.boolean().optional(),
         // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
         memory: z.boolean().optional(),
+        // COMPAT(memoryPolicies): added in v0.3.2, remove gate after 2027-02-18.
+        memoryPolicies: z.boolean().optional(),
+        // COMPAT(memoryScopePolicies): added in v0.3.2, remove gate after 2027-02-18.
+        memoryScopePolicies: z.boolean().optional(),
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
         teams: z.boolean().optional(),
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         mcpServers: z.boolean().optional(),
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         skills: z.boolean().optional(),
+        // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
+        plugins: z.boolean().optional(),
       })
       .optional(),
   })

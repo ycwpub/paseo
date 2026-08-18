@@ -1394,7 +1394,8 @@ describe("relay external socket reconnect behavior", () => {
     expect(serverInfo.features?.["terminal-size-ownership"]).toBe(true);
     expect(serverInfo.features?.workflowCommandResultFd3).toBe(true);
     expect(serverInfo.features?.workflowProtocolVersion).toBe(1);
-    expect(serverInfo.features?.workflowProtocolRevision).toBe(2);
+    expect(serverInfo.features?.workflowProtocolRevision).toBe(4);
+    expect(serverInfo.features?.larkReminders).toBe(true);
     expect(serverInfo.features?.agentTurnIdentity).toBeUndefined();
     await server.close();
   });

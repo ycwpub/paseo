@@ -1,0 +1,40 @@
+{
+  "name": "byte-reconciliation",
+  "version": "0.1.0",
+  "description": "ByteDance reconciliation design, implementation, testing, and comparison workflows.",
+  "author": {
+    "name": "Paseo"
+  },
+  "keywords": [
+    "bytedance",
+    "reconciliation",
+    "fundeye",
+    "fullink",
+    "tcheck",
+    "testing",
+    "comparison"
+  ],
+  "skills": "./skills/",
+  "httpServices": "./.http.json",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "字节对账",
+    "shortDescription": "通过聊天生成或修改对账，并完成测试与比对",
+    "longDescription": "结合 Paseo Agent、Workflow 和 FundEye/Fullink/TCheck，完成对账需求分析、规则设计、仓库实现、平台草稿更新、测试、Diff 比对和经验沉淀。",
+    "developerName": "Paseo",
+    "category": "Finance",
+    "capabilities": [
+      "对账需求分析",
+      "生成或修改对账",
+      "FundEye/Fullink/TCheck",
+      "本地与平台测试",
+      "差异比对",
+      "项目/助手/全局记忆"
+    ],
+    "defaultPrompt": [
+      "根据我的描述生成一套新的对账规则，并先给出测试方案。",
+      "读取现有 FundEye 规则，分析后生成安全的修改草稿。",
+      "测试当前对账实现，并比较修改前后的规则和差异数据。"
+    ]
+  }
+}

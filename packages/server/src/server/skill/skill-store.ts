@@ -31,6 +31,8 @@ export interface ImportedSkillInput {
   source?: Skill["source"];
   tags?: string[];
   enabled?: boolean;
+  pluginId?: string;
+  pluginName?: string;
 }
 
 function createDefaultPayload(): SkillStorePayload {
@@ -113,6 +115,16 @@ export class SkillStore {
     );
     if (index >= 0) {
       const current = this.payload.skills[index]!;
+      if (
+        (input.pluginId && current.pluginId !== input.pluginId) ||
+        (!input.pluginId && current.pluginId)
+      ) {
+        this.logger.warn(
+          { name, pluginId: input.pluginId, existingPluginId: current.pluginId },
+          "Skipping imported skill because another plugin owns the name",
+        );
+        return SkillSchema.parse(current);
+      }
       if (current.source === "user" && !(current.tags ?? []).includes("imported")) {
         this.logger.warn(
           { name, existingSkillId: current.id },
@@ -128,6 +140,8 @@ export class SkillStore {
         path: input.path,
         content: input.content,
         tags: input.tags ?? current.tags ?? [],
+        pluginId: input.pluginId,
+        pluginName: input.pluginName,
         // Preserve the user's existing enabled/disabled choice on repeated
         // startup imports. Imported/system skills are enabled by default only
         // when first seen.
@@ -153,6 +167,8 @@ export class SkillStore {
       enabled: input.enabled ?? true,
       content: input.content,
       tags: input.tags ?? [],
+      pluginId: input.pluginId,
+      pluginName: input.pluginName,
       createdAt: timestamp,
       updatedAt: timestamp,
     });

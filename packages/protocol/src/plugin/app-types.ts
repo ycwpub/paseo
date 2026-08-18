@@ -1,0 +1,122 @@
+import { z } from "zod";
+
+const PluginAppComponentBaseSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
+const PluginAppFieldBaseSchema = PluginAppComponentBaseSchema.extend({
+  label: z.string().trim().min(1),
+  required: z.boolean().optional(),
+  placeholder: z.string().optional(),
+  description: z.string().optional(),
+});
+
+export const PluginAppHttpServiceActionSchema = z.object({
+  type: z.literal("http_service"),
+  pluginId: z.string().trim().min(1).optional(),
+  serviceName: z.string().trim().min(1),
+  input: z.unknown().optional(),
+});
+export type PluginAppHttpServiceAction = z.infer<typeof PluginAppHttpServiceActionSchema>;
+
+export const PluginAppComponentSchema = z.discriminatedUnion("type", [
+  PluginAppComponentBaseSchema.extend({
+    type: z.literal("heading"),
+    text: z.string(),
+    level: z.number().int().min(1).max(3).optional(),
+  }),
+  PluginAppComponentBaseSchema.extend({
+    type: z.literal("text"),
+    text: z.string(),
+  }),
+  PluginAppFieldBaseSchema.extend({
+    type: z.literal("text_input"),
+    defaultValue: z.string().optional(),
+  }),
+  PluginAppFieldBaseSchema.extend({
+    type: z.literal("textarea"),
+    defaultValue: z.string().optional(),
+  }),
+  PluginAppFieldBaseSchema.extend({
+    type: z.literal("number_input"),
+    defaultValue: z.number().optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
+  }),
+  PluginAppFieldBaseSchema.extend({
+    type: z.literal("select"),
+    defaultValue: z.string().optional(),
+    options: z
+      .array(
+        z.object({
+          label: z.string(),
+          value: z.string(),
+        }),
+      )
+      .min(1),
+  }),
+  PluginAppFieldBaseSchema.extend({
+    type: z.literal("checkbox"),
+    defaultValue: z.boolean().optional(),
+  }),
+  PluginAppComponentBaseSchema.extend({
+    type: z.literal("button"),
+    label: z.string().trim().min(1),
+    variant: z.enum(["primary", "secondary", "destructive"]).optional(),
+    action: PluginAppHttpServiceActionSchema,
+  }),
+  PluginAppComponentBaseSchema.extend({
+    type: z.literal("status"),
+    label: z.string().optional(),
+  }),
+  PluginAppComponentBaseSchema.extend({
+    type: z.literal("result"),
+    label: z.string().optional(),
+  }),
+  PluginAppComponentBaseSchema.extend({
+    type: z.literal("json"),
+    label: z.string().optional(),
+    value: z.unknown().optional(),
+  }),
+]);
+export type PluginAppComponent = z.infer<typeof PluginAppComponentSchema>;
+
+export const PluginAppDocumentSchema = z.object({
+  version: z.literal(1),
+  title: z.string().trim().min(1),
+  description: z.string().optional(),
+  components: z.array(PluginAppComponentSchema).max(100),
+});
+export type PluginAppDocument = z.infer<typeof PluginAppDocumentSchema>;
+
+export const PluginAppDefinitionSchema = z.object({
+  id: z.string().trim().min(1),
+  category: z.string().trim().min(1).optional(),
+  initialDocument: PluginAppDocumentSchema.optional(),
+});
+export type PluginAppDefinition = z.infer<typeof PluginAppDefinitionSchema>;
+
+export const PluginAppConversationMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  createdAt: z.string(),
+});
+export type PluginAppConversationMessage = z.infer<typeof PluginAppConversationMessageSchema>;
+
+export const PluginAppStateSchema = z.object({
+  pluginId: z.string(),
+  appId: z.string(),
+  category: z.string().optional(),
+  document: PluginAppDocumentSchema.nullable(),
+  conversation: z.array(PluginAppConversationMessageSchema),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type PluginAppState = z.infer<typeof PluginAppStateSchema>;
+
+export const PluginAppGenerationSchema = z.object({
+  message: z.string(),
+  document: PluginAppDocumentSchema,
+});
+export type PluginAppGeneration = z.infer<typeof PluginAppGenerationSchema>;

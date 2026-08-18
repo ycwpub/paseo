@@ -293,6 +293,10 @@ vi.mock("@/screens/settings/settings-section", () => ({
   ),
 }));
 
+vi.mock("./lark-reminder-section", () => ({
+  LarkReminderSection: () => null,
+}));
+
 function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotStatus {
   return {
     id: "bot-1",

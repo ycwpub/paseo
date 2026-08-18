@@ -52,4 +52,12 @@ describe("composePromptWithMemory", () => {
       }),
     ).toBe("hello");
   });
+
+  test("can omit the global summary while keeping matching scoped details", () => {
+    const result = composePromptWithMemory("Please build and restart Paseo.", state, {
+      includeSummary: false,
+    });
+    expect(result).not.toContain("Prefer concise Chinese answers.");
+    expect(result).toContain("Build, install, restart, test, then commit.");
+  });
 });

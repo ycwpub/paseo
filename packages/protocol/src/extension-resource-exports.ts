@@ -1,4 +1,20 @@
 export {
+  PluginAppComponentSchema,
+  PluginAppConversationMessageSchema,
+  PluginAppDefinitionSchema,
+  PluginAppDocumentSchema,
+  PluginAppGenerationSchema,
+  PluginAppHttpServiceActionSchema,
+  PluginAppStateSchema,
+  type PluginAppComponent,
+  type PluginAppConversationMessage,
+  type PluginAppDefinition,
+  type PluginAppDocument,
+  type PluginAppGeneration,
+  type PluginAppHttpServiceAction,
+  type PluginAppState,
+} from "./plugin/app-types.js";
+export {
   LarkChannelAuthorizedUserSchema,
   LarkChannelBotSchema,
   LarkChannelBotStatusSchema,
@@ -24,6 +40,19 @@ export {
   type LarkBotApplication,
 } from "./channel/lark/rpc-schemas.js";
 export {
+  LarkReminderCreateInputSchema,
+  LarkReminderReplySchema,
+  LarkReminderSchema,
+  LarkReminderSenderSchema,
+  LarkReminderStatusSchema,
+  type LarkReminder,
+  type LarkReminderCreateInput,
+  type LarkReminderReply,
+  type LarkReminderSender,
+  type LarkReminderStatus,
+} from "./channel/lark/reminder-types.js";
+export * from "./channel/lark/reminder-rpc-schemas.js";
+export {
   AssistantCreateInputSchema,
   AssistantMemoryDetailFileSchema,
   AssistantMemoryFilesSchema,
@@ -38,16 +67,30 @@ export {
   type AssistantUpdateInput,
 } from "./assistant/types.js";
 export {
+  PaseoMemoryCreateInputSchema,
   PaseoMemoryDetailSchema,
+  PaseoMemoryPolicySchema,
+  PaseoMemoryPolicyTargetSchema,
+  PaseoMemoryScopePolicySchema,
+  PaseoMemoryScopeSchema,
   PaseoMemorySettingsSchema,
+  PaseoMemorySourceRefSchema,
   PaseoMemoryStateSchema,
   PaseoMemoryStatsSchema,
   PaseoMemoryUpdateInputSchema,
+  PaseoMemoryUsageSchema,
+  type PaseoMemoryCreateInput,
   type PaseoMemoryDetail,
+  type PaseoMemoryPolicy,
+  type PaseoMemoryPolicyTarget,
+  type PaseoMemoryScopePolicy,
+  type PaseoMemoryScope,
   type PaseoMemorySettings,
+  type PaseoMemorySourceRef,
   type PaseoMemoryState,
   type PaseoMemoryStats,
   type PaseoMemoryUpdateInput,
+  type PaseoMemoryUsage,
 } from "./memory/types.js";
 export * from "./memory/rpc-schemas.js";
 export {
@@ -85,4 +128,34 @@ export {
   type SkillCreateInput,
   type SkillUpdateInput,
 } from "./skill/types.js";
+export {
+  PluginAuthorSchema,
+  PluginHttpJobSchema,
+  PluginHttpJobStatusSchema,
+  PluginHttpServiceRuntimeStatusSchema,
+  PluginHttpServiceSummarySchema,
+  PluginInstallSourceSchema,
+  PluginInterfaceSchema,
+  PluginManifestSchema,
+  PluginMarketplaceSummarySchema,
+  PluginSourceTypeSchema,
+  PluginStateSchema,
+  PluginSummarySchema,
+  PluginUnsupportedComponentSchema,
+  type PluginAuthor,
+  type PluginHttpJob,
+  type PluginHttpJobStatus,
+  type PluginHttpServiceRuntimeStatus,
+  type PluginHttpServiceSummary,
+  type PluginInstallSource,
+  type PluginInterface,
+  type PluginManifest,
+  type PluginMarketplaceSummary,
+  type PluginSourceType,
+  type PluginState,
+  type PluginSummary,
+  type PluginUnsupportedComponent,
+} from "./plugin/types.js";
+export * from "./plugin/app-rpc-schemas.js";
+export * from "./plugin/rpc-schemas.js";
 export * from "./client-access/rpc-schemas.js";

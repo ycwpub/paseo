@@ -281,6 +281,23 @@ export const ptBR: TranslationResources = {
       title_mr: "Anexar issue ou MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "A memória global está desativada",
+    globalDisabledDescription:
+      "A política será salva, mas o Paseo só a usará depois que a Memória for ativada nas configurações do host.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Regras de memória",
+      description: "Gerencie as informações duráveis que cada escopo de memória pode salvar.",
+      scopeType: "Escopo da memória",
+      target: "Destino",
+      selectTarget: "Selecione um destino",
+      instructionsTitle: "O que deve ser salvo",
+      save: "Salvar regras",
+      saved: "Salvo",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Provedor",
@@ -311,6 +328,22 @@ export const ptBR: TranslationResources = {
       thinking: "Modo de raciocínio",
       model: "Alterar modelo",
       mode: "Alterar modo de permissão",
+    },
+    memory: {
+      title: "Memória da conversa",
+      open: "Configurar memória da conversa",
+      enabledTitle: "Usar memória nesta conversa",
+      enabledHint:
+        "Quando desativada, este agente não lê memórias existentes nem aprende novas memórias da conversa.",
+      instructionsTitle: "O que o Paseo deve lembrar desta conversa?",
+      instructionsHint:
+        "Defina tópicos duradouros, como conclusões confirmadas, preferências recorrentes ou decisões. Logs temporários, suposições e segredos continuam excluídos.",
+      instructionsPlaceholder:
+        "Exemplo: lembrar causas confirmadas e decisões finais; ignorar experimentos intermediários.",
+      save: "Salvar",
+      saving: "Salvando...",
+      saved: "Salvo",
+      saveError: "Não foi possível salvar a memória da conversa",
     },
   },
   agentStream: {
@@ -2028,6 +2061,7 @@ export const ptBR: TranslationResources = {
       memory: "Memória",
       mcp: "Servidores MCP",
       skills: "Habilidades",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Provedores",
       channels: "Canais",
@@ -2738,6 +2772,22 @@ export const ptBR: TranslationResources = {
       backToProjects: "Voltar para projetos",
       switchHost: "Trocar host",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Memória do projeto",
+        info: "Controle a memória deste projeto e defina quais conhecimentos duradouros o Paseo deve aprender.",
+        enabledTitle: "Usar memória neste projeto",
+        enabledHint:
+          "Quando desativada, os agentes não leem nem criam memórias do projeto. A memória global continua disponível.",
+        instructionsTitle: "O que o Paseo deve lembrar deste projeto?",
+        instructionsHint:
+          "Descreva convenções, decisões de arquitetura, procedimentos recorrentes e fatos estáveis do ambiente.",
+        instructionsPlaceholder:
+          "Exemplo: lembrar decisões de arquitetura e procedimentos de lançamento; ignorar falhas temporárias, logs e segredos.",
+        save: "Salvar",
+        saving: "Salvando...",
+        saved: "Salvo",
+        saveError: "Não foi possível salvar a memória do projeto",
+      },
       rename: {
         renamedToast: "Projeto renomeado",
         errorFallback: "Não foi possível renomear projeto",

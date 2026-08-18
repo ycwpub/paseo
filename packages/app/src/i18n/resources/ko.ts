@@ -219,6 +219,22 @@ const koOverrides = {
       title_mr: "이슈 또는 MR 첨부",
     },
   },
+  memoryPolicies: {
+    globalDisabledTitle: "전역 메모리가 꺼져 있습니다",
+    globalDisabledDescription:
+      "정책은 저장되지만 호스트 설정에서 메모리를 켜기 전까지 Paseo가 사용하지 않습니다.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "메모리 규칙",
+      description: "각 메모리 범위에 저장할 영구 정보를 관리합니다.",
+      scopeType: "메모리 범위",
+      target: "대상",
+      selectTarget: "대상 선택",
+      instructionsTitle: "저장할 정보",
+      save: "규칙 저장",
+      saved: "저장됨",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "프로바이더",
@@ -249,6 +265,21 @@ const koOverrides = {
       thinking: "사고 모드",
       model: "모델 변경",
       mode: "모드 변경",
+    },
+    memory: {
+      title: "대화 메모리",
+      open: "대화 메모리 설정",
+      enabledTitle: "이 대화에서 메모리 사용",
+      enabledHint:
+        "끄면 이 에이전트는 기존 메모리를 읽지 않고 대화에서 새 메모리를 학습하지 않습니다.",
+      instructionsTitle: "Paseo가 이 대화에서 무엇을 기억해야 하나요?",
+      instructionsHint:
+        "확인된 결론, 반복되는 선호, 최종 결정처럼 오래 유지할 정보를 지정하세요. 임시 로그, 추측, 비밀은 제외됩니다.",
+      instructionsPlaceholder: "예: 확인된 원인과 최종 결정을 기억하고 중간 실험은 무시합니다.",
+      save: "저장",
+      saving: "저장 중...",
+      saved: "저장됨",
+      saveError: "대화 메모리를 저장할 수 없습니다",
     },
   },
   agentStream: {
@@ -1863,6 +1894,7 @@ const koOverrides = {
       connections: "연결",
       agents: "에이전트",
       metadata: "메타데이터",
+      plugins: "플러그인",
       workspaces: "워크스페이스",
       providers: "프로바이더",
       usage: "사용량",
@@ -2468,6 +2500,21 @@ const koOverrides = {
     project: {
       noEditableTarget: "이 호스트에서는 이 프로젝트를 편집할 수 없습니다.",
       backToProjects: "프로젝트로 돌아가기",
+      memory: {
+        title: "프로젝트 메모리",
+        info: "이 프로젝트의 메모리 사용 여부와 Paseo가 학습할 장기 지식을 설정합니다.",
+        enabledTitle: "이 프로젝트에서 메모리 사용",
+        enabledHint:
+          "끄면 에이전트가 프로젝트 메모리를 읽거나 만들지 않습니다. 전역 메모리는 계속 사용할 수 있습니다.",
+        instructionsTitle: "Paseo가 이 프로젝트에서 무엇을 기억해야 하나요?",
+        instructionsHint: "규칙, 아키텍처 결정, 반복 절차, 안정적인 환경 정보를 설명하세요.",
+        instructionsPlaceholder:
+          "예: 아키텍처 결정과 릴리스 절차를 기억하고 임시 오류, 로그, 비밀은 무시합니다.",
+        save: "저장",
+        saving: "저장 중...",
+        saved: "저장됨",
+        saveError: "프로젝트 메모리를 저장할 수 없습니다",
+      },
       edit: {
         title: "프로젝트 편집",
         name: "이름",

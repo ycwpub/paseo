@@ -187,6 +187,8 @@ import { McpStore } from "./mcp/mcp-store.js";
 import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
+import type { PluginService } from "./plugin/plugin-service.js";
+import { PluginSession } from "./plugin/plugin-session.js";
 import { importProviderResources } from "./shared-resource-importer.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { PushNotifications } from "./push/index.js";
@@ -528,6 +530,7 @@ export interface SessionOptions {
   teamStore?: TeamStore | null;
   mcpStore?: McpStore | null;
   skillStore?: SkillStore | null;
+  pluginService?: PluginService | null;
 }
 
 export type SessionLifecycleIntent =
@@ -720,6 +723,7 @@ export class Session {
   private readonly teamStore: TeamStore | null;
   private readonly mcpSession: McpSession | null;
   private readonly skillSession: SkillSession | null;
+  private readonly pluginSession: PluginSession | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
@@ -784,6 +788,7 @@ export class Session {
       teamStore,
       mcpStore,
       skillStore,
+      pluginService,
     } = options;
     this.clientId = clientId;
     this.scopes = [...scopes];
@@ -1031,6 +1036,16 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    this.pluginSession =
+      pluginService && mcpStore && skillStore
+        ? new PluginSession({
+            host: { emit: (msg) => this.emit(msg) },
+            service: pluginService,
+            mcpStore,
+            skillStore,
+            logger: this.sessionLogger,
+          })
+        : null;
     this.daemonConfigStore = daemonConfigStore;
     this.terminalManager = terminalManager;
     this.terminalController = new TerminalSessionController({
@@ -1974,6 +1989,7 @@ export class Session {
       this.dispatchTeamMessage(msg) ??
       this.dispatchMcpMessage(msg) ??
       this.dispatchSkillMessage(msg) ??
+      this.dispatchPluginMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
   }
@@ -2489,6 +2505,10 @@ export class Session {
       case "channel.lark.approve_pairing.request":
       case "channel.lark.reject_pairing.request":
       case "channel.lark.revoke_user.request":
+      case "channel.lark.reminder.list.request":
+      case "channel.lark.reminder.create.request":
+      case "channel.lark.reminder.set_enabled.request":
+      case "channel.lark.reminder.delete.request":
         return this.larkChannelSession?.handleRequest(msg);
       default:
         return undefined;
@@ -2530,6 +2550,24 @@ export class Session {
       case "skill.update.request":
       case "skill.delete.request":
         return this.skillSession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "plugin.list.request":
+      case "plugin.marketplace.add.request":
+      case "plugin.marketplace.remove.request":
+      case "plugin.install.request":
+      case "plugin.set_enabled.request":
+      case "plugin.uninstall.request":
+      case "plugin.app.get.request":
+      case "plugin.app.generate.request":
+      case "plugin.app.action.submit.request":
+      case "plugin.app.job.get.request":
+        return this.pluginSession?.handleRequest(msg);
       default:
         return undefined;
     }

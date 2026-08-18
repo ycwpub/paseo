@@ -46,6 +46,8 @@ export const McpServerSchema = z.object({
   createdAt: z.number(),
   updatedAt: z.number(),
   originalJson: z.string(),
+  pluginId: z.string().optional(),
+  pluginName: z.string().optional(),
 });
 export type McpServer = z.infer<typeof McpServerSchema>;
 

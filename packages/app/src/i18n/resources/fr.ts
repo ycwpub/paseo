@@ -284,6 +284,23 @@ export const fr: TranslationResources = {
       title_mr: "Joindre le problème ou MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "La mémoire globale est désactivée",
+    globalDisabledDescription:
+      "Cette règle est enregistrée, mais Paseo ne l'utilisera qu'après activation de la mémoire dans les réglages de l'hôte.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Règles de mémoire",
+      description: "Gérez les informations durables que chaque portée de mémoire peut enregistrer.",
+      scopeType: "Portée de la mémoire",
+      target: "Cible",
+      selectTarget: "Sélectionner une cible",
+      instructionsTitle: "Informations à enregistrer",
+      save: "Enregistrer les règles",
+      saved: "Enregistré",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Fournisseur",
@@ -314,6 +331,22 @@ export const fr: TranslationResources = {
       thinking: "Mode réflexion",
       model: "Changer de modèle",
       mode: "Changer de mode",
+    },
+    memory: {
+      title: "Mémoire de la conversation",
+      open: "Configurer la mémoire de la conversation",
+      enabledTitle: "Utiliser la mémoire dans cette conversation",
+      enabledHint:
+        "Si elle est désactivée, cet agent ne lit aucune mémoire existante et n'apprend rien de cette conversation.",
+      instructionsTitle: "Que doit retenir Paseo de cette conversation ?",
+      instructionsHint:
+        "Indiquez les conclusions confirmées, préférences récurrentes ou décisions à conserver. Les journaux temporaires, suppositions et secrets restent exclus.",
+      instructionsPlaceholder:
+        "Exemple : retenir les causes confirmées et les décisions finales, ignorer les essais intermédiaires.",
+      save: "Enregistrer",
+      saving: "Enregistrement...",
+      saved: "Enregistré",
+      saveError: "Impossible d'enregistrer la mémoire de la conversation",
     },
   },
   agentStream: {
@@ -2048,6 +2081,7 @@ export const fr: TranslationResources = {
       memory: "Memory",
       mcp: "Serveurs MCP",
       skills: "Compétences",
+      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Fournisseurs",
       channels: "Canaux",
@@ -2760,6 +2794,22 @@ export const fr: TranslationResources = {
       backToProjects: "Retour aux projets",
       switchHost: "Changer d'hôte",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Mémoire du projet",
+        info: "Contrôlez la mémoire propre à ce projet et définissez les connaissances durables que Paseo doit apprendre.",
+        enabledTitle: "Utiliser la mémoire pour ce projet",
+        enabledHint:
+          "Si elle est désactivée, les agents ne lisent ni ne créent de mémoire de projet. La mémoire globale reste disponible.",
+        instructionsTitle: "Que doit retenir Paseo pour ce projet ?",
+        instructionsHint:
+          "Décrivez les conventions, décisions d'architecture, procédures récurrentes et faits stables de l'environnement.",
+        instructionsPlaceholder:
+          "Exemple : retenir les décisions d'architecture et les procédures de publication, ignorer les erreurs temporaires, journaux et secrets.",
+        save: "Enregistrer",
+        saving: "Enregistrement...",
+        saved: "Enregistré",
+        saveError: "Impossible d'enregistrer la mémoire du projet",
+      },
       rename: {
         renamedToast: "Projet renommé",
         errorFallback: "Impossible de renommer le projet",

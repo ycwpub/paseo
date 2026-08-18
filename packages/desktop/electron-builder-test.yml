@@ -18,6 +18,8 @@ asarUnpack:
 extraResources:
   - from: ../app/dist
     to: app-dist
+  - from: ../../.agents/plugins
+    to: .agents/plugins
   - from: ../../skills
     to: skills
   - from: assets/icon.png

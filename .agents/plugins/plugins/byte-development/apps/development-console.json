@@ -1,0 +1,205 @@
+{
+  "version": 1,
+  "title": "字节开发全流程",
+  "description": "PRD → 技术方案 → Agent 指令 → 开发 → Review → BITS 部署 → 测试 → 发布。部署、测试和发布默认只做检查或 dry-run，必须显式确认后才会执行真实操作。",
+  "components": [
+    {
+      "id": "overview",
+      "type": "heading",
+      "text": "需求与代码",
+      "level": 2
+    },
+    {
+      "id": "prd",
+      "type": "textarea",
+      "label": "PRD / 需求说明",
+      "required": true,
+      "placeholder": "粘贴 PRD、需求链接及验收标准",
+      "description": "不得包含 Token、Cookie、JWT 或其他密钥。"
+    },
+    {
+      "id": "repository_path",
+      "type": "text_input",
+      "label": "代码仓库绝对路径",
+      "required": true,
+      "placeholder": "/absolute/path/to/repository"
+    },
+    {
+      "id": "agent_provider",
+      "type": "text_input",
+      "label": "Agent Provider",
+      "required": true,
+      "defaultValue": "codex",
+      "description": "例如 codex、aiden-codex、claude。"
+    },
+    {
+      "id": "agent_model",
+      "type": "text_input",
+      "label": "Agent Model（可选）",
+      "defaultValue": "",
+      "description": "留空时使用该 Provider 的默认模型。"
+    },
+    {
+      "id": "approve_development",
+      "type": "checkbox",
+      "label": "允许开发 Agent 修改代码",
+      "defaultValue": false,
+      "description": "关闭时只生成开发计划，不修改仓库。"
+    },
+    {
+      "id": "bits_heading",
+      "type": "heading",
+      "text": "BITS Dev Task",
+      "level": 2
+    },
+    {
+      "id": "bits_dev_task_id",
+      "type": "text_input",
+      "label": "Dev Task ID（可选）",
+      "defaultValue": "",
+      "description": "创建 Dev Task 请使用官方 bits-devops-dev-task skill；这里复用已有 Dev Task。"
+    },
+    {
+      "id": "bits_psm",
+      "type": "text_input",
+      "label": "部署项目 PSM（可选）",
+      "defaultValue": ""
+    },
+    {
+      "id": "bits_project_type",
+      "type": "select",
+      "label": "项目类型",
+      "defaultValue": "tce",
+      "options": [
+        { "label": "TCE", "value": "tce" },
+        { "label": "TCC", "value": "tcc" },
+        { "label": "FaaS", "value": "faas" },
+        { "label": "Cronjob", "value": "cronjob" },
+        { "label": "Web", "value": "web" },
+        { "label": "Hybrid", "value": "hybrid" },
+        { "label": "Gecko", "value": "gecko" },
+        { "label": "Custom", "value": "custom" }
+      ]
+    },
+    {
+      "id": "bits_phase",
+      "type": "select",
+      "label": "部署阶段",
+      "defaultValue": "dev",
+      "options": [
+        { "label": "开发环境", "value": "dev" },
+        { "label": "测试环境", "value": "test" }
+      ]
+    },
+    {
+      "id": "target_branch",
+      "type": "text_input",
+      "label": "目标分支",
+      "defaultValue": "master"
+    },
+    {
+      "id": "control_plane",
+      "type": "text_input",
+      "label": "控制面（可选）",
+      "defaultValue": "cn",
+      "description": "例如 cn、i18n、eu-ttp、us-ttp。"
+    },
+    {
+      "id": "release_ticket_id",
+      "type": "text_input",
+      "label": "Release Ticket ID（可选）",
+      "defaultValue": ""
+    },
+    {
+      "id": "approve_deploy",
+      "type": "checkbox",
+      "label": "确认真实部署",
+      "defaultValue": false,
+      "description": "关闭时只执行 BITS deploy dry-run。"
+    },
+    {
+      "id": "approve_test",
+      "type": "checkbox",
+      "label": "确认触发真实测试",
+      "defaultValue": false,
+      "description": "关闭时不会触发 quick-run。"
+    },
+    {
+      "id": "approve_release",
+      "type": "checkbox",
+      "label": "确认真实发布",
+      "defaultValue": false,
+      "description": "关闭时只读取 Dev Task 状态并执行 publish dry-run。"
+    },
+    {
+      "id": "memory_heading",
+      "type": "heading",
+      "text": "研发知识记忆",
+      "level": 2
+    },
+    {
+      "id": "memory_global",
+      "type": "checkbox",
+      "label": "写入全局记忆",
+      "defaultValue": false
+    },
+    {
+      "id": "memory_project",
+      "type": "checkbox",
+      "label": "写入项目记忆",
+      "defaultValue": false,
+      "description": "开启后必须填写 Project ID；默认关闭，避免未选择项目时在流程结束阶段失败。"
+    },
+    {
+      "id": "project_id",
+      "type": "text_input",
+      "label": "Project ID",
+      "defaultValue": "",
+      "description": "勾选项目记忆时必填。"
+    },
+    {
+      "id": "memory_assistant",
+      "type": "checkbox",
+      "label": "写入助手记忆",
+      "defaultValue": false
+    },
+    {
+      "id": "assistant_id",
+      "type": "text_input",
+      "label": "Assistant ID",
+      "defaultValue": "",
+      "description": "勾选助手记忆时必填。"
+    },
+    {
+      "id": "memory_instructions",
+      "type": "textarea",
+      "label": "记忆规范",
+      "defaultValue": "只保存稳定、可复用的需求约束、架构决策、开发规范、Review 结论和发布经验；不要保存密钥、临时日志、个人隐私或短期状态。"
+    },
+    {
+      "id": "safety",
+      "type": "text",
+      "text": "安全边界：BITS 写操作使用 bytedcli；部署和发布先 dry-run；未确认时不触发 quick-run；不自动跳过 Gatekeeper/QCSS；不在记忆中保存认证信息。"
+    },
+    {
+      "id": "run",
+      "type": "button",
+      "label": "启动研发流程",
+      "variant": "primary",
+      "action": {
+        "type": "http_service",
+        "serviceName": "development"
+      }
+    },
+    {
+      "id": "status",
+      "type": "status",
+      "label": "执行状态"
+    },
+    {
+      "id": "result",
+      "type": "result",
+      "label": "流程结果"
+    }
+  ]
+}

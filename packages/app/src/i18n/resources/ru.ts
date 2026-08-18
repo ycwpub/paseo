@@ -283,6 +283,24 @@ export const ru: TranslationResources = {
       title_mr: "Прикрепите проблему или MR",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "Глобальная память отключена",
+    globalDisabledDescription:
+      "Политика сохранится, но Paseo начнёт использовать её только после включения памяти в настройках хоста.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Правила памяти",
+      description:
+        "Управляйте долговременными сведениями, которые может сохранять каждая область памяти.",
+      scopeType: "Область памяти",
+      target: "Объект",
+      selectTarget: "Выберите объект",
+      instructionsTitle: "Что сохранять",
+      save: "Сохранить правила",
+      saved: "Сохранено",
+    },
+  },
   agentControls: {
     provider: {
       fallback: "Поставщик",
@@ -313,6 +331,22 @@ export const ru: TranslationResources = {
       thinking: "Режим мышления",
       model: "Изменить модель",
       mode: "Изменить режим",
+    },
+    memory: {
+      title: "Память разговора",
+      open: "Настроить память разговора",
+      enabledTitle: "Использовать память в этом разговоре",
+      enabledHint:
+        "Если отключено, агент не читает существующую память и не извлекает новую память из разговора.",
+      instructionsTitle: "Что Paseo должен запомнить из этого разговора?",
+      instructionsHint:
+        "Укажите подтверждённые выводы, повторяющиеся предпочтения и решения. Временные журналы, догадки и секреты по-прежнему исключаются.",
+      instructionsPlaceholder:
+        "Пример: запоминать подтверждённые причины и окончательные решения, игнорировать промежуточные эксперименты.",
+      save: "Сохранить",
+      saving: "Сохранение...",
+      saved: "Сохранено",
+      saveError: "Не удалось сохранить память разговора",
     },
   },
   agentStream: {
@@ -2035,6 +2069,7 @@ export const ru: TranslationResources = {
       memory: "Memory",
       mcp: "MCP-серверы",
       skills: "Навыки",
+      plugins: "Плагины",
       workspaces: "Workspaces",
       providers: "Провайдеры",
       channels: "Каналы",
@@ -2744,6 +2779,22 @@ export const ru: TranslationResources = {
       backToProjects: "Вернуться к проектам",
       switchHost: "Сменить хост",
       projectId: en.settings.project.projectId,
+      memory: {
+        title: "Память проекта",
+        info: "Управляйте памятью этого проекта и задайте, какие долговременные знания должен извлекать Paseo.",
+        enabledTitle: "Использовать память для этого проекта",
+        enabledHint:
+          "Если отключено, агенты не читают и не создают память проекта. Глобальная память остаётся доступной.",
+        instructionsTitle: "Что Paseo должен запомнить для этого проекта?",
+        instructionsHint:
+          "Опишите соглашения, архитектурные решения, повторяющиеся процедуры и стабильные сведения об окружении.",
+        instructionsPlaceholder:
+          "Пример: запоминать архитектурные решения и процедуры выпуска, игнорировать временные ошибки, журналы и секреты.",
+        save: "Сохранить",
+        saving: "Сохранение...",
+        saved: "Сохранено",
+        saveError: "Не удалось сохранить память проекта",
+      },
       rename: {
         renamedToast: "Проект переименован",
         errorFallback: "Не удалось переименовать проект",

@@ -86,6 +86,7 @@ export {
   HostChannelsPage,
   HostMemoryPage,
   HostMcpPage,
+  HostPluginsPage,
   HostSkillsPage,
 } from "./host-resource-pages";
 

@@ -74,6 +74,7 @@ import {
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
   type TurnContentStrategy,
+  type TurnMemoryContext,
 } from "./turn-footer";
 import { layoutStream, type StreamLayoutItem } from "./layout";
 import {
@@ -96,7 +97,9 @@ import {
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useForkAgent } from "@/hooks/use-fork-agent";
+import { useMemory } from "@/hooks/use-memory";
 import { isWeb } from "@/constants/platform";
+import { useHostFeature } from "@/runtime/host-features";
 import type { Theme } from "@/styles/theme";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -156,6 +159,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  memory?: TurnMemoryContext;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -169,6 +173,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      memory={input.memory}
     />
   ) : null;
   const content = (
@@ -436,6 +441,37 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
+    const supportsMemory = useHostFeature(resolvedServerId, "memory");
+    const {
+      memory: memoryState,
+      updateMemory,
+      isMutating: isMemoryMutating,
+      mutationError: memoryMutationError,
+      error: memoryError,
+    } = useMemory(resolvedServerId, { enabled: supportsMemory });
+    const handleMemoryFeedback = useCallback(
+      async (id: string, value: "helpful" | "unhelpful" | "outdated" | "incorrect") => {
+        await updateMemory({ feedback: [{ id, value }] });
+      },
+      [updateMemory],
+    );
+    const turnMemoryContext = useMemo<TurnMemoryContext>(
+      () => ({
+        agentId,
+        state: memoryState,
+        isMutating: isMemoryMutating,
+        error: memoryMutationError?.message ?? memoryError?.message ?? null,
+        onFeedback: handleMemoryFeedback,
+      }),
+      [
+        agentId,
+        handleMemoryFeedback,
+        isMemoryMutating,
+        memoryError,
+        memoryMutationError,
+        memoryState,
+      ],
+    );
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
     const sessionStreamHead = useSessionStore((state) =>
@@ -1023,6 +1059,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          memory: turnMemoryContext,
         });
       },
       [
@@ -1034,6 +1071,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        turnMemoryContext,
       ],
     );
 
@@ -1106,6 +1144,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
             changes={turnChangesContext}
+            memory={turnMemoryContext}
           />
         ) : null,
       [
@@ -1118,6 +1157,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         streamRenderStrategy,
         supportsAgentForkContextCursor,
         turnChangesContext,
+        turnMemoryContext,
       ],
     );
     const auxiliaryProcessVisibilityControl = useMemo(() => {

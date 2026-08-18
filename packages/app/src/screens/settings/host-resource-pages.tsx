@@ -9,6 +9,7 @@ import { AssistantsSection } from "./assistants/assistants-section";
 import { LarkChannelSection } from "./channels/lark-channel-section";
 import { McpSection } from "./mcp/mcp-section";
 import { MemorySection } from "./memory/memory-section";
+import { PluginsSection } from "./plugins/plugins-section";
 import { SkillsSection } from "./skills/skills-section";
 import { TeamsSection } from "./teams/teams-section";
 
@@ -56,6 +57,14 @@ export function HostSkillsPage({ serverId }: { serverId: string }) {
   return (
     <HostResourcePage serverId={serverId}>
       <SkillsSection serverId={serverId} />
+    </HostResourcePage>
+  );
+}
+
+export function HostPluginsPage({ serverId }: { serverId: string }) {
+  return (
+    <HostResourcePage serverId={serverId}>
+      <PluginsSection serverId={serverId} />
     </HostResourcePage>
   );
 }

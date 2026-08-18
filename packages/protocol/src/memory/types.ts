@@ -1,10 +1,62 @@
 import { z } from "zod";
 
+export const PaseoMemoryScopeSchema = z.object({
+  type: z.enum(["global", "project", "assistant", "workspace"]),
+  id: z.string().min(1).optional(),
+});
+export type PaseoMemoryScope = z.infer<typeof PaseoMemoryScopeSchema>;
+
+export const PaseoMemoryPolicyTargetSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("project"),
+    id: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("conversation"),
+    id: z.string().min(1),
+  }),
+]);
+export type PaseoMemoryPolicyTarget = z.infer<typeof PaseoMemoryPolicyTargetSchema>;
+
+export const PaseoMemoryPolicySchema = z.object({
+  target: PaseoMemoryPolicyTargetSchema,
+  enabled: z.boolean(),
+  extractionInstructions: z.string(),
+});
+export type PaseoMemoryPolicy = z.infer<typeof PaseoMemoryPolicySchema>;
+
+export const PaseoMemoryScopePolicySchema = z.object({
+  scope: PaseoMemoryScopeSchema,
+  enabled: z.boolean(),
+  extractionInstructions: z.string(),
+});
+export type PaseoMemoryScopePolicy = z.infer<typeof PaseoMemoryScopePolicySchema>;
+
+export const PaseoMemorySourceRefSchema = z.object({
+  agentId: z.string().min(1),
+  turnId: z.string().min(1).optional(),
+  messageId: z.string().min(1).optional(),
+  timestamp: z.string(),
+});
+export type PaseoMemorySourceRef = z.infer<typeof PaseoMemorySourceRefSchema>;
+
 export const PaseoMemorySettingsSchema = z.object({
   enabled: z.boolean(),
   autoExtract: z.boolean(),
   maxInjectedChars: z.number().int().min(1_000).max(32_000),
   maxRetrievedDetails: z.number().int().min(0).max(12),
+  // COMPAT(memoryV2Settings): added in v0.3.2, remove optional after 2027-02-18.
+  autoConsolidate: z.boolean().optional(),
+  // COMPAT(memoryV2Settings): added in v0.3.2, remove optional after 2027-02-18.
+  showSources: z.boolean().optional(),
+  // COMPAT(memoryV2Settings): added in v0.3.2, remove optional after 2027-02-18.
+  retentionDays: z.number().int().min(0).max(3_650).optional(),
+  // COMPAT(memoryV2Settings): added in v0.3.2, remove optional after 2027-02-18.
+  encryptAtRest: z.boolean().optional(),
+  // COMPAT(memoryV2Settings): added in v0.3.2, remove optional after 2027-02-18.
+  sensitiveMemoryPolicy: z.enum(["exclude", "manual-only"]).optional(),
+  // COMPAT(memoryV2Settings): added in v0.3.2, remove optional after 2027-02-18.
+  maxCandidates: z.number().int().min(4).max(100).optional(),
 });
 export type PaseoMemorySettings = z.infer<typeof PaseoMemorySettingsSchema>;
 
@@ -21,14 +73,62 @@ export const PaseoMemoryDetailSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   lastAccessedAt: z.string().nullable(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  scope: PaseoMemoryScopeSchema.optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  origin: z.enum(["automatic", "explicit"]).optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  status: z.enum(["active", "superseded", "expired", "disputed"]).optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  importance: z.number().min(0).max(1).optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  sourceRefs: z.array(PaseoMemorySourceRefSchema).optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  validFrom: z.string().nullable().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  validUntil: z.string().nullable().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  supersedes: z.array(z.string()).optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  useCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  helpfulCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  unhelpfulCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  lastUsedAt: z.string().nullable().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  sensitive: z.boolean().optional(),
+  // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
+  encrypted: z.boolean().optional(),
 });
 export type PaseoMemoryDetail = z.infer<typeof PaseoMemoryDetailSchema>;
+
+export const PaseoMemoryUsageSchema = z.object({
+  id: z.string().min(1),
+  agentId: z.string().min(1),
+  turnId: z.string().min(1).optional(),
+  assistantMessageId: z.string().min(1).optional(),
+  memoryIds: z.array(z.string().min(1)),
+  createdAt: z.string(),
+});
+export type PaseoMemoryUsage = z.infer<typeof PaseoMemoryUsageSchema>;
 
 export const PaseoMemoryStatsSchema = z.object({
   detailCount: z.number().int().nonnegative(),
   pendingExtractions: z.number().int().nonnegative(),
   lastExtractedAt: z.string().nullable(),
   lastExtractionError: z.string().nullable(),
+  // COMPAT(memoryV2Stats): added in v0.3.2, remove optional after 2027-02-18.
+  activeCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Stats): added in v0.3.2, remove optional after 2027-02-18.
+  supersededCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Stats): added in v0.3.2, remove optional after 2027-02-18.
+  expiredCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Stats): added in v0.3.2, remove optional after 2027-02-18.
+  disputedCount: z.number().int().nonnegative().optional(),
+  // COMPAT(memoryV2Stats): added in v0.3.2, remove optional after 2027-02-18.
+  lastConsolidatedAt: z.string().nullable().optional(),
 });
 export type PaseoMemoryStats = z.infer<typeof PaseoMemoryStatsSchema>;
 
@@ -38,8 +138,28 @@ export const PaseoMemoryStateSchema = z.object({
   summaryPath: z.string(),
   details: z.array(PaseoMemoryDetailSchema),
   stats: PaseoMemoryStatsSchema,
+  // COMPAT(memoryV2Usage): added in v0.3.2, remove optional after 2027-02-18.
+  recentUsages: z.array(PaseoMemoryUsageSchema).optional(),
+  // COMPAT(memoryV2Export): added in v0.3.2, remove optional after 2027-02-18.
+  exportJson: z.string().optional(),
+  // COMPAT(memoryPolicies): added in v0.3.2, remove optional after 2027-02-18.
+  policies: z.array(PaseoMemoryPolicySchema).optional(),
+  // COMPAT(memoryScopePolicies): added in v0.3.2, remove optional after 2027-02-18.
+  scopePolicies: z.array(PaseoMemoryScopePolicySchema).optional(),
 });
 export type PaseoMemoryState = z.infer<typeof PaseoMemoryStateSchema>;
+
+export const PaseoMemoryCreateInputSchema = z.object({
+  title: z.string().min(1),
+  category: PaseoMemoryDetailSchema.shape.category,
+  content: z.string().min(1),
+  keywords: z.array(z.string()).optional(),
+  scope: PaseoMemoryScopeSchema.optional(),
+  importance: z.number().min(0).max(1).optional(),
+  validUntil: z.string().nullable().optional(),
+  sensitive: z.boolean().optional(),
+});
+export type PaseoMemoryCreateInput = z.infer<typeof PaseoMemoryCreateInputSchema>;
 
 export const PaseoMemoryUpdateInputSchema = z.object({
   settings: PaseoMemorySettingsSchema.optional(),
@@ -52,9 +172,29 @@ export const PaseoMemoryUpdateInputSchema = z.object({
         category: PaseoMemoryDetailSchema.shape.category.optional(),
         keywords: z.array(z.string()).optional(),
         content: z.string().optional(),
+        scope: PaseoMemoryScopeSchema.optional(),
+        status: PaseoMemoryDetailSchema.shape.status,
+        importance: z.number().min(0).max(1).optional(),
+        validUntil: z.string().nullable().optional(),
       }),
     )
     .optional(),
   deleteDetailIds: z.array(z.string().min(1)).optional(),
+  createDetails: z.array(PaseoMemoryCreateInputSchema).optional(),
+  feedback: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        value: z.enum(["helpful", "unhelpful", "outdated", "incorrect"]),
+      }),
+    )
+    .optional(),
+  consolidate: z.boolean().optional(),
+  importJson: z.string().optional(),
+  replaceOnImport: z.boolean().optional(),
+  // COMPAT(memoryPolicies): added in v0.3.2, remove optional after 2027-02-18.
+  policyUpdates: z.array(PaseoMemoryPolicySchema).optional(),
+  // COMPAT(memoryScopePolicies): added in v0.3.2, remove optional after 2027-02-18.
+  scopePolicyUpdates: z.array(PaseoMemoryScopePolicySchema).optional(),
 });
 export type PaseoMemoryUpdateInput = z.infer<typeof PaseoMemoryUpdateInputSchema>;

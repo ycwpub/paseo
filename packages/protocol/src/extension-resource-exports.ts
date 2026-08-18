@@ -38,6 +38,19 @@ export {
   type AssistantUpdateInput,
 } from "./assistant/types.js";
 export {
+  PaseoMemoryDetailSchema,
+  PaseoMemorySettingsSchema,
+  PaseoMemoryStateSchema,
+  PaseoMemoryStatsSchema,
+  PaseoMemoryUpdateInputSchema,
+  type PaseoMemoryDetail,
+  type PaseoMemorySettings,
+  type PaseoMemoryState,
+  type PaseoMemoryStats,
+  type PaseoMemoryUpdateInput,
+} from "./memory/types.js";
+export * from "./memory/rpc-schemas.js";
+export {
   TeamAssistantSchema,
   TeamCreateInputSchema,
   TeamMemberSettingsSchema,

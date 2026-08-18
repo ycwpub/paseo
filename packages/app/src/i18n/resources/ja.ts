@@ -2006,6 +2006,7 @@ export const ja: TranslationResources = {
       agents: "エージェント",
       metadata: "メタデータ",
       assistants: "アシスタント",
+      memory: "メモリ",
       mcp: "MCPサーバー",
       skills: "スキル",
       workspaces: "ワークスペース",

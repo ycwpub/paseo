@@ -1987,6 +1987,7 @@ export const ar: TranslationResources = {
       agents: "Agents",
       metadata: "البيانات الوصفية",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "خوادم MCP",
       skills: "المهارات",
       workspaces: "Workspaces",

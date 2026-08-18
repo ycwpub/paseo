@@ -20,6 +20,7 @@ import {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  PaseoMemoryUpdateInput,
   Skill,
   SkillCreateInput,
   SkillUpdateInput,
@@ -5824,6 +5825,18 @@ export class DaemonClient {
 
   async deleteAssistant(options: DeleteAssistantOptions): Promise<AssistantDeletePayload> {
     return this.resourceRpc.deleteAssistant(options);
+  }
+
+  async getMemoryState(options?: { requestId?: string }) {
+    return this.resourceRpc.getMemoryState(options);
+  }
+
+  async updateMemoryState(update: PaseoMemoryUpdateInput, options?: { requestId?: string }) {
+    return this.resourceRpc.updateMemoryState(update, options);
+  }
+
+  async clearMemory(options?: { requestId?: string }) {
+    return this.resourceRpc.clearMemory(options);
   }
 
   async listTeams(): Promise<{ teams: Team[]; error: string | null }> {

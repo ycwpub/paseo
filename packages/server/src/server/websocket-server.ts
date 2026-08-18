@@ -102,6 +102,7 @@ import type { BrowserToolsBroker } from "./browser-tools/broker.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { LarkChannelService } from "./channels/lark/lark-channel-service.js";
 import type { AssistantStore } from "./assistants/assistant-store.js";
+import type { PaseoMemoryService } from "./memory/memory-service.js";
 import type { TeamStore } from "./team/team-store.js";
 import type { McpStore } from "./mcp/mcp-store.js";
 import type { SkillStore } from "./skill/skill-store.js";
@@ -624,6 +625,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly hubRelationships: HubRelationshipManagement | null;
   private readonly larkChannelService: LarkChannelService | null;
   private readonly assistantStore: AssistantStore | null;
+  private readonly memoryService: PaseoMemoryService | null;
   private readonly teamStore: TeamStore | null;
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
@@ -692,6 +694,7 @@ export class VoiceAssistantWebSocketServer {
     daemonKeyPair?: KeyPair,
     workflowService?: WorkflowService | null,
     loopService?: LoopService | null,
+    memoryService?: PaseoMemoryService | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
   ) {
     this.logger = logger.child({ module: "websocket-server" });
@@ -708,6 +711,7 @@ export class VoiceAssistantWebSocketServer {
     this.hubRelationships = hubRelationships ?? null;
     this.larkChannelService = larkChannelService ?? null;
     this.assistantStore = assistantStore ?? null;
+    this.memoryService = memoryService ?? null;
     this.teamStore = teamStore ?? null;
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
@@ -1634,6 +1638,7 @@ export class VoiceAssistantWebSocketServer {
       getWebSocketRuntimeMetrics: () => this.lastRuntimeMetricsSnapshot,
       larkChannelService: this.larkChannelService,
       assistantStore: this.assistantStore,
+      memoryService: this.memoryService,
       teamStore: this.teamStore,
       mcpStore: this.mcpStore,
       skillStore: this.skillStore,
@@ -1993,6 +1998,8 @@ export class VoiceAssistantWebSocketServer {
         larkChannel: true,
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: true,
+        // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
+        memory: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
         teams: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.

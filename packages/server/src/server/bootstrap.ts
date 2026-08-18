@@ -231,6 +231,8 @@ import { LarkChannelStore } from "./channels/lark/lark-channel-store.js";
 import { OfficialLarkChannelClientAdapter } from "./channels/lark/lark-client-adapter.js";
 import { LarkChannelService } from "./channels/lark/lark-channel-service.js";
 import { AssistantStore } from "./assistants/assistant-store.js";
+import { PaseoMemoryStore } from "./memory/memory-store.js";
+import { PaseoMemoryService } from "./memory/memory-service.js";
 import { TeamStore } from "./team/team-store.js";
 import { McpStore } from "./mcp/mcp-store.js";
 import { SkillMaterializer } from "./skill/skill-materializer.js";
@@ -1514,6 +1516,15 @@ export async function createPaseoDaemon(
     logger,
   });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
+  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger });
+  const memoryService = new PaseoMemoryService({
+    store: memoryStore,
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => daemonConfigStore.get(),
+    logger,
+  });
+  memoryService.start();
   const teamStore = new TeamStore({
     paseoHome: config.paseoHome,
     logger,
@@ -2014,6 +2025,7 @@ export async function createPaseoDaemon(
               daemonKeyPair.keyPair,
               workflowService,
               loopService,
+              memoryService,
               workspaceSetupRuntime,
             );
             await wsServer.startLanDirectListener();
@@ -2058,6 +2070,7 @@ export async function createPaseoDaemon(
   };
 
   const stop = async () => {
+    memoryService.stop();
     await hubRelationships.stop();
     projectIndexService.stop();
     workspaceReconciliation.dispose();

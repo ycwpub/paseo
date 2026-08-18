@@ -175,6 +175,8 @@ import type { LarkChannelService } from "./channels/lark/lark-channel-service.js
 import { AssistantSession } from "./assistants/assistant-session.js";
 import type { AssistantStore } from "./assistants/assistant-store.js";
 import { buildAssistantInitialPrompt } from "./assistants/assistant-prompt.js";
+import { MemorySession } from "./memory/memory-session.js";
+import type { PaseoMemoryService } from "./memory/memory-service.js";
 import { TeamStore } from "./team/team-store.js";
 import { TeamSession } from "./team/team-session.js";
 import {
@@ -522,6 +524,7 @@ export interface SessionOptions {
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
   larkChannelService?: LarkChannelService | null;
   assistantStore?: AssistantStore | null;
+  memoryService?: PaseoMemoryService | null;
   teamStore?: TeamStore | null;
   mcpStore?: McpStore | null;
   skillStore?: SkillStore | null;
@@ -711,6 +714,7 @@ export class Session {
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly larkChannelSession: LarkChannelSession | null;
   private readonly assistantSession: AssistantSession | null;
+  private readonly memorySession: MemorySession | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
   private readonly teamStore: TeamStore | null;
@@ -776,6 +780,7 @@ export class Session {
       getWebSocketRuntimeMetrics,
       larkChannelService,
       assistantStore,
+      memoryService,
       teamStore,
       mcpStore,
       skillStore,
@@ -979,6 +984,13 @@ export class Session {
           isAssistantInUse: teamStore
             ? (assistantId) => teamStore.isAssistantInUse(assistantId)
             : undefined,
+          logger: this.sessionLogger,
+        })
+      : null;
+    this.memorySession = memoryService
+      ? new MemorySession({
+          emit: (msg) => this.emit(msg),
+          service: memoryService,
           logger: this.sessionLogger,
         })
       : null;
@@ -1957,6 +1969,7 @@ export class Session {
       this.dispatchWorkflowMessage(msg) ??
       this.dispatchLoopMessage(msg) ??
       this.dispatchAssistantMessage(msg) ??
+      this.dispatchMemoryMessage(msg) ??
       this.dispatchChannelMessage(msg) ??
       this.dispatchTeamMessage(msg) ??
       this.dispatchMcpMessage(msg) ??
@@ -2448,6 +2461,17 @@ export class Session {
       case "assistant.update.request":
       case "assistant.delete.request":
         return this.assistantSession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchMemoryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "memory.get_state.request":
+      case "memory.update_state.request":
+      case "memory.clear.request":
+        return this.memorySession?.handleRequest(msg);
       default:
         return undefined;
     }

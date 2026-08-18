@@ -2025,6 +2025,7 @@ export const ptBR: TranslationResources = {
       agents: "Agentes",
       metadata: "Metadados",
       assistants: "Assistentes",
+      memory: "Memória",
       mcp: "Servidores MCP",
       skills: "Habilidades",
       workspaces: "Workspaces",

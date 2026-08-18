@@ -2546,6 +2546,7 @@ export const en = {
       agents: "Agents",
       metadata: "Metadata",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "MCP Servers",
       skills: "Skills",
       workspaces: "Workspaces",

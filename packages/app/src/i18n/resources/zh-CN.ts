@@ -2486,6 +2486,7 @@ export const zhCN: TranslationResources = {
       agents: "Agents",
       metadata: "元数据",
       assistants: "助手",
+      memory: "记忆",
       mcp: "MCP 服务",
       skills: "技能",
       workspaces: "Workspaces",

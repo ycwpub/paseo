@@ -42,6 +42,7 @@ import {
   Wrench,
   Sparkles,
   Pencil,
+  Brain,
 } from "lucide-react-native";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
@@ -111,6 +112,7 @@ import {
   HostSettingsPage,
   HostProvidersPage,
   HostAssistantsPage,
+  HostMemoryPage,
   HostMcpPage,
   HostSkillsPage,
   HostChannelsPage,
@@ -201,6 +203,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
   { id: "assistants", labelKey: "settings.hostSections.assistants", icon: Bot },
+  { id: "memory", labelKey: "settings.hostSections.memory", icon: Brain },
   { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
   { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
@@ -230,6 +233,8 @@ function renderHostSettingsContent(
       return <MetadataGenerationPage serverId={view.serverId} />;
     case "assistants":
       return <HostAssistantsPage serverId={view.serverId} />;
+    case "memory":
+      return <HostMemoryPage serverId={view.serverId} />;
     case "mcp":
       return <HostMcpPage serverId={view.serverId} />;
     case "skills":

@@ -8,6 +8,7 @@ import { settingsStyles } from "@/styles/settings";
 import { AssistantsSection } from "./assistants/assistants-section";
 import { LarkChannelSection } from "./channels/lark-channel-section";
 import { McpSection } from "./mcp/mcp-section";
+import { MemorySection } from "./memory/memory-section";
 import { SkillsSection } from "./skills/skills-section";
 import { TeamsSection } from "./teams/teams-section";
 
@@ -39,6 +40,14 @@ export function HostMcpPage({ serverId }: { serverId: string }) {
   return (
     <HostResourcePage serverId={serverId}>
       <McpSection serverId={serverId} />
+    </HostResourcePage>
+  );
+}
+
+export function HostMemoryPage({ serverId }: { serverId: string }) {
+  return (
+    <HostResourcePage serverId={serverId}>
+      <MemorySection serverId={serverId} />
     </HostResourcePage>
   );
 }

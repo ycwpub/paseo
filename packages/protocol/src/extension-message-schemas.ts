@@ -60,6 +60,14 @@ import {
   McpUpdateResponseSchema,
 } from "./mcp/rpc-schemas.js";
 import {
+  MemoryClearRequestSchema,
+  MemoryClearResponseSchema,
+  MemoryGetStateRequestSchema,
+  MemoryGetStateResponseSchema,
+  MemoryUpdateStateRequestSchema,
+  MemoryUpdateStateResponseSchema,
+} from "./memory/rpc-schemas.js";
+import {
   SkillChangedMessageSchema,
   SkillCreateRequestSchema,
   SkillCreateResponseSchema,
@@ -113,6 +121,9 @@ export const ExtensionSessionInboundSchemas = [
   AssistantCreateRequestSchema,
   AssistantUpdateRequestSchema,
   AssistantDeleteRequestSchema,
+  MemoryGetStateRequestSchema,
+  MemoryUpdateStateRequestSchema,
+  MemoryClearRequestSchema,
   LarkChannelGetStatusRequestSchema,
   LarkChannelApplyBotRequestSchema,
   LarkChannelGetBotApplicationRequestSchema,
@@ -160,6 +171,9 @@ export const ExtensionSessionOutboundSchemas = [
   AssistantUpdateResponseSchema,
   AssistantDeleteResponseSchema,
   AssistantChangedMessageSchema,
+  MemoryGetStateResponseSchema,
+  MemoryUpdateStateResponseSchema,
+  MemoryClearResponseSchema,
   LarkChannelGetStatusResponseSchema,
   LarkChannelApplyBotResponseSchema,
   LarkChannelGetBotApplicationResponseSchema,

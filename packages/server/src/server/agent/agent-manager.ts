@@ -291,6 +291,10 @@ export interface AgentManagerOptions {
   logger: Logger;
 }
 
+export interface AgentPromptContextComposer {
+  compose(agent: ManagedAgent, prompt: AgentPromptInput): Promise<AgentPromptInput>;
+}
+
 export interface WaitForAgentOptions {
   signal?: AbortSignal;
   waitForActive?: boolean;
@@ -689,6 +693,7 @@ export class AgentManager {
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
   private acceptingAgentRegistrations = true;
+  private promptContextComposer: AgentPromptContextComposer | null = null;
 
   constructor(options: AgentManagerOptions) {
     this.idFactory = options?.idFactory ?? (() => randomUUID());
@@ -807,6 +812,10 @@ export class AgentManager {
 
   setAppendSystemPrompt(prompt: string | null | undefined): void {
     this.appendSystemPrompt = prompt ?? "";
+  }
+
+  setPromptContextComposer(composer: AgentPromptContextComposer | null): void {
+    this.promptContextComposer = composer;
   }
 
   public getMetricsSnapshot(): AgentMetricsSnapshot {
@@ -2227,7 +2236,10 @@ export class AgentManager {
       let turnId: string;
       let turnStream: ReturnType<AgentRunState["createTurnStream"]> | null = null;
       try {
-        const effectivePrompt = await this.resolveSharedSkillPrompt(agent, prompt);
+        const contextualPrompt = this.promptContextComposer
+          ? await this.promptContextComposer.compose(agent, prompt)
+          : prompt;
+        const effectivePrompt = await this.resolveSharedSkillPrompt(agent, contextualPrompt);
         const result = await agent.session.startTurn(effectivePrompt, options);
         turnId = result.turnId;
       } catch (error) {

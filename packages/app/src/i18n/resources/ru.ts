@@ -2032,6 +2032,7 @@ export const ru: TranslationResources = {
       agents: "Agents",
       metadata: "Метаданные",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "MCP-серверы",
       skills: "Навыки",
       workspaces: "Workspaces",

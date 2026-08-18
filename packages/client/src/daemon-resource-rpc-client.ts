@@ -2,6 +2,7 @@ import type {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  PaseoMemoryUpdateInput,
   SessionInboundMessage,
   SessionOutboundMessage,
   Skill,
@@ -83,6 +84,30 @@ export class DaemonResourceRpcClient {
       requestId: options.requestId,
       message: { type: "assistant.delete.request", id: options.id },
       responseType: "assistant.delete.response",
+    });
+  }
+
+  getMemoryState(options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.get_state.request" },
+      responseType: "memory.get_state.response",
+    });
+  }
+
+  updateMemoryState(update: PaseoMemoryUpdateInput, options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.update_state.request", update },
+      responseType: "memory.update_state.response",
+    });
+  }
+
+  clearMemory(options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.clear.request" },
+      responseType: "memory.clear.response",
     });
   }
 

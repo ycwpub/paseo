@@ -2041,6 +2041,7 @@ export const es: TranslationResources = {
       agents: "Agents",
       metadata: "Metadatos",
       assistants: "Assistants",
+      memory: "Memory",
       mcp: "Servidores MCP",
       skills: "Habilidades",
       workspaces: "Workspaces",

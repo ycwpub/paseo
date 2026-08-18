@@ -118,6 +118,10 @@ $PASEO_HOME/
 │   └── {sanitized-cwd}/
 │       └── {agentId}.json               # One file per agent
 ├── assistants.json                      # Assistant presets
+├── memory/
+│   ├── catalog.json                     # Global memory settings, metadata, provenance, and extraction state
+│   ├── summary.md                       # Bounded global memory summary and detail index
+│   └── details/                         # Topic detail files loaded only when relevant
 ├── teams.json                           # Assistant teams and leader membership
 ├── client-access.json                   # Approved clients + 30-day client connection history
 ├── relay-connection-history.json        # 30-day local Relay connection history

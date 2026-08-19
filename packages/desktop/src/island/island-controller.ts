@@ -1,10 +1,15 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { BrowserWindow, ipcMain, screen, type WebContents } from "electron";
+import { app, BrowserWindow, ipcMain, screen, type WebContents } from "electron";
 import log from "electron-log/main";
 
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 import { resolveIslandBounds } from "./island-bounds.js";
+import {
+  ISLAND_COMPACT_HEIGHT,
+  ISLAND_COMPACT_WIDTH,
+  resolveIslandLayout,
+} from "./island-layout.js";
 import {
   IslandNotificationQueue,
   parseIslandNotification,
@@ -13,11 +18,7 @@ import {
   type IslandNotificationInput,
 } from "./island-model.js";
 import { getIslandDocument } from "./island-view.js";
-
-const COMPACT_BOUNDS = { width: 420, height: 64 };
-const EXPANDED_MIN_HEIGHT = 142;
-const EXPANDED_ITEM_HEIGHT = 47;
-const EXPANDED_MAX_HEIGHT = 274;
+import { NativeIslandHost, resolveIslandNativeHostPath } from "./island-native-host.js";
 
 interface IslandRendererState {
   expanded: boolean;
@@ -38,6 +39,8 @@ class IslandController {
   readonly #sources = new Map<string, WebContents>();
   readonly #timers = new Map<string, NodeJS.Timeout>();
   #window: BrowserWindow | null = null;
+  #nativeHost: NativeIslandHost | null = null;
+  #nativeHostDisabled = false;
   #expanded = false;
   #displayId: number | null = null;
 
@@ -144,6 +147,10 @@ class IslandController {
   }
 
   reposition(): void {
+    if (this.#nativeHost?.isRunning) {
+      this.#render();
+      return;
+    }
     const win = this.#window;
     if (!win || win.isDestroyed() || !win.isVisible()) {
       return;
@@ -161,18 +168,41 @@ class IslandController {
   }
 
   async #ensureWindow(sourceWindow: BrowserWindow | null): Promise<void> {
-    if (this.#window && !this.#window.isDestroyed()) {
-      if (sourceWindow) {
-        this.#displayId = screen.getDisplayMatching(sourceWindow.getBounds()).id;
-      }
-      return;
-    }
-
     if (sourceWindow) {
       this.#displayId = screen.getDisplayMatching(sourceWindow.getBounds()).id;
     }
+    if (this.#nativeHost?.isRunning) {
+      return;
+    }
+
+    const nativeHelperPath = this.#nativeHostDisabled ? null : resolveIslandNativeHostPath();
+    if (nativeHelperPath) {
+      const nativeHost = new NativeIslandHost({
+        onAction: (action, id) => {
+          if (action === "open") this.open(id);
+          else if (action === "dismiss") this.dismiss(id);
+          else this.clear();
+        },
+        onExpandedChange: (expanded) => this.setExpanded(expanded),
+        onExit: () => this.#handleNativeHostExit(nativeHost),
+      });
+      if (nativeHost.start(nativeHelperPath, getIslandDocument())) {
+        this.#nativeHost = nativeHost;
+        if (this.#window && !this.#window.isDestroyed()) {
+          this.#window.destroy();
+          this.#window = null;
+        }
+        return;
+      }
+      this.#nativeHostDisabled = true;
+    }
+
+    if (this.#window && !this.#window.isDestroyed()) {
+      return;
+    }
     const win = new BrowserWindow({
-      ...COMPACT_BOUNDS,
+      width: ISLAND_COMPACT_WIDTH,
+      height: ISLAND_COMPACT_HEIGHT,
       show: false,
       frame: false,
       transparent: true,
@@ -219,8 +249,41 @@ class IslandController {
   }
 
   #render(): void {
-    const win = this.#window;
     const items = this.#queue.list();
+    if (items.length === 0) {
+      this.#expanded = false;
+    }
+    const nativeHost = this.#nativeHost;
+    if (nativeHost?.isRunning) {
+      if (items.length === 0) {
+        this.#expanded = false;
+        nativeHost.hide();
+        return;
+      }
+      const display = this.#resolveDisplay();
+      const layout = resolveIslandLayout(display.bounds.width, items.length, this.#expanded);
+      this.#displayId = display.id;
+      nativeHost.render({
+        state: { expanded: this.#expanded, items },
+        displayId: display.id,
+        ...layout,
+      });
+      log.info("[island] rendered", {
+        renderer: "native",
+        displayId: display.id,
+        displayBounds: display.bounds,
+        itemCount: items.length,
+        expanded: this.#expanded,
+        bounds: {
+          x: Math.round(display.bounds.x + (display.bounds.width - layout.width) / 2),
+          y: display.bounds.y,
+          ...layout,
+        },
+      });
+      return;
+    }
+
+    const win = this.#window;
     if (!win || win.isDestroyed()) {
       return;
     }
@@ -263,13 +326,28 @@ class IslandController {
   }
 
   #resolveBounds(display: Electron.Display, itemCount = this.#queue.list().length) {
-    const height = this.#expanded
-      ? Math.min(
-          EXPANDED_MAX_HEIGHT,
-          Math.max(EXPANDED_MIN_HEIGHT, 82 + Math.min(4, itemCount) * EXPANDED_ITEM_HEIGHT),
-        )
-      : COMPACT_BOUNDS.height;
-    return resolveIslandBounds(display, { width: COMPACT_BOUNDS.width, height });
+    return resolveIslandBounds(
+      display,
+      resolveIslandLayout(display.bounds.width, itemCount, this.#expanded),
+    );
+  }
+
+  #handleNativeHostExit(nativeHost: NativeIslandHost): void {
+    if (this.#nativeHost !== nativeHost) return;
+    this.#nativeHost = null;
+    this.#nativeHostDisabled = true;
+    if (this.#queue.current()) {
+      void this.#ensureWindow(null)
+        .then(() => this.#render())
+        .catch((error: unknown) => {
+          log.error("[island] failed to recover after native helper exit", { error });
+        });
+    }
+  }
+
+  dispose(): void {
+    this.#nativeHost?.stop();
+    this.#nativeHost = null;
   }
 
   #resolveTargetWindow(source: WebContents | undefined): BrowserWindow | null {
@@ -357,10 +435,13 @@ export function registerIslandHandlers(): void {
       controller.open(id);
     } else if (input?.action === "dismiss") {
       controller.dismiss(id);
+    } else if (input?.action === "clear") {
+      controller.clear();
     }
   });
 
   screen.on("display-added", () => controller.reposition());
   screen.on("display-removed", () => controller.reposition());
   screen.on("display-metrics-changed", () => controller.reposition());
+  app.once("before-quit", () => controller.dispose());
 }

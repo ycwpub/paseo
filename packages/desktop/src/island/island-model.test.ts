@@ -81,11 +81,11 @@ describe("island notification model", () => {
     });
   });
 
-  it("keeps running reminders resident until the agent state changes", () => {
+  it("keeps every reminder resident until it is opened or cleared", () => {
     expect(shouldAutoDismissIslandNotification("running")).toBe(false);
-    expect(shouldAutoDismissIslandNotification("finished")).toBe(true);
-    expect(shouldAutoDismissIslandNotification("error")).toBe(true);
-    expect(shouldAutoDismissIslandNotification("permission")).toBe(true);
-    expect(shouldAutoDismissIslandNotification("info")).toBe(true);
+    expect(shouldAutoDismissIslandNotification("finished")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("error")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("permission")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("info")).toBe(false);
   });
 });

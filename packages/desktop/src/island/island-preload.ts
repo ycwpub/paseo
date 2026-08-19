@@ -10,6 +10,6 @@ contextBridge.exposeInMainWorld("paseoIsland", {
     return () => ipcRenderer.removeListener("paseo:island:state", listener);
   },
   setExpanded: (expanded: boolean) => ipcRenderer.send("paseo:island:set-expanded", { expanded }),
-  action: (action: "open" | "dismiss", id?: string) =>
+  action: (action: "open" | "dismiss" | "clear", id?: string) =>
     ipcRenderer.send("paseo:island:action", { action, id }),
 });

@@ -31,169 +31,191 @@ export function getIslandDocument(): string {
         -webkit-user-select: none;
       }
 
-      body {
-        padding: 0 8px 8px;
-      }
-
       button {
         font: inherit;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
       .island {
+        --accent: #7d92ff;
         width: 100%;
         height: 100%;
         overflow: hidden;
         color: #fff;
-        background:
-          radial-gradient(circle at 20% -40%, rgba(82, 119, 255, 0.24), transparent 54%),
-          rgba(8, 8, 10, 0.97);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 28px;
-        box-shadow:
-          0 14px 38px rgba(0, 0, 0, 0.34),
-          inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        transition:
-          border-radius 160ms ease,
-          background 160ms ease;
+        background: #000;
+        border-radius: 0 0 28px 28px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
       }
 
       .island.expanded {
-        border-radius: 24px;
+        border-radius: 0 0 22px 22px;
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
       }
 
       .summary {
         width: 100%;
-        height: 56px;
-        padding: 8px 10px;
+        height: 64px;
+        padding: 0 20px;
         display: grid;
-        grid-template-columns: 40px minmax(0, 1fr) auto;
+        grid-template-columns: 64px minmax(140px, 1fr) 64px;
         align-items: center;
-        gap: 10px;
         border: 0;
         color: inherit;
         background: transparent;
-        text-align: left;
-        cursor: pointer;
+        cursor: default;
       }
 
-      .status-icon {
-        position: relative;
-        width: 36px;
-        height: 36px;
-        display: grid;
-        place-items: center;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.09);
-      }
-
-      .status-icon::after {
-        content: "";
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--status-color, #7f8cff);
-        box-shadow: 0 0 14px var(--status-color, #7f8cff);
-      }
-
-      .status-icon.running::before {
-        content: "";
-        position: absolute;
-        inset: 3px;
-        border: 2px solid transparent;
-        border-top-color: #8ea1ff;
-        border-right-color: rgba(142, 161, 255, 0.35);
-        border-radius: 50%;
-        animation: spin 1.1s linear infinite;
-      }
-
-      .status-icon.finished {
-        --status-color: #42d392;
-      }
-
-      .status-icon.error {
-        --status-color: #ff5d69;
-      }
-
-      .status-icon.permission {
-        --status-color: #ffb648;
-      }
-
-      .status-icon.info {
-        --status-color: #6f8cff;
-      }
-
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-
-      .copy {
-        min-width: 0;
-      }
-
-      .title {
-        overflow: hidden;
-        font-size: 13px;
-        font-weight: 650;
-        line-height: 18px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .body {
-        overflow: hidden;
-        margin-top: 1px;
-        color: rgba(255, 255, 255, 0.58);
-        font-size: 11px;
-        line-height: 15px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .count {
-        min-width: 24px;
-        height: 22px;
-        padding: 0 7px;
-        display: grid;
-        place-items: center;
-        border-radius: 999px;
-        color: rgba(255, 255, 255, 0.72);
-        background: rgba(255, 255, 255, 0.09);
-        font-size: 10px;
-        font-weight: 650;
-      }
-
-      .details {
+      .expanded .summary {
         display: none;
-        padding: 0 8px 8px;
       }
 
-      .expanded .details {
+      .brand-icon {
+        width: 12px;
+        height: 12px;
+        display: grid;
+        place-items: center;
+        color: var(--accent);
+        opacity: 0.82;
+        filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 24%, transparent));
+      }
+
+      .brand-icon svg {
+        width: 100%;
+        height: 100%;
         display: block;
       }
 
-      .divider {
-        height: 1px;
-        margin: 0 6px 7px;
-        background: rgba(255, 255, 255, 0.08);
+      .summary .brand-icon {
+        justify-self: start;
+      }
+
+      .notch-space {
+        min-width: 0;
+        height: 100%;
+      }
+
+      .unread-count {
+        min-width: 34px;
+        padding: 0 3px;
+        justify-self: end;
+        color: rgba(255, 255, 255, 0.96);
+        font-size: 19px;
+        font-weight: 520;
+        line-height: 1;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .details {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        display: none;
+        flex-direction: column;
+        padding: 12px 18px 16px;
+      }
+
+      .expanded .details {
+        display: flex;
+        animation: details-in 150ms ease-out both;
+      }
+
+      @keyframes details-in {
+        from {
+          opacity: 0;
+          transform: translateY(-5px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .details-header {
+        min-height: 58px;
+        padding: 0 10px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .details-brand {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .details-brand .brand-icon {
+        width: 12px;
+        height: 12px;
+        flex: 0 0 auto;
+      }
+
+      .details-heading {
+        min-width: 0;
+      }
+
+      .details-title {
+        overflow: hidden;
+        font-size: 15px;
+        font-weight: 650;
+        line-height: 20px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .details-subtitle {
+        margin-top: 2px;
+        color: rgba(255, 255, 255, 0.48);
+        font-size: 11px;
+        line-height: 15px;
+      }
+
+      .clear {
+        height: 30px;
+        padding: 0 12px;
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.7);
+        background: rgba(255, 255, 255, 0.06);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .clear:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.12);
       }
 
       .list {
+        min-height: 0;
+        padding: 8px 2px 0;
         display: grid;
-        gap: 4px;
+        align-content: start;
+        gap: 3px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+        scrollbar-width: thin;
       }
 
       .item {
         width: 100%;
-        min-height: 43px;
-        padding: 6px 8px;
+        min-height: 66px;
+        padding: 9px 10px;
         display: grid;
-        grid-template-columns: 8px minmax(0, 1fr) auto;
+        grid-template-columns: 14px minmax(0, 1fr) auto;
         align-items: center;
-        gap: 9px;
+        gap: 8px;
         border: 0;
-        border-radius: 12px;
+        border-radius: 14px;
         color: inherit;
         background: transparent;
         text-align: left;
@@ -201,66 +223,102 @@ export function getIslandDocument(): string {
       }
 
       .item:hover {
-        background: rgba(255, 255, 255, 0.07);
+        background: rgba(255, 255, 255, 0.075);
       }
 
-      .dot {
-        width: 7px;
-        height: 7px;
+      .item-icon {
+        position: relative;
+        width: 12px;
+        height: 12px;
+        display: grid;
+        place-items: center;
+        border-radius: 5px;
+        color: var(--item-accent, #7d92ff);
+        background: color-mix(in srgb, var(--item-accent, #7d92ff) 14%, transparent);
+      }
+
+      .item-icon::after {
+        content: "";
+        width: 3px;
+        height: 3px;
         border-radius: 50%;
-        background: var(--status-color, #6f8cff);
-        box-shadow: 0 0 8px color-mix(in srgb, var(--status-color, #6f8cff) 72%, transparent);
+        background: currentColor;
+        box-shadow: 0 0 4px currentColor;
       }
 
-      .dot.finished {
-        --status-color: #42d392;
+      .item-icon.running::before {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        border: 1px solid transparent;
+        border-top-color: currentColor;
+        border-right-color: color-mix(in srgb, currentColor 35%, transparent);
+        border-radius: 50%;
+        animation: spin 1.1s linear infinite;
       }
 
-      .dot.error {
-        --status-color: #ff5d69;
+      .item-icon.finished {
+        --item-accent: #45d69a;
       }
 
-      .dot.permission {
-        --status-color: #ffb648;
+      .item-icon.error {
+        --item-accent: #ff6570;
       }
 
-      .dot.running {
-        --status-color: #8ea1ff;
+      .item-icon.permission {
+        --item-accent: #ffc15a;
+      }
+
+      .item-copy {
+        min-width: 0;
       }
 
       .item-title {
         overflow: hidden;
-        font-size: 11px;
-        font-weight: 600;
-        line-height: 15px;
+        color: rgba(255, 255, 255, 0.94);
+        font-size: 13px;
+        font-weight: 620;
+        line-height: 18px;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
       .item-body {
         overflow: hidden;
-        color: rgba(255, 255, 255, 0.48);
-        font-size: 10px;
-        line-height: 14px;
+        margin-top: 3px;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 11px;
+        line-height: 16px;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
-      .dismiss {
-        width: 24px;
-        height: 24px;
+      .item-meta {
+        min-width: 58px;
         display: grid;
-        place-items: center;
-        border: 0;
-        border-radius: 50%;
-        color: rgba(255, 255, 255, 0.48);
-        background: transparent;
-        cursor: pointer;
+        justify-items: end;
+        gap: 5px;
       }
 
-      .dismiss:hover {
-        color: #fff;
-        background: rgba(255, 255, 255, 0.1);
+      .kind {
+        padding: 3px 7px;
+        border-radius: 7px;
+        color: rgba(255, 255, 255, 0.65);
+        background: rgba(255, 255, 255, 0.07);
+        font-size: 10px;
+        line-height: 14px;
+      }
+
+      .age {
+        color: rgba(255, 255, 255, 0.34);
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -275,94 +333,185 @@ export function getIslandDocument(): string {
   </head>
   <body>
     <main id="island" class="island" aria-live="polite">
-      <button id="summary" class="summary" type="button">
-        <span id="icon" class="status-icon info"></span>
-        <span class="copy">
-          <span id="title" class="title"></span>
-          <span id="body" class="body"></span>
+      <button id="summary" class="summary" type="button" aria-label="展开未读消息">
+        <span class="brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 40 40" fill="none">
+            <path
+              d="M12 11.5h16a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H12a5 5 0 0 1-5-5v-10a5 5 0 0 1 5-5Z"
+              fill="currentColor"
+            />
+            <path d="M14 8.5 17 12M26 8.5 23 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+            <rect x="12" y="17" width="5" height="5" rx="1.5" fill="#050509"/>
+            <rect x="23" y="17" width="5" height="5" rx="1.5" fill="#050509"/>
+            <path d="M14 26h12" stroke="#050509" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M7 20H4M36 20h-3M13 31.5V35M27 31.5V35" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
         </span>
-        <span id="count" class="count" hidden></span>
+        <span class="notch-space" aria-hidden="true"></span>
+        <span id="count" class="unread-count">0</span>
       </button>
-      <section class="details">
-        <div class="divider"></div>
+
+      <section class="details" aria-label="未读消息详情">
+        <header class="details-header">
+          <div class="details-brand">
+            <span class="brand-icon" aria-hidden="true">
+              <svg viewBox="0 0 40 40" fill="none">
+                <path
+                  d="M12 11.5h16a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H12a5 5 0 0 1-5-5v-10a5 5 0 0 1 5-5Z"
+                  fill="currentColor"
+                />
+                <path d="M14 8.5 17 12M26 8.5 23 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                <rect x="12" y="17" width="5" height="5" rx="1.5" fill="#050509"/>
+                <rect x="23" y="17" width="5" height="5" rx="1.5" fill="#050509"/>
+                <path d="M14 26h12" stroke="#050509" stroke-width="2.5" stroke-linecap="round"/>
+                <path d="M7 20H4M36 20h-3M13 31.5V35M27 31.5V35" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+              </svg>
+            </span>
+            <div class="details-heading">
+              <div class="details-title">Paseo 未读消息</div>
+              <div id="detailsSubtitle" class="details-subtitle"></div>
+            </div>
+          </div>
+          <button id="clear" class="clear" type="button">清除</button>
+        </header>
         <div id="list" class="list"></div>
       </section>
     </main>
+
     <script>
       (() => {
-        const bridge = window.paseoIsland;
+        const nativeHandler = window.webkit?.messageHandlers?.paseoIsland;
+        let nativeStateListener = () => {};
+        window.__PASEO_ISLAND_RECEIVE__ = (nextState) => nativeStateListener(nextState);
+        const bridge = window.paseoIsland || {
+          ready: () => nativeHandler?.postMessage({ type: "ready" }),
+          onState: (listener) => {
+            nativeStateListener = listener;
+            return () => {
+              if (nativeStateListener === listener) nativeStateListener = () => {};
+            };
+          },
+          setExpanded: (expanded) =>
+            nativeHandler?.postMessage({ type: "setExpanded", expanded }),
+          action: (action, id) =>
+            nativeHandler?.postMessage({ type: "action", action, id }),
+        };
+
         const island = document.getElementById("island");
         const summary = document.getElementById("summary");
-        const icon = document.getElementById("icon");
-        const title = document.getElementById("title");
-        const body = document.getElementById("body");
         const count = document.getElementById("count");
+        const detailsSubtitle = document.getElementById("detailsSubtitle");
+        const clear = document.getElementById("clear");
         const list = document.getElementById("list");
         let state = { expanded: false, items: [] };
+        let expandTimer = null;
+        let collapseTimer = null;
+
+        const kindLabels = {
+          running: "进行中",
+          finished: "已完成",
+          error: "错误",
+          permission: "待处理",
+          info: "消息",
+        };
+
+        const accentByKind = {
+          running: "#8498ff",
+          finished: "#45d69a",
+          error: "#ff6570",
+          permission: "#ffc15a",
+          info: "#7d92ff",
+        };
+
+        const formatAge = (timestamp) => {
+          const elapsedSeconds = Math.max(0, Math.floor((Date.now() - Number(timestamp || 0)) / 1000));
+          if (elapsedSeconds < 60) return elapsedSeconds + "s";
+          const minutes = Math.floor(elapsedSeconds / 60);
+          if (minutes < 60) return minutes + "m";
+          const hours = Math.floor(minutes / 60);
+          if (hours < 24) return hours + "h";
+          return Math.floor(hours / 24) + "d";
+        };
 
         const render = (nextState) => {
           state = nextState && typeof nextState === "object" ? nextState : state;
           const items = Array.isArray(state.items) ? state.items : [];
           const current = items[0];
-          if (!current) return;
+          const expanded = state.expanded === true && items.length > 0;
 
-          island.classList.toggle("expanded", state.expanded === true);
-          icon.className = "status-icon " + current.kind;
-          title.textContent = current.title || "";
-          body.textContent = current.body || "";
-          body.hidden = !current.body;
-          count.hidden = items.length <= 1;
-          count.textContent = "+" + Math.max(0, items.length - 1);
+          island.classList.toggle("expanded", expanded);
+          island.style.setProperty("--accent", accentByKind[current?.kind] || "#7d92ff");
+          count.textContent = String(items.length);
+          detailsSubtitle.textContent = items.length + " 条未读消息";
+          clear.disabled = items.length === 0;
 
           list.replaceChildren(
-            ...items.slice(0, 4).map((item) => {
-              const row = document.createElement("div");
+            ...items.map((item) => {
+              const row = document.createElement("button");
+              row.type = "button";
               row.className = "item";
-              row.setAttribute("role", "button");
-              row.tabIndex = 0;
               row.addEventListener("click", () => bridge.action("open", item.id));
-              row.addEventListener("keydown", (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  bridge.action("open", item.id);
-                }
-              });
 
-              const dot = document.createElement("span");
-              dot.className = "dot " + item.kind;
+              const icon = document.createElement("span");
+              icon.className = "item-icon " + item.kind;
 
               const copy = document.createElement("span");
-              copy.className = "copy";
+              copy.className = "item-copy";
               const itemTitle = document.createElement("span");
               itemTitle.className = "item-title";
               itemTitle.textContent = item.title || "";
               const itemBody = document.createElement("span");
               itemBody.className = "item-body";
               itemBody.textContent = item.body || "";
+              itemBody.hidden = !item.body;
               copy.append(itemTitle, itemBody);
 
-              const dismiss = document.createElement("button");
-              dismiss.type = "button";
-              dismiss.className = "dismiss";
-              dismiss.setAttribute("aria-label", "关闭提醒");
-              dismiss.textContent = "×";
-              dismiss.addEventListener("click", (event) => {
-                event.stopPropagation();
-                bridge.action("dismiss", item.id);
-              });
+              const meta = document.createElement("span");
+              meta.className = "item-meta";
+              const kind = document.createElement("span");
+              kind.className = "kind";
+              kind.textContent = kindLabels[item.kind] || kindLabels.info;
+              const age = document.createElement("span");
+              age.className = "age";
+              age.textContent = formatAge(item.updatedAt);
+              meta.append(kind, age);
 
-              row.append(dot, copy, dismiss);
+              row.append(icon, copy, meta);
               return row;
             }),
           );
         };
 
+        const cancelTimers = () => {
+          if (expandTimer !== null) window.clearTimeout(expandTimer);
+          if (collapseTimer !== null) window.clearTimeout(collapseTimer);
+          expandTimer = null;
+          collapseTimer = null;
+        };
+
         summary.addEventListener("click", () => {
-          const current = state.items && state.items[0];
-          if (current) bridge.action("open", current.id);
+          if (state.items.length > 0) bridge.setExpanded(true);
         });
-        document.body.addEventListener("mouseenter", () => bridge.setExpanded(true));
-        document.body.addEventListener("mouseleave", () => bridge.setExpanded(false));
+        clear.addEventListener("click", () => bridge.action("clear"));
+        document.body.addEventListener("mouseenter", () => {
+          cancelTimers();
+          if (state.items.length > 0 && state.expanded !== true) {
+            expandTimer = window.setTimeout(() => {
+              expandTimer = null;
+              bridge.setExpanded(true);
+            }, 80);
+          }
+        });
+        document.body.addEventListener("mouseleave", () => {
+          cancelTimers();
+          collapseTimer = window.setTimeout(() => {
+            collapseTimer = null;
+            bridge.setExpanded(false);
+          }, 320);
+        });
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") bridge.setExpanded(false);
+        });
         bridge.onState(render);
         bridge.ready();
       })();

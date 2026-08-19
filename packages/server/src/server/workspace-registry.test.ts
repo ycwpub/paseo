@@ -139,6 +139,23 @@ describe("workspace registries", () => {
     unsubscribe();
   });
 
+  test("creates and persists a project without a directory", async () => {
+    await projectRegistry.initialize();
+
+    const project = await projectRegistry.createDirectoryless({
+      displayName: "Planning",
+      timestamp: "2026-08-19T00:00:00.000Z",
+    });
+
+    expect(project).toMatchObject({
+      rootPath: null,
+      kind: "non_git",
+      displayName: "Planning",
+      customName: null,
+    });
+    expect(await projectRegistry.get(project.projectId)).toEqual(project);
+  });
+
   test("atomically allocates one opaque project for concurrent exact-root adds", async () => {
     await projectRegistry.initialize();
     const rootPath = path.join(tmpDir, "same-root");

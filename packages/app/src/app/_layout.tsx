@@ -112,6 +112,7 @@ import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference, THEME_TO_UNISTYLES } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
+import { PluginAppPanelHost } from "@/plugins/sidebar-panel/panel-host";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
@@ -547,6 +548,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
+  const routeContent = (
+    <View style={rowStyle}>
+      <View style={flexStyle}>{children}</View>
+      {!isCompactLayout ? <PluginAppPanelHost compact={false} /> : null}
+    </View>
+  );
   const workspaceChrome = (
     <View style={rowStyle}>
       {!isCompactLayout ? (
@@ -557,12 +564,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       {isCompactLayout ? (
         <CompactExplorerSidebarHost enabled={chromeEnabled}>
           <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
-            <View style={flexStyle}>{children}</View>
+            {routeContent}
           </WindowChromeRegion>
         </CompactExplorerSidebarHost>
       ) : (
         <WindowChromeRegion corners={appChromeLayout.contentCorners}>
-          <View style={flexStyle}>{children}</View>
+          {routeContent}
         </WindowChromeRegion>
       )}
     </View>
@@ -585,6 +592,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       ) : null}
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
+      {isCompactLayout ? <PluginAppPanelHost compact /> : null}
       <DownloadToast />
       <RosettaCalloutSource />
       <UpdateCalloutSource />

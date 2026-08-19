@@ -220,6 +220,15 @@ export class PluginAppService implements PluginAppRuntime {
     return this.options.httpRuntime.getJob(processId);
   }
 
+  listJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[] {
+    return this.options.httpRuntime.listJobs(options);
+  }
+
   private async generateWithAgent(input: GenerateAppInput): Promise<PluginAppGeneration> {
     const providers = await resolveStructuredGenerationProviders({
       cwd: input.context.pluginRoot,

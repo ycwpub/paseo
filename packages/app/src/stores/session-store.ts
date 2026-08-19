@@ -215,6 +215,7 @@ export interface ProjectDescriptor {
   projectCustomName: string | null;
   projectCustomIconRevision?: string | null;
   projectRootPath: string;
+  projectDirectoryless?: boolean;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
 }
 
@@ -228,6 +229,7 @@ export function normalizeProjectDescriptor(
     projectCustomName: payload.projectCustomName ?? null,
     projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
     projectRootPath: payload.projectRootPath,
+    projectDirectoryless: payload.projectDirectoryless === true,
     projectKind: payload.projectKind,
   };
 }

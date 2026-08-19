@@ -18,4 +18,10 @@ export interface PluginAppRuntime {
   generate(input: PluginAppGenerateInput): Promise<PluginAppState>;
   submit(input: PluginAppSubmitInput): Promise<PluginHttpJob>;
   getJob(processId: string): PluginHttpJob | null;
+  listJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[];
 }

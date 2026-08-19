@@ -86,6 +86,7 @@ import type {
   ProjectIconGetResponse,
   ProjectAddResponse,
   ProjectCreateDirectoryResponse,
+  ProjectCreateDirectorylessResponse,
   OpenProjectResponseMessage,
   WorkspaceGithubSearchRepositoriesResponse,
   ProjectGithubCloneProtocol,
@@ -1165,6 +1166,7 @@ export interface RenameTerminalInput {
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
 type ProjectAddPayload = ProjectAddResponse["payload"];
 export type ProjectCreateDirectoryPayload = ProjectCreateDirectoryResponse["payload"];
+export type ProjectCreateDirectorylessPayload = ProjectCreateDirectorylessResponse["payload"];
 export type WorkspaceGithubSearchRepositoriesPayload =
   WorkspaceGithubSearchRepositoriesResponse["payload"];
 type ProjectGithubClonePayload = ProjectGithubCloneResponse["payload"];
@@ -2691,6 +2693,19 @@ export class DaemonClient {
       message: {
         type: "project.create_directory.request",
         parentPath: input.parentPath,
+        name: input.name,
+      },
+    });
+  }
+
+  async createDirectorylessProject(
+    input: { name: string },
+    requestId?: string,
+  ): Promise<ProjectCreateDirectorylessPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"project.create_directoryless.response">({
+      requestId,
+      message: {
+        type: "project.create_directoryless.request",
         name: input.name,
       },
     });
@@ -6039,6 +6054,15 @@ export class DaemonClient {
     processId: string,
   ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
     return this.resourceRpc.getPluginAppJob(processId);
+  }
+
+  async listPluginAppJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
+    return this.resourceRpc.listPluginAppJobs(options);
   }
 
   async getLarkChannelStatus(

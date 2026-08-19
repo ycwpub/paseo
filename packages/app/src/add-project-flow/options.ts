@@ -6,7 +6,12 @@ import {
 import { shortenPath } from "@/utils/shorten-path";
 import type { AddProjectHost, GithubRepositoryChoice } from "./model";
 
-export type AddProjectMethodId = "directory-search" | "browse" | "github" | "new-directory";
+export type AddProjectMethodId =
+  | "directoryless-project"
+  | "directory-search"
+  | "browse"
+  | "github"
+  | "new-directory";
 
 export interface AddProjectMethodOption {
   id: AddProjectMethodId;
@@ -61,6 +66,14 @@ export function buildAddProjectMethods(host: AddProjectHost): AddProjectMethodOp
       ? `Create an empty directory on ${host.label}`
       : "Update this host to create directories",
     disabled: !host.canCreateDirectory,
+  });
+  options.push({
+    id: "directoryless-project",
+    label: "Blank project",
+    description: host.canCreateDirectorylessProject
+      ? `Create a project without a directory on ${host.label}`
+      : "Update this host to create projects without a directory",
+    disabled: !host.canCreateDirectorylessProject,
   });
   return options;
 }

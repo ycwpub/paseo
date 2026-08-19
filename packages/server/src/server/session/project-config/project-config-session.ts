@@ -157,6 +157,9 @@ export class ProjectConfigSession {
       if (project.archivedAt !== null) {
         continue;
       }
+      if (project.rootPath === null) {
+        continue;
+      }
       const projectRoot = canonicalizeConfigRoot(project.rootPath);
       if (requestedRoot === projectRoot) {
         return projectRoot;

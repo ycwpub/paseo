@@ -65,3 +65,21 @@ export const PluginAppJobGetResponseSchema = z.object({
     error: z.string().nullable(),
   }),
 });
+
+export const PluginAppJobListRequestSchema = z.object({
+  type: z.literal("plugin.app.job.list.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1).optional(),
+  serviceName: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  limit: z.number().int().positive().max(200).optional(),
+});
+
+export const PluginAppJobListResponseSchema = z.object({
+  type: z.literal("plugin.app.job.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    jobs: z.array(PluginHttpJobSchema),
+    error: z.string().nullable(),
+  }),
+});

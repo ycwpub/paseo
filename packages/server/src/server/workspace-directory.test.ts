@@ -644,4 +644,25 @@ describe("WorkspaceDirectory empty projects", () => {
 
     expect(result.emptyProjects.map((p) => p.projectId)).toEqual(["empty"]);
   });
+
+  test("surfaces a directoryless project without inventing a filesystem path", async () => {
+    const directory = makeDirectory({
+      projects: [project({ projectId: "planning", rootPath: null, customName: "Planning" })],
+      workspaces: [],
+    });
+
+    const result = await directory.listFetchEntries({
+      type: "fetch_workspaces_request",
+      requestId: "r-directoryless",
+    });
+
+    expect(result.emptyProjects).toEqual([
+      expect.objectContaining({
+        projectId: "planning",
+        projectDisplayName: "Planning",
+        projectRootPath: "",
+        projectDirectoryless: true,
+      }),
+    ]);
+  });
 });

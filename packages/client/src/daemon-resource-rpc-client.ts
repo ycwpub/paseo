@@ -387,6 +387,19 @@ export class DaemonResourceRpcClient {
     return { job: result.job, error: result.error };
   }
 
+  async listPluginAppJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.list.request", ...options },
+      responseType: "plugin.app.job.list.response",
+    });
+    return { jobs: result.jobs, error: result.error };
+  }
+
   getLarkChannelStatus(options?: LarkChannelRequestOptions) {
     return this.request({
       requestId: options?.requestId,

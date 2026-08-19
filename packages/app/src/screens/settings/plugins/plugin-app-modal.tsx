@@ -15,10 +15,18 @@ import { SelectField } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
+import {
+  isTerminalPluginAppJob,
+  usePluginAppJob,
+} from "@/screens/settings/plugins/use-plugin-app-job";
 
-const TERMINAL_JOB_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
+const EMPTY_FORM_VALUES: Record<string, unknown> = {};
+const EMPTY_HIDDEN_FIELD_IDS: readonly string[] = [];
 
-function initialForm(document: PluginAppState["document"]): Record<string, unknown> {
+function initialForm(
+  document: PluginAppState["document"],
+  fixedValues: Record<string, unknown>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const component of document?.components ?? []) {
     if (
@@ -31,11 +39,11 @@ function initialForm(document: PluginAppState["document"]): Record<string, unkno
       result[component.id] = component.defaultValue ?? (component.type === "checkbox" ? false : "");
     }
   }
-  return result;
+  return { ...result, ...fixedValues };
 }
 
 function prettyJson(value: unknown): string {
-  if (value === undefined) return "";
+  if (value === undefined || value === null) return "暂无结果";
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value, null, 2);
@@ -44,10 +52,17 @@ function prettyJson(value: unknown): string {
   }
 }
 
-function jobStatusText(job: PluginHttpJob | null): string {
-  if (!job) return "Not started";
+function jobStatusText(job: PluginHttpJob | null, queryError: string | null): string {
+  if (queryError) return `状态查询失败：${queryError}`;
+  if (!job) return "尚未启动";
   if (job.error) return `${job.status}: ${job.error}`;
   return job.status;
+}
+
+function errorMessage(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  if (error) return String(error);
+  return null;
 }
 
 type FieldComponent = Extract<
@@ -198,12 +213,18 @@ function buttonVariant(
 function DisplayPreview({
   component,
   job,
+  jobQueryError,
+  jobQueryPending,
   busy,
+  onRefreshJob,
   onRun,
 }: {
   component: DisplayComponent;
   job: PluginHttpJob | null;
+  jobQueryError: string | null;
+  jobQueryPending: boolean;
   busy: boolean;
+  onRefreshJob: () => void;
   onRun: (componentId: string) => void;
 }) {
   const handleRun = useCallback(() => onRun(component.id), [component.id, onRun]);
@@ -231,7 +252,24 @@ function DisplayPreview({
       return (
         <View style={styles.outputCard}>
           <Text style={styles.outputLabel}>{component.label ?? "Status"}</Text>
-          <Text style={styles.statusText}>{jobStatusText(job)}</Text>
+          <Text selectable style={styles.statusText}>
+            {jobStatusText(job, jobQueryError)}
+          </Text>
+          {job?.workflowRunId ? (
+            <Text selectable style={styles.metadataText}>
+              Workflow Run ID: {job.workflowRunId}
+            </Text>
+          ) : null}
+          {jobQueryError && job ? (
+            <Button
+              variant="outline"
+              onPress={onRefreshJob}
+              loading={jobQueryPending}
+              disabled={jobQueryPending}
+            >
+              重新查询
+            </Button>
+          ) : null}
         </View>
       );
     case "result":
@@ -259,21 +297,37 @@ function PreviewComponent({
   component,
   form,
   job,
+  jobQueryError,
+  jobQueryPending,
   busy,
   onFormChange,
+  onRefreshJob,
   onRun,
 }: {
   component: PluginAppComponent;
   form: Record<string, unknown>;
   job: PluginHttpJob | null;
+  jobQueryError: string | null;
+  jobQueryPending: boolean;
   busy: boolean;
   onFormChange: (id: string, value: unknown) => void;
+  onRefreshJob: () => void;
   onRun: (componentId: string) => void;
 }) {
   if (isFieldComponent(component)) {
     return <FieldPreview component={component} form={form} onFormChange={onFormChange} />;
   }
-  return <DisplayPreview component={component} job={job} busy={busy} onRun={onRun} />;
+  return (
+    <DisplayPreview
+      component={component}
+      job={job}
+      jobQueryError={jobQueryError}
+      jobQueryPending={jobQueryPending}
+      busy={busy}
+      onRefreshJob={onRefreshJob}
+      onRun={onRun}
+    />
+  );
 }
 
 interface PluginAppModalProps {
@@ -289,16 +343,30 @@ function usePluginAppController({
   serverId,
   plugin,
   appDefinition,
-}: Omit<PluginAppModalProps, "onClose">) {
+  fixedFormValues = EMPTY_FORM_VALUES,
+  onJobSubmitted,
+}: Omit<PluginAppModalProps, "onClose"> & {
+  fixedFormValues?: Record<string, unknown>;
+  onJobSubmitted?: (job: PluginHttpJob) => void;
+}) {
   const client = useHostRuntimeClient(serverId);
   const [app, setApp] = useState<PluginAppState | null>(null);
   const [prompt, setPrompt] = useState("");
   const [form, setForm] = useState<Record<string, unknown>>({});
-  const [job, setJob] = useState<PluginHttpJob | null>(null);
+  const [submittedJob, setSubmittedJob] = useState<PluginHttpJob | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const jobQuery = usePluginAppJob({
+    active: visible,
+    client,
+    initialJob: submittedJob,
+    serverId,
+  });
+  const job = jobQuery.data ?? submittedJob;
+  const jobQueryError = errorMessage(jobQuery.error);
+  const running = submitting || Boolean(job && !isTerminalPluginAppJob(job) && !jobQueryError);
 
   useEffect(() => {
     if (!visible || !client || !plugin?.pluginId || !appDefinition) return;
@@ -306,14 +374,14 @@ function usePluginAppController({
     setLoading(true);
     setError(null);
     setApp(null);
-    setJob(null);
+    setSubmittedJob(null);
     void client
       .getPluginApp(plugin.pluginId, appDefinition.id)
       .then((result) => {
         if (cancelled) return undefined;
         if (result.error || !result.app) throw new Error(result.error ?? "Plugin app not found");
         setApp(result.app);
-        setForm(initialForm(result.app.document));
+        setForm(initialForm(result.app.document, fixedFormValues));
         return undefined;
       })
       .catch((nextError: unknown) => {
@@ -327,28 +395,7 @@ function usePluginAppController({
     return () => {
       cancelled = true;
     };
-  }, [appDefinition, client, plugin?.pluginId, visible]);
-
-  useEffect(() => {
-    if (!client || !job || TERMINAL_JOB_STATUSES.has(job.status)) {
-      if (job && TERMINAL_JOB_STATUSES.has(job.status)) setRunning(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void client
-        .getPluginAppJob(job.id)
-        .then((result) => {
-          if (result.job) setJob(result.job);
-          if (result.error) setError(result.error);
-          return undefined;
-        })
-        .catch((nextError: unknown) => {
-          setError(nextError instanceof Error ? nextError.message : String(nextError));
-          return undefined;
-        });
-    }, 1_000);
-    return () => clearTimeout(timer);
-  }, [client, job]);
+  }, [appDefinition, client, fixedFormValues, plugin?.pluginId, visible]);
 
   const handleGenerate = useCallback(() => {
     if (!client || !plugin?.pluginId || !appDefinition || !prompt.trim()) return;
@@ -359,7 +406,7 @@ function usePluginAppController({
       .then((result) => {
         if (result.error || !result.app) throw new Error(result.error ?? "Generation failed");
         setApp(result.app);
-        setForm(initialForm(result.app.document));
+        setForm(initialForm(result.app.document, fixedFormValues));
         setPrompt("");
         return undefined;
       })
@@ -368,7 +415,7 @@ function usePluginAppController({
         return undefined;
       })
       .finally(() => setGenerating(false));
-  }, [appDefinition, client, plugin?.pluginId, prompt]);
+  }, [appDefinition, client, fixedFormValues, plugin?.pluginId, prompt]);
 
   const handleFormChange = useCallback((id: string, value: unknown) => {
     setForm((current) => ({ ...current, [id]: value }));
@@ -377,28 +424,29 @@ function usePluginAppController({
   const handleRun = useCallback(
     (componentId: string) => {
       if (!client || !plugin?.pluginId || !appDefinition) return;
-      setRunning(true);
+      setSubmitting(true);
       setError(null);
-      setJob(null);
+      setSubmittedJob(null);
       void client
         .submitPluginAppAction({
           pluginId: plugin.pluginId,
           appId: appDefinition.id,
           componentId,
-          form,
+          form: { ...form, ...fixedFormValues },
         })
         .then((result) => {
           if (result.error || !result.job) throw new Error(result.error ?? "Action failed");
-          setJob(result.job);
+          setSubmittedJob(result.job);
+          onJobSubmitted?.(result.job);
           return undefined;
         })
         .catch((nextError: unknown) => {
-          setRunning(false);
           setError(nextError instanceof Error ? nextError.message : String(nextError));
           return undefined;
-        });
+        })
+        .finally(() => setSubmitting(false));
     },
-    [appDefinition, client, form, plugin?.pluginId],
+    [appDefinition, client, fixedFormValues, form, onJobSubmitted, plugin?.pluginId],
   );
 
   return {
@@ -410,9 +458,12 @@ function usePluginAppController({
     loading,
     generating,
     running,
+    jobQueryError,
+    jobQueryPending: jobQuery.isFetching,
     error,
     handleGenerate,
     handleFormChange,
+    refreshJob: jobQuery.refetch,
     handleRun,
   };
 }
@@ -482,20 +533,30 @@ function PreviewPane({
   job,
   loading,
   running,
+  jobQueryError,
+  jobQueryPending,
   onFormChange,
+  onRefreshJob,
   onRun,
+  hiddenFieldIds,
+  title,
 }: {
   app: PluginAppState | null;
   form: Record<string, unknown>;
   job: PluginHttpJob | null;
   loading: boolean;
   running: boolean;
+  jobQueryError: string | null;
+  jobQueryPending: boolean;
   onFormChange: (id: string, value: unknown) => void;
+  onRefreshJob: () => void;
   onRun: (componentId: string) => void;
+  hiddenFieldIds: ReadonlySet<string>;
+  title: string;
 }) {
   return (
     <View style={styles.previewColumn}>
-      <Text style={styles.sectionTitle}>Live preview</Text>
+      <Text style={styles.sectionTitle}>{title}</Text>
       {app?.document?.description ? (
         <Text style={styles.sectionHint}>{app.document.description}</Text>
       ) : null}
@@ -506,19 +567,131 @@ function PreviewPane({
             Describe the interface on the left, then let Agent generate it.
           </Text>
         ) : null}
-        {app?.document?.components.map((component) => (
-          <PreviewComponent
-            key={component.id}
-            component={component}
-            form={form}
-            job={job}
-            busy={running}
-            onFormChange={onFormChange}
-            onRun={onRun}
-          />
-        ))}
+        {app?.document?.components.map((component) =>
+          hiddenFieldIds.has(component.id) ? null : (
+            <PreviewComponent
+              key={component.id}
+              component={component}
+              form={form}
+              job={job}
+              jobQueryError={jobQueryError}
+              jobQueryPending={jobQueryPending}
+              busy={running}
+              onFormChange={onFormChange}
+              onRefreshJob={onRefreshJob}
+              onRun={onRun}
+            />
+          ),
+        )}
       </View>
     </View>
+  );
+}
+
+type PluginAppController = ReturnType<typeof usePluginAppController>;
+
+function PluginAppContent({
+  controller,
+  showConversation = true,
+  hiddenFieldIds = EMPTY_HIDDEN_FIELD_IDS,
+  previewTitle = "Live preview",
+}: {
+  controller: PluginAppController;
+  showConversation?: boolean;
+  hiddenFieldIds?: readonly string[];
+  previewTitle?: string;
+}) {
+  const {
+    app,
+    prompt,
+    setPrompt,
+    form,
+    job,
+    loading,
+    generating,
+    running,
+    jobQueryError,
+    jobQueryPending,
+    error,
+    handleGenerate,
+    handleFormChange,
+    refreshJob,
+    handleRun,
+  } = controller;
+  const handleRefreshJob = useCallback(() => {
+    void refreshJob();
+  }, [refreshJob]);
+  const hiddenFields = useMemo(() => new Set(hiddenFieldIds), [hiddenFieldIds]);
+
+  return (
+    <>
+      <View style={[styles.columns, !showConversation && styles.singleColumn]}>
+        {showConversation ? (
+          <ConversationPane
+            app={app}
+            prompt={prompt}
+            loading={loading}
+            generating={generating}
+            onPromptChange={setPrompt}
+            onGenerate={handleGenerate}
+          />
+        ) : null}
+        <PreviewPane
+          app={app}
+          form={form}
+          job={job}
+          loading={loading}
+          running={running}
+          jobQueryError={jobQueryError}
+          jobQueryPending={jobQueryPending}
+          onFormChange={handleFormChange}
+          onRefreshJob={handleRefreshJob}
+          onRun={handleRun}
+          hiddenFieldIds={hiddenFields}
+          title={previewTitle}
+        />
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </>
+  );
+}
+
+export function PluginAppSurface({
+  active,
+  serverId,
+  plugin,
+  appDefinition,
+  fixedFormValues,
+  hiddenFieldIds,
+  showConversation = true,
+  onJobSubmitted,
+  previewTitle,
+}: {
+  active: boolean;
+  serverId: string;
+  plugin: PluginSummary;
+  appDefinition: PluginAppDefinition;
+  fixedFormValues?: Record<string, unknown>;
+  hiddenFieldIds?: readonly string[];
+  showConversation?: boolean;
+  onJobSubmitted?: (job: PluginHttpJob) => void;
+  previewTitle?: string;
+}) {
+  const controller = usePluginAppController({
+    visible: active,
+    serverId,
+    plugin,
+    appDefinition,
+    fixedFormValues,
+    onJobSubmitted,
+  });
+  return (
+    <PluginAppContent
+      controller={controller}
+      showConversation={showConversation}
+      hiddenFieldIds={hiddenFieldIds}
+      previewTitle={previewTitle}
+    />
   );
 }
 
@@ -530,20 +703,7 @@ export function PluginAppModal({
   onClose,
 }: PluginAppModalProps) {
   const controller = usePluginAppController({ visible, serverId, plugin, appDefinition });
-  const {
-    app,
-    prompt,
-    setPrompt,
-    form,
-    job,
-    loading,
-    generating,
-    running,
-    error,
-    handleGenerate,
-    handleFormChange,
-    handleRun,
-  } = controller;
+  const { app } = controller;
 
   const header = useMemo(
     () => ({
@@ -562,26 +722,7 @@ export function PluginAppModal({
       scrollable
       testID="plugin-app-modal"
     >
-      <View style={styles.columns}>
-        <ConversationPane
-          app={app}
-          prompt={prompt}
-          loading={loading}
-          generating={generating}
-          onPromptChange={setPrompt}
-          onGenerate={handleGenerate}
-        />
-        <PreviewPane
-          app={app}
-          form={form}
-          job={job}
-          loading={loading}
-          running={running}
-          onFormChange={handleFormChange}
-          onRun={handleRun}
-        />
-      </View>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <PluginAppContent controller={controller} />
     </AdaptiveModalSheet>
   );
 }
@@ -592,6 +733,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "flex-start",
     flexWrap: "wrap",
     gap: theme.spacing[6],
+  },
+  singleColumn: {
+    flexDirection: "column",
   },
   conversationColumn: {
     flex: 1,
@@ -697,6 +841,11 @@ const styles = StyleSheet.create((theme) => ({
   statusText: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
+  },
+  metadataText: {
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
   },
   codeText: {
     color: theme.colors.foreground,

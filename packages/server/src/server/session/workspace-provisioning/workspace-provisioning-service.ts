@@ -381,12 +381,13 @@ export function createWorkspaceProvisioningService(deps: {
       };
     }
     if (checkout && (project.archivedAt || workspace.archivedAt)) {
-      const projectCheckout = areEquivalentPaths(project.rootPath, workspace.cwd)
+      const projectRootPath = project.rootPath ?? workspace.cwd;
+      const projectCheckout = areEquivalentPaths(projectRootPath, workspace.cwd)
         ? checkout
-        : await workspaceGitService.getCheckout(project.rootPath);
+        : await workspaceGitService.getCheckout(projectRootPath);
       const kind = projectCheckout.isGit ? "git" : "non_git";
       const projectKey = deriveProjectKey({
-        rootPath: project.rootPath,
+        rootPath: projectRootPath,
         remoteUrl: projectCheckout.remoteUrl,
         worktreeRoot: projectCheckout.worktreeRoot,
         mainRepoRoot: projectCheckout.mainRepoRoot,
@@ -395,6 +396,7 @@ export function createWorkspaceProvisioningService(deps: {
       if (project.archivedAt || project.kind !== kind || project.projectKey !== projectKey) {
         await projectRegistry.upsert({
           ...project,
+          rootPath: projectRootPath,
           kind,
           projectKey,
           archivedAt: null,
@@ -430,21 +432,32 @@ export function createWorkspaceProvisioningService(deps: {
     workspaceCwd?: string,
     workspaceCheckout?: Awaited<ReturnType<WorkspaceGitService["getCheckout"]>>,
   ): Promise<PersistedProjectRecord> {
+    const projectRootPath = project.rootPath ?? workspaceCwd;
+    if (!projectRootPath) {
+      throw new Error(`Project has no directory: ${project.projectId}`);
+    }
     const projectCheckout =
-      workspaceCwd && workspaceCheckout && areEquivalentPaths(project.rootPath, workspaceCwd)
+      workspaceCwd && workspaceCheckout && areEquivalentPaths(projectRootPath, workspaceCwd)
         ? workspaceCheckout
-        : await workspaceGitService.getCheckout(project.rootPath);
+        : await workspaceGitService.getCheckout(projectRootPath);
     const kind: PersistedProjectRecord["kind"] = projectCheckout.isGit ? "git" : "non_git";
     const projectKey = deriveProjectKey({
-      rootPath: project.rootPath,
+      rootPath: projectRootPath,
       remoteUrl: projectCheckout.remoteUrl,
       worktreeRoot: projectCheckout.worktreeRoot,
       mainRepoRoot: projectCheckout.mainRepoRoot,
       serverId,
     });
-    if (project.kind === kind && project.projectKey === projectKey) return project;
+    if (
+      project.rootPath === projectRootPath &&
+      project.kind === kind &&
+      project.projectKey === projectKey
+    ) {
+      return project;
+    }
     const refreshed = {
       ...project,
+      rootPath: projectRootPath,
       kind,
       projectKey,
       updatedAt: new Date().toISOString(),

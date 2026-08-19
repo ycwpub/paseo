@@ -10,34 +10,20 @@
       "level": 2
     },
     {
+      "id": "flow_title",
+      "type": "text_input",
+      "label": "流程名称",
+      "required": true,
+      "placeholder": "例如：支付链路延迟优化",
+      "description": "用于在左侧开发流程列表中识别本次研发任务。"
+    },
+    {
       "id": "prd",
       "type": "textarea",
       "label": "PRD / 需求说明",
       "required": true,
       "placeholder": "粘贴 PRD、需求链接及验收标准",
       "description": "不得包含 Token、Cookie、JWT 或其他密钥。"
-    },
-    {
-      "id": "repository_path",
-      "type": "text_input",
-      "label": "代码仓库绝对路径",
-      "required": true,
-      "placeholder": "/absolute/path/to/repository"
-    },
-    {
-      "id": "agent_provider",
-      "type": "text_input",
-      "label": "Agent Provider",
-      "required": true,
-      "defaultValue": "codex",
-      "description": "例如 codex、aiden-codex、claude。"
-    },
-    {
-      "id": "agent_model",
-      "type": "text_input",
-      "label": "Agent Model（可选）",
-      "defaultValue": "",
-      "description": "留空时使用该 Provider 的默认模型。"
     },
     {
       "id": "approve_development",
@@ -148,14 +134,7 @@
       "type": "checkbox",
       "label": "写入项目记忆",
       "defaultValue": false,
-      "description": "开启后必须填写 Project ID；默认关闭，避免未选择项目时在流程结束阶段失败。"
-    },
-    {
-      "id": "project_id",
-      "type": "text_input",
-      "label": "Project ID",
-      "defaultValue": "",
-      "description": "勾选项目记忆时必填。"
+      "description": "开启后写入当前开发流程关联的 Project 记忆。"
     },
     {
       "id": "memory_assistant",

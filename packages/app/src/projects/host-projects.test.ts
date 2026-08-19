@@ -98,6 +98,21 @@ describe("host project lookups", () => {
     });
   });
 
+  test("keeps a directoryless routed project selectable without inventing a source directory", () => {
+    const routeProject = hostProjectFromRoute({
+      serverId: "host-a",
+      projectId: "prj_directoryless",
+      displayName: "Planning",
+    });
+
+    expect(routeProject).not.toBeNull();
+    expect(getHostProjectSourceDirectory(routeProject!, "host-a")).toBeNull();
+    expect(routeProject).toMatchObject({
+      projectName: "Planning",
+      hosts: [{ projectId: "prj_directoryless", iconWorkingDir: "" }],
+    });
+  });
+
   test("keeps canonical equivalence identity separate from host placement identity", () => {
     const workspace = normalizeWorkspaceDescriptor({
       id: "workspace-a",

@@ -43,6 +43,7 @@ describe("configToDraft", () => {
       projectIndexAutoGenerate: false,
       projectIndexUpdateIntervalText: "",
       projectVariables: [],
+      larkDocumentLinks: [],
       instructionTemplates: [],
     });
     expect(draft.projectDirectories.project).toEqual([
@@ -108,6 +109,10 @@ describe("configToDraft", () => {
         },
         indexSkill: { autoGenerate: true, updateIntervalMinutes: 45 },
         variables: { service: "billing" },
+        larkDocumentLinks: [
+          "https://example.feishu.cn/wiki/architecture",
+          "https://example.feishu.cn/docx/release",
+        ],
         instructionTemplates: [
           {
             id: "review",
@@ -131,6 +136,10 @@ describe("configToDraft", () => {
     expect(draft.projectIndexAutoGenerate).toBe(true);
     expect(draft.projectIndexUpdateIntervalText).toBe("45");
     expect(draft.projectVariables[0]).toMatchObject({ name: "service", value: "billing" });
+    expect(draft.larkDocumentLinks).toEqual([
+      "https://example.feishu.cn/wiki/architecture",
+      "https://example.feishu.cn/docx/release",
+    ]);
     expect(draft.instructionTemplates[0]).toMatchObject({
       id: "review",
       name: "Review",
@@ -436,6 +445,11 @@ describe("applyDraftToConfig", () => {
     draft.projectIndexAutoGenerate = true;
     draft.projectIndexUpdateIntervalText = "60";
     draft.projectVariables = [{ id: "v1", name: " service ", value: "billing" }];
+    draft.larkDocumentLinks = [
+      " https://example.feishu.cn/wiki/architecture ",
+      "https://example.feishu.cn/wiki/architecture",
+      "https://example.larksuite.com/docx/release",
+    ];
     draft.instructionTemplates = [
       {
         rowId: "t1",
@@ -460,7 +474,23 @@ describe("applyDraftToConfig", () => {
       },
       indexSkill: { autoGenerate: true, updateIntervalMinutes: 60 },
       variables: { service: "billing" },
+      larkDocumentLinks: [
+        "https://example.feishu.cn/wiki/architecture",
+        "https://example.larksuite.com/docx/release",
+      ],
     });
+  });
+
+  it("removes project Lark document links when the draft is empty", () => {
+    const base: PaseoConfigRaw = {
+      project: {
+        larkDocumentLinks: ["https://example.feishu.cn/wiki/architecture"],
+      },
+    };
+    const draft = configToDraft(base);
+    draft.larkDocumentLinks = [];
+
+    expect(applyDraftToConfig({ draft, base }).project?.larkDocumentLinks).toBeUndefined();
   });
 
   it("preserves legacy project-local instruction templates when saving", () => {

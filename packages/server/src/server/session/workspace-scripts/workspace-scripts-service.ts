@@ -87,13 +87,16 @@ export function createWorkspaceScriptsService(deps: {
 
   function resolveGitMetadata(
     workspace: PersistedWorkspaceRecord,
-    project: { projectId: string; rootPath: string } | null,
+    project: { projectId: string; rootPath: string | null } | null,
   ) {
     const snapshot = workspaceGitService.peekSnapshot(workspace.cwd);
     const currentBranch = snapshot?.git.currentBranch ?? workspace.branch ?? null;
-    if (project) {
+    if (project?.rootPath) {
       return {
-        projectSlug: deriveProjectServiceSlug(project),
+        projectSlug: deriveProjectServiceSlug({
+          projectId: project.projectId,
+          rootPath: project.rootPath,
+        }),
         currentBranch,
       };
     }

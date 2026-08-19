@@ -156,6 +156,7 @@ export const PaseoProjectConfigSchema = z
     indexSkill: PaseoProjectIndexSkillSchema.optional(),
     variables: z.record(z.string(), z.string()).optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
+    larkDocumentLinks: z.array(z.string()).optional(),
   })
   .passthrough();
 

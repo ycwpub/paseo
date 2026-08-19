@@ -56,6 +56,7 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { usePanelStore } from "@/stores/panel-store";
+import { InstalledPluginSidebarSection } from "@/plugins/sidebar-panel/sidebar-section";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
@@ -681,6 +682,10 @@ function MobileSidebar({
     }),
     [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
   );
+  const installedPluginSection = useMemo(
+    () => <InstalledPluginSidebarSection onPluginOpened={closeSidebar} />,
+    [closeSidebar],
+  );
 
   return (
     <MobilePanelOverlay
@@ -765,6 +770,7 @@ function MobileSidebar({
             onAddProject={handleOpenProject}
             parentGestureRef={closeGestureRef}
             dragGestureHostPresented={dragGestureHostPresented}
+            listFooterComponent={installedPluginSection}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
@@ -980,6 +986,7 @@ function DesktopSidebar({
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
             onAddProject={handleOpenProject}
+            listFooterComponent={installedPluginSidebarSectionElement}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
@@ -1010,6 +1017,7 @@ function DesktopSidebar({
 // Stable element so the sidebar list's listHeaderComponent prop keeps identity across
 // renders (WorkspacesSectionHeader takes no props).
 const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
+const installedPluginSidebarSectionElement = <InstalledPluginSidebarSection />;
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles

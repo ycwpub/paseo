@@ -2258,6 +2258,12 @@ export const ProjectCreateDirectoryRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const ProjectCreateDirectorylessRequestSchema = z.object({
+  type: z.literal("project.create_directoryless.request"),
+  name: z.string().min(1).max(120),
+  requestId: z.string(),
+});
+
 export const GithubRepositorySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -2900,6 +2906,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   OpenProjectRequestSchema,
   ProjectAddRequestSchema,
   ProjectCreateDirectoryRequestSchema,
+  ProjectCreateDirectorylessRequestSchema,
   WorkspaceGithubSearchRepositoriesRequestSchema,
   ProjectGithubCloneRequestSchema,
   ArchiveWorkspaceRequestSchema,
@@ -3210,6 +3217,9 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceGithubRepositorySearch: z.boolean().optional(),
         // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
         projectCreateDirectory: z.boolean().optional(),
+        // COMPAT(projectCreateDirectoryless): added on 2026-08-19. Older daemons do not
+        // understand directoryless project creation, so clients must gate the entry point.
+        projectCreateDirectoryless: z.boolean().optional(),
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: z.boolean().optional(),
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
@@ -3280,6 +3290,8 @@ export const ServerInfoStatusPayloadSchema = z
         skills: z.boolean().optional(),
         // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
         plugins: z.boolean().optional(),
+        // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobList: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3719,6 +3731,10 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
   projectCustomIconRevision: z.string().nullable().optional(),
   projectRootPath: z.string(),
+  // Directoryless projects intentionally have no backing filesystem root. The
+  // root path remains a string on the wire for compatibility and is empty when
+  // this flag is true.
+  projectDirectoryless: z.boolean().optional(),
   projectKind: z.enum(["git", "non_git", "directory"]),
 });
 
@@ -3856,6 +3872,15 @@ export const ProjectCreateDirectoryResponseSchema = z.object({
     // Error codes are open-ended on the wire so older clients can still parse
     // responses after a newer daemon learns another failure reason.
     errorCode: z.string().nullable(),
+  }),
+});
+
+export const ProjectCreateDirectorylessResponseSchema = z.object({
+  type: z.literal("project.create_directoryless.response"),
+  payload: z.object({
+    requestId: z.string(),
+    project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -5890,6 +5915,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchWorkspacesResponseMessageSchema,
   ProjectAddResponseSchema,
   ProjectCreateDirectoryResponseSchema,
+  ProjectCreateDirectorylessResponseSchema,
   OpenProjectResponseMessageSchema,
   WorkspaceGithubSearchRepositoriesResponseSchema,
   ProjectGithubCloneResponseSchema,
@@ -6401,6 +6427,12 @@ export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequest
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ProjectAddRequest = z.infer<typeof ProjectAddRequestSchema>;
 export type ProjectCreateDirectoryRequest = z.infer<typeof ProjectCreateDirectoryRequestSchema>;
+export type ProjectCreateDirectorylessRequest = z.infer<
+  typeof ProjectCreateDirectorylessRequestSchema
+>;
+export type ProjectCreateDirectorylessResponse = z.infer<
+  typeof ProjectCreateDirectorylessResponseSchema
+>;
 export type ProjectCreateDirectoryErrorCode = z.infer<typeof ProjectCreateDirectoryErrorCodeSchema>;
 export type WorkspaceGithubSearchRepositoriesRequest = z.infer<
   typeof WorkspaceGithubSearchRepositoriesRequestSchema

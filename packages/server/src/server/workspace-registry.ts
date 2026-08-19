@@ -13,7 +13,9 @@ import {
 
 const PersistedProjectRecordSchema = z.object({
   projectId: z.string(),
-  rootPath: z.string(),
+  // Null represents a logical project that has not been attached to a
+  // filesystem directory yet. Existing records always contain a string.
+  rootPath: z.string().nullable(),
   kind: z.enum(["git", "non_git"]),
   displayName: z.string(),
   // COMPAT(projectKey): added in v0.2.4 on 2026-07-28; remove optional after 2027-01-28.
@@ -133,6 +135,10 @@ export interface ProjectRegistry {
   createForRoot?(input: {
     rootPath: string;
     kind: PersistedProjectKind;
+    displayName: string;
+    timestamp: string;
+  }): Promise<PersistedProjectRecord>;
+  createDirectoryless?(input: {
     displayName: string;
     timestamp: string;
   }): Promise<PersistedProjectRecord>;
@@ -356,7 +362,10 @@ export class FileBackedProjectRegistry
     try {
       const active = (await this.list())
         .filter(
-          (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, input.rootPath),
+          (project) =>
+            !project.archivedAt &&
+            project.rootPath !== null &&
+            areEquivalentPaths(project.rootPath, input.rootPath),
         )
         .sort(
           (left, right) =>
@@ -414,6 +423,34 @@ export class FileBackedProjectRegistry
           projectId,
           rootPath: input.rootPath,
           kind: input.kind,
+          displayName: input.displayName,
+          createdAt: input.timestamp,
+          updatedAt: input.timestamp,
+        });
+        await this.upsert(record);
+        return record;
+      }
+    } finally {
+      release();
+    }
+  }
+
+  async createDirectoryless(input: {
+    displayName: string;
+    timestamp: string;
+  }): Promise<PersistedProjectRecord> {
+    const previous = this.allocationQueue;
+    let release!: () => void;
+    this.allocationQueue = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+    try {
+      for (;;) {
+        const projectId = this.projectIdFactory();
+        if (await this.get(projectId)) continue;
+        const record = createPersistedProjectRecord({
+          projectId,
+          rootPath: null,
+          kind: "non_git",
           displayName: input.displayName,
           createdAt: input.timestamp,
           updatedAt: input.timestamp,
@@ -552,7 +589,7 @@ export class FileBackedWorkspaceRegistry
 
 export function createPersistedProjectRecord(input: {
   projectId: string;
-  rootPath: string;
+  rootPath: string | null;
   kind: PersistedProjectKind;
   displayName: string;
   customName?: string | null;

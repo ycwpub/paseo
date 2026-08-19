@@ -10,13 +10,13 @@ describe("resolveIslandLayout", () => {
   });
 
   it("expands across the display and grows with unread messages", () => {
-    expect(resolveIslandLayout(1512, 1, true)).toEqual({ width: 1500, height: 182 });
-    expect(resolveIslandLayout(1512, 4, true)).toEqual({ width: 1500, height: 374 });
-    expect(resolveIslandLayout(1512, 20, true)).toEqual({ width: 1500, height: 446 });
+    expect(resolveIslandLayout(1512, 1, true)).toEqual({ width: 1488, height: 286 });
+    expect(resolveIslandLayout(1512, 4, true)).toEqual({ width: 1488, height: 432 });
+    expect(resolveIslandLayout(1512, 20, true)).toEqual({ width: 1488, height: 514 });
   });
 
   it("stays inside narrow displays", () => {
-    expect(resolveIslandLayout(320, 1, false)).toEqual({ width: 308, height: 64 });
-    expect(resolveIslandLayout(320, 1, true)).toEqual({ width: 308, height: 182 });
+    expect(resolveIslandLayout(320, 1, false)).toEqual({ width: 304, height: 48 });
+    expect(resolveIslandLayout(320, 1, true)).toEqual({ width: 304, height: 286 });
   });
 });

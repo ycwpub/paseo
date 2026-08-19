@@ -17,6 +17,7 @@ import type { Logger } from "pino";
 import { PaseoConfigSchema, type PaseoProjectConfig } from "@getpaseo/protocol/paseo-config-schema";
 import type { DaemonConfigStore } from "../daemon-config-store.js";
 import type { PersistedProjectRecord, ProjectRegistry } from "../workspace-registry.js";
+import { hasProjectDirectory } from "./project-directory-backing.js";
 import { readPaseoConfigJson } from "../../utils/paseo-config-file.js";
 import { resolveProjectDirectories } from "./project-context.js";
 
@@ -287,6 +288,7 @@ export class ProjectIndexService {
   }
 
   private async refreshProject(project: PersistedProjectRecord): Promise<void> {
+    if (!hasProjectDirectory(project)) return;
     const projectConfig = loadProjectConfig(project.rootPath);
     if (projectConfig?.indexSkill?.autoGenerate !== true) return;
     const variables = {

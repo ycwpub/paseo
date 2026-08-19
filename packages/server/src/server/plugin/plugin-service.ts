@@ -423,6 +423,15 @@ export class PluginService {
     return this.requireAppRuntime().getJob(processId);
   }
 
+  listAppJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[] {
+    return this.requireAppRuntime().listJobs(options);
+  }
+
   resolveAppContext(
     pluginId: string,
     appId: string,

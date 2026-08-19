@@ -264,7 +264,7 @@ describe("paseo config schema", () => {
     });
   });
 
-  it("parses project directories, indexing, variables, and instruction templates", () => {
+  it("parses project directories, indexing, variables, Lark documents, and instruction templates", () => {
     const project = {
       directories: {
         project: [".", "../shared-source"],
@@ -280,6 +280,10 @@ describe("paseo config schema", () => {
         serviceName: "checkout",
         owner: "payments",
       },
+      larkDocumentLinks: [
+        "https://example.feishu.cn/wiki/architecture",
+        "https://example.larksuite.com/docx/release",
+      ],
       instructionTemplates: [
         {
           id: "review",

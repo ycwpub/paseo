@@ -7,6 +7,8 @@ import {
   PluginAppGetResponseSchema,
   PluginAppJobGetRequestSchema,
   PluginAppJobGetResponseSchema,
+  PluginAppJobListRequestSchema,
+  PluginAppJobListResponseSchema,
 } from "./plugin/app-rpc-schemas.js";
 import {
   AssistantChangedMessageSchema,
@@ -225,6 +227,7 @@ export const ExtensionSessionInboundSchemas = [
   PluginAppGenerateRequestSchema,
   PluginAppActionSubmitRequestSchema,
   PluginAppJobGetRequestSchema,
+  PluginAppJobListRequestSchema,
   ReasoningTranslateRequestSchema,
 ] as const;
 
@@ -298,5 +301,6 @@ export const ExtensionSessionOutboundSchemas = [
   PluginAppGenerateResponseSchema,
   PluginAppActionSubmitResponseSchema,
   PluginAppJobGetResponseSchema,
+  PluginAppJobListResponseSchema,
   ReasoningTranslateResponseSchema,
 ] as const;

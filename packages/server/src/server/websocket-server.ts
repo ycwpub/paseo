@@ -1966,6 +1966,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceGithubRepositorySearch: true,
         // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
         projectCreateDirectory: true,
+        // COMPAT(projectCreateDirectoryless): added on 2026-08-19.
+        projectCreateDirectoryless: true,
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
         commitsList: true,
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
@@ -2024,6 +2026,8 @@ export class VoiceAssistantWebSocketServer {
         skills: true,
         // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
         plugins: true,
+        // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobList: true,
       },
     };
   }

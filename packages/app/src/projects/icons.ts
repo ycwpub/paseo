@@ -92,11 +92,18 @@ export function useProjectIcons(input: {
   const requests = useMemo(() => {
     const unique = new Map<string, ProjectIconTarget>();
     for (const project of input.projects) {
-      if (!project.serverId || !project.projectId || !project.iconWorkingDir.trim()) continue;
+      const supportsProjectLookup = supportsCustomIcons.get(project.serverId) === true;
+      if (
+        !project.serverId ||
+        !project.projectId ||
+        (!supportsProjectLookup && !project.iconWorkingDir.trim())
+      ) {
+        continue;
+      }
       unique.set(`${project.serverId}:${project.projectId}`, project);
     }
     return Array.from(unique.values());
-  }, [input.projects]);
+  }, [input.projects, supportsCustomIcons]);
 
   const queries = useQueries({
     queries: requests.map((request) => {

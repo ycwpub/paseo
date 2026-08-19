@@ -46,21 +46,21 @@ export function getIslandDocument(): string {
         overflow: hidden;
         color: #fff;
         background: #000;
-        border-radius: 0 0 28px 28px;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+        border-radius: 0 0 20px 20px;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
       }
 
       .island.expanded {
-        border-radius: 0 0 22px 22px;
-        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+        border-radius: 0 0 26px 26px;
+        box-shadow: 0 20px 54px rgba(0, 0, 0, 0.46);
       }
 
       .summary {
         width: 100%;
-        height: 64px;
-        padding: 0 20px;
+        height: 100%;
+        padding: 0 18px;
         display: grid;
-        grid-template-columns: 64px minmax(140px, 1fr) 64px;
+        grid-template-columns: 54px minmax(120px, 1fr) 54px;
         align-items: center;
         border: 0;
         color: inherit;
@@ -98,11 +98,11 @@ export function getIslandDocument(): string {
       }
 
       .unread-count {
-        min-width: 34px;
+        min-width: 28px;
         padding: 0 3px;
         justify-self: end;
         color: rgba(255, 255, 255, 0.96);
-        font-size: 19px;
+        font-size: 17px;
         font-weight: 520;
         line-height: 1;
         text-align: right;
@@ -115,7 +115,7 @@ export function getIslandDocument(): string {
         min-height: 0;
         display: none;
         flex-direction: column;
-        padding: 12px 18px 16px;
+        padding: 16px 24px 22px;
       }
 
       .expanded .details {
@@ -135,8 +135,8 @@ export function getIslandDocument(): string {
       }
 
       .details-header {
-        min-height: 58px;
-        padding: 0 10px 10px;
+        min-height: 68px;
+        padding: 0 12px 14px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -196,7 +196,7 @@ export function getIslandDocument(): string {
 
       .list {
         min-height: 0;
-        padding: 8px 2px 0;
+        padding: 12px 2px 0;
         display: grid;
         align-content: start;
         gap: 3px;
@@ -208,8 +208,8 @@ export function getIslandDocument(): string {
 
       .item {
         width: 100%;
-        min-height: 66px;
-        padding: 9px 10px;
+        min-height: 78px;
+        padding: 12px;
         display: grid;
         grid-template-columns: 14px minmax(0, 1fr) auto;
         align-items: center;

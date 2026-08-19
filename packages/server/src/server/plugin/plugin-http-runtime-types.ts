@@ -16,6 +16,12 @@ export interface PluginHttpServiceRuntime {
   getStatus(pluginId: string, serviceName: string): PluginHttpServiceSummary | null;
   submit(pluginId: string, serviceName: string, input: unknown): Promise<PluginHttpJob>;
   getJob(processId: string): PluginHttpJob | null;
+  listJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[];
   stop(): Promise<void>;
 }
 

@@ -761,7 +761,18 @@ export class WorkflowService {
       stepName: step.name,
       attempt,
     });
-    const cwd = await resolveStepCwd(step.cwd, state.runtime.runDir);
+    const renderedCwd = step.cwd
+      ? await renderWorkflowInstruction({
+          template: step.cwd,
+          variables: step.templateVariables,
+          state,
+          run,
+          stepId: step.id,
+          stepName: step.name,
+          attempt,
+        })
+      : undefined;
+    const cwd = await resolveStepCwd(renderedCwd, state.runtime.runDir);
     const environment = await resolveWorkflowCommandEnvironment(run.scriptSnapshot.environment);
     const nodeEnvironment = {
       ...environment,
@@ -839,7 +850,18 @@ export class WorkflowService {
           attempt,
         })
       : undefined;
-    const cwd = await resolveStepCwd(step.cwd, state.runtime.runDir);
+    const renderedCwd = step.cwd
+      ? await renderWorkflowInstruction({
+          template: step.cwd,
+          variables: step.templateVariables,
+          state,
+          run,
+          stepId: step.id,
+          stepName: step.name,
+          attempt,
+        })
+      : undefined;
+    const cwd = await resolveStepCwd(renderedCwd, state.runtime.runDir);
     const environment = await resolveWorkflowCommandEnvironment(run.scriptSnapshot.environment);
     const nodeEnvironment = {
       ...environment,

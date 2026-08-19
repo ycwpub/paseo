@@ -202,6 +202,15 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     return this.store.get(processId);
   }
 
+  listJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[] {
+    return this.store.list(options);
+  }
+
   async stop(): Promise<void> {
     await this.closeServers();
     for (const [key, status] of this.statuses) {

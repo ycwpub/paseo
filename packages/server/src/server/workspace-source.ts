@@ -1,4 +1,5 @@
 import { expandTilde } from "../utils/path.js";
+import { requireProjectDirectory } from "./project/project-directory-backing.js";
 import type { ProjectRegistry } from "./workspace-registry.js";
 
 export interface WorktreeWorkspaceSource {
@@ -21,5 +22,5 @@ export async function resolveWorktreeSourceCwd(
   if (!project || project.archivedAt) {
     throw new Error(`Project not found: ${source.projectId}`);
   }
-  return project.rootPath;
+  return requireProjectDirectory(project, "Worktree creation");
 }

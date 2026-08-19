@@ -6,6 +6,7 @@ import type {
   PaseoScriptEntryRaw,
 } from "@getpaseo/protocol/messages";
 import { resolvePaseoProjectDirectoryEntries } from "@getpaseo/protocol/paseo-config-schema";
+import { normalizeProjectLarkDocumentLinks } from "@/projects/lark-documents/model";
 
 export type LifecycleOriginalKind = "string" | "array" | "missing";
 
@@ -64,6 +65,7 @@ export interface ProjectConfigDraft {
   projectIndexAutoGenerate: boolean;
   projectIndexUpdateIntervalText: string;
   projectVariables: ProjectVariableDraft[];
+  larkDocumentLinks: string[];
   instructionTemplates: ProjectInstructionTemplateDraft[];
   projectConfigBase: Record<string, unknown> | undefined;
 }
@@ -259,6 +261,7 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
       name,
       value,
     })),
+    larkDocumentLinks: [...(config?.project?.larkDocumentLinks ?? [])],
     instructionTemplates: instructionTemplatesToDraft(config?.project?.instructionTemplates),
     projectConfigBase: config?.project as Record<string, unknown> | undefined,
   };
@@ -400,6 +403,13 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
     delete nextProject.variables;
   } else {
     nextProject.variables = nextVariables;
+  }
+
+  const nextLarkDocumentLinks = normalizeProjectLarkDocumentLinks(input.draft.larkDocumentLinks);
+  if (nextLarkDocumentLinks.length === 0) {
+    delete nextProject.larkDocumentLinks;
+  } else {
+    nextProject.larkDocumentLinks = nextLarkDocumentLinks;
   }
 
   if (Object.keys(nextProject).length === 0) {

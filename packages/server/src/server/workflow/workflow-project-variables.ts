@@ -5,6 +5,7 @@ import type { WorkflowVariableValues } from "@getpaseo/protocol/workflow/data-co
 import { readPaseoConfigJson } from "../../utils/paseo-config-file.js";
 import { isRealpathInsideRoot } from "../../utils/path.js";
 import type { ProjectRegistry } from "../workspace-registry.js";
+import { hasProjectDirectory } from "../project/project-directory-backing.js";
 
 export async function resolveWorkflowProjectVariables(input: {
   cwd: string;
@@ -13,6 +14,7 @@ export async function resolveWorkflowProjectVariables(input: {
 }): Promise<WorkflowVariableValues> {
   const cwd = resolve(input.cwd);
   const project = (await input.projectRegistry.list())
+    .filter(hasProjectDirectory)
     .filter((candidate) => !candidate.archivedAt && isRealpathInsideRoot(candidate.rootPath, cwd))
     .sort((left, right) => right.rootPath.length - left.rootPath.length)[0];
   const projectRoot = project?.rootPath ?? cwd;

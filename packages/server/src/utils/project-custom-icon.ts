@@ -57,7 +57,9 @@ export async function readProjectIcon(input: {
   paseoHome: string;
   project: PersistedProjectRecord;
 }): Promise<ProjectIcon | null> {
-  if (!input.project.customIconRevision) return getProjectIcon(input.project.rootPath);
+  if (!input.project.customIconRevision) {
+    return input.project.rootPath ? getProjectIcon(input.project.rootPath) : null;
+  }
   try {
     return validateIcon(await readFile(cachePath(input.paseoHome, input.project.projectId)));
   } catch {

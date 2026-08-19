@@ -13,8 +13,20 @@ type PluginHttpJobUpdater = (job: PluginHttpJob) => PluginHttpJob;
 const JOB_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+function readProjectId(input: unknown): string | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const value = record.projectId ?? record.project_id;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function activityTimestamp(job: PluginHttpJob): string {
+  return job.endedAt ?? job.startedAt ?? job.createdAt;
+}
+
 export class PluginHttpJobStore {
   private readonly mutations = new Map<string, Promise<unknown>>();
+  private readonly jobs = new Map<string, PluginHttpJob>();
 
   constructor(private readonly directory: string) {}
 
@@ -68,10 +80,32 @@ export class PluginHttpJobStore {
   }
 
   get(id: string): PluginHttpJob | null {
+    const cached = this.jobs.get(id);
+    if (cached) return cached;
     const filePath = this.filePath(id);
     if (!filePath || !existsSync(filePath)) return null;
     ensurePrivateFile(filePath);
-    return PluginHttpJobSchema.parse(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
+    const job = PluginHttpJobSchema.parse(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
+    this.jobs.set(job.id, job);
+    return job;
+  }
+
+  list(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[] {
+    ensurePrivateDirectory(this.directory);
+    const jobs: PluginHttpJob[] = [];
+    for (const job of this.jobs.values()) {
+      if (options.pluginId && job.pluginId !== options.pluginId) continue;
+      if (options.serviceName && job.serviceName !== options.serviceName) continue;
+      if (options.projectId && readProjectId(job.input) !== options.projectId) continue;
+      jobs.push(job);
+    }
+    jobs.sort((left, right) => activityTimestamp(right).localeCompare(activityTimestamp(left)));
+    return jobs.slice(0, options.limit ?? 100);
   }
 
   async update(id: string, updater: PluginHttpJobUpdater): Promise<PluginHttpJob | null> {
@@ -96,6 +130,7 @@ export class PluginHttpJobStore {
     const filePath = this.filePath(job.id);
     if (!filePath) throw new Error(`Invalid Plugin HTTP job ID: ${job.id}`);
     writePrivateFileAtomicSync(filePath, JSON.stringify(job, null, 2));
+    this.jobs.set(job.id, job);
   }
 
   private async serialize<T>(id: string, mutation: () => Promise<T>): Promise<T> {

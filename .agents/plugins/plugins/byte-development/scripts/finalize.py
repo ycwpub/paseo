@@ -23,7 +23,7 @@ def _memory_targets(origin: dict[str, Any]) -> tuple[list[dict[str, str]], str |
     if origin.get("memory_global") is True:
         targets.append(_target("global"))
     if origin.get("memory_project") is True:
-        project_id = _text(origin.get("project_id"), 256)
+        project_id = _text(origin.get("projectId"), 256)
         if not project_id:
             return [], "Project ID is required when project memory is enabled."
         targets.append(_target("project", project_id))

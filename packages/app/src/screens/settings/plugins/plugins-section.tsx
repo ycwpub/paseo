@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { usePlugins } from "@/hooks/use-plugins";
+import { ByteDevelopmentModal } from "@/plugins/byte-development/byte-development-modal";
+import { DEVELOPMENT_PLUGIN_ID } from "@/plugins/byte-development/flow-model";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -473,13 +475,23 @@ export function PluginsSection({ serverId }: { serverId: string }) {
         </View>
         <View style={settingsStyles.card}>{availableContent}</View>
       </SettingsSection>
-      <PluginAppModal
-        visible={selectedApp !== null}
-        serverId={serverId}
-        plugin={selectedApp?.plugin ?? null}
-        appDefinition={selectedApp?.app ?? null}
-        onClose={handleCloseApp}
-      />
+      {selectedApp?.plugin.pluginId === DEVELOPMENT_PLUGIN_ID ? (
+        <ByteDevelopmentModal
+          visible
+          serverId={serverId}
+          plugin={selectedApp.plugin}
+          appDefinition={selectedApp.app}
+          onClose={handleCloseApp}
+        />
+      ) : (
+        <PluginAppModal
+          visible={selectedApp !== null}
+          serverId={serverId}
+          plugin={selectedApp?.plugin ?? null}
+          appDefinition={selectedApp?.app ?? null}
+          onClose={handleCloseApp}
+        />
+      )}
     </View>
   );
 }

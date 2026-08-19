@@ -17,7 +17,8 @@ export type PluginSessionRequest = Extract<
       | "plugin.app.get.request"
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
-      | "plugin.app.job.get.request";
+      | "plugin.app.job.get.request"
+      | "plugin.app.job.list.request";
   }
 >;
 
@@ -182,6 +183,22 @@ export class PluginSession {
           });
           return;
         }
+        case "plugin.app.job.list.request": {
+          this.host.emit({
+            type: "plugin.app.job.list.response",
+            payload: {
+              requestId: message.requestId,
+              jobs: this.service.listAppJobs({
+                pluginId: message.pluginId,
+                serviceName: message.serviceName,
+                projectId: message.projectId,
+                limit: message.limit,
+              }),
+              error: null,
+            },
+          });
+          return;
+        }
       }
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
@@ -278,6 +295,12 @@ export class PluginSession {
         this.host.emit({
           type: "plugin.app.job.get.response",
           payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.list.request":
+        this.host.emit({
+          type: "plugin.app.job.list.response",
+          payload: { requestId: message.requestId, jobs: [], error },
         });
         return;
     }

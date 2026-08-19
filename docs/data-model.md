@@ -2,21 +2,24 @@
 
 ## Project identity
 
-Projects are allocated for the exact root selected by the caller, normalized lexically with
-`path.resolve` (never `realpath`). New project IDs are generated opaque `prj_<16 hex>` values and
-are never derived from the filesystem path. Existing remote-shaped or path-shaped IDs are retained
-as readable compatibility records and are never rekeyed. Explicit **Add Project** operations always
-allocate a new identity, so multiple Projects may intentionally use the same root path. Idempotent
-workspace recovery may reuse the oldest active exact-root Project. Archived-only matches do not
-resurrect an old Project. Workspace `projectId` is stable membership: reconciliation may update
-git-derived kind and branch metadata, but never rehomes a workspace or changes a Project's root,
-ID, or default name.
+Directory-backed Projects are allocated for the exact root selected by the caller, normalized
+lexically with `path.resolve` (never `realpath`). Blank Projects are allocated with `rootPath:
+null`; they remain visible without a Workspace and do not create a hidden or temporary directory.
+Creating the first directory Workspace in a blank Project attaches that directory as its root.
+New project IDs are generated opaque `prj_<16 hex>` values and are never derived from the
+filesystem path. Existing remote-shaped or path-shaped IDs are retained as readable compatibility
+records and are never rekeyed. Explicit **Add Project** operations always allocate a new identity,
+so multiple Projects may intentionally use the same root path. Idempotent workspace recovery may
+reuse the oldest active exact-root Project. Archived-only matches do not resurrect an old Project.
+Workspace `projectId` is stable membership: reconciliation may update git-derived kind and branch
+metadata, but never rehomes a workspace or changes a directory-backed Project's root, ID, or
+default name.
 
 `projectId` is the unique project identity. Display/custom project names are not unique and may be
 reused by multiple projects. UI and protocol operations that mutate a project use `projectId`,
 never the display name.
 
-`kind` is mutable metadata, not identity. Workspace reconciliation watches active project roots and
+`kind` is mutable metadata, not identity. Workspace reconciliation watches active directory-backed project roots and
 updates only a project's `kind` and `updatedAt` when `.git` appears or disappears, preserving its
 ID, root path, names, and workspace foreign keys. Attached workspaces are independently refreshed
 from their own cwd, so an explicit project root never implies a workspace checkout. Empty projects
@@ -42,7 +45,8 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
 ## Project resource configuration
 
-Each Project may define a `project` block in the Project root's `paseo.json`:
+Each directory-backed Project may define a `project` block in the Project root's `paseo.json`.
+Blank Projects have no project-level filesystem configuration until a directory is attached:
 
 ```json
 {
@@ -482,11 +486,11 @@ Array of project records.
 | -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `projectId`          | `string`                    | Host-local primary key; new records use opaque `prj_<16 hex>` IDs                                                                          |
 | `projectKey`         | `string \| null`            | Persisted opaque cross-host grouping key; reconciliation backfills absent values                                                           |
-| `rootPath`           | `string`                    | Exact lexically normalized selected root; never realpathed                                                                                 |
+| `rootPath`           | `string \| null`            | Exact lexically normalized selected root; null for a blank Project that is not yet attached to a directory                                 |
 | `kind`               | `"git" \| "non_git"`        | Mutable Git observation about `rootPath`, never a membership key                                                                           |
-| `displayName`        | `string`                    | Selected-root basename, stable across remote and Git changes                                                                               |
+| `displayName`        | `string`                    | Stable default name; selected-root basename for directory-backed Projects and the entered name for blank Projects                          |
 | `customName`         | `string \| null`            | User-set override layered over `displayName`. Null means "use the derived name".                                                           |
-| `customIconRevision` | `string \| null`            | Identifies the host-local custom icon stored under `projects/icons/`. Null means the icon is discovered by scanning the project directory. |
+| `customIconRevision` | `string \| null`            | Identifies the host-local custom icon stored under `projects/icons/`. Null uses directory discovery when a root exists, otherwise no icon. |
 | `createdAt`          | `string` (ISO 8601)         |                                                                                                                                            |
 | `updatedAt`          | `string` (ISO 8601)         |                                                                                                                                            |
 | `archivedAt`         | `string \| null` (ISO 8601) | Soft-delete timestamp; required nullable                                                                                                   |

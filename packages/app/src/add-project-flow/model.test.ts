@@ -7,11 +7,13 @@ import {
   moveAddProjectSelection,
   openAddProjectFlow,
   openDirectorySearchPage,
+  openDirectorylessProjectNamePage,
   openGithubLocationPage,
   openNewDirectoryNamePage,
   openNewDirectoryParentPage,
   setAddProjectActiveIndex,
   setAddProjectPageInput,
+  setDirectorylessProjectName,
   setNewDirectoryName,
   type AddProjectHost,
 } from "./model";
@@ -30,6 +32,7 @@ const HOST: AddProjectHost = {
   canCloneGithubRepositories: true,
   canSearchGithubRepositories: true,
   canCreateDirectory: true,
+  canCreateDirectorylessProject: true,
 };
 
 describe("Add Project navigation", () => {
@@ -86,6 +89,19 @@ describe("Add Project navigation", () => {
     });
   });
 
+  it("restores a directoryless project name after returning to the method page", () => {
+    let state = openAddProjectFlow({ hosts: [HOST] });
+    state = openDirectorylessProjectNamePage(state, HOST.serverId);
+    state = setDirectorylessProjectName(state, "Planning");
+    state = backAddProjectPage(state) ?? state;
+    state = openDirectorylessProjectNamePage(state, HOST.serverId);
+
+    expect(currentAddProjectPage(state)).toMatchObject({
+      kind: "directoryless-project-name",
+      name: "Planning",
+    });
+  });
+
   it("restores the GitHub destination query and active parent when reopening a repository", () => {
     const repository = {
       id: "repo-1",
@@ -126,6 +142,7 @@ describe("Add Project options", () => {
         canCloneGithubRepositories: false,
         canSearchGithubRepositories: false,
         canCreateDirectory: false,
+        canCreateDirectorylessProject: false,
       }),
     ).toEqual([
       {
@@ -143,6 +160,12 @@ describe("Add Project options", () => {
         id: "new-directory",
         label: "New directory",
         description: "Update this host to create directories",
+        disabled: true,
+      },
+      {
+        id: "directoryless-project",
+        label: "Blank project",
+        description: "Update this host to create projects without a directory",
         disabled: true,
       },
     ]);

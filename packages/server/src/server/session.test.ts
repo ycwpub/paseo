@@ -763,6 +763,52 @@ describe("project command-center RPCs", () => {
       rmSync(parentDirectory, { recursive: true, force: true });
     }
   });
+
+  test("creates a Project without creating or requiring a directory", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const project = createPersistedProjectRecord({
+      projectId: "prj_directoryless",
+      rootPath: null,
+      kind: "non_git",
+      displayName: "Planning",
+      createdAt: "2026-08-19T00:00:00.000Z",
+      updatedAt: "2026-08-19T00:00:00.000Z",
+    });
+    const createDirectoryless = vi.fn().mockResolvedValue(project);
+    const session = createSessionForTest({
+      messages,
+      projectRegistry: { createDirectoryless },
+    });
+
+    await session.handleMessage({
+      type: "project.create_directoryless.request",
+      name: "Planning",
+      requestId: "req-directoryless",
+    });
+
+    expect(createDirectoryless).toHaveBeenCalledWith({
+      displayName: "Planning",
+      timestamp: expect.any(String),
+    });
+    expect(messages).toEqual([
+      {
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: "req-directoryless",
+          project: {
+            projectId: "prj_directoryless",
+            projectDisplayName: "Planning",
+            projectCustomName: null,
+            projectCustomIconRevision: null,
+            projectRootPath: "",
+            projectDirectoryless: true,
+            projectKind: "non_git",
+          },
+          error: null,
+        },
+      },
+    ]);
+  });
 });
 
 describe("file explorer binary responses", () => {

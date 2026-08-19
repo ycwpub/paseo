@@ -2991,6 +2991,64 @@ test("creates and registers a project directory through the dotted RPC", async (
   });
 });
 
+test("creates a directoryless project through the dotted RPC", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const createPromise = client.createDirectorylessProject(
+    { name: "Planning" },
+    "req-directoryless",
+  );
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "project.create_directoryless.request",
+    name: "Planning",
+    requestId: "req-directoryless",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "project.create_directoryless.response",
+      payload: {
+        requestId: "req-directoryless",
+        project: {
+          projectId: "prj_directoryless",
+          projectDisplayName: "Planning",
+          projectCustomName: null,
+          projectRootPath: "",
+          projectDirectoryless: true,
+          projectKind: "non_git",
+        },
+        error: null,
+      },
+    }),
+  );
+
+  await expect(createPromise).resolves.toEqual({
+    requestId: "req-directoryless",
+    project: {
+      projectId: "prj_directoryless",
+      projectDisplayName: "Planning",
+      projectCustomName: null,
+      projectRootPath: "",
+      projectDirectoryless: true,
+      projectKind: "non_git",
+    },
+    error: null,
+  });
+});
+
 test("sends first-agent prompt context with workspace.create.request", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

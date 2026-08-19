@@ -3,14 +3,18 @@ export interface IslandLayout {
   height: number;
 }
 
-export const ISLAND_COMPACT_HEIGHT = 64;
-export const ISLAND_COMPACT_WIDTH = 520;
+/**
+ * Fallback compact size for Electron and Macs without a camera housing.
+ * The native host replaces this with the current screen's real notch width.
+ */
+export const ISLAND_COMPACT_HEIGHT = 48;
+export const ISLAND_COMPACT_WIDTH = 320;
 
-const EXPANDED_HORIZONTAL_GUTTER = 12;
-const EXPANDED_MIN_HEIGHT = 182;
-const EXPANDED_MAX_HEIGHT = 460;
-const EXPANDED_HEADER_HEIGHT = 86;
-const EXPANDED_ITEM_HEIGHT = 72;
+const EXPANDED_HORIZONTAL_GUTTER = 24;
+const EXPANDED_MIN_HEIGHT = 286;
+const EXPANDED_MAX_HEIGHT = 560;
+const EXPANDED_HEADER_HEIGHT = 104;
+const EXPANDED_ITEM_HEIGHT = 82;
 const MAX_VISIBLE_ITEM_COUNT = 5;
 
 export function resolveIslandLayout(

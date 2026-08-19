@@ -7,6 +7,7 @@ import {
   FolderPlus,
   Github,
   HardDrive,
+  LayoutGrid,
   Plus,
   Search,
   Server,
@@ -38,12 +39,14 @@ import {
   moveAddProjectSelection,
   openAddProjectFlow,
   openDirectorySearchPage,
+  openDirectorylessProjectNamePage,
   openGithubLocationPage,
   openGithubSearchPage,
   openNewDirectoryNamePage,
   openNewDirectoryParentPage,
   setAddProjectActiveIndex,
   setAddProjectPageInput,
+  setDirectorylessProjectName,
   setNewDirectoryName,
   updateCurrentAddProjectPage,
   type AddProjectFlowState,
@@ -158,6 +161,7 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
 }
 
 function methodIcon(method: AddProjectMethodId): FlowRowOption["icon"] {
+  if (method === "directoryless-project") return LayoutGrid;
   if (method === "github") return Github;
   if (method === "browse") return FolderOpen;
   if (method === "new-directory") return FolderPlus;
@@ -173,6 +177,7 @@ function directoryOptionSubtitle(option: ProjectPickerOption, shortPath: string)
 function progressText(page: AddProjectPage): string {
   if (page.kind === "github-location") return "Cloning project...";
   if (page.kind === "new-directory-name") return "Creating directory...";
+  if (page.kind === "directoryless-project-name") return "Creating project...";
   return "Adding project...";
 }
 
@@ -219,6 +224,8 @@ function pageTitle(page: AddProjectPage): string {
       return "Choose parent directory";
     case "new-directory-name":
       return "Name directory";
+    case "directoryless-project-name":
+      return "Name project";
   }
 }
 
@@ -237,11 +244,15 @@ function pagePlaceholder(page: AddProjectInputPage): string {
       return "Search parent directories or enter a path...";
     case "new-directory-name":
       return "Directory name";
+    case "directoryless-project-name":
+      return "Project name";
   }
 }
 
 function pageInput(page: AddProjectInputPage): string {
-  return page.kind === "new-directory-name" ? page.name : page.query;
+  return page.kind === "new-directory-name" || page.kind === "directoryless-project-name"
+    ? page.name
+    : page.query;
 }
 
 function pathTestId(path: string): string {
@@ -324,6 +335,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const githubSearchByHost = useHostFeatureMap(hostIds, "workspaceGithubRepositorySearch");
   // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
   const createDirectoryByHost = useHostFeatureMap(hostIds, "projectCreateDirectory");
+  const createDirectorylessProjectByHost = useHostFeatureMap(hostIds, "projectCreateDirectoryless");
   const localServerId = useLocalDaemonServerId();
   const availableHosts = useMemo<AddProjectHost[]>(
     () =>
@@ -341,12 +353,15 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             canCloneGithubRepositories: githubCloneByHost.get(host.serverId) === true,
             canSearchGithubRepositories: githubSearchByHost.get(host.serverId) === true,
             canCreateDirectory: createDirectoryByHost.get(host.serverId) === true,
+            canCreateDirectorylessProject:
+              createDirectorylessProjectByHost.get(host.serverId) === true,
           },
         ];
       }),
     [
       connectionStatuses,
       createDirectoryByHost,
+      createDirectorylessProjectByHost,
       githubCloneByHost,
       githubSearchByHost,
       hosts,
@@ -374,7 +389,12 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const inputRef = useRef<TextInput>(null);
   const submissionInFlightRef = useRef(false);
   const browseInFlightRef = useRef(false);
-  const query = page.kind === "new-directory-name" || page.kind === "method" ? "" : page.query;
+  const query =
+    page.kind === "new-directory-name" ||
+    page.kind === "directoryless-project-name" ||
+    page.kind === "method"
+      ? ""
+      : page.query;
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
@@ -509,6 +529,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (!hostId) return;
       if (method === "directory-search") {
         setState((current) => openDirectorySearchPage(current, hostId));
+      } else if (method === "directoryless-project") {
+        setState((current) => openDirectorylessProjectNamePage(current, hostId));
       } else if (method === "browse") {
         void browse();
       } else if (method === "github") {
@@ -700,6 +722,55 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   ]);
 
   const activeIndex = rows.length === 0 ? 0 : Math.min(page.activeIndex, rows.length - 1);
+  const createDirectorylessProject = useCallback(async () => {
+    if (page.kind !== "directoryless-project-name" || !client) return;
+    const name = page.name.trim();
+    if (!name) {
+      setState((current) =>
+        setPageStatus(current, "directoryless-project-name", {
+          error: "Enter a project name",
+        }),
+      );
+      return;
+    }
+    if (submissionInFlightRef.current) return;
+    submissionInFlightRef.current = true;
+    setState((current) =>
+      setPageStatus(current, "directoryless-project-name", {
+        isSubmitting: true,
+        error: null,
+      }),
+    );
+    try {
+      const payload = await client.createDirectorylessProject({ name });
+      if (payload.error || !payload.project) {
+        setState((current) =>
+          setPageStatus(current, "directoryless-project-name", {
+            isSubmitting: false,
+            error: payload.error ?? "Unable to create project",
+          }),
+        );
+        return;
+      }
+      registerProjectDescriptor({
+        serverId: page.hostId,
+        project: payload.project,
+        upsertProject,
+        setHasHydratedWorkspaces,
+      });
+      onClose();
+    } catch {
+      setState((current) =>
+        setPageStatus(current, "directoryless-project-name", {
+          isSubmitting: false,
+          error: "Unable to create project",
+        }),
+      );
+    } finally {
+      submissionInFlightRef.current = false;
+    }
+  }, [client, onClose, page, setHasHydratedWorkspaces, upsertProject]);
+
   const createDirectory = useCallback(async () => {
     if (page.kind !== "new-directory-name" || !client) return;
     const name = page.name.trim();
@@ -748,13 +819,17 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   }, [client, openNewWorkspaceForProject, page, setHasHydratedWorkspaces, upsertProject]);
 
   const submitActive = useCallback(() => {
+    if (page.kind === "directoryless-project-name") {
+      void createDirectorylessProject();
+      return;
+    }
     if (page.kind === "new-directory-name") {
       void createDirectory();
       return;
     }
     const option = rows[activeIndex];
     if (option && !option.disabled) option.select();
-  }, [activeIndex, createDirectory, page.kind, rows]);
+  }, [activeIndex, createDirectory, createDirectorylessProject, page.kind, rows]);
 
   const handleKey = useCallback(
     (key: string): boolean => {
@@ -803,11 +878,16 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   );
 
   const handleInputChange = useCallback((value: string) => {
-    setState((current) =>
-      currentAddProjectPage(current).kind === "new-directory-name"
-        ? setNewDirectoryName(current, value)
-        : setAddProjectPageInput(current, value),
-    );
+    setState((current) => {
+      const currentPage = currentAddProjectPage(current);
+      if (currentPage.kind === "new-directory-name") {
+        return setNewDirectoryName(current, value);
+      }
+      if (currentPage.kind === "directoryless-project-name") {
+        return setDirectorylessProjectName(current, value);
+      }
+      return setAddProjectPageInput(current, value);
+    });
   }, []);
   const isSubmitting = "isSubmitting" in page && page.isSubmitting;
   const currentGithubSearch =
@@ -934,7 +1014,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             !loading &&
             !queryError &&
             rows.length === 0 &&
-            page.kind !== "new-directory-name" ? (
+            page.kind !== "new-directory-name" &&
+            page.kind !== "directoryless-project-name" ? (
               <Text style={styles.stateText} testID="add-project-flow-empty">
                 {emptyText(page, host ?? null)}
               </Text>

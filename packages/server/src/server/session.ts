@@ -279,6 +279,7 @@ import {
   createProjectDirectory,
   ProjectDirectoryRequestError,
 } from "./project-directory-service.js";
+import { projectRootPathForWire } from "./project/project-directory-backing.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
@@ -2292,6 +2293,8 @@ export class Session {
     }
   }
 
+  // This method intentionally centralizes the workspace/project wire surface.
+  // eslint-disable-next-line complexity
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
@@ -2319,6 +2322,8 @@ export class Session {
         return this.handleProjectAddRequest(msg);
       case "project.create_directory.request":
         return this.handleProjectCreateDirectoryRequest(msg);
+      case "project.create_directoryless.request":
+        return this.handleProjectCreateDirectorylessRequest(msg);
       case "workspace.github.search_repositories.request":
         return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
       case "project.github.clone.request":
@@ -2587,6 +2592,7 @@ export class Session {
       case "plugin.app.generate.request":
       case "plugin.app.action.submit.request":
       case "plugin.app.job.get.request":
+      case "plugin.app.job.list.request":
         return this.pluginSession?.handleRequest(msg);
       default:
         return undefined;
@@ -5092,7 +5098,8 @@ export class Session {
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
-      projectRootPath: project.rootPath,
+      projectRootPath: projectRootPathForWire(project),
+      ...(project.rootPath === null ? { projectDirectoryless: true } : {}),
       projectKind: project.kind,
     };
   }
@@ -6043,6 +6050,56 @@ export class Session {
           project: null,
           error: requestError.message,
           errorCode: requestError.code,
+        },
+      });
+    }
+  }
+
+  private async handleProjectCreateDirectorylessRequest(
+    request: Extract<SessionInboundMessage, { type: "project.create_directoryless.request" }>,
+  ): Promise<void> {
+    const name = request.name.trim();
+    if (!name) {
+      this.emit({
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
+          error: "Project name is required",
+        },
+      });
+      return;
+    }
+    try {
+      if (!this.projectRegistry.createDirectoryless) {
+        throw new Error("This host does not support directoryless projects");
+      }
+      const project = await this.projectRegistry.createDirectoryless({
+        displayName: name,
+        timestamp: new Date().toISOString(),
+      });
+      this.sessionLogger.info(
+        { projectId: project.projectId, projectName: name },
+        "Directoryless project created",
+      );
+      this.emit({
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: request.requestId,
+          project: this.buildProjectDescriptor(project),
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create directoryless project";
+      this.sessionLogger.error({ err: error, projectName: name }, message);
+      this.emit({
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
+          error: message,
         },
       });
     }

@@ -33,6 +33,8 @@ import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
+import { projectLarkDocumentLinksError } from "@/projects/lark-documents/model";
+import { ProjectLarkDocumentsEditor } from "@/projects/lark-documents/project-lark-documents-editor";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -586,6 +588,10 @@ function ProjectConfigForm({
     (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
     [updateDraft],
   );
+  const handleLarkDocumentLinksChange = useCallback(
+    (larkDocumentLinks: string[]) => updateDraft((d) => ({ ...d, larkDocumentLinks })),
+    [updateDraft],
+  );
 
   const handleSaveGlobalIndexInterval = useCallback(() => {
     const parsed = Number(globalIndexIntervalText.trim());
@@ -738,6 +744,12 @@ function ProjectConfigForm({
         onGlobalIndexIntervalChange={setGlobalIndexIntervalText}
         onSaveGlobalIndexInterval={handleSaveGlobalIndexInterval}
         onVariablesChange={handleVariablesChange}
+      />
+
+      <ProjectLarkDocumentsEditor
+        values={draft.larkDocumentLinks}
+        error={projectValidation.larkDocumentLinksError}
+        onChange={handleLarkDocumentLinksChange}
       />
 
       <SettingsGroup
@@ -897,6 +909,7 @@ interface ProjectConfigurationValidation {
   projectDirectoryError: string | null;
   indexIntervalError: string | null;
   variableError: string | null;
+  larkDocumentLinksError: string | null;
 }
 
 function validateProjectConfiguration(
@@ -932,12 +945,16 @@ function validateProjectConfiguration(
       name: duplicateVariable,
     });
   }
+  const larkDocumentLinksError = projectLarkDocumentLinksError(draft.larkDocumentLinks);
 
   return {
-    hasErrors: Boolean(projectDirectoryError || indexIntervalError || variableError),
+    hasErrors: Boolean(
+      projectDirectoryError || indexIntervalError || variableError || larkDocumentLinksError,
+    ),
     projectDirectoryError,
     indexIntervalError,
     variableError,
+    larkDocumentLinksError,
   };
 }
 

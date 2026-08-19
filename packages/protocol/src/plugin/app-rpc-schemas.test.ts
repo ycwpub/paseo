@@ -3,6 +3,8 @@ import {
   PluginAppActionSubmitRequestSchema,
   PluginAppGenerateRequestSchema,
   PluginAppGetResponseSchema,
+  PluginAppJobListRequestSchema,
+  PluginAppJobListResponseSchema,
 } from "./app-rpc-schemas.js";
 
 describe("plugin app RPC schemas", () => {
@@ -52,5 +54,29 @@ describe("plugin app RPC schemas", () => {
       },
     });
     expect(response.payload.app?.document?.title).toBe("Dashboard");
+  });
+
+  it("lists plugin jobs by project", () => {
+    expect(
+      PluginAppJobListRequestSchema.parse({
+        type: "plugin.app.job.list.request",
+        requestId: "request-4",
+        pluginId: "byte-development",
+        serviceName: "development",
+        projectId: "project-1",
+        limit: 50,
+      }),
+    ).toMatchObject({ projectId: "project-1", limit: 50 });
+
+    expect(
+      PluginAppJobListResponseSchema.parse({
+        type: "plugin.app.job.list.response",
+        payload: {
+          requestId: "request-4",
+          jobs: [],
+          error: null,
+        },
+      }).payload.jobs,
+    ).toEqual([]);
   });
 });

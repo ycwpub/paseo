@@ -185,18 +185,19 @@ export async function loadProjectAgentContext(input: {
   const project = await input.projectRegistry.get(workspace.projectId);
   if (!project) return null;
 
-  const projectConfig = readProjectConfig(project.rootPath, input.logger);
+  const projectRoot = project.rootPath ?? workspace.cwd;
+  const projectConfig = readProjectConfig(projectRoot, input.logger);
   const variables = {
     ...projectConfig?.variables,
     projectId: project.projectId,
     projectName: project.customName ?? project.displayName,
-    projectRoot: project.rootPath,
+    projectRoot,
     workspaceId: workspace.workspaceId,
     workspaceName: workspace.title ?? workspace.displayName,
     workspaceDirectory: workspace.cwd,
   };
   const directories = resolveProjectDirectories({
-    projectRoot: project.rootPath,
+    projectRoot,
     workspaceId: workspace.workspaceId,
     workspaceDirectory: workspace.cwd,
     projectConfig,

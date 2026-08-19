@@ -11,8 +11,8 @@ const expandedOutputPath = "/tmp/paseo-island-expanded.png";
 async function renderPreview() {
   await app.whenReady();
   const window = new BrowserWindow({
-    width: 520,
-    height: 64,
+    width: 320,
+    height: 48,
     show: false,
     frame: false,
     transparent: true,
@@ -48,7 +48,7 @@ async function renderPreview() {
   const compactImage = await window.capturePage();
   fs.writeFileSync(compactOutputPath, compactImage.toPNG());
 
-  window.setSize(1000, 182);
+  window.setSize(1000, 286);
   await window.webContents.executeJavaScript(`
     window.__PASEO_ISLAND_RECEIVE__({
       expanded: true,

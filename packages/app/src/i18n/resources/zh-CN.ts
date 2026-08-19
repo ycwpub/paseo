@@ -56,11 +56,9 @@ export const zhCN: TranslationResources = {
       description:
         "Agent 只会读取和学习当前用户的全局记忆；Project、Workspace 和助手记忆继续共享。",
       currentUser: "当前用户",
-      userName: "用户名称",
-      saveName: "保存名称",
       deleteUser: "删除当前用户",
       newUserName: "新用户名称",
-      newUserPlaceholder: "例如：袁昌旺",
+      newUserPlaceholder: "例如：张三",
       createAndSwitch: "创建并切换",
       selectUser: "选择用户",
       noUsers: "没有用户",

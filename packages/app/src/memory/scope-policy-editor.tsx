@@ -49,7 +49,7 @@ export function MemoryScopePolicyEditor({
     setExtractionInstructions(persistedDraft.extractionInstructions);
     setSaved(false);
     setSaveError(null);
-  }, [persistedDraft]);
+  }, [persistedDraft.enabled, persistedDraft.extractionInstructions, scope.id, scope.type]);
 
   const save = useCallback(async () => {
     setSaveError(null);

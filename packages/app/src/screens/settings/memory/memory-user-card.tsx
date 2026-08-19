@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
@@ -21,9 +21,7 @@ export function MemoryUserCard({
 }) {
   const { t } = useTranslation();
   const activeUser = users.find((user) => user.id === activeUserId) ?? users[0]!;
-  const [name, setName] = useState(activeUser.name);
   const [newUserName, setNewUserName] = useState("");
-  useEffect(() => setName(activeUser.name), [activeUser.id, activeUser.name]);
 
   const options = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -45,9 +43,6 @@ export function MemoryUserCard({
     },
     [onChange],
   );
-  const renameUser = useCallback(() => {
-    void onChange({ type: "rename", id: activeUser.id, name: name.trim() });
-  }, [activeUser.id, name, onChange]);
   const createUser = useCallback(async () => {
     await onChange({ type: "create", name: newUserName.trim() });
     setNewUserName("");
@@ -65,34 +60,19 @@ export function MemoryUserCard({
             <Text style={settingsStyles.rowHint}>{t("memoryPolicies.users.description")}</Text>
           </View>
         </View>
-        <View style={styles.grid}>
-          <View style={styles.field}>
-            <SelectField
-              label={t("memoryPolicies.users.currentUser")}
-              value={activeUser.id}
-              selectedDisplay={selectedDisplay}
-              options={options}
-              onChange={selectUser}
-              placeholder={t("memoryPolicies.users.selectUser")}
-              emptyText={t("memoryPolicies.users.noUsers")}
-              disabled={disabled}
-            />
-          </View>
-          <View style={styles.field}>
-            <Field label={t("memoryPolicies.users.userName")}>
-              <FormTextInput value={name} onChangeText={setName} editable={!disabled} />
-            </Field>
-          </View>
+        <View style={styles.field}>
+          <SelectField
+            label={t("memoryPolicies.users.currentUser")}
+            value={activeUser.id}
+            selectedDisplay={selectedDisplay}
+            options={options}
+            onChange={selectUser}
+            placeholder={t("memoryPolicies.users.selectUser")}
+            emptyText={t("memoryPolicies.users.noUsers")}
+            disabled={disabled}
+          />
         </View>
         <View style={styles.actions}>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={disabled || !name.trim() || name.trim() === activeUser.name}
-            onPress={renameUser}
-          >
-            {t("memoryPolicies.users.saveName")}
-          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -130,11 +110,6 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing[3],
   },
   field: {
     flex: 1,

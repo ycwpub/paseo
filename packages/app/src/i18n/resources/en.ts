@@ -54,8 +54,6 @@ export const en = {
       description:
         "Agents only read and learn global memory for the selected user. Project, Workspace, and Assistant memory remains shared.",
       currentUser: "Current user",
-      userName: "User name",
-      saveName: "Save name",
       deleteUser: "Delete current user",
       newUserName: "New user name",
       newUserPlaceholder: "For example: Alex",

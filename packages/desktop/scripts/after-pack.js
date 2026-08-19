@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
+const { buildIslandHost } = require("./build-island-host.js");
 
 const EXECUTABLE_NAME = "Paseo";
 
@@ -115,6 +116,7 @@ exports.default = async function afterPack(context) {
   const executableName = context.packager?.appInfo?.productFilename || EXECUTABLE_NAME;
 
   pruneNativeModules(context.appOutDir, platform, arch, executableName);
+  buildIslandHost(context, arch);
 
   if (platform === "linux" || platform === "win32") {
     if (arch !== process.arch) {

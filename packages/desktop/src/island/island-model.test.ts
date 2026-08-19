@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   IslandNotificationQueue,
   parseIslandNotification,
+  shouldAutoDismissIslandNotification,
   type IslandNotification,
 } from "./island-model";
 
@@ -78,5 +79,13 @@ describe("island notification model", () => {
       createdAt: 10,
       updatedAt: 20,
     });
+  });
+
+  it("keeps every reminder resident until it is opened or cleared", () => {
+    expect(shouldAutoDismissIslandNotification("running")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("finished")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("error")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("permission")).toBe(false);
+    expect(shouldAutoDismissIslandNotification("info")).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveIslandBounds } from "./island-bounds";
 
 describe("resolveIslandBounds", () => {
-  it("places the island below the macOS menu bar or notch", () => {
+  it("anchors the island inside the macOS menu bar or notch region", () => {
     expect(
       resolveIslandBounds(
         {
@@ -11,7 +11,7 @@ describe("resolveIslandBounds", () => {
         },
         { width: 420, height: 72 },
       ),
-    ).toEqual({ x: 546, y: 46, width: 420, height: 72 });
+    ).toEqual({ x: 546, y: 0, width: 420, height: 72 });
   });
 
   it("supports external displays and negative coordinates", () => {
@@ -23,7 +23,7 @@ describe("resolveIslandBounds", () => {
         },
         { width: 420, height: 142 },
       ),
-    ).toEqual({ x: -1170, y: -112, width: 420, height: 142 });
+    ).toEqual({ x: -1170, y: -120, width: 420, height: 142 });
   });
 
   it("keeps the island inside a narrow work area", () => {
@@ -35,6 +35,6 @@ describe("resolveIslandBounds", () => {
         },
         { width: 420, height: 700 },
       ),
-    ).toEqual({ x: 108, y: 82, width: 304, height: 560 });
+    ).toEqual({ x: 108, y: 50, width: 304, height: 560 });
   });
 });

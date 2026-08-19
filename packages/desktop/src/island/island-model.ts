@@ -20,6 +20,11 @@ export interface IslandNotification {
   updatedAt: number;
 }
 
+export function shouldAutoDismissIslandNotification(kind: IslandNotificationKind): boolean {
+  void kind;
+  return false;
+}
+
 const KIND_PRIORITY: Record<IslandNotificationKind, number> = {
   permission: 5,
   error: 4,
@@ -38,7 +43,7 @@ const DEFAULT_DURATION_MS: Record<IslandNotificationKind, number> = {
 
 const MIN_DURATION_MS = 2_000;
 const MAX_DURATION_MS = 60_000;
-const MAX_NOTIFICATION_COUNT = 8;
+const MAX_NOTIFICATION_COUNT = 50;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

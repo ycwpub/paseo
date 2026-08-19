@@ -6,6 +6,35 @@ export const PaseoMemoryScopeSchema = z.object({
 });
 export type PaseoMemoryScope = z.infer<typeof PaseoMemoryScopeSchema>;
 
+export const PaseoMemoryUserSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type PaseoMemoryUser = z.infer<typeof PaseoMemoryUserSchema>;
+
+export const PaseoMemoryUserOperationSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("create"),
+    name: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("rename"),
+    id: z.string().min(1),
+    name: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("select"),
+    id: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("delete"),
+    id: z.string().min(1),
+  }),
+]);
+export type PaseoMemoryUserOperation = z.infer<typeof PaseoMemoryUserOperationSchema>;
+
 export const PaseoMemoryPolicyTargetSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project"),
@@ -134,6 +163,10 @@ export type PaseoMemoryStats = z.infer<typeof PaseoMemoryStatsSchema>;
 
 export const PaseoMemoryStateSchema = z.object({
   settings: PaseoMemorySettingsSchema,
+  // COMPAT(memoryUsers): added in v0.3.2, remove optional after 2027-02-19.
+  users: z.array(PaseoMemoryUserSchema).optional(),
+  // COMPAT(memoryUsers): added in v0.3.2, remove optional after 2027-02-19.
+  activeUserId: z.string().min(1).optional(),
   summary: z.string(),
   summaryPath: z.string(),
   details: z.array(PaseoMemoryDetailSchema),
@@ -163,6 +196,8 @@ export type PaseoMemoryCreateInput = z.infer<typeof PaseoMemoryCreateInputSchema
 
 export const PaseoMemoryUpdateInputSchema = z.object({
   settings: PaseoMemorySettingsSchema.optional(),
+  // COMPAT(memoryUsers): added in v0.3.2, remove optional after 2027-02-19.
+  userOperation: PaseoMemoryUserOperationSchema.optional(),
   summary: z.string().optional(),
   detailEdits: z
     .array(

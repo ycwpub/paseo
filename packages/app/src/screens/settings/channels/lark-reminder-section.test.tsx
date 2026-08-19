@@ -37,6 +37,13 @@ const reminderState = vi.hoisted(() => ({
   },
 }));
 
+const directoryState = vi.hoisted(() => ({
+  resolveUsers: vi.fn(),
+  resolveChats: vi.fn(),
+}));
+
+const EMPTY_DIRECTORY = { users: [], chats: [] };
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
@@ -236,6 +243,19 @@ function makeReminder(overrides: Partial<LarkReminder> = {}): LarkReminder {
   };
 }
 
+function renderReminderSection() {
+  return render(
+    <LarkReminderSection
+      serverId="server-1"
+      bots={[makeBot()]}
+      directory={EMPTY_DIRECTORY}
+      directorySupported
+      resolveDirectoryUsers={directoryState.resolveUsers}
+      resolveDirectoryChats={directoryState.resolveChats}
+    />,
+  );
+}
+
 describe("LarkReminderSection", () => {
   afterEach(() => {
     cleanup();
@@ -246,10 +266,12 @@ describe("LarkReminderSection", () => {
     reminderState.current.create.mockReset();
     reminderState.current.setEnabled.mockReset();
     reminderState.current.deleteReminder.mockReset();
+    directoryState.resolveUsers.mockReset();
+    directoryState.resolveChats.mockReset();
   });
 
   test("validates required reminder fields", async () => {
-    render(<LarkReminderSection serverId="server-1" bots={[makeBot()]} />);
+    renderReminderSection();
 
     fireEvent.click(screen.getByRole("button", { name: "创建并开启" }));
 
@@ -259,17 +281,53 @@ describe("LarkReminderSection", () => {
 
   test("creates a reminder with normalized Open IDs and seconds", async () => {
     reminderState.current.create.mockResolvedValue(makeReminder());
-    render(<LarkReminderSection serverId="server-1" bots={[makeBot()]} />);
+    directoryState.resolveChats.mockResolvedValue([
+      {
+        appId: "cli_reminder",
+        groupId: "oc_group",
+        chatId: "oc_group",
+        name: "结算群",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+      },
+    ]);
+    directoryState.resolveUsers.mockResolvedValue([
+      {
+        appId: "cli_reminder",
+        email: "alice@example.com",
+        openId: "ou_alice",
+        displayName: "Alice",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+      },
+      {
+        appId: "cli_reminder",
+        email: "bob@example.com",
+        openId: "ou_bob",
+        displayName: "Bob",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+      },
+    ]);
+    renderReminderSection();
 
     fireEvent.change(screen.getByPlaceholderText("例如：等待方案确认"), {
       target: { value: " 等待确认 " },
     });
-    fireEvent.change(screen.getByPlaceholderText("oc_xxxxxxxxxx"), {
-      target: { value: " oc_group " },
+    fireEvent.change(screen.getByPlaceholderText("输入群名称、群 ID 或 oc_xxx"), {
+      target: { value: " 结算群 " },
     });
-    fireEvent.change(screen.getByPlaceholderText("ou_xxx, ou_yyy"), {
-      target: { value: "ou_alice, ou_bob, ou_alice" },
+    fireEvent.click(screen.getByRole("button", { name: "查询群聊" }));
+    await waitFor(() =>
+      expect(directoryState.resolveChats).toHaveBeenCalledWith("cli_reminder", "结算群"),
+    );
+    fireEvent.change(screen.getByPlaceholderText("user1@example.com, user2@example.com"), {
+      target: { value: "alice@example.com, bob@example.com, alice@example.com" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "通过邮箱查询" }));
+    await waitFor(() =>
+      expect(directoryState.resolveUsers).toHaveBeenCalledWith("cli_reminder", [
+        "alice@example.com",
+        "bob@example.com",
+      ]),
+    );
     fireEvent.change(screen.getByPlaceholderText("请确认并回复本消息"), {
       target: { value: " 请确认并回复 " },
     });
@@ -293,14 +351,36 @@ describe("LarkReminderSection", () => {
   });
 
   test("requires a token environment variable for user identity", async () => {
-    render(<LarkReminderSection serverId="server-1" bots={[makeBot()]} />);
+    directoryState.resolveChats.mockResolvedValue([
+      {
+        appId: "cli_reminder",
+        groupId: "oc_group",
+        chatId: "oc_group",
+        name: "结算群",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+      },
+    ]);
+    directoryState.resolveUsers.mockResolvedValue([
+      {
+        appId: "cli_reminder",
+        email: "alice@example.com",
+        openId: "ou_alice",
+        displayName: "Alice",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+      },
+    ]);
+    renderReminderSection();
 
-    fireEvent.change(screen.getByPlaceholderText("oc_xxxxxxxxxx"), {
+    fireEvent.change(screen.getByPlaceholderText("输入群名称、群 ID 或 oc_xxx"), {
       target: { value: "oc_group" },
     });
-    fireEvent.change(screen.getByPlaceholderText("ou_xxx, ou_yyy"), {
-      target: { value: "ou_alice" },
+    fireEvent.click(screen.getByRole("button", { name: "查询群聊" }));
+    await waitFor(() => expect(directoryState.resolveChats).toHaveBeenCalled());
+    fireEvent.change(screen.getByPlaceholderText("user1@example.com, user2@example.com"), {
+      target: { value: "alice@example.com" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "通过邮箱查询" }));
+    await waitFor(() => expect(directoryState.resolveUsers).toHaveBeenCalled());
     fireEvent.change(screen.getByPlaceholderText("请确认并回复本消息"), {
       target: { value: "请回复" },
     });
@@ -325,7 +405,7 @@ describe("LarkReminderSection", () => {
     ];
     reminderState.current.setEnabled.mockResolvedValue(makeReminder());
     reminderState.current.deleteReminder.mockResolvedValue(undefined);
-    render(<LarkReminderSection serverId="server-1" bots={[makeBot()]} />);
+    renderReminderSection();
 
     fireEvent.click(screen.getByLabelText("等待确认 reminder enabled"));
     fireEvent.click(screen.getByLabelText("已停止任务 reminder enabled"));

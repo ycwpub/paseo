@@ -113,6 +113,7 @@ import {
 } from "./process-expansion-state";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { AidenCodexReasoningTranslation } from "./aiden-codex-reasoning-translation";
 
 function renderLiveAuxiliaryNode(input: {
   processVisibilityControl: ReactNode;
@@ -409,6 +410,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
   ) {
     const { t } = useTranslation();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
+    const translateAidenCodexReasoning = useSettings(
+      (settings) => settings.aidenCodexTranslateReasoningToChinese,
+    );
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
@@ -442,6 +446,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
     const supportsMemory = useHostFeature(resolvedServerId, "memory");
+    const supportsReasoningTranslation = useHostFeature(resolvedServerId, "reasoningTranslation");
     const {
       memory: memoryState,
       updateMemory,
@@ -830,55 +835,74 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
-        if (!autoExpandReasoning) {
-          return (
-            <AssistantFileLinkResolverProvider
-              client={client}
-              serverId={resolvedServerId}
-              workspaceRoot={workspaceRoot}
-              onOpenWorkspaceFile={handleInlinePathPress}
-              toast={toast}
-            >
-              <AssistantMessage
-                occurrenceKey={createAssistantImageOccurrenceKey({
-                  agentId,
-                  itemId: item.id,
-                })}
-                message={item.text}
-                timestamp={item.timestamp.getTime()}
-                workspaceRoot={workspaceRoot}
-                serverId={resolvedServerId}
-                client={client}
-                spacing={layoutItem.assistantSpacing}
-                variant="reasoning"
-              />
-            </AssistantFileLinkResolverProvider>
-          );
-        }
         return (
-          <ToolCallSlot
-            key={item.id}
-            itemId={item.id}
-            onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
-            toolName="thinking"
-            args={item.text}
-            status={item.status === "ready" ? "completed" : "executing"}
-            startedAt={item.startedAt ?? item.timestamp}
-            completedAt={item.status === "ready" ? (item.completedAt ?? item.timestamp) : undefined}
-            isLastInSequence={layoutItem.isLastInToolSequence}
-            defaultExpanded
-            forceInline
-          />
+          <AidenCodexReasoningTranslation
+            enabled={translateAidenCodexReasoning && context.provider === "aiden-codex"}
+            supported={supportsReasoningTranslation}
+            client={client}
+            serverId={resolvedServerId}
+            agentId={agentId}
+            sourceText={item.text}
+            completed={item.status === "ready"}
+          >
+            {(displayText) => {
+              if (!autoExpandReasoning) {
+                return (
+                  <AssistantFileLinkResolverProvider
+                    client={client}
+                    serverId={resolvedServerId}
+                    workspaceRoot={workspaceRoot}
+                    onOpenWorkspaceFile={handleInlinePathPress}
+                    toast={toast}
+                  >
+                    <AssistantMessage
+                      occurrenceKey={createAssistantImageOccurrenceKey({
+                        agentId,
+                        itemId: item.id,
+                      })}
+                      message={displayText}
+                      timestamp={item.timestamp.getTime()}
+                      workspaceRoot={workspaceRoot}
+                      serverId={resolvedServerId}
+                      client={client}
+                      spacing={layoutItem.assistantSpacing}
+                      variant="reasoning"
+                    />
+                  </AssistantFileLinkResolverProvider>
+                );
+              }
+              return (
+                <ToolCallSlot
+                  key={item.id}
+                  itemId={item.id}
+                  onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
+                  toolName="thinking"
+                  args={displayText}
+                  status={item.status === "ready" ? "completed" : "executing"}
+                  startedAt={item.startedAt ?? item.timestamp}
+                  completedAt={
+                    item.status === "ready" ? (item.completedAt ?? item.timestamp) : undefined
+                  }
+                  isLastInSequence={layoutItem.isLastInToolSequence}
+                  defaultExpanded
+                  forceInline
+                />
+              );
+            }}
+          </AidenCodexReasoningTranslation>
         );
       },
       [
         agentId,
         autoExpandReasoning,
         client,
+        context.provider,
         handleInlinePathPress,
         resolvedServerId,
         setInlineDetailsExpanded,
+        supportsReasoningTranslation,
         toast,
+        translateAidenCodexReasoning,
         workspaceRoot,
       ],
     );

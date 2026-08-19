@@ -27,15 +27,23 @@ export function normalizeMemorySettings(
 }
 
 export function normalizeMemoryScope(scope: PaseoMemoryScope | undefined): PaseoMemoryScope {
-  if (!scope || scope.type === "global") {
+  if (!scope) {
     return { type: "global" };
   }
-  return scope.id ? scope : { type: "global" };
+  if (scope.type === "global") {
+    const id = scope.id?.trim();
+    return id ? { type: "global", id } : { type: "global" };
+  }
+  const id = scope.id?.trim();
+  return id ? { type: scope.type, id } : { type: "global" };
 }
 
 export function memoryScopeKey(scope: PaseoMemoryScope | undefined): string {
   const normalized = normalizeMemoryScope(scope);
-  return normalized.type === "global" ? "global" : `${normalized.type}:${normalized.id}`;
+  if (normalized.type === "global") {
+    return normalized.id ? `global:${normalized.id}` : "global";
+  }
+  return `${normalized.type}:${normalized.id}`;
 }
 
 export function isMemoryScopeVisible(

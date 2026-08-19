@@ -63,4 +63,29 @@ describe("memory scope policy draft", () => {
       extractionInstructions: "Architecture decisions only.",
     });
   });
+
+  test("keeps global policies isolated by memory user", () => {
+    const state = memory({
+      scopePolicies: [
+        {
+          scope: { type: "global", id: "user-1" },
+          enabled: false,
+          extractionInstructions: "User one only.",
+        },
+        {
+          scope: { type: "global", id: "user-2" },
+          enabled: true,
+          extractionInstructions: "User two only.",
+        },
+      ],
+    });
+    expect(memoryScopePolicyDraft(state, { type: "global", id: "user-1" })).toEqual({
+      enabled: false,
+      extractionInstructions: "User one only.",
+    });
+    expect(memoryScopePolicyDraft(state, { type: "global", id: "user-2" })).toEqual({
+      enabled: true,
+      extractionInstructions: "User two only.",
+    });
+  });
 });

@@ -49,6 +49,24 @@ export const en = {
     globalDisabledTitle: "Global memory is off",
     globalDisabledDescription:
       "This policy is saved, but Paseo will not use it until Memory is enabled in host settings.",
+    users: {
+      title: "Global memory user",
+      description:
+        "Agents only read and learn global memory for the selected user. Project, Workspace, and Assistant memory remains shared.",
+      currentUser: "Current user",
+      userName: "User name",
+      saveName: "Save name",
+      deleteUser: "Delete current user",
+      newUserName: "New user name",
+      newUserPlaceholder: "For example: Alex",
+      createAndSwitch: "Create and switch",
+      selectUser: "Select a user",
+      noUsers: "No users",
+      deleteTitle: 'Delete global memory user "{{name}}"?',
+      deleteDescription:
+        "This user's global memories, summary, and extraction rules will be permanently deleted. Other memory scopes are not affected.",
+      deleteConfirm: "Delete user",
+    },
     scopeManager: {
       title: "Memory rules",
       description:
@@ -895,6 +913,11 @@ export const en = {
     scrollToBottom: "Scroll to bottom",
     scrollToOldest: "Jump to first message",
     locatingOldest: "Locating first message",
+    reasoningTranslation: {
+      translating: "Translating reasoning to Chinese...",
+      failed: "Reasoning translation failed.",
+      unavailable: "This Paseo server does not support reasoning translation.",
+    },
     process: {
       show: "Show process",
       hide: "Hide process",
@@ -2581,6 +2604,11 @@ export const en = {
       refreshAccessibility: "Refresh notification permission",
       playSound: "Play sound",
       playSoundHint: "Play a sound when a desktop notification arrives",
+      island: "Dynamic Island reminders",
+      islandHint: "Show compact Agent status reminders at the top of the screen",
+      islandShowWhenFocused: "Show while Paseo is focused",
+      islandShowWhenFocusedHint: "Keep reminders visible while you are working in Paseo",
+      islandWorking: "Working on the task...",
       test: "Test notification",
       testHint: "Send a notification using these settings",
       permissionRequired: "Allow notification access before testing",
@@ -2661,6 +2689,11 @@ export const en = {
       autoExpandReasoning: {
         label: "Always expand reasoning",
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "Translate Aiden Codex reasoning to Chinese",
+        description:
+          "Show only the Simplified Chinese translation of Aiden Codex reasoning. Turn this off to show the original text.",
       },
       toolCallDetail: {
         label: "Tool call display",

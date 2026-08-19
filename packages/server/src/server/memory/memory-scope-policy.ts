@@ -12,14 +12,20 @@ export interface ResolvedMemoryScopePolicies {
 }
 
 function requireValidPolicyScope(scope: PaseoMemoryScope): PaseoMemoryScope {
-  if (scope.type === "global") return { type: "global" };
+  if (scope.type === "global") {
+    const id = scope.id?.trim();
+    return id ? { type: "global", id } : { type: "global" };
+  }
   const id = scope.id?.trim();
   if (!id) throw new Error(`${scope.type} memory policy requires an ID`);
   return { type: scope.type, id };
 }
 
 function policyScopeKey(scope: PaseoMemoryScope): string {
-  return scope.type === "global" ? "global" : `${scope.type}:${scope.id?.trim() ?? ""}`;
+  if (scope.type === "global") {
+    return scope.id?.trim() ? `global:${scope.id.trim()}` : "global";
+  }
+  return `${scope.type}:${scope.id?.trim() ?? ""}`;
 }
 
 export function findMemoryScopePolicy(
@@ -46,6 +52,24 @@ export function upsertMemoryScopePolicies(
   return [...next.values()];
 }
 
+function findApplicableScopePolicy(
+  policies: readonly PaseoMemoryScopePolicy[],
+  scope: PaseoMemoryScope,
+): PaseoMemoryScopePolicy | null {
+  const exact = findMemoryScopePolicy(policies, scope);
+  if (exact || scope.type !== "global" || !scope.id) return exact;
+  return findMemoryScopePolicy(policies, { type: "global" });
+}
+
+function findLegacyProjectScopePolicy(
+  policies: readonly PaseoMemoryPolicy[],
+  scope: PaseoMemoryScope,
+  hasScopePolicy: boolean,
+): PaseoMemoryPolicy | null {
+  if (hasScopePolicy || scope.type !== "project" || !scope.id) return null;
+  return findMemoryPolicy(policies, { type: "project", id: scope.id });
+}
+
 export function resolveMemoryScopePolicies(input: {
   availableScopes: readonly PaseoMemoryScope[];
   policies: readonly PaseoMemoryScopePolicy[];
@@ -61,14 +85,12 @@ export function resolveMemoryScopePolicies(input: {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const policy = findMemoryScopePolicy(input.policies, scope);
-    const legacyProjectPolicy =
-      !policy && scope.type === "project" && scope.id
-        ? findMemoryPolicy(input.legacyPolicies ?? [], {
-            type: "project",
-            id: scope.id,
-          })
-        : null;
+    const policy = findApplicableScopePolicy(input.policies, scope);
+    const legacyProjectPolicy = findLegacyProjectScopePolicy(
+      input.legacyPolicies ?? [],
+      scope,
+      policy !== null,
+    );
     const enabled = policy?.enabled ?? legacyProjectPolicy?.enabled ?? true;
     if (!enabled) continue;
 
@@ -78,7 +100,10 @@ export function resolveMemoryScopePolicies(input: {
       legacyProjectPolicy?.extractionInstructions ??
       ""
     ).trim();
-    if (instructions) extractionInstructions.push(`${key}: ${instructions}`);
+    if (instructions) {
+      const description = scope.type === "global" ? "global" : key;
+      extractionInstructions.push(`${description}: ${instructions}`);
+    }
   }
 
   return { scopes, extractionInstructions };

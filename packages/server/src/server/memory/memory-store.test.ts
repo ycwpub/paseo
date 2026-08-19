@@ -36,6 +36,7 @@ describe("PaseoMemoryStore", () => {
       title: "Build workflow",
       category: "procedure",
       sourceAgentIds: ["agent-1"],
+      scope: { type: "global", id: "default" },
     });
     expect(state.summary).toContain("Build workflow");
     expect(state.summary).toContain(detail.path);
@@ -128,7 +129,7 @@ describe("PaseoMemoryStore", () => {
     ]);
     expect(updated.scopePolicies).toEqual([
       {
-        scope: { type: "global" },
+        scope: { type: "global", id: "default" },
         enabled: true,
         extractionInstructions: "Remember stable preferences.",
       },
@@ -178,6 +179,115 @@ describe("PaseoMemoryStore", () => {
       origin: "explicit",
       sourceAgentIds: ["user", "agent-2"],
     });
+  });
+
+  test("isolates global memory by the selected user while sharing narrower scopes", () => {
+    const defaultMemory = store.upsertExtractedMemory({
+      title: "Answer language",
+      category: "preference",
+      content: "Use Chinese.",
+      keywords: ["Chinese"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+    });
+    store.upsertExtractedMemory({
+      title: "Shared project rule",
+      category: "project",
+      content: "Run tests before commit.",
+      keywords: ["tests"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "project", id: "project-1" },
+    });
+
+    const created = store.update({
+      userOperation: { type: "create", name: "第二位用户" },
+    });
+    expect(created.users).toHaveLength(2);
+    expect(created.users?.find((user) => user.id === created.activeUserId)?.name).toBe(
+      "第二位用户",
+    );
+    expect(created.details.map((detail) => detail.title)).toEqual(["Shared project rule"]);
+    expect(created.summary).not.toContain("Answer language");
+
+    const secondMemory = store.upsertExtractedMemory({
+      title: "Answer language",
+      category: "preference",
+      content: "Use English.",
+      keywords: ["English"],
+      confidence: 1,
+      sourceAgentId: "agent-2",
+    });
+    expect(secondMemory.scope).toEqual({ type: "global", id: created.activeUserId });
+
+    const selectedDefault = store.update({
+      userOperation: { type: "select", id: "default" },
+    });
+    expect(selectedDefault.details.map((detail) => detail.id)).toContain(defaultMemory.id);
+    expect(selectedDefault.details.map((detail) => detail.id)).not.toContain(secondMemory.id);
+    expect(selectedDefault.details.map((detail) => detail.title)).toContain("Shared project rule");
+    expect(selectedDefault.summary).toContain("Answer language");
+    expect(selectedDefault.summaryPath).toContain("/memory/users/default/summary.md");
+
+    const lateSecondUserMemory = store.upsertExtractedMemory({
+      title: "Captured turn preference",
+      category: "preference",
+      content: "This turn still belongs to the second user.",
+      keywords: ["captured"],
+      confidence: 1,
+      sourceAgentId: "agent-2",
+      scope: { type: "global", id: created.activeUserId },
+    });
+    expect(store.getState().details.map((detail) => detail.id)).not.toContain(
+      lateSecondUserMemory.id,
+    );
+    expect(
+      store
+        .getDetailsForScopes([{ type: "global", id: created.activeUserId }])
+        .map((detail) => detail.id),
+    ).toContain(lateSecondUserMemory.id);
+  });
+
+  test("renames and deletes a global memory user with its files and policy", () => {
+    const created = store.update({
+      userOperation: { type: "create", name: "临时用户" },
+      scopePolicyUpdates: [
+        {
+          scope: { type: "global" },
+          enabled: true,
+          extractionInstructions: "Only remember stable preferences.",
+        },
+      ],
+    });
+    const userId = created.activeUserId!;
+    const detail = store.upsertExtractedMemory({
+      title: "Temporary preference",
+      category: "preference",
+      content: "Temporary content.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+    });
+    const renamed = store.update({
+      userOperation: { type: "rename", id: userId, name: "已重命名用户" },
+    });
+    expect(renamed.users?.find((user) => user.id === userId)?.name).toBe("已重命名用户");
+
+    const deleted = store.update({
+      userOperation: { type: "delete", id: userId },
+    });
+    expect(deleted.activeUserId).toBe("default");
+    expect(deleted.users).toEqual([expect.objectContaining({ id: "default" })]);
+    expect(deleted.scopePolicies).not.toContainEqual(
+      expect.objectContaining({ scope: { type: "global", id: userId } }),
+    );
+    expect(existsSync(detail.path)).toBe(false);
+  });
+
+  test("does not delete the last global memory user", () => {
+    expect(() => store.update({ userOperation: { type: "delete", id: "default" } })).toThrow(
+      "At least one global memory user must remain",
+    );
   });
 
   test("preserves superseded revisions for changed durable facts", () => {
@@ -297,6 +407,52 @@ describe("PaseoMemoryStore", () => {
     expect(readFileSync(detail.path, "utf8")).toBe("Prefer private local storage.");
   });
 
+  test("migrates the previous single-user catalog and summary to the default user", async () => {
+    store.upsertExtractedMemory({
+      title: "Legacy global memory",
+      category: "preference",
+      content: "Keep this legacy preference.",
+      keywords: ["legacy"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+    });
+    const memoryPath = path.join(paseoHome, "memory");
+    const catalogPath = path.join(memoryPath, "catalog.json");
+    const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as Record<string, unknown>;
+    const details = structuredClone(catalog.details) as Array<Record<string, unknown>>;
+    for (const detail of details) detail.scope = { type: "global" };
+    await rm(path.join(memoryPath, "users"), { recursive: true, force: true });
+    await writeFile(
+      path.join(memoryPath, "summary.md"),
+      "# Legacy summary\n\n<!-- paseo:memory-detail-index -->\n\nLegacy index",
+    );
+    await writeFile(
+      catalogPath,
+      JSON.stringify({
+        version: 2,
+        settings: catalog.settings,
+        details,
+        recentUsages: catalog.recentUsages,
+        lastExtractedAt: catalog.lastExtractedAt,
+        lastExtractionError: catalog.lastExtractionError,
+        lastConsolidatedAt: catalog.lastConsolidatedAt,
+        policies: catalog.policies,
+        scopePolicies: catalog.scopePolicies,
+      }),
+    );
+
+    const migrated = new PaseoMemoryStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+    }).getState();
+    expect(migrated.activeUserId).toBe("default");
+    expect(migrated.users).toEqual([expect.objectContaining({ id: "default", name: "默认用户" })]);
+    expect(migrated.details[0]?.scope).toEqual({ type: "global", id: "default" });
+    expect(migrated.summary).toContain("# Legacy summary");
+    expect(migrated.summaryPath).toContain("/memory/users/default/summary.md");
+    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 3 });
+  });
+
   test("migrates a version 1 catalog without losing memory", async () => {
     const detail = store.upsertExtractedMemory({
       title: "Migrated memory",
@@ -329,10 +485,12 @@ describe("PaseoMemoryStore", () => {
     expect(migrated.details[0]).toMatchObject({
       id: detail.id,
       content: "This survives migration.",
-      scope: { type: "global" },
+      scope: { type: "global", id: "default" },
       origin: "automatic",
       status: "active",
     });
-    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 2 });
+    expect(migrated.users).toEqual([expect.objectContaining({ id: "default", name: "默认用户" })]);
+    expect(migrated.activeUserId).toBe("default");
+    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 3 });
   });
 });

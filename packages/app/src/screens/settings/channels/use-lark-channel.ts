@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { LarkBotApplication, LarkChannelStatus } from "@getpaseo/protocol/messages";
+import type {
+  LarkBotApplication,
+  LarkChannelStatus,
+  LarkDirectoryChat,
+  LarkDirectoryUser,
+} from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
 import { larkChannelQueryKey } from "@/data/lark-channel";
 import { useReplicaQuery } from "@/data/query";
@@ -18,6 +23,8 @@ export interface UseLarkChannelResult {
   approvePairing: (code: string, botId?: string | null) => Promise<LarkChannelStatus>;
   rejectPairing: (code: string, botId?: string | null) => Promise<LarkChannelStatus>;
   revokeUser: (userId: string, botId?: string | null) => Promise<LarkChannelStatus>;
+  resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
   application: LarkBotApplication | null;
   applyBot: (name?: string) => Promise<LarkBotApplication>;
   refreshApplication: () => Promise<LarkBotApplication | null>;
@@ -178,6 +185,40 @@ export function useLarkChannel(
     [client, run],
   );
 
+  const resolveDirectoryUsers = useCallback(
+    async (appId: string, emails: string[]) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.resolveLarkDirectoryUsers({ appId, emails });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      return result.users;
+    },
+    [applyStatus, client],
+  );
+
+  const resolveDirectoryChats = useCallback(
+    async (appId: string, chatQuery: string) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.resolveLarkDirectoryChats({ appId, query: chatQuery });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      return result.chats;
+    },
+    [applyStatus, client],
+  );
+
   const applyBot = useCallback(
     async (name?: string) => {
       if (!client) {
@@ -219,6 +260,8 @@ export function useLarkChannel(
     approvePairing,
     rejectPairing,
     revokeUser,
+    resolveDirectoryUsers,
+    resolveDirectoryChats,
     application,
     applyBot,
     refreshApplication,

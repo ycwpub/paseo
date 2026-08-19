@@ -7,9 +7,10 @@ from the selected host's **Memory** settings page.
 
 Memory lives under `$PASEO_HOME/memory/`:
 
-- `summary.md` is the user-editable overview.
+- `users/{userId}/summary.md` is that user's editable global-memory overview.
 - `details/` contains one file per durable topic.
-- `catalog.json` stores scope, provenance, revisions, validity, usage, and feedback.
+- `catalog.json` stores users, the selected user, scope, provenance, revisions, validity, usage, and
+  feedback.
 - `content.key` exists only when encrypted storage has been used.
 
 The summary and detail files can be encrypted with a daemon-local AES-256-GCM key. Encryption
@@ -22,14 +23,19 @@ Export produces plaintext JSON so it can be inspected and moved. Treat exports a
 
 Every detail belongs to one scope:
 
-- **Global** applies to every normal Agent.
+- **Global** applies to the currently selected memory user and is isolated from other users.
 - **Project** applies to Agents whose Workspace belongs to that Project.
 - **Assistant** applies to Agents created from that Assistant.
 - **Workspace** applies only to that Workspace.
 
 Retrieval sees global memory plus the current Agent's matching narrower scopes. It never falls back
-to a different Project, Assistant, or Workspace. Explicit user memory takes precedence over later
-automatic extraction on the same topic.
+to a different global-memory user, Project, Assistant, or Workspace. Explicit user memory takes
+precedence over later automatic extraction on the same topic.
+
+The Memory settings page can create, rename, delete, and switch global-memory users. Switching the
+user changes which global summary, global details, and global extraction policy the daemon uses.
+Project, Assistant, and Workspace memory remains shared and continues to be selected by Agent
+context. Existing single-user installations migrate their global memory to **默认用户**.
 
 Preferences default to global scope. Project procedures, decisions, and project facts default to
 the current Project when one exists. The extractor may choose a narrower available scope.

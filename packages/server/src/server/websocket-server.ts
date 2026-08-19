@@ -2002,6 +2002,8 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
         larkChannel: true,
         larkReminders: true,
+        // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
+        larkDirectory: true,
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: true,
         // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
@@ -2010,6 +2012,10 @@ export class VoiceAssistantWebSocketServer {
         memoryPolicies: true,
         // COMPAT(memoryScopePolicies): added in v0.3.2, remove gate after 2027-02-18.
         memoryScopePolicies: true,
+        // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
+        memoryUsers: true,
+        // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
+        reasoningTranslation: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
         teams: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.

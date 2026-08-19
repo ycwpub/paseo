@@ -354,6 +354,11 @@ export const fr: TranslationResources = {
     scrollToBottom: "Faire défiler vers le bas",
     scrollToOldest: "Aller au premier message",
     locatingOldest: "Recherche du premier message",
+    reasoningTranslation: {
+      translating: "Traduction du raisonnement en chinois...",
+      failed: "Échec de la traduction du raisonnement.",
+      unavailable: "Ce serveur Paseo ne prend pas en charge la traduction du raisonnement.",
+    },
     process: {
       show: "Afficher le processus",
       hide: "Masquer le processus",
@@ -2063,6 +2068,11 @@ export const fr: TranslationResources = {
       refreshAccessibility: "Actualiser l’autorisation des notifications",
       playSound: "Émettre un son",
       playSoundHint: "Émet un son lorsqu’une notification de bureau arrive",
+      island: "Rappels Dynamic Island",
+      islandHint: "Affiche un état compact de l’Agent en haut de l’écran",
+      islandShowWhenFocused: "Afficher quand Paseo est au premier plan",
+      islandShowWhenFocusedHint: "Conserve les rappels visibles pendant l’utilisation de Paseo",
+      islandWorking: "Traitement de la tâche...",
       test: "Tester la notification",
       testHint: "Envoie une notification avec ces réglages",
       permissionRequired: "Autorisez l’accès aux notifications avant le test",
@@ -2144,6 +2154,11 @@ export const fr: TranslationResources = {
       autoExpandReasoning: {
         label: "Toujours afficher le raisonnement",
         description: "Afficher le raisonnement de l'agent entièrement développé par défaut",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "Traduire le raisonnement Aiden Codex en chinois",
+        description:
+          "Afficher uniquement la traduction en chinois simplifié, sinon le texte original.",
       },
       toolCallDetail: {
         label: "Affichage des appels d’outils",

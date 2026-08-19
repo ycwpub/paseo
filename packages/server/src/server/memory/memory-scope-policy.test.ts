@@ -58,6 +58,29 @@ describe("memory scope policy", () => {
     ).toEqual({ scopes: [], extractionInstructions: [] });
   });
 
+  test("selects only the active user's global policy", () => {
+    expect(
+      resolveMemoryScopePolicies({
+        availableScopes: [{ type: "global", id: "user-2" }],
+        policies: [
+          {
+            scope: { type: "global", id: "user-1" },
+            enabled: false,
+            extractionInstructions: "User one.",
+          },
+          {
+            scope: { type: "global", id: "user-2" },
+            enabled: true,
+            extractionInstructions: "User two.",
+          },
+        ],
+      }),
+    ).toEqual({
+      scopes: [{ type: "global", id: "user-2" }],
+      extractionInstructions: ["global: User two."],
+    });
+  });
+
   test("upserts by normalized scope and rejects missing scoped IDs", () => {
     expect(
       upsertMemoryScopePolicies(

@@ -50,6 +50,7 @@ import {
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
 import type { LarkReminderService } from "./lark-reminder-service.js";
+import type { LarkDirectoryService } from "./lark-directory-service.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -321,6 +322,7 @@ export class LarkChannelService {
   private readonly logger: pino.Logger;
   private readonly host: LarkChannelServiceHost;
   private readonly reminderService: LarkReminderService | null;
+  private readonly directoryService: LarkDirectoryService | null;
   private readonly subscriptions = new Map<string, LarkChannelEventSubscription>();
   private readonly runtimes = new Map<string, LarkChannelRuntimeStatusInput>();
   private readonly botIdentities = new Map<string, LarkChannelBotInfo>();
@@ -340,6 +342,7 @@ export class LarkChannelService {
     logger: pino.Logger;
     host: LarkChannelServiceHost;
     reminderService?: LarkReminderService | null;
+    directoryService?: LarkDirectoryService | null;
   }) {
     this.store = options.store;
     this.adapter = options.adapter;
@@ -351,6 +354,7 @@ export class LarkChannelService {
     this.logger = options.logger.child({ module: "lark-channel-service" });
     this.host = options.host;
     this.reminderService = options.reminderService ?? null;
+    this.directoryService = options.directoryService ?? null;
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
       void this.handleAgentManagerEvent(event);
     });
@@ -360,7 +364,24 @@ export class LarkChannelService {
   getStatus(): LarkChannelStatus {
     this.store.cleanupExpiredPairings(new Date().toISOString());
     this.syncRuntimeBots();
-    return this.store.getStatus({ byBotId: this.runtimes });
+    const status = this.store.getStatus({ byBotId: this.runtimes });
+    return this.directoryService
+      ? { ...status, directory: this.directoryService.getState() }
+      : status;
+  }
+
+  async resolveDirectoryUsers(appId: string, emails: readonly string[]) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const users = await this.directoryService.resolveUsers(appId, emails);
+    this.emitStatusChanged();
+    return users;
+  }
+
+  async resolveDirectoryChats(appId: string, query: string) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const chats = await this.directoryService.resolveChats(appId, query);
+    this.emitStatusChanged();
+    return chats;
   }
 
   async start(): Promise<void> {
@@ -517,6 +538,7 @@ export class LarkChannelService {
       return;
     }
     const enrichedEvent = await this.enrichIncomingEvent(config, event);
+    this.observeDirectoryParticipants(config, enrichedEvent);
     const botIdentity =
       enrichedEvent.chatType?.toLowerCase() === "p2p"
         ? null
@@ -1482,6 +1504,19 @@ export class LarkChannelService {
         this.emitStatusChanged();
         return;
       }
+    }
+  }
+
+  private observeDirectoryParticipants(
+    config: StoredLarkChannelConfig,
+    event: NormalizedLarkMessageEvent,
+  ): void {
+    if (!this.directoryService || !config.appId) return;
+    if (event.openId) {
+      this.directoryService.observeUser(config.appId, event.openId, event.displayName);
+    }
+    if (event.chatType?.toLowerCase() !== "p2p" && event.topicName.trim()) {
+      this.directoryService.observeChat(config.appId, event.chatId, event.topicName);
     }
   }
 

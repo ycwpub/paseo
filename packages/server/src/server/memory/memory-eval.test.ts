@@ -54,7 +54,10 @@ describe("memory quality evaluation", () => {
       store.getState().details,
       {
         limit: 4,
-        scopes: [{ type: "global" }, { type: "project", id: "project-a" }],
+        scopes: [
+          { type: "global", id: "default" },
+          { type: "project", id: "project-a" },
+        ],
       },
     );
 

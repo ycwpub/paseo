@@ -47,6 +47,8 @@ const channelState = vi.hoisted(() => ({
     approvePairing: vi.fn(),
     rejectPairing: vi.fn(),
     revokeUser: vi.fn(),
+    resolveDirectoryUsers: vi.fn(),
+    resolveDirectoryChats: vi.fn(),
     application: null,
     applyBot: vi.fn(),
     refreshApplication: vi.fn(),
@@ -87,6 +89,8 @@ vi.mock("./use-lark-channel", () => ({
     approvePairing: channelState.current.approvePairing,
     rejectPairing: channelState.current.rejectPairing,
     revokeUser: channelState.current.revokeUser,
+    resolveDirectoryUsers: channelState.current.resolveDirectoryUsers,
+    resolveDirectoryChats: channelState.current.resolveDirectoryChats,
     application: channelState.current.application,
     applyBot: channelState.current.applyBot,
     refreshApplication: channelState.current.refreshApplication,
@@ -384,6 +388,8 @@ describe("LarkChannelSection", () => {
     channelState.current.approvePairing.mockReset();
     channelState.current.rejectPairing.mockReset();
     channelState.current.revokeUser.mockReset();
+    channelState.current.resolveDirectoryUsers.mockReset();
+    channelState.current.resolveDirectoryChats.mockReset();
   });
 
   test("shows multiple configured Lark bots and loads the selected bot", async () => {
@@ -511,13 +517,28 @@ describe("LarkChannelSection", () => {
         }),
       ]),
     );
+    channelState.current.resolveDirectoryUsers.mockResolvedValue([
+      {
+        appId: "cli_settle",
+        email: "alice@example.com",
+        openId: "ou_alice",
+        displayName: "Alice",
+        updatedAt: "2026-08-19T00:00:00.000Z",
+      },
+    ]);
 
     render(<LarkChannelSection serverId="server-1" />);
 
-    const openIdInput = await waitFor(() => screen.getByPlaceholderText("ou_xxxxxxxxxx"));
-    fireEvent.change(openIdInput, {
-      target: { value: " ou_alice " },
+    const emailInput = await waitFor(() => screen.getByPlaceholderText("user@example.com"));
+    fireEvent.change(emailInput, {
+      target: { value: " alice@example.com " },
     });
+    fireEvent.click(screen.getByRole("button", { name: "通过邮箱查询" }));
+    await waitFor(() =>
+      expect(channelState.current.resolveDirectoryUsers).toHaveBeenCalledWith("cli_settle", [
+        "alice@example.com",
+      ]),
+    );
     fireEvent.change(screen.getByPlaceholderText("例如：张三"), {
       target: { value: " Alice " },
     });

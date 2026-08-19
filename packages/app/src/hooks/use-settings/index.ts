@@ -185,6 +185,10 @@ export function useSettings<TSelected>(
       if (updates.autoExpandReasoning !== undefined) {
         appUpdates.autoExpandReasoning = updates.autoExpandReasoning;
       }
+      if (updates.aidenCodexTranslateReasoningToChinese !== undefined) {
+        appUpdates.aidenCodexTranslateReasoningToChinese =
+          updates.aidenCodexTranslateReasoningToChinese;
+      }
       if (updates.toolCallDetailLevel !== undefined) {
         appUpdates.toolCallDetailLevel = updates.toolCallDetailLevel;
       }

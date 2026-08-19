@@ -35,6 +35,17 @@ export interface LarkMessageGetOptions {
   userCardContent?: boolean;
 }
 
+export interface LarkResolvedUser {
+  email: string;
+  openId: string;
+}
+
+export interface LarkResolvedChat {
+  groupId: string;
+  chatId: string;
+  name: string;
+}
+
 export interface LarkChannelClientAdapter {
   testConnection(config: StoredLarkChannelConfig): Promise<LarkChannelBotInfo>;
   startEvents(
@@ -74,6 +85,11 @@ export interface LarkChannelClientAdapter {
     chatId: string,
     options?: LarkChatMessageListOptions,
   ): Promise<unknown[]>;
+  resolveUsersByEmails?(
+    config: StoredLarkChannelConfig,
+    emails: readonly string[],
+  ): Promise<LarkResolvedUser[]>;
+  resolveChats?(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]>;
 }
 
 function requireCredentials(config: StoredLarkChannelConfig): { appId: string; appSecret: string } {
@@ -368,6 +384,55 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       const name = recordString(record, "bot_name");
       return openId && name ? [{ openId, name }] : [];
     });
+  }
+
+  async resolveUsersByEmails(
+    config: StoredLarkChannelConfig,
+    emails: readonly string[],
+  ): Promise<LarkResolvedUser[]> {
+    const client = createClient(config);
+    try {
+      const result = await client.contact.v3.user.batchGetId({
+        data: { emails: [...emails] },
+        params: { user_id_type: "open_id" },
+      });
+      assertSuccess(result);
+      return (result.data?.user_list ?? []).flatMap((user) =>
+        user.email && user.user_id ? [{ email: user.email, openId: user.user_id }] : [],
+      );
+    } catch (error) {
+      throw describeLarkError(error);
+    }
+  }
+
+  async resolveChats(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]> {
+    const client = createClient(config);
+    try {
+      if (/^oc_[A-Za-z0-9_-]+$/u.test(query)) {
+        const result = await client.im.v1.chat.get({ path: { chat_id: query } });
+        assertSuccess(result);
+        return [
+          {
+            groupId: query,
+            chatId: query,
+            name: result.data?.name?.trim() || query,
+          },
+        ];
+      }
+      const result = await client.im.v1.chat.search({
+        params: { query, page_size: 50, user_id_type: "open_id" },
+      });
+      assertSuccess(result);
+      const chats = (result.data?.items ?? []).flatMap((chat) =>
+        chat.chat_id && chat.name
+          ? [{ groupId: chat.chat_id, chatId: chat.chat_id, name: chat.name }]
+          : [],
+      );
+      const exact = chats.filter((chat) => chat.name.trim() === query);
+      return exact.length > 0 ? exact : chats;
+    } catch (error) {
+      throw describeLarkError(error);
+    }
   }
 
   async getMessage(

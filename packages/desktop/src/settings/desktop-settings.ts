@@ -16,6 +16,10 @@ export interface DesktopSettings {
   attention: {
     soundVolume: number;
   };
+  island: {
+    enabled: boolean;
+    showWhenFocused: boolean;
+  };
 }
 
 interface DesktopSettingsPatch {
@@ -23,6 +27,7 @@ interface DesktopSettingsPatch {
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
   attention?: Partial<DesktopSettings["attention"]>;
+  island?: Partial<DesktopSettings["island"]>;
 }
 
 interface PersistedDesktopSettingsDocument {
@@ -55,6 +60,10 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   },
   attention: {
     soundVolume: 0.5,
+  },
+  island: {
+    enabled: true,
+    showWhenFocused: true,
   },
 };
 
@@ -97,6 +106,7 @@ function buildDefaultDocument(): PersistedDesktopSettingsDocument {
       notifications: { ...DEFAULT_DESKTOP_SETTINGS.notifications },
       daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
       attention: { ...DEFAULT_DESKTOP_SETTINGS.attention },
+      island: { ...DEFAULT_DESKTOP_SETTINGS.island },
     },
     migrations: {
       legacyRendererSettingsImported: false,
@@ -111,6 +121,7 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     notifications: { ...DEFAULT_DESKTOP_SETTINGS.notifications },
     daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
     attention: { ...DEFAULT_DESKTOP_SETTINGS.attention },
+    island: { ...DEFAULT_DESKTOP_SETTINGS.island },
   };
 
   if (!isRecord(input)) {
@@ -145,6 +156,17 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
     const soundVolume = coerceVolume(input.attention.soundVolume);
     if (soundVolume !== null) {
       result.attention.soundVolume = soundVolume;
+    }
+  }
+
+  if (isRecord(input.island)) {
+    const enabled = coerceBoolean(input.island.enabled);
+    if (enabled !== null) {
+      result.island.enabled = enabled;
+    }
+    const showWhenFocused = coerceBoolean(input.island.showWhenFocused);
+    if (showWhenFocused !== null) {
+      result.island.showWhenFocused = showWhenFocused;
     }
   }
 
@@ -196,6 +218,21 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
+  if (isRecord(input.island)) {
+    const islandPatch: Partial<DesktopSettings["island"]> = {};
+    const enabled = coerceBoolean(input.island.enabled);
+    if (enabled !== null) {
+      islandPatch.enabled = enabled;
+    }
+    const showWhenFocused = coerceBoolean(input.island.showWhenFocused);
+    if (showWhenFocused !== null) {
+      islandPatch.showWhenFocused = showWhenFocused;
+    }
+    if (Object.keys(islandPatch).length > 0) {
+      patch.island = islandPatch;
+    }
+  }
+
   return patch;
 }
 
@@ -229,6 +266,7 @@ function mergeDesktopSettings(
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
     attention: { ...current.attention, ...patch.attention },
+    island: { ...current.island, ...patch.island },
   };
 }
 

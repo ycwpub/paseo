@@ -6,6 +6,8 @@ import type {
   PaseoMemoryDetail,
   PaseoMemorySettings,
   PaseoMemoryState,
+  PaseoMemoryUser,
+  PaseoMemoryUserOperation,
 } from "@getpaseo/protocol/messages";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,6 +26,7 @@ import {
 import { MemorySettingsCard } from "./memory-settings-card";
 import { MemoryScopePoliciesSection } from "./memory-scope-policies-section";
 import { MemoryTransferCard } from "./memory-transfer-card";
+import { MemoryUserCard } from "./memory-user-card";
 import { filterMemoryDetails, type MemoryScopeFilter } from "./memory-view-model";
 
 const SCOPE_FILTER_OPTIONS = [
@@ -40,11 +43,13 @@ interface MemorySectionContentProps {
   scopeFilter: MemoryScopeFilter;
   isMutating: boolean;
   visibleError: string | null;
+  usersSupported: boolean;
   onSummaryChange: (summary: string) => void;
   onSearchChange: (search: string) => void;
   onStatusFilterChange: (status: MemoryStatusFilter) => void;
   onScopeFilterChange: (scope: MemoryScopeFilter) => void;
   onSaveSettings: (settings: PaseoMemorySettings) => Promise<void>;
+  onChangeUser: (operation: PaseoMemoryUserOperation) => Promise<void>;
   onSaveSummary: () => Promise<void>;
   onCreateDetail: (input: PaseoMemoryCreateInput) => Promise<void>;
   onSaveDetail: (detail: PaseoMemoryDetail, draft: MemoryDetailDraft) => Promise<void>;
@@ -75,11 +80,13 @@ export function MemorySectionContent({
   scopeFilter,
   isMutating,
   visibleError,
+  usersSupported,
   onSummaryChange,
   onSearchChange,
   onStatusFilterChange,
   onScopeFilterChange,
   onSaveSettings,
+  onChangeUser,
   onSaveSummary,
   onCreateDetail,
   onSaveDetail,
@@ -121,9 +128,30 @@ export function MemorySectionContent({
     ),
     [isMutating, onSaveSummary],
   );
+  const users = useMemo<readonly PaseoMemoryUser[]>(
+    () =>
+      memory.users?.length
+        ? memory.users
+        : [
+            {
+              id: "default",
+              name: "默认用户",
+              createdAt: "",
+              updatedAt: "",
+            },
+          ],
+    [memory.users],
+  );
+  const activeUserId = memory.activeUserId ?? users[0]!.id;
   const detailTrailing = useMemo(
-    () => <MemoryCreateCard disabled={isMutating} onCreate={onCreateDetail} />,
-    [isMutating, onCreateDetail],
+    () => (
+      <MemoryCreateCard
+        disabled={isMutating}
+        globalUserId={activeUserId}
+        onCreate={onCreateDetail}
+      />
+    ),
+    [activeUserId, isMutating, onCreateDetail],
   );
   const emptyText =
     memory.details.length === 0
@@ -138,6 +166,14 @@ export function MemorySectionContent({
           disabled={isMutating}
           onChange={onSaveSettings}
         />
+        {usersSupported ? (
+          <MemoryUserCard
+            users={users}
+            activeUserId={activeUserId}
+            disabled={isMutating}
+            onChange={onChangeUser}
+          />
+        ) : null}
         {visibleError ? (
           <Alert title="Unable to update memory" description={visibleError} variant="error" />
         ) : null}

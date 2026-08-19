@@ -26,7 +26,7 @@ import { isSystemInjectedEnvelope } from "../agent/agent-prompt.js";
 import { composePromptWithMemory, stripMemoryFromPromptText } from "./memory-prompt.js";
 import { retrieveRelevantMemoryMatches } from "./memory-retrieval.js";
 import { evaluateMemoryExtractionCandidate } from "./memory-extraction-policy.js";
-import { normalizeMemorySettings } from "./memory-model.js";
+import { isMemoryScopeVisible, normalizeMemorySettings } from "./memory-model.js";
 import { canStoreExtractedMemory, resolveMemoryContextPolicy } from "./memory-context-policy.js";
 import { resolveMemoryScopePolicies } from "./memory-scope-policy.js";
 import {
@@ -38,6 +38,7 @@ import {
   type AgentMemoryMode,
 } from "./memory-policy.js";
 import { PaseoMemoryStore } from "./memory-store.js";
+import { DEFAULT_MEMORY_USER_ID } from "./memory-users.js";
 
 const MAX_PENDING_EXTRACTIONS = 50;
 const CONSOLIDATE_EVERY_EXTRACTIONS = 10;
@@ -73,6 +74,11 @@ interface AgentMemoryContext {
   extractionInstructions: string[];
 }
 
+interface PendingMemoryTurn {
+  memoryIds: string[];
+  context: AgentMemoryContext;
+}
+
 export interface PaseoMemoryServiceOptions {
   store: PaseoMemoryStore;
   agentManager: AgentManager;
@@ -92,7 +98,7 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
   private readonly logger: pino.Logger;
   private readonly onChanged: (state: PaseoMemoryState) => void;
   private readonly queuedTurns = new Set<string>();
-  private readonly pendingUsagesByAgent = new Map<string, string[][]>();
+  private readonly pendingTurnsByAgent = new Map<string, PendingMemoryTurn[]>();
   private readonly sessionModes = new Map<string, AgentMemoryContext["mode"]>();
   private extractionQueue = Promise.resolve();
   private pendingExtractions = 0;
@@ -158,7 +164,9 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       const context = await this.resolveAgentMemoryContext(agent, this.store.getState());
       const state = this.store.getState();
       const memoryIds = command.all
-        ? state.details.map((detail) => detail.id)
+        ? state.details
+            .filter((detail) => isMemoryScopeVisible(detail.scope, context.scopes))
+            .map((detail) => detail.id)
         : retrieveRelevantMemoryMatches(command.query, state.details, {
             limit: 12,
             maxCandidates: 50,
@@ -167,9 +175,7 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       if (memoryIds.length === 0) {
         return "No matching Paseo memory was found. Tell the user briefly.";
       }
-      const nextState = command.all
-        ? this.store.clear()
-        : this.store.update({ deleteDetailIds: memoryIds });
+      const nextState = this.store.update({ deleteDetailIds: memoryIds });
       this.onChanged(nextState);
       return `Deleted ${memoryIds.length} matching Paseo ${
         memoryIds.length === 1 ? "memory" : "memories"
@@ -186,9 +192,12 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       scopes: context.scopes,
       includeBaseline: true,
     });
-    const pendingUsages = this.pendingUsagesByAgent.get(agent.id) ?? [];
-    pendingUsages.push(matches.map((match) => match.detail.id));
-    this.pendingUsagesByAgent.set(agent.id, pendingUsages);
+    const pendingTurns = this.pendingTurnsByAgent.get(agent.id) ?? [];
+    pendingTurns.push({
+      memoryIds: matches.map((match) => match.detail.id),
+      context,
+    });
+    this.pendingTurnsByAgent.set(agent.id, pendingTurns);
     this.store.markAccessed(matches.map((match) => match.detail.id));
     return composePromptWithMemory(prompt, state, {
       matches,
@@ -200,14 +209,15 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
   private handleAgentEvent(event: AgentManagerEvent): void {
     if (event.type !== "agent_stream") return;
     if (event.event.type === "turn_failed" || event.event.type === "turn_canceled") {
-      this.takePendingUsage(event.agentId);
+      this.takePendingTurn(event.agentId);
       return;
     }
     if (event.event.type !== "turn_completed") return;
     const agent = this.agentManager.getAgent(event.agentId);
     if (!agent || agent.internal) return;
     const turn = latestTurnContent(this.agentManager.getTimeline(event.agentId));
-    const memoryIds = this.takePendingUsage(event.agentId);
+    const pendingTurn = this.takePendingTurn(event.agentId);
+    const memoryIds = pendingTurn?.memoryIds ?? [];
     if (memoryIds.length > 0) {
       this.store.recordUsage({
         agentId: event.agentId,
@@ -218,36 +228,53 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       this.onChanged(this.store.getState());
     }
     const state = this.store.getState();
+    if (!turn || !this.shouldExtractCompletedTurn(agent, state, turn, pendingTurn?.context)) return;
+    this.enqueueExtraction(agent, turn, event.event.turnId, event.timestamp, pendingTurn?.context);
+  }
+
+  private shouldExtractCompletedTurn(
+    agent: ManagedAgent,
+    state: PaseoMemoryState,
+    turn: TurnContent,
+    capturedContext?: AgentMemoryContext,
+  ): boolean {
     const settings = normalizeMemorySettings(state.settings);
-    const policyContext = resolveMemoryContextPolicy({
-      // COMPAT(memoryPolicies): added in v0.3.2, remove fallback after 2027-02-18.
-      policies: state.policies ?? [],
-      agentId: agent.id,
-      projectId: null,
-      configuredMode: resolveMemoryMode(agent.labels),
-      sessionMode: this.sessionModes.get(event.agentId),
-    });
-    const mode = policyContext.mode;
-    if (!settings.enabled || !settings.autoExtract || mode !== "on" || !turn) return;
-    if (parseMemoryCommand(turn.prompt)) return;
-    if (this.pendingExtractions >= MAX_PENDING_EXTRACTIONS) {
-      this.logger.warn({ agentId: event.agentId }, "Memory extraction queue is full");
-      return;
-    }
-    const turnId = event.event.turnId;
-    const eventTimestamp = event.timestamp;
-    const turnKey = `${event.agentId}:${turnId ?? eventTimestamp ?? agent.updatedAt.toISOString()}`;
+    const mode =
+      capturedContext?.mode ??
+      resolveMemoryContextPolicy({
+        // COMPAT(memoryPolicies): added in v0.3.2, remove fallback after 2027-02-18.
+        policies: state.policies ?? [],
+        agentId: agent.id,
+        projectId: null,
+        configuredMode: resolveMemoryMode(agent.labels),
+        sessionMode: this.sessionModes.get(agent.id),
+      }).mode;
+    if (!settings.enabled || !settings.autoExtract || mode !== "on") return false;
+    if (parseMemoryCommand(turn.prompt)) return false;
+    if (this.pendingExtractions < MAX_PENDING_EXTRACTIONS) return true;
+    this.logger.warn({ agentId: agent.id }, "Memory extraction queue is full");
+    return false;
+  }
+
+  private enqueueExtraction(
+    agent: ManagedAgent,
+    turn: TurnContent,
+    turnId: string | undefined,
+    eventTimestamp: string | undefined,
+    capturedContext?: AgentMemoryContext,
+  ): void {
+    const turnKey = `${agent.id}:${turnId ?? eventTimestamp ?? agent.updatedAt.toISOString()}`;
     if (this.queuedTurns.has(turnKey)) return;
     this.queuedTurns.add(turnKey);
     this.pendingExtractions += 1;
     this.store.setPendingExtractions(this.pendingExtractions);
     this.onChanged(this.store.getState());
     this.extractionQueue = this.extractionQueue
-      .then(() => this.extractTurn(agent, turn, turnId, eventTimestamp))
+      .then(() => this.extractTurn(agent, turn, turnId, eventTimestamp, capturedContext))
       .catch((error) => {
         const message = describeMemoryExtractionError(error);
         this.store.recordExtractionError(message);
-        this.logger.warn({ err: error, agentId: event.agentId }, "Memory extraction failed");
+        this.logger.warn({ err: error, agentId: agent.id }, "Memory extraction failed");
       })
       .finally(() => {
         this.queuedTurns.delete(turnKey);
@@ -257,15 +284,15 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       });
   }
 
-  private takePendingUsage(agentId: string): string[] {
-    const pendingUsages = this.pendingUsagesByAgent.get(agentId) ?? [];
-    const memoryIds = pendingUsages.shift() ?? [];
-    if (pendingUsages.length === 0) {
-      this.pendingUsagesByAgent.delete(agentId);
+  private takePendingTurn(agentId: string): PendingMemoryTurn | null {
+    const pendingTurns = this.pendingTurnsByAgent.get(agentId) ?? [];
+    const pendingTurn = pendingTurns.shift() ?? null;
+    if (pendingTurns.length === 0) {
+      this.pendingTurnsByAgent.delete(agentId);
     } else {
-      this.pendingUsagesByAgent.set(agentId, pendingUsages);
+      this.pendingTurnsByAgent.set(agentId, pendingTurns);
     }
-    return memoryIds;
+    return pendingTurn;
   }
 
   private async extractTurn(
@@ -273,17 +300,22 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     turn: TurnContent,
     turnId: string | undefined,
     timestamp: string | undefined,
+    capturedContext?: AgentMemoryContext,
   ): Promise<void> {
     const state = this.store.getState();
     const settings = normalizeMemorySettings(state.settings);
     if (!settings.enabled || !settings.autoExtract) return;
-    const context = await this.resolveAgentMemoryContext(agent, state);
+    const context = capturedContext ?? (await this.resolveAgentMemoryContext(agent, state));
     if (context.mode !== "on" || context.scopes.length === 0) return;
-    const related = retrieveRelevantMemoryMatches(`${turn.prompt}\n${turn.answer}`, state.details, {
-      limit: 6,
-      maxCandidates: settings.maxCandidates,
-      scopes: context.scopes,
-    }).map((match) => match.detail);
+    const related = retrieveRelevantMemoryMatches(
+      `${turn.prompt}\n${turn.answer}`,
+      this.store.getDetailsForScopes(context.scopes),
+      {
+        limit: 6,
+        maxCandidates: settings.maxCandidates,
+        scopes: context.scopes,
+      },
+    ).map((match) => match.detail);
     const providers = await resolveStructuredGenerationProviders({
       cwd: agent.cwd,
       providerSnapshotManager: this.providerSnapshotManager,
@@ -362,7 +394,9 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     agent: ManagedAgent,
     state: PaseoMemoryState,
   ): Promise<AgentMemoryContext> {
-    const availableScopes: PaseoMemoryScope[] = [{ type: "global" }];
+    const availableScopes: PaseoMemoryScope[] = [
+      { type: "global", id: state.activeUserId ?? state.users?.[0]?.id ?? DEFAULT_MEMORY_USER_ID },
+    ];
     let projectId: string | null = null;
     if (agent.workspaceId) {
       availableScopes.push({ type: "workspace", id: agent.workspaceId });

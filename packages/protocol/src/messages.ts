@@ -3258,6 +3258,8 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(larkReminders): added on 2026-08-18. Older daemons do not
         // understand the reminder RPCs, so clients must gate the management UI.
         larkReminders: z.boolean().optional(),
+        // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
+        larkDirectory: z.boolean().optional(),
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: z.boolean().optional(),
         // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
@@ -3266,6 +3268,10 @@ export const ServerInfoStatusPayloadSchema = z
         memoryPolicies: z.boolean().optional(),
         // COMPAT(memoryScopePolicies): added in v0.3.2, remove gate after 2027-02-18.
         memoryScopePolicies: z.boolean().optional(),
+        // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
+        memoryUsers: z.boolean().optional(),
+        // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
+        reasoningTranslation: z.boolean().optional(),
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
         teams: z.boolean().optional(),
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.

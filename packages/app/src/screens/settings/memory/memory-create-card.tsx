@@ -50,9 +50,11 @@ function parseImportance(value: string): number {
 
 export function MemoryCreateCard({
   disabled,
+  globalUserId,
   onCreate,
 }: {
   disabled: boolean;
+  globalUserId: string;
   onCreate: (input: PaseoMemoryCreateInput) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -114,7 +116,7 @@ export function MemoryCreateCard({
         .filter(Boolean),
       scope:
         draft.scopeType === "global"
-          ? { type: "global" }
+          ? { type: "global", id: globalUserId }
           : { type: draft.scopeType, id: draft.scopeId.trim() },
       importance: parseImportance(draft.importance),
       validUntil: draft.validUntil.trim() || null,
@@ -122,7 +124,7 @@ export function MemoryCreateCard({
     });
     setDraft(EMPTY_DRAFT);
     setExpanded(false);
-  }, [draft, onCreate]);
+  }, [draft, globalUserId, onCreate]);
 
   if (!expanded) {
     return (

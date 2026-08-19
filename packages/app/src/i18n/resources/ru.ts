@@ -354,6 +354,11 @@ export const ru: TranslationResources = {
     scrollToBottom: "Прокрутить вниз",
     scrollToOldest: "Перейти к первому сообщению",
     locatingOldest: "Поиск первого сообщения",
+    reasoningTranslation: {
+      translating: "Перевод рассуждений на китайский...",
+      failed: "Не удалось перевести рассуждения.",
+      unavailable: "Этот сервер Paseo не поддерживает перевод рассуждений.",
+    },
     process: {
       show: "Показать процесс",
       hide: "Скрыть процесс",
@@ -2051,6 +2056,11 @@ export const ru: TranslationResources = {
       refreshAccessibility: "Обновить разрешение на уведомления",
       playSound: "Воспроизводить звук",
       playSoundHint: "Воспроизводит звук при получении уведомления на компьютере",
+      island: "Напоминания Dynamic Island",
+      islandHint: "Показывает компактный статус Agent в верхней части экрана",
+      islandShowWhenFocused: "Показывать, когда Paseo в фокусе",
+      islandShowWhenFocusedHint: "Оставляет напоминания видимыми во время работы в Paseo",
+      islandWorking: "Выполняется задача...",
       test: "Проверить уведомление",
       testHint: "Отправляет уведомление с текущими настройками",
       permissionRequired: "Разрешите доступ к уведомлениям перед проверкой",
@@ -2133,6 +2143,11 @@ export const ru: TranslationResources = {
         label: "Всегда разворачивать размышления",
         description:
           "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "Переводить рассуждения Aiden Codex на китайский",
+        description:
+          "Показывать только перевод на упрощённый китайский; иначе показывать оригинал.",
       },
       toolCallDetail: {
         label: "Отображение вызовов инструментов",

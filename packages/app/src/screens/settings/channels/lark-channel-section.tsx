@@ -10,6 +10,7 @@ import type {
   LarkChannelBotStatus,
   LarkChannelPendingPairing,
   LarkChannelStatus,
+  LarkDirectory,
   Team,
 } from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
@@ -33,12 +34,15 @@ import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
+import { LarkUserDirectoryField } from "./lark-directory-fields";
+import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
 import { LarkReminderSection } from "./lark-reminder-section";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
 const EMPTY_PAIRINGS: LarkChannelPendingPairing[] = [];
 const EMPTY_AUTHORIZED_USERS: LarkChannelAuthorizedUser[] = [];
+const EMPTY_DIRECTORY_USERS: LarkDirectory["users"] = [];
 const ASSISTANT_TARGET_PREFIX = "assistant:";
 const TEAM_TARGET_PREFIX = "team:";
 
@@ -84,6 +88,14 @@ function canDeleteSelectedBot(
   return Boolean(
     selectedBotStatus?.id && status?.bots.some((bot) => bot.id === selectedBotStatus.id),
   );
+}
+
+function getStatusDirectory(status: LarkChannelStatus | null): LarkDirectory | null {
+  return status?.directory ?? null;
+}
+
+function getBotAppId(status: LarkChannelBotStatus | null): string | null {
+  return status?.appId ?? null;
 }
 
 const ThemedBot = withUnistyles(Bot);
@@ -217,6 +229,8 @@ interface CredentialsCardProps {
   substituteEnabled: boolean;
   substituteOpenId: string;
   substituteName: string;
+  directory: LarkDirectory | null;
+  directorySupported: boolean;
   targetValue: string | null;
   provider: string | null;
   model: string | null;
@@ -248,6 +262,7 @@ interface CredentialsCardProps {
   onVerificationTokenChange: (value: string) => void;
   onSubstituteEnabledChange: (value: boolean) => void;
   onSubstituteOpenIdChange: (value: string) => void;
+  resolveDirectoryUsers: UseLarkChannelResult["resolveDirectoryUsers"];
   onSubstituteNameChange: (value: string) => void;
   onTargetChange: (value: string) => void;
   onProviderChange: (value: string) => void;
@@ -272,6 +287,8 @@ interface PairingRowProps {
 interface AuthorizedUserRowProps {
   user: LarkChannelAuthorizedUser;
   isFirst: boolean;
+  appId: string | null;
+  directory: LarkDirectory | null;
   onRevoke: (userId: string) => void;
 }
 
@@ -670,19 +687,11 @@ function CredentialsCard(props: CredentialsCardProps) {
             testID="host-page-lark-substitute-enabled"
           />
         </View>
-        <Field
-          label="被附身用户 Open ID"
-          hint="被附身用户仅按 Open ID 匹配；@ 当前机器人也会触发替身回复。"
-          testID="host-page-lark-substitute-open-id"
-        >
-          <FormTextInput
-            initialValue={props.substituteOpenId}
-            resetKey={`substitute-open-id:${props.formRevision}`}
-            onChangeText={props.onSubstituteOpenIdChange}
-            placeholder="ou_xxxxxxxxxx"
-            editable={props.substituteEnabled}
-          />
-        </Field>
+        {props.directorySupported ? (
+          <SubstituteDirectoryField {...props} />
+        ) : (
+          <LegacySubstituteOpenIdField {...props} />
+        )}
         <Field
           label="用户名（备注）"
           hint="仅作为备注和回复上下文，不参与身份匹配。"
@@ -803,6 +812,64 @@ function CredentialsCard(props: CredentialsCardProps) {
   );
 }
 
+function LegacySubstituteOpenIdField(
+  props: Pick<
+    CredentialsCardProps,
+    "formRevision" | "substituteEnabled" | "substituteOpenId" | "onSubstituteOpenIdChange"
+  >,
+) {
+  return (
+    <Field
+      label="被附身用户 Open ID"
+      hint="更新 Paseo daemon 后可通过用户邮箱查询 Open ID。"
+      testID="host-page-lark-substitute-open-id"
+    >
+      <FormTextInput
+        initialValue={props.substituteOpenId}
+        resetKey={`substitute-open-id:${props.formRevision}`}
+        onChangeText={props.onSubstituteOpenIdChange}
+        placeholder="ou_xxxxxxxxxx"
+        editable={props.substituteEnabled}
+      />
+    </Field>
+  );
+}
+
+function SubstituteDirectoryField(
+  props: Pick<
+    CredentialsCardProps,
+    | "appId"
+    | "directory"
+    | "resolveDirectoryUsers"
+    | "substituteEnabled"
+    | "substituteOpenId"
+    | "onSubstituteOpenIdChange"
+  >,
+) {
+  const { onSubstituteOpenIdChange } = props;
+  const openIds = useMemo(
+    () => (props.substituteOpenId ? [props.substituteOpenId] : []),
+    [props.substituteOpenId],
+  );
+  const handleChange = useCallback(
+    (nextOpenIds: string[]) => onSubstituteOpenIdChange(nextOpenIds[0] ?? ""),
+    [onSubstituteOpenIdChange],
+  );
+  return (
+    <LarkUserDirectoryField
+      label="被附身用户"
+      hint="输入用户邮箱查询 Open ID；配置保存和运行时仍只使用 Open ID。@ 当前机器人也会触发替身回复。"
+      appId={props.appId}
+      openIds={openIds}
+      users={props.directory?.users ?? EMPTY_DIRECTORY_USERS}
+      resolveUsers={props.resolveDirectoryUsers}
+      onChange={handleChange}
+      disabled={!props.substituteEnabled}
+      testID="host-page-lark-substitute-open-id"
+    />
+  );
+}
+
 function OptionalCredentialFields(props: CredentialsCardProps) {
   return (
     <>
@@ -884,7 +951,7 @@ function PairingRequestsCard(props: {
   );
 }
 
-function AuthorizedUserRow({ user, isFirst, onRevoke }: AuthorizedUserRowProps) {
+function AuthorizedUserRow({ user, isFirst, appId, directory, onRevoke }: AuthorizedUserRowProps) {
   const handleRevoke = useCallback(() => {
     onRevoke(user.id);
   }, [onRevoke, user.id]);
@@ -892,8 +959,14 @@ function AuthorizedUserRow({ user, isFirst, onRevoke }: AuthorizedUserRowProps) 
   return (
     <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{user.displayName}</Text>
-        <Text style={settingsStyles.rowHint}>{user.chatId}</Text>
+        <Text style={settingsStyles.rowTitle}>
+          {user.openId
+            ? formatLarkUserOpenId(directory?.users ?? [], appId, user.openId, user.displayName)
+            : user.displayName}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {formatLarkChatId(directory?.chats ?? [], appId, user.chatId)}
+        </Text>
       </View>
       <Button size="sm" variant="outline" onPress={handleRevoke}>
         Revoke
@@ -904,6 +977,8 @@ function AuthorizedUserRow({ user, isFirst, onRevoke }: AuthorizedUserRowProps) 
 
 function AuthorizedUsersCard(props: {
   users: LarkChannelAuthorizedUser[];
+  appId: string | null;
+  directory: LarkDirectory | null;
   onRevoke: (userId: string) => void;
 }) {
   return (
@@ -915,6 +990,8 @@ function AuthorizedUsersCard(props: {
               key={user.id}
               user={user}
               isFirst={index === 0}
+              appId={props.appId}
+              directory={props.directory}
               onRevoke={props.onRevoke}
             />
           ))
@@ -1094,6 +1171,7 @@ function useLarkModelControls(input: {
 function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedContentProps) {
   const assistants = useAssistants(serverId);
   const supportsTeams = useHostFeature(serverId, "teams");
+  const supportsLarkDirectory = useHostFeature(serverId, "larkDirectory");
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId);
   const { projects } = useProjects();
@@ -1118,6 +1196,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   const [saveError, setSaveError] = useState<string | null>(null);
   const [formRevision, setFormRevision] = useState(0);
   const status = channel.status;
+  const directory = getStatusDirectory(status);
   const botStatuses = useMemo(() => buildBotStatuses(status), [status]);
   const selectedBotStatus = useMemo(
     () =>
@@ -1129,6 +1208,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
       }),
     [botStatuses, creatingBot, selectedBotId, status?.activeBotId],
   );
+  const selectedBotAppId = getBotAppId(selectedBotStatus);
 
   useEffect(() => {
     if (!status || creatingBot) return;
@@ -1438,6 +1518,8 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         substituteEnabled={substituteEnabled}
         substituteOpenId={substituteOpenId}
         substituteName={substituteName}
+        directory={directory}
+        directorySupported={supportsLarkDirectory}
         targetValue={targetValue}
         provider={provider}
         model={model}
@@ -1469,6 +1551,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
         onVerificationTokenChange={setVerificationToken}
         onSubstituteEnabledChange={setSubstituteEnabled}
         onSubstituteOpenIdChange={setSubstituteOpenId}
+        resolveDirectoryUsers={channel.resolveDirectoryUsers}
         onSubstituteNameChange={setSubstituteName}
         onTargetChange={handleTargetChange}
         onProviderChange={handleProviderChange}
@@ -1489,9 +1572,18 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
       />
       <AuthorizedUsersCard
         users={selectedBotStatus?.authorizedUsers ?? EMPTY_AUTHORIZED_USERS}
+        appId={selectedBotAppId}
+        directory={directory}
         onRevoke={handleRevokeUser}
       />
-      <LarkReminderSection serverId={serverId} bots={botStatuses} />
+      <LarkReminderSection
+        serverId={serverId}
+        bots={botStatuses}
+        directory={directory}
+        directorySupported={supportsLarkDirectory}
+        resolveDirectoryUsers={channel.resolveDirectoryUsers}
+        resolveDirectoryChats={channel.resolveDirectoryChats}
+      />
     </View>
   );
 }

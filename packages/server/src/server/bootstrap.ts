@@ -231,6 +231,8 @@ import { LarkChannelStore } from "./channels/lark/lark-channel-store.js";
 import { OfficialLarkChannelClientAdapter } from "./channels/lark/lark-client-adapter.js";
 import { LarkChannelService } from "./channels/lark/lark-channel-service.js";
 import { LarkReminderService } from "./channels/lark/lark-reminder-service.js";
+import { LarkDirectoryService } from "./channels/lark/lark-directory-service.js";
+import { LarkDirectoryStore } from "./channels/lark/lark-directory-store.js";
 import { AssistantStore } from "./assistants/assistant-store.js";
 import { PaseoMemoryStore } from "./memory/memory-store.js";
 import { PaseoMemoryService } from "./memory/memory-service.js";
@@ -1532,6 +1534,15 @@ export async function createPaseoDaemon(
     logger,
   });
   const larkChannelAdapter = new OfficialLarkChannelClientAdapter({ logger });
+  const larkDirectoryStore = new LarkDirectoryStore({
+    paseoHome: config.paseoHome,
+    logger,
+  });
+  const larkDirectoryService = new LarkDirectoryService(
+    larkChannelStore,
+    larkDirectoryStore,
+    larkChannelAdapter,
+  );
   const larkReminderService = new LarkReminderService({
     paseoHome: config.paseoHome,
     channelStore: larkChannelStore,
@@ -1573,6 +1584,7 @@ export async function createPaseoDaemon(
     teamStore,
     logger,
     reminderService: larkReminderService,
+    directoryService: larkDirectoryService,
     host: {
       emitStatusChanged: (status) => {
         wsServer?.broadcast(

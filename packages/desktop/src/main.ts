@@ -49,6 +49,7 @@ import {
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
 import { applyNormalDockIcon, registerAppAttentionHandlers } from "./features/app-attention.js";
+import { registerIslandHandlers } from "./island/island-controller.js";
 import { registerOpenerHandlers } from "./features/opener.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { setupApplicationMenu } from "./features/menu.js";
@@ -1000,6 +1001,7 @@ async function bootstrap(): Promise<void> {
   registerDialogHandlers();
   registerNotificationHandlers();
   registerAppAttentionHandlers();
+  registerIslandHandlers();
   registerOpenerHandlers();
   registerEditorTargetHandlers();
   registerBrowserAutomationIpc();

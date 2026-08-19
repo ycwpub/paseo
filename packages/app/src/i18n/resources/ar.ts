@@ -342,6 +342,11 @@ export const ar: TranslationResources = {
     scrollToBottom: "قم بالتمرير إلى الأسفل",
     scrollToOldest: "انتقل إلى الرسالة الأولى",
     locatingOldest: "جارٍ تحديد الرسالة الأولى",
+    reasoningTranslation: {
+      translating: "جارٍ ترجمة التفكير إلى الصينية...",
+      failed: "فشلت ترجمة التفكير.",
+      unavailable: "خادم Paseo الحالي لا يدعم ترجمة التفكير.",
+    },
     process: {
       show: "إظهار العملية",
       hide: "إخفاء العملية",
@@ -2005,6 +2010,11 @@ export const ar: TranslationResources = {
       refreshAccessibility: "تحديث إذن الإشعارات",
       playSound: "تشغيل صوت",
       playSoundHint: "تشغيل صوت عند وصول إشعار سطح مكتب",
+      island: "تذكيرات Dynamic Island",
+      islandHint: "عرض حالة Agent مختصرة أعلى الشاشة",
+      islandShowWhenFocused: "العرض عندما يكون Paseo في الواجهة",
+      islandShowWhenFocusedHint: "إبقاء التذكيرات ظاهرة أثناء استخدام Paseo",
+      islandWorking: "جارٍ تنفيذ المهمة...",
       test: "اختبار الإشعار",
       testHint: "إرسال إشعار باستخدام هذه الإعدادات",
       permissionRequired: "اسمح بالوصول إلى الإشعارات قبل الاختبار",
@@ -2085,6 +2095,10 @@ export const ar: TranslationResources = {
       autoExpandReasoning: {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "ترجمة تفكير Aiden Codex إلى الصينية",
+        description: "عرض الترجمة الصينية المبسطة فقط، أو النص الأصلي عند إيقافها.",
       },
       toolCallDetail: {
         label: "عرض استدعاءات الأدوات",

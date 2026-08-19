@@ -12,7 +12,10 @@ export interface MemoryPolicyDraft {
 }
 
 function scopeKey(scope: PaseoMemoryScope): string {
-  return scope.type === "global" ? "global" : `${scope.type}:${scope.id ?? ""}`;
+  if (scope.type === "global") {
+    return scope.id ? `global:${scope.id}` : "global";
+  }
+  return `${scope.type}:${scope.id ?? ""}`;
 }
 
 function targetKey(target: PaseoMemoryPolicyTarget): string {

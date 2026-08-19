@@ -17,6 +17,8 @@ export type LarkChannelSessionRequest = Extract<
       | "channel.lark.approve_pairing.request"
       | "channel.lark.reject_pairing.request"
       | "channel.lark.revoke_user.request"
+      | "channel.lark.directory.resolve_users.request"
+      | "channel.lark.directory.resolve_chats.request"
       | "channel.lark.reminder.list.request"
       | "channel.lark.reminder.create.request"
       | "channel.lark.reminder.set_enabled.request"
@@ -38,6 +40,8 @@ type LarkChannelResponse = Extract<
       | "channel.lark.approve_pairing.response"
       | "channel.lark.reject_pairing.response"
       | "channel.lark.revoke_user.response"
+      | "channel.lark.directory.resolve_users.response"
+      | "channel.lark.directory.resolve_chats.response"
       | "channel.lark.reminder.list.response"
       | "channel.lark.reminder.create.response"
       | "channel.lark.reminder.set_enabled.response"
@@ -185,6 +189,32 @@ export class LarkChannelSession {
             },
           });
           return;
+        case "channel.lark.directory.resolve_users.request": {
+          const users = await this.service.resolveDirectoryUsers(message.appId, message.emails);
+          this.emitResponse({
+            type: "channel.lark.directory.resolve_users.response",
+            payload: {
+              requestId: message.requestId,
+              users,
+              status: this.service.getStatus(),
+              error: null,
+            },
+          });
+          return;
+        }
+        case "channel.lark.directory.resolve_chats.request": {
+          const chats = await this.service.resolveDirectoryChats(message.appId, message.query);
+          this.emitResponse({
+            type: "channel.lark.directory.resolve_chats.response",
+            payload: {
+              requestId: message.requestId,
+              chats,
+              status: this.service.getStatus(),
+              error: null,
+            },
+          });
+          return;
+        }
         case "channel.lark.reminder.list.request":
           this.emitResponse({
             type: "channel.lark.reminder.list.response",
@@ -297,6 +327,28 @@ export class LarkChannelSession {
         return;
       case "channel.lark.revoke_user.request":
         this.emitResponse({ type: "channel.lark.revoke_user.response", payload });
+        return;
+      case "channel.lark.directory.resolve_users.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_users.response",
+          payload: {
+            requestId: message.requestId,
+            users: [],
+            status: this.service.getStatus(),
+            error,
+          },
+        });
+        return;
+      case "channel.lark.directory.resolve_chats.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_chats.response",
+          payload: {
+            requestId: message.requestId,
+            chats: [],
+            status: this.service.getStatus(),
+            error,
+          },
+        });
         return;
       case "channel.lark.reminder.list.request":
         this.emitResponse({

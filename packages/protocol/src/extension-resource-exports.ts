@@ -15,6 +15,15 @@ export {
   type PluginAppState,
 } from "./plugin/app-types.js";
 export {
+  LarkDirectoryChatSchema,
+  LarkDirectorySchema,
+  LarkDirectoryUserSchema,
+  type LarkDirectory,
+  type LarkDirectoryChat,
+  type LarkDirectoryUser,
+} from "./channel/lark/directory-types.js";
+export * from "./channel/lark/directory-rpc-schemas.js";
+export {
   LarkChannelAuthorizedUserSchema,
   LarkChannelBotSchema,
   LarkChannelBotStatusSchema,
@@ -79,6 +88,8 @@ export {
   PaseoMemoryStatsSchema,
   PaseoMemoryUpdateInputSchema,
   PaseoMemoryUsageSchema,
+  PaseoMemoryUserOperationSchema,
+  PaseoMemoryUserSchema,
   type PaseoMemoryCreateInput,
   type PaseoMemoryDetail,
   type PaseoMemoryPolicy,
@@ -91,6 +102,8 @@ export {
   type PaseoMemoryStats,
   type PaseoMemoryUpdateInput,
   type PaseoMemoryUsage,
+  type PaseoMemoryUser,
+  type PaseoMemoryUserOperation,
 } from "./memory/types.js";
 export * from "./memory/rpc-schemas.js";
 export {
@@ -159,3 +172,4 @@ export {
 export * from "./plugin/app-rpc-schemas.js";
 export * from "./plugin/rpc-schemas.js";
 export * from "./client-access/rpc-schemas.js";
+export * from "./reasoning-translation/rpc-schemas.js";

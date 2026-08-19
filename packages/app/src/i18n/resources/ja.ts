@@ -344,6 +344,11 @@ export const ja: TranslationResources = {
     scrollToBottom: "下にスクロール",
     scrollToOldest: "最初のメッセージに移動",
     locatingOldest: "最初のメッセージを検索中",
+    reasoningTranslation: {
+      translating: "思考プロセスを中国語に翻訳しています...",
+      failed: "思考プロセスの翻訳に失敗しました。",
+      unavailable: "現在の Paseo サーバーは思考翻訳に対応していません。",
+    },
     process: {
       show: "プロセスを表示",
       hide: "プロセスを非表示",
@@ -2023,6 +2028,11 @@ export const ja: TranslationResources = {
       refreshAccessibility: "通知の権限を更新",
       playSound: "サウンドを再生",
       playSoundHint: "デスクトップ通知が届いたときにサウンドを再生します",
+      island: "Dynamic Island リマインダー",
+      islandHint: "画面上部にコンパクトな Agent ステータスを表示します",
+      islandShowWhenFocused: "Paseo が前面でも表示",
+      islandShowWhenFocusedHint: "Paseo の操作中もリマインダーを表示します",
+      islandWorking: "タスクを処理しています...",
       test: "通知をテスト",
       testHint: "現在の設定でテスト通知を送信します",
       permissionRequired: "テストする前に通知へのアクセスを許可してください",
@@ -2103,6 +2113,10 @@ export const ja: TranslationResources = {
       autoExpandReasoning: {
         label: "常に思考プロセスを展開",
         description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "Aiden Codex の思考を中国語に翻訳",
+        description: "簡体字中国語の翻訳のみを表示し、オフの場合は原文を表示します。",
       },
       toolCallDetail: {
         label: "ツール呼び出しの表示",

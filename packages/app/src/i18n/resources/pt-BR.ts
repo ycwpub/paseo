@@ -351,6 +351,11 @@ export const ptBR: TranslationResources = {
     scrollToBottom: "Rolar para o fim",
     scrollToOldest: "Ir para a primeira mensagem",
     locatingOldest: "Localizando a primeira mensagem",
+    reasoningTranslation: {
+      translating: "Traduzindo o raciocínio para chinês...",
+      failed: "Falha ao traduzir o raciocínio.",
+      unavailable: "Este servidor Paseo não oferece tradução do raciocínio.",
+    },
     process: {
       show: "Mostrar processo",
       hide: "Ocultar processo",
@@ -2043,6 +2048,11 @@ export const ptBR: TranslationResources = {
       refreshAccessibility: "Atualizar permissão de notificações",
       playSound: "Reproduzir som",
       playSoundHint: "Reproduz um som quando chega uma notificação da área de trabalho",
+      island: "Lembretes Dynamic Island",
+      islandHint: "Mostra o status compacto do Agent no topo da tela",
+      islandShowWhenFocused: "Mostrar com o Paseo em foco",
+      islandShowWhenFocusedHint: "Mantém os lembretes visíveis enquanto você usa o Paseo",
+      islandWorking: "Processando a tarefa...",
       test: "Testar notificação",
       testHint: "Envia uma notificação usando estas configurações",
       permissionRequired: "Permita o acesso às notificações antes de testar",
@@ -2125,6 +2135,11 @@ export const ptBR: TranslationResources = {
         label: "Sempre expandir raciocínio",
         description:
           "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "Traduzir o raciocínio do Aiden Codex para chinês",
+        description:
+          "Mostra apenas a tradução em chinês simplificado; desativado, mostra o texto original.",
       },
       toolCallDetail: {
         label: "Exibição de chamadas de ferramentas",

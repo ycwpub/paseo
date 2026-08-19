@@ -189,6 +189,11 @@ import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
 import type { PluginService } from "./plugin/plugin-service.js";
 import { PluginSession } from "./plugin/plugin-session.js";
+import {
+  createAidenCodexReasoningTranslationService,
+  type ReasoningTranslationService,
+} from "./reasoning-translation/reasoning-translation-service.js";
+import { ReasoningTranslationSession } from "./reasoning-translation/reasoning-translation-session.js";
 import { importProviderResources } from "./shared-resource-importer.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import type { PushNotifications } from "./push/index.js";
@@ -724,6 +729,7 @@ export class Session {
   private readonly mcpSession: McpSession | null;
   private readonly skillSession: SkillSession | null;
   private readonly pluginSession: PluginSession | null;
+  private readonly reasoningTranslationSession: ReasoningTranslationSession;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
 
@@ -999,6 +1005,17 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    const reasoningTranslationService: ReasoningTranslationService =
+      createAidenCodexReasoningTranslationService({
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+    this.reasoningTranslationSession = new ReasoningTranslationSession({
+      emit: (msg) => this.emit(msg),
+      service: reasoningTranslationService,
+      logger: this.sessionLogger,
+    });
     this.assistantStore = assistantStore ?? null;
     this.teamStore = teamStore ?? null;
 
@@ -1990,6 +2007,7 @@ export class Session {
       this.dispatchMcpMessage(msg) ??
       this.dispatchSkillMessage(msg) ??
       this.dispatchPluginMessage(msg) ??
+      this.dispatchReasoningTranslationMessage(msg) ??
       this.dispatchMiscMessage(msg);
     if (promise) await promise;
   }
@@ -2505,6 +2523,8 @@ export class Session {
       case "channel.lark.approve_pairing.request":
       case "channel.lark.reject_pairing.request":
       case "channel.lark.revoke_user.request":
+      case "channel.lark.directory.resolve_users.request":
+      case "channel.lark.directory.resolve_chats.request":
       case "channel.lark.reminder.list.request":
       case "channel.lark.reminder.create.request":
       case "channel.lark.reminder.set_enabled.request":
@@ -2571,6 +2591,15 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  private dispatchReasoningTranslationMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
+    if (msg.type === "reasoning.translate.request") {
+      return this.reasoningTranslationSession.handleRequest(msg);
+    }
+    return undefined;
   }
 
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {

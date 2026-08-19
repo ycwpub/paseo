@@ -118,9 +118,12 @@ $PASEO_HOME/
 │   └── {sanitized-cwd}/
 │       └── {agentId}.json               # One file per agent
 ├── assistants.json                      # Assistant presets
+├── channels/
+│   └── lark-directory.json              # App-scoped Lark email/Open ID and group/chat ID relations
 ├── memory/
-│   ├── catalog.json                     # Global memory settings, metadata, provenance, and extraction state
-│   ├── summary.md                       # Bounded global memory summary and detail index
+│   ├── catalog.json                     # Memory users, active user, settings, metadata, provenance, and extraction state
+│   ├── users/
+│   │   └── {userId}/summary.md          # Per-user global memory summary and detail index
 │   └── details/                         # Topic detail files loaded only when relevant
 ├── plugins/
 │   ├── catalog.json                     # Plugin marketplaces, installs, enable state, and resource ownership

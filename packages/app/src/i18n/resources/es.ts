@@ -352,6 +352,11 @@ export const es: TranslationResources = {
     scrollToBottom: "Desplazarse hacia abajo",
     scrollToOldest: "Ir al primer mensaje",
     locatingOldest: "Buscando el primer mensaje",
+    reasoningTranslation: {
+      translating: "Traduciendo el razonamiento al chino...",
+      failed: "No se pudo traducir el razonamiento.",
+      unavailable: "Este servidor de Paseo no admite la traducción del razonamiento.",
+    },
     process: {
       show: "Mostrar proceso",
       hide: "Ocultar proceso",
@@ -2059,6 +2064,11 @@ export const es: TranslationResources = {
       refreshAccessibility: "Actualizar permiso de notificaciones",
       playSound: "Reproducir sonido",
       playSoundHint: "Reproduce un sonido cuando llega una notificación de escritorio",
+      island: "Recordatorios Dynamic Island",
+      islandHint: "Muestra estados compactos del Agent en la parte superior de la pantalla",
+      islandShowWhenFocused: "Mostrar con Paseo en primer plano",
+      islandShowWhenFocusedHint: "Mantiene los recordatorios visibles mientras usas Paseo",
+      islandWorking: "Procesando la tarea...",
       test: "Probar notificación",
       testHint: "Envía una notificación con esta configuración",
       permissionRequired: "Permite el acceso a las notificaciones antes de probar",
@@ -2142,6 +2152,11 @@ export const es: TranslationResources = {
         label: "Siempre expandir razonamiento",
         description:
           "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "Traducir el razonamiento de Aiden Codex al chino",
+        description:
+          "Muestra solo la traducción al chino simplificado; al desactivarlo muestra el texto original.",
       },
       toolCallDetail: {
         label: "Visualización de llamadas a herramientas",

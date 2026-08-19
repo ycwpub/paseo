@@ -51,6 +51,24 @@ export const zhCN: TranslationResources = {
     globalDisabledTitle: "全局记忆未开启",
     globalDisabledDescription:
       "当前策略会正常保存，但需要先在 Host 的记忆设置中开启记忆，Paseo 才会使用它。",
+    users: {
+      title: "全局记忆用户",
+      description:
+        "Agent 只会读取和学习当前用户的全局记忆；Project、Workspace 和助手记忆继续共享。",
+      currentUser: "当前用户",
+      userName: "用户名称",
+      saveName: "保存名称",
+      deleteUser: "删除当前用户",
+      newUserName: "新用户名称",
+      newUserPlaceholder: "例如：袁昌旺",
+      createAndSwitch: "创建并切换",
+      selectUser: "选择用户",
+      noUsers: "没有用户",
+      deleteTitle: "删除全局记忆用户“{{name}}”？",
+      deleteDescription:
+        "该用户的全局记忆、总文件和提取规范会被永久删除。其他作用域的记忆不受影响。",
+      deleteConfirm: "删除用户",
+    },
     scopeManager: {
       title: "记忆规范",
       description: "统一管理全局、Project、Workspace 和助手记忆允许保存的长期信息。",
@@ -869,6 +887,11 @@ export const zhCN: TranslationResources = {
     scrollToBottom: "滚动到底部",
     scrollToOldest: "跳转到第一条消息",
     locatingOldest: "正在定位第一条消息",
+    reasoningTranslation: {
+      translating: "正在翻译思考过程…",
+      failed: "思考过程翻译失败。",
+      unavailable: "当前 Paseo 服务不支持思考翻译。",
+    },
     process: {
       show: "展开过程",
       hide: "隐藏过程",
@@ -2517,6 +2540,11 @@ export const zhCN: TranslationResources = {
       refreshAccessibility: "刷新通知权限",
       playSound: "播放声音",
       playSoundHint: "收到桌面通知时播放声音",
+      island: "灵动岛提醒",
+      islandHint: "在屏幕顶部展示紧凑的 Agent 状态提醒",
+      islandShowWhenFocused: "Paseo 在前台时展示",
+      islandShowWhenFocusedHint: "使用 Paseo 时也继续展示灵动岛提醒",
+      islandWorking: "正在处理任务...",
       test: "测试通知",
       testHint: "使用当前设置发送测试通知",
       permissionRequired: "测试前请允许访问通知",
@@ -2596,6 +2624,10 @@ export const zhCN: TranslationResources = {
       autoExpandReasoning: {
         label: "始终展开推理过程",
         description: "默认情况下完全展开 AI 的思考和推理过程",
+      },
+      aidenCodexReasoningTranslation: {
+        label: "将 Aiden Codex 思考过程翻译为中文",
+        description: "开启后仅展示简体中文译文；关闭后展示原始思考内容。",
       },
       toolCallDetail: {
         label: "工具调用显示",

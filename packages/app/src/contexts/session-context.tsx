@@ -49,6 +49,8 @@ import {
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { signalDesktopAttention } from "@/desktop/attention/desktop-attention";
+import { dismissDesktopIsland, showDesktopIsland } from "@/desktop/island/desktop-island";
+import { showAgentAttentionIsland, showAgentRunningIsland } from "@/desktop/island/agent-island";
 import { getAgentAttentionRouting } from "@/utils/agent-attention";
 import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import {
@@ -432,6 +434,30 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       const appState = appStateRef.current;
       const session = useSessionStore.getState().sessions[serverId];
       const attentionFocusedAgentId = session?.focusedAgentId ?? null;
+      const agent = session?.agents?.get(params.agentId);
+      const head = session?.agentStreamHead.get(params.agentId) ?? [];
+      const tail = session?.agentStreamTail.get(params.agentId) ?? [];
+      const assistantMessage =
+        findLatestAssistantMessageText(head) ?? findLatestAssistantMessageText(tail);
+      const permissionRequest = getLatestPermissionRequest(session, params.agentId);
+      const workspaceId = agent?.workspaceId;
+      const notification = resolveAgentAttentionNotification({
+        notification: params.notification,
+        reason: params.reason,
+        serverId,
+        workspaceId,
+        agentId: params.agentId,
+        assistantMessage,
+        permissionRequest,
+      });
+      showAgentAttentionIsland({
+        serverId,
+        agentId: params.agentId,
+        agentTitle: agent?.title,
+        reason: params.reason,
+        notification: params.notification ?? notification,
+      });
+
       if (params.reason === "error") {
         return;
       }
@@ -447,23 +473,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         return;
       }
       attentionNotifiedRef.current.set(params.agentId, timestampMs);
-
-      const head = session?.agentStreamHead.get(params.agentId) ?? [];
-      const tail = session?.agentStreamTail.get(params.agentId) ?? [];
-      const assistantMessage =
-        findLatestAssistantMessageText(head) ?? findLatestAssistantMessageText(tail);
-      const permissionRequest = getLatestPermissionRequest(session, params.agentId);
-      const workspaceId = session?.agents?.get(params.agentId)?.workspaceId;
-
-      const notification = resolveAgentAttentionNotification({
-        notification: params.notification,
-        reason: params.reason,
-        serverId,
-        workspaceId,
-        agentId: params.agentId,
-        assistantMessage,
-        permissionRequest,
-      });
       if (!notification) {
         return;
       }
@@ -750,6 +759,19 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         event.type === "turn_canceled"
       ) {
         voiceRuntime?.onTurnEvent(serverId, agentId, event.type);
+      }
+      if (event.type === "turn_started") {
+        const session = useSessionStore.getState().sessions[serverId];
+        const agent = session?.agents?.get(agentId);
+        showAgentRunningIsland({
+          serverId,
+          agentId,
+          agentTitle: agent?.title,
+          workspaceId: agent?.workspaceId,
+          body: t("settings.notifications.islandWorking"),
+        });
+      } else if (event.type === "turn_canceled") {
+        dismissDesktopIsland(`${serverId}:${agentId}`);
       }
       const turnLiveness = deriveAgentStreamTurnLiveness([
         { event: streamEvent, seq, epoch, timestamp: parsedTimestamp },
@@ -1062,6 +1084,18 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       if (!message.payload.shouldNotify) {
         return;
       }
+      showDesktopIsland({
+        id: `${serverId}:terminal:${message.payload.terminalId}`,
+        kind: "info",
+        title: message.payload.title,
+        body: message.payload.body,
+        data: {
+          serverId: message.payload.serverId ?? serverId,
+          terminalId: message.payload.terminalId,
+          cwd: message.payload.cwd,
+          ...(message.payload.workspaceId ? { workspaceId: message.payload.workspaceId } : {}),
+        },
+      });
       void sendOsNotification({
         title: message.payload.title,
         body: message.payload.body,
@@ -1119,6 +1153,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     applyTimelineResponse,
     updateSessionServerInfo,
     toast,
+    t,
     voiceRuntime,
     voiceAudioEngine,
   ]);

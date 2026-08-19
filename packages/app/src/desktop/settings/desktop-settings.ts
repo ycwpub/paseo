@@ -23,6 +23,10 @@ export interface DesktopSettings {
   attention: {
     soundVolume: number;
   };
+  island: {
+    enabled: boolean;
+    showWhenFocused: boolean;
+  };
 }
 
 export interface DesktopSettingsPatch {
@@ -30,6 +34,7 @@ export interface DesktopSettingsPatch {
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
   attention?: Partial<DesktopSettings["attention"]>;
+  island?: Partial<DesktopSettings["island"]>;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -43,6 +48,10 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   },
   attention: {
     soundVolume: 0.5,
+  },
+  island: {
+    enabled: true,
+    showWhenFocused: true,
   },
 };
 
@@ -161,6 +170,7 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
   const notifications = isRecord(record.notifications) ? record.notifications : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
   const attention = isRecord(record.attention) ? record.attention : {};
+  const island = isRecord(record.island) ? record.island : {};
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
@@ -186,6 +196,16 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
           ? Math.min(1, Math.max(0, attention.soundVolume))
           : DEFAULT_DESKTOP_SETTINGS.attention.soundVolume,
     },
+    island: {
+      enabled:
+        typeof island.enabled === "boolean"
+          ? island.enabled
+          : DEFAULT_DESKTOP_SETTINGS.island.enabled,
+      showWhenFocused:
+        typeof island.showWhenFocused === "boolean"
+          ? island.showWhenFocused
+          : DEFAULT_DESKTOP_SETTINGS.island.showWhenFocused,
+    },
   };
 }
 
@@ -207,6 +227,10 @@ function mergeDesktopSettings(
       ...current.attention,
       ...updates.attention,
     },
+    island: {
+      ...current.island,
+      ...updates.island,
+    },
   };
 }
 
@@ -216,6 +240,7 @@ function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> 
     ...(updates.notifications ? { notifications: updates.notifications } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
     ...(updates.attention ? { attention: updates.attention } : {}),
+    ...(updates.island ? { island: updates.island } : {}),
   };
 }
 

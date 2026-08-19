@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import type {
   PaseoMemoryCreateInput,
   PaseoMemoryDetail,
   PaseoMemoryScope,
   PaseoMemorySettings,
+  PaseoMemoryUserOperation,
 } from "@getpaseo/protocol/messages";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -21,14 +23,16 @@ import {
 } from "./memory-view-model";
 
 export function MemorySection({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
   const supported = useHostFeature(serverId, "memory");
+  const usersSupported = useHostFeature(serverId, "memoryUsers");
   const { memory, isLoading, error, updateMemory, clearMemory, isMutating, mutationError } =
     useMemory(serverId, { enabled: supported });
   const [summary, setSummary] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<MemoryStatusFilter>("active");
   const [scopeFilter, setScopeFilter] = useState<MemoryScopeFilter>("all");
-  useEffect(() => setSummary(memory?.summary ?? ""), [memory?.summary]);
+  useEffect(() => setSummary(memory?.summary ?? ""), [memory?.activeUserId, memory?.summary]);
 
   const saveSettings = useCallback(
     async (settings: PaseoMemorySettings) => {
@@ -49,7 +53,10 @@ export function MemorySection({ serverId }: { serverId: string }) {
     async (detail: PaseoMemoryDetail, draft: MemoryDetailDraft) => {
       const scope: PaseoMemoryScope =
         draft.scopeType === "global"
-          ? { type: "global" }
+          ? {
+              type: "global",
+              id: memory?.activeUserId ?? memory?.users?.[0]?.id ?? "default",
+            }
           : { type: draft.scopeType, id: draft.scopeId.trim() };
       if (scope.type !== "global" && !scope.id) {
         throw new Error(`${scope.type} scope requires an ID`);
@@ -73,7 +80,27 @@ export function MemorySection({ serverId }: { serverId: string }) {
         ],
       });
     },
-    [updateMemory],
+    [memory?.activeUserId, memory?.users, updateMemory],
+  );
+  const changeUser = useCallback(
+    async (operation: PaseoMemoryUserOperation) => {
+      if (operation.type === "delete") {
+        const user = memory?.users?.find((candidate) => candidate.id === operation.id);
+        const confirmed = await confirmDialog({
+          title: t("memoryPolicies.users.deleteTitle", {
+            name: user?.name ?? operation.id,
+          }),
+          message: t("memoryPolicies.users.deleteDescription"),
+          confirmLabel: t("memoryPolicies.users.deleteConfirm"),
+          destructive: true,
+        });
+        if (!confirmed) return;
+      }
+      await updateMemory({ userOperation: operation });
+      setSearch("");
+      setScopeFilter("all");
+    },
+    [memory?.users, t, updateMemory],
   );
   const deleteDetail = useCallback(
     async (detail: PaseoMemoryDetail) => {
@@ -151,11 +178,13 @@ export function MemorySection({ serverId }: { serverId: string }) {
       scopeFilter={scopeFilter}
       isMutating={isMutating}
       visibleError={visibleError}
+      usersSupported={usersSupported}
       onSummaryChange={setSummary}
       onSearchChange={setSearch}
       onStatusFilterChange={setStatusFilter}
       onScopeFilterChange={setScopeFilter}
       onSaveSettings={saveSettings}
+      onChangeUser={changeUser}
       onSaveSummary={saveSummary}
       onCreateDetail={createDetail}
       onSaveDetail={saveDetail}

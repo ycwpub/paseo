@@ -32,6 +32,8 @@ import type {
   GetLarkBotApplicationOptions,
   LarkChannelRequestOptions,
   RejectLarkPairingOptions,
+  ResolveLarkDirectoryChatsOptions,
+  ResolveLarkDirectoryUsersOptions,
   RevokeLarkUserOptions,
   SetLarkChannelEnabledOptions,
   SetLarkReminderEnabledOptions,
@@ -117,6 +119,19 @@ export class DaemonResourceRpcClient {
       requestId: options?.requestId,
       message: { type: "memory.clear.request" },
       responseType: "memory.clear.response",
+    });
+  }
+
+  translateReasoning(options: { agentId: string; text: string; requestId?: string }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "reasoning.translate.request",
+        agentId: options.agentId,
+        text: options.text,
+      },
+      responseType: "reasoning.translate.response",
+      timeout: 180_000,
     });
   }
 
@@ -469,6 +484,30 @@ export class DaemonResourceRpcClient {
         userId: options.userId,
       },
       responseType: "channel.lark.revoke_user.response",
+    });
+  }
+
+  resolveLarkDirectoryUsers(options: ResolveLarkDirectoryUsersOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.resolve_users.request",
+        appId: options.appId,
+        emails: options.emails,
+      },
+      responseType: "channel.lark.directory.resolve_users.response",
+    });
+  }
+
+  resolveLarkDirectoryChats(options: ResolveLarkDirectoryChatsOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.resolve_chats.request",
+        appId: options.appId,
+        query: options.query,
+      },
+      responseType: "channel.lark.directory.resolve_chats.response",
     });
   }
 

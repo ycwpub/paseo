@@ -88,6 +88,18 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     signal: (reason: "finished" | "intervention") =>
       ipcRenderer.invoke("paseo:attention:signal", { reason }),
   },
+  island: {
+    show: (payload: {
+      id?: string;
+      kind: "running" | "finished" | "error" | "permission" | "info";
+      title: string;
+      body?: string;
+      data?: Record<string, unknown>;
+      durationMs?: number;
+    }) => ipcRenderer.invoke("paseo:island:show", payload),
+    dismiss: (id?: string) => ipcRenderer.invoke("paseo:island:dismiss", { id }),
+    clear: () => ipcRenderer.invoke("paseo:island:clear"),
+  },
   opener: {
     openUrl: (url: string) => ipcRenderer.invoke("paseo:opener:openUrl", url),
   },

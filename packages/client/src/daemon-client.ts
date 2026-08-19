@@ -656,6 +656,14 @@ type LarkChannelRevokeUserPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.revoke_user.response" }
 >["payload"];
+type LarkDirectoryResolveUsersPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.resolve_users.response" }
+>["payload"];
+type LarkDirectoryResolveChatsPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.resolve_chats.response" }
+>["payload"];
 type LarkReminderListPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.reminder.list.response" }
@@ -964,6 +972,16 @@ export interface RejectLarkPairingOptions {
 export interface RevokeLarkUserOptions {
   botId?: string;
   userId: string;
+  requestId?: string;
+}
+export interface ResolveLarkDirectoryUsersOptions {
+  appId: string;
+  emails: string[];
+  requestId?: string;
+}
+export interface ResolveLarkDirectoryChatsOptions {
+  appId: string;
+  query: string;
   requestId?: string;
 }
 export interface LarkChannelRequestOptions {
@@ -5874,6 +5892,14 @@ export class DaemonClient {
     return this.resourceRpc.clearMemory(options);
   }
 
+  async translateReasoning(options: {
+    agentId: string;
+    text: string;
+    requestId?: string;
+  }): Promise<{ requestId: string; translatedText: string | null; error: string | null }> {
+    return this.resourceRpc.translateReasoning(options);
+  }
+
   async listTeams(): Promise<{ teams: Team[]; error: string | null }> {
     return this.resourceRpc.listTeams();
   }
@@ -6067,6 +6093,18 @@ export class DaemonClient {
 
   async revokeLarkUser(options: RevokeLarkUserOptions): Promise<LarkChannelRevokeUserPayload> {
     return this.resourceRpc.revokeLarkUser(options);
+  }
+
+  async resolveLarkDirectoryUsers(
+    options: ResolveLarkDirectoryUsersOptions,
+  ): Promise<LarkDirectoryResolveUsersPayload> {
+    return this.resourceRpc.resolveLarkDirectoryUsers(options);
+  }
+
+  async resolveLarkDirectoryChats(
+    options: ResolveLarkDirectoryChatsOptions,
+  ): Promise<LarkDirectoryResolveChatsPayload> {
+    return this.resourceRpc.resolveLarkDirectoryChats(options);
   }
 
   async listLarkReminders(requestId?: string): Promise<LarkReminderListPayload> {

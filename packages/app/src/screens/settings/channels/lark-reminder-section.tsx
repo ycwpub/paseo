@@ -3,6 +3,9 @@ import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   LarkChannelBotStatus,
+  LarkDirectory,
+  LarkDirectoryChat,
+  LarkDirectoryUser,
   LarkReminder,
   LarkReminderSender,
 } from "@getpaseo/protocol/messages";
@@ -13,6 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
+import { LarkReminderAudienceFields } from "./lark-reminder-audience-fields";
 import { useLarkReminders } from "./use-lark-reminders";
 
 type SenderType = LarkReminderSender["type"];
@@ -53,11 +58,15 @@ function formatDate(value: string | null): string {
 
 function ReminderRow({
   reminder,
+  botAppId,
+  directory,
   busy,
   onEnabledChange,
   onDelete,
 }: {
   reminder: LarkReminder;
+  botAppId: string | null;
+  directory: LarkDirectory | null;
   busy: boolean;
   onEnabledChange: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
@@ -68,7 +77,10 @@ function ReminderRow({
   );
   const handleDelete = useCallback(() => onDelete(reminder.id), [onDelete, reminder.id]);
   const detail = [
-    `群 ${reminder.chatId}`,
+    `群 ${formatLarkChatId(directory?.chats ?? [], botAppId, reminder.chatId)}`,
+    `被提醒人 ${reminder.targetOpenIds
+      .map((openId) => formatLarkUserOpenId(directory?.users ?? [], botAppId, openId))
+      .join("、")}`,
     `每 ${reminder.frequencySeconds / 60} 分钟`,
     `已发送 ${reminder.sendCount} 次`,
     reminder.sender.type === "bot"
@@ -112,9 +124,17 @@ function ReminderRow({
 export function LarkReminderSection({
   serverId,
   bots,
+  directory,
+  directorySupported,
+  resolveDirectoryUsers,
+  resolveDirectoryChats,
 }: {
   serverId: string;
   bots: LarkChannelBotStatus[];
+  directory: LarkDirectory | null;
+  directorySupported: boolean;
+  resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
 }) {
   const supported = useHostFeature(serverId, "larkReminders");
   const reminders = useLarkReminders(serverId, supported);
@@ -132,7 +152,8 @@ export function LarkReminderSection({
   const [name, setName] = useState("");
   const [botId, setBotId] = useState<string | null>(enabledBots[0]?.id ?? null);
   const [chatId, setChatId] = useState("");
-  const [targetOpenIds, setTargetOpenIds] = useState("");
+  const [targetOpenIds, setTargetOpenIds] = useState<string[]>([]);
+  const [rawTargetOpenIds, setRawTargetOpenIds] = useState("");
   const [message, setMessage] = useState("");
   const [frequencyMinutes, setFrequencyMinutes] = useState("30");
   const [senderType, setSenderType] = useState<SenderType>("bot");
@@ -172,8 +193,8 @@ export function LarkReminderSection({
   );
 
   const handleCreate = useCallback(async () => {
-    const openIds = splitOpenIds(targetOpenIds);
     const parsedFrequency = Number(frequencyMinutes);
+    const openIds = directorySupported ? targetOpenIds : splitOpenIds(rawTargetOpenIds);
     if (!botId) {
       setFormError("请选择已启用的飞书机器人");
       return;
@@ -183,7 +204,7 @@ export function LarkReminderSection({
       return;
     }
     if (openIds.length === 0) {
-      setFormError("至少输入一个被提醒人的 Open ID");
+      setFormError("至少通过邮箱选择一个被提醒人");
       return;
     }
     if (!message.trim()) {
@@ -214,7 +235,9 @@ export function LarkReminderSection({
         enabled: true,
       });
       setName("");
-      setTargetOpenIds("");
+      setChatId("");
+      setTargetOpenIds([]);
+      setRawTargetOpenIds("");
       setMessage("");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : String(error));
@@ -225,6 +248,8 @@ export function LarkReminderSection({
     frequencyMinutes,
     message,
     name,
+    directorySupported,
+    rawTargetOpenIds,
     reminders,
     senderType,
     targetOpenIds,
@@ -282,21 +307,19 @@ export function LarkReminderSection({
             placeholder="选择已启用的机器人"
             emptyText="暂无已启用的机器人"
           />
-          <Field label="群 ID" hint="例如 oc_xxx；机器人或授权用户必须已加入该群。">
-            <FormTextInput value={chatId} onChangeText={setChatId} placeholder="oc_xxxxxxxxxx" />
-          </Field>
-          <Field
-            label="被提醒人 Open ID"
-            hint="支持多个 Open ID，使用逗号、空格或换行分隔；任一人回复即停止。"
-          >
-            <FormTextInput
-              value={targetOpenIds}
-              onChangeText={setTargetOpenIds}
-              placeholder="ou_xxx, ou_yyy"
-              multiline
-              textInputStyle={styles.textarea}
-            />
-          </Field>
+          <LarkReminderAudienceFields
+            directorySupported={directorySupported}
+            selectedBot={selectedBot}
+            directory={directory}
+            chatId={chatId}
+            targetOpenIds={targetOpenIds}
+            rawTargetOpenIds={rawTargetOpenIds}
+            onChatIdChange={setChatId}
+            onTargetOpenIdsChange={setTargetOpenIds}
+            onRawTargetOpenIdsChange={setRawTargetOpenIds}
+            resolveDirectoryUsers={resolveDirectoryUsers}
+            resolveDirectoryChats={resolveDirectoryChats}
+          />
           <Field label="@ 提醒文案">
             <FormTextInput
               value={message}
@@ -357,6 +380,8 @@ export function LarkReminderSection({
               <View key={reminder.id} style={index === 0 ? undefined : settingsStyles.rowBorder}>
                 <ReminderRow
                   reminder={reminder}
+                  botAppId={bots.find((bot) => bot.id === reminder.botId)?.appId ?? null}
+                  directory={directory}
                   busy={reminders.isMutating}
                   onEnabledChange={handleEnabledChange}
                   onDelete={handleDelete}

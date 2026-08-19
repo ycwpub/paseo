@@ -194,6 +194,35 @@ function AutoExpandReasoningRow({ value, onChange }: AutoExpandReasoningRowProps
   );
 }
 
+interface AidenCodexReasoningTranslationRowProps {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}
+
+function AidenCodexReasoningTranslationRow({
+  value,
+  onChange,
+}: AidenCodexReasoningTranslationRowProps) {
+  const { t } = useTranslation();
+  return (
+    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.general.aidenCodexReasoningTranslation.label")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.general.aidenCodexReasoningTranslation.description")}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={t("settings.general.aidenCodexReasoningTranslation.label")}
+      />
+    </View>
+  );
+}
+
 interface ChatOutlineRowProps {
   value: boolean;
   onChange: (value: boolean) => void;
@@ -502,6 +531,13 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
+  const handleAidenCodexReasoningTranslationChange = useCallback(
+    (aidenCodexTranslateReasoningToChinese: boolean) => {
+      void updateSettings({ aidenCodexTranslateReasoningToChinese });
+    },
+    [updateSettings],
+  );
+
   const handleToolCallDetailLevelChange = useCallback(
     (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) => {
       void updateSettings({ toolCallDetailLevel });
@@ -601,6 +637,10 @@ export function AppearanceSection() {
           <AutoExpandReasoningRow
             value={settings.autoExpandReasoning}
             onChange={handleAutoExpandReasoningChange}
+          />
+          <AidenCodexReasoningTranslationRow
+            value={settings.aidenCodexTranslateReasoningToChinese}
+            onChange={handleAidenCodexReasoningTranslationChange}
           />
           <ToolCallDetailRow
             value={settings.toolCallDetailLevel}

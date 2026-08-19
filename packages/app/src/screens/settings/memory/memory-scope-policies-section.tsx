@@ -34,6 +34,7 @@ export function MemoryScopePoliciesSection({
 }) {
   const { t } = useTranslation();
   const supported = useHostFeature(serverId, "memoryScopePolicies");
+  const usersSupported = useHostFeature(serverId, "memoryUsers");
   const { projects } = useProjects({ enabled: supported });
   const assistants = useAssistants(serverId, { enabled: supported });
   const [scopeType, setScopeType] = useState<ManagedScopeType>("global");
@@ -110,8 +111,16 @@ export function MemoryScopePoliciesSection({
     [scopeType, selectedIds, targetOptions],
   );
   const selectedScope = useMemo<PaseoMemoryScope | null>(
-    () => (scopeType === "global" ? { type: "global" } : (selectedTarget?.scope ?? null)),
-    [scopeType, selectedTarget],
+    () =>
+      scopeType === "global"
+        ? {
+            type: "global",
+            ...(usersSupported
+              ? { id: memory.activeUserId ?? memory.users?.[0]?.id ?? "default" }
+              : {}),
+          }
+        : (selectedTarget?.scope ?? null),
+    [memory.activeUserId, memory.users, scopeType, selectedTarget, usersSupported],
   );
   const targetSelectOptions = useMemo<SelectFieldOption<MemoryScopePolicyOption>[]>(
     () =>

@@ -12,6 +12,7 @@ import {
   PaseoMemoryStateSchema,
   PaseoMemoryUpdateInputSchema,
   PaseoMemoryUsageSchema,
+  PaseoMemoryUserSchema,
   type PaseoMemoryDetail,
   type PaseoMemoryPolicy,
   type PaseoMemoryScopePolicy,
@@ -19,6 +20,8 @@ import {
   type PaseoMemorySourceRef,
   type PaseoMemoryState,
   type PaseoMemoryUpdateInput,
+  type PaseoMemoryUser,
+  type PaseoMemoryUserOperation,
 } from "@getpaseo/protocol/messages";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../private-files.js";
 import { upsertMemoryPolicies } from "./memory-context-policy.js";
@@ -27,12 +30,19 @@ import { MemoryContentCipher } from "./memory-crypto.js";
 import {
   DEFAULT_MEMORY_SETTINGS,
   effectiveMemoryStatus,
+  isMemoryScopeVisible,
   memoryScopeKey,
   normalizeMemoryScope,
   normalizeMemorySettings,
 } from "./memory-model.js";
+import {
+  applyMemoryUserOperation,
+  createDefaultMemoryUser,
+  DEFAULT_MEMORY_USER_ID,
+  normalizeMemoryUsers,
+} from "./memory-users.js";
 
-const MEMORY_STORE_VERSION = 2;
+const MEMORY_STORE_VERSION = 3;
 const SUMMARY_INDEX_MARKER = "<!-- paseo:memory-detail-index -->";
 const MAX_RECENT_USAGES = 200;
 
@@ -50,8 +60,8 @@ const LegacyMemoryCatalogSchema = z.object({
   lastExtractionError: z.string().nullable(),
 });
 
-const MemoryCatalogSchema = z.object({
-  version: z.literal(MEMORY_STORE_VERSION),
+const MemoryCatalogV2Schema = z.object({
+  version: z.literal(2),
   settings: PaseoMemorySettingsSchema,
   details: z.array(CatalogDetailSchema),
   recentUsages: z.array(PaseoMemoryUsageSchema),
@@ -60,6 +70,12 @@ const MemoryCatalogSchema = z.object({
   lastConsolidatedAt: z.string().nullable(),
   policies: z.array(PaseoMemoryPolicySchema).optional(),
   scopePolicies: z.array(PaseoMemoryScopePolicySchema).optional(),
+});
+
+const MemoryCatalogSchema = MemoryCatalogV2Schema.omit({ version: true }).extend({
+  version: z.literal(MEMORY_STORE_VERSION),
+  users: z.array(PaseoMemoryUserSchema).min(1),
+  activeUserId: z.string().min(1),
 });
 
 const MemoryExportSchema = z.object({
@@ -74,6 +90,7 @@ type ParsedMemoryCatalog = z.infer<typeof MemoryCatalogSchema>;
 type MemoryCatalog = Omit<ParsedMemoryCatalog, "policies" | "scopePolicies"> & {
   policies: PaseoMemoryPolicy[];
   scopePolicies: PaseoMemoryScopePolicy[];
+  users: PaseoMemoryUser[];
 };
 type CatalogDetail = z.infer<typeof CatalogDetailSchema>;
 type MemoryStatus = NonNullable<PaseoMemoryDetail["status"]>;
@@ -112,6 +129,7 @@ export interface ExtractedMemoryInput {
 }
 
 function createDefaultCatalog(): MemoryCatalog {
+  const user = createDefaultMemoryUser();
   return {
     version: MEMORY_STORE_VERSION,
     settings: DEFAULT_MEMORY_SETTINGS,
@@ -122,6 +140,8 @@ function createDefaultCatalog(): MemoryCatalog {
     lastConsolidatedAt: null,
     policies: [],
     scopePolicies: [],
+    users: [user],
+    activeUserId: user.id,
   };
 }
 
@@ -357,7 +377,7 @@ export class PaseoMemoryStore {
   private readonly rootPath: string;
   private readonly detailsPath: string;
   private readonly catalogPath: string;
-  private readonly summaryPath: string;
+  private readonly legacySummaryPath: string;
   private readonly logger: pino.Logger;
   private readonly cipher: MemoryContentCipher;
   private loaded = false;
@@ -368,43 +388,38 @@ export class PaseoMemoryStore {
     this.rootPath = path.join(options.paseoHome, "memory");
     this.detailsPath = path.join(this.rootPath, "details");
     this.catalogPath = path.join(this.rootPath, "catalog.json");
-    this.summaryPath = path.join(this.rootPath, "summary.md");
+    this.legacySummaryPath = path.join(this.rootPath, "summary.md");
     this.logger = options.logger.child({ module: "memory-store" });
     this.cipher = new MemoryContentCipher(this.rootPath);
   }
 
   getState(): PaseoMemoryState {
     this.ensureLoaded();
+    const activeUserId = this.catalog.activeUserId;
     const details = this.catalog.details.flatMap((rawEntry) => {
       const entry = normalizedCatalogDetail(rawEntry);
-      const detailPath = this.detailPath(entry.id, entry.title);
-      if (!existsSync(detailPath)) return [];
-      const rawContent = readFileSync(detailPath, "utf8");
-      const content = this.cipher.decode(rawContent);
-      return [
-        PaseoMemoryDetailSchema.parse({
-          ...entry,
-          status: effectiveMemoryStatus({
-            ...entry,
-            content,
-            path: detailPath,
-            charCount: content.length,
-          }),
-          encrypted: this.cipher.isEncrypted(rawContent),
-          path: detailPath,
-          charCount: content.length,
-          content,
-        }),
-      ];
+      if (entry.scope.type === "global" && entry.scope.id !== activeUserId) return [];
+      const detail = this.materializeDetail(entry);
+      return detail ? [detail] : [];
     });
-    const summary = this.readSummary();
+    const summaryPath = this.summaryPath(activeUserId);
+    const summary = this.readSummary(activeUserId);
     const counts = countStatuses(details);
+    const visibleDetailIds = new Set(details.map((detail) => detail.id));
+    const recentUsages = this.catalog.recentUsages
+      .map((usage) => ({
+        ...usage,
+        memoryIds: usage.memoryIds.filter((id) => visibleDetailIds.has(id)),
+      }))
+      .filter((usage) => usage.memoryIds.length > 0);
     return PaseoMemoryStateSchema.parse({
       settings: normalizeMemorySettings(this.catalog.settings),
+      users: this.catalog.users,
+      activeUserId,
       summary,
-      summaryPath: this.summaryPath,
+      summaryPath,
       details,
-      recentUsages: this.catalog.recentUsages,
+      recentUsages,
       exportJson: this.exportJson(summary, details),
       policies: this.catalog.policies,
       scopePolicies: this.catalog.scopePolicies,
@@ -422,9 +437,20 @@ export class PaseoMemoryStore {
     });
   }
 
+  getDetailsForScopes(scopes: readonly PaseoMemoryScope[]): PaseoMemoryDetail[] {
+    this.ensureLoaded();
+    return this.catalog.details.flatMap((rawEntry) => {
+      const entry = normalizedCatalogDetail(rawEntry);
+      if (!isMemoryScopeVisible(entry.scope, scopes)) return [];
+      const detail = this.materializeDetail(entry);
+      return detail ? [detail] : [];
+    });
+  }
+
   update(input: PaseoMemoryUpdateInput): PaseoMemoryState {
     this.ensureLoaded();
     const parsed = PaseoMemoryUpdateInputSchema.parse(input);
+    if (parsed.userOperation) this.applyUserOperation(parsed.userOperation);
     if (parsed.importJson !== undefined) {
       this.importJson(parsed.importJson, parsed.replaceOnImport ?? false);
     }
@@ -435,11 +461,14 @@ export class PaseoMemoryStore {
     if (parsed.scopePolicyUpdates) {
       this.catalog.scopePolicies = upsertMemoryScopePolicies(
         this.catalog.scopePolicies,
-        parsed.scopePolicyUpdates,
+        parsed.scopePolicyUpdates.map((policy) => ({
+          ...policy,
+          scope: this.resolveScope(policy.scope),
+        })),
       );
     }
     if (parsed.summary !== undefined) {
-      this.writeSummary(parsed.summary.replace(/\r\n?/g, "\n"));
+      this.writeSummary(parsed.summary.replace(/\r\n?/g, "\n"), this.catalog.activeUserId);
     }
     for (const create of parsed.createDetails ?? []) this.createExplicitDetail(create);
     for (const edit of parsed.detailEdits ?? []) this.applyDetailEdit(edit);
@@ -447,7 +476,7 @@ export class PaseoMemoryStore {
     this.deleteDetails(parsed.deleteDetailIds ?? []);
     if (parsed.consolidate) this.consolidate();
     this.persistCatalog();
-    this.refreshSummaryIndex();
+    this.refreshSummaryIndexes();
     return this.getState();
   }
 
@@ -459,43 +488,49 @@ export class PaseoMemoryStore {
       settings: this.catalog.settings,
       policies: this.catalog.policies,
       scopePolicies: this.catalog.scopePolicies,
+      users: this.catalog.users,
+      activeUserId: this.catalog.activeUserId,
     };
     this.persistCatalog();
-    this.writeSummary(defaultSummary());
+    for (const user of this.catalog.users) this.writeSummary(defaultSummary(), user.id);
     return this.getState();
   }
 
   upsertExtractedMemory(input: ExtractedMemoryInput): PaseoMemoryDetail {
     this.ensureLoaded();
+    const scopedInput: ExtractedMemoryInput = {
+      ...input,
+      scope: this.resolveScope(input.scope),
+    };
     const title = input.title.trim();
     const content = input.content.replace(/\r\n?/g, "\n").trim();
     if (!title || !content) throw new Error("Extracted memory title and content are required");
-    const existingIndex = findExistingMemoryIndex(this.catalog.details, input, title);
+    const existingIndex = findExistingMemoryIndex(this.catalog.details, scopedInput, title);
     const timestamp = nowIso();
     let current: NormalizedCatalogDetail | null = null;
     if (existingIndex >= 0) current = normalizedCatalogDetail(this.catalog.details[existingIndex]!);
     const currentContent = current
       ? this.readDetailContent(this.detailPath(current.id, current.title))
       : "";
-    if (current && current.origin === "explicit" && input.origin !== "explicit") {
-      this.mergeEvidence(current, existingIndex, input, timestamp);
-      return this.getState().details.find((detail) => detail.id === current.id)!;
+    if (current && current.origin === "explicit" && scopedInput.origin !== "explicit") {
+      this.mergeEvidence(current, existingIndex, scopedInput, timestamp);
+      return this.materializeDetail(normalizedCatalogDetail(this.catalog.details[existingIndex]!))!;
     }
     const createRevision =
-      current !== null && shouldCreateSupersedingRevision(current, input, currentContent);
+      current !== null && shouldCreateSupersedingRevision(current, scopedInput, currentContent);
     const encrypted = normalizeMemorySettings(this.catalog.settings).encryptAtRest;
     let entry: NormalizedCatalogDetail;
     if (!current) {
       entry = buildNewCatalogDetail({
-        memory: input,
-        id: input.id ?? generatedMemoryId(title),
+        memory: scopedInput,
+        id: scopedInput.id ?? generatedMemoryId(title),
         title,
         timestamp,
         encrypted,
       });
     } else if (createRevision) {
       entry = buildRevisionCatalogDetail({
-        memory: input,
+        memory: scopedInput,
         current,
         id: generatedMemoryId(title),
         title,
@@ -504,7 +539,7 @@ export class PaseoMemoryStore {
       });
     } else {
       entry = buildUpdatedCatalogDetail({
-        memory: input,
+        memory: scopedInput,
         current,
         title,
         timestamp,
@@ -515,8 +550,8 @@ export class PaseoMemoryStore {
     this.catalog.lastExtractedAt = timestamp;
     this.catalog.lastExtractionError = null;
     this.persistCatalog();
-    this.refreshSummaryIndex();
-    return this.getState().details.find((detail) => detail.id === entry.id)!;
+    this.refreshSummaryIndexes();
+    return this.materializeDetail(entry)!;
   }
 
   setPendingExtractions(count: number): void {
@@ -595,33 +630,63 @@ export class PaseoMemoryStore {
     });
     this.catalog.lastConsolidatedAt = nowIso();
     this.persistCatalog();
-    this.refreshSummaryIndex();
+    this.refreshSummaryIndexes();
   }
 
   private ensureLoaded(): void {
     if (this.loaded) return;
+    let migrateLegacySummary = false;
     if (existsSync(this.catalogPath)) {
       ensurePrivateFile(this.catalogPath);
       try {
         const raw = JSON.parse(readFileSync(this.catalogPath, "utf8"));
-        const v2 = MemoryCatalogSchema.safeParse(raw);
-        if (v2.success) {
+        const current = MemoryCatalogSchema.safeParse(raw);
+        if (current.success) {
+          const users = normalizeMemoryUsers(current.data.users, current.data.activeUserId);
           this.catalog = {
-            ...v2.data,
-            settings: normalizeMemorySettings(v2.data.settings),
-            details: v2.data.details.map(normalizedCatalogDetail),
-            policies: v2.data.policies ?? [],
-            scopePolicies: v2.data.scopePolicies ?? [],
+            ...current.data,
+            ...users,
+            settings: normalizeMemorySettings(current.data.settings),
+            details: current.data.details.map((detail) =>
+              normalizedCatalogDetail({
+                ...detail,
+                scope: this.resolveMigratedScope(detail.scope, users.activeUserId),
+              }),
+            ),
+            policies: current.data.policies ?? [],
+            scopePolicies: (current.data.scopePolicies ?? []).map((policy) => ({
+              scope: this.resolveMigratedScope(policy.scope, users.activeUserId),
+              enabled: policy.enabled,
+              extractionInstructions: policy.extractionInstructions,
+            })),
           };
         } else {
-          const legacy = LegacyMemoryCatalogSchema.parse(raw);
-          this.catalog = {
-            ...createDefaultCatalog(),
-            settings: normalizeMemorySettings(legacy.settings),
-            details: legacy.details.map(normalizedCatalogDetail),
-            lastExtractedAt: legacy.lastExtractedAt,
-            lastExtractionError: legacy.lastExtractionError,
-          };
+          const v2 = MemoryCatalogV2Schema.safeParse(raw);
+          if (v2.success) {
+            this.catalog = this.migrateLegacyCatalog({
+              settings: v2.data.settings,
+              details: v2.data.details,
+              recentUsages: v2.data.recentUsages,
+              lastExtractedAt: v2.data.lastExtractedAt,
+              lastExtractionError: v2.data.lastExtractionError,
+              lastConsolidatedAt: v2.data.lastConsolidatedAt,
+              policies: v2.data.policies ?? [],
+              scopePolicies: v2.data.scopePolicies ?? [],
+            });
+          } else {
+            const legacy = LegacyMemoryCatalogSchema.parse(raw);
+            this.catalog = this.migrateLegacyCatalog({
+              settings: legacy.settings,
+              details: legacy.details,
+              recentUsages: [],
+              lastExtractedAt: legacy.lastExtractedAt,
+              lastExtractionError: legacy.lastExtractionError,
+              lastConsolidatedAt: null,
+              policies: [],
+              scopePolicies: [],
+            });
+          }
+          migrateLegacySummary = true;
           this.persistCatalog();
         }
       } catch (error) {
@@ -635,8 +700,112 @@ export class PaseoMemoryStore {
       this.catalog = createDefaultCatalog();
       this.persistCatalog();
     }
-    if (!existsSync(this.summaryPath)) this.writeSummary(defaultSummary());
+    if (migrateLegacySummary) this.migrateLegacySummary();
+    for (const user of this.catalog.users) {
+      if (!existsSync(this.summaryPath(user.id))) this.writeSummary(defaultSummary(), user.id);
+    }
+    if (migrateLegacySummary) this.refreshSummaryIndexes();
     this.loaded = true;
+  }
+
+  private migrateLegacyCatalog(input: {
+    settings: PaseoMemoryState["settings"];
+    details: CatalogDetail[];
+    recentUsages: MemoryCatalog["recentUsages"];
+    lastExtractedAt: string | null;
+    lastExtractionError: string | null;
+    lastConsolidatedAt: string | null;
+    policies: PaseoMemoryPolicy[];
+    scopePolicies: PaseoMemoryScopePolicy[];
+  }): MemoryCatalog {
+    const user = createDefaultMemoryUser();
+    return {
+      version: MEMORY_STORE_VERSION,
+      settings: normalizeMemorySettings(input.settings),
+      details: input.details.map((detail) =>
+        normalizedCatalogDetail({
+          ...detail,
+          scope: this.resolveMigratedScope(detail.scope, user.id),
+        }),
+      ),
+      recentUsages: input.recentUsages,
+      lastExtractedAt: input.lastExtractedAt,
+      lastExtractionError: input.lastExtractionError,
+      lastConsolidatedAt: input.lastConsolidatedAt,
+      policies: input.policies,
+      scopePolicies: input.scopePolicies.map((policy) => ({
+        ...policy,
+        scope: this.resolveMigratedScope(policy.scope, user.id),
+      })),
+      users: [user],
+      activeUserId: DEFAULT_MEMORY_USER_ID,
+    };
+  }
+
+  private migrateLegacySummary(): void {
+    const nextPath = this.summaryPath(DEFAULT_MEMORY_USER_ID);
+    if (!existsSync(this.legacySummaryPath) || existsSync(nextPath)) return;
+    const content = this.cipher.decode(readFileSync(this.legacySummaryPath, "utf8"));
+    this.writeSummary(content, DEFAULT_MEMORY_USER_ID);
+  }
+
+  private applyUserOperation(operation: PaseoMemoryUserOperation): void {
+    const previous = {
+      users: this.catalog.users,
+      activeUserId: this.catalog.activeUserId,
+    };
+    const next = applyMemoryUserOperation(previous, operation);
+    if (operation.type === "delete") {
+      const deletedIds = new Set(
+        this.catalog.details
+          .filter((detail) => detail.scope?.type === "global" && detail.scope.id === operation.id)
+          .map((detail) => detail.id),
+      );
+      for (const detail of this.catalog.details) {
+        if (deletedIds.has(detail.id)) {
+          rmSync(this.detailPath(detail.id, detail.title), { force: true });
+        }
+      }
+      this.catalog.details = this.catalog.details.filter((detail) => !deletedIds.has(detail.id));
+      this.catalog.recentUsages = this.catalog.recentUsages
+        .map((usage) => ({
+          ...usage,
+          memoryIds: usage.memoryIds.filter((id) => !deletedIds.has(id)),
+        }))
+        .filter((usage) => usage.memoryIds.length > 0);
+      this.catalog.scopePolicies = this.catalog.scopePolicies.filter(
+        (policy) => !(policy.scope.type === "global" && policy.scope.id === operation.id),
+      );
+      rmSync(path.dirname(this.summaryPath(operation.id)), { recursive: true, force: true });
+    }
+    this.catalog.users = next.users;
+    this.catalog.activeUserId = next.activeUserId;
+    if (operation.type === "create") {
+      this.writeSummary(defaultSummary(), next.activeUserId);
+    }
+  }
+
+  private resolveMigratedScope(
+    scope: PaseoMemoryScope | undefined,
+    defaultUserId: string,
+  ): PaseoMemoryScope {
+    const normalized = normalizeMemoryScope(scope);
+    return normalized.type === "global"
+      ? { type: "global", id: normalized.id ?? defaultUserId }
+      : normalized;
+  }
+
+  private resolveScope(scope: PaseoMemoryScope | undefined): PaseoMemoryScope {
+    const normalized = normalizeMemoryScope(scope);
+    if (normalized.type !== "global") return normalized;
+    if (normalized.id && this.catalog.users.some((user) => user.id === normalized.id)) {
+      return normalized;
+    }
+    return { type: "global", id: this.catalog.activeUserId };
+  }
+
+  private summaryPath(userId: string): string {
+    return path.join(this.rootPath, "users", sanitizeFileSegment(userId), "summary.md");
   }
 
   private applySettings(settings: PaseoMemoryUpdateInput["settings"]): void {
@@ -669,7 +838,7 @@ export class PaseoMemoryStore {
         title: valueOr(edit.title, current.title).trim(),
         category: valueOr(edit.category, current.category),
         keywords: uniqueStrings(valueOr(edit.keywords, current.keywords)),
-        scope: normalizeMemoryScope(valueOr(edit.scope, current.scope)),
+        scope: this.resolveScope(valueOr(edit.scope, current.scope)),
         status: valueOr(edit.status, current.status),
         importance: valueOr(edit.importance, current.importance),
         validUntil: valueOr(edit.validUntil, current.validUntil),
@@ -775,8 +944,10 @@ export class PaseoMemoryStore {
         settings: normalizeMemorySettings(imported.settings),
         policies: this.catalog.policies,
         scopePolicies: this.catalog.scopePolicies,
+        users: this.catalog.users,
+        activeUserId: this.catalog.activeUserId,
       };
-      this.writeSummary(imported.summary);
+      this.writeSummary(imported.summary, this.catalog.activeUserId);
     }
     const reservedIds = new Set(this.catalog.details.map((entry) => entry.id));
     const importedIdMap = new Map<string, string>();
@@ -794,6 +965,7 @@ export class PaseoMemoryStore {
         CatalogDetailSchema.parse({
           ...detail,
           id,
+          scope: this.resolveScope(detail.scope),
           supersedes: (detail.supersedes ?? []).map(
             (supersededId) => importedIdMap.get(supersededId) ?? supersededId,
           ),
@@ -824,12 +996,15 @@ export class PaseoMemoryStore {
   }
 
   private rewriteEncryption(): void {
-    const summary = this.readSummary();
+    const summaries = this.catalog.users.map((user) => ({
+      id: user.id,
+      content: this.readSummary(user.id),
+    }));
     const contents = this.catalog.details.map((entry) => ({
       entry,
       content: this.readDetailContent(this.detailPath(entry.id, entry.title)),
     }));
-    this.writeSummary(summary);
+    for (const summary of summaries) this.writeSummary(summary.content, summary.id);
     for (const { entry, content } of contents) {
       this.writeDetailContent(this.detailPath(entry.id, entry.title), content);
     }
@@ -837,14 +1012,15 @@ export class PaseoMemoryStore {
     this.catalog.details = this.catalog.details.map((entry) => ({ ...entry, encrypted }));
   }
 
-  private readSummary(): string {
-    if (!existsSync(this.summaryPath)) return defaultSummary();
-    return this.cipher.decode(readFileSync(this.summaryPath, "utf8"));
+  private readSummary(userId: string): string {
+    const summaryPath = this.summaryPath(userId);
+    if (!existsSync(summaryPath)) return defaultSummary();
+    return this.cipher.decode(readFileSync(summaryPath, "utf8"));
   }
 
-  private writeSummary(value: string): void {
+  private writeSummary(value: string, userId: string): void {
     writePrivateFileAtomicSync(
-      this.summaryPath,
+      this.summaryPath(userId),
       this.cipher.encode(value, normalizeMemorySettings(this.catalog.settings).encryptAtRest),
     );
   }
@@ -864,29 +1040,58 @@ export class PaseoMemoryStore {
     return path.join(this.detailsPath, `${sanitizeFileSegment(title)}-${id.slice(-8)}.md`);
   }
 
+  private materializeDetail(entry: NormalizedCatalogDetail): PaseoMemoryDetail | null {
+    const detailPath = this.detailPath(entry.id, entry.title);
+    if (!existsSync(detailPath)) return null;
+    const rawContent = readFileSync(detailPath, "utf8");
+    const content = this.cipher.decode(rawContent);
+    return PaseoMemoryDetailSchema.parse({
+      ...entry,
+      status: effectiveMemoryStatus({
+        ...entry,
+        content,
+        path: detailPath,
+        charCount: content.length,
+      }),
+      encrypted: this.cipher.isEncrypted(rawContent),
+      path: detailPath,
+      charCount: content.length,
+      content,
+    });
+  }
+
   private persistCatalog(): void {
     writePrivateFileAtomicSync(this.catalogPath, JSON.stringify(this.catalog, null, 2));
     this.loaded = true;
   }
 
-  private refreshSummaryIndex(): void {
-    const prefix = splitSummaryPrefix(this.readSummary()) || splitSummaryPrefix(defaultSummary());
-    const lines = this.catalog.details
-      .map(normalizedCatalogDetail)
-      .filter((entry) => effectiveMemoryStatus(entry as PaseoMemoryDetail) === "active")
-      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-      .map(
-        (entry) =>
-          `- **${entry.title}** (${entry.category}, ${memoryScopeKey(entry.scope)}) — ${this.detailPath(entry.id, entry.title)}`,
+  private refreshSummaryIndexes(): void {
+    for (const user of this.catalog.users) {
+      const prefix =
+        splitSummaryPrefix(this.readSummary(user.id)) || splitSummaryPrefix(defaultSummary());
+      const lines = this.catalog.details
+        .map(normalizedCatalogDetail)
+        .filter(
+          (entry) =>
+            entry.scope.type === "global" &&
+            entry.scope.id === user.id &&
+            effectiveMemoryStatus(entry as PaseoMemoryDetail) === "active",
+        )
+        .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+        .map(
+          (entry) =>
+            `- **${entry.title}** (${entry.category}) — ${this.detailPath(entry.id, entry.title)}`,
+        );
+      this.writeSummary(
+        [
+          prefix,
+          "",
+          SUMMARY_INDEX_MARKER,
+          "",
+          ...(lines.length > 0 ? lines : ["No active global memories yet."]),
+        ].join("\n"),
+        user.id,
       );
-    this.writeSummary(
-      [
-        prefix,
-        "",
-        SUMMARY_INDEX_MARKER,
-        "",
-        ...(lines.length > 0 ? lines : ["No active detail memories yet."]),
-      ].join("\n"),
-    );
+    }
   }
 }

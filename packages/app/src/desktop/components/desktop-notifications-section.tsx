@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
+import { clearDesktopIsland } from "@/desktop/island/desktop-island";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 
@@ -42,6 +43,27 @@ export function DesktopNotificationsSection() {
   const handlePlaySoundChange = useCallback(
     (playSound: boolean) => {
       void updateSettings({ notifications: { playSound } }).catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      });
+    },
+    [updateSettings],
+  );
+
+  const handleIslandEnabledChange = useCallback(
+    (enabled: boolean) => {
+      if (!enabled) {
+        clearDesktopIsland();
+      }
+      void updateSettings({ island: { enabled } }).catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      });
+    },
+    [updateSettings],
+  );
+
+  const handleIslandShowWhenFocusedChange = useCallback(
+    (showWhenFocused: boolean) => {
+      void updateSettings({ island: { showWhenFocused } }).catch(() => {
         // useDesktopSettings owns the user-visible IPC error.
       });
     },
@@ -108,6 +130,36 @@ export function DesktopNotificationsSection() {
             disabled={isSaving}
             accessibilityLabel={t("settings.notifications.playSound")}
             testID="desktop-notifications-play-sound-switch"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.island")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.notifications.islandHint")}</Text>
+          </View>
+          <Switch
+            value={settings.island.enabled}
+            onValueChange={handleIslandEnabledChange}
+            disabled={isSaving}
+            accessibilityLabel={t("settings.notifications.island")}
+            testID="desktop-notifications-island-switch"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.notifications.islandShowWhenFocused")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.notifications.islandShowWhenFocusedHint")}
+            </Text>
+          </View>
+          <Switch
+            value={settings.island.showWhenFocused}
+            onValueChange={handleIslandShowWhenFocusedChange}
+            disabled={isSaving || !settings.island.enabled}
+            accessibilityLabel={t("settings.notifications.islandShowWhenFocused")}
+            testID="desktop-notifications-island-focused-switch"
           />
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>

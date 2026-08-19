@@ -44,6 +44,8 @@ export type {
   CreateLarkReminderOptions,
   ApplyLarkBotOptions,
   GetLarkBotApplicationOptions,
+  ResolveLarkDirectoryChatsOptions,
+  ResolveLarkDirectoryUsersOptions,
   DeleteLarkBotOptions,
   DeleteLarkReminderOptions,
   SetLarkReminderEnabledOptions,

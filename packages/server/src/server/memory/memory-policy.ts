@@ -69,5 +69,6 @@ export function selectMemoryScope(
 }
 
 export function describeMemoryScope(scope: PaseoMemoryScope): string {
-  return scope.type === "global" ? "global" : `${scope.type}:${scope.id}`;
+  if (scope.type === "global") return "global";
+  return `${scope.type}:${scope.id}`;
 }

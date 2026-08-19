@@ -20,6 +20,12 @@ import {
   AssistantUpdateResponseSchema,
 } from "./assistant/rpc-schemas.js";
 import {
+  LarkDirectoryResolveChatsRequestSchema,
+  LarkDirectoryResolveChatsResponseSchema,
+  LarkDirectoryResolveUsersRequestSchema,
+  LarkDirectoryResolveUsersResponseSchema,
+} from "./channel/lark/directory-rpc-schemas.js";
+import {
   LarkChannelApprovePairingRequestSchema,
   LarkChannelApprovePairingResponseSchema,
   LarkChannelApplyBotRequestSchema,
@@ -147,6 +153,10 @@ import {
   WorkflowSaveRequestSchema,
   WorkflowSaveResponseSchema,
 } from "./workflow/rpc-schemas.js";
+import {
+  ReasoningTranslateRequestSchema,
+  ReasoningTranslateResponseSchema,
+} from "./reasoning-translation/rpc-schemas.js";
 
 /**
  * Branch-owned RPC registrations live here so the central protocol unions only
@@ -170,6 +180,8 @@ export const ExtensionSessionInboundSchemas = [
   LarkChannelApprovePairingRequestSchema,
   LarkChannelRejectPairingRequestSchema,
   LarkChannelRevokeUserRequestSchema,
+  LarkDirectoryResolveUsersRequestSchema,
+  LarkDirectoryResolveChatsRequestSchema,
   LarkReminderListRequestSchema,
   LarkReminderCreateRequestSchema,
   LarkReminderSetEnabledRequestSchema,
@@ -213,6 +225,7 @@ export const ExtensionSessionInboundSchemas = [
   PluginAppGenerateRequestSchema,
   PluginAppActionSubmitRequestSchema,
   PluginAppJobGetRequestSchema,
+  ReasoningTranslateRequestSchema,
 ] as const;
 
 export const ExtensionSessionOutboundSchemas = [
@@ -235,6 +248,8 @@ export const ExtensionSessionOutboundSchemas = [
   LarkChannelRejectPairingResponseSchema,
   LarkChannelRevokeUserResponseSchema,
   LarkChannelStatusChangedMessageSchema,
+  LarkDirectoryResolveUsersResponseSchema,
+  LarkDirectoryResolveChatsResponseSchema,
   LarkReminderListResponseSchema,
   LarkReminderCreateResponseSchema,
   LarkReminderSetEnabledResponseSchema,
@@ -283,4 +298,5 @@ export const ExtensionSessionOutboundSchemas = [
   PluginAppGenerateResponseSchema,
   PluginAppActionSubmitResponseSchema,
   PluginAppJobGetResponseSchema,
+  ReasoningTranslateResponseSchema,
 ] as const;

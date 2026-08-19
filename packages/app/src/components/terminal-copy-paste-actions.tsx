@@ -10,8 +10,8 @@ export interface TerminalPasteActionProps {
 export function TerminalPasteAction({ hasClipboardText, onPaste }: TerminalPasteActionProps) {
   return (
     <TerminalActionButton
-      label="Paste"
-      accessibilityLabel="Paste"
+      label="粘贴"
+      accessibilityLabel="粘贴"
       testID="terminal-paste"
       disabled={!hasClipboardText}
       onPress={onPaste}
@@ -35,8 +35,8 @@ export function TerminalFloatingCopyAction({
 
   return (
     <TerminalActionButton
-      label="Copy"
-      accessibilityLabel="Copy"
+      label="复制"
+      accessibilityLabel="复制"
       testID="terminal-copy"
       onPress={onCopy}
       variant="floating"

@@ -2,21 +2,27 @@
 
 ## Project identity
 
-Projects are allocated for the exact root selected by the caller, normalized lexically with
-`path.resolve` (never `realpath`). New project IDs are generated opaque `prj_<16 hex>` values and
-are never derived from the filesystem path. Existing remote-shaped or path-shaped IDs are retained
-as readable compatibility records and are never rekeyed. Explicit **Add Project** operations always
-allocate a new identity, so multiple Projects may intentionally use the same root path. Idempotent
-workspace recovery may reuse the oldest active exact-root Project. Archived-only matches do not
-resurrect an old Project. Workspace `projectId` is stable membership: reconciliation may update
-git-derived kind and branch metadata, but never rehomes a workspace or changes a Project's root,
-ID, or default name.
+Every Project receives a stable host-managed Project path at `$PASEO_HOME/{projectId}`. This path
+stores `paseo.json`, Project-owned files, and Workspace data regardless of directory mode.
+Single-directory Projects additionally retain the exact directory selected by the caller,
+normalized lexically with `path.resolve` (never `realpath`), as `rootPath`; that directory is a
+project/source directory, not the Project path. Multiple-directory Projects use `rootPath: null`.
+Content inside the managed Project path is deleted with the Project. Project directories outside
+the managed path are shared or external and are never deleted by Project removal.
+New project IDs are generated opaque `prj_<16 hex>` values and are never derived from the
+filesystem path. Existing remote-shaped or path-shaped IDs are retained as readable compatibility
+records and are never rekeyed. Explicit **Add Project** operations always allocate a new identity,
+so multiple Projects may intentionally use the same root path. Idempotent workspace recovery may
+reuse the oldest active exact-root Project. Archived-only matches do not resurrect an old Project.
+Workspace `projectId` is stable membership: reconciliation may update git-derived kind and branch
+metadata, but never rehomes a workspace or changes a directory-backed Project's root, ID, or
+default name.
 
 `projectId` is the unique project identity. Display/custom project names are not unique and may be
 reused by multiple projects. UI and protocol operations that mutate a project use `projectId`,
 never the display name.
 
-`kind` is mutable metadata, not identity. Workspace reconciliation watches active project roots and
+`kind` is mutable metadata, not identity. Workspace reconciliation watches active directory-backed project roots and
 updates only a project's `kind` and `updatedAt` when `.git` appears or disappears, preserving its
 ID, root path, names, and workspace foreign keys. Attached workspaces are independently refreshed
 from their own cwd, so an explicit project root never implies a workspace checkout. Empty projects
@@ -42,16 +48,41 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
 ## Project resource configuration
 
-Each Project may define a `project` block in the Project root's `paseo.json`:
+Project resource configuration is stored at
+`$PASEO_HOME/{projectId}/paseo.json` for every directory mode. Legacy path-shaped IDs use a safe
+hashed directory name so they cannot escape `$PASEO_HOME`.
+
+- A single-directory Project keeps its registered `rootPath` only as its project/source directory.
+- A multiple-directory Project has `rootPath: null` and uses configured project directories plus
+  its managed Project path.
+- A Project created without a directory starts in multiple-directory mode with an empty Project
+  directory list.
+
+Legacy `paseo.json` files in a single project directory or under the former
+`$PASEO_HOME/projects/...` locations remain readable and migrate to the managed Project path on the
+next successful write. Changing to single-directory mode updates `rootPath` to the selected project
+directory. Changing to multiple-directory mode clears `rootPath`; neither change moves the current
+configuration away from the managed Project path.
 
 ```json
 {
   "project": {
     "directories": {
       "project": [".", "../shared-source"],
-      "knowledge": ["docs/rules"],
       "indexSkill": [".paseo/project-index"],
       "workspaceData": [".paseo/workspaces"]
+    },
+    "knowledge": {
+      "general": [
+        { "type": "local-directory", "source": "docs/background" },
+        { "type": "local-document", "source": "README.md" },
+        { "type": "cloud-document", "source": "https://example.com/domain" }
+      ],
+      "standards": [
+        { "type": "local-document", "source": "docs/standards.md" },
+        { "type": "cloud-document", "source": "https://example.com/standards" }
+      ],
+      "projectSpecific": [{ "type": "local-document", "source": "docs/architecture.md" }]
     },
     "indexSkill": {
       "autoGenerate": false,
@@ -64,23 +95,51 @@ Each Project may define a `project` block in the Project root's `paseo.json`:
 }
 ```
 
-Every directory type accepts multiple physical directories. Relative paths resolve from the
-registered Project root. When `directories.project` is empty, the active Workspace directory is
-used so worktree Agents do not accidentally edit the main checkout. Knowledge
-directories are injected into the Agent's persisted system prompt as mandatory instructions.
-Project directories are read on demand. Configured index Skill directories are consulted before
-broad filesystem exploration.
+Every directory type accepts multiple physical directories. For a single-directory Project,
+relative resource paths resolve from its registered project directory. For a multiple-directory
+Project, they resolve from the managed Project path. `{{projectRoot}}` always means the managed
+Project path, while `{{projectDirectory}}` means the single project directory when present and
+otherwise the managed Project path. Multiple-directory Projects always include their private
+`~/.paseo/{{projectId}}` directory as a writable directory, followed by configured code directories.
+Project-exclusive repositories and files are stored below this private Project path.
+For a single-directory Project with no explicit Project directory entry, the active Workspace
+directory is used so worktree Agents do not accidentally edit the main checkout. Project
+directories are writable and read on demand. Configured index Skill directories are consulted
+before broad filesystem exploration.
+
+Project knowledge has three explicit policies:
+
+- General knowledge is optional background material. It supports local directories, local
+  documents, and cloud documents. Agents load and adopt it only when relevant. Local directories
+  are included in the generated Project index.
+- Standard knowledge supports local and cloud documents. Document contents are injected into every
+  Agent's system prompt. Agents must obey all applicable requirements.
+- Project-specific knowledge supports local and cloud documents. Local document contents are
+  injected into every Agent's system prompt, but Agents adopt the content according to task
+  relevance.
+
+Cloud documents are cached as Markdown plus metadata before Agent launch. Global cache files live
+under `$PASEO_HOME/knowledge/cloud-documents/`; Project cache files live under
+`$PASEO_HOME/{projectId}/knowledge/cloud-documents/`. A cache is checked again after 24 hours.
+Refresh failure keeps an existing cache available and marks it stale. If the source requires login
+or authorization, Paseo raises a permission request in the Agent conversation that triggered the
+refresh. Credentials, cookies, and tokens are never written to cache metadata.
+
+Knowledge content is read-only by default. Agents may change it only when the user explicitly asks
+to update Project knowledge in the current conversation. Legacy `directories.knowledge`,
+`directories.reference`, and `project.larkDocumentLinks` values remain readable and are migrated
+to general knowledge the next time the Project is saved.
 
 Workspace data roots are workspace-scoped: Paseo appends the opaque `workspaceId` unless the
 configured path explicitly contains `{{workspaceId}}`. These directories hold resumable process
 notes, review artifacts, and outputs. They are created when an Agent starts in the Workspace.
 
-When a Project omits directory configuration, Paseo uses these defaults:
+When a single-directory Project omits directory configuration, Paseo uses these defaults:
 
 - Project directories: `{{workspaceDirectory}}`
-- Required AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
+- General AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
 - Index Skill directories: none
-- Workspace data directories: `.paseo/workspaces/{{workspaceId}}`
+- Workspace data directories: `~/.paseo/{{projectId}}/workspaces/{{workspaceId}}`
 
 Missing default knowledge directories are ignored by the Agent context until they exist. The
 right-side file explorer exposes all four directory categories and supports switching among every
@@ -134,12 +193,18 @@ $PASEO_HOME/
 ├── relay-connection-history.json        # 30-day local Relay connection history
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
+├── {projectId}/                         # Project path for every directory mode
+│   ├── paseo.json                       # Project resource configuration
+│   ├── <Project-owned files>
+│   └── workspaces/
+│       └── {workspaceId}/                # Workspace-scoped data
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
 │   ├── workspace-labels.json            # Shared host-local label catalog
 │   ├── workspace-labels.transaction.json # Recoverable catalog/assignment compound commit
 │   └── icons/                           # Host-local custom project icon images
+├── workspaces/                           # Legacy Workspace data migrated on access
 ├── runtime/
 │   └── managed-processes/
 │       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap
@@ -509,11 +574,11 @@ Array of project records.
 | -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `projectId`          | `string`                    | Host-local primary key; new records use opaque `prj_<16 hex>` IDs                                                                          |
 | `projectKey`         | `string \| null`            | Persisted opaque cross-host grouping key; reconciliation backfills absent values                                                           |
-| `rootPath`           | `string`                    | Exact lexically normalized selected root; never realpathed                                                                                 |
+| `rootPath`           | `string \| null`            | Single project/source directory, normalized lexically; null for multiple-directory Projects. This is not the managed Project path.         |
 | `kind`               | `"git" \| "non_git"`        | Mutable Git observation about `rootPath`, never a membership key                                                                           |
-| `displayName`        | `string`                    | Selected-root basename, stable across remote and Git changes                                                                               |
+| `displayName`        | `string`                    | Stable default name; selected-root basename for directory-backed Projects and the entered name for blank Projects                          |
 | `customName`         | `string \| null`            | User-set override layered over `displayName`. Null means "use the derived name".                                                           |
-| `customIconRevision` | `string \| null`            | Identifies the host-local custom icon stored under `projects/icons/`. Null means the icon is discovered by scanning the project directory. |
+| `customIconRevision` | `string \| null`            | Identifies the host-local custom icon stored under `projects/icons/`. Null uses directory discovery when a root exists, otherwise no icon. |
 | `createdAt`          | `string` (ISO 8601)         |                                                                                                                                            |
 | `updatedAt`          | `string` (ISO 8601)         |                                                                                                                                            |
 | `archivedAt`         | `string \| null` (ISO 8601) | Soft-delete timestamp; required nullable                                                                                                   |

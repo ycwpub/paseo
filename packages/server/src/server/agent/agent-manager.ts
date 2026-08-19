@@ -50,6 +50,8 @@ import {
 } from "./agent-sdk-types.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
+import { inferWritableProjectDirectoriesFromSystemPrompt } from "./project-directory-access.js";
+import { inferReadOnlyProjectDirectoriesFromSystemPrompt } from "./project-reference-directory-access.js";
 import type { AgentOwner } from "./agent-owner.js";
 import {
   InMemoryAgentTimelineStore,
@@ -82,6 +84,7 @@ import {
 } from "./shared-agent-resources.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
+import { composeSystemPromptParts } from "./system-prompt.js";
 import {
   ProviderSubagentStore,
   type ProviderSubagentDescriptor,
@@ -173,6 +176,18 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
   }
   if (record.config.featureValues != null) {
     config.featureValues = record.config.featureValues;
+  }
+  const writableProjectDirectories =
+    record.config.writableProjectDirectories ??
+    inferWritableProjectDirectoriesFromSystemPrompt(record.config.systemPrompt);
+  if (writableProjectDirectories.length > 0) {
+    config.writableProjectDirectories = writableProjectDirectories;
+  }
+  const readOnlyProjectDirectories =
+    record.config.readOnlyProjectDirectories ??
+    inferReadOnlyProjectDirectoriesFromSystemPrompt(record.config.systemPrompt);
+  if (readOnlyProjectDirectories.length > 0) {
+    config.readOnlyProjectDirectories = readOnlyProjectDirectories;
   }
   if (record.config.providerOptions != null) {
     config.providerOptions = record.config.providerOptions;
@@ -296,6 +311,7 @@ export interface AgentManagerOptions {
   skillStore?: Pick<SkillStore, "list"> | null;
   skillMaterializer?: Pick<SkillMaterializer, "sync" | "syncForWorkspace"> | null;
   appendSystemPrompt?: string;
+  daemonKnowledgePromptComposer?: () => string | null | undefined;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -314,6 +330,11 @@ function stripSteerOptions(options?: AgentSteerOptions): AgentRunOptions | undef
   const { clearPendingPermissions: _, ...runOptions } = options;
   return runOptions;
 }
+
+export type AgentAppendSystemPromptComposer = (
+  agentId: string,
+  config: AgentSessionConfig,
+) => string | null | undefined;
 
 export interface WaitForAgentOptions {
   signal?: AbortSignal;
@@ -741,6 +762,8 @@ export class AgentManager {
   private paseoToolsEnabled = true;
   private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
+  private readonly daemonKnowledgePromptComposer: (() => string | null | undefined) | null;
+  private agentAppendSystemPromptComposer: AgentAppendSystemPromptComposer | null = null;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -764,6 +787,7 @@ export class AgentManager {
     this.skillMaterializer = sharedResources.skillMaterializer;
     this.configurePaseoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
+    this.daemonKnowledgePromptComposer = options.daemonKnowledgePromptComposer ?? null;
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -872,6 +896,10 @@ export class AgentManager {
 
   setPromptContextComposer(composer: AgentPromptContextComposer | null): void {
     this.promptContextComposer = composer;
+  }
+
+  setAgentAppendSystemPromptComposer(composer: AgentAppendSystemPromptComposer | null): void {
+    this.agentAppendSystemPromptComposer = composer;
   }
 
   public getMetricsSnapshot(): AgentMetricsSnapshot {
@@ -2845,6 +2873,34 @@ export class AgentManager {
     response: AgentPermissionResponse,
   ): Promise<AgentPermissionResult | void> {
     const agent = this.requireAgent(agentId);
+    const frameworkHandler = this.frameworkPermissionHandlers.get(agentId)?.get(requestId);
+    if (frameworkHandler) {
+      this.frameworkPermissionHandlers.get(agentId)?.delete(requestId);
+      agent.pendingPermissions.delete(requestId);
+      this.touchUpdatedAt(agent);
+      await this.persistSnapshot(agent);
+      this.emitState(agent);
+      this.dispatchStream(
+        agent.id,
+        {
+          type: "permission_resolved",
+          provider: agent.provider,
+          requestId,
+          resolution: response,
+        },
+        { timestamp: new Date().toISOString() },
+      );
+      const task = Promise.resolve()
+        .then(() => frameworkHandler(response))
+        .catch((error) => {
+          this.logger.warn(
+            { err: error, agentId, requestId },
+            "Framework permission response handler failed",
+          );
+        });
+      this.trackBackgroundTask(task);
+      return;
+    }
     agent.inFlightPermissionResponses.add(requestId);
 
     try {
@@ -2872,6 +2928,35 @@ export class AgentManager {
       agent.inFlightPermissionResponses.delete(requestId);
       agent.bufferedPermissionResolutions.delete(requestId);
     }
+  }
+
+  async requestFrameworkPermission(
+    agentId: string,
+    input: FrameworkPermissionRequest,
+  ): Promise<string> {
+    const agent = this.requireSessionAgent(agentId);
+    const requestId = input.request.id ?? `framework-${randomUUID()}`;
+    const request: AgentPermissionRequest = {
+      ...input.request,
+      id: requestId,
+      provider: agent.provider,
+    };
+    let handlers = this.frameworkPermissionHandlers.get(agentId);
+    if (!handlers) {
+      handlers = new Map();
+      this.frameworkPermissionHandlers.set(agentId, handlers);
+    }
+    handlers.set(requestId, input.onResponse);
+    const event: Extract<AgentStreamEvent, { type: "permission_requested" }> = {
+      type: "permission_requested",
+      provider: agent.provider,
+      request,
+    };
+    this.onStreamPermissionRequested(agent, event);
+    this.dispatchStream(agent.id, event, { timestamp: new Date().toISOString() });
+    this.touchUpdatedAt(agent);
+    await this.persistSnapshot(agent);
+    return requestId;
   }
 
   async cancelAgentRun(agentId: string): Promise<AgentRunCancellationResult> {
@@ -3526,6 +3611,7 @@ export class AgentManager {
     cancelReason: string,
   ): ManagedAgentClosed {
     this.agentStreamCoalescer.flushAndDiscard(agent.id);
+    this.frameworkPermissionHandlers.delete(agent.id);
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
     if (agent.unsubscribeSession) {
@@ -3557,6 +3643,7 @@ export class AgentManager {
   }
 
   private discardRetainedAgentState(agentId: string): void {
+    this.frameworkPermissionHandlers.delete(agentId);
     this.timelineStore.delete(agentId);
     for (const event of this.providerSubagents.deleteParent(agentId)) {
       this.dispatch({ type: "provider_subagent", event });
@@ -3758,7 +3845,17 @@ export class AgentManager {
 
     try {
       const pending = agent.session.getPendingPermissions();
-      agent.pendingPermissions = new Map(pending.map((request) => [request.id, request]));
+      const frameworkRequestIds = this.frameworkPermissionHandlers.get(agent.id);
+      const frameworkRequests = frameworkRequestIds
+        ? Array.from(frameworkRequestIds.keys()).flatMap((requestId) => {
+            const request = agent.pendingPermissions.get(requestId);
+            return request ? [[requestId, request] as const] : [];
+          })
+        : [];
+      agent.pendingPermissions = new Map([
+        ...pending.map((request) => [request.id, request] as const),
+        ...frameworkRequests,
+      ]);
     } catch {
       agent.pendingPermissions.clear();
     }
@@ -4431,6 +4528,7 @@ export class AgentManager {
   ): void {
     for (const [requestId] of agent.pendingPermissions) {
       agent.pendingPermissions.delete(requestId);
+      this.frameworkPermissionHandlers.get(agent.id)?.delete(requestId);
       if (!options?.fromHistory) {
         this.dispatchStream(agent.id, {
           type: "permission_resolved",
@@ -4961,6 +5059,7 @@ export class AgentManager {
         mcpBaseUrl: this.mcpBaseUrl,
         mcpAuthToken: this.mcpAuthToken,
       }),
+      agentId,
     );
     return { storedConfig, launchConfig };
   }
@@ -5083,8 +5182,15 @@ export class AgentManager {
     }
   }
 
-  private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {
-    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
+  private applyDaemonAppendSystemPrompt(
+    config: AgentSessionConfig,
+    agentId: string,
+  ): AgentSessionConfig {
+    const daemonAppendSystemPrompt = composeSystemPromptParts(
+      this.appendSystemPrompt,
+      this.daemonKnowledgePromptComposer?.(),
+      this.agentAppendSystemPromptComposer?.(agentId, config),
+    );
     const next = { ...config };
     delete next.daemonAppendSystemPrompt;
 

@@ -19,11 +19,11 @@ interface AssistantsSectionProps {
 
 function AssistantsUpgradeCard() {
   return (
-    <SettingsSection title="Assistants">
+    <SettingsSection title="助手">
       <View style={settingsStyles.card} testID="host-page-assistants-upgrade-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Assistants require a newer host</Text>
+            <Text style={settingsStyles.rowTitle}>助手功能需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
               Update the selected Paseo daemon to create and manage assistants.
             </Text>
@@ -53,7 +53,7 @@ function AssistantRow({
   return (
     <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{assistant.name || "Unnamed assistant"}</Text>
+        <Text style={settingsStyles.rowTitle}>{assistant.name || "未命名助手"}</Text>
         {assistant.description ? (
           <Text style={settingsStyles.rowHint}>{assistant.description}</Text>
         ) : null}
@@ -170,7 +170,7 @@ function AssistantResourceSelectionEditor({
     <View style={styles.resourceCard} testID="assistant-resource-selection">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>MCP and Skills</Text>
+          <Text style={settingsStyles.rowTitle}>MCP 与 Skills</Text>
           <Text style={settingsStyles.rowHint}>
             Default uses every active MCP server and skill. Choose custom to limit what this
             assistant enables for new conversations.
@@ -179,7 +179,7 @@ function AssistantResourceSelectionEditor({
       </View>
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Use all active MCP servers and skills</Text>
+          <Text style={settingsStyles.rowTitle}>使用所有已启用的 MCP 服务和 Skills</Text>
           <Text style={settingsStyles.rowHint}>
             New conversations will pick up active resources automatically when this assistant is
             selected.
@@ -188,15 +188,15 @@ function AssistantResourceSelectionEditor({
         <Switch
           value={isAllEnabled}
           onValueChange={handleUseAllChange}
-          accessibilityLabel="Use all active assistant resources"
+          accessibilityLabel="使用所有已启用的助手资源"
         />
       </View>
       {!isAllEnabled ? (
         <View style={styles.resourceCustomLists}>
           <AssistantResourceGroup
             kind="mcp"
-            title="MCP servers"
-            hint="External tools this assistant may call in new conversations."
+            title="MCP 服务"
+            hint="该助手在新会话中可以调用的外部工具。"
             countLabel={`${mcpServers.filter((server) => selectedMcpIdSet.has(server.id)).length}/${mcpServers.length} selected`}
           >
             {mcpServers.length > 0 ? (
@@ -212,13 +212,13 @@ function AssistantResourceSelectionEditor({
                 />
               ))
             ) : (
-              <Text style={settingsStyles.rowHint}>No active MCP servers.</Text>
+              <Text style={settingsStyles.rowHint}>没有已启用的 MCP 服务。</Text>
             )}
           </AssistantResourceGroup>
           <AssistantResourceGroup
             kind="skill"
-            title="Skills"
-            hint="Instruction packs injected for this assistant."
+            title="技能"
+            hint="注入给该助手的指令包。"
             countLabel={`${skills.filter((skill) => selectedSkillIdSet.has(skill.id)).length}/${skills.length} selected`}
           >
             {skills.length > 0 ? (
@@ -234,7 +234,7 @@ function AssistantResourceSelectionEditor({
                 />
               ))
             ) : (
-              <Text style={settingsStyles.rowHint}>No active skills.</Text>
+              <Text style={settingsStyles.rowHint}>没有已启用的 Skill。</Text>
             )}
           </AssistantResourceGroup>
         </View>
@@ -267,8 +267,8 @@ function AssistantMemorySummaryBody({
       <SettingsTextAreaCard
         value={memorySummary}
         onChangeText={onMemorySummaryChange}
-        placeholder="Edit the memory summary sent in the first agent prompt."
-        accessibilityLabel="Memory summary file content"
+        placeholder="编辑首次 Agent 提示词中提供的记忆总览。"
+        accessibilityLabel="记忆总文件内容"
         style={styles.memoryArtifactEditor}
       />
     );
@@ -310,7 +310,7 @@ function AssistantMemoryDetailFile({
       <SettingsTextAreaCard
         value={file.content ?? ""}
         onChangeText={handleContentChange}
-        placeholder="Edit this memory detail file."
+        placeholder="编辑该记忆子文件。"
         accessibilityLabel={`Memory detail file ${file.id} content`}
         style={styles.memoryDetailEditor}
       />
@@ -360,27 +360,27 @@ function AssistantMemoryArtifacts({
   const summaryPath = (memoryFiles?.summaryPath ?? "").trim();
   const detailFiles = memoryFiles?.detailFiles ?? [];
   const emptyFilesMessage = isEditing
-    ? "Save this assistant to generate summary and detail memory files."
-    : "Summary and detail files will appear after the assistant is saved.";
+    ? "保存此助手后将生成总记忆和子记忆文件。"
+    : "保存助手后会显示总记忆和子记忆文件。";
 
   return (
     <View style={styles.memoryArtifacts} testID="assistant-memory-artifacts">
       <View style={styles.memoryArtifactCard} testID="assistant-memory-summary-file">
         <View style={styles.memoryArtifactHeader}>
           <View style={styles.memoryArtifactTitleBlock}>
-            <Text style={styles.memoryArtifactTitle}>Memory summary file</Text>
+            <Text style={styles.memoryArtifactTitle}>记忆总文件</Text>
             <Text style={styles.memoryArtifactHint}>
               Included in the first agent prompt. Detailed memories stay in files.
             </Text>
           </View>
-          <Text style={styles.memoryArtifactBadge}>{summary ? "Generated" : "Pending"}</Text>
+          <Text style={styles.memoryArtifactBadge}>{summary ? "已生成" : "待生成"}</Text>
         </View>
         {summaryPath ? (
           <Text selectable numberOfLines={2} style={styles.memoryArtifactPath}>
             {summaryPath}
           </Text>
         ) : (
-          <Text style={styles.memoryArtifactEmpty}>No summary file yet.</Text>
+          <Text style={styles.memoryArtifactEmpty}>尚无记忆总文件。</Text>
         )}
         <AssistantMemorySummaryBody
           memorySummary={memorySummary}
@@ -395,7 +395,7 @@ function AssistantMemoryArtifacts({
       <View style={styles.memoryArtifactCard} testID="assistant-memory-detail-files">
         <View style={styles.memoryArtifactHeader}>
           <View style={styles.memoryArtifactTitleBlock}>
-            <Text style={styles.memoryArtifactTitle}>Memory detail files</Text>
+            <Text style={styles.memoryArtifactTitle}>记忆子文件</Text>
             <Text style={styles.memoryArtifactHint}>
               Agents can open only the specific detail file needed for a task.
             </Text>
@@ -596,13 +596,13 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
 
   const canCreate = prompt.trim().length > 0;
   const isEditingAssistant = Boolean(editingAssistantId);
-  const sourceMemoryLabel = isEditingAssistant ? "Append source memory" : "Source memory";
+  const sourceMemoryLabel = isEditingAssistant ? "追加源记忆" : "源记忆";
   const sourceMemoryHint = isEditingAssistant
     ? "Add only new memory here. Existing memory is preserved and shown in the summary/detail files below."
     : "Use Markdown to store stable preferences and context. Saving splits it into summary/detail files.";
   const sourceMemoryPlaceholder = isEditingAssistant
     ? "Add new memories to append. Leave empty to keep current memory unchanged."
-    : "Use Markdown to store stable preferences and context.";
+    : "使用 Markdown 保存稳定的偏好和上下文。";
 
   if (!supportsAssistants) {
     return <AssistantsUpgradeCard />;
@@ -610,30 +610,30 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
 
   return (
     <View testID="host-page-assistants">
-      <SettingsSection title={editingAssistantId ? "Edit assistant" : "Create assistant"}>
+      <SettingsSection title={editingAssistantId ? "编辑助手" : "创建助手"}>
         <View style={styles.formCard}>
-          <Field label="Name" testID="assistant-name-field">
+          <Field label="名称" testID="assistant-name-field">
             <FormTextInput
               initialValue={name}
               resetKey={`assistant-name-${formResetKey}`}
               onChangeText={setName}
-              placeholder="Code reviewer"
+              placeholder="代码审查助手"
             />
           </Field>
-          <Field label="Description" testID="assistant-description-field">
+          <Field label="描述" testID="assistant-description-field">
             <FormTextInput
               initialValue={description}
               resetKey={`assistant-description-${formResetKey}`}
               onChangeText={setDescription}
-              placeholder="Reviews code and suggests fixes"
+              placeholder="审查代码并提出修复建议"
             />
           </Field>
-          <Field label="Assistant prompt" testID="assistant-prompt-field">
+          <Field label="助手提示词" testID="assistant-prompt-field">
             <SettingsTextAreaCard
               value={prompt}
               onChangeText={setPrompt}
-              placeholder="Use Markdown to describe how this assistant should behave."
-              accessibilityLabel="Assistant prompt"
+              placeholder="使用 Markdown 描述该助手的行为规范。"
+              accessibilityLabel="助手提示词"
               style={styles.promptInput}
             />
           </Field>
@@ -649,7 +649,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
           />
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>Memory</Text>
+              <Text style={settingsStyles.rowTitle}>记忆</Text>
               <Text style={settingsStyles.rowHint}>
                 Store memory as summary/detail files. Only the summary is sent in the first message.
               </Text>
@@ -657,7 +657,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
             <Switch
               value={memoryEnabled}
               onValueChange={setMemoryEnabled}
-              accessibilityLabel="Enable assistant memory"
+              accessibilityLabel="启用助手记忆"
             />
           </View>
           {memoryEnabled ? (
@@ -671,7 +671,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
                   value={memory}
                   onChangeText={setMemory}
                   placeholder={sourceMemoryPlaceholder}
-                  accessibilityLabel="Assistant memory"
+                  accessibilityLabel="助手记忆"
                   style={styles.memoryInput}
                 />
               </Field>
@@ -694,7 +694,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
               disabled={!canCreate || !assistants.isConnected}
               loading={assistants.isMutating}
             >
-              {editingAssistantId ? "Save changes" : "Add assistant"}
+              {editingAssistantId ? "保存更改" : "添加助手"}
             </Button>
             {editingAssistantId ? (
               <Button variant="outline" onPress={resetForm} disabled={assistants.isMutating}>
@@ -705,7 +705,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
         </View>
       </SettingsSection>
 
-      <SettingsSection title="Assistants">
+      <SettingsSection title="助手">
         <View style={settingsStyles.card}>
           {assistants.assistants.length > 0 ? (
             assistants.assistants.map((assistant) => (
@@ -718,7 +718,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
             ))
           ) : (
             <View style={settingsStyles.row}>
-              <Text style={settingsStyles.rowHint}>No assistants yet.</Text>
+              <Text style={settingsStyles.rowHint}>暂无助手。</Text>
             </View>
           )}
         </View>

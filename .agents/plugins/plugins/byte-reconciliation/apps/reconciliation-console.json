@@ -18,13 +18,6 @@
       "description": "可在插件聊天中反复补充需求；不要填写 Token、Cookie、JWT 或其他密钥。"
     },
     {
-      "id": "repository_path",
-      "type": "text_input",
-      "label": "代码仓库绝对路径",
-      "required": true,
-      "placeholder": "/absolute/path/to/repository"
-    },
-    {
       "id": "agent_provider",
       "type": "text_input",
       "label": "Agent Provider",
@@ -236,12 +229,6 @@
       "type": "checkbox",
       "label": "写入项目记忆",
       "defaultValue": false
-    },
-    {
-      "id": "project_id",
-      "type": "text_input",
-      "label": "Project ID",
-      "defaultValue": ""
     },
     {
       "id": "memory_assistant",

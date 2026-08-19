@@ -199,10 +199,10 @@ import {
 } from "@/screens/workspace/workspace-header-menu";
 import {
   createWorkspaceFileTabTarget,
-  normalizeWorkspaceFileLocation,
   type WorkspaceFileLocation,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import { canonicalizeWorkspaceFileLocation } from "@/workspace/file-open/canonical-location";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest } from "@/panels/pull-request";
@@ -2202,6 +2202,7 @@ function WorkspaceScreenContent({
       persistenceKey,
       requestFileNavigation,
       showMobileAgent,
+      workspaceDirectory,
     ],
   );
 

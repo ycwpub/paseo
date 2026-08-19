@@ -10,6 +10,7 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 interface OpenWorkspaceFileFromExplorerInput {
   filePath: string;
+  workspaceRoot: string | null;
   persistenceKey: string | null;
   closeExplorerAfterOpen: boolean;
   showMobileAgent: () => void;
@@ -28,7 +29,10 @@ export function openWorkspaceFileFromExplorer(input: OpenWorkspaceFileFromExplor
   if (!input.persistenceKey) {
     return;
   }
-  const location = normalizeWorkspaceFileLocation({ path: input.filePath });
+  const location = canonicalizeWorkspaceFileLocation({
+    location: { path: input.filePath },
+    workspaceRoot: input.workspaceRoot,
+  });
   if (!location) {
     return;
   }

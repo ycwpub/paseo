@@ -926,6 +926,8 @@ describe("WorkspaceGitService checkout observation", () => {
     await vi.waitFor(() => {
       expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
       expect(getWatcherSubscribeCallCount(watcher, GIT_DIR)).toBeGreaterThan(0);
+      expect(service.getMetrics().workspaceObservationSetupInFlightCount).toBe(0);
+      expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
     });
 
     watcher.records
@@ -933,7 +935,9 @@ describe("WorkspaceGitService checkout observation", () => {
       .callback(null, [
         { path: path.join(GIT_DIR, "refs", "remotes", "origin", "main"), type: "update" },
       ]);
+    await flushPromises();
     await vi.advanceTimersByTimeAsync(1_000);
+    await flushPromises();
     await vi.waitFor(() => {
       expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(2);
     });

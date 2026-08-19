@@ -21,10 +21,14 @@ import {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
   PluginInstallSource,
+  PluginAppDefaultAgent,
   PluginAppState,
   PluginHttpJob,
+  PluginHttpJobStatus,
+  PluginHttpProjectConfig,
   PluginMarketplaceSummary,
   PluginState,
   PluginSummary,
@@ -87,6 +91,7 @@ import type {
   ProjectIconGetResponse,
   ProjectAddResponse,
   ProjectCreateDirectoryResponse,
+  ProjectCreateDirectorylessResponse,
   OpenProjectResponseMessage,
   WorkspaceGithubSearchRepositoriesResponse,
   ProjectGithubCloneProtocol,
@@ -566,6 +571,7 @@ type ListCommandsDraftConfig = Pick<
 >;
 export interface WriteProjectConfigInput {
   repoRoot: string;
+  projectId?: string;
   config: PaseoConfigRaw;
   expectedRevision: PaseoConfigRevision | null;
   requestId?: string;
@@ -1052,6 +1058,7 @@ export interface RenameTerminalInput {
 type OpenProjectPayload = OpenProjectResponseMessage["payload"];
 type ProjectAddPayload = ProjectAddResponse["payload"];
 export type ProjectCreateDirectoryPayload = ProjectCreateDirectoryResponse["payload"];
+export type ProjectCreateDirectorylessPayload = ProjectCreateDirectorylessResponse["payload"];
 export type WorkspaceGithubSearchRepositoriesPayload =
   WorkspaceGithubSearchRepositoriesResponse["payload"];
 type ProjectGithubClonePayload = ProjectGithubCloneResponse["payload"];
@@ -2663,6 +2670,19 @@ export class DaemonClient {
     });
   }
 
+  async createDirectorylessProject(
+    input: { name: string },
+    requestId?: string,
+  ): Promise<ProjectCreateDirectorylessPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"project.create_directoryless.response">({
+      requestId,
+      message: {
+        type: "project.create_directoryless.request",
+        name: input.name,
+      },
+    });
+  }
+
   async searchGithubRepositories(
     input: { query: string; limit?: number },
     requestId?: string,
@@ -3087,6 +3107,19 @@ export class DaemonClient {
       throw new Error(payload.error ?? "removeProject rejected");
     }
     return { removedWorkspaceIds: payload.removedWorkspaceIds };
+  }
+
+  async removeWorkspace(workspaceId: string, requestId?: string): Promise<void> {
+    const payload = await this.sendNamespacedCorrelatedSessionRequest<"workspace.remove.response">({
+      requestId,
+      message: {
+        type: "workspace.remove.request",
+        workspaceId,
+      },
+    });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "removeWorkspace rejected");
+    }
   }
 
   async setWorkspaceTitle(
@@ -5296,12 +5329,17 @@ export class DaemonClient {
     this.sendSessionMessageStrict(response);
   }
 
-  async readProjectConfig(repoRoot: string, requestId?: string): Promise<ReadProjectConfigPayload> {
+  async readProjectConfig(
+    repoRoot: string,
+    requestId?: string,
+    projectId?: string,
+  ): Promise<ReadProjectConfigPayload> {
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
         type: "read_project_config_request",
         repoRoot,
+        projectId,
       },
       responseType: "read_project_config_response",
     });
@@ -5313,6 +5351,7 @@ export class DaemonClient {
       message: {
         type: "write_project_config_request",
         repoRoot: input.repoRoot,
+        projectId: input.projectId,
         config: input.config,
         expectedRevision: input.expectedRevision,
       },
@@ -6079,6 +6118,36 @@ export class DaemonClient {
     return this.resourceRpc.clearMemory(options);
   }
 
+  async getMemorySyncSnapshot(options?: { requestId?: string }) {
+    return this.resourceRpc.getMemorySyncSnapshot(options);
+  }
+
+  async mergeMemorySyncSnapshot(
+    snapshot: PaseoMemorySyncSnapshot,
+    options?: { requestId?: string },
+  ) {
+    return this.resourceRpc.mergeMemorySyncSnapshot(snapshot, options);
+  }
+
+  async cacheCloudDocument(options: {
+    scope: "global" | "project";
+    projectId?: string;
+    source: string;
+    force?: boolean;
+    requestId?: string;
+  }) {
+    return this.resourceRpc.cacheCloudDocument(options);
+  }
+
+  async getCloudDocumentCacheStatus(options: {
+    scope: "global" | "project";
+    projectId?: string;
+    source: string;
+    requestId?: string;
+  }) {
+    return this.resourceRpc.getCloudDocumentCacheStatus(options);
+  }
+
   async translateReasoning(options: {
     agentId: string;
     text: string;
@@ -6201,31 +6270,143 @@ export class DaemonClient {
   async getPluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
-    return this.resourceRpc.getPluginApp(pluginId, appId);
+    return this.resourceRpc.getPluginApp(pluginId, appId, projectId);
+  }
+
+  async getPluginAppHtmlPreview(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ html: string | null; htmlPath: string | null; error: string | null }> {
+    return this.resourceRpc.getPluginAppHtmlPreview(input);
+  }
+
+  async configurePluginApp(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    defaultAgent: PluginAppDefaultAgent;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    return this.resourceRpc.configurePluginApp(input);
+  }
+
+  async listPluginAppProjects(
+    pluginId: string,
+    appId: string,
+  ): Promise<{ projects: PluginAppState[]; error: string | null }> {
+    return this.resourceRpc.listPluginAppProjects(pluginId, appId);
+  }
+
+  async copyPluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    sourceProjectId: string;
+    targetProjectId: string;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    return this.resourceRpc.copyPluginAppProject(input);
+  }
+
+  async deletePluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ projectId: string; deleted: boolean; error: string | null }> {
+    return this.resourceRpc.deletePluginAppProject(input);
   }
 
   async generatePluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
     prompt: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
-    return this.resourceRpc.generatePluginApp(pluginId, appId, prompt);
+    return this.resourceRpc.generatePluginApp(pluginId, appId, projectId, prompt);
   }
 
   async submitPluginAppAction(input: {
     pluginId: string;
     appId: string;
+    projectId: string;
     componentId: string;
     form: Record<string, unknown>;
   }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
     return this.resourceRpc.submitPluginAppAction(input);
   }
 
+  async submitPluginHttpService(input: {
+    pluginId: string;
+    serviceName: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.submitPluginHttpService(input);
+  }
+
   async getPluginAppJob(
     processId: string,
   ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
     return this.resourceRpc.getPluginAppJob(processId);
+  }
+
+  async listPluginAppJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+    filters?: {
+      statuses?: PluginHttpJobStatus[];
+      listenerId?: string;
+      routeId?: string;
+      createdBefore?: string;
+      createdAfter?: string;
+    };
+  }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
+    return this.resourceRpc.listPluginAppJobs(options);
+  }
+
+  async updatePluginAppJob(
+    processId: string,
+    input: unknown,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.updatePluginAppJob(processId, input);
+  }
+
+  async createPluginAppJobDraft(input: {
+    pluginId: string;
+    serviceName: string;
+    projectId: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.createPluginAppJobDraft(input);
+  }
+
+  async startPluginAppJob(
+    processId: string,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.startPluginAppJob(processId);
+  }
+
+  async deletePluginAppJob(
+    processId: string,
+  ): Promise<{ processId: string; deleted: boolean; error: string | null }> {
+    return this.resourceRpc.deletePluginAppJob(processId);
+  }
+
+  getPluginHttpConfig(pluginId: string, projectId: string) {
+    return this.resourceRpc.getPluginHttpConfig(pluginId, projectId);
+  }
+
+  savePluginHttpConfig(config: Omit<PluginHttpProjectConfig, "updatedAt">) {
+    return this.resourceRpc.savePluginHttpConfig(config);
+  }
+
+  deletePluginHttpJobs(processIds: string[]) {
+    return this.resourceRpc.deletePluginHttpJobs(processIds);
+  }
+
+  cleanupPluginHttpJobs(pluginId: string, projectId: string) {
+    return this.resourceRpc.cleanupPluginHttpJobs(pluginId, projectId);
   }
 
   async getLarkChannelStatus(

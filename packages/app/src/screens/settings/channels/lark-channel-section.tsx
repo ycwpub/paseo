@@ -293,7 +293,7 @@ interface AuthorizedUserRowProps {
 }
 
 function getStatusLabel(status: LarkChannelBotStatus | LarkChannelStatus | null): string {
-  if (!status) return "Not configured";
+  if (!status) return "未配置";
   switch (status.connectionStatus) {
     case "connected":
       return "Connected";
@@ -399,14 +399,12 @@ function buildConfigureInput(input: {
 
 function UpgradeRequiredCard() {
   return (
-    <SettingsSection title="Channels">
+    <SettingsSection title="渠道">
       <View style={settingsStyles.card} testID="host-page-channels-upgrade-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Feishu/Lark requires a newer host</Text>
-            <Text style={settingsStyles.rowHint}>
-              Update the selected Paseo daemon to configure channels.
-            </Text>
+            <Text style={settingsStyles.rowTitle}>飞书/Lark 需要更新主机</Text>
+            <Text style={settingsStyles.rowHint}>请更新所选 Paseo Daemon 后再配置渠道。</Text>
           </View>
         </View>
       </View>
@@ -416,11 +414,11 @@ function UpgradeRequiredCard() {
 
 function ErrorCard({ message }: { message: string }) {
   return (
-    <SettingsSection title="Channels">
+    <SettingsSection title="渠道">
       <View style={settingsStyles.card} testID="host-page-channels-error-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Could not load Feishu/Lark</Text>
+            <Text style={settingsStyles.rowTitle}>无法加载飞书/Lark</Text>
             <Text style={settingsStyles.rowError}>{message}</Text>
           </View>
         </View>
@@ -431,10 +429,10 @@ function ErrorCard({ message }: { message: string }) {
 
 function LoadingCard() {
   return (
-    <SettingsSection title="Channels">
+    <SettingsSection title="渠道">
       <View style={styles.loadingRow}>
         <LoadingSpinner size={16} color={styles.spinnerColor.color} />
-        <Text style={settingsStyles.rowHint}>Loading Lark channel…</Text>
+        <Text style={settingsStyles.rowHint}>正在加载飞书频道…</Text>
       </View>
     </SettingsSection>
   );
@@ -467,7 +465,7 @@ function StatusCard({ channel, status, onEnabledChange }: StatusCardProps) {
             value={status?.enabled ?? false}
             onValueChange={onEnabledChange}
             disabled={channel.isMutating || !channel.isConnected || !status}
-            accessibilityLabel="Enable Lark channel"
+            accessibilityLabel="启用飞书频道"
             testID="host-page-lark-enabled-switch"
           />
         </View>
@@ -477,12 +475,12 @@ function StatusCard({ channel, status, onEnabledChange }: StatusCardProps) {
 }
 
 function getBotDisplayName(bot: LarkChannelBotStatus): string {
-  return bot.bot?.name || bot.name || bot.appId || "Untitled Lark bot";
+  return bot.bot?.name || bot.name || bot.appId || "未命名飞书机器人";
 }
 
 function getBotListDescription(bot: LarkChannelBotStatus): string {
   const configuredName = bot.name && bot.name !== bot.bot?.name ? `本地备注：${bot.name}` : null;
-  return [configuredName, bot.appId ?? "No App ID", getStatusLabel(bot)]
+  return [configuredName, bot.appId ?? "无 App ID", getStatusLabel(bot)]
     .filter((part): part is string => Boolean(part))
     .join(" · ");
 }
@@ -569,7 +567,7 @@ function BotListRow({
         onPress={handleSelect}
         testID={`host-page-lark-bot-select-${bot.id}`}
       >
-        {selected ? "Editing" : "Edit"}
+        {selected ? "编辑中" : "编辑"}
       </Button>
     </View>
   );
@@ -640,10 +638,10 @@ function CredentialsCard(props: CredentialsCardProps) {
             initialValue={props.botName}
             resetKey={`bot-name:${props.formRevision}`}
             onChangeText={props.onBotNameChange}
-            placeholder="bot name"
+            placeholder="机器人名称"
           />
         </Field>
-        <Field label="App ID" testID="host-page-lark-app-id">
+        <Field label="应用 ID" testID="host-page-lark-app-id">
           <FormTextInput
             initialValue={props.appId}
             resetKey={`app-id:${props.formRevision}`}
@@ -652,7 +650,7 @@ function CredentialsCard(props: CredentialsCardProps) {
           />
         </Field>
         <Field
-          label="App Secret"
+          label="应用密钥"
           hint={
             props.status?.hasAppSecret
               ? "Configured. Leave blank to keep existing secret."
@@ -664,12 +662,12 @@ function CredentialsCard(props: CredentialsCardProps) {
             initialValue={props.appSecret}
             resetKey={`app-secret:${props.formRevision}`}
             onChangeText={props.onAppSecretChange}
-            placeholder={props.status?.hasAppSecret ? "••••••••••••••••" : "App Secret"}
+            placeholder={props.status?.hasAppSecret ? "••••••••••••••••" : "应用密钥"}
             secureTextEntry
           />
         </Field>
         <Button variant="ghost" size="sm" onPress={props.onToggleOptional}>
-          {props.showOptional ? "Hide optional settings" : "Show optional settings"}
+          {props.showOptional ? "隐藏可选设置" : "显示可选设置"}
         </Button>
         {props.showOptional ? <OptionalCredentialFields {...props} /> : null}
         <View style={styles.substituteHeader}>
@@ -711,72 +709,72 @@ function CredentialsCard(props: CredentialsCardProps) {
           selectedDisplay={props.selectedProviderDisplay}
           options={props.providerOptions}
           onChange={props.onProviderChange}
-          placeholder="Select provider"
-          emptyText="No providers on this host"
+          placeholder="选择 Provider"
+          emptyText="该主机没有可用 Provider"
           loading={props.providersLoading}
           searchable
           testID="host-page-lark-provider"
         />
         <SelectField
-          label="Model"
+          label="模型"
           value={props.model}
           selectedDisplay={props.selectedModelDisplay}
           options={props.modelOptions}
           onChange={props.onModelChange}
-          placeholder="Select model"
-          emptyText="No models for this provider"
+          placeholder="选择模型"
+          emptyText="该 Provider 没有可用模型"
           loading={props.providersLoading}
           searchable
           testID="host-page-lark-model"
           disabled={!props.provider}
         />
         <SelectField
-          label="Thinking mode"
+          label="思考模式"
           value={props.thinkingOptionId}
           selectedDisplay={props.selectedThinkingDisplay}
           options={props.thinkingOptions}
           onChange={props.onThinkingChange}
-          placeholder="Select thinking mode"
-          emptyText="No thinking modes for this model"
+          placeholder="选择思考模式"
+          emptyText="该模型没有可用思考模式"
           loading={props.providersLoading}
           testID="host-page-lark-thinking-mode"
           disabled={!props.model || props.thinkingOptions.length === 0}
         />
         <SelectField
-          label="Safety mode"
+          label="安全模式"
           value={props.modeId}
           selectedDisplay={props.selectedModeDisplay}
           options={props.modeOptions}
           onChange={props.onModeChange}
-          placeholder="Select safety mode"
-          emptyText="No safety modes for this provider"
+          placeholder="选择安全模式"
+          emptyText="该 Provider 没有可用安全模式"
           loading={props.providersLoading}
           testID="host-page-lark-safety-mode"
           disabled={!props.provider || props.modeOptions.length === 0}
         />
         <SelectField
-          label="Assistant or team"
+          label="助手或团队"
           value={props.targetValue}
           selectedDisplay={props.selectedTargetDisplay}
           options={props.targetOptions}
           onChange={props.onTargetChange}
-          placeholder="Select an assistant or team"
-          emptyText="No assistants or teams on this host"
+          placeholder="选择助手或团队"
+          emptyText="该主机没有可用助手或团队"
           loading={props.targetsLoading}
           searchable
           testID="host-page-lark-target"
         />
         <SelectField
-          label="Project path"
+          label="Project 路径"
           value={props.cwd || null}
           selectedDisplay={props.selectedProjectDisplay}
           options={props.projectOptions}
           onChange={props.onCwdChange}
-          placeholder="Select a project"
-          emptyText="No opened projects on this host"
+          placeholder="选择 Project"
+          emptyText="该主机没有已打开的 Project"
           searchable
           testID="host-page-lark-project-path"
-          hint="Each Lark topic creates its own Paseo session in this project."
+          hint="每个飞书话题都会在该 Project 中创建独立的 Paseo 会话。"
         />
         {props.saveError ? <Text style={settingsStyles.rowError}>{props.saveError}</Text> : null}
         <View style={styles.actionsRow}>
@@ -873,21 +871,21 @@ function SubstituteDirectoryField(
 function OptionalCredentialFields(props: CredentialsCardProps) {
   return (
     <>
-      <Field label="Encrypt Key" testID="host-page-lark-encrypt-key">
+      <Field label="加密密钥" testID="host-page-lark-encrypt-key">
         <FormTextInput
           initialValue={props.encryptKey}
           resetKey={`encrypt-key:${props.formRevision}`}
           onChangeText={props.onEncryptKeyChange}
-          placeholder={props.status?.hasEncryptKey ? "Configured" : "Optional"}
+          placeholder={props.status?.hasEncryptKey ? "已配置" : "可选"}
           secureTextEntry
         />
       </Field>
-      <Field label="Verification Token" testID="host-page-lark-verification-token">
+      <Field label="校验令牌" testID="host-page-lark-verification-token">
         <FormTextInput
           initialValue={props.verificationToken}
           resetKey={`verification-token:${props.formRevision}`}
           onChangeText={props.onVerificationTokenChange}
-          placeholder={props.status?.hasVerificationToken ? "Configured" : "Optional"}
+          placeholder={props.status?.hasVerificationToken ? "已配置" : "可选"}
           secureTextEntry
         />
       </Field>
@@ -927,7 +925,7 @@ function PairingRequestsCard(props: {
   onReject: (code: string) => void;
 }) {
   return (
-    <SettingsSection title="Pending pairing requests">
+    <SettingsSection title="待处理的配对请求">
       <View style={settingsStyles.card}>
         {props.pairings.length > 0 ? (
           props.pairings.map((pairing, index) => (
@@ -982,7 +980,7 @@ function AuthorizedUsersCard(props: {
   onRevoke: (userId: string) => void;
 }) {
   return (
-    <SettingsSection title="Authorized users">
+    <SettingsSection title="已授权用户">
       <View style={settingsStyles.card}>
         {props.users.length > 0 ? (
           props.users.map((user, index) => (
@@ -997,7 +995,7 @@ function AuthorizedUsersCard(props: {
           ))
         ) : (
           <View style={settingsStyles.row}>
-            <Text style={settingsStyles.rowHint}>No authorized users yet.</Text>
+            <Text style={settingsStyles.rowHint}>暂无已授权用户。</Text>
           </View>
         )}
       </View>
@@ -1091,7 +1089,7 @@ function useLarkTargetControls(input: {
         id: `${TEAM_TARGET_PREFIX}${team.id}`,
         value: `${TEAM_TARGET_PREFIX}${team.id}`,
         label: team.name,
-        description: `Team · Leader: ${leader?.name || "Missing assistant"}`,
+        description: `团队 · 负责人：${leader?.name || "助手不存在"}`,
       };
     });
     return [...assistantOptions, ...teamOptions];

@@ -3,6 +3,15 @@
     "reconciliation-console": {
       "id": "reconciliation-console",
       "category": "Finance",
+      "project": {
+        "idField": "projectId",
+        "nameField": "projectName",
+        "sourceDirectoryField": "repository_path",
+        "selectorLabel": "对账 Project",
+        "selectorDescription": "对账需求、规则方案、代码修改、测试比对和记忆都归属于所选 Project。",
+        "createNameLabel": "新对账 Project 名称",
+        "createNamePlaceholder": "例如：支付渠道日切对账"
+      },
       "document": "./apps/reconciliation-console.json"
     }
   }

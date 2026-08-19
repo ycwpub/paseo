@@ -12,14 +12,14 @@ const SENSITIVE_POLICY_OPTIONS = [
   {
     id: "exclude",
     value: "exclude" as const,
-    label: "Exclude sensitive memory",
-    description: "Never store detected sensitive personal data",
+    label: "排除敏感记忆",
+    description: "绝不保存检测到的敏感个人数据",
   },
   {
     id: "manual-only",
     value: "manual-only" as const,
-    label: "Explicit requests only",
-    description: "Store sensitive information only when the user explicitly asks",
+    label: "仅响应明确请求",
+    description: "仅在用户明确要求时保存敏感信息",
   },
 ];
 
@@ -129,19 +129,17 @@ export function MemorySettingsCard({
     <View style={settingsStyles.card}>
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Use memory in Paseo conversations</Text>
+          <Text style={settingsStyles.rowTitle}>在 Paseo 会话中使用记忆</Text>
           <Text style={settingsStyles.rowHint}>
-            Adds a bounded summary and relevant detail memories to each Agent turn
+            为每轮 Agent 对话提供有限长度的总览和相关记忆详情
           </Text>
         </View>
         <Switch value={settings.enabled} disabled={disabled} onValueChange={setEnabled} />
       </View>
       <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Learn automatically</Text>
-          <Text style={settingsStyles.rowHint}>
-            Extract durable preferences, facts, procedures, and decisions after successful answers
-          </Text>
+          <Text style={settingsStyles.rowTitle}>自动学习</Text>
+          <Text style={settingsStyles.rowHint}>在成功回答后提取长期偏好、事实、流程和决策</Text>
         </View>
         <Switch
           value={settings.autoExtract}
@@ -151,10 +149,8 @@ export function MemorySettingsCard({
       </View>
       <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Consolidate automatically</Text>
-          <Text style={settingsStyles.rowHint}>
-            Expire stale automatic memories and keep active context compact
-          </Text>
+          <Text style={settingsStyles.rowTitle}>自动整理</Text>
+          <Text style={settingsStyles.rowHint}>淘汰过期的自动记忆，并保持有效上下文精简</Text>
         </View>
         <Switch
           value={settings.autoConsolidate ?? true}
@@ -164,10 +160,8 @@ export function MemorySettingsCard({
       </View>
       <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Show memory sources under answers</Text>
-          <Text style={settingsStyles.rowHint}>
-            Lets you inspect and rate the memories used for each answer
-          </Text>
+          <Text style={settingsStyles.rowTitle}>在回答下方展示记忆来源</Text>
+          <Text style={settingsStyles.rowHint}>支持查看和评价每次回答使用的记忆</Text>
         </View>
         <Switch
           value={settings.showSources ?? true}
@@ -177,9 +171,9 @@ export function MemorySettingsCard({
       </View>
       <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Encrypt memory content at rest</Text>
+          <Text style={settingsStyles.rowTitle}>加密本地记忆内容</Text>
           <Text style={settingsStyles.rowHint}>
-            Encrypts the summary and detail files with a daemon-local AES-256-GCM key
+            使用 Daemon 本地 AES-256-GCM 密钥加密总文件和子文件
           </Text>
         </View>
         <Switch
@@ -190,18 +184,18 @@ export function MemorySettingsCard({
       </View>
       <View style={[styles.advanced, settingsStyles.rowBorder]}>
         <SelectField
-          label="Sensitive information"
+          label="敏感信息"
           value={selectedSensitivePolicy}
           selectedDisplay={sensitiveDisplay}
           options={SENSITIVE_POLICY_OPTIONS}
           onChange={setSensitiveMemoryPolicy}
-          placeholder="Select policy"
-          emptyText="No policies"
+          placeholder="选择策略"
+          emptyText="没有可用策略"
           disabled={disabled}
         />
         <View style={styles.fieldGrid}>
           <View style={styles.gridItem}>
-            <Field label="Context characters" hint="1,000–32,000">
+            <Field label="上下文字符数" hint="1,000–32,000">
               <FormTextInput
                 value={limits.maxInjectedChars}
                 onChangeText={setMaxInjectedChars}
@@ -211,7 +205,7 @@ export function MemorySettingsCard({
             </Field>
           </View>
           <View style={styles.gridItem}>
-            <Field label="Retrieved details" hint="0–12">
+            <Field label="召回详情数" hint="0–12">
               <FormTextInput
                 value={limits.maxRetrievedDetails}
                 onChangeText={setMaxRetrievedDetails}
@@ -221,7 +215,7 @@ export function MemorySettingsCard({
             </Field>
           </View>
           <View style={styles.gridItem}>
-            <Field label="Candidate pool" hint="4–100">
+            <Field label="候选池" hint="4–100">
               <FormTextInput
                 value={limits.maxCandidates}
                 onChangeText={setMaxCandidates}
@@ -231,7 +225,7 @@ export function MemorySettingsCard({
             </Field>
           </View>
           <View style={styles.gridItem}>
-            <Field label="Retention days" hint="0 keeps memories until manually expired">
+            <Field label="保留天数" hint="0 表示一直保留，直到手动设置过期">
               <FormTextInput
                 value={limits.retentionDays}
                 onChangeText={setRetentionDays}

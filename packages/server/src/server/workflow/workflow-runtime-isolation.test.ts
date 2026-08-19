@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import pino from "pino";
@@ -122,6 +122,71 @@ describe("Workflow runtime isolation", () => {
       env: "module",
     });
     expect(run.nodeRuns[0]?.cwd).toBe(project);
+  });
+
+  it("renders the workflow definition directory in Bash and Python cwd", async () => {
+    const home = await createTempDirectory("paseo-workflow-template-cwd-");
+    const pluginRoot = join(home, "plugin");
+    const workflowsDirectory = join(pluginRoot, "workflows");
+    const scriptsDirectory = join(pluginRoot, "scripts");
+    await mkdir(workflowsDirectory, { recursive: true });
+    await mkdir(scriptsDirectory, { recursive: true });
+    await writeFile(
+      join(scriptsDirectory, "bash_node.py"),
+      [
+        "import json",
+        "import os",
+        "import sys",
+        "input = json.load(sys.stdin)",
+        'print(json.dumps({"data": {"bash_cwd": os.getcwd()}}))',
+      ].join("\n"),
+    );
+    await writeFile(
+      join(scriptsDirectory, "finalize.py"),
+      [
+        "import os",
+        "",
+        "def run_node(input):",
+        '    return {"data": {**input["data"], "python_cwd": os.getcwd()}}',
+      ].join("\n"),
+    );
+    const scriptPath = join(workflowsDirectory, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        apiVersion: "paseo.sh/workflow/v1",
+        kind: "Workflow",
+        version: 1,
+        name: "Templated cwd",
+        steps: [
+          {
+            id: "bash",
+            type: "bash",
+            cwd: "{{workflow.cwd}}/..",
+            initialCommand: 'output="$(python3 scripts/bash_node.py <<< "$input")"',
+          },
+          {
+            id: "python",
+            type: "python",
+            cwd: "{{workflow.cwd}}/..",
+            module: "scripts.finalize",
+            function: "run_node",
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+    const expectedCwd = await realpath(pluginRoot);
+
+    expect(run.status, run.error ?? undefined).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({
+      bash_cwd: expectedCwd,
+      python_cwd: expectedCwd,
+    });
+    expect(run.nodeRuns.map((node) => node.cwd)).toEqual([pluginRoot, pluginRoot]);
   });
 
   it("retains artifacts created by a failed node attempt", async () => {

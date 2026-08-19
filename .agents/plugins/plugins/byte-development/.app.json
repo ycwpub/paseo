@@ -3,6 +3,14 @@
     "development-console": {
       "id": "development-console",
       "category": "Development",
+      "project": {
+        "idField": "projectId",
+        "nameField": "projectName",
+        "selectorLabel": "研发流程 Project",
+        "selectorDescription": "研发页面、流程、Agent 会话和过程记录都归属于 Project；代码可以来自 Project 的一个或多个目录。",
+        "createNameLabel": "新研发 Project 名称",
+        "createNamePlaceholder": "例如：支付链路优化"
+      },
       "document": "./apps/development-console.json"
     }
   }

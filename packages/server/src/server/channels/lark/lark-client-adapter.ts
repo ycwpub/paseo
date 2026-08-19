@@ -70,6 +70,7 @@ export interface LarkChannelClientAdapter {
     text: string,
   ): Promise<LarkThreadReplyResult>;
   listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]>;
+  addBotToChat?(config: StoredLarkChannelConfig, chatId: string, appId: string): Promise<void>;
   getMessage(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -384,6 +385,29 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       const name = recordString(record, "bot_name");
       return openId && name ? [{ openId, name }] : [];
     });
+  }
+
+  async addBotToChat(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    appId: string,
+  ): Promise<void> {
+    const client = createClient(config);
+    try {
+      const result = await client.im.v1.chatMembers.create({
+        path: { chat_id: chatId },
+        params: {
+          member_id_type: "app_id",
+          succeed_type: 1,
+        },
+        data: {
+          id_list: [appId],
+        },
+      });
+      assertSuccess(result);
+    } catch (error) {
+      throw describeLarkError(error);
+    }
   }
 
   async resolveUsersByEmails(

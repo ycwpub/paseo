@@ -6,6 +6,16 @@ import type {
   PaseoScriptEntryRaw,
 } from "@getpaseo/protocol/messages";
 import { resolvePaseoProjectDirectoryEntries } from "@getpaseo/protocol/paseo-config-schema";
+import {
+  projectKnowledgeDraftToConfig,
+  projectKnowledgeToDraft,
+  type ProjectKnowledgeDraft,
+} from "@/projects/knowledge/model";
+import {
+  projectLarkGroupDraftsToConfig,
+  projectLarkGroupsToDraft,
+  type ProjectLarkGroupDraft,
+} from "@/projects/lark/project-lark-context-model";
 
 export type LifecycleOriginalKind = "string" | "array" | "missing";
 
@@ -22,12 +32,7 @@ export interface ProjectScriptDraft {
   rawEntry: PaseoScriptEntryRaw;
 }
 
-export const PROJECT_DIRECTORY_KEYS = [
-  "project",
-  "knowledge",
-  "indexSkill",
-  "workspaceData",
-] as const;
+export const PROJECT_DIRECTORY_KEYS = ["project", "indexSkill", "workspaceData"] as const;
 export type ProjectDirectoryKey = (typeof PROJECT_DIRECTORY_KEYS)[number];
 
 export interface ProjectDirectoryDraft {
@@ -64,7 +69,9 @@ export interface ProjectConfigDraft {
   projectIndexAutoGenerate: boolean;
   projectIndexUpdateIntervalText: string;
   projectVariables: ProjectVariableDraft[];
+  projectKnowledge: ProjectKnowledgeDraft;
   instructionTemplates: ProjectInstructionTemplateDraft[];
+  projectLarkGroups: ProjectLarkGroupDraft[];
   projectConfigBase: Record<string, unknown> | undefined;
 }
 
@@ -259,7 +266,9 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
       name,
       value,
     })),
+    projectKnowledge: projectKnowledgeToDraft(config?.project),
     instructionTemplates: instructionTemplatesToDraft(config?.project?.instructionTemplates),
+    projectLarkGroups: projectLarkGroupsToDraft(config?.project?.larkGroups),
     projectConfigBase: config?.project as Record<string, unknown> | undefined,
   };
 }
@@ -367,6 +376,8 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
   const nextDirectories: Record<string, unknown> = {
     ...(input.draft.projectConfigBase?.directories as Record<string, unknown> | undefined),
   };
+  delete nextDirectories.reference;
+  delete nextDirectories.knowledge;
   for (const key of PROJECT_DIRECTORY_KEYS) {
     const entries = input.draft.projectDirectories[key]
       .map((entry) => ({ path: entry.path.trim(), enabled: entry.enabled }))
@@ -400,6 +411,30 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
     delete nextProject.variables;
   } else {
     nextProject.variables = nextVariables;
+  }
+
+  delete nextProject.larkDocumentLinks;
+  const nextKnowledgeSections = projectKnowledgeDraftToConfig(input.draft.projectKnowledge);
+  const nextKnowledge: Record<string, unknown> = {
+    ...(input.draft.projectConfigBase?.knowledge as Record<string, unknown> | undefined),
+  };
+  delete nextKnowledge.general;
+  delete nextKnowledge.standards;
+  delete nextKnowledge.projectSpecific;
+  if (nextKnowledgeSections) {
+    Object.assign(nextKnowledge, nextKnowledgeSections);
+  }
+  if (Object.keys(nextKnowledge).length > 0) {
+    nextProject.knowledge = nextKnowledge;
+  } else {
+    delete nextProject.knowledge;
+  }
+
+  const nextLarkGroups = projectLarkGroupDraftsToConfig(input.draft.projectLarkGroups);
+  if (nextLarkGroups.length > 0) {
+    nextProject.larkGroups = nextLarkGroups;
+  } else {
+    delete nextProject.larkGroups;
   }
 
   if (Object.keys(nextProject).length === 0) {

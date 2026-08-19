@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { PluginAppStateSchema } from "./app-types.js";
+import { PluginAppDefaultAgentSchema, PluginAppStateSchema } from "./app-types.js";
+import { PluginHttpJobListFilterSchema } from "./http-management.js";
 import { PluginHttpJobSchema } from "./types.js";
 
 const PluginAppResponsePayloadSchema = z.object({
@@ -13,6 +14,8 @@ export const PluginAppGetRequestSchema = z.object({
   requestId: z.string(),
   pluginId: z.string().min(1),
   appId: z.string().min(1),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older clients omit it.
+  projectId: z.string().min(1).optional(),
 });
 
 export const PluginAppGetResponseSchema = z.object({
@@ -20,11 +23,93 @@ export const PluginAppGetResponseSchema = z.object({
   payload: PluginAppResponsePayloadSchema,
 });
 
+export const PluginAppHtmlPreviewGetRequestSchema = z.object({
+  type: z.literal("plugin.app.html-preview.get.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+  projectId: z.string().min(1),
+});
+
+export const PluginAppHtmlPreviewGetResponseSchema = z.object({
+  type: z.literal("plugin.app.html-preview.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    html: z.string().nullable(),
+    htmlPath: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppConfigureRequestSchema = z.object({
+  type: z.literal("plugin.app.configure.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+  projectId: z.string().min(1),
+  defaultAgent: PluginAppDefaultAgentSchema,
+});
+
+export const PluginAppConfigureResponseSchema = z.object({
+  type: z.literal("plugin.app.configure.response"),
+  payload: PluginAppResponsePayloadSchema,
+});
+
+export const PluginAppProjectListRequestSchema = z.object({
+  type: z.literal("plugin.app.project.list.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+});
+
+export const PluginAppProjectListResponseSchema = z.object({
+  type: z.literal("plugin.app.project.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projects: z.array(PluginAppStateSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppProjectCopyRequestSchema = z.object({
+  type: z.literal("plugin.app.project.copy.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+  sourceProjectId: z.string().min(1),
+  targetProjectId: z.string().min(1),
+});
+
+export const PluginAppProjectCopyResponseSchema = z.object({
+  type: z.literal("plugin.app.project.copy.response"),
+  payload: PluginAppResponsePayloadSchema,
+});
+
+export const PluginAppProjectDeleteRequestSchema = z.object({
+  type: z.literal("plugin.app.project.delete.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+  projectId: z.string().min(1),
+});
+
+export const PluginAppProjectDeleteResponseSchema = z.object({
+  type: z.literal("plugin.app.project.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    projectId: z.string(),
+    deleted: z.boolean(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const PluginAppGenerateRequestSchema = z.object({
   type: z.literal("plugin.app.generate.request"),
   requestId: z.string(),
   pluginId: z.string().min(1),
   appId: z.string().min(1),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older clients omit it.
+  projectId: z.string().min(1).optional(),
   prompt: z.string().trim().min(1).max(20_000),
 });
 
@@ -38,12 +123,31 @@ export const PluginAppActionSubmitRequestSchema = z.object({
   requestId: z.string(),
   pluginId: z.string().min(1),
   appId: z.string().min(1),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older clients omit it.
+  projectId: z.string().min(1).optional(),
   componentId: z.string().min(1),
   form: z.record(z.string(), z.unknown()),
 });
 
 export const PluginAppActionSubmitResponseSchema = z.object({
   type: z.literal("plugin.app.action.submit.response"),
+  payload: z.object({
+    requestId: z.string(),
+    job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginHttpServiceSubmitRequestSchema = z.object({
+  type: z.literal("plugin.http.submit.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  serviceName: z.string().min(1),
+  input: z.unknown(),
+});
+
+export const PluginHttpServiceSubmitResponseSchema = z.object({
+  type: z.literal("plugin.http.submit.response"),
   payload: z.object({
     requestId: z.string(),
     job: PluginHttpJobSchema.nullable(),
@@ -62,6 +166,91 @@ export const PluginAppJobGetResponseSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobListRequestSchema = z.object({
+  type: z.literal("plugin.app.job.list.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1).optional(),
+  serviceName: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  limit: z.number().int().positive().max(200).optional(),
+  // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
+  filters: PluginHttpJobListFilterSchema.optional(),
+});
+
+export const PluginAppJobListResponseSchema = z.object({
+  type: z.literal("plugin.app.job.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    jobs: z.array(PluginHttpJobSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobDraftCreateRequestSchema = z.object({
+  type: z.literal("plugin.app.job.draft.create.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  serviceName: z.string().min(1),
+  projectId: z.string().min(1),
+  input: z.unknown(),
+});
+
+export const PluginAppJobDraftCreateResponseSchema = z.object({
+  type: z.literal("plugin.app.job.draft.create.response"),
+  payload: z.object({
+    requestId: z.string(),
+    job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobUpdateRequestSchema = z.object({
+  type: z.literal("plugin.app.job.update.request"),
+  requestId: z.string(),
+  processId: z.string().min(1),
+  input: z.unknown(),
+});
+
+export const PluginAppJobUpdateResponseSchema = z.object({
+  type: z.literal("plugin.app.job.update.response"),
+  payload: z.object({
+    requestId: z.string(),
+    job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobStartRequestSchema = z.object({
+  type: z.literal("plugin.app.job.start.request"),
+  requestId: z.string(),
+  processId: z.string().min(1),
+});
+
+export const PluginAppJobStartResponseSchema = z.object({
+  type: z.literal("plugin.app.job.start.response"),
+  payload: z.object({
+    requestId: z.string(),
+    job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobDeleteRequestSchema = z.object({
+  type: z.literal("plugin.app.job.delete.request"),
+  requestId: z.string(),
+  processId: z.string().min(1),
+});
+
+export const PluginAppJobDeleteResponseSchema = z.object({
+  type: z.literal("plugin.app.job.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    processId: z.string(),
+    deleted: z.boolean(),
     error: z.string().nullable(),
   }),
 });

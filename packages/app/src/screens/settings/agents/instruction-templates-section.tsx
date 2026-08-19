@@ -54,7 +54,7 @@ export function InstructionTemplatesSection({
         name: "",
         description: "",
         content: "",
-        rawEntry: { id: "new", name: "New template", content: "" },
+        rawEntry: { id: "new", name: "新模板", content: "" },
       },
     ]);
   }, []);

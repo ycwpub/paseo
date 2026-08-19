@@ -130,8 +130,8 @@ export function HostPickerOption({
 }
 
 const SYSTEM_HOST_PICKER_OPTION_LABELS: Record<"add" | "all" | "enableBuiltInDaemon", string> = {
-  add: "Add host",
-  all: "All hosts",
+  add: "添加主机",
+  all: "所有主机",
   enableBuiltInDaemon: "Enable built-in daemon",
 };
 
@@ -224,12 +224,12 @@ export function HostPicker({
       id: host.serverId,
       label: host.label,
     }));
-    if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "All hosts" });
-    if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host" });
+    if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "所有主机" });
+    if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "添加主机" });
     if (includeEnableBuiltInDaemon)
       hostOptions.push({
         id: ENABLE_BUILT_IN_DAEMON_OPTION_ID,
-        label: "Enable built-in daemon",
+        label: "启用内置 Daemon",
       });
     return hostOptions;
   }, [orderedHosts, includeAllHost, includeAddHost, includeEnableBuiltInDaemon]);
@@ -317,7 +317,7 @@ export function HostPicker({
         onSelect={handleSelect}
         renderOption={renderOption}
         searchable={isSearchable}
-        searchPlaceholder="Search hosts"
+        searchPlaceholder="搜索主机"
         title={title ?? "Host"}
         open={open}
         onOpenChange={onOpenChange}

@@ -8,6 +8,12 @@
       "memory": {
         "outputPath": "memory"
       }
+    },
+    "meego-source": {
+      "host": "127.0.0.1",
+      "port": 0,
+      "path": "/byte-development/meego",
+      "workflow": "./workflows/meego-source.json"
     }
   }
 }

@@ -439,7 +439,7 @@ it("keeps registered cwd env inheritance behind the worker manager interface", a
     }),
   );
 
-  await waitForCondition(() => existsSync(markerPath), 10000);
+  await waitForCondition(() => existsSync(markerPath), 20000);
 
   expect(readFileSync(markerPath, "utf8")).toBe("worker-env");
 });

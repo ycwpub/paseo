@@ -634,6 +634,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly larkChannelService: LarkChannelService | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly memoryService: PaseoMemoryService | null;
+  private readonly cloudDocumentCacheService: CloudDocumentCacheService | null;
   private readonly teamStore: TeamStore | null;
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
@@ -1694,6 +1695,7 @@ export class VoiceAssistantWebSocketServer {
       larkChannelService: this.larkChannelService,
       assistantStore: this.assistantStore,
       memoryService: this.memoryService,
+      cloudDocumentCacheService: this.cloudDocumentCacheService,
       teamStore: this.teamStore,
       mcpStore: this.mcpStore,
       skillStore: this.skillStore,
@@ -1922,6 +1924,8 @@ export class VoiceAssistantWebSocketServer {
         workspaceMultiplicity: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
+        // COMPAT(workspaceRemove): added in v0.3.1, remove gate after 2027-02-21.
+        workspaceRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
@@ -1960,6 +1964,10 @@ export class VoiceAssistantWebSocketServer {
         workspaceGithubRepositorySearch: true,
         // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
         projectCreateDirectory: true,
+        // COMPAT(projectCreateDirectoryless): added on 2026-08-19.
+        projectCreateDirectoryless: true,
+        // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
+        projectConfigById: true,
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
         commitsList: true,
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
@@ -2009,6 +2017,10 @@ export class VoiceAssistantWebSocketServer {
         memoryScopePolicies: true,
         // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
         memoryUsers: true,
+        // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
+        memorySync: true,
+        // COMPAT(cloudKnowledgeCache): added on 2026-08-23.
+        cloudKnowledgeCache: true,
         // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
         reasoningTranslation: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
@@ -2019,6 +2031,26 @@ export class VoiceAssistantWebSocketServer {
         skills: true,
         // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
         plugins: true,
+        // COMPAT(pluginProjectScopedApps): added on 2026-08-20.
+        pluginProjectScopedApps: true,
+        // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.
+        pluginProjectDefaultAgent: true,
+        // COMPAT(pluginProjectManagement): added on 2026-08-20.
+        pluginProjectManagement: true,
+        // COMPAT(pluginProjectCopy): added on 2026-08-21.
+        pluginProjectCopy: true,
+        // COMPAT(pluginAppHtmlPreview): added on 2026-08-21.
+        pluginAppHtmlPreview: true,
+        // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobList: true,
+        // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobMutation: true,
+        // COMPAT(pluginAppJobDrafts): added on 2026-08-20.
+        pluginAppJobDrafts: true,
+        // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
+        pluginHttpServiceSubmit: true,
+        // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
+        pluginHttpServiceManagement: true,
       },
     };
   }

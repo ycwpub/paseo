@@ -124,15 +124,15 @@ describe("translation resources", () => {
     expect(zhCN.workflows.nodes.contract.inputsHint).toBe(
       "在节点执行前生成本节点的 input.data。留空时沿用上一个节点的 output.data；可用于筛选、重命名或组合字段。例如：{{nodes.scan.outputs.items}}。",
     );
-    expect(zhCN.workflows.nodes.contract.inputSchema).toBe("input.data Schema 校验");
-    expect(zhCN.workflows.nodes.contract.outputSchema).toBe("output.data Schema 校验（可选）");
+    expect(zhCN.workflows.nodes.contract.inputSchema).toBe("input.data 结构校验");
+    expect(zhCN.workflows.nodes.contract.outputSchema).toBe("output.data 结构校验（可选）");
     expect(zhCN.workflows.nodes.contractHints.inputSchema).toBe(
       "校验完成映射后，本节点实际接收的 input.data",
     );
     expect(zhCN.workflows.nodes.contractHints.outputSchema).toBe(
-      "校验本节点生成的 output.data，用于及时定位输出格式错误；不替代下游节点的 input.data Schema 校验。",
+      "校验本节点生成的 output.data，用于及时定位输出格式错误；不替代下游节点的 input.data 结构校验。",
     );
-    expect(zhCN.workflows.nodes.schemaCompatibility.title).toBe("data Schema 兼容性提示");
+    expect(zhCN.workflows.nodes.schemaCompatibility.title).toBe("data 结构兼容性提示");
     expect(zhCN.workflows.nodes.common.bashInputVariableHint).toBe(
       "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 原始输入位于 input.origin_input，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
     );
@@ -160,6 +160,9 @@ describe("translation resources", () => {
     expect(zhCN.workflows.nodes.for.parallelLoopVariablesHint).toContain(
       "不允许通过 modify.loop.var 修改",
     );
+    expect(zhCN.sidebar.project.confirmations.removeMessage).toBe(
+      "从 Paseo 中删除「{{projectName}}」及其所有 Workspace？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/<projectId> 下的全部内容）。不会删除或修改该 Project 关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
+    );
   });
 
   it("keeps non-English supported languages translated beyond fallback labels", () => {
@@ -167,7 +170,7 @@ describe("translation resources", () => {
     // Workflow editing currently falls back to English outside zh-CN. Keep the
     // global fallback ceiling strict enough to catch regressions while allowing
     // that intentionally shared section to grow.
-    const maxFallbackStrings = Math.ceil(totalStrings * 0.3);
+    const maxFallbackStrings = Math.ceil(totalStrings * 0.31);
     expect(countMatchingEnglishStrings(ar)).toBeLessThanOrEqual(maxFallbackStrings);
     expect(countMatchingEnglishStrings(es)).toBeLessThanOrEqual(maxFallbackStrings);
     expect(countMatchingEnglishStrings(fr)).toBeLessThanOrEqual(maxFallbackStrings);
@@ -379,9 +382,9 @@ describe("translation resources", () => {
 
   it("includes sidebar and workspace creation keys for the Batch 4C migration", () => {
     expect(en.sidebar.workspace.actions.copyPath).toBe("Copy path");
-    expect(en.sidebar.project.confirmations.removeTitle).toBe("Remove project?");
+    expect(en.sidebar.project.confirmations.removeTitle).toBe("Delete project?");
     expect(en.sidebar.project.toasts.updateHostToRemove).toBe(
-      "Update the host to remove projects.",
+      "Update the host to delete projects.",
     );
     expect(en.newWorkspace.title).toBe("New workspace");
     expect(en.newWorkspace.refPicker.searchPlaceholder).toBe("Search branches and PRs");

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaseoProjectKnowledgeSchema } from "./project-knowledge-schema.js";
 
 const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
 
@@ -22,11 +23,15 @@ export const PaseoServicePortAllocationSchema = z
   }, "Expected an inclusive TCP port range from 1-65535");
 export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocationSchema>;
 
+export const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY =
+  "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
+export const LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/workspaces/{{workspaceId}}";
+
 export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
   project: ["{{workspaceDirectory}}"],
   knowledge: [],
   indexSkill: [],
-  workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
+  workspaceData: [DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY],
 } as const;
 
 export type PaseoProjectDirectoryKey = keyof typeof DEFAULT_PASEO_PROJECT_DIRECTORIES;
@@ -53,13 +58,40 @@ export function resolvePaseoProjectDirectoryEntries(
         ? { path: entry, enabled: true }
         : { path: entry.path, enabled: entry.enabled !== false },
     );
+  const knowledgeEntries = resolve([
+    ...(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
+    // COMPAT(projectReferenceDirectories): reference directories were merged into
+    // knowledge directories in August 2026. Read legacy entries until they are
+    // migrated by the Project settings form.
+    ...(directories?.reference ?? []),
+  ]);
+  const knowledge = Array.from(
+    knowledgeEntries
+      .reduce((entries, entry) => {
+        const key = entry.path.trim();
+        if (!key) return entries;
+        const current = entries.get(key);
+        entries.set(key, {
+          path: current?.path ?? entry.path,
+          enabled: (current?.enabled ?? false) || entry.enabled,
+        });
+        return entries;
+      }, new Map<string, { path: string; enabled: boolean }>())
+      .values(),
+  );
+  const workspaceData = resolve(
+    directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
+  );
+  for (const entry of workspaceData) {
+    if (entry.path.trim() === LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY) {
+      entry.path = DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY;
+    }
+  }
   return {
     project: resolve(directories?.project ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.project),
-    knowledge: resolve(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
+    knowledge,
     indexSkill: resolve(directories?.indexSkill ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.indexSkill),
-    workspaceData: resolve(
-      directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
-    ),
+    workspaceData,
   };
 }
 
@@ -127,6 +159,8 @@ export const PaseoMetadataGenerationSchema = z
 export const PaseoProjectDirectoriesSchema = z
   .object({
     project: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+    // Legacy input only. Canonical writers merge these entries into `knowledge`.
+    reference: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     knowledge: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     indexSkill: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     workspaceData: z.array(PaseoProjectDirectoryEntrySchema).optional(),
@@ -149,13 +183,29 @@ export const PaseoInstructionTemplateSchema = z
   })
   .passthrough();
 
+export const PaseoProjectLarkGroupSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    botId: z.string().trim().min(1),
+    chatId: z.string().trim().min(1),
+    enabled: z.boolean().optional(),
+    messageLimit: z.number().int().positive().max(200).optional(),
+  })
+  .passthrough();
+
 export const PaseoProjectConfigSchema = z
   .object({
     directoryMode: z.enum(["single", "multiple"]).optional(),
     directories: PaseoProjectDirectoriesSchema.optional(),
+    knowledge: PaseoProjectKnowledgeSchema.optional(),
     indexSkill: PaseoProjectIndexSkillSchema.optional(),
     variables: z.record(z.string(), z.string()).optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
+    larkGroups: z.array(PaseoProjectLarkGroupSchema).optional(),
+    // COMPAT(projectLarkDocuments): legacy Project links are migrated into
+    // knowledge.general cloud documents when saved. Keep old configs parseable
+    // until 2027-02-20.
+    larkDocumentLinks: z.array(z.string()).optional(),
   })
   .passthrough();
 
@@ -207,6 +257,7 @@ export type PaseoMetadataGeneration = z.infer<typeof PaseoMetadataGenerationSche
 export type PaseoProjectDirectories = z.infer<typeof PaseoProjectDirectoriesSchema>;
 export type PaseoProjectIndexSkill = z.infer<typeof PaseoProjectIndexSkillSchema>;
 export type PaseoInstructionTemplate = z.infer<typeof PaseoInstructionTemplateSchema>;
+export type PaseoProjectLarkGroup = z.infer<typeof PaseoProjectLarkGroupSchema>;
 export type PaseoProjectConfig = z.infer<typeof PaseoProjectConfigSchema>;
 export type PaseoConfigRaw = z.infer<typeof PaseoConfigRawSchema>;
 export type PaseoConfig = z.infer<typeof PaseoConfigSchema>;

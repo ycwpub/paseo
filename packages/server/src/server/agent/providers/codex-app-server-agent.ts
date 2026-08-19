@@ -100,6 +100,7 @@ import {
   resolveBinaryVersion,
 } from "./diagnostic-utils.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "./provider-runner.js";
+import { resolveAdditionalWritableDirectories } from "../project-directory-access.js";
 import {
   MODE_APPLIES_NEXT_TURN_NOTICE,
   THINKING_APPLIES_NEXT_TURN_NOTICE,
@@ -2145,6 +2146,41 @@ function readSandboxWorkspaceWrite(
   return workspaceWrite;
 }
 
+function mergeProjectDirectoryWorkspaceWrite(
+  cwd: string,
+  projectDirectories: readonly string[] | undefined,
+  workspaceWrite: CodexProviderOptions["sandbox_workspace_write"] | null | undefined,
+): CodexProviderOptions["sandbox_workspace_write"] | undefined {
+  const writableRoots = resolveAdditionalWritableDirectories({
+    cwd,
+    projectDirectories,
+    configuredDirectories: workspaceWrite?.writable_roots,
+  });
+  if (writableRoots.length === 0) return workspaceWrite ?? undefined;
+  return {
+    ...workspaceWrite,
+    writable_roots: writableRoots,
+  };
+}
+
+function mergeProjectDirectoriesIntoResolvedSandboxPolicy(
+  cwd: string,
+  projectDirectories: readonly string[] | undefined,
+  sandboxPolicy: Record<string, unknown>,
+): Record<string, unknown> {
+  if (sandboxPolicy.type !== "workspaceWrite") return sandboxPolicy;
+  const workspaceWrite = mergeProjectDirectoryWorkspaceWrite(
+    cwd,
+    projectDirectories,
+    readSandboxWorkspaceWrite(sandboxPolicy),
+  );
+  if (!workspaceWrite?.writable_roots) return sandboxPolicy;
+  return {
+    ...sandboxPolicy,
+    writableRoots: workspaceWrite.writable_roots,
+  };
+}
+
 function toCodexSandboxPolicyType(type: string): string {
   switch (type) {
     case "workspace-write":
@@ -4103,9 +4139,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     preset: CodexModePreset,
   ): { approvalPolicy?: string; sandboxPolicyType?: string } {
     const approvalPolicy = this.hasWorkflowModeOverride ? preset.approvalPolicy : undefined;
-    const sandboxPolicyType =
-      this.providerOptions.sandbox_mode ??
-      (this.hasWorkflowModeOverride ? preset.sandbox : undefined);
+    const sandboxPolicyType = this.config.readOnlyProjectDirectories?.length
+      ? "workspace-write"
+      : (this.providerOptions.sandbox_mode ??
+        (this.hasWorkflowModeOverride ? preset.sandbox : undefined));
     if (approvalPolicy && this.providerOptions.approval_policy === undefined) {
       params.approvalPolicy = approvalPolicy;
     }
@@ -4115,10 +4152,19 @@ export class CodexAppServerAgentSession implements AgentSession {
         ...this.resolvedWorkspaceWrite,
         ...this.providerOptions.sandbox_workspace_write,
       };
+      const workspaceWriteWithProjectDirectories = mergeProjectDirectoryWorkspaceWrite(
+        this.config.cwd,
+        this.config.writableProjectDirectories,
+        workspaceWrite,
+      );
       params.sandboxPolicy =
         this.resolvedSandboxPolicy?.type === nativeType
-          ? this.resolvedSandboxPolicy
-          : toSandboxPolicy(sandboxPolicyType, workspaceWrite);
+          ? mergeProjectDirectoriesIntoResolvedSandboxPolicy(
+              this.config.cwd,
+              this.config.writableProjectDirectories,
+              this.resolvedSandboxPolicy,
+            )
+          : toSandboxPolicy(sandboxPolicyType, workspaceWriteWithProjectDirectories);
     }
     if (this.hasWorkflowModeOverride) {
       applyApprovalsReviewerParam(params, preset);
@@ -5225,7 +5271,12 @@ export class CodexAppServerAgentSession implements AgentSession {
   } {
     const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
     const approvalPolicy = this.hasWorkflowModeOverride ? preset.approvalPolicy : undefined;
-    const sandbox = this.hasWorkflowModeOverride ? preset.sandbox : undefined;
+    let sandbox: string | undefined;
+    if (this.config.readOnlyProjectDirectories?.length) {
+      sandbox = "workspace-write";
+    } else if (this.hasWorkflowModeOverride) {
+      sandbox = preset.sandbox;
+    }
     const innerConfig = this.buildCodexInnerConfig();
     const developerInstructions = composeSystemPromptParts(
       this.config.systemPrompt,
@@ -5237,7 +5288,11 @@ export class CodexAppServerAgentSession implements AgentSession {
       ...(approvalPolicy && this.providerOptions.approval_policy === undefined
         ? { approvalPolicy }
         : {}),
-      ...(sandbox && this.providerOptions.sandbox_mode === undefined ? { sandbox } : {}),
+      ...(sandbox &&
+      (this.config.readOnlyProjectDirectories?.length ||
+        this.providerOptions.sandbox_mode === undefined)
+        ? { sandbox }
+        : {}),
       ...(developerInstructions ? { developerInstructions } : {}),
       ...(innerConfig ? { config: innerConfig } : {}),
       ...(this.ephemeral ? { ephemeral: true } : {}),
@@ -5254,6 +5309,17 @@ export class CodexAppServerAgentSession implements AgentSession {
       ...this.deps.customCodexConfig,
       ...this.providerOptions,
     };
+    if (this.config.readOnlyProjectDirectories?.length) {
+      innerConfig.sandbox_mode = "workspace-write";
+    }
+    const workspaceWrite = mergeProjectDirectoryWorkspaceWrite(
+      this.config.cwd,
+      this.config.writableProjectDirectories,
+      readSandboxWorkspaceWrite(innerConfig.sandbox_workspace_write),
+    );
+    if (workspaceWrite) {
+      innerConfig.sandbox_workspace_write = workspaceWrite;
+    }
     if (this.config.mcpServers) {
       const mcpServers: Record<string, CodexMcpServerConfig> = {};
       for (const [name, serverConfig] of Object.entries(this.config.mcpServers)) {

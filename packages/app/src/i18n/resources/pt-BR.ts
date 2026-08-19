@@ -1336,23 +1336,23 @@ export const ptBR: TranslationResources = {
         openFolderFailed: "Couldn't open folder",
         hide: "Ocultar projeto",
         show: "Mostrar projeto",
-        remove: "Remover projeto",
-        removing: "Removendo...",
+        remove: "Excluir projeto",
+        removing: "Excluindo...",
       },
       hidden: {
         title: "Projetos ocultos ({{count}})",
       },
       confirmations: {
-        removeTitle: "Remover projeto?",
+        removeTitle: "Excluir projeto?",
         removeMessage:
-          'Remover "{{projectName}}" da barra lateral?\n\nOs arquivos no disco não serão alterados.',
-        removeConfirm: "Remover",
+          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
+        removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
       toasts: {
         hostDisconnected: "Host não está conectado",
-        removeFailed: "Falha ao remover alguns workspaces",
-        updateHostToRemove: "Atualize o host para remover projetos.",
+        removeFailed: "Falha ao excluir o projeto ou alguns de seus dados",
+        updateHostToRemove: "Atualize o host para excluir projetos.",
       },
       empty: {
         title: "Nenhum projeto ainda",
@@ -1386,8 +1386,10 @@ export const ptBR: TranslationResources = {
         unpin: "Desafixar",
         archive: "Arquivar",
         archiveWorkspace: "Arquivar workspace",
+        remove: "Excluir workspace",
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
+        removing: "Excluindo...",
         hiding: "Ocultando...",
       },
       bulkArchive: {
@@ -1406,6 +1408,10 @@ export const ptBR: TranslationResources = {
         hideMessage:
           'Ocultar "{{workspaceName}}" da barra lateral?\n\nOs arquivos no disco não serão alterados.',
         hideConfirm: "Ocultar",
+        removeTitle: "Excluir workspace?",
+        removeMessage:
+          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
+        removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
       rename: {
@@ -1419,6 +1425,7 @@ export const ptBR: TranslationResources = {
         branchNameCopied: "Nome da branch copiado",
         hostDisconnected: "Host não está conectado",
         hideFailed: "Falha ao ocultar workspace",
+        removeFailed: "Falha ao excluir workspace",
         archiveFailed: "Falha ao arquivar workspace",
       },
     },
@@ -1442,6 +1449,9 @@ export const ptBR: TranslationResources = {
       createWorktreeFailed: "Falha ao criar worktree",
       composerStateRequired: "O estado do composer é obrigatório",
       selectModel: "Selecione um modelo",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -2981,6 +2991,12 @@ export const ptBR: TranslationResources = {
       backToProjects: "Voltar para projetos",
       switchHost: "Trocar host",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
+      directoryless: {
+        title: "O projeto não tem diretório",
+        description:
+          "Você pode editar o nome, o ícone e a memória do projeto. As configurações salvas em paseo.json ficam disponíveis após associar um diretório.",
+      },
       memory: {
         title: "Memória do projeto",
         info: "Controle a memória deste projeto e defina quais conhecimentos duradouros o Paseo deve aprender.",
@@ -2996,6 +3012,17 @@ export const ptBR: TranslationResources = {
         saving: "Salvando...",
         saved: "Salvo",
         saveError: "Não foi possível salvar a memória do projeto",
+      },
+      edit: {
+        title: "Editar projeto",
+        name: "Nome do projeto",
+        nameLabel: "Nome do projeto",
+        icon: "Ícone do projeto",
+        chooseImage: "Escolher imagem",
+        useAutomatic: "Usar ícone padrão",
+        imageUrl: "URL de imagem ou site",
+        save: "Salvar alterações",
+        savedToast: "Projeto atualizado",
       },
       rename: {
         renamedToast: "Projeto renomeado",

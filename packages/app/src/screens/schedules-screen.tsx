@@ -51,8 +51,8 @@ type HistoryState =
   | { mode: "open"; serverId: string; schedule: AggregatedSchedule };
 
 const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
-  { value: "runnable", label: "Active", testID: "schedules-filter-active" },
-  { value: "ended", label: "Ended", testID: "schedules-filter-ended" },
+  { value: "runnable", label: "进行中", testID: "schedules-filter-active" },
+  { value: "ended", label: "已结束", testID: "schedules-filter-ended" },
 ];
 
 const EMPTY_SCHEDULES: AggregatedSchedule[] = [];
@@ -175,7 +175,7 @@ function SchedulesScreenContent(): ReactElement {
 
   return (
     <View style={styles.container}>
-      <MenuHeader title="Schedules" />
+      <MenuHeader title="定时任务" />
       <SchedulesScreenBody
         rows={visibleRows}
         loadState={loadState}
@@ -253,9 +253,9 @@ function SchedulesScreenBody({
   if (bodyState.kind === "load-error") {
     return (
       <View style={styles.centered}>
-        <Text style={styles.message}>Unable to load schedules</Text>
+        <Text style={styles.message}>无法加载定时任务</Text>
         <Button variant="ghost" onPress={onRetry} testID="schedules-retry">
-          Try again
+          重试
         </Button>
       </View>
     );
@@ -312,7 +312,7 @@ function SchedulesScreenBody({
           size="sm"
           testID="schedules-new"
         >
-          New schedule
+          新建定时任务
         </Button>
       </View>
       <ScrollView
@@ -340,12 +340,12 @@ function SchedulesEmptyState({
     <View style={styles.emptyState} testID={testID}>
       <CalendarClock size={styles.emptyIcon.width} color={styles.emptyIcon.color} />
       <View style={styles.emptyTextStack}>
-        <Text style={styles.emptyTitle}>No active schedules</Text>
-        <Text style={styles.emptyDescription}>Schedules run agents on a cadence.</Text>
-        <ExternalLink href="https://paseo.sh/docs/schedules" label="See docs" />
+        <Text style={styles.emptyTitle}>暂无进行中的定时任务</Text>
+        <Text style={styles.emptyDescription}>定时任务会按设定频率运行 Agent。</Text>
+        <ExternalLink href="https://paseo.sh/docs/schedules" label="查看文档" />
       </View>
       <Button variant="outline" leftIcon={Plus} onPress={onCreate} testID="schedules-empty-new">
-        New schedule
+        新建定时任务
       </Button>
     </View>
   );
@@ -356,7 +356,7 @@ function SchedulesEndedEmptyState(): ReactElement {
     <View style={styles.filterEmpty}>
       <View style={styles.endedEmptyState}>
         <CalendarClock size={styles.emptyIcon.width} color={styles.emptyIcon.color} />
-        <Text style={styles.emptyTitle}>No ended schedules</Text>
+        <Text style={styles.emptyTitle}>暂无已结束的定时任务</Text>
       </View>
     </View>
   );
@@ -368,7 +368,7 @@ function ScheduleHostErrorsBanner({ errors }: { errors: ScheduleHostError[] }): 
       <View style={styles.errorsBanner} testID="schedules-host-errors">
         {errors.map((error) => (
           <Text key={error.serverId} style={styles.errorsBannerText}>
-            {`${error.serverName}: Could not load schedules`}
+            {`${error.serverName}: 无法加载定时任务`}
           </Text>
         ))}
       </View>

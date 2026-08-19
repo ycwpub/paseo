@@ -1,11 +1,50 @@
 import { describe, expect, it } from "vitest";
 import {
   PluginAppActionSubmitRequestSchema,
+  PluginAppConfigureRequestSchema,
   PluginAppGenerateRequestSchema,
+  PluginAppGetRequestSchema,
   PluginAppGetResponseSchema,
+  PluginAppJobDraftCreateRequestSchema,
+  PluginAppJobDeleteRequestSchema,
+  PluginAppJobListRequestSchema,
+  PluginAppJobListResponseSchema,
+  PluginAppJobStartRequestSchema,
+  PluginAppJobUpdateRequestSchema,
+  PluginAppProjectDeleteRequestSchema,
+  PluginAppProjectListResponseSchema,
+  PluginHttpServiceSubmitRequestSchema,
 } from "./app-rpc-schemas.js";
 
 describe("plugin app RPC schemas", () => {
+  it("accepts older Project-unaware app requests and state", () => {
+    expect(
+      PluginAppGetRequestSchema.parse({
+        type: "plugin.app.get.request",
+        requestId: "request-legacy",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+      }).projectId,
+    ).toBeUndefined();
+    const legacyResponse = PluginAppGetResponseSchema.parse({
+      type: "plugin.app.get.response",
+      payload: {
+        requestId: "request-legacy",
+        app: {
+          pluginId: "demo-plugin",
+          appId: "dashboard",
+          document: null,
+          conversation: [],
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
+        error: null,
+      },
+    });
+    expect(legacyResponse.payload.app?.projectId).toBeUndefined();
+    expect(legacyResponse.payload.app?.defaultAgent).toBeNull();
+  });
+
   it("accepts Agent interface generation requests", () => {
     expect(
       PluginAppGenerateRequestSchema.parse({
@@ -13,9 +52,72 @@ describe("plugin app RPC schemas", () => {
         requestId: "request-1",
         pluginId: "demo-plugin",
         appId: "dashboard",
+        projectId: "project-1",
         prompt: "Build a form",
       }).prompt,
     ).toBe("Build a form");
+  });
+
+  it("requires a Provider and model when configuring a plugin project", () => {
+    expect(
+      PluginAppConfigureRequestSchema.parse({
+        type: "plugin.app.configure.request",
+        requestId: "request-configure",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+        defaultAgent: {
+          provider: "codex",
+          model: "gpt-5.6",
+        },
+      }).defaultAgent,
+    ).toEqual({ provider: "codex", model: "gpt-5.6" });
+    expect(() =>
+      PluginAppConfigureRequestSchema.parse({
+        type: "plugin.app.configure.request",
+        requestId: "request-configure-invalid",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+        defaultAgent: {
+          provider: "codex",
+          model: "",
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("lists and deletes configured plugin projects", () => {
+    expect(
+      PluginAppProjectListResponseSchema.parse({
+        type: "plugin.app.project.list.response",
+        payload: {
+          requestId: "request-project-list",
+          projects: [
+            {
+              pluginId: "demo-plugin",
+              appId: "dashboard",
+              projectId: "project-1",
+              defaultAgent: { provider: "codex", model: "gpt-5.6" },
+              document: null,
+              conversation: [],
+              createdAt: "2026-08-20T00:00:00.000Z",
+              updatedAt: "2026-08-20T00:00:00.000Z",
+            },
+          ],
+          error: null,
+        },
+      }).payload.projects,
+    ).toHaveLength(1);
+    expect(
+      PluginAppProjectDeleteRequestSchema.parse({
+        type: "plugin.app.project.delete.request",
+        requestId: "request-project-delete",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+      }).projectId,
+    ).toBe("project-1");
   });
 
   it("accepts structured form submissions", () => {
@@ -25,6 +127,7 @@ describe("plugin app RPC schemas", () => {
         requestId: "request-2",
         pluginId: "demo-plugin",
         appId: "dashboard",
+        projectId: "project-1",
         componentId: "submit",
         form: { question: "hello", count: 2 },
       }).form,
@@ -39,6 +142,7 @@ describe("plugin app RPC schemas", () => {
         app: {
           pluginId: "demo-plugin",
           appId: "dashboard",
+          projectId: "project-1",
           document: {
             version: 1,
             title: "Dashboard",
@@ -52,5 +156,95 @@ describe("plugin app RPC schemas", () => {
       },
     });
     expect(response.payload.app?.document?.title).toBe("Dashboard");
+  });
+
+  it("lists plugin jobs by project", () => {
+    expect(
+      PluginAppJobListRequestSchema.parse({
+        type: "plugin.app.job.list.request",
+        requestId: "request-4",
+        pluginId: "byte-development",
+        serviceName: "development",
+        projectId: "project-1",
+        limit: 50,
+        filters: {
+          statuses: ["succeeded", "failed"],
+          listenerId: "listener-1",
+          createdBefore: "2026-08-20T10:00:00.000Z",
+        },
+      }),
+    ).toMatchObject({
+      projectId: "project-1",
+      limit: 50,
+      filters: { listenerId: "listener-1" },
+    });
+
+    expect(
+      PluginAppJobListResponseSchema.parse({
+        type: "plugin.app.job.list.response",
+        payload: {
+          requestId: "request-4",
+          jobs: [],
+          error: null,
+        },
+      }).payload.jobs,
+    ).toEqual([]);
+  });
+
+  it("updates and deletes persisted plugin jobs", () => {
+    expect(
+      PluginAppJobUpdateRequestSchema.parse({
+        type: "plugin.app.job.update.request",
+        requestId: "request-5",
+        processId: "process-1",
+        input: { flow_title: "更新后的流程" },
+      }).input,
+    ).toEqual({ flow_title: "更新后的流程" });
+    expect(
+      PluginAppJobDeleteRequestSchema.parse({
+        type: "plugin.app.job.delete.request",
+        requestId: "request-6",
+        processId: "process-1",
+      }).processId,
+    ).toBe("process-1");
+  });
+
+  it("creates and starts draft plugin jobs", () => {
+    expect(
+      PluginAppJobDraftCreateRequestSchema.parse({
+        type: "plugin.app.job.draft.create.request",
+        requestId: "request-draft",
+        pluginId: "byte-development",
+        serviceName: "development",
+        projectId: "project-1",
+        input: { flow_title: "支付优化" },
+      }),
+    ).toMatchObject({
+      projectId: "project-1",
+      input: { flow_title: "支付优化" },
+    });
+    expect(
+      PluginAppJobStartRequestSchema.parse({
+        type: "plugin.app.job.start.request",
+        requestId: "request-start",
+        processId: "process-1",
+      }).processId,
+    ).toBe("process-1");
+  });
+
+  it("submits an installed plugin HTTP service directly", () => {
+    expect(
+      PluginHttpServiceSubmitRequestSchema.parse({
+        type: "plugin.http.submit.request",
+        requestId: "request-7",
+        pluginId: "byte-development",
+        serviceName: "meego-source",
+        input: { action: "list" },
+      }),
+    ).toMatchObject({
+      pluginId: "byte-development",
+      serviceName: "meego-source",
+      input: { action: "list" },
+    });
   });
 });

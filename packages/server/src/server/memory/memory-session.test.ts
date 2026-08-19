@@ -28,6 +28,24 @@ describe("MemorySession", () => {
     let current = state(false);
     const controller: MemoryController = {
       getState: () => current,
+      getSyncSnapshot: () => ({
+        version: 1,
+        sourceHostId: "host-1",
+        exportedAt: "2026-08-20T00:00:00.000Z",
+        users: [
+          {
+            id: "default",
+            name: "默认用户",
+            createdAt: "2026-08-20T00:00:00.000Z",
+            updatedAt: "2026-08-20T00:00:00.000Z",
+          },
+        ],
+        summaries: [],
+        details: [],
+        policies: [],
+        scopePolicies: [],
+      }),
+      mergeSyncSnapshot: () => current,
       update: (input) => {
         current = { ...current, settings: input.settings ?? current.settings };
         return current;

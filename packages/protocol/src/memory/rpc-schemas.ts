@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { PaseoMemoryStateSchema, PaseoMemoryUpdateInputSchema } from "./types.js";
+import {
+  PaseoMemoryStateSchema,
+  PaseoMemorySyncSnapshotSchema,
+  PaseoMemoryUpdateInputSchema,
+} from "./types.js";
 
 const MemoryResponsePayloadSchema = z.object({
   requestId: z.string(),
@@ -35,5 +39,30 @@ export const MemoryClearRequestSchema = z.object({
 
 export const MemoryClearResponseSchema = z.object({
   type: z.literal("memory.clear.response"),
+  payload: MemoryResponsePayloadSchema,
+});
+
+export const MemoryGetSyncSnapshotRequestSchema = z.object({
+  type: z.literal("memory.get_sync_snapshot.request"),
+  requestId: z.string(),
+});
+
+export const MemoryGetSyncSnapshotResponseSchema = z.object({
+  type: z.literal("memory.get_sync_snapshot.response"),
+  payload: z.object({
+    requestId: z.string(),
+    snapshot: PaseoMemorySyncSnapshotSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const MemoryMergeSyncSnapshotRequestSchema = z.object({
+  type: z.literal("memory.merge_sync_snapshot.request"),
+  requestId: z.string(),
+  snapshot: PaseoMemorySyncSnapshotSchema,
+});
+
+export const MemoryMergeSyncSnapshotResponseSchema = z.object({
+  type: z.literal("memory.merge_sync_snapshot.response"),
   payload: MemoryResponsePayloadSchema,
 });

@@ -142,7 +142,19 @@ describe("plugin package", () => {
     expect(result.skills.map((skill) => skill.name)).toEqual(["review"]);
     expect(result.mcpServers.map((server) => server.name)).toEqual(["inline", "fileServer"]);
     expect(result.manifest.interface?.logoDark).toBe("./assets/logo-dark.png");
-    expect(result.apps).toEqual([{ id: "dashboard", category: "Productivity" }]);
+    expect(result.apps).toEqual([
+      {
+        id: "dashboard",
+        category: "Productivity",
+        project: {
+          idField: "projectId",
+          selectorLabel: "Project",
+          selectorDescription: "插件页面、交互、流程和历史记录都归属于所选 Project。",
+          createNameLabel: "新 Project 名称",
+          createNamePlaceholder: "输入自定义 Project 名称",
+        },
+      },
+    ]);
     expect(result.unsupportedComponents).toEqual([]);
   });
 

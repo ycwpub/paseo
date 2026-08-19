@@ -171,6 +171,8 @@ import { ProviderCatalogSession } from "./session/provider/provider-catalog-sess
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
+import { initializeDirectorylessProjectConfig } from "./project/project-config-storage.js";
+import { resolveProjectSourceDirectory } from "./project/project-source-directory.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
@@ -183,6 +185,8 @@ import type { AssistantStore } from "./assistants/assistant-store.js";
 import { buildAssistantInitialPrompt } from "./assistants/assistant-prompt.js";
 import { MemorySession } from "./memory/memory-session.js";
 import type { PaseoMemoryService } from "./memory/memory-service.js";
+import type { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
+import { CloudDocumentCacheSession } from "./knowledge/cloud-cache/cloud-cache-session.js";
 import { TeamStore } from "./team/team-store.js";
 import { TeamSession } from "./team/team-session.js";
 import {
@@ -194,7 +198,7 @@ import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
 import type { PluginService } from "./plugin/plugin-service.js";
-import { PluginSession } from "./plugin/plugin-session.js";
+import { isPluginSessionRequest, PluginSession } from "./plugin/plugin-session.js";
 import {
   createAidenClaudeReasoningTranslationService,
   type ReasoningTranslationService,
@@ -285,6 +289,12 @@ import {
   createProjectDirectory,
   ProjectDirectoryRequestError,
 } from "./project-directory-service.js";
+import {
+  ensureManagedProjectStorageRoot,
+  removeManagedProjectStorage,
+  removeManagedWorkspaceStorage,
+  resolveProjectPath,
+} from "./project/project-storage-paths.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
@@ -570,6 +580,7 @@ export interface SessionOptions {
   larkChannelService?: LarkChannelService | null;
   assistantStore?: AssistantStore | null;
   memoryService?: PaseoMemoryService | null;
+  cloudDocumentCacheService?: CloudDocumentCacheService | null;
   teamStore?: TeamStore | null;
   mcpStore?: McpStore | null;
   skillStore?: SkillStore | null;
@@ -796,6 +807,7 @@ export class Session {
   private readonly larkChannelSession: LarkChannelSession | null;
   private readonly assistantSession: AssistantSession | null;
   private readonly memorySession: MemorySession | null;
+  private readonly cloudDocumentCacheSession: CloudDocumentCacheSession | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
   private readonly teamStore: TeamStore | null;
@@ -868,6 +880,7 @@ export class Session {
       larkChannelService,
       assistantStore,
       memoryService,
+      cloudDocumentCacheService,
       teamStore,
       mcpStore,
       skillStore,
@@ -1032,6 +1045,7 @@ export class Session {
         emit: (msg) => this.emit(msg),
       },
       projectRegistry: this.projectRegistry,
+      paseoHome: this.paseoHome,
       logger: this.sessionLogger,
     });
     this.daemonSession = new DaemonSession({
@@ -1086,6 +1100,13 @@ export class Session {
       ? new MemorySession({
           emit: (msg) => this.emit(msg),
           service: memoryService,
+          logger: this.sessionLogger,
+        })
+      : null;
+    this.cloudDocumentCacheSession = cloudDocumentCacheService
+      ? new CloudDocumentCacheSession({
+          emit: (msg) => this.emit(msg),
+          service: cloudDocumentCacheService,
           logger: this.sessionLogger,
         })
       : null;
@@ -1237,6 +1258,7 @@ export class Session {
       listProviderSubagentActivity: async () => this.agentManager.listProviderSubagentActivity(),
       listTerminalActivityContributions: () => this.listTerminalActivityContributions(),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
+      buildProjectDescriptor: (project) => this.buildProjectDescriptor(project),
       buildWorkspaceDescriptor: (input) => this.buildWorkspaceDescriptor(input),
     });
 
@@ -2111,6 +2133,7 @@ export class Session {
       this.dispatchLoopMessage(msg) ??
       this.dispatchAssistantMessage(msg) ??
       this.dispatchMemoryMessage(msg) ??
+      this.dispatchCloudKnowledgeMessage(msg) ??
       this.dispatchChannelMessage(msg) ??
       this.dispatchTeamMessage(msg) ??
       this.dispatchMcpMessage(msg) ??
@@ -2616,6 +2639,8 @@ export class Session {
     }
   }
 
+  // This method intentionally centralizes the workspace/project wire surface.
+  // eslint-disable-next-line complexity
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
@@ -2643,6 +2668,8 @@ export class Session {
         return this.handleProjectAddRequest(msg);
       case "project.create_directory.request":
         return this.handleProjectCreateDirectoryRequest(msg);
+      case "project.create_directoryless.request":
+        return this.handleProjectCreateDirectorylessRequest(msg);
       case "workspace.github.search_repositories.request":
         return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
       case "project.github.clone.request":
@@ -2651,6 +2678,8 @@ export class Session {
         return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
+      case "workspace.remove.request":
+        return this.handleWorkspaceRemoveRequest(msg);
       case "workspace.create.request":
         return this.handleWorkspaceCreateRequest(msg);
       case "workspace.clear_attention.request":
@@ -2846,7 +2875,19 @@ export class Session {
       case "memory.get_state.request":
       case "memory.update_state.request":
       case "memory.clear.request":
+      case "memory.get_sync_snapshot.request":
+      case "memory.merge_sync_snapshot.request":
         return this.memorySession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchCloudKnowledgeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "knowledge.cloud_document.cache.request":
+      case "knowledge.cloud_document.get_status.request":
+        return this.cloudDocumentCacheSession?.handleRequest(msg);
       default:
         return undefined;
     }
@@ -2917,21 +2958,10 @@ export class Session {
   }
 
   private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "plugin.list.request":
-      case "plugin.marketplace.add.request":
-      case "plugin.marketplace.remove.request":
-      case "plugin.install.request":
-      case "plugin.set_enabled.request":
-      case "plugin.uninstall.request":
-      case "plugin.app.get.request":
-      case "plugin.app.generate.request":
-      case "plugin.app.action.submit.request":
-      case "plugin.app.job.get.request":
-        return this.pluginSession?.handleRequest(msg);
-      default:
-        return undefined;
+    if (isPluginSessionRequest(msg)) {
+      return this.pluginSession?.handleRequest(msg);
     }
+    return undefined;
   }
 
   private dispatchReasoningTranslationMessage(
@@ -3494,6 +3524,16 @@ export class Session {
           removedWorkspaceIds.push(workspaceId);
         }
 
+        await Promise.all(
+          projectWorkspaces.map((workspace) =>
+            removeManagedWorkspaceStorage(
+              this.paseoHome,
+              workspace.projectId,
+              workspace.workspaceId,
+            ),
+          ),
+        );
+        await removeManagedProjectStorage(this.paseoHome, resolvedProjectId);
         await this.projectRegistry.remove(resolvedProjectId);
         await removeProjectCustomIcon({
           paseoHome: this.paseoHome,
@@ -3552,6 +3592,93 @@ export class Session {
           error: getErrorMessageOr(error, "Failed to remove project"),
         },
       });
+    }
+  }
+
+  private async handleWorkspaceRemoveRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.remove.request" }>,
+  ): Promise<void> {
+    const { workspaceId, requestId } = request;
+    this.sessionLogger.info({ workspaceId, requestId }, "session: workspace.remove.request");
+
+    let shouldClearArchiving = false;
+    try {
+      const workspace = await this.workspaceRegistry.get(workspaceId);
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${workspaceId}`);
+      }
+
+      if (!workspace.archivedAt) {
+        shouldClearArchiving = true;
+        this.markWorkspaceArchiving([workspaceId], new Date().toISOString());
+        await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId]);
+        this.workspaceSetupRuntime.stop(workspaceId);
+        await archiveWorkspaceContents(
+          {
+            agentManager: this.agentManager,
+            agentStorage: this.agentStorage,
+            killTerminalsForWorkspace: (id) =>
+              this.terminalController.killTerminalsForWorkspace(id),
+            sessionLogger: this.sessionLogger,
+          },
+          workspaceId,
+        );
+      }
+
+      const activeSiblingExists = (await this.workspaceRegistry.list()).some(
+        (candidate) =>
+          candidate.workspaceId !== workspaceId &&
+          candidate.projectId === workspace.projectId &&
+          !candidate.archivedAt,
+      );
+      const project = activeSiblingExists
+        ? null
+        : await this.projectRegistry.get(workspace.projectId);
+      await removeManagedWorkspaceStorage(this.paseoHome, workspace.projectId, workspaceId);
+      await this.workspaceRegistry.remove(workspaceId);
+      await this.teardownArchivedWorkspace(workspaceId);
+
+      const subscription = this.workspaceUpdatesSubscription;
+      const lastEmitted = subscription?.lastEmittedByWorkspaceId.get(workspaceId);
+      if (
+        subscription &&
+        !this.shouldSkipWorkspaceRemoval(lastEmitted, undefined) &&
+        this.workspaceUpdatesSubscription === subscription
+      ) {
+        this.bufferOrEmitWorkspaceUpdate(subscription, {
+          kind: "remove",
+          id: workspaceId,
+          ...(project ? { emptyProject: this.buildProjectDescriptor(project) } : {}),
+        });
+      }
+
+      this.emit({
+        type: "workspace.remove.response",
+        payload: {
+          requestId,
+          workspaceId,
+          accepted: true,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, workspaceId, requestId },
+        "session: workspace.remove.request error",
+      );
+      this.emit({
+        type: "workspace.remove.response",
+        payload: {
+          requestId,
+          workspaceId,
+          accepted: false,
+          error: getErrorMessageOr(error, "Failed to remove workspace"),
+        },
+      });
+    } finally {
+      if (shouldClearArchiving) {
+        this.clearWorkspaceArchiving([workspaceId]);
+      }
     }
   }
 
@@ -5223,6 +5350,9 @@ export class Session {
   ): Promise<WorkspaceDescriptorPayload> {
     const resolvedProjectRecord =
       projectRecord ?? (await this.projectRegistry.get(workspace.projectId));
+    if (resolvedProjectRecord) {
+      ensureManagedProjectStorageRoot(this.paseoHome, resolvedProjectRecord.projectId);
+    }
 
     let diffStat: { additions: number; deletions: number } | null = null;
     const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
@@ -5243,7 +5373,9 @@ export class Session {
         : workspace.projectId,
       projectCustomName: resolvedProjectRecord?.customName ?? null,
       projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
-      projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
+      projectRootPath: resolvedProjectRecord
+        ? resolveProjectPath({ paseoHome: this.paseoHome, project: resolvedProjectRecord })
+        : workspace.cwd,
       workspaceDirectory: workspace.cwd,
       worktreeSlug,
       projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
@@ -5324,6 +5456,9 @@ export class Session {
     result: CreatePaseoWorktreeResult,
   ): Promise<WorkspaceDescriptorPayload> {
     const projectRecord = await this.projectRegistry.get(result.workspace.projectId);
+    if (projectRecord) {
+      ensureManagedProjectStorageRoot(this.paseoHome, projectRecord.projectId);
+    }
     return {
       id: result.workspace.workspaceId,
       projectId: result.workspace.projectId,
@@ -5332,7 +5467,9 @@ export class Session {
         : result.workspace.projectId,
       projectCustomName: projectRecord?.customName ?? null,
       projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
-      projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
+      projectRootPath: projectRecord
+        ? resolveProjectPath({ paseoHome: this.paseoHome, project: projectRecord })
+        : result.repoRoot,
       workspaceDirectory: result.workspace.cwd,
       worktreeSlug: basename(result.worktree.worktreePath),
       projectKind: projectRecord?.kind ?? "git",
@@ -5603,6 +5740,16 @@ export class Session {
       this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
       return;
     }
+    await removeManagedWorkspaceStorage(
+      this.paseoHome,
+      existingWorkspace.projectId,
+      workspaceId,
+    ).catch((error) => {
+      this.sessionLogger.warn(
+        { err: error, projectId: existingWorkspace.projectId, workspaceId },
+        "Failed to clean up archived Workspace storage",
+      );
+    });
 
     if (!existingWorkspace.archivedAt) {
       const activeSiblings = (await this.workspaceRegistry.list()).filter(
@@ -6354,6 +6501,18 @@ export class Session {
     }
 
     const cwd = expandTilde(request.source.path);
+    if (request.source.projectId) {
+      const project = await this.projectRegistry.get(request.source.projectId);
+      if (project && !project.archivedAt) {
+        const sourceDirectory = resolveProjectSourceDirectory({
+          paseoHome: this.paseoHome,
+          project,
+        });
+        if (sourceDirectory.kind === "managed" && resolve(sourceDirectory.path) === resolve(cwd)) {
+          await mkdir(sourceDirectory.path, { recursive: true });
+        }
+      }
+    }
     const directoryExists = await this.filesystem.isDirectory(cwd).catch(() => false);
     if (!directoryExists) {
       this.emit({
@@ -6670,6 +6829,77 @@ export class Session {
           project: null,
           error: requestError.message,
           errorCode: requestError.code,
+        },
+      });
+    }
+  }
+
+  private async handleProjectCreateDirectorylessRequest(
+    request: Extract<SessionInboundMessage, { type: "project.create_directoryless.request" }>,
+  ): Promise<void> {
+    const name = request.name.trim();
+    if (!name) {
+      this.emit({
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
+          error: "Project name is required",
+        },
+      });
+      return;
+    }
+    try {
+      if (!this.projectRegistry.createDirectoryless) {
+        throw new Error("This host does not support directoryless projects");
+      }
+      const project = await this.projectRegistry.createDirectoryless({
+        displayName: name,
+        timestamp: new Date().toISOString(),
+      });
+      const initialized = initializeDirectorylessProjectConfig({
+        paseoHome: this.paseoHome,
+        project,
+      });
+      if (!initialized.ok) {
+        await this.projectRegistry.remove(project.projectId);
+        await removeManagedProjectStorage(this.paseoHome, project.projectId).catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, projectId: project.projectId },
+            "Failed to clean up Project storage after initialization failure",
+          );
+        });
+        throw new Error(`Failed to initialize Project configuration: ${initialized.error.code}`);
+      }
+      const sourceDirectory = resolveProjectSourceDirectory({
+        paseoHome: this.paseoHome,
+        project,
+      });
+      if (sourceDirectory.kind === "managed") {
+        await mkdir(sourceDirectory.path, { recursive: true });
+      }
+      this.sessionLogger.info(
+        { projectId: project.projectId, projectName: name },
+        "Directoryless project created",
+      );
+      this.emit({
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: request.requestId,
+          project: this.buildProjectDescriptor(project),
+          error: null,
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create directoryless project";
+      this.sessionLogger.error({ err: error, projectName: name }, message);
+      this.emit({
+        type: "project.create_directoryless.response",
+        payload: {
+          requestId: request.requestId,
+          project: null,
+          error: message,
         },
       });
     }

@@ -185,4 +185,237 @@ describe("PluginHttpServiceManager", () => {
     expect(manager.getJob(job.id)?.status).toBe("failed");
     expect(memoryWriter.write).not.toHaveBeenCalled();
   });
+
+  it("edits and deletes completed jobs but protects active jobs", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-mutation-"));
+    let finishRun:
+      | ((value: {
+          status: "succeeded";
+          outputPayload: string;
+          error: null;
+          errorCode: null;
+          endedAt: string;
+        }) => void)
+      | null = null;
+    const completedRun = new Promise<{
+      status: "succeeded";
+      outputPayload: string;
+      error: null;
+      errorCode: null;
+      endedAt: string;
+    }>((resolve) => {
+      finishRun = resolve;
+    });
+    manager = new PluginHttpServiceManager({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      workflowService: {
+        runScript: async () => ({ id: "workflow-run-mutation" }),
+        waitForRun: async () => completedRun,
+      },
+    });
+
+    await manager.reconcile([binding()]);
+    const job = await manager.submit("demo-plugin", "processor", { title: "旧标题" });
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(job.id)?.status !== "running";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await expect(manager.updateJob(job.id, { title: "新标题" })).rejects.toThrow(
+      "cannot be edited",
+    );
+    await expect(manager.deleteJob(job.id)).rejects.toThrow("cannot be deleted");
+
+    finishRun?.({
+      status: "succeeded",
+      outputPayload: JSON.stringify({ data: { ok: true } }),
+      error: null,
+      errorCode: null,
+      endedAt: "2026-08-19T12:00:00.000Z",
+    });
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(job.id)?.status !== "succeeded";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await expect(manager.updateJob(job.id, { title: "新标题" })).resolves.toMatchObject({
+      input: { title: "新标题" },
+    });
+    await expect(manager.deleteJob(job.id)).resolves.toBe(true);
+    expect(manager.getJob(job.id)).toBeNull();
+  });
+
+  it("creates an editable draft and starts it only after explicit confirmation", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-draft-"));
+    const runScript = vi.fn(async ({ inputPayload }: { inputPayload: string }) => {
+      expect(JSON.parse(inputPayload)).toEqual({
+        flow_title: "支付链路优化",
+        prd: "降低支付延迟",
+      });
+      return { id: "workflow-run-draft" };
+    });
+    manager = new PluginHttpServiceManager({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      workflowService: {
+        runScript,
+        waitForRun: async () => ({
+          status: "succeeded",
+          outputPayload: JSON.stringify({ data: { stage: "release" } }),
+          error: null,
+          errorCode: null,
+          endedAt: "2026-08-20T10:05:00.000Z",
+        }),
+      },
+      now: () => new Date("2026-08-20T10:00:00.000Z"),
+    });
+
+    await manager.reconcile([binding()]);
+    const draft = await manager.createDraft("demo-plugin", "processor", "project-1", {
+      flow_title: "支付链路优化",
+    });
+    expect(draft).toMatchObject({
+      status: "draft",
+      projectId: "project-1",
+      input: { flow_title: "支付链路优化" },
+    });
+    expect(runScript).not.toHaveBeenCalled();
+
+    await manager.updateJob(draft.id, {
+      flow_title: "支付链路优化",
+      prd: "降低支付延迟",
+    });
+    await expect(manager.startJob(draft.id)).resolves.toMatchObject({
+      id: draft.id,
+      status: "queued",
+    });
+    await expect(manager.startJob(draft.id)).rejects.toThrow(
+      "Only draft plugin jobs can be started",
+    );
+
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(draft.id)?.status !== "succeeded";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(manager.getJob(draft.id)).toMatchObject({
+      status: "succeeded",
+      workflowRunId: "workflow-run-draft",
+      result: { data: { stage: "release" } },
+    });
+    expect(runScript).toHaveBeenCalledTimes(1);
+  });
+
+  it("manages multiple listeners, runs a selected node, and exposes submit/query/delete APIs", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-managed-"));
+    let now = new Date("2026-08-20T08:00:00.000Z");
+    const runScript = vi.fn(async () => ({ id: "workflow-run-managed" }));
+    manager = new PluginHttpServiceManager({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      workflowService: {
+        runScript,
+        waitForRun: async () => ({
+          status: "succeeded",
+          outputPayload: JSON.stringify({ data: { answer: "ok" } }),
+          error: null,
+          errorCode: null,
+          endedAt: now.toISOString(),
+        }),
+      },
+      now: () => now,
+    });
+    await manager.reconcile([binding()]);
+
+    const saved = await manager.saveProjectConfig({
+      version: 1,
+      pluginId: "demo-plugin",
+      projectId: "project-1",
+      listeners: [
+        {
+          id: "listener-1",
+          name: "处理服务",
+          enabled: true,
+          host: "127.0.0.1",
+          port: 0,
+          defaultJobApi: {
+            enabled: true,
+            submitPath: "/jobs",
+            queryPath: "/jobs/{requestId}",
+            deletePath: "/jobs/{requestId}",
+            workflowPath: "/tmp/processor.json",
+            targetNodeId: "review",
+            requestTemplate: '{"data":"{{request}}"}',
+            responseTemplate: "",
+          },
+          routes: [],
+          retention: {
+            enabled: true,
+            maxAgeSeconds: 60,
+            statuses: ["succeeded"],
+          },
+        },
+        {
+          id: "listener-2",
+          name: "停用服务",
+          enabled: false,
+          host: "127.0.0.1",
+          port: 0,
+          routes: [],
+          retention: {
+            enabled: false,
+            maxAgeSeconds: 3600,
+            statuses: ["succeeded"],
+          },
+        },
+      ],
+    });
+    expect(saved.runtimes).toEqual([
+      expect.objectContaining({ listenerId: "listener-1", status: "running" }),
+      expect.objectContaining({ listenerId: "listener-2", status: "stopped" }),
+    ]);
+    const boundPort = saved.runtimes[0]!.boundPort!;
+    const submit = await fetch(`http://127.0.0.1:${boundPort}/jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: "hello" }),
+    });
+    const accepted = (await submit.json()) as { processId: string; statusUrl: string };
+    await waitForSucceeded(accepted.statusUrl);
+    expect(runScript).toHaveBeenCalledWith({
+      scriptPath: "/tmp/processor.json",
+      inputPayload: JSON.stringify({ data: { question: "hello" } }),
+      targetNodeId: "review",
+    });
+
+    const remove = await fetch(`http://127.0.0.1:${boundPort}/jobs/${accepted.processId}`, {
+      method: "DELETE",
+    });
+    expect(remove.status).toBe(200);
+    expect(manager.getJob(accepted.processId)).toBeNull();
+
+    const retained = await manager.submit("demo-plugin", "project-1:listener-1:default", {
+      question: "cleanup",
+    });
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(retained.id)?.status !== "succeeded";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    now = new Date("2026-08-20T08:02:00.000Z");
+    await expect(manager.cleanupProjectJobs("demo-plugin", "project-1")).resolves.toEqual([
+      retained.id,
+    ]);
+  });
 });

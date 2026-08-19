@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { PluginHttpJobSchema, type PluginHttpJob } from "@getpaseo/protocol/messages";
+import {
+  PluginHttpJobSchema,
+  type PluginHttpJob,
+  type PluginHttpJobStatus,
+} from "@getpaseo/protocol/messages";
 import {
   ensurePrivateDirectory,
   ensurePrivateFile,
@@ -13,8 +17,50 @@ type PluginHttpJobUpdater = (job: PluginHttpJob) => PluginHttpJob;
 const JOB_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+function readProjectId(input: unknown): string | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const value = record.projectId ?? record.project_id;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function activityTimestamp(job: PluginHttpJob): string {
+  return job.endedAt ?? job.startedAt ?? job.createdAt;
+}
+
+function matchesJobListOptions(
+  job: PluginHttpJob,
+  options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
+  },
+): boolean {
+  if (options.pluginId && job.pluginId !== options.pluginId) return false;
+  if (options.serviceName && job.serviceName !== options.serviceName) return false;
+  if (
+    options.projectId &&
+    job.projectId !== options.projectId &&
+    readProjectId(job.input) !== options.projectId
+  ) {
+    return false;
+  }
+  if (options.statuses?.length && !options.statuses.includes(job.status)) return false;
+  if (options.listenerId && job.listenerId !== options.listenerId) return false;
+  if (options.routeId && job.routeId !== options.routeId) return false;
+  if (options.createdBefore && job.createdAt >= options.createdBefore) return false;
+  if (options.createdAfter && job.createdAt <= options.createdAfter) return false;
+  return true;
+}
+
 export class PluginHttpJobStore {
   private readonly mutations = new Map<string, Promise<unknown>>();
+  private readonly jobs = new Map<string, PluginHttpJob>();
 
   constructor(private readonly directory: string) {}
 
@@ -43,6 +89,10 @@ export class PluginHttpJobStore {
   async create(input: {
     pluginId: string;
     serviceName: string;
+    projectId?: string;
+    listenerId?: string;
+    routeId?: string;
+    status?: PluginHttpJobStatus;
     input: unknown;
     createdAt: string;
   }): Promise<PluginHttpJob> {
@@ -50,7 +100,10 @@ export class PluginHttpJobStore {
       id: randomUUID(),
       pluginId: input.pluginId,
       serviceName: input.serviceName,
-      status: "queued",
+      projectId: input.projectId,
+      listenerId: input.listenerId,
+      routeId: input.routeId,
+      status: input.status ?? "queued",
       input: input.input,
       result: null,
       workflowRunId: null,
@@ -68,10 +121,35 @@ export class PluginHttpJobStore {
   }
 
   get(id: string): PluginHttpJob | null {
+    const cached = this.jobs.get(id);
+    if (cached) return cached;
     const filePath = this.filePath(id);
     if (!filePath || !existsSync(filePath)) return null;
     ensurePrivateFile(filePath);
-    return PluginHttpJobSchema.parse(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
+    const job = PluginHttpJobSchema.parse(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
+    this.jobs.set(job.id, job);
+    return job;
+  }
+
+  list(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
+  }): PluginHttpJob[] {
+    ensurePrivateDirectory(this.directory);
+    const jobs: PluginHttpJob[] = [];
+    for (const job of this.jobs.values()) {
+      if (!matchesJobListOptions(job, options)) continue;
+      jobs.push(job);
+    }
+    jobs.sort((left, right) => activityTimestamp(right).localeCompare(activityTimestamp(left)));
+    return jobs.slice(0, options.limit ?? 100);
   }
 
   async update(id: string, updater: PluginHttpJobUpdater): Promise<PluginHttpJob | null> {
@@ -87,6 +165,26 @@ export class PluginHttpJobStore {
     });
   }
 
+  async delete(id: string): Promise<boolean> {
+    return this.serialize(id, () => {
+      const filePath = this.filePath(id);
+      if (!filePath || (!this.jobs.has(id) && !existsSync(filePath))) {
+        return Promise.resolve(false);
+      }
+      rmSync(filePath, { force: true });
+      this.jobs.delete(id);
+      return Promise.resolve(true);
+    });
+  }
+
+  async deleteMany(ids: string[]): Promise<string[]> {
+    const deleted: string[] = [];
+    for (const id of new Set(ids)) {
+      if (await this.delete(id)) deleted.push(id);
+    }
+    return deleted;
+  }
+
   private filePath(id: string): string | null {
     return JOB_ID_PATTERN.test(id) ? path.join(this.directory, `${id}.json`) : null;
   }
@@ -96,6 +194,7 @@ export class PluginHttpJobStore {
     const filePath = this.filePath(job.id);
     if (!filePath) throw new Error(`Invalid Plugin HTTP job ID: ${job.id}`);
     writePrivateFileAtomicSync(filePath, JSON.stringify(job, null, 2));
+    this.jobs.set(job.id, job);
   }
 
   private async serialize<T>(id: string, mutation: () => Promise<T>): Promise<T> {

@@ -116,17 +116,15 @@ export default function ProjectSettingsScreen({
     [projectId, projects, serverId],
   );
   const selectedHost = getProjectHostEntry(project, serverId, projectId);
+  const settingsTarget = resolveProjectSettingsTarget(selectedHost);
   const selectedSnapshot = useHostRuntimeSnapshot(serverId);
+  const supportsProjectConfigById = useHostFeature(serverId, "projectConfigById");
   const isHostGone =
     Boolean(serverId) &&
     (selectedSnapshot?.connectionStatus === "offline" ||
       selectedSnapshot?.connectionStatus === "error");
 
   const client = useHostRuntimeClient(serverId);
-  const canEdit =
-    selectedHost?.isOnline === true &&
-    selectedHost.serverId.trim().length > 0 &&
-    selectedHost.repoRoot.trim().length > 0;
 
   if (!project || !selectedHost || !client || !canEdit) {
     return (
@@ -140,7 +138,7 @@ export default function ProjectSettingsScreen({
   return (
     <ProjectSettingsBody
       project={project}
-      selectedHost={selectedHost}
+      selectedHost={settingsTarget.host}
       client={client}
       isHostGone={isHostGone}
       onBackToProjects={onBackToProjects}
@@ -218,13 +216,15 @@ function ProjectSettingsBody({
   }, []);
   const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
   const queryKey = useMemo(
-    () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
-    [selectedHost.serverId, selectedHost.repoRoot],
+    () => ["project-config", selectedHost.serverId, selectedHost.projectId] as const,
+    [selectedHost.projectId, selectedHost.serverId],
   );
 
   const readQuery = useQuery({
     queryKey,
-    queryFn: () => client.readProjectConfig(selectedHost.repoRoot),
+    queryFn: () =>
+      client.readProjectConfig(selectedHost.repoRoot, undefined, selectedHost.projectId),
+    enabled: canEditProjectConfig,
     retry: false,
   });
   const refetchProjectConfig = readQuery.refetch;
@@ -298,6 +298,9 @@ function ProjectSettingsBody({
         <Text style={styles.projectId} selectable>
           {t("settings.project.projectId")}: {selectedHost.projectId}
         </Text>
+        <Text style={styles.projectPath} selectable>
+          {t("settings.project.projectPath")}: {selectedHost.projectPath}
+        </Text>
       </View>
 
       <ProjectEditSheet
@@ -314,6 +317,10 @@ function ProjectSettingsBody({
       />
 
       <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
+      <ProjectLinkedPluginProjects
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
 
       {renderContent({
         readQuery,
@@ -395,7 +402,7 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  const formKey = `${selectedHost.serverId}::${selectedHost.projectId}::${revisionToKey(loadedRevision)}`;
   return (
     <ProjectConfigForm
       key={formKey}
@@ -403,6 +410,7 @@ function renderContent({
       revision={loadedRevision}
       hasUncommittedWorktreeSetupChanges={hasUncommittedWorktreeSetupChanges}
       repoRoot={selectedHost.repoRoot}
+      projectId={selectedHost.projectId}
       serverId={selectedHost.serverId}
       queryKey={queryKey}
       client={client}
@@ -485,6 +493,7 @@ interface ProjectConfigFormProps {
   revision: PaseoConfigRevision | null;
   hasUncommittedWorktreeSetupChanges: boolean;
   repoRoot: string;
+  projectId: string;
   serverId: string;
   queryKey: readonly [string, string, string];
   client: DaemonClient;
@@ -496,6 +505,7 @@ function ProjectConfigForm({
   revision,
   hasUncommittedWorktreeSetupChanges,
   repoRoot,
+  projectId,
   serverId,
   queryKey,
   client,
@@ -525,6 +535,7 @@ function ProjectConfigForm({
     }) => {
       return client.writeProjectConfig({
         repoRoot,
+        projectId,
         config: input.config,
         expectedRevision: input.expectedRevision,
       });
@@ -626,6 +637,16 @@ function ProjectConfigForm({
     (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
     [updateDraft],
   );
+  const handleProjectKnowledgeChange = useCallback(
+    (projectKnowledge: ProjectConfigDraft["projectKnowledge"]) =>
+      updateDraft((d) => ({ ...d, projectKnowledge })),
+    [updateDraft],
+  );
+  const handleProjectLarkGroupsChange = useCallback(
+    (projectLarkGroups: ProjectConfigDraft["projectLarkGroups"]) =>
+      updateDraft((d) => ({ ...d, projectLarkGroups })),
+    [updateDraft],
+  );
 
   const handleSaveGlobalIndexInterval = useCallback(() => {
     const parsed = Number(globalIndexIntervalText.trim());
@@ -718,6 +739,10 @@ function ProjectConfigForm({
     [draft.scripts, t],
   );
   const projectValidation = useMemo(() => validateProjectConfiguration(draft, t), [draft, t]);
+  const cloudCacheTarget = useMemo(
+    () => ({ serverId, scope: "project" as const, projectId }),
+    [projectId, serverId],
+  );
 
   const scriptsTrailing = useMemo(
     () => (
@@ -778,6 +803,20 @@ function ProjectConfigForm({
         onGlobalIndexIntervalChange={setGlobalIndexIntervalText}
         onSaveGlobalIndexInterval={handleSaveGlobalIndexInterval}
         onVariablesChange={handleVariablesChange}
+      />
+
+      <ProjectKnowledgeEditor
+        value={draft.projectKnowledge}
+        error={projectValidation.projectKnowledgeError}
+        onChange={handleProjectKnowledgeChange}
+        cloudCacheTarget={cloudCacheTarget}
+      />
+
+      <ProjectLarkContextEditor
+        serverId={serverId}
+        value={draft.projectLarkGroups}
+        error={projectValidation.projectLarkGroupError}
+        onChange={handleProjectLarkGroupsChange}
       />
 
       <SettingsGroup
@@ -944,6 +983,8 @@ interface ProjectConfigurationValidation {
   projectDirectoryError: string | null;
   indexIntervalError: string | null;
   variableError: string | null;
+  projectKnowledgeError: string | null;
+  projectLarkGroupError: string | null;
 }
 
 function validateProjectConfiguration(
@@ -979,12 +1020,22 @@ function validateProjectConfiguration(
       name: duplicateVariable,
     });
   }
+  const projectKnowledgeError = projectKnowledgeDraftError(draft.projectKnowledge);
+  const projectLarkGroupError = projectLarkGroupDraftError(draft.projectLarkGroups);
 
   return {
-    hasErrors: Boolean(projectDirectoryError || indexIntervalError || variableError),
+    hasErrors: Boolean(
+      projectDirectoryError ||
+      indexIntervalError ||
+      variableError ||
+      projectKnowledgeError ||
+      projectLarkGroupError,
+    ),
     projectDirectoryError,
     indexIntervalError,
     variableError,
+    projectKnowledgeError,
+    projectLarkGroupError,
   };
 }
 
@@ -1034,13 +1085,6 @@ function ProjectResourcesEditor({
           projectDirectoryPath={projectDirectoryPath}
           error={validation.projectDirectoryError}
           onModeChange={onDirectoryModeChange}
-          onChange={onDirectoryChange}
-        />
-        <DirectoryListSection
-          title={t("settings.project.resources.knowledge.title")}
-          hint={t("settings.project.resources.knowledge.hint")}
-          directoryKey="knowledge"
-          values={draft.projectDirectories.knowledge}
           onChange={onDirectoryChange}
         />
         <DirectoryListSection
@@ -1648,6 +1692,12 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontFamily: Platform.select({ web: "monospace", default: undefined }),
   },
+  projectPath: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: Platform.select({ web: "monospace", default: undefined }),
+    flexShrink: 1,
+  },
   nameEditorRow: {
     flex: 1,
     flexDirection: "row",
@@ -1672,6 +1722,9 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[6],
   },
   errorBlock: {
+    marginTop: theme.spacing[2],
+  },
+  noticeBlock: {
     marginTop: theme.spacing[2],
   },
   emptyScripts: {

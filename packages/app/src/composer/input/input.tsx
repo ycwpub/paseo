@@ -358,7 +358,7 @@ function MarkdownExpandButton({
       <TooltipTrigger>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Open expanded Markdown editor"
+          accessibilityLabel="打开 Markdown 大文本编辑器"
           onPress={onPress}
           disabled={disabled}
           style={style}
@@ -367,7 +367,7 @@ function MarkdownExpandButton({
           {renderIcon}
         </Pressable>
       </TooltipTrigger>
-      <TooltipContent>Expand Markdown editor</TooltipContent>
+      <TooltipContent>展开 Markdown 编辑器</TooltipContent>
     </Tooltip>
   );
 }
@@ -403,8 +403,8 @@ function ExpandedMarkdownEditor({
 }) {
   const header = useMemo<SheetHeader>(
     () => ({
-      title: "Markdown input",
-      subtitle: "Write multiple lines, lists, code blocks, and other Markdown.",
+      title: "Markdown 输入",
+      subtitle: "支持输入多行文本、列表、代码块和其他 Markdown 内容。",
     }),
     [],
   );
@@ -458,7 +458,7 @@ function ExpandedMarkdownEditor({
           onChangeText={onChangeText}
           placeholder={placeholder ?? t("composer.placeholders.fallback")}
           uniProps={textInputPlaceholderColorMapping}
-          accessibilityLabel="Expanded Markdown input"
+          accessibilityLabel="Markdown 大文本输入"
           style={styles.expandedEditorInput}
           multiline
           autoFocus={isWeb}

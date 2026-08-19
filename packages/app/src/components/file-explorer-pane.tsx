@@ -430,6 +430,7 @@ export function FileExplorerPane({
   const [selectedDirectoryType, setSelectedDirectoryType] =
     useState<PaseoProjectDirectoryKey>("project");
   const [selectedRootIndex, setSelectedRootIndex] = useState(0);
+  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const workspace = useSessionStore((state) => {
@@ -488,6 +489,7 @@ export function FileExplorerPane({
   }, [selectedRootIndex, selectedRoots.length]);
 
   const handleSelectDirectoryType = useCallback((type: PaseoProjectDirectoryKey) => {
+    setPendingEdit(null);
     setSelectedDirectoryType(type);
     setSelectedRootIndex(0);
   }, []);
@@ -537,7 +539,6 @@ export function FileExplorerPane({
   const fsEntryDuplicateEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
   );
-  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
   const downloadFile = useFileDownload({
     serverId,
     workspaceId,

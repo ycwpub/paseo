@@ -702,6 +702,7 @@ function resolveStaticLoadConfigSettings(
     clientAccessRequireApproval: resolveClientAccessRequireApproval(persisted),
     projectIndexUpdateIntervalMinutes:
       persisted.daemon?.projectIndexing?.updateIntervalMinutes ?? 1440,
+    hostKnowledge: persisted.daemon?.knowledge,
     instructionTemplates: persisted.daemon?.instructionTemplates,
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
@@ -740,6 +741,7 @@ export function resolveConfigFromPersisted(
     browserToolsEnabled,
     clientAccessRequireApproval,
     projectIndexUpdateIntervalMinutes,
+    hostKnowledge,
     instructionTemplates,
     autoArchiveAfterMerge,
     appendSystemPrompt,
@@ -787,6 +789,7 @@ export function resolveConfigFromPersisted(
     git: resolveGitProcessConfig(env, persisted),
     clientAccessRequireApproval,
     projectIndexUpdateIntervalMinutes,
+    hostKnowledge,
     instructionTemplates,
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,

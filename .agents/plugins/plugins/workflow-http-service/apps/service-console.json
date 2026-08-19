@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "title": "HTTP 服务控制台",
+  "description": "管理当前 Project 的多端口 Workflow 异步 HTTP 服务、处理路径和请求记录。",
+  "components": [
+    {
+      "id": "overview",
+      "type": "text",
+      "text": "专用控制台支持端口独立启停、多个 Path、默认提交/查询/删除接口、请求状态机、批量删除和自动清理。"
+    },
+    {
+      "id": "request",
+      "type": "textarea",
+      "label": "请求内容",
+      "required": true,
+      "placeholder": "描述需要异步处理的内容"
+    },
+    {
+      "id": "submit",
+      "type": "button",
+      "label": "启动处理",
+      "variant": "primary",
+      "action": {
+        "type": "http_service",
+        "serviceName": "processor",
+        "input": {
+          "request": "{{form.request}}"
+        }
+      }
+    },
+    {
+      "id": "status",
+      "type": "status",
+      "label": "处理状态"
+    },
+    {
+      "id": "result",
+      "type": "result",
+      "label": "处理结果"
+    }
+  ]
+}

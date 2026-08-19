@@ -17,8 +17,10 @@
 @property(nonatomic, strong) PaseoIslandPanel *panel;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) id pendingState;
+@property(nonatomic, strong) id outsideClickMonitor;
 @property(nonatomic, assign) BOOL webReady;
 @property(nonatomic, assign) BOOL readyEmitted;
+@property(nonatomic, assign) BOOL expanded;
 @end
 
 @implementation PaseoIslandHost
@@ -46,14 +48,19 @@
     NSNumber *displayId = [message[@"displayId"] isKindOfClass:[NSNumber class]]
                               ? message[@"displayId"]
                               : nil;
+    BOOL expanded =
+        [state isKindOfClass:[NSDictionary class]] && [state[@"expanded"] boolValue];
+    self.expanded = expanded;
     [self positionOnDisplay:displayId
                       width:(CGFloat)width.doubleValue
-                     height:(CGFloat)height.doubleValue];
+                     height:(CGFloat)height.doubleValue
+                   expanded:expanded];
     [self sendPendingState];
     [self.panel orderFrontRegardless];
     return;
   }
   if ([type isEqualToString:@"hide"]) {
+    self.expanded = NO;
     [self.panel orderOut:nil];
     return;
   }
@@ -87,6 +94,7 @@
   panel.releasedWhenClosed = NO;
   panel.ignoresMouseEvents = NO;
   panel.animationBehavior = NSWindowAnimationBehaviorNone;
+  panel.sharingType = NSWindowSharingReadOnly;
   panel.level = NSScreenSaverWindowLevel;
   panel.collectionBehavior =
       NSWindowCollectionBehaviorCanJoinAllSpaces |
@@ -97,10 +105,81 @@
 
   self.panel = panel;
   self.webView = webView;
+  [self installOutsideClickMonitor];
   [webView loadHTMLString:html baseURL:nil];
 }
 
-- (void)positionOnDisplay:(NSNumber *)displayId width:(CGFloat)width height:(CGFloat)height {
+- (void)installOutsideClickMonitor {
+  if (self.outsideClickMonitor != nil) return;
+  __weak PaseoIslandHost *weakSelf = self;
+  self.outsideClickMonitor =
+      [NSEvent addGlobalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseUp |
+                                                       NSEventMaskRightMouseUp |
+                                                       NSEventMaskOtherMouseUp)
+                                             handler:^(NSEvent *event) {
+                                               PaseoIslandHost *strongSelf = weakSelf;
+                                               if (strongSelf == nil || !strongSelf.expanded ||
+                                                   !strongSelf.panel.isVisible) {
+                                                 return;
+                                               }
+                                               NSPoint location = NSEvent.mouseLocation;
+                                               if (NSPointInRect(location, strongSelf.panel.frame)) {
+                                                 return;
+                                               }
+                                               strongSelf.expanded = NO;
+                                               [strongSelf emit:@{
+                                                 @"type" : @"setExpanded",
+                                                 @"expanded" : @NO,
+                                               }];
+                                             }];
+}
+
+- (CGFloat)menuBarDepthForScreen:(NSScreen *)screen {
+  NSRect screenFrame = screen.frame;
+  NSRect visibleFrame = screen.visibleFrame;
+  CGFloat depth = MAX(0, NSMaxY(screenFrame) - NSMaxY(visibleFrame));
+  if (@available(macOS 12.0, *)) {
+    depth = MAX(depth, screen.safeAreaInsets.top);
+  }
+  return depth > 0 ? depth : 38;
+}
+
+- (CGFloat)notchWidthForScreen:(NSScreen *)screen {
+  if (@available(macOS 12.0, *)) {
+    NSRect leftArea = screen.auxiliaryTopLeftArea;
+    NSRect rightArea = screen.auxiliaryTopRightArea;
+    if (!NSIsEmptyRect(leftArea) && !NSIsEmptyRect(rightArea)) {
+      CGFloat width = NSMinX(rightArea) - NSMaxX(leftArea);
+      if (width >= 80 && width <= 420) return width;
+    }
+  }
+  return 0;
+}
+
+- (NSSize)resolvedSizeForScreen:(NSScreen *)screen
+                 requestedWidth:(CGFloat)requestedWidth
+                requestedHeight:(CGFloat)requestedHeight
+                       expanded:(BOOL)expanded {
+  NSRect screenFrame = screen.frame;
+  if (expanded) {
+    return NSMakeSize(
+        MIN(MAX(304, requestedWidth), MAX(304, NSWidth(screenFrame) - 24)),
+        MIN(MAX(180, requestedHeight), MAX(180, NSHeight(screenFrame) - 24)));
+  }
+
+  CGFloat notchWidth = [self notchWidthForScreen:screen];
+  CGFloat compactWidth = notchWidth > 0 ? notchWidth + 108 : requestedWidth;
+  CGFloat menuBarHeight = [self menuBarDepthForScreen:screen];
+  CGFloat compactHeight = menuBarHeight > 0 ? menuBarHeight : requestedHeight;
+  return NSMakeSize(
+      MIN(MAX(280, compactWidth), MAX(280, NSWidth(screenFrame) - 24)),
+      MIN(MAX(32, compactHeight), 42));
+}
+
+- (void)positionOnDisplay:(NSNumber *)displayId
+                    width:(CGFloat)requestedWidth
+                   height:(CGFloat)requestedHeight
+                 expanded:(BOOL)expanded {
   NSScreen *target = nil;
   for (NSScreen *screen in NSScreen.screens) {
     NSNumber *number = screen.deviceDescription[@"NSScreenNumber"];
@@ -113,12 +192,17 @@
   if (target == nil || self.panel == nil) return;
 
   NSRect screenFrame = target.frame;
+  NSSize size = [self resolvedSizeForScreen:target
+                             requestedWidth:requestedWidth
+                            requestedHeight:requestedHeight
+                                   expanded:expanded];
   NSRect frame = NSMakeRect(
-      NSMidX(screenFrame) - width / 2,
-      NSMaxY(screenFrame) - height,
-      width,
-      height);
-  [self.panel setFrame:frame display:YES];
+      NSMidX(screenFrame) - size.width / 2,
+      NSMaxY(screenFrame) - size.height,
+      size.width,
+      size.height);
+  BOOL shouldAnimate = self.panel.isVisible && !NSEqualRects(self.panel.frame, frame);
+  [self.panel setFrame:frame display:YES animate:shouldAnimate];
   [self emit:@{
     @"type" : @"positioned",
     @"displayId" : displayId ?: @0,
@@ -126,6 +210,7 @@
     @"top" : @(NSMaxY(screenFrame) - NSMaxY(frame)),
     @"width" : @(frame.size.width),
     @"height" : @(frame.size.height),
+    @"expanded" : @(expanded),
   }];
 }
 
@@ -169,6 +254,12 @@
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
   [self markWebReady];
+}
+
+- (void)dealloc {
+  if (self.outsideClickMonitor != nil) {
+    [NSEvent removeMonitor:self.outsideClickMonitor];
+  }
 }
 
 @end

@@ -27,18 +27,18 @@ const EMPTY_MCP_JSON = `{
     "weather": {
       "command": "uv",
       "args": ["--directory", "/path/to/weather", "run", "weather.py"],
-      "description": "Weather information server"
+      "description": "天气信息服务"
     }
   }
 }`;
 
 function McpUpgradeCard() {
   return (
-    <SettingsSection title="MCP servers">
+    <SettingsSection title="MCP 服务">
       <View style={settingsStyles.card} testID="host-page-mcp-upgrade-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>MCP server management requires a newer host</Text>
+            <Text style={settingsStyles.rowTitle}>MCP 服务管理需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
               Update the selected Paseo daemon to add, edit, test, and remove MCP servers.
             </Text>
@@ -62,7 +62,7 @@ function statusLabel(server: McpServer): string {
   if (server.lastTestStatus === "error") return "Error";
   if (server.lastTestStatus === "testing") return "Testing";
   if (server.lastTestStatus === "disconnected") return "Disconnected";
-  return server.enabled ? "Not tested" : "Disabled";
+  return server.enabled ? "未测试" : "已禁用";
 }
 
 function buildServerJson(server: McpServer): string {
@@ -73,7 +73,7 @@ function buildServerJson(server: McpServer): string {
 function McpServerTools({ server }: { server: McpServer }) {
   const tools = server.tools ?? [];
   if (tools.length === 0) {
-    return <Text style={styles.toolsEmpty}>No tools reported yet.</Text>;
+    return <Text style={styles.toolsEmpty}>尚未上报工具。</Text>;
   }
   return (
     <View style={styles.toolsList}>
@@ -222,7 +222,7 @@ export function McpSection({ serverId }: McpSectionProps) {
     try {
       parsedJson = JSON.parse(jsonInput);
     } catch (error) {
-      setJsonError(error instanceof Error ? error.message : "Enter valid JSON.");
+      setJsonError(error instanceof Error ? error.message : "请输入有效的 JSON。");
       return;
     }
 
@@ -233,7 +233,7 @@ export function McpSection({ serverId }: McpSectionProps) {
     }
 
     if (editingServer && parseResult.servers.length !== 1) {
-      setJsonError("Editing expects exactly one MCP server in the JSON.");
+      setJsonError("编辑时 JSON 中必须且只能包含一个 MCP 服务。");
       return;
     }
 
@@ -307,8 +307,8 @@ export function McpSection({ serverId }: McpSectionProps) {
     (server: McpServer) => {
       void confirmDialog({
         title: `Delete ${server.name}?`,
-        message: "This removes the MCP server from this host.",
-        confirmLabel: "Delete",
+        message: "这会从当前主机移除该 MCP 服务。",
+        confirmLabel: "删除",
         destructive: true,
       }).then((confirmed) => {
         if (confirmed) {
@@ -324,7 +324,7 @@ export function McpSection({ serverId }: McpSectionProps) {
     setRefreshMessage(null);
     try {
       await mcp.refreshServers();
-      setRefreshMessage("Local Skill and MCP resources scanned.");
+      setRefreshMessage("已扫描本地 Skill 和 MCP 资源。");
     } catch {
       // The hook exposes the mutation error below.
     }
@@ -334,7 +334,7 @@ export function McpSection({ serverId }: McpSectionProps) {
     if (mcp.isLoading) {
       return (
         <View style={settingsStyles.row}>
-          <Text style={settingsStyles.rowHint}>Loading MCP servers…</Text>
+          <Text style={settingsStyles.rowHint}>正在加载 MCP 服务…</Text>
         </View>
       );
     }
@@ -357,7 +357,7 @@ export function McpSection({ serverId }: McpSectionProps) {
     return (
       <View style={settingsStyles.row}>
         <Text style={settingsStyles.rowHint}>
-          {mcp.servers.length === 0 ? "No MCP servers configured yet." : "No matching MCP servers."}
+          {mcp.servers.length === 0 ? "尚未配置 MCP 服务。" : "没有匹配的 MCP 服务。"}
         </Text>
       </View>
     );
@@ -378,10 +378,10 @@ export function McpSection({ serverId }: McpSectionProps) {
 
   return (
     <View testID="host-page-mcp">
-      <SettingsSection title="MCP servers">
+      <SettingsSection title="MCP 服务">
         <View style={styles.headerCard}>
           <View style={styles.headerText}>
-            <Text style={settingsStyles.rowTitle}>Manage Model Context Protocol servers</Text>
+            <Text style={settingsStyles.rowTitle}>管理 Model Context Protocol 服务</Text>
             <Text style={settingsStyles.rowHint}>
               Import Claude/Codex-style MCP JSON, enable or disable servers, and test connections.
             </Text>
@@ -403,7 +403,7 @@ export function McpSection({ serverId }: McpSectionProps) {
       </SettingsSection>
 
       {editorOpen ? (
-        <SettingsSection title={editingServer ? "Edit MCP server" : "Import MCP JSON"}>
+        <SettingsSection title={editingServer ? "编辑 MCP 服务" : "导入 MCP JSON"}>
           <View style={styles.formCard}>
             <Field
               label="MCP JSON"
@@ -412,7 +412,7 @@ export function McpSection({ serverId }: McpSectionProps) {
               <SettingsTextAreaCard
                 value={jsonInput}
                 onChangeText={setJsonInput}
-                accessibilityLabel="MCP JSON"
+                accessibilityLabel="MCP JSON 配置"
                 placeholder={EMPTY_MCP_JSON}
                 style={styles.jsonInput}
               />
@@ -428,7 +428,7 @@ export function McpSection({ serverId }: McpSectionProps) {
                 loading={mcp.isMutating}
                 disabled={!mcp.isConnected}
               >
-                {editingServer ? "Save server" : "Import"}
+                {editingServer ? "保存服务" : "导入"}
               </Button>
               <Button variant="outline" onPress={resetEditor} disabled={mcp.isMutating}>
                 Cancel
@@ -440,11 +440,11 @@ export function McpSection({ serverId }: McpSectionProps) {
 
       <SettingsSection title={`Configured servers (${mcp.servers.length})`}>
         <View style={styles.searchCard}>
-          <Field label="Search">
+          <Field label="搜索">
             <FormTextInput
               initialValue={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search servers and tools"
+              placeholder="搜索服务和工具"
             />
           </Field>
         </View>

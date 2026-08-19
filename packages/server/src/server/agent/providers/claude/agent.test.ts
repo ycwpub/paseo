@@ -770,6 +770,36 @@ describe("ClaudeAgentSession features", () => {
     await session.close();
   });
 
+  test("adds every other Project repository to Claude additional directories", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const cwd = path.resolve("/repo/settle-charge-tool");
+    const session = await client.createSession({
+      provider: "claude",
+      cwd,
+      writableProjectDirectories: [cwd, "/repo/settle-charge-facade"],
+      providerOptions: {
+        additionalDirectories: ["/repo/shared"],
+      },
+    });
+
+    await (
+      session as unknown as {
+        ensureQuery(): Promise<unknown>;
+      }
+    ).ensureQuery();
+
+    expect(queryFactory.mock.calls[0]?.[0].options.additionalDirectories).toEqual([
+      "/repo/shared",
+      "/repo/settle-charge-facade",
+    ]);
+    await session.close();
+  });
+
   test("lists fast mode only for supported Opus models", async () => {
     const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
 
@@ -1731,7 +1761,7 @@ describe("ClaudeAgentSession context window usage", () => {
     ]);
   });
 
-  test("maps Aiden Claude commentary before a tool call to a readable reasoning summary", async () => {
+  test("keeps Aiden Claude text commentary distinct from native thinking", async () => {
     const session = await createSessionForTest();
     const messageId = "assistant-redacted-commentary";
     const commentary = "我先检查当前实现，再运行相关测试。";
@@ -1806,7 +1836,7 @@ describe("ClaudeAgentSession context window usage", () => {
       events.filter(
         (event) =>
           event.type === "timeline" &&
-          event.item.type === "reasoning" &&
+          event.item.type === "assistant_message" &&
           event.item.text === commentary,
       ),
     ).toHaveLength(1);
@@ -1814,18 +1844,20 @@ describe("ClaudeAgentSession context window usage", () => {
       events.some(
         (event) =>
           event.type === "timeline" &&
-          event.item.type === "assistant_message" &&
+          event.item.type === "reasoning" &&
           event.item.text === commentary,
       ),
     ).toBe(false);
     expect(
-      events.findIndex((event) => event.type === "timeline" && event.item.type === "reasoning"),
+      events.findIndex(
+        (event) => event.type === "timeline" && event.item.type === "assistant_message",
+      ),
     ).toBeLessThan(
       events.findIndex((event) => event.type === "timeline" && event.item.type === "tool_call"),
     );
   });
 
-  test("maps persisted Aiden Claude commentary before a tool call to reasoning", async () => {
+  test("keeps persisted Aiden Claude text commentary distinct from native thinking", async () => {
     const session = await createSessionForTest();
     const events = session.translateMessageToEvents({
       type: "assistant",
@@ -1851,7 +1883,7 @@ describe("ClaudeAgentSession context window usage", () => {
       {
         type: "timeline",
         provider: "claude",
-        item: { type: "reasoning", text: "正在检查 provider 事件。" },
+        item: { type: "assistant_message", text: "正在检查 provider 事件。" },
       },
       expect.objectContaining({
         type: "timeline",
@@ -1882,7 +1914,7 @@ describe("ClaudeAgentSession context window usage", () => {
       {
         type: "timeline",
         provider: "claude",
-        item: { type: "reasoning", text: "Readable summary" },
+        item: { type: "reasoning", text: "Readable summary", source: "thinking" },
       },
       {
         type: "timeline",

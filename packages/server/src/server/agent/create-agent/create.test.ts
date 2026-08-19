@@ -11,6 +11,8 @@ import { AgentStorage } from "../agent-storage.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../../worktree-session.js";
 import { createAgentCommand } from "./create.js";
 import type { ManagedAgent } from "../agent-manager.js";
+import { CloudDocumentCacheService } from "../../knowledge/cloud-cache/service.js";
+import { CloudDocumentAuthenticationError } from "../../knowledge/cloud-cache/source.js";
 
 const logger = createTestLogger();
 
@@ -235,7 +237,9 @@ test("mcp create injects Project context for child agents in an existing workspa
     join(root, "paseo.json"),
     JSON.stringify({
       project: {
+        directoryMode: "multiple",
         directories: {
+          project: [".", "../facade"],
           knowledge: ["docs/rules"],
           indexSkill: [".paseo/index"],
           workspaceData: [".paseo/workspaces"],
@@ -293,7 +297,8 @@ test("mcp create injects Project context for child agents in an existing workspa
 
     expect(createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: expect.stringContaining("Knowledge directories (mandatory instructions)"),
+        writableProjectDirectories: [root, join(root, "../facade")],
+        systemPrompt: expect.stringContaining("General knowledge directories"),
       }),
       undefined,
       expect.objectContaining({ workspaceId: "ws-context" }),
@@ -307,6 +312,74 @@ test("mcp create injects Project context for child agents in an existing workspa
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("create requests cloud knowledge authorization in the new Agent conversation", async () => {
+  const paseoHome = mkdtempSync(join(tmpdir(), "paseo-create-cloud-auth-"));
+  const snapshot = {
+    id: "agent-cloud-auth",
+    provider: "claude",
+    cwd: paseoHome,
+    runtimeInfo: null,
+  } as ManagedAgent;
+  const requestFrameworkPermission = vi.fn(async () => "framework-auth");
+  const source = "https://bytedance.larkoffice.com/wiki/private";
+  const cloudDocumentCacheService = new CloudDocumentCacheService({
+    paseoHome,
+    logger: createTestLogger(),
+    reader: {
+      fetch: vi.fn(async () => {
+        throw new CloudDocumentAuthenticationError({
+          kind: "authentication_required",
+          source,
+          message: "需要登录飞书",
+          loginUrl: "https://login.example.com",
+          authCommand: "bytedcli insearch login",
+        });
+      }),
+    },
+  });
+  const dependencies: Parameters<typeof createAgentCommand>[0] = {
+    agentManager: {
+      createAgent: vi.fn(async () => snapshot),
+      requestFrameworkPermission,
+    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
+    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
+    logger: createTestLogger(),
+    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
+    paseoHome,
+    cloudDocumentCacheService,
+    readGlobalKnowledge: () => ({
+      standards: [{ type: "cloud-document", source }],
+    }),
+  };
+
+  try {
+    await createAgentCommand(dependencies, {
+      kind: "mcp",
+      provider: "claude",
+      cwd: paseoHome,
+      workspaceId: "ws-cloud-auth",
+      title: "cloud auth",
+      background: true,
+      notifyOnFinish: false,
+    });
+
+    expect(requestFrameworkPermission).toHaveBeenCalledWith(
+      "agent-cloud-auth",
+      expect.objectContaining({
+        request: expect.objectContaining({
+          title: "云文档需要登录授权",
+          metadata: expect.objectContaining({
+            permissionType: "cloud-knowledge-auth",
+            source,
+          }),
+        }),
+      }),
+    );
+  } finally {
+    rmSync(paseoHome, { recursive: true, force: true });
   }
 });
 

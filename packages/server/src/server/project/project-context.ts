@@ -8,6 +8,7 @@ import {
   type PaseoProjectConfig,
 } from "@getpaseo/protocol/paseo-config-schema";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
+import { normalizeWritableProjectDirectories } from "../agent/project-directory-access.js";
 import { composeSystemPromptParts } from "../agent/system-prompt.js";
 import type {
   PersistedProjectRecord,
@@ -16,6 +17,27 @@ import type {
   WorkspaceRegistry,
 } from "../workspace-registry.js";
 import { readPaseoConfigJson } from "../../utils/paseo-config-file.js";
+import { readProjectConfigForProject } from "./project-config-storage.js";
+import {
+  buildProjectKnowledgePrompt,
+  EMPTY_PROJECT_KNOWLEDGE,
+  type ResolvedProjectKnowledge,
+} from "./project-knowledge-context.js";
+import {
+  ensureManagedProjectStorageRoot,
+  ensureManagedWorkspacePath,
+  resolveManagedWorkspacePath,
+  resolveProjectPath as resolveProjectStoragePath,
+} from "./project-storage-paths.js";
+import {
+  buildProjectLarkContextPrompt,
+  readProjectLarkContextSnapshots,
+} from "./project-lark-context.js";
+import type { CloudDocumentCacheService } from "../knowledge/cloud-cache/service.js";
+import type { CloudDocumentAuthenticationIssue } from "../knowledge/cloud-cache/types.js";
+import { resolveProjectKnowledgeWithCloudCache } from "./project-cloud-knowledge-context.js";
+
+const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
 
 export interface ResolvedProjectDirectories {
   project: string[];
@@ -28,8 +50,10 @@ export interface ProjectAgentContext {
   project: PersistedProjectRecord;
   workspace: PersistedWorkspaceRecord;
   directories: ResolvedProjectDirectories;
+  knowledge: ResolvedProjectKnowledge;
   variables: Record<string, string>;
   prompt: string;
+  authIssues: CloudDocumentAuthenticationIssue[];
 }
 
 const AI_KNOWLEDGE_DIRECTORY_NAMES = [".agents", ".agent", ".claude", ".codex", ".trae"] as const;
@@ -64,23 +88,31 @@ function resolveProjectPath(projectRoot: string, value: string): string {
 }
 
 export function resolveProjectDirectories(input: {
+  projectId: string;
   projectRoot: string;
+  projectDirectory?: string;
   workspaceId: string;
   workspaceDirectory: string;
   projectConfig: PaseoProjectConfig | undefined;
+  paseoHome?: string;
   variables?: Record<string, string>;
 }): ResolvedProjectDirectories {
   const variables = {
     ...input.variables,
+    projectId: input.projectId,
     projectRoot: input.projectRoot,
     workspaceId: input.workspaceId,
     workspaceDirectory: input.workspaceDirectory,
   };
+  const resourceRoot = input.projectDirectory ?? input.projectRoot;
   const directoryValues = resolvePaseoProjectDirectoryValues(input.projectConfig?.directories);
-  const configuredProject = resolvePathList(input.projectRoot, directoryValues.project, variables);
-  const configuredKnowledge = resolvePathList(
-    input.projectRoot,
-    directoryValues.knowledge,
+  const configuredProject = resolvePathList(resourceRoot, directoryValues.project, variables);
+  const configuredKnowledge = resolvePathList(resourceRoot, directoryValues.knowledge, variables);
+  const configuredGeneralKnowledge = resolvePathList(
+    resourceRoot,
+    input.projectConfig?.knowledge?.general
+      ?.filter((resource) => resource.enabled !== false && resource.type === "local-directory")
+      .map((resource) => resource.source),
     variables,
   );
   let automaticKnowledge: string[] = [];
@@ -90,24 +122,41 @@ export function resolveProjectDirectories(input: {
     );
   }
   const knowledge = Array.from(
-    new Set([...configuredKnowledge, ...automaticKnowledge.filter((entry) => existsSync(entry))]),
+    new Set([
+      ...configuredKnowledge,
+      ...configuredGeneralKnowledge,
+      ...automaticKnowledge.filter((entry) => existsSync(entry)),
+    ]),
   );
   const workspaceData = Array.from(
     new Set(
       directoryValues.workspaceData.flatMap((rawValue) => {
+        if (input.paseoHome && rawValue.trim() === DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY) {
+          return [resolveManagedWorkspacePath(input.paseoHome, input.projectId, input.workspaceId)];
+        }
         const value = replaceVariables(rawValue.trim(), variables);
         if (!value) return [];
-        const root = resolveProjectPath(input.projectRoot, value);
+        const root = resolveProjectPath(resourceRoot, value);
         return [rawValue.includes("{{workspaceId}}") ? root : path.join(root, input.workspaceId)];
       }),
     ),
   );
 
+  let projectDirectories: string[];
+  if (input.projectConfig?.directoryMode === "multiple") {
+    projectDirectories = Array.from(
+      new Set([path.resolve(input.projectRoot), ...configuredProject]),
+    );
+  } else if (configuredProject.length > 0) {
+    projectDirectories = configuredProject;
+  } else {
+    projectDirectories = [path.resolve(input.workspaceDirectory)];
+  }
+
   return {
-    project:
-      configuredProject.length > 0 ? configuredProject : [path.resolve(input.workspaceDirectory)],
+    project: projectDirectories,
     knowledge,
-    indexSkill: resolvePathList(input.projectRoot, directoryValues.indexSkill, variables),
+    indexSkill: resolvePathList(resourceRoot, directoryValues.indexSkill, variables),
     workspaceData,
   };
 }
@@ -122,6 +171,8 @@ export function buildProjectContextPrompt(input: {
   workspaceId: string;
   workspaceDirectory: string;
   directories: ResolvedProjectDirectories;
+  knowledge?: ResolvedProjectKnowledge;
+  larkContextPrompt?: string;
 }): string {
   const indexInstructions =
     input.directories.indexSkill.length > 0
@@ -129,23 +180,28 @@ export function buildProjectContextPrompt(input: {
           "Before broad filesystem exploration, read the applicable SKILL.md files in the index Skill directories. Use those indexes to locate relevant project and knowledge files quickly.",
           formatDirectoryList(input.directories.indexSkill),
         ].join("\n")
-      : "No index Skill is configured. Inspect the project and knowledge directories directly.";
+      : "No index Skill is configured. Inspect the Project and general knowledge directories directly.";
 
   return [
     "<paseo_project_context>",
     `Project ID: ${input.projectId}`,
     `Project name: ${input.projectName}`,
     `Workspace ID: ${input.workspaceId}`,
-    `Writable workspace directory: ${input.workspaceDirectory}`,
-    "Make code changes in the writable workspace directory unless the task explicitly requires another configured directory.",
+    `Primary working directory: ${input.workspaceDirectory}`,
+    "The Project path is host-managed storage for Project configuration and Project-owned files. Project directories are writable source directories. A multiple-directory Project includes its private Project path plus its configured code directories. Read and modify the directory appropriate to the task; do not assume the primary working directory is the only writable directory.",
     "",
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
     "",
-    "Knowledge directories (mandatory instructions):",
+    "General knowledge directories (read on demand; protected by default):",
     formatDirectoryList(input.directories.knowledge),
     input.directories.knowledge.length > 0
-      ? "You MUST inspect and obey all knowledge files applicable to the current task before making changes. Treat them as project-level instructions."
+      ? [
+          "Read only the files relevant to the current task and decide whether their guidance applies.",
+          "By default, you MUST NOT create, modify, rename, move, or delete content in knowledge directories.",
+          "You may update knowledge content only when the user explicitly asks to update Project knowledge in the current conversation. A request to change product code or ordinary documentation is not permission to change knowledge.",
+          "When explicitly authorized, change only the knowledge files needed for that request.",
+        ].join(" ")
       : "No additional knowledge directory is configured.",
     "",
     "Index Skill:",
@@ -157,19 +213,35 @@ export function buildProjectContextPrompt(input: {
       ? "Record durable progress and important outputs here so interrupted work can be reviewed and continued."
       : "No dedicated workspace data directory is configured.",
     "</paseo_project_context>",
+    buildProjectKnowledgePrompt({
+      generalDirectories: input.directories.knowledge,
+      knowledge: input.knowledge ?? EMPTY_PROJECT_KNOWLEDGE,
+    }),
+    ...(input.larkContextPrompt ? [input.larkContextPrompt] : []),
   ].join("\n");
 }
 
 function readProjectConfig(
+  project: PersistedProjectRecord,
   projectRoot: string,
+  paseoHome?: string,
   logger?: Pick<Logger, "warn">,
 ): PaseoProjectConfig | undefined {
   try {
-    const json = readPaseoConfigJson(projectRoot);
-    if (json === null) return undefined;
-    return PaseoConfigSchema.parse(json).project;
+    if (paseoHome) {
+      const result = readProjectConfigForProject({ paseoHome, project });
+      if (!result.ok) {
+        throw new Error(result.error.code);
+      }
+      return result.config === null ? undefined : PaseoConfigSchema.parse(result.config).project;
+    }
+    const legacyJson = readPaseoConfigJson(projectRoot);
+    return legacyJson === null ? undefined : PaseoConfigSchema.parse(legacyJson).project;
   } catch (error) {
-    logger?.warn({ err: error, projectRoot }, "Failed to load project context from paseo.json");
+    logger?.warn(
+      { err: error, projectId: project.projectId, projectRoot },
+      "Failed to load project context from paseo.json",
+    );
     return undefined;
   }
 }
@@ -178,6 +250,8 @@ export async function loadProjectAgentContext(input: {
   workspaceId: string;
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
+  paseoHome?: string;
+  cloudDocumentCacheService?: CloudDocumentCacheService;
   logger?: Pick<Logger, "warn">;
 }): Promise<ProjectAgentContext | null> {
   const workspace = await input.workspaceRegistry.get(input.workspaceId);
@@ -185,23 +259,59 @@ export async function loadProjectAgentContext(input: {
   const project = await input.projectRegistry.get(workspace.projectId);
   if (!project) return null;
 
-  const projectConfig = readProjectConfig(project.rootPath, input.logger);
+  const projectRoot = input.paseoHome
+    ? resolveProjectStoragePath({ paseoHome: input.paseoHome, project })
+    : (project.rootPath ?? workspace.cwd);
+  const projectDirectory = project.rootPath ? path.resolve(project.rootPath) : projectRoot;
+  if (input.paseoHome) {
+    ensureManagedProjectStorageRoot(input.paseoHome, project.projectId);
+  }
+  const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
     ...projectConfig?.variables,
     projectId: project.projectId,
     projectName: project.customName ?? project.displayName,
-    projectRoot: project.rootPath,
+    projectRoot,
+    projectDirectory,
     workspaceId: workspace.workspaceId,
     workspaceName: workspace.title ?? workspace.displayName,
     workspaceDirectory: workspace.cwd,
   };
   const directories = resolveProjectDirectories({
-    projectRoot: project.rootPath,
+    projectId: project.projectId,
+    projectRoot,
+    projectDirectory,
     workspaceId: workspace.workspaceId,
     workspaceDirectory: workspace.cwd,
     projectConfig,
+    paseoHome: input.paseoHome,
     variables,
   });
+  const cloudKnowledge = await resolveProjectKnowledgeWithCloudCache({
+    projectConfig,
+    projectId: project.projectId,
+    paseoHome: input.paseoHome,
+    service: input.cloudDocumentCacheService,
+    logger: input.logger,
+    resolveLocalPath: (source) =>
+      resolveProjectPath(projectDirectory, replaceVariables(source.trim(), variables)),
+  });
+  const knowledge = cloudKnowledge.knowledge;
+  const larkContextPrompt = input.paseoHome
+    ? buildProjectLarkContextPrompt(
+        readProjectLarkContextSnapshots(input.paseoHome, project.projectId),
+      )
+    : "";
+  const managedWorkspacePath = input.paseoHome
+    ? resolveManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId)
+    : null;
+  if (
+    input.paseoHome &&
+    managedWorkspacePath &&
+    directories.workspaceData.includes(managedWorkspacePath)
+  ) {
+    ensureManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId);
+  }
   for (const directory of directories.workspaceData) {
     try {
       mkdirSync(directory, { recursive: true });
@@ -216,13 +326,17 @@ export async function loadProjectAgentContext(input: {
     project,
     workspace,
     directories,
+    knowledge,
     variables,
+    authIssues: cloudKnowledge.authIssues,
     prompt: buildProjectContextPrompt({
       projectId: project.projectId,
       projectName: project.customName ?? project.displayName,
       workspaceId: workspace.workspaceId,
       workspaceDirectory: workspace.cwd,
       directories,
+      knowledge,
+      larkContextPrompt,
     }),
   };
 }
@@ -232,12 +346,20 @@ export async function withProjectAgentContext(input: {
   workspaceId: string;
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
+  paseoHome?: string;
+  cloudDocumentCacheService?: CloudDocumentCacheService;
+  onAuthIssues?: (issues: readonly CloudDocumentAuthenticationIssue[]) => void;
   logger?: Pick<Logger, "warn">;
 }): Promise<AgentSessionConfig> {
   const context = await loadProjectAgentContext(input);
   if (!context) return input.config;
+  input.onAuthIssues?.(context.authIssues);
+  const writableProjectDirectories = normalizeWritableProjectDirectories(
+    context.directories.project,
+  );
   return {
     ...input.config,
+    writableProjectDirectories,
     systemPrompt: composeSystemPromptParts(input.config.systemPrompt, context.prompt),
   };
 }

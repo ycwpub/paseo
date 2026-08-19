@@ -157,6 +157,7 @@ import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
+import { removeManagedWorkspaceStorage } from "./project/project-storage-paths.js";
 import {
   archiveByScope,
   archivePersistedWorkspaceRecord,
@@ -191,6 +192,12 @@ import type { RelayDeviceType, RelayEndpointConfig } from "@getpaseo/protocol/da
 import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
+import {
+  buildHostKnowledgePrompt,
+  resolveHostKnowledge,
+} from "./knowledge/host-knowledge-context.js";
+import { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
+import { readCachedCloudKnowledgeDocument } from "./knowledge/cloud-cache/context.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -405,6 +412,7 @@ export interface PaseoDaemonConfig {
   };
   clientAccessRequireApproval?: boolean;
   projectIndexUpdateIntervalMinutes?: number;
+  hostKnowledge?: PaseoHostKnowledge;
   instructionTemplates?: PaseoInstructionTemplate[];
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
@@ -596,6 +604,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     projectIndexing: {
       updateIntervalMinutes: config.projectIndexUpdateIntervalMinutes ?? 1440,
     },
+    ...(config.hostKnowledge !== undefined ? { knowledge: config.hostKnowledge } : {}),
     instructionTemplates: config.instructionTemplates,
     relay: {
       endpoints: resolveInitialRelayEndpoints(config),
@@ -773,6 +782,7 @@ export async function createPaseoDaemon(
     relay: null,
   };
   let larkChannelService: LarkChannelService;
+  let projectLarkContextService: ProjectLarkContextService;
   let assistantStore: AssistantStore;
   let serviceProxyListenTarget: ListenTarget | null = null;
 
@@ -1254,11 +1264,28 @@ export async function createPaseoDaemon(
   } catch (error) {
     logger.warn({ err: error }, "Failed to sync skill symlinks during daemon startup");
   }
+  const cloudDocumentCacheService = new CloudDocumentCacheService({
+    paseoHome: config.paseoHome,
+    logger,
+  });
   const agentManager = new AgentManager({
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     appendSystemPrompt: config.appendSystemPrompt,
+    daemonKnowledgePromptComposer: () =>
+      buildHostKnowledgePrompt(
+        resolveHostKnowledge({
+          paseoHome: config.paseoHome,
+          knowledge: daemonConfigStore.get().knowledge,
+          resolveCloudDocument: (source) =>
+            readCachedCloudKnowledgeDocument({
+              paseoHome: config.paseoHome,
+              target: { scope: "global", source },
+            }),
+          logger,
+        }),
+      ),
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
@@ -1294,6 +1321,7 @@ export async function createPaseoDaemon(
   const projectIndexService = new ProjectIndexService({
     projectRegistry,
     daemonConfigStore,
+    paseoHome: config.paseoHome,
     logger,
   });
   projectIndexService.start();
@@ -1304,7 +1332,19 @@ export async function createPaseoDaemon(
     logger,
     workspaceGitService,
     onProjectUpdate: (update) => wsServer?.publishProjectUpdate(update),
-    onWorkspaceArchived: teardownArchivedWorkspaceRuntime,
+    onWorkspaceArchived: async (workspaceId) => {
+      teardownArchivedWorkspaceRuntime(workspaceId);
+      const workspace = await workspaceRegistry.get(workspaceId);
+      if (!workspace) return;
+      await removeManagedWorkspaceStorage(config.paseoHome, workspace.projectId, workspaceId).catch(
+        (error) => {
+          logger.warn(
+            { err: error, workspaceId },
+            "Failed to clean up reconciled Workspace storage",
+          );
+        },
+      );
+    },
     onWorkspacesChanged: async (workspaceIds) => {
       await fanOutReconciledWorkspaceUpdates({
         sessions: wsServer?.listTrustedSessions() ?? [],
@@ -1331,7 +1371,15 @@ export async function createPaseoDaemon(
       workspaceRegistry,
       context,
     });
-    if (!existingWorkspace || existingWorkspace.archivedAt) return;
+    if (!existingWorkspace) return;
+    await removeManagedWorkspaceStorage(
+      config.paseoHome,
+      existingWorkspace.projectId,
+      workspaceId,
+    ).catch((error) => {
+      logger.warn({ err: error, workspaceId }, "Failed to clean up archived Workspace storage");
+    });
+    if (existingWorkspace.archivedAt) return;
     teardownArchivedWorkspaceRuntime(workspaceId);
   };
   // external path→workspace adapter, not ownership: archive-by-path requests that
@@ -1504,6 +1552,8 @@ export async function createPaseoDaemon(
     providerSnapshotManager,
     projectRegistry,
     workspaceRegistry,
+    cloudDocumentCacheService,
+    readGlobalKnowledge: () => daemonConfigStore.get().knowledge,
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
   };
@@ -1610,9 +1660,10 @@ export async function createPaseoDaemon(
     },
   });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
-  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger });
+  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger, serverId });
   const memoryService = new PaseoMemoryService({
     store: memoryStore,
+    paseoHome: config.paseoHome,
     agentManager,
     providerSnapshotManager,
     readDaemonConfig: () => daemonConfigStore.get(),
@@ -1626,6 +1677,13 @@ export async function createPaseoDaemon(
     logger,
     assistantStore,
   });
+  projectLarkContextService = new ProjectLarkContextService({
+    paseoHome: config.paseoHome,
+    projectRegistry,
+    channelStore: larkChannelStore,
+    adapter: larkChannelAdapter,
+    logger,
+  });
   larkChannelService = new LarkChannelService({
     store: larkChannelStore,
     adapter: larkChannelAdapter,
@@ -1637,6 +1695,8 @@ export async function createPaseoDaemon(
     logger,
     reminderService: larkReminderService,
     directoryService: larkDirectoryService,
+    incomingMessageObserver: (botId, event) =>
+      projectLarkContextService.observeIncomingMessage(botId, event),
     host: {
       emitStatusChanged: (status) => {
         wsServer?.broadcast(
@@ -1727,7 +1787,12 @@ export async function createPaseoDaemon(
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
     resolveAgentProjectVariables: (cwd) =>
-      resolveWorkflowProjectVariables({ cwd, projectRegistry, logger }),
+      resolveWorkflowProjectVariables({
+        cwd,
+        projectRegistry,
+        paseoHome: config.paseoHome,
+        logger,
+      }),
     assistantStore,
     teamStore,
   });
@@ -2215,6 +2280,7 @@ export async function createPaseoDaemon(
       speechService.start();
       scriptHealthMonitor.start();
       await larkChannelService.start();
+      await projectLarkContextService.start();
     } catch (error) {
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
@@ -2231,6 +2297,7 @@ export async function createPaseoDaemon(
     await hubRelationships.stop();
     projectIndexService.stop();
     workspaceReconciliation.dispose();
+    await projectLarkContextService.stop().catch(() => undefined);
     await larkChannelService.stop().catch(() => undefined);
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.

@@ -22,7 +22,9 @@ export interface ProjectHostEntry {
   projectCustomName: string | null;
   serverName: string;
   isOnline: boolean;
+  projectPath: string;
   repoRoot: string;
+  isDirectoryless: boolean;
   workspaceCount: number;
   workspaces: WorkspaceSummary[];
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
@@ -176,7 +178,9 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     projectCustomName: group.projectCustomName,
     serverName: group.serverName,
     isOnline: group.isOnline,
+    projectPath: group.projectPath,
     repoRoot,
+    isDirectoryless: group.isDirectoryless,
     workspaceCount: group.workspaces.length,
     workspaces: group.workspaces.map(toWorkspaceSummary),
     gitRuntime: canonical?.gitRuntime,
@@ -216,6 +220,11 @@ function addHostProjects(
 ): void {
   const repoRootByProjectId = new Map(
     host.projects.map((project) => [project.projectId, project.projectRootPath]),
+  );
+  const directorylessProjectIds = new Set(
+    host.projects
+      .filter((project) => project.projectDirectoryless)
+      .map((project) => project.projectId),
   );
 
   for (const hostProject of hostProjects) {

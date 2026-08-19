@@ -16,6 +16,10 @@ import {
 } from "./workspace-registry-model.js";
 import { workspaceIdsForProjects } from "./workspace-directory.js";
 import { deriveProjectKey } from "./project-key.js";
+import {
+  hasProjectDirectory,
+  type DirectoryBackedProjectRecord,
+} from "./project/project-directory-backing.js";
 
 const DEFAULT_RESCAN_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_DEBOUNCE_MS = 100;
@@ -98,7 +102,7 @@ export interface WorkspaceReconciliationServiceOptions {
 }
 
 interface ProjectReconciliationInput {
-  project: PersistedProjectRecord;
+  project: DirectoryBackedProjectRecord;
   siblings: PersistedWorkspaceRecord[];
   currentGit: ProjectCheckoutLitePayload;
   readCheckout: (cwd: string) => Promise<ProjectCheckoutLitePayload>;
@@ -205,7 +209,10 @@ export class WorkspaceReconciliationService {
     }
     await this.reconcileGitMetadataForProjects(
       projects.filter(
-        (project) => !project.archivedAt && this.inspectDirectory(project.rootPath) === "directory",
+        (project): project is DirectoryBackedProjectRecord =>
+          !project.archivedAt &&
+          hasProjectDirectory(project) &&
+          this.inspectDirectory(project.rootPath) === "directory",
       ),
       workspacesByProject,
       changes,
@@ -265,7 +272,10 @@ export class WorkspaceReconciliationService {
     //    Projects persist until explicitly removed, even when they currently have
     //    zero active workspaces, so they still reconcile their own metadata.
     await this.reconcileGitMetadataForProjects(
-      activeProjects.filter((project) => this.inspectDirectory(project.rootPath) === "directory"),
+      activeProjects.filter(
+        (project): project is DirectoryBackedProjectRecord =>
+          hasProjectDirectory(project) && this.inspectDirectory(project.rootPath) === "directory",
+      ),
       workspacesByProject,
       changes,
     );
@@ -290,7 +300,7 @@ export class WorkspaceReconciliationService {
   }
 
   private async reconcileGitMetadataForProjects(
-    projectsToReconcile: PersistedProjectRecord[],
+    projectsToReconcile: DirectoryBackedProjectRecord[],
     workspacesByProject: Map<string, PersistedWorkspaceRecord[]>,
     changes: ReconciliationChange[],
   ): Promise<void> {
@@ -302,7 +312,7 @@ export class WorkspaceReconciliationService {
       checkoutReads.push({ cwd, checkout });
       return checkout;
     };
-    const roots: Array<{ rootPath: string; projects: PersistedProjectRecord[] }> = [];
+    const roots: Array<{ rootPath: string; projects: DirectoryBackedProjectRecord[] }> = [];
     for (const project of projectsToReconcile) {
       const root = roots.find((candidate) =>
         areEquivalentPaths(candidate.rootPath, project.rootPath),
@@ -405,7 +415,10 @@ export class WorkspaceReconciliationService {
     if (this.disposed) return;
     const projects = await this.projectRegistry.list();
     if (this.disposed) return;
-    const activeProjects = projects.filter((project) => !project.archivedAt);
+    const activeProjects = projects.filter(
+      (project): project is DirectoryBackedProjectRecord =>
+        !project.archivedAt && hasProjectDirectory(project),
+    );
 
     for (let index = this.watchers.length - 1; index >= 0; index -= 1) {
       const target = this.watchers[index]!;

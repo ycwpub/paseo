@@ -35,18 +35,16 @@ export function MemoryTransferCard({
       <View style={styles.block}>
         <View style={styles.blockHeader}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Export</Text>
-            <Text style={settingsStyles.rowHint}>
-              Includes settings, summary, detail content, provenance, and revision metadata
-            </Text>
+            <Text style={settingsStyles.rowTitle}>导出</Text>
+            <Text style={settingsStyles.rowHint}>包含设置、总览、详情内容、来源和修订元数据</Text>
           </View>
           <Button size="sm" variant="outline" disabled={disabled} onPress={copyExport}>
-            {copied ? "Copied" : "Copy JSON"}
+            {copied ? "已复制" : "复制 JSON"}
           </Button>
         </View>
         <View style={styles.textAreaCard}>
           <TextInput
-            accessibilityLabel="Memory export JSON"
+            accessibilityLabel="记忆导出 JSON"
             multiline
             editable={false}
             selectTextOnFocus
@@ -56,22 +54,22 @@ export function MemoryTransferCard({
         </View>
       </View>
       <View style={[styles.block, settingsStyles.rowBorder]}>
-        <Text style={settingsStyles.rowTitle}>Import</Text>
+        <Text style={settingsStyles.rowTitle}>导入</Text>
         <Text style={settingsStyles.rowHint}>
-          Merge creates new IDs for collisions. Replace removes all current memory first.
+          合并时会为冲突项创建新 ID；替换会先删除当前全部记忆。
         </Text>
         <View style={styles.textAreaCard}>
           <SettingsTextArea
-            accessibilityLabel="Memory import JSON"
+            accessibilityLabel="记忆导入 JSON"
             value={importJson}
             onChangeText={setImportJson}
-            placeholder="Paste a Paseo memory export"
+            placeholder="粘贴 Paseo 记忆导出内容"
             style={styles.transferInput}
           />
         </View>
         <View style={styles.importActions}>
           <View style={styles.replaceRow}>
-            <Text style={settingsStyles.rowHint}>Replace current memory</Text>
+            <Text style={settingsStyles.rowHint}>替换当前记忆</Text>
             <Switch value={replace} disabled={disabled} onValueChange={setReplace} />
           </View>
           <Button
@@ -79,7 +77,7 @@ export function MemoryTransferCard({
             disabled={disabled || importJson.trim().length === 0}
             onPress={runImport}
           >
-            Import
+            导入
           </Button>
         </View>
       </View>

@@ -83,15 +83,15 @@ function stateBadge(state: ScheduleDerivedState): {
 } {
   switch (state) {
     case "active":
-      return { label: "Active", variant: "success" };
+      return { label: "进行中", variant: "success" };
     case "paused":
-      return { label: "Paused", variant: "muted" };
+      return { label: "已暂停", variant: "muted" };
     case "expired":
-      return { label: "Expired", variant: "muted" };
+      return { label: "已过期", variant: "muted" };
     case "finished":
-      return { label: "Finished", variant: "muted" };
+      return { label: "已完成", variant: "muted" };
     case "targetGone":
-      return { label: "Target gone", variant: "error" };
+      return { label: "目标不存在", variant: "error" };
   }
 }
 
@@ -106,13 +106,13 @@ function buildMeta(
 ): string {
   const parts = [
     formatCadence(schedule.cadence),
-    `Created ${formatTimeAgo(new Date(schedule.createdAt))}`,
-    schedule.lastRunAt ? `Last run ${formatTimeAgo(new Date(schedule.lastRunAt))}` : "Never run",
+    `创建于 ${formatTimeAgo(new Date(schedule.createdAt))}`,
+    schedule.lastRunAt ? `上次运行 ${formatTimeAgo(new Date(schedule.lastRunAt))}` : "从未运行",
   ];
   if (state === "active") {
     const next = formatNextRun(schedule.nextRunAt);
     if (next) {
-      parts.push(`Next run ${next}`);
+      parts.push(`下次运行 ${next}`);
     }
   }
   if (serverName && !singleHost) {

@@ -86,6 +86,7 @@ export type {
   WorkflowSaveRequest,
   WorkflowSaveResponse,
 } from "./workflow/rpc-schemas.js";
+import { PaseoHostKnowledgeSchema } from "./project-knowledge-schema.js";
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -95,6 +96,7 @@ import {
   PaseoProjectDirectoriesSchema,
   PaseoProjectIndexSkillSchema,
   PaseoInstructionTemplateSchema,
+  PaseoProjectLarkGroupSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   PaseoConfigRevisionSchema,
@@ -107,9 +109,20 @@ import {
   type PaseoProjectDirectories,
   type PaseoProjectIndexSkill,
   type PaseoInstructionTemplate,
+  type PaseoProjectLarkGroup,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 } from "./paseo-config-schema.js";
+export {
+  PaseoHostKnowledgeSchema,
+  PaseoProjectDocumentKnowledgeResourceSchema,
+  PaseoProjectGeneralKnowledgeResourceSchema,
+  PaseoProjectKnowledgeSchema,
+  type PaseoHostKnowledge,
+  type PaseoProjectDocumentKnowledgeResource,
+  type PaseoProjectGeneralKnowledgeResource,
+  type PaseoProjectKnowledge,
+} from "./project-knowledge-schema.js";
 export {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -119,6 +132,7 @@ export {
   PaseoProjectDirectoriesSchema,
   PaseoProjectIndexSkillSchema,
   PaseoInstructionTemplateSchema,
+  PaseoProjectLarkGroupSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   type PaseoConfigRaw,
@@ -129,6 +143,7 @@ export {
   type PaseoProjectDirectories,
   type PaseoProjectIndexSkill,
   type PaseoInstructionTemplate,
+  type PaseoProjectLarkGroup,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 };
@@ -283,6 +298,7 @@ export const MutableDaemonConfigSchema = z
         updateIntervalMinutes: z.number().int().positive().default(1440),
       })
       .default({ updateIntervalMinutes: 1440 }),
+    knowledge: PaseoHostKnowledgeSchema.optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({
@@ -323,6 +339,7 @@ export const MutableDaemonConfigPatchSchema = z
         updateIntervalMinutes: z.number().int().positive().optional(),
       })
       .optional(),
+    knowledge: PaseoHostKnowledgeSchema.optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
@@ -779,6 +796,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   z.object({
     type: z.literal("reasoning"),
     text: z.string(),
+    source: z.enum(["thinking", "text"]).optional(),
   }),
   ToolCallTimelineItemPayloadSchema,
   z.object({
@@ -1051,6 +1069,12 @@ export const ProjectIconSetRequestSchema = z.object({
 export const ProjectRemoveRequestSchema = z.object({
   type: z.literal("project.remove.request"),
   projectId: z.string(),
+  requestId: z.string(),
+});
+
+export const WorkspaceRemoveRequestSchema = z.object({
+  type: z.literal("workspace.remove.request"),
+  workspaceId: z.string(),
   requestId: z.string(),
 });
 
@@ -1632,12 +1656,16 @@ export const ReadProjectConfigRequestMessageSchema = z.object({
   type: z.literal("read_project_config_request"),
   requestId: z.string(),
   repoRoot: z.string(),
+  // COMPAT(projectConfigById): added in v0.3.1, remove optional after 2027-02-20.
+  projectId: z.string().optional(),
 });
 
 export const WriteProjectConfigRequestMessageSchema = z.object({
   type: z.literal("write_project_config_request"),
   requestId: z.string(),
   repoRoot: z.string(),
+  // COMPAT(projectConfigById): added in v0.3.1, remove optional after 2027-02-20.
+  projectId: z.string().optional(),
   config: PaseoConfigRawSchema,
   expectedRevision: PaseoConfigRevisionSchema.nullable(),
 });
@@ -2039,6 +2067,18 @@ export const ProjectRemoveResponsePayloadSchema = z.object({
 export const ProjectRemoveResponseSchema = z.object({
   type: z.literal("project.remove.response"),
   payload: ProjectRemoveResponsePayloadSchema,
+});
+
+export const WorkspaceRemoveResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  workspaceId: z.string(),
+  accepted: z.boolean(),
+  error: z.string().nullable(),
+});
+
+export const WorkspaceRemoveResponseSchema = z.object({
+  type: z.literal("workspace.remove.response"),
+  payload: WorkspaceRemoveResponsePayloadSchema,
 });
 
 export const WorkspaceTitleSetResponsePayloadSchema = z.object({
@@ -2539,6 +2579,12 @@ export const ProjectCreateDirectoryRequestSchema = z.object({
   type: z.literal("project.create_directory.request"),
   parentPath: z.string(),
   name: z.string(),
+  requestId: z.string(),
+});
+
+export const ProjectCreateDirectorylessRequestSchema = z.object({
+  type: z.literal("project.create_directoryless.request"),
+  name: z.string().min(1).max(120),
   requestId: z.string(),
 });
 
@@ -3096,6 +3142,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameRequestSchema,
   ProjectIconSetRequestSchema,
   ProjectRemoveRequestSchema,
+  WorkspaceRemoveRequestSchema,
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
   WorkspaceLabelListRequestSchema,
@@ -3210,6 +3257,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   OpenProjectRequestSchema,
   ProjectAddRequestSchema,
   ProjectCreateDirectoryRequestSchema,
+  ProjectCreateDirectorylessRequestSchema,
   WorkspaceGithubSearchRepositoriesRequestSchema,
   ProjectGithubCloneRequestSchema,
   ArchiveWorkspaceRequestSchema,
@@ -3506,6 +3554,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
+        // COMPAT(workspaceRemove): added in v0.3.1, remove gate after 2027-02-21.
+        workspaceRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
@@ -3550,6 +3600,11 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceGithubRepositorySearch: z.boolean().optional(),
         // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
         projectCreateDirectory: z.boolean().optional(),
+        // COMPAT(projectCreateDirectoryless): added on 2026-08-19. Older daemons do not
+        // understand directoryless project creation, so clients must gate the entry point.
+        projectCreateDirectoryless: z.boolean().optional(),
+        // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
+        projectConfigById: z.boolean().optional(),
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: z.boolean().optional(),
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
@@ -3611,6 +3666,11 @@ export const ServerInfoStatusPayloadSchema = z
         memoryScopePolicies: z.boolean().optional(),
         // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
         memoryUsers: z.boolean().optional(),
+        // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
+        memorySync: z.boolean().optional(),
+        // COMPAT(cloudKnowledgeCache): added on 2026-08-23. Older daemons do not
+        // support local cloud-document caching or its management RPCs.
+        cloudKnowledgeCache: z.boolean().optional(),
         // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
         reasoningTranslation: z.boolean().optional(),
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.
@@ -3621,6 +3681,26 @@ export const ServerInfoStatusPayloadSchema = z
         skills: z.boolean().optional(),
         // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
         plugins: z.boolean().optional(),
+        // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons keep app state global.
+        pluginProjectScopedApps: z.boolean().optional(),
+        // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.
+        pluginProjectDefaultAgent: z.boolean().optional(),
+        // COMPAT(pluginProjectManagement): added on 2026-08-20.
+        pluginProjectManagement: z.boolean().optional(),
+        // COMPAT(pluginProjectCopy): added on 2026-08-21.
+        pluginProjectCopy: z.boolean().optional(),
+        // COMPAT(pluginAppHtmlPreview): added on 2026-08-21.
+        pluginAppHtmlPreview: z.boolean().optional(),
+        // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobList: z.boolean().optional(),
+        // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobMutation: z.boolean().optional(),
+        // COMPAT(pluginAppJobDrafts): added on 2026-08-20.
+        pluginAppJobDrafts: z.boolean().optional(),
+        // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
+        pluginHttpServiceSubmit: z.boolean().optional(),
+        // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
+        pluginHttpServiceManagement: z.boolean().optional(),
       })
       .optional(),
   })
@@ -4087,6 +4167,13 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   // COMPAT(projectIconCache): added in v0.2.7, remove optional after 2027-02-12.
   projectIconRevision: z.string().optional(),
   projectRootPath: z.string(),
+  // COMPAT(projectSourceDirectory): added on 2026-08-20. This is the cwd used
+  // for new workspaces: the registered project directory for a single-directory
+  // Project, or the managed Project path for a multi-directory Project.
+  projectSourceDirectory: z.string().optional(),
+  // Directoryless Projects have no external single project directory, but still
+  // have the managed projectRootPath above.
+  projectDirectoryless: z.boolean().optional(),
   projectKind: z.enum(["git", "non_git", "directory"]),
   // COMPAT(directorySync): sequence of this latest directory projection.
   syncSeq: z.number().int().positive().optional(),
@@ -4302,6 +4389,15 @@ export const ProjectCreateDirectoryResponseSchema = z.object({
     // Error codes are open-ended on the wire so older clients can still parse
     // responses after a newer daemon learns another failure reason.
     errorCode: z.string().nullable(),
+  }),
+});
+
+export const ProjectCreateDirectorylessResponseSchema = z.object({
+  type: z.literal("project.create_directoryless.response"),
+  payload: z.object({
+    requestId: z.string(),
+    project: WorkspaceProjectDescriptorPayloadSchema.nullable(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -6548,6 +6644,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchWorkspacesResponseMessageSchema,
   ProjectAddResponseSchema,
   ProjectCreateDirectoryResponseSchema,
+  ProjectCreateDirectorylessResponseSchema,
   OpenProjectResponseMessageSchema,
   WorkspaceGithubSearchRepositoriesResponseSchema,
   ProjectGithubCloneResponseSchema,
@@ -6596,6 +6693,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameResponseSchema,
   ProjectIconSetResponseSchema,
   ProjectRemoveResponseSchema,
+  WorkspaceRemoveResponseSchema,
   WorkspaceTitleSetResponseSchema,
   WorkspacePinSetResponseSchema,
   WorkspaceRecoveryInspectResponseSchema,
@@ -6794,6 +6892,7 @@ export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessa
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
 export type ProjectIconSetResponse = z.infer<typeof ProjectIconSetResponseSchema>;
 export type ProjectRemoveResponse = z.infer<typeof ProjectRemoveResponseSchema>;
+export type WorkspaceRemoveResponse = z.infer<typeof WorkspaceRemoveResponseSchema>;
 export type WorkspaceTitleSetResponse = z.infer<typeof WorkspaceTitleSetResponseSchema>;
 export type WorkspaceTitleSetResponsePayload = z.infer<
   typeof WorkspaceTitleSetResponsePayloadSchema
@@ -6811,6 +6910,7 @@ export type WorkspaceCreateRequest = z.infer<typeof WorkspaceCreateRequestSchema
 export type WorkspaceCreateResponse = z.infer<typeof WorkspaceCreateResponseSchema>;
 export type ProjectRenameResponsePayload = z.infer<typeof ProjectRenameResponsePayloadSchema>;
 export type ProjectRemoveResponsePayload = z.infer<typeof ProjectRemoveResponsePayloadSchema>;
+export type WorkspaceRemoveResponsePayload = z.infer<typeof WorkspaceRemoveResponsePayloadSchema>;
 export type WaitForFinishResponseMessage = z.infer<typeof WaitForFinishResponseMessageSchema>;
 export type AgentPermissionRequestMessage = z.infer<typeof AgentPermissionRequestMessageSchema>;
 export type AgentPermissionResolvedMessage = z.infer<typeof AgentPermissionResolvedMessageSchema>;
@@ -6944,6 +7044,7 @@ export type ProjectIconSource = z.infer<typeof ProjectIconSourceSchema>;
 export type ProjectRenameRequest = z.infer<typeof ProjectRenameRequestSchema>;
 export type ProjectIconSetRequest = z.infer<typeof ProjectIconSetRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
+export type WorkspaceRemoveRequest = z.infer<typeof WorkspaceRemoveRequestSchema>;
 export type WorkspaceTitleSetRequest = z.infer<typeof WorkspaceTitleSetRequestSchema>;
 export type WorkspacePinSetRequest = z.infer<typeof WorkspacePinSetRequestSchema>;
 export type WorkspaceRecoveryInspectRequest = z.infer<typeof WorkspaceRecoveryInspectRequestSchema>;
@@ -7062,6 +7163,12 @@ export type LegacyOpenInEditorRequest = z.infer<typeof LegacyOpenInEditorRequest
 export type OpenProjectRequest = z.infer<typeof OpenProjectRequestSchema>;
 export type ProjectAddRequest = z.infer<typeof ProjectAddRequestSchema>;
 export type ProjectCreateDirectoryRequest = z.infer<typeof ProjectCreateDirectoryRequestSchema>;
+export type ProjectCreateDirectorylessRequest = z.infer<
+  typeof ProjectCreateDirectorylessRequestSchema
+>;
+export type ProjectCreateDirectorylessResponse = z.infer<
+  typeof ProjectCreateDirectorylessResponseSchema
+>;
 export type ProjectCreateDirectoryErrorCode = z.infer<typeof ProjectCreateDirectoryErrorCodeSchema>;
 export type WorkspaceGithubSearchRepositoriesRequest = z.infer<
   typeof WorkspaceGithubSearchRepositoriesRequestSchema

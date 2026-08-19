@@ -1,0 +1,151 @@
+import unittest
+from unittest.mock import patch
+
+from scripts.meego_auth import MeegoAuthenticationRequired, authentication_error
+from scripts.meego_source import _error_message, execute_action, run_node
+
+
+class MeegoSourceTest(unittest.TestCase):
+    def test_preserves_authentication_hint_in_error_message(self) -> None:
+        message = _error_message(
+            {
+                "status": "error",
+                "error": {
+                    "message": "Meegle CLI authentication is required.",
+                    "hint": "Run `bytedcli meego login`, then retry.",
+                },
+            },
+            "",
+            1,
+        )
+
+        self.assertIn("Meegle CLI authentication is required.", message)
+        self.assertIn("bytedcli meego login", message)
+
+    def test_recognizes_structured_authentication_errors(self) -> None:
+        error = authentication_error(
+            {
+                "status": "error",
+                "error": {
+                    "code": "MEEGLE_AUTH_REQUIRED",
+                    "message": "Meegle CLI authentication is required.",
+                },
+            },
+            "Meegle CLI authentication is required.",
+        )
+
+        self.assertIsInstance(error, MeegoAuthenticationRequired)
+        self.assertEqual(error.provider, "official")
+
+    def test_returns_authentication_state_instead_of_failing_the_workflow(self) -> None:
+        with patch(
+            "scripts.meego_source.execute_action",
+            side_effect=MeegoAuthenticationRequired(
+                "Meegle CLI authentication is required.",
+                code="MEEGLE_AUTH_REQUIRED",
+            ),
+        ):
+            result = run_node({"origin_input": {"action": "list"}})
+
+        self.assertEqual(
+            result,
+            {
+                "data": {
+                    "action": "list",
+                    "authRequired": True,
+                    "authProvider": "official",
+                    "authCode": "MEEGLE_AUTH_REQUIRED",
+                    "authMessage": "Meegle CLI authentication is required.",
+                }
+            },
+        )
+
+    def test_lists_items_from_the_meego_homepage(self) -> None:
+        result = execute_action(
+            {"action": "list"},
+            homepage_reader=lambda homepage_url: {
+                "data": {
+                    "action": "list",
+                    "source": "homepage",
+                    "homepageUrl": homepage_url,
+                    "items": [
+                        {
+                            "id": "demo:123",
+                            "title": "登录优化",
+                            "url": "https://meego.example.com/demo/story/detail/123",
+                            "projectKey": "demo",
+                            "workItemId": "123",
+                            "status": "处理中",
+                            "workItemType": "story",
+                        }
+                    ],
+                }
+            },
+        )
+
+        self.assertEqual(result["data"]["source"], "homepage")
+        self.assertEqual(result["data"]["items"][0]["title"], "登录优化")
+
+    def test_resolves_rich_meego_description_into_prd(self) -> None:
+        result = execute_action(
+            {
+                "action": "resolve",
+                "url": "https://meego.example.com/demo/story/detail/123",
+            },
+            lambda command: {
+                "status": "success",
+                "data": {
+                    "work_item": {
+                        "work_item_id": "123",
+                        "project_key": "demo",
+                        "name": "登录优化",
+                        "description_markdown": "降低登录失败率。",
+                    }
+                },
+            },
+        )
+
+        self.assertEqual(result["data"]["title"], "登录优化")
+        self.assertEqual(result["data"]["workItemId"], "123")
+        self.assertIn("降低登录失败率。", result["data"]["prd"])
+        self.assertTrue(result["data"]["rich"])
+
+    def test_falls_back_to_basic_get_when_rich_read_is_unavailable(self) -> None:
+        calls: list[list[str]] = []
+
+        def runner(command: list[str]) -> dict:
+            calls.append(command)
+            if "--rich" in command:
+                raise RuntimeError("Feishu session is required")
+            return {
+                "status": "success",
+                "data": {"work_item_id": "123", "name": "登录优化", "description": "基础描述"},
+            }
+
+        result = execute_action(
+            {"action": "resolve", "project_key": "demo", "work_item_id": "123"},
+            runner,
+        )
+
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(result["data"]["rich"])
+        self.assertIn("基础描述", result["data"]["prd"])
+
+    def test_preserves_official_auth_error_without_wrapping_it(self) -> None:
+        with self.assertRaises(MeegoAuthenticationRequired):
+            execute_action(
+                {
+                    "action": "resolve",
+                    "url": "https://meego.example.com/demo/story/detail/123",
+                },
+                lambda _: (_ for _ in ()).throw(
+                    MeegoAuthenticationRequired(
+                        "Meegle CLI authentication is required.",
+                        code="MEEGLE_AUTH_REQUIRED",
+                    )
+                ),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

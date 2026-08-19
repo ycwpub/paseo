@@ -1,0 +1,17 @@
+{
+  "apps": {
+    "service-console": {
+      "id": "service-console",
+      "category": "Infrastructure",
+      "project": {
+        "idField": "projectId",
+        "nameField": "projectName",
+        "selectorLabel": "HTTP 服务 Project",
+        "selectorDescription": "服务页面、请求、Workflow 运行和处理历史都归属于所选 Project。",
+        "createNameLabel": "新 HTTP 服务 Project 名称",
+        "createNamePlaceholder": "例如：异步告警处理服务"
+      },
+      "document": "./apps/service-console.json"
+    }
+  }
+}

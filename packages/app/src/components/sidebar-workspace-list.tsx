@@ -133,9 +133,11 @@ import {
   type SidebarProjectHostTarget,
   type SidebarProjectIconTarget,
 } from "@/utils/sidebar-project-row-model";
+import { resolveSidebarProjectOpenNewWindowOptions } from "@/utils/sidebar-project-open-new-window";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
+import { useWorkspaceRemove } from "@/workspace/use-workspace-remove";
 import {
   getCurrentProjectRemoveReadiness,
   removeProjectFromHosts,
@@ -286,6 +288,9 @@ interface WorkspaceRowInnerProps {
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
   onArchive?: () => void;
+  removeStatus?: "idle" | "pending" | "success";
+  removePendingLabel?: string;
+  onRemove?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   onRename?: () => void;
@@ -454,6 +459,7 @@ function ProjectRowTrailingActions({
         >
           <ProjectKebabMenu
             projectViewKey={projectViewKey}
+            displayName={displayName}
             settingsTarget={settingsTarget}
             projectPath={projectPath}
             hidden={hidden}
@@ -486,6 +492,7 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
 
 function ProjectKebabMenu({
   projectViewKey,
+  displayName,
   settingsTarget,
   projectPath,
   hidden,
@@ -494,6 +501,7 @@ function ProjectKebabMenu({
   removeProjectStatus,
 }: {
   projectViewKey: string;
+  displayName: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
   hidden: boolean;
@@ -517,6 +525,7 @@ function ProjectKebabMenu({
         <ProjectMenuItems
           surface="dropdown"
           projectViewKey={projectViewKey}
+          displayName={displayName}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
           hidden={hidden}
@@ -547,6 +556,7 @@ function ProjectMenuItem({
 function ProjectMenuItems({
   surface,
   projectViewKey,
+  displayName,
   settingsTarget,
   projectPath,
   hidden,
@@ -556,6 +566,7 @@ function ProjectMenuItems({
 }: {
   surface: ProjectMenuSurface;
   projectViewKey: string;
+  displayName: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
   hidden: boolean;
@@ -569,17 +580,25 @@ function ProjectMenuItems({
     if (!settingsTarget) return;
     router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
   }, [settingsTarget]);
-  const canOpenInNewWindow = getIsElectron() && projectPath.trim().length > 0;
+  const openNewWindowOptions = useMemo(
+    () =>
+      resolveSidebarProjectOpenNewWindowOptions({
+        projectPath,
+        displayName,
+        target: settingsTarget,
+      }),
+    [displayName, projectPath, settingsTarget],
+  );
+  const canOpenInNewWindow = getIsElectron() && openNewWindowOptions !== null;
   const handleOpenInNewWindow = useCallback(() => {
-    const trimmedPath = projectPath.trim();
-    if (trimmedPath.length === 0) return;
+    if (!openNewWindowOptions) return;
     void getDesktopHost()
-      ?.window?.openNew?.({ pendingOpenProjectPath: trimmedPath })
+      ?.window?.openNew?.(openNewWindowOptions)
       ?.catch((error) => {
         console.warn("[sidebar] openNew failed", error);
         toast.error(t("sidebar.project.actions.openNewWindowFailed"));
       });
-  }, [projectPath, t, toast]);
+  }, [openNewWindowOptions, t, toast]);
 
   return (
     <>
@@ -620,6 +639,7 @@ function ProjectMenuItems({
         surface={surface}
         testID={`sidebar-project-menu-remove-${projectViewKey}`}
         leading={trash2LeadingIcon}
+        destructive
         status={removeProjectStatus}
         pendingLabel={t("sidebar.project.actions.removing")}
         onSelect={onRemoveProject}
@@ -643,6 +663,9 @@ function WorkspaceRowRightGroup({
   archivePendingLabel,
   archiveShortcutKeys,
   onArchive,
+  onRemove,
+  removeStatus,
+  removePendingLabel,
   onMarkAsRead,
   onCopyBranchName,
   onCopyPath,
@@ -662,6 +685,9 @@ function WorkspaceRowRightGroup({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
   onArchive?: () => void;
+  onRemove?: () => void;
+  removeStatus?: "idle" | "pending" | "success";
+  removePendingLabel?: string;
   onMarkAsRead?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
@@ -682,7 +708,7 @@ function WorkspaceRowRightGroup({
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
-    hasArchiveAction: Boolean(onArchive),
+    hasArchiveAction: Boolean(onArchive || onRemove),
     isHovered,
     isTouchPlatform,
     showShortcut,
@@ -715,9 +741,12 @@ function WorkspaceRowRightGroup({
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
                 onArchive={onArchive}
+                onRemove={onRemove}
                 archiveLabel={archiveLabel}
                 archiveStatus={archiveStatus}
                 archivePendingLabel={archivePendingLabel}
+                removeStatus={removeStatus}
+                removePendingLabel={removePendingLabel}
                 archiveShortcutKeys={archiveShortcutKeys}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
@@ -1069,6 +1098,7 @@ function ProjectHeaderRow({
         <ProjectMenuItems
           surface="context"
           projectViewKey={project.viewKey}
+          displayName={displayName}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
           hidden={hidden}
@@ -1100,6 +1130,9 @@ function WorkspaceRowInner({
   archiveStatus = "idle",
   archivePendingLabel,
   onArchive,
+  onRemove,
+  removeStatus,
+  removePendingLabel,
   onCopyBranchName,
   onCopyPath,
   onRename,
@@ -1174,9 +1207,12 @@ function WorkspaceRowInner({
               onCopyBranchName={onCopyBranchName}
               onRename={onRename}
               onArchive={onArchive}
+              onRemove={onRemove}
               archiveLabel={archiveLabel}
               archiveStatus={archiveStatus}
               archivePendingLabel={archivePendingLabel}
+              removeStatus={removeStatus}
+              removePendingLabel={removePendingLabel}
               archiveShortcutKeys={archiveShortcutKeys}
               isPinned={isPinned}
               onTogglePin={onTogglePin}
@@ -1220,6 +1256,9 @@ function WorkspaceRowInner({
                   archivePendingLabel={archivePendingLabel}
                   archiveShortcutKeys={archiveShortcutKeys}
                   onArchive={onArchive}
+                  onRemove={onRemove}
+                  removeStatus={removeStatus}
+                  removePendingLabel={removePendingLabel}
                   onCopyBranchName={onCopyBranchName}
                   onCopyPath={onCopyPath}
                   onRename={onRename}
@@ -1293,13 +1332,22 @@ function WorkspaceRowWithMenu({
     onArchiveStarted: redirectAfterArchive,
     onSetHiding: setIsHidingWorkspace,
   });
+  const removeController = useWorkspaceRemove({
+    serverId: workspace.serverId,
+    projectId: workspace.projectId,
+    workspaceId: workspace.workspaceId,
+    workspaceName: workspace.title ?? workspace.name,
+    disabled: bulkSelection.active,
+    busy: isArchiving,
+    onRemoveStarted: redirectAfterArchive,
+  });
 
   const handleArchive = useCallback(() => {
-    if (isArchiving) {
+    if (removeController.busy) {
       return;
     }
     archiveController.archive();
-  }, [archiveController, isArchiving]);
+  }, [archiveController, removeController.busy]);
 
   const clipboard = useWorkspaceClipboardActions();
   const handleCopyPath = useCallback(() => {
@@ -1331,14 +1379,14 @@ function WorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
+      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
     });
   }, [clearAttention, toast]);
 
   useKeyboardActionHandler({
     handlerId: `workspace-archive-${workspace.workspaceKey}`,
     actions: ["workspace.archive"],
-    enabled: selected && !isArchiving,
+    enabled: selected && !removeController.busy,
     priority: 0,
     handle: () => {
       handleArchive();
@@ -1359,7 +1407,7 @@ function WorkspaceRowWithMenu({
         onPress={onPress}
         drag={drag}
         isDragging={isDragging}
-        isArchiving={isArchiving}
+        isArchiving={removeController.busy}
         isCreating={isCreating}
         dragHandleProps={dragHandleProps}
         menuController={null}
@@ -1367,6 +1415,9 @@ function WorkspaceRowWithMenu({
         archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
         onArchive={bulkSelection.active ? undefined : handleArchive}
+        onRemove={removeController.action}
+        removeStatus={removeController.status}
+        removePendingLabel={t("sidebar.workspace.actions.removing")}
         onCopyBranchName={
           bulkSelection.active || !canCopyBranchName ? undefined : handleCopyBranchName
         }

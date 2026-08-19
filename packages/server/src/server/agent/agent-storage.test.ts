@@ -39,6 +39,8 @@ function buildManagedAgentConfig(
     modeId: configOverrides.modeId ?? "plan",
     model: configOverrides.model ?? "gpt-5.1",
     thinkingOptionId: configOverrides.thinkingOptionId,
+    writableProjectDirectories: configOverrides.writableProjectDirectories,
+    readOnlyProjectDirectories: configOverrides.readOnlyProjectDirectories,
     providerOptions: configOverrides.providerOptions,
     toolPolicy: configOverrides.toolPolicy,
     systemPrompt: configOverrides.systemPrompt,
@@ -159,6 +161,8 @@ describe("AgentStorage", () => {
           title: "Initial title",
           modeId: "coding",
           model: "gpt-5.1",
+          writableProjectDirectories: ["/tmp/project", "/tmp/project-facade"],
+          readOnlyProjectDirectories: ["/tmp/reference"],
           systemPrompt: "Be terse and explicit.",
           providerOptions: { allowedTools: ["Read"] },
           mcpServers: {
@@ -178,6 +182,11 @@ describe("AgentStorage", () => {
     expect(record.provider).toBe("claude");
     expect(record.config?.modeId).toBe("coding");
     expect(record.config?.model).toBe("gpt-5.1");
+    expect(record.config?.writableProjectDirectories).toEqual([
+      "/tmp/project",
+      "/tmp/project-facade",
+    ]);
+    expect(record.config?.readOnlyProjectDirectories).toEqual(["/tmp/reference"]);
     expect(record.config?.systemPrompt).toBe("Be terse and explicit.");
     expect(record.config?.mcpServers).toEqual({
       paseo: {
@@ -193,6 +202,11 @@ describe("AgentStorage", () => {
     const [persisted] = await reloaded.list();
     expect(persisted.cwd).toBe("/tmp/project");
     expect(persisted.config?.providerOptions).toEqual({ allowedTools: ["Read"] });
+    expect(buildSessionConfig(persisted!).writableProjectDirectories).toEqual([
+      "/tmp/project",
+      "/tmp/project-facade",
+    ]);
+    expect(buildSessionConfig(persisted!).readOnlyProjectDirectories).toEqual(["/tmp/reference"]);
   });
 
   test("applySnapshot stores and reloads featureValues when present", async () => {

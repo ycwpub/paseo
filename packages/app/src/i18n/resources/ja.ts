@@ -1325,13 +1325,13 @@ export const ja: TranslationResources = {
       confirmations: {
         removeTitle: "プロジェクトを削除しますか？",
         removeMessage:
-          '"{{projectName}}"をサイドバーから削除しますか？\n\nディスク上のファイルは変更されません。',
+          '"{{projectName}}" と ~/.paseo/<projectId> 配下の Paseo 管理データを完全に削除しますか？\n\n外部のソースディレクトリは削除されません。この操作は元に戻せません。',
         removeConfirm: "削除",
         cancel: "キャンセル",
       },
       toasts: {
         hostDisconnected: "ホストが接続されていません",
-        removeFailed: "一部のワークスペースの削除に失敗しました",
+        removeFailed: "プロジェクトまたは一部のデータを削除できませんでした",
         updateHostToRemove: "プロジェクトを削除するにはホストを更新してください。",
       },
       empty: {
@@ -1366,8 +1366,10 @@ export const ja: TranslationResources = {
         unpin: "固定解除",
         archive: "アーカイブ",
         archiveWorkspace: "ワークスペースをアーカイブ",
+        remove: "ワークスペースを削除",
         hideFromSidebar: "サイドバーから非表示",
         archiving: "アーカイブ中...",
+        removing: "削除中...",
         hiding: "非表示にしています...",
       },
       bulkArchive: {
@@ -1386,6 +1388,10 @@ export const ja: TranslationResources = {
         hideMessage:
           '"{{workspaceName}}"をサイドバーから非表示にしますか？\n\nディスク上のファイルは変更されません。',
         hideConfirm: "非表示",
+        removeTitle: "ワークスペースを削除しますか？",
+        removeMessage:
+          "「{{workspaceName}}」と ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} にある Paseo 管理データを完全に削除しますか？\n\n関連する外部コードディレクトリとその中のファイルは削除も変更もされません。この操作は取り消せません。",
+        removeConfirm: "削除",
         cancel: "キャンセル",
       },
       rename: {
@@ -1399,6 +1405,7 @@ export const ja: TranslationResources = {
         branchNameCopied: "ブランチ名をコピーしました",
         hostDisconnected: "ホストが接続されていません",
         hideFailed: "ワークスペースの非表示に失敗しました",
+        removeFailed: "ワークスペースの削除に失敗しました",
         archiveFailed: "ワークスペースのアーカイブに失敗しました",
       },
     },
@@ -1422,6 +1429,9 @@ export const ja: TranslationResources = {
       createWorktreeFailed: "ワークツリーの作成に失敗しました",
       composerStateRequired: "コンポーザーの状態が必要です",
       selectModel: "モデルを選択してください",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -2958,6 +2968,12 @@ export const ja: TranslationResources = {
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
+      directoryless: {
+        title: "プロジェクトディレクトリがありません",
+        description:
+          "プロジェクトの名前、アイコン、メモリは編集できます。ディレクトリを関連付けると、paseo.json に保存される設定も編集できます。",
+      },
       memory: {
         title: "プロジェクトメモリ",
         info: "このプロジェクト固有のメモリを制御し、Paseo が学習する長期的な知識を定義します。",
@@ -2973,6 +2989,17 @@ export const ja: TranslationResources = {
         saving: "保存中...",
         saved: "保存しました",
         saveError: "プロジェクトメモリを保存できませんでした",
+      },
+      edit: {
+        title: "プロジェクトを編集",
+        name: "プロジェクト名",
+        nameLabel: "プロジェクト名",
+        icon: "プロジェクトアイコン",
+        chooseImage: "画像を選択",
+        useAutomatic: "デフォルトアイコンを使用",
+        imageUrl: "画像またはサイトのURL",
+        save: "変更を保存",
+        savedToast: "プロジェクトを更新しました",
       },
       rename: {
         renamedToast: "プロジェクト名を変更しました",

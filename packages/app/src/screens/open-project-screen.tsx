@@ -55,7 +55,7 @@ export function OpenProjectScreen() {
 
   const handleOpenImportSession = useCallback(() => {
     chooseHost({
-      title: "Import from host",
+      title: "从主机导入",
       onChooseHost: (serverId) => {
         setImportServerId(serverId);
         setIsImportSheetOpen(true);
@@ -79,7 +79,7 @@ export function OpenProjectScreen() {
 
   const handleOpenProviders = useCallback(() => {
     chooseHost({
-      title: "Choose host",
+      title: "选择主机",
       onChooseHost: (serverId) => {
         router.push(buildSettingsHostSectionRoute(serverId, "providers"));
       },

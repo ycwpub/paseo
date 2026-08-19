@@ -119,6 +119,8 @@ import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
+import { DesktopPluginContentHost } from "@/plugins/sidebar-panel/desktop-content-host";
+import { PluginAppPanelHost } from "@/plugins/sidebar-panel/panel-host";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -552,6 +554,16 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
+  const defaultRouteContent = (
+    <View style={rowStyle}>
+      <View style={flexStyle}>{children}</View>
+    </View>
+  );
+  const routeContent = isCompactLayout ? (
+    defaultRouteContent
+  ) : (
+    <DesktopPluginContentHost>{children}</DesktopPluginContentHost>
+  );
   const workspaceChrome = (
     <View style={rowStyle}>
       {!isCompactLayout ? (
@@ -565,12 +577,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           presentation={explorerSidebarPresentation === "dock" ? "dock" : "overlay"}
         >
           <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
-            <View style={flexStyle}>{children}</View>
+            {routeContent}
           </WindowChromeRegion>
         </CompactExplorerSidebarHost>
       ) : (
         <WindowChromeRegion corners={appChromeLayout.contentCorners}>
-          <View style={flexStyle}>{children}</View>
+          {routeContent}
         </WindowChromeRegion>
       )}
     </View>
@@ -594,6 +606,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <DesktopWindowControls />
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
+      {isCompactLayout ? <PluginAppPanelHost compact /> : null}
       <DownloadToast />
       <RosettaCalloutSource />
       <UpdateCalloutSource />
@@ -774,7 +787,7 @@ function OpenProjectListener() {
       }
 
       chooseHost({
-        title: "Choose host",
+        title: "选择主机",
         onChooseHost: (serverId) => {
           setRequest({
             id: nextOpenProjectRequestId++,

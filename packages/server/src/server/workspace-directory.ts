@@ -15,6 +15,7 @@ import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { SortablePager } from "./pagination/sortable-pager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import { resolveProjectDisplayName } from "./workspace-registry.js";
+import { projectRootPathForWire } from "./project/project-directory-backing.js";
 import {
   deriveTerminalActivityStatusBucket,
   type TerminalActivity,
@@ -82,6 +83,7 @@ export interface WorkspaceDirectoryDeps {
     Array<{ cwd: string; workspaceId?: string; activity: TerminalActivity | null }>
   >;
   isProviderVisibleToClient(provider: string): boolean;
+  buildProjectDescriptor?(project: PersistedProjectRecord): WorkspaceProjectDescriptor;
   buildWorkspaceDescriptor(input: {
     workspace: PersistedWorkspaceRecord;
     projectRecord?: PersistedProjectRecord | null;
@@ -564,15 +566,22 @@ export class WorkspaceDirectory {
       .filter(
         (project) => !project.archivedAt && !projectIdsWithActiveWorkspaces.has(project.projectId),
       )
-      .map((project) => ({
-        projectId: project.projectId,
-        projectKey: project.projectKey ?? undefined,
-        projectDisplayName: resolveProjectDisplayName(project),
-        projectCustomName: project.customName ?? null,
-        projectCustomIconRevision: project.customIconRevision ?? null,
-        projectRootPath: project.rootPath,
-        projectKind: project.kind,
-      }));
+      .map((project) => {
+        if (this.deps.buildProjectDescriptor) {
+          return this.deps.buildProjectDescriptor(project);
+        }
+        const descriptor: WorkspaceProjectDescriptor = {
+          projectId: project.projectId,
+          projectKey: project.projectKey ?? undefined,
+          projectDisplayName: resolveProjectDisplayName(project),
+          projectCustomName: project.customName ?? null,
+          projectCustomIconRevision: project.customIconRevision ?? null,
+          projectRootPath: projectRootPathForWire(project),
+          projectKind: project.kind,
+        };
+        if (project.rootPath === null) descriptor.projectDirectoryless = true;
+        return descriptor;
+      });
   }
 
   async listDescriptors(): Promise<WorkspaceDescriptorPayload[]> {

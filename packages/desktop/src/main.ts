@@ -98,6 +98,7 @@ import {
   registerExternalQuitSignals,
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./daemon/quit-lifecycle.js";
+import { parseOpenNewWindowRequest } from "./window/open-new-window-request.js";
 import { runDesktopStartup } from "./desktop-startup.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";

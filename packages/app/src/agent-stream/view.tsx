@@ -88,16 +88,17 @@ import {
 import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
 import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 import { projectProcessVisibility } from "./process-visibility";
+import { openExternalUrl } from "@/utils/open-external-url";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
 } from "@/assistant-file-links";
 import {
   createWorkspaceFileTabTarget,
-  normalizeWorkspaceFileLocation,
   type OpenFileDisposition,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import { canonicalizeWorkspaceFileLocation } from "@/workspace/file-open/canonical-location";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useForkAgent } from "@/hooks/use-fork-agent";
@@ -476,10 +477,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }
 
         if (normalized.file) {
-          const location = normalizeWorkspaceFileLocation({
-            path: normalized.file,
-            lineStart: target.lineStart,
-            lineEnd: target.lineEnd,
+          const location = canonicalizeWorkspaceFileLocation({
+            location: {
+              path: normalized.file,
+              lineStart: target.lineStart,
+              lineEnd: target.lineEnd,
+            },
+            workspaceRoot,
           });
           if (!location) {
             return;
@@ -1602,6 +1606,19 @@ function PermissionRequestCard({
     }
     return undefined;
   }, [request]);
+  const cloudKnowledgeAuth =
+    request.metadata?.permissionType === "cloud-knowledge-auth"
+      ? {
+          loginUrl:
+            typeof request.metadata.loginUrl === "string" ? request.metadata.loginUrl : null,
+          authCommand:
+            typeof request.metadata.authCommand === "string" ? request.metadata.authCommand : null,
+        }
+      : null;
+  const openCloudKnowledgeLogin = useCallback(() => {
+    if (!cloudKnowledgeAuth?.loginUrl) return;
+    void openExternalUrl(cloudKnowledgeAuth.loginUrl);
+  }, [cloudKnowledgeAuth?.loginUrl]);
 
   const permissionMutation = useMutation({
     mutationFn: async (input: {
@@ -1743,6 +1760,29 @@ function PermissionRequestCard({
         />
       ) : null}
 
+      {cloudKnowledgeAuth ? (
+        <View style={permissionStyles.authHelp}>
+          {cloudKnowledgeAuth.loginUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={openCloudKnowledgeLogin}
+              style={permissionStyles.authLink}
+            >
+              <ExternalLink size={14} color={permissionStyles.authLinkText.color} />
+              <Text style={permissionStyles.authLinkText}>打开登录或授权页面</Text>
+            </Pressable>
+          ) : null}
+          {cloudKnowledgeAuth.authCommand ? (
+            <View style={permissionStyles.authCommand}>
+              <Text style={permissionStyles.authCommandLabel}>也可以在主机执行：</Text>
+              <Text selectable style={permissionStyles.authCommandText}>
+                {cloudKnowledgeAuth.authCommand}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       {!isPlanRequest ? (
         <ToolCallDetailsContent detail={resolvedToolCallDetail} maxHeight={200} />
       ) : null}
@@ -1859,6 +1899,32 @@ const permissionStyles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     lineHeight: 20,
     color: theme.colors.foregroundMuted,
+  },
+  authHelp: {
+    gap: theme.spacing[2],
+  },
+  authLink: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+  },
+  authLinkText: {
+    color: theme.colors.accent,
+    fontSize: theme.fontSize.sm,
+  },
+  authCommand: {
+    gap: theme.spacing[1],
+  },
+  authCommandLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  authCommandText: {
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
   },
   section: {
     gap: theme.spacing[2],

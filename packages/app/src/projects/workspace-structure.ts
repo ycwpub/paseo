@@ -5,6 +5,7 @@ export interface WorkspaceStructureHostPlacement {
   serverId: string;
   projectId: string;
   iconWorkingDir: string;
+  sourceDirectory?: string;
   worktreeSupport: "supported" | "unsupported" | "unknown";
   customIconRevision?: string | null;
   iconRevision?: string;
@@ -159,6 +160,7 @@ function addProjectToView(input: {
     serverId,
     projectId: project.projectId,
     iconWorkingDir: project.projectRootPath,
+    sourceDirectory: project.projectSourceDirectory,
     worktreeSupport: project.projectKind === "git" ? "supported" : "unsupported",
     customIconRevision: project.projectCustomIconRevision,
     iconRevision: project.projectIconRevision,

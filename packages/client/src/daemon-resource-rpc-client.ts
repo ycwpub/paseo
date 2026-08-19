@@ -3,8 +3,12 @@ import type {
   McpServerCreateInput,
   McpServerUpdateInput,
   PaseoMemoryUpdateInput,
+  PaseoMemorySyncSnapshot,
+  PluginAppDefaultAgent,
   PluginAppState,
   PluginHttpJob,
+  PluginHttpJobStatus,
+  PluginHttpProjectConfig,
   PluginInstallSource,
   PluginMarketplaceSummary,
   PluginState,
@@ -39,6 +43,7 @@ import type {
   SetLarkReminderEnabledOptions,
   UpdateAssistantOptions,
 } from "./daemon-client.js";
+import type { CloudKnowledgeScope } from "@getpaseo/protocol/knowledge/cloud-cache-rpc-schemas";
 
 type ResponsePayload<TType extends SessionOutboundMessage["type"]> =
   Extract<SessionOutboundMessage, { type: TType }> extends { payload: infer TPayload }
@@ -119,6 +124,61 @@ export class DaemonResourceRpcClient {
       requestId: options?.requestId,
       message: { type: "memory.clear.request" },
       responseType: "memory.clear.response",
+    });
+  }
+
+  getMemorySyncSnapshot(options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.get_sync_snapshot.request" },
+      responseType: "memory.get_sync_snapshot.response",
+    });
+  }
+
+  mergeMemorySyncSnapshot(snapshot: PaseoMemorySyncSnapshot, options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.merge_sync_snapshot.request", snapshot },
+      responseType: "memory.merge_sync_snapshot.response",
+    });
+  }
+
+  cacheCloudDocument(options: {
+    scope: CloudKnowledgeScope;
+    projectId?: string;
+    source: string;
+    force?: boolean;
+    requestId?: string;
+  }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "knowledge.cloud_document.cache.request",
+        scope: options.scope,
+        projectId: options.projectId,
+        source: options.source,
+        force: options.force,
+      },
+      responseType: "knowledge.cloud_document.cache.response",
+      timeout: 90_000,
+    });
+  }
+
+  getCloudDocumentCacheStatus(options: {
+    scope: CloudKnowledgeScope;
+    projectId?: string;
+    source: string;
+    requestId?: string;
+  }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "knowledge.cloud_document.get_status.request",
+        scope: options.scope,
+        projectId: options.projectId,
+        source: options.source,
+      },
+      responseType: "knowledge.cloud_document.get_status.response",
     });
   }
 
@@ -343,21 +403,83 @@ export class DaemonResourceRpcClient {
   async getPluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
     const result = await this.request({
-      message: { type: "plugin.app.get.request", pluginId, appId },
+      message: { type: "plugin.app.get.request", pluginId, appId, projectId },
       responseType: "plugin.app.get.response",
     });
     return { app: result.app, error: result.error };
   }
 
+  async getPluginAppHtmlPreview(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ html: string | null; htmlPath: string | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.html-preview.get.request", ...input },
+      responseType: "plugin.app.html-preview.get.response",
+    });
+    return { html: result.html, htmlPath: result.htmlPath, error: result.error };
+  }
+
+  async configurePluginApp(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    defaultAgent: PluginAppDefaultAgent;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.configure.request", ...input },
+      responseType: "plugin.app.configure.response",
+    });
+    return { app: result.app, error: result.error };
+  }
+
+  async listPluginAppProjects(
+    pluginId: string,
+    appId: string,
+  ): Promise<{ projects: PluginAppState[]; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.project.list.request", pluginId, appId },
+      responseType: "plugin.app.project.list.response",
+    });
+    return { projects: result.projects, error: result.error };
+  }
+
+  async copyPluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    sourceProjectId: string;
+    targetProjectId: string;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.project.copy.request", ...input },
+      responseType: "plugin.app.project.copy.response",
+    });
+    return { app: result.app, error: result.error };
+  }
+
+  async deletePluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ projectId: string; deleted: boolean; error: string | null }> {
+    return this.request({
+      message: { type: "plugin.app.project.delete.request", ...input },
+      responseType: "plugin.app.project.delete.response",
+    });
+  }
+
   async generatePluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
     prompt: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
     const result = await this.request({
-      message: { type: "plugin.app.generate.request", pluginId, appId, prompt },
+      message: { type: "plugin.app.generate.request", pluginId, appId, projectId, prompt },
       responseType: "plugin.app.generate.response",
       timeout: 180_000,
     });
@@ -367,12 +489,25 @@ export class DaemonResourceRpcClient {
   async submitPluginAppAction(input: {
     pluginId: string;
     appId: string;
+    projectId: string;
     componentId: string;
     form: Record<string, unknown>;
   }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
     const result = await this.request({
       message: { type: "plugin.app.action.submit.request", ...input },
       responseType: "plugin.app.action.submit.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async submitPluginHttpService(input: {
+    pluginId: string;
+    serviceName: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.http.submit.request", ...input },
+      responseType: "plugin.http.submit.response",
     });
     return { job: result.job, error: result.error };
   }
@@ -385,6 +520,97 @@ export class DaemonResourceRpcClient {
       responseType: "plugin.app.job.get.response",
     });
     return { job: result.job, error: result.error };
+  }
+
+  async listPluginAppJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+    filters?: {
+      statuses?: PluginHttpJobStatus[];
+      listenerId?: string;
+      routeId?: string;
+      createdBefore?: string;
+      createdAfter?: string;
+    };
+  }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.list.request", ...options },
+      responseType: "plugin.app.job.list.response",
+    });
+    return { jobs: result.jobs, error: result.error };
+  }
+
+  async updatePluginAppJob(
+    processId: string,
+    input: unknown,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.update.request", processId, input },
+      responseType: "plugin.app.job.update.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async createPluginAppJobDraft(input: {
+    pluginId: string;
+    serviceName: string;
+    projectId: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.draft.create.request", ...input },
+      responseType: "plugin.app.job.draft.create.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async startPluginAppJob(
+    processId: string,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.start.request", processId },
+      responseType: "plugin.app.job.start.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async deletePluginAppJob(
+    processId: string,
+  ): Promise<{ processId: string; deleted: boolean; error: string | null }> {
+    return this.request({
+      message: { type: "plugin.app.job.delete.request", processId },
+      responseType: "plugin.app.job.delete.response",
+    });
+  }
+
+  async getPluginHttpConfig(pluginId: string, projectId: string) {
+    return this.request({
+      message: { type: "plugin.http.config.get.request", pluginId, projectId },
+      responseType: "plugin.http.config.get.response",
+    });
+  }
+
+  async savePluginHttpConfig(config: Omit<PluginHttpProjectConfig, "updatedAt">) {
+    return this.request({
+      message: { type: "plugin.http.config.save.request", config },
+      responseType: "plugin.http.config.save.response",
+    });
+  }
+
+  async deletePluginHttpJobs(processIds: string[]) {
+    return this.request({
+      message: { type: "plugin.http.job.delete_many.request", processIds },
+      responseType: "plugin.http.job.delete_many.response",
+    });
+  }
+
+  async cleanupPluginHttpJobs(pluginId: string, projectId: string) {
+    return this.request({
+      message: { type: "plugin.http.job.cleanup.request", pluginId, projectId },
+      responseType: "plugin.http.job.cleanup.response",
+    });
   }
 
   getLarkChannelStatus(options?: LarkChannelRequestOptions) {

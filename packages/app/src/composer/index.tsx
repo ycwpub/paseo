@@ -2799,9 +2799,16 @@ const animatedStaticStyles = RNStyleSheet.create({
 
 const styles = StyleSheet.create((theme: Theme) => ({
   leftContentRow: {
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    flexShrink: 1,
+  },
+  agentControlsRow: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
     flexShrink: 1,
   },
   compactLeftContent: {

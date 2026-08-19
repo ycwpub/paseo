@@ -15,7 +15,11 @@ description: Generate or modify ByteDance reconciliation implementations and Fun
 2. 使用 `inspect_workflow` 查看输入 schema、审批字段和副作用。
 3. 缺少数据源字段、样例数据、关联键、金额精度或时间窗口时，先在对话中追问。
 4. 使用 `run_workflow` 执行；默认只生成方案，不修改仓库或 FundEye。
-5. 用户也可以在“字节对账”插件 App 中填写同一组字段并查看运行结果。
+5. 用户也可以在“字节对账”插件 App 中选择已有 Project，或用自定义名称创建新
+   Project，再填写同一组字段并查看运行结果。
+
+Project 是插件的核心上下文。对账页面、规则方案、代码目录、测试记录、流程历史和
+项目记忆必须归属于同一个 Project；不要要求用户手工填写 Project ID。
 
 ## 对账类型
 

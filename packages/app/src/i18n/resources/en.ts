@@ -65,6 +65,27 @@ export const en = {
         "This user's global memories, summary, and extraction rules will be permanently deleted. Other memory scopes are not affected.",
       deleteConfirm: "Delete user",
     },
+    sync: {
+      sectionTitle: "Multi-host memory sync",
+      title: "Share memory between hosts",
+      description:
+        "Merge Global, Project, Workspace, and Assistant memories with another connected Paseo host. Existing target memories are preserved.",
+      targetHost: "Other host",
+      selectHost: "Select a connected host",
+      noHosts: "No other compatible hosts are connected",
+      online: "Online",
+      offline: "Offline",
+      push: "Sync to host",
+      pull: "Sync from host",
+      twoWay: "Two-way sync",
+      syncing: "Syncing…",
+      disconnected: "Both hosts must be online before memory can be synchronized.",
+      failed: "Memory sync failed",
+      completed: "Memory sync completed",
+      result: "{{source}} → {{target}}: {{total}} memories after sync ({{added}} added)",
+      scopeHint:
+        "Sync is idempotent and keeps both hosts' memories. Host-local settings, encryption keys, and usage history are not synchronized. Scoped memories keep their Project, Workspace, and Assistant IDs.",
+    },
     scopeManager: {
       title: "Memory rules",
       description:
@@ -1199,7 +1220,7 @@ export const en = {
         missing: "Directory does not exist",
         types: {
           project: "Project",
-          knowledge: "AI knowledge",
+          knowledge: "General knowledge",
           indexSkill: "Index Skill",
           workspaceData: "Workspace data",
         },
@@ -1892,23 +1913,23 @@ export const en = {
         openFolderFailed: "Couldn't open folder",
         hide: "Hide project",
         show: "Show project",
-        remove: "Remove project",
-        removing: "Removing...",
+        remove: "Delete project",
+        removing: "Deleting...",
       },
       hidden: {
         title: "Hidden projects ({{count}})",
       },
       confirmations: {
-        removeTitle: "Remove project?",
+        removeTitle: "Delete project?",
         removeMessage:
-          'Remove "{{projectName}}" from the sidebar?\n\nFiles on disk will not be changed.',
-        removeConfirm: "Remove",
+          'Permanently delete "{{projectName}}" and all of its Paseo-managed data under ~/.paseo/<projectId>?\n\nExternal source directories will not be deleted. This cannot be undone.',
+        removeConfirm: "Delete",
         cancel: "Cancel",
       },
       toasts: {
         hostDisconnected: "Host is not connected",
-        removeFailed: "Failed to remove some workspaces",
-        updateHostToRemove: "Update the host to remove projects.",
+        removeFailed: "Failed to delete the project or some of its data",
+        updateHostToRemove: "Update the host to delete projects.",
       },
       empty: {
         title: "No projects yet",
@@ -1942,8 +1963,10 @@ export const en = {
         unpin: "Unpin",
         archive: "Archive",
         archiveWorkspace: "Archive workspace",
+        remove: "Delete workspace",
         hideFromSidebar: "Hide from sidebar",
         archiving: "Archiving...",
+        removing: "Deleting...",
         hiding: "Hiding...",
       },
       bulkArchive: {
@@ -1962,6 +1985,10 @@ export const en = {
         hideMessage:
           'Hide "{{workspaceName}}" from the sidebar?\n\nFiles on disk will not be changed.',
         hideConfirm: "Hide",
+        removeTitle: "Delete workspace?",
+        removeMessage:
+          'Permanently delete "{{workspaceName}}" and its Paseo-managed data at ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nThe external source directory and all files in it will not be deleted or modified. This cannot be undone.',
+        removeConfirm: "Delete",
         cancel: "Cancel",
       },
       rename: {
@@ -1975,6 +2002,7 @@ export const en = {
         branchNameCopied: "Branch name copied",
         hostDisconnected: "Host is not connected",
         hideFailed: "Failed to hide workspace",
+        removeFailed: "Failed to delete workspace",
         archiveFailed: "Failed to archive workspace",
       },
     },
@@ -1998,6 +2026,9 @@ export const en = {
       createWorktreeFailed: "Failed to create worktree",
       composerStateRequired: "Composer state is required",
       selectModel: "Select a model",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -3617,6 +3648,12 @@ export const en = {
       backToProjects: "Back to projects",
       switchHost: "Switch host",
       projectId: "Project ID",
+      projectPath: "Project path",
+      directoryless: {
+        title: "No Project directory",
+        description:
+          "You can edit this Project's name, icon, and memory. Settings stored in paseo.json become available after the Project is attached to a directory.",
+      },
       memory: {
         title: "Project memory",
         info: "Control whether this Project contributes scoped memory and define what durable Project knowledge Paseo should learn.",
@@ -3632,6 +3669,17 @@ export const en = {
         saving: "Saving...",
         saved: "Saved",
         saveError: "Couldn't save Project memory",
+      },
+      edit: {
+        title: "Edit project",
+        name: "Project name",
+        nameLabel: "Project name",
+        icon: "Project icon",
+        chooseImage: "Choose image",
+        useAutomatic: "Use default icon",
+        imageUrl: "Image or website URL",
+        save: "Save changes",
+        savedToast: "Project updated",
       },
       rename: {
         renamedToast: "Project renamed",
@@ -3695,12 +3743,12 @@ export const en = {
       },
       resources: {
         title: "Project resources",
-        info: "Configure multiple directories for source, mandatory knowledge, generated index Skills, and workspace review data. Relative paths resolve from the project root.",
+        info: "Configure writable Project directories, generated index Skill directories, and Workspace review data directories. Relative paths resolve from the single project directory when present, otherwise from the managed Project path; Project knowledge is managed separately below.",
         emptyDirectories: "No directories configured.",
         removeDirectory: "Remove {{title}} entry",
         project: {
           title: "Project directories",
-          hint: "Single-directory mode requires one path and automatically includes AI knowledge folders under it. Multiple-directory mode allows zero or more paths and does not add knowledge folders automatically.",
+          hint: "Single-directory mode requires one path and automatically includes AI general knowledge folders under it. Multiple-directory mode allows zero or more paths and does not add general knowledge folders automatically.",
           single: "Single directory",
           multiple: "Multiple directories",
           validation: {
@@ -3708,8 +3756,8 @@ export const en = {
           },
         },
         knowledge: {
-          title: "Knowledge directories",
-          hint: "Applicable files in these directories are mandatory instructions for every Agent.",
+          title: "General knowledge directories",
+          hint: "Agents read and adopt content from these directories only when it is relevant to the task.",
         },
         indexSkill: {
           title: "Index Skill directories",
@@ -3717,7 +3765,7 @@ export const en = {
         },
         workspaceData: {
           title: "Workspace data directories",
-          hint: "Defaults to ~/.paseo/workspaces/{{workspaceId}}, outside the Project directory, for durable progress notes, review artifacts, and outputs.",
+          hint: "Defaults to ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}, grouping durable progress notes, review artifacts, and outputs by Project.",
         },
       },
       indexSkill: {

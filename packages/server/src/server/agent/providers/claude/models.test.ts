@@ -322,8 +322,101 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
     ]);
   });
 
-  it("discovers Aiden custom models enabled for Claude Code", async () => {
+  it("loads only Claude-compatible models from Aiden for Aiden Claude", async () => {
     const aidenConfigDir = await createClaudeConfigDir({
+      xLauncherSelections: {
+        claude: {
+          model: "gpt-5.5",
+        },
+      },
+      xCustomModels: {
+        "gpt-5.6": {
+          protocol: "responses",
+          model: "gpt-5.6-sol",
+          visible: { codex: true, claude_code: true },
+          claude_code: { series: "Custom GPT", alias: "sonnet" },
+        },
+        "hidden-model": {
+          protocol: "responses",
+          model: "hidden",
+          visible: { claude_code: false },
+          claude_code: { series: "Hidden", alias: "sonnet" },
+        },
+        "codex-only": {
+          protocol: "responses",
+          model: "codex-only",
+          visible: true,
+        },
+      },
+    });
+    const runCommand = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        schema_version: 1,
+        models: [
+          {
+            cli_type: "claudecode",
+            id: "gpt-5.5",
+            series: "GPT",
+            alias: "sonnet",
+            context_length: 400_000,
+          },
+          {
+            cli_type: "claudecode",
+            id: "[custom]gpt-5.6",
+            series: "Custom GPT",
+            alias: "sonnet",
+          },
+          {
+            cli_type: "codex",
+            id: "codex-only",
+          },
+        ],
+      }),
+      stderr: "",
+    }));
+    const resolveVersion = vi.fn(async () => "2.1.219");
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      customProvider: { id: "aiden-claude" },
+      configDir: aidenConfigDir,
+      aidenConfigDir,
+      aidenModelCommandRunner: runCommand,
+      resolveVersion,
+    });
+
+    const { models } = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: os.tmpdir(),
+      force: true,
+    });
+
+    expect(models).toEqual([
+      {
+        provider: "claude",
+        id: "gpt-5.5",
+        label: "gpt-5.5",
+        description: "GPT · sonnet · From Aiden",
+        contextWindowMaxTokens: 400_000,
+        isDefault: true,
+      },
+      {
+        provider: "claude",
+        id: "[custom]gpt-5.6",
+        label: "[custom]gpt-5.6",
+        description: "Custom GPT · sonnet · From Aiden",
+      },
+    ]);
+    expect(runCommand).toHaveBeenCalledWith(
+      "aiden",
+      ["x", "models", "--json", "--claude", "--no-cache", "--timeout", "15000"],
+      expect.objectContaining({ cwd: os.tmpdir() }),
+    );
+    expect(resolveVersion).not.toHaveBeenCalled();
+  });
+
+  it("falls back only to local Aiden models when the Aiden catalog is unavailable", async () => {
+    const aidenConfigDir = await createClaudeConfigDir({
+      model: "gpt-5.6",
       xCustomModels: {
         "gpt-5.6": {
           protocol: "responses",
@@ -347,27 +440,27 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
     const client = new ClaudeAgentClient({
       logger: createTestLogger(),
       customProvider: { id: "aiden-claude" },
-      configDir: aidenConfigDir,
       aidenConfigDir,
-      resolveVersion: async () => "2.1.219",
+      aidenModelCommandRunner: async () => {
+        throw new Error("Aiden login required");
+      },
     });
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
       cwd: os.tmpdir(),
-      force: true,
+      force: false,
     });
 
-    expect(models.map((model) => model.id)).toEqual([
-      ...getClaudeModels().map((model) => model.id),
-      "[custom]gpt-5.6",
+    expect(models).toEqual([
+      {
+        provider: "claude",
+        id: "[custom]gpt-5.6",
+        label: "[custom]gpt-5.6",
+        description: "Custom model gpt-5.6 from Aiden",
+        isDefault: true,
+      },
     ]);
-    expect(models.at(-1)).toEqual({
-      provider: "claude",
-      id: "[custom]gpt-5.6",
-      label: "[custom]gpt-5.6",
-      description: "Custom model gpt-5.6 from Aiden",
-    });
   });
 
   it("keeps Aiden model discovery scoped to the Aiden Claude provider", async () => {

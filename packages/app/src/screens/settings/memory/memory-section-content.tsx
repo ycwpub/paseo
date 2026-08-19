@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   PaseoMemoryCreateInput,
@@ -18,6 +19,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { MemoryCreateCard } from "./memory-create-card";
 import { MemoryDetailCard, type MemoryDetailDraft } from "./memory-detail-card";
+import { MemoryHostSyncCard } from "./memory-host-sync-card";
 import {
   MEMORY_SCOPE_OPTIONS,
   MEMORY_STATUS_OPTIONS,
@@ -30,7 +32,7 @@ import { MemoryUserCard } from "./memory-user-card";
 import { filterMemoryDetails, type MemoryScopeFilter } from "./memory-view-model";
 
 const SCOPE_FILTER_OPTIONS = [
-  { id: "all", value: "all" as const, label: "All scopes" },
+  { id: "all", value: "all" as const, label: "全部作用域" },
   ...MEMORY_SCOPE_OPTIONS,
 ];
 
@@ -44,6 +46,7 @@ interface MemorySectionContentProps {
   isMutating: boolean;
   visibleError: string | null;
   usersSupported: boolean;
+  syncSupported: boolean;
   onSummaryChange: (summary: string) => void;
   onSearchChange: (search: string) => void;
   onStatusFilterChange: (status: MemoryStatusFilter) => void;
@@ -81,6 +84,7 @@ export function MemorySectionContent({
   isMutating,
   visibleError,
   usersSupported,
+  syncSupported,
   onSummaryChange,
   onSearchChange,
   onStatusFilterChange,
@@ -95,6 +99,7 @@ export function MemorySectionContent({
   onConsolidate,
   onImport,
 }: MemorySectionContentProps) {
+  const { t } = useTranslation();
   const visibleDetails = useMemo(
     () =>
       filterMemoryDetails({
@@ -154,9 +159,7 @@ export function MemorySectionContent({
     [activeUserId, isMutating, onCreateDetail],
   );
   const emptyText =
-    memory.details.length === 0
-      ? "No durable memory has been learned yet."
-      : "No memory matches these filters.";
+    memory.details.length === 0 ? "尚未学习到长期记忆。" : "没有符合筛选条件的记忆。";
 
   return (
     <View>
@@ -175,7 +178,7 @@ export function MemorySectionContent({
           />
         ) : null}
         {visibleError ? (
-          <Alert title="Unable to update memory" description={visibleError} variant="error" />
+          <Alert title="无法更新记忆" description={visibleError} variant="error" />
         ) : null}
         <View style={styles.stats}>
           <Text style={settingsStyles.rowHint}>
@@ -202,50 +205,56 @@ export function MemorySectionContent({
 
       <MemoryScopePoliciesSection serverId={serverId} memory={memory} />
 
-      <SettingsSection title="Summary file" trailing={summaryTrailing}>
+      {syncSupported ? (
+        <SettingsSection title={t("memoryPolicies.sync.sectionTitle")}>
+          <MemoryHostSyncCard serverId={serverId} disabled={isMutating} />
+        </SettingsSection>
+      ) : null}
+
+      <SettingsSection title="总记忆文件" trailing={summaryTrailing}>
         <Text selectable style={settingsStyles.rowHint}>
           {memory.summaryPath}
         </Text>
         <SettingsTextAreaCard
-          accessibilityLabel="Paseo memory summary"
+          accessibilityLabel="Paseo 记忆总览"
           value={summary}
           onChangeText={onSummaryChange}
           style={styles.summaryInput}
         />
       </SettingsSection>
 
-      <SettingsSection title="Detail memories" trailing={detailTrailing}>
+      <SettingsSection title="子记忆" trailing={detailTrailing}>
         <View style={settingsStyles.card}>
           <View style={styles.filters}>
             <View style={styles.search}>
-              <Field label="Search">
+              <Field label="搜索">
                 <FormTextInput
                   value={search}
                   onChangeText={onSearchChange}
-                  placeholder="Title, content, keyword, or scope"
+                  placeholder="搜索标题、内容、关键词或作用域"
                 />
               </Field>
             </View>
             <View style={styles.filter}>
               <SelectField
-                label="State"
+                label="状态"
                 value={statusFilter}
                 selectedDisplay={statusDisplay}
                 options={MEMORY_STATUS_OPTIONS}
                 onChange={onStatusFilterChange}
-                placeholder="All states"
-                emptyText="No states"
+                placeholder="全部状态"
+                emptyText="没有可用状态"
               />
             </View>
             <View style={styles.filter}>
               <SelectField
-                label="Scope"
+                label="作用域"
                 value={scopeFilter}
                 selectedDisplay={scopeDisplay}
                 options={SCOPE_FILTER_OPTIONS}
                 onChange={onScopeFilterChange}
-                placeholder="All scopes"
-                emptyText="No scopes"
+                placeholder="全部作用域"
+                emptyText="没有可用作用域"
               />
             </View>
           </View>
@@ -269,7 +278,7 @@ export function MemorySectionContent({
         )}
       </SettingsSection>
 
-      <SettingsSection title="Import and export">
+      <SettingsSection title="导入与导出">
         <MemoryTransferCard
           exportJson={memory.exportJson ?? ""}
           disabled={isMutating}

@@ -14,6 +14,7 @@ function ws(
   return {
     serverId: input.serverId ?? "srv",
     workspaceId: input.workspaceId ?? input.workspaceKey.split(":")[1] ?? "ws",
+    projectId: input.projectId ?? "proj",
     projectViewKey: input.projectViewKey ?? "proj",
     projectName: input.projectName ?? "Project",
     projectRootPath: input.projectRootPath,

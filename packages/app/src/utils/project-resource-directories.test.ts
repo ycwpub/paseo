@@ -25,7 +25,7 @@ describe("resolveProjectResourceDirectories", () => {
         "/repo/worktrees/feature/.trae",
       ],
       indexSkill: [],
-      workspaceData: ["~/.paseo/workspaces/wks_test"],
+      workspaceData: ["~/.paseo/prj_test/workspaces/wks_test"],
     });
   });
 
@@ -38,15 +38,27 @@ describe("resolveProjectResourceDirectories", () => {
           variables: { docs: "../shared/docs" },
           directories: {
             project: [".", "{{workspaceDirectory}}"],
+            reference: ["../legacy", "/opt/company/examples"],
             knowledge: ["{{docs}}"],
             indexSkill: [".paseo/index"],
             workspaceData: ["/tmp/paseo"],
+          },
+          knowledge: {
+            general: [
+              { type: "local-directory", source: "{{docs}}/background" },
+              { type: "local-document", source: "README.md" },
+            ],
           },
         },
       }),
     ).toEqual({
       project: ["/repo/paseo", "/repo/worktrees/feature"],
-      knowledge: ["/repo/shared/docs"],
+      knowledge: [
+        "/repo/shared/docs",
+        "/repo/legacy",
+        "/opt/company/examples",
+        "/repo/shared/docs/background",
+      ],
       indexSkill: ["/repo/paseo/.paseo/index"],
       workspaceData: ["/tmp/paseo/wks_test"],
     });

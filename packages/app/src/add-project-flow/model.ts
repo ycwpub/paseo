@@ -6,6 +6,7 @@ export interface AddProjectHost {
   canCloneGithubRepositories: boolean;
   canSearchGithubRepositories: boolean;
   canCreateDirectory: boolean;
+  canCreateDirectorylessProject?: boolean;
 }
 
 export interface GithubRepositoryChoice {
@@ -39,6 +40,14 @@ export type AddProjectPage =
     } & SearchPageState)
   | ({ kind: "new-directory-parent"; hostId: string } & SearchPageState)
   | {
+      kind: "directoryless-project-name";
+      hostId: string;
+      name: string;
+      activeIndex: number;
+      error: string | null;
+      isSubmitting: boolean;
+    }
+  | {
       kind: "new-directory-name";
       hostId: string;
       parentPath: string;
@@ -52,12 +61,14 @@ export interface AddProjectFlowState {
   hosts: AddProjectHost[];
   pages: AddProjectPage[];
   newDirectoryNameDrafts: Record<string, string>;
+  directorylessProjectNameDrafts: Record<string, string>;
   githubLocationDrafts: Record<string, { query: string; activeIndex: number }>;
 }
 
 export interface OpenAddProjectFlowInput {
   hosts: AddProjectHost[];
   preferredHostId?: string;
+  initialDirectorylessProjectName?: string;
 }
 
 type SearchPageKind = Extract<AddProjectPage, { query: string }>["kind"];
@@ -70,6 +81,24 @@ function methodPage(hostId: string): AddProjectPage {
   return { kind: "method", hostId, activeIndex: 0, error: null, isSubmitting: false };
 }
 
+function directorylessProjectNamePage(hostId: string, name: string): AddProjectPage {
+  return {
+    kind: "directoryless-project-name",
+    hostId,
+    name,
+    activeIndex: 0,
+    error: null,
+    isSubmitting: false,
+  };
+}
+
+function initialPage(host: AddProjectHost, directorylessProjectName?: string): AddProjectPage {
+  if (directorylessProjectName !== undefined && host.canCreateDirectorylessProject) {
+    return directorylessProjectNamePage(host.serverId, directorylessProjectName);
+  }
+  return methodPage(host.serverId);
+}
+
 export function openAddProjectFlow(input: OpenAddProjectFlowInput): AddProjectFlowState {
   const preferredHost = input.preferredHostId
     ? input.hosts.find((host) => host.serverId === input.preferredHostId)
@@ -79,8 +108,14 @@ export function openAddProjectFlow(input: OpenAddProjectFlowInput): AddProjectFl
 
   return {
     hosts: input.hosts,
-    pages: initialHost ? [methodPage(initialHost.serverId)] : [searchPage("host")],
+    pages: initialHost
+      ? [initialPage(initialHost, input.initialDirectorylessProjectName)]
+      : [searchPage("host")],
     newDirectoryNameDrafts: {},
+    directorylessProjectNameDrafts:
+      initialHost && input.initialDirectorylessProjectName !== undefined
+        ? { [initialHost.serverId]: input.initialDirectorylessProjectName }
+        : {},
     githubLocationDrafts: {},
   };
 }
@@ -89,6 +124,7 @@ export function applyAvailableAddProjectHosts(
   state: AddProjectFlowState,
   hosts: AddProjectHost[],
   preferredHostId?: string,
+  initialDirectorylessProjectName?: string,
 ): AddProjectFlowState {
   const current = currentAddProjectPage(state);
   if (state.pages.length !== 1 || current.kind !== "host") {
@@ -102,7 +138,14 @@ export function applyAvailableAddProjectHosts(
   return {
     ...state,
     hosts,
-    pages: initialHost ? [methodPage(initialHost.serverId)] : state.pages,
+    pages: initialHost ? [initialPage(initialHost, initialDirectorylessProjectName)] : state.pages,
+    directorylessProjectNameDrafts:
+      initialHost && initialDirectorylessProjectName !== undefined
+        ? {
+            ...state.directorylessProjectNameDrafts,
+            [initialHost.serverId]: initialDirectorylessProjectName,
+          }
+        : state.directorylessProjectNameDrafts,
   };
 }
 
@@ -188,6 +231,16 @@ export function openNewDirectoryParentPage(
   return pushAddProjectPage(state, { ...searchPage("new-directory-parent"), hostId });
 }
 
+export function openDirectorylessProjectNamePage(
+  state: AddProjectFlowState,
+  hostId: string,
+): AddProjectFlowState {
+  return pushAddProjectPage(
+    state,
+    directorylessProjectNamePage(hostId, state.directorylessProjectNameDrafts[hostId] ?? ""),
+  );
+}
+
 export function openNewDirectoryNamePage(
   state: AddProjectFlowState,
   hostId: string,
@@ -211,7 +264,7 @@ export function setAddProjectPageInput(
 ): AddProjectFlowState {
   const page = currentAddProjectPage(state);
   const updated = updateCurrentAddProjectPage(state, (current) => {
-    if (current.kind === "new-directory-name") {
+    if (current.kind === "new-directory-name" || current.kind === "directoryless-project-name") {
       return { ...current, name: value, activeIndex: 0, error: null };
     }
     if (current.kind === "method") return current;
@@ -224,6 +277,22 @@ export function setAddProjectPageInput(
     githubLocationDrafts: {
       ...updated.githubLocationDrafts,
       [draftKey]: { query: value, activeIndex: 0 },
+    },
+  };
+}
+
+export function setDirectorylessProjectName(
+  state: AddProjectFlowState,
+  value: string,
+): AddProjectFlowState {
+  const page = currentAddProjectPage(state);
+  if (page.kind !== "directoryless-project-name") return state;
+  const updated = setAddProjectPageInput(state, value);
+  return {
+    ...updated,
+    directorylessProjectNameDrafts: {
+      ...updated.directorylessProjectNameDrafts,
+      [page.hostId]: value,
     },
   };
 }

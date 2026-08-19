@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import {
+  DEFAULT_PLUGIN_APP_PROJECT_BINDING,
   PluginAppGenerationSchema,
   type PluginAppDefinition,
   type PluginAppDocument,
@@ -15,9 +16,12 @@ import {
   resolveStructuredGenerationProviders,
   type StructuredGenerationDaemonConfig,
 } from "../agent/structured-generation-providers.js";
+import { buildCopiedPluginAppState } from "./plugin-app-project-copy.js";
 import { PluginAppStore } from "./plugin-app-store.js";
 import type {
+  PluginAppConfigureInput,
   PluginAppGenerateInput,
+  PluginAppProjectCopyInput,
   PluginAppRuntime,
   PluginAppSubmitInput,
 } from "./plugin-app-runtime-types.js";
@@ -98,12 +102,14 @@ function buildGenerationPrompt(input: GenerateAppInput): string {
     "Generate or revise a safe declarative UI document. Never output JavaScript, HTML, CSS, shell commands, or executable code.",
     "Supported component types: heading, text, text_input, textarea, number_input, select, checkbox, button, status, result, json.",
     "Buttons may only use an http_service action. The action input can use {{form.fieldId}} templates.",
+    "The app is Project-scoped. Paseo injects projectId, projectName, and projectSourceDirectory into the form and every HTTP action input. Do not ask the user to type Project IDs or repository paths already supplied by Project context.",
     "Use stable, unique component IDs. Include status and result components when the UI submits an HTTP processing job.",
     "Only bind actions to one of these installed HTTP services:",
     targets,
     "",
     `Plugin: ${input.current.pluginId}`,
     `App: ${input.current.appId}`,
+    `Project: ${input.current.projectId}`,
     `Category: ${input.context.definition.category ?? "Uncategorized"}`,
     "",
     "Current interface:",
@@ -151,6 +157,55 @@ function validateRequiredFields(document: PluginAppDocument, form: Record<string
   }
 }
 
+function projectScopedForm(
+  input: PluginAppSubmitInput,
+  context: PluginAppContext,
+  state: PluginAppState,
+): Record<string, unknown> {
+  const projectBinding = context.definition.project ?? DEFAULT_PLUGIN_APP_PROJECT_BINDING;
+  if (!state.defaultAgent) {
+    throw new Error("Configure the plugin project's default provider and model first");
+  }
+  return {
+    ...input.form,
+    projectId: input.projectId,
+    [projectBinding.idField]: input.projectId,
+    defaultAgentProvider: state.defaultAgent.provider,
+    defaultAgentModel: state.defaultAgent.model,
+    agent_provider: state.defaultAgent.provider,
+    agent_model: state.defaultAgent.model,
+  };
+}
+
+function projectScopedActionInput(
+  form: Record<string, unknown>,
+  actionInput: unknown,
+): Record<string, unknown> {
+  const projectContext = {
+    projectId: form.projectId,
+    ...(form.projectName !== undefined ? { projectName: form.projectName } : {}),
+    ...(form.projectSourceDirectory !== undefined
+      ? { projectSourceDirectory: form.projectSourceDirectory }
+      : {}),
+    ...(form.defaultAgentProvider !== undefined
+      ? { defaultAgentProvider: form.defaultAgentProvider }
+      : {}),
+    ...(form.defaultAgentModel !== undefined ? { defaultAgentModel: form.defaultAgentModel } : {}),
+    ...(form.agent_provider !== undefined ? { agent_provider: form.agent_provider } : {}),
+    ...(form.agent_model !== undefined ? { agent_model: form.agent_model } : {}),
+  };
+  if (typeof actionInput === "object" && actionInput !== null && !Array.isArray(actionInput)) {
+    return {
+      ...(actionInput as Record<string, unknown>),
+      ...projectContext,
+    };
+  }
+  return {
+    ...projectContext,
+    data: actionInput,
+  };
+}
+
 export class PluginAppService implements PluginAppRuntime {
   private readonly store: PluginAppStore;
   private readonly logger: pino.Logger;
@@ -164,14 +219,72 @@ export class PluginAppService implements PluginAppRuntime {
     this.generateOverride = options.generate;
   }
 
-  get(pluginId: string, appId: string): PluginAppState {
+  get(pluginId: string, appId: string, projectId: string): PluginAppState {
     const context = this.options.resolveApp(pluginId, appId);
-    return this.store.get(pluginId, context.definition, this.now().toISOString());
+    return this.store.get(pluginId, context.definition, projectId, this.now().toISOString());
+  }
+
+  configure(input: PluginAppConfigureInput): PluginAppState {
+    const context = this.options.resolveApp(input.pluginId, input.appId);
+    const timestamp = this.now().toISOString();
+    const current = this.store.get(input.pluginId, context.definition, input.projectId, timestamp);
+    return this.store.save({
+      ...current,
+      defaultAgent: input.defaultAgent,
+      updatedAt: timestamp,
+    });
+  }
+
+  listProjects(pluginId: string, appId: string): PluginAppState[] {
+    const context = this.options.resolveApp(pluginId, appId);
+    return this.store.list(pluginId, context.definition);
+  }
+
+  getHtmlPreview(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+  ): { html: string; htmlPath: string } | null {
+    const context = this.options.resolveApp(pluginId, appId);
+    return this.store.getHtmlPreview(pluginId, context.definition, projectId);
+  }
+
+  copyProject(input: PluginAppProjectCopyInput): PluginAppState {
+    const context = this.options.resolveApp(input.pluginId, input.appId);
+    if (input.sourceProjectId === input.targetProjectId) {
+      throw new Error("复制目标 Project 不能与源 Project 相同");
+    }
+    const projects = this.store.list(input.pluginId, context.definition);
+    const source = projects.find((state) => state.projectId === input.sourceProjectId);
+    if (!source) throw new Error("源插件项目不存在");
+    if (projects.some((state) => state.projectId === input.targetProjectId)) {
+      throw new Error("目标 Project 已存在该插件项目");
+    }
+    return this.store.save(
+      buildCopiedPluginAppState({
+        source,
+        targetProjectId: input.targetProjectId,
+        timestamp: this.now().toISOString(),
+      }),
+    );
+  }
+
+  deleteProject(pluginId: string, appId: string, projectId: string): boolean {
+    this.options.resolveApp(pluginId, appId);
+    return this.store.delete(pluginId, appId, projectId);
   }
 
   async generate(input: PluginAppGenerateInput): Promise<PluginAppState> {
     const context = this.options.resolveApp(input.pluginId, input.appId);
-    const current = this.store.get(input.pluginId, context.definition, this.now().toISOString());
+    const current = this.store.get(
+      input.pluginId,
+      context.definition,
+      input.projectId,
+      this.now().toISOString(),
+    );
+    if (!current.defaultAgent) {
+      throw new Error("Configure the plugin project's default provider and model first");
+    }
     const generated = this.generateOverride
       ? await this.generateOverride({
           prompt: input.prompt,
@@ -191,7 +304,12 @@ export class PluginAppService implements PluginAppRuntime {
       document: generated.document,
       conversation: [
         ...current.conversation,
-        { id: randomUUID(), role: "user" as const, content: input.prompt, createdAt: timestamp },
+        {
+          id: randomUUID(),
+          role: "user" as const,
+          content: input.prompt,
+          createdAt: timestamp,
+        },
         {
           id: randomUUID(),
           role: "assistant" as const,
@@ -204,15 +322,16 @@ export class PluginAppService implements PluginAppRuntime {
   }
 
   async submit(input: PluginAppSubmitInput): Promise<PluginHttpJob> {
-    const state = this.get(input.pluginId, input.appId);
+    const context = this.options.resolveApp(input.pluginId, input.appId);
+    const state = this.get(input.pluginId, input.appId, input.projectId);
     if (!state.document) throw new Error("Generate the plugin app interface before running it");
-    validateRequiredFields(state.document, input.form);
+    const form = projectScopedForm(input, context, state);
+    validateRequiredFields(state.document, form);
     const button = findButton(state.document, input.componentId);
     const targetPluginId = button.action.pluginId ?? input.pluginId;
-    const actionInput =
-      button.action.input === undefined
-        ? input.form
-        : resolveTemplate(button.action.input, input.form);
+    const resolvedActionInput =
+      button.action.input === undefined ? form : resolveTemplate(button.action.input, form);
+    const actionInput = projectScopedActionInput(form, resolvedActionInput);
     return this.options.httpRuntime.submit(targetPluginId, button.action.serviceName, actionInput);
   }
 
@@ -220,11 +339,38 @@ export class PluginAppService implements PluginAppRuntime {
     return this.options.httpRuntime.getJob(processId);
   }
 
+  listJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+  }): PluginHttpJob[] {
+    return this.options.httpRuntime.listJobs(options);
+  }
+
+  updateJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
+    return this.options.httpRuntime.updateJob(processId, input);
+  }
+
+  deleteJob(processId: string): Promise<boolean> {
+    return this.options.httpRuntime.deleteJob(processId);
+  }
+
   private async generateWithAgent(input: GenerateAppInput): Promise<PluginAppGeneration> {
+    const defaultAgent = input.current.defaultAgent;
+    if (!defaultAgent) {
+      throw new Error("Configure the plugin project's default provider and model first");
+    }
+    const daemonConfig = this.options.readDaemonConfig();
     const providers = await resolveStructuredGenerationProviders({
       cwd: input.context.pluginRoot,
       providerSnapshotManager: this.options.providerSnapshotManager,
-      daemonConfig: this.options.readDaemonConfig(),
+      daemonConfig: {
+        ...daemonConfig,
+        metadataGeneration: {
+          providers: [defaultAgent, ...(daemonConfig.metadataGeneration?.providers ?? [])],
+        },
+      },
     });
     if (providers.length === 0) {
       throw new Error("No available provider can generate a plugin interface");

@@ -1,5 +1,13 @@
 import { execSync } from "child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
@@ -26,6 +34,9 @@ import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { WorkspaceLabelError, type WorkspaceLabelService } from "./workspace-labels/index.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
+import { resolveGlobalProjectConfigPath } from "./project/project-config-storage.js";
+import { resolveManagedProjectSourceDirectory } from "./project/project-source-directory.js";
+import { resolveManagedProjectStorageRoot } from "./project/project-storage-paths.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -945,6 +956,7 @@ describe("project command-center RPCs", () => {
   test("creates a directory and returns its normalized Project descriptor", async () => {
     const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
     const directoryPath = join(parentDirectory, "new-project");
+    const paseoHome = join(parentDirectory, "paseo-home");
     const messages: SessionOutboundMessage[] = [];
     const projectAllocation = vi.fn(async (input) =>
       createPersistedProjectRecord({
@@ -958,6 +970,7 @@ describe("project command-center RPCs", () => {
     );
     const session = createSessionForTest({
       messages,
+      paseoHome,
       projectRegistry: {
         getOrCreateActiveByRoot: projectAllocation,
       },
@@ -1002,6 +1015,7 @@ describe("project command-center RPCs", () => {
               projectCustomIconRevision: null,
               projectIconRevision: "automatic:none:v1",
               projectRootPath: directoryPath,
+              projectSourceDirectory: directoryPath,
               projectKind: "non_git",
             },
             error: null,
@@ -1059,6 +1073,70 @@ describe("project command-center RPCs", () => {
       ]);
     } finally {
       rmSync(parentDirectory, { recursive: true, force: true });
+    }
+  });
+
+  test("creates a Project without creating or requiring a directory", async () => {
+    const paseoHome = realpathSync(mkdtempSync(join(tmpdir(), "paseo-directoryless-session-")));
+    const messages: SessionOutboundMessage[] = [];
+    const project = createPersistedProjectRecord({
+      projectId: "prj_directoryless",
+      rootPath: null,
+      kind: "non_git",
+      displayName: "Planning",
+      createdAt: "2026-08-19T00:00:00.000Z",
+      updatedAt: "2026-08-19T00:00:00.000Z",
+    });
+    const createDirectoryless = vi.fn().mockResolvedValue(project);
+    const session = createSessionForTest({
+      messages,
+      paseoHome,
+      projectRegistry: { createDirectoryless },
+    });
+
+    try {
+      await session.handleMessage({
+        type: "project.create_directoryless.request",
+        name: "Planning",
+        requestId: "req-directoryless",
+      });
+
+      expect(createDirectoryless).toHaveBeenCalledWith({
+        displayName: "Planning",
+        timestamp: expect.any(String),
+      });
+      expect(messages).toEqual([
+        {
+          type: "project.create_directoryless.response",
+          payload: {
+            requestId: "req-directoryless",
+            project: {
+              projectId: "prj_directoryless",
+              projectDisplayName: "Planning",
+              projectCustomName: null,
+              projectCustomIconRevision: null,
+              projectRootPath: resolveManagedProjectSourceDirectory(paseoHome, project.projectId),
+              projectSourceDirectory: resolveManagedProjectSourceDirectory(
+                paseoHome,
+                project.projectId,
+              ),
+              projectDirectoryless: true,
+              projectKind: "non_git",
+            },
+            error: null,
+          },
+        },
+      ]);
+      expect(
+        readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
+      ).toBe(
+        '{\n  "project": {\n    "directoryMode": "multiple",\n    "directories": {\n      "project": []\n    }\n  }\n}\n',
+      );
+      expect(existsSync(resolveManagedProjectSourceDirectory(paseoHome, project.projectId))).toBe(
+        true,
+      );
+    } finally {
+      rmSync(paseoHome, { recursive: true, force: true });
     }
   });
 });
@@ -1521,11 +1599,14 @@ describe("project config RPC authorization", () => {
 
   test("read_project_config_request accepts the same root with a trailing slash", async () => {
     const repoRoot = makeRoot();
+    const paseoHome = makeRoot();
+    const project = createProjectRecord(repoRoot);
     writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      projectRegistry: { list: vi.fn().mockResolvedValue([createProjectRecord(repoRoot)]) },
+      paseoHome,
+      projectRegistry: { list: vi.fn().mockResolvedValue([project]) },
     });
 
     await session.handleMessage({
@@ -1539,7 +1620,7 @@ describe("project config RPC authorization", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-trailing-slash-1",
-          repoRoot,
+          repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
           ok: true,
           config: { worktree: { setup: "npm ci" } },
           revision: expect.objectContaining({
@@ -1556,6 +1637,8 @@ describe("project config RPC authorization", () => {
     "read_project_config_request accepts a symlink to an active project root",
     async () => {
       const repoRoot = makeRoot();
+      const paseoHome = makeRoot();
+      const project = createProjectRecord(repoRoot);
       writeFileSync(
         join(repoRoot, "paseo.json"),
         JSON.stringify({ worktree: { setup: "npm ci" } }),
@@ -1565,7 +1648,8 @@ describe("project config RPC authorization", () => {
       const messages: unknown[] = [];
       const session = createSessionForTest({
         messages,
-        projectRegistry: { list: vi.fn().mockResolvedValue([createProjectRecord(repoRoot)]) },
+        paseoHome,
+        projectRegistry: { list: vi.fn().mockResolvedValue([project]) },
       });
 
       await session.handleMessage({
@@ -1579,7 +1663,7 @@ describe("project config RPC authorization", () => {
           type: "read_project_config_response",
           payload: {
             requestId: "read-symlink-1",
-            repoRoot,
+            repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
             ok: true,
             config: { worktree: { setup: "npm ci" } },
             revision: expect.objectContaining({
@@ -1640,6 +1724,8 @@ describe("project config RPC authorization", () => {
 
   test("read_project_config_request emits raw lifecycle forms for a known project root", async () => {
     const repoRoot = makeRoot();
+    const paseoHome = makeRoot();
+    const project = createProjectRecord(repoRoot);
     writeFileSync(
       join(repoRoot, "paseo.json"),
       JSON.stringify({ worktree: { setup: "npm install", teardown: ["npm run clean"] } }),
@@ -1647,7 +1733,8 @@ describe("project config RPC authorization", () => {
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      projectRegistry: { list: vi.fn().mockResolvedValue([createProjectRecord(repoRoot)]) },
+      paseoHome,
+      projectRegistry: { list: vi.fn().mockResolvedValue([project]) },
     });
 
     await session.handleMessage({
@@ -1661,7 +1748,7 @@ describe("project config RPC authorization", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-1",
-          repoRoot,
+          repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
           ok: true,
           config: { worktree: { setup: "npm install", teardown: ["npm run clean"] } },
           revision: expect.objectContaining({
@@ -1673,21 +1760,20 @@ describe("project config RPC authorization", () => {
     ]);
   });
 
-  test("write_project_config_request emits stale and write-failed inline domain failures", async () => {
+  test("write_project_config_request reports stale edits and writes independently of the source directory", async () => {
     const staleRoot = makeRoot();
+    const paseoHome = makeRoot();
     writeFileSync(join(staleRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));
     const writeFailedRoot = join(makeRoot(), "not-a-directory");
     writeFileSync(writeFailedRoot, "file");
+    const staleProject = createProjectRecord(staleRoot);
+    const sourceUnavailableProject = createProjectRecord(writeFailedRoot);
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
+      paseoHome,
       projectRegistry: {
-        list: vi
-          .fn()
-          .mockResolvedValue([
-            createProjectRecord(staleRoot),
-            createProjectRecord(writeFailedRoot),
-          ]),
+        list: vi.fn().mockResolvedValue([staleProject, sourceUnavailableProject]),
       },
     });
 
@@ -1711,7 +1797,7 @@ describe("project config RPC authorization", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "stale-1",
-          repoRoot: staleRoot,
+          repoRoot: resolveManagedProjectStorageRoot(paseoHome, staleProject.projectId),
           ok: false,
           error: {
             code: "stale_project_config",
@@ -1726,9 +1812,13 @@ describe("project config RPC authorization", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "write-failed-1",
-          repoRoot: writeFailedRoot,
-          ok: false,
-          error: { code: "write_failed" },
+          repoRoot: resolveManagedProjectStorageRoot(paseoHome, sourceUnavailableProject.projectId),
+          ok: true,
+          config: { worktree: { setup: "new" } },
+          revision: expect.objectContaining({
+            mtimeMs: expect.any(Number),
+            size: expect.any(Number),
+          }),
         },
       },
     ]);
@@ -5296,6 +5386,7 @@ test("sends project updates only to capable sockets in a retained session", asyn
 
 test("project.list returns every active project descriptor", async () => {
   const messages: SessionOutboundMessage[] = [];
+  const paseoHome = "/tmp/paseo-home";
   const active = createPersistedProjectRecord({
     projectId: "project-active",
     projectKey: "remote:github.com/acme/app",
@@ -5316,6 +5407,7 @@ test("project.list returns every active project descriptor", async () => {
   });
   const session = createSessionForTest({
     messages,
+    paseoHome,
     projectRegistry: { list: vi.fn().mockResolvedValue([active, archived]) },
   });
 
@@ -5335,6 +5427,7 @@ test("project.list returns every active project descriptor", async () => {
             projectCustomIconRevision: null,
             projectIconRevision: "automatic:none:v1",
             projectRootPath: "/tmp/project-active",
+            projectSourceDirectory: "/tmp/project-active",
             projectKind: "git",
           },
         ],

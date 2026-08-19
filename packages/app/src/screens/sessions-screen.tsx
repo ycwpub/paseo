@@ -65,7 +65,7 @@ function resolveEmptyText(input: {
   if (input.isSearching) return input.t("sessions.noMatches");
   if (input.isProjectFiltered) return input.t("sessions.noProjectSessions");
   if (input.isAllHosts) return input.t("sessions.empty");
-  return "No sessions for this host";
+  return "此主机暂无会话";
 }
 
 function SessionsFilterRow({
@@ -274,7 +274,7 @@ function SessionsScreenContent() {
       ) : null}
       {!isInitialLoad && showLoadError ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Unable to load sessions</Text>
+          <Text style={styles.emptyText}>无法加载会话</Text>
           <Button variant="ghost" onPress={handleRefresh}>
             Try again
           </Button>

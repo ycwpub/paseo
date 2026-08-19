@@ -13,12 +13,17 @@ import {
   type Dirent,
 } from "node:fs";
 import path from "node:path";
+import { homedir } from "node:os";
 import type { Logger } from "pino";
-import { PaseoConfigSchema, type PaseoProjectConfig } from "@getpaseo/protocol/paseo-config-schema";
+import {
+  PaseoConfigSchema,
+  resolvePaseoProjectDirectoryEntries,
+  type PaseoProjectConfig,
+} from "@getpaseo/protocol/paseo-config-schema";
 import type { DaemonConfigStore } from "../daemon-config-store.js";
 import type { PersistedProjectRecord, ProjectRegistry } from "../workspace-registry.js";
-import { readPaseoConfigJson } from "../../utils/paseo-config-file.js";
 import { resolveProjectDirectories } from "./project-context.js";
+import { readProjectConfigForProject } from "./project-config-storage.js";
 
 const INDEX_FILE_NAME = "SKILL.md";
 const BRANCH_INDEX_DIRECTORY = "branches";
@@ -67,22 +72,22 @@ export function buildProjectIndexSkillDocument(input: ProjectIndexDocumentInput)
     `# Project index: ${projectName}`,
     "",
     `Project ID: \`${input.project.projectId}\``,
-    `Project root: \`${input.project.rootPath}\``,
+    `Project directory: \`${input.project.rootPath}\``,
     ...(input.branch ? [`Git branch: \`${input.branch}\``] : []),
     "",
     "## Usage",
     "",
     "- Use this index before broad filesystem searches.",
     "- Load project files only when they are relevant to the current task.",
-    "- Files under knowledge roots are mandatory project instructions; inspect and obey the applicable files before making changes.",
+    "- Knowledge roots contain optional background material; load and adopt only the files relevant to the current task.",
     "",
-    "## Project roots",
+    "## Project directories",
     "",
     ...(input.projectDirectories.length > 0
       ? input.projectDirectories.map((directory) => `- ${directory}`)
       : ["- None"]),
     "",
-    "## Knowledge roots",
+    "## General knowledge roots",
     "",
     ...(input.knowledgeDirectories.length > 0
       ? input.knowledgeDirectories.map((directory) => `- ${directory}`)
@@ -227,14 +232,36 @@ function collectDirectoryEntries(input: {
   return { entries, truncated };
 }
 
-function loadProjectConfig(projectRoot: string): PaseoProjectConfig | undefined {
-  const json = readPaseoConfigJson(projectRoot);
-  return json === null ? undefined : PaseoConfigSchema.parse(json).project;
+function loadProjectConfig(
+  paseoHome: string,
+  project: PersistedProjectRecord,
+): PaseoProjectConfig | undefined {
+  const result = readProjectConfigForProject({ paseoHome, project });
+  if (!result.ok || result.config === null) return undefined;
+  return PaseoConfigSchema.parse(result.config).project;
+}
+
+function resolveIndexProjectRoot(
+  project: PersistedProjectRecord,
+  projectConfig: PaseoProjectConfig | undefined,
+): string | null {
+  if (project.rootPath) return project.rootPath;
+  const configuredRoot = resolvePaseoProjectDirectoryEntries(projectConfig?.directories)
+    .project.filter((entry) => entry.enabled)
+    .map((entry) => entry.path.trim())
+    .find(Boolean);
+  if (!configuredRoot) return null;
+  if (configuredRoot === "~") return homedir();
+  if (configuredRoot.startsWith("~/") || configuredRoot.startsWith(`~${path.sep}`)) {
+    return path.resolve(homedir(), configuredRoot.slice(2));
+  }
+  return path.isAbsolute(configuredRoot) ? path.resolve(configuredRoot) : null;
 }
 
 export class ProjectIndexService {
   private readonly projectRegistry: Pick<ProjectRegistry, "list">;
   private readonly daemonConfigStore: DaemonConfigStore;
+  private readonly paseoHome: string;
   private readonly logger: Logger;
   private timer: NodeJS.Timeout | null = null;
   private running: Promise<void> | null = null;
@@ -242,10 +269,12 @@ export class ProjectIndexService {
   constructor(input: {
     projectRegistry: Pick<ProjectRegistry, "list">;
     daemonConfigStore: DaemonConfigStore;
+    paseoHome: string;
     logger: Logger;
   }) {
     this.projectRegistry = input.projectRegistry;
     this.daemonConfigStore = input.daemonConfigStore;
+    this.paseoHome = input.paseoHome;
     this.logger = input.logger.child({ module: "project-index-service" });
   }
 
@@ -287,19 +316,23 @@ export class ProjectIndexService {
   }
 
   private async refreshProject(project: PersistedProjectRecord): Promise<void> {
-    const projectConfig = loadProjectConfig(project.rootPath);
+    const projectConfig = loadProjectConfig(this.paseoHome, project);
     if (projectConfig?.indexSkill?.autoGenerate !== true) return;
+    const projectRoot = resolveIndexProjectRoot(project, projectConfig);
+    if (!projectRoot) return;
     const variables = {
       ...projectConfig.variables,
       projectId: project.projectId,
       projectName: project.customName ?? project.displayName,
-      projectRoot: project.rootPath,
+      projectRoot,
     };
     const directories = resolveProjectDirectories({
-      projectRoot: project.rootPath,
+      projectId: project.projectId,
+      projectRoot,
       workspaceId: "__project_index__",
-      workspaceDirectory: project.rootPath,
+      workspaceDirectory: projectRoot,
       projectConfig,
+      paseoHome: this.paseoHome,
       variables,
     });
     if (directories.indexSkill.length === 0) {

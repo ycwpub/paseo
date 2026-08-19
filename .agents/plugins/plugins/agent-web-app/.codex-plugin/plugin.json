@@ -1,6 +1,6 @@
 {
   "name": "agent-web-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generate a safe declarative interface through an Agent and connect it to Paseo HTTP services.",
   "author": {
     "name": "Paseo"
@@ -11,15 +11,16 @@
   "interface": {
     "displayName": "网页应用生成器",
     "shortDescription": "通过 Agent 对话生成界面并连接 HTTP 服务",
-    "longDescription": "使用自然语言生成安全的声明式网页界面，可为表单按钮绑定已安装插件提供的 Workflow HTTP 服务。",
+    "longDescription": "使用自然语言生成安全的声明式网页界面，可为表单按钮绑定已安装插件提供的 Workflow HTTP 服务，并自动保存可在浏览器预览的 HTML 文件。",
     "developerName": "Paseo",
     "category": "Productivity",
     "capabilities": [
       "Agent 对话生成界面",
       "表单与结果组件",
       "连接已安装 HTTP 服务",
-      "本地保存界面与会话",
-      "不执行生成的 HTML 或 JavaScript"
+      "本地保存声明式页面",
+      "自动导出安全 HTML 预览",
+      "日常对话跳转到关联 Project"
     ],
     "defaultPrompt": [
       "生成一个表单页面，并把提交按钮连接到已安装的 HTTP 服务。",

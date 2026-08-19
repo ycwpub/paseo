@@ -28,13 +28,13 @@ Describe the workflow, constraints, and examples the agent should follow.
 
 function SkillsUpgradeCard() {
   return (
-    <SettingsSection title="Skills">
+    <SettingsSection title="技能">
       <View style={settingsStyles.card} testID="host-page-skills-upgrade-card">
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Skill management requires a newer host</Text>
+            <Text style={settingsStyles.rowTitle}>Skill 管理需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
-              Update the selected Paseo daemon to create, edit, enable, or remove skills.
+              请更新所选 Paseo Daemon，以创建、编辑、启用或删除 Skill。
             </Text>
           </View>
         </View>
@@ -55,9 +55,9 @@ function formatTags(tags: string[] | undefined): string {
 }
 
 function skillSourceLabel(skill: Skill): string {
-  if (skill.source === "builtin") return "Built-in";
-  if (skill.source === "marketplace") return skill.pluginName ?? "Plugin";
-  return "Custom";
+  if (skill.source === "builtin") return "内置";
+  if (skill.source === "marketplace") return skill.pluginName ?? "插件";
+  return "自定义";
 }
 
 function SkillRow({
@@ -96,7 +96,7 @@ function SkillRow({
             {skill.name}
           </Text>
           <Text style={styles.sourceBadge}>{skillSourceLabel(skill)}</Text>
-          {!skill.enabled ? <Text style={styles.sourceBadge}>Disabled</Text> : null}
+          {!skill.enabled ? <Text style={styles.sourceBadge}>已禁用</Text> : null}
         </View>
         {skill.description ? (
           <Text style={settingsStyles.rowHint} numberOfLines={2}>
@@ -118,7 +118,7 @@ function SkillRow({
         <Switch
           value={skill.enabled}
           onValueChange={handleToggle}
-          accessibilityLabel={`Enable ${skill.name}`}
+          accessibilityLabel={`启用 ${skill.name}`}
         />
         <Button size="sm" variant="outline" onPress={handleEdit} disabled={isReadOnly}>
           Edit
@@ -236,8 +236,8 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     (skill: Skill) => {
       void confirmDialog({
         title: `Delete ${skill.name}?`,
-        message: "This removes the skill from this host.",
-        confirmLabel: "Delete",
+        message: "这会从当前主机移除该 Skill。",
+        confirmLabel: "删除",
         destructive: true,
       }).then((confirmed) => {
         if (confirmed) {
@@ -253,7 +253,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     setRefreshMessage(null);
     try {
       await skills.refreshSkills();
-      setRefreshMessage("Local Skill and MCP resources scanned.");
+      setRefreshMessage("已扫描本地 Skill 和 MCP 资源。");
     } catch {
       // The hook exposes the mutation error below.
     }
@@ -264,7 +264,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     if (skills.isLoading) {
       return (
         <View style={settingsStyles.row}>
-          <Text style={settingsStyles.rowHint}>Loading skills…</Text>
+          <Text style={settingsStyles.rowHint}>正在加载 Skills…</Text>
         </View>
       );
     }
@@ -285,7 +285,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     return (
       <View style={settingsStyles.row}>
         <Text style={settingsStyles.rowHint}>
-          {skills.skills.length === 0 ? "No skills yet." : "No matching skills."}
+          {skills.skills.length === 0 ? "暂无 Skill。" : "没有匹配的 Skill。"}
         </Text>
       </View>
     );
@@ -304,12 +304,12 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
 
   return (
     <View testID="host-page-skills">
-      <SettingsSection title="Skills">
+      <SettingsSection title="技能">
         <View style={styles.headerCard}>
           <View style={styles.headerText}>
-            <Text style={settingsStyles.rowTitle}>Manage reusable agent skills</Text>
+            <Text style={settingsStyles.rowTitle}>管理可复用的 Agent Skills</Text>
             <Text style={settingsStyles.rowHint}>
-              Create custom skills, edit their Markdown instructions, and enable or disable them.
+              创建自定义 Skill、编辑 Markdown 指令，并启用或禁用。
             </Text>
           </View>
           <View style={styles.headerActions}>
@@ -319,19 +319,19 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
               loading={skills.isMutating}
               disabled={!skills.isConnected}
             >
-              Scan local resources
+              扫描本地资源
             </Button>
             <Button variant="default" onPress={openCreateForm} disabled={!skills.isConnected}>
-              Add skill
+              添加 Skill
             </Button>
           </View>
         </View>
       </SettingsSection>
 
       {formOpen ? (
-        <SettingsSection title={editingSkill ? "Edit skill" : "Create skill"}>
+        <SettingsSection title={editingSkill ? "编辑 Skill" : "创建 Skill"}>
           <View style={styles.formCard}>
-            <Field label="Name" testID="skill-name-field">
+            <Field label="名称" testID="skill-name-field">
               <FormTextInput
                 initialValue={name}
                 resetKey={`skill-name-${formResetKey}`}
@@ -339,15 +339,15 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
                 placeholder="code-review"
               />
             </Field>
-            <Field label="Description" testID="skill-description-field">
+            <Field label="描述" testID="skill-description-field">
               <FormTextInput
                 initialValue={description}
                 resetKey={`skill-description-${formResetKey}`}
                 onChangeText={setDescription}
-                placeholder="Use when reviewing code changes"
+                placeholder="用于审查代码改动"
               />
             </Field>
-            <Field label="Tags" hint="Comma-separated labels." testID="skill-tags-field">
+            <Field label="标签" hint="使用英文逗号分隔。" testID="skill-tags-field">
               <FormTextInput
                 initialValue={tagsInput}
                 resetKey={`skill-tags-${formResetKey}`}
@@ -358,23 +358,21 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
             {editingSkill ? (
               <View style={settingsStyles.row}>
                 <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>Enabled</Text>
-                  <Text style={settingsStyles.rowHint}>
-                    Disabled skills are not offered to agents.
-                  </Text>
+                  <Text style={settingsStyles.rowTitle}>已启用</Text>
+                  <Text style={settingsStyles.rowHint}>禁用后不会向 Agent 提供该 Skill。</Text>
                 </View>
                 <Switch
                   value={enabled}
                   onValueChange={setEnabled}
-                  accessibilityLabel="Enable skill"
+                  accessibilityLabel="启用 Skill"
                 />
               </View>
             ) : null}
-            <Field label="Skill Markdown" testID="skill-content-field">
+            <Field label="Skill Markdown 内容" testID="skill-content-field">
               <SettingsTextAreaCard
                 value={content}
                 onChangeText={setContent}
-                accessibilityLabel="Skill Markdown"
+                accessibilityLabel="Skill Markdown 内容"
                 placeholder={DEFAULT_SKILL_CONTENT}
                 style={styles.contentInput}
               />
@@ -389,23 +387,23 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
                 disabled={!canSave}
                 loading={skills.isMutating}
               >
-                {editingSkill ? "Save skill" : "Create skill"}
+                {editingSkill ? "保存 Skill" : "创建 Skill"}
               </Button>
               <Button variant="outline" onPress={resetForm} disabled={skills.isMutating}>
-                Cancel
+                取消
               </Button>
             </View>
           </View>
         </SettingsSection>
       ) : null}
 
-      <SettingsSection title={`Available skills (${skills.skills.length})`}>
+      <SettingsSection title={`可用 Skills（${skills.skills.length}）`}>
         <View style={styles.searchCard}>
-          <Field label="Search">
+          <Field label="搜索">
             <FormTextInput
               initialValue={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search skills"
+              placeholder="搜索 Skills"
             />
           </Field>
         </View>

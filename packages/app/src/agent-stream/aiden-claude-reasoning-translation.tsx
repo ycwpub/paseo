@@ -153,8 +153,23 @@ export function AidenClaudeReasoningTranslation({
 export function shouldTranslateAidenClaudeReasoning(input: {
   enabled: boolean;
   provider: string | undefined;
+  sourceText: string;
+  source?: "thinking" | "text";
 }): boolean {
-  return input.enabled && input.provider === "aiden-claude";
+  return (
+    input.enabled &&
+    input.provider === "aiden-claude" &&
+    input.source !== "text" &&
+    isReadableEnglishReasoning(input.sourceText)
+  );
+}
+
+export function isReadableEnglishReasoning(sourceText: string): boolean {
+  const text = sourceText.trim();
+  if (!text || /[\p{Script=Han}]/u.test(text)) {
+    return false;
+  }
+  return /[A-Za-z]/u.test(text);
 }
 
 function createTranslationKey(serverId: string, agentId: string, sourceText: string): string {

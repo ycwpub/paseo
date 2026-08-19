@@ -1381,6 +1381,7 @@ export const ru: TranslationResources = {
         archiveWorkspace: "Архивировать рабочее пространство",
         hideFromSidebar: "Скрыть на боковой панели",
         archiving: "Архивирование...",
+        removing: "Удаление...",
         hiding: "Скрытие...",
       },
       bulkArchive: {
@@ -1435,6 +1436,9 @@ export const ru: TranslationResources = {
       createWorktreeFailed: "Не удалось создать worktree.",
       composerStateRequired: "Редактор сообщения ещё не готов.",
       selectModel: "Выберите модель",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Выберите проект",

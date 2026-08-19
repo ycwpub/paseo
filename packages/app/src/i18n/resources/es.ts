@@ -1353,15 +1353,15 @@ export const es: TranslationResources = {
         title: "Proyectos ocultos ({{count}})",
       },
       confirmations: {
-        removeTitle: "¿Quitar proyecto?",
+        removeTitle: "¿Eliminar proyecto?",
         removeMessage:
-          '¿Quitar "{{projectName}}" de la barra lateral?\n\nLos archivos en el disco no se cambiarán.',
+          '¿Eliminar permanentemente "{{projectName}}" y todos sus datos administrados por Paseo en ~/.paseo/<projectId>?\n\nLos directorios de código fuente externos no se eliminarán. Esta acción no se puede deshacer.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
       toasts: {
         hostDisconnected: "Hostno está conectado",
-        removeFailed: "No se pudieron eliminar algunos espacios de trabajo",
+        removeFailed: "No se pudo eliminar el proyecto o algunos de sus datos",
         updateHostToRemove: "Actualiza el host para eliminar proyectos.",
       },
       empty: {
@@ -1396,8 +1396,10 @@ export const es: TranslationResources = {
         unpin: "Desanclar",
         archive: "Archivo",
         archiveWorkspace: "Archivar espacio de trabajo",
+        remove: "Eliminar espacio de trabajo",
         hideFromSidebar: "Ocultar de la barra lateral",
         archiving: "Archivando...",
+        removing: "Eliminando...",
         hiding: "Ocultación...",
       },
       bulkArchive: {
@@ -1417,6 +1419,10 @@ export const es: TranslationResources = {
         hideMessage:
           '¿Ocultar "{{workspaceName}}" de la barra lateral?\n\nLos archivos en el disco no se cambiarán.',
         hideConfirm: "Esconder",
+        removeTitle: "¿Eliminar espacio de trabajo?",
+        removeMessage:
+          '¿Eliminar permanentemente "{{workspaceName}}" y sus datos administrados por Paseo en ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nEl directorio de código externo asociado y sus archivos no se eliminarán ni modificarán. Esta acción no se puede deshacer.',
+        removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
       rename: {
@@ -1430,6 +1436,7 @@ export const es: TranslationResources = {
         branchNameCopied: "Nombre de la sucursal copiado",
         hostDisconnected: "Hostno está conectado",
         hideFailed: "No se pudo ocultar el espacio de trabajo",
+        removeFailed: "No se pudo eliminar el espacio de trabajo",
         archiveFailed: "No se pudo archivar el espacio de trabajo",
       },
     },
@@ -1453,6 +1460,9 @@ export const es: TranslationResources = {
       createWorktreeFailed: "No se pudo crear el árbol de trabajo",
       composerStateRequired: "Se requiere el estado del compositor",
       selectModel: "Selecciona un modelo",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -3000,6 +3010,12 @@ export const es: TranslationResources = {
       backToProjects: "Volver a proyectos",
       switchHost: "Cambiar de anfitrión",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
+      directoryless: {
+        title: "El proyecto no tiene directorio",
+        description:
+          "Puedes editar el nombre, el icono y la memoria del proyecto. Los ajustes guardados en paseo.json estarán disponibles al asociar un directorio.",
+      },
       memory: {
         title: "Memoria del proyecto",
         info: "Controla la memoria de este proyecto y define qué conocimiento duradero debe aprender Paseo.",
@@ -3015,6 +3031,17 @@ export const es: TranslationResources = {
         saving: "Guardando...",
         saved: "Guardado",
         saveError: "No se pudo guardar la memoria del proyecto",
+      },
+      edit: {
+        title: "Editar proyecto",
+        name: "Nombre del proyecto",
+        nameLabel: "Nombre del proyecto",
+        icon: "Icono del proyecto",
+        chooseImage: "Elegir imagen",
+        useAutomatic: "Usar icono predeterminado",
+        imageUrl: "URL de imagen o sitio web",
+        save: "Guardar cambios",
+        savedToast: "Proyecto actualizado",
       },
       rename: {
         renamedToast: "Proyecto renombrado",

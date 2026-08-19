@@ -127,10 +127,10 @@ function ScheduleRunDetails({
   return (
     <View style={styles.runDetails} testID={`schedule-run-details-${run.id}`}>
       <View style={styles.metaGrid}>
-        <RunMeta label="Scheduled" value={formatDateTime(run.scheduledFor)} />
-        <RunMeta label="Started" value={formatDateTime(run.startedAt)} />
-        <RunMeta label="Ended" value={formatDateTime(run.endedAt)} />
-        <RunMeta label="Duration" value={formatRunDuration(run)} />
+        <RunMeta label="计划时间" value={formatDateTime(run.scheduledFor)} />
+        <RunMeta label="开始时间" value={formatDateTime(run.startedAt)} />
+        <RunMeta label="结束时间" value={formatDateTime(run.endedAt)} />
+        <RunMeta label="运行时长" value={formatRunDuration(run)} />
         <RunMeta label="Agent" value={run.agentId ?? "—"} />
         <RunMeta label="Workspace" value={run.workspaceId ?? "—"} />
       </View>
@@ -195,7 +195,7 @@ function ScheduleRunCard({
             Duration {formatRunDuration(run)}
           </Text>
           <Text style={styles.summaryMeta} numberOfLines={1}>
-            {run.agentId ? `Agent ${run.agentId.slice(0, 8)}` : "No agent"}
+            {run.agentId ? `Agent ${run.agentId.slice(0, 8)}` : "无 Agent"}
           </Text>
         </View>
       </Pressable>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
+import { Monitor } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   PluginAppComponent,
@@ -13,12 +14,35 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
+import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
+import {
+  isTerminalPluginAppJob,
+  usePluginAppJob,
+} from "@/screens/settings/plugins/use-plugin-app-job";
+import {
+  resolvePluginAppComponentSlot,
+  type PluginAppComponentSlots,
+} from "./plugin-app-component-slot";
+import { presentPluginAppResult } from "./plugin-app-result-model";
+import {
+  PluginAppHtmlPreviewModal,
+  type PluginAppHtmlPreview,
+} from "./plugin-app-html-preview-modal";
+import {
+  PluginProjectBoundary,
+  type PluginProjectContext,
+} from "@/plugins/project/plugin-project-boundary";
 
-const TERMINAL_JOB_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
+const EMPTY_FORM_VALUES: Record<string, unknown> = {};
+const EMPTY_HIDDEN_FIELD_IDS: readonly string[] = [];
+const EMPTY_COMPONENT_SLOTS: PluginAppComponentSlots = {};
 
-function initialForm(document: PluginAppState["document"]): Record<string, unknown> {
+function initialForm(
+  document: PluginAppState["document"],
+  fixedValues: Record<string, unknown>,
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const component of document?.components ?? []) {
     if (
@@ -31,11 +55,11 @@ function initialForm(document: PluginAppState["document"]): Record<string, unkno
       result[component.id] = component.defaultValue ?? (component.type === "checkbox" ? false : "");
     }
   }
-  return result;
+  return { ...result, ...fixedValues };
 }
 
 function prettyJson(value: unknown): string {
-  if (value === undefined) return "";
+  if (value === undefined || value === null) return "暂无结果";
   if (typeof value === "string") return value;
   try {
     return JSON.stringify(value, null, 2);
@@ -44,10 +68,26 @@ function prettyJson(value: unknown): string {
   }
 }
 
-function jobStatusText(job: PluginHttpJob | null): string {
-  if (!job) return "Not started";
-  if (job.error) return `${job.status}: ${job.error}`;
-  return job.status;
+function jobStatusText(job: PluginHttpJob | null, queryError: string | null): string {
+  if (queryError) return `状态查询失败：${queryError}`;
+  if (!job) return "尚未启动";
+  const status = {
+    draft: "草稿",
+    queued: "等待处理",
+    running: "处理中",
+    succeeded: "已成功",
+    failed: "失败",
+    cancelled: "已取消",
+    timed_out: "已超时",
+  }[job.status];
+  if (job.error) return `${status}：${job.error}`;
+  return status;
+}
+
+function errorMessage(error: unknown): string | null {
+  if (error instanceof Error) return error.message;
+  if (error) return String(error);
+  return null;
 }
 
 type FieldComponent = Extract<
@@ -104,8 +144,8 @@ function SelectPreview({
       selectedDisplay={selectedDisplay}
       options={options}
       onChange={handleChange}
-      placeholder={component.placeholder ?? "Select"}
-      emptyText="No options"
+      placeholder={component.placeholder ?? "请选择"}
+      emptyText="没有可用选项"
       hint={component.description}
     />
   );
@@ -198,12 +238,18 @@ function buttonVariant(
 function DisplayPreview({
   component,
   job,
+  jobQueryError,
+  jobQueryPending,
   busy,
+  onRefreshJob,
   onRun,
 }: {
   component: DisplayComponent;
   job: PluginHttpJob | null;
+  jobQueryError: string | null;
+  jobQueryPending: boolean;
   busy: boolean;
+  onRefreshJob: () => void;
   onRun: (componentId: string) => void;
 }) {
   const handleRun = useCallback(() => onRun(component.id), [component.id, onRun]);
@@ -231,18 +277,37 @@ function DisplayPreview({
       return (
         <View style={styles.outputCard}>
           <Text style={styles.outputLabel}>{component.label ?? "Status"}</Text>
-          <Text style={styles.statusText}>{jobStatusText(job)}</Text>
+          <Text selectable style={styles.statusText}>
+            {jobStatusText(job, jobQueryError)}
+          </Text>
+          {job?.workflowRunId ? (
+            <Text selectable style={styles.metadataText}>
+              Workflow Run ID: {job.workflowRunId}
+            </Text>
+          ) : null}
+          {jobQueryError && job ? (
+            <Button
+              variant="outline"
+              onPress={onRefreshJob}
+              loading={jobQueryPending}
+              disabled={jobQueryPending}
+            >
+              重新查询
+            </Button>
+          ) : null}
         </View>
       );
-    case "result":
+    case "result": {
+      const result = presentPluginAppResult(job?.result);
       return (
         <View style={styles.outputCard}>
-          <Text style={styles.outputLabel}>{component.label ?? "Result"}</Text>
-          <Text selectable style={styles.codeText}>
-            {prettyJson(job?.result)}
+          <Text style={styles.outputLabel}>{component.label ?? "结果"}</Text>
+          <Text selectable style={result.kind === "json" ? styles.codeText : styles.resultText}>
+            {result.text}
           </Text>
         </View>
       );
+    }
     case "json":
       return (
         <View style={styles.outputCard}>
@@ -259,21 +324,37 @@ function PreviewComponent({
   component,
   form,
   job,
+  jobQueryError,
+  jobQueryPending,
   busy,
   onFormChange,
+  onRefreshJob,
   onRun,
 }: {
   component: PluginAppComponent;
   form: Record<string, unknown>;
   job: PluginHttpJob | null;
+  jobQueryError: string | null;
+  jobQueryPending: boolean;
   busy: boolean;
   onFormChange: (id: string, value: unknown) => void;
+  onRefreshJob: () => void;
   onRun: (componentId: string) => void;
 }) {
   if (isFieldComponent(component)) {
     return <FieldPreview component={component} form={form} onFormChange={onFormChange} />;
   }
-  return <DisplayPreview component={component} job={job} busy={busy} onRun={onRun} />;
+  return (
+    <DisplayPreview
+      component={component}
+      job={job}
+      jobQueryError={jobQueryError}
+      jobQueryPending={jobQueryPending}
+      busy={busy}
+      onRefreshJob={onRefreshJob}
+      onRun={onRun}
+    />
+  );
 }
 
 interface PluginAppModalProps {
@@ -289,16 +370,40 @@ function usePluginAppController({
   serverId,
   plugin,
   appDefinition,
-}: Omit<PluginAppModalProps, "onClose">) {
+  projectId,
+  fixedFormValues = EMPTY_FORM_VALUES,
+  initialFormValues = EMPTY_FORM_VALUES,
+  prepareSubmission,
+  onFormValuesChange,
+  onJobSubmitted,
+}: Omit<PluginAppModalProps, "onClose"> & {
+  projectId: string;
+  fixedFormValues?: Record<string, unknown>;
+  initialFormValues?: Record<string, unknown>;
+  prepareSubmission?: (
+    form: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  onFormValuesChange?: (form: Record<string, unknown>) => void;
+  onJobSubmitted?: (job: PluginHttpJob) => void;
+}) {
   const client = useHostRuntimeClient(serverId);
   const [app, setApp] = useState<PluginAppState | null>(null);
   const [prompt, setPrompt] = useState("");
   const [form, setForm] = useState<Record<string, unknown>>({});
-  const [job, setJob] = useState<PluginHttpJob | null>(null);
+  const [submittedJob, setSubmittedJob] = useState<PluginHttpJob | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const jobQuery = usePluginAppJob({
+    active: visible,
+    client,
+    initialJob: submittedJob,
+    serverId,
+  });
+  const job = jobQuery.data ?? submittedJob;
+  const jobQueryError = errorMessage(jobQuery.error);
+  const running = submitting || Boolean(job && !isTerminalPluginAppJob(job) && !jobQueryError);
 
   useEffect(() => {
     if (!visible || !client || !plugin?.pluginId || !appDefinition) return;
@@ -306,14 +411,19 @@ function usePluginAppController({
     setLoading(true);
     setError(null);
     setApp(null);
-    setJob(null);
+    setSubmittedJob(null);
     void client
-      .getPluginApp(plugin.pluginId, appDefinition.id)
+      .getPluginApp(plugin.pluginId, appDefinition.id, projectId)
       .then((result) => {
         if (cancelled) return undefined;
-        if (result.error || !result.app) throw new Error(result.error ?? "Plugin app not found");
+        if (result.error || !result.app) throw new Error(result.error ?? "未找到插件页面");
         setApp(result.app);
-        setForm(initialForm(result.app.document));
+        const nextForm = initialForm(result.app.document, {
+          ...initialFormValues,
+          ...fixedFormValues,
+        });
+        setForm(nextForm);
+        onFormValuesChange?.(nextForm);
         return undefined;
       })
       .catch((nextError: unknown) => {
@@ -327,39 +437,32 @@ function usePluginAppController({
     return () => {
       cancelled = true;
     };
-  }, [appDefinition, client, plugin?.pluginId, visible]);
-
-  useEffect(() => {
-    if (!client || !job || TERMINAL_JOB_STATUSES.has(job.status)) {
-      if (job && TERMINAL_JOB_STATUSES.has(job.status)) setRunning(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      void client
-        .getPluginAppJob(job.id)
-        .then((result) => {
-          if (result.job) setJob(result.job);
-          if (result.error) setError(result.error);
-          return undefined;
-        })
-        .catch((nextError: unknown) => {
-          setError(nextError instanceof Error ? nextError.message : String(nextError));
-          return undefined;
-        });
-    }, 1_000);
-    return () => clearTimeout(timer);
-  }, [client, job]);
+  }, [
+    appDefinition,
+    client,
+    fixedFormValues,
+    initialFormValues,
+    onFormValuesChange,
+    plugin?.pluginId,
+    projectId,
+    visible,
+  ]);
 
   const handleGenerate = useCallback(() => {
     if (!client || !plugin?.pluginId || !appDefinition || !prompt.trim()) return;
     setGenerating(true);
     setError(null);
     void client
-      .generatePluginApp(plugin.pluginId, appDefinition.id, prompt.trim())
+      .generatePluginApp(plugin.pluginId, appDefinition.id, projectId, prompt.trim())
       .then((result) => {
-        if (result.error || !result.app) throw new Error(result.error ?? "Generation failed");
+        if (result.error || !result.app) throw new Error(result.error ?? "页面生成失败");
         setApp(result.app);
-        setForm(initialForm(result.app.document));
+        const nextForm = initialForm(result.app.document, {
+          ...initialFormValues,
+          ...fixedFormValues,
+        });
+        setForm(nextForm);
+        onFormValuesChange?.(nextForm);
         setPrompt("");
         return undefined;
       })
@@ -368,38 +471,87 @@ function usePluginAppController({
         return undefined;
       })
       .finally(() => setGenerating(false));
-  }, [appDefinition, client, plugin?.pluginId, prompt]);
+  }, [
+    appDefinition,
+    client,
+    fixedFormValues,
+    initialFormValues,
+    onFormValuesChange,
+    plugin?.pluginId,
+    projectId,
+    prompt,
+  ]);
 
-  const handleFormChange = useCallback((id: string, value: unknown) => {
-    setForm((current) => ({ ...current, [id]: value }));
-  }, []);
+  const handleFormChange = useCallback(
+    (id: string, value: unknown) => {
+      setForm((current) => {
+        const next = { ...current, [id]: value };
+        onFormValuesChange?.(next);
+        return next;
+      });
+    },
+    [onFormValuesChange],
+  );
 
   const handleRun = useCallback(
     (componentId: string) => {
       if (!client || !plugin?.pluginId || !appDefinition) return;
-      setRunning(true);
+      setSubmitting(true);
       setError(null);
-      setJob(null);
-      void client
-        .submitPluginAppAction({
-          pluginId: plugin.pluginId,
-          appId: appDefinition.id,
-          componentId,
-          form,
-        })
+      setSubmittedJob(null);
+      void Promise.resolve(
+        prepareSubmission?.({ ...form, ...fixedFormValues }) ?? {
+          ...form,
+          ...fixedFormValues,
+        },
+      )
+        .then((submissionForm) =>
+          client.submitPluginAppAction({
+            pluginId: plugin.pluginId!,
+            appId: appDefinition.id,
+            projectId,
+            componentId,
+            form: submissionForm,
+          }),
+        )
         .then((result) => {
-          if (result.error || !result.job) throw new Error(result.error ?? "Action failed");
-          setJob(result.job);
+          if (result.error || !result.job) throw new Error(result.error ?? "操作执行失败");
+          setSubmittedJob(result.job);
+          onJobSubmitted?.(result.job);
           return undefined;
         })
         .catch((nextError: unknown) => {
-          setRunning(false);
           setError(nextError instanceof Error ? nextError.message : String(nextError));
           return undefined;
-        });
+        })
+        .finally(() => setSubmitting(false));
     },
-    [appDefinition, client, form, plugin?.pluginId],
+    [
+      appDefinition,
+      client,
+      fixedFormValues,
+      form,
+      onJobSubmitted,
+      plugin?.pluginId,
+      prepareSubmission,
+      projectId,
+    ],
   );
+
+  const loadHtmlPreview = useCallback(async (): Promise<PluginAppHtmlPreview> => {
+    if (!client || !plugin?.pluginId || !appDefinition) {
+      throw new Error("Host 未连接或插件不可用");
+    }
+    const result = await client.getPluginAppHtmlPreview({
+      pluginId: plugin.pluginId,
+      appId: appDefinition.id,
+      projectId,
+    });
+    if (result.error || !result.html || !result.htmlPath) {
+      throw new Error(result.error ?? "当前页面尚未生成 HTML 预览");
+    }
+    return { html: result.html, htmlPath: result.htmlPath };
+  }, [appDefinition, client, plugin?.pluginId, projectId]);
 
   return {
     app,
@@ -410,10 +562,14 @@ function usePluginAppController({
     loading,
     generating,
     running,
+    jobQueryError,
+    jobQueryPending: jobQuery.isFetching,
     error,
     handleGenerate,
     handleFormChange,
+    refreshJob: jobQuery.refetch,
     handleRun,
+    loadHtmlPreview,
   };
 }
 
@@ -432,31 +588,13 @@ function ConversationPane({
   onPromptChange: (value: string) => void;
   onGenerate: () => void;
 }) {
-  const hasConversation = (app?.conversation.length ?? 0) > 0;
   return (
     <View style={styles.conversationColumn}>
-      <Text style={styles.sectionTitle}>Build with Agent</Text>
+      <Text style={styles.sectionTitle}>页面生成与修改</Text>
       <Text style={styles.sectionHint}>
-        Describe the interface or request a revision. Agent output is validated against the Paseo
-        declarative UI schema; executable HTML and JavaScript are not accepted.
+        在这里提交一次页面生成指令。日常讨论请点击上方“前往 Project
+        对话”，不要在插件页面维护聊天记录。
       </Text>
-      <View style={styles.conversation}>
-        {app?.conversation.slice(-8).map((message) => (
-          <View
-            key={message.id}
-            style={[
-              styles.message,
-              message.role === "user" ? styles.userMessage : styles.assistantMessage,
-            ]}
-          >
-            <Text style={styles.messageRole}>{message.role === "user" ? "You" : "Agent"}</Text>
-            <Text style={styles.bodyText}>{message.content}</Text>
-          </View>
-        ))}
-        {!loading && !hasConversation ? (
-          <Text style={styles.sectionHint}>No conversation yet.</Text>
-        ) : null}
-      </View>
       <FormTextInput
         value={prompt}
         onChangeText={onPromptChange}
@@ -470,8 +608,9 @@ function ConversationPane({
         loading={generating}
         disabled={generating || !prompt.trim()}
       >
-        {app?.document ? "Ask Agent to revise" : "Generate interface"}
+        {app?.document ? "提交修改指令" : "生成页面"}
       </Button>
+      {loading ? <Text style={styles.sectionHint}>正在加载页面定义…</Text> : null}
     </View>
   );
 }
@@ -482,43 +621,343 @@ function PreviewPane({
   job,
   loading,
   running,
+  jobQueryError,
+  jobQueryPending,
   onFormChange,
+  onRefreshJob,
   onRun,
+  hiddenFieldIds,
+  componentSlots,
+  title,
+  canPreviewHtml,
+  previewingHtml,
+  onPreviewHtml,
 }: {
   app: PluginAppState | null;
   form: Record<string, unknown>;
   job: PluginHttpJob | null;
   loading: boolean;
   running: boolean;
+  jobQueryError: string | null;
+  jobQueryPending: boolean;
   onFormChange: (id: string, value: unknown) => void;
+  onRefreshJob: () => void;
   onRun: (componentId: string) => void;
+  hiddenFieldIds: ReadonlySet<string>;
+  componentSlots: PluginAppComponentSlots;
+  title: string;
+  canPreviewHtml: boolean;
+  previewingHtml: boolean;
+  onPreviewHtml: () => void;
 }) {
   return (
     <View style={styles.previewColumn}>
-      <Text style={styles.sectionTitle}>Live preview</Text>
+      <View style={styles.previewHeader}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {canPreviewHtml ? (
+          <Button
+            size="xs"
+            variant="outline"
+            leftIcon={Monitor}
+            loading={previewingHtml}
+            disabled={previewingHtml}
+            onPress={onPreviewHtml}
+          >
+            浏览器预览
+          </Button>
+        ) : null}
+      </View>
       {app?.document?.description ? (
         <Text style={styles.sectionHint}>{app.document.description}</Text>
       ) : null}
       <View style={styles.previewCard}>
-        {loading ? <Text style={styles.sectionHint}>Loading…</Text> : null}
+        {loading ? <Text style={styles.sectionHint}>加载中…</Text> : null}
         {!loading && !app?.document ? (
-          <Text style={styles.sectionHint}>
-            Describe the interface on the left, then let Agent generate it.
-          </Text>
+          <Text style={styles.sectionHint}>请在左侧描述需要的界面，再让 Agent 生成页面。</Text>
         ) : null}
-        {app?.document?.components.map((component) => (
-          <PreviewComponent
-            key={component.id}
-            component={component}
-            form={form}
-            job={job}
-            busy={running}
-            onFormChange={onFormChange}
-            onRun={onRun}
-          />
-        ))}
+        {app?.document?.components.map((component) => {
+          if (hiddenFieldIds.has(component.id)) return null;
+          if (Object.hasOwn(componentSlots, component.id)) {
+            const slot = componentSlots[component.id];
+            if (slot !== undefined) {
+              return (
+                <View key={component.id}>
+                  {resolvePluginAppComponentSlot(slot, {
+                    component,
+                    form,
+                    value: form[component.id],
+                    onChange: (value) => onFormChange(component.id, value),
+                  })}
+                </View>
+              );
+            }
+          }
+          return (
+            <PreviewComponent
+              key={component.id}
+              component={component}
+              form={form}
+              job={job}
+              jobQueryError={jobQueryError}
+              jobQueryPending={jobQueryPending}
+              busy={running}
+              onFormChange={onFormChange}
+              onRefreshJob={onRefreshJob}
+              onRun={onRun}
+            />
+          );
+        })}
       </View>
     </View>
+  );
+}
+
+type PluginAppController = ReturnType<typeof usePluginAppController>;
+
+function PluginAppContent({
+  controller,
+  showConversation = true,
+  hiddenFieldIds = EMPTY_HIDDEN_FIELD_IDS,
+  componentSlots = EMPTY_COMPONENT_SLOTS,
+  previewTitle = "实时预览",
+  supportsHtmlPreview,
+}: {
+  controller: PluginAppController;
+  showConversation?: boolean;
+  hiddenFieldIds?: readonly string[];
+  componentSlots?: PluginAppComponentSlots;
+  previewTitle?: string;
+  supportsHtmlPreview: boolean;
+}) {
+  const {
+    app,
+    prompt,
+    setPrompt,
+    form,
+    job,
+    loading,
+    generating,
+    running,
+    jobQueryError,
+    jobQueryPending,
+    error,
+    handleGenerate,
+    handleFormChange,
+    refreshJob,
+    handleRun,
+    loadHtmlPreview,
+  } = controller;
+  const [htmlPreviewVisible, setHtmlPreviewVisible] = useState(false);
+  const [htmlPreview, setHtmlPreview] = useState<PluginAppHtmlPreview | null>(null);
+  const [htmlPreviewError, setHtmlPreviewError] = useState<string | null>(null);
+  const [previewingHtml, setPreviewingHtml] = useState(false);
+  const handleRefreshJob = useCallback(() => {
+    void refreshJob();
+  }, [refreshJob]);
+  const hiddenFields = useMemo(() => new Set(hiddenFieldIds), [hiddenFieldIds]);
+  const handlePreviewHtml = useCallback(() => {
+    setHtmlPreviewVisible(true);
+    setPreviewingHtml(true);
+    setHtmlPreviewError(null);
+    void loadHtmlPreview()
+      .then(setHtmlPreview)
+      .catch((nextError: unknown) =>
+        setHtmlPreviewError(nextError instanceof Error ? nextError.message : String(nextError)),
+      )
+      .finally(() => setPreviewingHtml(false));
+  }, [loadHtmlPreview]);
+  const closeHtmlPreview = useCallback(() => setHtmlPreviewVisible(false), []);
+
+  return (
+    <>
+      <View style={[styles.columns, !showConversation && styles.singleColumn]}>
+        {showConversation ? (
+          <ConversationPane
+            app={app}
+            prompt={prompt}
+            loading={loading}
+            generating={generating}
+            onPromptChange={setPrompt}
+            onGenerate={handleGenerate}
+          />
+        ) : null}
+        <PreviewPane
+          app={app}
+          form={form}
+          job={job}
+          loading={loading}
+          running={running}
+          jobQueryError={jobQueryError}
+          jobQueryPending={jobQueryPending}
+          onFormChange={handleFormChange}
+          onRefreshJob={handleRefreshJob}
+          onRun={handleRun}
+          hiddenFieldIds={hiddenFields}
+          componentSlots={componentSlots}
+          title={previewTitle}
+          canPreviewHtml={supportsHtmlPreview && Boolean(app?.document)}
+          previewingHtml={previewingHtml}
+          onPreviewHtml={handlePreviewHtml}
+        />
+      </View>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <PluginAppHtmlPreviewModal
+        visible={htmlPreviewVisible}
+        preview={htmlPreview}
+        error={htmlPreviewError}
+        onClose={closeHtmlPreview}
+      />
+    </>
+  );
+}
+
+export function PluginAppSurface({
+  active,
+  serverId,
+  plugin,
+  appDefinition,
+  projectId,
+  fixedFormValues,
+  initialFormValues,
+  hiddenFieldIds,
+  componentSlots,
+  showConversation = true,
+  prepareSubmission,
+  onFormValuesChange,
+  onJobSubmitted,
+  previewTitle,
+}: {
+  active: boolean;
+  serverId: string;
+  plugin: PluginSummary;
+  appDefinition: PluginAppDefinition;
+  projectId: string;
+  fixedFormValues?: Record<string, unknown>;
+  initialFormValues?: Record<string, unknown>;
+  hiddenFieldIds?: readonly string[];
+  componentSlots?: PluginAppComponentSlots;
+  showConversation?: boolean;
+  prepareSubmission?: (
+    form: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  onFormValuesChange?: (form: Record<string, unknown>) => void;
+  onJobSubmitted?: (job: PluginHttpJob) => void;
+  previewTitle?: string;
+}) {
+  const supportsProjectScopedApps = useHostFeature(serverId, "pluginProjectScopedApps");
+  const supportsHtmlPreview = useHostFeature(serverId, "pluginAppHtmlPreview");
+  const controller = usePluginAppController({
+    visible: active && supportsProjectScopedApps,
+    serverId,
+    plugin,
+    appDefinition,
+    projectId,
+    fixedFormValues,
+    initialFormValues,
+    prepareSubmission,
+    onFormValuesChange,
+    onJobSubmitted,
+  });
+  if (!supportsProjectScopedApps) {
+    return (
+      <View style={styles.previewCard}>
+        <Text style={styles.errorText}>
+          当前 Host 不支持以 Project 为核心的插件。请更新并重启 daemon。
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <PluginAppContent
+      controller={controller}
+      showConversation={showConversation}
+      hiddenFieldIds={hiddenFieldIds}
+      componentSlots={componentSlots}
+      previewTitle={previewTitle}
+      supportsHtmlPreview={supportsHtmlPreview}
+    />
+  );
+}
+
+function mergeUniqueFieldIds(...groups: readonly (readonly string[] | undefined)[]): string[] {
+  return [...new Set(groups.flatMap((group) => group ?? []))];
+}
+
+function ProjectBoundPluginAppSurface({
+  active,
+  serverId,
+  plugin,
+  appDefinition,
+  context,
+  fixedFormValues,
+  hiddenFieldIds,
+}: {
+  active: boolean;
+  serverId: string;
+  plugin: PluginSummary;
+  appDefinition: PluginAppDefinition;
+  context: PluginProjectContext;
+  fixedFormValues?: Record<string, unknown>;
+  hiddenFieldIds?: readonly string[];
+}) {
+  const mergedFixedFormValues = useMemo(
+    () => ({ ...fixedFormValues, ...context.fixedFormValues }),
+    [context.fixedFormValues, fixedFormValues],
+  );
+  const mergedHiddenFieldIds = useMemo(
+    () => mergeUniqueFieldIds(context.hiddenFieldIds, hiddenFieldIds),
+    [context.hiddenFieldIds, hiddenFieldIds],
+  );
+  return (
+    <PluginAppSurface
+      active={active}
+      serverId={serverId}
+      plugin={plugin}
+      appDefinition={appDefinition}
+      projectId={context.projectId}
+      fixedFormValues={mergedFixedFormValues}
+      hiddenFieldIds={mergedHiddenFieldIds}
+    />
+  );
+}
+
+export function ProjectScopedPluginAppSurface({
+  active,
+  serverId,
+  plugin,
+  appDefinition,
+  initialProjectId,
+  fixedFormValues,
+  hiddenFieldIds,
+}: {
+  active: boolean;
+  serverId: string;
+  plugin: PluginSummary;
+  appDefinition: PluginAppDefinition;
+  initialProjectId?: string;
+  fixedFormValues?: Record<string, unknown>;
+  hiddenFieldIds?: readonly string[];
+}) {
+  return (
+    <PluginProjectBoundary
+      active={active}
+      serverId={serverId}
+      pluginId={plugin.pluginId}
+      appDefinition={appDefinition}
+      initialProjectId={initialProjectId}
+    >
+      {(context) => (
+        <ProjectBoundPluginAppSurface
+          active={active}
+          serverId={serverId}
+          plugin={plugin}
+          appDefinition={appDefinition}
+          context={context}
+          fixedFormValues={fixedFormValues}
+          hiddenFieldIds={hiddenFieldIds}
+        />
+      )}
+    </PluginProjectBoundary>
   );
 }
 
@@ -529,28 +968,12 @@ export function PluginAppModal({
   appDefinition,
   onClose,
 }: PluginAppModalProps) {
-  const controller = usePluginAppController({ visible, serverId, plugin, appDefinition });
-  const {
-    app,
-    prompt,
-    setPrompt,
-    form,
-    job,
-    loading,
-    generating,
-    running,
-    error,
-    handleGenerate,
-    handleFormChange,
-    handleRun,
-  } = controller;
-
   const header = useMemo(
     () => ({
-      title: app?.document?.title ?? appDefinition?.id ?? "Plugin app",
-      subtitle: plugin ? `${plugin.displayName} · Agent-generated interface` : undefined,
+      title: appDefinition?.initialDocument?.title ?? appDefinition?.id ?? "插件应用",
+      subtitle: plugin ? `${plugin.displayName} · Project 插件` : undefined,
     }),
-    [app?.document?.title, appDefinition?.id, plugin],
+    [appDefinition?.id, appDefinition?.initialDocument?.title, plugin],
   );
 
   return (
@@ -562,26 +985,24 @@ export function PluginAppModal({
       scrollable
       testID="plugin-app-modal"
     >
-      <View style={styles.columns}>
-        <ConversationPane
-          app={app}
-          prompt={prompt}
-          loading={loading}
-          generating={generating}
-          onPromptChange={setPrompt}
-          onGenerate={handleGenerate}
-        />
-        <PreviewPane
-          app={app}
-          form={form}
-          job={job}
-          loading={loading}
-          running={running}
-          onFormChange={handleFormChange}
-          onRun={handleRun}
-        />
-      </View>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {plugin && appDefinition ? (
+        <PluginProjectBoundary
+          active={visible}
+          serverId={serverId}
+          pluginId={plugin.pluginId}
+          appDefinition={appDefinition}
+        >
+          {(context) => (
+            <ProjectBoundPluginAppSurface
+              active={visible}
+              serverId={serverId}
+              plugin={plugin}
+              appDefinition={appDefinition}
+              context={context}
+            />
+          )}
+        </PluginProjectBoundary>
+      ) : null}
     </AdaptiveModalSheet>
   );
 }
@@ -593,6 +1014,9 @@ const styles = StyleSheet.create((theme) => ({
     flexWrap: "wrap",
     gap: theme.spacing[6],
   },
+  singleColumn: {
+    flexDirection: "column",
+  },
   conversationColumn: {
     flex: 1,
     minWidth: 300,
@@ -603,6 +1027,12 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 340,
     gap: theme.spacing[2],
   },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
   sectionTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
@@ -612,29 +1042,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
-  },
-  conversation: {
-    ...settingsStyles.card,
-    padding: theme.spacing[3],
-    gap: theme.spacing[2],
-    minHeight: 160,
-    maxHeight: 300,
-  },
-  message: {
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-    gap: theme.spacing[1],
-  },
-  userMessage: {
-    backgroundColor: theme.colors.surface3,
-  },
-  assistantMessage: {
-    backgroundColor: theme.colors.surface2,
-  },
-  messageRole: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
   },
   promptInput: {
     minHeight: 110,
@@ -698,10 +1105,21 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },
+  metadataText: {
+    color: theme.colors.foregroundMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
+  },
   codeText: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
+  },
+  resultText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    lineHeight: 28,
   },
   errorText: {
     color: theme.colors.destructive,

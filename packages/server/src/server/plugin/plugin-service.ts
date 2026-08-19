@@ -7,6 +7,9 @@ import {
   PluginStateSchema,
   type McpTransport,
   type PluginHttpServiceSummary,
+  type PluginHttpListenerRuntime,
+  type PluginHttpProjectConfig,
+  type PluginHttpJobStatus,
   type PluginAppDefinition,
   type PluginAppState,
   type PluginHttpJob,
@@ -30,6 +33,7 @@ import type {
   PluginHttpServiceRuntime,
 } from "./plugin-http-runtime-types.js";
 import { bundledPluginMarketplaceCandidates } from "./bundled-plugin-marketplace.js";
+import { selectBundledPluginSyncs } from "./bundled-plugin-sync.js";
 import {
   loadPluginMarketplace,
   type LoadedPluginMarketplace,
@@ -361,6 +365,7 @@ export class PluginService {
   private readonly mcpStore: McpStore;
   private readonly skillStore: SkillStore;
   private readonly store: PluginStore;
+  private readonly bundledMarketplacePaths: string[];
   private httpRuntime: PluginHttpServiceRuntime | null = null;
   private appRuntime: PluginAppRuntime | null = null;
   private marketplaceStates: MarketplaceState[] = [];
@@ -371,6 +376,7 @@ export class PluginService {
     logger: pino.Logger;
     mcpStore: McpStore;
     skillStore: SkillStore;
+    bundledMarketplacePaths?: string[];
   }) {
     this.cacheRoot = path.join(options.paseoHome, "plugins", "cache");
     this.dataRoot = path.join(options.paseoHome, "plugins", "data");
@@ -378,6 +384,8 @@ export class PluginService {
     this.mcpStore = options.mcpStore;
     this.skillStore = options.skillStore;
     this.store = new PluginStore(options.paseoHome);
+    this.bundledMarketplacePaths =
+      options.bundledMarketplacePaths ?? bundledPluginMarketplaceCandidates();
   }
 
   initialize(): void {
@@ -395,6 +403,8 @@ export class PluginService {
       }
     }
     this.refresh();
+    this.syncBundledPluginUpdates();
+    this.refresh();
   }
 
   async attachHttpRuntime(runtime: PluginHttpServiceRuntime): Promise<PluginState> {
@@ -407,20 +417,147 @@ export class PluginService {
     this.appRuntime = runtime;
   }
 
-  getApp(pluginId: string, appId: string): PluginAppState {
-    return this.requireAppRuntime().get(pluginId, appId);
+  getApp(pluginId: string, appId: string, projectId: string): PluginAppState {
+    return this.requireAppRuntime().get(pluginId, appId, projectId);
   }
 
-  generateApp(pluginId: string, appId: string, prompt: string): Promise<PluginAppState> {
-    return this.requireAppRuntime().generate({ pluginId, appId, prompt });
+  configureApp(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    defaultAgent: PluginAppState["defaultAgent"],
+  ): PluginAppState {
+    if (!defaultAgent) throw new Error("Default Agent provider and model are required");
+    return this.requireAppRuntime().configure({ pluginId, appId, projectId, defaultAgent });
+  }
+
+  listAppProjects(pluginId: string, appId: string): PluginAppState[] {
+    return this.requireAppRuntime().listProjects(pluginId, appId);
+  }
+
+  getAppHtmlPreview(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+  ): { html: string; htmlPath: string } | null {
+    return this.requireAppRuntime().getHtmlPreview(pluginId, appId, projectId);
+  }
+
+  async copyAppProject(
+    pluginId: string,
+    appId: string,
+    sourceProjectId: string,
+    targetProjectId: string,
+  ): Promise<PluginAppState> {
+    const appRuntime = this.requireAppRuntime();
+    const app = appRuntime.copyProject({
+      pluginId,
+      appId,
+      sourceProjectId,
+      targetProjectId,
+    });
+    try {
+      await this.httpRuntime?.copyProjectConfig?.(pluginId, sourceProjectId, targetProjectId);
+      return app;
+    } catch (error) {
+      appRuntime.deleteProject(pluginId, appId, targetProjectId);
+      throw error;
+    }
+  }
+
+  deleteAppProject(pluginId: string, appId: string, projectId: string): boolean {
+    return this.requireAppRuntime().deleteProject(pluginId, appId, projectId);
+  }
+
+  generateApp(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    prompt: string,
+  ): Promise<PluginAppState> {
+    return this.requireAppRuntime().generate({ pluginId, appId, projectId, prompt });
   }
 
   submitAppAction(input: PluginAppSubmitInput): Promise<PluginHttpJob> {
     return this.requireAppRuntime().submit(input);
   }
 
+  submitHttpService(pluginId: string, serviceName: string, input: unknown): Promise<PluginHttpJob> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.submit(pluginId, serviceName, input);
+  }
+
+  createAppJobDraft(
+    pluginId: string,
+    serviceName: string,
+    projectId: string,
+    input: unknown,
+  ): Promise<PluginHttpJob> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.createDraft(pluginId, serviceName, projectId, input);
+  }
+
+  startAppJob(processId: string): Promise<PluginHttpJob | null> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.startJob(processId);
+  }
+
   getAppJob(processId: string): PluginHttpJob | null {
-    return this.requireAppRuntime().getJob(processId);
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.getJob(processId);
+  }
+
+  listAppJobs(options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    limit?: number;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
+  }): PluginHttpJob[] {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.listJobs(options);
+  }
+
+  updateAppJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.updateJob(processId, input);
+  }
+
+  deleteAppJob(processId: string): Promise<boolean> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.deleteJob(processId);
+  }
+
+  deleteAppJobs(processIds: string[]): Promise<{
+    deleted: string[];
+    skipped: Array<{ processId: string; reason: string }>;
+  }> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.deleteJobs(processIds);
+  }
+
+  getHttpProjectConfig(
+    pluginId: string,
+    projectId: string,
+  ): { config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] } {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.getProjectConfig(pluginId, projectId);
+  }
+
+  saveHttpProjectConfig(
+    config: Omit<PluginHttpProjectConfig, "updatedAt">,
+  ): Promise<{ config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] }> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.saveProjectConfig(config);
+  }
+
+  cleanupHttpProjectJobs(pluginId: string, projectId: string): Promise<string[]> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.cleanupProjectJobs(pluginId, projectId);
   }
 
   resolveAppContext(
@@ -451,7 +588,7 @@ export class PluginService {
     const configuredIds = new Set(configured.map((entry) => entry.id));
     const candidates = [
       path.join(os.homedir(), ".agents", "plugins", "marketplace.json"),
-      ...bundledPluginMarketplaceCandidates(),
+      ...this.bundledMarketplacePaths,
       ...findRepoMarketplaceCandidates(process.cwd()),
       ...configured.map((entry) => entry.path),
     ];
@@ -576,6 +713,20 @@ export class PluginService {
     source: PluginInstallSource,
   ): Promise<{ plugin: PluginSummary; state: PluginState }> {
     const { sourcePath, marketplaceId } = this.resolveInstallSource(source);
+    const synced = this.installResolvedSource(sourcePath, marketplaceId);
+    await this.reconcileHttpServices();
+    this.refresh();
+    const state = this.getState();
+    const plugin =
+      state.plugins.find((entry) => entry.pluginId === synced.id && entry.installed) ??
+      this.installedSummary(synced);
+    return { plugin, state };
+  }
+
+  private installResolvedSource(
+    sourcePath: string,
+    marketplaceId: string | undefined,
+  ): InstalledPluginRecord {
     const sourcePackage = loadPluginPackage(sourcePath);
     assertPluginTreeSafe(sourcePackage.root);
     const existing = this.store.getInstalled(sourcePackage.manifest.name);
@@ -594,13 +745,7 @@ export class PluginService {
     if (existing && path.resolve(existing.cachePath) !== path.resolve(synced.cachePath)) {
       rmSync(existing.cachePath, { recursive: true, force: true });
     }
-    await this.reconcileHttpServices();
-    this.refresh();
-    const state = this.getState();
-    const plugin =
-      state.plugins.find((entry) => entry.pluginId === synced.id && entry.installed) ??
-      this.installedSummary(synced);
-    return { plugin, state };
+    return synced;
   }
 
   async setEnabled(
@@ -743,6 +888,61 @@ export class PluginService {
       installedAt: existing?.installedAt ?? timestamp,
       updatedAt: timestamp,
     };
+  }
+
+  private syncBundledPluginUpdates(): void {
+    const updates = selectBundledPluginSyncs({
+      bundledMarketplacePaths: this.bundledMarketplacePaths,
+      catalog: this.catalogPlugins.flatMap((entry) => {
+        if (!entry.package || !entry.entry.installable || !entry.entry.sourcePath) return [];
+        return [
+          {
+            marketplaceFilePath: entry.marketplace.filePath,
+            marketplaceId: entry.marketplace.id,
+            pluginName: entry.package.manifest.name,
+            version: entry.package.manifest.version,
+          },
+        ];
+      }),
+      installed: this.store.listInstalled().map((entry) => ({
+        pluginId: entry.id,
+        marketplaceId: entry.marketplaceId,
+        version: entry.manifest.version,
+      })),
+    });
+
+    for (const update of updates) {
+      const catalogPlugin = this.catalogPlugins.find(
+        (entry) =>
+          entry.marketplace.id === update.marketplaceId &&
+          canonicalName(entry.entry.name) === canonicalName(update.pluginName),
+      );
+      if (!catalogPlugin?.entry.sourcePath) continue;
+      try {
+        const installed = this.installResolvedSource(
+          catalogPlugin.entry.sourcePath,
+          update.marketplaceId,
+        );
+        this.logger.info(
+          {
+            pluginId: installed.id,
+            version: installed.manifest.version,
+            marketplaceId: update.marketplaceId,
+          },
+          "Synchronized bundled plugin",
+        );
+      } catch (error) {
+        this.logger.warn(
+          {
+            err: error,
+            pluginName: update.pluginName,
+            version: update.version,
+            marketplaceId: update.marketplaceId,
+          },
+          "Failed to synchronize bundled plugin",
+        );
+      }
+    }
   }
 
   private syncPackageResources(

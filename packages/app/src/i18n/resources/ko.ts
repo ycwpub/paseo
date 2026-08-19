@@ -1222,23 +1222,23 @@ const koOverrides = {
         openFolderFailed: "폴더를 열 수 없습니다.",
         hide: "프로젝트 숨기기",
         show: "프로젝트 표시",
-        remove: "프로젝트 제거",
-        removing: "제거하는 중...",
+        remove: "프로젝트 삭제",
+        removing: "삭제 중...",
       },
       hidden: {
         title: "숨겨진 프로젝트 ({{count}})",
       },
       confirmations: {
-        removeTitle: "프로젝트를 제거할까요?",
+        removeTitle: "프로젝트를 삭제할까요?",
         removeMessage:
-          '"{{projectName}}"을(를) 사이드바에서 제거할까요?\n\n디스크의 파일은 변경되지 않습니다.',
-        removeConfirm: "제거",
+          '"{{projectName}}" 및 ~/.paseo/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
+        removeConfirm: "삭제",
         cancel: "취소",
       },
       toasts: {
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
-        removeFailed: "일부 워크스페이스를 제거하지 못했습니다",
-        updateHostToRemove: "프로젝트를 제거하려면 호스트를 업데이트하세요.",
+        removeFailed: "프로젝트 또는 일부 데이터를 삭제하지 못했습니다",
+        updateHostToRemove: "프로젝트를 삭제하려면 호스트를 업데이트하세요.",
       },
       empty: {
         title: "아직 프로젝트가 없습니다",
@@ -1272,8 +1272,10 @@ const koOverrides = {
         unpin: "고정 해제",
         archive: "보관",
         archiveWorkspace: "워크스페이스 보관",
+        remove: "워크스페이스 삭제",
         hideFromSidebar: "사이드바에서 숨기기",
         archiving: "보관하는 중...",
+        removing: "삭제 중...",
         hiding: "숨기는 중...",
       },
       bulkArchive: {
@@ -1292,6 +1294,10 @@ const koOverrides = {
         hideMessage:
           '"{{workspaceName}}"을(를) 사이드바에서 숨길까요?\n\n디스크의 파일은 변경되지 않습니다.',
         hideConfirm: "숨기기",
+        removeTitle: "워크스페이스를 삭제하시겠습니까?",
+        removeMessage:
+          '"{{workspaceName}}" 및 ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
+        removeConfirm: "삭제",
         cancel: "취소",
       },
       rename: {
@@ -1305,6 +1311,7 @@ const koOverrides = {
         branchNameCopied: "브랜치 이름이 복사되었습니다",
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
         hideFailed: "워크스페이스를 숨기지 못했습니다",
+        removeFailed: "워크스페이스를 삭제하지 못했습니다",
         archiveFailed: "워크스페이스를 보관하지 못했습니다.",
       },
     },
@@ -2689,6 +2696,11 @@ const koOverrides = {
     project: {
       noEditableTarget: "이 호스트에서는 이 프로젝트를 편집할 수 없습니다.",
       backToProjects: "프로젝트로 돌아가기",
+      directoryless: {
+        title: "프로젝트 디렉터리가 없습니다",
+        description:
+          "프로젝트 이름, 아이콘, 메모리는 편집할 수 있습니다. 디렉터리를 연결하면 paseo.json에 저장되는 설정도 편집할 수 있습니다.",
+      },
       memory: {
         title: "프로젝트 메모리",
         info: "이 프로젝트의 메모리 사용 여부와 Paseo가 학습할 장기 지식을 설정합니다.",

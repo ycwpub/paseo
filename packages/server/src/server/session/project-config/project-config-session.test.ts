@@ -8,6 +8,7 @@ import { ProjectConfigSession, type ProjectConfigSessionHost } from "./project-c
 import { statPaseoConfigPath } from "../../../utils/paseo-config-file.js";
 import type { PersistedProjectRecord } from "../../workspace-registry.js";
 import type { SessionOutboundMessage } from "../../messages.js";
+import { resolveManagedProjectStorageRoot } from "../../project/project-storage-paths.js";
 
 const tempDirs: string[] = [];
 
@@ -38,12 +39,25 @@ function projectRecord(rootPath: string, archivedAt: string | null = null): Pers
 function makeSubsystem(records: PersistedProjectRecord[]) {
   const emitted: SessionOutboundMessage[] = [];
   const host: ProjectConfigSessionHost = { emit: (msg) => emitted.push(msg) };
+  const recordsById = new Map(records.map((record) => [record.projectId, record]));
+  const paseoHome = makeRoot();
   const subsystem = new ProjectConfigSession({
     host,
-    projectRegistry: { list: async () => records },
+    projectRegistry: {
+      list: async () => [...recordsById.values()],
+      get: async (projectId) => recordsById.get(projectId) ?? null,
+      update: async (projectId, updater) => {
+        const current = recordsById.get(projectId);
+        if (!current) return null;
+        const updated = updater(current);
+        recordsById.set(projectId, updated);
+        return updated;
+      },
+    },
+    paseoHome,
     logger: pino({ level: "silent" }),
   });
-  return { subsystem, emitted };
+  return { subsystem, emitted, paseoHome, recordsById };
 }
 
 describe("ProjectConfigSession", () => {
@@ -82,7 +96,9 @@ describe("ProjectConfigSession", () => {
   test("read resolves a known root despite a trailing slash and returns the raw config + revision", async () => {
     const repoRoot = makeRoot();
     writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
-    const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+    const project = projectRecord(repoRoot);
+    const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
     await subsystem.handleReadProjectConfigRequest({
       type: "read_project_config_request",
@@ -95,7 +111,7 @@ describe("ProjectConfigSession", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-1",
-          repoRoot,
+          repoRoot: projectPath,
           ok: true,
           config: { worktree: { setup: "npm ci" } },
           revision: expect.objectContaining({
@@ -118,7 +134,9 @@ describe("ProjectConfigSession", () => {
       );
       const linkRoot = join(makeRoot(), "link");
       symlinkSync(repoRoot, linkRoot, "dir");
-      const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+      const project = projectRecord(repoRoot);
+      const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+      const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
       await subsystem.handleReadProjectConfigRequest({
         type: "read_project_config_request",
@@ -131,7 +149,7 @@ describe("ProjectConfigSession", () => {
           type: "read_project_config_response",
           payload: {
             requestId: "read-symlink-1",
-            repoRoot,
+            repoRoot: projectPath,
             ok: true,
             config: { worktree: { setup: "npm ci" } },
             revision: expect.objectContaining({
@@ -186,7 +204,9 @@ describe("ProjectConfigSession", () => {
 
   test("write round-trips a config to a known root and echoes the new revision", async () => {
     const repoRoot = makeRoot();
-    const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+    const project = projectRecord(repoRoot);
+    const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",
@@ -201,7 +221,7 @@ describe("ProjectConfigSession", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "write-1",
-          repoRoot,
+          repoRoot: projectPath,
           ok: true,
           config: { worktree: { setup: "npm ci" } },
           revision: expect.objectContaining({
@@ -247,7 +267,9 @@ describe("ProjectConfigSession", () => {
     const staleRoot = makeRoot();
     writeFileSync(join(staleRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));
     const unknownRoot = makeRoot();
-    const { subsystem, emitted } = makeSubsystem([projectRecord(staleRoot)]);
+    const project = projectRecord(staleRoot);
+    const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",
@@ -269,7 +291,7 @@ describe("ProjectConfigSession", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "stale-1",
-          repoRoot: staleRoot,
+          repoRoot: projectPath,
           ok: false,
           error: {
             code: "stale_project_config",

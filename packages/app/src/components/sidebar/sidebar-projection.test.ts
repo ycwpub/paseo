@@ -24,6 +24,7 @@ function makeWorkspace(
   };
   const entry: SidebarWorkspaceEntry = {
     ...placement,
+    projectId: "project",
     workspaceDirectory: "",
     workspaceDirectoryLabel: "",
     title: null,

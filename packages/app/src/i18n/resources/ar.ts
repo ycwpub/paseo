@@ -1302,23 +1302,23 @@ export const ar: TranslationResources = {
         openFolderFailed: "Couldn't open folder",
         hide: "إخفاء المشروع",
         show: "إظهار المشروع",
-        remove: "إزالة المشروع",
-        removing: "جارٍ الإزالة...",
+        remove: "حذف المشروع",
+        removing: "جارٍ الحذف...",
       },
       hidden: {
         title: "المشاريع المخفية ({{count}})",
       },
       confirmations: {
-        removeTitle: "هل تريد إزالة المشروع؟",
+        removeTitle: "هل تريد حذف المشروع؟",
         removeMessage:
-          'هل تريد إزالة "{{projectName}}" من الشريط الجانبي؟\n\n لن يتم تغيير الملفات الموجودة على القرص.',
-        removeConfirm: "يزيل",
+          'هل تريد حذف "{{projectName}}" نهائيًا وجميع بياناته التي يديرها Paseo ضمن ~/.paseo/<projectId>؟\n\nلن تُحذف مجلدات المصدر الخارجية. لا يمكن التراجع عن هذا الإجراء.',
+        removeConfirm: "حذف",
         cancel: "يلغي",
       },
       toasts: {
         hostDisconnected: "Host غير متصل",
-        removeFailed: "فشل في إزالة بعض مساحات العمل",
-        updateHostToRemove: "قم بتحديث Host لإزالة المشاريع.",
+        removeFailed: "فشل حذف المشروع أو بعض بياناته",
+        updateHostToRemove: "حدّث Host لحذف المشاريع.",
       },
       empty: {
         title: "لا توجد مشاريع حتى الآن",
@@ -1352,8 +1352,10 @@ export const ar: TranslationResources = {
         unpin: "إلغاء التثبيت",
         archive: "أرشيف",
         archiveWorkspace: "أرشفة مساحة العمل",
+        remove: "حذف مساحة العمل",
         hideFromSidebar: "إخفاء من الشريط الجانبي",
         archiving: "أرشفة...",
+        removing: "جارٍ الحذف...",
         hiding: "إخفاء...",
       },
       bulkArchive: {
@@ -1372,6 +1374,10 @@ export const ar: TranslationResources = {
         hideMessage:
           'إخفاء "{{workspaceName}}" من الشريط الجانبي؟\n\n لن يتم تغيير الملفات الموجودة على القرص.',
         hideConfirm: "يخفي",
+        removeTitle: "حذف مساحة العمل؟",
+        removeMessage:
+          'هل تريد حذف "{{workspaceName}}" وبيانات Paseo الخاصة بها نهائيًا من ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}؟\n\nلن يتم حذف دليل الشفرة الخارجي المرتبط أو تعديل أي ملفات بداخله. لا يمكن التراجع عن هذا الإجراء.',
+        removeConfirm: "حذف",
         cancel: "يلغي",
       },
       rename: {
@@ -1385,6 +1391,7 @@ export const ar: TranslationResources = {
         branchNameCopied: "تم نسخ اسم الفرع",
         hostDisconnected: "Host غير متصل",
         hideFailed: "فشل في إخفاء مساحة العمل",
+        removeFailed: "فشل حذف مساحة العمل",
         archiveFailed: "فشل في أرشفة مساحة العمل",
       },
     },
@@ -1408,6 +1415,9 @@ export const ar: TranslationResources = {
       createWorktreeFailed: "فشل في إنشاء شجرة العمل",
       composerStateRequired: "حالة الملحن مطلوبة",
       selectModel: "اختر نموذجا",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -2930,6 +2940,12 @@ export const ar: TranslationResources = {
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
+      directoryless: {
+        title: "لا يوجد مجلد للمشروع",
+        description:
+          "يمكنك تعديل اسم المشروع وأيقونته وذاكرته. تصبح الإعدادات المخزنة في paseo.json متاحة بعد ربط المشروع بمجلد.",
+      },
       memory: {
         title: "ذاكرة المشروع",
         info: "تحكم في ذاكرة هذا المشروع وحدد المعرفة الدائمة التي يجب أن يتعلمها Paseo.",
@@ -2944,6 +2960,17 @@ export const ar: TranslationResources = {
         saving: "جارٍ الحفظ...",
         saved: "تم الحفظ",
         saveError: "تعذر حفظ ذاكرة المشروع",
+      },
+      edit: {
+        title: "تعديل المشروع",
+        name: "اسم المشروع",
+        nameLabel: "اسم المشروع",
+        icon: "أيقونة المشروع",
+        chooseImage: "اختيار صورة",
+        useAutomatic: "استخدام الأيقونة الافتراضية",
+        imageUrl: "رابط صورة أو موقع",
+        save: "حفظ التغييرات",
+        savedToast: "تم تحديث المشروع",
       },
       rename: {
         renamedToast: "تمت إعادة تسمية المشروع",

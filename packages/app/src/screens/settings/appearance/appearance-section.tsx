@@ -194,35 +194,6 @@ function AutoExpandReasoningRow({ value, onChange }: AutoExpandReasoningRowProps
   );
 }
 
-interface AidenClaudeReasoningTranslationRowProps {
-  value: boolean;
-  onChange: (value: boolean) => void;
-}
-
-function AidenClaudeReasoningTranslationRow({
-  value,
-  onChange,
-}: AidenClaudeReasoningTranslationRowProps) {
-  const { t } = useTranslation();
-  return (
-    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>
-          {t("settings.general.aidenClaudeReasoningTranslation.label")}
-        </Text>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.general.aidenClaudeReasoningTranslation.description")}
-        </Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        accessibilityLabel={t("settings.general.aidenClaudeReasoningTranslation.label")}
-      />
-    </View>
-  );
-}
-
 interface ChatOutlineRowProps {
   value: boolean;
   onChange: (value: boolean) => void;
@@ -531,13 +502,6 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleAidenClaudeReasoningTranslationChange = useCallback(
-    (aidenClaudeTranslateReasoningToChinese: boolean) => {
-      void updateSettings({ aidenClaudeTranslateReasoningToChinese });
-    },
-    [updateSettings],
-  );
-
   const handleToolCallDetailLevelChange = useCallback(
     (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) => {
       void updateSettings({ toolCallDetailLevel });
@@ -637,10 +601,6 @@ export function AppearanceSection() {
           <AutoExpandReasoningRow
             value={settings.autoExpandReasoning}
             onChange={handleAutoExpandReasoningChange}
-          />
-          <AidenClaudeReasoningTranslationRow
-            value={settings.aidenClaudeTranslateReasoningToChinese}
-            onChange={handleAidenClaudeReasoningTranslationChange}
           />
           <ToolCallDetailRow
             value={settings.toolCallDetailLevel}

@@ -30,6 +30,7 @@ import {
   resolveProviderDiscoveredModels,
   type ProviderDiscoveredModelsCache,
 } from "./provider-diagnostic-models";
+import { AidenClaudeProviderSettings } from "./aiden-claude-provider-settings";
 
 interface ProviderDiagnosticSheetProps {
   provider: string;
@@ -697,6 +698,7 @@ export function ProviderDiagnosticSheet({
         })}
         snapPoints={MAIN_SNAP_POINTS}
       >
+        <AidenClaudeProviderSettings provider={provider} />
         <ProviderModalBody
           discoveredCount={discoveredModels.length}
           additionalCount={additionalModels.length}

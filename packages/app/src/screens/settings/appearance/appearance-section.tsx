@@ -194,30 +194,30 @@ function AutoExpandReasoningRow({ value, onChange }: AutoExpandReasoningRowProps
   );
 }
 
-interface AidenCodexReasoningTranslationRowProps {
+interface AidenClaudeReasoningTranslationRowProps {
   value: boolean;
   onChange: (value: boolean) => void;
 }
 
-function AidenCodexReasoningTranslationRow({
+function AidenClaudeReasoningTranslationRow({
   value,
   onChange,
-}: AidenCodexReasoningTranslationRowProps) {
+}: AidenClaudeReasoningTranslationRowProps) {
   const { t } = useTranslation();
   return (
     <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>
-          {t("settings.general.aidenCodexReasoningTranslation.label")}
+          {t("settings.general.aidenClaudeReasoningTranslation.label")}
         </Text>
         <Text style={settingsStyles.rowHint}>
-          {t("settings.general.aidenCodexReasoningTranslation.description")}
+          {t("settings.general.aidenClaudeReasoningTranslation.description")}
         </Text>
       </View>
       <Switch
         value={value}
         onValueChange={onChange}
-        accessibilityLabel={t("settings.general.aidenCodexReasoningTranslation.label")}
+        accessibilityLabel={t("settings.general.aidenClaudeReasoningTranslation.label")}
       />
     </View>
   );
@@ -531,9 +531,9 @@ export function AppearanceSection() {
     [updateSettings],
   );
 
-  const handleAidenCodexReasoningTranslationChange = useCallback(
-    (aidenCodexTranslateReasoningToChinese: boolean) => {
-      void updateSettings({ aidenCodexTranslateReasoningToChinese });
+  const handleAidenClaudeReasoningTranslationChange = useCallback(
+    (aidenClaudeTranslateReasoningToChinese: boolean) => {
+      void updateSettings({ aidenClaudeTranslateReasoningToChinese });
     },
     [updateSettings],
   );
@@ -638,9 +638,9 @@ export function AppearanceSection() {
             value={settings.autoExpandReasoning}
             onChange={handleAutoExpandReasoningChange}
           />
-          <AidenCodexReasoningTranslationRow
-            value={settings.aidenCodexTranslateReasoningToChinese}
-            onChange={handleAidenCodexReasoningTranslationChange}
+          <AidenClaudeReasoningTranslationRow
+            value={settings.aidenClaudeTranslateReasoningToChinese}
+            onChange={handleAidenClaudeReasoningTranslationChange}
           />
           <ToolCallDetailRow
             value={settings.toolCallDetailLevel}

@@ -24,8 +24,8 @@ const chat = {
 
 describe("Lark directory labels", () => {
   test("formats friendly user and group labels", () => {
-    expect(formatLarkUserLabel(user)).toBe("alice@example.com(ou_alice)");
-    expect(formatLarkChatLabel(chat)).toBe("结算群（group_settlement，oc_settlement）");
+    expect(formatLarkUserLabel(user)).toBe("ou_alice(alice@example.com)");
+    expect(formatLarkChatLabel(chat)).toBe("oc_settlement(结算群、group_settlement)");
   });
 
   test("scopes relation lookup by bot App ID", () => {

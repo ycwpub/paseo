@@ -190,7 +190,7 @@ import { SkillSession } from "./skill/skill-session.js";
 import type { PluginService } from "./plugin/plugin-service.js";
 import { PluginSession } from "./plugin/plugin-session.js";
 import {
-  createAidenCodexReasoningTranslationService,
+  createAidenClaudeReasoningTranslationService,
   type ReasoningTranslationService,
 } from "./reasoning-translation/reasoning-translation-service.js";
 import { ReasoningTranslationSession } from "./reasoning-translation/reasoning-translation-session.js";
@@ -1006,7 +1006,7 @@ export class Session {
         })
       : null;
     const reasoningTranslationService: ReasoningTranslationService =
-      createAidenCodexReasoningTranslationService({
+      createAidenClaudeReasoningTranslationService({
         agentManager: this.agentManager,
         agentStorage: this.agentStorage,
         logger: this.sessionLogger,

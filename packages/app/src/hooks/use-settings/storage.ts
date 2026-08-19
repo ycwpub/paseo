@@ -62,7 +62,7 @@ export interface AppSettings {
   sidebarRowItems: SidebarRowItems;
   sidebarChecksDisplay: SidebarChecksDisplay;
   autoExpandReasoning: boolean;
-  aidenCodexTranslateReasoningToChinese: boolean;
+  aidenClaudeTranslateReasoningToChinese: boolean;
   toolCallDetailLevel: ToolCallDetailLevel;
   chatOutlineEnabled: boolean;
   vimKeybindings: boolean;
@@ -98,7 +98,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   sidebarRowItems: DEFAULT_SIDEBAR_ROW_ITEMS,
   sidebarChecksDisplay: DEFAULT_SIDEBAR_CHECKS_DISPLAY,
   autoExpandReasoning: false,
-  aidenCodexTranslateReasoningToChinese: false,
+  aidenClaudeTranslateReasoningToChinese: false,
   toolCallDetailLevel: "overview",
   chatOutlineEnabled: true,
   vimKeybindings: false,
@@ -327,8 +327,8 @@ function pickAppSettings(stored: StoredAppSettings): Partial<AppSettings> {
   if (typeof stored.autoExpandReasoning === "boolean") {
     result.autoExpandReasoning = stored.autoExpandReasoning;
   }
-  if (typeof stored.aidenCodexTranslateReasoningToChinese === "boolean") {
-    result.aidenCodexTranslateReasoningToChinese = stored.aidenCodexTranslateReasoningToChinese;
+  if (typeof stored.aidenClaudeTranslateReasoningToChinese === "boolean") {
+    result.aidenClaudeTranslateReasoningToChinese = stored.aidenClaudeTranslateReasoningToChinese;
   }
   const toolCallDetailLevel = parseToolCallDetailLevel(stored);
   if (toolCallDetailLevel !== null) {

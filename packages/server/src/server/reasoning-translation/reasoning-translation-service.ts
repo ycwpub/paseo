@@ -6,7 +6,7 @@ import type { AgentManager } from "../agent/agent-manager.js";
 import type { AgentStorage } from "../agent/agent-storage.js";
 import { generateStructuredAgentResponseWithFallback } from "../agent/agent-response-loop.js";
 
-const AIDEN_CODEX_PROVIDER = "aiden-codex";
+const AIDEN_CLAUDE_PROVIDER = "aiden-claude";
 const MAX_TRANSLATION_CHUNK_CHARS = 6_000;
 const MAX_CACHE_ENTRIES = 256;
 
@@ -40,7 +40,7 @@ export class ReasoningTranslationService {
 
     const context = await this.dependencies.resolveAgent(agentId);
     if (!context) {
-      throw new Error("Aiden Codex agent not found");
+      throw new Error("Aiden Claude agent not found");
     }
 
     const cacheKey = createCacheKey(context, source);
@@ -61,7 +61,7 @@ export class ReasoningTranslationService {
       }
       const translatedText = translatedChunks.join("\n\n").trim();
       if (!translatedText) {
-        throw new Error("Aiden Codex returned an empty reasoning translation");
+        throw new Error("Aiden Claude returned an empty reasoning translation");
       }
       this.remember(cacheKey, translatedText);
       return translatedText;
@@ -89,7 +89,7 @@ export class ReasoningTranslationService {
   }
 }
 
-export function createAidenCodexReasoningTranslationService(options: {
+export function createAidenClaudeReasoningTranslationService(options: {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   logger: pino.Logger;
@@ -115,7 +115,7 @@ export function createAidenCodexReasoningTranslationService(options: {
         persistSession: false,
         providers: [
           {
-            provider: AIDEN_CODEX_PROVIDER,
+            provider: AIDEN_CLAUDE_PROVIDER,
             ...(context.model ? { model: context.model } : {}),
             ...(context.thinkingOptionId ? { thinkingOptionId: context.thinkingOptionId } : {}),
           },
@@ -170,7 +170,7 @@ function toTranslationAgentContext(agent: {
     thinkingOptionId?: string | null;
   } | null;
 }): TranslationAgentContext | null {
-  if (agent.provider !== AIDEN_CODEX_PROVIDER) {
+  if (agent.provider !== AIDEN_CLAUDE_PROVIDER) {
     return null;
   }
   const model = agent.runtimeInfo?.model ?? agent.config?.model ?? undefined;

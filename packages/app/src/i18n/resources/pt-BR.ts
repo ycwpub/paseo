@@ -2053,6 +2053,14 @@ export const ptBR: TranslationResources = {
       islandShowWhenFocused: "Mostrar com o Paseo em foco",
       islandShowWhenFocusedHint: "Mantém os lembretes visíveis enquanto você usa o Paseo",
       islandWorking: "Processando a tarefa...",
+      islandTest: "Testar Dynamic Island",
+      islandTestHint: "Mostra um lembrete Dynamic Island no topo da tela atual",
+      islandTestTitle: "Dynamic Island do Paseo",
+      islandTestBody: "A Dynamic Island está sendo exibida corretamente",
+      islandTestSuccess: "Dynamic Island exibida",
+      islandTestSuccessHint: "O lembrete aparece no topo da área de trabalho da tela atual.",
+      islandTestFailed: "Não foi possível exibir a Dynamic Island",
+      islandTestFailedHint: "Confirme que ela está ativa e verifique os registros [island].",
       test: "Testar notificação",
       testHint: "Envia uma notificação usando estas configurações",
       permissionRequired: "Permita o acesso às notificações antes de testar",
@@ -2136,8 +2144,8 @@ export const ptBR: TranslationResources = {
         description:
           "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
       },
-      aidenCodexReasoningTranslation: {
-        label: "Traduzir o raciocínio do Aiden Codex para chinês",
+      aidenClaudeReasoningTranslation: {
+        label: "Traduzir o raciocínio do Aiden Claude para chinês",
         description:
           "Mostra apenas a tradução em chinês simplificado; desativado, mostra o texto original.",
       },

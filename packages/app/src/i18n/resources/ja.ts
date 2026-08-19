@@ -2033,6 +2033,15 @@ export const ja: TranslationResources = {
       islandShowWhenFocused: "Paseo が前面でも表示",
       islandShowWhenFocusedHint: "Paseo の操作中もリマインダーを表示します",
       islandWorking: "タスクを処理しています...",
+      islandTest: "Dynamic Island をテスト",
+      islandTestHint: "現在の画面上部に Dynamic Island リマインダーを表示します",
+      islandTestTitle: "Paseo Dynamic Island",
+      islandTestBody: "Dynamic Island は正常に表示されています",
+      islandTestSuccess: "Dynamic Island を表示しました",
+      islandTestSuccessHint: "現在の画面の作業領域上部にリマインダーを表示しました。",
+      islandTestFailed: "Dynamic Island を表示できません",
+      islandTestFailedHint:
+        "有効になっていることとデスクトップログの [island] を確認してください。",
       test: "通知をテスト",
       testHint: "現在の設定でテスト通知を送信します",
       permissionRequired: "テストする前に通知へのアクセスを許可してください",
@@ -2114,8 +2123,8 @@ export const ja: TranslationResources = {
         label: "常に思考プロセスを展開",
         description: "デフォルトでAIのエージェント思考・推論ブロックを完全に展開して表示します",
       },
-      aidenCodexReasoningTranslation: {
-        label: "Aiden Codex の思考を中国語に翻訳",
+      aidenClaudeReasoningTranslation: {
+        label: "Aiden Claude の思考を中国語に翻訳",
         description: "簡体字中国語の翻訳のみを表示し、オフの場合は原文を表示します。",
       },
       toolCallDetail: {

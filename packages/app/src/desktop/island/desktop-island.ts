@@ -1,13 +1,20 @@
 import { getDesktopHost, type DesktopIslandPayload } from "@/desktop/host";
 
-export function showDesktopIsland(payload: DesktopIslandPayload): void {
+export async function requestDesktopIsland(payload: DesktopIslandPayload): Promise<boolean> {
   const show = getDesktopHost()?.island?.show;
   if (typeof show !== "function") {
-    return;
+    return false;
   }
-  void show(payload).catch((error) => {
+  try {
+    return (await show(payload)) === true;
+  } catch (error) {
     console.warn("[DesktopIsland] Failed to show reminder", { payload, error });
-  });
+    return false;
+  }
+}
+
+export function showDesktopIsland(payload: DesktopIslandPayload): void {
+  void requestDesktopIsland(payload);
 }
 
 export function dismissDesktopIsland(id?: string): void {

@@ -78,15 +78,29 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.chatOutlineEnabled).toBe(true);
   });
 
-  it("keeps Aiden Codex reasoning translation disabled by default", async () => {
+  it("keeps Aiden Claude reasoning translation disabled by default", async () => {
     const deps = makeDeps();
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.aidenCodexTranslateReasoningToChinese).toBe(false);
+    expect(result.aidenClaudeTranslateReasoningToChinese).toBe(false);
   });
 
-  it("loads the Aiden Codex reasoning translation preference", async () => {
+  it("loads the Aiden Claude reasoning translation preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          aidenClaudeTranslateReasoningToChinese: true,
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.aidenClaudeTranslateReasoningToChinese).toBe(true);
+  });
+
+  it("does not reuse the removed Aiden Codex reasoning translation preference", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({
@@ -97,7 +111,7 @@ describe("loadAppSettingsFromStorage", () => {
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.aidenCodexTranslateReasoningToChinese).toBe(true);
+    expect(result.aidenClaudeTranslateReasoningToChinese).toBe(false);
   });
 
   it("loads a disabled chat outline preference", async () => {

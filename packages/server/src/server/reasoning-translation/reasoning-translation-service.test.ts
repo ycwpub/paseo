@@ -21,14 +21,14 @@ describe("ReasoningTranslationService", () => {
     expect(translateChunk).toHaveBeenCalledTimes(1);
   });
 
-  test("rejects requests that cannot resolve to an Aiden Codex agent", async () => {
+  test("rejects requests that cannot resolve to an Aiden Claude agent", async () => {
     const service = new ReasoningTranslationService({
       resolveAgent: vi.fn(async () => null),
       translateChunk: vi.fn(),
     });
 
     await expect(service.translate("agent-1", "Inspect the repository.")).rejects.toThrow(
-      "Aiden Codex agent not found",
+      "Aiden Claude agent not found",
     );
   });
 

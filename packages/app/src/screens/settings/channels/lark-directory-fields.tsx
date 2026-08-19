@@ -12,6 +12,7 @@ import {
 import { settingsStyles } from "@/styles/settings";
 import {
   findLarkDirectoryChat,
+  formatLarkChatLabel,
   formatLarkChatId,
   formatLarkUserOpenId,
 } from "./lark-directory-format";
@@ -79,6 +80,14 @@ export function LarkUserDirectoryField({
   const [emailInput, setEmailInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [resolvedUsers, setResolvedUsers] = useState<LarkDirectoryUser[]>([]);
+  const availableUsers = useMemo(() => {
+    const merged = new Map<string, LarkDirectoryUser>();
+    for (const user of [...users, ...resolvedUsers]) {
+      merged.set(`${user.appId}:${user.openId}`, user);
+    }
+    return [...merged.values()];
+  }, [resolvedUsers, users]);
 
   const handleResolve = useCallback(async () => {
     const emails = splitEmails(emailInput);
@@ -98,6 +107,13 @@ export function LarkUserDirectoryField({
     setError(null);
     try {
       const resolved = await resolveUsers(appId.trim(), emails);
+      setResolvedUsers((current) => {
+        const merged = new Map<string, LarkDirectoryUser>();
+        for (const user of [...current, ...resolved]) {
+          merged.set(`${user.appId}:${user.openId}`, user);
+        }
+        return [...merged.values()];
+      });
       const nextOpenIds = multiple
         ? Array.from(new Set([...openIds, ...resolved.map((user) => user.openId)]))
         : resolved.slice(0, 1).map((user) => user.openId);
@@ -144,7 +160,7 @@ export function LarkUserDirectoryField({
             <LarkUserSelectionRow
               key={openId}
               openId={openId}
-              label={formatLarkUserOpenId(users, appId, openId)}
+              label={formatLarkUserOpenId(availableUsers, appId, openId)}
               disabled={disabled}
               onRemove={removeOpenId}
             />
@@ -191,8 +207,7 @@ export function LarkChatDirectoryField({
       matches.map((chat) => ({
         id: `${chat.appId}:${chat.chatId}`,
         value: chat.chatId,
-        label: chat.name,
-        description: `${chat.groupId}，${chat.chatId}`,
+        label: formatLarkChatLabel(chat),
       })),
     [matches],
   );
@@ -200,8 +215,7 @@ export function LarkChatDirectoryField({
     const match = matches.find((chat) => chat.chatId === chatId) ?? selected;
     return match
       ? {
-          label: match.name,
-          description: `${match.groupId}，${match.chatId}`,
+          label: formatLarkChatLabel(match),
         }
       : null;
   }, [chatId, matches, selected]);

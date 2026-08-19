@@ -1,9 +1,10 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { BrowserWindow, ipcMain, screen, type Rectangle, type WebContents } from "electron";
+import { BrowserWindow, ipcMain, screen, type WebContents } from "electron";
 import log from "electron-log/main";
 
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
+import { resolveIslandBounds } from "./island-bounds.js";
 import {
   IslandNotificationQueue,
   parseIslandNotification,
@@ -42,6 +43,7 @@ class IslandController {
   async show(source: WebContents, rawInput?: IslandNotificationInput): Promise<boolean> {
     const settings = await getDesktopSettingsStore().get();
     if (!settings.island.enabled) {
+      log.info("[island] show skipped because the feature is disabled");
       return false;
     }
     const sourceWindow = BrowserWindow.fromWebContents(source);
@@ -52,15 +54,26 @@ class IslandController {
           candidate !== this.#window && !candidate.isDestroyed() && candidate.isFocused(),
       )
     ) {
+      log.info("[island] show skipped while Paseo is focused");
       return false;
     }
 
     const now = Date.now();
     const notification = parseIslandNotification(rawInput, now, randomUUID);
     if (!notification) {
+      log.warn("[island] show rejected invalid notification", {
+        hasInput: rawInput !== undefined,
+        titleType: typeof rawInput?.title,
+        kind: rawInput?.kind,
+      });
       return false;
     }
 
+    log.info("[island] show requested", {
+      id: notification.id,
+      kind: notification.kind,
+      sourceWindowId: sourceWindow?.id ?? null,
+    });
     this.#queue.upsert(notification);
     this.#sources.set(notification.id, source);
     this.#scheduleDismiss(notification);
@@ -136,8 +149,14 @@ class IslandController {
     }
     const display = this.#resolveDisplay();
     this.#displayId = display.id;
-    const bounds = this.#resolveBounds(display.bounds);
+    const bounds = this.#resolveBounds(display);
     win.setBounds(bounds, true);
+    log.info("[island] repositioned", {
+      displayId: display.id,
+      displayBounds: display.bounds,
+      workArea: display.workArea,
+      windowBounds: bounds,
+    });
   }
 
   async #ensureWindow(sourceWindow: BrowserWindow | null): Promise<void> {
@@ -179,12 +198,23 @@ class IslandController {
     win.setAlwaysOnTop(true, "screen-saver");
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.setContentProtection(false);
+    win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+      log.error("[island] renderer failed to load", {
+        errorCode,
+        errorDescription,
+        validatedURL,
+      });
+    });
+    win.webContents.on("render-process-gone", (_event, details) => {
+      log.error("[island] renderer process gone", details);
+    });
     win.on("closed", () => {
       if (this.#window === win) {
         this.#window = null;
       }
     });
     await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getIslandDocument())}`);
+    log.info("[island] renderer loaded", { windowId: win.id });
   }
 
   #render(): void {
@@ -200,7 +230,7 @@ class IslandController {
     }
 
     const display = this.#resolveDisplay();
-    const bounds = this.#resolveBounds(display.bounds, items.length);
+    const bounds = this.#resolveBounds(display, items.length);
     this.#displayId = display.id;
     win.setBounds(bounds, true);
     const state: IslandRendererState = {
@@ -211,6 +241,13 @@ class IslandController {
     if (!win.isVisible()) {
       win.showInactive();
     }
+    log.info("[island] rendered", {
+      displayId: display.id,
+      itemCount: items.length,
+      expanded: this.#expanded,
+      visible: win.isVisible(),
+      bounds: win.getBounds(),
+    });
   }
 
   #resolveDisplay(): Electron.Display {
@@ -224,20 +261,14 @@ class IslandController {
     return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   }
 
-  #resolveBounds(displayBounds: Rectangle, itemCount = this.#queue.list().length): Rectangle {
-    const width = COMPACT_BOUNDS.width;
+  #resolveBounds(display: Electron.Display, itemCount = this.#queue.list().length) {
     const height = this.#expanded
       ? Math.min(
           EXPANDED_MAX_HEIGHT,
           Math.max(EXPANDED_MIN_HEIGHT, 82 + Math.min(4, itemCount) * EXPANDED_ITEM_HEIGHT),
         )
       : COMPACT_BOUNDS.height;
-    return {
-      x: Math.round(displayBounds.x + (displayBounds.width - width) / 2),
-      y: displayBounds.y + 6,
-      width,
-      height,
-    };
+    return resolveIslandBounds(display, { width: COMPACT_BOUNDS.width, height });
   }
 
   #resolveTargetWindow(source: WebContents | undefined): BrowserWindow | null {

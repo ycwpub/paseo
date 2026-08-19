@@ -2609,6 +2609,14 @@ export const en = {
       islandShowWhenFocused: "Show while Paseo is focused",
       islandShowWhenFocusedHint: "Keep reminders visible while you are working in Paseo",
       islandWorking: "Working on the task...",
+      islandTest: "Test Dynamic Island",
+      islandTestHint: "Show a Dynamic Island reminder at the top of the current screen",
+      islandTestTitle: "Paseo Dynamic Island",
+      islandTestBody: "Dynamic Island is displaying correctly",
+      islandTestSuccess: "Dynamic Island displayed",
+      islandTestSuccessHint: "The reminder is visible at the top of the current screen work area.",
+      islandTestFailed: "Dynamic Island could not be displayed",
+      islandTestFailedHint: "Make sure it is enabled and inspect [island] entries in desktop logs.",
       test: "Test notification",
       testHint: "Send a notification using these settings",
       permissionRequired: "Allow notification access before testing",
@@ -2690,10 +2698,10 @@ export const en = {
         label: "Always expand reasoning",
         description: "Show agent thinking and chain-of-thought blocks fully expanded by default",
       },
-      aidenCodexReasoningTranslation: {
-        label: "Translate Aiden Codex reasoning to Chinese",
+      aidenClaudeReasoningTranslation: {
+        label: "Translate Aiden Claude reasoning to Chinese",
         description:
-          "Show only the Simplified Chinese translation of Aiden Codex reasoning. Turn this off to show the original text.",
+          "Show only the Simplified Chinese translation of Aiden Claude reasoning. Turn this off to show the original text.",
       },
       toolCallDetail: {
         label: "Tool call display",

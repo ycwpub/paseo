@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { resolveReasoningTranslationDisplayText } from "./aiden-codex-reasoning-translation";
+import {
+  resolveReasoningTranslationDisplayText,
+  shouldTranslateAidenClaudeReasoning,
+} from "./aiden-claude-reasoning-translation";
 
 const base = {
   enabled: true,
@@ -57,5 +60,22 @@ describe("resolveReasoningTranslationDisplayText", () => {
         supported: false,
       }),
     ).toBe(base.unavailableText);
+  });
+});
+
+describe("shouldTranslateAidenClaudeReasoning", () => {
+  test("enables translation only for Aiden Claude", () => {
+    expect(
+      shouldTranslateAidenClaudeReasoning({
+        enabled: true,
+        provider: "aiden-claude",
+      }),
+    ).toBe(true);
+    expect(
+      shouldTranslateAidenClaudeReasoning({
+        enabled: true,
+        provider: "aiden-codex",
+      }),
+    ).toBe(false);
   });
 });

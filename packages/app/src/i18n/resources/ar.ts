@@ -2015,6 +2015,14 @@ export const ar: TranslationResources = {
       islandShowWhenFocused: "العرض عندما يكون Paseo في الواجهة",
       islandShowWhenFocusedHint: "إبقاء التذكيرات ظاهرة أثناء استخدام Paseo",
       islandWorking: "جارٍ تنفيذ المهمة...",
+      islandTest: "اختبار الجزيرة الديناميكية",
+      islandTestHint: "عرض تذكير الجزيرة الديناميكية أعلى الشاشة الحالية",
+      islandTestTitle: "الجزيرة الديناميكية لـ Paseo",
+      islandTestBody: "تُعرض الجزيرة الديناميكية بشكل صحيح",
+      islandTestSuccess: "تم عرض الجزيرة الديناميكية",
+      islandTestSuccessHint: "يظهر التذكير أعلى مساحة العمل في الشاشة الحالية.",
+      islandTestFailed: "تعذر عرض الجزيرة الديناميكية",
+      islandTestFailedHint: "تأكد من تفعيلها وافحص سجلات [island] في سجل سطح المكتب.",
       test: "اختبار الإشعار",
       testHint: "إرسال إشعار باستخدام هذه الإعدادات",
       permissionRequired: "اسمح بالوصول إلى الإشعارات قبل الاختبار",
@@ -2096,8 +2104,8 @@ export const ar: TranslationResources = {
         label: "عرض التفكير دائماً",
         description: "إظهار تفكير الوكيل وخطوات الاستدلال بشكل كامل بشكل افتراضي",
       },
-      aidenCodexReasoningTranslation: {
-        label: "ترجمة تفكير Aiden Codex إلى الصينية",
+      aidenClaudeReasoningTranslation: {
+        label: "ترجمة تفكير Aiden Claude إلى الصينية",
         description: "عرض الترجمة الصينية المبسطة فقط، أو النص الأصلي عند إيقافها.",
       },
       toolCallDetail: {

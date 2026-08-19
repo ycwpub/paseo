@@ -2069,6 +2069,16 @@ export const es: TranslationResources = {
       islandShowWhenFocused: "Mostrar con Paseo en primer plano",
       islandShowWhenFocusedHint: "Mantiene los recordatorios visibles mientras usas Paseo",
       islandWorking: "Procesando la tarea...",
+      islandTest: "Probar Dynamic Island",
+      islandTestHint:
+        "Muestra un recordatorio de Dynamic Island en la parte superior de la pantalla",
+      islandTestTitle: "Dynamic Island de Paseo",
+      islandTestBody: "Dynamic Island se muestra correctamente",
+      islandTestSuccess: "Dynamic Island mostrada",
+      islandTestSuccessHint: "El recordatorio aparece en la parte superior del área de trabajo.",
+      islandTestFailed: "No se pudo mostrar Dynamic Island",
+      islandTestFailedHint:
+        "Comprueba que esté activada y revisa las entradas [island] del registro.",
       test: "Probar notificación",
       testHint: "Envía una notificación con esta configuración",
       permissionRequired: "Permite el acceso a las notificaciones antes de probar",
@@ -2153,8 +2163,8 @@ export const es: TranslationResources = {
         description:
           "Mostrar los bloques de pensamiento y razonamiento del agente totalmente expandidos de forma predeterminada",
       },
-      aidenCodexReasoningTranslation: {
-        label: "Traducir el razonamiento de Aiden Codex al chino",
+      aidenClaudeReasoningTranslation: {
+        label: "Traducir el razonamiento de Aiden Claude al chino",
         description:
           "Muestra solo la traducción al chino simplificado; al desactivarlo muestra el texto original.",
       },
@@ -2878,7 +2888,12 @@ export const es: TranslationResources = {
       },
       resources: en.settings.project.resources,
       indexSkill: en.settings.project.indexSkill,
-      variables: en.settings.project.variables,
+      variables: {
+        ...en.settings.project.variables,
+        title: "Variables del proyecto",
+        info: "Las variables están disponibles en las plantillas como {{variableName}}.",
+        empty: "No hay variables configuradas.",
+      },
       instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Generación de metadatos",

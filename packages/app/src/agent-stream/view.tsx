@@ -113,7 +113,10 @@ import {
 } from "./process-expansion-state";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { AidenCodexReasoningTranslation } from "./aiden-codex-reasoning-translation";
+import {
+  AidenClaudeReasoningTranslation,
+  shouldTranslateAidenClaudeReasoning,
+} from "./aiden-claude-reasoning-translation";
 
 function renderLiveAuxiliaryNode(input: {
   processVisibilityControl: ReactNode;
@@ -410,8 +413,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
   ) {
     const { t } = useTranslation();
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
-    const translateAidenCodexReasoning = useSettings(
-      (settings) => settings.aidenCodexTranslateReasoningToChinese,
+    const translateAidenClaudeReasoning = useSettings(
+      (settings) => settings.aidenClaudeTranslateReasoningToChinese,
     );
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
@@ -836,8 +839,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
         return (
-          <AidenCodexReasoningTranslation
-            enabled={translateAidenCodexReasoning && context.provider === "aiden-codex"}
+          <AidenClaudeReasoningTranslation
+            enabled={shouldTranslateAidenClaudeReasoning({
+              enabled: translateAidenClaudeReasoning,
+              provider: context.provider,
+            })}
             supported={supportsReasoningTranslation}
             client={client}
             serverId={resolvedServerId}
@@ -889,7 +895,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 />
               );
             }}
-          </AidenCodexReasoningTranslation>
+          </AidenClaudeReasoningTranslation>
         );
       },
       [
@@ -902,7 +908,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         setInlineDetailsExpanded,
         supportsReasoningTranslation,
         toast,
-        translateAidenCodexReasoning,
+        translateAidenClaudeReasoning,
         workspaceRoot,
       ],
     );

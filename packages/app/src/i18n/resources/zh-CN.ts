@@ -2545,6 +2545,14 @@ export const zhCN: TranslationResources = {
       islandShowWhenFocused: "Paseo 在前台时展示",
       islandShowWhenFocusedHint: "使用 Paseo 时也继续展示灵动岛提醒",
       islandWorking: "正在处理任务...",
+      islandTest: "测试灵动岛",
+      islandTestHint: "立即在当前屏幕顶部展示一条灵动岛提醒",
+      islandTestTitle: "Paseo 灵动岛",
+      islandTestBody: "灵动岛已正常显示",
+      islandTestSuccess: "灵动岛已显示",
+      islandTestSuccessHint: "提醒已展示在当前屏幕可用区域的顶部。",
+      islandTestFailed: "灵动岛未能显示",
+      islandTestFailedHint: "请确认灵动岛已开启，并查看桌面日志中的 [island] 记录。",
       test: "测试通知",
       testHint: "使用当前设置发送测试通知",
       permissionRequired: "测试前请允许访问通知",
@@ -2625,8 +2633,8 @@ export const zhCN: TranslationResources = {
         label: "始终展开推理过程",
         description: "默认情况下完全展开 AI 的思考和推理过程",
       },
-      aidenCodexReasoningTranslation: {
-        label: "将 Aiden Codex 思考过程翻译为中文",
+      aidenClaudeReasoningTranslation: {
+        label: "将 Aiden Claude 思考过程翻译为中文",
         description: "开启后仅展示简体中文译文；关闭后展示原始思考内容。",
       },
       toolCallDetail: {

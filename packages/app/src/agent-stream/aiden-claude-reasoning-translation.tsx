@@ -42,7 +42,7 @@ export function resolveReasoningTranslationDisplayText(
   return input.translatedText;
 }
 
-export interface AidenCodexReasoningTranslationProps {
+export interface AidenClaudeReasoningTranslationProps {
   enabled: boolean;
   supported: boolean;
   client: DaemonClient | null;
@@ -53,7 +53,7 @@ export interface AidenCodexReasoningTranslationProps {
   children: (displayText: string) => ReactNode;
 }
 
-export function AidenCodexReasoningTranslation({
+export function AidenClaudeReasoningTranslation({
   enabled,
   supported,
   client,
@@ -62,7 +62,7 @@ export function AidenCodexReasoningTranslation({
   sourceText,
   completed,
   children,
-}: AidenCodexReasoningTranslationProps) {
+}: AidenClaudeReasoningTranslationProps) {
   const { t } = useTranslation();
   const [settledText, setSettledText] = useState(completed ? sourceText : "");
   const [translation, setTranslation] = useState<{
@@ -148,6 +148,13 @@ export function AidenCodexReasoningTranslation({
       unavailableText: t("agentStream.reasoningTranslation.unavailable"),
     }),
   );
+}
+
+export function shouldTranslateAidenClaudeReasoning(input: {
+  enabled: boolean;
+  provider: string | undefined;
+}): boolean {
+  return input.enabled && input.provider === "aiden-claude";
 }
 
 function createTranslationKey(serverId: string, agentId: string, sourceText: string): string {

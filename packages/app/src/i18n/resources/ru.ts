@@ -2061,6 +2061,14 @@ export const ru: TranslationResources = {
       islandShowWhenFocused: "Показывать, когда Paseo в фокусе",
       islandShowWhenFocusedHint: "Оставляет напоминания видимыми во время работы в Paseo",
       islandWorking: "Выполняется задача...",
+      islandTest: "Проверить Dynamic Island",
+      islandTestHint: "Показывает напоминание Dynamic Island вверху текущего экрана",
+      islandTestTitle: "Dynamic Island Paseo",
+      islandTestBody: "Dynamic Island отображается корректно",
+      islandTestSuccess: "Dynamic Island отображён",
+      islandTestSuccessHint: "Напоминание видно вверху рабочей области текущего экрана.",
+      islandTestFailed: "Не удалось показать Dynamic Island",
+      islandTestFailedHint: "Убедитесь, что он включён, и проверьте записи [island] в журнале.",
       test: "Проверить уведомление",
       testHint: "Отправляет уведомление с текущими настройками",
       permissionRequired: "Разрешите доступ к уведомлениям перед проверкой",
@@ -2144,8 +2152,8 @@ export const ru: TranslationResources = {
         description:
           "По умолчанию показывать блоки размышлений и логики агента полностью развернутыми",
       },
-      aidenCodexReasoningTranslation: {
-        label: "Переводить рассуждения Aiden Codex на китайский",
+      aidenClaudeReasoningTranslation: {
+        label: "Переводить рассуждения Aiden Claude на китайский",
         description:
           "Показывать только перевод на упрощённый китайский; иначе показывать оригинал.",
       },

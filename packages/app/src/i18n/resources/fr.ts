@@ -2073,6 +2073,14 @@ export const fr: TranslationResources = {
       islandShowWhenFocused: "Afficher quand Paseo est au premier plan",
       islandShowWhenFocusedHint: "Conserve les rappels visibles pendant l’utilisation de Paseo",
       islandWorking: "Traitement de la tâche...",
+      islandTest: "Tester Dynamic Island",
+      islandTestHint: "Affiche un rappel Dynamic Island en haut de l’écran actuel",
+      islandTestTitle: "Dynamic Island de Paseo",
+      islandTestBody: "Dynamic Island s’affiche correctement",
+      islandTestSuccess: "Dynamic Island affichée",
+      islandTestSuccessHint: "Le rappel est visible en haut de la zone de travail actuelle.",
+      islandTestFailed: "Impossible d’afficher Dynamic Island",
+      islandTestFailedHint: "Vérifiez son activation et les entrées [island] du journal desktop.",
       test: "Tester la notification",
       testHint: "Envoie une notification avec ces réglages",
       permissionRequired: "Autorisez l’accès aux notifications avant le test",
@@ -2155,8 +2163,8 @@ export const fr: TranslationResources = {
         label: "Toujours afficher le raisonnement",
         description: "Afficher le raisonnement de l'agent entièrement développé par défaut",
       },
-      aidenCodexReasoningTranslation: {
-        label: "Traduire le raisonnement Aiden Codex en chinois",
+      aidenClaudeReasoningTranslation: {
+        label: "Traduire le raisonnement Aiden Claude en chinois",
         description:
           "Afficher uniquement la traduction en chinois simplifié, sinon le texte original.",
       },

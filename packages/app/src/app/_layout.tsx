@@ -112,6 +112,7 @@ import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference, THEME_TO_UNISTYLES } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
+import { DesktopPluginContentHost } from "@/plugins/sidebar-panel/desktop-content-host";
 import { PluginAppPanelHost } from "@/plugins/sidebar-panel/panel-host";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
@@ -548,11 +549,15 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
-  const routeContent = (
+  const defaultRouteContent = (
     <View style={rowStyle}>
       <View style={flexStyle}>{children}</View>
-      {!isCompactLayout ? <PluginAppPanelHost compact={false} /> : null}
     </View>
+  );
+  const routeContent = isCompactLayout ? (
+    defaultRouteContent
+  ) : (
+    <DesktopPluginContentHost>{children}</DesktopPluginContentHost>
   );
   const workspaceChrome = (
     <View style={rowStyle}>

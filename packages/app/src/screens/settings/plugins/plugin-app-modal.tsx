@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
@@ -22,6 +22,7 @@ import {
 
 const EMPTY_FORM_VALUES: Record<string, unknown> = {};
 const EMPTY_HIDDEN_FIELD_IDS: readonly string[] = [];
+const EMPTY_COMPONENT_SLOTS: Readonly<Record<string, ReactNode>> = {};
 
 function initialForm(
   document: PluginAppState["document"],
@@ -344,9 +345,17 @@ function usePluginAppController({
   plugin,
   appDefinition,
   fixedFormValues = EMPTY_FORM_VALUES,
+  initialFormValues = EMPTY_FORM_VALUES,
+  prepareSubmission,
+  onFormValuesChange,
   onJobSubmitted,
 }: Omit<PluginAppModalProps, "onClose"> & {
   fixedFormValues?: Record<string, unknown>;
+  initialFormValues?: Record<string, unknown>;
+  prepareSubmission?: (
+    form: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  onFormValuesChange?: (form: Record<string, unknown>) => void;
   onJobSubmitted?: (job: PluginHttpJob) => void;
 }) {
   const client = useHostRuntimeClient(serverId);
@@ -381,7 +390,12 @@ function usePluginAppController({
         if (cancelled) return undefined;
         if (result.error || !result.app) throw new Error(result.error ?? "Plugin app not found");
         setApp(result.app);
-        setForm(initialForm(result.app.document, fixedFormValues));
+        const nextForm = initialForm(result.app.document, {
+          ...initialFormValues,
+          ...fixedFormValues,
+        });
+        setForm(nextForm);
+        onFormValuesChange?.(nextForm);
         return undefined;
       })
       .catch((nextError: unknown) => {
@@ -395,7 +409,15 @@ function usePluginAppController({
     return () => {
       cancelled = true;
     };
-  }, [appDefinition, client, fixedFormValues, plugin?.pluginId, visible]);
+  }, [
+    appDefinition,
+    client,
+    fixedFormValues,
+    initialFormValues,
+    onFormValuesChange,
+    plugin?.pluginId,
+    visible,
+  ]);
 
   const handleGenerate = useCallback(() => {
     if (!client || !plugin?.pluginId || !appDefinition || !prompt.trim()) return;
@@ -406,7 +428,12 @@ function usePluginAppController({
       .then((result) => {
         if (result.error || !result.app) throw new Error(result.error ?? "Generation failed");
         setApp(result.app);
-        setForm(initialForm(result.app.document, fixedFormValues));
+        const nextForm = initialForm(result.app.document, {
+          ...initialFormValues,
+          ...fixedFormValues,
+        });
+        setForm(nextForm);
+        onFormValuesChange?.(nextForm);
         setPrompt("");
         return undefined;
       })
@@ -415,11 +442,26 @@ function usePluginAppController({
         return undefined;
       })
       .finally(() => setGenerating(false));
-  }, [appDefinition, client, fixedFormValues, plugin?.pluginId, prompt]);
+  }, [
+    appDefinition,
+    client,
+    fixedFormValues,
+    initialFormValues,
+    onFormValuesChange,
+    plugin?.pluginId,
+    prompt,
+  ]);
 
-  const handleFormChange = useCallback((id: string, value: unknown) => {
-    setForm((current) => ({ ...current, [id]: value }));
-  }, []);
+  const handleFormChange = useCallback(
+    (id: string, value: unknown) => {
+      setForm((current) => {
+        const next = { ...current, [id]: value };
+        onFormValuesChange?.(next);
+        return next;
+      });
+    },
+    [onFormValuesChange],
+  );
 
   const handleRun = useCallback(
     (componentId: string) => {
@@ -427,13 +469,20 @@ function usePluginAppController({
       setSubmitting(true);
       setError(null);
       setSubmittedJob(null);
-      void client
-        .submitPluginAppAction({
-          pluginId: plugin.pluginId,
-          appId: appDefinition.id,
-          componentId,
-          form: { ...form, ...fixedFormValues },
-        })
+      void Promise.resolve(
+        prepareSubmission?.({ ...form, ...fixedFormValues }) ?? {
+          ...form,
+          ...fixedFormValues,
+        },
+      )
+        .then((submissionForm) =>
+          client.submitPluginAppAction({
+            pluginId: plugin.pluginId!,
+            appId: appDefinition.id,
+            componentId,
+            form: submissionForm,
+          }),
+        )
         .then((result) => {
           if (result.error || !result.job) throw new Error(result.error ?? "Action failed");
           setSubmittedJob(result.job);
@@ -446,7 +495,15 @@ function usePluginAppController({
         })
         .finally(() => setSubmitting(false));
     },
-    [appDefinition, client, fixedFormValues, form, onJobSubmitted, plugin?.pluginId],
+    [
+      appDefinition,
+      client,
+      fixedFormValues,
+      form,
+      onJobSubmitted,
+      plugin?.pluginId,
+      prepareSubmission,
+    ],
   );
 
   return {
@@ -539,6 +596,7 @@ function PreviewPane({
   onRefreshJob,
   onRun,
   hiddenFieldIds,
+  componentSlots,
   title,
 }: {
   app: PluginAppState | null;
@@ -552,6 +610,7 @@ function PreviewPane({
   onRefreshJob: () => void;
   onRun: (componentId: string) => void;
   hiddenFieldIds: ReadonlySet<string>;
+  componentSlots: Readonly<Record<string, ReactNode>>;
   title: string;
 }) {
   return (
@@ -567,8 +626,12 @@ function PreviewPane({
             Describe the interface on the left, then let Agent generate it.
           </Text>
         ) : null}
-        {app?.document?.components.map((component) =>
-          hiddenFieldIds.has(component.id) ? null : (
+        {app?.document?.components.map((component) => {
+          if (hiddenFieldIds.has(component.id)) return null;
+          if (Object.hasOwn(componentSlots, component.id)) {
+            return <View key={component.id}>{componentSlots[component.id]}</View>;
+          }
+          return (
             <PreviewComponent
               key={component.id}
               component={component}
@@ -581,8 +644,8 @@ function PreviewPane({
               onRefreshJob={onRefreshJob}
               onRun={onRun}
             />
-          ),
-        )}
+          );
+        })}
       </View>
     </View>
   );
@@ -594,11 +657,13 @@ function PluginAppContent({
   controller,
   showConversation = true,
   hiddenFieldIds = EMPTY_HIDDEN_FIELD_IDS,
+  componentSlots = EMPTY_COMPONENT_SLOTS,
   previewTitle = "Live preview",
 }: {
   controller: PluginAppController;
   showConversation?: boolean;
   hiddenFieldIds?: readonly string[];
+  componentSlots?: Readonly<Record<string, ReactNode>>;
   previewTitle?: string;
 }) {
   const {
@@ -648,6 +713,7 @@ function PluginAppContent({
           onRefreshJob={handleRefreshJob}
           onRun={handleRun}
           hiddenFieldIds={hiddenFields}
+          componentSlots={componentSlots}
           title={previewTitle}
         />
       </View>
@@ -662,8 +728,12 @@ export function PluginAppSurface({
   plugin,
   appDefinition,
   fixedFormValues,
+  initialFormValues,
   hiddenFieldIds,
+  componentSlots,
   showConversation = true,
+  prepareSubmission,
+  onFormValuesChange,
   onJobSubmitted,
   previewTitle,
 }: {
@@ -672,8 +742,14 @@ export function PluginAppSurface({
   plugin: PluginSummary;
   appDefinition: PluginAppDefinition;
   fixedFormValues?: Record<string, unknown>;
+  initialFormValues?: Record<string, unknown>;
   hiddenFieldIds?: readonly string[];
+  componentSlots?: Readonly<Record<string, ReactNode>>;
   showConversation?: boolean;
+  prepareSubmission?: (
+    form: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+  onFormValuesChange?: (form: Record<string, unknown>) => void;
   onJobSubmitted?: (job: PluginHttpJob) => void;
   previewTitle?: string;
 }) {
@@ -683,6 +759,9 @@ export function PluginAppSurface({
     plugin,
     appDefinition,
     fixedFormValues,
+    initialFormValues,
+    prepareSubmission,
+    onFormValuesChange,
     onJobSubmitted,
   });
   return (
@@ -690,6 +769,7 @@ export function PluginAppSurface({
       controller={controller}
       showConversation={showConversation}
       hiddenFieldIds={hiddenFieldIds}
+      componentSlots={componentSlots}
       previewTitle={previewTitle}
     />
   );

@@ -18,9 +18,28 @@ export type PluginSessionRequest = Extract<
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
       | "plugin.app.job.get.request"
-      | "plugin.app.job.list.request";
+      | "plugin.app.job.list.request"
+      | "plugin.app.job.update.request"
+      | "plugin.app.job.delete.request"
+      | "plugin.http.submit.request";
   }
 >;
+
+type PluginJobMutationRequest = Extract<
+  PluginSessionRequest,
+  {
+    type: "plugin.app.job.update.request" | "plugin.app.job.delete.request";
+  }
+>;
+
+function isPluginJobMutationRequest(
+  message: PluginSessionRequest,
+): message is PluginJobMutationRequest {
+  return (
+    message.type === "plugin.app.job.update.request" ||
+    message.type === "plugin.app.job.delete.request"
+  );
+}
 
 export interface PluginSessionHost {
   emit(message: SessionOutboundMessage): void;
@@ -49,6 +68,10 @@ export class PluginSession {
 
   async handleRequest(message: PluginSessionRequest): Promise<void> {
     try {
+      if (isPluginJobMutationRequest(message)) {
+        await this.handleJobMutation(message);
+        return;
+      }
       switch (message.type) {
         case "plugin.list.request": {
           const state = message.refresh ? this.service.refresh() : this.service.getState();
@@ -171,6 +194,21 @@ export class PluginSession {
           });
           return;
         }
+        case "plugin.http.submit.request": {
+          this.host.emit({
+            type: "plugin.http.submit.response",
+            payload: {
+              requestId: message.requestId,
+              job: await this.service.submitHttpService(
+                message.pluginId,
+                message.serviceName,
+                message.input,
+              ),
+              error: null,
+            },
+          });
+          return;
+        }
         case "plugin.app.job.get.request": {
           const job = this.service.getAppJob(message.processId);
           this.host.emit({
@@ -205,6 +243,31 @@ export class PluginSession {
       this.logger.warn({ err: error, requestType: message.type }, "Plugin RPC failed");
       this.emitError(message, messageText);
     }
+  }
+
+  private async handleJobMutation(message: PluginJobMutationRequest): Promise<void> {
+    if (message.type === "plugin.app.job.update.request") {
+      const job = await this.service.updateAppJob(message.processId, message.input);
+      this.host.emit({
+        type: "plugin.app.job.update.response",
+        payload: {
+          requestId: message.requestId,
+          job,
+          error: job ? null : "Plugin app processing job not found",
+        },
+      });
+      return;
+    }
+    const deleted = await this.service.deleteAppJob(message.processId);
+    this.host.emit({
+      type: "plugin.app.job.delete.response",
+      payload: {
+        requestId: message.requestId,
+        processId: message.processId,
+        deleted,
+        error: deleted ? null : "Plugin app processing job not found",
+      },
+    });
   }
 
   private emitChanged(state = this.service.getState()): void {
@@ -291,6 +354,12 @@ export class PluginSession {
           payload: { requestId: message.requestId, job: null, error },
         });
         return;
+      case "plugin.http.submit.request":
+        this.host.emit({
+          type: "plugin.http.submit.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
       case "plugin.app.job.get.request":
         this.host.emit({
           type: "plugin.app.job.get.response",
@@ -301,6 +370,23 @@ export class PluginSession {
         this.host.emit({
           type: "plugin.app.job.list.response",
           payload: { requestId: message.requestId, jobs: [], error },
+        });
+        return;
+      case "plugin.app.job.update.request":
+        this.host.emit({
+          type: "plugin.app.job.update.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.delete.request":
+        this.host.emit({
+          type: "plugin.app.job.delete.response",
+          payload: {
+            requestId: message.requestId,
+            processId: message.processId,
+            deleted: false,
+            error,
+          },
         });
         return;
     }

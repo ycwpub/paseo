@@ -2028,6 +2028,10 @@ export class VoiceAssistantWebSocketServer {
         plugins: true,
         // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobList: true,
+        // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.
+        pluginAppJobMutation: true,
+        // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
+        pluginHttpServiceSubmit: true,
       },
     };
   }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { PluginHttpJobSchema, type PluginHttpJob } from "@getpaseo/protocol/messages";
 import {
@@ -118,6 +118,18 @@ export class PluginHttpJobStore {
       }
       this.write(updated);
       return Promise.resolve(updated);
+    });
+  }
+
+  async delete(id: string): Promise<boolean> {
+    return this.serialize(id, () => {
+      const filePath = this.filePath(id);
+      if (!filePath || (!this.jobs.has(id) && !existsSync(filePath))) {
+        return Promise.resolve(false);
+      }
+      rmSync(filePath, { force: true });
+      this.jobs.delete(id);
+      return Promise.resolve(true);
     });
   }
 

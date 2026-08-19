@@ -3,8 +3,11 @@ import {
   PluginAppActionSubmitRequestSchema,
   PluginAppGenerateRequestSchema,
   PluginAppGetResponseSchema,
+  PluginAppJobDeleteRequestSchema,
   PluginAppJobListRequestSchema,
   PluginAppJobListResponseSchema,
+  PluginAppJobUpdateRequestSchema,
+  PluginHttpServiceSubmitRequestSchema,
 } from "./app-rpc-schemas.js";
 
 describe("plugin app RPC schemas", () => {
@@ -78,5 +81,39 @@ describe("plugin app RPC schemas", () => {
         },
       }).payload.jobs,
     ).toEqual([]);
+  });
+
+  it("updates and deletes persisted plugin jobs", () => {
+    expect(
+      PluginAppJobUpdateRequestSchema.parse({
+        type: "plugin.app.job.update.request",
+        requestId: "request-5",
+        processId: "process-1",
+        input: { flow_title: "更新后的流程" },
+      }).input,
+    ).toEqual({ flow_title: "更新后的流程" });
+    expect(
+      PluginAppJobDeleteRequestSchema.parse({
+        type: "plugin.app.job.delete.request",
+        requestId: "request-6",
+        processId: "process-1",
+      }).processId,
+    ).toBe("process-1");
+  });
+
+  it("submits an installed plugin HTTP service directly", () => {
+    expect(
+      PluginHttpServiceSubmitRequestSchema.parse({
+        type: "plugin.http.submit.request",
+        requestId: "request-7",
+        pluginId: "byte-development",
+        serviceName: "meego-source",
+        input: { action: "list" },
+      }),
+    ).toMatchObject({
+      pluginId: "byte-development",
+      serviceName: "meego-source",
+      input: { action: "list" },
+    });
   });
 });

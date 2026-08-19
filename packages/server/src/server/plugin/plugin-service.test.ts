@@ -234,6 +234,9 @@ describe("PluginService", () => {
         throw new Error("unused");
       },
       getJob: () => null,
+      listJobs: () => [],
+      updateJob: async () => null,
+      deleteJob: async () => false,
       stop: async () => undefined,
     };
     await service.attachHttpRuntime(runtime);

@@ -51,3 +51,21 @@ export function prependDevelopmentFlow(
   if (!flow) return current ?? [];
   return [flow, ...(current ?? []).filter((candidate) => candidate.id !== flow.id)];
 }
+
+export function replaceDevelopmentFlow(
+  current: ReturnType<typeof developmentFlowsFromJobs> | undefined,
+  job: Parameters<typeof developmentFlowFromJob>[0],
+) {
+  const flow = developmentFlowFromJob(job);
+  if (!flow) return current ?? [];
+  return (current ?? [])
+    .map((candidate) => (candidate.id === flow.id ? flow : candidate))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export function removeDevelopmentFlow(
+  current: ReturnType<typeof developmentFlowsFromJobs> | undefined,
+  flowId: string,
+) {
+  return (current ?? []).filter((candidate) => candidate.id !== flowId);
+}

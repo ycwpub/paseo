@@ -185,4 +185,70 @@ describe("PluginHttpServiceManager", () => {
     expect(manager.getJob(job.id)?.status).toBe("failed");
     expect(memoryWriter.write).not.toHaveBeenCalled();
   });
+
+  it("edits and deletes completed jobs but protects active jobs", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-mutation-"));
+    let finishRun:
+      | ((value: {
+          status: "succeeded";
+          outputPayload: string;
+          error: null;
+          errorCode: null;
+          endedAt: string;
+        }) => void)
+      | null = null;
+    const completedRun = new Promise<{
+      status: "succeeded";
+      outputPayload: string;
+      error: null;
+      errorCode: null;
+      endedAt: string;
+    }>((resolve) => {
+      finishRun = resolve;
+    });
+    manager = new PluginHttpServiceManager({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      workflowService: {
+        runScript: async () => ({ id: "workflow-run-mutation" }),
+        waitForRun: async () => completedRun,
+      },
+    });
+
+    await manager.reconcile([binding()]);
+    const job = await manager.submit("demo-plugin", "processor", { title: "旧标题" });
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(job.id)?.status !== "running";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await expect(manager.updateJob(job.id, { title: "新标题" })).rejects.toThrow(
+      "cannot be edited",
+    );
+    await expect(manager.deleteJob(job.id)).rejects.toThrow("cannot be deleted");
+
+    finishRun?.({
+      status: "succeeded",
+      outputPayload: JSON.stringify({ data: { ok: true } }),
+      error: null,
+      errorCode: null,
+      endedAt: "2026-08-19T12:00:00.000Z",
+    });
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(job.id)?.status !== "succeeded";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await expect(manager.updateJob(job.id, { title: "新标题" })).resolves.toMatchObject({
+      input: { title: "新标题" },
+    });
+    await expect(manager.deleteJob(job.id)).resolves.toBe(true);
+    expect(manager.getJob(job.id)).toBeNull();
+  });
 });

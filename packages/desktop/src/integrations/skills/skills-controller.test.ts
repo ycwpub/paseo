@@ -12,9 +12,9 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { access } from "node:fs/promises";
-import { watch } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { SkillSelection, SkillTargets } from "./operations";
@@ -179,14 +179,13 @@ async function backupArtifacts(targets: SkillTargets): Promise<string[][]> {
 }
 
 async function waitForTransactionDirectory(parent: string): Promise<void> {
-  const events = watch(parent);
-  try {
-    for await (const event of events) {
-      if (event.filename?.startsWith(".paseo-skills-transaction-")) return;
-    }
-  } finally {
-    await events.return?.();
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const entries = await readdir(parent).catch(() => []);
+    if (entries.some((entry) => entry.startsWith(".paseo-skills-transaction-"))) return;
+    await sleep(5);
   }
+  throw new Error(`Timed out waiting for a skills transaction under ${parent}`);
 }
 
 /** Puts a regular file where the agents skills tree goes, so convergence fails with ENOTDIR. */

@@ -1,0 +1,32 @@
+{
+  "apiVersion": "paseo.sh/workflow/v1",
+  "kind": "Workflow",
+  "version": 1,
+  "name": "字节开发 Meego PRD",
+  "description": "读取当前用户关联的 Meego 工作项，或把指定 Meego 工作项解析为 PRD。",
+  "timeoutMs": 60000,
+  "steps": [
+    {
+      "id": "meego_source",
+      "name": "读取 Meego",
+      "type": "python",
+      "module": "scripts.meego_source",
+      "function": "run_node",
+      "cwd": "{{workflow.cwd}}/..",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": { "maxAttempts": 1 },
+      "inputSchema": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string", "enum": ["list", "resolve"] },
+          "url": { "type": "string" },
+          "projectKey": { "type": "string" },
+          "workItemId": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}

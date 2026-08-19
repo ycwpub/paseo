@@ -74,4 +74,24 @@ describe("PluginHttpJobStore", () => {
     ).toEqual([latest.id, expect.any(String)]);
     expect(store.list({ pluginId: "byte-development", limit: 1 })).toHaveLength(1);
   });
+
+  it("updates job input and deletes persisted jobs", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-jobs-"));
+    const store = new PluginHttpJobStore(path.join(tempRoot, "jobs"));
+    store.initialize();
+    const created = await store.create({
+      pluginId: "byte-development",
+      serviceName: "development",
+      input: { flow_title: "旧标题" },
+      createdAt: "2026-08-19T10:00:00.000Z",
+    });
+
+    await store.update(created.id, (current) => ({
+      ...current,
+      input: { flow_title: "新标题" },
+    }));
+    expect(store.get(created.id)?.input).toEqual({ flow_title: "新标题" });
+    await expect(store.delete(created.id)).resolves.toBe(true);
+    expect(store.get(created.id)).toBeNull();
+  });
 });

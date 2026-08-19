@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PluginHttpJob } from "@getpaseo/protocol/messages";
-import { prependDevelopmentFlow } from "./use-development-flows";
+import {
+  prependDevelopmentFlow,
+  removeDevelopmentFlow,
+  replaceDevelopmentFlow,
+} from "./use-development-flows";
 
 const job: PluginHttpJob = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -22,5 +26,15 @@ describe("development flow query helpers", () => {
     const once = prependDevelopmentFlow([], job);
     expect(prependDevelopmentFlow(once, job)).toHaveLength(1);
     expect(once[0]?.title).toBe("新流程");
+  });
+
+  it("replaces edited flows and removes deleted flows", () => {
+    const once = prependDevelopmentFlow([], job);
+    const updated = replaceDevelopmentFlow(once, {
+      ...job,
+      input: { projectId: "project-1", flow_title: "已更新" },
+    });
+    expect(updated[0]?.title).toBe("已更新");
+    expect(removeDevelopmentFlow(updated, job.id)).toEqual([]);
   });
 });

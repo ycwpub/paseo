@@ -51,6 +51,23 @@ export const PluginAppActionSubmitResponseSchema = z.object({
   }),
 });
 
+export const PluginHttpServiceSubmitRequestSchema = z.object({
+  type: z.literal("plugin.http.submit.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  serviceName: z.string().min(1),
+  input: z.unknown(),
+});
+
+export const PluginHttpServiceSubmitResponseSchema = z.object({
+  type: z.literal("plugin.http.submit.response"),
+  payload: z.object({
+    requestId: z.string(),
+    job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const PluginAppJobGetRequestSchema = z.object({
   type: z.literal("plugin.app.job.get.request"),
   requestId: z.string(),
@@ -80,6 +97,38 @@ export const PluginAppJobListResponseSchema = z.object({
   payload: z.object({
     requestId: z.string(),
     jobs: z.array(PluginHttpJobSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobUpdateRequestSchema = z.object({
+  type: z.literal("plugin.app.job.update.request"),
+  requestId: z.string(),
+  processId: z.string().min(1),
+  input: z.unknown(),
+});
+
+export const PluginAppJobUpdateResponseSchema = z.object({
+  type: z.literal("plugin.app.job.update.response"),
+  payload: z.object({
+    requestId: z.string(),
+    job: PluginHttpJobSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginAppJobDeleteRequestSchema = z.object({
+  type: z.literal("plugin.app.job.delete.request"),
+  requestId: z.string(),
+  processId: z.string().min(1),
+});
+
+export const PluginAppJobDeleteResponseSchema = z.object({
+  type: z.literal("plugin.app.job.delete.response"),
+  payload: z.object({
+    requestId: z.string(),
+    processId: z.string(),
+    deleted: z.boolean(),
     error: z.string().nullable(),
   }),
 });

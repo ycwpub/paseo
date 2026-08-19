@@ -2591,8 +2591,11 @@ export class Session {
       case "plugin.app.get.request":
       case "plugin.app.generate.request":
       case "plugin.app.action.submit.request":
+      case "plugin.http.submit.request":
       case "plugin.app.job.get.request":
       case "plugin.app.job.list.request":
+      case "plugin.app.job.update.request":
+      case "plugin.app.job.delete.request":
         return this.pluginSession?.handleRequest(msg);
       default:
         return undefined;

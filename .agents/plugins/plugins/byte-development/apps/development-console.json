@@ -22,8 +22,8 @@
       "type": "textarea",
       "label": "PRD / 需求说明",
       "required": true,
-      "placeholder": "粘贴 PRD、需求链接及验收标准",
-      "description": "不得包含 Token、Cookie、JWT 或其他密钥。"
+      "placeholder": "直接输入 PRD，或从 Meego 自动获取",
+      "description": "支持直接输入 PRD、粘贴 Meego 工作项链接，或选择当前用户关联的 Meego。"
     },
     {
       "id": "approve_development",

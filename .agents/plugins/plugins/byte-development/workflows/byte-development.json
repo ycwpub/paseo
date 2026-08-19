@@ -32,7 +32,7 @@
       "type": "agent",
       "lifecycle": "single",
       "outputMode": "custom",
-      "initialPrompt": "分析下面的 PRD，明确目标、用户价值、范围、非目标、依赖、风险、验收标准和待确认项。内容必须具体、可执行，长度不超过 12000 字符。\n\nPRD：\n{{origin_input.prd}}\n\nProject 关联飞书文档：\n{{origin_input.lark_document_links}}\n\n最终只输出一个 JSON 对象：{\"data\":{\"stage\":\"prd\",\"summary\":\"完整分析\"},\"modify\":{\"workflow\":{\"var\":{\"prd_analysis\":\"完整分析\"}}}}。summary 与 prd_analysis 内容保持一致，不要输出 Markdown 代码围栏。",
+      "initialPrompt": "分析下面的 PRD，明确目标、用户价值、范围、非目标、依赖、风险、验收标准和待确认项。内容必须具体、可执行，长度不超过 12000 字符。\n\nPRD 来源：{{origin_input.prd_source}}\nMeego：{{origin_input.meego_url}}\n\nPRD：\n{{origin_input.prd}}\n\nProject 关联飞书文档：\n{{origin_input.lark_document_links}}\n\n最终只输出一个 JSON 对象：{\"data\":{\"stage\":\"prd\",\"summary\":\"完整分析\"},\"modify\":{\"workflow\":{\"var\":{\"prd_analysis\":\"完整分析\"}}}}。summary 与 prd_analysis 内容保持一致，不要输出 Markdown 代码围栏。",
       "inputSchema": {
         "type": "object",
         "required": ["flow_title", "projectId", "prd", "repository_path"],
@@ -40,6 +40,11 @@
           "flow_title": { "type": "string", "minLength": 1 },
           "projectId": { "type": "string", "minLength": 1 },
           "prd": { "type": "string", "minLength": 1 },
+          "prd_source": { "type": "string", "enum": ["manual", "meego"] },
+          "meego_url": { "type": "string" },
+          "meego_project_key": { "type": "string" },
+          "meego_work_item_id": { "type": "string" },
+          "meego_title": { "type": "string" },
           "repository_path": { "type": "string", "minLength": 1 },
           "lark_document_links": {
             "type": "array",

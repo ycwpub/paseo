@@ -377,6 +377,18 @@ export class DaemonResourceRpcClient {
     return { job: result.job, error: result.error };
   }
 
+  async submitPluginHttpService(input: {
+    pluginId: string;
+    serviceName: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.http.submit.request", ...input },
+      responseType: "plugin.http.submit.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
   async getPluginAppJob(
     processId: string,
   ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
@@ -398,6 +410,26 @@ export class DaemonResourceRpcClient {
       responseType: "plugin.app.job.list.response",
     });
     return { jobs: result.jobs, error: result.error };
+  }
+
+  async updatePluginAppJob(
+    processId: string,
+    input: unknown,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.update.request", processId, input },
+      responseType: "plugin.app.job.update.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async deletePluginAppJob(
+    processId: string,
+  ): Promise<{ processId: string; deleted: boolean; error: string | null }> {
+    return this.request({
+      message: { type: "plugin.app.job.delete.request", processId },
+      responseType: "plugin.app.job.delete.response",
+    });
   }
 
   getLarkChannelStatus(options?: LarkChannelRequestOptions) {

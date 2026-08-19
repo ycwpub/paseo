@@ -419,6 +419,11 @@ export class PluginService {
     return this.requireAppRuntime().submit(input);
   }
 
+  submitHttpService(pluginId: string, serviceName: string, input: unknown): Promise<PluginHttpJob> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.submit(pluginId, serviceName, input);
+  }
+
   getAppJob(processId: string): PluginHttpJob | null {
     return this.requireAppRuntime().getJob(processId);
   }
@@ -430,6 +435,14 @@ export class PluginService {
     limit?: number;
   }): PluginHttpJob[] {
     return this.requireAppRuntime().listJobs(options);
+  }
+
+  updateAppJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
+    return this.requireAppRuntime().updateJob(processId, input);
+  }
+
+  deleteAppJob(processId: string): Promise<boolean> {
+    return this.requireAppRuntime().deleteJob(processId);
   }
 
   resolveAppContext(

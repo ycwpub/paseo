@@ -22,6 +22,8 @@ export interface PluginHttpServiceRuntime {
     projectId?: string;
     limit?: number;
   }): PluginHttpJob[];
+  updateJob(processId: string, input: unknown): Promise<PluginHttpJob | null>;
+  deleteJob(processId: string): Promise<boolean>;
   stop(): Promise<void>;
 }
 

@@ -31,6 +31,9 @@ describe("PluginAppService", () => {
           throw new Error("unused");
         },
         getJob: () => null,
+        listJobs: () => [],
+        updateJob: async () => null,
+        deleteJob: async () => false,
         stop: async () => undefined,
       },
       resolveApp: () => ({
@@ -105,6 +108,9 @@ describe("PluginAppService", () => {
       getStatus: () => null,
       submit,
       getJob: () => null,
+      listJobs: () => [],
+      updateJob: async () => null,
+      deleteJob: async () => false,
       stop: async () => undefined,
     };
     const service = new PluginAppService({

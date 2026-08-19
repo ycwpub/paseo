@@ -211,6 +211,24 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     return this.store.list(options);
   }
 
+  async updateJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
+    const job = this.store.get(processId);
+    if (!job) return null;
+    if (job.status === "queued" || job.status === "running") {
+      throw new Error("A running plugin job cannot be edited");
+    }
+    return this.store.update(processId, (current) => ({ ...current, input }));
+  }
+
+  async deleteJob(processId: string): Promise<boolean> {
+    const job = this.store.get(processId);
+    if (!job) return false;
+    if (job.status === "queued" || job.status === "running") {
+      throw new Error("A running plugin job cannot be deleted");
+    }
+    return this.store.delete(processId);
+  }
+
   async stop(): Promise<void> {
     await this.closeServers();
     for (const [key, status] of this.statuses) {

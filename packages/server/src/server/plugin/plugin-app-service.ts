@@ -229,6 +229,14 @@ export class PluginAppService implements PluginAppRuntime {
     return this.options.httpRuntime.listJobs(options);
   }
 
+  updateJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
+    return this.options.httpRuntime.updateJob(processId, input);
+  }
+
+  deleteJob(processId: string): Promise<boolean> {
+    return this.options.httpRuntime.deleteJob(processId);
+  }
+
   private async generateWithAgent(input: GenerateAppInput): Promise<PluginAppGeneration> {
     const providers = await resolveStructuredGenerationProviders({
       cwd: input.context.pluginRoot,

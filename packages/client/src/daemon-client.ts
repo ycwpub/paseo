@@ -6050,6 +6050,14 @@ export class DaemonClient {
     return this.resourceRpc.submitPluginAppAction(input);
   }
 
+  async submitPluginHttpService(input: {
+    pluginId: string;
+    serviceName: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.submitPluginHttpService(input);
+  }
+
   async getPluginAppJob(
     processId: string,
   ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
@@ -6063,6 +6071,19 @@ export class DaemonClient {
     limit?: number;
   }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
     return this.resourceRpc.listPluginAppJobs(options);
+  }
+
+  async updatePluginAppJob(
+    processId: string,
+    input: unknown,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.updatePluginAppJob(processId, input);
+  }
+
+  async deletePluginAppJob(
+    processId: string,
+  ): Promise<{ processId: string; deleted: boolean; error: string | null }> {
+    return this.resourceRpc.deletePluginAppJob(processId);
   }
 
   async getLarkChannelStatus(

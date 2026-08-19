@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
-import {
-  Pressable,
-  ScrollView,
-  Text,
-  useWindowDimensions,
-  View,
-  type PressableStateCallbackType,
-} from "react-native";
+import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
 import { X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -19,19 +12,12 @@ import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store"
 import { PluginAppSurface } from "@/screens/settings/plugins/plugin-app-modal";
 import type { Theme } from "@/styles/theme";
 
-const DESKTOP_PANEL_MAX_WIDTH = 760;
-const DESKTOP_PANEL_MIN_WIDTH = 420;
-const DESKTOP_PANEL_VIEWPORT_RATIO = 0.46;
-const DEVELOPMENT_PANEL_MAX_WIDTH = 1_100;
-const DEVELOPMENT_PANEL_MIN_WIDTH = 820;
-const DEVELOPMENT_PANEL_VIEWPORT_RATIO = 0.72;
 const ThemedX = withUnistyles(X);
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 export function PluginAppPanelHost({ compact }: { compact: boolean }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { width: viewportWidth } = useWindowDimensions();
   const selection = usePluginAppPanelStore((state) => state.selection);
   const close = usePluginAppPanelStore((state) => state.close);
   const serverId = selection?.serverId ?? "";
@@ -50,8 +36,6 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
         : null,
     [plugin, selection],
   );
-  const isDevelopmentPanel = selection?.pluginId === DEVELOPMENT_PLUGIN_ID;
-
   useEffect(() => {
     if (!selection || plugins.isLoading) return;
     if (!plugin || !plugin.installed) close();
@@ -69,23 +53,8 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
     () =>
       compact
         ? [styles.panel, styles.compactPanel, { paddingTop: insets.top }]
-        : [
-            styles.panel,
-            styles.desktopPanel,
-            {
-              width: Math.min(
-                isDevelopmentPanel ? DEVELOPMENT_PANEL_MAX_WIDTH : DESKTOP_PANEL_MAX_WIDTH,
-                Math.max(
-                  isDevelopmentPanel ? DEVELOPMENT_PANEL_MIN_WIDTH : DESKTOP_PANEL_MIN_WIDTH,
-                  viewportWidth *
-                    (isDevelopmentPanel
-                      ? DEVELOPMENT_PANEL_VIEWPORT_RATIO
-                      : DESKTOP_PANEL_VIEWPORT_RATIO),
-                ),
-              ),
-            },
-          ],
-    [compact, insets.top, isDevelopmentPanel, viewportWidth],
+        : [styles.panel, styles.desktopPanel],
+    [compact, insets.top],
   );
 
   if (!selection) return null;
@@ -157,9 +126,8 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   desktopPanel: {
+    flex: 1,
     height: "100%",
-    borderLeftWidth: theme.borderWidth[1],
-    borderLeftColor: theme.colors.border,
   },
   compactPanel: {
     position: "absolute",

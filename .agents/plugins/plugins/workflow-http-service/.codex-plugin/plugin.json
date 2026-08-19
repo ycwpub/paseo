@@ -1,0 +1,30 @@
+{
+  "name": "workflow-http-service",
+  "version": "0.1.0",
+  "description": "Expose a Paseo workflow as an asynchronous HTTP processing service.",
+  "author": {
+    "name": "Paseo"
+  },
+  "keywords": ["http", "api", "workflow", "automation", "async"],
+  "skills": "./skills/",
+  "httpServices": "./.http.json",
+  "interface": {
+    "displayName": "HTTP 服务",
+    "shortDescription": "把 Workflow 发布为异步 HTTP 服务",
+    "longDescription": "提供请求提交、处理 ID、本地持久化和结果查询能力。默认示例使用动态端口和 /process 路径，可复制后按业务修改端口、路径及 Workflow。",
+    "developerName": "Paseo",
+    "category": "Infrastructure",
+    "capabilities": [
+      "自定义监听端口与路径",
+      "异步返回处理 ID",
+      "本地持久化处理状态",
+      "查询 Workflow 结果",
+      "支持所有 Workflow 节点类型"
+    ],
+    "defaultPrompt": [
+      "把我的 Workflow 配置成 HTTP 服务，并说明提交和查询结果的接口。",
+      "基于 HTTP 服务模板创建一个新的异步处理接口。",
+      "检查 HTTP 服务的端口、路径、鉴权和 Workflow 配置。"
+    ]
+  }
+}

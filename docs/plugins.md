@@ -256,6 +256,22 @@ The plugin does not create Dev Tasks itself. Agents must use the official
 `bits-devops-dev-task` skill for its prepare/confirm/submit flow. It also does not bypass
 Gatekeeper, QCSS, or other release gates.
 
+## Built-in HTTP Service plugin
+
+The bundled **HTTP 服务** plugin is a visible, installable template for publishing a Workflow as
+an asynchronous HTTP API. Its default service uses a dynamically allocated loopback port,
+`POST /process`, persisted processing IDs, and `GET /process/{processId}` result lookup.
+
+Copy the plugin before business customization, then change `.http.json` and the referenced
+Workflow to select the port, path, authentication, and processing nodes.
+
+## Built-in Agent Web App plugin
+
+The bundled **网页应用生成器** plugin provides an empty app slot named `web-app-builder`. Open it
+from the installed plugin row and describe the desired interface to the Agent. When an HTTP service
+plugin is installed and enabled, generated buttons can bind to that service without exposing its
+random local port to the renderer.
+
 ## Built-in Byte Reconciliation plugin
 
 The bundled `byte-reconciliation` plugin supports a guarded reconciliation lifecycle:

@@ -5,6 +5,30 @@
   },
   "plugins": [
     {
+      "name": "workflow-http-service",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/plugins/workflow-http-service"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Infrastructure"
+    },
+    {
+      "name": "agent-web-app",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/plugins/agent-web-app"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
       "name": "byte-development",
       "source": {
         "source": "local",

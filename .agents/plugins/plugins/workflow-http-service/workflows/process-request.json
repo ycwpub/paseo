@@ -1,0 +1,27 @@
+{
+  "apiVersion": "paseo.sh/workflow/v1",
+  "kind": "Workflow",
+  "version": 1,
+  "name": "HTTP 请求处理示例",
+  "description": "读取 HTTP 请求 JSON，并通过 Workflow 结构化结果返回。复制此插件后可替换为任意多节点处理流程。",
+  "timeoutMs": 300000,
+  "taskDefaults": {
+    "timeoutMs": 60000,
+    "retry": {
+      "maxAttempts": 1
+    }
+  },
+  "steps": [
+    {
+      "id": "process_request",
+      "name": "处理请求",
+      "type": "python",
+      "code": "request = input.get(\"origin_input\", input.get(\"data\", {}))\nif not isinstance(request, dict):\n    raise ValueError(\"HTTP request body must be a JSON object\")\noutput = {\"data\": request}",
+      "inputVariable": "input",
+      "outputVariable": "output",
+      "retry": {
+        "maxAttempts": 1
+      }
+    }
+  ]
+}

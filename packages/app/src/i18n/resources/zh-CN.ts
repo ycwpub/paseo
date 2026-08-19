@@ -3265,6 +3265,11 @@ export const zhCN: TranslationResources = {
       backToProjects: "返回 Projects",
       switchHost: "切换 Host",
       projectId: "Project ID",
+      directoryless: {
+        title: "Project 尚未关联目录",
+        description:
+          "你仍可编辑 Project 的名称、图标和记忆。Project 关联目录后，可继续编辑存储在 paseo.json 中的设置。",
+      },
       memory: {
         title: "Project 记忆",
         info: "控制当前 Project 是否使用独立作用域的记忆，并定义 Paseo 应沉淀哪些长期 Project 知识。",
@@ -3279,6 +3284,17 @@ export const zhCN: TranslationResources = {
         saving: "正在保存...",
         saved: "已保存",
         saveError: "无法保存 Project 记忆",
+      },
+      edit: {
+        title: "编辑项目",
+        name: "项目名称",
+        nameLabel: "项目名称",
+        icon: "项目图标",
+        chooseImage: "选择图片",
+        useAutomatic: "恢复默认图标",
+        imageUrl: "图片或网站链接",
+        save: "保存修改",
+        savedToast: "项目已更新",
       },
       rename: {
         renamedToast: "Project 已重命名",

@@ -12,7 +12,7 @@ async function renderPreview() {
   await app.whenReady();
   const window = new BrowserWindow({
     width: 320,
-    height: 48,
+    height: 42,
     show: false,
     frame: false,
     transparent: true,
@@ -48,17 +48,17 @@ async function renderPreview() {
   const compactImage = await window.capturePage();
   fs.writeFileSync(compactOutputPath, compactImage.toPNG());
 
-  window.setSize(1000, 286);
+  window.setSize(432, 220);
   await window.webContents.executeJavaScript(`
     window.__PASEO_ISLAND_RECEIVE__({
       expanded: true,
-      items: [{
-        id: "preview",
-        kind: "info",
-        title: "Paseo 测试消息",
-        body: "验证灵动岛展开态图标尺寸",
-        updatedAt: Date.now()
-      }]
+      items: Array.from({ length: 4 }, (_, index) => ({
+        id: "preview-" + index,
+        kind: index === 0 ? "permission" : "info",
+        title: "Paseo 测试消息 " + (index + 1),
+        body: "验证两条消息可见，更多消息可滚动",
+        updatedAt: Date.now() - index * 1000
+      }))
     });
   `);
   await new Promise((resolve) => setTimeout(resolve, 250));
@@ -67,9 +67,15 @@ async function renderPreview() {
     (() => {
       const headerIcon = document.querySelector(".details-brand .brand-icon").getBoundingClientRect();
       const itemIcon = document.querySelector(".item-icon").getBoundingClientRect();
+      const list = document.querySelector(".list");
       return {
         header: { width: headerIcon.width, height: headerIcon.height },
-        item: { width: itemIcon.width, height: itemIcon.height }
+        item: { width: itemIcon.width, height: itemIcon.height },
+        list: {
+          clientHeight: list.clientHeight,
+          scrollHeight: list.scrollHeight,
+          scrollable: list.scrollHeight > list.clientHeight
+        }
       };
     })()
   `);

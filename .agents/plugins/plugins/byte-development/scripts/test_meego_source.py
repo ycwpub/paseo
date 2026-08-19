@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
-from scripts.meego_source import _error_message, execute_action
+from scripts.meego_auth import MeegoAuthenticationRequired, authentication_error
+from scripts.meego_source import _error_message, execute_action, run_node
 
 
 class MeegoSourceTest(unittest.TestCase):
@@ -19,6 +21,44 @@ class MeegoSourceTest(unittest.TestCase):
 
         self.assertIn("Meegle CLI authentication is required.", message)
         self.assertIn("bytedcli meego login", message)
+
+    def test_recognizes_structured_authentication_errors(self) -> None:
+        error = authentication_error(
+            {
+                "status": "error",
+                "error": {
+                    "code": "MEEGLE_AUTH_REQUIRED",
+                    "message": "Meegle CLI authentication is required.",
+                },
+            },
+            "Meegle CLI authentication is required.",
+        )
+
+        self.assertIsInstance(error, MeegoAuthenticationRequired)
+        self.assertEqual(error.provider, "official")
+
+    def test_returns_authentication_state_instead_of_failing_the_workflow(self) -> None:
+        with patch(
+            "scripts.meego_source.execute_action",
+            side_effect=MeegoAuthenticationRequired(
+                "Meegle CLI authentication is required.",
+                code="MEEGLE_AUTH_REQUIRED",
+            ),
+        ):
+            result = run_node({"origin_input": {"action": "list"}})
+
+        self.assertEqual(
+            result,
+            {
+                "data": {
+                    "action": "list",
+                    "authRequired": True,
+                    "authProvider": "official",
+                    "authCode": "MEEGLE_AUTH_REQUIRED",
+                    "authMessage": "Meegle CLI authentication is required.",
+                }
+            },
+        )
 
     def test_lists_and_normalizes_current_user_todos(self) -> None:
         result = execute_action(
@@ -104,6 +144,21 @@ class MeegoSourceTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertFalse(result["data"]["rich"])
         self.assertIn("基础描述", result["data"]["prd"])
+
+    def test_preserves_official_auth_error_without_wrapping_it(self) -> None:
+        with self.assertRaises(MeegoAuthenticationRequired):
+            execute_action(
+                {
+                    "action": "resolve",
+                    "url": "https://meego.example.com/demo/story/detail/123",
+                },
+                lambda _: (_ for _ in ()).throw(
+                    MeegoAuthenticationRequired(
+                        "Meegle CLI authentication is required.",
+                        code="MEEGLE_AUTH_REQUIRED",
+                    )
+                ),
+            )
 
 
 if __name__ == "__main__":

@@ -117,6 +117,29 @@ describe("wire schema compatibility", () => {
     });
   });
 
+  test("reasoning timeline source is optional and identifies native thinking versus text", () => {
+    expect(
+      AgentTimelineItemPayloadSchema.parse({
+        type: "reasoning",
+        text: "legacy reasoning",
+      }),
+    ).toEqual({
+      type: "reasoning",
+      text: "legacy reasoning",
+    });
+    expect(
+      AgentTimelineItemPayloadSchema.parse({
+        type: "reasoning",
+        text: "Readable thinking",
+        source: "thinking",
+      }),
+    ).toEqual({
+      type: "reasoning",
+      text: "Readable thinking",
+      source: "thinking",
+    });
+  });
+
   test("sub_agent tool-call payload still parses against the v0.1.65-beta.3 schema", () => {
     const parsed = LegacySubAgentToolCallSchema.parse({
       type: "tool_call",

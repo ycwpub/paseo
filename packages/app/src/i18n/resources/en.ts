@@ -3344,6 +3344,11 @@ export const en = {
       backToProjects: "Back to projects",
       switchHost: "Switch host",
       projectId: "Project ID",
+      directoryless: {
+        title: "No Project directory",
+        description:
+          "You can edit this Project's name, icon, and memory. Settings stored in paseo.json become available after the Project is attached to a directory.",
+      },
       memory: {
         title: "Project memory",
         info: "Control whether this Project contributes scoped memory and define what durable Project knowledge Paseo should learn.",
@@ -3359,6 +3364,17 @@ export const en = {
         saving: "Saving...",
         saved: "Saved",
         saveError: "Couldn't save Project memory",
+      },
+      edit: {
+        title: "Edit project",
+        name: "Project name",
+        nameLabel: "Project name",
+        icon: "Project icon",
+        chooseImage: "Choose image",
+        useAutomatic: "Use default icon",
+        imageUrl: "Image or website URL",
+        save: "Save changes",
+        savedToast: "Project updated",
       },
       rename: {
         renamedToast: "Project renamed",

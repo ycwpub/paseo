@@ -29,4 +29,27 @@ describe("byte development project", () => {
   it("caps generated Project names at the protocol limit", () => {
     expect(developmentProjectName("a".repeat(200))).toHaveLength(120);
   });
+
+  it("uses a custom Project name when provided", async () => {
+    const createDirectorylessProject = vi.fn(async ({ name }: { name: string }) => ({
+      project: {
+        projectId: "prj_flow",
+        projectDisplayName: name,
+        projectCustomName: null,
+        projectCustomIconRevision: null,
+        projectRootPath: "",
+        projectDirectoryless: true,
+        projectKind: "non_git" as const,
+      },
+      error: null,
+    }));
+    await createDevelopmentProject({
+      client: { createDirectorylessProject },
+      flowTitle: "支付优化",
+      projectName: "支付研发项目",
+    });
+    expect(createDirectorylessProject).toHaveBeenCalledWith({
+      name: "支付研发项目",
+    });
+  });
 });

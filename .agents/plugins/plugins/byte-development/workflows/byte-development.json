@@ -39,6 +39,7 @@
         "properties": {
           "flow_title": { "type": "string", "minLength": 1 },
           "projectId": { "type": "string", "minLength": 1 },
+          "sourceProjectId": { "type": "string", "minLength": 1 },
           "prd": { "type": "string", "minLength": 1 },
           "prd_source": { "type": "string", "enum": ["manual", "meego"] },
           "meego_url": { "type": "string" },

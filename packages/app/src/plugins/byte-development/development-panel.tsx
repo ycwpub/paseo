@@ -36,6 +36,10 @@ import {
   serializeDevelopmentPrdSource,
   type DevelopmentPrdSourceValue,
 } from "./development-prd-source-model";
+import {
+  resolveDevelopmentProjectSelection,
+  type DevelopmentProjectMode,
+} from "./development-project-selection-model";
 import { createDevelopmentProject } from "./flow-project";
 import { resolveProjectConversationWorkspace } from "./flow-navigation";
 import { buildByteDevelopmentFixedFormValues } from "./project-context-model";
@@ -77,6 +81,28 @@ function statusVariant(status: PluginHttpJob["status"]): "success" | "error" | "
   if (status === "succeeded") return "success";
   if (status === "failed" || status === "timed_out") return "error";
   return "muted";
+}
+
+function resolveFlowProjectIdForForm(input: {
+  editing: boolean;
+  selectedFlowProjectId: string | null;
+  editedFlowProjectId: string | null;
+  projectMode: DevelopmentProjectMode;
+}): string | null {
+  if (input.editing) return input.editedFlowProjectId;
+  if (input.projectMode === "existing") return input.selectedFlowProjectId;
+  return null;
+}
+
+function canConfigureFlowProject(input: {
+  creating: boolean;
+  projectMode: DevelopmentProjectMode;
+  selectedFlowProjectId: string | null;
+  supportsDirectorylessProjects: boolean;
+}): boolean {
+  if (!input.creating) return true;
+  if (input.projectMode === "existing") return Boolean(input.selectedFlowProjectId);
+  return input.supportsDirectorylessProjects;
 }
 
 function FlowListItem({
@@ -231,9 +257,30 @@ export function ByteDevelopmentPanel({
       }),
     [projects, serverId],
   );
+  const sourceProjectOptions = useMemo(
+    () =>
+      projects.flatMap((project) => {
+        const projectId = getHostProjectId(project, serverId);
+        const sourceDirectory = getHostProjectSourceDirectory(project, serverId);
+        if (!projectId || !sourceDirectory) return [];
+        return [
+          {
+            id: projectId,
+            value: projectId,
+            label: project.projectName,
+            description: sourceDirectory,
+          },
+        ];
+      }),
+    [projects, serverId],
+  );
   const projectNames = useMemo(
     () => new Map(projectOptions.map((option) => [option.value, option.label])),
     [projectOptions],
+  );
+  const sourceProjectNames = useMemo(
+    () => new Map(sourceProjectOptions.map((option) => [option.value, option.label])),
+    [sourceProjectOptions],
   );
   const activeProjectId = useSessionStore((state) => {
     const workspaceId = activeWorkspace?.serverId === serverId ? activeWorkspace.workspaceId : null;
@@ -253,16 +300,35 @@ export function ByteDevelopmentPanel({
     ...EMPTY_DEVELOPMENT_PRD_SOURCE,
   });
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
+  const [projectMode, setProjectMode] = useState<DevelopmentProjectMode>("existing");
+  const [selectedFlowProjectId, setSelectedFlowProjectId] = useState<string | null>(null);
+  const [newProjectName, setNewProjectName] = useState("");
   const [selectedSourceProjectId, setSelectedSourceProjectId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (selectedSourceProjectId && projectNames.has(selectedSourceProjectId)) return;
+    if (
+      selectedSourceProjectId &&
+      sourceProjectOptions.some((option) => option.value === selectedSourceProjectId)
+    ) {
+      return;
+    }
     setSelectedSourceProjectId(
+      (activeProjectId && sourceProjectOptions.some((option) => option.value === activeProjectId)
+        ? activeProjectId
+        : null) ??
+        sourceProjectOptions[0]?.value ??
+        null,
+    );
+  }, [activeProjectId, selectedSourceProjectId, sourceProjectOptions]);
+
+  useEffect(() => {
+    if (selectedFlowProjectId && projectNames.has(selectedFlowProjectId)) return;
+    setSelectedFlowProjectId(
       (activeProjectId && projectNames.has(activeProjectId) ? activeProjectId : null) ??
         projectOptions[0]?.value ??
         null,
     );
-  }, [activeProjectId, projectNames, projectOptions, selectedSourceProjectId]);
+  }, [activeProjectId, projectNames, projectOptions, selectedFlowProjectId]);
 
   useEffect(() => {
     if (creating || editing) return;
@@ -272,9 +338,15 @@ export function ByteDevelopmentPanel({
 
   const selectedFlow = flows.find((flow) => flow.id === selectedFlowId) ?? null;
   const selectedProjectDisplay = useMemo(() => {
-    const option = projectOptions.find((candidate) => candidate.value === selectedSourceProjectId);
+    const option = sourceProjectOptions.find(
+      (candidate) => candidate.value === selectedSourceProjectId,
+    );
     return option ? { label: option.label, description: option.description } : null;
-  }, [projectOptions, selectedSourceProjectId]);
+  }, [selectedSourceProjectId, sourceProjectOptions]);
+  const selectedFlowProjectDisplay = useMemo(() => {
+    const option = projectOptions.find((candidate) => candidate.value === selectedFlowProjectId);
+    return option ? { label: option.label, description: option.description } : null;
+  }, [projectOptions, selectedFlowProjectId]);
   const selectedProject = useMemo(
     () =>
       projects.find((project) => getHostProjectId(project, serverId) === selectedSourceProjectId) ??
@@ -289,15 +361,22 @@ export function ByteDevelopmentPanel({
   const fixedFormValues = useMemo(
     () =>
       buildByteDevelopmentFixedFormValues({
-        projectId: editing ? (selectedFlow?.projectId ?? null) : null,
+        projectId: resolveFlowProjectIdForForm({
+          editing,
+          selectedFlowProjectId,
+          editedFlowProjectId: selectedFlow?.projectId ?? null,
+          projectMode,
+        }),
         sourceProjectId: selectedSourceProjectId,
         repositoryPath: projectContext.repositoryPath,
         larkDocumentLinks: projectContext.larkDocumentLinks,
       }),
     [
       editing,
+      projectMode,
       projectContext.larkDocumentLinks,
       projectContext.repositoryPath,
+      selectedFlowProjectId,
       selectedFlow?.projectId,
       selectedSourceProjectId,
     ],
@@ -317,8 +396,37 @@ export function ByteDevelopmentPanel({
     setEditing(false);
     setActionError(null);
     setPrdSource({ ...EMPTY_DEVELOPMENT_PRD_SOURCE });
+    setProjectMode("existing");
+    setNewProjectName("");
+    setSelectedFlowProjectId(
+      (activeProjectId && projectNames.has(activeProjectId) ? activeProjectId : null) ??
+        projectOptions[0]?.value ??
+        null,
+    );
     setSelectedFlowId(null);
-  }, []);
+  }, [activeProjectId, projectNames, projectOptions]);
+  const handleProjectModeChange = useCallback(
+    (mode: DevelopmentProjectMode) => {
+      setProjectMode(mode);
+      if (
+        mode === "existing" &&
+        selectedFlowProjectId &&
+        sourceProjectNames.has(selectedFlowProjectId)
+      ) {
+        setSelectedSourceProjectId(selectedFlowProjectId);
+      }
+    },
+    [selectedFlowProjectId, sourceProjectNames],
+  );
+  const handleFlowProjectChange = useCallback(
+    (projectId: string) => {
+      setSelectedFlowProjectId(projectId);
+      if (sourceProjectNames.has(projectId)) {
+        setSelectedSourceProjectId(projectId);
+      }
+    },
+    [sourceProjectNames],
+  );
   const handleRefresh = useCallback(() => {
     void query.refetch();
   }, [query]);
@@ -337,9 +445,6 @@ export function ByteDevelopmentPanel({
   const handlePrepareSubmission = useCallback(
     async (form: Record<string, unknown>) => {
       if (!client) throw new Error("Host 未连接");
-      if (!supportsDirectorylessProjects) {
-        throw new Error("当前 Host 不支持为开发流程创建独立 Project，请更新 daemon");
-      }
       const submission = {
         ...form,
         ...serializeDevelopmentPrdSource(prdSource),
@@ -350,25 +455,53 @@ export function ByteDevelopmentPanel({
       if (!flowTitle || !prd) {
         throw new Error("流程名称和 PRD / 需求说明均不能为空");
       }
-      const project = await createDevelopmentProject({
-        client,
-        flowTitle,
-      });
-      registerProjectDescriptor({
-        serverId,
-        project,
-        upsertProject,
-        setHasHydratedWorkspaces,
-      });
+      if (!selectedSourceProjectId || !projectContext.repositoryPath) {
+        throw new Error("请选择包含代码目录的代码来源 Project");
+      }
+      if (projectMode === "new" && !supportsDirectorylessProjects) {
+        throw new Error("当前 Host 不支持创建新 Project，请更新并重启 daemon");
+      }
+      const projectSelection =
+        projectMode === "existing"
+          ? await resolveDevelopmentProjectSelection({
+              selection: {
+                mode: "existing",
+                existingProjectId: selectedFlowProjectId,
+              },
+            })
+          : await resolveDevelopmentProjectSelection({
+              selection: {
+                mode: "new",
+                newProjectName,
+              },
+              createProject: (projectName) =>
+                createDevelopmentProject({
+                  client,
+                  flowTitle,
+                  projectName,
+                }),
+            });
+      if (projectSelection.createdProject) {
+        registerProjectDescriptor({
+          serverId,
+          project: projectSelection.createdProject,
+          upsertProject,
+          setHasHydratedWorkspaces,
+        });
+      }
       return {
         ...submission,
-        projectId: project.projectId,
+        projectId: projectSelection.projectId,
         sourceProjectId: selectedSourceProjectId,
       };
     },
     [
       client,
+      newProjectName,
       prdSource,
+      projectContext.repositoryPath,
+      projectMode,
+      selectedFlowProjectId,
       selectedSourceProjectId,
       serverId,
       setHasHydratedWorkspaces,
@@ -382,15 +515,15 @@ export function ByteDevelopmentPanel({
     const sourceProjectId = resolveSourceProjectId({
       input,
       flowProjectId: selectedFlow.projectId,
-      projectNames,
-      fallbackProjectId: projectOptions[0]?.value ?? null,
+      projectNames: sourceProjectNames,
+      fallbackProjectId: sourceProjectOptions[0]?.value ?? null,
     });
     setSelectedSourceProjectId(sourceProjectId);
     setEditDraft(input);
     setPrdSource(developmentPrdSourceFromInput(input));
     setActionError(null);
     setEditing(true);
-  }, [projectNames, projectOptions, selectedFlow]);
+  }, [selectedFlow, sourceProjectNames, sourceProjectOptions]);
   const handleCancelEdit = useCallback(() => {
     setEditing(false);
     setActionError(null);
@@ -511,6 +644,12 @@ export function ByteDevelopmentPanel({
   const selectedProjectName =
     (selectedFlow?.projectId ? projectNames.get(selectedFlow.projectId) : null) ?? "未关联 Project";
   const canRenderForm = Boolean(selectedSourceProjectId && projectContext.repositoryPath);
+  const canCreateFlow = canConfigureFlowProject({
+    creating,
+    projectMode,
+    selectedFlowProjectId,
+    supportsDirectorylessProjects,
+  });
 
   return (
     <View style={[styles.layout, compact ? styles.layoutCompact : styles.layoutDesktop]}>
@@ -539,18 +678,27 @@ export function ByteDevelopmentPanel({
           editing={editing}
           selectedFlow={selectedFlow}
           projectName={selectedProjectName}
+          projectMode={projectMode}
+          flowProjectId={selectedFlowProjectId}
+          flowProjectDisplay={selectedFlowProjectDisplay}
+          newProjectName={newProjectName}
           sourceProjectId={selectedSourceProjectId}
           sourceProjectDisplay={selectedProjectDisplay}
           projectOptions={projectOptions}
+          sourceProjectOptions={sourceProjectOptions}
+          canCreateNewProject={supportsDirectorylessProjects}
           fixedFormValues={fixedFormValues}
           prdSource={prdSource}
           editInitialValues={editInitialValues}
           contextLoading={projectContext.isLoading}
           contextError={projectContext.error}
-          canRenderForm={canRenderForm}
+          canRenderForm={canRenderForm && canCreateFlow}
           saving={saving}
           deleting={deleting}
           canMutate={supportsJobMutation}
+          onProjectModeChange={handleProjectModeChange}
+          onFlowProjectChange={handleFlowProjectChange}
+          onNewProjectNameChange={setNewProjectName}
           onSourceProjectChange={setSelectedSourceProjectId}
           onFormValuesChange={setEditDraft}
           onPrdSourceChange={setPrdSource}

@@ -2813,6 +2813,11 @@ export const es: TranslationResources = {
       backToProjects: "Volver a proyectos",
       switchHost: "Cambiar de anfitrión",
       projectId: en.settings.project.projectId,
+      directoryless: {
+        title: "El proyecto no tiene directorio",
+        description:
+          "Puedes editar el nombre, el icono y la memoria del proyecto. Los ajustes guardados en paseo.json estarán disponibles al asociar un directorio.",
+      },
       memory: {
         title: "Memoria del proyecto",
         info: "Controla la memoria de este proyecto y define qué conocimiento duradero debe aprender Paseo.",
@@ -2828,6 +2833,17 @@ export const es: TranslationResources = {
         saving: "Guardando...",
         saved: "Guardado",
         saveError: "No se pudo guardar la memoria del proyecto",
+      },
+      edit: {
+        title: "Editar proyecto",
+        name: "Nombre del proyecto",
+        nameLabel: "Nombre del proyecto",
+        icon: "Icono del proyecto",
+        chooseImage: "Elegir imagen",
+        useAutomatic: "Usar icono predeterminado",
+        imageUrl: "URL de imagen o sitio web",
+        save: "Guardar cambios",
+        savedToast: "Proyecto actualizado",
       },
       rename: {
         renamedToast: "Proyecto renombrado",

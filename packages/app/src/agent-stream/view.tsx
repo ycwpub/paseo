@@ -843,6 +843,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             enabled={shouldTranslateAidenClaudeReasoning({
               enabled: translateAidenClaudeReasoning,
               provider: context.provider,
+              sourceText: item.text,
+              source: item.source,
             })}
             supported={supportsReasoningTranslation}
             client={client}

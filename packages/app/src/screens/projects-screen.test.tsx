@@ -234,6 +234,7 @@ function hostEntry(overrides: Partial<ProjectHostEntry> = {}): ProjectHostEntry 
     serverName: "alpha",
     isOnline: true,
     repoRoot: "/home/me/proj",
+    isDirectoryless: false,
     workspaceCount: 1,
     workspaces: [workspaceSummary()],
     ...overrides,

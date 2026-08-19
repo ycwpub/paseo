@@ -2514,6 +2514,11 @@ const koOverrides = {
     project: {
       noEditableTarget: "이 호스트에서는 이 프로젝트를 편집할 수 없습니다.",
       backToProjects: "프로젝트로 돌아가기",
+      directoryless: {
+        title: "프로젝트 디렉터리가 없습니다",
+        description:
+          "프로젝트 이름, 아이콘, 메모리는 편집할 수 있습니다. 디렉터리를 연결하면 paseo.json에 저장되는 설정도 편집할 수 있습니다.",
+      },
       memory: {
         title: "프로젝트 메모리",
         info: "이 프로젝트의 메모리 사용 여부와 Paseo가 학습할 장기 지식을 설정합니다.",

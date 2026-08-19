@@ -15,9 +15,11 @@ export function developmentProjectName(flowTitle: unknown): string {
 export async function createDevelopmentProject(input: {
   client: DevelopmentProjectClient;
   flowTitle: unknown;
+  projectName?: unknown;
 }): Promise<WorkspaceProjectDescriptorPayload> {
+  const customName = typeof input.projectName === "string" ? input.projectName.trim() : "";
   const result = await input.client.createDirectorylessProject({
-    name: developmentProjectName(input.flowTitle),
+    name: (customName || developmentProjectName(input.flowTitle)).slice(0, 120),
   });
   if (result.error || !result.project) {
     throw new Error(result.error ?? "无法为开发流程创建独立 Project");

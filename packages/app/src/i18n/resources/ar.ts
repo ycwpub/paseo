@@ -2746,6 +2746,11 @@ export const ar: TranslationResources = {
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       projectId: en.settings.project.projectId,
+      directoryless: {
+        title: "لا يوجد مجلد للمشروع",
+        description:
+          "يمكنك تعديل اسم المشروع وأيقونته وذاكرته. تصبح الإعدادات المخزنة في paseo.json متاحة بعد ربط المشروع بمجلد.",
+      },
       memory: {
         title: "ذاكرة المشروع",
         info: "تحكم في ذاكرة هذا المشروع وحدد المعرفة الدائمة التي يجب أن يتعلمها Paseo.",
@@ -2760,6 +2765,17 @@ export const ar: TranslationResources = {
         saving: "جارٍ الحفظ...",
         saved: "تم الحفظ",
         saveError: "تعذر حفظ ذاكرة المشروع",
+      },
+      edit: {
+        title: "تعديل المشروع",
+        name: "اسم المشروع",
+        nameLabel: "اسم المشروع",
+        icon: "أيقونة المشروع",
+        chooseImage: "اختيار صورة",
+        useAutomatic: "استخدام الأيقونة الافتراضية",
+        imageUrl: "رابط صورة أو موقع",
+        save: "حفظ التغييرات",
+        savedToast: "تم تحديث المشروع",
       },
       rename: {
         renamedToast: "تمت إعادة تسمية المشروع",

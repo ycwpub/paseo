@@ -20,6 +20,7 @@ export interface ProjectHostEntry {
   serverName: string;
   isOnline: boolean;
   repoRoot: string;
+  isDirectoryless: boolean;
   workspaceCount: number;
   workspaces: WorkspaceSummary[];
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
@@ -87,9 +88,8 @@ interface HostGroup {
   isOnline: boolean;
   workspaces: WorkspaceDescriptor[];
   customIconRevision?: string | null;
-  // Repo root for a project parent that has no workspaces yet. Without it the
-  // host's repoRoot resolves to "" and the project reads as non-editable.
   fallbackRepoRoot: string;
+  isDirectoryless: boolean;
 }
 
 interface ProjectGroup {
@@ -154,6 +154,7 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     serverName: group.serverName,
     isOnline: group.isOnline,
     repoRoot,
+    isDirectoryless: group.isDirectoryless,
     workspaceCount: group.workspaces.length,
     workspaces: group.workspaces.map(toWorkspaceSummary),
     gitRuntime: canonical?.gitRuntime,
@@ -193,6 +194,11 @@ function addHostProjects(
   const repoRootByProjectId = new Map(
     host.projects.map((project) => [project.projectId, project.projectRootPath]),
   );
+  const directorylessProjectIds = new Set(
+    host.projects
+      .filter((project) => project.projectDirectoryless)
+      .map((project) => project.projectId),
+  );
 
   for (const hostProject of hostProjects) {
     const placement = hostProject.hosts.find((entry) => entry.serverId === host.serverId);
@@ -224,6 +230,7 @@ function addHostProjects(
         workspaces: [],
         customIconRevision: placement.customIconRevision,
         fallbackRepoRoot: repoRootByProjectId.get(projectId) ?? "",
+        isDirectoryless: directorylessProjectIds.has(projectId),
       });
     }
   }

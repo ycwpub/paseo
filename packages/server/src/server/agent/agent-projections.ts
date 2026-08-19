@@ -321,6 +321,9 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
       serializable.featureValues = featureValues;
     }
   }
+  if (config.writableProjectDirectories?.length) {
+    serializable.writableProjectDirectories = [...config.writableProjectDirectories];
+  }
   if (config.providerOptions !== undefined) {
     const providerOptions = sanitizeOptionalJson(config.providerOptions);
     if (providerOptions && isJsonObject(providerOptions)) {

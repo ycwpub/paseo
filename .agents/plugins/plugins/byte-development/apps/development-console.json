@@ -145,9 +145,9 @@
     {
       "id": "assistant_id",
       "type": "text_input",
-      "label": "Assistant ID",
+      "label": "助手",
       "defaultValue": "",
-      "description": "勾选助手记忆时必填。"
+      "description": "勾选助手记忆时，从当前 Host 的助手列表中选择。"
     },
     {
       "id": "memory_instructions",

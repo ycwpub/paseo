@@ -8,6 +8,7 @@ import {
   type PaseoProjectConfig,
 } from "@getpaseo/protocol/paseo-config-schema";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
+import { normalizeWritableProjectDirectories } from "../agent/project-directory-access.js";
 import { composeSystemPromptParts } from "../agent/system-prompt.js";
 import type {
   PersistedProjectRecord,
@@ -136,8 +137,8 @@ export function buildProjectContextPrompt(input: {
     `Project ID: ${input.projectId}`,
     `Project name: ${input.projectName}`,
     `Workspace ID: ${input.workspaceId}`,
-    `Writable workspace directory: ${input.workspaceDirectory}`,
-    "Make code changes in the writable workspace directory unless the task explicitly requires another configured directory.",
+    `Primary working directory: ${input.workspaceDirectory}`,
+    "All Project directories listed below are writable repositories in the same logical Project. Read and modify the repository appropriate to the task; do not assume the primary working directory is the only writable repository.",
     "",
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
@@ -239,6 +240,7 @@ export async function withProjectAgentContext(input: {
   if (!context) return input.config;
   return {
     ...input.config,
+    writableProjectDirectories: normalizeWritableProjectDirectories(context.directories.project),
     systemPrompt: composeSystemPromptParts(input.config.systemPrompt, context.prompt),
   };
 }

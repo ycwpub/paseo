@@ -2802,6 +2802,11 @@ export const ru: TranslationResources = {
       backToProjects: "Вернуться к проектам",
       switchHost: "Сменить хост",
       projectId: en.settings.project.projectId,
+      directoryless: {
+        title: "У проекта нет каталога",
+        description:
+          "Можно изменить название, значок и память проекта. Настройки из paseo.json станут доступны после привязки каталога.",
+      },
       memory: {
         title: "Память проекта",
         info: "Управляйте памятью этого проекта и задайте, какие долговременные знания должен извлекать Paseo.",
@@ -2817,6 +2822,17 @@ export const ru: TranslationResources = {
         saving: "Сохранение...",
         saved: "Сохранено",
         saveError: "Не удалось сохранить память проекта",
+      },
+      edit: {
+        title: "Изменить проект",
+        name: "Название проекта",
+        nameLabel: "Название проекта",
+        icon: "Значок проекта",
+        chooseImage: "Выбрать изображение",
+        useAutomatic: "Использовать значок по умолчанию",
+        imageUrl: "URL изображения или сайта",
+        save: "Сохранить изменения",
+        savedToast: "Проект обновлён",
       },
       rename: {
         renamedToast: "Проект переименован",

@@ -381,7 +381,7 @@ export interface CompactionTimelineItem {
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
-  | { type: "reasoning"; text: string }
+  | { type: "reasoning"; text: string; source?: "thinking" | "text" }
   | ToolCallTimelineItem
   | { type: "todo"; items: { text: string; completed: boolean }[] }
   | { type: "error"; message: string }
@@ -564,6 +564,11 @@ export interface ImportedProviderSession {
 export interface AgentSessionConfig {
   provider: AgentProvider;
   cwd: string;
+  /**
+   * Project-level repository roots that belong to the same logical Project.
+   * Providers adapt roots other than cwd to their native multi-directory access controls.
+   */
+  writableProjectDirectories?: string[];
   /**
    * Provider-agnostic system/developer instruction string.
    * Mapped by each provider to its native instruction field.

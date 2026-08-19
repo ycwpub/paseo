@@ -351,7 +351,9 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
 
   return (
     <View style={[styles.leftContentRow, isCompactLayout && styles.compactLeftContent]}>
-      <View style={isCompactLayout ? styles.compactAgentControlsRow : undefined}>{controls}</View>
+      <View style={[styles.agentControlsRow, isCompactLayout && styles.compactAgentControlsRow]}>
+        {controls}
+      </View>
       {assistantSelector}
     </View>
   );
@@ -2690,9 +2692,16 @@ const animatedStaticStyles = RNStyleSheet.create({
 
 const styles = StyleSheet.create((theme: Theme) => ({
   leftContentRow: {
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    flexShrink: 1,
+  },
+  agentControlsRow: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
     flexShrink: 1,
   },
   compactLeftContent: {

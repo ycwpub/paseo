@@ -2774,6 +2774,11 @@ export const ja: TranslationResources = {
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       projectId: en.settings.project.projectId,
+      directoryless: {
+        title: "プロジェクトディレクトリがありません",
+        description:
+          "プロジェクトの名前、アイコン、メモリは編集できます。ディレクトリを関連付けると、paseo.json に保存される設定も編集できます。",
+      },
       memory: {
         title: "プロジェクトメモリ",
         info: "このプロジェクト固有のメモリを制御し、Paseo が学習する長期的な知識を定義します。",
@@ -2789,6 +2794,17 @@ export const ja: TranslationResources = {
         saving: "保存中...",
         saved: "保存しました",
         saveError: "プロジェクトメモリを保存できませんでした",
+      },
+      edit: {
+        title: "プロジェクトを編集",
+        name: "プロジェクト名",
+        nameLabel: "プロジェクト名",
+        icon: "プロジェクトアイコン",
+        chooseImage: "画像を選択",
+        useAutomatic: "デフォルトアイコンを使用",
+        imageUrl: "画像またはサイトのURL",
+        save: "変更を保存",
+        savedToast: "プロジェクトを更新しました",
       },
       rename: {
         renamedToast: "プロジェクト名を変更しました",

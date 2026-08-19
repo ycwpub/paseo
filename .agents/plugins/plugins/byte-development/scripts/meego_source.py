@@ -9,6 +9,13 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
+from scripts.meego_auth import (
+    MeegoAuthenticationRequired,
+    authentication_error,
+    begin_login,
+    complete_login,
+)
+
 CommandRunner = Callable[[list[str]], dict[str, Any]]
 
 
@@ -88,7 +95,11 @@ def _run_bytedcli(args: list[str]) -> dict[str, Any]:
             )
         raise
     if completed.returncode != 0 or payload.get("status") == "error":
-        raise RuntimeError(_error_message(payload, completed.stderr, completed.returncode))
+        message = _error_message(payload, completed.stderr, completed.returncode)
+        auth_error = authentication_error(payload, message)
+        if auth_error:
+            raise auth_error
+        raise RuntimeError(message)
     return payload
 
 
@@ -238,10 +249,25 @@ def resolve_prd(
     rich_error = ""
     try:
         payload = runner(_resolve_command(origin, rich=True))
+    except MeegoAuthenticationRequired as error:
+        if error.provider == "official":
+            raise
+        rich_error = str(error)
+        try:
+            payload = runner(_resolve_command(origin, rich=False))
+        except MeegoAuthenticationRequired:
+            raise
+        except Exception as fallback_error:  # noqa: BLE001 - report both provider failures
+            detail = str(fallback_error)
+            if rich_error and rich_error != detail:
+                detail = f"{detail}（富文本读取失败：{rich_error}）"
+            raise RuntimeError(detail) from fallback_error
     except Exception as error:  # noqa: BLE001 - fallback preserves a usable basic read
         rich_error = str(error)
         try:
             payload = runner(_resolve_command(origin, rich=False))
+        except MeegoAuthenticationRequired:
+            raise
         except Exception as fallback_error:  # noqa: BLE001 - report both provider failures
             detail = str(fallback_error)
             if rich_error and rich_error != detail:
@@ -290,6 +316,10 @@ def execute_action(
         return list_current_user_items(runner)
     if action == "resolve":
         return resolve_prd(origin, runner)
+    if action == "login_begin":
+        return begin_login()
+    if action == "login_complete":
+        return complete_login(_first_text(origin, "completeToken", "complete_token"))
     raise ValueError(f"Unsupported Meego action: {action or '<empty>'}")
 
 
@@ -297,6 +327,16 @@ def run_node(input: dict[str, Any]) -> dict[str, Any]:
     origin = _record(input.get("origin_input"))
     try:
         return execute_action(origin)
+    except MeegoAuthenticationRequired as error:
+        return {
+            "data": {
+                "action": _first_text(origin, "action"),
+                "authRequired": True,
+                "authProvider": error.provider,
+                "authCode": error.code,
+                "authMessage": str(error),
+            }
+        }
     except Exception as error:  # noqa: BLE001 - Workflow boundary returns structured failure
         return {
             "data": {},

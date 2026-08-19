@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
@@ -19,10 +19,14 @@ import {
   isTerminalPluginAppJob,
   usePluginAppJob,
 } from "@/screens/settings/plugins/use-plugin-app-job";
+import {
+  resolvePluginAppComponentSlot,
+  type PluginAppComponentSlots,
+} from "./plugin-app-component-slot";
 
 const EMPTY_FORM_VALUES: Record<string, unknown> = {};
 const EMPTY_HIDDEN_FIELD_IDS: readonly string[] = [];
-const EMPTY_COMPONENT_SLOTS: Readonly<Record<string, ReactNode>> = {};
+const EMPTY_COMPONENT_SLOTS: PluginAppComponentSlots = {};
 
 function initialForm(
   document: PluginAppState["document"],
@@ -610,7 +614,7 @@ function PreviewPane({
   onRefreshJob: () => void;
   onRun: (componentId: string) => void;
   hiddenFieldIds: ReadonlySet<string>;
-  componentSlots: Readonly<Record<string, ReactNode>>;
+  componentSlots: PluginAppComponentSlots;
   title: string;
 }) {
   return (
@@ -629,7 +633,19 @@ function PreviewPane({
         {app?.document?.components.map((component) => {
           if (hiddenFieldIds.has(component.id)) return null;
           if (Object.hasOwn(componentSlots, component.id)) {
-            return <View key={component.id}>{componentSlots[component.id]}</View>;
+            const slot = componentSlots[component.id];
+            if (slot !== undefined) {
+              return (
+                <View key={component.id}>
+                  {resolvePluginAppComponentSlot(slot, {
+                    component,
+                    form,
+                    value: form[component.id],
+                    onChange: (value) => onFormChange(component.id, value),
+                  })}
+                </View>
+              );
+            }
           }
           return (
             <PreviewComponent
@@ -663,7 +679,7 @@ function PluginAppContent({
   controller: PluginAppController;
   showConversation?: boolean;
   hiddenFieldIds?: readonly string[];
-  componentSlots?: Readonly<Record<string, ReactNode>>;
+  componentSlots?: PluginAppComponentSlots;
   previewTitle?: string;
 }) {
   const {
@@ -744,7 +760,7 @@ export function PluginAppSurface({
   fixedFormValues?: Record<string, unknown>;
   initialFormValues?: Record<string, unknown>;
   hiddenFieldIds?: readonly string[];
-  componentSlots?: Readonly<Record<string, ReactNode>>;
+  componentSlots?: PluginAppComponentSlots;
   showConversation?: boolean;
   prepareSubmission?: (
     form: Record<string, unknown>,

@@ -20,10 +20,14 @@
         "type": "object",
         "required": ["action"],
         "properties": {
-          "action": { "type": "string", "enum": ["list", "resolve"] },
+          "action": {
+            "type": "string",
+            "enum": ["list", "resolve", "login_begin", "login_complete"]
+          },
           "url": { "type": "string" },
           "projectKey": { "type": "string" },
-          "workItemId": { "type": "string" }
+          "workItemId": { "type": "string" },
+          "completeToken": { "type": "string" }
         },
         "additionalProperties": false
       }

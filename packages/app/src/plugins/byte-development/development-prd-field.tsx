@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { Link2, RefreshCw } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -8,7 +8,14 @@ import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField } from "@/components/ui/select-field";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import {
+  parseDevelopmentMeegoAuthRequired,
+  parseDevelopmentMeegoLoginChallenge,
+  parseDevelopmentMeegoLoginStatus,
+  type DevelopmentMeegoLoginChallenge,
+} from "./development-meego-auth-model";
 import { runDevelopmentMeegoAction } from "./development-meego-client";
+import { DevelopmentMeegoLoginSheet } from "./development-meego-login-sheet";
 import {
   type DevelopmentMeegoItem,
   type DevelopmentPrdSourceType,
@@ -35,6 +42,13 @@ function getMeegoItemKey(item: DevelopmentMeegoItem): string {
   return item.id;
 }
 
+interface PendingMeegoRequest {
+  input: Record<string, unknown>;
+  onSuccess: (result: unknown) => void;
+  onAuthRequired?: () => void;
+  onError?: (error: unknown) => void;
+}
+
 export function DevelopmentPrdField({
   active,
   serverId,
@@ -55,6 +69,13 @@ export function DevelopmentPrdField({
   const [resolveLoading, setResolveLoading] = useState(false);
   const [listLoaded, setListLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loginVisible, setLoginVisible] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginChecking, setLoginChecking] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginChallenge, setLoginChallenge] = useState<DevelopmentMeegoLoginChallenge | null>(null);
+  const pendingRequestRef = useRef<PendingMeegoRequest | null>(null);
+  const loginCheckingRef = useRef(false);
   const pluginId = plugin.pluginId ?? null;
 
   const sourceDisplay = useMemo(
@@ -99,26 +120,147 @@ export function DevelopmentPrdField({
     [onChange, value],
   );
 
+  const beginLogin = useCallback(() => {
+    if (!client || !pluginId || !supported || loginLoading) return;
+    setLoginVisible(true);
+    setLoginLoading(true);
+    setLoginError(null);
+    setLoginChallenge(null);
+    void runDevelopmentMeegoAction({
+      client,
+      pluginId,
+      input: { action: "login_begin" },
+    })
+      .then((result) => {
+        setLoginChallenge(parseDevelopmentMeegoLoginChallenge(result));
+        return undefined;
+      })
+      .catch((nextError: unknown) => {
+        setLoginError(errorText(nextError));
+      })
+      .finally(() => setLoginLoading(false));
+  }, [client, loginLoading, pluginId, supported]);
+
+  const runMeegoRequest = useCallback(
+    (request: PendingMeegoRequest) => {
+      if (!client || !pluginId || !supported) return;
+      void runDevelopmentMeegoAction({
+        client,
+        pluginId,
+        input: request.input,
+      })
+        .then((result) => {
+          const authRequired = parseDevelopmentMeegoAuthRequired(result);
+          if (authRequired) {
+            pendingRequestRef.current = request;
+            setError(null);
+            request.onAuthRequired?.();
+            beginLogin();
+            return undefined;
+          }
+          request.onSuccess(result);
+          return undefined;
+        })
+        .catch((nextError: unknown) => {
+          request.onError?.(nextError);
+          setError(errorText(nextError));
+        });
+    },
+    [beginLogin, client, pluginId, supported],
+  );
+
+  const retryPendingRequest = useCallback(() => {
+    const request = pendingRequestRef.current;
+    if (!request || !client || !pluginId || !supported) return;
+    void runDevelopmentMeegoAction({
+      client,
+      pluginId,
+      input: request.input,
+    })
+      .then((result) => {
+        const authRequired = parseDevelopmentMeegoAuthRequired(result);
+        if (authRequired) {
+          setLoginVisible(true);
+          setLoginError("登录尚未生效，请完成授权后再次检查。");
+          return;
+        }
+        pendingRequestRef.current = null;
+        request.onSuccess(result);
+        return undefined;
+      })
+      .catch((nextError: unknown) => {
+        request.onError?.(nextError);
+        setError(errorText(nextError));
+      });
+  }, [client, pluginId, supported]);
+
+  const checkLogin = useCallback(() => {
+    if (!client || !pluginId || !supported || !loginChallenge || loginCheckingRef.current) {
+      return;
+    }
+    loginCheckingRef.current = true;
+    setLoginChecking(true);
+    void runDevelopmentMeegoAction({
+      client,
+      pluginId,
+      input: {
+        action: "login_complete",
+        completeToken: loginChallenge.completeToken,
+      },
+    })
+      .then((result) => {
+        const status = parseDevelopmentMeegoLoginStatus(result);
+        if (status === "pending") return;
+        if (status === "expired") {
+          setLoginChallenge(null);
+          setLoginError("登录二维码已过期，请重新获取。");
+          return;
+        }
+        setLoginVisible(false);
+        setLoginChallenge(null);
+        setLoginError(null);
+        retryPendingRequest();
+        return undefined;
+      })
+      .catch((nextError: unknown) => {
+        setLoginError(errorText(nextError));
+      })
+      .finally(() => {
+        loginCheckingRef.current = false;
+        setLoginChecking(false);
+      });
+  }, [client, loginChallenge, pluginId, retryPendingRequest, supported]);
+
+  useEffect(() => {
+    if (!loginVisible || !loginChallenge) return;
+    const interval = setInterval(
+      checkLogin,
+      Math.max(1, loginChallenge.pollIntervalSeconds) * 1000,
+    );
+    return () => clearInterval(interval);
+  }, [checkLogin, loginChallenge, loginVisible]);
+
   const loadItems = useCallback(() => {
     if (!client || !pluginId || !supported || listLoading) return;
     setListLoading(true);
     setError(null);
-    void runDevelopmentMeegoAction({
-      client,
-      pluginId,
+    runMeegoRequest({
       input: { action: "list" },
-    })
-      .then((result) => {
+      onSuccess: (result) => {
         setItems(parseDevelopmentMeegoItems(result));
         setListLoaded(true);
-        return undefined;
-      })
-      .catch((nextError: unknown) => {
+        setListLoading(false);
+      },
+      onAuthRequired: () => {
         setListLoaded(true);
-        setError(errorText(nextError));
-      })
-      .finally(() => setListLoading(false));
-  }, [client, listLoading, pluginId, supported]);
+        setListLoading(false);
+      },
+      onError: () => {
+        setListLoaded(true);
+        setListLoading(false);
+      },
+    });
+  }, [client, listLoading, pluginId, runMeegoRequest, supported]);
 
   useEffect(() => {
     if (!active || value.type !== "meego" || listLoaded || listLoading) return;
@@ -146,19 +288,20 @@ export function DevelopmentPrdField({
       onChange(pendingValue);
       setResolveLoading(true);
       setError(null);
-      void runDevelopmentMeegoAction({
-        client,
-        pluginId,
+      runMeegoRequest({
         input: {
           action: "resolve",
           url: meegoUrl,
           projectKey,
           workItemId,
         },
-      })
-        .then((result) => {
+        onSuccess: (result) => {
           const resolved = parseResolvedDevelopmentPrd(result);
-          if (!resolved.prd.trim()) throw new Error("Meego 工作项没有返回可用的 PRD 内容");
+          if (!resolved.prd.trim()) {
+            setError("Meego 工作项没有返回可用的 PRD 内容");
+            setResolveLoading(false);
+            return;
+          }
           onChange({
             ...pendingValue,
             prd: resolved.prd,
@@ -167,12 +310,13 @@ export function DevelopmentPrdField({
             meegoWorkItemId: resolved.meegoWorkItemId || pendingValue.meegoWorkItemId,
             meegoTitle: resolved.meegoTitle || pendingValue.meegoTitle,
           });
-          return undefined;
-        })
-        .catch((nextError: unknown) => setError(errorText(nextError)))
-        .finally(() => setResolveLoading(false));
+          setResolveLoading(false);
+        },
+        onAuthRequired: () => setResolveLoading(false),
+        onError: () => setResolveLoading(false),
+      });
     },
-    [client, onChange, pluginId, resolveLoading, supported, value],
+    [client, onChange, pluginId, resolveLoading, runMeegoRequest, supported, value],
   );
 
   const handleSourceChange = useCallback(
@@ -196,99 +340,114 @@ export function DevelopmentPrdField({
   );
   const handlePrdChange = useCallback((prd: string) => update({ prd }), [update]);
   const handleResolvePress = useCallback(() => resolveItem(), [resolveItem]);
+  const handleLoginClose = useCallback(() => {
+    setLoginVisible(false);
+  }, []);
 
   return (
-    <View style={styles.container}>
-      <SelectField
-        label="PRD 来源"
-        value={value.type}
-        selectedDisplay={sourceSelectedDisplay}
-        options={SOURCE_OPTIONS}
-        onChange={handleSourceChange}
-        placeholder="选择 PRD 来源"
-        emptyText="没有可用来源"
-      />
-      {value.type === "manual" ? (
-        <Field
-          label="PRD / 需求说明"
-          hint="可直接粘贴 PRD、需求说明和验收标准；不得包含 Token、Cookie、JWT 或其他密钥。"
-        >
-          <FormTextInput
-            value={value.prd}
-            onChangeText={handlePrdChange}
-            placeholder="输入 PRD、需求说明及验收标准"
-            multiline
-            textInputStyle={styles.prdInput}
-          />
-        </Field>
-      ) : (
-        <View style={styles.meegoSection}>
-          <View style={styles.meegoHeader}>
-            <Text style={styles.sectionTitle}>Meego PRD</Text>
-            <Button
-              size="xs"
-              variant="outline"
-              leftIcon={RefreshCw}
-              loading={listLoading}
-              disabled={!client || !pluginId || !supported || listLoading}
-              onPress={loadItems}
-            >
-              刷新
-            </Button>
-          </View>
-          <SelectField
-            label="当前用户关联的 Meego"
-            value={selectedItem}
-            selectedDisplay={selectedItemDisplay}
-            options={itemOptions}
-            onChange={handleItemChange}
-            placeholder="选择待处理的 Meego"
-            emptyText={listLoaded ? "当前没有关联的待处理 Meego" : "正在读取 Meego"}
-            loading={listLoading}
-            disabled={resolveLoading}
-            searchable
-            searchPlaceholder="搜索标题、空间或状态"
-            getValueKey={getMeegoItemKey}
-            hint="展示当前登录用户的 Meego 待办；选择后会自动读取 PRD。"
-          />
-          {!supported ? (
-            <Text style={styles.errorText}>当前 Host 不支持读取 Meego，请更新 daemon。</Text>
-          ) : null}
-          <Field label="Meego 工作项链接" hint="也可以直接粘贴 Meego 工作项链接后获取 PRD。">
-            <View style={styles.urlRow}>
-              <View style={styles.urlInput}>
-                <FormTextInput
-                  value={value.meegoUrl}
-                  onChangeText={handleUrlChange}
-                  placeholder="https://meego.larkoffice.com/..."
-                  editable={!resolveLoading}
-                />
-              </View>
-              <Button
-                variant="outline"
-                leftIcon={Link2}
-                loading={resolveLoading}
-                disabled={resolveLoading || (!value.meegoUrl.trim() && !value.meegoWorkItemId)}
-                onPress={handleResolvePress}
-              >
-                获取 PRD
-              </Button>
-            </View>
-          </Field>
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-          <Field label="PRD / 需求说明" hint="已从 Meego 自动获取，可在启动流程前补充或修改。">
+    <>
+      <View style={styles.container}>
+        <SelectField
+          label="PRD 来源"
+          value={value.type}
+          selectedDisplay={sourceSelectedDisplay}
+          options={SOURCE_OPTIONS}
+          onChange={handleSourceChange}
+          placeholder="选择 PRD 来源"
+          emptyText="没有可用来源"
+        />
+        {value.type === "manual" ? (
+          <Field
+            label="PRD / 需求说明"
+            hint="可直接粘贴 PRD、需求说明和验收标准；不得包含 Token、Cookie、JWT 或其他密钥。"
+          >
             <FormTextInput
               value={value.prd}
               onChangeText={handlePrdChange}
-              placeholder={resolveLoading ? "正在读取 Meego PRD…" : "选择或输入 Meego 后自动填充"}
+              placeholder="输入 PRD、需求说明及验收标准"
               multiline
-              editable={!resolveLoading}
               textInputStyle={styles.prdInput}
             />
           </Field>
-        </View>
-      )}
-    </View>
+        ) : (
+          <View style={styles.meegoSection}>
+            <View style={styles.meegoHeader}>
+              <Text style={styles.sectionTitle}>Meego PRD</Text>
+              <Button
+                size="xs"
+                variant="outline"
+                leftIcon={RefreshCw}
+                loading={listLoading}
+                disabled={!client || !pluginId || !supported || listLoading}
+                onPress={loadItems}
+              >
+                刷新
+              </Button>
+            </View>
+            <SelectField
+              label="当前用户关联的 Meego"
+              value={selectedItem}
+              selectedDisplay={selectedItemDisplay}
+              options={itemOptions}
+              onChange={handleItemChange}
+              placeholder="选择待处理的 Meego"
+              emptyText={listLoaded ? "当前没有关联的待处理 Meego" : "正在读取 Meego"}
+              loading={listLoading}
+              disabled={resolveLoading}
+              searchable
+              searchPlaceholder="搜索标题、空间或状态"
+              getValueKey={getMeegoItemKey}
+              hint="展示当前登录用户的 Meego 待办；选择后会自动读取 PRD。"
+            />
+            {!supported ? (
+              <Text style={styles.errorText}>当前 Host 不支持读取 Meego，请更新 daemon。</Text>
+            ) : null}
+            <Field label="Meego 工作项链接" hint="也可以直接粘贴 Meego 工作项链接后获取 PRD。">
+              <View style={styles.urlRow}>
+                <View style={styles.urlInput}>
+                  <FormTextInput
+                    value={value.meegoUrl}
+                    onChangeText={handleUrlChange}
+                    placeholder="https://meego.larkoffice.com/..."
+                    editable={!resolveLoading}
+                  />
+                </View>
+                <Button
+                  variant="outline"
+                  leftIcon={Link2}
+                  loading={resolveLoading}
+                  disabled={resolveLoading || (!value.meegoUrl.trim() && !value.meegoWorkItemId)}
+                  onPress={handleResolvePress}
+                >
+                  获取 PRD
+                </Button>
+              </View>
+            </Field>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            <Field label="PRD / 需求说明" hint="已从 Meego 自动获取，可在启动流程前补充或修改。">
+              <FormTextInput
+                value={value.prd}
+                onChangeText={handlePrdChange}
+                placeholder={resolveLoading ? "正在读取 Meego PRD…" : "选择或输入 Meego 后自动填充"}
+                multiline
+                editable={!resolveLoading}
+                textInputStyle={styles.prdInput}
+              />
+            </Field>
+          </View>
+        )}
+      </View>
+      <DevelopmentMeegoLoginSheet
+        visible={loginVisible}
+        challenge={loginChallenge}
+        loading={loginLoading}
+        checking={loginChecking}
+        error={loginError}
+        onClose={handleLoginClose}
+        onRetry={beginLogin}
+        onCheck={checkLogin}
+      />
+    </>
   );
 }
 

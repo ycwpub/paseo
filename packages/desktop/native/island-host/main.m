@@ -17,8 +17,10 @@
 @property(nonatomic, strong) PaseoIslandPanel *panel;
 @property(nonatomic, strong) WKWebView *webView;
 @property(nonatomic, strong) id pendingState;
+@property(nonatomic, strong) id outsideClickMonitor;
 @property(nonatomic, assign) BOOL webReady;
 @property(nonatomic, assign) BOOL readyEmitted;
+@property(nonatomic, assign) BOOL expanded;
 @end
 
 @implementation PaseoIslandHost
@@ -48,6 +50,7 @@
                               : nil;
     BOOL expanded =
         [state isKindOfClass:[NSDictionary class]] && [state[@"expanded"] boolValue];
+    self.expanded = expanded;
     [self positionOnDisplay:displayId
                       width:(CGFloat)width.doubleValue
                      height:(CGFloat)height.doubleValue
@@ -57,6 +60,7 @@
     return;
   }
   if ([type isEqualToString:@"hide"]) {
+    self.expanded = NO;
     [self.panel orderOut:nil];
     return;
   }
@@ -90,6 +94,7 @@
   panel.releasedWhenClosed = NO;
   panel.ignoresMouseEvents = NO;
   panel.animationBehavior = NSWindowAnimationBehaviorNone;
+  panel.sharingType = NSWindowSharingReadOnly;
   panel.level = NSScreenSaverWindowLevel;
   panel.collectionBehavior =
       NSWindowCollectionBehaviorCanJoinAllSpaces |
@@ -100,7 +105,33 @@
 
   self.panel = panel;
   self.webView = webView;
+  [self installOutsideClickMonitor];
   [webView loadHTMLString:html baseURL:nil];
+}
+
+- (void)installOutsideClickMonitor {
+  if (self.outsideClickMonitor != nil) return;
+  __weak PaseoIslandHost *weakSelf = self;
+  self.outsideClickMonitor =
+      [NSEvent addGlobalMonitorForEventsMatchingMask:(NSEventMaskLeftMouseUp |
+                                                       NSEventMaskRightMouseUp |
+                                                       NSEventMaskOtherMouseUp)
+                                             handler:^(NSEvent *event) {
+                                               PaseoIslandHost *strongSelf = weakSelf;
+                                               if (strongSelf == nil || !strongSelf.expanded ||
+                                                   !strongSelf.panel.isVisible) {
+                                                 return;
+                                               }
+                                               NSPoint location = NSEvent.mouseLocation;
+                                               if (NSPointInRect(location, strongSelf.panel.frame)) {
+                                                 return;
+                                               }
+                                               strongSelf.expanded = NO;
+                                               [strongSelf emit:@{
+                                                 @"type" : @"setExpanded",
+                                                 @"expanded" : @NO,
+                                               }];
+                                             }];
 }
 
 - (CGFloat)menuBarDepthForScreen:(NSScreen *)screen {
@@ -139,10 +170,10 @@
   CGFloat notchWidth = [self notchWidthForScreen:screen];
   CGFloat compactWidth = notchWidth > 0 ? notchWidth + 108 : requestedWidth;
   CGFloat compactHeight =
-      MAX(requestedHeight, [self menuBarDepthForScreen:screen] + 10);
+      MAX(requestedHeight, [self menuBarDepthForScreen:screen] + 4);
   return NSMakeSize(
       MIN(MAX(280, compactWidth), MAX(280, NSWidth(screenFrame) - 24)),
-      MIN(MAX(44, compactHeight), 54));
+      MIN(MAX(40, compactHeight), 46));
 }
 
 - (void)positionOnDisplay:(NSNumber *)displayId
@@ -223,6 +254,12 @@
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
   [self markWebReady];
+}
+
+- (void)dealloc {
+  if (self.outsideClickMonitor != nil) {
+    [NSEvent removeMonitor:self.outsideClickMonitor];
+  }
 }
 
 @end

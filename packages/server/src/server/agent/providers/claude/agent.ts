@@ -68,6 +68,7 @@ import {
   formatProviderDiagnosticError,
 } from "../diagnostic-utils.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "../provider-runner.js";
+import { resolveAdditionalWritableDirectories } from "../../project-directory-access.js";
 import {
   applyClaudeToolPolicy,
   ClaudeProviderOptionsSchema,
@@ -1311,7 +1312,7 @@ class TimelineAssembler {
         (contentComplete && !state.toolUseSeen));
     if (textIsReadableReasoningSummary) {
       state.emittedAssistantLength = state.assistantText.length;
-      items.push({ type: "reasoning", text: nextAssistantText });
+      items.push({ type: "reasoning", text: nextAssistantText, source: "text" });
     } else if (
       shouldEmitAssistantText &&
       nextAssistantText !== INTERRUPT_TOOL_USE_PLACEHOLDER &&
@@ -1324,7 +1325,7 @@ class TimelineAssembler {
     const nextReasoningText = state.reasoningText.slice(state.emittedReasoningLength);
     if (nextReasoningText.length > 0) {
       state.emittedReasoningLength = state.reasoningText.length;
-      items.push({ type: "reasoning", text: nextReasoningText });
+      items.push({ type: "reasoning", text: nextReasoningText, source: "thinking" });
     }
     return items;
   }
@@ -3146,8 +3147,16 @@ class ClaudeAgentSession implements AgentSession {
   private async buildOptions(): Promise<ClaudeOptions> {
     const { thinking, effort, ultracode } = this.resolveThinkingConfig();
     const appendedSystemPrompt = this.buildAppendedSystemPrompt();
+    const additionalDirectories = resolveAdditionalWritableDirectories({
+      cwd: this.config.cwd,
+      projectDirectories: this.config.writableProjectDirectories,
+      configuredDirectories: this.config.providerOptions.additionalDirectories,
+    });
     const providerOptions = applyClaudeToolPolicy(
-      this.config.providerOptions,
+      {
+        ...this.config.providerOptions,
+        ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+      },
       this.config.toolPolicy,
     );
     const settingsOptions = this.buildSettingsOptions(providerOptions, { ultracode });
@@ -4930,7 +4939,7 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (!suppressReasoning && hasRedactedReasoning && hasToolUse && !hasReadableReasoning) {
-      items.push({ type: "reasoning", text });
+      items.push({ type: "reasoning", text, source: "text" });
       return;
     }
     if (!suppressText) {
@@ -4959,7 +4968,7 @@ class ClaudeAgentSession implements AgentSession {
       case "thinking":
       case "thinking_delta":
         if (typeof block.thinking === "string" && block.thinking && !context.suppressReasoning) {
-          context.items.push({ type: "reasoning", text: block.thinking });
+          context.items.push({ type: "reasoning", text: block.thinking, source: "thinking" });
         }
         break;
       case "redacted_thinking":

@@ -694,6 +694,36 @@ describe("ClaudeAgentSession features", () => {
     await session.close();
   });
 
+  test("adds every other Project repository to Claude additional directories", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const cwd = path.resolve("/repo/settle-charge-tool");
+    const session = await client.createSession({
+      provider: "claude",
+      cwd,
+      writableProjectDirectories: [cwd, "/repo/settle-charge-facade"],
+      providerOptions: {
+        additionalDirectories: ["/repo/shared"],
+      },
+    });
+
+    await (
+      session as unknown as {
+        ensureQuery(): Promise<unknown>;
+      }
+    ).ensureQuery();
+
+    expect(queryFactory.mock.calls[0]?.[0].options.additionalDirectories).toEqual([
+      "/repo/shared",
+      "/repo/settle-charge-facade",
+    ]);
+    await session.close();
+  });
+
   test("lists fast mode only for supported Opus models", async () => {
     const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
 
@@ -1565,7 +1595,7 @@ describe("ClaudeAgentSession context window usage", () => {
       {
         type: "timeline",
         provider: "claude",
-        item: { type: "reasoning", text: "正在检查 provider 事件。" },
+        item: { type: "reasoning", text: "正在检查 provider 事件。", source: "text" },
       },
       expect.objectContaining({
         type: "timeline",
@@ -1596,7 +1626,7 @@ describe("ClaudeAgentSession context window usage", () => {
       {
         type: "timeline",
         provider: "claude",
-        item: { type: "reasoning", text: "Readable summary" },
+        item: { type: "reasoning", text: "Readable summary", source: "thinking" },
       },
       {
         type: "timeline",

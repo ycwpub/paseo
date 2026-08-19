@@ -2817,6 +2817,11 @@ export const fr: TranslationResources = {
       backToProjects: "Retour aux projets",
       switchHost: "Changer d'hôte",
       projectId: en.settings.project.projectId,
+      directoryless: {
+        title: "Aucun dossier de projet",
+        description:
+          "Vous pouvez modifier le nom, l’icône et la mémoire du projet. Les réglages stockés dans paseo.json seront disponibles après l’association d’un dossier.",
+      },
       memory: {
         title: "Mémoire du projet",
         info: "Contrôlez la mémoire propre à ce projet et définissez les connaissances durables que Paseo doit apprendre.",
@@ -2832,6 +2837,17 @@ export const fr: TranslationResources = {
         saving: "Enregistrement...",
         saved: "Enregistré",
         saveError: "Impossible d'enregistrer la mémoire du projet",
+      },
+      edit: {
+        title: "Modifier le projet",
+        name: "Nom du projet",
+        nameLabel: "Nom du projet",
+        icon: "Icône du projet",
+        chooseImage: "Choisir une image",
+        useAutomatic: "Utiliser l’icône par défaut",
+        imageUrl: "URL d'image ou de site",
+        save: "Enregistrer",
+        savedToast: "Projet mis à jour",
       },
       rename: {
         renamedToast: "Projet renommé",

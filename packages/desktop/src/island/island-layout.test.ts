@@ -9,14 +9,15 @@ describe("resolveIslandLayout", () => {
     });
   });
 
-  it("expands across the display and grows with unread messages", () => {
-    expect(resolveIslandLayout(1512, 1, true)).toEqual({ width: 1488, height: 286 });
-    expect(resolveIslandLayout(1512, 4, true)).toEqual({ width: 1488, height: 432 });
-    expect(resolveIslandLayout(1512, 20, true)).toEqual({ width: 1488, height: 514 });
+  it("uses one quarter of the display and shows at most two messages before scrolling", () => {
+    expect(resolveIslandLayout(1512, 1, true)).toEqual({ width: 378, height: 180 });
+    expect(resolveIslandLayout(1512, 2, true)).toEqual({ width: 378, height: 220 });
+    expect(resolveIslandLayout(1512, 20, true)).toEqual({ width: 378, height: 220 });
+    expect(resolveIslandLayout(2560, 20, true)).toEqual({ width: 440, height: 220 });
   });
 
   it("stays inside narrow displays", () => {
-    expect(resolveIslandLayout(320, 1, false)).toEqual({ width: 304, height: 48 });
-    expect(resolveIslandLayout(320, 1, true)).toEqual({ width: 304, height: 286 });
+    expect(resolveIslandLayout(320, 1, false)).toEqual({ width: 304, height: 42 });
+    expect(resolveIslandLayout(320, 1, true)).toEqual({ width: 304, height: 180 });
   });
 });

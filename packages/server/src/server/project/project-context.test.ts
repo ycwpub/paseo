@@ -119,6 +119,9 @@ describe("buildProjectContextPrompt", () => {
     });
 
     expect(prompt).toContain("Project ID: prj_1");
+    expect(prompt).toContain("Primary working directory: /repo/worktree");
+    expect(prompt).toContain("All Project directories listed below are writable repositories");
+    expect(prompt).toContain("do not assume the primary working directory is the only writable");
     expect(prompt).toContain("MUST inspect and obey");
     expect(prompt).toContain("read the applicable SKILL.md");
     expect(prompt).toContain("Record durable progress");

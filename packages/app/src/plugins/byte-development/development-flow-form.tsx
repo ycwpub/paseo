@@ -14,6 +14,10 @@ import {
   type SelectFieldOption,
 } from "@/components/ui/select-field";
 import { PluginAppSurface } from "@/screens/settings/plugins/plugin-app-modal";
+import type { PluginAppComponentSlots } from "@/screens/settings/plugins/plugin-app-component-slot";
+import { DevelopmentAssistantMemoryField } from "./development-assistant-memory-field";
+import type { DevelopmentProjectMode } from "./development-project-selection-model";
+import { DevelopmentProjectSelector } from "./development-project-selector";
 import { DevelopmentPrdField } from "./development-prd-field";
 import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
 
@@ -25,9 +29,15 @@ export function DevelopmentFlowForm({
   serverId,
   plugin,
   appDefinition,
+  projectMode,
+  flowProjectId,
+  flowProjectDisplay,
+  newProjectName,
   sourceProjectId,
   sourceProjectDisplay,
   projectOptions,
+  sourceProjectOptions,
+  canCreateNewProject,
   fixedFormValues,
   prdSource,
   initialFormValues,
@@ -35,6 +45,9 @@ export function DevelopmentFlowForm({
   contextError,
   canRenderForm,
   saving = false,
+  onProjectModeChange,
+  onFlowProjectChange,
+  onNewProjectNameChange,
   onSourceProjectChange,
   onFormValuesChange,
   onPrdSourceChange,
@@ -48,9 +61,15 @@ export function DevelopmentFlowForm({
   serverId: string;
   plugin: PluginSummary;
   appDefinition: PluginAppDefinition;
+  projectMode: DevelopmentProjectMode;
+  flowProjectId: string | null;
+  flowProjectDisplay: SelectFieldDisplay | null;
+  newProjectName: string;
   sourceProjectId: string | null;
   sourceProjectDisplay: SelectFieldDisplay | null;
   projectOptions: SelectFieldOption<string>[];
+  sourceProjectOptions: SelectFieldOption<string>[];
+  canCreateNewProject: boolean;
   fixedFormValues: Record<string, unknown>;
   prdSource: DevelopmentPrdSourceValue;
   initialFormValues?: Record<string, unknown>;
@@ -58,6 +77,9 @@ export function DevelopmentFlowForm({
   contextError: string | null;
   canRenderForm: boolean;
   saving?: boolean;
+  onProjectModeChange: (mode: DevelopmentProjectMode) => void;
+  onFlowProjectChange: (projectId: string) => void;
+  onNewProjectNameChange: (name: string) => void;
   onSourceProjectChange: (projectId: string) => void;
   onFormValuesChange?: (form: Record<string, unknown>) => void;
   onPrdSourceChange: (value: DevelopmentPrdSourceValue) => void;
@@ -72,7 +94,7 @@ export function DevelopmentFlowForm({
     () => (mode === "edit" ? EDIT_HIDDEN_COMPONENT_IDS : undefined),
     [mode],
   );
-  const componentSlots = useMemo(
+  const componentSlots = useMemo<PluginAppComponentSlots>(
     () => ({
       prd: (
         <DevelopmentPrdField
@@ -81,6 +103,14 @@ export function DevelopmentFlowForm({
           plugin={plugin}
           value={prdSource}
           onChange={onPrdSourceChange}
+        />
+      ),
+      assistant_id: ({ form, value, onChange }) => (
+        <DevelopmentAssistantMemoryField
+          serverId={serverId}
+          value={value}
+          enabled={form.memory_assistant === true}
+          onChange={onChange}
         />
       ),
     }),
@@ -92,15 +122,28 @@ export function DevelopmentFlowForm({
         <Text style={styles.title}>{mode === "create" ? "创建开发流程" : "编辑开发流程"}</Text>
         <Text style={styles.hint}>
           {mode === "create"
-            ? "选择代码来源 Project。启动时会自动创建一个独立 Project，用于承载本流程后续会话。"
+            ? "选择已有 Project 承载流程，或创建一个新的独立 Project；代码仓库可来自另一个 Project。"
             : "可修改流程的全部业务配置；执行状态、Process ID 和历史节点结果保持只读。"}
         </Text>
       </View>
+      {mode === "create" ? (
+        <DevelopmentProjectSelector
+          mode={projectMode}
+          existingProjectId={flowProjectId}
+          existingProjectDisplay={flowProjectDisplay}
+          newProjectName={newProjectName}
+          projectOptions={projectOptions}
+          canCreateNewProject={canCreateNewProject}
+          onModeChange={onProjectModeChange}
+          onExistingProjectChange={onFlowProjectChange}
+          onNewProjectNameChange={onNewProjectNameChange}
+        />
+      ) : null}
       <SelectField
         label="代码来源 Project"
         value={sourceProjectId}
         selectedDisplay={sourceProjectDisplay}
-        options={projectOptions}
+        options={sourceProjectOptions}
         onChange={onSourceProjectChange}
         placeholder="选择 Project"
         emptyText="当前 Host 没有可用 Project"

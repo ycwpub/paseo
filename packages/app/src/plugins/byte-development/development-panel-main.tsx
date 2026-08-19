@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { SelectFieldDisplay, SelectFieldOption } from "@/components/ui/select-field";
 import { DevelopmentFlowDetail } from "./development-flow-detail";
 import { DevelopmentFlowForm } from "./development-flow-form";
+import type { DevelopmentProjectMode } from "./development-project-selection-model";
 import type { DevelopmentFlow } from "./flow-model";
 import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
 
@@ -22,9 +23,15 @@ export function DevelopmentPanelMain({
   editing,
   selectedFlow,
   projectName,
+  projectMode,
+  flowProjectId,
+  flowProjectDisplay,
+  newProjectName,
   sourceProjectId,
   sourceProjectDisplay,
   projectOptions,
+  sourceProjectOptions,
+  canCreateNewProject,
   fixedFormValues,
   prdSource,
   editInitialValues,
@@ -34,6 +41,9 @@ export function DevelopmentPanelMain({
   saving,
   deleting,
   canMutate,
+  onProjectModeChange,
+  onFlowProjectChange,
+  onNewProjectNameChange,
   onSourceProjectChange,
   onFormValuesChange,
   onPrdSourceChange,
@@ -54,9 +64,15 @@ export function DevelopmentPanelMain({
   editing: boolean;
   selectedFlow: DevelopmentFlow | null;
   projectName: string;
+  projectMode: DevelopmentProjectMode;
+  flowProjectId: string | null;
+  flowProjectDisplay: SelectFieldDisplay | null;
+  newProjectName: string;
   sourceProjectId: string | null;
   sourceProjectDisplay: SelectFieldDisplay | null;
   projectOptions: SelectFieldOption<string>[];
+  sourceProjectOptions: SelectFieldOption<string>[];
+  canCreateNewProject: boolean;
   fixedFormValues: Record<string, unknown>;
   prdSource: DevelopmentPrdSourceValue;
   editInitialValues: Record<string, unknown>;
@@ -66,6 +82,9 @@ export function DevelopmentPanelMain({
   saving: boolean;
   deleting: boolean;
   canMutate: boolean;
+  onProjectModeChange: (mode: DevelopmentProjectMode) => void;
+  onFlowProjectChange: (projectId: string) => void;
+  onNewProjectNameChange: (name: string) => void;
   onSourceProjectChange: (projectId: string) => void;
   onFormValuesChange: (form: Record<string, unknown>) => void;
   onPrdSourceChange: (value: DevelopmentPrdSourceValue) => void;
@@ -89,9 +108,15 @@ export function DevelopmentPanelMain({
         serverId={serverId}
         plugin={plugin}
         appDefinition={appDefinition}
+        projectMode={projectMode}
+        flowProjectId={flowProjectId}
+        flowProjectDisplay={flowProjectDisplay}
+        newProjectName={newProjectName}
         sourceProjectId={sourceProjectId}
         sourceProjectDisplay={sourceProjectDisplay}
         projectOptions={projectOptions}
+        sourceProjectOptions={sourceProjectOptions}
+        canCreateNewProject={canCreateNewProject}
         fixedFormValues={fixedFormValues}
         prdSource={prdSource}
         initialFormValues={editing ? editInitialValues : undefined}
@@ -99,6 +124,9 @@ export function DevelopmentPanelMain({
         contextError={contextError}
         canRenderForm={canRenderForm}
         saving={saving}
+        onProjectModeChange={onProjectModeChange}
+        onFlowProjectChange={onFlowProjectChange}
+        onNewProjectNameChange={onNewProjectNameChange}
         onSourceProjectChange={onSourceProjectChange}
         onFormValuesChange={editing ? onFormValuesChange : undefined}
         onPrdSourceChange={onPrdSourceChange}

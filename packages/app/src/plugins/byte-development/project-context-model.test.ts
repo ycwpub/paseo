@@ -6,6 +6,7 @@ describe("byte development project context", () => {
     expect(
       buildByteDevelopmentFixedFormValues({
         projectId: "project-1",
+        sourceProjectId: "project-source",
         repositoryPath: "/workspace/project-1",
         larkDocumentLinks: [
           "https://example.feishu.cn/wiki/architecture",
@@ -14,6 +15,7 @@ describe("byte development project context", () => {
       }),
     ).toEqual({
       projectId: "project-1",
+      sourceProjectId: "project-source",
       repository_path: "/workspace/project-1",
       lark_document_links: [
         "https://example.feishu.cn/wiki/architecture",

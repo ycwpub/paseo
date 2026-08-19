@@ -33,6 +33,7 @@ import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
+import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
 import { projectLarkDocumentLinksError } from "@/projects/lark-documents/model";
 import { ProjectLarkDocumentsEditor } from "@/projects/lark-documents/project-lark-documents-editor";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
@@ -110,6 +111,7 @@ export default function ProjectSettingsScreen({ serverId, projectId }: ProjectSe
     [projectId, projects, serverId],
   );
   const selectedHost = getProjectHostEntry(project, serverId, projectId);
+  const settingsTarget = resolveProjectSettingsTarget(selectedHost);
   const selectedSnapshot = useHostRuntimeSnapshot(serverId);
   const isHostGone =
     Boolean(serverId) &&
@@ -117,21 +119,18 @@ export default function ProjectSettingsScreen({ serverId, projectId }: ProjectSe
       selectedSnapshot?.connectionStatus === "error");
 
   const client = useHostRuntimeClient(serverId);
-  const canEdit =
-    selectedHost?.isOnline === true &&
-    selectedHost.serverId.trim().length > 0 &&
-    selectedHost.repoRoot.trim().length > 0;
 
-  if (!project || !selectedHost || !client || !canEdit) {
+  if (!project || settingsTarget.kind === "unavailable" || !client || isHostGone) {
     return <NoEditableTarget serverId={serverId} />;
   }
 
   return (
     <ProjectSettingsBody
       project={project}
-      selectedHost={selectedHost}
+      selectedHost={settingsTarget.host}
       client={client}
       isHostGone={isHostGone}
+      hasProjectDirectory={settingsTarget.kind === "directory-backed"}
     />
   );
 }
@@ -182,6 +181,7 @@ interface ProjectSettingsBodyProps {
   selectedHost: ProjectHostEntry;
   client: DaemonClient;
   isHostGone: boolean;
+  hasProjectDirectory: boolean;
 }
 
 function ProjectSettingsBody({
@@ -189,6 +189,7 @@ function ProjectSettingsBody({
   selectedHost,
   client,
   isHostGone,
+  hasProjectDirectory,
 }: ProjectSettingsBodyProps) {
   const { t } = useTranslation();
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
@@ -206,6 +207,7 @@ function ProjectSettingsBody({
   const readQuery = useQuery({
     queryKey,
     queryFn: () => client.readProjectConfig(selectedHost.repoRoot),
+    enabled: hasProjectDirectory,
     retry: false,
   });
 
@@ -299,17 +301,35 @@ function ProjectSettingsBody({
 
       <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
 
-      {renderContent({
-        readQuery,
-        loadedConfig,
-        loadedRevision,
-        readError,
-        selectedHost,
-        queryKey,
-        client,
-        onReload: handleReload,
-        isHostGone,
-      })}
+      {hasProjectDirectory ? (
+        renderContent({
+          readQuery,
+          loadedConfig,
+          loadedRevision,
+          readError,
+          selectedHost,
+          queryKey,
+          client,
+          onReload: handleReload,
+          isHostGone,
+        })
+      ) : (
+        <DirectorylessProjectNotice />
+      )}
+    </View>
+  );
+}
+
+function DirectorylessProjectNotice() {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.noticeBlock}>
+      <Alert
+        testID="directoryless-project-notice"
+        variant="info"
+        title={t("settings.project.directoryless.title")}
+        description={t("settings.project.directoryless.description")}
+      />
     </View>
   );
 }
@@ -1642,6 +1662,9 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[6],
   },
   errorBlock: {
+    marginTop: theme.spacing[2],
+  },
+  noticeBlock: {
     marginTop: theme.spacing[2],
   },
   emptyScripts: {

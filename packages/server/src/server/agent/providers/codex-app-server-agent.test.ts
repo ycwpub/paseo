@@ -63,6 +63,7 @@ interface CodexSessionTestAccess {
   collaborationModes: CollaborationModeRecord[];
   config: AgentSessionConfig;
   client: CodexClientLike | null;
+  resolvedSandboxPolicy: Record<string, unknown> | null;
 }
 
 interface CodexClientLike {
@@ -699,6 +700,76 @@ describe("Codex app-server provider", () => {
         compact_prompt: "Use the workspace-specific compact prompt.",
       },
     });
+  });
+
+  test("adds every other Project repository to Codex writable roots", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession({
+      thinkingOptionId: "medium",
+      writableProjectDirectories: ["/tmp/codex-question-test", "/tmp/settle-charge-facade"],
+      providerOptions: {
+        sandbox_workspace_write: {
+          writable_roots: ["/tmp/shared-cache"],
+        },
+      },
+    });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "multi-repository-thread" } };
+        }
+        if (method === "turn/start") {
+          return {};
+        }
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("update both repositories");
+
+    const startCall = requests.find((request) => request.method === "thread/start");
+    expect(startCall?.params).toMatchObject({
+      config: {
+        sandbox_workspace_write: {
+          writable_roots: ["/tmp/shared-cache", "/tmp/settle-charge-facade"],
+        },
+      },
+    });
+  });
+
+  test("adds Project repositories to an already resolved Codex workspace-write policy", async () => {
+    const session = createSession({
+      modeId: "auto",
+      writableProjectDirectories: ["/tmp/codex-question-test", "/tmp/settle-charge-facade"],
+    });
+    const request = vi.fn(async (method: string) => {
+      if (method === "thread/loaded/list") return { data: ["test-thread"] };
+      if (method === "turn/start") return {};
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.activeForegroundTurnId = null;
+    session.client = createStub<CodexClientLike>({ request });
+    asInternals(session).resolvedSandboxPolicy = {
+      type: "workspaceWrite",
+      networkAccess: false,
+      writableRoots: ["/tmp/shared-cache"],
+    };
+
+    await session.startTurn("update the second repository");
+
+    const turnStartCall = request.mock.calls.find(([method]) => method === "turn/start");
+    expect(turnStartCall?.[1]).toEqual(
+      expect.objectContaining({
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          networkAccess: false,
+          writableRoots: ["/tmp/shared-cache", "/tmp/settle-charge-facade"],
+        },
+      }),
+    );
   });
 
   test("disposes an unresponsive app-server child with SIGKILL", async () => {

@@ -235,7 +235,9 @@ test("mcp create injects Project context for child agents in an existing workspa
     join(root, "paseo.json"),
     JSON.stringify({
       project: {
+        directoryMode: "multiple",
         directories: {
+          project: [".", "../facade"],
           knowledge: ["docs/rules"],
           indexSkill: [".paseo/index"],
           workspaceData: [".paseo/workspaces"],
@@ -293,6 +295,7 @@ test("mcp create injects Project context for child agents in an existing workspa
 
     expect(createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
+        writableProjectDirectories: [root, join(root, "../facade")],
         systemPrompt: expect.stringContaining("Knowledge directories (mandatory instructions)"),
       }),
       undefined,

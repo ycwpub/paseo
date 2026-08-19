@@ -46,21 +46,21 @@ export function getIslandDocument(): string {
         overflow: hidden;
         color: #fff;
         background: #000;
-        border-radius: 0 0 20px 20px;
-        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+        border-radius: 0 0 18px 18px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
       }
 
       .island.expanded {
-        border-radius: 0 0 26px 26px;
-        box-shadow: 0 20px 54px rgba(0, 0, 0, 0.46);
+        border-radius: 0 0 20px 20px;
+        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
       }
 
       .summary {
         width: 100%;
         height: 100%;
-        padding: 0 18px;
+        padding: 0 16px;
         display: grid;
-        grid-template-columns: 54px minmax(120px, 1fr) 54px;
+        grid-template-columns: 44px minmax(120px, 1fr) 44px;
         align-items: center;
         border: 0;
         color: inherit;
@@ -73,13 +73,13 @@ export function getIslandDocument(): string {
       }
 
       .brand-icon {
-        width: 12px;
-        height: 12px;
+        width: 16px;
+        height: 16px;
         display: grid;
         place-items: center;
         color: var(--accent);
-        opacity: 0.82;
-        filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 24%, transparent));
+        opacity: 0.94;
+        filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 32%, transparent));
       }
 
       .brand-icon svg {
@@ -115,7 +115,7 @@ export function getIslandDocument(): string {
         min-height: 0;
         display: none;
         flex-direction: column;
-        padding: 16px 24px 22px;
+        padding: 10px 14px 14px;
       }
 
       .expanded .details {
@@ -135,8 +135,8 @@ export function getIslandDocument(): string {
       }
 
       .details-header {
-        min-height: 68px;
-        padding: 0 12px 14px;
+        min-height: 52px;
+        padding: 0 6px 10px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -152,8 +152,8 @@ export function getIslandDocument(): string {
       }
 
       .details-brand .brand-icon {
-        width: 12px;
-        height: 12px;
+        width: 16px;
+        height: 16px;
         flex: 0 0 auto;
       }
 
@@ -196,10 +196,10 @@ export function getIslandDocument(): string {
 
       .list {
         min-height: 0;
-        padding: 12px 2px 0;
+        padding: 8px 2px 0;
         display: grid;
         align-content: start;
-        gap: 3px;
+        gap: 2px;
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
@@ -208,10 +208,10 @@ export function getIslandDocument(): string {
 
       .item {
         width: 100%;
-        min-height: 78px;
-        padding: 12px;
+        min-height: 68px;
+        padding: 9px 10px;
         display: grid;
-        grid-template-columns: 14px minmax(0, 1fr) auto;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
         align-items: center;
         gap: 8px;
         border: 0;
@@ -228,8 +228,8 @@ export function getIslandDocument(): string {
 
       .item-icon {
         position: relative;
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
         display: grid;
         place-items: center;
         border-radius: 5px;
@@ -274,6 +274,7 @@ export function getIslandDocument(): string {
       }
 
       .item-title {
+        display: block;
         overflow: hidden;
         color: rgba(255, 255, 255, 0.94);
         font-size: 13px;
@@ -284,6 +285,7 @@ export function getIslandDocument(): string {
       }
 
       .item-body {
+        display: block;
         overflow: hidden;
         margin-top: 3px;
         color: rgba(255, 255, 255, 0.5);
@@ -405,7 +407,6 @@ export function getIslandDocument(): string {
         const list = document.getElementById("list");
         let state = { expanded: false, items: [] };
         let expandTimer = null;
-        let collapseTimer = null;
 
         const kindLabels = {
           running: "进行中",
@@ -484,9 +485,7 @@ export function getIslandDocument(): string {
 
         const cancelTimers = () => {
           if (expandTimer !== null) window.clearTimeout(expandTimer);
-          if (collapseTimer !== null) window.clearTimeout(collapseTimer);
           expandTimer = null;
-          collapseTimer = null;
         };
 
         summary.addEventListener("click", () => {
@@ -501,13 +500,6 @@ export function getIslandDocument(): string {
               bridge.setExpanded(true);
             }, 80);
           }
-        });
-        document.body.addEventListener("mouseleave", () => {
-          cancelTimers();
-          collapseTimer = window.setTimeout(() => {
-            collapseTimer = null;
-            bridge.setExpanded(false);
-          }, 320);
         });
         document.addEventListener("keydown", (event) => {
           if (event.key === "Escape") bridge.setExpanded(false);

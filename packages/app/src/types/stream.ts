@@ -705,6 +705,7 @@ export interface ThoughtItem {
   kind: "thought";
   id: string;
   timelineCursor?: TimelinePosition;
+  source?: "thinking" | "text";
   text: string;
   timestamp: Date;
   startedAt?: Date;
@@ -977,6 +978,7 @@ function appendThought(
   text: string,
   timestamp: Date,
   timelineCursor?: TimelinePosition,
+  source?: "thinking" | "text",
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -984,7 +986,7 @@ function appendThought(
   }
 
   const last = state[state.length - 1];
-  if (last && last.kind === "thought") {
+  if (last && last.kind === "thought" && last.source === source) {
     const updated: ThoughtItem = {
       ...last,
       ...(timelineCursor ? { timelineCursor } : {}),
@@ -1005,6 +1007,7 @@ function appendThought(
     kind: "thought",
     id: createUniqueTimelineId(state, "thought", idSeed, timestamp),
     ...(timelineCursor ? { timelineCursor } : {}),
+    ...(source ? { source } : {}),
     text: chunk,
     timestamp,
     startedAt: timestamp,
@@ -1410,7 +1413,7 @@ function reduceTimelineEvent(
         timestamp,
       );
     case "reasoning":
-      return appendThought(state, item.text, timestamp, timelineCursor);
+      return appendThought(state, item.text, timestamp, timelineCursor, item.source);
     case "tool_call":
       return finalizeActiveThoughts(
         reduceTimelineToolCall(state, event, item, timestamp, timelineCursor),

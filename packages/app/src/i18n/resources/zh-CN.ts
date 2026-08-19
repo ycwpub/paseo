@@ -2548,7 +2548,7 @@ export const zhCN: TranslationResources = {
       islandTestTitle: "Paseo 灵动岛",
       islandTestBody: "灵动岛已正常显示",
       islandTestSuccess: "灵动岛已显示",
-      islandTestSuccessHint: "提醒已展示在当前屏幕可用区域的顶部。",
+      islandTestSuccessHint: "提醒已展示在当前屏幕顶部的刘海或菜单栏区域。",
       islandTestFailed: "灵动岛未能显示",
       islandTestFailedHint: "请确认灵动岛已开启，并查看桌面日志中的 [island] 记录。",
       test: "测试通知",

@@ -32,7 +32,7 @@ export function getIslandDocument(): string {
       }
 
       body {
-        padding: 8px;
+        padding: 0 8px 8px;
       }
 
       button {

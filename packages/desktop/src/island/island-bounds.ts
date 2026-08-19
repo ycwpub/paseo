@@ -13,8 +13,9 @@ export interface IslandSize {
 }
 
 /**
- * Keep the island inside the usable display area. On macOS, display.bounds.y is
- * inside the menu bar/notch region, while workArea.y starts immediately below it.
+ * Anchor the island to the physical top edge of the display. On macOS,
+ * workArea.y starts below the menu bar/notch, so using it would make the island
+ * look like an ordinary floating notification instead of part of the notch.
  */
 export function resolveIslandBounds(display: IslandDisplayGeometry, size: IslandSize): Rectangle {
   const availableWidth = Math.max(1, display.workArea.width - ISLAND_EDGE_GAP * 2);
@@ -26,7 +27,7 @@ export function resolveIslandBounds(display: IslandDisplayGeometry, size: Island
 
   return {
     x: Math.round(Math.min(Math.max(centeredX, minimumX), maximumX)),
-    y: display.workArea.y + ISLAND_EDGE_GAP,
+    y: display.bounds.y,
     width,
     height,
   };

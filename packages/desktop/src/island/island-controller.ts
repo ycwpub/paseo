@@ -8,12 +8,13 @@ import { resolveIslandBounds } from "./island-bounds.js";
 import {
   IslandNotificationQueue,
   parseIslandNotification,
+  shouldAutoDismissIslandNotification,
   type IslandNotification,
   type IslandNotificationInput,
 } from "./island-model.js";
 import { getIslandDocument } from "./island-view.js";
 
-const COMPACT_BOUNDS = { width: 420, height: 72 };
+const COMPACT_BOUNDS = { width: 420, height: 64 };
 const EXPANDED_MIN_HEIGHT = 142;
 const EXPANDED_ITEM_HEIGHT = 47;
 const EXPANDED_MAX_HEIGHT = 274;
@@ -287,6 +288,9 @@ class IslandController {
 
   #scheduleDismiss(notification: IslandNotification): void {
     this.#clearTimer(notification.id);
+    if (!shouldAutoDismissIslandNotification(notification.kind)) {
+      return;
+    }
     const timer = setTimeout(() => {
       this.#timers.delete(notification.id);
       this.#sources.delete(notification.id);

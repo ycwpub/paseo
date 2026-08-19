@@ -20,6 +20,10 @@ export interface IslandNotification {
   updatedAt: number;
 }
 
+export function shouldAutoDismissIslandNotification(kind: IslandNotificationKind): boolean {
+  return kind !== "running";
+}
+
 const KIND_PRIORITY: Record<IslandNotificationKind, number> = {
   permission: 5,
   error: 4,

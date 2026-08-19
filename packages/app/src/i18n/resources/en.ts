@@ -2612,7 +2612,8 @@ export const en = {
       islandTestTitle: "Paseo Dynamic Island",
       islandTestBody: "Dynamic Island is displaying correctly",
       islandTestSuccess: "Dynamic Island displayed",
-      islandTestSuccessHint: "The reminder is visible at the top of the current screen work area.",
+      islandTestSuccessHint:
+        "The reminder is visible in the notch or menu bar area at the top of the current screen.",
       islandTestFailed: "Dynamic Island could not be displayed",
       islandTestFailedHint: "Make sure it is enabled and inspect [island] entries in desktop logs.",
       test: "Test notification",

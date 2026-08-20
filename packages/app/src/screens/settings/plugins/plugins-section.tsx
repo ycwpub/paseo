@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch";
 import { usePlugins } from "@/hooks/use-plugins";
 import { ByteDevelopmentModal } from "@/plugins/byte-development/byte-development-modal";
 import { DEVELOPMENT_PLUGIN_ID } from "@/plugins/byte-development/flow-model";
+import { HttpServiceModal } from "@/plugins/workflow-http-service/http-service-modal";
+import { HTTP_SERVICE_PLUGIN_ID } from "@/plugins/workflow-http-service/http-service-panel";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -366,6 +368,36 @@ export function PluginsSection({ serverId }: { serverId: string }) {
       </View>
     );
   }
+  let appModal = (
+    <PluginAppModal
+      visible={selectedApp !== null}
+      serverId={serverId}
+      plugin={selectedApp?.plugin ?? null}
+      appDefinition={selectedApp?.app ?? null}
+      onClose={handleCloseApp}
+    />
+  );
+  if (selectedApp?.plugin.pluginId === DEVELOPMENT_PLUGIN_ID) {
+    appModal = (
+      <ByteDevelopmentModal
+        visible
+        serverId={serverId}
+        plugin={selectedApp.plugin}
+        appDefinition={selectedApp.app}
+        onClose={handleCloseApp}
+      />
+    );
+  } else if (selectedApp?.plugin.pluginId === HTTP_SERVICE_PLUGIN_ID) {
+    appModal = (
+      <HttpServiceModal
+        visible
+        serverId={serverId}
+        plugin={selectedApp.plugin}
+        appDefinition={selectedApp.app}
+        onClose={handleCloseApp}
+      />
+    );
+  }
   return (
     <View testID="host-page-plugins">
       <SettingsSection title="Plugins">
@@ -475,23 +507,7 @@ export function PluginsSection({ serverId }: { serverId: string }) {
         </View>
         <View style={settingsStyles.card}>{availableContent}</View>
       </SettingsSection>
-      {selectedApp?.plugin.pluginId === DEVELOPMENT_PLUGIN_ID ? (
-        <ByteDevelopmentModal
-          visible
-          serverId={serverId}
-          plugin={selectedApp.plugin}
-          appDefinition={selectedApp.app}
-          onClose={handleCloseApp}
-        />
-      ) : (
-        <PluginAppModal
-          visible={selectedApp !== null}
-          serverId={serverId}
-          plugin={selectedApp?.plugin ?? null}
-          appDefinition={selectedApp?.app ?? null}
-          onClose={handleCloseApp}
-        />
-      )}
+      {appModal}
     </View>
   );
 }

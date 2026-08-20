@@ -570,6 +570,11 @@ export interface AgentSessionConfig {
    */
   writableProjectDirectories?: string[];
   /**
+   * Project-level reference roots that agents may inspect but must never modify.
+   * Providers adapt these roots to native read-only filesystem controls.
+   */
+  readOnlyProjectDirectories?: string[];
+  /**
    * Provider-agnostic system/developer instruction string.
    * Mapped by each provider to its native instruction field.
    */

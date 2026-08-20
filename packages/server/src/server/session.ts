@@ -166,6 +166,7 @@ import { WorkspaceFilesSession } from "./session/files/workspace-files-session.j
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { initializeDirectorylessProjectConfig } from "./project/project-config-storage.js";
+import { resolveProjectSourceDirectory } from "./project/project-source-directory.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
@@ -1149,6 +1150,7 @@ export class Session {
       listProviderSubagentActivity: async () => this.agentManager.listProviderSubagentActivity(),
       listTerminalActivityContributions: () => this.listTerminalActivityContributions(),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
+      buildProjectDescriptor: (project) => this.buildProjectDescriptor(project),
       buildWorkspaceDescriptor: (input) => this.buildWorkspaceDescriptor(input),
     });
 
@@ -5099,6 +5101,10 @@ export class Session {
   private buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): WorkspaceProjectDescriptorPayload {
+    const sourceDirectory = resolveProjectSourceDirectory({
+      paseoHome: this.paseoHome,
+      project,
+    });
     return {
       projectId: project.projectId,
       ...(project.projectKey ? { projectKey: project.projectKey } : {}),
@@ -5106,6 +5112,7 @@ export class Session {
       projectCustomName: project.customName ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
       projectRootPath: projectRootPathForWire(project),
+      projectSourceDirectory: sourceDirectory.path,
       ...(project.rootPath === null ? { projectDirectoryless: true } : {}),
       projectKind: project.kind,
     };
@@ -5741,6 +5748,18 @@ export class Session {
     }
 
     const cwd = expandTilde(request.source.path);
+    if (request.source.projectId) {
+      const project = await this.projectRegistry.get(request.source.projectId);
+      if (project && !project.archivedAt) {
+        const sourceDirectory = resolveProjectSourceDirectory({
+          paseoHome: this.paseoHome,
+          project,
+        });
+        if (sourceDirectory.kind === "managed" && resolve(sourceDirectory.path) === resolve(cwd)) {
+          await mkdir(sourceDirectory.path, { recursive: true });
+        }
+      }
+    }
     const directoryExists = await this.filesystem.isDirectory(cwd).catch(() => false);
     if (!directoryExists) {
       this.emit({
@@ -6092,6 +6111,13 @@ export class Session {
       if (!initialized.ok) {
         await this.projectRegistry.remove(project.projectId);
         throw new Error(`Failed to initialize Project configuration: ${initialized.error.code}`);
+      }
+      const sourceDirectory = resolveProjectSourceDirectory({
+        paseoHome: this.paseoHome,
+        project,
+      });
+      if (sourceDirectory.kind === "managed") {
+        await mkdir(sourceDirectory.path, { recursive: true });
       }
       this.sessionLogger.info(
         { projectId: project.projectId, projectName: name },

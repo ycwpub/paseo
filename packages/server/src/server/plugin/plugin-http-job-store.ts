@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { PluginHttpJobSchema, type PluginHttpJob } from "@getpaseo/protocol/messages";
+import {
+  PluginHttpJobSchema,
+  type PluginHttpJob,
+  type PluginHttpJobStatus,
+} from "@getpaseo/protocol/messages";
 import {
   ensurePrivateDirectory,
   ensurePrivateFile,
@@ -22,6 +26,36 @@ function readProjectId(input: unknown): string | null {
 
 function activityTimestamp(job: PluginHttpJob): string {
   return job.endedAt ?? job.startedAt ?? job.createdAt;
+}
+
+function matchesJobListOptions(
+  job: PluginHttpJob,
+  options: {
+    pluginId?: string;
+    serviceName?: string;
+    projectId?: string;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
+  },
+): boolean {
+  if (options.pluginId && job.pluginId !== options.pluginId) return false;
+  if (options.serviceName && job.serviceName !== options.serviceName) return false;
+  if (
+    options.projectId &&
+    job.projectId !== options.projectId &&
+    readProjectId(job.input) !== options.projectId
+  ) {
+    return false;
+  }
+  if (options.statuses?.length && !options.statuses.includes(job.status)) return false;
+  if (options.listenerId && job.listenerId !== options.listenerId) return false;
+  if (options.routeId && job.routeId !== options.routeId) return false;
+  if (options.createdBefore && job.createdAt >= options.createdBefore) return false;
+  if (options.createdAfter && job.createdAt <= options.createdAfter) return false;
+  return true;
 }
 
 export class PluginHttpJobStore {
@@ -55,6 +89,9 @@ export class PluginHttpJobStore {
   async create(input: {
     pluginId: string;
     serviceName: string;
+    projectId?: string;
+    listenerId?: string;
+    routeId?: string;
     input: unknown;
     createdAt: string;
   }): Promise<PluginHttpJob> {
@@ -62,6 +99,9 @@ export class PluginHttpJobStore {
       id: randomUUID(),
       pluginId: input.pluginId,
       serviceName: input.serviceName,
+      projectId: input.projectId,
+      listenerId: input.listenerId,
+      routeId: input.routeId,
       status: "queued",
       input: input.input,
       result: null,
@@ -95,13 +135,16 @@ export class PluginHttpJobStore {
     serviceName?: string;
     projectId?: string;
     limit?: number;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
   }): PluginHttpJob[] {
     ensurePrivateDirectory(this.directory);
     const jobs: PluginHttpJob[] = [];
     for (const job of this.jobs.values()) {
-      if (options.pluginId && job.pluginId !== options.pluginId) continue;
-      if (options.serviceName && job.serviceName !== options.serviceName) continue;
-      if (options.projectId && readProjectId(job.input) !== options.projectId) continue;
+      if (!matchesJobListOptions(job, options)) continue;
       jobs.push(job);
     }
     jobs.sort((left, right) => activityTimestamp(right).localeCompare(activityTimestamp(left)));
@@ -131,6 +174,14 @@ export class PluginHttpJobStore {
       this.jobs.delete(id);
       return Promise.resolve(true);
     });
+  }
+
+  async deleteMany(ids: string[]): Promise<string[]> {
+    const deleted: string[] = [];
+    for (const id of new Set(ids)) {
+      if (await this.delete(id)) deleted.push(id);
+    }
+    return deleted;
   }
 
   private filePath(id: string): string | null {

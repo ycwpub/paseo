@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
+import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { settingsStyles } from "@/styles/settings";
 import {
@@ -23,6 +24,10 @@ import {
   resolvePluginAppComponentSlot,
   type PluginAppComponentSlots,
 } from "./plugin-app-component-slot";
+import {
+  PluginProjectBoundary,
+  type PluginProjectContext,
+} from "@/plugins/project/plugin-project-boundary";
 
 const EMPTY_FORM_VALUES: Record<string, unknown> = {};
 const EMPTY_HIDDEN_FIELD_IDS: readonly string[] = [];
@@ -348,12 +353,14 @@ function usePluginAppController({
   serverId,
   plugin,
   appDefinition,
+  projectId,
   fixedFormValues = EMPTY_FORM_VALUES,
   initialFormValues = EMPTY_FORM_VALUES,
   prepareSubmission,
   onFormValuesChange,
   onJobSubmitted,
 }: Omit<PluginAppModalProps, "onClose"> & {
+  projectId: string;
   fixedFormValues?: Record<string, unknown>;
   initialFormValues?: Record<string, unknown>;
   prepareSubmission?: (
@@ -389,7 +396,7 @@ function usePluginAppController({
     setApp(null);
     setSubmittedJob(null);
     void client
-      .getPluginApp(plugin.pluginId, appDefinition.id)
+      .getPluginApp(plugin.pluginId, appDefinition.id, projectId)
       .then((result) => {
         if (cancelled) return undefined;
         if (result.error || !result.app) throw new Error(result.error ?? "Plugin app not found");
@@ -420,6 +427,7 @@ function usePluginAppController({
     initialFormValues,
     onFormValuesChange,
     plugin?.pluginId,
+    projectId,
     visible,
   ]);
 
@@ -428,7 +436,7 @@ function usePluginAppController({
     setGenerating(true);
     setError(null);
     void client
-      .generatePluginApp(plugin.pluginId, appDefinition.id, prompt.trim())
+      .generatePluginApp(plugin.pluginId, appDefinition.id, projectId, prompt.trim())
       .then((result) => {
         if (result.error || !result.app) throw new Error(result.error ?? "Generation failed");
         setApp(result.app);
@@ -453,6 +461,7 @@ function usePluginAppController({
     initialFormValues,
     onFormValuesChange,
     plugin?.pluginId,
+    projectId,
     prompt,
   ]);
 
@@ -483,6 +492,7 @@ function usePluginAppController({
           client.submitPluginAppAction({
             pluginId: plugin.pluginId!,
             appId: appDefinition.id,
+            projectId,
             componentId,
             form: submissionForm,
           }),
@@ -507,6 +517,7 @@ function usePluginAppController({
       onJobSubmitted,
       plugin?.pluginId,
       prepareSubmission,
+      projectId,
     ],
   );
 
@@ -743,6 +754,7 @@ export function PluginAppSurface({
   serverId,
   plugin,
   appDefinition,
+  projectId,
   fixedFormValues,
   initialFormValues,
   hiddenFieldIds,
@@ -757,6 +769,7 @@ export function PluginAppSurface({
   serverId: string;
   plugin: PluginSummary;
   appDefinition: PluginAppDefinition;
+  projectId: string;
   fixedFormValues?: Record<string, unknown>;
   initialFormValues?: Record<string, unknown>;
   hiddenFieldIds?: readonly string[];
@@ -769,17 +782,28 @@ export function PluginAppSurface({
   onJobSubmitted?: (job: PluginHttpJob) => void;
   previewTitle?: string;
 }) {
+  const supportsProjectScopedApps = useHostFeature(serverId, "pluginProjectScopedApps");
   const controller = usePluginAppController({
-    visible: active,
+    visible: active && supportsProjectScopedApps,
     serverId,
     plugin,
     appDefinition,
+    projectId,
     fixedFormValues,
     initialFormValues,
     prepareSubmission,
     onFormValuesChange,
     onJobSubmitted,
   });
+  if (!supportsProjectScopedApps) {
+    return (
+      <View style={styles.previewCard}>
+        <Text style={styles.errorText}>
+          当前 Host 不支持以 Project 为核心的插件。请更新并重启 daemon。
+        </Text>
+      </View>
+    );
+  }
   return (
     <PluginAppContent
       controller={controller}
@@ -791,6 +815,80 @@ export function PluginAppSurface({
   );
 }
 
+function mergeUniqueFieldIds(...groups: readonly (readonly string[] | undefined)[]): string[] {
+  return [...new Set(groups.flatMap((group) => group ?? []))];
+}
+
+function ProjectBoundPluginAppSurface({
+  active,
+  serverId,
+  plugin,
+  appDefinition,
+  context,
+  fixedFormValues,
+  hiddenFieldIds,
+}: {
+  active: boolean;
+  serverId: string;
+  plugin: PluginSummary;
+  appDefinition: PluginAppDefinition;
+  context: PluginProjectContext;
+  fixedFormValues?: Record<string, unknown>;
+  hiddenFieldIds?: readonly string[];
+}) {
+  const mergedFixedFormValues = useMemo(
+    () => ({ ...fixedFormValues, ...context.fixedFormValues }),
+    [context.fixedFormValues, fixedFormValues],
+  );
+  const mergedHiddenFieldIds = useMemo(
+    () => mergeUniqueFieldIds(context.hiddenFieldIds, hiddenFieldIds),
+    [context.hiddenFieldIds, hiddenFieldIds],
+  );
+  return (
+    <PluginAppSurface
+      active={active}
+      serverId={serverId}
+      plugin={plugin}
+      appDefinition={appDefinition}
+      projectId={context.projectId}
+      fixedFormValues={mergedFixedFormValues}
+      hiddenFieldIds={mergedHiddenFieldIds}
+    />
+  );
+}
+
+export function ProjectScopedPluginAppSurface({
+  active,
+  serverId,
+  plugin,
+  appDefinition,
+  fixedFormValues,
+  hiddenFieldIds,
+}: {
+  active: boolean;
+  serverId: string;
+  plugin: PluginSummary;
+  appDefinition: PluginAppDefinition;
+  fixedFormValues?: Record<string, unknown>;
+  hiddenFieldIds?: readonly string[];
+}) {
+  return (
+    <PluginProjectBoundary active={active} serverId={serverId} appDefinition={appDefinition}>
+      {(context) => (
+        <ProjectBoundPluginAppSurface
+          active={active}
+          serverId={serverId}
+          plugin={plugin}
+          appDefinition={appDefinition}
+          context={context}
+          fixedFormValues={fixedFormValues}
+          hiddenFieldIds={hiddenFieldIds}
+        />
+      )}
+    </PluginProjectBoundary>
+  );
+}
+
 export function PluginAppModal({
   visible,
   serverId,
@@ -798,15 +896,12 @@ export function PluginAppModal({
   appDefinition,
   onClose,
 }: PluginAppModalProps) {
-  const controller = usePluginAppController({ visible, serverId, plugin, appDefinition });
-  const { app } = controller;
-
   const header = useMemo(
     () => ({
-      title: app?.document?.title ?? appDefinition?.id ?? "Plugin app",
-      subtitle: plugin ? `${plugin.displayName} · Agent-generated interface` : undefined,
+      title: appDefinition?.initialDocument?.title ?? appDefinition?.id ?? "Plugin app",
+      subtitle: plugin ? `${plugin.displayName} · Project 插件` : undefined,
     }),
-    [app?.document?.title, appDefinition?.id, plugin],
+    [appDefinition?.id, appDefinition?.initialDocument?.title, plugin],
   );
 
   return (
@@ -818,7 +913,19 @@ export function PluginAppModal({
       scrollable
       testID="plugin-app-modal"
     >
-      <PluginAppContent controller={controller} />
+      {plugin && appDefinition ? (
+        <PluginProjectBoundary active={visible} serverId={serverId} appDefinition={appDefinition}>
+          {(context) => (
+            <ProjectBoundPluginAppSurface
+              active={visible}
+              serverId={serverId}
+              plugin={plugin}
+              appDefinition={appDefinition}
+              context={context}
+            />
+          )}
+        </PluginProjectBoundary>
+      ) : null}
     </AdaptiveModalSheet>
   );
 }

@@ -49,6 +49,7 @@ describe("configToDraft", () => {
     expect(draft.projectDirectories.project).toEqual([
       expect.objectContaining({ path: "{{workspaceDirectory}}", enabled: true }),
     ]);
+    expect(draft.projectDirectories.reference).toEqual([]);
     expect(draft.projectDirectories.knowledge).toEqual([]);
     expect(draft.projectDirectories.workspaceData).toEqual([
       expect.objectContaining({
@@ -103,6 +104,7 @@ describe("configToDraft", () => {
       project: {
         directories: {
           project: [".", "../shared"],
+          reference: ["../legacy", "/opt/company/examples"],
           knowledge: ["docs/rules"],
           indexSkill: [".paseo/index"],
           workspaceData: [".paseo/workspaces"],
@@ -133,6 +135,12 @@ describe("configToDraft", () => {
     expect(
       draft.projectDirectories.knowledge.map(({ path, enabled }) => ({ path, enabled })),
     ).toEqual([{ path: "docs/rules", enabled: true }]);
+    expect(
+      draft.projectDirectories.reference.map(({ path, enabled }) => ({ path, enabled })),
+    ).toEqual([
+      { path: "../legacy", enabled: true },
+      { path: "/opt/company/examples", enabled: true },
+    ]);
     expect(draft.projectIndexAutoGenerate).toBe(true);
     expect(draft.projectIndexUpdateIntervalText).toBe("45");
     expect(draft.projectVariables[0]).toMatchObject({ name: "service", value: "billing" });
@@ -438,6 +446,7 @@ describe("applyDraftToConfig", () => {
     const draft = configToDraft({});
     draft.projectDirectories = {
       project: [directory("p1", "."), directory("p2", " packages/api ")],
+      reference: [directory("r1", "../legacy")],
       knowledge: [directory("k1", "docs/rules")],
       indexSkill: [directory("i1", ".paseo/index")],
       workspaceData: [directory("w1", ".paseo/workspaces")],
@@ -468,6 +477,7 @@ describe("applyDraftToConfig", () => {
           { path: ".", enabled: true },
           { path: "packages/api", enabled: true },
         ],
+        reference: [{ path: "../legacy", enabled: true }],
         knowledge: [{ path: "docs/rules", enabled: true }],
         indexSkill: [{ path: ".paseo/index", enabled: true }],
         workspaceData: [{ path: ".paseo/workspaces", enabled: true }],

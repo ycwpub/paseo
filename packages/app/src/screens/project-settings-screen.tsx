@@ -1033,6 +1033,13 @@ function ProjectResourcesEditor({
           onChange={onDirectoryChange}
         />
         <DirectoryListSection
+          title={t("settings.project.resources.reference.title")}
+          hint={t("settings.project.resources.reference.hint")}
+          directoryKey="reference"
+          values={draft.projectDirectories.reference}
+          onChange={onDirectoryChange}
+        />
+        <DirectoryListSection
           title={t("settings.project.resources.knowledge.title")}
           hint={t("settings.project.resources.knowledge.hint")}
           directoryKey="knowledge"

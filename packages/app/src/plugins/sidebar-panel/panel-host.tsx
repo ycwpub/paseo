@@ -7,9 +7,13 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { usePlugins } from "@/hooks/use-plugins";
 import { ByteDevelopmentPanel } from "@/plugins/byte-development/development-panel";
 import { DEVELOPMENT_PLUGIN_ID } from "@/plugins/byte-development/flow-model";
+import {
+  HTTP_SERVICE_PLUGIN_ID,
+  HttpServicePanel,
+} from "@/plugins/workflow-http-service/http-service-panel";
 import { PluginDetailsSurface } from "@/plugins/sidebar-panel/plugin-details";
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
-import { PluginAppSurface } from "@/screens/settings/plugins/plugin-app-modal";
+import { ProjectScopedPluginAppSurface } from "@/screens/settings/plugins/plugin-app-modal";
 import type { Theme } from "@/styles/theme";
 
 const ThemedX = withUnistyles(X);
@@ -63,8 +67,8 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
   if (plugins.isLoading) {
     content = <Text style={styles.stateText}>{t("common.loading")}</Text>;
   } else if (plugin?.enabled && appDefinition) {
-    content =
-      plugin.pluginId === DEVELOPMENT_PLUGIN_ID ? (
+    if (plugin.pluginId === DEVELOPMENT_PLUGIN_ID) {
+      content = (
         <ByteDevelopmentPanel
           active
           compact={compact}
@@ -72,14 +76,26 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
           plugin={plugin}
           appDefinition={appDefinition}
         />
-      ) : (
-        <PluginAppSurface
+      );
+    } else if (plugin.pluginId === HTTP_SERVICE_PLUGIN_ID) {
+      content = (
+        <HttpServicePanel
           active
           serverId={selection.serverId}
           plugin={plugin}
           appDefinition={appDefinition}
         />
       );
+    } else {
+      content = (
+        <ProjectScopedPluginAppSurface
+          active
+          serverId={selection.serverId}
+          plugin={plugin}
+          appDefinition={appDefinition}
+        />
+      );
+    }
   } else if (plugin) {
     content = <PluginDetailsSurface plugin={plugin} />;
   }

@@ -177,7 +177,7 @@ function directoryOptionSubtitle(option: ProjectPickerOption, shortPath: string)
 function progressText(page: AddProjectPage): string {
   if (page.kind === "github-location") return "Cloning project...";
   if (page.kind === "new-directory-name") return "Creating directory...";
-  if (page.kind === "directoryless-project-name") return "Creating project...";
+  if (page.kind === "directoryless-project-name") return "Creating multi-directory project...";
   return "Adding project...";
 }
 
@@ -225,7 +225,7 @@ function pageTitle(page: AddProjectPage): string {
     case "new-directory-name":
       return "Name directory";
     case "directoryless-project-name":
-      return "Name project";
+      return "Name multi-directory project";
   }
 }
 
@@ -245,7 +245,7 @@ function pagePlaceholder(page: AddProjectInputPage): string {
     case "new-directory-name":
       return "Directory name";
     case "directoryless-project-name":
-      return "Project name";
+      return "Multi-directory project name";
   }
 }
 
@@ -374,6 +374,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     openAddProjectFlow({
       hosts: availableHosts,
       ...(request.preferredHostId ? { preferredHostId: request.preferredHostId } : {}),
+      ...(request.initialDirectorylessProjectName !== undefined
+        ? { initialDirectorylessProjectName: request.initialDirectorylessProjectName }
+        : {}),
     }),
   );
   const page = currentAddProjectPage(state);
@@ -399,9 +402,14 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
 
   useEffect(() => {
     setState((current) =>
-      applyAvailableAddProjectHosts(current, availableHosts, request.preferredHostId),
+      applyAvailableAddProjectHosts(
+        current,
+        availableHosts,
+        request.preferredHostId,
+        request.initialDirectorylessProjectName,
+      ),
     );
-  }, [availableHosts, request.preferredHostId]);
+  }, [availableHosts, request.initialDirectorylessProjectName, request.preferredHostId]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -758,6 +766,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         upsertProject,
         setHasHydratedWorkspaces,
       });
+      request.onProjectCreated?.({
+        serverId: page.hostId,
+        project: payload.project,
+      });
       onClose();
     } catch {
       setState((current) =>
@@ -769,7 +781,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     } finally {
       submissionInFlightRef.current = false;
     }
-  }, [client, onClose, page, setHasHydratedWorkspaces, upsertProject]);
+  }, [client, onClose, page, request, setHasHydratedWorkspaces, upsertProject]);
 
   const createDirectory = useCallback(async () => {
     if (page.kind !== "new-directory-name" || !client) return;

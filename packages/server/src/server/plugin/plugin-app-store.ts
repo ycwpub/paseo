@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   PluginAppStateSchema,
@@ -25,13 +26,15 @@ export class PluginAppStore {
   get(
     pluginId: string,
     definition: PluginAppDefinition,
+    projectId: string,
     now = new Date().toISOString(),
   ): PluginAppState {
-    const filePath = this.filePath(pluginId, definition.id);
+    const filePath = this.filePath(pluginId, definition.id, projectId);
     if (!existsSync(filePath)) {
       return PluginAppStateSchema.parse({
         pluginId,
         appId: definition.id,
+        projectId,
         category: definition.category,
         document: definition.initialDocument ?? null,
         conversation: [],
@@ -41,26 +44,38 @@ export class PluginAppStore {
     }
     ensurePrivateFile(filePath);
     const state = PluginAppStateSchema.parse(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
-    if (state.pluginId !== pluginId || state.appId !== definition.id) {
-      throw new Error(`Stored plugin app identity does not match ${pluginId}/${definition.id}`);
+    if (
+      state.pluginId !== pluginId ||
+      state.appId !== definition.id ||
+      state.projectId !== projectId
+    ) {
+      throw new Error(
+        `Stored plugin app identity does not match ${pluginId}/${definition.id}/${projectId}`,
+      );
     }
     return state;
   }
 
   save(state: PluginAppState): PluginAppState {
     const parsed = PluginAppStateSchema.parse(state);
-    const filePath = this.filePath(parsed.pluginId, parsed.appId);
+    if (!parsed.projectId) {
+      throw new Error("Project-scoped plugin app state requires projectId");
+    }
+    const filePath = this.filePath(parsed.pluginId, parsed.appId, parsed.projectId);
     ensurePrivateDirectory(path.dirname(filePath));
     writePrivateFileAtomicSync(filePath, JSON.stringify(parsed, null, 2));
     return parsed;
   }
 
-  private filePath(pluginId: string, appId: string): string {
+  private filePath(pluginId: string, appId: string, projectId: string): string {
+    const projectKey = createHash("sha256").update(projectId).digest("hex");
     return path.join(
       this.root,
       safeSegment(pluginId, "plugin ID"),
       "apps",
       safeSegment(appId, "app ID"),
+      "projects",
+      projectKey,
       "state.json",
     );
   }

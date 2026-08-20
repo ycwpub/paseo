@@ -21,12 +21,12 @@ export function DevelopmentPanelMain({
   appDefinition,
   creating,
   editing,
+  flowTitle,
   selectedFlow,
   projectName,
   projectMode,
   flowProjectId,
   flowProjectDisplay,
-  newProjectName,
   sourceProjectId,
   sourceProjectDisplay,
   projectOptions,
@@ -41,9 +41,9 @@ export function DevelopmentPanelMain({
   saving,
   deleting,
   canMutate,
+  onFlowTitleChange,
   onProjectModeChange,
   onFlowProjectChange,
-  onNewProjectNameChange,
   onSourceProjectChange,
   onFormValuesChange,
   onPrdSourceChange,
@@ -53,6 +53,7 @@ export function DevelopmentPanelMain({
   onCancel,
   onCreate,
   onOpenProject,
+  onOpenProjectSettings,
   onEdit,
   onDelete,
 }: {
@@ -62,12 +63,12 @@ export function DevelopmentPanelMain({
   appDefinition: PluginAppDefinition;
   creating: boolean;
   editing: boolean;
+  flowTitle: string;
   selectedFlow: DevelopmentFlow | null;
   projectName: string;
   projectMode: DevelopmentProjectMode;
   flowProjectId: string | null;
   flowProjectDisplay: SelectFieldDisplay | null;
-  newProjectName: string;
   sourceProjectId: string | null;
   sourceProjectDisplay: SelectFieldDisplay | null;
   projectOptions: SelectFieldOption<string>[];
@@ -82,9 +83,9 @@ export function DevelopmentPanelMain({
   saving: boolean;
   deleting: boolean;
   canMutate: boolean;
+  onFlowTitleChange: (title: string) => void;
   onProjectModeChange: (mode: DevelopmentProjectMode) => void;
   onFlowProjectChange: (projectId: string) => void;
-  onNewProjectNameChange: (name: string) => void;
   onSourceProjectChange: (projectId: string) => void;
   onFormValuesChange: (form: Record<string, unknown>) => void;
   onPrdSourceChange: (value: DevelopmentPrdSourceValue) => void;
@@ -96,6 +97,7 @@ export function DevelopmentPanelMain({
   onCancel: () => void;
   onCreate: () => void;
   onOpenProject: () => void;
+  onOpenProjectSettings: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -108,10 +110,10 @@ export function DevelopmentPanelMain({
         serverId={serverId}
         plugin={plugin}
         appDefinition={appDefinition}
+        flowTitle={flowTitle}
         projectMode={projectMode}
         flowProjectId={flowProjectId}
         flowProjectDisplay={flowProjectDisplay}
-        newProjectName={newProjectName}
         sourceProjectId={sourceProjectId}
         sourceProjectDisplay={sourceProjectDisplay}
         projectOptions={projectOptions}
@@ -124,9 +126,9 @@ export function DevelopmentPanelMain({
         contextError={contextError}
         canRenderForm={canRenderForm}
         saving={saving}
+        onFlowTitleChange={onFlowTitleChange}
         onProjectModeChange={onProjectModeChange}
         onFlowProjectChange={onFlowProjectChange}
-        onNewProjectNameChange={onNewProjectNameChange}
         onSourceProjectChange={onSourceProjectChange}
         onFormValuesChange={editing ? onFormValuesChange : undefined}
         onPrdSourceChange={onPrdSourceChange}
@@ -146,6 +148,7 @@ export function DevelopmentPanelMain({
         canMutate={canMutate}
         deleting={deleting}
         onOpenProject={onOpenProject}
+        onOpenProjectSettings={onOpenProjectSettings}
         onEdit={onEdit}
         onDelete={onDelete}
       />

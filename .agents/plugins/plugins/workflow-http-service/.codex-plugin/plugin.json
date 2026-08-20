@@ -8,6 +8,7 @@
   "keywords": ["http", "api", "workflow", "automation", "async"],
   "skills": "./skills/",
   "httpServices": "./.http.json",
+  "apps": "./.app.json",
   "interface": {
     "displayName": "HTTP 服务",
     "shortDescription": "把 Workflow 发布为异步 HTTP 服务",

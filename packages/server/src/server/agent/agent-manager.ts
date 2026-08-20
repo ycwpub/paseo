@@ -47,6 +47,7 @@ import {
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import { inferWritableProjectDirectoriesFromSystemPrompt } from "./project-directory-access.js";
+import { inferReadOnlyProjectDirectoriesFromSystemPrompt } from "./project-reference-directory-access.js";
 import type { AgentOwner } from "./agent-owner.js";
 import {
   InMemoryAgentTimelineStore,
@@ -173,6 +174,12 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     inferWritableProjectDirectoriesFromSystemPrompt(record.config.systemPrompt);
   if (writableProjectDirectories.length > 0) {
     config.writableProjectDirectories = writableProjectDirectories;
+  }
+  const readOnlyProjectDirectories =
+    record.config.readOnlyProjectDirectories ??
+    inferReadOnlyProjectDirectoriesFromSystemPrompt(record.config.systemPrompt);
+  if (readOnlyProjectDirectories.length > 0) {
+    config.readOnlyProjectDirectories = readOnlyProjectDirectories;
   }
   if (record.config.providerOptions != null) {
     config.providerOptions = record.config.providerOptions;

@@ -1338,6 +1338,9 @@ export const ru: TranslationResources = {
       createWorktreeFailed: "Не удалось создать рабочее дерево.",
       composerStateRequired: "Требуется состояние композитора.",
       selectModel: "Выберите модель",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",

@@ -1,5 +1,8 @@
 import type {
+  PluginHttpJobStatus,
   PluginHttpJob,
+  PluginHttpListenerRuntime,
+  PluginHttpProjectConfig,
   PluginHttpServiceRuntimeStatus,
   PluginHttpServiceSummary,
 } from "@getpaseo/protocol/messages";
@@ -21,9 +24,30 @@ export interface PluginHttpServiceRuntime {
     serviceName?: string;
     projectId?: string;
     limit?: number;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
   }): PluginHttpJob[];
   updateJob(processId: string, input: unknown): Promise<PluginHttpJob | null>;
   deleteJob(processId: string): Promise<boolean>;
+  deleteJobs(processIds: string[]): Promise<{
+    deleted: string[];
+    skipped: Array<{ processId: string; reason: string }>;
+  }>;
+  getProjectConfig(
+    pluginId: string,
+    projectId: string,
+  ): {
+    config: PluginHttpProjectConfig;
+    runtimes: PluginHttpListenerRuntime[];
+  };
+  saveProjectConfig(config: Omit<PluginHttpProjectConfig, "updatedAt">): Promise<{
+    config: PluginHttpProjectConfig;
+    runtimes: PluginHttpListenerRuntime[];
+  }>;
+  cleanupProjectJobs(pluginId: string, projectId: string): Promise<string[]>;
   stop(): Promise<void>;
 }
 

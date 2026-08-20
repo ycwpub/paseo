@@ -69,12 +69,12 @@ import {
   formatProviderDiagnosticError,
 } from "../diagnostic-utils.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "../provider-runner.js";
-import { resolveAdditionalWritableDirectories } from "../../project-directory-access.js";
 import {
   applyClaudeToolPolicy,
   ClaudeProviderOptionsSchema,
   type ClaudeProviderOptions,
 } from "./options.js";
+import { applyClaudeProjectDirectoryAccess } from "./project-directory-access.js";
 import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
 import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./query.js";
 import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
@@ -966,6 +966,18 @@ function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<Age
   }
   if (typeof metadata.systemPrompt === "string") {
     result.systemPrompt = metadata.systemPrompt;
+  }
+  if (
+    Array.isArray(metadata.writableProjectDirectories) &&
+    metadata.writableProjectDirectories.every((entry) => typeof entry === "string")
+  ) {
+    result.writableProjectDirectories = metadata.writableProjectDirectories;
+  }
+  if (
+    Array.isArray(metadata.readOnlyProjectDirectories) &&
+    metadata.readOnlyProjectDirectories.every((entry) => typeof entry === "string")
+  ) {
+    result.readOnlyProjectDirectories = metadata.readOnlyProjectDirectories;
   }
   if (isMcpServersRecord(metadata.mcpServers)) {
     result.mcpServers = metadata.mcpServers;
@@ -3107,16 +3119,13 @@ class ClaudeAgentSession implements AgentSession {
   private async buildOptions(): Promise<ClaudeOptions> {
     const { thinking, effort, ultracode } = this.resolveThinkingConfig();
     const appendedSystemPrompt = this.buildAppendedSystemPrompt();
-    const additionalDirectories = resolveAdditionalWritableDirectories({
-      cwd: this.config.cwd,
-      projectDirectories: this.config.writableProjectDirectories,
-      configuredDirectories: this.config.providerOptions.additionalDirectories,
-    });
     const providerOptions = applyClaudeToolPolicy(
-      {
-        ...this.config.providerOptions,
-        ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
-      },
+      applyClaudeProjectDirectoryAccess({
+        options: this.config.providerOptions,
+        cwd: this.config.cwd,
+        writableDirectories: this.config.writableProjectDirectories,
+        readOnlyDirectories: this.config.readOnlyProjectDirectories,
+      }),
       this.config.toolPolicy,
     );
     const settingsOptions = this.buildSettingsOptions(providerOptions, { ultracode });

@@ -1345,6 +1345,9 @@ export const fr: TranslationResources = {
       createWorktreeFailed: "Échec de la création de l'arbre de travail",
       composerStateRequired: "L'état du compositeur est requis",
       selectModel: "Sélectionnez un modèle",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",

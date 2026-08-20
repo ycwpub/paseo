@@ -7,14 +7,22 @@ description: Orchestrate ByteDance development from PRD through technical design
 
 用于把一个明确需求推进为可审计的研发流程：
 
-`PRD → 技术方案 → Agent 指令 → 开发 → Review → 部署 → 测试 → 发布`
+`Project 设置 → PRD → 技术方案 → Agent 指令 → 开发 → Review → 部署 → 测试 → 发布`
+
+执行 PRD 分析前，先通过流程中的“Project 设置”节点补充代码目录、只读参考目录、
+关联飞书文档和其他 Project 上下文。Project 设置是配置入口，不属于 Workflow
+运行阶段，也不产生节点运行记录。
 
 ## 优先使用插件工作流
 
 1. 先用 Paseo `list_workflows` 查找“字节开发全流程”。
 2. 用 `inspect_workflow` 阅读输入 schema、副作用和审批字段。
 3. 使用 `run_workflow` 执行；需要后台执行时保留 run id 并轮询结果。
-4. 若用户在插件 App 中操作，使用“字节开发”应用填写同一组字段。
+4. 若用户在插件 App 中操作，先填写自定义研发流程名称，再选择已有 Project 或创建
+   新 Project，然后使用“字节开发”应用填写同一组字段。
+
+Project 是插件的核心上下文。研发页面、日常对话、Agent 指令、Workflow、流程历史和
+项目记忆都归属于 Project；代码目录和只读参考目录由 Project 设置统一维护。
 
 ## BITS 规则
 

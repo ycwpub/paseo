@@ -83,6 +83,7 @@ import {
   type HostProjectListItem,
 } from "@/projects/host-projects";
 import { useProjectIcons } from "@/projects/icons";
+import { resolveProjectSourceReadiness } from "@/screens/new-workspace/project-source-readiness";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { ComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -1673,12 +1674,11 @@ export function NewWorkspaceScreen({
   const projectIconTargets = useMemo(
     () =>
       projects.flatMap((project) => {
-        const iconWorkingDir = getHostProjectSourceDirectory(project, selectedServerId)?.trim();
-        if (!iconWorkingDir) {
+        const host = project.hosts.find((candidate) => candidate.serverId === selectedServerId);
+        const iconWorkingDir = host?.iconWorkingDir.trim();
+        if (!host || !iconWorkingDir) {
           return [];
         }
-        const host = project.hosts.find((candidate) => candidate.serverId === selectedServerId);
-        if (!host) return [];
         return [
           {
             projectViewKey: project.viewKey,
@@ -1982,24 +1982,27 @@ export function NewWorkspaceScreen({
       if (!selectedProject) {
         throw new Error("Choose a project");
       }
-      if (!selectedSourceDirectory) {
-        throw new Error("Choose a host for this project");
+      const sourceReadiness = resolveProjectSourceReadiness({
+        project: selectedProject,
+        serverId: selectedServerId,
+      });
+      if (sourceReadiness.kind === "missing_host") {
+        throw new Error(t("newWorkspace.errors.projectHostUnavailable"));
+      }
+      if (sourceReadiness.kind === "missing_directory") {
+        throw new Error(t("newWorkspace.errors.projectDirectoryUnavailable"));
       }
       const firstAgentContext = buildFirstAgentContext(input);
-      const hostProjectId = getHostProjectId(selectedProject, selectedServerId);
-      if (!hostProjectId) {
-        throw new Error("Project is not available on the selected host");
-      }
 
       return {
-        cwd: selectedSourceDirectory,
-        projectId: hostProjectId,
+        cwd: sourceReadiness.sourceDirectory,
+        projectId: sourceReadiness.projectId,
         worktreeSlug: createNameId(),
         ...(firstAgentContext ? { firstAgentContext } : {}),
         ...input.checkoutRequest,
       };
     },
-    [selectedProject, selectedServerId, selectedSourceDirectory],
+    [selectedProject, selectedServerId, t],
   );
 
   const ensureWorkspace = useCallback(
@@ -2015,9 +2018,17 @@ export function NewWorkspaceScreen({
       if (!selectedProject) {
         throw new Error("Choose a project");
       }
-      if (!selectedSourceDirectory) {
-        throw new Error("Choose a host for this project");
+      const sourceReadiness = resolveProjectSourceReadiness({
+        project: selectedProject,
+        serverId: selectedServerId,
+      });
+      if (sourceReadiness.kind === "missing_host") {
+        throw new Error(t("newWorkspace.errors.projectHostUnavailable"));
       }
+      if (sourceReadiness.kind === "missing_directory") {
+        throw new Error(t("newWorkspace.errors.projectDirectoryUnavailable"));
+      }
+      const sourceDirectory = sourceReadiness.sourceDirectory;
       const connectedClient = withConnectedClient();
       const createsWorktree = !supportsWorkspaceMultiplicity || effectiveIsolation === "worktree";
       const checkoutStatusForCreate = createsWorktree
@@ -2025,7 +2036,7 @@ export function NewWorkspaceScreen({
             queryClient,
             client: connectedClient,
             serverId: selectedServerId,
-            cwd: selectedSourceDirectory,
+            cwd: sourceDirectory,
           })
         : null;
       const checkoutRequest = checkoutStatusForCreate
@@ -2038,7 +2049,7 @@ export function NewWorkspaceScreen({
             client: connectedClient,
             isolation: effectiveIsolation,
             project: selectedProject,
-            sourceDirectory: selectedSourceDirectory,
+            sourceDirectory,
             checkoutRequest,
             withInitialAgent: input.withInitialAgent,
             prompt: input.prompt,
@@ -2066,7 +2077,6 @@ export function NewWorkspaceScreen({
       selectedItem,
       selectedProject,
       selectedServerId,
-      selectedSourceDirectory,
       supportsWorkspaceMultiplicity,
       t,
       withConnectedClient,

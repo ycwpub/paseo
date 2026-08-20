@@ -17,6 +17,7 @@ describe("resolveProjectResourceDirectories", () => {
   it("provides AI knowledge and workspace-data defaults", () => {
     expect(resolveProjectResourceDirectories({ projectConfig: undefined, context })).toEqual({
       project: ["/repo/worktrees/feature"],
+      reference: [],
       knowledge: [
         "/repo/worktrees/feature/.agents",
         "/repo/worktrees/feature/.agent",
@@ -38,6 +39,7 @@ describe("resolveProjectResourceDirectories", () => {
           variables: { docs: "../shared/docs" },
           directories: {
             project: [".", "{{workspaceDirectory}}"],
+            reference: ["../legacy", "/opt/company/examples"],
             knowledge: ["{{docs}}"],
             indexSkill: [".paseo/index"],
             workspaceData: ["/tmp/paseo"],
@@ -46,6 +48,7 @@ describe("resolveProjectResourceDirectories", () => {
       }),
     ).toEqual({
       project: ["/repo/paseo", "/repo/worktrees/feature"],
+      reference: ["/repo/legacy", "/opt/company/examples"],
       knowledge: ["/repo/shared/docs"],
       indexSkill: ["/repo/paseo/.paseo/index"],
       workspaceData: ["/tmp/paseo/wks_test"],

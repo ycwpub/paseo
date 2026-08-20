@@ -94,4 +94,44 @@ describe("PluginHttpJobStore", () => {
     await expect(store.delete(created.id)).resolves.toBe(true);
     expect(store.get(created.id)).toBeNull();
   });
+
+  it("filters managed requests by status, listener, route, and creation time", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-jobs-"));
+    const store = new PluginHttpJobStore(path.join(tempRoot, "jobs"));
+    store.initialize();
+    const older = await store.create({
+      pluginId: "workflow-http-service",
+      serviceName: "project-1:listener-1:route-1",
+      projectId: "project-1",
+      listenerId: "listener-1",
+      routeId: "route-1",
+      input: {},
+      createdAt: "2026-08-20T08:00:00.000Z",
+    });
+    await store.update(older.id, (job) => ({
+      ...job,
+      status: "succeeded",
+      endedAt: "2026-08-20T08:01:00.000Z",
+    }));
+    await store.create({
+      pluginId: "workflow-http-service",
+      serviceName: "project-1:listener-2:route-2",
+      projectId: "project-1",
+      listenerId: "listener-2",
+      routeId: "route-2",
+      input: {},
+      createdAt: "2026-08-20T09:00:00.000Z",
+    });
+
+    expect(
+      store.list({
+        pluginId: "workflow-http-service",
+        projectId: "project-1",
+        listenerId: "listener-1",
+        routeId: "route-1",
+        statuses: ["succeeded"],
+        createdBefore: "2026-08-20T08:30:00.000Z",
+      }),
+    ).toEqual([expect.objectContaining({ id: older.id })]);
+  });
 });

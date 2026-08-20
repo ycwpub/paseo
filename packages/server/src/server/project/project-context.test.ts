@@ -34,6 +34,7 @@ describe("resolveProjectDirectories", () => {
       }),
     ).toEqual({
       project: [workspaceDirectory],
+      reference: [],
       knowledge: [
         path.join(workspaceDirectory, ".claude"),
         path.join(workspaceDirectory, ".codex"),
@@ -60,6 +61,7 @@ describe("resolveProjectDirectories", () => {
       }),
     ).toEqual({
       project: [path.join(root, "worktree")],
+      reference: [],
       knowledge: [path.join(root, "docs/rules")],
       indexSkill: [path.join(root, ".paseo/index")],
       workspaceData: [path.join(root, ".paseo/workspaces", "wks_1")],
@@ -76,12 +78,14 @@ describe("resolveProjectDirectories", () => {
       projectConfig: {
         directories: {
           project: ["packages/{{team}}"],
+          reference: ["../{{team}}-legacy"],
           workspaceData: [".paseo/{{workspaceId}}"],
         },
       },
     });
 
     expect(resolved.project).toEqual([path.join(root, "packages/payments")]);
+    expect(resolved.reference).toEqual([path.resolve(root, "../payments-legacy")]);
     expect(resolved.workspaceData).toEqual([path.join(root, ".paseo/wks_2")]);
   });
 
@@ -117,6 +121,7 @@ describe("buildProjectContextPrompt", () => {
       workspaceDirectory: "/repo/worktree",
       directories: {
         project: ["/repo"],
+        reference: ["/reference/legacy", "/reference/examples"],
         knowledge: ["/repo/docs/rules"],
         indexSkill: ["/repo/.paseo/index"],
         workspaceData: ["/repo/.paseo/workspaces/wks_1"],
@@ -127,6 +132,8 @@ describe("buildProjectContextPrompt", () => {
     expect(prompt).toContain("Primary working directory: /repo/worktree");
     expect(prompt).toContain("All Project directories listed below are writable repositories");
     expect(prompt).toContain("do not assume the primary working directory is the only writable");
+    expect(prompt).toContain("Reference directories (read-only; read on demand)");
+    expect(prompt).toContain("MUST NOT create, modify, rename, move, or delete");
     expect(prompt).toContain("MUST inspect and obey");
     expect(prompt).toContain("read the applicable SKILL.md");
     expect(prompt).toContain("Record durable progress");
@@ -182,7 +189,7 @@ describe("loadProjectAgentContext", () => {
       JSON.stringify({
         project: {
           directoryMode: "multiple",
-          directories: { project: [sourceDirectory] },
+          directories: { project: [sourceDirectory], reference: [path.join(paseoHome, "docs")] },
           variables: { owner: "payments" },
         },
       }),
@@ -196,6 +203,7 @@ describe("loadProjectAgentContext", () => {
     });
 
     expect(context?.directories.project).toEqual([sourceDirectory]);
+    expect(context?.directories.reference).toEqual([path.join(paseoHome, "docs")]);
     expect(context?.variables.owner).toBe("payments");
   });
 });

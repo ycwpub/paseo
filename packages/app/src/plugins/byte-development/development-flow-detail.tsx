@@ -18,9 +18,14 @@ import {
   parseWorkflowPayload,
   resolveDevelopmentStageDetail,
 } from "./stage-detail-model";
+import { DevelopmentProjectSettingsStage } from "./development-project-settings-stage";
+import { DEVELOPMENT_FLOW_NAVIGATION_STAGES } from "./development-project-settings-stage-model";
 import { useDevelopmentRun } from "./use-development-run";
 
-type DevelopmentStage = (typeof DEVELOPMENT_STAGES)[number];
+interface DevelopmentStage {
+  id: DevelopmentStageId;
+  label: string;
+}
 type StageDetailModel = ReturnType<typeof resolveDevelopmentStageDetail>;
 type StageNodeRun = NonNullable<StageDetailModel["latestRun"]>;
 
@@ -113,17 +118,29 @@ function StageProgress({
   flow,
   selectedStage,
   onSelectStage,
+  onOpenProjectSettings,
 }: {
   flow: DevelopmentFlow;
   selectedStage: DevelopmentStageId;
   onSelectStage: (stage: DevelopmentStageId) => void;
+  onOpenProjectSettings: () => void;
 }) {
   const selectedIndex = DEVELOPMENT_STAGES.findIndex((stage) => stage.id === flow.currentStage);
   return (
     <View style={styles.stageGrid}>
-      {DEVELOPMENT_STAGES.map((stage, index) => {
-        const completed = flow.job.status === "succeeded" || index < selectedIndex;
-        const current = index === selectedIndex && flow.job.status !== "succeeded";
+      {DEVELOPMENT_FLOW_NAVIGATION_STAGES.map((stage, index) => {
+        if (stage.kind === "project_settings") {
+          return (
+            <DevelopmentProjectSettingsStage
+              key={stage.id}
+              disabled={!flow.projectId}
+              onPress={onOpenProjectSettings}
+            />
+          );
+        }
+        const workflowIndex = index - 1;
+        const completed = flow.job.status === "succeeded" || workflowIndex < selectedIndex;
+        const current = workflowIndex === selectedIndex && flow.job.status !== "succeeded";
         const selected = selectedStage === stage.id;
         return (
           <DevelopmentStageButton
@@ -280,6 +297,7 @@ export function DevelopmentFlowDetail({
   canMutate,
   deleting,
   onOpenProject,
+  onOpenProjectSettings,
   onEdit,
   onDelete,
 }: {
@@ -289,6 +307,7 @@ export function DevelopmentFlowDetail({
   canMutate: boolean;
   deleting: boolean;
   onOpenProject: () => void;
+  onOpenProjectSettings: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -341,9 +360,14 @@ export function DevelopmentFlowDetail({
         </View>
       </View>
       <Text style={styles.projectChatHint}>
-        点击阶段可查看对应节点的状态、输入、输出和执行时间；流程配置可在结束后编辑。
+        点击 Project 设置可配置项目上下文；点击流程阶段可查看节点状态、输入、输出和执行时间。
       </Text>
-      <StageProgress flow={flow} selectedStage={selectedStage} onSelectStage={handleStageSelect} />
+      <StageProgress
+        flow={flow}
+        selectedStage={selectedStage}
+        onSelectStage={handleStageSelect}
+        onOpenProjectSettings={onOpenProjectSettings}
+      />
       <StageDetail flow={flow} serverId={serverId} stageId={selectedStage} />
       <View style={[settingsStyles.card, styles.infoCard]}>
         <View style={styles.infoRow}>

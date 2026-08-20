@@ -7,6 +7,9 @@ import {
   PluginStateSchema,
   type McpTransport,
   type PluginHttpServiceSummary,
+  type PluginHttpListenerRuntime,
+  type PluginHttpProjectConfig,
+  type PluginHttpJobStatus,
   type PluginAppDefinition,
   type PluginAppState,
   type PluginHttpJob,
@@ -407,12 +410,17 @@ export class PluginService {
     this.appRuntime = runtime;
   }
 
-  getApp(pluginId: string, appId: string): PluginAppState {
-    return this.requireAppRuntime().get(pluginId, appId);
+  getApp(pluginId: string, appId: string, projectId: string): PluginAppState {
+    return this.requireAppRuntime().get(pluginId, appId, projectId);
   }
 
-  generateApp(pluginId: string, appId: string, prompt: string): Promise<PluginAppState> {
-    return this.requireAppRuntime().generate({ pluginId, appId, prompt });
+  generateApp(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    prompt: string,
+  ): Promise<PluginAppState> {
+    return this.requireAppRuntime().generate({ pluginId, appId, projectId, prompt });
   }
 
   submitAppAction(input: PluginAppSubmitInput): Promise<PluginHttpJob> {
@@ -425,7 +433,8 @@ export class PluginService {
   }
 
   getAppJob(processId: string): PluginHttpJob | null {
-    return this.requireAppRuntime().getJob(processId);
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.getJob(processId);
   }
 
   listAppJobs(options: {
@@ -433,16 +442,52 @@ export class PluginService {
     serviceName?: string;
     projectId?: string;
     limit?: number;
+    statuses?: PluginHttpJobStatus[];
+    listenerId?: string;
+    routeId?: string;
+    createdBefore?: string;
+    createdAfter?: string;
   }): PluginHttpJob[] {
-    return this.requireAppRuntime().listJobs(options);
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.listJobs(options);
   }
 
   updateAppJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
-    return this.requireAppRuntime().updateJob(processId, input);
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.updateJob(processId, input);
   }
 
   deleteAppJob(processId: string): Promise<boolean> {
-    return this.requireAppRuntime().deleteJob(processId);
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.deleteJob(processId);
+  }
+
+  deleteAppJobs(processIds: string[]): Promise<{
+    deleted: string[];
+    skipped: Array<{ processId: string; reason: string }>;
+  }> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.deleteJobs(processIds);
+  }
+
+  getHttpProjectConfig(
+    pluginId: string,
+    projectId: string,
+  ): { config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] } {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.getProjectConfig(pluginId, projectId);
+  }
+
+  saveHttpProjectConfig(
+    config: Omit<PluginHttpProjectConfig, "updatedAt">,
+  ): Promise<{ config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] }> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.saveProjectConfig(config);
+  }
+
+  cleanupHttpProjectJobs(pluginId: string, projectId: string): Promise<string[]> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.cleanupProjectJobs(pluginId, projectId);
   }
 
   resolveAppContext(

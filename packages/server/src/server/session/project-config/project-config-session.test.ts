@@ -196,7 +196,7 @@ describe("ProjectConfigSession", () => {
     const project = projectRecord("");
     project.projectId = "prj_directoryless";
     project.rootPath = null;
-    const { subsystem, emitted } = makeSubsystem([project]);
+    const { subsystem, emitted, recordsById } = makeSubsystem([project]);
 
     await subsystem.handleReadProjectConfigRequest({
       type: "read_project_config_request",
@@ -253,6 +253,7 @@ describe("ProjectConfigSession", () => {
         },
       },
     ]);
+    expect(recordsById.get(project.projectId)?.updatedAt).not.toBe(project.updatedAt);
   });
 
   test("updates the registered root when a multiple-directory Project becomes single", async () => {

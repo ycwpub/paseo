@@ -6,6 +6,8 @@ import type {
   PaseoMemorySyncSnapshot,
   PluginAppState,
   PluginHttpJob,
+  PluginHttpJobStatus,
+  PluginHttpProjectConfig,
   PluginInstallSource,
   PluginMarketplaceSummary,
   PluginState,
@@ -360,9 +362,10 @@ export class DaemonResourceRpcClient {
   async getPluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
     const result = await this.request({
-      message: { type: "plugin.app.get.request", pluginId, appId },
+      message: { type: "plugin.app.get.request", pluginId, appId, projectId },
       responseType: "plugin.app.get.response",
     });
     return { app: result.app, error: result.error };
@@ -371,10 +374,11 @@ export class DaemonResourceRpcClient {
   async generatePluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
     prompt: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
     const result = await this.request({
-      message: { type: "plugin.app.generate.request", pluginId, appId, prompt },
+      message: { type: "plugin.app.generate.request", pluginId, appId, projectId, prompt },
       responseType: "plugin.app.generate.response",
       timeout: 180_000,
     });
@@ -384,6 +388,7 @@ export class DaemonResourceRpcClient {
   async submitPluginAppAction(input: {
     pluginId: string;
     appId: string;
+    projectId: string;
     componentId: string;
     form: Record<string, unknown>;
   }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
@@ -421,6 +426,13 @@ export class DaemonResourceRpcClient {
     serviceName?: string;
     projectId?: string;
     limit?: number;
+    filters?: {
+      statuses?: PluginHttpJobStatus[];
+      listenerId?: string;
+      routeId?: string;
+      createdBefore?: string;
+      createdAfter?: string;
+    };
   }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
     const result = await this.request({
       message: { type: "plugin.app.job.list.request", ...options },
@@ -446,6 +458,34 @@ export class DaemonResourceRpcClient {
     return this.request({
       message: { type: "plugin.app.job.delete.request", processId },
       responseType: "plugin.app.job.delete.response",
+    });
+  }
+
+  async getPluginHttpConfig(pluginId: string, projectId: string) {
+    return this.request({
+      message: { type: "plugin.http.config.get.request", pluginId, projectId },
+      responseType: "plugin.http.config.get.response",
+    });
+  }
+
+  async savePluginHttpConfig(config: Omit<PluginHttpProjectConfig, "updatedAt">) {
+    return this.request({
+      message: { type: "plugin.http.config.save.request", config },
+      responseType: "plugin.http.config.save.response",
+    });
+  }
+
+  async deletePluginHttpJobs(processIds: string[]) {
+    return this.request({
+      message: { type: "plugin.http.job.delete_many.request", processIds },
+      responseType: "plugin.http.job.delete_many.response",
+    });
+  }
+
+  async cleanupPluginHttpJobs(pluginId: string, projectId: string) {
+    return this.request({
+      message: { type: "plugin.http.job.cleanup.request", pluginId, projectId },
+      responseType: "plugin.http.job.cleanup.response",
     });
   }
 

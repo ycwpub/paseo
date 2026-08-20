@@ -131,17 +131,21 @@ export class ProjectConfigSession {
     }
 
     let responseRoot = repoRoot;
-    if (result.mode === "single" && result.projectRoot !== project.rootPath) {
+    const shouldRefreshProjectDescriptor =
+      result.mode === "multiple" || result.projectRoot !== project.rootPath;
+    if (shouldRefreshProjectDescriptor) {
       const updatedProject = await this.projectRegistry.update(project.projectId, (current) => ({
         ...current,
-        rootPath: result.projectRoot,
+        rootPath: result.mode === "single" ? result.projectRoot : current.rootPath,
         updatedAt: new Date().toISOString(),
       }));
       if (!updatedProject) {
         this.emitProjectConfigWriteFailure(msg, { code: "project_not_found" }, repoRoot);
         return;
       }
-      responseRoot = updatedProject.rootPath ?? "";
+      if (result.mode === "single") {
+        responseRoot = updatedProject.rootPath ?? "";
+      }
     }
 
     this.logger.debug(

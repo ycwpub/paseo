@@ -68,6 +68,7 @@ export interface AddProjectFlowState {
 export interface OpenAddProjectFlowInput {
   hosts: AddProjectHost[];
   preferredHostId?: string;
+  initialDirectorylessProjectName?: string;
 }
 
 type SearchPageKind = Extract<AddProjectPage, { query: string }>["kind"];
@@ -80,6 +81,24 @@ function methodPage(hostId: string): AddProjectPage {
   return { kind: "method", hostId, activeIndex: 0, error: null, isSubmitting: false };
 }
 
+function directorylessProjectNamePage(hostId: string, name: string): AddProjectPage {
+  return {
+    kind: "directoryless-project-name",
+    hostId,
+    name,
+    activeIndex: 0,
+    error: null,
+    isSubmitting: false,
+  };
+}
+
+function initialPage(host: AddProjectHost, directorylessProjectName?: string): AddProjectPage {
+  if (directorylessProjectName !== undefined && host.canCreateDirectorylessProject) {
+    return directorylessProjectNamePage(host.serverId, directorylessProjectName);
+  }
+  return methodPage(host.serverId);
+}
+
 export function openAddProjectFlow(input: OpenAddProjectFlowInput): AddProjectFlowState {
   const preferredHost = input.preferredHostId
     ? input.hosts.find((host) => host.serverId === input.preferredHostId)
@@ -89,9 +108,14 @@ export function openAddProjectFlow(input: OpenAddProjectFlowInput): AddProjectFl
 
   return {
     hosts: input.hosts,
-    pages: initialHost ? [methodPage(initialHost.serverId)] : [searchPage("host")],
+    pages: initialHost
+      ? [initialPage(initialHost, input.initialDirectorylessProjectName)]
+      : [searchPage("host")],
     newDirectoryNameDrafts: {},
-    directorylessProjectNameDrafts: {},
+    directorylessProjectNameDrafts:
+      initialHost && input.initialDirectorylessProjectName !== undefined
+        ? { [initialHost.serverId]: input.initialDirectorylessProjectName }
+        : {},
     githubLocationDrafts: {},
   };
 }
@@ -100,6 +124,7 @@ export function applyAvailableAddProjectHosts(
   state: AddProjectFlowState,
   hosts: AddProjectHost[],
   preferredHostId?: string,
+  initialDirectorylessProjectName?: string,
 ): AddProjectFlowState {
   const current = currentAddProjectPage(state);
   if (state.pages.length !== 1 || current.kind !== "host") {
@@ -113,7 +138,14 @@ export function applyAvailableAddProjectHosts(
   return {
     ...state,
     hosts,
-    pages: initialHost ? [methodPage(initialHost.serverId)] : state.pages,
+    pages: initialHost ? [initialPage(initialHost, initialDirectorylessProjectName)] : state.pages,
+    directorylessProjectNameDrafts:
+      initialHost && initialDirectorylessProjectName !== undefined
+        ? {
+            ...state.directorylessProjectNameDrafts,
+            [initialHost.serverId]: initialDirectorylessProjectName,
+          }
+        : state.directorylessProjectNameDrafts,
   };
 }
 
@@ -203,14 +235,10 @@ export function openDirectorylessProjectNamePage(
   state: AddProjectFlowState,
   hostId: string,
 ): AddProjectFlowState {
-  return pushAddProjectPage(state, {
-    kind: "directoryless-project-name",
-    hostId,
-    name: state.directorylessProjectNameDrafts[hostId] ?? "",
-    activeIndex: 0,
-    error: null,
-    isSubmitting: false,
-  });
+  return pushAddProjectPage(
+    state,
+    directorylessProjectNamePage(hostId, state.directorylessProjectNameDrafts[hostId] ?? ""),
+  );
 }
 
 export function openNewDirectoryNamePage(

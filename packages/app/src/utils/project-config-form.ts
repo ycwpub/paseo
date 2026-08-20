@@ -25,6 +25,7 @@ export interface ProjectScriptDraft {
 
 export const PROJECT_DIRECTORY_KEYS = [
   "project",
+  "reference",
   "knowledge",
   "indexSkill",
   "workspaceData",

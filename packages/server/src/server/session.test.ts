@@ -34,6 +34,7 @@ import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
 import { resolveGlobalProjectConfigPath } from "./project/project-config-storage.js";
+import { resolveManagedProjectSourceDirectory } from "./project/project-source-directory.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -713,6 +714,7 @@ describe("project command-center RPCs", () => {
               projectCustomName: null,
               projectCustomIconRevision: null,
               projectRootPath: directoryPath,
+              projectSourceDirectory: directoryPath,
               projectKind: "non_git",
             },
             error: null,
@@ -813,6 +815,10 @@ describe("project command-center RPCs", () => {
               projectCustomName: null,
               projectCustomIconRevision: null,
               projectRootPath: "",
+              projectSourceDirectory: resolveManagedProjectSourceDirectory(
+                paseoHome,
+                project.projectId,
+              ),
               projectDirectoryless: true,
               projectKind: "non_git",
             },
@@ -824,6 +830,9 @@ describe("project command-center RPCs", () => {
         readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
       ).toBe(
         '{\n  "project": {\n    "directoryMode": "multiple",\n    "directories": {\n      "project": []\n    }\n  }\n}\n',
+      );
+      expect(existsSync(resolveManagedProjectSourceDirectory(paseoHome, project.projectId))).toBe(
+        true,
       );
     } finally {
       rmSync(paseoHome, { recursive: true, force: true });
@@ -5102,6 +5111,7 @@ test("project.list returns every active project descriptor", async () => {
             projectCustomName: null,
             projectCustomIconRevision: null,
             projectRootPath: "/tmp/project-active",
+            projectSourceDirectory: "/tmp/project-active",
             projectKind: "git",
           },
         ],

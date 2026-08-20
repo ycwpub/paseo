@@ -8,6 +8,7 @@ import type {
   PluginSummary,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import {
   SelectField,
   type SelectFieldDisplay,
@@ -22,6 +23,7 @@ import { DevelopmentPrdField } from "./development-prd-field";
 import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
 
 const EDIT_HIDDEN_COMPONENT_IDS = ["run", "status", "result"] as const;
+const CREATE_HIDDEN_COMPONENT_IDS = ["flow_title"] as const;
 
 export function DevelopmentFlowForm({
   mode,
@@ -29,10 +31,10 @@ export function DevelopmentFlowForm({
   serverId,
   plugin,
   appDefinition,
+  flowTitle,
   projectMode,
   flowProjectId,
   flowProjectDisplay,
-  newProjectName,
   sourceProjectId,
   sourceProjectDisplay,
   projectOptions,
@@ -45,9 +47,9 @@ export function DevelopmentFlowForm({
   contextError,
   canRenderForm,
   saving = false,
+  onFlowTitleChange,
   onProjectModeChange,
   onFlowProjectChange,
-  onNewProjectNameChange,
   onSourceProjectChange,
   onFormValuesChange,
   onPrdSourceChange,
@@ -61,10 +63,10 @@ export function DevelopmentFlowForm({
   serverId: string;
   plugin: PluginSummary;
   appDefinition: PluginAppDefinition;
+  flowTitle: string;
   projectMode: DevelopmentProjectMode;
   flowProjectId: string | null;
   flowProjectDisplay: SelectFieldDisplay | null;
-  newProjectName: string;
   sourceProjectId: string | null;
   sourceProjectDisplay: SelectFieldDisplay | null;
   projectOptions: SelectFieldOption<string>[];
@@ -77,9 +79,9 @@ export function DevelopmentFlowForm({
   contextError: string | null;
   canRenderForm: boolean;
   saving?: boolean;
+  onFlowTitleChange: (title: string) => void;
   onProjectModeChange: (mode: DevelopmentProjectMode) => void;
   onFlowProjectChange: (projectId: string) => void;
-  onNewProjectNameChange: (name: string) => void;
   onSourceProjectChange: (projectId: string) => void;
   onFormValuesChange?: (form: Record<string, unknown>) => void;
   onPrdSourceChange: (value: DevelopmentPrdSourceValue) => void;
@@ -91,7 +93,7 @@ export function DevelopmentFlowForm({
   onCancel?: () => void;
 }) {
   const hiddenFieldIds = useMemo(
-    () => (mode === "edit" ? EDIT_HIDDEN_COMPONENT_IDS : undefined),
+    () => (mode === "edit" ? EDIT_HIDDEN_COMPONENT_IDS : CREATE_HIDDEN_COMPONENT_IDS),
     [mode],
   );
   const componentSlots = useMemo<PluginAppComponentSlots>(
@@ -122,22 +124,34 @@ export function DevelopmentFlowForm({
         <Text style={styles.title}>{mode === "create" ? "创建开发流程" : "编辑开发流程"}</Text>
         <Text style={styles.hint}>
           {mode === "create"
-            ? "选择已有 Project 承载流程，或创建一个新的独立 Project；代码仓库可来自另一个 Project。"
+            ? "先填写开发流程名称，再选择已有 Project 或创建多目录 Project；代码仓库可来自另一个 Project。"
             : "可修改流程的全部业务配置；执行状态、Process ID 和历史节点结果保持只读。"}
         </Text>
       </View>
       {mode === "create" ? (
-        <DevelopmentProjectSelector
-          mode={projectMode}
-          existingProjectId={flowProjectId}
-          existingProjectDisplay={flowProjectDisplay}
-          newProjectName={newProjectName}
-          projectOptions={projectOptions}
-          canCreateNewProject={canCreateNewProject}
-          onModeChange={onProjectModeChange}
-          onExistingProjectChange={onFlowProjectChange}
-          onNewProjectNameChange={onNewProjectNameChange}
-        />
+        <>
+          <Field
+            label="新开发流程名称（必填）"
+            hint="创建新 Project 时会直接使用该名称，并进入标准创建 Project 流程。"
+          >
+            <FormTextInput
+              value={flowTitle}
+              onChangeText={onFlowTitleChange}
+              placeholder="例如：支付链路优化"
+              testID="development-flow-title"
+            />
+          </Field>
+          <DevelopmentProjectSelector
+            mode={projectMode}
+            existingProjectId={flowProjectId}
+            existingProjectDisplay={flowProjectDisplay}
+            projectOptions={projectOptions}
+            canCreateNewProject={canCreateNewProject}
+            projectSelectionEnabled={Boolean(flowTitle.trim())}
+            onModeChange={onProjectModeChange}
+            onExistingProjectChange={onFlowProjectChange}
+          />
+        </>
       ) : null}
       <SelectField
         label="代码来源 Project"
@@ -157,6 +171,7 @@ export function DevelopmentFlowForm({
           serverId={serverId}
           plugin={plugin}
           appDefinition={appDefinition}
+          projectId={flowProjectId!}
           fixedFormValues={fixedFormValues}
           initialFormValues={initialFormValues}
           hiddenFieldIds={hiddenFieldIds}

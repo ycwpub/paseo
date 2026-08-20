@@ -42,6 +42,7 @@ export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjec
         serverId: route.serverId,
         projectId,
         iconWorkingDir,
+        sourceDirectory: iconWorkingDir,
         worktreeSupport: "unknown",
       },
     ],
@@ -113,7 +114,8 @@ export function getHostProjectSourceDirectory(
   project: HostProjectListItem,
   serverId: string,
 ): string | null {
-  return trimOptional(getHostProjectPlacement(project, serverId)?.iconWorkingDir) ?? null;
+  const placement = getHostProjectPlacement(project, serverId);
+  return trimOptional(placement?.sourceDirectory ?? placement?.iconWorkingDir) ?? null;
 }
 
 export function getHostProjectId(project: HostProjectListItem, serverId: string): string | null {

@@ -2,9 +2,11 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 import path from "node:path";
 import { z } from "zod";
 import {
+  DEFAULT_PLUGIN_APP_PROJECT_BINDING,
   McpTransportSchema,
   PluginAppDefinitionSchema,
   PluginAppDocumentSchema,
+  PluginAppProjectBindingSchema,
   PluginManifestSchema,
   type McpTransport,
   type PluginAppDefinition,
@@ -37,6 +39,14 @@ export interface PluginHttpServiceDefinition {
   memory?: {
     outputPath: string;
   };
+  projectId?: string;
+  listenerId?: string;
+  routeId?: string;
+  queryPath?: string;
+  deletePath?: string;
+  requestTemplate?: string;
+  responseTemplate?: string;
+  targetNodeId?: string;
 }
 
 export interface LoadedPluginPackage {
@@ -77,6 +87,7 @@ const PluginHttpServiceConfigSchema = z.object({
 const PluginAppConfigSchema = z.object({
   id: z.string().trim().min(1),
   category: z.string().trim().min(1).optional(),
+  project: PluginAppProjectBindingSchema.optional(),
   document: z.string().trim().min(1).optional(),
 });
 
@@ -341,6 +352,7 @@ function discoverApps(pluginRoot: string, configPath: string): PluginAppDefiniti
     return PluginAppDefinitionSchema.parse({
       id: app.id,
       category: app.category,
+      project: app.project ?? DEFAULT_PLUGIN_APP_PROJECT_BINDING,
       initialDocument,
     });
   });

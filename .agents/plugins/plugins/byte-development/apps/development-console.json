@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "字节开发全流程",
-  "description": "PRD → 技术方案 → Agent 指令 → 开发 → Review → BITS 部署 → 测试 → 发布。部署、测试和发布默认只做检查或 dry-run，必须显式确认后才会执行真实操作。",
+  "description": "Project 设置 → PRD → 技术方案 → Agent 指令 → 开发 → Review → BITS 部署 → 测试 → 发布。先在 Project 设置中补充代码目录、参考目录、飞书文档和其他项目上下文；部署、测试和发布默认只做检查或 dry-run，必须显式确认后才会执行真实操作。",
   "components": [
     {
       "id": "overview",

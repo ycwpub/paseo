@@ -63,6 +63,7 @@ updates the registered Project root to the selected directory.
   "project": {
     "directories": {
       "project": [".", "../shared-source"],
+      "reference": ["../legacy-source", "/opt/company/examples"],
       "knowledge": ["docs/rules"],
       "indexSkill": [".paseo/project-index"],
       "workspaceData": [".paseo/workspaces"]
@@ -82,8 +83,11 @@ Every directory type accepts multiple physical directories. Relative paths resol
 registered Project root. When `directories.project` is empty, the active Workspace directory is
 used so worktree Agents do not accidentally edit the main checkout. Knowledge
 directories are injected into the Agent's persisted system prompt as mandatory instructions.
-Project directories are read on demand. Configured index Skill directories are consulted before
-broad filesystem exploration.
+Project and reference directories are read on demand. Project directories are writable;
+reference directories are read-only and must not overlap a writable Project directory. Paseo
+keeps reference roots out of provider write allowlists and applies native deny-write controls
+where the provider exposes them. Configured index Skill directories are consulted before broad
+filesystem exploration.
 
 Workspace data roots are workspace-scoped: Paseo appends the opaque `workspaceId` unless the
 configured path explicitly contains `{{workspaceId}}`. These directories hold resumable process
@@ -92,13 +96,15 @@ notes, review artifacts, and outputs. They are created when an Agent starts in t
 When a Project omits directory configuration, Paseo uses these defaults:
 
 - Project directories: `{{workspaceDirectory}}`
+- Reference directories: none
 - Required AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
 - Index Skill directories: none
 - Workspace data directories: `.paseo/workspaces/{{workspaceId}}`
 
 Missing default knowledge directories are ignored by the Agent context until they exist. The
-right-side file explorer exposes all four directory categories and supports switching among every
-configured physical root.
+right-side file explorer exposes all five directory categories and supports switching among every
+configured physical root. Create, rename, duplicate, and delete actions are unavailable while a
+reference root is selected.
 
 Automatic index Skill generation is disabled by default. When enabled, Paseo writes a standard
 `SKILL.md` directory index to every configured index Skill directory. A Project-specific

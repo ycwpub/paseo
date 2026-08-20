@@ -37,7 +37,17 @@ describe("PluginAppService", () => {
         stop: async () => undefined,
       },
       resolveApp: () => ({
-        definition: { id: "dashboard", category: "Productivity" },
+        definition: {
+          id: "dashboard",
+          category: "Productivity",
+          project: {
+            idField: "projectId",
+            selectorLabel: "Project",
+            selectorDescription: "Project context",
+            createNameLabel: "New Project name",
+            createNamePlaceholder: "Name",
+          },
+        },
         pluginRoot: tempRoot!,
       }),
       listHttpTargets: () => [{ pluginId: "processor-plugin", serviceName: "processor" }],
@@ -73,18 +83,28 @@ describe("PluginAppService", () => {
     const generated = await service.generate({
       pluginId: "ui-plugin",
       appId: "dashboard",
+      projectId: "project-1",
       prompt: "Build a troubleshooting form",
     });
 
     expect(generated.document?.title).toBe("Troubleshooting");
     expect(generated.conversation).toEqual([
-      expect.objectContaining({ role: "user", content: "Build a troubleshooting form" }),
+      expect.objectContaining({
+        role: "user",
+        content: "Build a troubleshooting form",
+      }),
       expect.objectContaining({
         role: "assistant",
         content: "Created from: Build a troubleshooting form",
       }),
     ]);
-    expect(service.get("ui-plugin", "dashboard")).toEqual(generated);
+    expect(service.get("ui-plugin", "dashboard", "project-1")).toEqual(generated);
+    expect(generated.projectId).toBe("project-1");
+    expect(service.get("ui-plugin", "dashboard", "project-2")).toMatchObject({
+      projectId: "project-2",
+      document: null,
+      conversation: [],
+    });
   });
 
   it("validates form fields and invokes a bound HTTP service action", async () => {
@@ -121,7 +141,16 @@ describe("PluginAppService", () => {
       readDaemonConfig: () => ({}),
       httpRuntime,
       resolveApp: () => ({
-        definition: { id: "dashboard" },
+        definition: {
+          id: "dashboard",
+          project: {
+            idField: "projectId",
+            selectorLabel: "Project",
+            selectorDescription: "Project context",
+            createNameLabel: "New Project name",
+            createNamePlaceholder: "Name",
+          },
+        },
         pluginRoot: tempRoot!,
       }),
       listHttpTargets: () => [],
@@ -145,7 +174,12 @@ describe("PluginAppService", () => {
                 type: "http_service",
                 pluginId: "processor-plugin",
                 serviceName: "processor",
-                input: { question: "{{form.question}}", source: "app" },
+                input: {
+                  projectId: "untrusted-project",
+                  projectName: "untrusted-name",
+                  question: "{{form.question}}",
+                  source: "app",
+                },
               },
             },
           ],
@@ -155,6 +189,7 @@ describe("PluginAppService", () => {
     await service.generate({
       pluginId: "ui-plugin",
       appId: "dashboard",
+      projectId: "project-1",
       prompt: "Create it",
     });
 
@@ -162,6 +197,7 @@ describe("PluginAppService", () => {
       service.submit({
         pluginId: "ui-plugin",
         appId: "dashboard",
+        projectId: "project-1",
         componentId: "submit",
         form: {},
       }),
@@ -170,11 +206,19 @@ describe("PluginAppService", () => {
     const job = await service.submit({
       pluginId: "ui-plugin",
       appId: "dashboard",
+      projectId: "project-1",
       componentId: "submit",
-      form: { question: "Why is this failing?" },
+      form: {
+        projectName: "Project One",
+        projectSourceDirectory: "/repo/project-one",
+        question: "Why is this failing?",
+      },
     });
     expect(job.status).toBe("queued");
     expect(submit).toHaveBeenCalledWith("processor-plugin", "processor", {
+      projectId: "project-1",
+      projectName: "Project One",
+      projectSourceDirectory: "/repo/project-one",
       question: "Why is this failing?",
       source: "app",
     });

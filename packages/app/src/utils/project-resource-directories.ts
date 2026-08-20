@@ -7,6 +7,7 @@ import { isAbsolutePath } from "./path";
 
 export const PROJECT_RESOURCE_DIRECTORY_KEYS = [
   "project",
+  "reference",
   "knowledge",
   "indexSkill",
   "workspaceData",
@@ -113,6 +114,7 @@ export function resolveProjectResourceDirectories(input: {
   );
   return {
     project: project.length > 0 ? project : [normalizeHostPath(input.context.workspaceDirectory)],
+    reference: resolveList(configured.reference),
     knowledge: Array.from(new Set([...configuredKnowledge, ...automaticKnowledge])),
     indexSkill: resolveList(configured.indexSkill),
     workspaceData,

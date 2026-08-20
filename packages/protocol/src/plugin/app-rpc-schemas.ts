@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PluginAppStateSchema } from "./app-types.js";
+import { PluginHttpJobListFilterSchema } from "./http-management.js";
 import { PluginHttpJobSchema } from "./types.js";
 
 const PluginAppResponsePayloadSchema = z.object({
@@ -13,6 +14,8 @@ export const PluginAppGetRequestSchema = z.object({
   requestId: z.string(),
   pluginId: z.string().min(1),
   appId: z.string().min(1),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older clients omit it.
+  projectId: z.string().min(1).optional(),
 });
 
 export const PluginAppGetResponseSchema = z.object({
@@ -25,6 +28,8 @@ export const PluginAppGenerateRequestSchema = z.object({
   requestId: z.string(),
   pluginId: z.string().min(1),
   appId: z.string().min(1),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older clients omit it.
+  projectId: z.string().min(1).optional(),
   prompt: z.string().trim().min(1).max(20_000),
 });
 
@@ -38,6 +43,8 @@ export const PluginAppActionSubmitRequestSchema = z.object({
   requestId: z.string(),
   pluginId: z.string().min(1),
   appId: z.string().min(1),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older clients omit it.
+  projectId: z.string().min(1).optional(),
   componentId: z.string().min(1),
   form: z.record(z.string(), z.unknown()),
 });
@@ -90,6 +97,8 @@ export const PluginAppJobListRequestSchema = z.object({
   serviceName: z.string().min(1).optional(),
   projectId: z.string().min(1).optional(),
   limit: z.number().int().positive().max(200).optional(),
+  // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
+  filters: PluginHttpJobListFilterSchema.optional(),
 });
 
 export const PluginAppJobListResponseSchema = z.object({

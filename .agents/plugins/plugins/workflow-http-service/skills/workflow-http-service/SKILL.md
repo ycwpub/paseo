@@ -7,9 +7,33 @@ description: Configure, inspect, and use Paseo workflow-backed asynchronous HTTP
 
 Use this skill when the user wants to expose a Paseo Workflow through HTTP.
 
-## Package configuration
+## Project management console
 
-The plugin's `.http.json` defines each service:
+Install the plugin, open **HTTP 服务控制台**, then select an existing Project or create a new
+Project with a user-defined name. The console supports:
+
+- multiple listener ports with independent enable/disable switches;
+- multiple POST paths per port, each with a Workflow file and optional target node ID;
+- JSON request mappings using `{{request}}` and `{{request.xxx}}`;
+- JSON response mappings using `{{job.id}}`, `{{job.status}}`, and `{{result}}`;
+- standard submit, query, and delete endpoints;
+- persisted request inspection, batch deletion, and retention cleanup by age and terminal status.
+
+The standard API defaults to:
+
+```text
+POST   /jobs
+GET    /jobs/{requestId}
+DELETE /jobs/{requestId}
+```
+
+Submitting a JSON object persists a `queued` request before asynchronously starting the Workflow.
+The state then becomes `running` and finally `succeeded`, `failed`, `cancelled`, or `timed_out`.
+Queued and running requests cannot be deleted.
+
+## Package defaults
+
+The plugin's `.http.json` defines the initial service used before a Project override is saved:
 
 ```json
 {
@@ -29,9 +53,5 @@ The plugin's `.http.json` defines each service:
 - `workflow` points to the processing Workflow.
 - A non-loopback `host` requires `authTokenEnv`.
 
-Install the plugin and read its HTTP service URL from **Host Settings → Plugins**. Submit a JSON
-object with `POST`. Paseo returns a processing ID and status URL with HTTP 202. Query the status URL
-until the job reaches a terminal state.
-
-To create a business service, copy this plugin, change its name, port, path, and Workflow, then
-install the copied directory as a local plugin.
+Project overrides are stored outside the read-only installed plugin cache. Use the console instead
+of editing the cached `.http.json`. A non-loopback host still requires `authTokenEnv`.

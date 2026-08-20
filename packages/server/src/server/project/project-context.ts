@@ -9,6 +9,10 @@ import {
 } from "@getpaseo/protocol/paseo-config-schema";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import { normalizeWritableProjectDirectories } from "../agent/project-directory-access.js";
+import {
+  findProjectDirectoryAccessConflict,
+  normalizeReadOnlyProjectDirectories,
+} from "../agent/project-reference-directory-access.js";
 import { composeSystemPromptParts } from "../agent/system-prompt.js";
 import type {
   PersistedProjectRecord,
@@ -21,6 +25,7 @@ import { readProjectConfigForProject } from "./project-config-storage.js";
 
 export interface ResolvedProjectDirectories {
   project: string[];
+  reference: string[];
   knowledge: string[];
   indexSkill: string[];
   workspaceData: string[];
@@ -108,6 +113,7 @@ export function resolveProjectDirectories(input: {
   return {
     project:
       configuredProject.length > 0 ? configuredProject : [path.resolve(input.workspaceDirectory)],
+    reference: resolvePathList(input.projectRoot, directoryValues.reference, variables),
     knowledge,
     indexSkill: resolvePathList(input.projectRoot, directoryValues.indexSkill, variables),
     workspaceData,
@@ -143,6 +149,12 @@ export function buildProjectContextPrompt(input: {
     "",
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
+    "",
+    "Reference directories (read-only; read on demand):",
+    formatDirectoryList(input.directories.reference),
+    input.directories.reference.length > 0
+      ? "You may inspect files under these directories when useful, but MUST NOT create, modify, rename, move, or delete any content there."
+      : "No reference directory is configured.",
     "",
     "Knowledge directories (mandatory instructions):",
     formatDirectoryList(input.directories.knowledge),
@@ -252,9 +264,26 @@ export async function withProjectAgentContext(input: {
 }): Promise<AgentSessionConfig> {
   const context = await loadProjectAgentContext(input);
   if (!context) return input.config;
+  const writableProjectDirectories = normalizeWritableProjectDirectories(
+    context.directories.project,
+  );
+  const readOnlyProjectDirectories = normalizeReadOnlyProjectDirectories(
+    context.directories.reference,
+  );
+  const conflict = findProjectDirectoryAccessConflict({
+    writableDirectories: writableProjectDirectories,
+    readOnlyDirectories: readOnlyProjectDirectories,
+  });
+  if (conflict) {
+    throw new Error(
+      `Project reference directory "${conflict.readOnlyDirectory}" overlaps writable Project directory "${conflict.writableDirectory}". Configure non-overlapping directories so Paseo can enforce read-only access.`,
+    );
+  }
   return {
     ...input.config,
-    writableProjectDirectories: normalizeWritableProjectDirectories(context.directories.project),
+    writableProjectDirectories,
+    readOnlyProjectDirectories:
+      readOnlyProjectDirectories.length > 0 ? readOnlyProjectDirectories : undefined,
     systemPrompt: composeSystemPromptParts(input.config.systemPrompt, context.prompt),
   };
 }

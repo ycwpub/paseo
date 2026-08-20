@@ -2,7 +2,15 @@
   "apps": {
     "web-app-builder": {
       "id": "web-app-builder",
-      "category": "Productivity"
+      "category": "Productivity",
+      "project": {
+        "idField": "projectId",
+        "nameField": "projectName",
+        "selectorLabel": "网页应用 Project",
+        "selectorDescription": "生成的页面、Agent 对话、表单交互和服务调用都归属于所选 Project。",
+        "createNameLabel": "新网页应用 Project 名称",
+        "createNamePlaceholder": "例如：报警分析控制台"
+      }
     }
   }
 }

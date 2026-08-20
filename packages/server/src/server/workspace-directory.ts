@@ -83,6 +83,7 @@ export interface WorkspaceDirectoryDeps {
     Array<{ cwd: string; workspaceId?: string; activity: TerminalActivity | null }>
   >;
   isProviderVisibleToClient(provider: string): boolean;
+  buildProjectDescriptor?(project: PersistedProjectRecord): WorkspaceProjectDescriptor;
   buildWorkspaceDescriptor(input: {
     workspace: PersistedWorkspaceRecord;
     projectRecord?: PersistedProjectRecord | null;
@@ -566,6 +567,9 @@ export class WorkspaceDirectory {
         (project) => !project.archivedAt && !projectIdsWithActiveWorkspaces.has(project.projectId),
       )
       .map((project) => {
+        if (this.deps.buildProjectDescriptor) {
+          return this.deps.buildProjectDescriptor(project);
+        }
         const descriptor: WorkspaceProjectDescriptor = {
           projectId: project.projectId,
           projectKey: project.projectKey ?? undefined,

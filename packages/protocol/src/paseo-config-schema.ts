@@ -24,6 +24,7 @@ export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocati
 
 export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
   project: ["{{workspaceDirectory}}"],
+  reference: [],
   knowledge: [],
   indexSkill: [],
   workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
@@ -55,6 +56,7 @@ export function resolvePaseoProjectDirectoryEntries(
     );
   return {
     project: resolve(directories?.project ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.project),
+    reference: resolve(directories?.reference ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.reference),
     knowledge: resolve(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
     indexSkill: resolve(directories?.indexSkill ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.indexSkill),
     workspaceData: resolve(
@@ -127,6 +129,7 @@ export const PaseoMetadataGenerationSchema = z
 export const PaseoProjectDirectoriesSchema = z
   .object({
     project: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+    reference: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     knowledge: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     indexSkill: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     workspaceData: z.array(PaseoProjectDirectoryEntrySchema).optional(),

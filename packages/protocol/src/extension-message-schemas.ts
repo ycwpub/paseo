@@ -17,6 +17,16 @@ import {
   PluginHttpServiceSubmitResponseSchema,
 } from "./plugin/app-rpc-schemas.js";
 import {
+  PluginHttpConfigGetRequestSchema,
+  PluginHttpConfigGetResponseSchema,
+  PluginHttpConfigSaveRequestSchema,
+  PluginHttpConfigSaveResponseSchema,
+  PluginHttpJobCleanupRequestSchema,
+  PluginHttpJobCleanupResponseSchema,
+  PluginHttpJobDeleteManyRequestSchema,
+  PluginHttpJobDeleteManyResponseSchema,
+} from "./plugin/http-management.js";
+import {
   AssistantChangedMessageSchema,
   AssistantCreateRequestSchema,
   AssistantCreateResponseSchema,
@@ -243,6 +253,10 @@ export const ExtensionSessionInboundSchemas = [
   PluginAppJobUpdateRequestSchema,
   PluginAppJobDeleteRequestSchema,
   PluginHttpServiceSubmitRequestSchema,
+  PluginHttpConfigGetRequestSchema,
+  PluginHttpConfigSaveRequestSchema,
+  PluginHttpJobDeleteManyRequestSchema,
+  PluginHttpJobCleanupRequestSchema,
   ReasoningTranslateRequestSchema,
 ] as const;
 
@@ -322,5 +336,9 @@ export const ExtensionSessionOutboundSchemas = [
   PluginAppJobUpdateResponseSchema,
   PluginAppJobDeleteResponseSchema,
   PluginHttpServiceSubmitResponseSchema,
+  PluginHttpConfigGetResponseSchema,
+  PluginHttpConfigSaveResponseSchema,
+  PluginHttpJobDeleteManyResponseSchema,
+  PluginHttpJobCleanupResponseSchema,
   ReasoningTranslateResponseSchema,
 ] as const;

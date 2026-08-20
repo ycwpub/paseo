@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import {
+  DEFAULT_PLUGIN_APP_PROJECT_BINDING,
   PluginAppGenerationSchema,
   type PluginAppDefinition,
   type PluginAppDocument,
@@ -98,12 +99,14 @@ function buildGenerationPrompt(input: GenerateAppInput): string {
     "Generate or revise a safe declarative UI document. Never output JavaScript, HTML, CSS, shell commands, or executable code.",
     "Supported component types: heading, text, text_input, textarea, number_input, select, checkbox, button, status, result, json.",
     "Buttons may only use an http_service action. The action input can use {{form.fieldId}} templates.",
+    "The app is Project-scoped. Paseo injects projectId, projectName, and projectSourceDirectory into the form and every HTTP action input. Do not ask the user to type Project IDs or repository paths already supplied by Project context.",
     "Use stable, unique component IDs. Include status and result components when the UI submits an HTTP processing job.",
     "Only bind actions to one of these installed HTTP services:",
     targets,
     "",
     `Plugin: ${input.current.pluginId}`,
     `App: ${input.current.appId}`,
+    `Project: ${input.current.projectId}`,
     `Category: ${input.context.definition.category ?? "Uncategorized"}`,
     "",
     "Current interface:",
@@ -151,6 +154,41 @@ function validateRequiredFields(document: PluginAppDocument, form: Record<string
   }
 }
 
+function projectScopedForm(
+  input: PluginAppSubmitInput,
+  context: PluginAppContext,
+): Record<string, unknown> {
+  const projectBinding = context.definition.project ?? DEFAULT_PLUGIN_APP_PROJECT_BINDING;
+  return {
+    ...input.form,
+    projectId: input.projectId,
+    [projectBinding.idField]: input.projectId,
+  };
+}
+
+function projectScopedActionInput(
+  form: Record<string, unknown>,
+  actionInput: unknown,
+): Record<string, unknown> {
+  const projectContext = {
+    projectId: form.projectId,
+    ...(form.projectName !== undefined ? { projectName: form.projectName } : {}),
+    ...(form.projectSourceDirectory !== undefined
+      ? { projectSourceDirectory: form.projectSourceDirectory }
+      : {}),
+  };
+  if (typeof actionInput === "object" && actionInput !== null && !Array.isArray(actionInput)) {
+    return {
+      ...(actionInput as Record<string, unknown>),
+      ...projectContext,
+    };
+  }
+  return {
+    ...projectContext,
+    data: actionInput,
+  };
+}
+
 export class PluginAppService implements PluginAppRuntime {
   private readonly store: PluginAppStore;
   private readonly logger: pino.Logger;
@@ -164,14 +202,19 @@ export class PluginAppService implements PluginAppRuntime {
     this.generateOverride = options.generate;
   }
 
-  get(pluginId: string, appId: string): PluginAppState {
+  get(pluginId: string, appId: string, projectId: string): PluginAppState {
     const context = this.options.resolveApp(pluginId, appId);
-    return this.store.get(pluginId, context.definition, this.now().toISOString());
+    return this.store.get(pluginId, context.definition, projectId, this.now().toISOString());
   }
 
   async generate(input: PluginAppGenerateInput): Promise<PluginAppState> {
     const context = this.options.resolveApp(input.pluginId, input.appId);
-    const current = this.store.get(input.pluginId, context.definition, this.now().toISOString());
+    const current = this.store.get(
+      input.pluginId,
+      context.definition,
+      input.projectId,
+      this.now().toISOString(),
+    );
     const generated = this.generateOverride
       ? await this.generateOverride({
           prompt: input.prompt,
@@ -191,7 +234,12 @@ export class PluginAppService implements PluginAppRuntime {
       document: generated.document,
       conversation: [
         ...current.conversation,
-        { id: randomUUID(), role: "user" as const, content: input.prompt, createdAt: timestamp },
+        {
+          id: randomUUID(),
+          role: "user" as const,
+          content: input.prompt,
+          createdAt: timestamp,
+        },
         {
           id: randomUUID(),
           role: "assistant" as const,
@@ -204,15 +252,16 @@ export class PluginAppService implements PluginAppRuntime {
   }
 
   async submit(input: PluginAppSubmitInput): Promise<PluginHttpJob> {
-    const state = this.get(input.pluginId, input.appId);
+    const context = this.options.resolveApp(input.pluginId, input.appId);
+    const state = this.get(input.pluginId, input.appId, input.projectId);
     if (!state.document) throw new Error("Generate the plugin app interface before running it");
-    validateRequiredFields(state.document, input.form);
+    const form = projectScopedForm(input, context);
+    validateRequiredFields(state.document, form);
     const button = findButton(state.document, input.componentId);
     const targetPluginId = button.action.pluginId ?? input.pluginId;
-    const actionInput =
-      button.action.input === undefined
-        ? input.form
-        : resolveTemplate(button.action.input, input.form);
+    const resolvedActionInput =
+      button.action.input === undefined ? form : resolveTemplate(button.action.input, form);
+    const actionInput = projectScopedActionInput(form, resolvedActionInput);
     return this.options.httpRuntime.submit(targetPluginId, button.action.serviceName, actionInput);
   }
 

@@ -107,7 +107,70 @@ Services bind to `127.0.0.1` by default. A non-loopback host such as `0.0.0.0` m
 an automatically allocated local port is preferred. Disabling or uninstalling a plugin stops new
 HTTP requests without deleting historical processing records.
 
+The built-in HTTP Service plugin also provides a Project-scoped management console. A Project can
+define multiple listeners, and each listener has its own host, port, authentication environment
+variable, enabled state, routes, and retention policy. Fixed ports sharing the same host are served
+by one listener; `port: 0` listeners receive independent dynamically allocated ports.
+
+Each listener can enable the standard asynchronous request API:
+
+- `POST /jobs` persists the request and returns a processing ID before Workflow execution starts;
+- `GET /jobs/{requestId}` returns the persisted state, input, output, error, and Workflow run ID;
+- `DELETE /jobs/{requestId}` deletes a terminal request; queued and running requests are protected.
+
+Additional POST paths can select a different Workflow or `targetNodeId`, and can define JSON
+request/response mappings. Request mappings use `{{request}}` or `{{request.field}}`; response
+mappings use `{{job.id}}`, `{{job.status}}`, and `{{result}}`. An empty mapping preserves the
+standard payload.
+
+Requests follow `queued → running → succeeded|failed|cancelled|timed_out`. The console supports
+request inspection and batch deletion. Retention cleanup is listener-specific, filters by terminal
+status and creation age, runs once after configuration changes, and then uses a low-frequency
+timer instead of continuously scanning.
+
 ## Agent-generated plugin apps
+
+### Project-first plugin standard
+
+Paseo treats Project as the core unit of every user-facing plugin. A headless package can provide
+Skills, MCP servers, or HTTP services, but its pages, interactions, and processes are composed by a
+Project-bound app:
+
+- the user must select an existing Project or create a new Project before opening the app;
+- a new Project always uses a user-defined name;
+- app pages, Agent conversations, local app state, HTTP jobs, workflows, and history are scoped to
+  the selected Project;
+- Paseo injects the canonical `projectId`, `projectName`, and `projectSourceDirectory` fields into
+  every app form and HTTP action input;
+- plugin UI documents should not ask users to type raw Project IDs or repository paths that already
+  come from Project context.
+
+An app can customize labels and map Project context into workflow-specific fields:
+
+```json
+{
+  "apps": {
+    "review-console": {
+      "id": "review-console",
+      "category": "Productivity",
+      "project": {
+        "idField": "projectId",
+        "nameField": "projectName",
+        "sourceDirectoryField": "repository_path",
+        "selectorLabel": "代码 Review Project",
+        "selectorDescription": "Review 页面、Agent 会话和流程历史都归属于所选 Project。",
+        "createNameLabel": "新 Review Project 名称",
+        "createNamePlaceholder": "例如：支付服务安全 Review"
+      },
+      "document": "./apps/review-console.json"
+    }
+  }
+}
+```
+
+`projectId`, `projectName`, and `projectSourceDirectory` are always present as canonical fields.
+`idField`, `nameField`, and `sourceDirectoryField` add aliases for an existing workflow contract.
+New plugins should prefer the canonical names.
 
 Declare app slots with the standard Codex `.app.json` shape:
 
@@ -152,10 +215,10 @@ Reference the file from `plugin.json`, or rely on default `.app.json` discovery:
 
 After installation, open **Host Settings → Plugins → Open app**. Describe the desired interface to
 the Agent. Each message revises the complete interface while preserving the local conversation.
-Paseo stores generated state under:
+Paseo stores generated state separately for each Project under:
 
 ```text
-$PASEO_HOME/plugins/data/<plugin-id>/apps/<app-id>/state.json
+$PASEO_HOME/plugins/data/<plugin-id>/apps/<app-id>/projects/<project-hash>/state.json
 ```
 
 The Agent does not generate executable HTML or JavaScript. It must return a validated version 1
@@ -258,12 +321,15 @@ Gatekeeper, QCSS, or other release gates.
 
 ## Built-in HTTP Service plugin
 
-The bundled **HTTP 服务** plugin is a visible, installable template for publishing a Workflow as
-an asynchronous HTTP API. Its default service uses a dynamically allocated loopback port,
-`POST /process`, persisted processing IDs, and `GET /process/{processId}` result lookup.
+The bundled **HTTP 服务** plugin publishes Workflows as asynchronous HTTP APIs. Open its app,
+select or create a Project, and manage multiple independently enabled ports. Each port can enable
+the standard submit/query/delete API and add custom paths with independent request mappings,
+response mappings, Workflow files, and processing node IDs. The same page shows the request state
+machine, structured input/output, errors, batch deletion, and retention cleanup.
 
-Copy the plugin before business customization, then change `.http.json` and the referenced
-Workflow to select the port, path, authentication, and processing nodes.
+`.http.json` remains the package default and supplies the initial listener/route template. Saving
+the Project configuration persists an override under `$PASEO_HOME/plugins/http-services/`; the
+installed plugin cache remains read-only.
 
 ## Built-in Agent Web App plugin
 

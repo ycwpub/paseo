@@ -69,10 +69,10 @@ export function buildAddProjectMethods(host: AddProjectHost): AddProjectMethodOp
   });
   options.push({
     id: "directoryless-project",
-    label: "Blank project",
+    label: "Multi-directory project",
     description: host.canCreateDirectorylessProject
-      ? `Create a project without a directory on ${host.label}`
-      : "Update this host to create projects without a directory",
+      ? `Create a project with configurable directories on ${host.label}`
+      : "Update this host to create multi-directory projects",
     disabled: !host.canCreateDirectorylessProject,
   });
   return options;

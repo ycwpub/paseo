@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PluginAppActionSubmitRequestSchema,
   PluginAppGenerateRequestSchema,
+  PluginAppGetRequestSchema,
   PluginAppGetResponseSchema,
   PluginAppJobDeleteRequestSchema,
   PluginAppJobListRequestSchema,
@@ -11,6 +12,34 @@ import {
 } from "./app-rpc-schemas.js";
 
 describe("plugin app RPC schemas", () => {
+  it("accepts older Project-unaware app requests and state", () => {
+    expect(
+      PluginAppGetRequestSchema.parse({
+        type: "plugin.app.get.request",
+        requestId: "request-legacy",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+      }).projectId,
+    ).toBeUndefined();
+    expect(
+      PluginAppGetResponseSchema.parse({
+        type: "plugin.app.get.response",
+        payload: {
+          requestId: "request-legacy",
+          app: {
+            pluginId: "demo-plugin",
+            appId: "dashboard",
+            document: null,
+            conversation: [],
+            createdAt: "2026-08-20T00:00:00.000Z",
+            updatedAt: "2026-08-20T00:00:00.000Z",
+          },
+          error: null,
+        },
+      }).payload.app?.projectId,
+    ).toBeUndefined();
+  });
+
   it("accepts Agent interface generation requests", () => {
     expect(
       PluginAppGenerateRequestSchema.parse({
@@ -18,6 +47,7 @@ describe("plugin app RPC schemas", () => {
         requestId: "request-1",
         pluginId: "demo-plugin",
         appId: "dashboard",
+        projectId: "project-1",
         prompt: "Build a form",
       }).prompt,
     ).toBe("Build a form");
@@ -30,6 +60,7 @@ describe("plugin app RPC schemas", () => {
         requestId: "request-2",
         pluginId: "demo-plugin",
         appId: "dashboard",
+        projectId: "project-1",
         componentId: "submit",
         form: { question: "hello", count: 2 },
       }).form,
@@ -44,6 +75,7 @@ describe("plugin app RPC schemas", () => {
         app: {
           pluginId: "demo-plugin",
           appId: "dashboard",
+          projectId: "project-1",
           document: {
             version: 1,
             title: "Dashboard",
@@ -68,8 +100,17 @@ describe("plugin app RPC schemas", () => {
         serviceName: "development",
         projectId: "project-1",
         limit: 50,
+        filters: {
+          statuses: ["succeeded", "failed"],
+          listenerId: "listener-1",
+          createdBefore: "2026-08-20T10:00:00.000Z",
+        },
       }),
-    ).toMatchObject({ projectId: "project-1", limit: 50 });
+    ).toMatchObject({
+      projectId: "project-1",
+      limit: 50,
+      filters: { listenerId: "listener-1" },
+    });
 
     expect(
       PluginAppJobListResponseSchema.parse({

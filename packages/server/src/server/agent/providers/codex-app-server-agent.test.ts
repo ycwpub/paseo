@@ -740,6 +740,42 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("forces workspace-write sandbox when Project reference directories are configured", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession({
+      modeId: "full-access",
+      thinkingOptionId: "medium",
+      readOnlyProjectDirectories: ["/tmp/reference"],
+      providerOptions: {
+        sandbox_mode: "danger-full-access",
+      },
+    });
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "read-only-reference-thread" } };
+        }
+        if (method === "turn/start") {
+          return {};
+        }
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("inspect the reference project");
+
+    const startCall = requests.find((request) => request.method === "thread/start");
+    expect(startCall?.params).toMatchObject({
+      sandbox: "workspace-write",
+      config: {
+        sandbox_mode: "workspace-write",
+      },
+    });
+  });
+
   test("adds Project repositories to an already resolved Codex workspace-write policy", async () => {
     const session = createSession({
       modeId: "auto",

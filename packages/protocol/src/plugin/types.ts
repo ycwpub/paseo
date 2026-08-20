@@ -98,6 +98,10 @@ export const PluginHttpJobSchema = z.object({
   id: z.string(),
   pluginId: z.string(),
   serviceName: z.string(),
+  // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
+  projectId: z.string().min(1).optional(),
+  listenerId: z.string().min(1).optional(),
+  routeId: z.string().min(1).optional(),
   status: PluginHttpJobStatusSchema,
   input: z.unknown(),
   result: z.unknown().nullable(),

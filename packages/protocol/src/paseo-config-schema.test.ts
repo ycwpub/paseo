@@ -9,6 +9,7 @@ describe("paseo config schema", () => {
   it("provides cross-agent knowledge and workspace-data directory defaults", () => {
     expect(resolvePaseoProjectDirectoryValues(undefined)).toEqual({
       project: ["{{workspaceDirectory}}"],
+      reference: [],
       knowledge: [],
       indexSkill: [],
       workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
@@ -19,12 +20,14 @@ describe("paseo config schema", () => {
     expect(
       resolvePaseoProjectDirectoryValues({
         project: [],
+        reference: [],
         knowledge: [],
         indexSkill: [],
         workspaceData: [],
       }),
     ).toEqual({
       project: [],
+      reference: [],
       knowledge: [],
       indexSkill: [],
       workspaceData: [],
@@ -268,6 +271,7 @@ describe("paseo config schema", () => {
     const project = {
       directories: {
         project: [".", "../shared-source"],
+        reference: ["../legacy-source", "/opt/company/examples"],
         knowledge: ["docs/rules", "/opt/company/standards"],
         indexSkill: [".paseo/project-index"],
         workspaceData: [".paseo/workspaces"],

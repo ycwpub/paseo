@@ -40,6 +40,7 @@ function buildManagedAgentConfig(
     model: configOverrides.model ?? "gpt-5.1",
     thinkingOptionId: configOverrides.thinkingOptionId,
     writableProjectDirectories: configOverrides.writableProjectDirectories,
+    readOnlyProjectDirectories: configOverrides.readOnlyProjectDirectories,
     providerOptions: configOverrides.providerOptions,
     toolPolicy: configOverrides.toolPolicy,
     systemPrompt: configOverrides.systemPrompt,
@@ -161,6 +162,7 @@ describe("AgentStorage", () => {
           modeId: "coding",
           model: "gpt-5.1",
           writableProjectDirectories: ["/tmp/project", "/tmp/project-facade"],
+          readOnlyProjectDirectories: ["/tmp/reference"],
           systemPrompt: "Be terse and explicit.",
           providerOptions: { allowedTools: ["Read"] },
           mcpServers: {
@@ -184,6 +186,7 @@ describe("AgentStorage", () => {
       "/tmp/project",
       "/tmp/project-facade",
     ]);
+    expect(record.config?.readOnlyProjectDirectories).toEqual(["/tmp/reference"]);
     expect(record.config?.systemPrompt).toBe("Be terse and explicit.");
     expect(record.config?.mcpServers).toEqual({
       paseo: {
@@ -203,6 +206,7 @@ describe("AgentStorage", () => {
       "/tmp/project",
       "/tmp/project-facade",
     ]);
+    expect(buildSessionConfig(persisted!).readOnlyProjectDirectories).toEqual(["/tmp/reference"]);
   });
 
   test("applySnapshot stores and reloads featureValues when present", async () => {

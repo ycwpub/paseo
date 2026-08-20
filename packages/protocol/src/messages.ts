@@ -3299,12 +3299,16 @@ export const ServerInfoStatusPayloadSchema = z
         skills: z.boolean().optional(),
         // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
         plugins: z.boolean().optional(),
+        // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons keep app state global.
+        pluginProjectScopedApps: z.boolean().optional(),
         // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobList: z.boolean().optional(),
         // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobMutation: z.boolean().optional(),
         // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
         pluginHttpServiceSubmit: z.boolean().optional(),
+        // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
+        pluginHttpServiceManagement: z.boolean().optional(),
       })
       .optional(),
   })
@@ -3744,6 +3748,10 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
   projectCustomIconRevision: z.string().nullable().optional(),
   projectRootPath: z.string(),
+  // COMPAT(projectSourceDirectory): added on 2026-08-20. This is the host-local
+  // cwd used for new workspaces and may be a managed directory when a
+  // multi-directory Project does not yet have writable source attached.
+  projectSourceDirectory: z.string().optional(),
   // Directoryless projects intentionally have no backing filesystem root. The
   // root path remains a string on the wire for compatibility and is empty when
   // this flag is true.

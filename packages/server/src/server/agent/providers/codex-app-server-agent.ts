@@ -4031,9 +4031,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     preset: CodexModePreset,
   ): { approvalPolicy?: string; sandboxPolicyType?: string } {
     const approvalPolicy = this.hasWorkflowModeOverride ? preset.approvalPolicy : undefined;
-    const sandboxPolicyType =
-      this.providerOptions.sandbox_mode ??
-      (this.hasWorkflowModeOverride ? preset.sandbox : undefined);
+    const sandboxPolicyType = this.config.readOnlyProjectDirectories?.length
+      ? "workspace-write"
+      : (this.providerOptions.sandbox_mode ??
+        (this.hasWorkflowModeOverride ? preset.sandbox : undefined));
     if (approvalPolicy && this.providerOptions.approval_policy === undefined) {
       params.approvalPolicy = approvalPolicy;
     }
@@ -5025,7 +5026,12 @@ export class CodexAppServerAgentSession implements AgentSession {
   } {
     const preset = MODE_PRESETS[this.currentMode] ?? MODE_PRESETS[DEFAULT_CODEX_MODE_ID];
     const approvalPolicy = this.hasWorkflowModeOverride ? preset.approvalPolicy : undefined;
-    const sandbox = this.hasWorkflowModeOverride ? preset.sandbox : undefined;
+    let sandbox: string | undefined;
+    if (this.config.readOnlyProjectDirectories?.length) {
+      sandbox = "workspace-write";
+    } else if (this.hasWorkflowModeOverride) {
+      sandbox = preset.sandbox;
+    }
     const innerConfig = this.buildCodexInnerConfig();
     const developerInstructions = composeSystemPromptParts(
       this.config.systemPrompt,
@@ -5037,7 +5043,11 @@ export class CodexAppServerAgentSession implements AgentSession {
       ...(approvalPolicy && this.providerOptions.approval_policy === undefined
         ? { approvalPolicy }
         : {}),
-      ...(sandbox && this.providerOptions.sandbox_mode === undefined ? { sandbox } : {}),
+      ...(sandbox &&
+      (this.config.readOnlyProjectDirectories?.length ||
+        this.providerOptions.sandbox_mode === undefined)
+        ? { sandbox }
+        : {}),
       ...(developerInstructions ? { developerInstructions } : {}),
       ...(innerConfig ? { config: innerConfig } : {}),
       ...(this.ephemeral ? { ephemeral: true } : {}),
@@ -5054,6 +5064,9 @@ export class CodexAppServerAgentSession implements AgentSession {
       ...this.deps.customCodexConfig,
       ...this.providerOptions,
     };
+    if (this.config.readOnlyProjectDirectories?.length) {
+      innerConfig.sandbox_mode = "workspace-write";
+    }
     const workspaceWrite = mergeProjectDirectoryWorkspaceWrite(
       this.config.cwd,
       this.config.writableProjectDirectories,

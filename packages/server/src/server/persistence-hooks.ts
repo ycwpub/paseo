@@ -7,6 +7,7 @@ import type {
 } from "./agent/agent-sdk-types.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
 import { inferWritableProjectDirectoriesFromSystemPrompt } from "./agent/project-directory-access.js";
+import { inferReadOnlyProjectDirectoriesFromSystemPrompt } from "./agent/project-reference-directory-access.js";
 
 interface LoggerLike {
   child(bindings: Record<string, unknown>): LoggerLike;
@@ -70,8 +71,16 @@ function resolveStoredWritableProjectDirectories(record: StoredAgentRecord): str
   );
 }
 
+function resolveStoredReadOnlyProjectDirectories(record: StoredAgentRecord): string[] {
+  return (
+    record.config?.readOnlyProjectDirectories ??
+    inferReadOnlyProjectDirectoriesFromSystemPrompt(record.config?.systemPrompt)
+  );
+}
+
 export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSessionConfig> {
   const writableProjectDirectories = resolveStoredWritableProjectDirectories(record);
+  const readOnlyProjectDirectories = resolveStoredReadOnlyProjectDirectories(record);
   return stripInternalPaseoMcpServer({
     provider: record.provider,
     cwd: record.cwd,
@@ -81,6 +90,8 @@ export function buildConfigOverrides(record: StoredAgentRecord): Partial<AgentSe
     featureValues: record.config?.featureValues ?? undefined,
     writableProjectDirectories:
       writableProjectDirectories.length > 0 ? writableProjectDirectories : undefined,
+    readOnlyProjectDirectories:
+      readOnlyProjectDirectories.length > 0 ? readOnlyProjectDirectories : undefined,
     providerOptions: record.config?.providerOptions ?? undefined,
     toolPolicy: record.config?.toolPolicy ?? undefined,
     systemPrompt: record.config?.systemPrompt ?? undefined,
@@ -104,6 +115,7 @@ export function buildSessionConfig(
     thinkingOptionId: overrides.thinkingOptionId,
     featureValues: overrides.featureValues,
     writableProjectDirectories: overrides.writableProjectDirectories,
+    readOnlyProjectDirectories: overrides.readOnlyProjectDirectories,
     providerOptions: overrides.providerOptions,
     toolPolicy: overrides.toolPolicy,
     systemPrompt: overrides.systemPrompt,

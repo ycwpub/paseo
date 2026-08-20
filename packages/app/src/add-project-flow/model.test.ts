@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyAvailableAddProjectHosts,
   backAddProjectPage,
   chooseAddProjectHost,
   currentAddProjectPage,
@@ -47,6 +48,38 @@ describe("Add Project navigation", () => {
       isSubmitting: false,
     });
     expect(backAddProjectPage(state)).toBeNull();
+  });
+
+  it("opens the multi-directory Project name page with a prefilled name", () => {
+    const state = openAddProjectFlow({
+      hosts: [HOST],
+      preferredHostId: HOST.serverId,
+      initialDirectorylessProjectName: "支付优化",
+    });
+
+    expect(currentAddProjectPage(state)).toEqual({
+      kind: "directoryless-project-name",
+      hostId: HOST.serverId,
+      name: "支付优化",
+      activeIndex: 0,
+      error: null,
+      isSubmitting: false,
+    });
+  });
+
+  it("preserves the prefilled multi-directory Project name while hosts connect", () => {
+    const initial = openAddProjectFlow({
+      hosts: [],
+      preferredHostId: HOST.serverId,
+      initialDirectorylessProjectName: "支付优化",
+    });
+    const connected = applyAvailableAddProjectHosts(initial, [HOST], HOST.serverId, "支付优化");
+
+    expect(currentAddProjectPage(connected)).toMatchObject({
+      kind: "directoryless-project-name",
+      hostId: HOST.serverId,
+      name: "支付优化",
+    });
   });
 
   it("restores page input and selection after Back", () => {
@@ -164,8 +197,8 @@ describe("Add Project options", () => {
       },
       {
         id: "directoryless-project",
-        label: "Blank project",
-        description: "Update this host to create projects without a directory",
+        label: "Multi-directory project",
+        description: "Update this host to create multi-directory projects",
         disabled: true,
       },
     ]);

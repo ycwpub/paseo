@@ -1205,6 +1205,7 @@ export const en = {
         missing: "Directory does not exist",
         types: {
           project: "Project",
+          reference: "Reference (read-only)",
           knowledge: "AI knowledge",
           indexSkill: "Index Skill",
           workspaceData: "Workspace data",
@@ -1916,6 +1917,9 @@ export const en = {
       createWorktreeFailed: "Failed to create worktree",
       composerStateRequired: "Composer state is required",
       selectModel: "Select a model",
+      projectHostUnavailable: "This Project is not available on the selected Host",
+      projectDirectoryUnavailable:
+        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -3456,7 +3460,7 @@ export const en = {
       },
       resources: {
         title: "Project resources",
-        info: "Configure multiple directories for source, mandatory knowledge, generated index Skills, and workspace review data. Relative paths resolve from the project root.",
+        info: "Configure multiple directories for writable source, read-only references, mandatory knowledge, generated index Skills, and workspace review data. Relative paths resolve from the project root.",
         emptyDirectories: "No directories configured.",
         removeDirectory: "Remove {{title}} entry",
         project: {
@@ -3467,6 +3471,10 @@ export const en = {
           validation: {
             singleRequired: "Single-directory mode requires exactly one enabled path.",
           },
+        },
+        reference: {
+          title: "Reference directories",
+          hint: "Agents can inspect these directories when needed, but cannot create, modify, rename, move, or delete their contents. Reference directories must not overlap writable Project directories.",
         },
         knowledge: {
           title: "Knowledge directories",

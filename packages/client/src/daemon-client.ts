@@ -25,6 +25,8 @@ import {
   PluginInstallSource,
   PluginAppState,
   PluginHttpJob,
+  PluginHttpJobStatus,
+  PluginHttpProjectConfig,
   PluginMarketplaceSummary,
   PluginState,
   PluginSummary,
@@ -6048,21 +6050,24 @@ export class DaemonClient {
   async getPluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
-    return this.resourceRpc.getPluginApp(pluginId, appId);
+    return this.resourceRpc.getPluginApp(pluginId, appId, projectId);
   }
 
   async generatePluginApp(
     pluginId: string,
     appId: string,
+    projectId: string,
     prompt: string,
   ): Promise<{ app: PluginAppState | null; error: string | null }> {
-    return this.resourceRpc.generatePluginApp(pluginId, appId, prompt);
+    return this.resourceRpc.generatePluginApp(pluginId, appId, projectId, prompt);
   }
 
   async submitPluginAppAction(input: {
     pluginId: string;
     appId: string;
+    projectId: string;
     componentId: string;
     form: Record<string, unknown>;
   }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
@@ -6088,6 +6093,13 @@ export class DaemonClient {
     serviceName?: string;
     projectId?: string;
     limit?: number;
+    filters?: {
+      statuses?: PluginHttpJobStatus[];
+      listenerId?: string;
+      routeId?: string;
+      createdBefore?: string;
+      createdAfter?: string;
+    };
   }): Promise<{ jobs: PluginHttpJob[]; error: string | null }> {
     return this.resourceRpc.listPluginAppJobs(options);
   }
@@ -6103,6 +6115,22 @@ export class DaemonClient {
     processId: string,
   ): Promise<{ processId: string; deleted: boolean; error: string | null }> {
     return this.resourceRpc.deletePluginAppJob(processId);
+  }
+
+  getPluginHttpConfig(pluginId: string, projectId: string) {
+    return this.resourceRpc.getPluginHttpConfig(pluginId, projectId);
+  }
+
+  savePluginHttpConfig(config: Omit<PluginHttpProjectConfig, "updatedAt">) {
+    return this.resourceRpc.savePluginHttpConfig(config);
+  }
+
+  deletePluginHttpJobs(processIds: string[]) {
+    return this.resourceRpc.deletePluginHttpJobs(processIds);
+  }
+
+  cleanupPluginHttpJobs(pluginId: string, projectId: string) {
+    return this.resourceRpc.cleanupPluginHttpJobs(pluginId, projectId);
   }
 
   async getLarkChannelStatus(

@@ -447,6 +447,7 @@ export function FileExplorerPane({
   const [selectedDirectoryType, setSelectedDirectoryType] =
     useState<PaseoProjectDirectoryKey>("project");
   const [selectedRootIndex, setSelectedRootIndex] = useState(0);
+  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
   const workspace = useSessionStore((state) => {
@@ -485,6 +486,7 @@ export function FileExplorerPane({
           })
         : {
             project: normalizedWorkspaceRoot ? [normalizedWorkspaceRoot] : [],
+            reference: [],
             knowledge: [],
             indexSkill: [],
             workspaceData: [],
@@ -493,6 +495,7 @@ export function FileExplorerPane({
   );
   const selectedRoots = resourceDirectories[selectedDirectoryType];
   const activeRoot = selectedRoots[selectedRootIndex] ?? "";
+  const isSelectedRootReadOnly = selectedDirectoryType === "reference";
 
   useEffect(() => {
     setSelectedDirectoryType("project");
@@ -505,6 +508,7 @@ export function FileExplorerPane({
   }, [selectedRootIndex, selectedRoots.length]);
 
   const handleSelectDirectoryType = useCallback((type: PaseoProjectDirectoryKey) => {
+    setPendingEdit(null);
     setSelectedDirectoryType(type);
     setSelectedRootIndex(0);
   }, []);
@@ -548,7 +552,6 @@ export function FileExplorerPane({
   const fsEntryDuplicateEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
   );
-  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
   const downloadFile = useFileDownload({
     serverId,
     workspaceId: activeRoot === normalizedWorkspaceRoot ? workspaceId : null,
@@ -1073,11 +1076,17 @@ export function FileExplorerPane({
           revealTargetName={fileManagerTarget?.label}
           onDownloadEntry={handleDownloadEntry}
           onAddToChat={onAddToChat}
-          onNewEntry={fsEntryOpsEnabled ? handleNewEntry : undefined}
+          onNewEntry={fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleNewEntry : undefined}
           onCollapseDirectory={handleCollapseDirectory}
-          onRenameEntry={fsEntryOpsEnabled ? handleRenameEntry : undefined}
-          onDuplicateEntry={fsEntryDuplicateEnabled ? handleDuplicateEntry : undefined}
-          onDeleteEntry={fsEntryOpsEnabled ? handleDeleteEntry : undefined}
+          onRenameEntry={
+            fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleRenameEntry : undefined
+          }
+          onDuplicateEntry={
+            fsEntryDuplicateEnabled && !isSelectedRootReadOnly ? handleDuplicateEntry : undefined
+          }
+          onDeleteEntry={
+            fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleDeleteEntry : undefined
+          }
         />
       );
     },
@@ -1100,6 +1109,7 @@ export function FileExplorerPane({
       handleRevealEntry,
       handleSelectEntry,
       isDirectoryLoading,
+      isSelectedRootReadOnly,
       fileManagerTarget,
       selectedEntryPath,
       onAddToChat,
@@ -1151,7 +1161,9 @@ export function FileExplorerPane({
           showInitialLoading={showInitialLoading}
           showBackFromError={showBackFromError}
           listRows={listRows}
-          onNewEntryAtRoot={fsEntryOpsEnabled ? handleNewEntry : undefined}
+          onNewEntryAtRoot={
+            fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleNewEntry : undefined
+          }
           currentSortLabel={currentSortLabel}
           isRefreshFetching={isRefreshFetching}
           treeListRef={treeListRef}

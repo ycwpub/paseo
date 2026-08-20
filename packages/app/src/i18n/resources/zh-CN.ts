@@ -1178,6 +1178,7 @@ export const zhCN: TranslationResources = {
         missing: "目录不存在",
         types: {
           project: "项目目录",
+          reference: "参考目录（只读）",
           knowledge: "AI 知识目录",
           indexSkill: "索引 Skill",
           workspaceData: "Workspace 数据",
@@ -1866,6 +1867,9 @@ export const zhCN: TranslationResources = {
       createWorktreeFailed: "创建 worktree 失败",
       composerStateRequired: "Composer 状态必填",
       selectModel: "请选择模型",
+      projectHostUnavailable: "当前 Project 未绑定到所选 Host",
+      projectDirectoryUnavailable:
+        "当前 Project 在所选 Host 上没有可用的 workspace 目录，请更新 Host 或配置 Project 目录。",
     },
     tooltips: {
       project: "Choose the project",
@@ -3375,7 +3379,7 @@ export const zhCN: TranslationResources = {
       },
       resources: {
         title: "Project 资源目录",
-        info: "可分别配置多个项目目录、Agent 必读知识目录、索引 Skill 目录和 Workspace 审查数据目录。相对路径基于 Project 根目录解析。",
+        info: "可分别配置多个可写项目目录、只读参考目录、Agent 必读知识目录、索引 Skill 目录和 Workspace 审查数据目录。相对路径基于 Project 根目录解析。",
         emptyDirectories: "尚未配置目录。",
         removeDirectory: "移除“{{title}}”条目",
         project: {
@@ -3386,6 +3390,10 @@ export const zhCN: TranslationResources = {
           validation: {
             singleRequired: "单目录模式必须且只能启用一个路径。",
           },
+        },
+        reference: {
+          title: "参考目录",
+          hint: "Agent 可按需读取这些目录，但不能创建、修改、重命名、移动或删除其中的内容。参考目录不能与可写项目目录重叠。",
         },
         knowledge: {
           title: "知识目录",

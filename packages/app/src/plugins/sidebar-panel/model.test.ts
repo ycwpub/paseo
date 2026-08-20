@@ -23,7 +23,18 @@ function plugin(displayName: string, overrides: Partial<PluginSummary> = {}): Pl
     skills: [],
     mcpServers: [],
     httpServices: [],
-    apps: [{ id: "main" }],
+    apps: [
+      {
+        id: "main",
+        project: {
+          idField: "projectId",
+          selectorLabel: "Project",
+          selectorDescription: "Project context",
+          createNameLabel: "New Project name",
+          createNamePlaceholder: "Name",
+        },
+      },
+    ],
     unsupportedComponents: [],
     warnings: [],
     ...overrides,

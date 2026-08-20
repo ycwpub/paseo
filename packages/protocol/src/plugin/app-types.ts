@@ -89,9 +89,36 @@ export const PluginAppDocumentSchema = z.object({
 });
 export type PluginAppDocument = z.infer<typeof PluginAppDocumentSchema>;
 
+export const PluginAppProjectBindingSchema = z
+  .object({
+    idField: z.string().trim().min(1).default("projectId"),
+    nameField: z.string().trim().min(1).optional(),
+    sourceDirectoryField: z.string().trim().min(1).optional(),
+    selectorLabel: z.string().trim().min(1).default("Project"),
+    selectorDescription: z
+      .string()
+      .trim()
+      .min(1)
+      .default("插件页面、交互、流程和历史记录都归属于所选 Project。"),
+    createNameLabel: z.string().trim().min(1).default("新 Project 名称"),
+    createNamePlaceholder: z.string().default("输入自定义 Project 名称"),
+  })
+  .strict();
+export type PluginAppProjectBinding = z.infer<typeof PluginAppProjectBindingSchema>;
+
+export const DEFAULT_PLUGIN_APP_PROJECT_BINDING: PluginAppProjectBinding = {
+  idField: "projectId",
+  selectorLabel: "Project",
+  selectorDescription: "插件页面、交互、流程和历史记录都归属于所选 Project。",
+  createNameLabel: "新 Project 名称",
+  createNamePlaceholder: "输入自定义 Project 名称",
+};
+
 export const PluginAppDefinitionSchema = z.object({
   id: z.string().trim().min(1),
   category: z.string().trim().min(1).optional(),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons omit it.
+  project: PluginAppProjectBindingSchema.optional(),
   initialDocument: PluginAppDocumentSchema.optional(),
 });
 export type PluginAppDefinition = z.infer<typeof PluginAppDefinitionSchema>;
@@ -107,6 +134,8 @@ export type PluginAppConversationMessage = z.infer<typeof PluginAppConversationM
 export const PluginAppStateSchema = z.object({
   pluginId: z.string(),
   appId: z.string(),
+  // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons return global app state.
+  projectId: z.string().optional(),
   category: z.string().optional(),
   document: PluginAppDocumentSchema.nullable(),
   conversation: z.array(PluginAppConversationMessageSchema),

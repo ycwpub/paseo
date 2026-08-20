@@ -64,7 +64,7 @@ export function HostFilter({
       anchorRef={filterAnchorRef}
       includeAllHost
       searchable={false}
-      title="Filter by host"
+      title="按主机筛选"
       desktopPlacement="bottom-start"
       hostOptionTestID={hostOptionTestID}
     >

@@ -56,7 +56,23 @@ describe("byte development flow model", () => {
   });
 
   it("uses friendly status labels", () => {
+    expect(developmentJobStatusLabel("draft")).toBe("草稿");
     expect(developmentJobStatusLabel("running")).toBe("进行中");
     expect(developmentJobStatusLabel("failed")).toBe("失败");
+  });
+
+  it("keeps a draft flow on the PRD stage without requiring PRD content", () => {
+    expect(
+      developmentFlowFromJob(
+        job({
+          status: "draft",
+          input: { projectId: "project-1", flow_title: "支付链路优化" },
+        }),
+      ),
+    ).toMatchObject({
+      title: "支付链路优化",
+      summary: "暂无需求摘要",
+      currentStage: "prd",
+    });
   });
 });

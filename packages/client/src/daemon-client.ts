@@ -23,6 +23,7 @@ import {
   PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
   PluginInstallSource,
+  PluginAppDefaultAgent,
   PluginAppState,
   PluginHttpJob,
   PluginHttpJobStatus,
@@ -6055,6 +6056,30 @@ export class DaemonClient {
     return this.resourceRpc.getPluginApp(pluginId, appId, projectId);
   }
 
+  async configurePluginApp(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    defaultAgent: PluginAppDefaultAgent;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    return this.resourceRpc.configurePluginApp(input);
+  }
+
+  async listPluginAppProjects(
+    pluginId: string,
+    appId: string,
+  ): Promise<{ projects: PluginAppState[]; error: string | null }> {
+    return this.resourceRpc.listPluginAppProjects(pluginId, appId);
+  }
+
+  async deletePluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ projectId: string; deleted: boolean; error: string | null }> {
+    return this.resourceRpc.deletePluginAppProject(input);
+  }
+
   async generatePluginApp(
     pluginId: string,
     appId: string,
@@ -6109,6 +6134,21 @@ export class DaemonClient {
     input: unknown,
   ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
     return this.resourceRpc.updatePluginAppJob(processId, input);
+  }
+
+  async createPluginAppJobDraft(input: {
+    pluginId: string;
+    serviceName: string;
+    projectId: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.createPluginAppJobDraft(input);
+  }
+
+  async startPluginAppJob(
+    processId: string,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    return this.resourceRpc.startPluginAppJob(processId);
   }
 
   async deletePluginAppJob(

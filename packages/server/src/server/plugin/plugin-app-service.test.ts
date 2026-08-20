@@ -80,6 +80,14 @@ describe("PluginAppService", () => {
       now: () => new Date("2026-08-18T10:00:00.000Z"),
     });
 
+    const configured = service.configure({
+      pluginId: "ui-plugin",
+      appId: "dashboard",
+      projectId: "project-1",
+      defaultAgent: { provider: "codex", model: "gpt-5.6" },
+    });
+    expect(configured.defaultAgent).toEqual({ provider: "codex", model: "gpt-5.6" });
+
     const generated = await service.generate({
       pluginId: "ui-plugin",
       appId: "dashboard",
@@ -102,9 +110,53 @@ describe("PluginAppService", () => {
     expect(generated.projectId).toBe("project-1");
     expect(service.get("ui-plugin", "dashboard", "project-2")).toMatchObject({
       projectId: "project-2",
+      defaultAgent: null,
       document: null,
       conversation: [],
     });
+    expect(service.listProjects("ui-plugin", "dashboard")).toEqual([generated]);
+    expect(service.deleteProject("ui-plugin", "dashboard", "project-1")).toBe(true);
+    expect(service.listProjects("ui-plugin", "dashboard")).toEqual([]);
+  });
+
+  it("does not run Agent generation before the plugin project is saved", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-app-unconfigured-"));
+    const service = new PluginAppService({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      agentManager: {} as AgentManager,
+      providerSnapshotManager: {} as Pick<ProviderSnapshotManager, "listProviders">,
+      readDaemonConfig: () => ({}),
+      httpRuntime: {
+        reconcile: async () => undefined,
+        getStatus: () => null,
+        submit: async () => {
+          throw new Error("unused");
+        },
+        getJob: () => null,
+        listJobs: () => [],
+        updateJob: async () => null,
+        deleteJob: async () => false,
+        stop: async () => undefined,
+      },
+      resolveApp: () => ({
+        definition: { id: "dashboard" },
+        pluginRoot: tempRoot!,
+      }),
+      listHttpTargets: () => [],
+      generate: async () => {
+        throw new Error("generation should not start");
+      },
+    });
+
+    await expect(
+      service.generate({
+        pluginId: "ui-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+        prompt: "Build it",
+      }),
+    ).rejects.toThrow("Configure the plugin project's default provider and model first");
   });
 
   it("validates form fields and invokes a bound HTTP service action", async () => {
@@ -186,6 +238,12 @@ describe("PluginAppService", () => {
         },
       }),
     });
+    service.configure({
+      pluginId: "ui-plugin",
+      appId: "dashboard",
+      projectId: "project-1",
+      defaultAgent: { provider: "codex", model: "gpt-5.6" },
+    });
     await service.generate({
       pluginId: "ui-plugin",
       appId: "dashboard",
@@ -219,6 +277,10 @@ describe("PluginAppService", () => {
       projectId: "project-1",
       projectName: "Project One",
       projectSourceDirectory: "/repo/project-one",
+      defaultAgentProvider: "codex",
+      defaultAgentModel: "gpt-5.6",
+      agent_provider: "codex",
+      agent_model: "gpt-5.6",
       question: "Why is this failing?",
       source: "app",
     });

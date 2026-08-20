@@ -107,8 +107,8 @@ export function MemorySection({ serverId }: { serverId: string }) {
     async (detail: PaseoMemoryDetail) => {
       const confirmed = await confirmDialog({
         title: `Delete ${detail.title}?`,
-        message: "This memory and its provenance cannot be recovered.",
-        confirmLabel: "Delete",
+        message: "该记忆及其来源信息删除后无法恢复。",
+        confirmLabel: "删除",
         destructive: true,
       });
       if (confirmed) await updateMemory({ deleteDetailIds: [detail.id] });
@@ -117,9 +117,9 @@ export function MemorySection({ serverId }: { serverId: string }) {
   );
   const clearAll = useCallback(async () => {
     const confirmed = await confirmDialog({
-      title: "Clear all Paseo memory?",
+      title: "清空全部 Paseo 记忆？",
       message: "The summary, details, usage records, and revision history will be deleted.",
-      confirmLabel: "Clear memory",
+      confirmLabel: "清空记忆",
       destructive: true,
     });
     if (confirmed) await clearMemory();
@@ -131,9 +131,9 @@ export function MemorySection({ serverId }: { serverId: string }) {
     async (json: string, replace: boolean) => {
       if (replace) {
         const confirmed = await confirmDialog({
-          title: "Replace all Paseo memory?",
-          message: "Current memory will be deleted before the import is applied.",
-          confirmLabel: "Replace",
+          title: "替换全部 Paseo 记忆？",
+          message: "应用导入内容前会删除当前记忆。",
+          confirmLabel: "替换",
           destructive: true,
         });
         if (!confirmed) return;
@@ -145,7 +145,7 @@ export function MemorySection({ serverId }: { serverId: string }) {
 
   if (!supported) {
     return (
-      <SettingsSection title="Memory">
+      <SettingsSection title="记忆">
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <Text style={settingsStyles.rowHint}>
@@ -158,7 +158,7 @@ export function MemorySection({ serverId }: { serverId: string }) {
   }
   if (isLoading || !memory) {
     return (
-      <SettingsSection title="Memory">
+      <SettingsSection title="记忆">
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <Text style={settingsStyles.rowHint}>{error ? error.message : "Loading memory…"}</Text>

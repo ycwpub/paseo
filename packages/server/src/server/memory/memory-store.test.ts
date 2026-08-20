@@ -39,7 +39,9 @@ describe("PaseoMemoryStore", () => {
       scope: { type: "global", id: "default" },
     });
     expect(state.summary).toContain("Build workflow");
-    expect(state.summary).toContain(detail.path);
+    expect(state.summary).toContain("Build the test app, install it, restart app and daemon");
+    expect(state.summary).toContain("../../details/");
+    expect(state.summary).not.toContain(detail.path);
     expect(readFileSync(state.summaryPath, "utf8")).toBe(state.summary);
     expect(readFileSync(detail.path, "utf8")).toContain("Build the test app");
   });

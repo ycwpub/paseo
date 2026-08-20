@@ -130,7 +130,7 @@ function SelectPreview({
       options={options}
       onChange={handleChange}
       placeholder={component.placeholder ?? "Select"}
-      emptyText="No options"
+      emptyText="没有可用选项"
       hint={component.description}
     />
   );
@@ -558,7 +558,7 @@ function ConversationPane({
   const hasConversation = (app?.conversation.length ?? 0) > 0;
   return (
     <View style={styles.conversationColumn}>
-      <Text style={styles.sectionTitle}>Build with Agent</Text>
+      <Text style={styles.sectionTitle}>使用 Agent 构建</Text>
       <Text style={styles.sectionHint}>
         Describe the interface or request a revision. Agent output is validated against the Paseo
         declarative UI schema; executable HTML and JavaScript are not accepted.
@@ -572,13 +572,11 @@ function ConversationPane({
               message.role === "user" ? styles.userMessage : styles.assistantMessage,
             ]}
           >
-            <Text style={styles.messageRole}>{message.role === "user" ? "You" : "Agent"}</Text>
+            <Text style={styles.messageRole}>{message.role === "user" ? "你" : "Agent"}</Text>
             <Text style={styles.bodyText}>{message.content}</Text>
           </View>
         ))}
-        {!loading && !hasConversation ? (
-          <Text style={styles.sectionHint}>No conversation yet.</Text>
-        ) : null}
+        {!loading && !hasConversation ? <Text style={styles.sectionHint}>暂无对话。</Text> : null}
       </View>
       <FormTextInput
         value={prompt}
@@ -593,7 +591,7 @@ function ConversationPane({
         loading={generating}
         disabled={generating || !prompt.trim()}
       >
-        {app?.document ? "Ask Agent to revise" : "Generate interface"}
+        {app?.document ? "让 Agent 修改" : "生成界面"}
       </Button>
     </View>
   );
@@ -635,7 +633,7 @@ function PreviewPane({
         <Text style={styles.sectionHint}>{app.document.description}</Text>
       ) : null}
       <View style={styles.previewCard}>
-        {loading ? <Text style={styles.sectionHint}>Loading…</Text> : null}
+        {loading ? <Text style={styles.sectionHint}>加载中…</Text> : null}
         {!loading && !app?.document ? (
           <Text style={styles.sectionHint}>
             Describe the interface on the left, then let Agent generate it.
@@ -685,7 +683,7 @@ function PluginAppContent({
   showConversation = true,
   hiddenFieldIds = EMPTY_HIDDEN_FIELD_IDS,
   componentSlots = EMPTY_COMPONENT_SLOTS,
-  previewTitle = "Live preview",
+  previewTitle = "实时预览",
 }: {
   controller: PluginAppController;
   showConversation?: boolean;
@@ -873,7 +871,12 @@ export function ProjectScopedPluginAppSurface({
   hiddenFieldIds?: readonly string[];
 }) {
   return (
-    <PluginProjectBoundary active={active} serverId={serverId} appDefinition={appDefinition}>
+    <PluginProjectBoundary
+      active={active}
+      serverId={serverId}
+      pluginId={plugin.pluginId}
+      appDefinition={appDefinition}
+    >
       {(context) => (
         <ProjectBoundPluginAppSurface
           active={active}
@@ -898,7 +901,7 @@ export function PluginAppModal({
 }: PluginAppModalProps) {
   const header = useMemo(
     () => ({
-      title: appDefinition?.initialDocument?.title ?? appDefinition?.id ?? "Plugin app",
+      title: appDefinition?.initialDocument?.title ?? appDefinition?.id ?? "插件应用",
       subtitle: plugin ? `${plugin.displayName} · Project 插件` : undefined,
     }),
     [appDefinition?.id, appDefinition?.initialDocument?.title, plugin],
@@ -914,7 +917,12 @@ export function PluginAppModal({
       testID="plugin-app-modal"
     >
       {plugin && appDefinition ? (
-        <PluginProjectBoundary active={visible} serverId={serverId} appDefinition={appDefinition}>
+        <PluginProjectBoundary
+          active={visible}
+          serverId={serverId}
+          pluginId={plugin.pluginId}
+          appDefinition={appDefinition}
+        >
           {(context) => (
             <ProjectBoundPluginAppSurface
               active={visible}

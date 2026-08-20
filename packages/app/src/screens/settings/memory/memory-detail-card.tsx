@@ -150,31 +150,31 @@ export function MemoryDetailCard({
       </Pressable>
       {expanded ? (
         <View style={styles.editor}>
-          <Field label="Title">
+          <Field label="标题">
             <FormTextInput value={draft.title} onChangeText={setTitle} editable={!disabled} />
           </Field>
           <View style={styles.fieldGrid}>
             <View style={styles.gridItem}>
               <SelectField
-                label="Category"
+                label="分类"
                 value={draft.category}
                 selectedDisplay={categoryDisplay}
                 options={MEMORY_CATEGORY_OPTIONS}
                 onChange={setCategory}
-                placeholder="Select category"
-                emptyText="No categories"
+                placeholder="选择分类"
+                emptyText="没有可用分类"
                 disabled={disabled}
               />
             </View>
             <View style={styles.gridItem}>
               <SelectField
-                label="Status"
+                label="状态"
                 value={draft.status}
                 selectedDisplay={statusDisplay}
                 options={MEMORY_DETAIL_STATUS_OPTIONS}
                 onChange={setStatus}
-                placeholder="Select status"
-                emptyText="No statuses"
+                placeholder="选择状态"
+                emptyText="没有可用状态"
                 disabled={disabled}
               />
             </View>
@@ -182,35 +182,35 @@ export function MemoryDetailCard({
           <View style={styles.fieldGrid}>
             <View style={styles.gridItem}>
               <SelectField
-                label="Scope"
+                label="作用域"
                 value={draft.scopeType}
                 selectedDisplay={scopeDisplay}
                 options={MEMORY_SCOPE_OPTIONS}
                 onChange={setScopeType}
-                placeholder="Select scope"
-                emptyText="No scopes"
+                placeholder="选择作用域"
+                emptyText="没有可用作用域"
                 disabled={disabled}
               />
             </View>
             {draft.scopeType === "global" ? null : (
               <View style={styles.gridItem}>
-                <Field label="Scope ID">
+                <Field label="作用域 ID">
                   <FormTextInput
                     value={draft.scopeId}
                     onChangeText={setScopeId}
                     editable={!disabled}
-                    placeholder="Project, Assistant, or Workspace ID"
+                    placeholder="Project、助手或 Workspace ID"
                   />
                 </Field>
               </View>
             )}
           </View>
-          <Field label="Keywords" hint="Separate keywords with commas">
+          <Field label="关键词" hint="使用英文逗号分隔关键词">
             <FormTextInput value={draft.keywords} onChangeText={setKeywords} editable={!disabled} />
           </Field>
           <View style={styles.fieldGrid}>
             <View style={styles.gridItem}>
-              <Field label="Importance" hint="0 to 1">
+              <Field label="重要度" hint="0 到 1">
                 <FormTextInput
                   value={draft.importance}
                   onChangeText={setImportance}
@@ -220,7 +220,7 @@ export function MemoryDetailCard({
               </Field>
             </View>
             <View style={styles.gridItem}>
-              <Field label="Valid until" hint="ISO date/time or empty">
+              <Field label="有效期" hint="ISO 日期时间，留空表示长期有效">
                 <FormTextInput
                   value={draft.validUntil}
                   onChangeText={setValidUntil}
@@ -230,10 +230,10 @@ export function MemoryDetailCard({
               </Field>
             </View>
           </View>
-          <Field label="Memory content">
+          <Field label="记忆内容">
             <View style={styles.textAreaCard}>
               <SettingsTextArea
-                accessibilityLabel={`Memory detail ${detail.title}`}
+                accessibilityLabel={`记忆详情 ${detail.title}`}
                 value={draft.content}
                 onChangeText={setContent}
                 style={styles.detailInput}

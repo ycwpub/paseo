@@ -252,6 +252,69 @@ describe("PluginHttpServiceManager", () => {
     expect(manager.getJob(job.id)).toBeNull();
   });
 
+  it("creates an editable draft and starts it only after explicit confirmation", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-draft-"));
+    const runScript = vi.fn(async ({ inputPayload }: { inputPayload: string }) => {
+      expect(JSON.parse(inputPayload)).toEqual({
+        flow_title: "支付链路优化",
+        prd: "降低支付延迟",
+      });
+      return { id: "workflow-run-draft" };
+    });
+    manager = new PluginHttpServiceManager({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      workflowService: {
+        runScript,
+        waitForRun: async () => ({
+          status: "succeeded",
+          outputPayload: JSON.stringify({ data: { stage: "release" } }),
+          error: null,
+          errorCode: null,
+          endedAt: "2026-08-20T10:05:00.000Z",
+        }),
+      },
+      now: () => new Date("2026-08-20T10:00:00.000Z"),
+    });
+
+    await manager.reconcile([binding()]);
+    const draft = await manager.createDraft("demo-plugin", "processor", "project-1", {
+      flow_title: "支付链路优化",
+    });
+    expect(draft).toMatchObject({
+      status: "draft",
+      projectId: "project-1",
+      input: { flow_title: "支付链路优化" },
+    });
+    expect(runScript).not.toHaveBeenCalled();
+
+    await manager.updateJob(draft.id, {
+      flow_title: "支付链路优化",
+      prd: "降低支付延迟",
+    });
+    await expect(manager.startJob(draft.id)).resolves.toMatchObject({
+      id: draft.id,
+      status: "queued",
+    });
+    await expect(manager.startJob(draft.id)).rejects.toThrow(
+      "Only draft plugin jobs can be started",
+    );
+
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(draft.id)?.status !== "succeeded";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(manager.getJob(draft.id)).toMatchObject({
+      status: "succeeded",
+      workflowRunId: "workflow-run-draft",
+      result: { data: { stage: "release" } },
+    });
+    expect(runScript).toHaveBeenCalledTimes(1);
+  });
+
   it("manages multiple listeners, runs a selected node, and exposes submit/query/delete APIs", async () => {
     tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-managed-"));
     let now = new Date("2026-08-20T08:00:00.000Z");

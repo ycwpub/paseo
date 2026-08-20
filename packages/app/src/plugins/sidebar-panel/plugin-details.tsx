@@ -19,7 +19,7 @@ export function PluginDetailsSurface({ plugin }: { plugin: PluginSummary }) {
       <Text style={styles.description}>{plugin.description}</Text>
       <View style={[settingsStyles.card, styles.cardContent]}>
         <Text style={styles.metadata}>
-          v{plugin.version} · {plugin.enabled ? "Enabled" : "Disabled"}
+          v{plugin.version} · {plugin.enabled ? "已启用" : "已禁用"}
         </Text>
         {resources.map((resource) => (
           <Text key={resource} selectable style={styles.resourceText}>
@@ -27,7 +27,7 @@ export function PluginDetailsSurface({ plugin }: { plugin: PluginSummary }) {
           </Text>
         ))}
         {resources.length === 0 && plugin.httpServices.length === 0 ? (
-          <Text style={styles.hint}>This plugin does not provide an interactive app.</Text>
+          <Text style={styles.hint}>该插件未提供可交互应用。</Text>
         ) : null}
       </View>
       {plugin.httpServices.map((service) => (

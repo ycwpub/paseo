@@ -122,9 +122,9 @@ describe("resolveSupportedLocale", () => {
     expect(resolveSupportedLocale("system", ["ko-KP"])).toBe("ko");
   });
 
-  it("does not map non-Brazilian Portuguese system locales to Brazilian Portuguese", () => {
-    expect(resolveSupportedLocale("system", ["pt-PT"])).toBe("en");
-    expect(resolveSupportedLocale("system", ["pt-AO"])).toBe("en");
+  it("falls back to Simplified Chinese for unsupported Portuguese locales", () => {
+    expect(resolveSupportedLocale("system", ["pt-PT"])).toBe("zh-CN");
+    expect(resolveSupportedLocale("system", ["pt-AO"])).toBe("zh-CN");
   });
 
   it("keeps English when Spanish is a secondary system language", () => {
@@ -137,14 +137,14 @@ describe("resolveSupportedLocale", () => {
     expect(resolveSupportedLocale("system", ["zh-Hans-US"])).toBe("zh-CN");
   });
 
-  it("does not map Traditional Chinese system locales to Simplified Chinese", () => {
-    expect(resolveSupportedLocale("system", ["zh-TW"])).toBe("en");
-    expect(resolveSupportedLocale("system", ["zh-Hant"])).toBe("en");
-    expect(resolveSupportedLocale("system", ["zh-HK"])).toBe("en");
+  it("falls back to Simplified Chinese for unsupported Traditional Chinese locales", () => {
+    expect(resolveSupportedLocale("system", ["zh-TW"])).toBe("zh-CN");
+    expect(resolveSupportedLocale("system", ["zh-Hant"])).toBe("zh-CN");
+    expect(resolveSupportedLocale("system", ["zh-HK"])).toBe("zh-CN");
   });
 
-  it("maps unsupported or missing system locales to English", () => {
-    expect(resolveSupportedLocale("system", ["de-DE"])).toBe("en");
-    expect(resolveSupportedLocale("system", [])).toBe("en");
+  it("maps unsupported or missing system locales to Simplified Chinese", () => {
+    expect(resolveSupportedLocale("system", ["de-DE"])).toBe("zh-CN");
+    expect(resolveSupportedLocale("system", [])).toBe("zh-CN");
   });
 });

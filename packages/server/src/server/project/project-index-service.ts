@@ -79,7 +79,7 @@ export function buildProjectIndexSkillDocument(input: ProjectIndexDocumentInput)
     "",
     "- Use this index before broad filesystem searches.",
     "- Load project files only when they are relevant to the current task.",
-    "- Files under knowledge roots are mandatory project instructions; inspect and obey the applicable files before making changes.",
+    "- Knowledge roots contain optional background material; load and adopt only the files relevant to the current task.",
     "",
     "## Project roots",
     "",
@@ -87,7 +87,7 @@ export function buildProjectIndexSkillDocument(input: ProjectIndexDocumentInput)
       ? input.projectDirectories.map((directory) => `- ${directory}`)
       : ["- None"]),
     "",
-    "## Knowledge roots",
+    "## General knowledge roots",
     "",
     ...(input.knowledgeDirectories.length > 0
       ? input.knowledgeDirectories.map((directory) => `- ${directory}`)

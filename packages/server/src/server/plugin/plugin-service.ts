@@ -414,6 +414,24 @@ export class PluginService {
     return this.requireAppRuntime().get(pluginId, appId, projectId);
   }
 
+  configureApp(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    defaultAgent: PluginAppState["defaultAgent"],
+  ): PluginAppState {
+    if (!defaultAgent) throw new Error("Default Agent provider and model are required");
+    return this.requireAppRuntime().configure({ pluginId, appId, projectId, defaultAgent });
+  }
+
+  listAppProjects(pluginId: string, appId: string): PluginAppState[] {
+    return this.requireAppRuntime().listProjects(pluginId, appId);
+  }
+
+  deleteAppProject(pluginId: string, appId: string, projectId: string): boolean {
+    return this.requireAppRuntime().deleteProject(pluginId, appId, projectId);
+  }
+
   generateApp(
     pluginId: string,
     appId: string,
@@ -430,6 +448,21 @@ export class PluginService {
   submitHttpService(pluginId: string, serviceName: string, input: unknown): Promise<PluginHttpJob> {
     if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
     return this.httpRuntime.submit(pluginId, serviceName, input);
+  }
+
+  createAppJobDraft(
+    pluginId: string,
+    serviceName: string,
+    projectId: string,
+    input: unknown,
+  ): Promise<PluginHttpJob> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.createDraft(pluginId, serviceName, projectId, input);
+  }
+
+  startAppJob(processId: string): Promise<PluginHttpJob | null> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.startJob(processId);
   }
 
   getAppJob(processId: string): PluginHttpJob | null {

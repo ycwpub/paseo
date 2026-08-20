@@ -37,6 +37,15 @@ export interface SeedDaemonClient {
     } | null;
     error: string | null;
   }>;
+  createDirectorylessProject(input: { name: string }): Promise<{
+    project: {
+      projectId: string;
+      projectKey?: string | null;
+      projectDisplayName: string;
+      projectRootPath: string;
+    } | null;
+    error: string | null;
+  }>;
   removeProject(projectId: string): Promise<{ removedWorkspaceIds: string[] }>;
   renameProject(projectId: string, customName: string | null): Promise<void>;
   fetchWorkspaces(options?: { filter?: { projectId?: string } }): Promise<{

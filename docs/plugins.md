@@ -137,7 +137,12 @@ Skills, MCP servers, or HTTP services, but its pages, interactions, and processe
 Project-bound app:
 
 - the user must select an existing Project or create a new Project before opening the app;
+- the user must select a Provider and a concrete model before saving the plugin project;
 - a new Project always uses a user-defined name;
+- the selected Provider and model become the plugin project's default Agent configuration;
+- creation only collects the plugin project identity, Project, Provider, and model; prompts,
+  assistants, approvals, and other Agent-dependent options are configured after the plugin project
+  has been saved;
 - app pages, Agent conversations, local app state, HTTP jobs, workflows, and history are scoped to
   the selected Project;
 - Paseo injects the canonical `projectId`, `projectName`, and `projectSourceDirectory` fields into
@@ -213,8 +218,10 @@ Reference the file from `plugin.json`, or rely on default `.app.json` discovery:
 }
 ```
 
-After installation, open **Host Settings → Plugins → Open app**. Describe the desired interface to
-the Agent. Each message revises the complete interface while preserving the local conversation.
+After installation, open **Host Settings → Plugins → Open app**, select the Project and default
+Provider/model, and save the plugin project. Agent-driven interface generation is only shown after
+that first save. Each later message revises the complete interface while preserving the local
+conversation and uses the saved default model first.
 Paseo stores generated state separately for each Project under:
 
 ```text

@@ -30,7 +30,7 @@ describe("plugin app job polling", () => {
   });
 
   it("stops polling terminal jobs and exhausted query failures", () => {
-    for (const status of ["succeeded", "failed", "cancelled", "timed_out"] as const) {
+    for (const status of ["draft", "succeeded", "failed", "cancelled", "timed_out"] as const) {
       const job = createJob(status);
       expect(isTerminalPluginAppJob(job)).toBe(true);
       expect(pluginAppJobPollInterval(job, false)).toBe(false);

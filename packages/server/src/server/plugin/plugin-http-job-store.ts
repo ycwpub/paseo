@@ -92,6 +92,7 @@ export class PluginHttpJobStore {
     projectId?: string;
     listenerId?: string;
     routeId?: string;
+    status?: PluginHttpJobStatus;
     input: unknown;
     createdAt: string;
   }): Promise<PluginHttpJob> {
@@ -102,7 +103,7 @@ export class PluginHttpJobStore {
       projectId: input.projectId,
       listenerId: input.listenerId,
       routeId: input.routeId,
-      status: "queued",
+      status: input.status ?? "queued",
       input: input.input,
       result: null,
       workflowRunId: null,

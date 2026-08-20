@@ -58,11 +58,11 @@ export function AssistantSelector({
   onSelectTeamRef.current = onSelectTeam;
 
   const options = useMemo<ComboboxOption[]>(() => {
-    const list: ComboboxOption[] = [{ id: NO_ASSISTANT_ID, label: "No assistant" }];
+    const list: ComboboxOption[] = [{ id: NO_ASSISTANT_ID, label: "不使用助手" }];
     for (const a of assistants.assistants) {
       list.push({
         id: `${ASSISTANT_PREFIX}${a.id}`,
-        label: a.name || "Unnamed assistant",
+        label: a.name || "未命名助手",
         description: a.description || undefined,
       });
     }
@@ -73,7 +73,7 @@ export function AssistantSelector({
         list.push({
           id: `${TEAM_PREFIX}${team.id}`,
           label: team.name,
-          description: `Team · Leader: ${leader.name || "Unnamed assistant"} · ${resolveTeamAssistantIds(team).length} assistants`,
+          description: `团队 · 负责人：${leader.name || "未命名助手"} · ${resolveTeamAssistantIds(team).length} 个助手`,
         });
       }
     }
@@ -87,7 +87,7 @@ export function AssistantSelector({
     }
     if (!selectedAssistantId) return null;
     const a = assistants.assistants.find((x) => x.id === selectedAssistantId);
-    return a ? { label: a.name || "Unnamed assistant", team: false } : null;
+    return a ? { label: a.name || "未命名助手", team: false } : null;
   }, [assistants.assistants, selectedAssistantId, selectedTeamId, teams.teams]);
 
   const handleSelect = useCallback(
@@ -132,7 +132,7 @@ export function AssistantSelector({
     return null;
   }
 
-  const label = selectedDisplay?.label ?? "Assistant or team";
+  const label = selectedDisplay?.label ?? "助手或团队";
   let comboboxValue = NO_ASSISTANT_ID;
   if (selectedTeamId) {
     comboboxValue = `${TEAM_PREFIX}${selectedTeamId}`;

@@ -4,6 +4,7 @@ import type {
   McpServerUpdateInput,
   PaseoMemoryUpdateInput,
   PaseoMemorySyncSnapshot,
+  PluginAppDefaultAgent,
   PluginAppState,
   PluginHttpJob,
   PluginHttpJobStatus,
@@ -371,6 +372,41 @@ export class DaemonResourceRpcClient {
     return { app: result.app, error: result.error };
   }
 
+  async configurePluginApp(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    defaultAgent: PluginAppDefaultAgent;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.configure.request", ...input },
+      responseType: "plugin.app.configure.response",
+    });
+    return { app: result.app, error: result.error };
+  }
+
+  async listPluginAppProjects(
+    pluginId: string,
+    appId: string,
+  ): Promise<{ projects: PluginAppState[]; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.project.list.request", pluginId, appId },
+      responseType: "plugin.app.project.list.response",
+    });
+    return { projects: result.projects, error: result.error };
+  }
+
+  async deletePluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ projectId: string; deleted: boolean; error: string | null }> {
+    return this.request({
+      message: { type: "plugin.app.project.delete.request", ...input },
+      responseType: "plugin.app.project.delete.response",
+    });
+  }
+
   async generatePluginApp(
     pluginId: string,
     appId: string,
@@ -448,6 +484,29 @@ export class DaemonResourceRpcClient {
     const result = await this.request({
       message: { type: "plugin.app.job.update.request", processId, input },
       responseType: "plugin.app.job.update.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async createPluginAppJobDraft(input: {
+    pluginId: string;
+    serviceName: string;
+    projectId: string;
+    input: unknown;
+  }): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.draft.create.request", ...input },
+      responseType: "plugin.app.job.draft.create.response",
+    });
+    return { job: result.job, error: result.error };
+  }
+
+  async startPluginAppJob(
+    processId: string,
+  ): Promise<{ job: PluginHttpJob | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.job.start.request", processId },
+      responseType: "plugin.app.job.start.response",
     });
     return { job: result.job, error: result.error };
   }

@@ -45,7 +45,7 @@ function buildMemberProviderOptions(
     {
       id: INHERIT_LEADER_VALUE,
       value: INHERIT_LEADER_VALUE,
-      label: "Same as leader",
+      label: "与负责人一致",
       description: "Use the leader's current provider.",
     },
     ...entries
@@ -62,7 +62,7 @@ function buildMemberProviderOptions(
       id: configuredProvider,
       value: configuredProvider,
       label: configuredProvider,
-      description: "Saved provider",
+      description: "已保存的 Provider",
     });
   }
   return options;
@@ -76,7 +76,7 @@ function buildMemberModelOptions(
   const inherited: SelectFieldOption<string> = {
     id: INHERIT_LEADER_VALUE,
     value: INHERIT_LEADER_VALUE,
-    label: "Same as leader",
+    label: "与负责人一致",
     description: "Use the leader's current model.",
   };
   const options: SelectFieldOption<string>[] = [inherited];
@@ -103,7 +103,7 @@ function buildMemberModelOptions(
       id: configuredModel,
       value: configuredModel,
       label: configuredModel,
-      description: "Saved model",
+      description: "已保存的模型",
     });
   }
   return options;
@@ -143,7 +143,7 @@ function buildMemberThinkingOptions(
   options.set(INHERIT_LEADER_VALUE, {
     id: INHERIT_LEADER_VALUE,
     value: INHERIT_LEADER_VALUE,
-    label: "Same as leader",
+    label: "与负责人一致",
     description: "Use the leader's current thinking mode.",
   });
   for (const model of models) {
@@ -171,11 +171,11 @@ function buildMemberThinkingOptions(
 
 function TeamsUpgradeCard() {
   return (
-    <SettingsSection title="Teams">
+    <SettingsSection title="团队">
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Teams require a newer host</Text>
+            <Text style={settingsStyles.rowTitle}>团队功能需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
               Update the selected Paseo daemon to create and use assistant teams.
             </Text>
@@ -310,14 +310,14 @@ function TeamMemberRow({
           accessibilityLabel={`Include ${assistant.name || "assistant"} in team`}
         />
         <View style={styles.memberContent}>
-          <Text style={settingsStyles.rowTitle}>{assistant.name || "Unnamed assistant"}</Text>
+          <Text style={settingsStyles.rowTitle}>{assistant.name || "未命名助手"}</Text>
           {assistant.description ? (
             <Text style={settingsStyles.rowHint}>{assistant.description}</Text>
           ) : null}
         </View>
         {selected ? (
           <Button size="sm" variant={isLeader ? "default" : "outline"} onPress={handleSetLeader}>
-            {isLeader ? "Leader" : "Set leader"}
+            {isLeader ? "负责人" : "设为负责人"}
           </Button>
         ) : null}
       </View>
@@ -329,34 +329,34 @@ function TeamMemberRow({
             selectedDisplay={selectedProviderDisplay}
             options={providerOptions}
             onChange={handleProviderChange}
-            placeholder="Same as leader"
-            emptyText="No providers on this host"
+            placeholder="与负责人一致"
+            emptyText="该主机没有可用 Provider"
             loading={providersLoading}
             searchable
             size="sm"
             testID={`team-member-provider-${assistant.id}`}
           />
           <SelectField
-            label="Model"
+            label="模型"
             value={modelValue}
             selectedDisplay={selectedModelDisplay}
             options={modelOptions}
             onChange={handleModelChange}
-            placeholder="Same as leader"
-            emptyText="No models on this host"
+            placeholder="与负责人一致"
+            emptyText="该主机没有可用模型"
             loading={providersLoading}
             searchable
             size="sm"
             testID={`team-member-model-${assistant.id}`}
           />
           <SelectField
-            label="Thinking mode"
+            label="思考模式"
             value={thinkingValue}
             selectedDisplay={selectedThinkingDisplay}
             options={thinkingOptions}
             onChange={handleThinkingChange}
-            placeholder="Same as leader"
-            emptyText="No thinking modes on this host"
+            placeholder="与负责人一致"
+            emptyText="该主机没有可用思考模式"
             loading={providersLoading}
             size="sm"
             testID={`team-member-thinking-${assistant.id}`}
@@ -408,10 +408,10 @@ export function TeamsSection({ serverId }: { serverId: string }) {
 
   const handleDelete = useCallback(
     (team: Team) => {
-      Alert.alert("Delete team?", `"${team.name}" will be removed.`, [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert("删除团队？", `将移除“${team.name}”。`, [
+        { text: "取消", style: "cancel" },
         {
-          text: "Delete",
+          text: "删除",
           style: "destructive",
           onPress: () => {
             void teams.deleteTeam(team.id);
@@ -457,21 +457,21 @@ export function TeamsSection({ serverId }: { serverId: string }) {
   }
 
   return (
-    <SettingsSection title="Teams" trailing={addTeamAction}>
+    <SettingsSection title="团队" trailing={addTeamAction}>
       {form ? (
         <View style={settingsStyles.card}>
           <View style={styles.form}>
-            <Field label="Team name">
+            <Field label="团队名称">
               <FormTextInput
                 initialValue={form.name}
                 resetKey={`team-name:${form.mode}:${form.teamId ?? "new"}`}
                 onChangeText={handleNameChange}
-                placeholder="Team name"
+                placeholder="团队名称"
               />
             </Field>
             <View style={styles.memberHeader}>
-              <Text style={settingsStyles.rowTitle}>Assistants</Text>
-              <Text style={settingsStyles.rowHint}>Select at least two and choose one leader.</Text>
+              <Text style={settingsStyles.rowTitle}>助手</Text>
+              <Text style={settingsStyles.rowHint}>至少选择两个助手，并指定一名负责人。</Text>
             </View>
             {assistants.assistants.map((assistant) => {
               const selected = form.assistantIds.includes(assistant.id);
@@ -509,7 +509,7 @@ export function TeamsSection({ serverId }: { serverId: string }) {
                 disabled={!canSubmitTeamForm(form) || !teams.isConnected}
                 loading={teams.isMutating}
               >
-                {form.mode === "create" ? "Create team" : "Save team"}
+                {form.mode === "create" ? "创建团队" : "保存团队"}
               </Button>
             </View>
           </View>
@@ -521,9 +521,7 @@ export function TeamsSection({ serverId }: { serverId: string }) {
               <TeamRow
                 key={team.id}
                 team={team}
-                leaderName={
-                  resolveTeamLeader(team, assistants.assistants)?.name || "Missing assistant"
-                }
+                leaderName={resolveTeamLeader(team, assistants.assistants)?.name || "助手不存在"}
                 memberCount={resolveTeamAssistantIds(team).length}
                 onEdit={beginEdit}
                 onDelete={handleDelete}
@@ -531,7 +529,7 @@ export function TeamsSection({ serverId }: { serverId: string }) {
             ))
           ) : (
             <View style={settingsStyles.row}>
-              <Text style={settingsStyles.rowHint}>No teams yet.</Text>
+              <Text style={settingsStyles.rowHint}>暂无团队。</Text>
             </View>
           )}
         </View>

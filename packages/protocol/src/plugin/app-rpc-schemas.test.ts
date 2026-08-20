@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   PluginAppActionSubmitRequestSchema,
+  PluginAppConfigureRequestSchema,
   PluginAppGenerateRequestSchema,
   PluginAppGetRequestSchema,
   PluginAppGetResponseSchema,
+  PluginAppJobDraftCreateRequestSchema,
   PluginAppJobDeleteRequestSchema,
   PluginAppJobListRequestSchema,
   PluginAppJobListResponseSchema,
+  PluginAppJobStartRequestSchema,
   PluginAppJobUpdateRequestSchema,
+  PluginAppProjectDeleteRequestSchema,
+  PluginAppProjectListResponseSchema,
   PluginHttpServiceSubmitRequestSchema,
 } from "./app-rpc-schemas.js";
 
@@ -21,23 +26,23 @@ describe("plugin app RPC schemas", () => {
         appId: "dashboard",
       }).projectId,
     ).toBeUndefined();
-    expect(
-      PluginAppGetResponseSchema.parse({
-        type: "plugin.app.get.response",
-        payload: {
-          requestId: "request-legacy",
-          app: {
-            pluginId: "demo-plugin",
-            appId: "dashboard",
-            document: null,
-            conversation: [],
-            createdAt: "2026-08-20T00:00:00.000Z",
-            updatedAt: "2026-08-20T00:00:00.000Z",
-          },
-          error: null,
+    const legacyResponse = PluginAppGetResponseSchema.parse({
+      type: "plugin.app.get.response",
+      payload: {
+        requestId: "request-legacy",
+        app: {
+          pluginId: "demo-plugin",
+          appId: "dashboard",
+          document: null,
+          conversation: [],
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
         },
-      }).payload.app?.projectId,
-    ).toBeUndefined();
+        error: null,
+      },
+    });
+    expect(legacyResponse.payload.app?.projectId).toBeUndefined();
+    expect(legacyResponse.payload.app?.defaultAgent).toBeNull();
   });
 
   it("accepts Agent interface generation requests", () => {
@@ -51,6 +56,68 @@ describe("plugin app RPC schemas", () => {
         prompt: "Build a form",
       }).prompt,
     ).toBe("Build a form");
+  });
+
+  it("requires a Provider and model when configuring a plugin project", () => {
+    expect(
+      PluginAppConfigureRequestSchema.parse({
+        type: "plugin.app.configure.request",
+        requestId: "request-configure",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+        defaultAgent: {
+          provider: "codex",
+          model: "gpt-5.6",
+        },
+      }).defaultAgent,
+    ).toEqual({ provider: "codex", model: "gpt-5.6" });
+    expect(() =>
+      PluginAppConfigureRequestSchema.parse({
+        type: "plugin.app.configure.request",
+        requestId: "request-configure-invalid",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+        defaultAgent: {
+          provider: "codex",
+          model: "",
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("lists and deletes configured plugin projects", () => {
+    expect(
+      PluginAppProjectListResponseSchema.parse({
+        type: "plugin.app.project.list.response",
+        payload: {
+          requestId: "request-project-list",
+          projects: [
+            {
+              pluginId: "demo-plugin",
+              appId: "dashboard",
+              projectId: "project-1",
+              defaultAgent: { provider: "codex", model: "gpt-5.6" },
+              document: null,
+              conversation: [],
+              createdAt: "2026-08-20T00:00:00.000Z",
+              updatedAt: "2026-08-20T00:00:00.000Z",
+            },
+          ],
+          error: null,
+        },
+      }).payload.projects,
+    ).toHaveLength(1);
+    expect(
+      PluginAppProjectDeleteRequestSchema.parse({
+        type: "plugin.app.project.delete.request",
+        requestId: "request-project-delete",
+        pluginId: "demo-plugin",
+        appId: "dashboard",
+        projectId: "project-1",
+      }).projectId,
+    ).toBe("project-1");
   });
 
   it("accepts structured form submissions", () => {
@@ -137,6 +204,29 @@ describe("plugin app RPC schemas", () => {
       PluginAppJobDeleteRequestSchema.parse({
         type: "plugin.app.job.delete.request",
         requestId: "request-6",
+        processId: "process-1",
+      }).processId,
+    ).toBe("process-1");
+  });
+
+  it("creates and starts draft plugin jobs", () => {
+    expect(
+      PluginAppJobDraftCreateRequestSchema.parse({
+        type: "plugin.app.job.draft.create.request",
+        requestId: "request-draft",
+        pluginId: "byte-development",
+        serviceName: "development",
+        projectId: "project-1",
+        input: { flow_title: "支付优化" },
+      }),
+    ).toMatchObject({
+      projectId: "project-1",
+      input: { flow_title: "支付优化" },
+    });
+    expect(
+      PluginAppJobStartRequestSchema.parse({
+        type: "plugin.app.job.start.request",
+        requestId: "request-start",
         processId: "process-1",
       }).processId,
     ).toBe("process-1");

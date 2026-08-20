@@ -110,6 +110,14 @@ import {
   type ProjectConfigRpcError,
 } from "./paseo-config-schema.js";
 export {
+  PaseoProjectDocumentKnowledgeResourceSchema,
+  PaseoProjectGeneralKnowledgeResourceSchema,
+  PaseoProjectKnowledgeSchema,
+  type PaseoProjectDocumentKnowledgeResource,
+  type PaseoProjectGeneralKnowledgeResource,
+  type PaseoProjectKnowledge,
+} from "./project-knowledge-schema.js";
+export {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
   PaseoMetadataGenerationEntrySchema,
@@ -3301,10 +3309,16 @@ export const ServerInfoStatusPayloadSchema = z
         plugins: z.boolean().optional(),
         // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons keep app state global.
         pluginProjectScopedApps: z.boolean().optional(),
+        // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.
+        pluginProjectDefaultAgent: z.boolean().optional(),
+        // COMPAT(pluginProjectManagement): added on 2026-08-20.
+        pluginProjectManagement: z.boolean().optional(),
         // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobList: z.boolean().optional(),
         // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobMutation: z.boolean().optional(),
+        // COMPAT(pluginAppJobDrafts): added on 2026-08-20.
+        pluginAppJobDrafts: z.boolean().optional(),
         // COMPAT(pluginHttpServiceSubmit): added in v0.3.2, remove gate after 2027-02-19.
         pluginHttpServiceSubmit: z.boolean().optional(),
         // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.

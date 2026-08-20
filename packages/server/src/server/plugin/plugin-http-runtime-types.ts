@@ -18,6 +18,13 @@ export interface PluginHttpServiceRuntime {
   reconcile(bindings: PluginHttpServiceBinding[]): Promise<void>;
   getStatus(pluginId: string, serviceName: string): PluginHttpServiceSummary | null;
   submit(pluginId: string, serviceName: string, input: unknown): Promise<PluginHttpJob>;
+  createDraft(
+    pluginId: string,
+    serviceName: string,
+    projectId: string,
+    input: unknown,
+  ): Promise<PluginHttpJob>;
+  startJob(processId: string): Promise<PluginHttpJob | null>;
   getJob(processId: string): PluginHttpJob | null;
   listJobs(options: {
     pluginId?: string;

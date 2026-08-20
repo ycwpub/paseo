@@ -296,7 +296,7 @@ test("mcp create injects Project context for child agents in an existing workspa
     expect(createAgent).toHaveBeenCalledWith(
       expect.objectContaining({
         writableProjectDirectories: [root, join(root, "../facade")],
-        systemPrompt: expect.stringContaining("Knowledge directories (mandatory instructions)"),
+        systemPrompt: expect.stringContaining("General knowledge directories"),
       }),
       undefined,
       expect.objectContaining({ workspaceId: "ws-context" }),

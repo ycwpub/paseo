@@ -227,6 +227,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.semibold,
   },
+  status_draft: { color: theme.colors.foregroundMuted },
   status_queued: { color: theme.colors.foregroundMuted },
   status_running: { color: theme.colors.accent },
   status_succeeded: { color: theme.colors.success },

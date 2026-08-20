@@ -113,6 +113,59 @@ describe("buildSidebarProjectRowModel", () => {
     });
   });
 
+  it("shows the new workspace action for a directoryless Project on a multiplicity-capable host", () => {
+    const result = buildSidebarProjectRowModel({
+      project: project({
+        projectKind: "directory",
+        iconWorkingDir: "",
+        workspaces: [],
+        hosts: [
+          {
+            serverId: "srv",
+            iconWorkingDir: "",
+            worktreeSupport: "unsupported",
+          },
+        ],
+      }),
+      collapsed: false,
+      supportsMultiplicityByServerId: new Map([["srv", true]]),
+    });
+
+    expect(result.trailingAction).toEqual({
+      kind: "new_workspace",
+      target: { serverId: "srv", projectId: "project-srv", iconWorkingDir: "" },
+    });
+  });
+
+  it("uses a host-managed source directory for a directoryless Project", () => {
+    const result = buildSidebarProjectRowModel({
+      project: project({
+        projectKind: "directory",
+        iconWorkingDir: "",
+        workspaces: [],
+        hosts: [
+          {
+            serverId: "srv",
+            iconWorkingDir: "",
+            sourceDirectory: "/managed/project",
+            worktreeSupport: "unsupported",
+          },
+        ],
+      }),
+      collapsed: false,
+      supportsMultiplicityByServerId: new Map([["srv", true]]),
+    });
+
+    expect(result.trailingAction).toEqual({
+      kind: "new_workspace",
+      target: {
+        serverId: "srv",
+        projectId: "project-srv",
+        iconWorkingDir: "/managed/project",
+      },
+    });
+  });
+
   it("hides the new workspace action for a non-git project when the host lacks workspace multiplicity", () => {
     const result = buildSidebarProjectRowModel({
       project: project({ projectKind: "directory", workspaces: [] }),

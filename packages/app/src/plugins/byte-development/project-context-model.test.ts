@@ -2,25 +2,15 @@ import { describe, expect, it } from "vitest";
 import { buildByteDevelopmentFixedFormValues } from "./project-context-model";
 
 describe("byte development project context", () => {
-  it("injects the selected Project id, repository and document links", () => {
+  it("injects the selected Project id and repository", () => {
     expect(
       buildByteDevelopmentFixedFormValues({
         projectId: "project-1",
-        sourceProjectId: "project-source",
         repositoryPath: "/workspace/project-1",
-        larkDocumentLinks: [
-          "https://example.feishu.cn/wiki/architecture",
-          "https://example.larksuite.com/docx/prd",
-        ],
       }),
     ).toEqual({
       projectId: "project-1",
-      sourceProjectId: "project-source",
       repository_path: "/workspace/project-1",
-      lark_document_links: [
-        "https://example.feishu.cn/wiki/architecture",
-        "https://example.larksuite.com/docx/prd",
-      ],
     });
   });
 
@@ -29,7 +19,6 @@ describe("byte development project context", () => {
       buildByteDevelopmentFixedFormValues({
         projectId: "project-1",
         repositoryPath: null,
-        larkDocumentLinks: [],
       }),
     ).toEqual({});
   });

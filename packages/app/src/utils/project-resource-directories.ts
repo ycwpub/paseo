@@ -7,7 +7,6 @@ import { isAbsolutePath } from "./path";
 
 export const PROJECT_RESOURCE_DIRECTORY_KEYS = [
   "project",
-  "reference",
   "knowledge",
   "indexSkill",
   "workspaceData",
@@ -93,6 +92,11 @@ export function resolveProjectResourceDirectories(input: {
     );
   const project = resolveList(configured.project);
   const configuredKnowledge = resolveList(configured.knowledge);
+  const configuredGeneralKnowledge = resolveList(
+    (input.projectConfig?.knowledge?.general ?? [])
+      .filter((resource) => resource.enabled !== false && resource.type === "local-directory")
+      .map((resource) => resource.source),
+  );
   const automaticKnowledge =
     (input.projectConfig?.directoryMode ?? "single") === "single" && project[0]
       ? AI_KNOWLEDGE_DIRECTORY_NAMES.map((name) =>
@@ -114,8 +118,9 @@ export function resolveProjectResourceDirectories(input: {
   );
   return {
     project: project.length > 0 ? project : [normalizeHostPath(input.context.workspaceDirectory)],
-    reference: resolveList(configured.reference),
-    knowledge: Array.from(new Set([...configuredKnowledge, ...automaticKnowledge])),
+    knowledge: Array.from(
+      new Set([...configuredKnowledge, ...configuredGeneralKnowledge, ...automaticKnowledge]),
+    ),
     indexSkill: resolveList(configured.indexSkill),
     workspaceData,
   };

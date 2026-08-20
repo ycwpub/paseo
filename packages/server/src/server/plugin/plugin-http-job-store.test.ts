@@ -40,6 +40,32 @@ describe("PluginHttpJobStore", () => {
     });
   });
 
+  it("preserves draft jobs across daemon restarts", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-drafts-"));
+    const directory = path.join(tempRoot, "jobs");
+    const store = new PluginHttpJobStore(directory);
+    store.initialize();
+    const created = await store.create({
+      pluginId: "byte-development",
+      serviceName: "development",
+      projectId: "project-1",
+      status: "draft",
+      input: { flow_title: "支付优化" },
+      createdAt: "2026-08-20T08:00:00.000Z",
+    });
+
+    const reloaded = new PluginHttpJobStore(directory);
+    reloaded.initialize("2026-08-20T09:00:00.000Z");
+
+    expect(reloaded.get(created.id)).toMatchObject({
+      status: "draft",
+      projectId: "project-1",
+      input: { flow_title: "支付优化" },
+      startedAt: null,
+      endedAt: null,
+    });
+  });
+
   it("lists the latest plugin jobs and filters them by project", async () => {
     tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-jobs-"));
     const store = new PluginHttpJobStore(path.join(tempRoot, "jobs"));

@@ -87,18 +87,18 @@ export function CadenceEditor({ value, onChange, error, size = "md" }: CadenceEd
   }
 
   return (
-    <Field label="Cadence">
+    <Field label="执行频率">
       <View style={styles.stack}>
         <SelectField
-          label="Cadence"
+          label="执行频率"
           value={selectedPresetId === "custom" ? null : selectedPresetId}
           selectedDisplay={selectedPresetDisplay}
           options={PRESET_OPTIONS}
           onChange={handlePresetChange}
-          placeholder="Select cadence"
-          emptyText="No cadences found"
+          placeholder="选择执行频率"
+          emptyText="没有可用执行频率"
           searchable={false}
-          title="Cadence"
+          title="执行频率"
           size={size}
           triggerTestID="schedule-cadence-preset-trigger"
           field={false}
@@ -107,7 +107,7 @@ export function CadenceEditor({ value, onChange, error, size = "md" }: CadenceEd
         <FormTextInput
           size={size}
           testID="cadence-cron-expression"
-          accessibilityLabel="Cron expression"
+          accessibilityLabel="Cron 表达式"
           initialValue={cronText}
           resetKey={`cadence-cron-${fieldResetKey}`}
           value={cronText}

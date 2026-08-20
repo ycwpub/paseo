@@ -813,7 +813,7 @@ function OpenProjectListener() {
       }
 
       chooseHost({
-        title: "Choose host",
+        title: "选择主机",
         onChooseHost: (serverId) => {
           setRequest({
             id: nextOpenProjectRequestId++,

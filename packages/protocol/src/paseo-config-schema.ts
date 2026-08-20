@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaseoProjectKnowledgeSchema } from "./project-knowledge-schema.js";
 
 const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
 
@@ -24,7 +25,6 @@ export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocati
 
 export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
   project: ["{{workspaceDirectory}}"],
-  reference: [],
   knowledge: [],
   indexSkill: [],
   workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
@@ -54,10 +54,30 @@ export function resolvePaseoProjectDirectoryEntries(
         ? { path: entry, enabled: true }
         : { path: entry.path, enabled: entry.enabled !== false },
     );
+  const knowledgeEntries = resolve([
+    ...(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
+    // COMPAT(projectReferenceDirectories): reference directories were merged into
+    // knowledge directories in August 2026. Read legacy entries until they are
+    // migrated by the Project settings form.
+    ...(directories?.reference ?? []),
+  ]);
+  const knowledge = Array.from(
+    knowledgeEntries
+      .reduce((entries, entry) => {
+        const key = entry.path.trim();
+        if (!key) return entries;
+        const current = entries.get(key);
+        entries.set(key, {
+          path: current?.path ?? entry.path,
+          enabled: (current?.enabled ?? false) || entry.enabled,
+        });
+        return entries;
+      }, new Map<string, { path: string; enabled: boolean }>())
+      .values(),
+  );
   return {
     project: resolve(directories?.project ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.project),
-    reference: resolve(directories?.reference ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.reference),
-    knowledge: resolve(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
+    knowledge,
     indexSkill: resolve(directories?.indexSkill ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.indexSkill),
     workspaceData: resolve(
       directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
@@ -129,6 +149,7 @@ export const PaseoMetadataGenerationSchema = z
 export const PaseoProjectDirectoriesSchema = z
   .object({
     project: z.array(PaseoProjectDirectoryEntrySchema).optional(),
+    // Legacy input only. Canonical writers merge these entries into `knowledge`.
     reference: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     knowledge: z.array(PaseoProjectDirectoryEntrySchema).optional(),
     indexSkill: z.array(PaseoProjectDirectoryEntrySchema).optional(),
@@ -156,9 +177,13 @@ export const PaseoProjectConfigSchema = z
   .object({
     directoryMode: z.enum(["single", "multiple"]).optional(),
     directories: PaseoProjectDirectoriesSchema.optional(),
+    knowledge: PaseoProjectKnowledgeSchema.optional(),
     indexSkill: PaseoProjectIndexSkillSchema.optional(),
     variables: z.record(z.string(), z.string()).optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
+    // COMPAT(projectLarkDocuments): legacy Project links are migrated into
+    // knowledge.general cloud documents when saved. Keep old configs parseable
+    // until 2027-02-20.
     larkDocumentLinks: z.array(z.string()).optional(),
   })
   .passthrough();

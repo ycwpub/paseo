@@ -13,16 +13,39 @@ const workflowPath = fileURLToPath(
 
 interface WorkflowStepWithInputSchema {
   id?: string;
+  type?: string;
   inputSchema?: WorkflowJsonSchema;
+  config?: {
+    provider?: string;
+    model?: string;
+  };
+  steps?: WorkflowStepWithInputSchema[];
+  defaultSteps?: WorkflowStepWithInputSchema[];
+  cases?: Array<{ steps?: WorkflowStepWithInputSchema[] }>;
+}
+
+function readWorkflow(): { steps?: WorkflowStepWithInputSchema[] } {
+  return JSON.parse(readFileSync(workflowPath, "utf8")) as {
+    steps?: WorkflowStepWithInputSchema[];
+  };
 }
 
 function prdInputSchema(): WorkflowJsonSchema {
-  const workflow = JSON.parse(readFileSync(workflowPath, "utf8")) as {
-    steps?: WorkflowStepWithInputSchema[];
-  };
+  const workflow = readWorkflow();
   const schema = workflow.steps?.find((step) => step.id === "prd")?.inputSchema;
   if (!schema) throw new Error("Byte development PRD input schema is missing");
   return schema;
+}
+
+function collectAgentSteps(
+  steps: readonly WorkflowStepWithInputSchema[],
+): WorkflowStepWithInputSchema[] {
+  return steps.flatMap((step) => [
+    ...(step.type === "agent" ? [step] : []),
+    ...collectAgentSteps(step.steps ?? []),
+    ...collectAgentSteps(step.defaultSteps ?? []),
+    ...(step.cases ?? []).flatMap((entry) => collectAgentSteps(entry.steps ?? [])),
+  ]);
 }
 
 describe("byte development workflow input contract", () => {
@@ -30,7 +53,6 @@ describe("byte development workflow input contract", () => {
     const input: WorkflowData = {
       flow_title: "抖音省开发",
       projectId: "prj_flow",
-      sourceProjectId: "prj_source",
       prd: "实现需求",
       prd_source: "manual",
       meego_url: "",
@@ -38,7 +60,8 @@ describe("byte development workflow input contract", () => {
       meego_work_item_id: "",
       meego_title: "",
       repository_path: "/workspace/project",
-      lark_document_links: [],
+      agent_provider: "codex",
+      agent_model: "gpt-5.6",
       approve_development: false,
       bits_dev_task_id: "",
       bits_psm: "",
@@ -58,5 +81,16 @@ describe("byte development workflow input contract", () => {
     };
 
     expect(() => validateWorkflowNodeData(prdInputSchema(), input, "Workflow input")).not.toThrow();
+  });
+
+  it("uses the plugin project's default Provider and model for every Agent node", () => {
+    const agentSteps = collectAgentSteps(readWorkflow().steps ?? []);
+    expect(agentSteps.length).toBeGreaterThan(0);
+    for (const step of agentSteps) {
+      expect(step.config).toMatchObject({
+        provider: "{{origin_input.agent_provider}}",
+        model: "{{origin_input.agent_model}}",
+      });
+    }
   });
 });

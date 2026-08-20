@@ -25,7 +25,7 @@ export function FileEditorView(_props: {
 }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Source editing is available on web and desktop.</Text>
+      <Text style={styles.text}>源码编辑仅在 Web 和桌面端可用。</Text>
     </View>
   );
 }

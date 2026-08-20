@@ -14,7 +14,7 @@ import { PaseoMemoryService } from "./memory-service.js";
 import { PaseoMemoryStore } from "./memory-store.js";
 
 describe("PaseoMemoryService prompt integration", () => {
-  test("keeps user input unchanged and exposes only an index path through system prompt", async () => {
+  test("keeps user input unchanged and exposes only the total memory path through system prompt", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-memory-service-"));
     const logger = pino({ level: "silent" });
     const store = new PaseoMemoryStore({ paseoHome, logger });
@@ -70,13 +70,15 @@ describe("PaseoMemoryService prompt integration", () => {
     await expect(promptComposer!.compose(agent, userInput)).resolves.toBe(userInput);
 
     const systemPrompt = systemPromptComposer!("agent-1", agent.config);
-    expect(systemPrompt).toContain(path.join(paseoHome, "memory", "agent-indexes", "agent-1.md"));
+    const totalMemoryPath = path.join(paseoHome, "memory", "agent-indexes", "agent-1.md");
+    expect(systemPrompt).toContain(`Total memory document path: ${totalMemoryPath}`);
     expect(systemPrompt).not.toContain("Build, install, restart, test, then commit.");
+    expect(systemPrompt).not.toContain("../details/");
 
-    const indexPath = path.join(paseoHome, "memory", "agent-indexes", "agent-1.md");
-    expect(existsSync(indexPath)).toBe(true);
-    const indexContent = readFileSync(indexPath, "utf8");
-    expect(indexContent).toContain("Build workflow");
-    expect(indexContent).not.toContain("Build, install, restart, test, then commit.");
+    expect(existsSync(totalMemoryPath)).toBe(true);
+    const totalMemory = readFileSync(totalMemoryPath, "utf8");
+    expect(totalMemory).toContain("Build workflow");
+    expect(totalMemory).toContain("Build, install, restart, test, then commit.");
+    expect(totalMemory).toContain("../details/");
   });
 });

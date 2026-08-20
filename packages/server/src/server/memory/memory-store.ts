@@ -54,6 +54,7 @@ import {
   mergeMemorySyncUsers,
   remapMemorySyncScope,
 } from "./memory-sync.js";
+import { relativeMemoryDocumentPath, summarizeMemoryContent } from "./memory-total-document.js";
 
 const MEMORY_STORE_VERSION = 3;
 const SUMMARY_INDEX_MARKER = "<!-- paseo:memory-detail-index -->";
@@ -1273,6 +1274,7 @@ export class PaseoMemoryStore {
 
   private refreshSummaryIndexes(): void {
     for (const user of this.catalog.users) {
+      const summaryPath = this.summaryPath(user.id);
       const prefix =
         splitSummaryPrefix(this.readSummary(user.id)) || splitSummaryPrefix(defaultSummary());
       const lines = this.catalog.details
@@ -1284,10 +1286,22 @@ export class PaseoMemoryStore {
             effectiveMemoryStatus(entry as PaseoMemoryDetail) === "active",
         )
         .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-        .map(
-          (entry) =>
-            `- **${entry.title}** (${entry.category}) — ${this.detailPath(entry.id, entry.title)}`,
-        );
+        .flatMap((entry) => {
+          const detailPath = this.detailPath(entry.id, entry.title);
+          const relativePath = relativeMemoryDocumentPath({
+            totalDocumentPath: summaryPath,
+            memoryRoot: this.rootPath,
+            childPath: detailPath,
+          });
+          if (!relativePath) return [];
+          const overview =
+            summarizeMemoryContent(this.readDetailContent(detailPath)) || entry.title;
+          return [
+            `- **${entry.title}** (${entry.category})`,
+            `  - Summary: ${JSON.stringify(overview)}`,
+            `  - Path: ${JSON.stringify(relativePath)}`,
+          ];
+        });
       this.writeSummary(
         [
           prefix,

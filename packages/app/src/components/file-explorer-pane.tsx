@@ -486,7 +486,6 @@ export function FileExplorerPane({
           })
         : {
             project: normalizedWorkspaceRoot ? [normalizedWorkspaceRoot] : [],
-            reference: [],
             knowledge: [],
             indexSkill: [],
             workspaceData: [],
@@ -495,7 +494,6 @@ export function FileExplorerPane({
   );
   const selectedRoots = resourceDirectories[selectedDirectoryType];
   const activeRoot = selectedRoots[selectedRootIndex] ?? "";
-  const isSelectedRootReadOnly = selectedDirectoryType === "reference";
 
   useEffect(() => {
     setSelectedDirectoryType("project");
@@ -1076,17 +1074,11 @@ export function FileExplorerPane({
           revealTargetName={fileManagerTarget?.label}
           onDownloadEntry={handleDownloadEntry}
           onAddToChat={onAddToChat}
-          onNewEntry={fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleNewEntry : undefined}
+          onNewEntry={fsEntryOpsEnabled ? handleNewEntry : undefined}
           onCollapseDirectory={handleCollapseDirectory}
-          onRenameEntry={
-            fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleRenameEntry : undefined
-          }
-          onDuplicateEntry={
-            fsEntryDuplicateEnabled && !isSelectedRootReadOnly ? handleDuplicateEntry : undefined
-          }
-          onDeleteEntry={
-            fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleDeleteEntry : undefined
-          }
+          onRenameEntry={fsEntryOpsEnabled ? handleRenameEntry : undefined}
+          onDuplicateEntry={fsEntryDuplicateEnabled ? handleDuplicateEntry : undefined}
+          onDeleteEntry={fsEntryOpsEnabled ? handleDeleteEntry : undefined}
         />
       );
     },
@@ -1109,7 +1101,6 @@ export function FileExplorerPane({
       handleRevealEntry,
       handleSelectEntry,
       isDirectoryLoading,
-      isSelectedRootReadOnly,
       fileManagerTarget,
       selectedEntryPath,
       onAddToChat,
@@ -1161,9 +1152,7 @@ export function FileExplorerPane({
           showInitialLoading={showInitialLoading}
           showBackFromError={showBackFromError}
           listRows={listRows}
-          onNewEntryAtRoot={
-            fsEntryOpsEnabled && !isSelectedRootReadOnly ? handleNewEntry : undefined
-          }
+          onNewEntryAtRoot={fsEntryOpsEnabled ? handleNewEntry : undefined}
           currentSortLabel={currentSortLabel}
           isRefreshFetching={isRefreshFetching}
           treeListRef={treeListRef}

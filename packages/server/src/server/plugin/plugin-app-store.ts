@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import {
@@ -35,6 +35,7 @@ export class PluginAppStore {
         pluginId,
         appId: definition.id,
         projectId,
+        defaultAgent: null,
         category: definition.category,
         document: definition.initialDocument ?? null,
         conversation: [],
@@ -67,16 +68,48 @@ export class PluginAppStore {
     return parsed;
   }
 
-  private filePath(pluginId: string, appId: string, projectId: string): string {
-    const projectKey = createHash("sha256").update(projectId).digest("hex");
+  list(pluginId: string, definition: PluginAppDefinition): PluginAppState[] {
+    const projectsRoot = this.projectsRoot(pluginId, definition.id);
+    if (!existsSync(projectsRoot)) return [];
+    const states: PluginAppState[] = [];
+    for (const entry of readdirSync(projectsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const filePath = path.join(projectsRoot, entry.name, "state.json");
+      if (!existsSync(filePath)) continue;
+      try {
+        ensurePrivateFile(filePath);
+        const state = PluginAppStateSchema.parse(
+          JSON.parse(readFileSync(filePath, "utf8")) as unknown,
+        );
+        if (state.pluginId === pluginId && state.appId === definition.id && state.projectId) {
+          states.push(state);
+        }
+      } catch {
+        // Ignore corrupt or stale entries so one project does not hide the rest.
+      }
+    }
+    return states.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  delete(pluginId: string, appId: string, projectId: string): boolean {
+    const projectRoot = path.dirname(this.filePath(pluginId, appId, projectId));
+    if (!existsSync(projectRoot)) return false;
+    rmSync(projectRoot, { recursive: true, force: true });
+    return true;
+  }
+
+  private projectsRoot(pluginId: string, appId: string): string {
     return path.join(
       this.root,
       safeSegment(pluginId, "plugin ID"),
       "apps",
       safeSegment(appId, "app ID"),
       "projects",
-      projectKey,
-      "state.json",
     );
+  }
+
+  private filePath(pluginId: string, appId: string, projectId: string): string {
+    const projectKey = createHash("sha256").update(projectId).digest("hex");
+    return path.join(this.projectsRoot(pluginId, appId), projectKey, "state.json");
   }
 }

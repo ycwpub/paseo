@@ -63,7 +63,7 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
 
   if (!selection) return null;
 
-  let content = <Text style={styles.stateText}>Plugin app is unavailable.</Text>;
+  let content = <Text style={styles.stateText}>插件应用不可用。</Text>;
   if (plugins.isLoading) {
     content = <Text style={styles.stateText}>{t("common.loading")}</Text>;
   } else if (plugin?.enabled && appDefinition) {

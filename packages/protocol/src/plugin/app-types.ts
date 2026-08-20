@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentProviderSchema } from "../provider-manifest.js";
 
 const PluginAppComponentBaseSchema = z.object({
   id: z.string().trim().min(1),
@@ -131,11 +132,21 @@ export const PluginAppConversationMessageSchema = z.object({
 });
 export type PluginAppConversationMessage = z.infer<typeof PluginAppConversationMessageSchema>;
 
+export const PluginAppDefaultAgentSchema = z.object({
+  provider: AgentProviderSchema.refine((value) => value.trim().length > 0, {
+    message: "Provider is required",
+  }),
+  model: z.string().trim().min(1),
+});
+export type PluginAppDefaultAgent = z.infer<typeof PluginAppDefaultAgentSchema>;
+
 export const PluginAppStateSchema = z.object({
   pluginId: z.string(),
   appId: z.string(),
   // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons return global app state.
   projectId: z.string().optional(),
+  // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.
+  defaultAgent: PluginAppDefaultAgentSchema.nullable().default(null),
   category: z.string().optional(),
   document: PluginAppDocumentSchema.nullable(),
   conversation: z.array(PluginAppConversationMessageSchema),

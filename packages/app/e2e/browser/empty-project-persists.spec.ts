@@ -11,6 +11,7 @@ import { expectOpenedProject } from "../support/helpers/project-picker-ui";
 import { connectSeedClient, seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
+import { projectPlacementViewKey } from "../support/helpers/project-view-key";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
@@ -117,6 +118,40 @@ test.describe("Project picker search", () => {
 // Projects are parents in the sidebar. Archiving the last workspace leaves the
 // project row in place with a ghost "+ New workspace" child row.
 test.describe("Project with no workspaces persists", () => {
+  test("a directoryless Project exposes Workspace creation", async ({ page }) => {
+    const client = await connectSeedClient();
+    const created = await client.createDirectorylessProject({
+      name: `Directoryless ${Date.now()}`,
+    });
+    const project = created.project;
+    expect(created.error).toBeNull();
+    expect(project).not.toBeNull();
+    if (!project) {
+      throw new Error("Directoryless Project was not created");
+    }
+    const projectViewKey = project.projectKey
+      ? projectEquivalenceViewKey(project.projectKey)
+      : projectPlacementViewKey(getServerId(), project.projectId);
+
+    try {
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+
+      const projectRow = page.getByTestId(`sidebar-project-row-${projectViewKey}`);
+      await expect(projectRow).toBeVisible({ timeout: 30_000 });
+      await projectRow.hover();
+      await expect(
+        page.getByTestId(`sidebar-project-new-worktree-${projectViewKey}`),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId(`sidebar-project-new-workspace-row-${projectViewKey}`),
+      ).toBeVisible();
+    } finally {
+      await client.removeProject(project.projectId).catch(() => undefined);
+      await client.close().catch(() => undefined);
+    }
+  });
+
   test("adding a project starts with only a new-workspace child row", async ({ page }) => {
     const repo = await createTempGitRepo("empty-project-add-");
     const client = await connectSeedClient();

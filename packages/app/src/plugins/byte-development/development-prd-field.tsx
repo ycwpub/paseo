@@ -9,13 +9,15 @@ import { SelectField } from "@/components/ui/select-field";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
-  parseDevelopmentMeegoAuthRequired,
+  parseDevelopmentMeegoActionRequired,
   parseDevelopmentMeegoLoginChallenge,
   parseDevelopmentMeegoLoginStatus,
+  type DevelopmentMeegoActionRequired,
   type DevelopmentMeegoLoginChallenge,
 } from "./development-meego-auth-model";
 import { runDevelopmentMeegoAction } from "./development-meego-client";
 import { DevelopmentMeegoLoginSheet } from "./development-meego-login-sheet";
+import { DevelopmentMeegoPermissionCard } from "./development-meego-permission-card";
 import {
   type DevelopmentMeegoItem,
   type DevelopmentPrdSourceType,
@@ -74,6 +76,10 @@ export function DevelopmentPrdField({
   const [loginChecking, setLoginChecking] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginChallenge, setLoginChallenge] = useState<DevelopmentMeegoLoginChallenge | null>(null);
+  const [permissionAction, setPermissionAction] = useState<DevelopmentMeegoActionRequired | null>(
+    null,
+  );
+  const [permissionChecking, setPermissionChecking] = useState(false);
   const pendingRequestRef = useRef<PendingMeegoRequest | null>(null);
   const loginCheckingRef = useRef(false);
   const pluginId = plugin.pluginId ?? null;
@@ -141,6 +147,25 @@ export function DevelopmentPrdField({
       .finally(() => setLoginLoading(false));
   }, [client, loginLoading, pluginId, supported]);
 
+  const handleActionRequired = useCallback(
+    (result: unknown, request: PendingMeegoRequest): boolean => {
+      const action = parseDevelopmentMeegoActionRequired(result);
+      if (!action) return false;
+      pendingRequestRef.current = request;
+      setError(null);
+      request.onAuthRequired?.();
+      if (action.kind === "login") {
+        setPermissionAction(null);
+        beginLogin();
+      } else {
+        setLoginVisible(false);
+        setPermissionAction(action);
+      }
+      return true;
+    },
+    [beginLogin],
+  );
+
   const runMeegoRequest = useCallback(
     (request: PendingMeegoRequest) => {
       if (!client || !pluginId || !supported) return;
@@ -150,49 +175,48 @@ export function DevelopmentPrdField({
         input: request.input,
       })
         .then((result) => {
-          const authRequired = parseDevelopmentMeegoAuthRequired(result);
-          if (authRequired) {
-            pendingRequestRef.current = request;
-            setError(null);
-            request.onAuthRequired?.();
-            beginLogin();
-            return undefined;
-          }
+          if (handleActionRequired(result, request)) return undefined;
+          setPermissionAction(null);
           request.onSuccess(result);
           return undefined;
         })
         .catch((nextError: unknown) => {
+          if (handleActionRequired(nextError, request)) return;
           request.onError?.(nextError);
           setError(errorText(nextError));
         });
     },
-    [beginLogin, client, pluginId, supported],
+    [client, handleActionRequired, pluginId, supported],
   );
 
   const retryPendingRequest = useCallback(() => {
     const request = pendingRequestRef.current;
     if (!request || !client || !pluginId || !supported) return;
+    setPermissionChecking(true);
     void runDevelopmentMeegoAction({
       client,
       pluginId,
       input: request.input,
     })
       .then((result) => {
-        const authRequired = parseDevelopmentMeegoAuthRequired(result);
-        if (authRequired) {
-          setLoginVisible(true);
-          setLoginError("登录尚未生效，请完成授权后再次检查。");
-          return;
+        if (handleActionRequired(result, request)) {
+          if (parseDevelopmentMeegoActionRequired(result)?.kind === "login") {
+            setLoginError("登录尚未生效，请完成授权后再次检查。");
+          }
+          return undefined;
         }
         pendingRequestRef.current = null;
+        setPermissionAction(null);
         request.onSuccess(result);
         return undefined;
       })
       .catch((nextError: unknown) => {
+        if (handleActionRequired(nextError, request)) return;
         request.onError?.(nextError);
         setError(errorText(nextError));
-      });
-  }, [client, pluginId, supported]);
+      })
+      .finally(() => setPermissionChecking(false));
+  }, [client, handleActionRequired, pluginId, supported]);
 
   const checkLogin = useCallback(() => {
     if (!client || !pluginId || !supported || !loginChallenge || loginCheckingRef.current) {
@@ -423,6 +447,13 @@ export function DevelopmentPrdField({
                 </Button>
               </View>
             </Field>
+            {permissionAction ? (
+              <DevelopmentMeegoPermissionCard
+                action={permissionAction}
+                checking={permissionChecking}
+                onCheck={retryPendingRequest}
+              />
+            ) : null}
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <Field label="PRD / 需求说明" hint="已从 Meego 自动获取，可在启动流程前补充或修改。">
               <FormTextInput

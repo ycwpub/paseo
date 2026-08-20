@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { MessageSquare, Pencil, Trash2 } from "lucide-react-native";
+import { Copy, MessageSquare, Pencil, Play, Save, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
+import type { PluginSummary } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { settingsStyles } from "@/styles/settings";
@@ -20,6 +21,11 @@ import {
 } from "./stage-detail-model";
 import { DevelopmentProjectSettingsStage } from "./development-project-settings-stage";
 import { DEVELOPMENT_FLOW_NAVIGATION_STAGES } from "./development-project-settings-stage-model";
+import { DevelopmentPrdField } from "./development-prd-field";
+import {
+  developmentPrdSourceFromInput,
+  type DevelopmentPrdSourceValue,
+} from "./development-prd-source-model";
 import { useDevelopmentRun } from "./use-development-run";
 
 interface DevelopmentStage {
@@ -290,24 +296,119 @@ function StageDetail({
   );
 }
 
+function DraftPrdStage({
+  flow,
+  serverId,
+  plugin,
+  onSave,
+  onStart,
+}: {
+  flow: DevelopmentFlow;
+  serverId: string;
+  plugin: PluginSummary;
+  onSave: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onStart: (value: DevelopmentPrdSourceValue) => Promise<void>;
+}) {
+  const [value, setValue] = useState(() => developmentPrdSourceFromInput(flow.job.input));
+  const [saving, setSaving] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValue(developmentPrdSourceFromInput(flow.job.input));
+    setError(null);
+  }, [flow.id, flow.job.input]);
+
+  const handleSave = useCallback(() => {
+    setSaving(true);
+    setError(null);
+    void onSave(value)
+      .catch((nextError: unknown) => {
+        setError(nextError instanceof Error ? nextError.message : String(nextError));
+      })
+      .finally(() => setSaving(false));
+  }, [onSave, value]);
+
+  const handleStart = useCallback(() => {
+    setStarting(true);
+    setError(null);
+    void onStart(value)
+      .catch((nextError: unknown) => {
+        setError(nextError instanceof Error ? nextError.message : String(nextError));
+      })
+      .finally(() => setStarting(false));
+  }, [onStart, value]);
+
+  return (
+    <View style={[settingsStyles.card, styles.stageDetailCard]}>
+      <View style={styles.stageDetailHeading}>
+        <Text style={styles.outputTitle}>PRD / 需求说明</Text>
+        <Text style={styles.hint}>
+          直接输入需求或从 Meego 获取。保存后仍可继续修改；确认内容后再启动研发流程。
+        </Text>
+      </View>
+      <DevelopmentPrdField
+        active
+        serverId={serverId}
+        plugin={plugin}
+        value={value}
+        onChange={setValue}
+      />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <View style={styles.stageActions}>
+        <Button
+          variant="outline"
+          leftIcon={Save}
+          loading={saving}
+          disabled={starting}
+          onPress={handleSave}
+        >
+          保存 PRD
+        </Button>
+        <Button
+          variant="default"
+          leftIcon={Play}
+          loading={starting}
+          disabled={saving || !value.prd.trim()}
+          onPress={handleStart}
+        >
+          启动研发流程
+        </Button>
+      </View>
+    </View>
+  );
+}
+
 export function DevelopmentFlowDetail({
   flow,
   projectName,
   serverId,
+  plugin,
   canMutate,
+  canCopy,
+  copying,
   deleting,
   onOpenProject,
   onOpenProjectSettings,
+  onSavePrd,
+  onStartFlow,
+  onCopy,
   onEdit,
   onDelete,
 }: {
   flow: DevelopmentFlow;
   projectName: string;
   serverId: string;
+  plugin: PluginSummary;
   canMutate: boolean;
+  canCopy: boolean;
+  copying: boolean;
   deleting: boolean;
   onOpenProject: () => void;
   onOpenProjectSettings: () => void;
+  onSavePrd: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onStartFlow: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -332,6 +433,15 @@ export function DevelopmentFlowDetail({
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <Button
+            variant="outline"
+            leftIcon={Copy}
+            disabled={!canCopy || copying}
+            loading={copying}
+            onPress={onCopy}
+          >
+            复制
+          </Button>
           <Button
             variant="outline"
             leftIcon={Pencil}
@@ -368,7 +478,17 @@ export function DevelopmentFlowDetail({
         onSelectStage={handleStageSelect}
         onOpenProjectSettings={onOpenProjectSettings}
       />
-      <StageDetail flow={flow} serverId={serverId} stageId={selectedStage} />
+      {flow.job.status === "draft" && selectedStage === "prd" ? (
+        <DraftPrdStage
+          flow={flow}
+          serverId={serverId}
+          plugin={plugin}
+          onSave={onSavePrd}
+          onStart={onStartFlow}
+        />
+      ) : (
+        <StageDetail flow={flow} serverId={serverId} stageId={selectedStage} />
+      )}
       <View style={[settingsStyles.card, styles.infoCard]}>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>状态</Text>
@@ -525,6 +645,12 @@ const styles = StyleSheet.create((theme) => ({
   stageDetailHeading: {
     flex: 1,
     gap: theme.spacing[1],
+  },
+  stageActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
   },
   infoGrid: {
     gap: theme.spacing[2],

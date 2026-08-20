@@ -7,10 +7,12 @@ from the selected host's **Memory** settings page.
 
 Memory lives under `$PASEO_HOME/memory/`:
 
-- `users/{userId}/summary.md` is that user's editable global-memory overview.
+- `users/{userId}/summary.md` is that user's editable global-memory overview. Its generated index
+  records each global child memory's short summary and relative path.
 - `details/` contains one file per durable topic.
-- `agent-indexes/{agentId}.md` is a runtime-generated index containing only the memory file paths
-  and metadata visible to that Agent.
+- `agent-indexes/{agentId}.md` is the runtime-generated total memory document for one Agent. It
+  contains short summaries and relative paths for only the child memory documents visible to that
+  Agent.
 - `catalog.json` stores users, the selected user, scope, provenance, revisions, validity, usage, and
   feedback.
 - `content.key` exists only when encrypted storage has been used.
@@ -57,9 +59,9 @@ Every detail belongs to one scope:
 - **Assistant** applies to Agents created from that Assistant.
 - **Workspace** applies only to that Workspace.
 
-An Agent's memory index lists global memory plus the current Agent's matching narrower scopes. It
-never exposes a different global-memory user, Project, Assistant, or Workspace. Explicit user
-memory takes precedence over later automatic extraction on the same topic.
+An Agent's total memory document lists global memory plus the current Agent's matching narrower
+scopes. It never exposes a different global-memory user, Project, Assistant, or Workspace. Explicit
+user memory takes precedence over later automatic extraction on the same topic.
 
 The Memory settings page can create, rename, delete, and switch global-memory users. Switching the
 user changes which global summary, global details, and global extraction policy the daemon uses.
@@ -71,25 +73,25 @@ the current Project when one exists. The extractor may choose a narrower availab
 
 The global Memory switch is the master control. Global, Project, Assistant, and Workspace scopes
 each have their own policy. A policy can disable that scope and define what durable information
-belongs there. Disabling a scope removes it from the Agent index and automatic learning without
-changing the other scopes.
+belongs there. Disabling a scope removes it from the Agent's total memory document and automatic
+learning without changing the other scopes.
 
 Each conversation can also disable memory or define extraction guidance. Disabling conversation
-memory removes readable memory paths from that Agent's index and stops automatic learning. Scope
-and conversation guidance is appended to the extractor's safety rules; it controls what gets
-learned and is never injected into the visible Agent answer as an instruction.
+memory removes readable memory paths from that Agent's total memory document and stops automatic
+learning. Scope and conversation guidance is appended to the extractor's safety rules; it controls
+what gets learned and is never injected into the visible Agent answer as an instruction.
 
 ## Agent-directed reading
 
 Paseo does not prepend memory content to the user's message. Every non-internal Agent receives only
-the absolute path of its stable memory index through the provider's system-instruction channel.
-Before each visible turn, Paseo refreshes that index for the active global-memory user and the
-Agent's enabled Project, Workspace, Assistant, and conversation scopes.
+the absolute path of its stable total memory document through the provider's system-instruction
+channel. Before each visible turn, Paseo refreshes that document for the active global-memory user
+and the Agent's enabled Project, Workspace, Assistant, and conversation scopes.
 
-The Agent decides from the current user request whether memory could help. It should read the index
-only when useful, then read only the summary or detail files needed for that request. The index
-contains paths and metadata, not memory bodies. Superseded, expired, disputed, disabled, and
-out-of-scope details are excluded.
+The Agent decides from the current user request whether memory could help. It reads the total
+memory document only when useful, uses its summaries and relative paths to select relevant child
+documents, then reads only those documents. The total document does not contain complete child
+memory bodies. Superseded, expired, disputed, disabled, and out-of-scope details are excluded.
 
 Memory remains user-controlled, potentially stale context and never becomes a higher-priority
 instruction. Merely exposing a file path is not counted as memory usage because Paseo cannot assume
@@ -175,8 +177,9 @@ Memory settings support:
 - retention, context budget, candidate count, privacy, encryption, and source-display controls.
 
 Feedback can mark a memory helpful, not useful, outdated, or incorrect. Outdated and incorrect
-feedback immediately removes the detail from future Agent indexes by changing its status. Paseo
-does not infer that a memory was used merely because its path was available to the Agent.
+feedback immediately removes the detail from future Agent total memory documents by changing its
+status. Paseo does not infer that a memory was used merely because its path was available to the
+Agent.
 
 Memory is context, not authority. Agents should verify time-sensitive facts and follow the current
 user request when it conflicts with memory.

@@ -1,7 +1,6 @@
 const BYTE_DEVELOPMENT_WORKFLOW_INPUT_KEYS = [
   "flow_title",
   "projectId",
-  "sourceProjectId",
   "prd",
   "prd_source",
   "meego_url",
@@ -9,7 +8,8 @@ const BYTE_DEVELOPMENT_WORKFLOW_INPUT_KEYS = [
   "meego_work_item_id",
   "meego_title",
   "repository_path",
-  "lark_document_links",
+  "agent_provider",
+  "agent_model",
   "approve_development",
   "bits_dev_task_id",
   "bits_psm",

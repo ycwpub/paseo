@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Field } from "@/components/ui/form-field";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -56,7 +56,7 @@ export function DevelopmentProjectSelector({
         label="流程 Project"
         hint={
           projectSelectionEnabled
-            ? "选择已有 Project，或进入标准创建流程新建多目录 Project。"
+            ? "选择已有 Project，或进入标准创建流程新建多目录 Project。该 Project 同时用于读取代码目录、Project 知识和其他项目上下文。"
             : "请先填写新开发流程名称，再选择或创建 Project。"
         }
       >
@@ -83,9 +83,6 @@ export function DevelopmentProjectSelector({
           disabled={!projectSelectionEnabled}
         />
       ) : null}
-      <Text style={styles.sourceHint}>
-        流程 Project 与代码来源 Project 可以相同；多目录 Project 可另选代码来源。
-      </Text>
     </View>
   );
 }
@@ -101,10 +98,5 @@ const styles = StyleSheet.create((theme) => ({
   },
   modeControl: {
     alignSelf: "flex-start",
-  },
-  sourceHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: 18,
   },
 }));

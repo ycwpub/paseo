@@ -182,7 +182,7 @@ export function WorkspacesSectionHeader() {
               onPress={handleToggleAllPress}
             />
             <HeaderIconButton
-              label="Search"
+              label="搜索"
               testID="sidebar-command-center-search"
               icon="search"
               onPress={handleSearchPress}
@@ -195,7 +195,7 @@ export function WorkspacesSectionHeader() {
                 </View>
               </TooltipTrigger>
               <TooltipContent side="bottom" align="center" offset={8}>
-                <HeaderTooltipContent label="Display preferences" />
+                <HeaderTooltipContent label="显示偏好" />
               </TooltipContent>
             </Tooltip>
           </>

@@ -9,10 +9,6 @@ import {
 } from "@getpaseo/protocol/paseo-config-schema";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import { normalizeWritableProjectDirectories } from "../agent/project-directory-access.js";
-import {
-  findProjectDirectoryAccessConflict,
-  normalizeReadOnlyProjectDirectories,
-} from "../agent/project-reference-directory-access.js";
 import { composeSystemPromptParts } from "../agent/system-prompt.js";
 import type {
   PersistedProjectRecord,
@@ -22,10 +18,15 @@ import type {
 } from "../workspace-registry.js";
 import { readPaseoConfigJson } from "../../utils/paseo-config-file.js";
 import { readProjectConfigForProject } from "./project-config-storage.js";
+import {
+  buildProjectKnowledgePrompt,
+  EMPTY_PROJECT_KNOWLEDGE,
+  resolveProjectKnowledge,
+  type ResolvedProjectKnowledge,
+} from "./project-knowledge-context.js";
 
 export interface ResolvedProjectDirectories {
   project: string[];
-  reference: string[];
   knowledge: string[];
   indexSkill: string[];
   workspaceData: string[];
@@ -35,6 +36,7 @@ export interface ProjectAgentContext {
   project: PersistedProjectRecord;
   workspace: PersistedWorkspaceRecord;
   directories: ResolvedProjectDirectories;
+  knowledge: ResolvedProjectKnowledge;
   variables: Record<string, string>;
   prompt: string;
 }
@@ -90,6 +92,13 @@ export function resolveProjectDirectories(input: {
     directoryValues.knowledge,
     variables,
   );
+  const configuredGeneralKnowledge = resolvePathList(
+    input.projectRoot,
+    input.projectConfig?.knowledge?.general
+      ?.filter((resource) => resource.enabled !== false && resource.type === "local-directory")
+      .map((resource) => resource.source),
+    variables,
+  );
   let automaticKnowledge: string[] = [];
   if ((input.projectConfig?.directoryMode ?? "single") === "single" && configuredProject[0]) {
     automaticKnowledge = AI_KNOWLEDGE_DIRECTORY_NAMES.map((name) =>
@@ -97,7 +106,11 @@ export function resolveProjectDirectories(input: {
     );
   }
   const knowledge = Array.from(
-    new Set([...configuredKnowledge, ...automaticKnowledge.filter((entry) => existsSync(entry))]),
+    new Set([
+      ...configuredKnowledge,
+      ...configuredGeneralKnowledge,
+      ...automaticKnowledge.filter((entry) => existsSync(entry)),
+    ]),
   );
   const workspaceData = Array.from(
     new Set(
@@ -113,7 +126,6 @@ export function resolveProjectDirectories(input: {
   return {
     project:
       configuredProject.length > 0 ? configuredProject : [path.resolve(input.workspaceDirectory)],
-    reference: resolvePathList(input.projectRoot, directoryValues.reference, variables),
     knowledge,
     indexSkill: resolvePathList(input.projectRoot, directoryValues.indexSkill, variables),
     workspaceData,
@@ -130,6 +142,7 @@ export function buildProjectContextPrompt(input: {
   workspaceId: string;
   workspaceDirectory: string;
   directories: ResolvedProjectDirectories;
+  knowledge?: ResolvedProjectKnowledge;
 }): string {
   const indexInstructions =
     input.directories.indexSkill.length > 0
@@ -137,7 +150,7 @@ export function buildProjectContextPrompt(input: {
           "Before broad filesystem exploration, read the applicable SKILL.md files in the index Skill directories. Use those indexes to locate relevant project and knowledge files quickly.",
           formatDirectoryList(input.directories.indexSkill),
         ].join("\n")
-      : "No index Skill is configured. Inspect the project and knowledge directories directly.";
+      : "No index Skill is configured. Inspect the Project and general knowledge directories directly.";
 
   return [
     "<paseo_project_context>",
@@ -150,16 +163,15 @@ export function buildProjectContextPrompt(input: {
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
     "",
-    "Reference directories (read-only; read on demand):",
-    formatDirectoryList(input.directories.reference),
-    input.directories.reference.length > 0
-      ? "You may inspect files under these directories when useful, but MUST NOT create, modify, rename, move, or delete any content there."
-      : "No reference directory is configured.",
-    "",
-    "Knowledge directories (mandatory instructions):",
+    "General knowledge directories (read on demand; protected by default):",
     formatDirectoryList(input.directories.knowledge),
     input.directories.knowledge.length > 0
-      ? "You MUST inspect and obey all knowledge files applicable to the current task before making changes. Treat them as project-level instructions."
+      ? [
+          "Read only the files relevant to the current task and decide whether their guidance applies.",
+          "By default, you MUST NOT create, modify, rename, move, or delete content in knowledge directories.",
+          "You may update knowledge content only when the user explicitly asks to update Project knowledge in the current conversation. A request to change product code or ordinary documentation is not permission to change knowledge.",
+          "When explicitly authorized, change only the knowledge files needed for that request.",
+        ].join(" ")
       : "No additional knowledge directory is configured.",
     "",
     "Index Skill:",
@@ -171,6 +183,10 @@ export function buildProjectContextPrompt(input: {
       ? "Record durable progress and important outputs here so interrupted work can be reviewed and continued."
       : "No dedicated workspace data directory is configured.",
     "</paseo_project_context>",
+    buildProjectKnowledgePrompt({
+      generalDirectories: input.directories.knowledge,
+      knowledge: input.knowledge ?? EMPTY_PROJECT_KNOWLEDGE,
+    }),
   ].join("\n");
 }
 
@@ -229,6 +245,13 @@ export async function loadProjectAgentContext(input: {
     projectConfig,
     variables,
   });
+  const knowledge = resolveProjectKnowledge({
+    projectConfig,
+    projectId: project.projectId,
+    logger: input.logger,
+    resolveLocalPath: (source) =>
+      resolveProjectPath(projectRoot, replaceVariables(source.trim(), variables)),
+  });
   for (const directory of directories.workspaceData) {
     try {
       mkdirSync(directory, { recursive: true });
@@ -243,6 +266,7 @@ export async function loadProjectAgentContext(input: {
     project,
     workspace,
     directories,
+    knowledge,
     variables,
     prompt: buildProjectContextPrompt({
       projectId: project.projectId,
@@ -250,6 +274,7 @@ export async function loadProjectAgentContext(input: {
       workspaceId: workspace.workspaceId,
       workspaceDirectory: workspace.cwd,
       directories,
+      knowledge,
     }),
   };
 }
@@ -267,23 +292,9 @@ export async function withProjectAgentContext(input: {
   const writableProjectDirectories = normalizeWritableProjectDirectories(
     context.directories.project,
   );
-  const readOnlyProjectDirectories = normalizeReadOnlyProjectDirectories(
-    context.directories.reference,
-  );
-  const conflict = findProjectDirectoryAccessConflict({
-    writableDirectories: writableProjectDirectories,
-    readOnlyDirectories: readOnlyProjectDirectories,
-  });
-  if (conflict) {
-    throw new Error(
-      `Project reference directory "${conflict.readOnlyDirectory}" overlaps writable Project directory "${conflict.writableDirectory}". Configure non-overlapping directories so Paseo can enforce read-only access.`,
-    );
-  }
   return {
     ...input.config,
     writableProjectDirectories,
-    readOnlyProjectDirectories:
-      readOnlyProjectDirectories.length > 0 ? readOnlyProjectDirectories : undefined,
     systemPrompt: composeSystemPromptParts(input.config.systemPrompt, context.prompt),
   };
 }

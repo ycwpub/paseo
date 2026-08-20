@@ -129,7 +129,7 @@ export function MemoryCreateCard({
   if (!expanded) {
     return (
       <Button size="sm" variant="outline" disabled={disabled} onPress={open}>
-        Add memory
+        添加记忆
       </Button>
     );
   }
@@ -137,50 +137,48 @@ export function MemoryCreateCard({
   return (
     <View style={settingsStyles.card}>
       <View style={styles.form}>
-        <Text style={styles.title}>Add explicit memory</Text>
-        <Text style={settingsStyles.rowHint}>
-          Explicit memories take precedence over later automatic extraction
-        </Text>
-        <Field label="Title">
+        <Text style={styles.title}>添加明确记忆</Text>
+        <Text style={settingsStyles.rowHint}>明确添加的记忆优先于后续自动提取的记忆</Text>
+        <Field label="标题">
           <FormTextInput value={draft.title} onChangeText={setTitle} editable={!disabled} />
         </Field>
         <View style={styles.fieldGrid}>
           <View style={styles.gridItem}>
             <SelectField
-              label="Category"
+              label="分类"
               value={draft.category}
               selectedDisplay={categoryDisplay}
               options={MEMORY_CATEGORY_OPTIONS}
               onChange={setCategory}
-              placeholder="Select category"
-              emptyText="No categories"
+              placeholder="选择分类"
+              emptyText="没有可用分类"
               disabled={disabled}
             />
           </View>
           <View style={styles.gridItem}>
             <SelectField
-              label="Scope"
+              label="作用域"
               value={draft.scopeType}
               selectedDisplay={scopeDisplay}
               options={MEMORY_SCOPE_OPTIONS}
               onChange={setScopeType}
-              placeholder="Select scope"
-              emptyText="No scopes"
+              placeholder="选择作用域"
+              emptyText="没有可用作用域"
               disabled={disabled}
             />
           </View>
         </View>
         {draft.scopeType === "global" ? null : (
-          <Field label="Scope ID">
+          <Field label="作用域 ID">
             <FormTextInput value={draft.scopeId} onChangeText={setScopeId} editable={!disabled} />
           </Field>
         )}
-        <Field label="Keywords" hint="Separate keywords with commas">
+        <Field label="关键词" hint="使用英文逗号分隔关键词">
           <FormTextInput value={draft.keywords} onChangeText={setKeywords} editable={!disabled} />
         </Field>
         <View style={styles.fieldGrid}>
           <View style={styles.gridItem}>
-            <Field label="Importance" hint="0 to 1">
+            <Field label="重要度" hint="0 到 1">
               <FormTextInput
                 value={draft.importance}
                 onChangeText={setImportance}
@@ -190,7 +188,7 @@ export function MemoryCreateCard({
             </Field>
           </View>
           <View style={styles.gridItem}>
-            <Field label="Valid until" hint="ISO date/time or empty">
+            <Field label="有效期" hint="ISO 日期时间，留空表示长期有效">
               <FormTextInput
                 value={draft.validUntil}
                 onChangeText={setValidUntil}
@@ -201,15 +199,15 @@ export function MemoryCreateCard({
         </View>
         <View style={styles.switchRow}>
           <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Sensitive information</Text>
-            <Text style={settingsStyles.rowHint}>Mark this memory for privacy review</Text>
+            <Text style={settingsStyles.rowTitle}>敏感信息</Text>
+            <Text style={settingsStyles.rowHint}>将该记忆标记为需要隐私审查</Text>
           </View>
           <Switch value={draft.sensitive} disabled={disabled} onValueChange={setSensitive} />
         </View>
-        <Field label="Memory content">
+        <Field label="记忆内容">
           <View style={styles.textAreaCard}>
             <SettingsTextArea
-              accessibilityLabel="New memory content"
+              accessibilityLabel="新记忆内容"
               value={draft.content}
               onChangeText={setContent}
               style={styles.contentInput}
@@ -227,10 +225,10 @@ export function MemoryCreateCard({
             }
             onPress={submit}
           >
-            Add
+            添加
           </Button>
           <Button size="sm" variant="ghost" disabled={disabled} onPress={close}>
-            Cancel
+            取消
           </Button>
         </View>
       </View>

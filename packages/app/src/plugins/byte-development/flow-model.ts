@@ -53,7 +53,7 @@ function resolveStage(job: PluginHttpJob): DevelopmentStageId | null {
   if (stage && DEVELOPMENT_STAGES.some((candidate) => candidate.id === stage)) {
     return stage as DevelopmentStageId;
   }
-  if (job.status === "queued") return "prd";
+  if (job.status === "draft" || job.status === "queued") return "prd";
   if (job.status === "succeeded") return "release";
   return null;
 }
@@ -89,6 +89,8 @@ export function developmentFlowsFromJobs(jobs: readonly PluginHttpJob[]): Develo
 
 export function developmentJobStatusLabel(status: PluginHttpJob["status"]): string {
   switch (status) {
+    case "draft":
+      return "草稿";
     case "queued":
       return "等待中";
     case "running":

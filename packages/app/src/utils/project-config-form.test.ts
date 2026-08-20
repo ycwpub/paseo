@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PaseoConfigRawSchema } from "@getpaseo/protocol/paseo-config-schema";
 import type { PaseoConfigRaw } from "@getpaseo/protocol/messages";
+import { createProjectKnowledgeResourceDraft } from "@/projects/knowledge/model";
 import {
   applyDraftToConfig,
   configToDraft,
@@ -43,14 +44,16 @@ describe("configToDraft", () => {
       projectIndexAutoGenerate: false,
       projectIndexUpdateIntervalText: "",
       projectVariables: [],
-      larkDocumentLinks: [],
+      projectKnowledge: {
+        general: [],
+        standards: [],
+        projectSpecific: [],
+      },
       instructionTemplates: [],
     });
     expect(draft.projectDirectories.project).toEqual([
       expect.objectContaining({ path: "{{workspaceDirectory}}", enabled: true }),
     ]);
-    expect(draft.projectDirectories.reference).toEqual([]);
-    expect(draft.projectDirectories.knowledge).toEqual([]);
     expect(draft.projectDirectories.workspaceData).toEqual([
       expect.objectContaining({
         path: "~/.paseo/workspaces/{{workspaceId}}",
@@ -115,6 +118,10 @@ describe("configToDraft", () => {
           "https://example.feishu.cn/wiki/architecture",
           "https://example.feishu.cn/docx/release",
         ],
+        knowledge: {
+          standards: [{ type: "local-document", source: "docs/standards.md" }],
+          projectSpecific: [{ type: "cloud-document", source: "https://example.com/architecture" }],
+        },
         instructionTemplates: [
           {
             id: "review",
@@ -133,21 +140,37 @@ describe("configToDraft", () => {
       { path: "../shared", enabled: true },
     ]);
     expect(
-      draft.projectDirectories.knowledge.map(({ path, enabled }) => ({ path, enabled })),
-    ).toEqual([{ path: "docs/rules", enabled: true }]);
-    expect(
-      draft.projectDirectories.reference.map(({ path, enabled }) => ({ path, enabled })),
+      draft.projectKnowledge.general.map(({ type, source, enabled }) => ({
+        type,
+        source,
+        enabled,
+      })),
     ).toEqual([
-      { path: "../legacy", enabled: true },
-      { path: "/opt/company/examples", enabled: true },
+      { type: "local-directory", source: "docs/rules", enabled: true },
+      { type: "local-directory", source: "../legacy", enabled: true },
+      { type: "local-directory", source: "/opt/company/examples", enabled: true },
+      {
+        type: "cloud-document",
+        source: "https://example.feishu.cn/wiki/architecture",
+        enabled: true,
+      },
+      {
+        type: "cloud-document",
+        source: "https://example.feishu.cn/docx/release",
+        enabled: true,
+      },
     ]);
     expect(draft.projectIndexAutoGenerate).toBe(true);
     expect(draft.projectIndexUpdateIntervalText).toBe("45");
     expect(draft.projectVariables[0]).toMatchObject({ name: "service", value: "billing" });
-    expect(draft.larkDocumentLinks).toEqual([
-      "https://example.feishu.cn/wiki/architecture",
-      "https://example.feishu.cn/docx/release",
-    ]);
+    expect(draft.projectKnowledge.standards[0]).toMatchObject({
+      type: "local-document",
+      source: "docs/standards.md",
+    });
+    expect(draft.projectKnowledge.projectSpecific[0]).toMatchObject({
+      type: "cloud-document",
+      source: "https://example.com/architecture",
+    });
     expect(draft.instructionTemplates[0]).toMatchObject({
       id: "review",
       name: "Review",
@@ -158,6 +181,30 @@ describe("configToDraft", () => {
 });
 
 describe("applyDraftToConfig", () => {
+  it("migrates legacy knowledge directories into general knowledge when saving", () => {
+    const base = PaseoConfigRawSchema.parse({
+      project: {
+        directories: {
+          project: ["."],
+          reference: ["../legacy", { path: "docs/shared", enabled: false }],
+          knowledge: ["docs/rules", "docs/shared"],
+        },
+      },
+    });
+    const draft = configToDraft(base);
+
+    const next = applyDraftToConfig({ draft, base });
+    const directories = next.project?.directories as Record<string, unknown>;
+
+    expect(directories.reference).toBeUndefined();
+    expect(directories.knowledge).toBeUndefined();
+    expect(next.project?.knowledge?.general).toEqual([
+      { type: "local-directory", source: "docs/rules", enabled: true },
+      { type: "local-directory", source: "docs/shared", enabled: true },
+      { type: "local-directory", source: "../legacy", enabled: true },
+    ]);
+  });
+
   it("preserves the original string kind when editing an existing setup field", () => {
     const base: PaseoConfigRaw = { worktree: { setup: "npm install" } };
     const draft = configToDraft(base);
@@ -446,18 +493,27 @@ describe("applyDraftToConfig", () => {
     const draft = configToDraft({});
     draft.projectDirectories = {
       project: [directory("p1", "."), directory("p2", " packages/api ")],
-      reference: [directory("r1", "../legacy")],
-      knowledge: [directory("k1", "docs/rules")],
       indexSkill: [directory("i1", ".paseo/index")],
       workspaceData: [directory("w1", ".paseo/workspaces")],
     };
     draft.projectIndexAutoGenerate = true;
     draft.projectIndexUpdateIntervalText = "60";
     draft.projectVariables = [{ id: "v1", name: " service ", value: "billing" }];
-    draft.larkDocumentLinks = [
-      " https://example.feishu.cn/wiki/architecture ",
-      "https://example.feishu.cn/wiki/architecture",
-      "https://example.larksuite.com/docx/release",
+    draft.projectKnowledge.general = [
+      createProjectKnowledgeResourceDraft({
+        type: "local-directory",
+        source: " docs/rules ",
+      }),
+      createProjectKnowledgeResourceDraft({
+        type: "cloud-document",
+        source: " https://example.com/architecture ",
+      }),
+    ];
+    draft.projectKnowledge.standards = [
+      createProjectKnowledgeResourceDraft({
+        type: "local-document",
+        source: " docs/standards.md ",
+      }),
     ];
     draft.instructionTemplates = [
       {
@@ -477,30 +533,39 @@ describe("applyDraftToConfig", () => {
           { path: ".", enabled: true },
           { path: "packages/api", enabled: true },
         ],
-        reference: [{ path: "../legacy", enabled: true }],
-        knowledge: [{ path: "docs/rules", enabled: true }],
         indexSkill: [{ path: ".paseo/index", enabled: true }],
         workspaceData: [{ path: ".paseo/workspaces", enabled: true }],
       },
       indexSkill: { autoGenerate: true, updateIntervalMinutes: 60 },
       variables: { service: "billing" },
-      larkDocumentLinks: [
-        "https://example.feishu.cn/wiki/architecture",
-        "https://example.larksuite.com/docx/release",
-      ],
+      knowledge: {
+        general: [
+          { type: "local-directory", source: "docs/rules", enabled: true },
+          { type: "cloud-document", source: "https://example.com/architecture", enabled: true },
+        ],
+        standards: [{ type: "local-document", source: "docs/standards.md", enabled: true }],
+        projectSpecific: [],
+      },
     });
   });
 
-  it("removes project Lark document links when the draft is empty", () => {
+  it("migrates and removes legacy Project Lark document links when saving", () => {
     const base: PaseoConfigRaw = {
       project: {
         larkDocumentLinks: ["https://example.feishu.cn/wiki/architecture"],
       },
     };
     const draft = configToDraft(base);
-    draft.larkDocumentLinks = [];
 
-    expect(applyDraftToConfig({ draft, base }).project?.larkDocumentLinks).toBeUndefined();
+    const project = applyDraftToConfig({ draft, base }).project;
+    expect(project?.larkDocumentLinks).toBeUndefined();
+    expect(project?.knowledge?.general).toEqual([
+      {
+        type: "cloud-document",
+        source: "https://example.feishu.cn/wiki/architecture",
+        enabled: true,
+      },
+    ]);
   });
 
   it("preserves legacy project-local instruction templates when saving", () => {
@@ -552,15 +617,19 @@ describe("applyDraftToConfig", () => {
       },
     });
     const draft = configToDraft(base);
-    draft.projectDirectories.knowledge = [directory("k1", "docs")];
+    draft.projectKnowledge.general = [
+      createProjectKnowledgeResourceDraft({ type: "local-directory", source: "docs" }),
+    ];
 
     const next = applyDraftToConfig({ draft, base });
     expect(next.project).toMatchObject({
       futureField: { keep: true },
       directories: {
         project: [{ path: ".", enabled: true }],
-        knowledge: [{ path: "docs", enabled: true }],
         futureDirectoryKind: ["generated"],
+      },
+      knowledge: {
+        general: [{ type: "local-directory", source: "docs", enabled: true }],
       },
       indexSkill: { autoGenerate: false, futureIndexFlag: "keep" },
     });

@@ -288,7 +288,12 @@ export function HttpServicePanel({
   appDefinition: PluginAppDefinition;
 }) {
   return (
-    <PluginProjectBoundary active={active} serverId={serverId} appDefinition={appDefinition}>
+    <PluginProjectBoundary
+      active={active}
+      serverId={serverId}
+      pluginId={plugin.pluginId}
+      appDefinition={appDefinition}
+    >
       {(project) => (
         <HttpServiceProjectConsole
           active={active}

@@ -15,11 +15,16 @@ export type PluginSessionRequest = Extract<
       | "plugin.set_enabled.request"
       | "plugin.uninstall.request"
       | "plugin.app.get.request"
+      | "plugin.app.configure.request"
+      | "plugin.app.project.list.request"
+      | "plugin.app.project.delete.request"
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
       | "plugin.app.job.get.request"
       | "plugin.app.job.list.request"
+      | "plugin.app.job.draft.create.request"
       | "plugin.app.job.update.request"
+      | "plugin.app.job.start.request"
       | "plugin.app.job.delete.request"
       | "plugin.http.submit.request"
       | "plugin.http.config.get.request"
@@ -29,10 +34,46 @@ export type PluginSessionRequest = Extract<
   }
 >;
 
+const PLUGIN_SESSION_REQUEST_TYPES = new Set<SessionInboundMessage["type"]>([
+  "plugin.list.request",
+  "plugin.marketplace.add.request",
+  "plugin.marketplace.remove.request",
+  "plugin.install.request",
+  "plugin.set_enabled.request",
+  "plugin.uninstall.request",
+  "plugin.app.get.request",
+  "plugin.app.configure.request",
+  "plugin.app.project.list.request",
+  "plugin.app.project.delete.request",
+  "plugin.app.generate.request",
+  "plugin.app.action.submit.request",
+  "plugin.http.submit.request",
+  "plugin.app.job.get.request",
+  "plugin.app.job.list.request",
+  "plugin.app.job.draft.create.request",
+  "plugin.app.job.update.request",
+  "plugin.app.job.start.request",
+  "plugin.app.job.delete.request",
+  "plugin.http.config.get.request",
+  "plugin.http.config.save.request",
+  "plugin.http.job.delete_many.request",
+  "plugin.http.job.cleanup.request",
+]);
+
+export function isPluginSessionRequest(
+  message: SessionInboundMessage,
+): message is PluginSessionRequest {
+  return PLUGIN_SESSION_REQUEST_TYPES.has(message.type);
+}
+
 type PluginJobMutationRequest = Extract<
   PluginSessionRequest,
   {
-    type: "plugin.app.job.update.request" | "plugin.app.job.delete.request";
+    type:
+      | "plugin.app.job.draft.create.request"
+      | "plugin.app.job.update.request"
+      | "plugin.app.job.start.request"
+      | "plugin.app.job.delete.request";
   }
 >;
 
@@ -54,6 +95,9 @@ type PluginAppRequest = Extract<
   {
     type:
       | "plugin.app.get.request"
+      | "plugin.app.configure.request"
+      | "plugin.app.project.list.request"
+      | "plugin.app.project.delete.request"
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
       | "plugin.http.submit.request"
@@ -77,7 +121,9 @@ function isPluginJobMutationRequest(
   message: PluginSessionRequest,
 ): message is PluginJobMutationRequest {
   return (
+    message.type === "plugin.app.job.draft.create.request" ||
     message.type === "plugin.app.job.update.request" ||
+    message.type === "plugin.app.job.start.request" ||
     message.type === "plugin.app.job.delete.request"
   );
 }
@@ -96,6 +142,9 @@ function isPluginCatalogRequest(message: PluginSessionRequest): message is Plugi
 function isPluginAppRequest(message: PluginSessionRequest): message is PluginAppRequest {
   return (
     message.type === "plugin.app.get.request" ||
+    message.type === "plugin.app.configure.request" ||
+    message.type === "plugin.app.project.list.request" ||
+    message.type === "plugin.app.project.delete.request" ||
     message.type === "plugin.app.generate.request" ||
     message.type === "plugin.app.action.submit.request" ||
     message.type === "plugin.http.submit.request" ||
@@ -260,6 +309,50 @@ export class PluginSession {
         });
         return;
       }
+      case "plugin.app.configure.request": {
+        this.host.emit({
+          type: "plugin.app.configure.response",
+          payload: {
+            requestId: message.requestId,
+            app: this.service.configureApp(
+              message.pluginId,
+              message.appId,
+              message.projectId,
+              message.defaultAgent,
+            ),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.app.project.list.request": {
+        this.host.emit({
+          type: "plugin.app.project.list.response",
+          payload: {
+            requestId: message.requestId,
+            projects: this.service.listAppProjects(message.pluginId, message.appId),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.app.project.delete.request": {
+        const deleted = this.service.deleteAppProject(
+          message.pluginId,
+          message.appId,
+          message.projectId,
+        );
+        this.host.emit({
+          type: "plugin.app.project.delete.response",
+          payload: {
+            requestId: message.requestId,
+            projectId: message.projectId,
+            deleted,
+            error: deleted ? null : "Plugin project not found",
+          },
+        });
+        return;
+      }
       case "plugin.app.generate.request": {
         const projectId = requirePluginProjectId(message.projectId);
         this.host.emit({
@@ -387,10 +480,35 @@ export class PluginSession {
   }
 
   private async handleJobMutation(message: PluginJobMutationRequest): Promise<void> {
+    if (message.type === "plugin.app.job.draft.create.request") {
+      const job = await this.service.createAppJobDraft(
+        message.pluginId,
+        message.serviceName,
+        message.projectId,
+        message.input,
+      );
+      this.host.emit({
+        type: "plugin.app.job.draft.create.response",
+        payload: { requestId: message.requestId, job, error: null },
+      });
+      return;
+    }
     if (message.type === "plugin.app.job.update.request") {
       const job = await this.service.updateAppJob(message.processId, message.input);
       this.host.emit({
         type: "plugin.app.job.update.response",
+        payload: {
+          requestId: message.requestId,
+          job,
+          error: job ? null : "Plugin app processing job not found",
+        },
+      });
+      return;
+    }
+    if (message.type === "plugin.app.job.start.request") {
+      const job = await this.service.startAppJob(message.processId);
+      this.host.emit({
+        type: "plugin.app.job.start.response",
         payload: {
           requestId: message.requestId,
           job,
@@ -426,7 +544,113 @@ export class PluginSession {
     });
   }
 
+  private emitJobMutationError(message: PluginJobMutationRequest, error: string): void {
+    switch (message.type) {
+      case "plugin.app.job.draft.create.request":
+        this.host.emit({
+          type: "plugin.app.job.draft.create.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.update.request":
+        this.host.emit({
+          type: "plugin.app.job.update.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.start.request":
+        this.host.emit({
+          type: "plugin.app.job.start.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.delete.request":
+        this.host.emit({
+          type: "plugin.app.job.delete.response",
+          payload: {
+            requestId: message.requestId,
+            processId: message.processId,
+            deleted: false,
+            error,
+          },
+        });
+        return;
+    }
+  }
+
+  private emitPluginAppError(message: PluginAppRequest, error: string): void {
+    switch (message.type) {
+      case "plugin.app.get.request":
+        this.host.emit({
+          type: "plugin.app.get.response",
+          payload: { requestId: message.requestId, app: null, error },
+        });
+        return;
+      case "plugin.app.configure.request":
+        this.host.emit({
+          type: "plugin.app.configure.response",
+          payload: { requestId: message.requestId, app: null, error },
+        });
+        return;
+      case "plugin.app.project.list.request":
+        this.host.emit({
+          type: "plugin.app.project.list.response",
+          payload: { requestId: message.requestId, projects: [], error },
+        });
+        return;
+      case "plugin.app.project.delete.request":
+        this.host.emit({
+          type: "plugin.app.project.delete.response",
+          payload: {
+            requestId: message.requestId,
+            projectId: message.projectId,
+            deleted: false,
+            error,
+          },
+        });
+        return;
+      case "plugin.app.generate.request":
+        this.host.emit({
+          type: "plugin.app.generate.response",
+          payload: { requestId: message.requestId, app: null, error },
+        });
+        return;
+      case "plugin.app.action.submit.request":
+        this.host.emit({
+          type: "plugin.app.action.submit.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.http.submit.request":
+        this.host.emit({
+          type: "plugin.http.submit.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.get.request":
+        this.host.emit({
+          type: "plugin.app.job.get.response",
+          payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.app.job.list.request":
+        this.host.emit({
+          type: "plugin.app.job.list.response",
+          payload: { requestId: message.requestId, jobs: [], error },
+        });
+        return;
+    }
+  }
+
   private emitError(message: PluginSessionRequest, error: string): void {
+    if (isPluginJobMutationRequest(message)) {
+      this.emitJobMutationError(message, error);
+      return;
+    }
+    if (isPluginAppRequest(message)) {
+      this.emitPluginAppError(message, error);
+      return;
+    }
     const state = this.service.getState();
     switch (message.type) {
       case "plugin.list.request":
@@ -473,59 +697,6 @@ export class PluginSession {
             pluginId: message.pluginId,
             ok: false,
             ...state,
-            error,
-          },
-        });
-        return;
-      case "plugin.app.get.request":
-        this.host.emit({
-          type: "plugin.app.get.response",
-          payload: { requestId: message.requestId, app: null, error },
-        });
-        return;
-      case "plugin.app.generate.request":
-        this.host.emit({
-          type: "plugin.app.generate.response",
-          payload: { requestId: message.requestId, app: null, error },
-        });
-        return;
-      case "plugin.app.action.submit.request":
-        this.host.emit({
-          type: "plugin.app.action.submit.response",
-          payload: { requestId: message.requestId, job: null, error },
-        });
-        return;
-      case "plugin.http.submit.request":
-        this.host.emit({
-          type: "plugin.http.submit.response",
-          payload: { requestId: message.requestId, job: null, error },
-        });
-        return;
-      case "plugin.app.job.get.request":
-        this.host.emit({
-          type: "plugin.app.job.get.response",
-          payload: { requestId: message.requestId, job: null, error },
-        });
-        return;
-      case "plugin.app.job.list.request":
-        this.host.emit({
-          type: "plugin.app.job.list.response",
-          payload: { requestId: message.requestId, jobs: [], error },
-        });
-        return;
-      case "plugin.app.job.update.request":
-        this.host.emit({
-          type: "plugin.app.job.update.response",
-          payload: { requestId: message.requestId, job: null, error },
-        });
-        return;
-      case "plugin.app.job.delete.request":
-        this.host.emit({
-          type: "plugin.app.job.delete.response",
-          payload: {
-            requestId: message.requestId,
-            processId: message.processId,
-            deleted: false,
             error,
           },
         });

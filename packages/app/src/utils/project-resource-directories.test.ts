@@ -17,7 +17,6 @@ describe("resolveProjectResourceDirectories", () => {
   it("provides AI knowledge and workspace-data defaults", () => {
     expect(resolveProjectResourceDirectories({ projectConfig: undefined, context })).toEqual({
       project: ["/repo/worktrees/feature"],
-      reference: [],
       knowledge: [
         "/repo/worktrees/feature/.agents",
         "/repo/worktrees/feature/.agent",
@@ -44,12 +43,22 @@ describe("resolveProjectResourceDirectories", () => {
             indexSkill: [".paseo/index"],
             workspaceData: ["/tmp/paseo"],
           },
+          knowledge: {
+            general: [
+              { type: "local-directory", source: "{{docs}}/background" },
+              { type: "local-document", source: "README.md" },
+            ],
+          },
         },
       }),
     ).toEqual({
       project: ["/repo/paseo", "/repo/worktrees/feature"],
-      reference: ["/repo/legacy", "/opt/company/examples"],
-      knowledge: ["/repo/shared/docs"],
+      knowledge: [
+        "/repo/shared/docs",
+        "/repo/legacy",
+        "/opt/company/examples",
+        "/repo/shared/docs/background",
+      ],
       indexSkill: ["/repo/paseo/.paseo/index"],
       workspaceData: ["/tmp/paseo/wks_test"],
     });

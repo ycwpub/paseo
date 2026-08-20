@@ -84,7 +84,7 @@ type StoredAppSettings = Partial<Omit<AppSettings, "sidebarRowItems">> & {
 
 export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   theme: "auto",
-  language: "system",
+  language: "zh-CN",
   serviceUrlBehavior: "ask",
   terminalScrollbackLines: DEFAULT_TERMINAL_SCROLLBACK_LINES,
   useLegacyTerminalRenderer: false,

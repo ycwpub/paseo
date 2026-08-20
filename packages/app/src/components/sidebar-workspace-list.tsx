@@ -135,6 +135,7 @@ import {
   resolveSidebarProjectLocalPath,
   type SidebarProjectHostTarget,
 } from "@/utils/sidebar-project-row-model";
+import { resolveSidebarProjectOpenNewWindowOptions } from "@/utils/sidebar-project-open-new-window";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
@@ -476,6 +477,7 @@ function ProjectRowTrailingActions({
         >
           <ProjectKebabMenu
             projectViewKey={projectViewKey}
+            displayName={displayName}
             settingsTarget={settingsTarget}
             projectPath={projectPath}
             hidden={hidden}
@@ -508,6 +510,7 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
 
 function ProjectKebabMenu({
   projectViewKey,
+  displayName,
   settingsTarget,
   projectPath,
   hidden,
@@ -516,6 +519,7 @@ function ProjectKebabMenu({
   removeProjectStatus,
 }: {
   projectViewKey: string;
+  displayName: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
   hidden: boolean;
@@ -539,6 +543,7 @@ function ProjectKebabMenu({
         <ProjectMenuItems
           surface="dropdown"
           projectViewKey={projectViewKey}
+          displayName={displayName}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
           hidden={hidden}
@@ -569,6 +574,7 @@ function ProjectMenuItem({
 function ProjectMenuItems({
   surface,
   projectViewKey,
+  displayName,
   settingsTarget,
   projectPath,
   hidden,
@@ -578,6 +584,7 @@ function ProjectMenuItems({
 }: {
   surface: ProjectMenuSurface;
   projectViewKey: string;
+  displayName: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
   hidden: boolean;
@@ -591,17 +598,25 @@ function ProjectMenuItems({
     if (!settingsTarget) return;
     router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
   }, [settingsTarget]);
-  const canOpenInNewWindow = getIsElectron() && projectPath.trim().length > 0;
+  const openNewWindowOptions = useMemo(
+    () =>
+      resolveSidebarProjectOpenNewWindowOptions({
+        projectPath,
+        displayName,
+        target: settingsTarget,
+      }),
+    [displayName, projectPath, settingsTarget],
+  );
+  const canOpenInNewWindow = getIsElectron() && openNewWindowOptions !== null;
   const handleOpenInNewWindow = useCallback(() => {
-    const trimmedPath = projectPath.trim();
-    if (trimmedPath.length === 0) return;
+    if (!openNewWindowOptions) return;
     void getDesktopHost()
-      ?.window?.openNew?.({ pendingOpenProjectPath: trimmedPath })
+      ?.window?.openNew?.(openNewWindowOptions)
       ?.catch((error) => {
         console.warn("[sidebar] openNew failed", error);
         toast.error(t("sidebar.project.actions.openNewWindowFailed"));
       });
-  }, [projectPath, t, toast]);
+  }, [openNewWindowOptions, t, toast]);
 
   return (
     <>
@@ -1083,6 +1098,7 @@ function ProjectHeaderRow({
         <ProjectMenuItems
           surface="context"
           projectViewKey={project.viewKey}
+          displayName={displayName}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
           hidden={hidden}
@@ -1378,7 +1394,7 @@ function WorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
+      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
     });
   }, [clearAttention, toast]);
 

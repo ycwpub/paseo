@@ -242,7 +242,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     return (
       <TextInput
         ref={inputRef}
-        accessibilityLabel="Terminal input"
+        accessibilityLabel="终端输入"
         accessible={true}
         autoCapitalize="none"
         autoCorrect={false}

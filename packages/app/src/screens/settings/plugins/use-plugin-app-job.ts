@@ -2,7 +2,7 @@ import type { PluginHttpJob } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
 
 const POLL_INTERVAL_MS = 1_000;
-const TERMINAL_JOB_STATUSES = new Set(["succeeded", "failed", "cancelled", "timed_out"]);
+const TERMINAL_JOB_STATUSES = new Set(["draft", "succeeded", "failed", "cancelled", "timed_out"]);
 
 interface PluginAppJobClient {
   getPluginAppJob(processId: string): Promise<{ job: PluginHttpJob | null; error: string | null }>;

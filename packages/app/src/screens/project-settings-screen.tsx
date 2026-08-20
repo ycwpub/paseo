@@ -33,9 +33,9 @@ import { settingsStyles } from "@/styles/settings";
 import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
+import { ProjectKnowledgeEditor } from "@/projects/knowledge/editor";
+import { projectKnowledgeDraftError } from "@/projects/knowledge/model";
 import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
-import { projectLarkDocumentLinksError } from "@/projects/lark-documents/model";
-import { ProjectLarkDocumentsEditor } from "@/projects/lark-documents/project-lark-documents-editor";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -614,8 +614,9 @@ function ProjectConfigForm({
     (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
     [updateDraft],
   );
-  const handleLarkDocumentLinksChange = useCallback(
-    (larkDocumentLinks: string[]) => updateDraft((d) => ({ ...d, larkDocumentLinks })),
+  const handleProjectKnowledgeChange = useCallback(
+    (projectKnowledge: ProjectConfigDraft["projectKnowledge"]) =>
+      updateDraft((d) => ({ ...d, projectKnowledge })),
     [updateDraft],
   );
 
@@ -772,10 +773,10 @@ function ProjectConfigForm({
         onVariablesChange={handleVariablesChange}
       />
 
-      <ProjectLarkDocumentsEditor
-        values={draft.larkDocumentLinks}
-        error={projectValidation.larkDocumentLinksError}
-        onChange={handleLarkDocumentLinksChange}
+      <ProjectKnowledgeEditor
+        value={draft.projectKnowledge}
+        error={projectValidation.projectKnowledgeError}
+        onChange={handleProjectKnowledgeChange}
       />
 
       <SettingsGroup
@@ -935,7 +936,7 @@ interface ProjectConfigurationValidation {
   projectDirectoryError: string | null;
   indexIntervalError: string | null;
   variableError: string | null;
-  larkDocumentLinksError: string | null;
+  projectKnowledgeError: string | null;
 }
 
 function validateProjectConfiguration(
@@ -971,16 +972,16 @@ function validateProjectConfiguration(
       name: duplicateVariable,
     });
   }
-  const larkDocumentLinksError = projectLarkDocumentLinksError(draft.larkDocumentLinks);
+  const projectKnowledgeError = projectKnowledgeDraftError(draft.projectKnowledge);
 
   return {
     hasErrors: Boolean(
-      projectDirectoryError || indexIntervalError || variableError || larkDocumentLinksError,
+      projectDirectoryError || indexIntervalError || variableError || projectKnowledgeError,
     ),
     projectDirectoryError,
     indexIntervalError,
     variableError,
-    larkDocumentLinksError,
+    projectKnowledgeError,
   };
 }
 
@@ -1030,20 +1031,6 @@ function ProjectResourcesEditor({
           projectDirectoryPath={projectDirectoryPath}
           error={validation.projectDirectoryError}
           onModeChange={onDirectoryModeChange}
-          onChange={onDirectoryChange}
-        />
-        <DirectoryListSection
-          title={t("settings.project.resources.reference.title")}
-          hint={t("settings.project.resources.reference.hint")}
-          directoryKey="reference"
-          values={draft.projectDirectories.reference}
-          onChange={onDirectoryChange}
-        />
-        <DirectoryListSection
-          title={t("settings.project.resources.knowledge.title")}
-          hint={t("settings.project.resources.knowledge.hint")}
-          directoryKey="knowledge"
-          values={draft.projectDirectories.knowledge}
           onChange={onDirectoryChange}
         />
         <DirectoryListSection

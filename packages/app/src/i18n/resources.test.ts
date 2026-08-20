@@ -124,15 +124,15 @@ describe("translation resources", () => {
     expect(zhCN.workflows.nodes.contract.inputsHint).toBe(
       "在节点执行前生成本节点的 input.data。留空时沿用上一个节点的 output.data；可用于筛选、重命名或组合字段。例如：{{nodes.scan.outputs.items}}。",
     );
-    expect(zhCN.workflows.nodes.contract.inputSchema).toBe("input.data Schema 校验");
-    expect(zhCN.workflows.nodes.contract.outputSchema).toBe("output.data Schema 校验（可选）");
+    expect(zhCN.workflows.nodes.contract.inputSchema).toBe("input.data 结构校验");
+    expect(zhCN.workflows.nodes.contract.outputSchema).toBe("output.data 结构校验（可选）");
     expect(zhCN.workflows.nodes.contractHints.inputSchema).toBe(
       "校验完成映射后，本节点实际接收的 input.data",
     );
     expect(zhCN.workflows.nodes.contractHints.outputSchema).toBe(
-      "校验本节点生成的 output.data，用于及时定位输出格式错误；不替代下游节点的 input.data Schema 校验。",
+      "校验本节点生成的 output.data，用于及时定位输出格式错误；不替代下游节点的 input.data 结构校验。",
     );
-    expect(zhCN.workflows.nodes.schemaCompatibility.title).toBe("data Schema 兼容性提示");
+    expect(zhCN.workflows.nodes.schemaCompatibility.title).toBe("data 结构兼容性提示");
     expect(zhCN.workflows.nodes.common.bashInputVariableHint).toBe(
       "Bash 命令中接收完整节点输入 JSON 字符串的变量名。以默认变量 input 为例：映射数据位于 input.data，Workflow 原始输入位于 input.origin_input，Workflow 变量位于 input.workflow.var，最内层 For 变量位于 input.loop.var，节点常量位于 input.node.var。",
     );

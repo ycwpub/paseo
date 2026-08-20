@@ -1,29 +1,22 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
-import { Save, X } from "lucide-react-native";
+import { Plus, Save, X } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type {
-  PluginAppDefinition,
-  PluginHttpJob,
-  PluginSummary,
-} from "@getpaseo/protocol/messages";
+import type { PluginAppDefinition, PluginSummary } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
-import {
-  SelectField,
-  type SelectFieldDisplay,
-  type SelectFieldOption,
-} from "@/components/ui/select-field";
+import { type SelectFieldDisplay, type SelectFieldOption } from "@/components/ui/select-field";
 import { PluginAppSurface } from "@/screens/settings/plugins/plugin-app-modal";
 import type { PluginAppComponentSlots } from "@/screens/settings/plugins/plugin-app-component-slot";
 import { DevelopmentAssistantMemoryField } from "./development-assistant-memory-field";
+import {
+  PluginProjectDefaultAgentField,
+  type PluginProjectDefaultAgentValue,
+} from "@/plugins/project/plugin-project-default-agent-field";
 import type { DevelopmentProjectMode } from "./development-project-selection-model";
 import { DevelopmentProjectSelector } from "./development-project-selector";
-import { DevelopmentPrdField } from "./development-prd-field";
-import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
 
-const EDIT_HIDDEN_COMPONENT_IDS = ["run", "status", "result"] as const;
-const CREATE_HIDDEN_COMPONENT_IDS = ["flow_title"] as const;
+const EDIT_HIDDEN_COMPONENT_IDS = ["prd", "run", "status", "result"] as const;
 
 export function DevelopmentFlowForm({
   mode,
@@ -35,13 +28,11 @@ export function DevelopmentFlowForm({
   projectMode,
   flowProjectId,
   flowProjectDisplay,
-  sourceProjectId,
-  sourceProjectDisplay,
   projectOptions,
-  sourceProjectOptions,
   canCreateNewProject,
+  defaultAgent,
+  defaultAgentCwd,
   fixedFormValues,
-  prdSource,
   initialFormValues,
   contextLoading,
   contextError,
@@ -50,11 +41,9 @@ export function DevelopmentFlowForm({
   onFlowTitleChange,
   onProjectModeChange,
   onFlowProjectChange,
-  onSourceProjectChange,
+  onDefaultAgentChange,
   onFormValuesChange,
-  onPrdSourceChange,
-  onPrepareSubmission,
-  onJobSubmitted,
+  onCreateDraft,
   onSave,
   onCancel,
 }: {
@@ -67,13 +56,11 @@ export function DevelopmentFlowForm({
   projectMode: DevelopmentProjectMode;
   flowProjectId: string | null;
   flowProjectDisplay: SelectFieldDisplay | null;
-  sourceProjectId: string | null;
-  sourceProjectDisplay: SelectFieldDisplay | null;
   projectOptions: SelectFieldOption<string>[];
-  sourceProjectOptions: SelectFieldOption<string>[];
   canCreateNewProject: boolean;
+  defaultAgent: PluginProjectDefaultAgentValue;
+  defaultAgentCwd: string | null;
   fixedFormValues: Record<string, unknown>;
-  prdSource: DevelopmentPrdSourceValue;
   initialFormValues?: Record<string, unknown>;
   contextLoading: boolean;
   contextError: string | null;
@@ -82,31 +69,14 @@ export function DevelopmentFlowForm({
   onFlowTitleChange: (title: string) => void;
   onProjectModeChange: (mode: DevelopmentProjectMode) => void;
   onFlowProjectChange: (projectId: string) => void;
-  onSourceProjectChange: (projectId: string) => void;
+  onDefaultAgentChange: (value: PluginProjectDefaultAgentValue) => void;
   onFormValuesChange?: (form: Record<string, unknown>) => void;
-  onPrdSourceChange: (value: DevelopmentPrdSourceValue) => void;
-  onPrepareSubmission?: (
-    form: Record<string, unknown>,
-  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
-  onJobSubmitted?: (job: PluginHttpJob) => void;
+  onCreateDraft?: () => void;
   onSave?: () => void;
   onCancel?: () => void;
 }) {
-  const hiddenFieldIds = useMemo(
-    () => (mode === "edit" ? EDIT_HIDDEN_COMPONENT_IDS : CREATE_HIDDEN_COMPONENT_IDS),
-    [mode],
-  );
   const componentSlots = useMemo<PluginAppComponentSlots>(
     () => ({
-      prd: (
-        <DevelopmentPrdField
-          active={active}
-          serverId={serverId}
-          plugin={plugin}
-          value={prdSource}
-          onChange={onPrdSourceChange}
-        />
-      ),
       assistant_id: ({ form, value, onChange }) => (
         <DevelopmentAssistantMemoryField
           serverId={serverId}
@@ -116,16 +86,49 @@ export function DevelopmentFlowForm({
         />
       ),
     }),
-    [active, onPrdSourceChange, plugin, prdSource, serverId],
+    [serverId],
   );
+  let editContent = null;
+  if (mode === "edit" && canRenderForm && !contextLoading) {
+    editContent = (
+      <PluginAppSurface
+        active={active}
+        serverId={serverId}
+        plugin={plugin}
+        appDefinition={appDefinition}
+        projectId={flowProjectId!}
+        fixedFormValues={fixedFormValues}
+        initialFormValues={initialFormValues}
+        hiddenFieldIds={EDIT_HIDDEN_COMPONENT_IDS}
+        componentSlots={componentSlots}
+        showConversation={false}
+        onFormValuesChange={onFormValuesChange}
+        previewTitle="流程配置"
+      />
+    );
+  } else if (mode === "edit") {
+    editContent = (
+      <View style={styles.empty}>
+        <Text style={styles.emptyTitle}>
+          {contextLoading ? "正在读取 Project 配置…" : "当前 Project 无法配置流程"}
+        </Text>
+        <Text style={styles.hint}>
+          {contextError ??
+            (flowProjectId
+              ? "流程 Project 没有关联代码目录，请先在 Project 设置中添加代码目录。"
+              : "请先创建或选择 Project。")}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.pane}>
       <View style={styles.header}>
         <Text style={styles.title}>{mode === "create" ? "创建开发流程" : "编辑开发流程"}</Text>
         <Text style={styles.hint}>
           {mode === "create"
-            ? "先填写开发流程名称，再选择已有 Project 或创建多目录 Project；代码仓库可来自另一个 Project。"
-            : "可修改流程的全部业务配置；执行状态、Process ID 和历史节点结果保持只读。"}
+            ? "这里只创建开发任务并关联 Project。创建后点击 PRD 节点填写需求，再启动研发流程。"
+            : "可修改流程的通用业务配置；PRD 请在流程的 PRD 节点中维护。执行状态、Process ID 和历史节点结果保持只读。"}
         </Text>
       </View>
       {mode === "create" ? (
@@ -151,50 +154,28 @@ export function DevelopmentFlowForm({
             onModeChange={onProjectModeChange}
             onExistingProjectChange={onFlowProjectChange}
           />
+          <PluginProjectDefaultAgentField
+            active={active}
+            serverId={serverId}
+            cwd={defaultAgentCwd}
+            value={defaultAgent}
+            disabled={saving}
+            onChange={onDefaultAgentChange}
+          />
+          <View style={styles.actions}>
+            <Button
+              variant="default"
+              leftIcon={Plus}
+              loading={saving}
+              disabled={!canRenderForm || contextLoading}
+              onPress={onCreateDraft}
+            >
+              创建开发任务
+            </Button>
+          </View>
         </>
       ) : null}
-      <SelectField
-        label="代码来源 Project"
-        value={sourceProjectId}
-        selectedDisplay={sourceProjectDisplay}
-        options={sourceProjectOptions}
-        onChange={onSourceProjectChange}
-        placeholder="选择 Project"
-        emptyText="当前 Host 没有可用 Project"
-        searchable
-        searchPlaceholder="搜索 Project"
-        hint="仓库路径和关联飞书文档会自动读取所选 Project 的配置。"
-      />
-      {canRenderForm && !contextLoading ? (
-        <PluginAppSurface
-          active={active}
-          serverId={serverId}
-          plugin={plugin}
-          appDefinition={appDefinition}
-          projectId={flowProjectId!}
-          fixedFormValues={fixedFormValues}
-          initialFormValues={initialFormValues}
-          hiddenFieldIds={hiddenFieldIds}
-          componentSlots={componentSlots}
-          showConversation={false}
-          prepareSubmission={onPrepareSubmission}
-          onFormValuesChange={onFormValuesChange}
-          onJobSubmitted={onJobSubmitted}
-          previewTitle="流程配置"
-        />
-      ) : (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>
-            {contextLoading ? "正在读取 Project 配置…" : "当前 Project 无法配置流程"}
-          </Text>
-          <Text style={styles.hint}>
-            {contextError ??
-              (sourceProjectId
-                ? "该 Project 没有关联代码目录，请选择包含代码目录的 Project。"
-                : "请先创建或选择 Project。")}
-          </Text>
-        </View>
-      )}
+      {editContent}
       {mode === "edit" ? (
         <View style={styles.actions}>
           <Button variant="outline" leftIcon={X} disabled={saving} onPress={onCancel}>

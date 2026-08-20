@@ -9,7 +9,6 @@ describe("paseo config schema", () => {
   it("provides cross-agent knowledge and workspace-data directory defaults", () => {
     expect(resolvePaseoProjectDirectoryValues(undefined)).toEqual({
       project: ["{{workspaceDirectory}}"],
-      reference: [],
       knowledge: [],
       indexSkill: [],
       workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
@@ -20,14 +19,12 @@ describe("paseo config schema", () => {
     expect(
       resolvePaseoProjectDirectoryValues({
         project: [],
-        reference: [],
         knowledge: [],
         indexSkill: [],
         workspaceData: [],
       }),
     ).toEqual({
       project: [],
-      reference: [],
       knowledge: [],
       indexSkill: [],
       workspaceData: [],
@@ -52,6 +49,20 @@ describe("paseo config schema", () => {
       }),
     ).toMatchObject({
       project: { directoryMode: "multiple", directories },
+    });
+  });
+
+  it("merges legacy reference directories into knowledge directories", () => {
+    expect(
+      resolvePaseoProjectDirectoryValues({
+        reference: ["../legacy", { path: "docs", enabled: false }],
+        knowledge: ["docs", "/opt/company/standards"],
+      }),
+    ).toEqual({
+      project: ["{{workspaceDirectory}}"],
+      knowledge: ["docs", "/opt/company/standards", "../legacy"],
+      indexSkill: [],
+      workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
     });
   });
 
@@ -267,7 +278,7 @@ describe("paseo config schema", () => {
     });
   });
 
-  it("parses project directories, indexing, variables, Lark documents, and instruction templates", () => {
+  it("parses project directories, knowledge, indexing, variables, legacy Lark documents, and instruction templates", () => {
     const project = {
       directories: {
         project: [".", "../shared-source"],
@@ -283,6 +294,21 @@ describe("paseo config schema", () => {
       variables: {
         serviceName: "checkout",
         owner: "payments",
+      },
+      knowledge: {
+        general: [
+          { type: "local-directory", source: "docs/background" },
+          { type: "local-document", source: "README.md", enabled: false },
+          { type: "cloud-document", source: "https://example.com/domain" },
+        ],
+        standards: [
+          { type: "local-document", source: "docs/standards.md" },
+          { type: "cloud-document", source: "https://example.com/standards" },
+        ],
+        projectSpecific: [
+          { type: "local-document", source: "docs/architecture.md" },
+          { type: "cloud-document", source: "https://example.com/architecture" },
+        ],
       },
       larkDocumentLinks: [
         "https://example.feishu.cn/wiki/architecture",

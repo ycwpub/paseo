@@ -7,7 +7,6 @@ describe("sanitizeByteDevelopmentWorkflowInput", () => {
       sanitizeByteDevelopmentWorkflowInput({
         flow_title: "抖音省",
         projectId: "prj_flow",
-        sourceProjectId: "prj_source",
         prd: "实现需求",
         repository_path: "/workspace/project",
         approve_development: false,
@@ -15,19 +14,18 @@ describe("sanitizeByteDevelopmentWorkflowInput", () => {
     ).toEqual({
       flow_title: "抖音省",
       projectId: "prj_flow",
-      sourceProjectId: "prj_source",
       prd: "实现需求",
       repository_path: "/workspace/project",
       approve_development: false,
     });
   });
 
-  it("drops fields left by older persisted development console documents", () => {
+  it("keeps the plugin project's default Agent and drops unsupported fields", () => {
     expect(
       sanitizeByteDevelopmentWorkflowInput({
         flow_title: "抖音省",
         projectId: "prj_flow",
-        sourceProjectId: "prj_source",
+        sourceProjectId: "legacy-source-project",
         prd: "实现需求",
         repository_path: "/workspace/project",
         agent_provider: "codex",
@@ -38,9 +36,10 @@ describe("sanitizeByteDevelopmentWorkflowInput", () => {
     ).toEqual({
       flow_title: "抖音省",
       projectId: "prj_flow",
-      sourceProjectId: "prj_source",
       prd: "实现需求",
       repository_path: "/workspace/project",
+      agent_provider: "codex",
+      agent_model: "gpt-5.6",
     });
   });
 });

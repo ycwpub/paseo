@@ -86,6 +86,10 @@ describe("plugin sidebar panel model", () => {
     usePluginAppPanelStore.getState().toggle(beta);
     expect(usePluginAppPanelStore.getState().selection).toEqual(beta);
 
+    usePluginAppPanelStore.getState().open(beta);
+    usePluginAppPanelStore.getState().open(beta);
+    expect(usePluginAppPanelStore.getState().selection).toEqual(beta);
+
     usePluginAppPanelStore.getState().close();
     expect(usePluginAppPanelStore.getState().selection).toBeNull();
   });

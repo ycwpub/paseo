@@ -85,6 +85,7 @@ export const PluginHttpServiceSummarySchema = z.object({
 export type PluginHttpServiceSummary = z.infer<typeof PluginHttpServiceSummarySchema>;
 
 export const PluginHttpJobStatusSchema = z.enum([
+  "draft",
   "queued",
   "running",
   "succeeded",

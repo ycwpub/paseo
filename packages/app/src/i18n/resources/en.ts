@@ -1205,8 +1205,7 @@ export const en = {
         missing: "Directory does not exist",
         types: {
           project: "Project",
-          reference: "Reference (read-only)",
-          knowledge: "AI knowledge",
+          knowledge: "General knowledge",
           indexSkill: "Index Skill",
           workspaceData: "Workspace data",
         },
@@ -3460,25 +3459,21 @@ export const en = {
       },
       resources: {
         title: "Project resources",
-        info: "Configure multiple directories for writable source, read-only references, mandatory knowledge, generated index Skills, and workspace review data. Relative paths resolve from the project root.",
+        info: "Configure writable Project directories, generated index Skill directories, and Workspace review data directories. Relative paths resolve from the Project root; Project knowledge is managed separately below.",
         emptyDirectories: "No directories configured.",
         removeDirectory: "Remove {{title}} entry",
         project: {
           title: "Project directories",
-          hint: "Single-directory mode requires one path and automatically includes AI knowledge folders under it. Multiple-directory mode allows zero or more paths and does not add knowledge folders automatically.",
+          hint: "Single-directory mode requires one path and automatically includes AI general knowledge folders under it. Multiple-directory mode allows zero or more paths and does not add general knowledge folders automatically.",
           single: "Single directory",
           multiple: "Multiple directories",
           validation: {
             singleRequired: "Single-directory mode requires exactly one enabled path.",
           },
         },
-        reference: {
-          title: "Reference directories",
-          hint: "Agents can inspect these directories when needed, but cannot create, modify, rename, move, or delete their contents. Reference directories must not overlap writable Project directories.",
-        },
         knowledge: {
-          title: "Knowledge directories",
-          hint: "Applicable files in these directories are mandatory instructions for every Agent.",
+          title: "General knowledge directories",
+          hint: "Agents read and adopt content from these directories only when it is relevant to the task.",
         },
         indexSkill: {
           title: "Index Skill directories",

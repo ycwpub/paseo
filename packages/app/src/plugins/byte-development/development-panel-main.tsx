@@ -1,18 +1,15 @@
 import { Text, View } from "react-native";
 import { Plus } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type {
-  PluginAppDefinition,
-  PluginHttpJob,
-  PluginSummary,
-} from "@getpaseo/protocol/messages";
+import type { PluginAppDefinition, PluginSummary } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import type { SelectFieldDisplay, SelectFieldOption } from "@/components/ui/select-field";
 import { DevelopmentFlowDetail } from "./development-flow-detail";
 import { DevelopmentFlowForm } from "./development-flow-form";
+import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
 import type { DevelopmentProjectMode } from "./development-project-selection-model";
 import type { DevelopmentFlow } from "./flow-model";
-import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
+import type { PluginProjectDefaultAgentValue } from "@/plugins/project/plugin-project-default-agent-field";
 
 export function DevelopmentPanelMain({
   active,
@@ -27,28 +24,29 @@ export function DevelopmentPanelMain({
   projectMode,
   flowProjectId,
   flowProjectDisplay,
-  sourceProjectId,
-  sourceProjectDisplay,
   projectOptions,
-  sourceProjectOptions,
   canCreateNewProject,
+  defaultAgent,
+  defaultAgentCwd,
   fixedFormValues,
-  prdSource,
   editInitialValues,
   contextLoading,
   contextError,
   canRenderForm,
   saving,
+  copying,
   deleting,
   canMutate,
+  canCopy,
   onFlowTitleChange,
   onProjectModeChange,
   onFlowProjectChange,
-  onSourceProjectChange,
+  onDefaultAgentChange,
   onFormValuesChange,
-  onPrdSourceChange,
-  onPrepareSubmission,
-  onJobSubmitted,
+  onCreateDraft,
+  onSavePrd,
+  onStartFlow,
+  onCopy,
   onSave,
   onCancel,
   onCreate,
@@ -69,30 +67,29 @@ export function DevelopmentPanelMain({
   projectMode: DevelopmentProjectMode;
   flowProjectId: string | null;
   flowProjectDisplay: SelectFieldDisplay | null;
-  sourceProjectId: string | null;
-  sourceProjectDisplay: SelectFieldDisplay | null;
   projectOptions: SelectFieldOption<string>[];
-  sourceProjectOptions: SelectFieldOption<string>[];
   canCreateNewProject: boolean;
+  defaultAgent: PluginProjectDefaultAgentValue;
+  defaultAgentCwd: string | null;
   fixedFormValues: Record<string, unknown>;
-  prdSource: DevelopmentPrdSourceValue;
   editInitialValues: Record<string, unknown>;
   contextLoading: boolean;
   contextError: string | null;
   canRenderForm: boolean;
   saving: boolean;
+  copying: boolean;
   deleting: boolean;
   canMutate: boolean;
+  canCopy: boolean;
   onFlowTitleChange: (title: string) => void;
   onProjectModeChange: (mode: DevelopmentProjectMode) => void;
   onFlowProjectChange: (projectId: string) => void;
-  onSourceProjectChange: (projectId: string) => void;
+  onDefaultAgentChange: (value: PluginProjectDefaultAgentValue) => void;
   onFormValuesChange: (form: Record<string, unknown>) => void;
-  onPrdSourceChange: (value: DevelopmentPrdSourceValue) => void;
-  onPrepareSubmission: (
-    form: Record<string, unknown>,
-  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
-  onJobSubmitted: (job: PluginHttpJob) => void;
+  onCreateDraft: () => void;
+  onSavePrd: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onStartFlow: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onCopy: () => void;
   onSave: () => void;
   onCancel: () => void;
   onCreate: () => void;
@@ -114,13 +111,11 @@ export function DevelopmentPanelMain({
         projectMode={projectMode}
         flowProjectId={flowProjectId}
         flowProjectDisplay={flowProjectDisplay}
-        sourceProjectId={sourceProjectId}
-        sourceProjectDisplay={sourceProjectDisplay}
         projectOptions={projectOptions}
-        sourceProjectOptions={sourceProjectOptions}
         canCreateNewProject={canCreateNewProject}
+        defaultAgent={defaultAgent}
+        defaultAgentCwd={defaultAgentCwd}
         fixedFormValues={fixedFormValues}
-        prdSource={prdSource}
         initialFormValues={editing ? editInitialValues : undefined}
         contextLoading={contextLoading}
         contextError={contextError}
@@ -129,11 +124,9 @@ export function DevelopmentPanelMain({
         onFlowTitleChange={onFlowTitleChange}
         onProjectModeChange={onProjectModeChange}
         onFlowProjectChange={onFlowProjectChange}
-        onSourceProjectChange={onSourceProjectChange}
+        onDefaultAgentChange={onDefaultAgentChange}
         onFormValuesChange={editing ? onFormValuesChange : undefined}
-        onPrdSourceChange={onPrdSourceChange}
-        onPrepareSubmission={creating ? onPrepareSubmission : undefined}
-        onJobSubmitted={creating ? onJobSubmitted : undefined}
+        onCreateDraft={creating ? onCreateDraft : undefined}
         onSave={onSave}
         onCancel={onCancel}
       />
@@ -145,10 +138,16 @@ export function DevelopmentPanelMain({
         flow={selectedFlow}
         projectName={projectName}
         serverId={serverId}
+        plugin={plugin}
         canMutate={canMutate}
+        canCopy={canCopy}
+        copying={copying}
         deleting={deleting}
         onOpenProject={onOpenProject}
         onOpenProjectSettings={onOpenProjectSettings}
+        onSavePrd={onSavePrd}
+        onStartFlow={onStartFlow}
+        onCopy={onCopy}
         onEdit={onEdit}
         onDelete={onDelete}
       />

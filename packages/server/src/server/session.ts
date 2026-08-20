@@ -190,7 +190,7 @@ import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
 import type { PluginService } from "./plugin/plugin-service.js";
-import { PluginSession } from "./plugin/plugin-session.js";
+import { isPluginSessionRequest, PluginSession } from "./plugin/plugin-session.js";
 import {
   createAidenClaudeReasoningTranslationService,
   type ReasoningTranslationService,
@@ -2587,25 +2587,10 @@ export class Session {
   }
 
   private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "plugin.list.request":
-      case "plugin.marketplace.add.request":
-      case "plugin.marketplace.remove.request":
-      case "plugin.install.request":
-      case "plugin.set_enabled.request":
-      case "plugin.uninstall.request":
-      case "plugin.app.get.request":
-      case "plugin.app.generate.request":
-      case "plugin.app.action.submit.request":
-      case "plugin.http.submit.request":
-      case "plugin.app.job.get.request":
-      case "plugin.app.job.list.request":
-      case "plugin.app.job.update.request":
-      case "plugin.app.job.delete.request":
-        return this.pluginSession?.handleRequest(msg);
-      default:
-        return undefined;
+    if (isPluginSessionRequest(msg)) {
+      return this.pluginSession?.handleRequest(msg);
     }
+    return undefined;
   }
 
   private dispatchReasoningTranslationMessage(

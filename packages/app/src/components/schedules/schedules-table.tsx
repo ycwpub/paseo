@@ -129,7 +129,7 @@ function SchedulesTableRow({
       const confirmed = await confirmDialog({
         title: `Delete ${productName.toLowerCase()}`,
         message: `Delete "${resolveScheduleTitle(schedule)}"? This cannot be undone.`,
-        confirmLabel: "Delete",
+        confirmLabel: "删除",
         destructive: true,
       });
       if (!confirmed) {

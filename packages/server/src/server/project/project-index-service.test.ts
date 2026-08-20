@@ -8,7 +8,7 @@ import type { ProjectRegistry } from "../workspace-registry.js";
 import { buildProjectIndexSkillDocument, ProjectIndexService } from "./project-index-service.js";
 
 describe("buildProjectIndexSkillDocument", () => {
-  it("generates a standard Skill with project and mandatory knowledge entries", () => {
+  it("generates a standard Skill with project and general knowledge entries", () => {
     const document = buildProjectIndexSkillDocument({
       project: {
         projectId: "prj_123",
@@ -30,7 +30,7 @@ describe("buildProjectIndexSkillDocument", () => {
     });
 
     expect(document).toContain('name: "project-index-prj_123"');
-    expect(document).toContain("knowledge roots are mandatory");
+    expect(document).toContain("optional background material");
     expect(document).toContain("[project] packages/api");
     expect(document).toContain("[knowledge] security.md");
   });

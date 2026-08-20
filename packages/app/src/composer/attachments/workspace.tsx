@@ -59,10 +59,10 @@ function getOpenAccessibilityLabel(
     return t("composer.attachments.openBrowserElement");
   }
   if (isPullRequestContextAttachment(attachment)) {
-    return "Open context attachment";
+    return "打开上下文附件";
   }
   if (attachment.kind === "chat_history") {
-    return "Open chat history attachment";
+    return "打开聊天记录附件";
   }
   return t("composer.attachments.openReview");
 }
@@ -75,10 +75,10 @@ function getRemoveAccessibilityLabel(
     return t("composer.attachments.removeBrowserElement");
   }
   if (isPullRequestContextAttachment(attachment)) {
-    return "Remove context attachment";
+    return "移除上下文附件";
   }
   if (attachment.kind === "chat_history") {
-    return "Remove chat history attachment";
+    return "移除聊天记录附件";
   }
   return t("composer.attachments.removeReview");
 }

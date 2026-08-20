@@ -310,6 +310,61 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     return this.submitBinding(binding, input);
   }
 
+  async createDraft(
+    pluginId: string,
+    serviceName: string,
+    projectId: string,
+    input: unknown,
+  ): Promise<PluginHttpJob> {
+    const binding = this.bindings.get(serviceKey(pluginId, serviceName));
+    if (!binding) {
+      throw new Error(`Plugin HTTP service is not available: ${pluginId}/${serviceName}`);
+    }
+    return this.store.create({
+      pluginId,
+      serviceName,
+      projectId,
+      input,
+      status: "draft",
+      createdAt: this.now().toISOString(),
+    });
+  }
+
+  async startJob(processId: string): Promise<PluginHttpJob | null> {
+    const job = this.store.get(processId);
+    if (!job) return null;
+    if (job.status !== "draft") {
+      throw new Error("Only draft plugin jobs can be started");
+    }
+    const key = serviceKey(job.pluginId, job.serviceName);
+    const binding = this.bindings.get(key);
+    const status = this.statuses.get(key);
+    if (!binding || status?.status !== "running") {
+      throw new Error(`Plugin HTTP service is not running: ${job.pluginId}/${job.serviceName}`);
+    }
+    const queued = await this.store.update(processId, (current) => ({
+      ...current,
+      status: "queued",
+      error: null,
+      errorCode: null,
+      startedAt: null,
+      endedAt: null,
+    }));
+    if (!queued) return null;
+    void this.executeJob(binding, queued).catch((error) => {
+      this.logger.error(
+        {
+          err: error,
+          processId: queued.id,
+          pluginId: queued.pluginId,
+          serviceName: queued.serviceName,
+        },
+        "Draft plugin HTTP processing job failed",
+      );
+    });
+    return queued;
+  }
+
   getJob(processId: string): PluginHttpJob | null {
     return this.store.get(processId);
   }

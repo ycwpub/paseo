@@ -1311,7 +1311,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
                 status: "failed",
                 title: t("settings.host.daemon.update.requestFailedTitle"),
                 message: t("settings.host.daemon.update.requestFailedMessage", {
-                  error: response.error ?? "Unknown error",
+                  error: response.error ?? "未知错误",
                 }),
               });
               return undefined;
@@ -1329,7 +1329,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
               status: "failed",
               title: t("settings.host.daemon.update.requestFailedTitle"),
               message: t("settings.host.daemon.update.requestFailedMessage", {
-                error: error instanceof Error ? error.message : "Unknown error",
+                error: error instanceof Error ? error.message : "未知错误",
               }),
             });
           });
@@ -1442,10 +1442,7 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
     (next: boolean) => {
       void patchConfig({ autoArchiveAfterMerge: next }).catch((error) => {
         console.error("[HostPage] Failed to update auto-archive after merge", error);
-        Alert.alert(
-          "Unable to update workspaces",
-          error instanceof Error ? error.message : String(error),
-        );
+        Alert.alert("无法更新 Workspace", error instanceof Error ? error.message : String(error));
       });
     },
     [patchConfig],
@@ -1457,7 +1454,7 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-auto-archive-merged-workspaces-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
+          <Text style={settingsStyles.rowTitle}>归档已合并 PR 的 Workspace</Text>
           <Text style={settingsStyles.rowHint}>
             Automatically archive clean Paseo workspaces after their pull request is merged
           </Text>
@@ -1465,7 +1462,7 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
         <Switch
           value={config?.autoArchiveAfterMerge === true}
           onValueChange={handleValueChange}
-          accessibilityLabel="Archive merged PR workspaces"
+          accessibilityLabel="归档已合并 PR 的 Workspace"
           testID="host-page-auto-archive-merged-workspaces-switch"
         />
       </View>
@@ -1482,7 +1479,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
       void patchConfig({ enableTerminalAgentHooks: next }).catch((error) => {
         console.error("[HostPage] Failed to update terminal agent hooks", error);
         Alert.alert(
-          "Unable to update terminal agent hooks",
+          "无法更新终端 Agent 钩子",
           error instanceof Error ? error.message : String(error),
         );
       });
@@ -1496,7 +1493,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-terminal-agent-hooks-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>Enable terminal agent hooks</Text>
+          <Text style={settingsStyles.rowTitle}>启用终端 Agent 钩子</Text>
           <Text style={settingsStyles.rowHint}>
             Get notifications and status from terminal agents. This installs hooks in your agent
             config files.
@@ -1505,7 +1502,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
         <Switch
           value={config?.enableTerminalAgentHooks === true}
           onValueChange={handleValueChange}
-          accessibilityLabel="Enable terminal agent hooks"
+          accessibilityLabel="启用终端 Agent 钩子"
           testID="host-page-terminal-agent-hooks-switch"
         />
       </View>
@@ -2168,7 +2165,7 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
 
   return (
     <View>
-      <SettingsSection title="Terminal agents">
+      <SettingsSection title="终端 Agent">
         <EnableTerminalAgentHooksCard serverId={serverId} />
       </SettingsSection>
       <TerminalProfilesSection serverId={serverId} />

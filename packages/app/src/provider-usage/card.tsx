@@ -26,7 +26,7 @@ const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted 
 
 function statusText(usage: ProviderUsage): string | null {
   if (usage.status === "available") return null;
-  return usage.status === "error" ? "Error" : "Unavailable";
+  return usage.status === "error" ? "错误" : "不可用";
 }
 
 function footerText(usage: ProviderUsage): string | null {

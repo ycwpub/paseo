@@ -20,6 +20,6 @@ export function useDevelopmentProjectSettingsNavigation({
     if (!route) return;
     onNavigateAway?.();
     closePluginPanel();
-    router.navigate(route);
+    router.push(route);
   }, [closePluginPanel, onNavigateAway, projectId, router, serverId]);
 }

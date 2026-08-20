@@ -90,6 +90,7 @@ import {
   createQuitLifecycle,
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./daemon/quit-lifecycle.js";
+import { parseOpenNewWindowRequest } from "./window/open-new-window-request.js";
 import { runDesktopStartup } from "./desktop-startup.js";
 import { autoUpdateInstalledSkills } from "./integrations/skills/index.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
@@ -1009,12 +1010,10 @@ async function bootstrap(): Promise<void> {
   // In-app "Open in new window": opens a window that lands on the given project
   // via the same open-project flow as a CLI launch (no move, no ownership).
   ipcMain.handle("paseo:window:openNew", async (_event, options?: unknown) => {
-    const pendingPath =
-      options && typeof options === "object" && "pendingOpenProjectPath" in options
-        ? (options as { pendingOpenProjectPath?: unknown }).pendingOpenProjectPath
-        : null;
+    const request = parseOpenNewWindowRequest(options);
     await createWindow({
-      pendingOpenProjectPath: typeof pendingPath === "string" ? pendingPath : null,
+      pendingOpenProjectPath: request.pendingOpenProjectPath,
+      initialRoute: request.initialRoute,
     });
   });
 

@@ -18,6 +18,7 @@ import {
 } from "../agent/structured-generation-providers.js";
 import { PluginAppStore } from "./plugin-app-store.js";
 import type {
+  PluginAppConfigureInput,
   PluginAppGenerateInput,
   PluginAppRuntime,
   PluginAppSubmitInput,
@@ -157,12 +158,20 @@ function validateRequiredFields(document: PluginAppDocument, form: Record<string
 function projectScopedForm(
   input: PluginAppSubmitInput,
   context: PluginAppContext,
+  state: PluginAppState,
 ): Record<string, unknown> {
   const projectBinding = context.definition.project ?? DEFAULT_PLUGIN_APP_PROJECT_BINDING;
+  if (!state.defaultAgent) {
+    throw new Error("Configure the plugin project's default provider and model first");
+  }
   return {
     ...input.form,
     projectId: input.projectId,
     [projectBinding.idField]: input.projectId,
+    defaultAgentProvider: state.defaultAgent.provider,
+    defaultAgentModel: state.defaultAgent.model,
+    agent_provider: state.defaultAgent.provider,
+    agent_model: state.defaultAgent.model,
   };
 }
 
@@ -176,6 +185,12 @@ function projectScopedActionInput(
     ...(form.projectSourceDirectory !== undefined
       ? { projectSourceDirectory: form.projectSourceDirectory }
       : {}),
+    ...(form.defaultAgentProvider !== undefined
+      ? { defaultAgentProvider: form.defaultAgentProvider }
+      : {}),
+    ...(form.defaultAgentModel !== undefined ? { defaultAgentModel: form.defaultAgentModel } : {}),
+    ...(form.agent_provider !== undefined ? { agent_provider: form.agent_provider } : {}),
+    ...(form.agent_model !== undefined ? { agent_model: form.agent_model } : {}),
   };
   if (typeof actionInput === "object" && actionInput !== null && !Array.isArray(actionInput)) {
     return {
@@ -207,6 +222,27 @@ export class PluginAppService implements PluginAppRuntime {
     return this.store.get(pluginId, context.definition, projectId, this.now().toISOString());
   }
 
+  configure(input: PluginAppConfigureInput): PluginAppState {
+    const context = this.options.resolveApp(input.pluginId, input.appId);
+    const timestamp = this.now().toISOString();
+    const current = this.store.get(input.pluginId, context.definition, input.projectId, timestamp);
+    return this.store.save({
+      ...current,
+      defaultAgent: input.defaultAgent,
+      updatedAt: timestamp,
+    });
+  }
+
+  listProjects(pluginId: string, appId: string): PluginAppState[] {
+    const context = this.options.resolveApp(pluginId, appId);
+    return this.store.list(pluginId, context.definition);
+  }
+
+  deleteProject(pluginId: string, appId: string, projectId: string): boolean {
+    this.options.resolveApp(pluginId, appId);
+    return this.store.delete(pluginId, appId, projectId);
+  }
+
   async generate(input: PluginAppGenerateInput): Promise<PluginAppState> {
     const context = this.options.resolveApp(input.pluginId, input.appId);
     const current = this.store.get(
@@ -215,6 +251,9 @@ export class PluginAppService implements PluginAppRuntime {
       input.projectId,
       this.now().toISOString(),
     );
+    if (!current.defaultAgent) {
+      throw new Error("Configure the plugin project's default provider and model first");
+    }
     const generated = this.generateOverride
       ? await this.generateOverride({
           prompt: input.prompt,
@@ -255,7 +294,7 @@ export class PluginAppService implements PluginAppRuntime {
     const context = this.options.resolveApp(input.pluginId, input.appId);
     const state = this.get(input.pluginId, input.appId, input.projectId);
     if (!state.document) throw new Error("Generate the plugin app interface before running it");
-    const form = projectScopedForm(input, context);
+    const form = projectScopedForm(input, context, state);
     validateRequiredFields(state.document, form);
     const button = findButton(state.document, input.componentId);
     const targetPluginId = button.action.pluginId ?? input.pluginId;
@@ -287,10 +326,20 @@ export class PluginAppService implements PluginAppRuntime {
   }
 
   private async generateWithAgent(input: GenerateAppInput): Promise<PluginAppGeneration> {
+    const defaultAgent = input.current.defaultAgent;
+    if (!defaultAgent) {
+      throw new Error("Configure the plugin project's default provider and model first");
+    }
+    const daemonConfig = this.options.readDaemonConfig();
     const providers = await resolveStructuredGenerationProviders({
       cwd: input.context.pluginRoot,
       providerSnapshotManager: this.options.providerSnapshotManager,
-      daemonConfig: this.options.readDaemonConfig(),
+      daemonConfig: {
+        ...daemonConfig,
+        metadataGeneration: {
+          providers: [defaultAgent, ...(daemonConfig.metadataGeneration?.providers ?? [])],
+        },
+      },
     });
     if (providers.length === 0) {
       throw new Error("No available provider can generate a plugin interface");

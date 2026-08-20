@@ -687,7 +687,7 @@ function WorkflowGraphEdgeDragHandle({
       {...responder.panHandlers}
       style={[styles.edgeDragHandle, axisStyle, { left: handle.x - 7, top: handle.y - 7 }]}
       accessibilityRole="adjustable"
-      accessibilityLabel="Drag workflow connection"
+      accessibilityLabel="拖动 Workflow 连线"
       testID={`workflow-edge-handle-${edgeId}-${handle.id}`}
     />
   );

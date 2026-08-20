@@ -549,16 +549,16 @@ function StatusWorkspaceRowWithMenu({
         workspaceDirectory: workspace.workspaceDirectory,
       });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Workspace path not available");
+      toast.error(error instanceof Error ? error.message : "Workspace 路径不可用");
       return;
     }
     void Clipboard.setStringAsync(copyTargetDirectory);
-    toast.copied("Path copied");
+    toast.copied("路径已复制");
   }, [toast, workspace.workspaceDirectory, workspace.workspaceId]);
 
   const handleCopyBranchName = useCallback(() => {
     void Clipboard.setStringAsync(workspace.name);
-    toast.copied("Branch name copied");
+    toast.copied("分支名称已复制");
   }, [toast, workspace.name]);
 
   const renameMutation = useMutation({
@@ -590,7 +590,7 @@ function StatusWorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
+      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
     });
   }, [clearAttention, toast]);
 
@@ -635,7 +635,7 @@ function StatusWorkspaceRowWithMenu({
       />
       <AdaptiveRenameModal
         visible={isRenameOpen}
-        title="Rename workspace"
+        title="重命名 Workspace"
         initialValue={workspace.title ?? workspace.name}
         placeholder={workspace.name}
         submitLabel="Rename"

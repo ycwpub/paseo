@@ -7,12 +7,14 @@ const { getIslandDocument } = require(viewModulePath);
 
 const compactOutputPath = "/tmp/paseo-island-compact.png";
 const expandedOutputPath = "/tmp/paseo-island-expanded.png";
+const compactHeight = 38;
+const expandedWidth = 480;
 
 async function renderPreview() {
   await app.whenReady();
   const window = new BrowserWindow({
     width: 320,
-    height: 42,
+    height: compactHeight,
     show: false,
     frame: false,
     transparent: true,
@@ -48,7 +50,7 @@ async function renderPreview() {
   const compactImage = await window.capturePage();
   fs.writeFileSync(compactOutputPath, compactImage.toPNG());
 
-  window.setSize(432, 220);
+  window.setSize(expandedWidth, 220);
   await window.webContents.executeJavaScript(`
     window.__PASEO_ISLAND_RECEIVE__({
       expanded: true,
@@ -66,10 +68,16 @@ async function renderPreview() {
   const expandedMetrics = await window.webContents.executeJavaScript(`
     (() => {
       const headerIcon = document.querySelector(".details-brand .brand-icon").getBoundingClientRect();
+      const title = document.querySelector(".details-title");
       const itemIcon = document.querySelector(".item-icon").getBoundingClientRect();
       const list = document.querySelector(".list");
       return {
         header: { width: headerIcon.width, height: headerIcon.height },
+        title: {
+          clientWidth: title.clientWidth,
+          scrollWidth: title.scrollWidth,
+          fullyVisible: title.scrollWidth <= title.clientWidth
+        },
         item: { width: itemIcon.width, height: itemIcon.height },
         list: {
           clientHeight: list.clientHeight,

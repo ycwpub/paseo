@@ -75,6 +75,7 @@ import {
 } from "./shared-agent-resources.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
+import { composeSystemPromptParts } from "./system-prompt.js";
 import {
   ProviderSubagentStore,
   type ProviderSubagentDescriptor,
@@ -301,6 +302,11 @@ export interface AgentManagerOptions {
 export interface AgentPromptContextComposer {
   compose(agent: ManagedAgent, prompt: AgentPromptInput): Promise<AgentPromptInput>;
 }
+
+export type AgentAppendSystemPromptComposer = (
+  agentId: string,
+  config: AgentSessionConfig,
+) => string | null | undefined;
 
 export interface WaitForAgentOptions {
   signal?: AbortSignal;
@@ -694,6 +700,7 @@ export class AgentManager {
   private paseoToolsEnabled = true;
   private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
+  private agentAppendSystemPromptComposer: AgentAppendSystemPromptComposer | null = null;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
@@ -823,6 +830,10 @@ export class AgentManager {
 
   setPromptContextComposer(composer: AgentPromptContextComposer | null): void {
     this.promptContextComposer = composer;
+  }
+
+  setAgentAppendSystemPromptComposer(composer: AgentAppendSystemPromptComposer | null): void {
+    this.agentAppendSystemPromptComposer = composer;
   }
 
   public getMetricsSnapshot(): AgentMetricsSnapshot {
@@ -4639,6 +4650,7 @@ export class AgentManager {
         mcpBaseUrl: this.mcpBaseUrl,
         mcpAuthToken: this.mcpAuthToken,
       }),
+      agentId,
     );
     return { storedConfig, launchConfig };
   }
@@ -4761,8 +4773,14 @@ export class AgentManager {
     }
   }
 
-  private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {
-    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
+  private applyDaemonAppendSystemPrompt(
+    config: AgentSessionConfig,
+    agentId: string,
+  ): AgentSessionConfig {
+    const daemonAppendSystemPrompt = composeSystemPromptParts(
+      this.appendSystemPrompt,
+      this.agentAppendSystemPromptComposer?.(agentId, config),
+    );
     const next = { ...config };
     delete next.daemonAppendSystemPrompt;
 

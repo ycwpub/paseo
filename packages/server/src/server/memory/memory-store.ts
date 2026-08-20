@@ -10,6 +10,7 @@ import {
   PaseoMemorySettingsSchema,
   PaseoMemorySourceRefSchema,
   PaseoMemoryStateSchema,
+  PaseoMemorySyncSnapshotSchema,
   PaseoMemoryUpdateInputSchema,
   PaseoMemoryUsageSchema,
   PaseoMemoryUserSchema,
@@ -19,6 +20,8 @@ import {
   type PaseoMemoryScope,
   type PaseoMemorySourceRef,
   type PaseoMemoryState,
+  type PaseoMemorySyncDetail,
+  type PaseoMemorySyncSnapshot,
   type PaseoMemoryUpdateInput,
   type PaseoMemoryUser,
   type PaseoMemoryUserOperation,
@@ -41,6 +44,16 @@ import {
   DEFAULT_MEMORY_USER_ID,
   normalizeMemoryUsers,
 } from "./memory-users.js";
+import {
+  incomingMemoryVersionWins,
+  localMemorySyncOrigin,
+  memorySyncOriginKey,
+  mergeMemorySyncPolicies,
+  mergeMemorySyncScopePolicies,
+  mergeMemorySyncSummaries,
+  mergeMemorySyncUsers,
+  remapMemorySyncScope,
+} from "./memory-sync.js";
 
 const MEMORY_STORE_VERSION = 3;
 const SUMMARY_INDEX_MARKER = "<!-- paseo:memory-detail-index -->";
@@ -184,6 +197,35 @@ function uniqueSourceRefs(values: readonly PaseoMemorySourceRef[]): PaseoMemoryS
     seen.add(key);
     return true;
   });
+}
+
+function memorySyncComparableDetail(
+  detail: Pick<
+    PaseoMemoryDetail,
+    | "title"
+    | "category"
+    | "scope"
+    | "origin"
+    | "status"
+    | "importance"
+    | "validFrom"
+    | "validUntil"
+    | "sensitive"
+  >,
+  content: string,
+): object {
+  return {
+    title: detail.title,
+    category: detail.category,
+    content,
+    scope: normalizeMemoryScope(detail.scope),
+    origin: detail.origin ?? "automatic",
+    status: detail.status ?? "active",
+    importance: detail.importance ?? 0.5,
+    validFrom: detail.validFrom ?? null,
+    validUntil: detail.validUntil ?? null,
+    sensitive: detail.sensitive ?? false,
+  };
 }
 
 function defaultSummary(): string {
@@ -361,6 +403,7 @@ function buildRevisionCatalogDetail(input: {
     createdAt: input.timestamp,
     validFrom: input.timestamp,
     supersedes: [input.current.id],
+    syncOrigin: undefined,
   });
 }
 
@@ -380,17 +423,19 @@ export class PaseoMemoryStore {
   private readonly legacySummaryPath: string;
   private readonly logger: pino.Logger;
   private readonly cipher: MemoryContentCipher;
+  private readonly serverId: string;
   private loaded = false;
   private pendingExtractions = 0;
   private catalog: MemoryCatalog = createDefaultCatalog();
 
-  constructor(options: { paseoHome: string; logger: pino.Logger }) {
+  constructor(options: { paseoHome: string; logger: pino.Logger; serverId?: string }) {
     this.rootPath = path.join(options.paseoHome, "memory");
     this.detailsPath = path.join(this.rootPath, "details");
     this.catalogPath = path.join(this.rootPath, "catalog.json");
     this.legacySummaryPath = path.join(this.rootPath, "summary.md");
     this.logger = options.logger.child({ module: "memory-store" });
     this.cipher = new MemoryContentCipher(this.rootPath);
+    this.serverId = options.serverId?.trim() || "local-memory-store";
   }
 
   getState(): PaseoMemoryState {
@@ -435,6 +480,63 @@ export class PaseoMemoryStore {
         lastConsolidatedAt: this.catalog.lastConsolidatedAt,
       },
     });
+  }
+
+  getSyncSnapshot(): PaseoMemorySyncSnapshot {
+    this.ensureLoaded();
+    const details = this.catalog.details.flatMap((rawEntry) => {
+      const entry = normalizedCatalogDetail(rawEntry);
+      const detail = this.materializeDetail(entry);
+      if (!detail) return [];
+      const { path: _path, charCount: _charCount, ...portableDetail } = detail;
+      return [
+        {
+          ...portableDetail,
+          syncOrigin: localMemorySyncOrigin(this.serverId, entry),
+        },
+      ];
+    });
+    return PaseoMemorySyncSnapshotSchema.parse({
+      version: 1,
+      sourceHostId: this.serverId,
+      exportedAt: nowIso(),
+      users: this.catalog.users,
+      summaries: this.catalog.users.map((user) => ({
+        userId: user.id,
+        content: this.readSummary(user.id),
+      })),
+      details,
+      policies: this.catalog.policies,
+      scopePolicies: this.catalog.scopePolicies,
+    });
+  }
+
+  mergeSyncSnapshot(snapshot: PaseoMemorySyncSnapshot): PaseoMemoryState {
+    this.ensureLoaded();
+    const imported = PaseoMemorySyncSnapshotSchema.parse(snapshot);
+    const { users, incomingUserIdMap } = mergeMemorySyncUsers(this.catalog.users, imported.users);
+    this.catalog.users = users;
+    for (const user of users) {
+      if (!existsSync(this.summaryPath(user.id))) this.writeSummary(defaultSummary(), user.id);
+    }
+    for (const summary of imported.summaries) {
+      const userId = incomingUserIdMap.get(summary.userId) ?? summary.userId;
+      if (!users.some((user) => user.id === userId)) continue;
+      this.writeSummary(
+        mergeMemorySyncSummaries(this.readSummary(userId), summary.content),
+        userId,
+      );
+    }
+    this.mergeSyncDetails(imported.details, incomingUserIdMap);
+    this.catalog.policies = mergeMemorySyncPolicies(this.catalog.policies, imported.policies);
+    this.catalog.scopePolicies = mergeMemorySyncScopePolicies(
+      this.catalog.scopePolicies,
+      imported.scopePolicies,
+      incomingUserIdMap,
+    );
+    this.persistCatalog();
+    this.refreshSummaryIndexes();
+    return this.getState();
   }
 
   getDetailsForScopes(scopes: readonly PaseoMemoryScope[]): PaseoMemoryDetail[] {
@@ -978,6 +1080,110 @@ export class PaseoMemoryStore {
         detail.content.replace(/\r\n?/g, "\n").trim(),
       );
       this.catalog.details.push(importedEntry);
+    }
+  }
+
+  private mergeSyncDetails(
+    incomingDetails: readonly PaseoMemorySyncDetail[],
+    incomingUserIdMap: ReadonlyMap<string, string>,
+  ): void {
+    const reservedIds = new Set(this.catalog.details.map((entry) => entry.id));
+    const localIndexByOrigin = new Map(
+      this.catalog.details.map((entry, index) => [
+        memorySyncOriginKey(localMemorySyncOrigin(this.serverId, entry)),
+        index,
+      ]),
+    );
+    const incomingIdMap = new Map<string, string>();
+
+    for (const detail of incomingDetails) {
+      const existingIndex = localIndexByOrigin.get(memorySyncOriginKey(detail.syncOrigin));
+      if (existingIndex !== undefined) {
+        incomingIdMap.set(detail.id, this.catalog.details[existingIndex]!.id);
+        continue;
+      }
+      let id = detail.id;
+      while (reservedIds.has(id)) {
+        id = `${sanitizeFileSegment(detail.title)}-${randomUUID().slice(0, 8)}`;
+      }
+      reservedIds.add(id);
+      incomingIdMap.set(detail.id, id);
+    }
+
+    for (const detail of incomingDetails) {
+      const originKey = memorySyncOriginKey(detail.syncOrigin);
+      const existingIndex = localIndexByOrigin.get(originKey);
+      const scope = remapMemorySyncScope(detail.scope, incomingUserIdMap);
+      const supersedes = uniqueStrings(
+        (detail.supersedes ?? []).map(
+          (supersededId) => incomingIdMap.get(supersededId) ?? supersededId,
+        ),
+      );
+      if (existingIndex === undefined) {
+        const id = incomingIdMap.get(detail.id)!;
+        const entry = normalizedCatalogDetail(
+          CatalogDetailSchema.parse({
+            ...detail,
+            id,
+            scope,
+            supersedes,
+            syncOrigin: detail.syncOrigin,
+            encrypted: normalizeMemorySettings(this.catalog.settings).encryptAtRest,
+          }),
+        );
+        this.writeDetailContent(
+          this.detailPath(entry.id, entry.title),
+          detail.content.replace(/\r\n?/g, "\n").trim(),
+        );
+        localIndexByOrigin.set(originKey, this.catalog.details.length);
+        this.catalog.details.push(entry);
+        continue;
+      }
+
+      const current = normalizedCatalogDetail(this.catalog.details[existingIndex]!);
+      const currentPath = this.detailPath(current.id, current.title);
+      const currentContent = this.readDetailContent(currentPath);
+      const incomingWins = incomingMemoryVersionWins(
+        {
+          updatedAt: current.updatedAt,
+          value: memorySyncComparableDetail(current, currentContent),
+        },
+        {
+          updatedAt: detail.updatedAt,
+          value: memorySyncComparableDetail(detail, detail.content),
+        },
+      );
+      const winner = incomingWins ? detail : current;
+      const merged = normalizedCatalogDetail(
+        CatalogDetailSchema.parse({
+          ...winner,
+          id: current.id,
+          scope: incomingWins ? scope : current.scope,
+          syncOrigin: detail.syncOrigin,
+          keywords: uniqueStrings([...current.keywords, ...detail.keywords]),
+          sourceAgentIds: uniqueStrings([...current.sourceAgentIds, ...detail.sourceAgentIds]),
+          sourceRefs: uniqueSourceRefs([
+            ...(current.sourceRefs ?? []),
+            ...(detail.sourceRefs ?? []),
+          ]),
+          supersedes: uniqueStrings([...current.supersedes, ...supersedes]),
+          createdAt: current.createdAt <= detail.createdAt ? current.createdAt : detail.createdAt,
+          updatedAt: current.updatedAt >= detail.updatedAt ? current.updatedAt : detail.updatedAt,
+          confidence: Math.max(current.confidence, detail.confidence),
+          importance: Math.max(current.importance, detail.importance ?? 0.5),
+          useCount: Math.max(current.useCount, detail.useCount ?? 0),
+          helpfulCount: Math.max(current.helpfulCount, detail.helpfulCount ?? 0),
+          unhelpfulCount: Math.max(current.unhelpfulCount, detail.unhelpfulCount ?? 0),
+          encrypted: normalizeMemorySettings(this.catalog.settings).encryptAtRest,
+        }),
+      );
+      const mergedPath = this.detailPath(merged.id, merged.title);
+      this.writeDetailContent(
+        mergedPath,
+        (incomingWins ? detail.content : currentContent).replace(/\r\n?/g, "\n").trim(),
+      );
+      if (currentPath !== mergedPath) rmSync(currentPath, { force: true });
+      this.catalog.details[existingIndex] = merged;
     }
   }
 

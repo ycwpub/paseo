@@ -3,6 +3,7 @@ import type {
   McpServerCreateInput,
   McpServerUpdateInput,
   PaseoMemoryUpdateInput,
+  PaseoMemorySyncSnapshot,
   PluginAppState,
   PluginHttpJob,
   PluginInstallSource,
@@ -119,6 +120,22 @@ export class DaemonResourceRpcClient {
       requestId: options?.requestId,
       message: { type: "memory.clear.request" },
       responseType: "memory.clear.response",
+    });
+  }
+
+  getMemorySyncSnapshot(options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.get_sync_snapshot.request" },
+      responseType: "memory.get_sync_snapshot.response",
+    });
+  }
+
+  mergeMemorySyncSnapshot(snapshot: PaseoMemorySyncSnapshot, options?: { requestId?: string }) {
+    return this.request({
+      requestId: options?.requestId,
+      message: { type: "memory.merge_sync_snapshot.request", snapshot },
+      responseType: "memory.merge_sync_snapshot.response",
     });
   }
 

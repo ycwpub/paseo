@@ -26,6 +26,7 @@ export function MemorySection({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const supported = useHostFeature(serverId, "memory");
   const usersSupported = useHostFeature(serverId, "memoryUsers");
+  const syncSupported = useHostFeature(serverId, "memorySync");
   const { memory, isLoading, error, updateMemory, clearMemory, isMutating, mutationError } =
     useMemory(serverId, { enabled: supported });
   const [summary, setSummary] = useState("");
@@ -179,6 +180,7 @@ export function MemorySection({ serverId }: { serverId: string }) {
       isMutating={isMutating}
       visibleError={visibleError}
       usersSupported={usersSupported}
+      syncSupported={syncSupported}
       onSummaryChange={setSummary}
       onSearchChange={setSearch}
       onStatusFilterChange={setStatusFilter}

@@ -55,7 +55,7 @@ describe("PluginWorkflowMemoryStoreWriter", () => {
     expect(details).toHaveLength(3);
     expect(details.map((detail) => detail.scope)).toEqual(
       expect.arrayContaining([
-        { type: "global" },
+        { type: "global", id: "default" },
         { type: "project", id: "project-1" },
         { type: "assistant", id: "assistant-1" },
       ]),

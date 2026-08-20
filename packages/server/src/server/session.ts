@@ -165,6 +165,7 @@ import { ProviderCatalogSession } from "./session/provider/provider-catalog-sess
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
+import { initializeDirectorylessProjectConfig } from "./project/project-config-storage.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
@@ -950,6 +951,7 @@ export class Session {
         emit: (msg) => this.emit(msg),
       },
       projectRegistry: this.projectRegistry,
+      paseoHome: this.paseoHome,
       logger: this.sessionLogger,
     });
     this.daemonSession = new DaemonSession({
@@ -2510,6 +2512,8 @@ export class Session {
       case "memory.get_state.request":
       case "memory.update_state.request":
       case "memory.clear.request":
+      case "memory.get_sync_snapshot.request":
+      case "memory.merge_sync_snapshot.request":
         return this.memorySession?.handleRequest(msg);
       default:
         return undefined;
@@ -6081,6 +6085,14 @@ export class Session {
         displayName: name,
         timestamp: new Date().toISOString(),
       });
+      const initialized = initializeDirectorylessProjectConfig({
+        paseoHome: this.paseoHome,
+        project,
+      });
+      if (!initialized.ok) {
+        await this.projectRegistry.remove(project.projectId);
+        throw new Error(`Failed to initialize Project configuration: ${initialized.error.code}`);
+      }
       this.sessionLogger.info(
         { projectId: project.projectId, projectName: name },
         "Directoryless project created",

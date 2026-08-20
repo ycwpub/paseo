@@ -1968,6 +1968,8 @@ export class VoiceAssistantWebSocketServer {
         projectCreateDirectory: true,
         // COMPAT(projectCreateDirectoryless): added on 2026-08-19.
         projectCreateDirectoryless: true,
+        // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
+        projectConfigById: true,
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
         commitsList: true,
         // COMPAT(commitBaseClassification): added in v0.2.0, remove gate after 2027-01-23.
@@ -2016,6 +2018,8 @@ export class VoiceAssistantWebSocketServer {
         memoryScopePolicies: true,
         // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
         memoryUsers: true,
+        // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
+        memorySync: true,
         // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
         reasoningTranslation: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.

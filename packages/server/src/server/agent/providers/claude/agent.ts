@@ -36,6 +36,7 @@ import {
   normalizeClaudeRuntimeModelId,
   resolveConfiguredClaudeModel,
 } from "./models.js";
+import { getAidenClaudeModels, type AidenModelCommandRunner } from "./aiden-models.js";
 import {
   CLAUDE_DISABLED_THINKING_OPTION_ID,
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
@@ -395,6 +396,7 @@ interface ClaudeAgentClientOptions {
   resolveVersion?: () => Promise<string>;
   configDir?: string;
   aidenConfigDir?: string;
+  aidenModelCommandRunner?: AidenModelCommandRunner;
   customProvider?: {
     id: string;
   };
@@ -1097,24 +1099,15 @@ function buildClaudePlanPermissionActions(
   return actions;
 }
 
-type TimelineFragment =
-  | {
-      kind: "assistant" | "reasoning";
-      text: string;
-    }
-  | {
-      kind: "redacted_reasoning";
-    }
-  | {
-      kind: "tool_use";
-    };
+interface TimelineFragment {
+  kind: "assistant" | "reasoning";
+  text: string;
+}
 
 interface TimelineMessageState {
   id: string;
   assistantText: string;
   reasoningText: string;
-  redactedReasoningSeen: boolean;
-  toolUseSeen: boolean;
   emittedAssistantLength: number;
   emittedReasoningLength: number;
   stopped: boolean;
@@ -1233,12 +1226,8 @@ class TimelineAssembler {
     for (const fragment of fragments) {
       if (fragment.kind === "assistant") {
         state.assistantText += fragment.text;
-      } else if (fragment.kind === "reasoning") {
-        state.reasoningText += fragment.text;
-      } else if (fragment.kind === "redacted_reasoning") {
-        state.redactedReasoningSeen = true;
       } else {
-        state.toolUseSeen = true;
+        state.reasoningText += fragment.text;
       }
     }
     return this.emitNewContent(state);
@@ -1253,15 +1242,9 @@ class TimelineAssembler {
     for (const fragment of fragments) {
       if (fragment.kind === "assistant") {
         assistantText += fragment.text;
-      } else if (fragment.kind === "reasoning") {
+      } else {
         reasoningText += fragment.text;
       }
-    }
-    if (fragments.some((fragment) => fragment.kind === "redacted_reasoning")) {
-      state.redactedReasoningSeen = true;
-    }
-    if (fragments.some((fragment) => fragment.kind === "tool_use")) {
-      state.toolUseSeen = true;
     }
 
     if (assistantText.length > 0) {
@@ -1276,7 +1259,7 @@ class TimelineAssembler {
       }
       state.reasoningText = reasoningText;
     }
-    return this.emitNewContent(state, true);
+    return this.emitNewContent(state);
   }
 
   private finalizeMessage(messageId: string, runId: string | null): AgentTimelineItem[] {
@@ -1285,7 +1268,7 @@ class TimelineAssembler {
       return [];
     }
     state.stopped = true;
-    const items = this.emitNewContent(state, true);
+    const items = this.emitNewContent(state);
     if (runId && this.activeMessageByRun.get(runId) === messageId) {
       this.activeMessageByRun.delete(runId);
     }
@@ -1294,27 +1277,11 @@ class TimelineAssembler {
     return items;
   }
 
-  private emitNewContent(
-    state: TimelineMessageState,
-    contentComplete = false,
-  ): AgentTimelineItem[] {
+  private emitNewContent(state: TimelineMessageState): AgentTimelineItem[] {
     const items: AgentTimelineItem[] = [];
     const nextAssistantText = state.assistantText.slice(state.emittedAssistantLength);
-    const textIsReadableReasoningSummary =
-      state.redactedReasoningSeen &&
-      state.toolUseSeen &&
-      state.reasoningText.length === 0 &&
-      nextAssistantText.length > 0;
-    const shouldEmitAssistantText =
+    if (
       nextAssistantText.length > 0 &&
-      (!state.redactedReasoningSeen ||
-        state.reasoningText.length > 0 ||
-        (contentComplete && !state.toolUseSeen));
-    if (textIsReadableReasoningSummary) {
-      state.emittedAssistantLength = state.assistantText.length;
-      items.push({ type: "reasoning", text: nextAssistantText, source: "text" });
-    } else if (
-      shouldEmitAssistantText &&
       nextAssistantText !== INTERRUPT_TOOL_USE_PLACEHOLDER &&
       !isClaudeTranscriptNoiseText(nextAssistantText)
     ) {
@@ -1343,8 +1310,6 @@ class TimelineAssembler {
       id: messageId,
       assistantText: "",
       reasoningText: "",
-      redactedReasoningSeen: false,
-      toolUseSeen: false,
       emittedAssistantLength: 0,
       emittedReasoningLength: 0,
       stopped: false,
@@ -1406,16 +1371,6 @@ class TimelineAssembler {
         rawBlock.thinking.length > 0
       ) {
         fragments.push({ kind: "reasoning", text: rawBlock.thinking });
-      }
-      if (rawBlock.type === "redacted_thinking") {
-        fragments.push({ kind: "redacted_reasoning" });
-      }
-      if (
-        rawBlock.type === "tool_use" ||
-        rawBlock.type === "server_tool_use" ||
-        rawBlock.type === "mcp_tool_use"
-      ) {
-        fragments.push({ kind: "tool_use" });
       }
     }
     return fragments;
@@ -1531,6 +1486,7 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly resolveVersion: () => Promise<string>;
   private readonly configDir?: string;
   private readonly aidenConfigDir?: string;
+  private readonly aidenModelCommandRunner?: AidenModelCommandRunner;
   private readonly customProviderId?: string;
 
   constructor(options: ClaudeAgentClientOptions) {
@@ -1543,6 +1499,7 @@ export class ClaudeAgentClient implements AgentClient {
       options.resolveVersion ?? (() => resolveClaudeCodeVersion(this.runtimeSettings));
     this.configDir = options.configDir;
     this.aidenConfigDir = options.aidenConfigDir;
+    this.aidenModelCommandRunner = options.aidenModelCommandRunner;
     this.customProviderId = options.customProvider?.id;
   }
 
@@ -1597,23 +1554,16 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async fetchCatalog(options: FetchCatalogOptions): Promise<ProviderCatalog> {
-    let claudeCodeVersion: string | undefined;
-    try {
-      claudeCodeVersion = await this.resolveVersion();
-    } catch (error) {
-      this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
-    }
-    const models = await getClaudeModelsWithSettings(
-      this.logger,
-      this.configDir,
+    const models =
       this.customProviderId === "aiden-claude"
-        ? {
+        ? await getAidenClaudeModels({
+            logger: this.logger,
             cwd: options.scope === "workspace" ? options.cwd : process.cwd(),
             configDir: this.aidenConfigDir,
-          }
-        : undefined,
-      claudeCodeVersion,
-    );
+            force: options.force,
+            runCommand: this.aidenModelCommandRunner,
+          })
+        : await this.fetchClaudeModels();
     const modes = detectIneligibleAutoModeTransport(
       createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),
     )
@@ -1624,6 +1574,16 @@ export class ClaudeAgentClient implements AgentClient {
       modes,
       defaultModeId: modes.some((mode) => mode.id === "auto") ? "auto" : "default",
     };
+  }
+
+  private async fetchClaudeModels(): Promise<AgentModelDefinition[]> {
+    let claudeCodeVersion: string | undefined;
+    try {
+      claudeCodeVersion = await this.resolveVersion();
+    } catch (error) {
+      this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
+    }
+    return getClaudeModelsWithSettings(this.logger, this.configDir, claudeCodeVersion);
   }
 
   async resolveDefaultModeId({ env: launchEnv }: ResolveAgentDefaultModeInput): Promise<string> {
@@ -3817,12 +3777,7 @@ class ClaudeAgentSession implements AgentSession {
     const firstToolEventIndex = messageEvents.findIndex(
       (event) => event.type === "timeline" && event.item.type === "tool_call",
     );
-    if (
-      firstToolEventIndex >= 0 &&
-      assistantTimelineEvents.some(
-        (event) => event.type === "timeline" && event.item.type === "reasoning",
-      )
-    ) {
+    if (firstToolEventIndex >= 0 && assistantTimelineEvents.length > 0) {
       return [
         ...messageEvents.slice(0, firstToolEventIndex),
         ...assistantTimelineEvents,
@@ -4869,23 +4824,6 @@ class ClaudeAgentSession implements AgentSession {
       textMessageType,
       suppressText,
       suppressReasoning,
-      hasReadableReasoning: content.some(
-        (block) =>
-          isClaudeContentChunk(block) &&
-          (block.type === "thinking" || block.type === "thinking_delta") &&
-          typeof block.thinking === "string" &&
-          block.thinking.length > 0,
-      ),
-      hasToolUse: content.some(
-        (block) =>
-          isClaudeContentChunk(block) &&
-          (block.type === "tool_use" ||
-            block.type === "server_tool_use" ||
-            block.type === "mcp_tool_use"),
-      ),
-      hasRedactedReasoning: content.some(
-        (block) => isClaudeContentChunk(block) && block.type === "redacted_thinking",
-      ),
     };
     for (const block of content) {
       if (!isClaudeContentChunk(block)) {
@@ -4911,22 +4849,9 @@ class ClaudeAgentSession implements AgentSession {
       userTextParts: string[];
       textMessageType: "assistant_message" | "user_message";
       suppressText: boolean;
-      suppressReasoning: boolean;
-      hasReadableReasoning: boolean;
-      hasToolUse: boolean;
-      hasRedactedReasoning: boolean;
     },
   ): void {
-    const {
-      items,
-      userTextParts,
-      textMessageType,
-      suppressText,
-      suppressReasoning,
-      hasReadableReasoning,
-      hasToolUse,
-      hasRedactedReasoning,
-    } = context;
+    const { items, userTextParts, textMessageType, suppressText } = context;
     const text = typeof block.text === "string" ? block.text : "";
     if (!text || text === INTERRUPT_TOOL_USE_PLACEHOLDER || isClaudeTranscriptNoiseText(text)) {
       return;
@@ -4936,10 +4861,6 @@ class ClaudeAgentSession implements AgentSession {
       if (trimmed) {
         userTextParts.push(trimmed);
       }
-      return;
-    }
-    if (!suppressReasoning && hasRedactedReasoning && hasToolUse && !hasReadableReasoning) {
-      items.push({ type: "reasoning", text, source: "text" });
       return;
     }
     if (!suppressText) {
@@ -4955,9 +4876,6 @@ class ClaudeAgentSession implements AgentSession {
       textMessageType: "assistant_message" | "user_message";
       suppressText: boolean;
       suppressReasoning: boolean;
-      hasReadableReasoning: boolean;
-      hasToolUse: boolean;
-      hasRedactedReasoning: boolean;
     },
   ): void {
     switch (block.type) {

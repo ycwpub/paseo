@@ -67,6 +67,27 @@ export const zhCN: TranslationResources = {
         "该用户的全局记忆、总文件和提取规范会被永久删除。其他作用域的记忆不受影响。",
       deleteConfirm: "删除用户",
     },
+    sync: {
+      sectionTitle: "多主机记忆同步",
+      title: "在主机之间共享记忆",
+      description:
+        "与另一台已连接的 Paseo 主机合并全局、Project、Workspace 和助手记忆，目标主机的现有记忆会保留。",
+      targetHost: "其他主机",
+      selectHost: "选择已连接的主机",
+      noHosts: "没有其他支持记忆同步的已连接主机",
+      online: "在线",
+      offline: "离线",
+      push: "同步到该主机",
+      pull: "从该主机同步",
+      twoWay: "双向同步",
+      syncing: "同步中…",
+      disconnected: "两台主机都在线时才能同步记忆。",
+      failed: "记忆同步失败",
+      completed: "记忆同步完成",
+      result: "{{source}} → {{target}}：同步后共 {{total}} 条记忆，新增 {{added}} 条",
+      scopeHint:
+        "同步可重复执行且不会重复创建记忆。主机本地设置、加密密钥和使用历史不会同步；Project、Workspace 和助手记忆会保留原作用域 ID。",
+    },
     scopeManager: {
       title: "记忆规范",
       description: "统一管理全局、Project、Workspace 和助手记忆允许保存的长期信息。",

@@ -146,6 +146,7 @@ export function getIslandDocument(): string {
 
       .details-brand {
         min-width: 0;
+        flex: 1 1 auto;
         display: flex;
         align-items: center;
         gap: 8px;
@@ -159,6 +160,7 @@ export function getIslandDocument(): string {
 
       .details-heading {
         min-width: 0;
+        flex: 1 1 auto;
       }
 
       .details-title {
@@ -296,7 +298,7 @@ export function getIslandDocument(): string {
       }
 
       .item-meta {
-        min-width: 58px;
+        min-width: 50px;
         display: grid;
         justify-items: end;
         gap: 5px;

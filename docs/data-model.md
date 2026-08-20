@@ -45,8 +45,18 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
 ## Project resource configuration
 
-Each directory-backed Project may define a `project` block in the Project root's `paseo.json`.
-Blank Projects have no project-level filesystem configuration until a directory is attached:
+Project resource configuration follows the Project's directory mode:
+
+- A single-directory Project stores `paseo.json` in its configured Project directory.
+- A multiple-directory Project stores `paseo.json` under
+  `$PASEO_HOME/projects/configs/{project-key}/paseo.json`. The opaque project key is a hash of
+  `projectId`, so legacy path-shaped IDs cannot escape the configuration directory.
+- A Project created without a directory starts in multiple-directory mode with an empty Project
+  directory list.
+
+Changing the mode migrates the complete `paseo.json`, including worktree and script configuration.
+Paseo writes the new file before removing the old one. Changing to single-directory mode also
+updates the registered Project root to the selected directory.
 
 ```json
 {
@@ -141,6 +151,8 @@ $PASEO_HOME/
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
+│   ├── configs/
+│   │   └── {project-key}/paseo.json      # Multiple-directory Project configuration
 │   └── icons/                           # Host-local custom project icon images
 ├── runtime/
 │   └── managed-processes/

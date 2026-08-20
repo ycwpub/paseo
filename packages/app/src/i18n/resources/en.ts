@@ -65,6 +65,27 @@ export const en = {
         "This user's global memories, summary, and extraction rules will be permanently deleted. Other memory scopes are not affected.",
       deleteConfirm: "Delete user",
     },
+    sync: {
+      sectionTitle: "Multi-host memory sync",
+      title: "Share memory between hosts",
+      description:
+        "Merge Global, Project, Workspace, and Assistant memories with another connected Paseo host. Existing target memories are preserved.",
+      targetHost: "Other host",
+      selectHost: "Select a connected host",
+      noHosts: "No other compatible hosts are connected",
+      online: "Online",
+      offline: "Offline",
+      push: "Sync to host",
+      pull: "Sync from host",
+      twoWay: "Two-way sync",
+      syncing: "Syncing…",
+      disconnected: "Both hosts must be online before memory can be synchronized.",
+      failed: "Memory sync failed",
+      completed: "Memory sync completed",
+      result: "{{source}} → {{target}}: {{total}} memories after sync ({{added}} added)",
+      scopeHint:
+        "Sync is idempotent and keeps both hosts' memories. Host-local settings, encryption keys, and usage history are not synchronized. Scoped memories keep their Project, Workspace, and Assistant IDs.",
+    },
     scopeManager: {
       title: "Memory rules",
       description:

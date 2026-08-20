@@ -78,6 +78,7 @@ describe("buildProjectIndexSkillDocument", () => {
       daemonConfigStore: {
         get: () => ({ projectIndexing: { updateIntervalMinutes: 1440 } }),
       } as DaemonConfigStore,
+      paseoHome: root,
       logger: logger as never,
     });
 
@@ -147,6 +148,7 @@ describe("buildProjectIndexSkillDocument", () => {
       daemonConfigStore: {
         get: () => ({ projectIndexing: { updateIntervalMinutes: 1440 } }),
       } as DaemonConfigStore,
+      paseoHome: root,
       logger: {
         child() {
           return this;

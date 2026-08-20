@@ -1414,6 +1414,43 @@ test("createAgent injects daemon append system prompt at runtime only", async ()
   expect(record?.config).not.toHaveProperty("daemonAppendSystemPrompt");
 });
 
+test("createAgent appends per-Agent runtime system prompt without persisting it", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new TestAgentClient();
+  const agentId = "00000000-0000-4000-8000-000000000105";
+  const manager = new AgentManager({
+    clients: {
+      codex: client,
+    },
+    registry: storage,
+    logger,
+    appendSystemPrompt: "Daemon instructions.",
+    idFactory: () => agentId,
+  });
+  manager.setAgentAppendSystemPromptComposer(
+    (resolvedAgentId) => `Memory index: /tmp/${resolvedAgentId}.md`,
+  );
+
+  const snapshot = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      systemPrompt: "Agent instructions.",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+  const record = await storage.get(snapshot.id);
+
+  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toBe(
+    `Daemon instructions.\n\nMemory index: /tmp/${agentId}.md`,
+  );
+  expect(snapshot.config).not.toHaveProperty("daemonAppendSystemPrompt");
+  expect(record?.config).not.toHaveProperty("daemonAppendSystemPrompt");
+});
+
 test("daemon append system prompt is injected into Pi configs", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");

@@ -10,14 +10,14 @@ describe("resolveIslandLayout", () => {
   });
 
   it("uses one quarter of the display and shows at most two messages before scrolling", () => {
-    expect(resolveIslandLayout(1512, 1, true)).toEqual({ width: 378, height: 180 });
-    expect(resolveIslandLayout(1512, 2, true)).toEqual({ width: 378, height: 220 });
-    expect(resolveIslandLayout(1512, 20, true)).toEqual({ width: 378, height: 220 });
-    expect(resolveIslandLayout(2560, 20, true)).toEqual({ width: 440, height: 220 });
+    expect(resolveIslandLayout(1512, 1, true)).toEqual({ width: 453, height: 180 });
+    expect(resolveIslandLayout(1512, 2, true)).toEqual({ width: 453, height: 220 });
+    expect(resolveIslandLayout(1512, 20, true)).toEqual({ width: 453, height: 220 });
+    expect(resolveIslandLayout(2560, 20, true)).toEqual({ width: 520, height: 220 });
   });
 
   it("stays inside narrow displays", () => {
-    expect(resolveIslandLayout(320, 1, false)).toEqual({ width: 304, height: 42 });
+    expect(resolveIslandLayout(320, 1, false)).toEqual({ width: 304, height: 38 });
     expect(resolveIslandLayout(320, 1, true)).toEqual({ width: 304, height: 180 });
   });
 });

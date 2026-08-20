@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { PaseoMemoryStateSchema, PaseoMemoryUpdateInputSchema } from "./types.js";
+import {
+  PaseoMemoryStateSchema,
+  PaseoMemorySyncSnapshotSchema,
+  PaseoMemoryUpdateInputSchema,
+} from "./types.js";
 
 describe("memory user protocol", () => {
   test("accepts user-aware memory state", () => {
@@ -43,5 +47,40 @@ describe("memory user protocol", () => {
         userOperation,
       );
     }
+  });
+
+  test("accepts a portable multi-host memory snapshot", () => {
+    const snapshot = PaseoMemorySyncSnapshotSchema.parse({
+      version: 1,
+      sourceHostId: "host-1",
+      exportedAt: "2026-08-20T00:00:00.000Z",
+      users: [
+        {
+          id: "default",
+          name: "默认用户",
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
+      ],
+      summaries: [{ userId: "default", content: "# Memory" }],
+      details: [
+        {
+          id: "memory-1",
+          title: "Preference",
+          category: "preference",
+          keywords: [],
+          content: "Prefer concise answers.",
+          confidence: 1,
+          sourceAgentIds: ["agent-1"],
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+          lastAccessedAt: null,
+          syncOrigin: { hostId: "host-1", memoryId: "memory-1" },
+        },
+      ],
+      policies: [],
+      scopePolicies: [],
+    });
+    expect(snapshot.details[0]?.syncOrigin.hostId).toBe("host-1");
   });
 });

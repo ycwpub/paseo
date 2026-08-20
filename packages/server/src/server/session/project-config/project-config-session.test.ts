@@ -36,12 +36,25 @@ function projectRecord(rootPath: string, archivedAt: string | null = null): Pers
 function makeSubsystem(records: PersistedProjectRecord[]) {
   const emitted: SessionOutboundMessage[] = [];
   const host: ProjectConfigSessionHost = { emit: (msg) => emitted.push(msg) };
+  const recordsById = new Map(records.map((record) => [record.projectId, record]));
+  const paseoHome = makeRoot();
   const subsystem = new ProjectConfigSession({
     host,
-    projectRegistry: { list: async () => records },
+    projectRegistry: {
+      list: async () => [...recordsById.values()],
+      get: async (projectId) => recordsById.get(projectId) ?? null,
+      update: async (projectId, updater) => {
+        const current = recordsById.get(projectId);
+        if (!current) return null;
+        const updated = updater(current);
+        recordsById.set(projectId, updated);
+        return updated;
+      },
+    },
+    paseoHome,
     logger: pino({ level: "silent" }),
   });
-  return { subsystem, emitted };
+  return { subsystem, emitted, paseoHome, recordsById };
 }
 
 describe("ProjectConfigSession", () => {
@@ -177,6 +190,128 @@ describe("ProjectConfigSession", () => {
         },
       },
     ]);
+  });
+
+  test("reads and writes a directoryless Project by projectId", async () => {
+    const project = projectRecord("");
+    project.projectId = "prj_directoryless";
+    project.rootPath = null;
+    const { subsystem, emitted } = makeSubsystem([project]);
+
+    await subsystem.handleReadProjectConfigRequest({
+      type: "read_project_config_request",
+      requestId: "read-directoryless",
+      repoRoot: "",
+      projectId: project.projectId,
+    });
+    await subsystem.handleWriteProjectConfigRequest({
+      type: "write_project_config_request",
+      requestId: "write-directoryless",
+      repoRoot: "",
+      projectId: project.projectId,
+      config: {
+        project: {
+          directoryMode: "multiple",
+          directories: { project: ["/repo/one", "/repo/two"] },
+        },
+      },
+      expectedRevision: null,
+    });
+
+    expect(emitted).toEqual([
+      {
+        type: "read_project_config_response",
+        payload: {
+          requestId: "read-directoryless",
+          repoRoot: "",
+          ok: true,
+          config: {
+            project: {
+              directoryMode: "multiple",
+              directories: { project: [] },
+            },
+          },
+          revision: null,
+        },
+      },
+      {
+        type: "write_project_config_response",
+        payload: {
+          requestId: "write-directoryless",
+          repoRoot: "",
+          ok: true,
+          config: {
+            project: {
+              directoryMode: "multiple",
+              directories: { project: ["/repo/one", "/repo/two"] },
+            },
+          },
+          revision: expect.objectContaining({
+            mtimeMs: expect.any(Number),
+            size: expect.any(Number),
+          }),
+        },
+      },
+    ]);
+  });
+
+  test("updates the registered root when a multiple-directory Project becomes single", async () => {
+    const repoRoot = makeRoot();
+    const selectedRoot = makeRoot();
+    const project = projectRecord(repoRoot);
+    const { subsystem, emitted, recordsById } = makeSubsystem([project]);
+
+    await subsystem.handleWriteProjectConfigRequest({
+      type: "write_project_config_request",
+      requestId: "write-multiple",
+      repoRoot,
+      projectId: project.projectId,
+      config: {
+        project: {
+          directoryMode: "multiple",
+          directories: { project: [repoRoot, selectedRoot] },
+        },
+      },
+      expectedRevision: null,
+    });
+    const firstResponse = emitted[0];
+    if (firstResponse?.type !== "write_project_config_response" || !firstResponse.payload.ok) {
+      throw new Error("Expected the multiple-directory write to succeed");
+    }
+
+    await subsystem.handleWriteProjectConfigRequest({
+      type: "write_project_config_request",
+      requestId: "write-single",
+      repoRoot,
+      projectId: project.projectId,
+      config: {
+        project: {
+          directoryMode: "single",
+          directories: { project: [selectedRoot] },
+        },
+      },
+      expectedRevision: firstResponse.payload.revision,
+    });
+
+    expect(recordsById.get(project.projectId)?.rootPath).toBe(selectedRoot);
+    expect(emitted[1]).toEqual({
+      type: "write_project_config_response",
+      payload: {
+        requestId: "write-single",
+        repoRoot: selectedRoot,
+        ok: true,
+        config: {
+          project: {
+            directoryMode: "single",
+            directories: { project: [selectedRoot] },
+          },
+        },
+        revision: expect.objectContaining({
+          mtimeMs: expect.any(Number),
+          size: expect.any(Number),
+        }),
+      },
+    });
   });
 
   test("write rejects a stale revision and an unknown root with their inline domain failures", async () => {

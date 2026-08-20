@@ -169,11 +169,11 @@
 
   CGFloat notchWidth = [self notchWidthForScreen:screen];
   CGFloat compactWidth = notchWidth > 0 ? notchWidth + 108 : requestedWidth;
-  CGFloat compactHeight =
-      MAX(requestedHeight, [self menuBarDepthForScreen:screen] + 4);
+  CGFloat menuBarHeight = [self menuBarDepthForScreen:screen];
+  CGFloat compactHeight = menuBarHeight > 0 ? menuBarHeight : requestedHeight;
   return NSMakeSize(
       MIN(MAX(280, compactWidth), MAX(280, NSWidth(screenFrame) - 24)),
-      MIN(MAX(40, compactHeight), 46));
+      MIN(MAX(32, compactHeight), 42));
 }
 
 - (void)positionOnDisplay:(NSNumber *)displayId

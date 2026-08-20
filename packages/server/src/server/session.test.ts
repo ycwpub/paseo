@@ -1,5 +1,13 @@
 import { execSync } from "child_process";
-import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
@@ -25,6 +33,7 @@ import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
+import { resolveGlobalProjectConfigPath } from "./project/project-config-storage.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -765,6 +774,7 @@ describe("project command-center RPCs", () => {
   });
 
   test("creates a Project without creating or requiring a directory", async () => {
+    const paseoHome = realpathSync(mkdtempSync(join(tmpdir(), "paseo-directoryless-session-")));
     const messages: SessionOutboundMessage[] = [];
     const project = createPersistedProjectRecord({
       projectId: "prj_directoryless",
@@ -777,37 +787,47 @@ describe("project command-center RPCs", () => {
     const createDirectoryless = vi.fn().mockResolvedValue(project);
     const session = createSessionForTest({
       messages,
+      paseoHome,
       projectRegistry: { createDirectoryless },
     });
 
-    await session.handleMessage({
-      type: "project.create_directoryless.request",
-      name: "Planning",
-      requestId: "req-directoryless",
-    });
+    try {
+      await session.handleMessage({
+        type: "project.create_directoryless.request",
+        name: "Planning",
+        requestId: "req-directoryless",
+      });
 
-    expect(createDirectoryless).toHaveBeenCalledWith({
-      displayName: "Planning",
-      timestamp: expect.any(String),
-    });
-    expect(messages).toEqual([
-      {
-        type: "project.create_directoryless.response",
-        payload: {
-          requestId: "req-directoryless",
-          project: {
-            projectId: "prj_directoryless",
-            projectDisplayName: "Planning",
-            projectCustomName: null,
-            projectCustomIconRevision: null,
-            projectRootPath: "",
-            projectDirectoryless: true,
-            projectKind: "non_git",
+      expect(createDirectoryless).toHaveBeenCalledWith({
+        displayName: "Planning",
+        timestamp: expect.any(String),
+      });
+      expect(messages).toEqual([
+        {
+          type: "project.create_directoryless.response",
+          payload: {
+            requestId: "req-directoryless",
+            project: {
+              projectId: "prj_directoryless",
+              projectDisplayName: "Planning",
+              projectCustomName: null,
+              projectCustomIconRevision: null,
+              projectRootPath: "",
+              projectDirectoryless: true,
+              projectKind: "non_git",
+            },
+            error: null,
           },
-          error: null,
         },
-      },
-    ]);
+      ]);
+      expect(
+        readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
+      ).toBe(
+        '{\n  "project": {\n    "directoryMode": "multiple",\n    "directories": {\n      "project": []\n    }\n  }\n}\n',
+      );
+    } finally {
+      rmSync(paseoHome, { recursive: true, force: true });
+    }
   });
 });
 

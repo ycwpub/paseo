@@ -9,6 +9,8 @@ Memory lives under `$PASEO_HOME/memory/`:
 
 - `users/{userId}/summary.md` is that user's editable global-memory overview.
 - `details/` contains one file per durable topic.
+- `agent-indexes/{agentId}.md` is a runtime-generated index containing only the memory file paths
+  and metadata visible to that Agent.
 - `catalog.json` stores users, the selected user, scope, provenance, revisions, validity, usage, and
   feedback.
 - `content.key` exists only when encrypted storage has been used.
@@ -19,6 +21,33 @@ that can read both the memory directory and its key.
 
 Export produces plaintext JSON so it can be inspected and moved. Treat exports as sensitive.
 
+## Multi-host sync
+
+Open the selected Host's **Memory** settings and use **Multi-host memory sync** to select another
+online Host. Paseo supports three operations:
+
+- **Sync to host** merges the current Host's memory into the selected Host.
+- **Sync from host** merges the selected Host's memory into the current Host.
+- **Two-way sync** captures both Hosts' snapshots first, then merges each snapshot into the other
+  Host. Capturing both snapshots before either write prevents freshly imported data from being
+  echoed back during the same operation.
+
+Synchronization includes every global-memory user, editable summary, detail memory, conversation
+policy, and Global, Project, Workspace, or Assistant scope policy. It intentionally does not copy
+Host-local settings, encryption keys, recent usage history, or the selected global-memory user.
+The destination encrypts imported content with its own at-rest setting and key.
+
+Each detail carries a stable source Host and source memory ID. Repeating the same synchronization is
+idempotent instead of creating another copy. When the same detail changed on both Hosts, the newest
+`updatedAt` version wins; equal timestamps use a deterministic tie-break so both Hosts converge.
+Evidence, keywords, provenance, revision links, and feedback counters are merged without repeatedly
+inflating counts.
+
+Global users are matched by ID and then by normalized name. Project, Workspace, and Assistant scope
+IDs are preserved, so the corresponding entity should use the same ID on both Hosts for scoped
+memory to become visible there. Sync uses the Hosts' existing Paseo connections and transfers
+plaintext memory inside that connection; treat direct non-TLS network connections accordingly.
+
 ## Scope
 
 Every detail belongs to one scope:
@@ -28,9 +57,9 @@ Every detail belongs to one scope:
 - **Assistant** applies to Agents created from that Assistant.
 - **Workspace** applies only to that Workspace.
 
-Retrieval sees global memory plus the current Agent's matching narrower scopes. It never falls back
-to a different global-memory user, Project, Assistant, or Workspace. Explicit user memory takes
-precedence over later automatic extraction on the same topic.
+An Agent's memory index lists global memory plus the current Agent's matching narrower scopes. It
+never exposes a different global-memory user, Project, Assistant, or Workspace. Explicit user
+memory takes precedence over later automatic extraction on the same topic.
 
 The Memory settings page can create, rename, delete, and switch global-memory users. Switching the
 user changes which global summary, global details, and global extraction policy the daemon uses.
@@ -42,27 +71,29 @@ the current Project when one exists. The extractor may choose a narrower availab
 
 The global Memory switch is the master control. Global, Project, Assistant, and Workspace scopes
 each have their own policy. A policy can disable that scope and define what durable information
-belongs there. Disabling a scope removes it from retrieval and automatic learning without changing
-the other scopes.
+belongs there. Disabling a scope removes it from the Agent index and automatic learning without
+changing the other scopes.
 
 Each conversation can also disable memory or define extraction guidance. Disabling conversation
-memory stops both retrieval and automatic learning for that Agent. Scope and conversation guidance
-is appended to the extractor's safety rules; it controls what gets learned and is never injected
-into the visible Agent answer as an instruction.
+memory removes readable memory paths from that Agent's index and stops automatic learning. Scope
+and conversation guidance is appended to the extractor's safety rules; it controls what gets
+learned and is never injected into the visible Agent answer as an instruction.
 
-## Retrieval
+## Agent-directed reading
 
-Paseo combines weighted lexical matching, Chinese bigram matching, confidence, importance,
-freshness, scope, origin, and user feedback. It diversifies the final set so near-duplicate topics
-do not consume the context budget.
+Paseo does not prepend memory content to the user's message. Every non-internal Agent receives only
+the absolute path of its stable memory index through the provider's system-instruction channel.
+Before each visible turn, Paseo refreshes that index for the active global-memory user and the
+Agent's enabled Project, Workspace, Assistant, and conversation scopes.
 
-High-importance explicit global preferences are baseline context even when the current prompt does
-not repeat their wording. Other details require a topical match. Superseded, expired, and disputed
-details are excluded.
+The Agent decides from the current user request whether memory could help. It should read the index
+only when useful, then read only the summary or detail files needed for that request. The index
+contains paths and metadata, not memory bodies. Superseded, expired, disputed, disabled, and
+out-of-scope details are excluded.
 
-The context budget shrinks for long prompts. Paseo injects the editable summary prefix and the
-selected detail content, never the entire memory directory. Memory is marked as potentially stale
-context and never as a higher-priority instruction.
+Memory remains user-controlled, potentially stale context and never becomes a higher-priority
+instruction. Merely exposing a file path is not counted as memory usage because Paseo cannot assume
+that the Agent read it.
 
 ## Learning
 
@@ -130,7 +161,7 @@ Chinese forms are also accepted:
 /记忆 忘记 全部
 ```
 
-These modes last for the Agent session. `read-only` retrieves memory but skips learning.
+These modes last for the Agent session. `read-only` keeps memory paths available but skips learning.
 
 ## Inspection and feedback
 
@@ -143,9 +174,9 @@ Memory settings support:
 - import, merge, replace, and export;
 - retention, context budget, candidate count, privacy, encryption, and source-display controls.
 
-When source display is enabled, a completed answer shows the memories it used. Feedback can mark a
-memory helpful, not useful, outdated, or incorrect. Outdated and incorrect feedback immediately
-removes the detail from future retrieval by changing its status.
+Feedback can mark a memory helpful, not useful, outdated, or incorrect. Outdated and incorrect
+feedback immediately removes the detail from future Agent indexes by changing its status. Paseo
+does not infer that a memory was used merely because its path was available to the Agent.
 
 Memory is context, not authority. Agents should verify time-sensitive facts and follow the current
 user request when it conflicts with memory.

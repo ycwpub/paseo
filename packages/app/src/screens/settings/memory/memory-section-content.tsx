@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
+import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   PaseoMemoryCreateInput,
@@ -18,6 +19,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { MemoryCreateCard } from "./memory-create-card";
 import { MemoryDetailCard, type MemoryDetailDraft } from "./memory-detail-card";
+import { MemoryHostSyncCard } from "./memory-host-sync-card";
 import {
   MEMORY_SCOPE_OPTIONS,
   MEMORY_STATUS_OPTIONS,
@@ -44,6 +46,7 @@ interface MemorySectionContentProps {
   isMutating: boolean;
   visibleError: string | null;
   usersSupported: boolean;
+  syncSupported: boolean;
   onSummaryChange: (summary: string) => void;
   onSearchChange: (search: string) => void;
   onStatusFilterChange: (status: MemoryStatusFilter) => void;
@@ -81,6 +84,7 @@ export function MemorySectionContent({
   isMutating,
   visibleError,
   usersSupported,
+  syncSupported,
   onSummaryChange,
   onSearchChange,
   onStatusFilterChange,
@@ -95,6 +99,7 @@ export function MemorySectionContent({
   onConsolidate,
   onImport,
 }: MemorySectionContentProps) {
+  const { t } = useTranslation();
   const visibleDetails = useMemo(
     () =>
       filterMemoryDetails({
@@ -201,6 +206,12 @@ export function MemorySectionContent({
       </SettingsSection>
 
       <MemoryScopePoliciesSection serverId={serverId} memory={memory} />
+
+      {syncSupported ? (
+        <SettingsSection title={t("memoryPolicies.sync.sectionTitle")}>
+          <MemoryHostSyncCard serverId={serverId} disabled={isMutating} />
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title="Summary file" trailing={summaryTrailing}>
         <Text selectable style={settingsStyles.rowHint}>

@@ -4,6 +4,7 @@ import type {
   PaseoMemoryScope,
   PaseoMemorySourceRef,
   PaseoMemoryState,
+  PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
 } from "@getpaseo/protocol/messages";
 import type {
@@ -23,7 +24,7 @@ import {
   type StructuredGenerationDaemonConfig,
 } from "../agent/structured-generation-providers.js";
 import { isSystemInjectedEnvelope } from "../agent/agent-prompt.js";
-import { composePromptWithMemory, stripMemoryFromPromptText } from "./memory-prompt.js";
+import { stripMemoryFromPromptText } from "./memory-prompt.js";
 import { retrieveRelevantMemoryMatches } from "./memory-retrieval.js";
 import { evaluateMemoryExtractionCandidate } from "./memory-extraction-policy.js";
 import { isMemoryScopeVisible, normalizeMemorySettings } from "./memory-model.js";
@@ -39,6 +40,7 @@ import {
 } from "./memory-policy.js";
 import { PaseoMemoryStore } from "./memory-store.js";
 import { DEFAULT_MEMORY_USER_ID } from "./memory-users.js";
+import { MemoryAgentIndex } from "./memory-agent-index.js";
 
 const MAX_PENDING_EXTRACTIONS = 50;
 const CONSOLIDATE_EVERY_EXTRACTIONS = 10;
@@ -75,12 +77,12 @@ interface AgentMemoryContext {
 }
 
 interface PendingMemoryTurn {
-  memoryIds: string[];
   context: AgentMemoryContext;
 }
 
 export interface PaseoMemoryServiceOptions {
   store: PaseoMemoryStore;
+  paseoHome: string;
   agentManager: AgentManager;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "listProviders">;
   readDaemonConfig: () => StructuredGenerationDaemonConfig;
@@ -91,6 +93,7 @@ export interface PaseoMemoryServiceOptions {
 
 export class PaseoMemoryService implements AgentPromptContextComposer {
   private readonly store: PaseoMemoryStore;
+  private readonly agentIndex: MemoryAgentIndex;
   private readonly agentManager: AgentManager;
   private readonly providerSnapshotManager: Pick<ProviderSnapshotManager, "listProviders">;
   private readonly readDaemonConfig: () => StructuredGenerationDaemonConfig;
@@ -107,6 +110,7 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
 
   constructor(options: PaseoMemoryServiceOptions) {
     this.store = options.store;
+    this.agentIndex = new MemoryAgentIndex(options.paseoHome);
     this.agentManager = options.agentManager;
     this.providerSnapshotManager = options.providerSnapshotManager;
     this.readDaemonConfig = options.readDaemonConfig;
@@ -118,6 +122,9 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
   start(): void {
     if (this.unsubscribe) return;
     this.agentManager.setPromptContextComposer(this);
+    this.agentManager.setAgentAppendSystemPromptComposer((agentId, config) =>
+      config.internal ? undefined : this.agentIndex.systemPromptForAgent(agentId),
+    );
     this.unsubscribe = this.agentManager.subscribe((event) => this.handleAgentEvent(event), {
       replayState: false,
     });
@@ -127,10 +134,21 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.agentManager.setPromptContextComposer(null);
+    this.agentManager.setAgentAppendSystemPromptComposer(null);
   }
 
   getState(): PaseoMemoryState {
     return this.store.getState();
+  }
+
+  getSyncSnapshot(): PaseoMemorySyncSnapshot {
+    return this.store.getSyncSnapshot();
+  }
+
+  mergeSyncSnapshot(snapshot: PaseoMemorySyncSnapshot): PaseoMemoryState {
+    const state = this.store.mergeSyncSnapshot(snapshot);
+    this.onChanged(state);
+    return state;
   }
 
   update(input: PaseoMemoryUpdateInput): PaseoMemoryState {
@@ -158,6 +176,7 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     const command = parseMemoryCommand(promptText);
     if (command?.type === "set-mode") {
       this.sessionModes.set(agent.id, command.mode);
+      await this.refreshAgentIndex(agent);
       return `Paseo memory is now ${memoryModeDescription(command.mode)} for this Agent. Confirm this change briefly.`;
     }
     if (command?.type === "forget") {
@@ -177,6 +196,8 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       }
       const nextState = this.store.update({ deleteDetailIds: memoryIds });
       this.onChanged(nextState);
+      const nextContext = await this.resolveAgentMemoryContext(agent, nextState);
+      this.writeAgentIndex(agent.id, nextState, nextContext);
       return `Deleted ${memoryIds.length} matching Paseo ${
         memoryIds.length === 1 ? "memory" : "memories"
       }. Confirm this change briefly.`;
@@ -184,26 +205,15 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     const state = this.store.getState();
     const settings = normalizeMemorySettings(state.settings);
     const context = await this.resolveAgentMemoryContext(agent, state);
+    this.writeAgentIndex(agent.id, state, context);
     if (!settings.enabled || context.mode === "off") return prompt;
     if (context.scopes.length === 0) return prompt;
-    const matches = retrieveRelevantMemoryMatches(promptText, state.details, {
-      limit: settings.maxRetrievedDetails,
-      maxCandidates: settings.maxCandidates,
-      scopes: context.scopes,
-      includeBaseline: true,
-    });
     const pendingTurns = this.pendingTurnsByAgent.get(agent.id) ?? [];
     pendingTurns.push({
-      memoryIds: matches.map((match) => match.detail.id),
       context,
     });
     this.pendingTurnsByAgent.set(agent.id, pendingTurns);
-    this.store.markAccessed(matches.map((match) => match.detail.id));
-    return composePromptWithMemory(prompt, state, {
-      matches,
-      scopeDescription: context.scopes.map(describeMemoryScope).join(", "),
-      includeSummary: context.scopes.some((scope) => scope.type === "global"),
-    });
+    return prompt;
   }
 
   private handleAgentEvent(event: AgentManagerEvent): void {
@@ -217,16 +227,6 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     if (!agent || agent.internal) return;
     const turn = latestTurnContent(this.agentManager.getTimeline(event.agentId));
     const pendingTurn = this.takePendingTurn(event.agentId);
-    const memoryIds = pendingTurn?.memoryIds ?? [];
-    if (memoryIds.length > 0) {
-      this.store.recordUsage({
-        agentId: event.agentId,
-        turnId: event.event.turnId,
-        assistantMessageId: turn?.assistantMessageId,
-        memoryIds,
-      });
-      this.onChanged(this.store.getState());
-    }
     const state = this.store.getState();
     if (!turn || !this.shouldExtractCompletedTurn(agent, state, turn, pendingTurn?.context)) return;
     this.enqueueExtraction(agent, turn, event.event.turnId, event.timestamp, pendingTurn?.context);
@@ -428,6 +428,32 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
         ...conversationContext.extractionInstructions,
       ],
     };
+  }
+
+  private async refreshAgentIndex(agent: ManagedAgent): Promise<void> {
+    const state = this.store.getState();
+    const context = await this.resolveAgentMemoryContext(agent, state);
+    this.writeAgentIndex(agent.id, state, context);
+  }
+
+  private writeAgentIndex(
+    agentId: string,
+    state: PaseoMemoryState,
+    context: AgentMemoryContext,
+  ): void {
+    try {
+      this.agentIndex.write({
+        agentId,
+        state,
+        enabled:
+          normalizeMemorySettings(state.settings).enabled &&
+          context.mode !== "off" &&
+          context.scopes.length > 0,
+        scopes: context.scopes,
+      });
+    } catch (error) {
+      this.logger.warn({ err: error, agentId }, "Failed to refresh Agent memory index");
+    }
   }
 }
 

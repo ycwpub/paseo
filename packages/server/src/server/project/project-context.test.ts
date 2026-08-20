@@ -1,8 +1,13 @@
 import path from "node:path";
 import os from "node:os";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildProjectContextPrompt, resolveProjectDirectories } from "./project-context.js";
+import {
+  buildProjectContextPrompt,
+  loadProjectAgentContext,
+  resolveProjectDirectories,
+} from "./project-context.js";
+import { resolveGlobalProjectConfigPath } from "./project-config-storage.js";
 
 describe("resolveProjectDirectories", () => {
   const roots: string[] = [];
@@ -125,5 +130,72 @@ describe("buildProjectContextPrompt", () => {
     expect(prompt).toContain("MUST inspect and obey");
     expect(prompt).toContain("read the applicable SKILL.md");
     expect(prompt).toContain("Record durable progress");
+  });
+});
+
+describe("loadProjectAgentContext", () => {
+  const roots: string[] = [];
+
+  afterEach(() => {
+    for (const root of roots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads a multiple-directory Project config from PASEO_HOME", async () => {
+    const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-project-home-"));
+    const workspaceDirectory = mkdtempSync(path.join(os.tmpdir(), "paseo-project-workspace-"));
+    const sourceDirectory = mkdtempSync(path.join(os.tmpdir(), "paseo-project-source-"));
+    roots.push(paseoHome, workspaceDirectory, sourceDirectory);
+    const project = {
+      projectId: "prj_multiple",
+      rootPath: null,
+      kind: "non_git" as const,
+      displayName: "Multiple",
+      customName: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      archivedAt: null,
+    };
+    const workspace = {
+      workspaceId: "wks_multiple",
+      projectId: project.projectId,
+      cwd: workspaceDirectory,
+      kind: "directory" as const,
+      displayName: "Workspace",
+      title: null,
+      branch: null,
+      worktreeRoot: null,
+      baseBranch: null,
+      isPaseoOwnedWorktree: false,
+      mainRepoRoot: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      archivedAt: null,
+      autoArchivedChangeRequestUrl: null,
+      pinnedAt: null,
+    };
+    const configPath = resolveGlobalProjectConfigPath(paseoHome, project.projectId);
+    mkdirSync(path.dirname(configPath), { recursive: true });
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        project: {
+          directoryMode: "multiple",
+          directories: { project: [sourceDirectory] },
+          variables: { owner: "payments" },
+        },
+      }),
+    );
+
+    const context = await loadProjectAgentContext({
+      workspaceId: workspace.workspaceId,
+      paseoHome,
+      projectRegistry: { get: async () => project } as never,
+      workspaceRegistry: { get: async () => workspace } as never,
+    });
+
+    expect(context?.directories.project).toEqual([sourceDirectory]);
+    expect(context?.variables.owner).toBe("payments");
   });
 });

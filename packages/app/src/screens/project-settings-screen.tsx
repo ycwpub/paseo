@@ -113,6 +113,7 @@ export default function ProjectSettingsScreen({ serverId, projectId }: ProjectSe
   const selectedHost = getProjectHostEntry(project, serverId, projectId);
   const settingsTarget = resolveProjectSettingsTarget(selectedHost);
   const selectedSnapshot = useHostRuntimeSnapshot(serverId);
+  const supportsProjectConfigById = useHostFeature(serverId, "projectConfigById");
   const isHostGone =
     Boolean(serverId) &&
     (selectedSnapshot?.connectionStatus === "offline" ||
@@ -130,7 +131,7 @@ export default function ProjectSettingsScreen({ serverId, projectId }: ProjectSe
       selectedHost={settingsTarget.host}
       client={client}
       isHostGone={isHostGone}
-      hasProjectDirectory={settingsTarget.kind === "directory-backed"}
+      canEditProjectConfig={settingsTarget.kind === "directory-backed" || supportsProjectConfigById}
     />
   );
 }
@@ -181,7 +182,7 @@ interface ProjectSettingsBodyProps {
   selectedHost: ProjectHostEntry;
   client: DaemonClient;
   isHostGone: boolean;
-  hasProjectDirectory: boolean;
+  canEditProjectConfig: boolean;
 }
 
 function ProjectSettingsBody({
@@ -189,7 +190,7 @@ function ProjectSettingsBody({
   selectedHost,
   client,
   isHostGone,
-  hasProjectDirectory,
+  canEditProjectConfig,
 }: ProjectSettingsBodyProps) {
   const { t } = useTranslation();
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
@@ -200,14 +201,15 @@ function ProjectSettingsBody({
   }, []);
   const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
   const queryKey = useMemo(
-    () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
-    [selectedHost.serverId, selectedHost.repoRoot],
+    () => ["project-config", selectedHost.serverId, selectedHost.projectId] as const,
+    [selectedHost.projectId, selectedHost.serverId],
   );
 
   const readQuery = useQuery({
     queryKey,
-    queryFn: () => client.readProjectConfig(selectedHost.repoRoot),
-    enabled: hasProjectDirectory,
+    queryFn: () =>
+      client.readProjectConfig(selectedHost.repoRoot, undefined, selectedHost.projectId),
+    enabled: canEditProjectConfig,
     retry: false,
   });
 
@@ -301,7 +303,7 @@ function ProjectSettingsBody({
 
       <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
 
-      {hasProjectDirectory ? (
+      {canEditProjectConfig ? (
         renderContent({
           readQuery,
           loadedConfig,
@@ -385,13 +387,14 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  const formKey = `${selectedHost.serverId}::${selectedHost.projectId}::${revisionToKey(loadedRevision)}`;
   return (
     <ProjectConfigForm
       key={formKey}
       baseConfig={loadedConfig}
       revision={loadedRevision}
       repoRoot={selectedHost.repoRoot}
+      projectId={selectedHost.projectId}
       serverId={selectedHost.serverId}
       queryKey={queryKey}
       client={client}
@@ -473,6 +476,7 @@ interface ProjectConfigFormProps {
   baseConfig: PaseoConfigRaw;
   revision: PaseoConfigRevision | null;
   repoRoot: string;
+  projectId: string;
   serverId: string;
   queryKey: readonly [string, string, string];
   client: DaemonClient;
@@ -483,6 +487,7 @@ function ProjectConfigForm({
   baseConfig,
   revision,
   repoRoot,
+  projectId,
   serverId,
   queryKey,
   client,
@@ -512,6 +517,7 @@ function ProjectConfigForm({
     }) => {
       return client.writeProjectConfig({
         repoRoot,
+        projectId,
         config: input.config,
         expectedRevision: input.expectedRevision,
       });
@@ -523,7 +529,7 @@ function ProjectConfigForm({
           config: result.config,
           revision: result.revision,
           requestId: "local-cache",
-          repoRoot,
+          repoRoot: result.repoRoot,
         });
         setWriteError(null);
         queryClient.invalidateQueries({ queryKey: ["projects"] });

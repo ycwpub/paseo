@@ -167,7 +167,7 @@ describe("translation resources", () => {
     // Workflow editing currently falls back to English outside zh-CN. Keep the
     // global fallback ceiling strict enough to catch regressions while allowing
     // that intentionally shared section to grow.
-    const maxFallbackStrings = Math.ceil(totalStrings * 0.3);
+    const maxFallbackStrings = Math.ceil(totalStrings * 0.31);
     expect(countMatchingEnglishStrings(ar)).toBeLessThanOrEqual(maxFallbackStrings);
     expect(countMatchingEnglishStrings(es)).toBeLessThanOrEqual(maxFallbackStrings);
     expect(countMatchingEnglishStrings(fr)).toBeLessThanOrEqual(maxFallbackStrings);

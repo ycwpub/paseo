@@ -69,6 +69,12 @@ export const PaseoMemorySourceRefSchema = z.object({
 });
 export type PaseoMemorySourceRef = z.infer<typeof PaseoMemorySourceRefSchema>;
 
+export const PaseoMemorySyncOriginSchema = z.object({
+  hostId: z.string().min(1),
+  memoryId: z.string().min(1),
+});
+export type PaseoMemorySyncOrigin = z.infer<typeof PaseoMemorySyncOriginSchema>;
+
 export const PaseoMemorySettingsSchema = z.object({
   enabled: z.boolean(),
   autoExtract: z.boolean(),
@@ -130,8 +136,35 @@ export const PaseoMemoryDetailSchema = z.object({
   sensitive: z.boolean().optional(),
   // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
   encrypted: z.boolean().optional(),
+  // COMPAT(memorySync): added in v0.3.2, remove optional after 2027-02-20.
+  syncOrigin: PaseoMemorySyncOriginSchema.optional(),
 });
 export type PaseoMemoryDetail = z.infer<typeof PaseoMemoryDetailSchema>;
+
+export const PaseoMemorySyncDetailSchema = PaseoMemoryDetailSchema.omit({
+  path: true,
+  charCount: true,
+}).extend({
+  syncOrigin: PaseoMemorySyncOriginSchema,
+});
+export type PaseoMemorySyncDetail = z.infer<typeof PaseoMemorySyncDetailSchema>;
+
+export const PaseoMemorySyncSnapshotSchema = z.object({
+  version: z.literal(1),
+  sourceHostId: z.string().min(1),
+  exportedAt: z.string(),
+  users: z.array(PaseoMemoryUserSchema).min(1),
+  summaries: z.array(
+    z.object({
+      userId: z.string().min(1),
+      content: z.string(),
+    }),
+  ),
+  details: z.array(PaseoMemorySyncDetailSchema),
+  policies: z.array(PaseoMemoryPolicySchema),
+  scopePolicies: z.array(PaseoMemoryScopePolicySchema),
+});
+export type PaseoMemorySyncSnapshot = z.infer<typeof PaseoMemorySyncSnapshotSchema>;
 
 export const PaseoMemoryUsageSchema = z.object({
   id: z.string().min(1),

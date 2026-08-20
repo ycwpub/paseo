@@ -1242,6 +1242,7 @@ export async function createPaseoDaemon(
   const projectIndexService = new ProjectIndexService({
     projectRegistry,
     daemonConfigStore,
+    paseoHome: config.paseoHome,
     logger,
   });
   projectIndexService.start();
@@ -1558,9 +1559,10 @@ export async function createPaseoDaemon(
     },
   });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
-  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger });
+  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger, serverId });
   const memoryService = new PaseoMemoryService({
     store: memoryStore,
+    paseoHome: config.paseoHome,
     agentManager,
     providerSnapshotManager,
     readDaemonConfig: () => daemonConfigStore.get(),
@@ -1675,7 +1677,12 @@ export async function createPaseoDaemon(
     createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
     resolveAgentProjectVariables: (cwd) =>
-      resolveWorkflowProjectVariables({ cwd, projectRegistry, logger }),
+      resolveWorkflowProjectVariables({
+        cwd,
+        projectRegistry,
+        paseoHome: config.paseoHome,
+        logger,
+      }),
     assistantStore,
     teamStore,
   });

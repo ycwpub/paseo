@@ -17,6 +17,7 @@ import type {
   WorkspaceRegistry,
 } from "../workspace-registry.js";
 import { readPaseoConfigJson } from "../../utils/paseo-config-file.js";
+import { readProjectConfigForProject } from "./project-config-storage.js";
 
 export interface ResolvedProjectDirectories {
   project: string[];
@@ -162,15 +163,26 @@ export function buildProjectContextPrompt(input: {
 }
 
 function readProjectConfig(
+  project: PersistedProjectRecord,
   projectRoot: string,
+  paseoHome?: string,
   logger?: Pick<Logger, "warn">,
 ): PaseoProjectConfig | undefined {
   try {
-    const json = readPaseoConfigJson(projectRoot);
-    if (json === null) return undefined;
-    return PaseoConfigSchema.parse(json).project;
+    if (paseoHome) {
+      const result = readProjectConfigForProject({ paseoHome, project });
+      if (!result.ok) {
+        throw new Error(result.error.code);
+      }
+      return result.config === null ? undefined : PaseoConfigSchema.parse(result.config).project;
+    }
+    const legacyJson = readPaseoConfigJson(projectRoot);
+    return legacyJson === null ? undefined : PaseoConfigSchema.parse(legacyJson).project;
   } catch (error) {
-    logger?.warn({ err: error, projectRoot }, "Failed to load project context from paseo.json");
+    logger?.warn(
+      { err: error, projectId: project.projectId, projectRoot },
+      "Failed to load project context from paseo.json",
+    );
     return undefined;
   }
 }
@@ -179,6 +191,7 @@ export async function loadProjectAgentContext(input: {
   workspaceId: string;
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
+  paseoHome?: string;
   logger?: Pick<Logger, "warn">;
 }): Promise<ProjectAgentContext | null> {
   const workspace = await input.workspaceRegistry.get(input.workspaceId);
@@ -187,7 +200,7 @@ export async function loadProjectAgentContext(input: {
   if (!project) return null;
 
   const projectRoot = project.rootPath ?? workspace.cwd;
-  const projectConfig = readProjectConfig(projectRoot, input.logger);
+  const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
     ...projectConfig?.variables,
     projectId: project.projectId,
@@ -234,6 +247,7 @@ export async function withProjectAgentContext(input: {
   workspaceId: string;
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
+  paseoHome?: string;
   logger?: Pick<Logger, "warn">;
 }): Promise<AgentSessionConfig> {
   const context = await loadProjectAgentContext(input);

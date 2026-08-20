@@ -382,6 +382,88 @@ describe("PaseoMemoryStore", () => {
     expect(state.details.some((detail) => detail.id === original.id)).toBe(true);
   });
 
+  test("merges host snapshots idempotently across users and scopes", () => {
+    const source = new PaseoMemoryStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+      serverId: "host-source",
+    });
+    source.upsertExtractedMemory({
+      id: "shared-id",
+      title: "Project convention",
+      category: "project",
+      content: "Run focused tests before committing.",
+      keywords: ["tests"],
+      confidence: 1,
+      sourceAgentId: "agent-source",
+      scope: { type: "project", id: "project-1" },
+    });
+    source.update({ userOperation: { type: "create", name: "同步用户" } });
+    const sourceUserId = source.getState().activeUserId!;
+    source.upsertExtractedMemory({
+      title: "Answer language",
+      category: "preference",
+      content: "Prefer concise Chinese.",
+      keywords: ["Chinese"],
+      confidence: 1,
+      sourceAgentId: "agent-source",
+      scope: { type: "global", id: sourceUserId },
+    });
+    source.update({
+      scopePolicyUpdates: [
+        {
+          scope: { type: "global", id: sourceUserId },
+          enabled: true,
+          extractionInstructions: "Save stable preferences.",
+        },
+      ],
+    });
+
+    const target = new PaseoMemoryStore({
+      paseoHome: path.join(paseoHome, "target"),
+      logger: pino({ level: "silent" }),
+      serverId: "host-target",
+    });
+    target.upsertExtractedMemory({
+      id: "shared-id",
+      title: "Target fact",
+      category: "fact",
+      content: "Keep target-only memory.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-target",
+    });
+
+    const sourceSnapshot = source.getSyncSnapshot();
+    target.mergeSyncSnapshot(sourceSnapshot);
+    const firstMerge = target.getSyncSnapshot();
+    target.mergeSyncSnapshot(sourceSnapshot);
+    const secondMerge = target.getSyncSnapshot();
+
+    expect(firstMerge.details).toHaveLength(3);
+    expect(secondMerge.details).toHaveLength(3);
+    expect(secondMerge.users.some((user) => user.name === "同步用户")).toBe(true);
+    expect(
+      secondMerge.details.find((detail) => detail.title === "Project convention"),
+    ).toMatchObject({
+      scope: { type: "project", id: "project-1" },
+      syncOrigin: { hostId: "host-source", memoryId: "shared-id" },
+    });
+    expect(
+      secondMerge.scopePolicies.some(
+        (policy) =>
+          policy.scope.type === "global" &&
+          policy.scope.id === sourceUserId &&
+          policy.extractionInstructions === "Save stable preferences.",
+      ),
+    ).toBe(true);
+
+    source.mergeSyncSnapshot(target.getSyncSnapshot());
+    expect(source.getSyncSnapshot().details).toHaveLength(3);
+    source.mergeSyncSnapshot(target.getSyncSnapshot());
+    expect(source.getSyncSnapshot().details).toHaveLength(3);
+  });
+
   test("encrypts summary and details at rest while returning plaintext state", () => {
     const detail = store.upsertExtractedMemory({
       title: "Private preference",

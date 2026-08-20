@@ -198,6 +198,7 @@ export async function createAgentCommand(
           workspaceId,
           projectRegistry: dependencies.projectRegistry,
           workspaceRegistry: dependencies.workspaceRegistry,
+          paseoHome: dependencies.paseoHome,
           logger: dependencies.logger,
         })
       : resolved.config;

@@ -1355,12 +1355,16 @@ export const ReadProjectConfigRequestMessageSchema = z.object({
   type: z.literal("read_project_config_request"),
   requestId: z.string(),
   repoRoot: z.string(),
+  // COMPAT(projectConfigById): added in v0.3.1, remove optional after 2027-02-20.
+  projectId: z.string().optional(),
 });
 
 export const WriteProjectConfigRequestMessageSchema = z.object({
   type: z.literal("write_project_config_request"),
   requestId: z.string(),
   repoRoot: z.string(),
+  // COMPAT(projectConfigById): added in v0.3.1, remove optional after 2027-02-20.
+  projectId: z.string().optional(),
   config: PaseoConfigRawSchema,
   expectedRevision: PaseoConfigRevisionSchema.nullable(),
 });
@@ -3221,6 +3225,8 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(projectCreateDirectoryless): added on 2026-08-19. Older daemons do not
         // understand directoryless project creation, so clients must gate the entry point.
         projectCreateDirectoryless: z.boolean().optional(),
+        // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
+        projectConfigById: z.boolean().optional(),
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: z.boolean().optional(),
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.
@@ -3281,6 +3287,8 @@ export const ServerInfoStatusPayloadSchema = z
         memoryScopePolicies: z.boolean().optional(),
         // COMPAT(memoryUsers): added in v0.3.2, remove gate after 2027-02-19.
         memoryUsers: z.boolean().optional(),
+        // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
+        memorySync: z.boolean().optional(),
         // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
         reasoningTranslation: z.boolean().optional(),
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.

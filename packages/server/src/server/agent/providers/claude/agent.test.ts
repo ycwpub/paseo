@@ -1475,7 +1475,7 @@ describe("ClaudeAgentSession context window usage", () => {
     ]);
   });
 
-  test("maps Aiden Claude commentary before a tool call to a readable reasoning summary", async () => {
+  test("keeps Aiden Claude text commentary distinct from native thinking", async () => {
     const session = await createSessionForTest();
     const messageId = "assistant-redacted-commentary";
     const commentary = "我先检查当前实现，再运行相关测试。";
@@ -1550,7 +1550,7 @@ describe("ClaudeAgentSession context window usage", () => {
       events.filter(
         (event) =>
           event.type === "timeline" &&
-          event.item.type === "reasoning" &&
+          event.item.type === "assistant_message" &&
           event.item.text === commentary,
       ),
     ).toHaveLength(1);
@@ -1558,18 +1558,20 @@ describe("ClaudeAgentSession context window usage", () => {
       events.some(
         (event) =>
           event.type === "timeline" &&
-          event.item.type === "assistant_message" &&
+          event.item.type === "reasoning" &&
           event.item.text === commentary,
       ),
     ).toBe(false);
     expect(
-      events.findIndex((event) => event.type === "timeline" && event.item.type === "reasoning"),
+      events.findIndex(
+        (event) => event.type === "timeline" && event.item.type === "assistant_message",
+      ),
     ).toBeLessThan(
       events.findIndex((event) => event.type === "timeline" && event.item.type === "tool_call"),
     );
   });
 
-  test("maps persisted Aiden Claude commentary before a tool call to reasoning", async () => {
+  test("keeps persisted Aiden Claude text commentary distinct from native thinking", async () => {
     const session = await createSessionForTest();
     const events = session.translateMessageToEvents({
       type: "assistant",
@@ -1595,7 +1597,7 @@ describe("ClaudeAgentSession context window usage", () => {
       {
         type: "timeline",
         provider: "claude",
-        item: { type: "reasoning", text: "正在检查 provider 事件。", source: "text" },
+        item: { type: "assistant_message", text: "正在检查 provider 事件。" },
       },
       expect.objectContaining({
         type: "timeline",

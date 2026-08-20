@@ -20,6 +20,7 @@ import {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
   PluginInstallSource,
   PluginAppState,
@@ -559,6 +560,7 @@ type ListCommandsDraftConfig = Pick<
 >;
 export interface WriteProjectConfigInput {
   repoRoot: string;
+  projectId?: string;
   config: PaseoConfigRaw;
   expectedRevision: PaseoConfigRevision | null;
   requestId?: string;
@@ -5321,12 +5323,17 @@ export class DaemonClient {
     this.sendSessionMessageStrict(response);
   }
 
-  async readProjectConfig(repoRoot: string, requestId?: string): Promise<ReadProjectConfigPayload> {
+  async readProjectConfig(
+    repoRoot: string,
+    requestId?: string,
+    projectId?: string,
+  ): Promise<ReadProjectConfigPayload> {
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
         type: "read_project_config_request",
         repoRoot,
+        projectId,
       },
       responseType: "read_project_config_response",
     });
@@ -5338,6 +5345,7 @@ export class DaemonClient {
       message: {
         type: "write_project_config_request",
         repoRoot: input.repoRoot,
+        projectId: input.projectId,
         config: input.config,
         expectedRevision: input.expectedRevision,
       },
@@ -5905,6 +5913,17 @@ export class DaemonClient {
 
   async clearMemory(options?: { requestId?: string }) {
     return this.resourceRpc.clearMemory(options);
+  }
+
+  async getMemorySyncSnapshot(options?: { requestId?: string }) {
+    return this.resourceRpc.getMemorySyncSnapshot(options);
+  }
+
+  async mergeMemorySyncSnapshot(
+    snapshot: PaseoMemorySyncSnapshot,
+    options?: { requestId?: string },
+  ) {
+    return this.resourceRpc.mergeMemorySyncSnapshot(snapshot, options);
   }
 
   async translateReasoning(options: {

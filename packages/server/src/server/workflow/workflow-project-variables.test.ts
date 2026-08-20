@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveWorkflowProjectVariables } from "./workflow-project-variables.js";
+import { resolveGlobalProjectConfigPath } from "../project/project-config-storage.js";
 
 const tempDirs: string[] = [];
 
@@ -73,5 +74,41 @@ describe("resolveWorkflowProjectVariables", () => {
         projectRegistry: { list: async () => [] },
       }),
     ).resolves.toEqual({ environment: "test" });
+  });
+
+  it("loads variables for a directoryless multiple-directory Project from PASEO_HOME", async () => {
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-workflow-home-"));
+    tempDirs.push(paseoHome);
+    const projectRoot = await mkdtemp(join(tmpdir(), "paseo-workflow-source-"));
+    tempDirs.push(projectRoot);
+    const cwd = join(projectRoot, "src");
+    await mkdir(cwd, { recursive: true });
+    const project = {
+      projectId: "prj_multiple",
+      rootPath: null,
+      archivedAt: null,
+    };
+    const configPath = resolveGlobalProjectConfigPath(paseoHome, project.projectId);
+    await mkdir(join(configPath, ".."), { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        project: {
+          directoryMode: "multiple",
+          directories: { project: [projectRoot] },
+          variables: { serviceName: "checkout" },
+        },
+      }),
+    );
+
+    const variables = await resolveWorkflowProjectVariables({
+      cwd,
+      paseoHome,
+      projectRegistry: {
+        list: async () => [project] as never,
+      },
+    });
+
+    expect(variables).toEqual({ serviceName: "checkout" });
   });
 });

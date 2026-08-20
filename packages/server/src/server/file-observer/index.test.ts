@@ -58,6 +58,15 @@ test("covers files populated immediately inside a newly created directory", asyn
     events.push(...batch);
   });
 
+  const readinessMarker = join(root, "observer-ready.txt");
+  await writeFile(readinessMarker, "ready");
+  await expect
+    .poll(() => events.some((event) => event.path === readinessMarker), {
+      timeout: FILE_EVENT_TIMEOUT_MS,
+    })
+    .toBe(true);
+  events.length = 0;
+
   const createdDirectory = join(root, "new", "nested");
   await mkdir(createdDirectory, { recursive: true });
   const firstPath = join(createdDirectory, "first.txt");
@@ -178,6 +187,15 @@ test("classifies a removed file as deleted", async () => {
     expect(error).toBeNull();
     events.push(...batch);
   });
+
+  const readinessMarker = join(root, "observer-ready.txt");
+  await writeFile(readinessMarker, "ready");
+  await expect
+    .poll(() => events.some((event) => event.path === readinessMarker), {
+      timeout: FILE_EVENT_TIMEOUT_MS,
+    })
+    .toBe(true);
+  events.length = 0;
 
   await rm(target);
   await expect

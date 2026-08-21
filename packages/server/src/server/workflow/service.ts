@@ -1264,7 +1264,7 @@ export class WorkflowService {
     step: WorkflowSwitchStep,
     state: ExecutionState,
   ): Promise<StepExecutionResult> {
-    const switchValue = resolveWorkflowExpression(
+    const switchValue = resolveOptionalWorkflowExpression(
       step.switchVar ?? "{{data.control}}",
       createDataMappingContext(state, step.id),
     );

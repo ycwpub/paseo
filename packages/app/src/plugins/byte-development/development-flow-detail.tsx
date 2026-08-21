@@ -1,24 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { Copy, MessageSquare, Pencil, Play, Save, Trash2 } from "lucide-react-native";
+import {
+  CheckCircle2,
+  Copy,
+  MessageSquare,
+  Pencil,
+  RotateCcw,
+  Save,
+  Trash2,
+} from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { PluginSummary } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { settingsStyles } from "@/styles/settings";
 import {
   DEVELOPMENT_STAGES,
-  developmentJobIsActive,
-  developmentJobStatusLabel,
+  developmentFlowStatusLabel,
   developmentStageLabel,
   type DevelopmentFlow,
   type DevelopmentStageId,
 } from "./flow-model";
 import {
-  developmentStageStatusLabel,
-  parseWorkflowPayload,
-  resolveDevelopmentStageDetail,
-} from "./stage-detail-model";
+  developmentStageCollaborationFromInput,
+  type DevelopmentStageCollaboration,
+} from "./development-stage-collaboration-model";
 import { DevelopmentProjectSettingsStage } from "./development-project-settings-stage";
 import { DEVELOPMENT_FLOW_NAVIGATION_STAGES } from "./development-project-settings-stage-model";
 import { DevelopmentPrdField } from "./development-prd-field";
@@ -26,72 +33,42 @@ import {
   developmentPrdSourceFromInput,
   type DevelopmentPrdSourceValue,
 } from "./development-prd-source-model";
-import { useDevelopmentRun } from "./use-development-run";
 
 interface DevelopmentStage {
   id: DevelopmentStageId;
   label: string;
-}
-type StageDetailModel = ReturnType<typeof resolveDevelopmentStageDetail>;
-type StageNodeRun = NonNullable<StageDetailModel["latestRun"]>;
-
-function prettyJson(value: unknown): string {
-  if (value === undefined || value === null) return "暂无数据";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function statusVariant(status: DevelopmentFlow["job"]["status"]): "success" | "error" | "muted" {
-  if (status === "succeeded") return "success";
-  if (status === "failed" || status === "timed_out") return "error";
-  return "muted";
 }
 
 function formatDate(value: string | null | undefined): string {
   return value ? new Date(value).toLocaleString() : "—";
 }
 
-function nodeStatusVariant(
-  status: StageNodeRun["status"] | undefined,
-): "success" | "error" | "muted" {
-  if (status === "succeeded") return "success";
-  if (status === "failed" || status === "timed_out") return "error";
-  return "muted";
+function stageStatusLabel(status: DevelopmentStageCollaboration["status"]): string {
+  if (status === "completed") return "已完成";
+  if (status === "in_progress") return "协作中";
+  return "待开始";
 }
 
-function stageQueryMessage({
-  detail,
-  error,
-  loading,
-}: {
-  detail: StageDetailModel;
-  error: unknown;
-  loading: boolean;
-}): string {
-  if (loading) return "正在读取节点运行信息…";
-  if (error instanceof Error) return error.message;
-  return developmentStageStatusLabel(detail);
+function stageStatusVariant(status: DevelopmentStageCollaboration["status"]): "success" | "muted" {
+  return status === "completed" ? "success" : "muted";
 }
 
 function DevelopmentStageButton({
   stage,
   index,
-  completed,
+  status,
   current,
   selected,
   onSelect,
 }: {
   stage: DevelopmentStage;
   index: number;
-  completed: boolean;
+  status: DevelopmentStageCollaboration["status"];
   current: boolean;
   selected: boolean;
   onSelect: (stage: DevelopmentStageId) => void;
 }) {
+  const completed = status === "completed";
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   const handlePress = useCallback(() => onSelect(stage.id), [onSelect, stage.id]);
   const itemStyle = useCallback(
@@ -115,7 +92,10 @@ function DevelopmentStageButton({
       <Text style={[styles.stageIndex, (completed || current) && styles.stageIndexHighlighted]}>
         {index + 1}
       </Text>
-      <Text style={styles.stageLabel}>{stage.label}</Text>
+      <View style={styles.stageButtonCopy}>
+        <Text style={styles.stageLabel}>{stage.label}</Text>
+        <Text style={styles.stageState}>{stageStatusLabel(status)}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -131,7 +111,6 @@ function StageProgress({
   onSelectStage: (stage: DevelopmentStageId) => void;
   onOpenProjectSettings: () => void;
 }) {
-  const selectedIndex = DEVELOPMENT_STAGES.findIndex((stage) => stage.id === flow.currentStage);
   return (
     <View style={styles.stageGrid}>
       {DEVELOPMENT_FLOW_NAVIGATION_STAGES.map((stage, index) => {
@@ -144,18 +123,15 @@ function StageProgress({
             />
           );
         }
-        const workflowIndex = index - 1;
-        const completed = flow.job.status === "succeeded" || workflowIndex < selectedIndex;
-        const current = workflowIndex === selectedIndex && flow.job.status !== "succeeded";
-        const selected = selectedStage === stage.id;
+        const collaboration = developmentStageCollaborationFromInput(flow.job.input, stage.id);
         return (
           <DevelopmentStageButton
             key={stage.id}
             stage={stage}
             index={index}
-            completed={completed}
-            current={current}
-            selected={selected}
+            status={collaboration.status}
+            current={flow.currentStage === stage.id}
+            selected={selectedStage === stage.id}
             onSelect={onSelectStage}
           />
         );
@@ -164,216 +140,209 @@ function StageProgress({
   );
 }
 
-function NodeRunMetadata({ nodeRun }: { nodeRun: StageNodeRun }) {
-  return (
-    <View style={styles.infoGrid}>
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>节点 ID</Text>
-        <Text selectable style={styles.infoValue}>
-          {nodeRun.stepId}
-        </Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>开始时间</Text>
-        <Text style={styles.infoValue}>{formatDate(nodeRun.startedAt)}</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>结束时间</Text>
-        <Text style={styles.infoValue}>{formatDate(nodeRun.endedAt)}</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.infoLabel}>执行次数</Text>
-        <Text style={styles.infoValue}>
-          {nodeRun.attempt} / {nodeRun.maxAttempts}
-        </Text>
-      </View>
-      {nodeRun.agentId ? (
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Agent ID</Text>
-          <Text selectable style={styles.infoValue}>
-            {nodeRun.agentId}
-          </Text>
-        </View>
-      ) : null}
-      {nodeRun.exitCode !== undefined ? (
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>退出码</Text>
-          <Text style={styles.infoValue}>{nodeRun.exitCode ?? "—"}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function NodeRunPayloads({ nodeRun }: { nodeRun: StageNodeRun }) {
-  const output =
-    parseWorkflowPayload(nodeRun.outputPayload) ?? nodeRun.agentResponse ?? nodeRun.output;
-  return (
-    <View style={styles.payloadGrid}>
-      <View style={styles.payloadBlock}>
-        <Text style={styles.outputTitle}>节点输入</Text>
-        <Text selectable style={styles.codeText}>
-          {prettyJson(parseWorkflowPayload(nodeRun.inputPayload))}
-        </Text>
-      </View>
-      <View style={styles.payloadBlock}>
-        <Text style={styles.outputTitle}>节点输出</Text>
-        <Text selectable style={styles.codeText}>
-          {prettyJson(output)}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function NodeRunDetail({ nodeRun }: { nodeRun: StageNodeRun }) {
-  return (
-    <>
-      <NodeRunMetadata nodeRun={nodeRun} />
-      {nodeRun.error ? (
-        <View style={styles.errorBlock}>
-          <Text style={styles.outputTitle}>节点错误</Text>
-          <Text selectable style={styles.errorText}>
-            {nodeRun.error}
-          </Text>
-        </View>
-      ) : null}
-      <NodeRunPayloads nodeRun={nodeRun} />
-    </>
-  );
-}
-
-function StageDetail({
+function StageCollaborationCard({
   flow,
   serverId,
+  plugin,
   stageId,
+  canMutate,
+  onSavePrd,
+  onSaveKnowledge,
+  onOpenStage,
+  onCompleteStage,
+  onReopenStage,
 }: {
   flow: DevelopmentFlow;
   serverId: string;
+  plugin: PluginSummary;
   stageId: DevelopmentStageId;
+  canMutate: boolean;
+  onSavePrd: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onSaveKnowledge: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
+  onOpenStage: (
+    stageId: DevelopmentStageId,
+    knowledge: string,
+    prdSource?: DevelopmentPrdSourceValue,
+  ) => Promise<void>;
+  onCompleteStage: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
+  onReopenStage: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
 }) {
-  const query = useDevelopmentRun({
-    active: true,
-    serverId,
-    runId: flow.job.workflowRunId,
-  });
-  const detail = useMemo(
-    () => resolveDevelopmentStageDetail(query.data ?? null, stageId),
-    [query.data, stageId],
-  );
-  const nodeRun = detail.latestRun;
   const stage = DEVELOPMENT_STAGES.find((candidate) => candidate.id === stageId);
-  const queryMessage = stageQueryMessage({
-    detail,
-    error: query.error,
-    loading: query.isLoading,
-  });
-  const emptyMessage = flow.job.workflowRunId
-    ? "该阶段还没有节点运行记录。"
-    : "当前流程没有 Workflow Run。";
+  const collaboration = developmentStageCollaborationFromInput(flow.job.input, stageId);
+  const [knowledge, setKnowledge] = useState(collaboration.knowledge);
+  const [prd, setPrd] = useState(() => developmentPrdSourceFromInput(flow.job.input));
+  const [action, setAction] = useState<
+    "save-prd" | "save-knowledge" | "open" | "complete" | "reopen" | null
+  >(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const next = developmentStageCollaborationFromInput(flow.job.input, stageId);
+    setKnowledge(next.knowledge);
+    setPrd(developmentPrdSourceFromInput(flow.job.input));
+    setError(null);
+  }, [flow.id, flow.job.input, stageId]);
+
+  const runAction = useCallback(
+    async (
+      nextAction: NonNullable<typeof action>,
+      operation: () => Promise<void>,
+    ): Promise<void> => {
+      setAction(nextAction);
+      setError(null);
+      try {
+        await operation();
+      } catch (nextError) {
+        setError(nextError instanceof Error ? nextError.message : String(nextError));
+      } finally {
+        setAction(null);
+      }
+    },
+    [],
+  );
+
+  const handleSavePrd = useCallback(() => {
+    void runAction("save-prd", () => onSavePrd(prd));
+  }, [onSavePrd, prd, runAction]);
+  const handleSaveKnowledge = useCallback(() => {
+    void runAction("save-knowledge", () => onSaveKnowledge(stageId, knowledge));
+  }, [knowledge, onSaveKnowledge, runAction, stageId]);
+  const handleOpen = useCallback(() => {
+    void runAction("open", async () => {
+      await onOpenStage(stageId, knowledge, stageId === "prd" ? prd : undefined);
+    });
+  }, [knowledge, onOpenStage, prd, runAction, stageId]);
+  const handleComplete = useCallback(() => {
+    void runAction("complete", () => onCompleteStage(stageId, knowledge));
+  }, [knowledge, onCompleteStage, runAction, stageId]);
+  const handleReopen = useCallback(() => {
+    void runAction("reopen", () => onReopenStage(stageId, knowledge));
+  }, [knowledge, onReopenStage, runAction, stageId]);
+
+  const busy = action !== null;
+  const openLabel = collaboration.agentId ? "继续 Project 会话" : "在 Project 中开始";
 
   return (
     <View style={[settingsStyles.card, styles.stageDetailCard]}>
       <View style={styles.stageDetailHeader}>
         <View style={styles.stageDetailHeading}>
-          <Text style={styles.outputTitle}>
-            {stage?.label ?? stageId}
-            {nodeRun?.stepName ? ` · ${nodeRun.stepName}` : ""}
+          <Text style={styles.outputTitle}>{stage?.label ?? stageId}</Text>
+          <Text style={styles.hint}>
+            插件只保存节点状态和专有知识；实际任务在关联 Project 的 Agent 会话中，由你与 Agent
+            共同完成。
           </Text>
-          <Text style={styles.hint}>{queryMessage}</Text>
         </View>
         <StatusBadge
-          label={developmentStageStatusLabel(detail)}
-          variant={nodeStatusVariant(nodeRun?.status)}
+          label={stageStatusLabel(collaboration.status)}
+          variant={stageStatusVariant(collaboration.status)}
         />
       </View>
-      {nodeRun ? (
-        <NodeRunDetail nodeRun={nodeRun} />
+
+      {stageId === "prd" ? (
+        <View style={styles.prdSection}>
+          <DevelopmentPrdField
+            active
+            serverId={serverId}
+            plugin={plugin}
+            value={prd}
+            onChange={setPrd}
+          />
+          <View style={styles.inlineActions}>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={Save}
+              loading={action === "save-prd"}
+              disabled={!canMutate || busy}
+              onPress={handleSavePrd}
+            >
+              保存 PRD 配置
+            </Button>
+          </View>
+        </View>
+      ) : null}
+
+      <Field
+        label="节点知识"
+        hint="仅作用于当前节点，用于保存该节点的目标、规则、资源、验收标准和其他专有配置；不会自动变成其他节点或 Project 的公共知识。"
+      >
+        <FormTextInput
+          value={knowledge}
+          onChangeText={setKnowledge}
+          placeholder="输入当前节点专有的配置和知识"
+          multiline
+          editable={canMutate && !busy}
+          textInputStyle={styles.knowledgeInput}
+        />
+      </Field>
+
+      {collaboration.agentId ? (
+        <View style={styles.sessionInfo}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Agent ID</Text>
+            <Text selectable style={styles.infoValue}>
+              {collaboration.agentId}
+            </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>开始时间</Text>
+            <Text style={styles.infoValue}>{formatDate(collaboration.startedAt)}</Text>
+          </View>
+          {collaboration.completedAt ? (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>完成时间</Text>
+              <Text style={styles.infoValue}>{formatDate(collaboration.completedAt)}</Text>
+            </View>
+          ) : null}
+        </View>
       ) : (
-        <Text style={styles.hint}>{emptyMessage}</Text>
-      )}
-    </View>
-  );
-}
-
-function DraftPrdStage({
-  flow,
-  serverId,
-  plugin,
-  onSave,
-  onStart,
-}: {
-  flow: DevelopmentFlow;
-  serverId: string;
-  plugin: PluginSummary;
-  onSave: (value: DevelopmentPrdSourceValue) => Promise<void>;
-  onStart: (value: DevelopmentPrdSourceValue) => Promise<void>;
-}) {
-  const [value, setValue] = useState(() => developmentPrdSourceFromInput(flow.job.input));
-  const [saving, setSaving] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setValue(developmentPrdSourceFromInput(flow.job.input));
-    setError(null);
-  }, [flow.id, flow.job.input]);
-
-  const handleSave = useCallback(() => {
-    setSaving(true);
-    setError(null);
-    void onSave(value)
-      .catch((nextError: unknown) => {
-        setError(nextError instanceof Error ? nextError.message : String(nextError));
-      })
-      .finally(() => setSaving(false));
-  }, [onSave, value]);
-
-  const handleStart = useCallback(() => {
-    setStarting(true);
-    setError(null);
-    void onStart(value)
-      .catch((nextError: unknown) => {
-        setError(nextError instanceof Error ? nextError.message : String(nextError));
-      })
-      .finally(() => setStarting(false));
-  }, [onStart, value]);
-
-  return (
-    <View style={[settingsStyles.card, styles.stageDetailCard]}>
-      <View style={styles.stageDetailHeading}>
-        <Text style={styles.outputTitle}>PRD / 需求说明</Text>
         <Text style={styles.hint}>
-          直接输入需求或从 Meego 获取。保存后仍可继续修改；确认内容后再启动研发流程。
+          尚未创建本节点的 Agent。点击“在 Project 中开始”后，会复用 Project workspace
+          并创建专属会话。
         </Text>
-      </View>
-      <DevelopmentPrdField
-        active
-        serverId={serverId}
-        plugin={plugin}
-        value={value}
-        onChange={setValue}
-      />
+      )}
+
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <View style={styles.stageActions}>
         <Button
           variant="outline"
           leftIcon={Save}
-          loading={saving}
-          disabled={starting}
-          onPress={handleSave}
+          loading={action === "save-knowledge"}
+          disabled={!canMutate || busy}
+          onPress={handleSaveKnowledge}
         >
-          保存 PRD
+          保存节点知识
         </Button>
         <Button
           variant="default"
-          leftIcon={Play}
-          loading={starting}
-          disabled={saving || !value.prd.trim()}
-          onPress={handleStart}
+          leftIcon={MessageSquare}
+          loading={action === "open"}
+          disabled={!flow.projectId || !canMutate || busy}
+          onPress={handleOpen}
         >
-          启动研发流程
+          {openLabel}
         </Button>
+        {collaboration.status === "completed" ? (
+          <Button
+            variant="outline"
+            leftIcon={RotateCcw}
+            loading={action === "reopen"}
+            disabled={!canMutate || busy}
+            onPress={handleReopen}
+          >
+            重新打开节点
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            leftIcon={CheckCircle2}
+            loading={action === "complete"}
+            disabled={!canMutate || busy || !collaboration.agentId}
+            onPress={handleComplete}
+          >
+            标记节点完成
+          </Button>
+        )}
       </View>
     </View>
   );
@@ -391,7 +360,10 @@ export function DevelopmentFlowDetail({
   onOpenProject,
   onOpenProjectSettings,
   onSavePrd,
-  onStartFlow,
+  onSaveStageKnowledge,
+  onOpenStage,
+  onCompleteStage,
+  onReopenStage,
   onCopy,
   onEdit,
   onDelete,
@@ -407,7 +379,14 @@ export function DevelopmentFlowDetail({
   onOpenProject: () => void;
   onOpenProjectSettings: () => void;
   onSavePrd: (value: DevelopmentPrdSourceValue) => Promise<void>;
-  onStartFlow: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onSaveStageKnowledge: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
+  onOpenStage: (
+    stageId: DevelopmentStageId,
+    knowledge: string,
+    prdSource?: DevelopmentPrdSourceValue,
+  ) => Promise<void>;
+  onCompleteStage: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
+  onReopenStage: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
   onCopy: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -418,10 +397,6 @@ export function DevelopmentFlowDetail({
   useEffect(() => {
     setSelectedStage(flow.currentStage ?? "prd");
   }, [flow.currentStage, flow.id]);
-  const active = developmentJobIsActive(flow.job);
-  const handleStageSelect = useCallback((stage: DevelopmentStageId) => {
-    setSelectedStage(stage);
-  }, []);
 
   return (
     <View style={styles.detail}>
@@ -442,18 +417,13 @@ export function DevelopmentFlowDetail({
           >
             复制
           </Button>
-          <Button
-            variant="outline"
-            leftIcon={Pencil}
-            disabled={active || !canMutate}
-            onPress={onEdit}
-          >
+          <Button variant="outline" leftIcon={Pencil} disabled={!canMutate} onPress={onEdit}>
             编辑
           </Button>
           <Button
             variant="outline"
             leftIcon={Trash2}
-            disabled={active || !canMutate}
+            disabled={!canMutate}
             loading={deleting}
             onPress={onDelete}
           >
@@ -465,37 +435,36 @@ export function DevelopmentFlowDetail({
             disabled={!flow.projectId}
             onPress={onOpenProject}
           >
-            前往 Project 对话
+            前往 Project
           </Button>
         </View>
       </View>
       <Text style={styles.projectChatHint}>
-        点击 Project 设置可配置项目上下文；点击流程阶段可查看节点状态、输入、输出和执行时间。
+        流程页面只负责节点配置、知识和进度。点击节点后进入对应的 Project Agent
+        会话协作，不会在插件页面直接执行整条研发流程。
       </Text>
       <StageProgress
         flow={flow}
         selectedStage={selectedStage}
-        onSelectStage={handleStageSelect}
+        onSelectStage={setSelectedStage}
         onOpenProjectSettings={onOpenProjectSettings}
       />
-      {flow.job.status === "draft" && selectedStage === "prd" ? (
-        <DraftPrdStage
-          flow={flow}
-          serverId={serverId}
-          plugin={plugin}
-          onSave={onSavePrd}
-          onStart={onStartFlow}
-        />
-      ) : (
-        <StageDetail flow={flow} serverId={serverId} stageId={selectedStage} />
-      )}
+      <StageCollaborationCard
+        flow={flow}
+        serverId={serverId}
+        plugin={plugin}
+        stageId={selectedStage}
+        canMutate={canMutate}
+        onSavePrd={onSavePrd}
+        onSaveKnowledge={onSaveStageKnowledge}
+        onOpenStage={onOpenStage}
+        onCompleteStage={onCompleteStage}
+        onReopenStage={onReopenStage}
+      />
       <View style={[settingsStyles.card, styles.infoCard]}>
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>状态</Text>
-          <StatusBadge
-            label={developmentJobStatusLabel(flow.job.status)}
-            variant={statusVariant(flow.job.status)}
-          />
+          <Text style={styles.infoLabel}>流程状态</Text>
+          <StatusBadge label={developmentFlowStatusLabel(flow)} variant="muted" />
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Project ID</Text>
@@ -504,44 +473,27 @@ export function DevelopmentFlowDetail({
           </Text>
         </View>
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Process ID</Text>
+          <Text style={styles.infoLabel}>流程 ID</Text>
           <Text selectable style={styles.infoValue}>
             {flow.id}
           </Text>
         </View>
-        {flow.job.workflowRunId ? (
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Workflow Run ID</Text>
-            <Text selectable style={styles.infoValue}>
-              {flow.job.workflowRunId}
-            </Text>
-          </View>
-        ) : null}
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>创建时间</Text>
           <Text style={styles.infoValue}>{formatDate(flow.job.createdAt)}</Text>
         </View>
       </View>
-      {flow.job.error ? (
-        <View style={[settingsStyles.card, styles.errorCard]}>
-          <Text style={styles.outputTitle}>错误信息</Text>
-          <Text selectable style={styles.errorText}>
-            {flow.job.error}
+      {flow.job.workflowRunId ? (
+        <View style={[settingsStyles.card, styles.legacyCard]}>
+          <Text style={styles.outputTitle}>历史 Workflow Run</Text>
+          <Text style={styles.hint}>
+            该流程由旧版本直接执行过。历史运行记录仍保留，但新节点任务不会再从插件页面直接执行。
+          </Text>
+          <Text selectable style={styles.codeText}>
+            {flow.job.workflowRunId}
           </Text>
         </View>
       ) : null}
-      <View style={[settingsStyles.card, styles.outputCard]}>
-        <Text style={styles.outputTitle}>流程配置</Text>
-        <Text selectable style={styles.codeText}>
-          {prettyJson(flow.job.input)}
-        </Text>
-      </View>
-      <View style={[settingsStyles.card, styles.outputCard]}>
-        <Text style={styles.outputTitle}>最终输出</Text>
-        <Text selectable style={styles.codeText}>
-          {prettyJson(flow.job.result)}
-        </Text>
-      </View>
     </View>
   );
 }
@@ -588,9 +540,9 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   stageItem: {
-    minWidth: 86,
+    minWidth: 100,
     flexGrow: 1,
-    flexBasis: 86,
+    flexBasis: 100,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -628,9 +580,18 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.accentForeground,
     backgroundColor: theme.colors.accent,
   },
+  stageButtonCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   stageLabel: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.xs,
+  },
+  stageState: {
+    color: theme.colors.foregroundMuted,
+    fontSize: 10,
   },
   stageDetailCard: {
     padding: theme.spacing[4],
@@ -652,8 +613,22 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "flex-end",
     gap: theme.spacing[2],
   },
-  infoGrid: {
+  inlineActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  prdSection: {
+    gap: theme.spacing[3],
+  },
+  knowledgeInput: {
+    minHeight: 150,
+    textAlignVertical: "top",
+  },
+  sessionInfo: {
     gap: theme.spacing[2],
+    padding: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
   },
   infoCard: {
     padding: theme.spacing[4],
@@ -675,26 +650,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.xs,
     textAlign: "right",
   },
-  payloadGrid: {
-    gap: theme.spacing[3],
-  },
-  payloadBlock: {
-    gap: theme.spacing[2],
-  },
-  outputCard: {
-    padding: theme.spacing[4],
-    gap: theme.spacing[3],
-  },
-  errorCard: {
+  legacyCard: {
     padding: theme.spacing[4],
     gap: theme.spacing[2],
-    borderColor: theme.colors.statusDanger,
-  },
-  errorBlock: {
-    gap: theme.spacing[2],
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: `${theme.colors.statusDanger}10`,
   },
   outputTitle: {
     color: theme.colors.foreground,

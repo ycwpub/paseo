@@ -72,7 +72,7 @@ export function buildProjectIndexSkillDocument(input: ProjectIndexDocumentInput)
     `# Project index: ${projectName}`,
     "",
     `Project ID: \`${input.project.projectId}\``,
-    `Project root: \`${input.project.rootPath}\``,
+    `Project directory: \`${input.project.rootPath}\``,
     ...(input.branch ? [`Git branch: \`${input.branch}\``] : []),
     "",
     "## Usage",
@@ -81,7 +81,7 @@ export function buildProjectIndexSkillDocument(input: ProjectIndexDocumentInput)
     "- Load project files only when they are relevant to the current task.",
     "- Knowledge roots contain optional background material; load and adopt only the files relevant to the current task.",
     "",
-    "## Project roots",
+    "## Project directories",
     "",
     ...(input.projectDirectories.length > 0
       ? input.projectDirectories.map((directory) => `- ${directory}`)

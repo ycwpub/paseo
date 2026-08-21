@@ -8,7 +8,7 @@ import {
   resolveProjectDirectories,
 } from "./project-context.js";
 import { resolveGlobalProjectConfigPath } from "./project-config-storage.js";
-import { resolveManagedProjectCodeReposPath } from "./project-storage-paths.js";
+import { resolveManagedProjectStorageRoot } from "./project-storage-paths.js";
 
 describe("resolveProjectDirectories", () => {
   const roots: string[] = [];
@@ -70,12 +70,14 @@ describe("resolveProjectDirectories", () => {
   });
 
   it("supports workspace and project variables in configured paths", () => {
-    const root = path.resolve("/repo/app");
+    const root = path.resolve("/managed/prj_2");
+    const projectDirectory = path.resolve("/repo/app");
     const resolved = resolveProjectDirectories({
       projectId: "prj_2",
       projectRoot: root,
+      projectDirectory,
       workspaceId: "wks_2",
-      workspaceDirectory: path.join(root, "feature"),
+      workspaceDirectory: path.join(projectDirectory, "feature"),
       variables: { team: "payments" },
       projectConfig: {
         directories: {
@@ -86,9 +88,9 @@ describe("resolveProjectDirectories", () => {
       },
     });
 
-    expect(resolved.project).toEqual([path.join(root, "packages/payments")]);
-    expect(resolved.knowledge).toEqual([path.resolve(root, "../payments-legacy")]);
-    expect(resolved.workspaceData).toEqual([path.join(root, ".paseo/wks_2")]);
+    expect(resolved.project).toEqual([path.join(projectDirectory, "packages/payments")]);
+    expect(resolved.knowledge).toEqual([path.resolve(projectDirectory, "../payments-legacy")]);
+    expect(resolved.workspaceData).toEqual([path.join(projectDirectory, ".paseo/wks_2")]);
   });
 
   it("does not auto-add AI knowledge directories in multiple-directory mode", () => {
@@ -132,10 +134,8 @@ describe("buildProjectContextPrompt", () => {
 
     expect(prompt).toContain("Project ID: prj_1");
     expect(prompt).toContain("Primary working directory: /repo/worktree");
-    expect(prompt).toContain(
-      "All Project directories listed below are writable working directories",
-    );
-    expect(prompt).toContain("includes a private code_repos directory");
+    expect(prompt).toContain("Project directories are writable source directories");
+    expect(prompt).toContain("includes its private Project path");
     expect(prompt).not.toContain("Reference directories");
     expect(prompt).toContain("General knowledge directories");
     expect(prompt).toContain("read on demand");
@@ -210,7 +210,7 @@ describe("loadProjectAgentContext", () => {
     });
 
     expect(context?.directories.project).toEqual([
-      resolveManagedProjectCodeReposPath(paseoHome, project.projectId),
+      resolveManagedProjectStorageRoot(paseoHome, project.projectId),
       sourceDirectory,
     ]);
     expect(context?.directories.knowledge).toEqual([path.join(paseoHome, "docs")]);

@@ -198,12 +198,13 @@ import {
 import { getProviderIcon } from "@/components/provider-icons";
 import {
   createWorkspaceFileTabTarget,
-  normalizeWorkspaceFileLocation,
   type WorkspaceFileLocation,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import { canonicalizeWorkspaceFileLocation } from "@/workspace/file-open/canonical-location";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
+import { useCanonicalWorkspaceFileTabs } from "@/screens/workspace/use-canonical-workspace-file-tabs";
 
 const WORKSPACE_SETUP_AUTO_OPEN_WINDOW_MS = 30_000;
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
@@ -2006,6 +2007,12 @@ function WorkspaceScreenContent({
   const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
   const retargetWorkspaceTab = useWorkspaceLayoutStore((state) => state.retargetTab);
+  useCanonicalWorkspaceFileTabs({
+    tabs: uiTabs,
+    workspaceKey: persistenceKey,
+    workspaceRoot: workspaceDirectory,
+    retargetTab: retargetWorkspaceTab,
+  });
   const reconcileWorkspaceTabs = useWorkspaceLayoutStore((state) => state.reconcileTabs);
   const splitWorkspacePane = useWorkspaceLayoutStore((state) => state.splitPane);
   const splitWorkspacePaneEmpty = useWorkspaceLayoutStore((state) => state.splitPaneEmpty);
@@ -2355,7 +2362,10 @@ function WorkspaceScreenContent({
       if (!persistenceKey) {
         return;
       }
-      const location = normalizeWorkspaceFileLocation({ path: filePath });
+      const location = canonicalizeWorkspaceFileLocation({
+        location: { path: filePath },
+        workspaceRoot: workspaceDirectory,
+      });
       if (!location) {
         return;
       }
@@ -2364,12 +2374,15 @@ function WorkspaceScreenContent({
         navigateToTabId(tabId);
       }
     },
-    [navigateToTabId, openWorkspaceTabFocused, persistenceKey],
+    [navigateToTabId, openWorkspaceTabFocused, persistenceKey, workspaceDirectory],
   );
 
   const handleOpenFileFromChat = useCallback(
     (location: WorkspaceFileLocation, options?: { parentTabId?: string | null }) => {
-      const normalizedLocation = normalizeWorkspaceFileLocation(location);
+      const normalizedLocation = canonicalizeWorkspaceFileLocation({
+        location,
+        workspaceRoot: workspaceDirectory,
+      });
       if (!normalizedLocation) {
         return;
       }
@@ -2396,6 +2409,7 @@ function WorkspaceScreenContent({
       persistenceKey,
       requestFileNavigation,
       showMobileAgent,
+      workspaceDirectory,
     ],
   );
 
@@ -2405,7 +2419,10 @@ function WorkspaceScreenContent({
       sourcePaneId?: string;
       parentTabId?: string | null;
     }) => {
-      const location = normalizeWorkspaceFileLocation(input.location);
+      const location = canonicalizeWorkspaceFileLocation({
+        location: input.location,
+        workspaceRoot: workspaceDirectory,
+      });
       if (!location) {
         return;
       }
@@ -2449,6 +2466,7 @@ function WorkspaceScreenContent({
       requestFileNavigation,
       splitWorkspacePaneEmpty,
       uiTabs,
+      workspaceDirectory,
       workspaceLayout,
     ],
   );

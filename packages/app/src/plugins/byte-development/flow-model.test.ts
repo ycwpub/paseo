@@ -3,6 +3,7 @@ import type { PluginHttpJob } from "@getpaseo/protocol/messages";
 import {
   developmentFlowFromJob,
   developmentFlowsFromJobs,
+  developmentFlowStatusLabel,
   developmentJobStatusLabel,
 } from "./flow-model";
 
@@ -74,5 +75,40 @@ describe("byte development flow model", () => {
       summary: "暂无需求摘要",
       currentStage: "prd",
     });
+  });
+
+  it("derives the active stage and status from Project collaboration records", () => {
+    const flow = developmentFlowFromJob(
+      job({
+        status: "draft",
+        input: {
+          projectId: "project-1",
+          flow_title: "支付链路优化",
+          stage_collaboration: {
+            prd: { status: "completed", knowledge: "PRD 规范" },
+            technical_design: { status: "in_progress", agentId: "agent-1" },
+          },
+        },
+      }),
+    );
+    expect(flow?.currentStage).toBe("technical_design");
+    expect(flow ? developmentFlowStatusLabel(flow) : null).toBe("协作中");
+  });
+
+  it("shows an explicitly started stage even when an earlier stage is still pending", () => {
+    expect(
+      developmentFlowFromJob(
+        job({
+          status: "draft",
+          input: {
+            projectId: "project-1",
+            flow_title: "支付链路优化",
+            stage_collaboration: {
+              review: { status: "in_progress", agentId: "agent-review" },
+            },
+          },
+        }),
+      )?.currentStage,
+    ).toBe("review");
   });
 });

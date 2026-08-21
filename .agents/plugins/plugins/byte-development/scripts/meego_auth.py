@@ -50,6 +50,16 @@ def authentication_error(payload: dict[str, Any], message: str) -> MeegoAuthenti
 
 
 def _json_from_output(output: str) -> dict[str, Any]:
+    normalized = output.strip()
+    if normalized:
+        try:
+            value = json.loads(normalized)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(value, dict):
+                return value
+
     for line in reversed(output.splitlines()):
         try:
             value = json.loads(line)
@@ -57,6 +67,20 @@ def _json_from_output(output: str) -> dict[str, Any]:
             continue
         if isinstance(value, dict):
             return value
+
+    decoder = json.JSONDecoder()
+    records: list[dict[str, Any]] = []
+    for index, character in enumerate(output):
+        if character != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(output, index)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            records.append(value)
+    if records:
+        return records[-1]
     raise RuntimeError("Meegle CLI did not return JSON")
 
 

@@ -27,15 +27,14 @@ import {
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { buildNewWorkspaceRoute } from "@/utils/host-routes";
+import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { formatTimeAgo } from "@/utils/time";
 import { DevelopmentDeleteSheet } from "./development-delete-sheet";
-import { developmentJobStatusLabel, type DevelopmentFlow } from "./flow-model";
 import { DevelopmentPanelMain } from "./development-panel-main";
 import {
   buildDevelopmentCopyInput,
   buildDevelopmentDraftInput,
   buildDevelopmentPrdInput,
-  validateDevelopmentDraftStart,
 } from "./development-draft-model";
 import {
   developmentPrdSourceFromInput,
@@ -46,6 +45,19 @@ import {
   type DevelopmentProjectMode,
 } from "./development-project-selection-model";
 import { resolveProjectConversationWorkspace } from "./flow-navigation";
+import {
+  developmentStageCollaborationFromInput,
+  updateDevelopmentStageCollaborationInput,
+} from "./development-stage-collaboration-model";
+import {
+  createDevelopmentStageAgent,
+  resolveReusableDevelopmentStageSession,
+} from "./development-stage-agent-actions";
+import {
+  developmentFlowStatusLabel,
+  type DevelopmentFlow,
+  type DevelopmentStageId,
+} from "./flow-model";
 import { buildByteDevelopmentFixedFormValues } from "./project-context-model";
 import {
   developmentFlowsQueryKey,
@@ -160,7 +172,7 @@ function FlowListItem({
       </Text>
       <View style={styles.flowMeta}>
         <StatusBadge
-          label={developmentJobStatusLabel(flow.job.status)}
+          label={developmentFlowStatusLabel(flow)}
           variant={statusVariant(flow.job.status)}
         />
         <Text style={styles.flowTime}>{formatTimeAgo(new Date(flow.updatedAt))}</Text>
@@ -568,7 +580,10 @@ export function ByteDevelopmentPanel({
       .updatePluginAppJob(
         selectedFlow.id,
         buildDevelopmentPrdInput({
-          currentInput: editDraft,
+          currentInput: {
+            ...asInputRecord(selectedFlow.job.input),
+            ...editDraft,
+          },
           projectId: selectedFlow.projectId,
           prdSource: developmentPrdSourceFromInput(editDraft),
           fixedFormValues,
@@ -591,8 +606,8 @@ export function ByteDevelopmentPanel({
   const handleSavePrd = useCallback(
     async (value: DevelopmentPrdSourceValue) => {
       if (!client || !selectedFlow) throw new Error("开发任务不可用");
-      if (selectedFlow.job.status !== "draft") {
-        throw new Error("只有尚未启动的开发任务可以修改 PRD");
+      if (selectedFlow.job.status === "queued" || selectedFlow.job.status === "running") {
+        throw new Error("旧版 Workflow 仍在运行，暂时不能修改 PRD");
       }
       const result = await client.updatePluginAppJob(
         selectedFlow.id,
@@ -610,57 +625,177 @@ export function ByteDevelopmentPanel({
     },
     [client, queryClient, selectedFlow, serverId],
   );
-  const handleStartFlow = useCallback(
-    async (value: DevelopmentPrdSourceValue) => {
-      if (!client || !selectedFlow) throw new Error("开发任务不可用");
-      if (!supportsJobDrafts) {
-        throw new Error("当前 Host 不支持启动开发任务草稿，请更新并重启 daemon。");
+  const updateSelectedFlowInput = useCallback(
+    async (input: Record<string, unknown>) => {
+      if (!client || !selectedFlow) throw new Error("开发流程不可用");
+      if (selectedFlow.job.status === "queued" || selectedFlow.job.status === "running") {
+        throw new Error("旧版 Workflow 仍在运行，暂时不能更新节点");
       }
-      if (selectedFlow.job.status !== "draft") {
-        throw new Error("该开发任务已经启动");
-      }
-      validateDevelopmentDraftStart({
-        prdSource: value,
-        repositoryPath: projectContext.repositoryPath,
-        projectLoading: projectContext.isLoading,
-        projectError: projectContext.error,
-      });
-      const updated = await client.updatePluginAppJob(
-        selectedFlow.id,
-        buildDevelopmentPrdInput({
+      const result = await client.updatePluginAppJob(selectedFlow.id, input);
+      if (result.error || !result.job) throw new Error(result.error ?? "保存节点信息失败");
+      queryClient.setQueryData(
+        developmentFlowsQueryKey(serverId),
+        (current: DevelopmentFlow[] | undefined) => replaceDevelopmentFlow(current, result.job!),
+      );
+      return result.job;
+    },
+    [client, queryClient, selectedFlow, serverId],
+  );
+  const handleSaveStageKnowledge = useCallback(
+    async (stageId: DevelopmentStageId, knowledge: string) => {
+      if (!selectedFlow) throw new Error("开发流程不可用");
+      await updateSelectedFlowInput(
+        updateDevelopmentStageCollaborationInput({
           currentInput: asInputRecord(selectedFlow.job.input),
-          projectId: selectedFlow.projectId,
-          prdSource: value,
-          fixedFormValues,
+          stageId,
+          patch: { knowledge },
         }),
       );
-      if (updated.error || !updated.job) {
-        throw new Error(updated.error ?? "保存 PRD 失败");
+    },
+    [selectedFlow, updateSelectedFlowInput],
+  );
+  const handleOpenStage = useCallback(
+    async (
+      stageId: DevelopmentStageId,
+      knowledge: string,
+      prdSource?: DevelopmentPrdSourceValue,
+      reopen = false,
+    ) => {
+      if (!client || !selectedFlow) throw new Error("开发流程不可用");
+      const projectId = selectedFlow.projectId;
+      if (!projectId) throw new Error("开发流程没有关联 Project");
+
+      let currentInput = asInputRecord(selectedFlow.job.input);
+      if (prdSource) {
+        currentInput = buildDevelopmentPrdInput({
+          currentInput,
+          projectId,
+          prdSource,
+          fixedFormValues,
+        });
       }
-      queryClient.setQueryData(
-        developmentFlowsQueryKey(serverId),
-        (current: DevelopmentFlow[] | undefined) => replaceDevelopmentFlow(current, updated.job!),
-      );
-      const started = await client.startPluginAppJob(selectedFlow.id);
-      if (started.error || !started.job) {
-        throw new Error(started.error ?? "启动研发流程失败");
+      const collaboration = developmentStageCollaborationFromInput(currentInput, stageId);
+      const session = useSessionStore.getState().sessions[serverId];
+      const collaborationWorkspace = collaboration.workspaceId
+        ? (session?.workspaces.get(collaboration.workspaceId) ?? null)
+        : null;
+      const reusableSession = resolveReusableDevelopmentStageSession({
+        projectId,
+        agentId: collaboration.agentId,
+        workspaceId: collaboration.workspaceId,
+        workspace: collaborationWorkspace,
+      });
+      if (reusableSession) {
+        await updateSelectedFlowInput(
+          updateDevelopmentStageCollaborationInput({
+            currentInput,
+            stageId,
+            patch: {
+              knowledge,
+              status:
+                reopen || collaboration.status !== "completed"
+                  ? ("in_progress" as const)
+                  : ("completed" as const),
+              ...(reopen ? { completedAt: null } : {}),
+            },
+          }),
+        );
+        closePluginPanel();
+        navigateToAgent({
+          serverId,
+          agentId: reusableSession.agentId,
+          workspaceId: reusableSession.workspaceId,
+          pin: true,
+        });
+        return;
       }
-      queryClient.setQueryData(
-        developmentFlowsQueryKey(serverId),
-        (current: DevelopmentFlow[] | undefined) => replaceDevelopmentFlow(current, started.job!),
+
+      const existingWorkspace = resolveProjectConversationWorkspace({
+        projectId,
+        activeWorkspaceId:
+          activeWorkspace?.serverId === serverId ? activeWorkspace.workspaceId : null,
+        workspaces: session?.workspaces.values() ?? [],
+      });
+      const created = await createDevelopmentStageAgent({
+        client,
+        flow: selectedFlow,
+        stageId,
+        knowledge,
+        flowInput: currentInput,
+        sourceDirectory:
+          (selectedProject ? getHostProjectSourceDirectory(selectedProject, serverId) : null) ??
+          projectContext.repositoryPath,
+        existingWorkspace: existingWorkspace
+          ? {
+              id: existingWorkspace.id,
+              projectId: existingWorkspace.projectId,
+              workspaceDirectory: existingWorkspace.workspaceDirectory,
+            }
+          : null,
+      });
+      await updateSelectedFlowInput(
+        updateDevelopmentStageCollaborationInput({
+          currentInput,
+          stageId,
+          patch: {
+            status: "in_progress",
+            knowledge,
+            agentId: created.agentId,
+            workspaceId: created.workspaceId,
+            startedAt: created.startedAt,
+            completedAt: null,
+          },
+          now: created.startedAt,
+        }),
       );
+      closePluginPanel();
+      navigateToAgent({
+        serverId,
+        agentId: created.agentId,
+        workspaceId: created.workspaceId,
+        pin: true,
+      });
     },
     [
+      activeWorkspace,
       client,
+      closePluginPanel,
       fixedFormValues,
-      projectContext.error,
-      projectContext.isLoading,
       projectContext.repositoryPath,
-      queryClient,
       selectedFlow,
+      selectedProject,
       serverId,
-      supportsJobDrafts,
+      updateSelectedFlowInput,
     ],
+  );
+  const handleCompleteStage = useCallback(
+    async (stageId: DevelopmentStageId, knowledge: string) => {
+      if (!selectedFlow) throw new Error("开发流程不可用");
+      const collaboration = developmentStageCollaborationFromInput(selectedFlow.job.input, stageId);
+      if (!collaboration.agentId) {
+        throw new Error("请先在 Project 中开始该节点，再标记完成");
+      }
+      const completedAt = new Date().toISOString();
+      await updateSelectedFlowInput(
+        updateDevelopmentStageCollaborationInput({
+          currentInput: asInputRecord(selectedFlow.job.input),
+          stageId,
+          patch: {
+            status: "completed",
+            knowledge,
+            completedAt,
+          },
+          now: completedAt,
+        }),
+      );
+    },
+    [selectedFlow, updateSelectedFlowInput],
+  );
+  const handleReopenStage = useCallback(
+    async (stageId: DevelopmentStageId, knowledge: string) => {
+      await handleOpenStage(stageId, knowledge, undefined, true);
+    },
+    [handleOpenStage],
   );
   const handleFlowDeleted = useCallback(() => setSelectedFlowId(null), []);
   const developmentDelete = useDevelopmentDelete({
@@ -836,7 +971,10 @@ export function ByteDevelopmentPanel({
           onFormValuesChange={setEditDraft}
           onCreateDraft={handleCreateDraft}
           onSavePrd={handleSavePrd}
-          onStartFlow={handleStartFlow}
+          onSaveStageKnowledge={handleSaveStageKnowledge}
+          onOpenStage={handleOpenStage}
+          onCompleteStage={handleCompleteStage}
+          onReopenStage={handleReopenStage}
           onCopy={handleCopy}
           onSave={handleSaveEdit}
           onCancel={handleCancelEdit}

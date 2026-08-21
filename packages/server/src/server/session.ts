@@ -282,7 +282,7 @@ import {
   ProjectDirectoryRequestError,
 } from "./project-directory-service.js";
 import {
-  ensureManagedProjectCodeReposPath,
+  ensureManagedProjectStorageRoot,
   removeManagedProjectStorage,
   removeManagedWorkspaceStorage,
   resolveProjectPath,
@@ -3158,25 +3158,17 @@ export class Session {
           removedWorkspaceIds.push(workspaceId);
         }
 
-        await this.projectRegistry.remove(resolvedProjectId);
-        const cleanupResults = await Promise.allSettled([
-          ...projectWorkspaces.map((workspace) =>
+        await Promise.all(
+          projectWorkspaces.map((workspace) =>
             removeManagedWorkspaceStorage(
               this.paseoHome,
               workspace.projectId,
               workspace.workspaceId,
             ),
           ),
-          removeManagedProjectStorage(this.paseoHome, resolvedProjectId),
-        ]);
-        for (const cleanupResult of cleanupResults) {
-          if (cleanupResult.status === "rejected") {
-            this.sessionLogger.warn(
-              { err: cleanupResult.reason, projectId: resolvedProjectId },
-              "Failed to clean up removed Project storage",
-            );
-          }
-        }
+        );
+        await removeManagedProjectStorage(this.paseoHome, resolvedProjectId);
+        await this.projectRegistry.remove(resolvedProjectId);
         await removeProjectCustomIcon({
           paseoHome: this.paseoHome,
           projectId: resolvedProjectId,
@@ -4834,6 +4826,9 @@ export class Session {
   ): Promise<WorkspaceDescriptorPayload> {
     const resolvedProjectRecord =
       projectRecord ?? (await this.projectRegistry.get(workspace.projectId));
+    if (resolvedProjectRecord) {
+      ensureManagedProjectStorageRoot(this.paseoHome, resolvedProjectRecord.projectId);
+    }
 
     let diffStat: { additions: number; deletions: number } | null = null;
     const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
@@ -4936,6 +4931,9 @@ export class Session {
     result: CreatePaseoWorktreeResult,
   ): Promise<WorkspaceDescriptorPayload> {
     const projectRecord = await this.projectRegistry.get(result.workspace.projectId);
+    if (projectRecord) {
+      ensureManagedProjectStorageRoot(this.paseoHome, projectRecord.projectId);
+    }
     return {
       id: result.workspace.workspaceId,
       projectId: result.workspace.projectId,
@@ -5113,9 +5111,7 @@ export class Session {
   private buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): WorkspaceProjectDescriptorPayload {
-    if (project.rootPath === null) {
-      ensureManagedProjectCodeReposPath(this.paseoHome, project.projectId);
-    }
+    ensureManagedProjectStorageRoot(this.paseoHome, project.projectId);
     const projectPath = resolveProjectPath({ paseoHome: this.paseoHome, project });
     const sourceDirectory = resolveProjectSourceDirectory({
       paseoHome: this.paseoHome,

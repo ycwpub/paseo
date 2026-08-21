@@ -35,6 +35,8 @@ import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
 import { ProjectKnowledgeEditor } from "@/projects/knowledge/editor";
 import { projectKnowledgeDraftError } from "@/projects/knowledge/model";
+import { ProjectLarkContextEditor } from "@/projects/lark/project-lark-context-editor";
+import { projectLarkGroupDraftError } from "@/projects/lark/project-lark-context-model";
 import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
 import { ProjectLinkedPluginProjects } from "@/plugins/project/project-linked-plugin-projects";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
@@ -627,6 +629,11 @@ function ProjectConfigForm({
       updateDraft((d) => ({ ...d, projectKnowledge })),
     [updateDraft],
   );
+  const handleProjectLarkGroupsChange = useCallback(
+    (projectLarkGroups: ProjectConfigDraft["projectLarkGroups"]) =>
+      updateDraft((d) => ({ ...d, projectLarkGroups })),
+    [updateDraft],
+  );
 
   const handleSaveGlobalIndexInterval = useCallback(() => {
     const parsed = Number(globalIndexIntervalText.trim());
@@ -787,6 +794,13 @@ function ProjectConfigForm({
         onChange={handleProjectKnowledgeChange}
       />
 
+      <ProjectLarkContextEditor
+        serverId={serverId}
+        value={draft.projectLarkGroups}
+        error={projectValidation.projectLarkGroupError}
+        onChange={handleProjectLarkGroupsChange}
+      />
+
       <SettingsGroup
         title={t("settings.project.worktree.title")}
         info={t("settings.project.worktree.info")}
@@ -945,6 +959,7 @@ interface ProjectConfigurationValidation {
   indexIntervalError: string | null;
   variableError: string | null;
   projectKnowledgeError: string | null;
+  projectLarkGroupError: string | null;
 }
 
 function validateProjectConfiguration(
@@ -981,15 +996,21 @@ function validateProjectConfiguration(
     });
   }
   const projectKnowledgeError = projectKnowledgeDraftError(draft.projectKnowledge);
+  const projectLarkGroupError = projectLarkGroupDraftError(draft.projectLarkGroups);
 
   return {
     hasErrors: Boolean(
-      projectDirectoryError || indexIntervalError || variableError || projectKnowledgeError,
+      projectDirectoryError ||
+      indexIntervalError ||
+      variableError ||
+      projectKnowledgeError ||
+      projectLarkGroupError,
     ),
     projectDirectoryError,
     indexIntervalError,
     variableError,
     projectKnowledgeError,
+    projectLarkGroupError,
   };
 }
 

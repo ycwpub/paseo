@@ -183,6 +183,16 @@ export const PaseoInstructionTemplateSchema = z
   })
   .passthrough();
 
+export const PaseoProjectLarkGroupSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    botId: z.string().trim().min(1),
+    chatId: z.string().trim().min(1),
+    enabled: z.boolean().optional(),
+    messageLimit: z.number().int().positive().max(200).optional(),
+  })
+  .passthrough();
+
 export const PaseoProjectConfigSchema = z
   .object({
     directoryMode: z.enum(["single", "multiple"]).optional(),
@@ -191,6 +201,7 @@ export const PaseoProjectConfigSchema = z
     indexSkill: PaseoProjectIndexSkillSchema.optional(),
     variables: z.record(z.string(), z.string()).optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
+    larkGroups: z.array(PaseoProjectLarkGroupSchema).optional(),
     // COMPAT(projectLarkDocuments): legacy Project links are migrated into
     // knowledge.general cloud documents when saved. Keep old configs parseable
     // until 2027-02-20.
@@ -246,6 +257,7 @@ export type PaseoMetadataGeneration = z.infer<typeof PaseoMetadataGenerationSche
 export type PaseoProjectDirectories = z.infer<typeof PaseoProjectDirectoriesSchema>;
 export type PaseoProjectIndexSkill = z.infer<typeof PaseoProjectIndexSkillSchema>;
 export type PaseoInstructionTemplate = z.infer<typeof PaseoInstructionTemplateSchema>;
+export type PaseoProjectLarkGroup = z.infer<typeof PaseoProjectLarkGroupSchema>;
 export type PaseoProjectConfig = z.infer<typeof PaseoProjectConfigSchema>;
 export type PaseoConfigRaw = z.infer<typeof PaseoConfigRawSchema>;
 export type PaseoConfig = z.infer<typeof PaseoConfigSchema>;

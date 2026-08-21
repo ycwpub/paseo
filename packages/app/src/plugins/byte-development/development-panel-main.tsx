@@ -8,7 +8,7 @@ import { DevelopmentFlowDetail } from "./development-flow-detail";
 import { DevelopmentFlowForm } from "./development-flow-form";
 import type { DevelopmentPrdSourceValue } from "./development-prd-source-model";
 import type { DevelopmentProjectMode } from "./development-project-selection-model";
-import type { DevelopmentFlow } from "./flow-model";
+import type { DevelopmentFlow, DevelopmentStageId } from "./flow-model";
 import type { PluginProjectDefaultAgentValue } from "@/plugins/project/plugin-project-default-agent-field";
 
 export function DevelopmentPanelMain({
@@ -45,7 +45,10 @@ export function DevelopmentPanelMain({
   onFormValuesChange,
   onCreateDraft,
   onSavePrd,
-  onStartFlow,
+  onSaveStageKnowledge,
+  onOpenStage,
+  onCompleteStage,
+  onReopenStage,
   onCopy,
   onSave,
   onCancel,
@@ -88,7 +91,14 @@ export function DevelopmentPanelMain({
   onFormValuesChange: (form: Record<string, unknown>) => void;
   onCreateDraft: () => void;
   onSavePrd: (value: DevelopmentPrdSourceValue) => Promise<void>;
-  onStartFlow: (value: DevelopmentPrdSourceValue) => Promise<void>;
+  onSaveStageKnowledge: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
+  onOpenStage: (
+    stageId: DevelopmentStageId,
+    knowledge: string,
+    prdSource?: DevelopmentPrdSourceValue,
+  ) => Promise<void>;
+  onCompleteStage: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
+  onReopenStage: (stageId: DevelopmentStageId, knowledge: string) => Promise<void>;
   onCopy: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -146,7 +156,10 @@ export function DevelopmentPanelMain({
         onOpenProject={onOpenProject}
         onOpenProjectSettings={onOpenProjectSettings}
         onSavePrd={onSavePrd}
-        onStartFlow={onStartFlow}
+        onSaveStageKnowledge={onSaveStageKnowledge}
+        onOpenStage={onOpenStage}
+        onCompleteStage={onCompleteStage}
+        onReopenStage={onReopenStage}
         onCopy={onCopy}
         onEdit={onEdit}
         onDelete={onDelete}

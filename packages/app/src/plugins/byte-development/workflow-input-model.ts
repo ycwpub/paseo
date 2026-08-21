@@ -26,7 +26,14 @@ const BYTE_DEVELOPMENT_WORKFLOW_INPUT_KEYS = [
   "memory_assistant",
   "assistant_id",
   "memory_instructions",
+  "stage_collaboration",
 ] as const;
+
+const BYTE_DEVELOPMENT_WORKFLOW_INPUT_DEFAULTS: Record<string, unknown> = {
+  // Missing approval must always select the safe, read-only development branch.
+  // This also repairs drafts created before the approval field was introduced.
+  approve_development: false,
+};
 
 /**
  * Keep the development console submission aligned with the strict Workflow
@@ -36,7 +43,7 @@ const BYTE_DEVELOPMENT_WORKFLOW_INPUT_KEYS = [
 export function sanitizeByteDevelopmentWorkflowInput(
   input: Record<string, unknown>,
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = { ...BYTE_DEVELOPMENT_WORKFLOW_INPUT_DEFAULTS };
   for (const key of BYTE_DEVELOPMENT_WORKFLOW_INPUT_KEYS) {
     if (Object.hasOwn(input, key) && input[key] !== undefined) {
       result[key] = input[key];

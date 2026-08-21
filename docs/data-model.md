@@ -2,13 +2,13 @@
 
 ## Project identity
 
-Directory-backed Projects are allocated for the exact root selected by the caller, normalized
-lexically with `path.resolve` (never `realpath`). Multiple-directory Projects are allocated with
-`rootPath: null` and receive a stable private code root at
-`$PASEO_HOME/{projectId}/code_repos`. Project configuration remains under
-`$PASEO_HOME/projects/{projectId}`, while Project-owned repositories and code directories live
-below `code_repos`. Code inside this private root is deleted with the Project. Code directories
-outside the private root are shared or external and are never deleted by Project removal.
+Every Project receives a stable host-managed Project path at `$PASEO_HOME/{projectId}`. This path
+stores `paseo.json`, Project-owned files, and Workspace data regardless of directory mode.
+Single-directory Projects additionally retain the exact directory selected by the caller,
+normalized lexically with `path.resolve` (never `realpath`), as `rootPath`; that directory is a
+project/source directory, not the Project path. Multiple-directory Projects use `rootPath: null`.
+Content inside the managed Project path is deleted with the Project. Project directories outside
+the managed path are shared or external and are never deleted by Project removal.
 New project IDs are generated opaque `prj_<16 hex>` values and are never derived from the
 filesystem path. Existing remote-shaped or path-shaped IDs are retained as readable compatibility
 records and are never rekeyed. Explicit **Add Project** operations always allocate a new identity,
@@ -48,19 +48,21 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
 ## Project resource configuration
 
-Project resource configuration follows the Project's directory mode:
+Project resource configuration is stored at
+`$PASEO_HOME/{projectId}/paseo.json` for every directory mode. Legacy path-shaped IDs use a safe
+hashed directory name so they cannot escape `$PASEO_HOME`.
 
-- A single-directory Project stores `paseo.json` in its configured Project directory.
-- A multiple-directory Project stores `paseo.json` at
-  `$PASEO_HOME/projects/{projectId}/paseo.json`. Legacy path-shaped IDs use a safe hashed directory
-  name so they cannot escape the Project storage root.
+- A single-directory Project keeps its registered `rootPath` only as its project/source directory.
+- A multiple-directory Project has `rootPath: null` and uses configured project directories plus
+  its managed Project path.
 - A Project created without a directory starts in multiple-directory mode with an empty Project
   directory list.
 
-Changing the mode migrates the complete `paseo.json`, including worktree and script configuration.
-Paseo writes the new file before removing the old one. Changing to single-directory mode updates
-the registered Project root to the selected directory. Changing to multiple-directory mode clears
-the registered root so the Project uses its private `code_repos` path.
+Legacy `paseo.json` files in a single project directory or under the former
+`$PASEO_HOME/projects/...` locations remain readable and migrate to the managed Project path on the
+next successful write. Changing to single-directory mode updates `rootPath` to the selected project
+directory. Changing to multiple-directory mode clears `rootPath`; neither change moves the current
+configuration away from the managed Project path.
 
 ```json
 {
@@ -93,10 +95,13 @@ the registered root so the Project uses its private `code_repos` path.
 }
 ```
 
-Every directory type accepts multiple physical directories. Relative paths resolve from the
-registered Project root. Multiple-directory Projects always include their private
-`~/.paseo/{{projectId}}/code_repos` directory as a writable directory, followed by configured code
-directories. Project-exclusive repositories and code directories are stored below `code_repos`.
+Every directory type accepts multiple physical directories. For a single-directory Project,
+relative resource paths resolve from its registered project directory. For a multiple-directory
+Project, they resolve from the managed Project path. `{{projectRoot}}` always means the managed
+Project path, while `{{projectDirectory}}` means the single project directory when present and
+otherwise the managed Project path. Multiple-directory Projects always include their private
+`~/.paseo/{{projectId}}` directory as a writable directory, followed by configured code directories.
+Project-exclusive repositories and files are stored below this private Project path.
 For a single-directory Project with no explicit Project directory entry, the active Workspace
 directory is used so worktree Agents do not accidentally edit the main checkout. Project
 directories are writable and read on demand. Configured index Skill directories are consulted
@@ -182,14 +187,17 @@ $PASEO_HOME/
 ├── relay-connection-history.json        # 30-day local Relay connection history
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
+├── {projectId}/                         # Project path for every directory mode
+│   ├── paseo.json                       # Project resource configuration
+│   ├── <Project-owned files>
+│   └── workspaces/
+│       └── {workspaceId}/                # Workspace-scoped data
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
-│   ├── {projectId}/
-│   │   └── paseo.json                    # Multiple-directory Project configuration and files
+│   ├── {projectId}/                     # Legacy Project metadata/config migration source
 │   └── icons/                           # Host-local custom project icon images
-├── workspaces/
-│   └── {workspaceId}/                    # Workspace-scoped temporary files
+├── workspaces/                           # Legacy Workspace data migrated on access
 ├── runtime/
 │   └── managed-processes/
 │       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap
@@ -534,7 +542,7 @@ Array of project records.
 | -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `projectId`          | `string`                    | Host-local primary key; new records use opaque `prj_<16 hex>` IDs                                                                          |
 | `projectKey`         | `string \| null`            | Persisted opaque cross-host grouping key; reconciliation backfills absent values                                                           |
-| `rootPath`           | `string \| null`            | Exact lexically normalized selected root; null for a blank Project that is not yet attached to a directory                                 |
+| `rootPath`           | `string \| null`            | Single project/source directory, normalized lexically; null for multiple-directory Projects. This is not the managed Project path.         |
 | `kind`               | `"git" \| "non_git"`        | Mutable Git observation about `rootPath`, never a membership key                                                                           |
 | `displayName`        | `string`                    | Stable default name; selected-root basename for directory-backed Projects and the entered name for blank Projects                          |
 | `customName`         | `string \| null`            | User-set override layered over `displayName`. Null means "use the derived name".                                                           |

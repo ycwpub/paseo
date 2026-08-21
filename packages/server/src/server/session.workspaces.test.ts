@@ -50,6 +50,7 @@ import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-servic
 import { deriveProjectKey } from "./project-key.js";
 import {
   resolveManagedProjectPath,
+  resolveManagedProjectStorageRoot,
   resolveManagedWorkspacePath,
 } from "./project/project-storage-paths.js";
 import {
@@ -3681,7 +3682,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
       projectDisplayName: "repo",
       projectCustomName: null,
       projectCustomIconRevision: null,
-      projectRootPath: REPO_CWD,
+      projectRootPath: resolveManagedProjectStorageRoot("/tmp/paseo-test", project.projectId),
       projectSourceDirectory: REPO_CWD,
       projectKind: "git",
     },
@@ -4019,7 +4020,7 @@ test("create paseo worktree response preserves an explicit non-Git project", asy
   expect(response?.payload.workspace).toMatchObject({
     projectId: explicitProject.projectId,
     projectDisplayName: explicitProject.displayName,
-    projectRootPath: explicitProject.rootPath,
+    projectRootPath: resolveManagedProjectStorageRoot(paseoHome, explicitProject.projectId),
     projectKind: "non_git",
     workspaceKind: "worktree",
     name: "worktree-123",

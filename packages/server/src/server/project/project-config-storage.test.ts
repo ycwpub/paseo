@@ -11,7 +11,7 @@ import {
   writeProjectConfigForProject,
 } from "./project-config-storage.js";
 import { statPaseoConfigPath } from "../../utils/paseo-config-file.js";
-import { resolveManagedProjectCodeReposPath } from "./project-storage-paths.js";
+import { resolveManagedProjectStorageRoot } from "./project-storage-paths.js";
 
 const tempDirectories: string[] = [];
 
@@ -42,12 +42,12 @@ describe("project config storage", () => {
       mode: "multiple",
     });
     expect(resolveGlobalProjectConfigPath(paseoHome, project.projectId)).toMatch(
-      /projects\/legacy-[a-f0-9]{64}\/paseo\.json$/u,
+      /legacy-[a-f0-9]{64}\/paseo\.json$/u,
     );
     expect(resolveGlobalProjectConfigPath(paseoHome, project.projectId)).not.toContain("..");
   });
 
-  it("includes the private code_repos path before configured directories", () => {
+  it("includes the private Project path before configured directories", () => {
     const paseoHome = makeDirectory("project-config-home-");
     const configuredDirectory = makeDirectory("project-config-source-");
     const project = { projectId: "prj_multiple", rootPath: null };
@@ -64,12 +64,34 @@ describe("project config storage", () => {
         },
       }),
     ).toEqual([
-      resolveManagedProjectCodeReposPath(paseoHome, project.projectId),
+      resolveManagedProjectStorageRoot(paseoHome, project.projectId),
       configuredDirectory,
     ]);
   });
 
-  it("migrates the complete config from a single Project directory into PASEO_HOME", () => {
+  it("keeps a single-directory Project directory separate from its managed Project path", () => {
+    const paseoHome = makeDirectory("project-config-home-");
+    const projectRoot = makeDirectory("project-config-root-");
+    const project = { projectId: "prj_single_directories", rootPath: projectRoot };
+
+    expect(resolveProjectConfigDirectories({ paseoHome, project, config: null })).toEqual([
+      projectRoot,
+    ]);
+    expect(
+      resolveProjectConfigDirectories({
+        paseoHome,
+        project,
+        config: {
+          project: {
+            directoryMode: "single",
+            directories: { project: [".", "packages/app"] },
+          },
+        },
+      }),
+    ).toEqual([projectRoot, path.join(projectRoot, "packages/app")]);
+  });
+
+  it("migrates the complete config from a single Project directory into its managed path", () => {
     const paseoHome = makeDirectory("project-config-home-");
     const projectRoot = makeDirectory("project-config-root-");
     const project = { projectId: "prj_single_to_multiple", rootPath: projectRoot };
@@ -120,7 +142,7 @@ describe("project config storage", () => {
     });
   });
 
-  it("migrates a multiple-directory config into its selected single directory", () => {
+  it("keeps config in the managed path when a multiple-directory Project becomes single", () => {
     const paseoHome = makeDirectory("project-config-home-");
     const originalRoot = makeDirectory("project-config-root-");
     const selectedRoot = path.join(originalRoot, "selected");
@@ -167,12 +189,12 @@ describe("project config storage", () => {
         mtimeMs: expect.any(Number),
         size: expect.any(Number),
       }),
-      configPath: path.join(selectedRoot, "paseo.json"),
+      configPath: globalPath,
       mode: "single",
       projectRoot: selectedRoot,
     });
-    expect(existsSync(globalPath)).toBe(false);
-    expect(JSON.parse(readFileSync(path.join(selectedRoot, "paseo.json"), "utf8"))).toEqual({
+    expect(existsSync(path.join(selectedRoot, "paseo.json"))).toBe(false);
+    expect(JSON.parse(readFileSync(globalPath, "utf8"))).toEqual({
       worktree: { teardown: "npm run clean" },
       project: {
         directoryMode: "single",
@@ -227,6 +249,55 @@ describe("project config storage", () => {
         readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
       ),
     ).toEqual({
+      project: {
+        directoryMode: "multiple",
+        variables: { owner: "commerce" },
+      },
+    });
+  });
+
+  it("reads the previous Project metadata config and migrates it on the next write", () => {
+    const paseoHome = makeDirectory("project-config-home-");
+    const project = { projectId: "prj_legacy_metadata", rootPath: null };
+    const legacyPath = path.join(paseoHome, "projects", project.projectId, "paseo.json");
+    mkdirSync(path.dirname(legacyPath), { recursive: true });
+    writeFileSync(
+      legacyPath,
+      JSON.stringify({
+        project: {
+          directoryMode: "multiple",
+          variables: { owner: "payments" },
+        },
+      }),
+    );
+
+    const current = readProjectConfigForProject({ paseoHome, project });
+    expect(current).toMatchObject({
+      ok: true,
+      configPath: legacyPath,
+      mode: "multiple",
+    });
+
+    const result = writeProjectConfigForProject({
+      paseoHome,
+      project,
+      config: {
+        project: {
+          directoryMode: "multiple",
+          variables: { owner: "commerce" },
+        },
+      },
+      expectedRevision: current.ok ? current.revision : null,
+    });
+
+    const managedPath = resolveGlobalProjectConfigPath(paseoHome, project.projectId);
+    expect(result).toMatchObject({
+      ok: true,
+      configPath: managedPath,
+      mode: "multiple",
+    });
+    expect(existsSync(legacyPath)).toBe(false);
+    expect(JSON.parse(readFileSync(managedPath, "utf8"))).toEqual({
       project: {
         directoryMode: "multiple",
         variables: { owner: "commerce" },

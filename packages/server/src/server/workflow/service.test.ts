@@ -737,6 +737,53 @@ describe("WorkflowService", () => {
     expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["prepare", "route", "finish"]);
   });
 
+  it("uses the default switch branch when an optional expression path is missing", async () => {
+    const home = await createTempHome();
+    const scriptPath = join(home, "workflow.json");
+    await writeFile(
+      scriptPath,
+      JSON.stringify({
+        ...workflowV1,
+        version: 1,
+        name: "Optional approval switch",
+        steps: [
+          {
+            id: "approval",
+            type: "switch",
+            switchVar: "{{origin_input.approve_development}}",
+            cases: [
+              {
+                equals: true,
+                steps: [
+                  {
+                    id: "write",
+                    type: "bash",
+                    initialCommand: nodeCommand('__paseoWriteResult({ mode: "write" });'),
+                  },
+                ],
+              },
+            ],
+            defaultSteps: [
+              {
+                id: "read-only",
+                type: "bash",
+                initialCommand: nodeCommand('__paseoWriteResult({ mode: "read-only" });'),
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const service = createService(home);
+    await service.start();
+    const run = await service.runScriptAndWait({ scriptPath, inputPayload: "{}" });
+
+    expect(run.status).toBe("succeeded");
+    expect(JSON.parse(run.outputPayload ?? "{}")).toEqual({ mode: "read-only" });
+    expect(run.nodeRuns.map((node) => node.stepId)).toEqual(["approval", "read-only"]);
+  });
+
   it("executes nodes by configured downstream links instead of list order", async () => {
     const home = await createTempHome();
     const scriptPath = join(home, "workflow.json");

@@ -323,6 +323,9 @@ export class LarkChannelService {
   private readonly host: LarkChannelServiceHost;
   private readonly reminderService: LarkReminderService | null;
   private readonly directoryService: LarkDirectoryService | null;
+  private readonly incomingMessageObserver:
+    | ((botId: string, event: NormalizedLarkMessageEvent) => Promise<void> | void)
+    | null;
   private readonly subscriptions = new Map<string, LarkChannelEventSubscription>();
   private readonly runtimes = new Map<string, LarkChannelRuntimeStatusInput>();
   private readonly botIdentities = new Map<string, LarkChannelBotInfo>();
@@ -343,6 +346,10 @@ export class LarkChannelService {
     host: LarkChannelServiceHost;
     reminderService?: LarkReminderService | null;
     directoryService?: LarkDirectoryService | null;
+    incomingMessageObserver?: (
+      botId: string,
+      event: NormalizedLarkMessageEvent,
+    ) => Promise<void> | void;
   }) {
     this.store = options.store;
     this.adapter = options.adapter;
@@ -355,6 +362,7 @@ export class LarkChannelService {
     this.host = options.host;
     this.reminderService = options.reminderService ?? null;
     this.directoryService = options.directoryService ?? null;
+    this.incomingMessageObserver = options.incomingMessageObserver ?? null;
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
       void this.handleAgentManagerEvent(event);
     });
@@ -539,6 +547,14 @@ export class LarkChannelService {
     }
     const enrichedEvent = await this.enrichIncomingEvent(config, event);
     this.observeDirectoryParticipants(config, enrichedEvent);
+    if (this.incomingMessageObserver) {
+      void Promise.resolve(this.incomingMessageObserver(botId, enrichedEvent)).catch((error) => {
+        this.logger.warn(
+          { err: error, botId, chatId: enrichedEvent.chatId },
+          "Failed to observe Lark message for Project context",
+        );
+      });
+    }
     const botIdentity =
       enrichedEvent.chatType?.toLowerCase() === "p2p"
         ? null

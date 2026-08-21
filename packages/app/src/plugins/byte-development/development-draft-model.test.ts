@@ -21,6 +21,7 @@ describe("byte development draft model", () => {
       projectId: "project-1",
       agent_provider: "codex",
       agent_model: "gpt-5.6",
+      approve_development: false,
       prd_source: "manual",
       prd: "",
       meego_url: "",
@@ -43,7 +44,13 @@ describe("byte development draft model", () => {
   it("writes PRD node values into the persisted workflow input", () => {
     expect(
       buildDevelopmentPrdInput({
-        currentInput: { flow_title: "支付链路优化", approve_development: false },
+        currentInput: {
+          flow_title: "支付链路优化",
+          approve_development: false,
+          stage_collaboration: {
+            prd: { status: "in_progress", agentId: "agent-1" },
+          },
+        },
         projectId: "project-1",
         prdSource: {
           ...EMPTY_DEVELOPMENT_PRD_SOURCE,
@@ -59,6 +66,9 @@ describe("byte development draft model", () => {
       prd: "降低支付延迟",
       repository_path: "/workspace/payment",
       approve_development: false,
+      stage_collaboration: {
+        prd: { status: "in_progress", agentId: "agent-1" },
+      },
     });
   });
 
@@ -84,6 +94,38 @@ describe("byte development draft model", () => {
       projectId: "project-1",
       prd: "降低支付延迟",
       approve_development: true,
+      stage_collaboration: {},
+    });
+  });
+
+  it("copies node knowledge without reusing the original Agent session", () => {
+    expect(
+      buildDevelopmentCopyInput({
+        currentInput: {
+          flow_title: "支付链路优化",
+          projectId: "project-1",
+          stage_collaboration: {
+            review: {
+              status: "completed",
+              knowledge: "重点检查幂等性",
+              agentId: "agent-1",
+              workspaceId: "workspace-1",
+            },
+          },
+        },
+        sourceTitle: "支付链路优化",
+        existingTitles: [],
+        projectId: "project-1",
+      }),
+    ).toMatchObject({
+      stage_collaboration: {
+        review: {
+          status: "pending",
+          knowledge: "重点检查幂等性",
+          agentId: null,
+          workspaceId: null,
+        },
+      },
     });
   });
 

@@ -20,13 +20,7 @@ import type { Theme } from "@/styles/theme";
 const ThemedX = withUnistyles(X);
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-export function PluginAppPanelHost({
-  compact,
-  desktopWidth,
-}: {
-  compact: boolean;
-  desktopWidth?: number;
-}) {
+export function PluginAppPanelHost({ compact }: { compact: boolean }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const selection = usePluginAppPanelStore((state) => state.selection);
@@ -64,8 +58,8 @@ export function PluginAppPanelHost({
     () =>
       compact
         ? [styles.panel, styles.compactPanel, { paddingTop: insets.top }]
-        : [styles.panel, styles.desktopPanel, { width: desktopWidth }],
-    [compact, desktopWidth, insets.top],
+        : [styles.panel, styles.desktopPanel],
+    [compact, insets.top],
   );
 
   if (!selection) return null;
@@ -163,8 +157,9 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   desktopPanel: {
+    flex: 1,
+    minWidth: 0,
     height: "100%",
-    flexShrink: 0,
     borderLeftWidth: theme.borderWidth[1],
     borderLeftColor: theme.colors.border,
   },

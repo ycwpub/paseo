@@ -1818,23 +1818,23 @@ export const en = {
         openFolderFailed: "Couldn't open folder",
         hide: "Hide project",
         show: "Show project",
-        remove: "Remove project",
-        removing: "Removing...",
+        remove: "Delete project",
+        removing: "Deleting...",
       },
       hidden: {
         title: "Hidden projects ({{count}})",
       },
       confirmations: {
-        removeTitle: "Remove project?",
+        removeTitle: "Delete project?",
         removeMessage:
-          'Remove "{{projectName}}" from the sidebar?\n\nFiles on disk will not be changed.',
-        removeConfirm: "Remove",
+          'Permanently delete "{{projectName}}" and all of its Paseo-managed data under ~/.paseo/<projectId>?\n\nExternal source directories will not be deleted. This cannot be undone.',
+        removeConfirm: "Delete",
         cancel: "Cancel",
       },
       toasts: {
         hostDisconnected: "Host is not connected",
-        removeFailed: "Failed to remove some workspaces",
-        updateHostToRemove: "Update the host to remove projects.",
+        removeFailed: "Failed to delete the project or some of its data",
+        updateHostToRemove: "Update the host to delete projects.",
       },
       empty: {
         title: "No projects yet",
@@ -3460,7 +3460,7 @@ export const en = {
       },
       resources: {
         title: "Project resources",
-        info: "Configure writable Project directories, generated index Skill directories, and Workspace review data directories. Relative paths resolve from the Project root; Project knowledge is managed separately below.",
+        info: "Configure writable Project directories, generated index Skill directories, and Workspace review data directories. Relative paths resolve from the single project directory when present, otherwise from the managed Project path; Project knowledge is managed separately below.",
         emptyDirectories: "No directories configured.",
         removeDirectory: "Remove {{title}} entry",
         project: {

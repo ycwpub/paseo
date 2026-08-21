@@ -3,10 +3,42 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.meego_auth import begin_login, complete_login
+from scripts.meego_auth import _json_from_output, begin_login, complete_login
 
 
 class MeegoAuthTest(unittest.TestCase):
+    def test_parses_pretty_printed_meegle_json(self) -> None:
+        self.assertEqual(
+            _json_from_output(
+                """{
+  "client_id": "client-id",
+  "device_code": "secret-device-code",
+  "verification_uri": "https://meego.example.com/device"
+}"""
+            ),
+            {
+                "client_id": "client-id",
+                "device_code": "secret-device-code",
+                "verification_uri": "https://meego.example.com/device",
+            },
+        )
+
+    def test_parses_pretty_printed_json_surrounded_by_cli_logs(self) -> None:
+        self.assertEqual(
+            _json_from_output(
+                """Meegle CLI warning
+{
+  "status": "authorization_pending",
+  "interval": 5
+}
+Login is still pending."""
+            ),
+            {
+                "status": "authorization_pending",
+                "interval": 5,
+            },
+        )
+
     def test_begin_and_complete_login_without_exposing_device_code(self) -> None:
         with tempfile.TemporaryDirectory() as state_dir:
             with (

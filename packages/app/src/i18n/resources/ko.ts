@@ -1127,23 +1127,23 @@ const koOverrides = {
         openFolderFailed: "폴더를 열 수 없습니다.",
         hide: "프로젝트 숨기기",
         show: "프로젝트 표시",
-        remove: "프로젝트 제거",
-        removing: "제거하는 중...",
+        remove: "프로젝트 삭제",
+        removing: "삭제 중...",
       },
       hidden: {
         title: "숨겨진 프로젝트 ({{count}})",
       },
       confirmations: {
-        removeTitle: "프로젝트를 제거할까요?",
+        removeTitle: "프로젝트를 삭제할까요?",
         removeMessage:
-          '"{{projectName}}"을(를) 사이드바에서 제거할까요?\n\n디스크의 파일은 변경되지 않습니다.',
-        removeConfirm: "제거",
+          '"{{projectName}}" 및 ~/.paseo/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
+        removeConfirm: "삭제",
         cancel: "취소",
       },
       toasts: {
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
-        removeFailed: "일부 워크스페이스를 제거하지 못했습니다",
-        updateHostToRemove: "프로젝트를 제거하려면 호스트를 업데이트하세요.",
+        removeFailed: "프로젝트 또는 일부 데이터를 삭제하지 못했습니다",
+        updateHostToRemove: "프로젝트를 삭제하려면 호스트를 업데이트하세요.",
       },
       empty: {
         title: "아직 프로젝트가 없습니다",

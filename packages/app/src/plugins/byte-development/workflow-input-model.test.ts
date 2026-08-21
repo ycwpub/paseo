@@ -30,6 +30,9 @@ describe("sanitizeByteDevelopmentWorkflowInput", () => {
         repository_path: "/workspace/project",
         agent_provider: "codex",
         agent_model: "gpt-5.6",
+        stage_collaboration: {
+          prd: { status: "in_progress", agentId: "agent-1" },
+        },
         project_id: "legacy-project",
         unexpected: true,
       }),
@@ -40,6 +43,23 @@ describe("sanitizeByteDevelopmentWorkflowInput", () => {
       repository_path: "/workspace/project",
       agent_provider: "codex",
       agent_model: "gpt-5.6",
+      approve_development: false,
+      stage_collaboration: {
+        prd: { status: "in_progress", agentId: "agent-1" },
+      },
+    });
+  });
+
+  it("defaults missing development approval to the safe read-only branch", () => {
+    expect(
+      sanitizeByteDevelopmentWorkflowInput({
+        flow_title: "历史开发流程",
+        projectId: "prj_flow",
+      }),
+    ).toEqual({
+      flow_title: "历史开发流程",
+      projectId: "prj_flow",
+      approve_development: false,
     });
   });
 });

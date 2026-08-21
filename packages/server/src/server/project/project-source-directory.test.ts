@@ -42,7 +42,7 @@ describe("project source directory", () => {
     });
   });
 
-  it("uses the isolated code_repos path for a multi-directory Project", () => {
+  it("uses the isolated Project path for a multi-directory Project", () => {
     const paseoHome = makeDirectory("paseo-source-home-");
     const first = makeDirectory("paseo-source-first-");
     const second = makeDirectory("paseo-source-second-");

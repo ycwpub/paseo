@@ -1206,23 +1206,23 @@ export const ar: TranslationResources = {
         openFolderFailed: "Couldn't open folder",
         hide: "إخفاء المشروع",
         show: "إظهار المشروع",
-        remove: "إزالة المشروع",
-        removing: "جارٍ الإزالة...",
+        remove: "حذف المشروع",
+        removing: "جارٍ الحذف...",
       },
       hidden: {
         title: "المشاريع المخفية ({{count}})",
       },
       confirmations: {
-        removeTitle: "هل تريد إزالة المشروع؟",
+        removeTitle: "هل تريد حذف المشروع؟",
         removeMessage:
-          'هل تريد إزالة "{{projectName}}" من الشريط الجانبي؟\n\n لن يتم تغيير الملفات الموجودة على القرص.',
-        removeConfirm: "يزيل",
+          'هل تريد حذف "{{projectName}}" نهائيًا وجميع بياناته التي يديرها Paseo ضمن ~/.paseo/<projectId>؟\n\nلن تُحذف مجلدات المصدر الخارجية. لا يمكن التراجع عن هذا الإجراء.',
+        removeConfirm: "حذف",
         cancel: "يلغي",
       },
       toasts: {
         hostDisconnected: "Host غير متصل",
-        removeFailed: "فشل في إزالة بعض مساحات العمل",
-        updateHostToRemove: "قم بتحديث Host لإزالة المشاريع.",
+        removeFailed: "فشل حذف المشروع أو بعض بياناته",
+        updateHostToRemove: "حدّث Host لحذف المشاريع.",
       },
       empty: {
         title: "لا توجد مشاريع حتى الآن",

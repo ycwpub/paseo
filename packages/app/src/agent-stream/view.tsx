@@ -90,10 +90,10 @@ import {
 } from "@/assistant-file-links";
 import {
   createWorkspaceFileTabTarget,
-  normalizeWorkspaceFileLocation,
   type OpenFileDisposition,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
+import { canonicalizeWorkspaceFileLocation } from "@/workspace/file-open/canonical-location";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useForkAgent } from "@/hooks/use-fork-agent";
@@ -549,10 +549,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }
 
         if (normalized.file) {
-          const location = normalizeWorkspaceFileLocation({
-            path: normalized.file,
-            lineStart: target.lineStart,
-            lineEnd: target.lineEnd,
+          const location = canonicalizeWorkspaceFileLocation({
+            location: {
+              path: normalized.file,
+              lineStart: target.lineStart,
+              lineEnd: target.lineEnd,
+            },
+            workspaceRoot,
           });
           if (!location) {
             return;

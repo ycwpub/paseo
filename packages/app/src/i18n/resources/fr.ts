@@ -1255,13 +1255,13 @@ export const fr: TranslationResources = {
       confirmations: {
         removeTitle: "Supprimer le projet?",
         removeMessage:
-          "Supprimer «{{projectName}}» de la barre latérale?\n\nLes fichiers sur le disque ne seront pas modifiés.",
-        removeConfirm: "Retirer",
+          "Supprimer définitivement «{{projectName}}» et toutes ses données gérées par Paseo sous ~/.paseo/<projectId> ?\n\nLes répertoires de code source externes ne seront pas supprimés. Cette action est irréversible.",
+        removeConfirm: "Supprimer",
         cancel: "Annuler",
       },
       toasts: {
         hostDisconnected: "Hostn'est pas connecté",
-        removeFailed: "Échec de la suppression de certains espaces de travail",
+        removeFailed: "Échec de la suppression du projet ou de certaines de ses données",
         updateHostToRemove: "Mettez à jour le host pour supprimer des projets.",
       },
       empty: {

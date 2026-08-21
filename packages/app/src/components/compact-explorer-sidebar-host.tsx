@@ -125,6 +125,7 @@ export function CompactExplorerSidebarHost({ children, enabled }: CompactExplore
       }
       openWorkspaceFileFromExplorer({
         filePath,
+        workspaceRoot: model.workspaceRoot,
         persistenceKey: model.persistenceKey,
         showMobileAgent,
         openWorkspaceTabFocused,

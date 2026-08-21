@@ -1254,15 +1254,15 @@ export const es: TranslationResources = {
         title: "Proyectos ocultos ({{count}})",
       },
       confirmations: {
-        removeTitle: "¿Quitar proyecto?",
+        removeTitle: "¿Eliminar proyecto?",
         removeMessage:
-          '¿Quitar "{{projectName}}" de la barra lateral?\n\nLos archivos en el disco no se cambiarán.',
+          '¿Eliminar permanentemente "{{projectName}}" y todos sus datos administrados por Paseo en ~/.paseo/<projectId>?\n\nLos directorios de código fuente externos no se eliminarán. Esta acción no se puede deshacer.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
       toasts: {
         hostDisconnected: "Hostno está conectado",
-        removeFailed: "No se pudieron eliminar algunos espacios de trabajo",
+        removeFailed: "No se pudo eliminar el proyecto o algunos de sus datos",
         updateHostToRemove: "Actualiza el host para eliminar proyectos.",
       },
       empty: {

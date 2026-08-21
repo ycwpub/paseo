@@ -1,4 +1,8 @@
 import type { PluginHttpJob } from "@getpaseo/protocol/messages";
+import {
+  developmentStageCollaborationsFromInput,
+  type DevelopmentStageCollaborations,
+} from "./development-stage-collaboration-model";
 
 export const DEVELOPMENT_PLUGIN_ID = "byte-development";
 export const DEVELOPMENT_SERVICE_NAME = "development";
@@ -23,6 +27,7 @@ export interface DevelopmentFlow {
   title: string;
   summary: string;
   currentStage: DevelopmentStageId | null;
+  stages: DevelopmentStageCollaborations;
   updatedAt: string;
 }
 
@@ -47,6 +52,16 @@ function truncateTitle(value: string): string {
 }
 
 function resolveStage(job: PluginHttpJob): DevelopmentStageId | null {
+  const collaborations = developmentStageCollaborationsFromInput(job.input);
+  const active = DEVELOPMENT_STAGES.find(
+    (stage) => collaborations[stage.id]?.status === "in_progress",
+  );
+  const firstIncomplete = DEVELOPMENT_STAGES.find(
+    (stage) => collaborations[stage.id]?.status !== "completed",
+  );
+  if (Object.keys(collaborations).length > 0) {
+    return active?.id ?? firstIncomplete?.id ?? "release";
+  }
   const result = asRecord(job.result);
   const data = asRecord(result?.data);
   const stage = readText(data, "stage", "currentStage", "current_stage");
@@ -74,8 +89,21 @@ export function developmentFlowFromJob(job: PluginHttpJob): DevelopmentFlow | nu
     title,
     summary: prd ?? "暂无需求摘要",
     currentStage: resolveStage(job),
+    stages: developmentStageCollaborationsFromInput(job.input),
     updatedAt: job.endedAt ?? job.startedAt ?? job.createdAt,
   };
+}
+
+export function developmentFlowStatusLabel(flow: DevelopmentFlow): string {
+  const stages = Object.values(flow.stages);
+  if (stages.length === 0)
+    return flow.job.status === "draft" ? "待协作" : developmentJobStatusLabel(flow.job.status);
+  if (DEVELOPMENT_STAGES.every((stage) => flow.stages[stage.id]?.status === "completed")) {
+    return "已完成";
+  }
+  if (stages.some((stage) => stage?.status === "in_progress")) return "协作中";
+  if (stages.some((stage) => stage?.status === "completed")) return "进行中";
+  return "待协作";
 }
 
 export function developmentFlowsFromJobs(jobs: readonly PluginHttpJob[]): DevelopmentFlow[] {

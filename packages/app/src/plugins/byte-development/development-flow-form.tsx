@@ -127,8 +127,8 @@ export function DevelopmentFlowForm({
         <Text style={styles.title}>{mode === "create" ? "创建开发流程" : "编辑开发流程"}</Text>
         <Text style={styles.hint}>
           {mode === "create"
-            ? "这里只创建开发任务并关联 Project。创建后点击 PRD 节点填写需求，再启动研发流程。"
-            : "可修改流程的通用业务配置；PRD 请在流程的 PRD 节点中维护。执行状态、Process ID 和历史节点结果保持只读。"}
+            ? "这里只创建开发任务并关联 Project。创建后选择节点，在 Project Agent 会话中与 Agent 协作完成任务。"
+            : "可修改流程的通用业务配置；PRD 和节点专有知识请在对应节点中维护。已有 Agent 会话和节点状态不会被重置。"}
         </Text>
       </View>
       {mode === "create" ? (

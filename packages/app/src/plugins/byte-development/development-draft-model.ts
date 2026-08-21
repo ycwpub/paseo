@@ -4,6 +4,10 @@ import {
   type DevelopmentPrdSourceValue,
 } from "./development-prd-source-model";
 import { sanitizeByteDevelopmentWorkflowInput } from "./workflow-input-model";
+import {
+  copyDevelopmentStageCollaborations,
+  DEVELOPMENT_STAGE_COLLABORATION_KEY,
+} from "./development-stage-collaboration-model";
 
 export function buildDevelopmentDraftInput(input: {
   flowTitle: string;
@@ -56,6 +60,7 @@ export function buildDevelopmentCopyInput(input: {
     ...input.currentInput,
     flow_title: buildDevelopmentCopyTitle(input.sourceTitle, input.existingTitles),
     projectId,
+    [DEVELOPMENT_STAGE_COLLABORATION_KEY]: copyDevelopmentStageCollaborations(input.currentInput),
   });
 }
 

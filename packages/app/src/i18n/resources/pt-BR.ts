@@ -1237,23 +1237,23 @@ export const ptBR: TranslationResources = {
         openFolderFailed: "Couldn't open folder",
         hide: "Ocultar projeto",
         show: "Mostrar projeto",
-        remove: "Remover projeto",
-        removing: "Removendo...",
+        remove: "Excluir projeto",
+        removing: "Excluindo...",
       },
       hidden: {
         title: "Projetos ocultos ({{count}})",
       },
       confirmations: {
-        removeTitle: "Remover projeto?",
+        removeTitle: "Excluir projeto?",
         removeMessage:
-          'Remover "{{projectName}}" da barra lateral?\n\nOs arquivos no disco não serão alterados.',
-        removeConfirm: "Remover",
+          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
+        removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
       toasts: {
         hostDisconnected: "Host não está conectado",
-        removeFailed: "Falha ao remover alguns workspaces",
-        updateHostToRemove: "Atualize o host para remover projetos.",
+        removeFailed: "Falha ao excluir o projeto ou alguns de seus dados",
+        updateHostToRemove: "Atualize o host para excluir projetos.",
       },
       empty: {
         title: "Nenhum projeto ainda",

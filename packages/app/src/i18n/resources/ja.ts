@@ -1228,13 +1228,13 @@ export const ja: TranslationResources = {
       confirmations: {
         removeTitle: "プロジェクトを削除しますか？",
         removeMessage:
-          '"{{projectName}}"をサイドバーから削除しますか？\n\nディスク上のファイルは変更されません。',
+          '"{{projectName}}" と ~/.paseo/<projectId> 配下の Paseo 管理データを完全に削除しますか？\n\n外部のソースディレクトリは削除されません。この操作は元に戻せません。',
         removeConfirm: "削除",
         cancel: "キャンセル",
       },
       toasts: {
         hostDisconnected: "ホストが接続されていません",
-        removeFailed: "一部のワークスペースの削除に失敗しました",
+        removeFailed: "プロジェクトまたは一部のデータを削除できませんでした",
         updateHostToRemove: "プロジェクトを削除するにはホストを更新してください。",
       },
       empty: {

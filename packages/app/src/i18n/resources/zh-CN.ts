@@ -1771,22 +1771,23 @@ export const zhCN: TranslationResources = {
         openFolderFailed: "无法打开文件夹",
         hide: "隐藏 Project",
         show: "显示 Project",
-        remove: "移除 project",
-        removing: "正在移除...",
+        remove: "删除 Project",
+        removing: "正在删除...",
       },
       hidden: {
         title: "隐藏的 Project（{{count}}）",
       },
       confirmations: {
-        removeTitle: "移除 project？",
-        removeMessage: "从侧边栏移除「{{projectName}}」？\n\n磁盘上的文件不会被更改。",
-        removeConfirm: "移除",
+        removeTitle: "删除 Project？",
+        removeMessage:
+          "永久删除「{{projectName}}」及其所有 Workspace？\n\n将删除每台关联主机上 ~/.paseo/<projectId> 下的全部内容；外部代码目录不会被删除。此操作无法撤销。",
+        removeConfirm: "删除",
         cancel: "取消",
       },
       toasts: {
         hostDisconnected: "Host 未连接",
-        removeFailed: "部分 workspace 移除失败",
-        updateHostToRemove: "更新 host 以移除 projects。",
+        removeFailed: "Project 或部分 Project 数据删除失败",
+        updateHostToRemove: "请更新 Host 后再删除 Project。",
       },
       empty: {
         title: "还没有 projects",
@@ -3379,7 +3380,7 @@ export const zhCN: TranslationResources = {
       },
       resources: {
         title: "Project 资源目录",
-        info: "可分别配置多个可写项目目录、索引 Skill 目录和 Workspace 审查数据目录。相对路径基于 Project 根目录解析，Project 知识在下方独立管理。",
+        info: "可分别配置多个可写项目目录、索引 Skill 目录和 Workspace 审查数据目录。存在单项目目录时，相对路径基于该目录解析；否则基于 Paseo 管理的 Project 路径解析。Project 知识在下方独立管理。",
         emptyDirectories: "尚未配置目录。",
         removeDirectory: "移除“{{title}}”条目",
         project: {

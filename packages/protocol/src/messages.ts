@@ -95,6 +95,7 @@ import {
   PaseoProjectDirectoriesSchema,
   PaseoProjectIndexSkillSchema,
   PaseoInstructionTemplateSchema,
+  PaseoProjectLarkGroupSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   PaseoConfigRevisionSchema,
@@ -107,6 +108,7 @@ import {
   type PaseoProjectDirectories,
   type PaseoProjectIndexSkill,
   type PaseoInstructionTemplate,
+  type PaseoProjectLarkGroup,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 } from "./paseo-config-schema.js";
@@ -129,6 +131,7 @@ export {
   PaseoProjectDirectoriesSchema,
   PaseoProjectIndexSkillSchema,
   PaseoInstructionTemplateSchema,
+  PaseoProjectLarkGroupSchema,
   PaseoScriptEntryRawSchema,
   PaseoWorktreeConfigRawSchema,
   type PaseoConfigRaw,
@@ -139,6 +142,7 @@ export {
   type PaseoProjectDirectories,
   type PaseoProjectIndexSkill,
   type PaseoInstructionTemplate,
+  type PaseoProjectLarkGroup,
   type PaseoScriptEntryRaw,
   type ProjectConfigRpcError,
 };
@@ -3770,14 +3774,15 @@ export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   projectCustomName: z.string().nullable().optional(),
   // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
   projectCustomIconRevision: z.string().nullable().optional(),
+  // Stable host-managed Project path. This is $PASEO_HOME/<projectId> for both
+  // single-directory and multi-directory Projects.
   projectRootPath: z.string(),
-  // COMPAT(projectSourceDirectory): added on 2026-08-20. This is the host-local
-  // cwd used for new workspaces and may be a managed directory when a
-  // multi-directory Project does not yet have writable source attached.
+  // COMPAT(projectSourceDirectory): added on 2026-08-20. This is the cwd used
+  // for new workspaces: the registered project directory for a single-directory
+  // Project, or the managed Project path for a multi-directory Project.
   projectSourceDirectory: z.string().optional(),
-  // Directoryless projects intentionally have no backing filesystem root. The
-  // root path remains a string on the wire for compatibility and is empty when
-  // this flag is true.
+  // Directoryless Projects have no external single project directory, but still
+  // have the managed projectRootPath above.
   projectDirectoryless: z.boolean().optional(),
   projectKind: z.enum(["git", "non_git", "directory"]),
 });

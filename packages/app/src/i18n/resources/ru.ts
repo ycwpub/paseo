@@ -1249,13 +1249,13 @@ export const ru: TranslationResources = {
       confirmations: {
         removeTitle: "Удалить проект?",
         removeMessage:
-          "Удалить «{{projectName}}» с боковой панели?\n\n Файлы на диске не будут изменены.",
-        removeConfirm: "Удалять",
+          "Навсегда удалить «{{projectName}}» и все данные Paseo в ~/.paseo/<projectId>?\n\nВнешние каталоги с исходным кодом удалены не будут. Это действие нельзя отменить.",
+        removeConfirm: "Удалить",
         cancel: "Отмена",
       },
       toasts: {
         hostDisconnected: "Host не подключен",
-        removeFailed: "Не удалось удалить некоторые рабочие области.",
+        removeFailed: "Не удалось удалить проект или часть его данных.",
         updateHostToRemove: "Обновите host, чтобы удалять проекты.",
       },
       empty: {

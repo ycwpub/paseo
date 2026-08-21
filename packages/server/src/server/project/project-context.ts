@@ -25,11 +25,15 @@ import {
   type ResolvedProjectKnowledge,
 } from "./project-knowledge-context.js";
 import {
-  ensureManagedProjectCodeReposPath,
+  ensureManagedProjectStorageRoot,
   ensureManagedWorkspacePath,
   resolveManagedWorkspacePath,
   resolveProjectPath as resolveProjectStoragePath,
 } from "./project-storage-paths.js";
+import {
+  buildProjectLarkContextPrompt,
+  readProjectLarkContextSnapshots,
+} from "./project-lark-context.js";
 
 const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
 
@@ -83,6 +87,7 @@ function resolveProjectPath(projectRoot: string, value: string): string {
 export function resolveProjectDirectories(input: {
   projectId: string;
   projectRoot: string;
+  projectDirectory?: string;
   workspaceId: string;
   workspaceDirectory: string;
   projectConfig: PaseoProjectConfig | undefined;
@@ -96,15 +101,12 @@ export function resolveProjectDirectories(input: {
     workspaceId: input.workspaceId,
     workspaceDirectory: input.workspaceDirectory,
   };
+  const resourceRoot = input.projectDirectory ?? input.projectRoot;
   const directoryValues = resolvePaseoProjectDirectoryValues(input.projectConfig?.directories);
-  const configuredProject = resolvePathList(input.projectRoot, directoryValues.project, variables);
-  const configuredKnowledge = resolvePathList(
-    input.projectRoot,
-    directoryValues.knowledge,
-    variables,
-  );
+  const configuredProject = resolvePathList(resourceRoot, directoryValues.project, variables);
+  const configuredKnowledge = resolvePathList(resourceRoot, directoryValues.knowledge, variables);
   const configuredGeneralKnowledge = resolvePathList(
-    input.projectRoot,
+    resourceRoot,
     input.projectConfig?.knowledge?.general
       ?.filter((resource) => resource.enabled !== false && resource.type === "local-directory")
       .map((resource) => resource.source),
@@ -131,7 +133,7 @@ export function resolveProjectDirectories(input: {
         }
         const value = replaceVariables(rawValue.trim(), variables);
         if (!value) return [];
-        const root = resolveProjectPath(input.projectRoot, value);
+        const root = resolveProjectPath(resourceRoot, value);
         return [rawValue.includes("{{workspaceId}}") ? root : path.join(root, input.workspaceId)];
       }),
     ),
@@ -151,7 +153,7 @@ export function resolveProjectDirectories(input: {
   return {
     project: projectDirectories,
     knowledge,
-    indexSkill: resolvePathList(input.projectRoot, directoryValues.indexSkill, variables),
+    indexSkill: resolvePathList(resourceRoot, directoryValues.indexSkill, variables),
     workspaceData,
   };
 }
@@ -167,6 +169,7 @@ export function buildProjectContextPrompt(input: {
   workspaceDirectory: string;
   directories: ResolvedProjectDirectories;
   knowledge?: ResolvedProjectKnowledge;
+  larkContextPrompt?: string;
 }): string {
   const indexInstructions =
     input.directories.indexSkill.length > 0
@@ -182,7 +185,7 @@ export function buildProjectContextPrompt(input: {
     `Project name: ${input.projectName}`,
     `Workspace ID: ${input.workspaceId}`,
     `Primary working directory: ${input.workspaceDirectory}`,
-    "All Project directories listed below are writable working directories in the same logical Project. A multiple-directory Project includes a private code_repos directory for Project-owned code plus its configured code directories. Read and modify the directory appropriate to the task; do not assume the primary working directory is the only writable directory.",
+    "The Project path is host-managed storage for Project configuration and Project-owned files. Project directories are writable source directories. A multiple-directory Project includes its private Project path plus its configured code directories. Read and modify the directory appropriate to the task; do not assume the primary working directory is the only writable directory.",
     "",
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
@@ -211,6 +214,7 @@ export function buildProjectContextPrompt(input: {
       generalDirectories: input.directories.knowledge,
       knowledge: input.knowledge ?? EMPTY_PROJECT_KNOWLEDGE,
     }),
+    ...(input.larkContextPrompt ? [input.larkContextPrompt] : []),
   ].join("\n");
 }
 
@@ -254,8 +258,9 @@ export async function loadProjectAgentContext(input: {
   const projectRoot = input.paseoHome
     ? resolveProjectStoragePath({ paseoHome: input.paseoHome, project })
     : (project.rootPath ?? workspace.cwd);
-  if (input.paseoHome && project.rootPath === null) {
-    ensureManagedProjectCodeReposPath(input.paseoHome, project.projectId);
+  const projectDirectory = project.rootPath ? path.resolve(project.rootPath) : projectRoot;
+  if (input.paseoHome) {
+    ensureManagedProjectStorageRoot(input.paseoHome, project.projectId);
   }
   const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
@@ -263,6 +268,7 @@ export async function loadProjectAgentContext(input: {
     projectId: project.projectId,
     projectName: project.customName ?? project.displayName,
     projectRoot,
+    projectDirectory,
     workspaceId: workspace.workspaceId,
     workspaceName: workspace.title ?? workspace.displayName,
     workspaceDirectory: workspace.cwd,
@@ -270,6 +276,7 @@ export async function loadProjectAgentContext(input: {
   const directories = resolveProjectDirectories({
     projectId: project.projectId,
     projectRoot,
+    projectDirectory,
     workspaceId: workspace.workspaceId,
     workspaceDirectory: workspace.cwd,
     projectConfig,
@@ -281,8 +288,13 @@ export async function loadProjectAgentContext(input: {
     projectId: project.projectId,
     logger: input.logger,
     resolveLocalPath: (source) =>
-      resolveProjectPath(projectRoot, replaceVariables(source.trim(), variables)),
+      resolveProjectPath(projectDirectory, replaceVariables(source.trim(), variables)),
   });
+  const larkContextPrompt = input.paseoHome
+    ? buildProjectLarkContextPrompt(
+        readProjectLarkContextSnapshots(input.paseoHome, project.projectId),
+      )
+    : "";
   const managedWorkspacePath = input.paseoHome
     ? resolveManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId)
     : null;
@@ -316,6 +328,7 @@ export async function loadProjectAgentContext(input: {
       workspaceDirectory: workspace.cwd,
       directories,
       knowledge,
+      larkContextPrompt,
     }),
   };
 }

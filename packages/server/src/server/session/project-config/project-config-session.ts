@@ -9,7 +9,7 @@ import {
   writeProjectConfigForProject,
 } from "../../project/project-config-storage.js";
 import {
-  ensureManagedProjectCodeReposPath,
+  ensureManagedProjectStorageRoot,
   resolveProjectPath,
 } from "../../project/project-storage-paths.js";
 
@@ -27,8 +27,8 @@ export interface ProjectConfigSessionOptions {
 /**
  * A client's read/write surface for a Project's paseo.json. New clients identify
  * the Project directly; legacy clients still resolve repoRoot against active
- * Project roots. The storage layer selects the local or PASEO_HOME location and
- * migrates the complete config when directory mode changes.
+ * Project paths or project directories. Configuration always lives in the
+ * host-managed Project path; legacy locations migrate on the next successful write.
  */
 export class ProjectConfigSession {
   private readonly host: ProjectConfigSessionHost;
@@ -188,9 +188,7 @@ export class ProjectConfigSession {
   }
 
   private resolveProjectPath(project: PersistedProjectRecord): string {
-    if (project.rootPath === null) {
-      ensureManagedProjectCodeReposPath(this.paseoHome, project.projectId);
-    }
+    ensureManagedProjectStorageRoot(this.paseoHome, project.projectId);
     return resolveProjectPath({ paseoHome: this.paseoHome, project });
   }
 
@@ -226,11 +224,12 @@ export class ProjectConfigSession {
       if (project.archivedAt !== null) {
         continue;
       }
-      if (project.rootPath === null) {
-        continue;
-      }
-      const projectRoot = canonicalizeConfigRoot(project.rootPath);
-      if (requestedRoot === projectRoot) {
+      const projectPath = canonicalizeConfigRoot(
+        resolveProjectPath({ paseoHome: this.paseoHome, project }),
+      );
+      const projectDirectory =
+        project.rootPath === null ? null : canonicalizeConfigRoot(project.rootPath);
+      if (requestedRoot === projectPath || requestedRoot === projectDirectory) {
         return project;
       }
     }

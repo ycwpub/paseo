@@ -1,7 +1,7 @@
 {
   "version": 1,
   "title": "字节开发全流程",
-  "description": "Project 设置 → PRD → 技术方案 → Agent 指令 → 开发 → Review → BITS 部署 → 测试 → 发布。先在 Project 设置中补充代码目录、通用知识、规范知识、项目专有知识和其他项目上下文；Project 知识默认只读，只有用户明确要求更新知识时才能修改；部署、测试和发布默认只做检查或 dry-run，必须显式确认后才会执行真实操作。",
+  "description": "Project 设置 → PRD → 技术方案 → Agent 指令 → 开发 → Review → BITS 部署 → 测试 → 发布。插件页面只维护流程、节点状态和节点专有知识；每个节点都在关联 Project 的 Agent 会话中由用户与 Agent 协作完成，不在插件页面直接执行整条流程。",
   "components": [
     {
       "id": "overview",
@@ -153,24 +153,9 @@
       "text": "安全边界：BITS 写操作使用 bytedcli；部署和发布先 dry-run；未确认时不触发 quick-run；不自动跳过 Gatekeeper/QCSS；不在记忆中保存认证信息。"
     },
     {
-      "id": "run",
-      "type": "button",
-      "label": "启动研发流程",
-      "variant": "primary",
-      "action": {
-        "type": "http_service",
-        "serviceName": "development"
-      }
-    },
-    {
-      "id": "status",
-      "type": "status",
-      "label": "执行状态"
-    },
-    {
-      "id": "result",
-      "type": "result",
-      "label": "流程结果"
+      "id": "collaboration_hint",
+      "type": "text",
+      "text": "保存流程后，在流程详情中选择节点并点击“在 Project 中开始”。同一节点会复用原 Agent 会话，完成后由用户手动标记节点完成。"
     }
   ]
 }

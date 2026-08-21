@@ -18,6 +18,7 @@ interface WorkflowStepWithInputSchema {
   config?: {
     provider?: string;
     model?: string;
+    archiveOnFinish?: boolean;
   };
   steps?: WorkflowStepWithInputSchema[];
   defaultSteps?: WorkflowStepWithInputSchema[];
@@ -90,6 +91,7 @@ describe("byte development workflow input contract", () => {
       expect(step.config).toMatchObject({
         provider: "{{origin_input.agent_provider}}",
         model: "{{origin_input.agent_model}}",
+        archiveOnFinish: false,
       });
     }
   });

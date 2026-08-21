@@ -252,6 +252,7 @@ import { PluginAppService } from "./plugin/plugin-app-service.js";
 import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
 import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
 import { ProjectIndexService } from "./project/project-index-service.js";
+import { ProjectLarkContextService } from "./project/project-lark-context-service.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -752,6 +753,7 @@ export async function createPaseoDaemon(
     relay: null,
   };
   let larkChannelService: LarkChannelService;
+  let projectLarkContextService: ProjectLarkContextService;
   let assistantStore: AssistantStore;
   let serviceProxyListenTarget: ListenTarget | null = null;
 
@@ -1612,6 +1614,13 @@ export async function createPaseoDaemon(
     logger,
     assistantStore,
   });
+  projectLarkContextService = new ProjectLarkContextService({
+    paseoHome: config.paseoHome,
+    projectRegistry,
+    channelStore: larkChannelStore,
+    adapter: larkChannelAdapter,
+    logger,
+  });
   larkChannelService = new LarkChannelService({
     store: larkChannelStore,
     adapter: larkChannelAdapter,
@@ -1623,6 +1632,8 @@ export async function createPaseoDaemon(
     logger,
     reminderService: larkReminderService,
     directoryService: larkDirectoryService,
+    incomingMessageObserver: (botId, event) =>
+      projectLarkContextService.observeIncomingMessage(botId, event),
     host: {
       emitStatusChanged: (status) => {
         wsServer?.broadcast(
@@ -2167,7 +2178,9 @@ export async function createPaseoDaemon(
       speechService.start();
       scriptHealthMonitor.start();
       await larkChannelService.start();
+      await projectLarkContextService.start();
     } catch (error) {
+      await projectLarkContextService.stop().catch(() => undefined);
       await pluginHttpServiceManager.stop().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
       if (mainStarted) {
@@ -2183,6 +2196,7 @@ export async function createPaseoDaemon(
     await hubRelationships.stop();
     projectIndexService.stop();
     workspaceReconciliation.dispose();
+    await projectLarkContextService.stop().catch(() => undefined);
     await larkChannelService.stop().catch(() => undefined);
     scriptHealthMonitor.stop();
     // Freeze both ingress and registration before taking the agent closure snapshot.

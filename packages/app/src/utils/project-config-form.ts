@@ -11,6 +11,11 @@ import {
   projectKnowledgeToDraft,
   type ProjectKnowledgeDraft,
 } from "@/projects/knowledge/model";
+import {
+  projectLarkGroupDraftsToConfig,
+  projectLarkGroupsToDraft,
+  type ProjectLarkGroupDraft,
+} from "@/projects/lark/project-lark-context-model";
 
 export type LifecycleOriginalKind = "string" | "array" | "missing";
 
@@ -66,6 +71,7 @@ export interface ProjectConfigDraft {
   projectVariables: ProjectVariableDraft[];
   projectKnowledge: ProjectKnowledgeDraft;
   instructionTemplates: ProjectInstructionTemplateDraft[];
+  projectLarkGroups: ProjectLarkGroupDraft[];
   projectConfigBase: Record<string, unknown> | undefined;
 }
 
@@ -262,6 +268,7 @@ export function configToDraft(config: PaseoConfigRaw | null | undefined): Projec
     })),
     projectKnowledge: projectKnowledgeToDraft(config?.project),
     instructionTemplates: instructionTemplatesToDraft(config?.project?.instructionTemplates),
+    projectLarkGroups: projectLarkGroupsToDraft(config?.project?.larkGroups),
     projectConfigBase: config?.project as Record<string, unknown> | undefined,
   };
 }
@@ -421,6 +428,13 @@ export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
     nextProject.knowledge = nextKnowledge;
   } else {
     delete nextProject.knowledge;
+  }
+
+  const nextLarkGroups = projectLarkGroupDraftsToConfig(input.draft.projectLarkGroups);
+  if (nextLarkGroups.length > 0) {
+    nextProject.larkGroups = nextLarkGroups;
+  } else {
+    delete nextProject.larkGroups;
   }
 
   if (Object.keys(nextProject).length === 0) {

@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  rmSync,
+} from "node:fs";
+import { rm, rmdir } from "node:fs/promises";
 import path from "node:path";
 import type { PersistedProjectRecord } from "../workspace-registry.js";
 
@@ -12,7 +21,30 @@ const RESERVED_PROJECT_STORAGE_NAMES = new Set([
   "projects.json",
   "workspaces.json",
 ]);
+const RESERVED_PASEO_HOME_STORAGE_NAMES = new Set([
+  "agents",
+  "attachments",
+  "cache",
+  "clients",
+  "config.json",
+  "daemon.log",
+  "extensions",
+  "memory",
+  "orchestration-preferences.json",
+  "paseo.pid",
+  "plugins",
+  "projects",
+  "schedules",
+  "skills",
+  "skills-materialized",
+  "terminals",
+  "workflow-runs",
+  "workflows",
+  "workspaces",
+  "worktrees",
+]);
 const NO_RESERVED_STORAGE_NAMES = new Set<string>();
+const MANAGED_PROJECT_METADATA_NAMES = new Set(["paseo.json"]);
 
 function storageDirectoryName(id: string, reservedNames: ReadonlySet<string>): string {
   if (
@@ -49,8 +81,33 @@ export function resolveManagedProjectPath(paseoHome: string, projectId: string):
   );
 }
 
-export function resolveManagedWorkspacePath(paseoHome: string, workspaceId: string): string {
-  return resolveManagedStoragePath(paseoHome, "workspaces", workspaceId, NO_RESERVED_STORAGE_NAMES);
+export function resolveManagedProjectStorageRoot(paseoHome: string, projectId: string): string {
+  const homeRoot = path.resolve(paseoHome);
+  const resolved = path.resolve(
+    homeRoot,
+    storageDirectoryName(projectId, RESERVED_PASEO_HOME_STORAGE_NAMES),
+  );
+  if (path.dirname(resolved) !== homeRoot) {
+    throw new Error("Invalid managed Project storage id");
+  }
+  return resolved;
+}
+
+export function resolveManagedProjectCodeReposPath(paseoHome: string, projectId: string): string {
+  return path.join(resolveManagedProjectStorageRoot(paseoHome, projectId), "code_repos");
+}
+
+export function resolveManagedWorkspacePath(
+  paseoHome: string,
+  projectId: string,
+  workspaceId: string,
+): string {
+  return resolveManagedStoragePath(
+    resolveManagedProjectStorageRoot(paseoHome, projectId),
+    "workspaces",
+    workspaceId,
+    NO_RESERVED_STORAGE_NAMES,
+  );
 }
 
 export function resolveProjectPath(input: {
@@ -60,7 +117,7 @@ export function resolveProjectPath(input: {
   const rootPath = input.project.rootPath?.trim();
   return rootPath
     ? path.resolve(rootPath)
-    : resolveManagedProjectPath(input.paseoHome, input.project.projectId);
+    : resolveManagedProjectCodeReposPath(input.paseoHome, input.project.projectId);
 }
 
 function resolveLegacyManagedProjectPath(paseoHome: string, projectId: string): string {
@@ -71,6 +128,10 @@ function resolveLegacyManagedProjectPath(paseoHome: string, projectId: string): 
 function resolveLegacyProjectConfigDirectory(paseoHome: string, projectId: string): string {
   const projectKey = createHash("sha256").update(projectId).digest("hex");
   return path.join(paseoHome, "projects", "configs", projectKey);
+}
+
+function resolveLegacyManagedWorkspacePath(paseoHome: string, workspaceId: string): string {
+  return resolveManagedStoragePath(paseoHome, "workspaces", workspaceId, NO_RESERVED_STORAGE_NAMES);
 }
 
 export function ensureManagedProjectPath(paseoHome: string, projectId: string): string {
@@ -93,6 +154,64 @@ export function ensureManagedProjectPath(paseoHome: string, projectId: string): 
   return projectPath;
 }
 
+function mergeManagedStorageWithoutOverwrite(source: string, destination: string): void {
+  if (!existsSync(destination)) {
+    renameSync(source, destination);
+    return;
+  }
+  if (!lstatSync(source).isDirectory() || !lstatSync(destination).isDirectory()) {
+    return;
+  }
+  for (const entry of readdirSync(source)) {
+    mergeManagedStorageWithoutOverwrite(path.join(source, entry), path.join(destination, entry));
+  }
+  try {
+    rmdirSync(source);
+  } catch {
+    // Keep unresolved conflicts in the legacy location rather than deleting data.
+  }
+}
+
+export function ensureManagedProjectCodeReposPath(paseoHome: string, projectId: string): string {
+  const legacyProjectPath = ensureManagedProjectPath(paseoHome, projectId);
+  const codeReposPath = resolveManagedProjectCodeReposPath(paseoHome, projectId);
+  mkdirSync(codeReposPath, { recursive: true });
+
+  for (const entry of readdirSync(legacyProjectPath)) {
+    if (MANAGED_PROJECT_METADATA_NAMES.has(entry)) continue;
+    mergeManagedStorageWithoutOverwrite(
+      path.join(legacyProjectPath, entry),
+      path.join(codeReposPath, entry),
+    );
+  }
+  return codeReposPath;
+}
+
+export function ensureManagedWorkspacePath(
+  paseoHome: string,
+  projectId: string,
+  workspaceId: string,
+): string {
+  const workspacePath = resolveManagedWorkspacePath(paseoHome, projectId, workspaceId);
+  const legacyPath = resolveLegacyManagedWorkspacePath(paseoHome, workspaceId);
+  mkdirSync(path.dirname(workspacePath), { recursive: true });
+
+  if (existsSync(legacyPath) && !existsSync(workspacePath)) {
+    renameSync(legacyPath, workspacePath);
+  } else {
+    mkdirSync(workspacePath, { recursive: true });
+    if (existsSync(legacyPath)) {
+      cpSync(legacyPath, workspacePath, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+      rmSync(legacyPath, { recursive: true, force: true });
+    }
+  }
+  return workspacePath;
+}
+
 export async function removeManagedProjectStorage(
   paseoHome: string,
   projectId: string,
@@ -104,15 +223,29 @@ export async function removeManagedProjectStorage(
       recursive: true,
       force: true,
     }),
+    rm(resolveManagedProjectStorageRoot(paseoHome, projectId), {
+      recursive: true,
+      force: true,
+    }),
   ]);
 }
 
 export async function removeManagedWorkspaceStorage(
   paseoHome: string,
+  projectId: string,
   workspaceId: string,
 ): Promise<void> {
-  await rm(resolveManagedWorkspacePath(paseoHome, workspaceId), {
-    recursive: true,
-    force: true,
-  });
+  const projectStorageRoot = resolveManagedProjectStorageRoot(paseoHome, projectId);
+  await Promise.all([
+    rm(resolveManagedWorkspacePath(paseoHome, projectId, workspaceId), {
+      recursive: true,
+      force: true,
+    }),
+    rm(resolveLegacyManagedWorkspacePath(paseoHome, workspaceId), {
+      recursive: true,
+      force: true,
+    }),
+  ]);
+  await rmdir(path.join(projectStorageRoot, "workspaces")).catch(() => undefined);
+  await rmdir(projectStorageRoot).catch(() => undefined);
 }

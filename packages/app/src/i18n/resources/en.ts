@@ -3482,7 +3482,7 @@ export const en = {
         },
         workspaceData: {
           title: "Workspace data directories",
-          hint: "Defaults to ~/.paseo/workspaces/{{workspaceId}}, outside the Project directory, for durable progress notes, review artifacts, and outputs.",
+          hint: "Defaults to ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}, grouping durable progress notes, review artifacts, and outputs by Project.",
         },
       },
       indexSkill: {

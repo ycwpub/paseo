@@ -3401,7 +3401,7 @@ export const zhCN: TranslationResources = {
         },
         workspaceData: {
           title: "Workspace 数据目录",
-          hint: "默认使用 ~/.paseo/workspaces/{{workspaceId}}，位于 Project 目录之外，用于保存进度记录、审查材料和输出结果。",
+          hint: "默认使用 ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}，按 Project 隔离保存进度记录、审查材料和输出结果。",
         },
       },
       indexSkill: {

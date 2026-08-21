@@ -282,7 +282,7 @@ import {
   ProjectDirectoryRequestError,
 } from "./project-directory-service.js";
 import {
-  ensureManagedProjectPath,
+  ensureManagedProjectCodeReposPath,
   removeManagedProjectStorage,
   removeManagedWorkspaceStorage,
   resolveProjectPath,
@@ -3161,7 +3161,11 @@ export class Session {
         await this.projectRegistry.remove(resolvedProjectId);
         const cleanupResults = await Promise.allSettled([
           ...projectWorkspaces.map((workspace) =>
-            removeManagedWorkspaceStorage(this.paseoHome, workspace.workspaceId),
+            removeManagedWorkspaceStorage(
+              this.paseoHome,
+              workspace.projectId,
+              workspace.workspaceId,
+            ),
           ),
           removeManagedProjectStorage(this.paseoHome, resolvedProjectId),
         ]);
@@ -5110,7 +5114,7 @@ export class Session {
     project: PersistedProjectRecord,
   ): WorkspaceProjectDescriptorPayload {
     if (project.rootPath === null) {
-      ensureManagedProjectPath(this.paseoHome, project.projectId);
+      ensureManagedProjectCodeReposPath(this.paseoHome, project.projectId);
     }
     const projectPath = resolveProjectPath({ paseoHome: this.paseoHome, project });
     const sourceDirectory = resolveProjectSourceDirectory({
@@ -5214,16 +5218,20 @@ export class Session {
       archivedAt: archiveTimestamp,
       workspaceRegistry: this.workspaceRegistry,
     });
-    await removeManagedWorkspaceStorage(this.paseoHome, workspaceId).catch((error) => {
-      this.sessionLogger.warn(
-        { err: error, workspaceId },
-        "Failed to clean up archived Workspace storage",
-      );
-    });
     if (!existingWorkspace) {
       this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
       return;
     }
+    await removeManagedWorkspaceStorage(
+      this.paseoHome,
+      existingWorkspace.projectId,
+      workspaceId,
+    ).catch((error) => {
+      this.sessionLogger.warn(
+        { err: error, projectId: existingWorkspace.projectId, workspaceId },
+        "Failed to clean up archived Workspace storage",
+      );
+    });
 
     if (!existingWorkspace.archivedAt) {
       const activeSiblings = (await this.workspaceRegistry.list()).filter(

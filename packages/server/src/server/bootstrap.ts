@@ -1271,9 +1271,16 @@ export async function createPaseoDaemon(
     onProjectUpdate: (update) => wsServer?.publishProjectUpdate(update),
     onWorkspaceArchived: async (workspaceId) => {
       teardownArchivedWorkspaceRuntime(workspaceId);
-      await removeManagedWorkspaceStorage(config.paseoHome, workspaceId).catch((error) => {
-        logger.warn({ err: error, workspaceId }, "Failed to clean up reconciled Workspace storage");
-      });
+      const workspace = await workspaceRegistry.get(workspaceId);
+      if (!workspace) return;
+      await removeManagedWorkspaceStorage(config.paseoHome, workspace.projectId, workspaceId).catch(
+        (error) => {
+          logger.warn(
+            { err: error, workspaceId },
+            "Failed to clean up reconciled Workspace storage",
+          );
+        },
+      );
     },
     onWorkspacesChanged: async (workspaceIds) => {
       await fanOutReconciledWorkspaceUpdates({
@@ -1301,10 +1308,15 @@ export async function createPaseoDaemon(
       workspaceRegistry,
       context,
     });
-    await removeManagedWorkspaceStorage(config.paseoHome, workspaceId).catch((error) => {
+    if (!existingWorkspace) return;
+    await removeManagedWorkspaceStorage(
+      config.paseoHome,
+      existingWorkspace.projectId,
+      workspaceId,
+    ).catch((error) => {
       logger.warn({ err: error, workspaceId }, "Failed to clean up archived Workspace storage");
     });
-    if (!existingWorkspace || existingWorkspace.archivedAt) return;
+    if (existingWorkspace.archivedAt) return;
     teardownArchivedWorkspaceRuntime(workspaceId);
   };
   // external path→workspace adapter, not ownership: archive-by-path requests that

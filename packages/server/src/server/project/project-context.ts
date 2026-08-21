@@ -25,9 +25,13 @@ import {
   type ResolvedProjectKnowledge,
 } from "./project-knowledge-context.js";
 import {
-  ensureManagedProjectPath,
+  ensureManagedProjectCodeReposPath,
+  ensureManagedWorkspacePath,
+  resolveManagedWorkspacePath,
   resolveProjectPath as resolveProjectStoragePath,
 } from "./project-storage-paths.js";
+
+const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
 
 export interface ResolvedProjectDirectories {
   project: string[];
@@ -77,14 +81,17 @@ function resolveProjectPath(projectRoot: string, value: string): string {
 }
 
 export function resolveProjectDirectories(input: {
+  projectId: string;
   projectRoot: string;
   workspaceId: string;
   workspaceDirectory: string;
   projectConfig: PaseoProjectConfig | undefined;
+  paseoHome?: string;
   variables?: Record<string, string>;
 }): ResolvedProjectDirectories {
   const variables = {
     ...input.variables,
+    projectId: input.projectId,
     projectRoot: input.projectRoot,
     workspaceId: input.workspaceId,
     workspaceDirectory: input.workspaceDirectory,
@@ -119,6 +126,9 @@ export function resolveProjectDirectories(input: {
   const workspaceData = Array.from(
     new Set(
       directoryValues.workspaceData.flatMap((rawValue) => {
+        if (input.paseoHome && rawValue.trim() === DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY) {
+          return [resolveManagedWorkspacePath(input.paseoHome, input.projectId, input.workspaceId)];
+        }
         const value = replaceVariables(rawValue.trim(), variables);
         if (!value) return [];
         const root = resolveProjectPath(input.projectRoot, value);
@@ -172,7 +182,7 @@ export function buildProjectContextPrompt(input: {
     `Project name: ${input.projectName}`,
     `Workspace ID: ${input.workspaceId}`,
     `Primary working directory: ${input.workspaceDirectory}`,
-    "All Project directories listed below are writable working directories in the same logical Project. A multiple-directory Project includes a private Project path for Project-owned files plus its configured code directories. Read and modify the directory appropriate to the task; do not assume the primary working directory is the only writable directory.",
+    "All Project directories listed below are writable working directories in the same logical Project. A multiple-directory Project includes a private code_repos directory for Project-owned code plus its configured code directories. Read and modify the directory appropriate to the task; do not assume the primary working directory is the only writable directory.",
     "",
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
@@ -245,7 +255,7 @@ export async function loadProjectAgentContext(input: {
     ? resolveProjectStoragePath({ paseoHome: input.paseoHome, project })
     : (project.rootPath ?? workspace.cwd);
   if (input.paseoHome && project.rootPath === null) {
-    ensureManagedProjectPath(input.paseoHome, project.projectId);
+    ensureManagedProjectCodeReposPath(input.paseoHome, project.projectId);
   }
   const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
@@ -258,10 +268,12 @@ export async function loadProjectAgentContext(input: {
     workspaceDirectory: workspace.cwd,
   };
   const directories = resolveProjectDirectories({
+    projectId: project.projectId,
     projectRoot,
     workspaceId: workspace.workspaceId,
     workspaceDirectory: workspace.cwd,
     projectConfig,
+    paseoHome: input.paseoHome,
     variables,
   });
   const knowledge = resolveProjectKnowledge({
@@ -271,6 +283,16 @@ export async function loadProjectAgentContext(input: {
     resolveLocalPath: (source) =>
       resolveProjectPath(projectRoot, replaceVariables(source.trim(), variables)),
   });
+  const managedWorkspacePath = input.paseoHome
+    ? resolveManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId)
+    : null;
+  if (
+    input.paseoHome &&
+    managedWorkspacePath &&
+    directories.workspaceData.includes(managedWorkspacePath)
+  ) {
+    ensureManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId);
+  }
   for (const directory of directories.workspaceData) {
     try {
       mkdirSync(directory, { recursive: true });

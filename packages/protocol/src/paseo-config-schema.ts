@@ -23,11 +23,15 @@ export const PaseoServicePortAllocationSchema = z
   }, "Expected an inclusive TCP port range from 1-65535");
 export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocationSchema>;
 
+export const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY =
+  "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
+export const LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/workspaces/{{workspaceId}}";
+
 export const DEFAULT_PASEO_PROJECT_DIRECTORIES = {
   project: ["{{workspaceDirectory}}"],
   knowledge: [],
   indexSkill: [],
-  workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
+  workspaceData: [DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY],
 } as const;
 
 export type PaseoProjectDirectoryKey = keyof typeof DEFAULT_PASEO_PROJECT_DIRECTORIES;
@@ -75,13 +79,19 @@ export function resolvePaseoProjectDirectoryEntries(
       }, new Map<string, { path: string; enabled: boolean }>())
       .values(),
   );
+  const workspaceData = resolve(
+    directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
+  );
+  for (const entry of workspaceData) {
+    if (entry.path.trim() === LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY) {
+      entry.path = DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY;
+    }
+  }
   return {
     project: resolve(directories?.project ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.project),
     knowledge,
     indexSkill: resolve(directories?.indexSkill ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.indexSkill),
-    workspaceData: resolve(
-      directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
-    ),
+    workspaceData,
   };
 }
 

@@ -6,7 +6,7 @@ import pino from "pino";
 import { ProjectConfigSession, type ProjectConfigSessionHost } from "./project-config-session.js";
 import type { PersistedProjectRecord } from "../../workspace-registry.js";
 import type { SessionOutboundMessage } from "../../messages.js";
-import { resolveManagedProjectPath } from "../../project/project-storage-paths.js";
+import { resolveManagedProjectCodeReposPath } from "../../project/project-storage-paths.js";
 
 const tempDirs: string[] = [];
 
@@ -198,7 +198,7 @@ describe("ProjectConfigSession", () => {
     project.projectId = "prj_directoryless";
     project.rootPath = null;
     const { subsystem, emitted, recordsById, paseoHome } = makeSubsystem([project]);
-    const projectPath = resolveManagedProjectPath(paseoHome, project.projectId);
+    const projectPath = resolveManagedProjectCodeReposPath(paseoHome, project.projectId);
 
     await subsystem.handleReadProjectConfigRequest({
       type: "read_project_config_request",
@@ -282,7 +282,7 @@ describe("ProjectConfigSession", () => {
       throw new Error("Expected the multiple-directory write to succeed");
     }
     expect(firstResponse.payload.repoRoot).toBe(
-      resolveManagedProjectPath(paseoHome, project.projectId),
+      resolveManagedProjectCodeReposPath(paseoHome, project.projectId),
     );
     expect(recordsById.get(project.projectId)?.rootPath).toBeNull();
 

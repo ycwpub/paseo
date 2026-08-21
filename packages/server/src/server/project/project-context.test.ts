@@ -8,7 +8,7 @@ import {
   resolveProjectDirectories,
 } from "./project-context.js";
 import { resolveGlobalProjectConfigPath } from "./project-config-storage.js";
-import { resolveManagedProjectPath } from "./project-storage-paths.js";
+import { resolveManagedProjectCodeReposPath } from "./project-storage-paths.js";
 
 describe("resolveProjectDirectories", () => {
   const roots: string[] = [];
@@ -28,6 +28,7 @@ describe("resolveProjectDirectories", () => {
 
     expect(
       resolveProjectDirectories({
+        projectId: "prj_default",
         projectRoot: root,
         workspaceId: "wks_default",
         workspaceDirectory,
@@ -40,7 +41,7 @@ describe("resolveProjectDirectories", () => {
         path.join(workspaceDirectory, ".codex"),
       ],
       indexSkill: [],
-      workspaceData: [path.join(os.homedir(), ".paseo/workspaces/wks_default")],
+      workspaceData: [path.join(os.homedir(), ".paseo/prj_default/workspaces/wks_default")],
     });
   });
 
@@ -48,6 +49,7 @@ describe("resolveProjectDirectories", () => {
     const root = path.resolve("/repo/app");
     expect(
       resolveProjectDirectories({
+        projectId: "prj_1",
         projectRoot: root,
         workspaceId: "wks_1",
         workspaceDirectory: path.join(root, "worktree"),
@@ -70,6 +72,7 @@ describe("resolveProjectDirectories", () => {
   it("supports workspace and project variables in configured paths", () => {
     const root = path.resolve("/repo/app");
     const resolved = resolveProjectDirectories({
+      projectId: "prj_2",
       projectRoot: root,
       workspaceId: "wks_2",
       workspaceDirectory: path.join(root, "feature"),
@@ -96,6 +99,7 @@ describe("resolveProjectDirectories", () => {
 
     expect(
       resolveProjectDirectories({
+        projectId: "prj_multi",
         projectRoot: root,
         workspaceId: "wks_multi",
         workspaceDirectory: source,
@@ -131,7 +135,7 @@ describe("buildProjectContextPrompt", () => {
     expect(prompt).toContain(
       "All Project directories listed below are writable working directories",
     );
-    expect(prompt).toContain("includes a private Project path");
+    expect(prompt).toContain("includes a private code_repos directory");
     expect(prompt).not.toContain("Reference directories");
     expect(prompt).toContain("General knowledge directories");
     expect(prompt).toContain("read on demand");
@@ -206,7 +210,7 @@ describe("loadProjectAgentContext", () => {
     });
 
     expect(context?.directories.project).toEqual([
-      resolveManagedProjectPath(paseoHome, project.projectId),
+      resolveManagedProjectCodeReposPath(paseoHome, project.projectId),
       sourceDirectory,
     ]);
     expect(context?.directories.knowledge).toEqual([path.join(paseoHome, "docs")]);

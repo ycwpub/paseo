@@ -9,7 +9,7 @@ import {
   writeProjectConfigForProject,
 } from "../../project/project-config-storage.js";
 import {
-  ensureManagedProjectPath,
+  ensureManagedProjectCodeReposPath,
   resolveProjectPath,
 } from "../../project/project-storage-paths.js";
 
@@ -189,7 +189,7 @@ export class ProjectConfigSession {
 
   private resolveProjectPath(project: PersistedProjectRecord): string {
     if (project.rootPath === null) {
-      ensureManagedProjectPath(this.paseoHome, project.projectId);
+      ensureManagedProjectCodeReposPath(this.paseoHome, project.projectId);
     }
     return resolveProjectPath({ paseoHome: this.paseoHome, project });
   }

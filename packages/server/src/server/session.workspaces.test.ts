@@ -3719,7 +3719,11 @@ test("project.remove.request archives active workspaces and removes the project 
     [workspace.workspaceId, workspace],
   ]);
   const projectStoragePath = resolveManagedProjectPath(paseoHome, project.projectId);
-  const workspaceStoragePath = resolveManagedWorkspacePath(paseoHome, workspace.workspaceId);
+  const workspaceStoragePath = resolveManagedWorkspacePath(
+    paseoHome,
+    workspace.projectId,
+    workspace.workspaceId,
+  );
   mkdirSync(projectStoragePath, { recursive: true });
   mkdirSync(workspaceStoragePath, { recursive: true });
   writeFileSync(path.join(projectStoragePath, "temporary.txt"), "temporary");
@@ -3829,6 +3833,7 @@ test("project.remove.request removes an already-empty project", async () => {
   const projectStoragePath = resolveManagedProjectPath(paseoHome, project.projectId);
   const workspaceStoragePath = resolveManagedWorkspacePath(
     paseoHome,
+    archivedWorkspace.projectId,
     archivedWorkspace.workspaceId,
   );
   mkdirSync(projectStoragePath, { recursive: true });
@@ -5784,7 +5789,11 @@ test("archive_workspace_request hides non-destructive workspace records", async 
   };
   session.workspaceRegistry.list = async () => [workspace];
   session.projectRegistry.archive = async () => {};
-  const workspaceStoragePath = resolveManagedWorkspacePath(paseoHome, workspace.workspaceId);
+  const workspaceStoragePath = resolveManagedWorkspacePath(
+    paseoHome,
+    workspace.projectId,
+    workspace.workspaceId,
+  );
   mkdirSync(workspaceStoragePath, { recursive: true });
   writeFileSync(path.join(workspaceStoragePath, "temporary.txt"), "temporary");
 

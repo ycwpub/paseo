@@ -25,7 +25,7 @@ describe("resolveProjectResourceDirectories", () => {
         "/repo/worktrees/feature/.trae",
       ],
       indexSkill: [],
-      workspaceData: ["~/.paseo/workspaces/wks_test"],
+      workspaceData: ["~/.paseo/prj_test/workspaces/wks_test"],
     });
   });
 

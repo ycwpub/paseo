@@ -11,6 +11,7 @@ import {
   writeProjectConfigForProject,
 } from "./project-config-storage.js";
 import { statPaseoConfigPath } from "../../utils/paseo-config-file.js";
+import { resolveManagedProjectCodeReposPath } from "./project-storage-paths.js";
 
 const tempDirectories: string[] = [];
 
@@ -46,7 +47,7 @@ describe("project config storage", () => {
     expect(resolveGlobalProjectConfigPath(paseoHome, project.projectId)).not.toContain("..");
   });
 
-  it("includes the private Project path before configured directories", () => {
+  it("includes the private code_repos path before configured directories", () => {
     const paseoHome = makeDirectory("project-config-home-");
     const configuredDirectory = makeDirectory("project-config-source-");
     const project = { projectId: "prj_multiple", rootPath: null };
@@ -62,7 +63,10 @@ describe("project config storage", () => {
           },
         },
       }),
-    ).toEqual([path.join(paseoHome, "projects", project.projectId), configuredDirectory]);
+    ).toEqual([
+      resolveManagedProjectCodeReposPath(paseoHome, project.projectId),
+      configuredDirectory,
+    ]);
   });
 
   it("migrates the complete config from a single Project directory into PASEO_HOME", () => {

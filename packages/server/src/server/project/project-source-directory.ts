@@ -1,21 +1,21 @@
 import path from "node:path";
 import type { PersistedProjectRecord } from "../workspace-registry.js";
-import { resolveManagedProjectPath } from "./project-storage-paths.js";
+import { resolveManagedProjectCodeReposPath } from "./project-storage-paths.js";
 
 export type ProjectSourceDirectory =
   | { kind: "project"; path: string }
   | { kind: "managed"; path: string };
 
 export function resolveManagedProjectSourceDirectory(paseoHome: string, projectId: string): string {
-  return resolveManagedProjectPath(paseoHome, projectId);
+  return resolveManagedProjectCodeReposPath(paseoHome, projectId);
 }
 
 /**
  * Resolve the cwd used to create a workspace for a Project.
  *
- * Multi-directory Projects use their host-local Project path. Configured code
- * directories remain additional writable directories in the Agent context,
- * while the private Project path gives each Project an isolated cwd.
+ * Multi-directory Projects use their host-local code_repos directory.
+ * Configured code directories remain additional writable directories in the
+ * Agent context, while code_repos gives each Project an isolated cwd.
  */
 export function resolveProjectSourceDirectory(input: {
   paseoHome: string;

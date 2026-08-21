@@ -327,10 +327,12 @@ export class ProjectIndexService {
       projectRoot,
     };
     const directories = resolveProjectDirectories({
+      projectId: project.projectId,
       projectRoot,
       workspaceId: "__project_index__",
       workspaceDirectory: projectRoot,
       projectConfig,
+      paseoHome: this.paseoHome,
       variables,
     });
     if (directories.indexSkill.length === 0) {

@@ -80,7 +80,7 @@ export function resolveHostKnowledge(input: {
       } catch (error) {
         input.logger?.warn(
           { err: error, source, resolvedSource },
-          "Failed to read Host knowledge document",
+          "Failed to read global knowledge document",
         );
         return { source, resolvedSource, content: null };
       }
@@ -120,9 +120,9 @@ function formatStandardDocuments(documents: readonly ResolvedHostKnowledgeDocume
             "  Status: unavailable; the document could not be read.",
           ].join("\n")
         : [
-            `--- BEGIN HOST STANDARD KNOWLEDGE: ${document.resolvedSource} ---`,
+            `--- BEGIN GLOBAL STANDARD KNOWLEDGE: ${document.resolvedSource} ---`,
             document.content,
-            `--- END HOST STANDARD KNOWLEDGE: ${document.resolvedSource} ---`,
+            `--- END GLOBAL STANDARD KNOWLEDGE: ${document.resolvedSource} ---`,
           ].join("\n"),
     )
     .join("\n\n");
@@ -140,9 +140,9 @@ export function buildHostKnowledgePrompt(knowledge: ResolvedHostKnowledge): stri
     (document) => document.content === null,
   );
   return [
-    "<paseo_host_knowledge>",
-    "Host general knowledge is optional background material shared by every Project on this Host. Read only what is relevant to the current task and adopt it only when useful.",
-    "Host general knowledge is read-only by default. Modify it only when the user explicitly asks to update Host knowledge in the current conversation.",
+    "<paseo_global_knowledge>",
+    "Global general knowledge is optional background material shared by every Project and Agent managed by this Paseo instance. Read only what is relevant to the current task and adopt it only when useful.",
+    "Global general knowledge is read-only by default. Modify it only when the user explicitly asks to update global knowledge in the current conversation.",
     "General knowledge directories:",
     formatList(knowledge.general.directories),
     "General local documents:",
@@ -150,17 +150,17 @@ export function buildHostKnowledgePrompt(knowledge: ResolvedHostKnowledge): stri
     "General cloud documents:",
     formatList(knowledge.general.cloudDocuments),
     "",
-    "Host standard knowledge is mandatory for every Agent on this Host. Read and obey every applicable requirement before acting.",
+    "Global standard knowledge is mandatory for every Agent managed by this Paseo instance. Read and obey every applicable requirement before acting.",
     unavailableStandard
-      ? "At least one local Host standard is unavailable. Stop before making changes and tell the user which standard could not be read."
-      : "All configured local Host standards are included below.",
+      ? "At least one local document in global standard knowledge is unavailable. Stop before making changes and tell the user which standard could not be read."
+      : "All configured local documents in global standard knowledge are included below.",
     knowledge.standards.cloudDocuments.length > 0
-      ? "You MUST open and read every Host standard cloud document before acting. If a document cannot be loaded, stop and tell the user."
-      : "No Host standard cloud document is configured.",
+      ? "You MUST open and read every global standard cloud document before acting. If a document cannot be loaded, stop and tell the user."
+      : "No global standard cloud document is configured.",
     "Standard cloud documents:",
     formatList(knowledge.standards.cloudDocuments),
     "Standard local document contents:",
     formatStandardDocuments(knowledge.standards.localDocuments),
-    "</paseo_host_knowledge>",
+    "</paseo_global_knowledge>",
   ].join("\n");
 }

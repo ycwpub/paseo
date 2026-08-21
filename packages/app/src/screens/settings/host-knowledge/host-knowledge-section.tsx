@@ -51,8 +51,8 @@ function HostKnowledgeForm({
         error={validationError ?? saveError}
         onChange={handleChange}
         sections={HOST_KNOWLEDGE_SECTIONS}
-        title="主机知识"
-        info="主机知识对本主机上的所有 Project 和 Agent 生效。相对路径从 Paseo 主目录解析。"
+        title="全局知识"
+        info="全局知识对当前 Paseo 实例中的所有 Project 和 Agent 生效。相对路径从 Paseo 主目录解析。"
         testID="host-knowledge-group"
       />
       <View style={styles.footer}>
@@ -64,7 +64,7 @@ function HostKnowledgeForm({
           onPress={save}
           testID="host-knowledge-save"
         >
-          保存主机知识
+          保存全局知识
         </Button>
       </View>
     </View>
@@ -77,7 +77,7 @@ export function HostKnowledgeSection({ serverId }: { serverId: string }) {
   const initialValue = useMemo(() => hostKnowledgeToDraft(config?.knowledge), [config?.knowledge]);
 
   if (isLoading || !config) {
-    return <Text style={styles.loading}>正在加载主机知识…</Text>;
+    return <Text style={styles.loading}>正在加载全局知识…</Text>;
   }
   return (
     <HostKnowledgeForm key={knowledgeKey} initialValue={initialValue} patchConfig={patchConfig} />

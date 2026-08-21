@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildHostKnowledgePrompt, resolveHostKnowledge } from "./host-knowledge-context.js";
 
-describe("Host knowledge context", () => {
+describe("global knowledge context", () => {
   it("resolves general resources and injects mandatory standards", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-host-knowledge-"));
     writeFileSync(path.join(paseoHome, "standard.md"), "Always run targeted tests.", "utf8");
@@ -29,9 +29,10 @@ describe("Host knowledge context", () => {
     expect(prompt).toContain("Always run targeted tests.");
     expect(prompt).toContain("https://example.com/standards");
     expect(prompt).toContain("mandatory for every Agent");
+    expect(prompt).toContain("<paseo_global_knowledge>");
   });
 
-  it("omits the Host knowledge prompt when nothing is configured", () => {
+  it("omits the global knowledge prompt when nothing is configured", () => {
     expect(
       buildHostKnowledgePrompt(
         resolveHostKnowledge({

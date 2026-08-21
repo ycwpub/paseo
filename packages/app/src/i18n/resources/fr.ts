@@ -2820,6 +2820,7 @@ export const fr: TranslationResources = {
       backToProjects: "Retour aux projets",
       switchHost: "Changer d'hôte",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "Aucun dossier de projet",
         description:

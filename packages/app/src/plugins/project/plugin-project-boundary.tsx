@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
 import { Text, View } from "react-native";
-import { MessageSquare, Pencil, Plus, Save, Settings, Trash2, X } from "lucide-react-native";
+import { Copy, MessageSquare, Pencil, Plus, Save, Settings, Trash2, X } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet } from "react-native-unistyles";
 import type {
@@ -53,9 +53,21 @@ import { resolvePluginProjectConversationWorkspace } from "./plugin-project-navi
 import { pluginProjectsQueryKey, usePluginProjects } from "./use-plugin-projects";
 
 type PluginProjectMode = "existing" | "new";
-type PluginProjectView = "detail" | "create" | "edit";
+type PluginProjectView = "detail" | "create" | "edit" | "copy";
 
 const EMPTY_AGENT: PluginAppDefaultAgent = { provider: "codex", model: "" };
+
+function pluginProjectEditorTitle(view: "create" | "edit" | "copy"): string {
+  if (view === "create") return "创建插件项目";
+  if (view === "copy") return "复制插件项目";
+  return "编辑插件项目";
+}
+
+function pluginProjectSaveLabel(view: "create" | "edit" | "copy"): string {
+  if (view === "create") return "创建插件项目";
+  if (view === "copy") return "复制插件项目";
+  return "保存修改";
+}
 
 export interface PluginProjectContext {
   projectId: string;
@@ -93,7 +105,7 @@ function PluginProjectEditor({
   onSave,
   onCancel,
 }: {
-  view: "create" | "edit";
+  view: "create" | "edit" | "copy";
   active: boolean;
   serverId: string;
   projectMode: PluginProjectMode;
@@ -122,7 +134,7 @@ function PluginProjectEditor({
     ],
     [canCreateNewProject, view],
   );
-  const title = view === "create" ? "创建插件项目" : "编辑插件项目";
+  const title = pluginProjectEditorTitle(view);
   return (
     <View style={styles.editorCard}>
       <View style={styles.editorHeader}>
@@ -136,7 +148,7 @@ function PluginProjectEditor({
           取消
         </Button>
       </View>
-      {view === "create" ? (
+      {view !== "edit" ? (
         <SegmentedControl
           value={projectMode}
           onValueChange={onProjectModeChange}
@@ -176,7 +188,7 @@ function PluginProjectEditor({
         serverId={serverId}
         cwd={selectedOption?.sourceDirectory ?? null}
         value={defaultAgent}
-        disabled={saving}
+        disabled={saving || view === "copy"}
         onChange={onDefaultAgentChange}
       />
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -185,7 +197,7 @@ function PluginProjectEditor({
           取消
         </Button>
         <Button variant="default" leftIcon={Save} loading={saving} onPress={onSave}>
-          {view === "create" ? "创建插件项目" : "保存修改"}
+          {pluginProjectSaveLabel(view)}
         </Button>
       </View>
     </View>
@@ -194,13 +206,17 @@ function PluginProjectEditor({
 
 function PluginProjectDetailHeader({
   project,
+  canCopy,
   onEdit,
+  onCopy,
   onDelete,
   onOpenConversation,
   onOpenSettings,
 }: {
   project: ManagedPluginProject;
+  canCopy: boolean;
   onEdit: () => void;
+  onCopy: () => void;
   onDelete: () => void;
   onOpenConversation: () => void;
   onOpenSettings: () => void;
@@ -217,6 +233,9 @@ function PluginProjectDetailHeader({
         ) : null}
       </View>
       <View style={styles.detailActions}>
+        <Button size="sm" variant="outline" leftIcon={Copy} disabled={!canCopy} onPress={onCopy}>
+          复制
+        </Button>
         <Button size="sm" variant="outline" leftIcon={Pencil} onPress={onEdit}>
           编辑
         </Button>
@@ -224,7 +243,7 @@ function PluginProjectDetailHeader({
           Project 设置
         </Button>
         <Button size="sm" variant="outline" leftIcon={MessageSquare} onPress={onOpenConversation}>
-          在 Project 中对话
+          前往 Project 对话
         </Button>
         <Button size="sm" variant="destructive" leftIcon={Trash2} onPress={onDelete}>
           删除
@@ -240,12 +259,14 @@ export function PluginProjectBoundary({
   serverId,
   pluginId,
   appDefinition,
+  initialProjectId,
   children,
 }: {
   active: boolean;
   serverId: string;
   pluginId: string | null | undefined;
   appDefinition: PluginAppDefinition;
+  initialProjectId?: string;
   children: (context: PluginProjectContext) => ReactNode;
 }) {
   const router = useRouter();
@@ -260,6 +281,7 @@ export function PluginProjectBoundary({
   const supportsProjectScopedApps = useHostFeature(serverId, "pluginProjectScopedApps");
   const supportsProjectDefaultAgent = useHostFeature(serverId, "pluginProjectDefaultAgent");
   const supportsProjectManagement = useHostFeature(serverId, "pluginProjectManagement");
+  const supportsProjectCopy = useHostFeature(serverId, "pluginProjectCopy");
   const projectOptions = useMemo(
     () => buildPluginProjectOptions(projects, serverId),
     [projects, serverId],
@@ -279,6 +301,14 @@ export function PluginProjectBoundary({
   const managedProjects = useMemo(
     () => buildManagedPluginProjects(query.data ?? [], projectOptions),
     [projectOptions, query.data],
+  );
+  const managedProjectIds = useMemo(
+    () => new Set(managedProjects.map((project) => project.projectId)),
+    [managedProjects],
+  );
+  const availableProjectOptions = useMemo(
+    () => projectOptions.filter((option) => !managedProjectIds.has(option.value)),
+    [managedProjectIds, projectOptions],
   );
   const [view, setView] = useState<PluginProjectView>("detail");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -326,12 +356,13 @@ export function PluginProjectBoundary({
   useEffect(() => {
     if (!active || view !== "detail") return;
     const next = resolveInitialManagedPluginProjectId({
+      requestedProjectId: selectedProjectId ? undefined : initialProjectId,
       currentProjectId: selectedProjectId,
       activeProjectId,
       projects: managedProjects,
     });
     if (next !== selectedProjectId) setSelectedProjectId(next);
-  }, [active, activeProjectId, managedProjects, selectedProjectId, view]);
+  }, [active, activeProjectId, initialProjectId, managedProjects, selectedProjectId, view]);
 
   const startCreate = useCallback(() => {
     setView("create");
@@ -355,6 +386,15 @@ export function PluginProjectBoundary({
     setDefaultAgent(selectedProject.state.defaultAgent);
     setActionError(null);
   }, [selectedProject]);
+  const startCopy = useCallback(() => {
+    if (!selectedProject?.state.defaultAgent || !supportsProjectCopy) return;
+    setView("copy");
+    setProjectMode("existing");
+    setFormProjectId(availableProjectOptions[0]?.value ?? null);
+    setNewProjectName(`${selectedProject.projectName} 副本`);
+    setDefaultAgent(selectedProject.state.defaultAgent);
+    setActionError(null);
+  }, [availableProjectOptions, selectedProject, supportsProjectCopy]);
   const cancelEditor = useCallback(() => {
     setView("detail");
     setActionError(null);
@@ -390,6 +430,29 @@ export function PluginProjectBoundary({
     },
     [appDefinition.id, client, pluginId, queryClient, serverId],
   );
+  const saveCopiedProject = useCallback(
+    async (targetProjectId: string) => {
+      if (!client || !pluginId || !selectedProject) {
+        throw new Error("Host 未连接、插件不可用或源插件项目不存在");
+      }
+      const copied = await client.copyPluginAppProject({
+        pluginId,
+        appId: appDefinition.id,
+        sourceProjectId: selectedProject.projectId,
+        targetProjectId,
+      });
+      if (copied.error || !copied.app) {
+        throw new Error(copied.error ?? "复制插件项目失败");
+      }
+      queryClient.setQueryData<PluginAppState[]>(
+        pluginProjectsQueryKey(serverId, pluginId, appDefinition.id),
+        (current) => upsertPluginProjectState(current, copied.app!),
+      );
+      setSelectedProjectId(targetProjectId);
+      setView("detail");
+    },
+    [appDefinition.id, client, pluginId, queryClient, selectedProject, serverId],
+  );
 
   const saveEditor = useCallback(() => {
     if (saving) return;
@@ -400,7 +463,7 @@ export function PluginProjectBoundary({
       return;
     }
     const agent = { provider, model } as PluginAppDefaultAgent;
-    if (projectMode === "new" && view === "create") {
+    if (projectMode === "new" && view !== "edit") {
       const name = newProjectName.trim();
       if (!name) {
         setActionError("请输入新 Project 名称");
@@ -416,7 +479,11 @@ export function PluginProjectBoundary({
         initialDirectorylessProjectName: name,
         onProjectCreated: ({ project }) => {
           setSaving(true);
-          void saveConfiguredProject(project.projectId, agent)
+          const save =
+            view === "copy"
+              ? saveCopiedProject(project.projectId)
+              : saveConfiguredProject(project.projectId, agent);
+          void save
             .catch((error: unknown) => setActionError(errorText(error)))
             .finally(() => setSaving(false));
         },
@@ -429,7 +496,11 @@ export function PluginProjectBoundary({
     }
     setSaving(true);
     setActionError(null);
-    void saveConfiguredProject(formProjectId, agent)
+    const save =
+      view === "copy"
+        ? saveCopiedProject(formProjectId)
+        : saveConfiguredProject(formProjectId, agent);
+    void save
       .catch((error: unknown) => setActionError(errorText(error)))
       .finally(() => setSaving(false));
   }, [
@@ -439,6 +510,7 @@ export function PluginProjectBoundary({
     openAddProjectFlow,
     projectMode,
     saveConfiguredProject,
+    saveCopiedProject,
     saving,
     serverId,
     supportsDirectorylessProjects,
@@ -580,7 +652,8 @@ export function PluginProjectBoundary({
   }
 
   let mainContent: ReactNode;
-  if (view === "create" || view === "edit") {
+  if (view === "create" || view === "edit" || view === "copy") {
+    const editorProjectOptions = view === "edit" ? projectOptions : availableProjectOptions;
     mainContent = (
       <PluginProjectEditor
         view={view}
@@ -588,7 +661,7 @@ export function PluginProjectBoundary({
         serverId={serverId}
         projectMode={projectMode}
         selectedOption={formProject}
-        projectOptions={projectOptions}
+        projectOptions={editorProjectOptions}
         newProjectName={newProjectName}
         defaultAgent={defaultAgent}
         saving={saving}
@@ -607,7 +680,9 @@ export function PluginProjectBoundary({
       <>
         <PluginProjectDetailHeader
           project={selectedProject}
+          canCopy={supportsProjectCopy}
           onEdit={startEdit}
+          onCopy={startCopy}
           onDelete={openDeleteSheet}
           onOpenConversation={openConversation}
           onOpenSettings={openProjectSettings}

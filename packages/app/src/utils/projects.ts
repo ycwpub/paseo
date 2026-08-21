@@ -19,6 +19,7 @@ export interface ProjectHostEntry {
   projectCustomName: string | null;
   serverName: string;
   isOnline: boolean;
+  projectPath: string;
   repoRoot: string;
   isDirectoryless: boolean;
   workspaceCount: number;
@@ -88,6 +89,7 @@ interface HostGroup {
   isOnline: boolean;
   workspaces: WorkspaceDescriptor[];
   customIconRevision?: string | null;
+  projectPath: string;
   fallbackRepoRoot: string;
   isDirectoryless: boolean;
 }
@@ -125,7 +127,7 @@ function buildHostProjectEntries(hosts: ProjectHost[]): HostProjectListItem[] {
 }
 
 function resolveHostRepoRoot(group: HostGroup): string {
-  return group.workspaces[0]?.projectRootPath ?? group.fallbackRepoRoot;
+  return group.projectPath || group.workspaces[0]?.projectRootPath || group.fallbackRepoRoot;
 }
 
 function toWorkspaceSummary(workspace: WorkspaceDescriptor): WorkspaceSummary {
@@ -153,6 +155,7 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     projectCustomName: group.projectCustomName,
     serverName: group.serverName,
     isOnline: group.isOnline,
+    projectPath: group.projectPath,
     repoRoot,
     isDirectoryless: group.isDirectoryless,
     workspaceCount: group.workspaces.length,
@@ -229,6 +232,7 @@ function addHostProjects(
         isOnline: host.isOnline,
         workspaces: [],
         customIconRevision: placement.customIconRevision,
+        projectPath: repoRootByProjectId.get(projectId) ?? "",
         fallbackRepoRoot: repoRootByProjectId.get(projectId) ?? "",
         isDirectoryless: directorylessProjectIds.has(projectId),
       });

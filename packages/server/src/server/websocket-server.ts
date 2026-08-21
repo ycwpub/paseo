@@ -2036,6 +2036,10 @@ export class VoiceAssistantWebSocketServer {
         pluginProjectDefaultAgent: true,
         // COMPAT(pluginProjectManagement): added on 2026-08-20.
         pluginProjectManagement: true,
+        // COMPAT(pluginProjectCopy): added on 2026-08-21.
+        pluginProjectCopy: true,
+        // COMPAT(pluginAppHtmlPreview): added on 2026-08-21.
+        pluginAppHtmlPreview: true,
         // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobList: true,
         // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.

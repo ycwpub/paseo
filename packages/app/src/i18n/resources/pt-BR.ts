@@ -2798,6 +2798,7 @@ export const ptBR: TranslationResources = {
       backToProjects: "Voltar para projetos",
       switchHost: "Trocar host",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "O projeto não tem diretório",
         description:

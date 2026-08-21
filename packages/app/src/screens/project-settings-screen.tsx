@@ -36,6 +36,7 @@ import { useProjectIcons } from "@/projects/icons";
 import { ProjectKnowledgeEditor } from "@/projects/knowledge/editor";
 import { projectKnowledgeDraftError } from "@/projects/knowledge/model";
 import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
+import { ProjectLinkedPluginProjects } from "@/plugins/project/project-linked-plugin-projects";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -286,6 +287,9 @@ function ProjectSettingsBody({
         <Text style={styles.projectId} selectable>
           {t("settings.project.projectId")}: {selectedHost.projectId}
         </Text>
+        <Text style={styles.projectPath} selectable>
+          {t("settings.project.projectPath")}: {selectedHost.projectPath}
+        </Text>
       </View>
 
       <ProjectEditSheet
@@ -302,6 +306,10 @@ function ProjectSettingsBody({
       />
 
       <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
+      <ProjectLinkedPluginProjects
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
 
       {canEditProjectConfig ? (
         renderContent({
@@ -1637,6 +1645,12 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontFamily: Platform.select({ web: "monospace", default: undefined }),
+  },
+  projectPath: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: Platform.select({ web: "monospace", default: undefined }),
+    flexShrink: 1,
   },
   nameEditorRow: {
     flex: 1,

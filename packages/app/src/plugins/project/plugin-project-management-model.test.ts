@@ -58,6 +58,23 @@ describe("plugin project management model", () => {
     ).toBe("project-1");
   });
 
+  it("prioritizes an explicitly requested linked Project", () => {
+    const otherState = {
+      ...APP_STATE,
+      projectId: "project-2",
+      updatedAt: "2026-08-20T02:00:00.000Z",
+    };
+    const projects = buildManagedPluginProjects([APP_STATE, otherState], [OPTION]);
+    expect(
+      resolveInitialManagedPluginProjectId({
+        requestedProjectId: "project-2",
+        currentProjectId: "project-1",
+        activeProjectId: "project-1",
+        projects,
+      }),
+    ).toBe("project-2");
+  });
+
   it("upserts and removes cached project states", () => {
     const updated = { ...APP_STATE, updatedAt: "2026-08-20T01:00:00.000Z" };
     expect(upsertPluginProjectState([APP_STATE], updated)).toEqual([updated]);

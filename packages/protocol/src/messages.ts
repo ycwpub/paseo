@@ -85,6 +85,7 @@ export type {
   WorkflowSaveRequest,
   WorkflowSaveResponse,
 } from "./workflow/rpc-schemas.js";
+import { PaseoHostKnowledgeSchema } from "./project-knowledge-schema.js";
 import {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -110,9 +111,11 @@ import {
   type ProjectConfigRpcError,
 } from "./paseo-config-schema.js";
 export {
+  PaseoHostKnowledgeSchema,
   PaseoProjectDocumentKnowledgeResourceSchema,
   PaseoProjectGeneralKnowledgeResourceSchema,
   PaseoProjectKnowledgeSchema,
+  type PaseoHostKnowledge,
   type PaseoProjectDocumentKnowledgeResource,
   type PaseoProjectGeneralKnowledgeResource,
   type PaseoProjectKnowledge,
@@ -242,6 +245,7 @@ export const MutableDaemonConfigSchema = z
         updateIntervalMinutes: z.number().int().positive().default(1440),
       })
       .default({ updateIntervalMinutes: 1440 }),
+    knowledge: PaseoHostKnowledgeSchema.optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({
@@ -278,6 +282,7 @@ export const MutableDaemonConfigPatchSchema = z
         updateIntervalMinutes: z.number().int().positive().optional(),
       })
       .optional(),
+    knowledge: PaseoHostKnowledgeSchema.optional(),
     instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
     providers: z
       .record(z.string(), MutableDaemonProviderConfigSchema.partial().passthrough())
@@ -3313,6 +3318,10 @@ export const ServerInfoStatusPayloadSchema = z
         pluginProjectDefaultAgent: z.boolean().optional(),
         // COMPAT(pluginProjectManagement): added on 2026-08-20.
         pluginProjectManagement: z.boolean().optional(),
+        // COMPAT(pluginProjectCopy): added on 2026-08-21.
+        pluginProjectCopy: z.boolean().optional(),
+        // COMPAT(pluginAppHtmlPreview): added on 2026-08-21.
+        pluginAppHtmlPreview: z.boolean().optional(),
         // COMPAT(pluginAppJobList): added in v0.3.2, remove gate after 2027-02-19.
         pluginAppJobList: z.boolean().optional(),
         // COMPAT(pluginAppJobMutation): added in v0.3.2, remove gate after 2027-02-19.

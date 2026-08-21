@@ -84,7 +84,26 @@ describe("buildProjects", () => {
 
     expect(result.projects[0]).toMatchObject({
       totalWorkspaceCount: 0,
-      hosts: [{ projectId: "prj_a", repoRoot: "/a/app" }],
+      hosts: [{ projectId: "prj_a", projectPath: "/a/app", repoRoot: "/a/app" }],
+    });
+  });
+
+  test("keeps the Project path independent from a Workspace directory", () => {
+    const result = buildProjects({
+      hosts: [
+        {
+          serverId: "host-a",
+          serverName: "Host A",
+          isOnline: true,
+          projects: [descriptor("prj_a", "local-a", "/managed/projects/prj_a")],
+          workspaces: [workspace("ws-a", "prj_a", "/repo/shared")],
+        },
+      ],
+    });
+
+    expect(result.projects[0]?.hosts[0]).toMatchObject({
+      projectPath: "/managed/projects/prj_a",
+      repoRoot: "/managed/projects/prj_a",
     });
   });
 

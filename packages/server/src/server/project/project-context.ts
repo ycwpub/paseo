@@ -24,6 +24,10 @@ import {
   resolveProjectKnowledge,
   type ResolvedProjectKnowledge,
 } from "./project-knowledge-context.js";
+import {
+  ensureManagedProjectPath,
+  resolveProjectPath as resolveProjectStoragePath,
+} from "./project-storage-paths.js";
 
 export interface ResolvedProjectDirectories {
   project: string[];
@@ -123,9 +127,19 @@ export function resolveProjectDirectories(input: {
     ),
   );
 
+  let projectDirectories: string[];
+  if (input.projectConfig?.directoryMode === "multiple") {
+    projectDirectories = Array.from(
+      new Set([path.resolve(input.projectRoot), ...configuredProject]),
+    );
+  } else if (configuredProject.length > 0) {
+    projectDirectories = configuredProject;
+  } else {
+    projectDirectories = [path.resolve(input.workspaceDirectory)];
+  }
+
   return {
-    project:
-      configuredProject.length > 0 ? configuredProject : [path.resolve(input.workspaceDirectory)],
+    project: projectDirectories,
     knowledge,
     indexSkill: resolvePathList(input.projectRoot, directoryValues.indexSkill, variables),
     workspaceData,
@@ -158,7 +172,7 @@ export function buildProjectContextPrompt(input: {
     `Project name: ${input.projectName}`,
     `Workspace ID: ${input.workspaceId}`,
     `Primary working directory: ${input.workspaceDirectory}`,
-    "All Project directories listed below are writable repositories in the same logical Project. Read and modify the repository appropriate to the task; do not assume the primary working directory is the only writable repository.",
+    "All Project directories listed below are writable working directories in the same logical Project. A multiple-directory Project includes a private Project path for Project-owned files plus its configured code directories. Read and modify the directory appropriate to the task; do not assume the primary working directory is the only writable directory.",
     "",
     "Project directories (read on demand; do not load everything unless needed):",
     formatDirectoryList(input.directories.project),
@@ -227,7 +241,12 @@ export async function loadProjectAgentContext(input: {
   const project = await input.projectRegistry.get(workspace.projectId);
   if (!project) return null;
 
-  const projectRoot = project.rootPath ?? workspace.cwd;
+  const projectRoot = input.paseoHome
+    ? resolveProjectStoragePath({ paseoHome: input.paseoHome, project })
+    : (project.rootPath ?? workspace.cwd);
+  if (input.paseoHome && project.rootPath === null) {
+    ensureManagedProjectPath(input.paseoHome, project.projectId);
+  }
   const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
     ...projectConfig?.variables,

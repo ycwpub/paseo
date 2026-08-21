@@ -8,6 +8,7 @@ import {
   resolveProjectDirectories,
 } from "./project-context.js";
 import { resolveGlobalProjectConfigPath } from "./project-config-storage.js";
+import { resolveManagedProjectPath } from "./project-storage-paths.js";
 
 describe("resolveProjectDirectories", () => {
   const roots: string[] = [];
@@ -127,8 +128,10 @@ describe("buildProjectContextPrompt", () => {
 
     expect(prompt).toContain("Project ID: prj_1");
     expect(prompt).toContain("Primary working directory: /repo/worktree");
-    expect(prompt).toContain("All Project directories listed below are writable repositories");
-    expect(prompt).toContain("do not assume the primary working directory is the only writable");
+    expect(prompt).toContain(
+      "All Project directories listed below are writable working directories",
+    );
+    expect(prompt).toContain("includes a private Project path");
     expect(prompt).not.toContain("Reference directories");
     expect(prompt).toContain("General knowledge directories");
     expect(prompt).toContain("read on demand");
@@ -202,7 +205,10 @@ describe("loadProjectAgentContext", () => {
       workspaceRegistry: { get: async () => workspace } as never,
     });
 
-    expect(context?.directories.project).toEqual([sourceDirectory]);
+    expect(context?.directories.project).toEqual([
+      resolveManagedProjectPath(paseoHome, project.projectId),
+      sourceDirectory,
+    ]);
     expect(context?.directories.knowledge).toEqual([path.join(paseoHome, "docs")]);
     expect(context?.variables.owner).toBe("payments");
   });

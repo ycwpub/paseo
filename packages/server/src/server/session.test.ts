@@ -814,7 +814,7 @@ describe("project command-center RPCs", () => {
               projectDisplayName: "Planning",
               projectCustomName: null,
               projectCustomIconRevision: null,
-              projectRootPath: "",
+              projectRootPath: resolveManagedProjectSourceDirectory(paseoHome, project.projectId),
               projectSourceDirectory: resolveManagedProjectSourceDirectory(
                 paseoHome,
                 project.projectId,

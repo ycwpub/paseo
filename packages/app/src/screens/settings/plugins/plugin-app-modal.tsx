@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
+import { Monitor } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   PluginAppComponent,
@@ -24,6 +25,11 @@ import {
   resolvePluginAppComponentSlot,
   type PluginAppComponentSlots,
 } from "./plugin-app-component-slot";
+import { presentPluginAppResult } from "./plugin-app-result-model";
+import {
+  PluginAppHtmlPreviewModal,
+  type PluginAppHtmlPreview,
+} from "./plugin-app-html-preview-modal";
 import {
   PluginProjectBoundary,
   type PluginProjectContext,
@@ -65,8 +71,17 @@ function prettyJson(value: unknown): string {
 function jobStatusText(job: PluginHttpJob | null, queryError: string | null): string {
   if (queryError) return `状态查询失败：${queryError}`;
   if (!job) return "尚未启动";
-  if (job.error) return `${job.status}: ${job.error}`;
-  return job.status;
+  const status = {
+    draft: "草稿",
+    queued: "等待处理",
+    running: "处理中",
+    succeeded: "已成功",
+    failed: "失败",
+    cancelled: "已取消",
+    timed_out: "已超时",
+  }[job.status];
+  if (job.error) return `${status}：${job.error}`;
+  return status;
 }
 
 function errorMessage(error: unknown): string | null {
@@ -129,7 +144,7 @@ function SelectPreview({
       selectedDisplay={selectedDisplay}
       options={options}
       onChange={handleChange}
-      placeholder={component.placeholder ?? "Select"}
+      placeholder={component.placeholder ?? "请选择"}
       emptyText="没有可用选项"
       hint={component.description}
     />
@@ -282,15 +297,17 @@ function DisplayPreview({
           ) : null}
         </View>
       );
-    case "result":
+    case "result": {
+      const result = presentPluginAppResult(job?.result);
       return (
         <View style={styles.outputCard}>
-          <Text style={styles.outputLabel}>{component.label ?? "Result"}</Text>
-          <Text selectable style={styles.codeText}>
-            {prettyJson(job?.result)}
+          <Text style={styles.outputLabel}>{component.label ?? "结果"}</Text>
+          <Text selectable style={result.kind === "json" ? styles.codeText : styles.resultText}>
+            {result.text}
           </Text>
         </View>
       );
+    }
     case "json":
       return (
         <View style={styles.outputCard}>
@@ -399,7 +416,7 @@ function usePluginAppController({
       .getPluginApp(plugin.pluginId, appDefinition.id, projectId)
       .then((result) => {
         if (cancelled) return undefined;
-        if (result.error || !result.app) throw new Error(result.error ?? "Plugin app not found");
+        if (result.error || !result.app) throw new Error(result.error ?? "未找到插件页面");
         setApp(result.app);
         const nextForm = initialForm(result.app.document, {
           ...initialFormValues,
@@ -438,7 +455,7 @@ function usePluginAppController({
     void client
       .generatePluginApp(plugin.pluginId, appDefinition.id, projectId, prompt.trim())
       .then((result) => {
-        if (result.error || !result.app) throw new Error(result.error ?? "Generation failed");
+        if (result.error || !result.app) throw new Error(result.error ?? "页面生成失败");
         setApp(result.app);
         const nextForm = initialForm(result.app.document, {
           ...initialFormValues,
@@ -498,7 +515,7 @@ function usePluginAppController({
           }),
         )
         .then((result) => {
-          if (result.error || !result.job) throw new Error(result.error ?? "Action failed");
+          if (result.error || !result.job) throw new Error(result.error ?? "操作执行失败");
           setSubmittedJob(result.job);
           onJobSubmitted?.(result.job);
           return undefined;
@@ -521,6 +538,21 @@ function usePluginAppController({
     ],
   );
 
+  const loadHtmlPreview = useCallback(async (): Promise<PluginAppHtmlPreview> => {
+    if (!client || !plugin?.pluginId || !appDefinition) {
+      throw new Error("Host 未连接或插件不可用");
+    }
+    const result = await client.getPluginAppHtmlPreview({
+      pluginId: plugin.pluginId,
+      appId: appDefinition.id,
+      projectId,
+    });
+    if (result.error || !result.html || !result.htmlPath) {
+      throw new Error(result.error ?? "当前页面尚未生成 HTML 预览");
+    }
+    return { html: result.html, htmlPath: result.htmlPath };
+  }, [appDefinition, client, plugin?.pluginId, projectId]);
+
   return {
     app,
     prompt,
@@ -537,6 +569,7 @@ function usePluginAppController({
     handleFormChange,
     refreshJob: jobQuery.refetch,
     handleRun,
+    loadHtmlPreview,
   };
 }
 
@@ -555,29 +588,13 @@ function ConversationPane({
   onPromptChange: (value: string) => void;
   onGenerate: () => void;
 }) {
-  const hasConversation = (app?.conversation.length ?? 0) > 0;
   return (
     <View style={styles.conversationColumn}>
-      <Text style={styles.sectionTitle}>使用 Agent 构建</Text>
+      <Text style={styles.sectionTitle}>页面生成与修改</Text>
       <Text style={styles.sectionHint}>
-        Describe the interface or request a revision. Agent output is validated against the Paseo
-        declarative UI schema; executable HTML and JavaScript are not accepted.
+        在这里提交一次页面生成指令。日常讨论请点击上方“前往 Project
+        对话”，不要在插件页面维护聊天记录。
       </Text>
-      <View style={styles.conversation}>
-        {app?.conversation.slice(-8).map((message) => (
-          <View
-            key={message.id}
-            style={[
-              styles.message,
-              message.role === "user" ? styles.userMessage : styles.assistantMessage,
-            ]}
-          >
-            <Text style={styles.messageRole}>{message.role === "user" ? "你" : "Agent"}</Text>
-            <Text style={styles.bodyText}>{message.content}</Text>
-          </View>
-        ))}
-        {!loading && !hasConversation ? <Text style={styles.sectionHint}>暂无对话。</Text> : null}
-      </View>
       <FormTextInput
         value={prompt}
         onChangeText={onPromptChange}
@@ -591,8 +608,9 @@ function ConversationPane({
         loading={generating}
         disabled={generating || !prompt.trim()}
       >
-        {app?.document ? "让 Agent 修改" : "生成界面"}
+        {app?.document ? "提交修改指令" : "生成页面"}
       </Button>
+      {loading ? <Text style={styles.sectionHint}>正在加载页面定义…</Text> : null}
     </View>
   );
 }
@@ -611,6 +629,9 @@ function PreviewPane({
   hiddenFieldIds,
   componentSlots,
   title,
+  canPreviewHtml,
+  previewingHtml,
+  onPreviewHtml,
 }: {
   app: PluginAppState | null;
   form: Record<string, unknown>;
@@ -625,19 +646,34 @@ function PreviewPane({
   hiddenFieldIds: ReadonlySet<string>;
   componentSlots: PluginAppComponentSlots;
   title: string;
+  canPreviewHtml: boolean;
+  previewingHtml: boolean;
+  onPreviewHtml: () => void;
 }) {
   return (
     <View style={styles.previewColumn}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.previewHeader}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {canPreviewHtml ? (
+          <Button
+            size="xs"
+            variant="outline"
+            leftIcon={Monitor}
+            loading={previewingHtml}
+            disabled={previewingHtml}
+            onPress={onPreviewHtml}
+          >
+            浏览器预览
+          </Button>
+        ) : null}
+      </View>
       {app?.document?.description ? (
         <Text style={styles.sectionHint}>{app.document.description}</Text>
       ) : null}
       <View style={styles.previewCard}>
         {loading ? <Text style={styles.sectionHint}>加载中…</Text> : null}
         {!loading && !app?.document ? (
-          <Text style={styles.sectionHint}>
-            Describe the interface on the left, then let Agent generate it.
-          </Text>
+          <Text style={styles.sectionHint}>请在左侧描述需要的界面，再让 Agent 生成页面。</Text>
         ) : null}
         {app?.document?.components.map((component) => {
           if (hiddenFieldIds.has(component.id)) return null;
@@ -684,12 +720,14 @@ function PluginAppContent({
   hiddenFieldIds = EMPTY_HIDDEN_FIELD_IDS,
   componentSlots = EMPTY_COMPONENT_SLOTS,
   previewTitle = "实时预览",
+  supportsHtmlPreview,
 }: {
   controller: PluginAppController;
   showConversation?: boolean;
   hiddenFieldIds?: readonly string[];
   componentSlots?: PluginAppComponentSlots;
   previewTitle?: string;
+  supportsHtmlPreview: boolean;
 }) {
   const {
     app,
@@ -707,11 +745,28 @@ function PluginAppContent({
     handleFormChange,
     refreshJob,
     handleRun,
+    loadHtmlPreview,
   } = controller;
+  const [htmlPreviewVisible, setHtmlPreviewVisible] = useState(false);
+  const [htmlPreview, setHtmlPreview] = useState<PluginAppHtmlPreview | null>(null);
+  const [htmlPreviewError, setHtmlPreviewError] = useState<string | null>(null);
+  const [previewingHtml, setPreviewingHtml] = useState(false);
   const handleRefreshJob = useCallback(() => {
     void refreshJob();
   }, [refreshJob]);
   const hiddenFields = useMemo(() => new Set(hiddenFieldIds), [hiddenFieldIds]);
+  const handlePreviewHtml = useCallback(() => {
+    setHtmlPreviewVisible(true);
+    setPreviewingHtml(true);
+    setHtmlPreviewError(null);
+    void loadHtmlPreview()
+      .then(setHtmlPreview)
+      .catch((nextError: unknown) =>
+        setHtmlPreviewError(nextError instanceof Error ? nextError.message : String(nextError)),
+      )
+      .finally(() => setPreviewingHtml(false));
+  }, [loadHtmlPreview]);
+  const closeHtmlPreview = useCallback(() => setHtmlPreviewVisible(false), []);
 
   return (
     <>
@@ -740,9 +795,18 @@ function PluginAppContent({
           hiddenFieldIds={hiddenFields}
           componentSlots={componentSlots}
           title={previewTitle}
+          canPreviewHtml={supportsHtmlPreview && Boolean(app?.document)}
+          previewingHtml={previewingHtml}
+          onPreviewHtml={handlePreviewHtml}
         />
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      <PluginAppHtmlPreviewModal
+        visible={htmlPreviewVisible}
+        preview={htmlPreview}
+        error={htmlPreviewError}
+        onClose={closeHtmlPreview}
+      />
     </>
   );
 }
@@ -781,6 +845,7 @@ export function PluginAppSurface({
   previewTitle?: string;
 }) {
   const supportsProjectScopedApps = useHostFeature(serverId, "pluginProjectScopedApps");
+  const supportsHtmlPreview = useHostFeature(serverId, "pluginAppHtmlPreview");
   const controller = usePluginAppController({
     visible: active && supportsProjectScopedApps,
     serverId,
@@ -809,6 +874,7 @@ export function PluginAppSurface({
       hiddenFieldIds={hiddenFieldIds}
       componentSlots={componentSlots}
       previewTitle={previewTitle}
+      supportsHtmlPreview={supportsHtmlPreview}
     />
   );
 }
@@ -860,6 +926,7 @@ export function ProjectScopedPluginAppSurface({
   serverId,
   plugin,
   appDefinition,
+  initialProjectId,
   fixedFormValues,
   hiddenFieldIds,
 }: {
@@ -867,6 +934,7 @@ export function ProjectScopedPluginAppSurface({
   serverId: string;
   plugin: PluginSummary;
   appDefinition: PluginAppDefinition;
+  initialProjectId?: string;
   fixedFormValues?: Record<string, unknown>;
   hiddenFieldIds?: readonly string[];
 }) {
@@ -876,6 +944,7 @@ export function ProjectScopedPluginAppSurface({
       serverId={serverId}
       pluginId={plugin.pluginId}
       appDefinition={appDefinition}
+      initialProjectId={initialProjectId}
     >
       {(context) => (
         <ProjectBoundPluginAppSurface
@@ -958,6 +1027,12 @@ const styles = StyleSheet.create((theme) => ({
     minWidth: 340,
     gap: theme.spacing[2],
   },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
   sectionTitle: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
@@ -967,29 +1042,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
-  },
-  conversation: {
-    ...settingsStyles.card,
-    padding: theme.spacing[3],
-    gap: theme.spacing[2],
-    minHeight: 160,
-    maxHeight: 300,
-  },
-  message: {
-    padding: theme.spacing[3],
-    borderRadius: theme.borderRadius.lg,
-    gap: theme.spacing[1],
-  },
-  userMessage: {
-    backgroundColor: theme.colors.surface3,
-  },
-  assistantMessage: {
-    backgroundColor: theme.colors.surface2,
-  },
-  messageRole: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
   },
   promptInput: {
     minHeight: 110,
@@ -1062,6 +1114,12 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
+  },
+  resultText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.semibold,
+    lineHeight: 28,
   },
   errorText: {
     color: theme.colors.destructive,

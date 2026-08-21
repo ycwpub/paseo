@@ -80,6 +80,7 @@ import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
 import { LocalRelayConfigurationSection } from "./host-local-relay-section";
+import { HostKnowledgeSection } from "./host-knowledge/host-knowledge-section";
 import { InstructionTemplatesSection } from "./agents/instruction-templates-section";
 export {
   HostAssistantsPage,
@@ -788,6 +789,8 @@ export function HostSettingsPage({
           </View>
         </View>
       </SettingsSection>
+
+      <HostKnowledgeSection serverId={serverId} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 

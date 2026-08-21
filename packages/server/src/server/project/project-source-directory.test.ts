@@ -42,7 +42,7 @@ describe("project source directory", () => {
     });
   });
 
-  it("uses the first configured writable directory for a multi-directory Project", () => {
+  it("uses the isolated Project path for a multi-directory Project", () => {
     const paseoHome = makeDirectory("paseo-source-home-");
     const first = makeDirectory("paseo-source-first-");
     const second = makeDirectory("paseo-source-second-");
@@ -70,8 +70,8 @@ describe("project source directory", () => {
     expect(result.ok).toBe(true);
 
     expect(resolveProjectSourceDirectory({ paseoHome, project })).toEqual({
-      kind: "project",
-      path: first,
+      kind: "managed",
+      path: resolveManagedProjectSourceDirectory(paseoHome, project.projectId),
     });
   });
 

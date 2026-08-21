@@ -11,6 +11,7 @@ import {
   ensurePrivateFile,
   writePrivateFileAtomicSync,
 } from "../private-files.js";
+import { renderPluginAppHtml } from "./plugin-app-html-export.js";
 
 function safeSegment(value: string, label: string): string {
   const normalized = value.trim();
@@ -63,9 +64,32 @@ export class PluginAppStore {
       throw new Error("Project-scoped plugin app state requires projectId");
     }
     const filePath = this.filePath(parsed.pluginId, parsed.appId, parsed.projectId);
+    const htmlPath = parsed.document
+      ? this.htmlPath(parsed.pluginId, parsed.appId, parsed.projectId)
+      : undefined;
+    const persisted = PluginAppStateSchema.parse({ ...parsed, htmlPath });
     ensurePrivateDirectory(path.dirname(filePath));
-    writePrivateFileAtomicSync(filePath, JSON.stringify(parsed, null, 2));
-    return parsed;
+    if (persisted.document && htmlPath) {
+      writePrivateFileAtomicSync(htmlPath, renderPluginAppHtml(persisted.document));
+    }
+    writePrivateFileAtomicSync(filePath, JSON.stringify(persisted, null, 2));
+    return persisted;
+  }
+
+  getHtmlPreview(
+    pluginId: string,
+    definition: PluginAppDefinition,
+    projectId: string,
+  ): { html: string; htmlPath: string } | null {
+    const current = this.get(pluginId, definition, projectId);
+    if (!current.document) return null;
+    const saved = this.save(current);
+    if (!saved.htmlPath) return null;
+    ensurePrivateFile(saved.htmlPath);
+    return {
+      html: readFileSync(saved.htmlPath, "utf8"),
+      htmlPath: saved.htmlPath,
+    };
   }
 
   list(pluginId: string, definition: PluginAppDefinition): PluginAppState[] {
@@ -111,5 +135,9 @@ export class PluginAppStore {
   private filePath(pluginId: string, appId: string, projectId: string): string {
     const projectKey = createHash("sha256").update(projectId).digest("hex");
     return path.join(this.projectsRoot(pluginId, appId), projectKey, "state.json");
+  }
+
+  private htmlPath(pluginId: string, appId: string, projectId: string): string {
+    return path.join(path.dirname(this.filePath(pluginId, appId, projectId)), "preview.html");
   }
 }

@@ -10,6 +10,7 @@ import {
   readProjectConfigForProject,
   resolveProjectConfigDirectories,
 } from "../project/project-config-storage.js";
+import { resolveProjectPath } from "../project/project-storage-paths.js";
 
 export async function resolveWorkflowProjectVariables(input: {
   cwd: string;
@@ -41,6 +42,7 @@ export async function resolveWorkflowProjectVariables(input: {
         return [];
       }
       const roots = resolveProjectConfigDirectories({
+        paseoHome: input.paseoHome!,
         project: candidate,
         config: result.config,
       });
@@ -59,7 +61,10 @@ export async function resolveWorkflowProjectVariables(input: {
       project = undefined;
     }
   }
-  const projectRoot = project?.rootPath ?? cwd;
+  let projectRoot = project?.rootPath ?? cwd;
+  if (project && input.paseoHome) {
+    projectRoot = resolveProjectPath({ paseoHome: input.paseoHome, project });
+  }
 
   try {
     const rawConfig = projectConfig ?? readPaseoConfigJson(projectRoot);

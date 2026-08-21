@@ -1,6 +1,6 @@
 {
   "name": "byte-development",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "ByteDance development lifecycle orchestration from PRD through release.",
   "author": {
     "name": "Paseo"

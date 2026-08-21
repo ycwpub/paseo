@@ -24,6 +24,13 @@ export const PaseoProjectKnowledgeSchema = z
   })
   .passthrough();
 
+export const PaseoHostKnowledgeSchema = z
+  .object({
+    general: z.array(PaseoProjectGeneralKnowledgeResourceSchema).optional(),
+    standards: z.array(PaseoProjectDocumentKnowledgeResourceSchema).optional(),
+  })
+  .passthrough();
+
 export type PaseoProjectGeneralKnowledgeResource = z.infer<
   typeof PaseoProjectGeneralKnowledgeResourceSchema
 >;
@@ -31,3 +38,4 @@ export type PaseoProjectDocumentKnowledgeResource = z.infer<
   typeof PaseoProjectDocumentKnowledgeResourceSchema
 >;
 export type PaseoProjectKnowledge = z.infer<typeof PaseoProjectKnowledgeSchema>;
+export type PaseoHostKnowledge = z.infer<typeof PaseoHostKnowledgeSchema>;

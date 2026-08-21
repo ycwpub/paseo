@@ -2749,6 +2749,7 @@ export const ar: TranslationResources = {
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "لا يوجد مجلد للمشروع",
         description:

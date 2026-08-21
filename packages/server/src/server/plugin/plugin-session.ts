@@ -15,8 +15,10 @@ export type PluginSessionRequest = Extract<
       | "plugin.set_enabled.request"
       | "plugin.uninstall.request"
       | "plugin.app.get.request"
+      | "plugin.app.html-preview.get.request"
       | "plugin.app.configure.request"
       | "plugin.app.project.list.request"
+      | "plugin.app.project.copy.request"
       | "plugin.app.project.delete.request"
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
@@ -42,8 +44,10 @@ const PLUGIN_SESSION_REQUEST_TYPES = new Set<SessionInboundMessage["type"]>([
   "plugin.set_enabled.request",
   "plugin.uninstall.request",
   "plugin.app.get.request",
+  "plugin.app.html-preview.get.request",
   "plugin.app.configure.request",
   "plugin.app.project.list.request",
+  "plugin.app.project.copy.request",
   "plugin.app.project.delete.request",
   "plugin.app.generate.request",
   "plugin.app.action.submit.request",
@@ -95,8 +99,10 @@ type PluginAppRequest = Extract<
   {
     type:
       | "plugin.app.get.request"
+      | "plugin.app.html-preview.get.request"
       | "plugin.app.configure.request"
       | "plugin.app.project.list.request"
+      | "plugin.app.project.copy.request"
       | "plugin.app.project.delete.request"
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
@@ -142,8 +148,10 @@ function isPluginCatalogRequest(message: PluginSessionRequest): message is Plugi
 function isPluginAppRequest(message: PluginSessionRequest): message is PluginAppRequest {
   return (
     message.type === "plugin.app.get.request" ||
+    message.type === "plugin.app.html-preview.get.request" ||
     message.type === "plugin.app.configure.request" ||
     message.type === "plugin.app.project.list.request" ||
+    message.type === "plugin.app.project.copy.request" ||
     message.type === "plugin.app.project.delete.request" ||
     message.type === "plugin.app.generate.request" ||
     message.type === "plugin.app.action.submit.request" ||
@@ -295,6 +303,7 @@ export class PluginSession {
     }
   }
 
+  // oxlint-disable-next-line complexity -- one exhaustive protocol dispatcher keeps request/response pairing visible.
   private async handleAppRequest(message: PluginAppRequest): Promise<void> {
     switch (message.type) {
       case "plugin.app.get.request": {
@@ -304,6 +313,23 @@ export class PluginSession {
           payload: {
             requestId: message.requestId,
             app: this.service.getApp(message.pluginId, message.appId, projectId),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.app.html-preview.get.request": {
+        const preview = this.service.getAppHtmlPreview(
+          message.pluginId,
+          message.appId,
+          message.projectId,
+        );
+        this.host.emit({
+          type: "plugin.app.html-preview.get.response",
+          payload: {
+            requestId: message.requestId,
+            html: preview?.html ?? null,
+            htmlPath: preview?.htmlPath ?? null,
             error: null,
           },
         });
@@ -331,6 +357,22 @@ export class PluginSession {
           payload: {
             requestId: message.requestId,
             projects: this.service.listAppProjects(message.pluginId, message.appId),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.app.project.copy.request": {
+        this.host.emit({
+          type: "plugin.app.project.copy.response",
+          payload: {
+            requestId: message.requestId,
+            app: await this.service.copyAppProject(
+              message.pluginId,
+              message.appId,
+              message.sourceProjectId,
+              message.targetProjectId,
+            ),
             error: null,
           },
         });
@@ -586,6 +628,17 @@ export class PluginSession {
           payload: { requestId: message.requestId, app: null, error },
         });
         return;
+      case "plugin.app.html-preview.get.request":
+        this.host.emit({
+          type: "plugin.app.html-preview.get.response",
+          payload: {
+            requestId: message.requestId,
+            html: null,
+            htmlPath: null,
+            error,
+          },
+        });
+        return;
       case "plugin.app.configure.request":
         this.host.emit({
           type: "plugin.app.configure.response",
@@ -596,6 +649,12 @@ export class PluginSession {
         this.host.emit({
           type: "plugin.app.project.list.response",
           payload: { requestId: message.requestId, projects: [], error },
+        });
+        return;
+      case "plugin.app.project.copy.request":
+        this.host.emit({
+          type: "plugin.app.project.copy.response",
+          payload: { requestId: message.requestId, app: null, error },
         });
         return;
       case "plugin.app.project.delete.request":

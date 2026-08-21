@@ -14,11 +14,24 @@
   "steps": [
     {
       "id": "process_request",
-      "name": "处理请求",
-      "type": "python",
-      "code": "request = input.get(\"origin_input\", input.get(\"data\", {}))\nif not isinstance(request, dict):\n    raise ValueError(\"HTTP request body must be a JSON object\")\noutput = {\"data\": request}",
-      "inputVariable": "input",
-      "outputVariable": "output",
+      "name": "使用 Agent 处理请求",
+      "type": "agent",
+      "lifecycle": "single",
+      "outputMode": "normal",
+      "initialPrompt": "请处理下面的请求，并直接给出清晰、简洁、可展示给用户的最终结果。\n\n用户指令：\n{{origin_input.instruction}}\n\n完整请求 JSON：\n{{origin_input}}",
+      "config": {
+        "provider": "{{origin_input.defaultAgentProvider}}",
+        "model": "{{origin_input.defaultAgentModel}}",
+        "cwd": "{{origin_input.projectSourceDirectory}}",
+        "title": "HTTP 服务 · 请求处理",
+        "archiveOnFinish": true,
+        "isolation": "local",
+        "approvalPolicy": "never",
+        "sandboxMode": "read-only",
+        "networkAccess": false,
+        "webSearch": false,
+        "systemPrompt": "你是 Paseo HTTP 服务的请求处理 Agent。只处理输入并返回最终答案，不修改文件，不执行外部写操作。"
+      },
       "retry": {
         "maxAttempts": 1
       }

@@ -3368,6 +3368,7 @@ export const en = {
       backToProjects: "Back to projects",
       switchHost: "Switch host",
       projectId: "Project ID",
+      projectPath: "Project path",
       directoryless: {
         title: "No Project directory",
         description:

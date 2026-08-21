@@ -16,10 +16,12 @@ import {
   resolveStructuredGenerationProviders,
   type StructuredGenerationDaemonConfig,
 } from "../agent/structured-generation-providers.js";
+import { buildCopiedPluginAppState } from "./plugin-app-project-copy.js";
 import { PluginAppStore } from "./plugin-app-store.js";
 import type {
   PluginAppConfigureInput,
   PluginAppGenerateInput,
+  PluginAppProjectCopyInput,
   PluginAppRuntime,
   PluginAppSubmitInput,
 } from "./plugin-app-runtime-types.js";
@@ -236,6 +238,35 @@ export class PluginAppService implements PluginAppRuntime {
   listProjects(pluginId: string, appId: string): PluginAppState[] {
     const context = this.options.resolveApp(pluginId, appId);
     return this.store.list(pluginId, context.definition);
+  }
+
+  getHtmlPreview(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+  ): { html: string; htmlPath: string } | null {
+    const context = this.options.resolveApp(pluginId, appId);
+    return this.store.getHtmlPreview(pluginId, context.definition, projectId);
+  }
+
+  copyProject(input: PluginAppProjectCopyInput): PluginAppState {
+    const context = this.options.resolveApp(input.pluginId, input.appId);
+    if (input.sourceProjectId === input.targetProjectId) {
+      throw new Error("复制目标 Project 不能与源 Project 相同");
+    }
+    const projects = this.store.list(input.pluginId, context.definition);
+    const source = projects.find((state) => state.projectId === input.sourceProjectId);
+    if (!source) throw new Error("源插件项目不存在");
+    if (projects.some((state) => state.projectId === input.targetProjectId)) {
+      throw new Error("目标 Project 已存在该插件项目");
+    }
+    return this.store.save(
+      buildCopiedPluginAppState({
+        source,
+        targetProjectId: input.targetProjectId,
+        timestamp: this.now().toISOString(),
+      }),
+    );
   }
 
   deleteProject(pluginId: string, appId: string, projectId: string): boolean {

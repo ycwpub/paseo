@@ -3,9 +3,12 @@
 ## Project identity
 
 Directory-backed Projects are allocated for the exact root selected by the caller, normalized
-lexically with `path.resolve` (never `realpath`). Blank Projects are allocated with `rootPath:
-null`; they remain visible without a Workspace and do not create a hidden or temporary directory.
-Creating the first directory Workspace in a blank Project attaches that directory as its root.
+lexically with `path.resolve` (never `realpath`). Multiple-directory Projects are allocated with
+`rootPath: null` and receive a stable private path at `$PASEO_HOME/projects/{projectId}`. The
+private path stores Project configuration and Project-owned files independently from configured
+code directories. A code directory physically located inside this private path is Project-owned
+and is deleted with the Project. Code directories outside the private path are shared or external
+and are never deleted by Project removal.
 New project IDs are generated opaque `prj_<16 hex>` values and are never derived from the
 filesystem path. Existing remote-shaped or path-shaped IDs are retained as readable compatibility
 records and are never rekeyed. Explicit **Add Project** operations always allocate a new identity,
@@ -48,15 +51,16 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 Project resource configuration follows the Project's directory mode:
 
 - A single-directory Project stores `paseo.json` in its configured Project directory.
-- A multiple-directory Project stores `paseo.json` under
-  `$PASEO_HOME/projects/configs/{project-key}/paseo.json`. The opaque project key is a hash of
-  `projectId`, so legacy path-shaped IDs cannot escape the configuration directory.
+- A multiple-directory Project stores `paseo.json` at
+  `$PASEO_HOME/projects/{projectId}/paseo.json`. Legacy path-shaped IDs use a safe hashed directory
+  name so they cannot escape the Project storage root.
 - A Project created without a directory starts in multiple-directory mode with an empty Project
   directory list.
 
 Changing the mode migrates the complete `paseo.json`, including worktree and script configuration.
-Paseo writes the new file before removing the old one. Changing to single-directory mode also
-updates the registered Project root to the selected directory.
+Paseo writes the new file before removing the old one. Changing to single-directory mode updates
+the registered Project root to the selected directory. Changing to multiple-directory mode clears
+the registered root so the Project uses its private path.
 
 ```json
 {
@@ -90,10 +94,11 @@ updates the registered Project root to the selected directory.
 ```
 
 Every directory type accepts multiple physical directories. Relative paths resolve from the
-registered Project root. When `directories.project` is empty, the active Workspace directory is
-used so worktree Agents do not accidentally edit the main checkout. Project directories are
-writable and read on demand. Configured index Skill directories are consulted before broad
-filesystem exploration.
+registered Project root. Multiple-directory Projects always include their private Project path as
+a writable directory, followed by configured code directories. For a single-directory Project
+with no explicit Project directory entry, the active Workspace directory is used so worktree
+Agents do not accidentally edit the main checkout. Project directories are writable and read on
+demand. Configured index Skill directories are consulted before broad filesystem exploration.
 
 Project knowledge has three explicit policies:
 
@@ -116,7 +121,7 @@ Workspace data roots are workspace-scoped: Paseo appends the opaque `workspaceId
 configured path explicitly contains `{{workspaceId}}`. These directories hold resumable process
 notes, review artifacts, and outputs. They are created when an Agent starts in the Workspace.
 
-When a Project omits directory configuration, Paseo uses these defaults:
+When a single-directory Project omits directory configuration, Paseo uses these defaults:
 
 - Project directories: `{{workspaceDirectory}}`
 - General AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
@@ -178,9 +183,11 @@ $PASEO_HOME/
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
-│   ├── configs/
-│   │   └── {project-key}/paseo.json      # Multiple-directory Project configuration
+│   ├── {projectId}/
+│   │   └── paseo.json                    # Multiple-directory Project configuration and files
 │   └── icons/                           # Host-local custom project icon images
+├── workspaces/
+│   └── {workspaceId}/                    # Workspace-scoped temporary files
 ├── runtime/
 │   └── managed-processes/
 │       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap

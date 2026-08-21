@@ -46,6 +46,36 @@ describe("PersistedConfigSchema daemon append system prompt config", () => {
   });
 });
 
+describe("PersistedConfigSchema Host knowledge config", () => {
+  test("accepts general and mandatory standard knowledge", () => {
+    const parsed = PersistedConfigSchema.parse({
+      daemon: {
+        knowledge: {
+          general: [
+            { type: "local-directory", source: "shared" },
+            { type: "cloud-document", source: "https://example.com/background" },
+          ],
+          standards: [
+            { type: "local-document", source: "standards/review.md" },
+            { type: "cloud-document", source: "https://example.com/standards" },
+          ],
+        },
+      },
+    });
+
+    expect(parsed.daemon?.knowledge).toEqual({
+      general: [
+        { type: "local-directory", source: "shared" },
+        { type: "cloud-document", source: "https://example.com/background" },
+      ],
+      standards: [
+        { type: "local-document", source: "standards/review.md" },
+        { type: "cloud-document", source: "https://example.com/standards" },
+      ],
+    });
+  });
+});
+
 describe("PersistedConfigSchema daemon browser tools config", () => {
   test("accepts optional browser tools opt-in", () => {
     const parsed = PersistedConfigSchema.parse({

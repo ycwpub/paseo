@@ -2816,6 +2816,7 @@ export const es: TranslationResources = {
       backToProjects: "Volver a proyectos",
       switchHost: "Cambiar de anfitrión",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "El proyecto no tiene directorio",
         description:

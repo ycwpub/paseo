@@ -113,6 +113,31 @@ describe("DaemonConfigStore", () => {
     );
   });
 
+  test("persists Host general and standard knowledge", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+      },
+      undefined,
+    );
+    const knowledge = {
+      general: [
+        { type: "local-directory" as const, source: "shared" },
+        { type: "local-document" as const, source: "overview.md" },
+      ],
+      standards: [
+        { type: "local-document" as const, source: "standards/review.md" },
+        { type: "cloud-document" as const, source: "https://example.com/standards" },
+      ],
+    };
+
+    expect(store.patch({ knowledge }).knowledge).toEqual(knowledge);
+    expect(loadPersistedConfig(paseoHome).daemon?.knowledge).toEqual(knowledge);
+  });
+
   test("patch persists relay state and emits its field change", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

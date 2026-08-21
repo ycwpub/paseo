@@ -19,6 +19,7 @@ function project(input: {
       projectCustomName: null,
       serverName: host.serverId,
       isOnline: true,
+      projectPath: `/repo/${host.projectId}`,
       repoRoot: `/repo/${host.projectId}`,
       isDirectoryless: false,
       workspaceCount: 1,

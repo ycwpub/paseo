@@ -1451,6 +1451,56 @@ test("createAgent appends per-Agent runtime system prompt without persisting it"
   expect(record?.config).not.toHaveProperty("daemonAppendSystemPrompt");
 });
 
+test("createAgent composes current Host knowledge with daemon and per-Agent prompts", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new TestAgentClient();
+  const agentId = "00000000-0000-4000-8000-000000000106";
+  const nextAgentId = "00000000-0000-4000-8000-000000000107";
+  const agentIds = [agentId, nextAgentId];
+  let hostKnowledgePrompt = "Host standards v1.";
+  const manager = new AgentManager({
+    clients: {
+      codex: client,
+    },
+    registry: storage,
+    logger,
+    appendSystemPrompt: "Daemon instructions.",
+    daemonKnowledgePromptComposer: () => hostKnowledgePrompt,
+    idFactory: () => agentIds.shift() ?? nextAgentId,
+  });
+  manager.setAgentAppendSystemPromptComposer(() => "Memory index: /tmp/memory.md");
+
+  const first = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      systemPrompt: "Agent instructions.",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+  hostKnowledgePrompt = "Host standards v2.";
+  await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      systemPrompt: "Another Agent.",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+  const record = await storage.get(first.id);
+
+  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toBe(
+    "Daemon instructions.\n\nHost standards v1.\n\nMemory index: /tmp/memory.md",
+  );
+  expect(client.createdConfigs[1]?.daemonAppendSystemPrompt).toContain("Host standards v2.");
+  expect(first.config).not.toHaveProperty("daemonAppendSystemPrompt");
+  expect(record?.config).not.toHaveProperty("daemonAppendSystemPrompt");
+});
+
 test("daemon append system prompt is injected into Pi configs", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");

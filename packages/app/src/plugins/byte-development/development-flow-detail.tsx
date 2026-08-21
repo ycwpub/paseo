@@ -465,7 +465,7 @@ export function DevelopmentFlowDetail({
             disabled={!flow.projectId}
             onPress={onOpenProject}
           >
-            在 Project 中对话
+            前往 Project 对话
           </Button>
         </View>
       </View>

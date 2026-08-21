@@ -301,6 +301,7 @@ export interface AgentManagerOptions {
   skillStore?: Pick<SkillStore, "list"> | null;
   skillMaterializer?: Pick<SkillMaterializer, "sync" | "syncForWorkspace"> | null;
   appendSystemPrompt?: string;
+  daemonKnowledgePromptComposer?: () => string | null | undefined;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   logger: Logger;
@@ -707,6 +708,7 @@ export class AgentManager {
   private paseoToolsEnabled = true;
   private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
+  private readonly daemonKnowledgePromptComposer: (() => string | null | undefined) | null;
   private agentAppendSystemPromptComposer: AgentAppendSystemPromptComposer | null = null;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
@@ -730,6 +732,7 @@ export class AgentManager {
     this.skillMaterializer = sharedResources.skillMaterializer;
     this.configurePaseoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
+    this.daemonKnowledgePromptComposer = options.daemonKnowledgePromptComposer ?? null;
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -4786,6 +4789,7 @@ export class AgentManager {
   ): AgentSessionConfig {
     const daemonAppendSystemPrompt = composeSystemPromptParts(
       this.appendSystemPrompt,
+      this.daemonKnowledgePromptComposer?.(),
       this.agentAppendSystemPromptComposer?.(agentId, config),
     );
     const next = { ...config };

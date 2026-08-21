@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -5,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createDirectorylessProjectConfig,
   readProjectConfigForProject,
+  resolveProjectConfigDirectories,
   resolveGlobalProjectConfigPath,
   writeProjectConfigForProject,
 } from "./project-config-storage.js";
@@ -39,9 +41,28 @@ describe("project config storage", () => {
       mode: "multiple",
     });
     expect(resolveGlobalProjectConfigPath(paseoHome, project.projectId)).toMatch(
-      /projects\/configs\/[a-f0-9]{64}\/paseo\.json$/u,
+      /projects\/legacy-[a-f0-9]{64}\/paseo\.json$/u,
     );
     expect(resolveGlobalProjectConfigPath(paseoHome, project.projectId)).not.toContain("..");
+  });
+
+  it("includes the private Project path before configured directories", () => {
+    const paseoHome = makeDirectory("project-config-home-");
+    const configuredDirectory = makeDirectory("project-config-source-");
+    const project = { projectId: "prj_multiple", rootPath: null };
+
+    expect(
+      resolveProjectConfigDirectories({
+        paseoHome,
+        project,
+        config: {
+          project: {
+            directoryMode: "multiple",
+            directories: { project: [configuredDirectory] },
+          },
+        },
+      }),
+    ).toEqual([path.join(paseoHome, "projects", project.projectId), configuredDirectory]);
   });
 
   it("migrates the complete config from a single Project directory into PASEO_HOME", () => {
@@ -152,6 +173,59 @@ describe("project config storage", () => {
       project: {
         directoryMode: "single",
         directories: { project: [selectedRoot] },
+      },
+    });
+  });
+
+  it("reads the legacy hashed config and migrates it on the next write", () => {
+    const paseoHome = makeDirectory("project-config-home-");
+    const project = { projectId: "prj_legacy_config", rootPath: null };
+    const projectKey = createHash("sha256").update(project.projectId).digest("hex");
+    const legacyPath = path.join(paseoHome, "projects", "configs", projectKey, "paseo.json");
+    mkdirSync(path.dirname(legacyPath), { recursive: true });
+    writeFileSync(
+      legacyPath,
+      JSON.stringify({
+        project: {
+          directoryMode: "multiple",
+          variables: { owner: "payments" },
+        },
+      }),
+    );
+
+    const current = readProjectConfigForProject({ paseoHome, project });
+    expect(current).toMatchObject({
+      ok: true,
+      configPath: legacyPath,
+      mode: "multiple",
+    });
+
+    const result = writeProjectConfigForProject({
+      paseoHome,
+      project,
+      config: {
+        project: {
+          directoryMode: "multiple",
+          variables: { owner: "commerce" },
+        },
+      },
+      expectedRevision: current.ok ? current.revision : null,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      configPath: resolveGlobalProjectConfigPath(paseoHome, project.projectId),
+      mode: "multiple",
+    });
+    expect(existsSync(legacyPath)).toBe(false);
+    expect(
+      JSON.parse(
+        readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
+      ),
+    ).toEqual({
+      project: {
+        directoryMode: "multiple",
+        variables: { owner: "commerce" },
       },
     });
   });

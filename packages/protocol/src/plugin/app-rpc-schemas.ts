@@ -23,6 +23,24 @@ export const PluginAppGetResponseSchema = z.object({
   payload: PluginAppResponsePayloadSchema,
 });
 
+export const PluginAppHtmlPreviewGetRequestSchema = z.object({
+  type: z.literal("plugin.app.html-preview.get.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+  projectId: z.string().min(1),
+});
+
+export const PluginAppHtmlPreviewGetResponseSchema = z.object({
+  type: z.literal("plugin.app.html-preview.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    html: z.string().nullable(),
+    htmlPath: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const PluginAppConfigureRequestSchema = z.object({
   type: z.literal("plugin.app.configure.request"),
   requestId: z.string(),
@@ -51,6 +69,20 @@ export const PluginAppProjectListResponseSchema = z.object({
     projects: z.array(PluginAppStateSchema),
     error: z.string().nullable(),
   }),
+});
+
+export const PluginAppProjectCopyRequestSchema = z.object({
+  type: z.literal("plugin.app.project.copy.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  appId: z.string().min(1),
+  sourceProjectId: z.string().min(1),
+  targetProjectId: z.string().min(1),
+});
+
+export const PluginAppProjectCopyResponseSchema = z.object({
+  type: z.literal("plugin.app.project.copy.response"),
+  payload: PluginAppResponsePayloadSchema,
 });
 
 export const PluginAppProjectDeleteRequestSchema = z.object({

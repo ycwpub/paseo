@@ -399,6 +399,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
         ...persisted.daemon?.projectIndexing,
         updateIntervalMinutes: mutable.projectIndexing.updateIntervalMinutes,
       },
+      ...(mutable.knowledge !== undefined ? { knowledge: mutable.knowledge } : {}),
       instructionTemplates: mutable.instructionTemplates,
       relay: {
         ...persisted.daemon?.relay,

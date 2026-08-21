@@ -14,6 +14,7 @@ import {
   PaseoInstructionTemplateSchema,
   TerminalProfileSchema,
 } from "@getpaseo/protocol/messages";
+import { PaseoHostKnowledgeSchema } from "@getpaseo/protocol/project-knowledge-schema";
 import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
@@ -271,6 +272,7 @@ export const PersistedConfigSchema = z
           })
           .strict()
           .optional(),
+        knowledge: PaseoHostKnowledgeSchema.optional(),
         instructionTemplates: z.array(PaseoInstructionTemplateSchema).optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         enableTerminalAgentHooks: z.boolean().optional(),

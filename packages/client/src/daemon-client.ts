@@ -6056,6 +6056,14 @@ export class DaemonClient {
     return this.resourceRpc.getPluginApp(pluginId, appId, projectId);
   }
 
+  async getPluginAppHtmlPreview(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ html: string | null; htmlPath: string | null; error: string | null }> {
+    return this.resourceRpc.getPluginAppHtmlPreview(input);
+  }
+
   async configurePluginApp(input: {
     pluginId: string;
     appId: string;
@@ -6070,6 +6078,15 @@ export class DaemonClient {
     appId: string,
   ): Promise<{ projects: PluginAppState[]; error: string | null }> {
     return this.resourceRpc.listPluginAppProjects(pluginId, appId);
+  }
+
+  async copyPluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    sourceProjectId: string;
+    targetProjectId: string;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    return this.resourceRpc.copyPluginAppProject(input);
   }
 
   async deletePluginAppProject(input: {

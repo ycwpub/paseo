@@ -2805,6 +2805,7 @@ export const ru: TranslationResources = {
       backToProjects: "Вернуться к проектам",
       switchHost: "Сменить хост",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "У проекта нет каталога",
         description:

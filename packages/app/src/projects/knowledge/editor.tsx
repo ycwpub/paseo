@@ -14,6 +14,7 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import {
   createProjectKnowledgeResourceDraft,
+  PROJECT_KNOWLEDGE_SECTIONS,
   type ProjectKnowledgeDraft,
   type ProjectKnowledgeResourceDraft,
   type ProjectKnowledgeResourceType,
@@ -243,10 +244,18 @@ export function ProjectKnowledgeEditor({
   value,
   error,
   onChange,
+  sections = PROJECT_KNOWLEDGE_SECTIONS,
+  title = "Project 知识",
+  info = "按加载方式和约束强度管理 Agent 使用的 Project 资料",
+  testID = "project-knowledge-group",
 }: {
   value: ProjectKnowledgeDraft;
   error: string | null;
   onChange: (value: ProjectKnowledgeDraft) => void;
+  sections?: readonly ProjectKnowledgeSection[];
+  title?: string;
+  info?: string;
+  testID?: string;
 }) {
   const updateSection = useCallback(
     (section: ProjectKnowledgeSection, values: ProjectKnowledgeResourceDraft[]) => {
@@ -267,27 +276,31 @@ export function ProjectKnowledgeEditor({
     [updateSection],
   );
   return (
-    <SettingsGroup
-      title="Project 知识"
-      info="按加载方式和约束强度管理 Agent 使用的 Project 资料"
-      testID="project-knowledge-group"
-    >
-      <ProjectKnowledgeSectionEditor
-        section="general"
-        values={value.general}
-        onChange={updateGeneral}
-      />
-      <ProjectKnowledgeSectionEditor
-        section="standards"
-        values={value.standards}
-        onChange={updateStandards}
-      />
-      <ProjectKnowledgeSectionEditor
-        section="projectSpecific"
-        values={value.projectSpecific}
-        onChange={updateProjectSpecific}
-        flush
-      />
+    <SettingsGroup title={title} info={info} testID={testID}>
+      {sections.includes("general") ? (
+        <ProjectKnowledgeSectionEditor
+          section="general"
+          values={value.general}
+          onChange={updateGeneral}
+          flush={sections.at(-1) === "general"}
+        />
+      ) : null}
+      {sections.includes("standards") ? (
+        <ProjectKnowledgeSectionEditor
+          section="standards"
+          values={value.standards}
+          onChange={updateStandards}
+          flush={sections.at(-1) === "standards"}
+        />
+      ) : null}
+      {sections.includes("projectSpecific") ? (
+        <ProjectKnowledgeSectionEditor
+          section="projectSpecific"
+          values={value.projectSpecific}
+          onChange={updateProjectSpecific}
+          flush={sections.at(-1) === "projectSpecific"}
+        />
+      ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </SettingsGroup>
   );

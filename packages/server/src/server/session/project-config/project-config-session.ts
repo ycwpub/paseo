@@ -8,6 +8,10 @@ import {
   readProjectConfigForProject,
   writeProjectConfigForProject,
 } from "../../project/project-config-storage.js";
+import {
+  ensureManagedProjectPath,
+  resolveProjectPath,
+} from "../../project/project-storage-paths.js";
 
 export interface ProjectConfigSessionHost {
   emit(msg: SessionOutboundMessage): void;
@@ -48,7 +52,7 @@ export class ProjectConfigSession {
       return;
     }
 
-    const repoRoot = project.rootPath ?? "";
+    const repoRoot = this.resolveProjectPath(project);
     const result = readProjectConfigForProject({
       paseoHome: this.paseoHome,
       project,
@@ -100,7 +104,7 @@ export class ProjectConfigSession {
       return;
     }
 
-    const repoRoot = project.rootPath ?? "";
+    const repoRoot = this.resolveProjectPath(project);
     this.logger.debug(
       {
         projectId: project.projectId,
@@ -136,16 +140,14 @@ export class ProjectConfigSession {
     if (shouldRefreshProjectDescriptor) {
       const updatedProject = await this.projectRegistry.update(project.projectId, (current) => ({
         ...current,
-        rootPath: result.mode === "single" ? result.projectRoot : current.rootPath,
+        rootPath: result.mode === "single" ? result.projectRoot : null,
         updatedAt: new Date().toISOString(),
       }));
       if (!updatedProject) {
         this.emitProjectConfigWriteFailure(msg, { code: "project_not_found" }, repoRoot);
         return;
       }
-      if (result.mode === "single") {
-        responseRoot = updatedProject.rootPath ?? "";
-      }
+      responseRoot = this.resolveProjectPath(updatedProject);
     }
 
     this.logger.debug(
@@ -183,6 +185,13 @@ export class ProjectConfigSession {
         error,
       },
     });
+  }
+
+  private resolveProjectPath(project: PersistedProjectRecord): string {
+    if (project.rootPath === null) {
+      ensureManagedProjectPath(this.paseoHome, project.projectId);
+    }
+    return resolveProjectPath({ paseoHome: this.paseoHome, project });
   }
 
   private emitProjectConfigWriteFailure(

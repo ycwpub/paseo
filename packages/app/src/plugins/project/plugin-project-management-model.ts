@@ -31,11 +31,15 @@ export function buildManagedPluginProjects(
 }
 
 export function resolveInitialManagedPluginProjectId(input: {
+  requestedProjectId?: string;
   currentProjectId: string | null;
   activeProjectId: string | null;
   projects: readonly ManagedPluginProject[];
 }): string | null {
   const ids = new Set(input.projects.map((project) => project.projectId));
+  if (input.requestedProjectId && ids.has(input.requestedProjectId)) {
+    return input.requestedProjectId;
+  }
   if (input.currentProjectId && ids.has(input.currentProjectId)) return input.currentProjectId;
   if (input.activeProjectId && ids.has(input.activeProjectId)) return input.activeProjectId;
   return input.projects[0]?.projectId ?? null;

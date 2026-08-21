@@ -49,6 +49,10 @@ import type { ForgeService } from "../services/forge-service.js";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { deriveProjectKey } from "./project-key.js";
 import {
+  resolveManagedProjectPath,
+  resolveManagedWorkspacePath,
+} from "./project/project-storage-paths.js";
+import {
   asSessionLogger,
   asAgentManager,
   asAgentStorage,
@@ -78,6 +82,7 @@ const REPO_CWD = path.resolve("/tmp/repo");
 const UNREGISTERED_CWD = path.resolve("/tmp/unregistered");
 
 const terminalManagers: TerminalManager[] = [];
+const temporaryStorageRoots: string[] = [];
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -97,6 +102,9 @@ afterEach(async () => {
     if (manager) {
       manager.killAll();
     }
+  }
+  for (const root of temporaryStorageRoots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
   }
   await flushTerminalContributionWork();
 });
@@ -3674,6 +3682,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
       projectCustomName: null,
       projectCustomIconRevision: null,
       projectRootPath: REPO_CWD,
+      projectSourceDirectory: REPO_CWD,
       projectKind: "git",
     },
   });
@@ -3681,8 +3690,11 @@ test("archiving the last workspace emits a remove carrying the now-empty project
 
 test("project.remove.request archives active workspaces and removes the project record", async () => {
   const emitted: SessionOutboundMessage[] = [];
+  const paseoHome = mkdtempSync(path.join(tmpdir(), "project-remove-storage-"));
+  temporaryStorageRoots.push(paseoHome);
   const session = createSessionForWorkspaceTests({
     onMessage: (message) => emitted.push(message),
+    paseoHome,
   });
   const project = createPersistedProjectRecord({
     projectId: "proj-remove-with-workspace",
@@ -3706,6 +3718,12 @@ test("project.remove.request archives active workspaces and removes the project 
   const workspaces = new Map<string, PersistedWorkspaceRecord>([
     [workspace.workspaceId, workspace],
   ]);
+  const projectStoragePath = resolveManagedProjectPath(paseoHome, project.projectId);
+  const workspaceStoragePath = resolveManagedWorkspacePath(paseoHome, workspace.workspaceId);
+  mkdirSync(projectStoragePath, { recursive: true });
+  mkdirSync(workspaceStoragePath, { recursive: true });
+  writeFileSync(path.join(projectStoragePath, "temporary.txt"), "temporary");
+  writeFileSync(path.join(workspaceStoragePath, "temporary.txt"), "temporary");
 
   session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
   session.projectRegistry.list = async () => Array.from(projects.values());
@@ -3756,6 +3774,8 @@ test("project.remove.request archives active workspaces and removes the project 
   });
 
   expect(projects.has(project.projectId)).toBe(false);
+  expect(existsSync(projectStoragePath)).toBe(false);
+  expect(existsSync(workspaceStoragePath)).toBe(false);
   expect(workspaces.get(workspace.workspaceId)).toEqual({
     ...workspace,
     updatedAt: expect.any(String),
@@ -3778,8 +3798,11 @@ test("project.remove.request archives active workspaces and removes the project 
 
 test("project.remove.request removes an already-empty project", async () => {
   const emitted: SessionOutboundMessage[] = [];
+  const paseoHome = mkdtempSync(path.join(tmpdir(), "empty-project-remove-storage-"));
+  temporaryStorageRoots.push(paseoHome);
   const session = createSessionForWorkspaceTests({
     onMessage: (message) => emitted.push(message),
+    paseoHome,
   });
   const project = createPersistedProjectRecord({
     projectId: "proj-remove-empty",
@@ -3803,6 +3826,13 @@ test("project.remove.request removes an already-empty project", async () => {
   const workspaces = new Map<string, PersistedWorkspaceRecord>([
     [archivedWorkspace.workspaceId, archivedWorkspace],
   ]);
+  const projectStoragePath = resolveManagedProjectPath(paseoHome, project.projectId);
+  const workspaceStoragePath = resolveManagedWorkspacePath(
+    paseoHome,
+    archivedWorkspace.workspaceId,
+  );
+  mkdirSync(projectStoragePath, { recursive: true });
+  mkdirSync(workspaceStoragePath, { recursive: true });
 
   session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
   session.projectRegistry.list = async () => Array.from(projects.values());
@@ -3836,6 +3866,8 @@ test("project.remove.request removes an already-empty project", async () => {
   });
 
   expect(projects.has(project.projectId)).toBe(false);
+  expect(existsSync(projectStoragePath)).toBe(false);
+  expect(existsSync(workspaceStoragePath)).toBe(false);
   expect(workspaces.get(archivedWorkspace.workspaceId)).toEqual(archivedWorkspace);
   expect(findByType(emitted, "project.remove.response")?.payload).toEqual({
     requestId: "req-remove-empty-project",
@@ -5730,7 +5762,9 @@ test("legacy editor RPC requests return daemon unsupported errors", async () => 
 
 test("archive_workspace_request hides non-destructive workspace records", async () => {
   const emitted: SessionOutboundMessage[] = [];
-  const session = createSessionForWorkspaceTests();
+  const paseoHome = mkdtempSync(path.join(tmpdir(), "workspace-archive-storage-"));
+  temporaryStorageRoots.push(paseoHome);
+  const session = createSessionForWorkspaceTests({ paseoHome });
   const workspace = createPersistedWorkspaceRecord({
     workspaceId: "ws-repo-archive",
     projectId: "proj-repo-archive",
@@ -5750,6 +5784,9 @@ test("archive_workspace_request hides non-destructive workspace records", async 
   };
   session.workspaceRegistry.list = async () => [workspace];
   session.projectRegistry.archive = async () => {};
+  const workspaceStoragePath = resolveManagedWorkspacePath(paseoHome, workspace.workspaceId);
+  mkdirSync(workspaceStoragePath, { recursive: true });
+  writeFileSync(path.join(workspaceStoragePath, "temporary.txt"), "temporary");
 
   await session.handleMessage({
     type: "archive_workspace_request",
@@ -5758,6 +5795,7 @@ test("archive_workspace_request hides non-destructive workspace records", async 
   });
 
   expect(workspace.archivedAt).toBeTruthy();
+  expect(existsSync(workspaceStoragePath)).toBe(false);
   const response = emitted.find((message) => message.type === "archive_workspace_response") as
     | { payload: Record<string, unknown> }
     | undefined;

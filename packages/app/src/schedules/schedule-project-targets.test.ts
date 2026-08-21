@@ -26,6 +26,7 @@ function makeHost(overrides: Partial<ProjectSummary["hosts"][number]>) {
     projectCustomName: null,
     serverName: "Host 1",
     isOnline: true,
+    projectPath: "/tmp/project",
     repoRoot: "/tmp/project",
     isDirectoryless: false,
     workspaceCount: 0,

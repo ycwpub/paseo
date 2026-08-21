@@ -5,6 +5,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { formatTimeAgo } from "@/utils/time";
 import type { ManagedPluginProject } from "./plugin-project-management-model";
+import { shouldShowPluginListCreateAction } from "./plugin-project-list-presentation";
 
 function PluginProjectListItem({
   project,
@@ -70,9 +71,11 @@ export function PluginProjectList({
           <Text style={styles.title}>插件项目</Text>
           <Text style={styles.count}>{projects.length}</Text>
         </View>
-        <Button size="xs" variant="default" leftIcon={Plus} onPress={onCreate}>
-          新建
-        </Button>
+        {shouldShowPluginListCreateAction(projects.length) ? (
+          <Button size="xs" variant="default" leftIcon={Plus} onPress={onCreate}>
+            新建
+          </Button>
+        ) : null}
       </View>
       {loading ? <Text style={styles.hint}>正在加载插件项目…</Text> : null}
       {error ? (

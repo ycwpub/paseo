@@ -54,6 +54,11 @@ export interface PluginHttpServiceRuntime {
     config: PluginHttpProjectConfig;
     runtimes: PluginHttpListenerRuntime[];
   }>;
+  copyProjectConfig?(
+    pluginId: string,
+    sourceProjectId: string,
+    targetProjectId: string,
+  ): Promise<PluginHttpProjectConfig | null>;
   cleanupProjectJobs(pluginId: string, projectId: string): Promise<string[]>;
   stop(): Promise<void>;
 }

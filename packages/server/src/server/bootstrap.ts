@@ -154,6 +154,7 @@ import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
+import { removeManagedWorkspaceStorage } from "./project/project-storage-paths.js";
 import {
   archiveByScope,
   archivePersistedWorkspaceRecord,
@@ -176,6 +177,7 @@ import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
 import type {
   AgentProfile,
   FirstAgentContext,
+  PaseoHostKnowledge,
   PaseoInstructionTemplate,
   TerminalProfile,
 } from "@getpaseo/protocol/messages";
@@ -187,6 +189,10 @@ import type { RelayDeviceType, RelayEndpointConfig } from "@getpaseo/protocol/da
 import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
+import {
+  buildHostKnowledgePrompt,
+  resolveHostKnowledge,
+} from "./knowledge/host-knowledge-context.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -427,6 +433,7 @@ export interface PaseoDaemonConfig {
   };
   clientAccessRequireApproval?: boolean;
   projectIndexUpdateIntervalMinutes?: number;
+  hostKnowledge?: PaseoHostKnowledge;
   instructionTemplates?: PaseoInstructionTemplate[];
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
@@ -606,6 +613,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     projectIndexing: {
       updateIntervalMinutes: config.projectIndexUpdateIntervalMinutes ?? 1440,
     },
+    ...(config.hostKnowledge !== undefined ? { knowledge: config.hostKnowledge } : {}),
     instructionTemplates: config.instructionTemplates,
     relay: {
       endpoints: resolveInitialRelayEndpoints(config),
@@ -1208,6 +1216,14 @@ export async function createPaseoDaemon(
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     appendSystemPrompt: config.appendSystemPrompt,
+    daemonKnowledgePromptComposer: () =>
+      buildHostKnowledgePrompt(
+        resolveHostKnowledge({
+          paseoHome: config.paseoHome,
+          knowledge: daemonConfigStore.get().knowledge,
+          logger,
+        }),
+      ),
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
@@ -1253,7 +1269,12 @@ export async function createPaseoDaemon(
     logger,
     workspaceGitService,
     onProjectUpdate: (update) => wsServer?.publishProjectUpdate(update),
-    onWorkspaceArchived: teardownArchivedWorkspaceRuntime,
+    onWorkspaceArchived: async (workspaceId) => {
+      teardownArchivedWorkspaceRuntime(workspaceId);
+      await removeManagedWorkspaceStorage(config.paseoHome, workspaceId).catch((error) => {
+        logger.warn({ err: error, workspaceId }, "Failed to clean up reconciled Workspace storage");
+      });
+    },
     onWorkspacesChanged: async (workspaceIds) => {
       await fanOutReconciledWorkspaceUpdates({
         sessions: wsServer?.listTrustedSessions() ?? [],
@@ -1279,6 +1300,9 @@ export async function createPaseoDaemon(
       workspaceId,
       workspaceRegistry,
       context,
+    });
+    await removeManagedWorkspaceStorage(config.paseoHome, workspaceId).catch((error) => {
+      logger.warn({ err: error, workspaceId }, "Failed to clean up archived Workspace storage");
     });
     if (!existingWorkspace || existingWorkspace.archivedAt) return;
     teardownArchivedWorkspaceRuntime(workspaceId);

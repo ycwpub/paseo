@@ -281,7 +281,12 @@ import {
   createProjectDirectory,
   ProjectDirectoryRequestError,
 } from "./project-directory-service.js";
-import { projectRootPathForWire } from "./project/project-directory-backing.js";
+import {
+  ensureManagedProjectPath,
+  removeManagedProjectStorage,
+  removeManagedWorkspaceStorage,
+  resolveProjectPath,
+} from "./project/project-storage-paths.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
@@ -3154,6 +3159,20 @@ export class Session {
         }
 
         await this.projectRegistry.remove(resolvedProjectId);
+        const cleanupResults = await Promise.allSettled([
+          ...projectWorkspaces.map((workspace) =>
+            removeManagedWorkspaceStorage(this.paseoHome, workspace.workspaceId),
+          ),
+          removeManagedProjectStorage(this.paseoHome, resolvedProjectId),
+        ]);
+        for (const cleanupResult of cleanupResults) {
+          if (cleanupResult.status === "rejected") {
+            this.sessionLogger.warn(
+              { err: cleanupResult.reason, projectId: resolvedProjectId },
+              "Failed to clean up removed Project storage",
+            );
+          }
+        }
         await removeProjectCustomIcon({
           paseoHome: this.paseoHome,
           projectId: resolvedProjectId,
@@ -4831,7 +4850,9 @@ export class Session {
         : workspace.projectId,
       projectCustomName: resolvedProjectRecord?.customName ?? null,
       projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
-      projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
+      projectRootPath: resolvedProjectRecord
+        ? resolveProjectPath({ paseoHome: this.paseoHome, project: resolvedProjectRecord })
+        : workspace.cwd,
       workspaceDirectory: workspace.cwd,
       worktreeSlug,
       projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
@@ -4919,7 +4940,9 @@ export class Session {
         : result.workspace.projectId,
       projectCustomName: projectRecord?.customName ?? null,
       projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
-      projectRootPath: projectRecord?.rootPath ?? result.repoRoot,
+      projectRootPath: projectRecord
+        ? resolveProjectPath({ paseoHome: this.paseoHome, project: projectRecord })
+        : result.repoRoot,
       workspaceDirectory: result.workspace.cwd,
       worktreeSlug: basename(result.worktree.worktreePath),
       projectKind: projectRecord?.kind ?? "git",
@@ -5086,6 +5109,10 @@ export class Session {
   private buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): WorkspaceProjectDescriptorPayload {
+    if (project.rootPath === null) {
+      ensureManagedProjectPath(this.paseoHome, project.projectId);
+    }
+    const projectPath = resolveProjectPath({ paseoHome: this.paseoHome, project });
     const sourceDirectory = resolveProjectSourceDirectory({
       paseoHome: this.paseoHome,
       project,
@@ -5096,7 +5123,7 @@ export class Session {
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
-      projectRootPath: projectRootPathForWire(project),
+      projectRootPath: projectPath,
       projectSourceDirectory: sourceDirectory.path,
       ...(project.rootPath === null ? { projectDirectoryless: true } : {}),
       projectKind: project.kind,
@@ -5186,6 +5213,12 @@ export class Session {
       workspaceId,
       archivedAt: archiveTimestamp,
       workspaceRegistry: this.workspaceRegistry,
+    });
+    await removeManagedWorkspaceStorage(this.paseoHome, workspaceId).catch((error) => {
+      this.sessionLogger.warn(
+        { err: error, workspaceId },
+        "Failed to clean up archived Workspace storage",
+      );
     });
     if (!existingWorkspace) {
       this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
@@ -6095,6 +6128,12 @@ export class Session {
       });
       if (!initialized.ok) {
         await this.projectRegistry.remove(project.projectId);
+        await removeManagedProjectStorage(this.paseoHome, project.projectId).catch((error) => {
+          this.sessionLogger.warn(
+            { err: error, projectId: project.projectId },
+            "Failed to clean up Project storage after initialization failure",
+          );
+        });
         throw new Error(`Failed to initialize Project configuration: ${initialized.error.code}`);
       }
       const sourceDirectory = resolveProjectSourceDirectory({

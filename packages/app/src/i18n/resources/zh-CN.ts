@@ -3289,6 +3289,7 @@ export const zhCN: TranslationResources = {
       backToProjects: "返回 Projects",
       switchHost: "切换 Host",
       projectId: "Project ID",
+      projectPath: "Project 路径",
       directoryless: {
         title: "Project 尚未关联目录",
         description:

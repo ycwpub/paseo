@@ -17,6 +17,7 @@ import {
   useHostProjects,
 } from "@/projects/host-projects";
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
+import { shouldShowPluginListCreateAction } from "@/plugins/project/plugin-project-list-presentation";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useAddProjectFlowStore } from "@/stores/add-project-flow-store";
@@ -196,9 +197,11 @@ function FlowList({
           <Text style={styles.sectionTitle}>开发流程</Text>
           <Text style={styles.countText}>{flows.length}</Text>
         </View>
-        <Button size="xs" variant="default" leftIcon={Plus} onPress={onCreate}>
-          新建
-        </Button>
+        {shouldShowPluginListCreateAction(flows.length) ? (
+          <Button size="xs" variant="default" leftIcon={Plus} onPress={onCreate}>
+            新建
+          </Button>
+        ) : null}
       </View>
       {loading ? <Text style={styles.hint}>正在加载研发流程…</Text> : null}
       {error ? (
@@ -290,6 +293,8 @@ export function ByteDevelopmentPanel({
   plugin,
   appDefinition,
   compact = false,
+  initialProjectId,
+  initialPluginProjectId,
   onNavigateAway,
 }: {
   active: boolean;
@@ -297,6 +302,8 @@ export function ByteDevelopmentPanel({
   plugin: PluginSummary;
   appDefinition: PluginAppDefinition;
   compact?: boolean;
+  initialProjectId?: string;
+  initialPluginProjectId?: string;
   onNavigateAway?: () => void;
 }) {
   const router = useRouter();
@@ -368,8 +375,13 @@ export function ByteDevelopmentPanel({
   useEffect(() => {
     if (creating || editing) return;
     if (selectedFlowId && flows.some((flow) => flow.id === selectedFlowId)) return;
-    setSelectedFlowId(flows[0]?.id ?? null);
-  }, [creating, editing, flows, selectedFlowId]);
+    const requestedFlow =
+      (initialPluginProjectId
+        ? flows.find((flow) => flow.id === initialPluginProjectId)
+        : undefined) ??
+      (initialProjectId ? flows.find((flow) => flow.projectId === initialProjectId) : undefined);
+    setSelectedFlowId(requestedFlow?.id ?? flows[0]?.id ?? null);
+  }, [creating, editing, flows, initialPluginProjectId, initialProjectId, selectedFlowId]);
 
   const selectedFlow = flows.find((flow) => flow.id === selectedFlowId) ?? null;
   const handleOpenProjectSettings = useDevelopmentProjectSettingsNavigation({

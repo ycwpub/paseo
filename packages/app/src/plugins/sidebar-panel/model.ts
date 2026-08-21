@@ -4,6 +4,8 @@ export interface PluginAppPanelSelection {
   serverId: string;
   pluginId: string;
   appId: string | null;
+  projectId?: string;
+  pluginProjectId?: string;
 }
 
 export interface InstalledPluginEntry {
@@ -18,7 +20,9 @@ export function isSamePluginAppSelection(
   return (
     current?.serverId === next.serverId &&
     current.pluginId === next.pluginId &&
-    current.appId === next.appId
+    current.appId === next.appId &&
+    current.projectId === next.projectId &&
+    current.pluginProjectId === next.pluginProjectId
   );
 }
 

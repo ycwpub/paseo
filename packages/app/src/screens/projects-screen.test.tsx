@@ -233,6 +233,7 @@ function hostEntry(overrides: Partial<ProjectHostEntry> = {}): ProjectHostEntry 
     projectCustomName: null,
     serverName: "alpha",
     isOnline: true,
+    projectPath: "/home/me/proj",
     repoRoot: "/home/me/proj",
     isDirectoryless: false,
     workspaceCount: 1,

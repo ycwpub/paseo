@@ -168,11 +168,16 @@ function PluginRow({
             <Switch
               value={plugin.enabled}
               onValueChange={handleToggle}
-              accessibilityLabel={`Enable ${plugin.displayName}`}
+              accessibilityLabel={`启用 ${plugin.displayName}`}
               disabled={isMutating}
             />
+            {plugin.updateAvailable ? (
+              <Button size="sm" variant="default" onPress={handleInstall} disabled={isMutating}>
+                更新
+              </Button>
+            ) : null}
             <Button size="sm" variant="destructive" onPress={handleUninstall} disabled={isMutating}>
-              Uninstall
+              卸载
             </Button>
           </>
         ) : (
@@ -182,7 +187,7 @@ function PluginRow({
             onPress={handleInstall}
             disabled={!plugin.installable || isMutating}
           >
-            Install
+            安装
           </Button>
         )}
       </View>
@@ -212,7 +217,7 @@ function MarketplaceRow({
       </View>
       {marketplace.removable ? (
         <Button size="sm" variant="outline" onPress={handleRemove}>
-          Remove
+          移除
         </Button>
       ) : null}
     </View>
@@ -282,7 +287,7 @@ export function PluginsSection({ serverId }: { serverId: string }) {
       .installPlugin({ type: "local", path })
       .then((plugin) => {
         setSourcePath("");
-        setMessage(`${plugin.displayName} installed.`);
+        setMessage(`${plugin.displayName} 已安装。`);
         return undefined;
       })
       .catch(() => undefined);
@@ -298,7 +303,13 @@ export function PluginsSection({ serverId }: { serverId: string }) {
           marketplaceId: plugin.marketplaceId,
           pluginName: plugin.name,
         })
-        .then((installedPlugin) => setMessage(`${installedPlugin.displayName} installed.`))
+        .then((installedPlugin) =>
+          setMessage(
+            plugin.updateAvailable
+              ? `${installedPlugin.displayName} 已更新。`
+              : `${installedPlugin.displayName} 已安装。`,
+          ),
+        )
         .catch(() => undefined);
     },
     [plugins],
@@ -316,7 +327,7 @@ export function PluginsSection({ serverId }: { serverId: string }) {
     (plugin: PluginSummary) => {
       if (!plugin.pluginId) return;
       void confirmDialog({
-        title: `Uninstall ${plugin.displayName}?`,
+        title: `卸载 ${plugin.displayName}？`,
         message:
           "这会移除插件的 Skills、MCP 服务、HTTP 服务和应用；插件数据会保留，以便后续重新安装。",
         confirmLabel: "卸载",

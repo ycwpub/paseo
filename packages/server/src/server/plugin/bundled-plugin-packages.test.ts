@@ -29,15 +29,21 @@ describe("bundled plugin packages", () => {
         path: "/process",
       }),
     ]);
+    expect(httpPlugin.apps).toEqual([
+      expect.objectContaining({
+        id: "service-console",
+        category: "Infrastructure",
+      }),
+    ]);
 
     const appEntry = entries.get("agent-web-app");
     expect(appEntry?.sourcePath).toBeDefined();
     const appPlugin = loadPluginPackage(appEntry!.sourcePath!);
     expect(appPlugin.apps).toEqual([
-      {
+      expect.objectContaining({
         id: "web-app-builder",
         category: "Productivity",
-      },
+      }),
     ]);
   });
 });

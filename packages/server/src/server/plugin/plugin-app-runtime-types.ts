@@ -11,6 +11,13 @@ export interface PluginAppConfigureInput {
   defaultAgent: PluginAppDefaultAgent;
 }
 
+export interface PluginAppProjectCopyInput {
+  pluginId: string;
+  appId: string;
+  sourceProjectId: string;
+  targetProjectId: string;
+}
+
 export interface PluginAppGenerateInput {
   pluginId: string;
   appId: string;
@@ -30,6 +37,12 @@ export interface PluginAppRuntime {
   get(pluginId: string, appId: string, projectId: string): PluginAppState;
   configure(input: PluginAppConfigureInput): PluginAppState;
   listProjects(pluginId: string, appId: string): PluginAppState[];
+  getHtmlPreview(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+  ): { html: string; htmlPath: string } | null;
+  copyProject(input: PluginAppProjectCopyInput): PluginAppState;
   deleteProject(pluginId: string, appId: string, projectId: string): boolean;
   generate(input: PluginAppGenerateInput): Promise<PluginAppState>;
   submit(input: PluginAppSubmitInput): Promise<PluginHttpJob>;

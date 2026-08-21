@@ -6,6 +6,7 @@ import pino from "pino";
 import { ProjectConfigSession, type ProjectConfigSessionHost } from "./project-config-session.js";
 import type { PersistedProjectRecord } from "../../workspace-registry.js";
 import type { SessionOutboundMessage } from "../../messages.js";
+import { resolveManagedProjectPath } from "../../project/project-storage-paths.js";
 
 const tempDirs: string[] = [];
 
@@ -196,7 +197,8 @@ describe("ProjectConfigSession", () => {
     const project = projectRecord("");
     project.projectId = "prj_directoryless";
     project.rootPath = null;
-    const { subsystem, emitted, recordsById } = makeSubsystem([project]);
+    const { subsystem, emitted, recordsById, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectPath(paseoHome, project.projectId);
 
     await subsystem.handleReadProjectConfigRequest({
       type: "read_project_config_request",
@@ -223,7 +225,7 @@ describe("ProjectConfigSession", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-directoryless",
-          repoRoot: "",
+          repoRoot: projectPath,
           ok: true,
           config: {
             project: {
@@ -238,7 +240,7 @@ describe("ProjectConfigSession", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "write-directoryless",
-          repoRoot: "",
+          repoRoot: projectPath,
           ok: true,
           config: {
             project: {
@@ -260,7 +262,7 @@ describe("ProjectConfigSession", () => {
     const repoRoot = makeRoot();
     const selectedRoot = makeRoot();
     const project = projectRecord(repoRoot);
-    const { subsystem, emitted, recordsById } = makeSubsystem([project]);
+    const { subsystem, emitted, recordsById, paseoHome } = makeSubsystem([project]);
 
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",
@@ -279,6 +281,10 @@ describe("ProjectConfigSession", () => {
     if (firstResponse?.type !== "write_project_config_response" || !firstResponse.payload.ok) {
       throw new Error("Expected the multiple-directory write to succeed");
     }
+    expect(firstResponse.payload.repoRoot).toBe(
+      resolveManagedProjectPath(paseoHome, project.projectId),
+    );
+    expect(recordsById.get(project.projectId)?.rootPath).toBeNull();
 
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",

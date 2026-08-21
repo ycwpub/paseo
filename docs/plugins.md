@@ -50,9 +50,11 @@ resources and remembers their individual enabled states. Uninstall removes only 
 owned by that plugin. A user-created resource or another plugin with the same name wins; the
 conflicting bundled resource is skipped and shown as a warning.
 
-Run **Refresh** after changing a local marketplace or plugin package, then reinstall the plugin to
-copy the new package version. Start a new Agent session when a provider does not reload Skills or
-MCP configuration dynamically.
+Installed plugins from the packaged desktop marketplace are re-copied from the packaged source
+when the daemon starts, including same-version package changes. This prevents a stale cache from
+missing newly bundled apps or other components. For user-added local marketplaces, run
+**Refresh**, then use **Update** to copy a new package version. Start a new Agent session when a
+provider does not reload Skills or MCP configuration dynamically.
 
 ## Workflow-backed HTTP services
 
@@ -220,8 +222,9 @@ Reference the file from `plugin.json`, or rely on default `.app.json` discovery:
 
 After installation, open **Host Settings → Plugins → Open app**, select the Project and default
 Provider/model, and save the plugin project. Agent-driven interface generation is only shown after
-that first save. Each later message revises the complete interface while preserving the local
-conversation and uses the saved default model first.
+that first save. Each later generation instruction revises the complete interface and uses the
+saved default model first. Normal discussion happens on the associated Project page rather than
+inside the plugin page.
 Paseo stores generated state separately for each Project under:
 
 ```text
@@ -235,6 +238,16 @@ declarative document using these components:
 - `text_input`, `textarea`, `number_input`, `select`, `checkbox`
 - `button`
 - `status`, `result`, `json`
+
+Whenever Paseo saves a document, it also compiles an escaped static preview beside the state:
+
+```text
+$PASEO_HOME/plugins/data/<plugin-id>/apps/<app-id>/projects/<project-hash>/preview.html
+```
+
+The plugin page can open this file through Paseo's sandboxed browser preview. The declarative
+document remains the source of truth; the exported HTML does not execute Agent-provided HTML or
+JavaScript and does not submit HTTP service actions outside Paseo.
 
 A button can invoke an installed workflow-backed HTTP service:
 
@@ -343,7 +356,8 @@ installed plugin cache remains read-only.
 The bundled **网页应用生成器** plugin provides an empty app slot named `web-app-builder`. Open it
 from the installed plugin row and describe the desired interface to the Agent. When an HTTP service
 plugin is installed and enabled, generated buttons can bind to that service without exposing its
-random local port to the renderer.
+random local port to the renderer. Paseo saves every generated interface as `preview.html` and
+provides a browser preview from the plugin page.
 
 ## Built-in Byte Reconciliation plugin
 

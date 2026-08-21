@@ -13,6 +13,7 @@ import {
 } from "@getpaseo/protocol/messages";
 import { PluginHttpConfigStore } from "./plugin-http-config-store.js";
 import { PluginHttpJobStore } from "./plugin-http-job-store.js";
+import { buildCopiedPluginHttpProjectConfig } from "./plugin-http-project-copy.js";
 import type {
   MutablePluginHttpServiceStatus,
   PluginHttpServiceBinding,
@@ -298,6 +299,26 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     await this.reconcileAll();
     await this.cleanupProjectJobs(config.pluginId, config.projectId);
     return { config, runtimes: this.projectRuntimes(config) };
+  }
+
+  async copyProjectConfig(
+    pluginId: string,
+    sourceProjectId: string,
+    targetProjectId: string,
+  ): Promise<PluginHttpProjectConfig | null> {
+    const source = this.configStore.get(pluginId, sourceProjectId);
+    if (!source) return null;
+    if (this.configStore.get(pluginId, targetProjectId)) {
+      throw new Error("目标 Project 已存在 HTTP 服务配置");
+    }
+    const config = buildCopiedPluginHttpProjectConfig({
+      source,
+      targetProjectId,
+      timestamp: this.now().toISOString(),
+    });
+    this.configStore.save(config);
+    await this.reconcileAll();
+    return config;
   }
 
   async submit(pluginId: string, serviceName: string, input: unknown): Promise<PluginHttpJob> {

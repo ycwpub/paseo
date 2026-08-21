@@ -33,6 +33,39 @@ describe("global instruction template configuration", () => {
   });
 });
 
+describe("Host knowledge configuration", () => {
+  test("parses Host knowledge and patches with Project-compatible resources", () => {
+    const knowledge = {
+      general: [
+        { type: "local-directory" as const, source: "shared" },
+        { type: "cloud-document" as const, source: "https://example.com/background" },
+      ],
+      standards: [
+        { type: "local-document" as const, source: "standards/review.md" },
+        { type: "cloud-document" as const, source: "https://example.com/standards" },
+      ],
+    };
+
+    expect(
+      MutableDaemonConfigSchema.parse({
+        mcp: { injectIntoAgents: false },
+        knowledge,
+      }).knowledge,
+    ).toEqual(knowledge);
+    expect(MutableDaemonConfigPatchSchema.parse({ knowledge }).knowledge).toEqual(knowledge);
+  });
+
+  test("rejects Project-only knowledge from Host standards", () => {
+    expect(
+      MutableDaemonConfigPatchSchema.safeParse({
+        knowledge: {
+          standards: [{ type: "local-directory", source: "standards" }],
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe("Relay configuration", () => {
   test("parses independent Relay and pairing frontend lists", () => {
     const relay = MutableDaemonConfigSchema.parse({

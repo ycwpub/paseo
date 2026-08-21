@@ -33,6 +33,7 @@ import type {
   PluginHttpServiceRuntime,
 } from "./plugin-http-runtime-types.js";
 import { bundledPluginMarketplaceCandidates } from "./bundled-plugin-marketplace.js";
+import { selectBundledPluginSyncs } from "./bundled-plugin-sync.js";
 import {
   loadPluginMarketplace,
   type LoadedPluginMarketplace,
@@ -364,6 +365,7 @@ export class PluginService {
   private readonly mcpStore: McpStore;
   private readonly skillStore: SkillStore;
   private readonly store: PluginStore;
+  private readonly bundledMarketplacePaths: string[];
   private httpRuntime: PluginHttpServiceRuntime | null = null;
   private appRuntime: PluginAppRuntime | null = null;
   private marketplaceStates: MarketplaceState[] = [];
@@ -374,6 +376,7 @@ export class PluginService {
     logger: pino.Logger;
     mcpStore: McpStore;
     skillStore: SkillStore;
+    bundledMarketplacePaths?: string[];
   }) {
     this.cacheRoot = path.join(options.paseoHome, "plugins", "cache");
     this.dataRoot = path.join(options.paseoHome, "plugins", "data");
@@ -381,6 +384,8 @@ export class PluginService {
     this.mcpStore = options.mcpStore;
     this.skillStore = options.skillStore;
     this.store = new PluginStore(options.paseoHome);
+    this.bundledMarketplacePaths =
+      options.bundledMarketplacePaths ?? bundledPluginMarketplaceCandidates();
   }
 
   initialize(): void {
@@ -397,6 +402,8 @@ export class PluginService {
         );
       }
     }
+    this.refresh();
+    this.syncBundledPluginUpdates();
     this.refresh();
   }
 
@@ -426,6 +433,36 @@ export class PluginService {
 
   listAppProjects(pluginId: string, appId: string): PluginAppState[] {
     return this.requireAppRuntime().listProjects(pluginId, appId);
+  }
+
+  getAppHtmlPreview(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+  ): { html: string; htmlPath: string } | null {
+    return this.requireAppRuntime().getHtmlPreview(pluginId, appId, projectId);
+  }
+
+  async copyAppProject(
+    pluginId: string,
+    appId: string,
+    sourceProjectId: string,
+    targetProjectId: string,
+  ): Promise<PluginAppState> {
+    const appRuntime = this.requireAppRuntime();
+    const app = appRuntime.copyProject({
+      pluginId,
+      appId,
+      sourceProjectId,
+      targetProjectId,
+    });
+    try {
+      await this.httpRuntime?.copyProjectConfig?.(pluginId, sourceProjectId, targetProjectId);
+      return app;
+    } catch (error) {
+      appRuntime.deleteProject(pluginId, appId, targetProjectId);
+      throw error;
+    }
   }
 
   deleteAppProject(pluginId: string, appId: string, projectId: string): boolean {
@@ -551,7 +588,7 @@ export class PluginService {
     const configuredIds = new Set(configured.map((entry) => entry.id));
     const candidates = [
       path.join(os.homedir(), ".agents", "plugins", "marketplace.json"),
-      ...bundledPluginMarketplaceCandidates(),
+      ...this.bundledMarketplacePaths,
       ...findRepoMarketplaceCandidates(process.cwd()),
       ...configured.map((entry) => entry.path),
     ];
@@ -676,6 +713,20 @@ export class PluginService {
     source: PluginInstallSource,
   ): Promise<{ plugin: PluginSummary; state: PluginState }> {
     const { sourcePath, marketplaceId } = this.resolveInstallSource(source);
+    const synced = this.installResolvedSource(sourcePath, marketplaceId);
+    await this.reconcileHttpServices();
+    this.refresh();
+    const state = this.getState();
+    const plugin =
+      state.plugins.find((entry) => entry.pluginId === synced.id && entry.installed) ??
+      this.installedSummary(synced);
+    return { plugin, state };
+  }
+
+  private installResolvedSource(
+    sourcePath: string,
+    marketplaceId: string | undefined,
+  ): InstalledPluginRecord {
     const sourcePackage = loadPluginPackage(sourcePath);
     assertPluginTreeSafe(sourcePackage.root);
     const existing = this.store.getInstalled(sourcePackage.manifest.name);
@@ -694,13 +745,7 @@ export class PluginService {
     if (existing && path.resolve(existing.cachePath) !== path.resolve(synced.cachePath)) {
       rmSync(existing.cachePath, { recursive: true, force: true });
     }
-    await this.reconcileHttpServices();
-    this.refresh();
-    const state = this.getState();
-    const plugin =
-      state.plugins.find((entry) => entry.pluginId === synced.id && entry.installed) ??
-      this.installedSummary(synced);
-    return { plugin, state };
+    return synced;
   }
 
   async setEnabled(
@@ -843,6 +888,61 @@ export class PluginService {
       installedAt: existing?.installedAt ?? timestamp,
       updatedAt: timestamp,
     };
+  }
+
+  private syncBundledPluginUpdates(): void {
+    const updates = selectBundledPluginSyncs({
+      bundledMarketplacePaths: this.bundledMarketplacePaths,
+      catalog: this.catalogPlugins.flatMap((entry) => {
+        if (!entry.package || !entry.entry.installable || !entry.entry.sourcePath) return [];
+        return [
+          {
+            marketplaceFilePath: entry.marketplace.filePath,
+            marketplaceId: entry.marketplace.id,
+            pluginName: entry.package.manifest.name,
+            version: entry.package.manifest.version,
+          },
+        ];
+      }),
+      installed: this.store.listInstalled().map((entry) => ({
+        pluginId: entry.id,
+        marketplaceId: entry.marketplaceId,
+        version: entry.manifest.version,
+      })),
+    });
+
+    for (const update of updates) {
+      const catalogPlugin = this.catalogPlugins.find(
+        (entry) =>
+          entry.marketplace.id === update.marketplaceId &&
+          canonicalName(entry.entry.name) === canonicalName(update.pluginName),
+      );
+      if (!catalogPlugin?.entry.sourcePath) continue;
+      try {
+        const installed = this.installResolvedSource(
+          catalogPlugin.entry.sourcePath,
+          update.marketplaceId,
+        );
+        this.logger.info(
+          {
+            pluginId: installed.id,
+            version: installed.manifest.version,
+            marketplaceId: update.marketplaceId,
+          },
+          "Synchronized bundled plugin",
+        );
+      } catch (error) {
+        this.logger.warn(
+          {
+            err: error,
+            pluginName: update.pluginName,
+            version: update.version,
+            marketplaceId: update.marketplaceId,
+          },
+          "Failed to synchronize bundled plugin",
+        );
+      }
+    }
   }
 
   private syncPackageResources(

@@ -2777,6 +2777,7 @@ export const ja: TranslationResources = {
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       projectId: en.settings.project.projectId,
+      projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "プロジェクトディレクトリがありません",
         description:

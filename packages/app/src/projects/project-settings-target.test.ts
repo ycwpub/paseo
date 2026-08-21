@@ -10,6 +10,7 @@ function host(overrides: Partial<ProjectHostEntry> = {}): ProjectHostEntry {
     projectCustomName: null,
     serverName: "Host A",
     isOnline: true,
+    projectPath: "/projects/a",
     repoRoot: "/projects/a",
     isDirectoryless: false,
     workspaceCount: 0,

@@ -18,6 +18,7 @@ import {
   statPaseoConfigFile,
   writePaseoConfigFileForEdit,
 } from "../../utils/paseo-config-file.js";
+import { resolveManagedProjectPath, resolveProjectPath } from "./project-storage-paths.js";
 
 export type ProjectConfigStorageProject = Pick<PersistedProjectRecord, "projectId" | "rootPath">;
 
@@ -49,6 +50,10 @@ export type ProjectConfigWriteResult =
 const GLOBAL_PROJECT_CONFIG_DIRECTORY = path.join("projects", "configs");
 
 export function resolveGlobalProjectConfigPath(paseoHome: string, projectId: string): string {
+  return path.join(resolveManagedProjectPath(paseoHome, projectId), PASEO_CONFIG_FILE_NAME);
+}
+
+function resolveLegacyGlobalProjectConfigPath(paseoHome: string, projectId: string): string {
   const projectKey = createHash("sha256").update(projectId).digest("hex");
   return path.join(paseoHome, GLOBAL_PROJECT_CONFIG_DIRECTORY, projectKey, PASEO_CONFIG_FILE_NAME);
 }
@@ -65,19 +70,24 @@ export function createDirectorylessProjectConfig(): PaseoConfigRaw {
 }
 
 export function resolveProjectConfigDirectories(input: {
+  paseoHome: string;
   project: ProjectConfigStorageProject;
   config: PaseoConfigRaw | null;
 }): string[] {
+  const projectRoot = resolveProjectPath({
+    paseoHome: input.paseoHome,
+    project: input.project,
+  });
   const directories = input.config?.project?.directories;
   if (!directories || !Object.prototype.hasOwnProperty.call(directories, "project")) {
-    return input.project.rootPath ? [path.resolve(input.project.rootPath)] : [];
+    return [projectRoot];
   }
   const variables: Record<string, string> = {
     ...input.config?.project?.variables,
     projectId: input.project.projectId,
-    ...(input.project.rootPath ? { projectRoot: input.project.rootPath } : {}),
+    projectRoot,
   };
-  return Array.from(
+  const configuredDirectories = Array.from(
     new Set(
       resolvePaseoProjectDirectoryEntries(directories)
         .project.filter((entry) => entry.enabled)
@@ -89,10 +99,13 @@ export function resolveProjectConfigDirectories(input: {
             return [path.resolve(homedir(), entry.slice(2))];
           }
           if (path.isAbsolute(entry)) return [path.resolve(entry)];
-          return input.project.rootPath ? [path.resolve(input.project.rootPath, entry)] : [];
+          return [path.resolve(projectRoot, entry)];
         }),
     ),
   );
+  return input.project.rootPath === null
+    ? Array.from(new Set([projectRoot, ...configuredDirectories]))
+    : configuredDirectories;
 }
 
 export function readProjectConfigForProject(input: {
@@ -100,6 +113,10 @@ export function readProjectConfigForProject(input: {
   project: ProjectConfigStorageProject;
 }): ProjectConfigReadResult {
   const globalPath = resolveGlobalProjectConfigPath(input.paseoHome, input.project.projectId);
+  const legacyGlobalPath = resolveLegacyGlobalProjectConfigPath(
+    input.paseoHome,
+    input.project.projectId,
+  );
   const localPath = resolveLocalProjectConfigPath(input.project);
   const localResult = localPath ? readPaseoConfigFileForEdit(localPath) : null;
 
@@ -110,6 +127,11 @@ export function readProjectConfigForProject(input: {
   if (!globalResult.ok) return globalResult;
   if (globalResult.config !== null) {
     return locateProjectConfig(globalResult, globalPath, "multiple");
+  }
+  const legacyGlobalResult = readPaseoConfigFileForEdit(legacyGlobalPath);
+  if (!legacyGlobalResult.ok) return legacyGlobalResult;
+  if (legacyGlobalResult.config !== null) {
+    return locateProjectConfig(legacyGlobalResult, legacyGlobalPath, "multiple");
   }
   if (localResult && !localResult.ok) return localResult;
   if (localResult?.config) {

@@ -149,6 +149,8 @@ export const PluginAppStateSchema = z.object({
   defaultAgent: PluginAppDefaultAgentSchema.nullable().default(null),
   category: z.string().optional(),
   document: PluginAppDocumentSchema.nullable(),
+  // COMPAT(pluginAppHtmlPreview): added on 2026-08-21. Older daemons omit it.
+  htmlPath: z.string().optional(),
   conversation: z.array(PluginAppConversationMessageSchema),
   createdAt: z.string(),
   updatedAt: z.string(),

@@ -93,4 +93,18 @@ describe("plugin sidebar panel model", () => {
     usePluginAppPanelStore.getState().close();
     expect(usePluginAppPanelStore.getState().selection).toBeNull();
   });
+
+  it("treats different linked plugin projects as different selections", () => {
+    const base = resolvePluginAppSelection(
+      "server-a",
+      resolveInstalledPluginEntries([plugin("Alpha")])[0]!,
+    );
+    const first = { ...base, projectId: "project-a", pluginProjectId: "flow-a" };
+    const second = { ...base, projectId: "project-b", pluginProjectId: "flow-b" };
+
+    usePluginAppPanelStore.getState().toggle(first);
+    usePluginAppPanelStore.getState().toggle(second);
+
+    expect(usePluginAppPanelStore.getState().selection).toEqual(second);
+  });
 });

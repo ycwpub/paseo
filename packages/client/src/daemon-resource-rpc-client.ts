@@ -372,6 +372,18 @@ export class DaemonResourceRpcClient {
     return { app: result.app, error: result.error };
   }
 
+  async getPluginAppHtmlPreview(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): Promise<{ html: string | null; htmlPath: string | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.html-preview.get.request", ...input },
+      responseType: "plugin.app.html-preview.get.response",
+    });
+    return { html: result.html, htmlPath: result.htmlPath, error: result.error };
+  }
+
   async configurePluginApp(input: {
     pluginId: string;
     appId: string;
@@ -394,6 +406,19 @@ export class DaemonResourceRpcClient {
       responseType: "plugin.app.project.list.response",
     });
     return { projects: result.projects, error: result.error };
+  }
+
+  async copyPluginAppProject(input: {
+    pluginId: string;
+    appId: string;
+    sourceProjectId: string;
+    targetProjectId: string;
+  }): Promise<{ app: PluginAppState | null; error: string | null }> {
+    const result = await this.request({
+      message: { type: "plugin.app.project.copy.request", ...input },
+      responseType: "plugin.app.project.copy.response",
+    });
+    return { app: result.app, error: result.error };
   }
 
   async deletePluginAppProject(input: {

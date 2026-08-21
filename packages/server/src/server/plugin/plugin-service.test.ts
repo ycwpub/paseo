@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -62,14 +63,59 @@ function writePlugin(pluginRoot: string, version = "1.0.0"): void {
   writeFileSync(path.join(pluginRoot, "server.js"), "console.log('ok')\n", "utf8");
 }
 
-function createService(tempRoot: string) {
+function createService(tempRoot: string, options: { bundledMarketplacePaths?: string[] } = {}) {
   const paseoHome = path.join(tempRoot, "paseo-home");
   const logger = createTestLogger();
   const skillStore = new SkillStore({ paseoHome, logger });
   const mcpStore = new McpStore({ paseoHome, logger });
-  const service = new PluginService({ paseoHome, logger, skillStore, mcpStore });
+  const service = new PluginService({
+    paseoHome,
+    logger,
+    skillStore,
+    mcpStore,
+    bundledMarketplacePaths: options.bundledMarketplacePaths,
+  });
   service.initialize();
   return { paseoHome, service, skillStore, mcpStore, logger };
+}
+
+function writeMarketplace(marketplaceRoot: string): string {
+  const marketplaceFile = path.join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
+  mkdirSync(path.dirname(marketplaceFile), { recursive: true });
+  writeFileSync(
+    marketplaceFile,
+    JSON.stringify({
+      name: "bundled-test",
+      plugins: [
+        {
+          name: "demo-plugin",
+          source: { source: "local", path: "./plugins/demo-plugin" },
+          policy: { installation: "AVAILABLE" },
+        },
+      ],
+    }),
+    "utf8",
+  );
+  return marketplaceFile;
+}
+
+function declarePluginApp(pluginRoot: string): void {
+  const manifestPath = path.join(pluginRoot, ".codex-plugin", "plugin.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+  manifest.apps = "./.app.json";
+  writeFileSync(manifestPath, JSON.stringify(manifest), "utf8");
+  writeFileSync(
+    path.join(pluginRoot, ".app.json"),
+    JSON.stringify({
+      apps: {
+        "service-console": {
+          id: "service-console",
+          category: "Infrastructure",
+        },
+      },
+    }),
+    "utf8",
+  );
 }
 
 describe("PluginService", () => {
@@ -182,6 +228,73 @@ describe("PluginService", () => {
       pluginId: "demo-plugin",
       installed: true,
       marketplaceName: "Local Test",
+    });
+  });
+
+  it("synchronizes an installed bundled plugin when the packaged version changes", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-bundled-update-"));
+    const marketplaceRoot = path.join(tempRoot, "marketplace");
+    const pluginRoot = path.join(marketplaceRoot, "plugins", "demo-plugin");
+    const marketplaceFile = writeMarketplace(marketplaceRoot);
+    writePlugin(pluginRoot, "1.0.0");
+    writeFileSync(path.join(pluginRoot, "version.txt"), "old", "utf8");
+
+    const first = createService(tempRoot, { bundledMarketplacePaths: [marketplaceFile] });
+    const marketplaceId = first.service.getState().marketplaces[0]!.id;
+    await first.service.install({
+      type: "marketplace",
+      marketplaceId,
+      pluginName: "demo-plugin",
+    });
+
+    writePlugin(pluginRoot, "1.0.1");
+    writeFileSync(path.join(pluginRoot, "version.txt"), "new", "utf8");
+
+    const second = createService(tempRoot, { bundledMarketplacePaths: [marketplaceFile] });
+    const installed = second.service
+      .getState()
+      .plugins.find((plugin) => plugin.pluginId === "demo-plugin");
+
+    expect(installed).toMatchObject({
+      installed: true,
+      version: "1.0.1",
+      updateAvailable: false,
+    });
+    expect(installed?.sourcePath).toBe(realpathSync(pluginRoot));
+    const installedSkill = second.skillStore
+      .list()
+      .find((skill) => skill.pluginId === "demo-plugin");
+    expect(installedSkill?.path).toBeDefined();
+    const cacheRoot = path.dirname(path.dirname(path.dirname(installedSkill!.path!)));
+    expect(readFileSync(path.join(cacheRoot, "version.txt"), "utf8")).toBe("new");
+  });
+
+  it("synchronizes newly declared apps from an unchanged bundled plugin version", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-bundled-app-sync-"));
+    const marketplaceRoot = path.join(tempRoot, "marketplace");
+    const pluginRoot = path.join(marketplaceRoot, "plugins", "demo-plugin");
+    const marketplaceFile = writeMarketplace(marketplaceRoot);
+    writePlugin(pluginRoot, "1.0.0");
+
+    const first = createService(tempRoot, { bundledMarketplacePaths: [marketplaceFile] });
+    const marketplaceId = first.service.getState().marketplaces[0]!.id;
+    await first.service.install({
+      type: "marketplace",
+      marketplaceId,
+      pluginName: "demo-plugin",
+    });
+    expect(() => first.service.resolveAppContext("demo-plugin", "service-console")).toThrow(
+      "Plugin app is not declared",
+    );
+
+    declarePluginApp(pluginRoot);
+    const second = createService(tempRoot, { bundledMarketplacePaths: [marketplaceFile] });
+
+    expect(
+      second.service.resolveAppContext("demo-plugin", "service-console").definition,
+    ).toMatchObject({
+      id: "service-console",
+      category: "Infrastructure",
     });
   });
 

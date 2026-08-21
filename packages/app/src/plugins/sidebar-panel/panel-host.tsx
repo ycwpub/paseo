@@ -4,6 +4,7 @@ import { X } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { usePlugins } from "@/hooks/use-plugins";
 import { ByteDevelopmentPanel } from "@/plugins/byte-development/development-panel";
 import { DEVELOPMENT_PLUGIN_ID } from "@/plugins/byte-development/flow-model";
@@ -19,7 +20,13 @@ import type { Theme } from "@/styles/theme";
 const ThemedX = withUnistyles(X);
 const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-export function PluginAppPanelHost({ compact }: { compact: boolean }) {
+export function PluginAppPanelHost({
+  compact,
+  desktopWidth,
+}: {
+  compact: boolean;
+  desktopWidth?: number;
+}) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const selection = usePluginAppPanelStore((state) => state.selection);
@@ -57,8 +64,8 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
     () =>
       compact
         ? [styles.panel, styles.compactPanel, { paddingTop: insets.top }]
-        : [styles.panel, styles.desktopPanel],
-    [compact, insets.top],
+        : [styles.panel, styles.desktopPanel, { width: desktopWidth }],
+    [compact, desktopWidth, insets.top],
   );
 
   if (!selection) return null;
@@ -67,32 +74,45 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
   if (plugins.isLoading) {
     content = <Text style={styles.stateText}>{t("common.loading")}</Text>;
   } else if (plugin?.enabled && appDefinition) {
+    const contentKey = [
+      selection.pluginId,
+      selection.appId,
+      selection.projectId,
+      selection.pluginProjectId,
+    ].join(":");
     if (plugin.pluginId === DEVELOPMENT_PLUGIN_ID) {
       content = (
         <ByteDevelopmentPanel
+          key={contentKey}
           active
           compact={compact}
           serverId={selection.serverId}
           plugin={plugin}
           appDefinition={appDefinition}
+          initialProjectId={selection.projectId}
+          initialPluginProjectId={selection.pluginProjectId}
         />
       );
     } else if (plugin.pluginId === HTTP_SERVICE_PLUGIN_ID) {
       content = (
         <HttpServicePanel
+          key={contentKey}
           active
           serverId={selection.serverId}
           plugin={plugin}
           appDefinition={appDefinition}
+          initialProjectId={selection.projectId}
         />
       );
     } else {
       content = (
         <ProjectScopedPluginAppSurface
+          key={contentKey}
           active
           serverId={selection.serverId}
           plugin={plugin}
           appDefinition={appDefinition}
+          initialProjectId={selection.projectId}
         />
       );
     }
@@ -104,6 +124,7 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
   return (
     <View style={panelStyle} testID="plugin-app-side-panel">
       <View style={styles.header}>
+        <TitlebarDragRegion />
         <View style={styles.headerText}>
           <Text numberOfLines={1} style={styles.title}>
             {plugin?.displayName ?? t("settings.hostSections.plugins")}
@@ -142,8 +163,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
   },
   desktopPanel: {
-    flex: 1,
     height: "100%",
+    flexShrink: 0,
+    borderLeftWidth: theme.borderWidth[1],
+    borderLeftColor: theme.colors.border,
   },
   compactPanel: {
     position: "absolute",
@@ -154,6 +177,7 @@ const styles = StyleSheet.create((theme) => ({
     zIndex: 40,
   },
   header: {
+    position: "relative",
     minHeight: 52,
     flexDirection: "row",
     alignItems: "center",

@@ -6,7 +6,7 @@ interface MeegoAuthRequired {
 }
 
 export interface DevelopmentMeegoActionRequired {
-  kind: "login" | "permission";
+  kind: "login" | "browser-login" | "permission";
   code: string;
   message: string;
   urls: string[];
@@ -120,6 +120,7 @@ function collectUrls(records: Record<string, unknown>[], text: string): string[]
     "verificationUrl",
     "verification_url",
     "verification_uri_complete",
+    "authUrl",
   ];
   const listKeys = ["urls", "permissionApplyUrls", "permission_apply_urls"];
   const appendListItem = (item: unknown) => {
@@ -158,8 +159,13 @@ export function parseDevelopmentMeegoActionRequired(
   const codes = collectStrings(records, ["authCode", "code"]);
   const code = codes.find((candidate) => /AUTH|PERMISSION|FORBIDDEN/u.test(candidate)) ?? "";
   const explicitlyRequired = records.some((record) => record.authRequired === true);
+  const browserLoginRequired =
+    /MEEGO_GOAPI_AUTH_(?:REQUIRED|EXPIRED)|bytedcli\s+auth\s+login\s+--session\s+--feishu/iu.test(
+      [code, searchable].join("\n"),
+    ) ||
+    (explicitlyRequired && records.some((record) => record.authProvider === "goapi"));
   const loginRequired =
-    explicitlyRequired ||
+    (explicitlyRequired && !browserLoginRequired) ||
     /(?:MEEGL?E?|MEEGO)_AUTH_REQUIRED|authentication is required|bytedcli\s+meego\s+login/iu.test(
       [code, searchable].join("\n"),
     );
@@ -167,7 +173,7 @@ export function parseDevelopmentMeegoActionRequired(
     /PERMISSION|FORBIDDEN|NO_ACCESS|permission[_\s-]*(?:required|denied)|申请权限|无权限/iu.test(
       [code, searchable].join("\n"),
     );
-  if (!loginRequired && !permissionRequired) return null;
+  if (!browserLoginRequired && !loginRequired && !permissionRequired) return null;
 
   const urls = collectUrls(records, searchable);
   const preferredMessage = messages.find(
@@ -176,12 +182,23 @@ export function parseDevelopmentMeegoActionRequired(
       !message.trim().startsWith("{") &&
       !/bytedcli\s+meego\s+login/iu.test(message),
   );
+  let kind: DevelopmentMeegoActionRequired["kind"] = "permission";
+  let fallbackCode = "MEEGO_PERMISSION_REQUIRED";
+  if (browserLoginRequired) {
+    kind = "browser-login";
+    fallbackCode = "MEEGO_GOAPI_AUTH_REQUIRED";
+  } else if (loginRequired) {
+    kind = "login";
+    fallbackCode = "MEEGLE_AUTH_REQUIRED";
+  }
+  const fallbackMessage =
+    browserLoginRequired || loginRequired
+      ? "需要登录 Meego 后继续操作。"
+      : "需要申请 Meego 权限后继续操作。";
   return {
-    kind: loginRequired ? "login" : "permission",
-    code: code || (loginRequired ? "MEEGLE_AUTH_REQUIRED" : "MEEGO_PERMISSION_REQUIRED"),
-    message:
-      preferredMessage ||
-      (loginRequired ? "需要登录 Meego 后继续操作。" : "需要申请 Meego 权限后继续操作。"),
+    kind,
+    code: code || fallbackCode,
+    message: preferredMessage || fallbackMessage,
     urls,
   };
 }

@@ -28,6 +28,10 @@ function readMeegoInputSchema(): WorkflowJsonSchema {
 describe("byte development Meego workflow input contract", () => {
   it.each<WorkflowData>([
     { action: "list" },
+    {
+      action: "list",
+      homepageUrl: "https://meego.larkoffice.com/local_services/story/homepage",
+    },
     { action: "resolve", url: "https://meego.example.com/story/detail/123" },
     { action: "login_begin" },
     { action: "login_complete", completeToken: "challenge-token" },

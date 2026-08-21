@@ -148,6 +148,7 @@ interface SessionTestAccess {
       updater: (record: PersistedWorkspaceRecord) => PersistedWorkspaceRecord,
     ): Promise<unknown>;
     upsert(record: unknown): Promise<unknown>;
+    remove(workspaceId: string): Promise<void>;
   };
   agentUpdates: AgentUpdatesService;
   workspaceUpdatesSubscription: unknown;
@@ -3892,6 +3893,148 @@ test("project.remove.request removes an already-empty project", async () => {
       },
     },
   ]);
+});
+
+test("workspace.remove.request deletes only managed Workspace data and keeps the Project", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const paseoHome = mkdtempSync(path.join(tmpdir(), "workspace-remove-storage-"));
+  const externalCwd = mkdtempSync(path.join(tmpdir(), "workspace-remove-external-"));
+  temporaryStorageRoots.push(paseoHome, externalCwd);
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+    paseoHome,
+  });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-keep-after-workspace-remove",
+    rootPath: externalCwd,
+    kind: "git",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-remove-only",
+    projectId: project.projectId,
+    cwd: externalCwd,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const projects = new Map<string, PersistedProjectRecord>([[project.projectId, project]]);
+  const workspaces = new Map<string, PersistedWorkspaceRecord>([
+    [workspace.workspaceId, workspace],
+  ]);
+  const workspaceStoragePath = resolveManagedWorkspacePath(
+    paseoHome,
+    project.projectId,
+    workspace.workspaceId,
+  );
+  mkdirSync(workspaceStoragePath, { recursive: true });
+  writeFileSync(path.join(workspaceStoragePath, "temporary.txt"), "temporary");
+  const externalFile = path.join(externalCwd, "source.txt");
+  writeFileSync(externalFile, "keep");
+
+  session.projectRegistry.get = async (projectId: string) => projects.get(projectId) ?? null;
+  session.projectRegistry.list = async () => Array.from(projects.values());
+  session.workspaceRegistry.get = async (workspaceId: string) =>
+    workspaces.get(workspaceId) ?? null;
+  session.workspaceRegistry.list = async () => Array.from(workspaces.values());
+  session.workspaceRegistry.remove = async (workspaceId: string) => {
+    workspaces.delete(workspaceId);
+  };
+  session.workspaceUpdatesSubscription = {
+    subscriptionId: "sub-workspace-remove",
+    filter: undefined,
+    isBootstrapping: false,
+    pendingUpdatesByWorkspaceId: new Map(),
+    lastEmittedByWorkspaceId: new Map([
+      [
+        workspace.workspaceId,
+        {
+          kind: "upsert",
+          workspace: {
+            id: workspace.workspaceId,
+            projectId: project.projectId,
+            projectDisplayName: project.displayName,
+            projectRootPath: externalCwd,
+            workspaceDirectory: externalCwd,
+            projectKind: project.kind,
+            workspaceKind: workspace.kind,
+            name: workspace.displayName,
+            status: "idle",
+            activityAt: null,
+            diffStat: null,
+          },
+        },
+      ],
+    ]),
+  };
+  session.buildWorkspaceDescriptorMap = async () =>
+    new Map([
+      [
+        workspace.workspaceId,
+        {
+          id: workspace.workspaceId,
+          projectId: project.projectId,
+          projectDisplayName: project.displayName,
+          projectRootPath: externalCwd,
+          workspaceDirectory: externalCwd,
+          projectKind: project.kind,
+          workspaceKind: workspace.kind,
+          name: workspace.displayName,
+          status: "idle",
+          activityAt: null,
+          diffStat: null,
+        },
+      ],
+    ]);
+
+  await session.handleMessage({
+    type: "workspace.remove.request",
+    workspaceId: workspace.workspaceId,
+    requestId: "req-remove-workspace",
+  });
+
+  expect(workspaces.has(workspace.workspaceId)).toBe(false);
+  expect(projects.has(project.projectId)).toBe(true);
+  expect(existsSync(workspaceStoragePath)).toBe(false);
+  expect(existsSync(externalFile)).toBe(true);
+  expect(findByType(emitted, "workspace.remove.response")?.payload).toEqual({
+    requestId: "req-remove-workspace",
+    workspaceId: workspace.workspaceId,
+    accepted: true,
+    error: null,
+  });
+  expect(filterByType(emitted, "workspace_update").at(-1)?.payload).toMatchObject({
+    kind: "remove",
+    id: workspace.workspaceId,
+    emptyProject: {
+      projectId: project.projectId,
+      projectSourceDirectory: externalCwd,
+    },
+  });
+});
+
+test("workspace.remove.request reports an unknown Workspace", async () => {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests({
+    onMessage: (message) => emitted.push(message),
+  });
+  session.workspaceRegistry.get = async () => null;
+
+  await session.handleMessage({
+    type: "workspace.remove.request",
+    workspaceId: "ws-missing",
+    requestId: "req-remove-missing-workspace",
+  });
+
+  expect(findByType(emitted, "workspace.remove.response")?.payload).toEqual({
+    requestId: "req-remove-missing-workspace",
+    workspaceId: "ws-missing",
+    accepted: false,
+    error: "Workspace not found: ws-missing",
+  });
 });
 
 test("create paseo worktree response preserves an explicit non-Git project", async () => {

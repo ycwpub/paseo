@@ -3159,6 +3159,46 @@ test("sends project.remove.request", async () => {
   });
 });
 
+test("sends workspace.remove.request", async () => {
+  const logger = createMockLogger();
+  const mock = createMockTransport();
+
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger,
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  const removePromise = client.removeWorkspace("wks-main", "req-remove-workspace");
+
+  expect(parseSentFrame(mock.sent[0])).toEqual({
+    type: "workspace.remove.request",
+    requestId: "req-remove-workspace",
+    workspaceId: "wks-main",
+  });
+
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "workspace.remove.response",
+      payload: {
+        requestId: "req-remove-workspace",
+        workspaceId: "wks-main",
+        accepted: true,
+        error: null,
+      },
+    }),
+  );
+
+  await expect(removePromise).resolves.toBeUndefined();
+});
+
 test("sends worktree base-ref fields in create_paseo_worktree_request", async () => {
   const logger = createMockLogger();
   const mock = createMockTransport();

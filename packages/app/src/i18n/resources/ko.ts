@@ -1169,8 +1169,10 @@ const koOverrides = {
         unpin: "고정 해제",
         archive: "보관",
         archiveWorkspace: "워크스페이스 보관",
+        remove: "워크스페이스 삭제",
         hideFromSidebar: "사이드바에서 숨기기",
         archiving: "보관하는 중...",
+        removing: "삭제 중...",
         hiding: "숨기는 중...",
       },
       bulkArchive: {
@@ -1189,6 +1191,10 @@ const koOverrides = {
         hideMessage:
           '"{{workspaceName}}"을(를) 사이드바에서 숨길까요?\n\n디스크의 파일은 변경되지 않습니다.',
         hideConfirm: "숨기기",
+        removeTitle: "워크스페이스를 삭제하시겠습니까?",
+        removeMessage:
+          '"{{workspaceName}}" 및 ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
+        removeConfirm: "삭제",
         cancel: "취소",
       },
       rename: {
@@ -1202,6 +1208,7 @@ const koOverrides = {
         branchNameCopied: "브랜치 이름이 복사되었습니다",
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
         hideFailed: "워크스페이스를 숨기지 못했습니다",
+        removeFailed: "워크스페이스를 삭제하지 못했습니다",
         archiveFailed: "워크스페이스를 보관하지 못했습니다.",
       },
     },

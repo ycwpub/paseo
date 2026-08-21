@@ -1282,8 +1282,10 @@ export const ru: TranslationResources = {
         unpin: "Открепить",
         archive: "Архив",
         archiveWorkspace: "Архивировать рабочее пространство",
+        remove: "Удалить рабочее пространство",
         hideFromSidebar: "Скрыть с боковой панели",
         archiving: "Архивирование...",
+        removing: "Удаление...",
         hiding: "Скрытие...",
       },
       bulkArchive: {
@@ -1302,6 +1304,10 @@ export const ru: TranslationResources = {
         hideMessage:
           "Скрыть «{{workspaceName}}» на боковой панели?\n\n Файлы на диске не будут изменены.",
         hideConfirm: "Скрывать",
+        removeTitle: "Удалить рабочее пространство?",
+        removeMessage:
+          "Безвозвратно удалить «{{workspaceName}}» и управляемые Paseo данные в ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nСвязанный внешний каталог кода и файлы в нём не будут удалены или изменены. Это действие нельзя отменить.",
+        removeConfirm: "Удалить",
         cancel: "Отмена",
       },
       rename: {
@@ -1315,6 +1321,7 @@ export const ru: TranslationResources = {
         branchNameCopied: "Название филиала скопировано.",
         hostDisconnected: "Host не подключен",
         hideFailed: "Не удалось скрыть рабочую область.",
+        removeFailed: "Не удалось удалить рабочее пространство",
         archiveFailed: "Не удалось заархивировать рабочее пространство.",
       },
     },

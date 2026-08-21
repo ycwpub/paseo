@@ -1860,8 +1860,10 @@ export const en = {
         unpin: "Unpin",
         archive: "Archive",
         archiveWorkspace: "Archive workspace",
+        remove: "Delete workspace",
         hideFromSidebar: "Hide from sidebar",
         archiving: "Archiving...",
+        removing: "Deleting...",
         hiding: "Hiding...",
       },
       bulkArchive: {
@@ -1880,6 +1882,10 @@ export const en = {
         hideMessage:
           'Hide "{{workspaceName}}" from the sidebar?\n\nFiles on disk will not be changed.',
         hideConfirm: "Hide",
+        removeTitle: "Delete workspace?",
+        removeMessage:
+          'Permanently delete "{{workspaceName}}" and its Paseo-managed data at ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nThe external source directory and all files in it will not be deleted or modified. This cannot be undone.',
+        removeConfirm: "Delete",
         cancel: "Cancel",
       },
       rename: {
@@ -1893,6 +1899,7 @@ export const en = {
         branchNameCopied: "Branch name copied",
         hostDisconnected: "Host is not connected",
         hideFailed: "Failed to hide workspace",
+        removeFailed: "Failed to delete workspace",
         archiveFailed: "Failed to archive workspace",
       },
     },

@@ -1289,8 +1289,10 @@ export const es: TranslationResources = {
         unpin: "Desanclar",
         archive: "Archivo",
         archiveWorkspace: "Archivar espacio de trabajo",
+        remove: "Eliminar espacio de trabajo",
         hideFromSidebar: "Ocultar de la barra lateral",
         archiving: "Archivando...",
+        removing: "Eliminando...",
         hiding: "Ocultación...",
       },
       bulkArchive: {
@@ -1310,6 +1312,10 @@ export const es: TranslationResources = {
         hideMessage:
           '¿Ocultar "{{workspaceName}}" de la barra lateral?\n\nLos archivos en el disco no se cambiarán.',
         hideConfirm: "Esconder",
+        removeTitle: "¿Eliminar espacio de trabajo?",
+        removeMessage:
+          '¿Eliminar permanentemente "{{workspaceName}}" y sus datos administrados por Paseo en ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nEl directorio de código externo asociado y sus archivos no se eliminarán ni modificarán. Esta acción no se puede deshacer.',
+        removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
       rename: {
@@ -1323,6 +1329,7 @@ export const es: TranslationResources = {
         branchNameCopied: "Nombre de la sucursal copiado",
         hostDisconnected: "Hostno está conectado",
         hideFailed: "No se pudo ocultar el espacio de trabajo",
+        removeFailed: "No se pudo eliminar el espacio de trabajo",
         archiveFailed: "No se pudo archivar el espacio de trabajo",
       },
     },

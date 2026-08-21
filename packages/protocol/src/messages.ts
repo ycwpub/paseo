@@ -1013,6 +1013,12 @@ export const ProjectRemoveRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const WorkspaceRemoveRequestSchema = z.object({
+  type: z.literal("workspace.remove.request"),
+  workspaceId: z.string(),
+  requestId: z.string(),
+});
+
 export const WorkspaceTitleSetRequestSchema = z.object({
   type: z.literal("workspace.title.set.request"),
   workspaceId: z.string(),
@@ -1782,6 +1788,18 @@ export const ProjectRemoveResponsePayloadSchema = z.object({
 export const ProjectRemoveResponseSchema = z.object({
   type: z.literal("project.remove.response"),
   payload: ProjectRemoveResponsePayloadSchema,
+});
+
+export const WorkspaceRemoveResponsePayloadSchema = z.object({
+  requestId: z.string(),
+  workspaceId: z.string(),
+  accepted: z.boolean(),
+  error: z.string().nullable(),
+});
+
+export const WorkspaceRemoveResponseSchema = z.object({
+  type: z.literal("workspace.remove.response"),
+  payload: WorkspaceRemoveResponsePayloadSchema,
 });
 
 export const WorkspaceTitleSetResponsePayloadSchema = z.object({
@@ -2838,6 +2856,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameRequestSchema,
   ProjectIconSetRequestSchema,
   ProjectRemoveRequestSchema,
+  WorkspaceRemoveRequestSchema,
   WorkspaceTitleSetRequestSchema,
   WorkspacePinSetRequestSchema,
   WorkspaceRecoveryInspectRequestSchema,
@@ -3195,6 +3214,8 @@ export const ServerInfoStatusPayloadSchema = z
         workspaceMultiplicity: z.boolean().optional(),
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: z.boolean().optional(),
+        // COMPAT(workspaceRemove): added in v0.3.1, remove gate after 2027-02-21.
+        workspaceRemove: z.boolean().optional(),
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: z.boolean().optional(),
         // COMPAT(worktreeRestore): added in v0.1.97, drop the gate when floor >= v0.1.97
@@ -6011,6 +6032,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   ProjectRenameResponseSchema,
   ProjectIconSetResponseSchema,
   ProjectRemoveResponseSchema,
+  WorkspaceRemoveResponseSchema,
   WorkspaceTitleSetResponseSchema,
   WorkspacePinSetResponseSchema,
   WorkspaceRecoveryInspectResponseSchema,
@@ -6209,6 +6231,7 @@ export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessa
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
 export type ProjectIconSetResponse = z.infer<typeof ProjectIconSetResponseSchema>;
 export type ProjectRemoveResponse = z.infer<typeof ProjectRemoveResponseSchema>;
+export type WorkspaceRemoveResponse = z.infer<typeof WorkspaceRemoveResponseSchema>;
 export type WorkspaceTitleSetResponse = z.infer<typeof WorkspaceTitleSetResponseSchema>;
 export type WorkspaceTitleSetResponsePayload = z.infer<
   typeof WorkspaceTitleSetResponsePayloadSchema
@@ -6226,6 +6249,7 @@ export type WorkspaceCreateRequest = z.infer<typeof WorkspaceCreateRequestSchema
 export type WorkspaceCreateResponse = z.infer<typeof WorkspaceCreateResponseSchema>;
 export type ProjectRenameResponsePayload = z.infer<typeof ProjectRenameResponsePayloadSchema>;
 export type ProjectRemoveResponsePayload = z.infer<typeof ProjectRemoveResponsePayloadSchema>;
+export type WorkspaceRemoveResponsePayload = z.infer<typeof WorkspaceRemoveResponsePayloadSchema>;
 export type WaitForFinishResponseMessage = z.infer<typeof WaitForFinishResponseMessageSchema>;
 export type AgentPermissionRequestMessage = z.infer<typeof AgentPermissionRequestMessageSchema>;
 export type AgentPermissionResolvedMessage = z.infer<typeof AgentPermissionResolvedMessageSchema>;
@@ -6358,6 +6382,7 @@ export type ProjectIconSource = z.infer<typeof ProjectIconSourceSchema>;
 export type ProjectRenameRequest = z.infer<typeof ProjectRenameRequestSchema>;
 export type ProjectIconSetRequest = z.infer<typeof ProjectIconSetRequestSchema>;
 export type ProjectRemoveRequest = z.infer<typeof ProjectRemoveRequestSchema>;
+export type WorkspaceRemoveRequest = z.infer<typeof WorkspaceRemoveRequestSchema>;
 export type WorkspaceTitleSetRequest = z.infer<typeof WorkspaceTitleSetRequestSchema>;
 export type WorkspacePinSetRequest = z.infer<typeof WorkspacePinSetRequestSchema>;
 export type WorkspaceRecoveryInspectRequest = z.infer<typeof WorkspaceRecoveryInspectRequestSchema>;

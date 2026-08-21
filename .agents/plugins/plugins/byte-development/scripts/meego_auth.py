@@ -17,14 +17,22 @@ AUTH_ERROR_CODES = {
     "AUTH_REQUIRED",
     "MEEGLE_AUTH_REQUIRED",
     "MEEGO_AUTH_REQUIRED",
+    "MEEGO_GOAPI_AUTH_REQUIRED",
+    "MEEGO_GOAPI_AUTH_EXPIRED",
 }
 
 
 class MeegoAuthenticationRequired(RuntimeError):
-    def __init__(self, message: str, *, code: str = "MEEGLE_AUTH_REQUIRED") -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "MEEGLE_AUTH_REQUIRED",
+        provider: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
-        self.provider = "official" if "MEEGLE" in code else "legacy"
+        self.provider = provider or ("goapi" if code.startswith("MEEGO_GOAPI_") else "official")
 
 
 def _string(value: Any) -> str:
@@ -40,12 +48,22 @@ def authentication_error(payload: dict[str, Any], message: str) -> MeegoAuthenti
     data = _record(payload.get("data"))
     code = _string(error.get("code")) or _string(data.get("code"))
     normalized_message = message.lower()
+    requires_goapi = code.startswith("MEEGO_GOAPI_") or (
+        "bytedcli auth login --session --feishu" in normalized_message
+    )
     if (
         code in AUTH_ERROR_CODES
         or "authentication is required" in normalized_message
         or "bytedcli meego login" in normalized_message
+        or requires_goapi
     ):
-        return MeegoAuthenticationRequired(message, code=code or "MEEGLE_AUTH_REQUIRED")
+        fallback_code = "MEEGO_GOAPI_AUTH_REQUIRED" if requires_goapi else "MEEGLE_AUTH_REQUIRED"
+        provider = "goapi" if requires_goapi else "official"
+        return MeegoAuthenticationRequired(
+            message,
+            code=code or fallback_code,
+            provider=provider,
+        )
     return None
 
 

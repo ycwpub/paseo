@@ -1288,8 +1288,10 @@ export const fr: TranslationResources = {
         unpin: "Désépingler",
         archive: "Archive",
         archiveWorkspace: "Archiver l’espace de travail",
+        remove: "Supprimer l’espace de travail",
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",
+        removing: "Suppression...",
         hiding: "Dissimulation...",
       },
       bulkArchive: {
@@ -1309,6 +1311,10 @@ export const fr: TranslationResources = {
         hideMessage:
           "Masquer «{{workspaceName}}» dans la barre latérale?\n\nLes fichiers sur le disque ne seront pas modifiés.",
         hideConfirm: "Cacher",
+        removeTitle: "Supprimer l’espace de travail ?",
+        removeMessage:
+          "Supprimer définitivement « {{workspaceName}} » et ses données gérées par Paseo dans ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} ?\n\nLe répertoire de code externe associé et ses fichiers ne seront ni supprimés ni modifiés. Cette action est irréversible.",
+        removeConfirm: "Supprimer",
         cancel: "Annuler",
       },
       rename: {
@@ -1322,6 +1328,7 @@ export const fr: TranslationResources = {
         branchNameCopied: "Nom de la succursale copié",
         hostDisconnected: "Hostn'est pas connecté",
         hideFailed: "Échec du masquage de l'espace de travail",
+        removeFailed: "Échec de la suppression de l’espace de travail",
         archiveFailed: "Échec de l'archivage de l'espace de travail",
       },
     },

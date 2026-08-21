@@ -14,11 +14,19 @@ export function DevelopmentMeegoPermissionCard({
   checking: boolean;
   onCheck: () => void;
 }) {
+  const isLogin = action.kind === "browser-login";
+  const title = isLogin ? "需要登录 Meego 页面" : "需要申请 Meego 权限";
+  const linkLabel = isLogin ? "打开 Meego 需求首页" : "打开权限申请链接";
+  const emptyHint = isLogin
+    ? "请在浏览器中打开 Meego 并完成登录。"
+    : "当前错误未返回可用的权限申请链接，请联系 Meego 管理员。";
+  const retryLabel = isLogin ? "已完成登录，重新检查" : "已完成申请，重新检查";
+
   return (
     <View style={styles.card}>
       <View style={styles.titleRow}>
         <ExternalLinkIcon size={17} color={styles.icon.color} />
-        <Text style={styles.title}>需要申请 Meego 权限</Text>
+        <Text style={styles.title}>{title}</Text>
       </View>
       <Text style={styles.message}>{action.message}</Text>
       {action.urls.length > 0 ? (
@@ -27,13 +35,13 @@ export function DevelopmentMeegoPermissionCard({
             <ExternalLink
               key={url}
               href={url}
-              label={action.urls.length > 1 ? `打开权限申请链接 ${index + 1}` : "打开权限申请链接"}
-              accessibilityLabel="打开 Meego 权限申请链接"
+              label={action.urls.length > 1 ? `${linkLabel} ${index + 1}` : linkLabel}
+              accessibilityLabel={linkLabel}
             />
           ))}
         </View>
       ) : (
-        <Text style={styles.hint}>当前错误未返回可用的权限申请链接，请联系 Meego 管理员。</Text>
+        <Text style={styles.hint}>{emptyHint}</Text>
       )}
       <View style={styles.actions}>
         <Button
@@ -43,7 +51,7 @@ export function DevelopmentMeegoPermissionCard({
           loading={checking}
           onPress={onCheck}
         >
-          已完成申请，重新检查
+          {retryLabel}
         </Button>
       </View>
     </View>

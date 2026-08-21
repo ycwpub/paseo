@@ -60,31 +60,14 @@ class MeegoSourceTest(unittest.TestCase):
             },
         )
 
-    def test_lists_and_normalizes_current_user_todos(self) -> None:
+    def test_lists_items_from_the_meego_homepage(self) -> None:
         result = execute_action(
             {"action": "list"},
-            lambda command: {
-                "status": "success",
-                "data": {
-                    "list": [
-                        {
-                            "work_item_id": 123,
-                            "name": "登录优化",
-                            "project_key": "demo",
-                            "work_item_type": "story",
-                            "status": {"label": "处理中"},
-                            "url": "https://meego.example.com/demo/story/detail/123",
-                        }
-                    ]
-                },
-            },
-        )
-
-        self.assertEqual(
-            result,
-            {
+            homepage_reader=lambda homepage_url: {
                 "data": {
                     "action": "list",
+                    "source": "homepage",
+                    "homepageUrl": homepage_url,
                     "items": [
                         {
                             "id": "demo:123",
@@ -99,6 +82,9 @@ class MeegoSourceTest(unittest.TestCase):
                 }
             },
         )
+
+        self.assertEqual(result["data"]["source"], "homepage")
+        self.assertEqual(result["data"]["items"][0]["title"], "登录优化")
 
     def test_resolves_rich_meego_description_into_prd(self) -> None:
         result = execute_action(

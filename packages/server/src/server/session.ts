@@ -2341,6 +2341,8 @@ export class Session {
         return this.handleArchiveWorkspaceRequest(msg);
       case "project.remove.request":
         return this.handleProjectRemoveRequest(msg);
+      case "workspace.remove.request":
+        return this.handleWorkspaceRemoveRequest(msg);
       case "workspace.create.request":
         return this.handleWorkspaceCreateRequest(msg);
       case "workspace.clear_attention.request":
@@ -3226,6 +3228,93 @@ export class Session {
           error: getErrorMessageOr(error, "Failed to remove project"),
         },
       });
+    }
+  }
+
+  private async handleWorkspaceRemoveRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.remove.request" }>,
+  ): Promise<void> {
+    const { workspaceId, requestId } = request;
+    this.sessionLogger.info({ workspaceId, requestId }, "session: workspace.remove.request");
+
+    let shouldClearArchiving = false;
+    try {
+      const workspace = await this.workspaceRegistry.get(workspaceId);
+      if (!workspace) {
+        throw new Error(`Workspace not found: ${workspaceId}`);
+      }
+
+      if (!workspace.archivedAt) {
+        shouldClearArchiving = true;
+        this.markWorkspaceArchiving([workspaceId], new Date().toISOString());
+        await this.emitWorkspaceUpdatesForWorkspaceIds([workspaceId]);
+        this.workspaceSetupRuntime.stop(workspaceId);
+        await archiveWorkspaceContents(
+          {
+            agentManager: this.agentManager,
+            agentStorage: this.agentStorage,
+            killTerminalsForWorkspace: (id) =>
+              this.terminalController.killTerminalsForWorkspace(id),
+            sessionLogger: this.sessionLogger,
+          },
+          workspaceId,
+        );
+      }
+
+      const activeSiblingExists = (await this.workspaceRegistry.list()).some(
+        (candidate) =>
+          candidate.workspaceId !== workspaceId &&
+          candidate.projectId === workspace.projectId &&
+          !candidate.archivedAt,
+      );
+      const project = activeSiblingExists
+        ? null
+        : await this.projectRegistry.get(workspace.projectId);
+      await removeManagedWorkspaceStorage(this.paseoHome, workspace.projectId, workspaceId);
+      await this.workspaceRegistry.remove(workspaceId);
+      await this.teardownArchivedWorkspace(workspaceId);
+
+      const subscription = this.workspaceUpdatesSubscription;
+      const lastEmitted = subscription?.lastEmittedByWorkspaceId.get(workspaceId);
+      if (
+        subscription &&
+        !this.shouldSkipWorkspaceRemoval(lastEmitted, undefined) &&
+        this.workspaceUpdatesSubscription === subscription
+      ) {
+        this.bufferOrEmitWorkspaceUpdate(subscription, {
+          kind: "remove",
+          id: workspaceId,
+          ...(project ? { emptyProject: this.buildProjectDescriptor(project) } : {}),
+        });
+      }
+
+      this.emit({
+        type: "workspace.remove.response",
+        payload: {
+          requestId,
+          workspaceId,
+          accepted: true,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error(
+        { err: error, workspaceId, requestId },
+        "session: workspace.remove.request error",
+      );
+      this.emit({
+        type: "workspace.remove.response",
+        payload: {
+          requestId,
+          workspaceId,
+          accepted: false,
+          error: getErrorMessageOr(error, "Failed to remove workspace"),
+        },
+      });
+    } finally {
+      if (shouldClearArchiving) {
+        this.clearWorkspaceArchiving([workspaceId]);
+      }
     }
   }
 

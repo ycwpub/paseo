@@ -1248,8 +1248,10 @@ export const ar: TranslationResources = {
         unpin: "إلغاء التثبيت",
         archive: "أرشيف",
         archiveWorkspace: "أرشفة مساحة العمل",
+        remove: "حذف مساحة العمل",
         hideFromSidebar: "إخفاء من الشريط الجانبي",
         archiving: "أرشفة...",
+        removing: "جارٍ الحذف...",
         hiding: "إخفاء...",
       },
       bulkArchive: {
@@ -1268,6 +1270,10 @@ export const ar: TranslationResources = {
         hideMessage:
           'إخفاء "{{workspaceName}}" من الشريط الجانبي؟\n\n لن يتم تغيير الملفات الموجودة على القرص.',
         hideConfirm: "يخفي",
+        removeTitle: "حذف مساحة العمل؟",
+        removeMessage:
+          'هل تريد حذف "{{workspaceName}}" وبيانات Paseo الخاصة بها نهائيًا من ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}؟\n\nلن يتم حذف دليل الشفرة الخارجي المرتبط أو تعديل أي ملفات بداخله. لا يمكن التراجع عن هذا الإجراء.',
+        removeConfirm: "حذف",
         cancel: "يلغي",
       },
       rename: {
@@ -1281,6 +1287,7 @@ export const ar: TranslationResources = {
         branchNameCopied: "تم نسخ اسم الفرع",
         hostDisconnected: "Host غير متصل",
         hideFailed: "فشل في إخفاء مساحة العمل",
+        removeFailed: "فشل حذف مساحة العمل",
         archiveFailed: "فشل في أرشفة مساحة العمل",
       },
     },

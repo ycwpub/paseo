@@ -1279,8 +1279,10 @@ export const ptBR: TranslationResources = {
         unpin: "Desafixar",
         archive: "Arquivar",
         archiveWorkspace: "Arquivar workspace",
+        remove: "Excluir workspace",
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
+        removing: "Excluindo...",
         hiding: "Ocultando...",
       },
       bulkArchive: {
@@ -1299,6 +1301,10 @@ export const ptBR: TranslationResources = {
         hideMessage:
           'Ocultar "{{workspaceName}}" da barra lateral?\n\nOs arquivos no disco não serão alterados.',
         hideConfirm: "Ocultar",
+        removeTitle: "Excluir workspace?",
+        removeMessage:
+          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
+        removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
       rename: {
@@ -1312,6 +1318,7 @@ export const ptBR: TranslationResources = {
         branchNameCopied: "Nome da branch copiado",
         hostDisconnected: "Host não está conectado",
         hideFailed: "Falha ao ocultar workspace",
+        removeFailed: "Falha ao excluir workspace",
         archiveFailed: "Falha ao arquivar workspace",
       },
     },

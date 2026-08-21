@@ -3,7 +3,7 @@
   "kind": "Workflow",
   "version": 1,
   "name": "字节开发 Meego PRD",
-  "description": "读取当前用户关联的 Meego 工作项，或把指定 Meego 工作项解析为 PRD。",
+  "description": "从 Meego 需求首页读取当前用户“我参与的”需求，或把指定工作项解析为 PRD。",
   "timeoutMs": 60000,
   "steps": [
     {
@@ -24,6 +24,7 @@
             "type": "string",
             "enum": ["list", "resolve", "login_begin", "login_complete"]
           },
+          "homepageUrl": { "type": "string" },
           "url": { "type": "string" },
           "projectKey": { "type": "string" },
           "workItemId": { "type": "string" },

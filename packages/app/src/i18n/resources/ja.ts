@@ -1261,8 +1261,10 @@ export const ja: TranslationResources = {
         unpin: "固定解除",
         archive: "アーカイブ",
         archiveWorkspace: "ワークスペースをアーカイブ",
+        remove: "ワークスペースを削除",
         hideFromSidebar: "サイドバーから非表示",
         archiving: "アーカイブ中...",
+        removing: "削除中...",
         hiding: "非表示にしています...",
       },
       bulkArchive: {
@@ -1281,6 +1283,10 @@ export const ja: TranslationResources = {
         hideMessage:
           '"{{workspaceName}}"をサイドバーから非表示にしますか？\n\nディスク上のファイルは変更されません。',
         hideConfirm: "非表示",
+        removeTitle: "ワークスペースを削除しますか？",
+        removeMessage:
+          "「{{workspaceName}}」と ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} にある Paseo 管理データを完全に削除しますか？\n\n関連する外部コードディレクトリとその中のファイルは削除も変更もされません。この操作は取り消せません。",
+        removeConfirm: "削除",
         cancel: "キャンセル",
       },
       rename: {
@@ -1294,6 +1300,7 @@ export const ja: TranslationResources = {
         branchNameCopied: "ブランチ名をコピーしました",
         hostDisconnected: "ホストが接続されていません",
         hideFailed: "ワークスペースの非表示に失敗しました",
+        removeFailed: "ワークスペースの削除に失敗しました",
         archiveFailed: "ワークスペースのアーカイブに失敗しました",
       },
     },

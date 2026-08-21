@@ -15,8 +15,10 @@ from scripts.meego_auth import (
     begin_login,
     complete_login,
 )
+from scripts.meego_homepage import DEFAULT_HOMEPAGE_URL, list_homepage_items
 
 CommandRunner = Callable[[list[str]], dict[str, Any]]
+HomepageReader = Callable[[str], dict[str, Any]]
 
 
 def _string(value: Any) -> str:
@@ -107,69 +109,11 @@ def _payload_data(payload: dict[str, Any]) -> Any:
     return payload.get("data", payload)
 
 
-def _candidate_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = _payload_data(payload)
-    if isinstance(data, list):
-        return [entry for entry in data if isinstance(entry, dict)]
-    record = _record(data)
-    for key in ("list", "items", "work_items", "workItems", "records"):
-        entries = record.get(key)
-        if isinstance(entries, list):
-            return [entry for entry in entries if isinstance(entry, dict)]
-    for value in record.values():
-        nested = _record(value)
-        for key in ("list", "items", "work_items", "workItems", "records"):
-            entries = nested.get(key)
-            if isinstance(entries, list):
-                return [entry for entry in entries if isinstance(entry, dict)]
-    return []
-
-
-def _label(value: Any) -> str:
-    if isinstance(value, str):
-        return value.strip()
-    record = _record(value)
-    return _first_text(record, "label", "name", "value")
-
-
-def _normalize_item(item: dict[str, Any], index: int) -> dict[str, str] | None:
-    work_item_id = _first_text(
-        item, "work_item_id", "workItemId", "id", "work_item_instance_id"
-    )
-    title = _first_text(item, "name", "title", "work_item_name", "workItemName")
-    url = _first_text(item, "url", "link", "detail_url", "detailUrl")
-    if not title or (not work_item_id and not url):
-        return None
-    project_key = _first_text(item, "project_key", "projectKey", "space_key", "spaceKey")
-    work_item_type = _first_text(
-        item, "work_item_type", "workItemType", "work_item_type_key", "workItemTypeKey"
-    )
-    status = _label(item.get("status")) or _label(item.get("work_item_status"))
-    identity = f"{project_key}:{work_item_id}" if work_item_id else url
-    return {
-        "id": identity or str(index),
-        "title": title,
-        "url": url,
-        "projectKey": project_key,
-        "workItemId": work_item_id,
-        "status": status,
-        "workItemType": work_item_type,
-    }
-
-
-def list_current_user_items(runner: CommandRunner = _run_bytedcli) -> dict[str, Any]:
-    payload = runner(["todo", "list", "--action", "todo"])
-    items = []
-    seen: set[str] = set()
-    for index, raw_item in enumerate(_candidate_items(payload)):
-        item = _normalize_item(raw_item, index)
-        if not item or item["id"] in seen:
-            continue
-        seen.add(item["id"])
-        items.append(item)
-        if len(items) >= 100:
-            break
-    return {"data": {"action": "list", "items": items}}
+def list_current_user_items(
+    homepage_url: str = DEFAULT_HOMEPAGE_URL,
+    homepage_reader: HomepageReader = list_homepage_items,
+) -> dict[str, Any]:
+    return homepage_reader(homepage_url)
 
 
 def _walk_records(value: Any, depth: int = 0) -> list[dict[str, Any]]:
@@ -310,10 +254,12 @@ def resolve_prd(
 def execute_action(
     origin: dict[str, Any],
     runner: CommandRunner = _run_bytedcli,
+    homepage_reader: HomepageReader = list_homepage_items,
 ) -> dict[str, Any]:
     action = _first_text(origin, "action")
     if action == "list":
-        return list_current_user_items(runner)
+        homepage_url = _first_text(origin, "homepageUrl", "homepage_url") or DEFAULT_HOMEPAGE_URL
+        return list_current_user_items(homepage_url, homepage_reader)
     if action == "resolve":
         return resolve_prd(origin, runner)
     if action == "login_begin":
@@ -328,15 +274,18 @@ def run_node(input: dict[str, Any]) -> dict[str, Any]:
     try:
         return execute_action(origin)
     except MeegoAuthenticationRequired as error:
-        return {
-            "data": {
-                "action": _first_text(origin, "action"),
-                "authRequired": True,
-                "authProvider": error.provider,
-                "authCode": error.code,
-                "authMessage": str(error),
-            }
+        auth_data = {
+            "action": _first_text(origin, "action"),
+            "authRequired": True,
+            "authProvider": error.provider,
+            "authCode": error.code,
+            "authMessage": str(error),
         }
+        if error.provider == "goapi":
+            auth_data["authUrl"] = (
+                _first_text(origin, "homepageUrl", "homepage_url") or DEFAULT_HOMEPAGE_URL
+            )
+        return {"data": auth_data}
     except Exception as error:  # noqa: BLE001 - Workflow boundary returns structured failure
         return {
             "data": {},

@@ -140,6 +140,7 @@ import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-ar
 import { openExternalUrl } from "@/utils/open-external-url";
 import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
+import { useWorkspaceRemove } from "@/workspace/use-workspace-remove";
 import {
   getCurrentProjectRemoveReadiness,
   removeProjectFromHosts,
@@ -308,6 +309,9 @@ interface WorkspaceRowInnerProps {
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
   onArchive?: () => void;
+  removeStatus?: "idle" | "pending" | "success";
+  removePendingLabel?: string;
+  onRemove?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   onRename?: () => void;
@@ -680,6 +684,9 @@ function WorkspaceRowRightGroup({
   archivePendingLabel,
   archiveShortcutKeys,
   onArchive,
+  onRemove,
+  removeStatus,
+  removePendingLabel,
   onMarkAsRead,
   onCopyBranchName,
   onCopyPath,
@@ -698,6 +705,9 @@ function WorkspaceRowRightGroup({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
   onArchive?: () => void;
+  onRemove?: () => void;
+  removeStatus?: "idle" | "pending" | "success";
+  removePendingLabel?: string;
   onMarkAsRead?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
@@ -718,7 +728,7 @@ function WorkspaceRowRightGroup({
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
-    hasArchiveAction: Boolean(onArchive),
+    hasArchiveAction: Boolean(onArchive || onRemove),
     isHovered,
     isTouchPlatform,
     showShortcut,
@@ -736,7 +746,7 @@ function WorkspaceRowRightGroup({
             <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
           </SidebarWorkspaceTrailingActionBase>
           <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab} scrim={showScrim}>
-            {onArchive ? (
+            {onArchive || onRemove ? (
               <SidebarWorkspaceMenu
                 {...kebab.menuProps}
                 workspaceKey={workspace.workspaceKey}
@@ -745,9 +755,12 @@ function WorkspaceRowRightGroup({
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
                 onArchive={onArchive}
+                onRemove={onRemove}
                 archiveLabel={archiveLabel}
                 archiveStatus={archiveStatus}
                 archivePendingLabel={archivePendingLabel}
+                removeStatus={removeStatus}
+                removePendingLabel={removePendingLabel}
                 archiveShortcutKeys={archiveShortcutKeys}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
@@ -1131,6 +1144,9 @@ function WorkspaceRowInner({
   archiveStatus = "idle",
   archivePendingLabel,
   onArchive,
+  onRemove,
+  removeStatus,
+  removePendingLabel,
   onCopyBranchName,
   onCopyPath,
   onRename,
@@ -1204,9 +1220,12 @@ function WorkspaceRowInner({
               onCopyBranchName={onCopyBranchName}
               onRename={onRename}
               onArchive={onArchive}
+              onRemove={onRemove}
               archiveLabel={archiveLabel}
               archiveStatus={archiveStatus}
               archivePendingLabel={archivePendingLabel}
+              removeStatus={removeStatus}
+              removePendingLabel={removePendingLabel}
               archiveShortcutKeys={archiveShortcutKeys}
               isPinned={isPinned}
               onTogglePin={onTogglePin}
@@ -1249,6 +1268,9 @@ function WorkspaceRowInner({
                   archivePendingLabel={archivePendingLabel}
                   archiveShortcutKeys={archiveShortcutKeys}
                   onArchive={onArchive}
+                  onRemove={onRemove}
+                  removeStatus={removeStatus}
+                  removePendingLabel={removePendingLabel}
                   onCopyBranchName={onCopyBranchName}
                   onCopyPath={onCopyPath}
                   onRename={onRename}
@@ -1322,13 +1344,22 @@ function WorkspaceRowWithMenu({
     onArchiveStarted: redirectAfterArchive,
     onSetHiding: setIsHidingWorkspace,
   });
+  const removeController = useWorkspaceRemove({
+    serverId: workspace.serverId,
+    projectId: workspace.projectId,
+    workspaceId: workspace.workspaceId,
+    workspaceName: workspace.title ?? workspace.name,
+    disabled: bulkSelection.active,
+    busy: isArchiving,
+    onRemoveStarted: redirectAfterArchive,
+  });
 
   const handleArchive = useCallback(() => {
-    if (isArchiving) {
+    if (removeController.busy) {
       return;
     }
     archiveController.archive();
-  }, [archiveController, isArchiving]);
+  }, [archiveController, removeController.busy]);
 
   const handleCopyPath = useCallback(() => {
     let copyTargetDirectory: string;
@@ -1402,7 +1433,7 @@ function WorkspaceRowWithMenu({
   useKeyboardActionHandler({
     handlerId: `workspace-archive-${workspace.workspaceKey}`,
     actions: ["workspace.archive"],
-    enabled: selected && !isArchiving,
+    enabled: selected && !removeController.busy,
     priority: 0,
     handle: () => {
       handleArchive();
@@ -1423,7 +1454,7 @@ function WorkspaceRowWithMenu({
         onPress={onPress}
         drag={drag}
         isDragging={isDragging}
-        isArchiving={isArchiving}
+        isArchiving={removeController.busy}
         isCreating={isCreating}
         dragHandleProps={dragHandleProps}
         menuController={null}
@@ -1431,6 +1462,9 @@ function WorkspaceRowWithMenu({
         archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
         onArchive={bulkSelection.active ? undefined : handleArchive}
+        onRemove={removeController.action}
+        removeStatus={removeController.status}
+        removePendingLabel={t("sidebar.workspace.actions.removing")}
         onCopyBranchName={
           bulkSelection.active || !canCopyBranchName ? undefined : handleCopyBranchName
         }

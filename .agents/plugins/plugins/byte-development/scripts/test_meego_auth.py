@@ -3,10 +3,31 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.meego_auth import _json_from_output, begin_login, complete_login
+from scripts.meego_auth import (
+    MeegoAuthenticationRequired,
+    _json_from_output,
+    authentication_error,
+    begin_login,
+    complete_login,
+)
 
 
 class MeegoAuthTest(unittest.TestCase):
+    def test_classifies_official_and_page_session_authentication(self) -> None:
+        official = MeegoAuthenticationRequired(
+            "请运行 bytedcli meego login",
+            code="MEEGO_AUTH_REQUIRED",
+        )
+        page_session = authentication_error(
+            {},
+            "请运行 bytedcli auth login --session --feishu",
+        )
+
+        self.assertEqual(official.provider, "official")
+        self.assertIsNotNone(page_session)
+        self.assertEqual(page_session.provider, "goapi")
+        self.assertEqual(page_session.code, "MEEGO_GOAPI_AUTH_REQUIRED")
+
     def test_parses_pretty_printed_meegle_json(self) -> None:
         self.assertEqual(
             _json_from_output(

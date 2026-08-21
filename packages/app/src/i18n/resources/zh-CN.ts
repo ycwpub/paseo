@@ -1780,7 +1780,7 @@ export const zhCN: TranslationResources = {
       confirmations: {
         removeTitle: "删除 Project？",
         removeMessage:
-          "永久删除「{{projectName}}」及其所有 Workspace？\n\n将删除每台关联主机上 ~/.paseo/<projectId> 下的全部内容；外部代码目录不会被删除。此操作无法撤销。",
+          "从 Paseo 中删除「{{projectName}}」及其所有 Workspace？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/<projectId> 下的全部内容）。不会删除或修改该 Project 关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
         removeConfirm: "删除",
         cancel: "取消",
       },
@@ -1813,8 +1813,10 @@ export const zhCN: TranslationResources = {
         unpin: "取消置顶",
         archive: "归档",
         archiveWorkspace: "归档工作区",
+        remove: "删除 Workspace",
         hideFromSidebar: "从侧边栏隐藏",
         archiving: "正在归档...",
+        removing: "正在删除...",
         hiding: "正在隐藏...",
       },
       bulkArchive: {
@@ -1831,6 +1833,10 @@ export const zhCN: TranslationResources = {
         hideTitle: "隐藏 workspace？",
         hideMessage: "从侧边栏隐藏「{{workspaceName}}」？\n\n磁盘上的文件不会被更改。",
         hideConfirm: "隐藏",
+        removeTitle: "删除 Workspace？",
+        removeMessage:
+          "永久删除「{{workspaceName}}」及其 Paseo Workspace 数据（~/.paseo/{{projectId}}/workspaces/{{workspaceId}}）？\n\n不会删除或修改该 Workspace 关联的外部代码目录及其中任何文件。此操作无法撤销。",
+        removeConfirm: "删除",
         cancel: "取消",
       },
       rename: {
@@ -1844,6 +1850,7 @@ export const zhCN: TranslationResources = {
         branchNameCopied: "分支名称已复制",
         hostDisconnected: "Host 未连接",
         hideFailed: "隐藏 workspace 失败",
+        removeFailed: "删除 Workspace 失败",
         archiveFailed: "归档工作区失败",
       },
     },

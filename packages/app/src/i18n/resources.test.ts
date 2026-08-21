@@ -160,6 +160,9 @@ describe("translation resources", () => {
     expect(zhCN.workflows.nodes.for.parallelLoopVariablesHint).toContain(
       "不允许通过 modify.loop.var 修改",
     );
+    expect(zhCN.sidebar.project.confirmations.removeMessage).toBe(
+      "从 Paseo 中删除「{{projectName}}」及其所有 Workspace？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/<projectId> 下的全部内容）。不会删除或修改该 Project 关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
+    );
   });
 
   it("keeps non-English supported languages translated beyond fallback labels", () => {

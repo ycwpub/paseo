@@ -24,6 +24,7 @@ function workspace(input: {
     workspaceKey: `${input.serverId}:${input.workspaceId}`,
     serverId: input.serverId,
     workspaceId: input.workspaceId,
+    projectId: input.projectKey ?? "project-default",
     projectViewKey: input.projectKey ?? "project-default",
     projectName: input.projectKey ?? "Project",
     workspaceDirectory: input.workspaceDirectory,

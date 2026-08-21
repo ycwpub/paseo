@@ -31,6 +31,8 @@ const SOURCE_OPTIONS = [
   { id: "meego", value: "meego" as const, label: "从 Meego 获取" },
 ];
 
+const MEEGO_HOMEPAGE_URL = "https://meego.larkoffice.com/local_services/story/homepage";
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -269,7 +271,7 @@ export function DevelopmentPrdField({
     setListLoading(true);
     setError(null);
     runMeegoRequest({
-      input: { action: "list" },
+      input: { action: "list", homepageUrl: MEEGO_HOMEPAGE_URL },
       onSuccess: (result) => {
         setItems(parseDevelopmentMeegoItems(result));
         setListLoaded(true);
@@ -298,7 +300,7 @@ export function DevelopmentPrdField({
       const projectKey = item?.projectKey ?? value.meegoProjectKey;
       const workItemId = item?.workItemId ?? value.meegoWorkItemId;
       if (!meegoUrl && !workItemId) {
-        setError("请输入 Meego 工作项链接，或从当前用户关联的 Meego 中选择一项。");
+        setError("请输入 Meego 工作项链接，或从“我参与的”需求中选择一项。");
         return;
       }
       const pendingValue: DevelopmentPrdSourceValue = {
@@ -409,19 +411,19 @@ export function DevelopmentPrdField({
               </Button>
             </View>
             <SelectField
-              label="当前用户关联的 Meego"
+              label="我参与的 Meego"
               value={selectedItem}
               selectedDisplay={selectedItemDisplay}
               options={itemOptions}
               onChange={handleItemChange}
-              placeholder="选择待处理的 Meego"
-              emptyText={listLoaded ? "当前没有关联的待处理 Meego" : "正在读取 Meego"}
+              placeholder="选择我参与的需求"
+              emptyText={listLoaded ? "当前页面没有可用的参与需求" : "正在读取 Meego 页面"}
               loading={listLoading}
               disabled={resolveLoading}
               searchable
               searchPlaceholder="搜索标题、空间或状态"
               getValueKey={getMeegoItemKey}
-              hint="展示当前登录用户的 Meego 待办；选择后会自动读取 PRD。"
+              hint="从 Meego 需求首页的“我参与的”列表读取；选择后会自动获取 PRD。"
             />
             {!supported ? (
               <Text style={styles.errorText}>当前 Host 不支持读取 Meego，请更新 daemon。</Text>

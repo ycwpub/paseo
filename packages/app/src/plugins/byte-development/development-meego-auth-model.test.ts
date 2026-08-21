@@ -59,6 +59,36 @@ describe("development Meego auth model", () => {
     });
   });
 
+  it("recognizes Meego page-session login and keeps the page link", () => {
+    expect(
+      parseDevelopmentMeegoActionRequired({
+        data: {
+          authRequired: true,
+          authProvider: "goapi",
+          authCode: "MEEGO_GOAPI_AUTH_REQUIRED",
+          authMessage: "需要登录 Meego 页面。",
+          authUrl: "https://meego.larkoffice.com/local_services/story/homepage",
+        },
+      }),
+    ).toEqual({
+      kind: "browser-login",
+      code: "MEEGO_GOAPI_AUTH_REQUIRED",
+      message: "需要登录 Meego 页面。",
+      urls: ["https://meego.larkoffice.com/local_services/story/homepage"],
+    });
+  });
+
+  it("does not treat provider metadata alone as a login request", () => {
+    expect(
+      parseDevelopmentMeegoActionRequired({
+        data: {
+          authProvider: "goapi",
+          message: "Meego 页面读取完成。",
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("does not treat ordinary Meego failures as authorization actions", () => {
     expect(parseDevelopmentMeegoActionRequired(new Error("Meego 工作项不存在"))).toBeNull();
   });

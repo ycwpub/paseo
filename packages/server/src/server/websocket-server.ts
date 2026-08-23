@@ -103,6 +103,7 @@ import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { LarkChannelService } from "./channels/lark/lark-channel-service.js";
 import type { AssistantStore } from "./assistants/assistant-store.js";
 import type { PaseoMemoryService } from "./memory/memory-service.js";
+import type { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
 import type { TeamStore } from "./team/team-store.js";
 import type { McpStore } from "./mcp/mcp-store.js";
 import type { SkillStore } from "./skill/skill-store.js";
@@ -627,6 +628,7 @@ export class VoiceAssistantWebSocketServer {
   private readonly larkChannelService: LarkChannelService | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly memoryService: PaseoMemoryService | null;
+  private readonly cloudDocumentCacheService: CloudDocumentCacheService | null;
   private readonly teamStore: TeamStore | null;
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
@@ -699,6 +701,7 @@ export class VoiceAssistantWebSocketServer {
     loopService?: LoopService | null,
     memoryService?: PaseoMemoryService | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
+    cloudDocumentCacheService?: CloudDocumentCacheService | null,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -715,6 +718,7 @@ export class VoiceAssistantWebSocketServer {
     this.larkChannelService = larkChannelService ?? null;
     this.assistantStore = assistantStore ?? null;
     this.memoryService = memoryService ?? null;
+    this.cloudDocumentCacheService = cloudDocumentCacheService ?? null;
     this.teamStore = teamStore ?? null;
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
@@ -1643,6 +1647,7 @@ export class VoiceAssistantWebSocketServer {
       larkChannelService: this.larkChannelService,
       assistantStore: this.assistantStore,
       memoryService: this.memoryService,
+      cloudDocumentCacheService: this.cloudDocumentCacheService,
       teamStore: this.teamStore,
       mcpStore: this.mcpStore,
       skillStore: this.skillStore,
@@ -2022,6 +2027,8 @@ export class VoiceAssistantWebSocketServer {
         memoryUsers: true,
         // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
         memorySync: true,
+        // COMPAT(cloudKnowledgeCache): added on 2026-08-23.
+        cloudKnowledgeCache: true,
         // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.
         reasoningTranslation: true,
         // COMPAT(teams): added in v0.2.X, remove gate when the daemon floor includes it.

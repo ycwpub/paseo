@@ -20,6 +20,7 @@ import {
   type ProjectKnowledgeResourceType,
   type ProjectKnowledgeSection,
 } from "./model";
+import { CloudKnowledgeCacheControl, type CloudKnowledgeCacheTarget } from "./cloud-cache-control";
 
 const ICON_SIZE = 14;
 
@@ -111,11 +112,13 @@ function ProjectKnowledgeRow({
   resource,
   onChange,
   onRemove,
+  cloudCacheTarget,
 }: {
   section: ProjectKnowledgeSection;
   resource: ProjectKnowledgeResourceDraft;
   onChange: (resource: ProjectKnowledgeResourceDraft) => void;
   onRemove: () => void;
+  cloudCacheTarget?: CloudKnowledgeCacheTarget;
 }) {
   const handleTypeChange = useCallback(
     (type: ProjectKnowledgeResourceType) => onChange({ ...resource, type }),
@@ -155,6 +158,9 @@ function ProjectKnowledgeRow({
       >
         <X size={ICON_SIZE} color={styles.iconColor.color} />
       </Pressable>
+      {resource.type === "cloud-document" && cloudCacheTarget ? (
+        <CloudKnowledgeCacheControl target={cloudCacheTarget} source={resource.source} />
+      ) : null}
     </View>
   );
 }
@@ -164,11 +170,13 @@ function ProjectKnowledgeBoundRow({
   resource,
   values,
   onChange,
+  cloudCacheTarget,
 }: {
   section: ProjectKnowledgeSection;
   resource: ProjectKnowledgeResourceDraft;
   values: ProjectKnowledgeResourceDraft[];
   onChange: (values: ProjectKnowledgeResourceDraft[]) => void;
+  cloudCacheTarget?: CloudKnowledgeCacheTarget;
 }) {
   const update = useCallback(
     (next: ProjectKnowledgeResourceDraft) => {
@@ -185,6 +193,7 @@ function ProjectKnowledgeBoundRow({
       resource={resource}
       onChange={update}
       onRemove={remove}
+      cloudCacheTarget={cloudCacheTarget}
     />
   );
 }
@@ -194,11 +203,13 @@ function ProjectKnowledgeSectionEditor({
   values,
   onChange,
   flush,
+  cloudCacheTarget,
 }: {
   section: ProjectKnowledgeSection;
   values: ProjectKnowledgeResourceDraft[];
   onChange: (values: ProjectKnowledgeResourceDraft[]) => void;
   flush?: boolean;
+  cloudCacheTarget?: CloudKnowledgeCacheTarget;
 }) {
   const meta = SECTION_META[section];
   const add = useCallback(
@@ -232,6 +243,7 @@ function ProjectKnowledgeSectionEditor({
               resource={resource}
               values={values}
               onChange={onChange}
+              cloudCacheTarget={cloudCacheTarget}
             />
           ))
         )}
@@ -248,6 +260,7 @@ export function ProjectKnowledgeEditor({
   title = "Project 知识",
   info = "按加载方式和约束强度管理 Agent 使用的 Project 资料",
   testID = "project-knowledge-group",
+  cloudCacheTarget,
 }: {
   value: ProjectKnowledgeDraft;
   error: string | null;
@@ -256,6 +269,7 @@ export function ProjectKnowledgeEditor({
   title?: string;
   info?: string;
   testID?: string;
+  cloudCacheTarget?: CloudKnowledgeCacheTarget;
 }) {
   const updateSection = useCallback(
     (section: ProjectKnowledgeSection, values: ProjectKnowledgeResourceDraft[]) => {
@@ -283,6 +297,7 @@ export function ProjectKnowledgeEditor({
           values={value.general}
           onChange={updateGeneral}
           flush={sections.at(-1) === "general"}
+          cloudCacheTarget={cloudCacheTarget}
         />
       ) : null}
       {sections.includes("standards") ? (
@@ -291,6 +306,7 @@ export function ProjectKnowledgeEditor({
           values={value.standards}
           onChange={updateStandards}
           flush={sections.at(-1) === "standards"}
+          cloudCacheTarget={cloudCacheTarget}
         />
       ) : null}
       {sections.includes("projectSpecific") ? (
@@ -299,6 +315,7 @@ export function ProjectKnowledgeEditor({
           values={value.projectSpecific}
           onChange={updateProjectSpecific}
           flush={sections.at(-1) === "projectSpecific"}
+          cloudCacheTarget={cloudCacheTarget}
         />
       ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}

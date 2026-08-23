@@ -193,6 +193,8 @@ import {
   buildHostKnowledgePrompt,
   resolveHostKnowledge,
 } from "./knowledge/host-knowledge-context.js";
+import { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
+import { readCachedCloudKnowledgeDocument } from "./knowledge/cloud-cache/context.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -1213,6 +1215,10 @@ export async function createPaseoDaemon(
   } catch (error) {
     logger.warn({ err: error }, "Failed to sync skill symlinks during daemon startup");
   }
+  const cloudDocumentCacheService = new CloudDocumentCacheService({
+    paseoHome: config.paseoHome,
+    logger,
+  });
   const agentManager = new AgentManager({
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
@@ -1223,6 +1229,11 @@ export async function createPaseoDaemon(
         resolveHostKnowledge({
           paseoHome: config.paseoHome,
           knowledge: daemonConfigStore.get().knowledge,
+          resolveCloudDocument: (source) =>
+            readCachedCloudKnowledgeDocument({
+              paseoHome: config.paseoHome,
+              target: { scope: "global", source },
+            }),
           logger,
         }),
       ),
@@ -1491,6 +1502,8 @@ export async function createPaseoDaemon(
     providerSnapshotManager,
     projectRegistry,
     workspaceRegistry,
+    cloudDocumentCacheService,
+    readGlobalKnowledge: () => daemonConfigStore.get().knowledge,
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
   };
@@ -2146,6 +2159,7 @@ export async function createPaseoDaemon(
               loopService,
               memoryService,
               workspaceSetupRuntime,
+              cloudDocumentCacheService,
             );
             await wsServer.startLanDirectListener();
             await hubRelationships.start();

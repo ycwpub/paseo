@@ -307,6 +307,11 @@ export interface AgentManagerOptions {
   logger: Logger;
 }
 
+export interface FrameworkPermissionRequest {
+  request: Omit<AgentPermissionRequest, "id" | "provider"> & { id?: string };
+  onResponse: (response: AgentPermissionResponse) => Promise<void> | void;
+}
+
 export interface AgentPromptContextComposer {
   compose(agent: ManagedAgent, prompt: AgentPromptInput): Promise<AgentPromptInput>;
 }
@@ -697,6 +702,10 @@ export class AgentManager {
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentRegistrationTasks = new Set<Promise<void>>();
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
+  private readonly frameworkPermissionHandlers = new Map<
+    string,
+    Map<string, FrameworkPermissionRequest["onResponse"]>
+  >();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
@@ -2572,6 +2581,34 @@ export class AgentManager {
     response: AgentPermissionResponse,
   ): Promise<AgentPermissionResult | void> {
     const agent = this.requireAgent(agentId);
+    const frameworkHandler = this.frameworkPermissionHandlers.get(agentId)?.get(requestId);
+    if (frameworkHandler) {
+      this.frameworkPermissionHandlers.get(agentId)?.delete(requestId);
+      agent.pendingPermissions.delete(requestId);
+      this.touchUpdatedAt(agent);
+      await this.persistSnapshot(agent);
+      this.emitState(agent);
+      this.dispatchStream(
+        agent.id,
+        {
+          type: "permission_resolved",
+          provider: agent.provider,
+          requestId,
+          resolution: response,
+        },
+        { timestamp: new Date().toISOString() },
+      );
+      const task = Promise.resolve()
+        .then(() => frameworkHandler(response))
+        .catch((error) => {
+          this.logger.warn(
+            { err: error, agentId, requestId },
+            "Framework permission response handler failed",
+          );
+        });
+      this.trackBackgroundTask(task);
+      return;
+    }
     agent.inFlightPermissionResponses.add(requestId);
 
     try {
@@ -2599,6 +2636,35 @@ export class AgentManager {
       agent.inFlightPermissionResponses.delete(requestId);
       agent.bufferedPermissionResolutions.delete(requestId);
     }
+  }
+
+  async requestFrameworkPermission(
+    agentId: string,
+    input: FrameworkPermissionRequest,
+  ): Promise<string> {
+    const agent = this.requireSessionAgent(agentId);
+    const requestId = input.request.id ?? `framework-${randomUUID()}`;
+    const request: AgentPermissionRequest = {
+      ...input.request,
+      id: requestId,
+      provider: agent.provider,
+    };
+    let handlers = this.frameworkPermissionHandlers.get(agentId);
+    if (!handlers) {
+      handlers = new Map();
+      this.frameworkPermissionHandlers.set(agentId, handlers);
+    }
+    handlers.set(requestId, input.onResponse);
+    const event: Extract<AgentStreamEvent, { type: "permission_requested" }> = {
+      type: "permission_requested",
+      provider: agent.provider,
+      request,
+    };
+    this.onStreamPermissionRequested(agent, event);
+    this.dispatchStream(agent.id, event, { timestamp: new Date().toISOString() });
+    this.touchUpdatedAt(agent);
+    await this.persistSnapshot(agent);
+    return requestId;
   }
 
   async cancelAgentRun(agentId: string): Promise<AgentRunCancellationResult> {
@@ -3247,6 +3313,7 @@ export class AgentManager {
     cancelReason: string,
   ): ManagedAgentClosed {
     this.agentStreamCoalescer.flushAndDiscard(agent.id);
+    this.frameworkPermissionHandlers.delete(agent.id);
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
     if (agent.unsubscribeSession) {
@@ -3278,6 +3345,7 @@ export class AgentManager {
   }
 
   private discardRetainedAgentState(agentId: string): void {
+    this.frameworkPermissionHandlers.delete(agentId);
     this.timelineStore.delete(agentId);
     for (const event of this.providerSubagents.deleteParent(agentId)) {
       this.dispatch({ type: "provider_subagent", event });
@@ -3474,7 +3542,17 @@ export class AgentManager {
 
     try {
       const pending = agent.session.getPendingPermissions();
-      agent.pendingPermissions = new Map(pending.map((request) => [request.id, request]));
+      const frameworkRequestIds = this.frameworkPermissionHandlers.get(agent.id);
+      const frameworkRequests = frameworkRequestIds
+        ? Array.from(frameworkRequestIds.keys()).flatMap((requestId) => {
+            const request = agent.pendingPermissions.get(requestId);
+            return request ? [[requestId, request] as const] : [];
+          })
+        : [];
+      agent.pendingPermissions = new Map([
+        ...pending.map((request) => [request.id, request] as const),
+        ...frameworkRequests,
+      ]);
     } catch {
       agent.pendingPermissions.clear();
     }
@@ -4140,6 +4218,7 @@ export class AgentManager {
   ): void {
     for (const [requestId] of agent.pendingPermissions) {
       agent.pendingPermissions.delete(requestId);
+      this.frameworkPermissionHandlers.get(agent.id)?.delete(requestId);
       if (!options?.fromHistory) {
         this.dispatchStream(agent.id, {
           type: "permission_resolved",

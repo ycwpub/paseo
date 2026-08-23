@@ -112,12 +112,18 @@ Project knowledge has three explicit policies:
 - General knowledge is optional background material. It supports local directories, local
   documents, and cloud documents. Agents load and adopt it only when relevant. Local directories
   are included in the generated Project index.
-- Standard knowledge supports local and cloud documents. Local document contents are injected into
-  every Agent's system prompt. Agents must load every cloud standard before acting and obey all
-  applicable requirements.
+- Standard knowledge supports local and cloud documents. Document contents are injected into every
+  Agent's system prompt. Agents must obey all applicable requirements.
 - Project-specific knowledge supports local and cloud documents. Local document contents are
   injected into every Agent's system prompt, but Agents adopt the content according to task
   relevance.
+
+Cloud documents are cached as Markdown plus metadata before Agent launch. Global cache files live
+under `$PASEO_HOME/knowledge/cloud-documents/`; Project cache files live under
+`$PASEO_HOME/{projectId}/knowledge/cloud-documents/`. A cache is checked again after 24 hours.
+Refresh failure keeps an existing cache available and marks it stale. If the source requires login
+or authorization, Paseo raises a permission request in the Agent conversation that triggered the
+refresh. Credentials, cookies, and tokens are never written to cache metadata.
 
 Knowledge content is read-only by default. Agents may change it only when the user explicitly asks
 to update Project knowledge in the current conversation. Legacy `directories.knowledge`,

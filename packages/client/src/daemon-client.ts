@@ -5942,6 +5942,25 @@ export class DaemonClient {
     return this.resourceRpc.mergeMemorySyncSnapshot(snapshot, options);
   }
 
+  async cacheCloudDocument(options: {
+    scope: "global" | "project";
+    projectId?: string;
+    source: string;
+    force?: boolean;
+    requestId?: string;
+  }) {
+    return this.resourceRpc.cacheCloudDocument(options);
+  }
+
+  async getCloudDocumentCacheStatus(options: {
+    scope: "global" | "project";
+    projectId?: string;
+    source: string;
+    requestId?: string;
+  }) {
+    return this.resourceRpc.getCloudDocumentCacheStatus(options);
+  }
+
   async translateReasoning(options: {
     agentId: string;
     text: string;

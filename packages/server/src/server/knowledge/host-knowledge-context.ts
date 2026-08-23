@@ -7,22 +7,25 @@ import type {
   PaseoProjectDocumentKnowledgeResource,
   PaseoProjectGeneralKnowledgeResource,
 } from "@getpaseo/protocol/project-knowledge-schema";
+import type { ResolvedCloudDocument } from "./cloud-cache/types.js";
 
 export interface ResolvedHostKnowledgeDocument {
   source: string;
   resolvedSource: string;
   content: string | null;
+  cached?: boolean;
+  error?: string | null;
 }
 
 export interface ResolvedHostKnowledge {
   general: {
     directories: string[];
     localDocuments: string[];
-    cloudDocuments: string[];
+    cloudDocuments: ResolvedHostKnowledgeDocument[];
   };
   standards: {
     localDocuments: ResolvedHostKnowledgeDocument[];
-    cloudDocuments: string[];
+    cloudDocuments: ResolvedHostKnowledgeDocument[];
   };
 }
 
@@ -47,22 +50,33 @@ export function resolveHostKnowledgePath(paseoHome: string, source: string): str
   return path.isAbsolute(value) ? path.resolve(value) : path.resolve(paseoHome, value);
 }
 
-function cloudSources(
+function resolveCloudDocuments(
   resources:
     | readonly PaseoProjectGeneralKnowledgeResource[]
     | readonly PaseoProjectDocumentKnowledgeResource[]
     | undefined,
-): string[] {
+  resolveCloudDocument?: (source: string) => ResolvedCloudDocument,
+): ResolvedHostKnowledgeDocument[] {
   return unique(
     enabledResources(resources)
       .filter((resource) => resource.type === "cloud-document")
       .map((resource) => resource.source),
-  );
+  ).map((source) => {
+    const resolved = resolveCloudDocument?.(source);
+    return {
+      source,
+      resolvedSource: resolved?.localPath ?? source,
+      content: resolved?.content ?? null,
+      cached: resolved?.cached ?? false,
+      error: resolved?.error ?? null,
+    };
+  });
 }
 
 export function resolveHostKnowledge(input: {
   paseoHome: string;
   knowledge: PaseoHostKnowledge | undefined;
+  resolveCloudDocument?: (source: string) => ResolvedCloudDocument;
   logger?: Pick<Logger, "warn">;
 }): ResolvedHostKnowledge {
   const resolveLocalPath = (source: string) => resolveHostKnowledgePath(input.paseoHome, source);
@@ -97,11 +111,11 @@ export function resolveHostKnowledge(input: {
           .filter((resource) => resource.type === "local-document")
           .map((resource) => resolveLocalPath(resource.source)),
       ),
-      cloudDocuments: cloudSources(input.knowledge?.general),
+      cloudDocuments: resolveCloudDocuments(input.knowledge?.general, input.resolveCloudDocument),
     },
     standards: {
       localDocuments: standardDocuments,
-      cloudDocuments: cloudSources(input.knowledge?.standards),
+      cloudDocuments: resolveCloudDocuments(input.knowledge?.standards, input.resolveCloudDocument),
     },
   };
 }
@@ -110,19 +124,31 @@ function formatList(values: readonly string[]): string {
   return values.length > 0 ? values.map((value) => `- ${value}`).join("\n") : "- None configured";
 }
 
+function formatCloudPaths(documents: readonly ResolvedHostKnowledgeDocument[]): string {
+  if (documents.length === 0) return "- None configured";
+  return documents
+    .map((document) =>
+      document.cached
+        ? `- ${document.resolvedSource} (source: ${document.source})`
+        : `- ${document.resolvedSource} (source: ${document.source}; local cache unavailable)`,
+    )
+    .join("\n");
+}
+
 function formatStandardDocuments(documents: readonly ResolvedHostKnowledgeDocument[]): string {
   if (documents.length === 0) return "- None configured";
   return documents
     .map((document) =>
       document.content === null
         ? [
-            `- Source: ${document.resolvedSource}`,
-            "  Status: unavailable; the document could not be read.",
+            `- Source: ${document.source}`,
+            `  Local cache: ${document.resolvedSource}`,
+            `  Status: unavailable; ${document.error ?? "the document could not be read."}`,
           ].join("\n")
         : [
-            `--- BEGIN GLOBAL STANDARD KNOWLEDGE: ${document.resolvedSource} ---`,
+            `--- BEGIN GLOBAL STANDARD KNOWLEDGE: ${document.source} (${document.resolvedSource}) ---`,
             document.content,
-            `--- END GLOBAL STANDARD KNOWLEDGE: ${document.resolvedSource} ---`,
+            `--- END GLOBAL STANDARD KNOWLEDGE: ${document.source} ---`,
           ].join("\n"),
     )
     .join("\n\n");
@@ -136,9 +162,10 @@ export function buildHostKnowledgePrompt(knowledge: ResolvedHostKnowledge): stri
     knowledge.standards.localDocuments.length > 0 ||
     knowledge.standards.cloudDocuments.length > 0;
   if (!configured) return undefined;
-  const unavailableStandard = knowledge.standards.localDocuments.some(
-    (document) => document.content === null,
-  );
+  const unavailableStandard = [
+    ...knowledge.standards.localDocuments,
+    ...knowledge.standards.cloudDocuments,
+  ].some((document) => document.content === null);
   return [
     "<paseo_global_knowledge>",
     "Global general knowledge is optional background material shared by every Project and Agent managed by this Paseo instance. Read only what is relevant to the current task and adopt it only when useful.",
@@ -147,20 +174,17 @@ export function buildHostKnowledgePrompt(knowledge: ResolvedHostKnowledge): stri
     formatList(knowledge.general.directories),
     "General local documents:",
     formatList(knowledge.general.localDocuments),
-    "General cloud documents:",
-    formatList(knowledge.general.cloudDocuments),
+    "General cloud document caches (read the local file when relevant; do not fetch the source URL):",
+    formatCloudPaths(knowledge.general.cloudDocuments),
     "",
     "Global standard knowledge is mandatory for every Agent managed by this Paseo instance. Read and obey every applicable requirement before acting.",
     unavailableStandard
-      ? "At least one local document in global standard knowledge is unavailable. Stop before making changes and tell the user which standard could not be read."
-      : "All configured local documents in global standard knowledge are included below.",
-    knowledge.standards.cloudDocuments.length > 0
-      ? "You MUST open and read every global standard cloud document before acting. If a document cannot be loaded, stop and tell the user."
-      : "No global standard cloud document is configured.",
-    "Standard cloud documents:",
-    formatList(knowledge.standards.cloudDocuments),
+      ? "At least one document in global standard knowledge is unavailable. Stop before making changes and tell the user which standard could not be read."
+      : "All configured global standard documents are included below.",
     "Standard local document contents:",
     formatStandardDocuments(knowledge.standards.localDocuments),
+    "Standard cloud document cached contents:",
+    formatStandardDocuments(knowledge.standards.cloudDocuments),
     "</paseo_global_knowledge>",
   ].join("\n");
 }

@@ -21,7 +21,6 @@ import { readProjectConfigForProject } from "./project-config-storage.js";
 import {
   buildProjectKnowledgePrompt,
   EMPTY_PROJECT_KNOWLEDGE,
-  resolveProjectKnowledge,
   type ResolvedProjectKnowledge,
 } from "./project-knowledge-context.js";
 import {
@@ -34,6 +33,9 @@ import {
   buildProjectLarkContextPrompt,
   readProjectLarkContextSnapshots,
 } from "./project-lark-context.js";
+import type { CloudDocumentCacheService } from "../knowledge/cloud-cache/service.js";
+import type { CloudDocumentAuthenticationIssue } from "../knowledge/cloud-cache/types.js";
+import { resolveProjectKnowledgeWithCloudCache } from "./project-cloud-knowledge-context.js";
 
 const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
 
@@ -51,6 +53,7 @@ export interface ProjectAgentContext {
   knowledge: ResolvedProjectKnowledge;
   variables: Record<string, string>;
   prompt: string;
+  authIssues: CloudDocumentAuthenticationIssue[];
 }
 
 const AI_KNOWLEDGE_DIRECTORY_NAMES = [".agents", ".agent", ".claude", ".codex", ".trae"] as const;
@@ -248,6 +251,7 @@ export async function loadProjectAgentContext(input: {
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
   paseoHome?: string;
+  cloudDocumentCacheService?: CloudDocumentCacheService;
   logger?: Pick<Logger, "warn">;
 }): Promise<ProjectAgentContext | null> {
   const workspace = await input.workspaceRegistry.get(input.workspaceId);
@@ -283,13 +287,16 @@ export async function loadProjectAgentContext(input: {
     paseoHome: input.paseoHome,
     variables,
   });
-  const knowledge = resolveProjectKnowledge({
+  const cloudKnowledge = await resolveProjectKnowledgeWithCloudCache({
     projectConfig,
     projectId: project.projectId,
+    paseoHome: input.paseoHome,
+    service: input.cloudDocumentCacheService,
     logger: input.logger,
     resolveLocalPath: (source) =>
       resolveProjectPath(projectDirectory, replaceVariables(source.trim(), variables)),
   });
+  const knowledge = cloudKnowledge.knowledge;
   const larkContextPrompt = input.paseoHome
     ? buildProjectLarkContextPrompt(
         readProjectLarkContextSnapshots(input.paseoHome, project.projectId),
@@ -321,6 +328,7 @@ export async function loadProjectAgentContext(input: {
     directories,
     knowledge,
     variables,
+    authIssues: cloudKnowledge.authIssues,
     prompt: buildProjectContextPrompt({
       projectId: project.projectId,
       projectName: project.customName ?? project.displayName,
@@ -339,10 +347,13 @@ export async function withProjectAgentContext(input: {
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
   paseoHome?: string;
+  cloudDocumentCacheService?: CloudDocumentCacheService;
+  onAuthIssues?: (issues: readonly CloudDocumentAuthenticationIssue[]) => void;
   logger?: Pick<Logger, "warn">;
 }): Promise<AgentSessionConfig> {
   const context = await loadProjectAgentContext(input);
   if (!context) return input.config;
+  input.onAuthIssues?.(context.authIssues);
   const writableProjectDirectories = normalizeWritableProjectDirectories(
     context.directories.project,
   );

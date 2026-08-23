@@ -726,6 +726,10 @@ function ProjectConfigForm({
     [draft.scripts, t],
   );
   const projectValidation = useMemo(() => validateProjectConfiguration(draft, t), [draft, t]);
+  const cloudCacheTarget = useMemo(
+    () => ({ serverId, scope: "project" as const, projectId }),
+    [projectId, serverId],
+  );
 
   const scriptsTrailing = useMemo(
     () => (
@@ -792,6 +796,7 @@ function ProjectConfigForm({
         value={draft.projectKnowledge}
         error={projectValidation.projectKnowledgeError}
         onChange={handleProjectKnowledgeChange}
+        cloudCacheTarget={cloudCacheTarget}
       />
 
       <ProjectLarkContextEditor

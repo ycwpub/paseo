@@ -18,15 +18,18 @@ const HOST_KNOWLEDGE_SECTIONS = ["general", "standards"] as const;
 function HostKnowledgeForm({
   initialValue,
   patchConfig,
+  serverId,
 }: {
   initialValue: ProjectKnowledgeDraft;
   patchConfig: (patch: MutableDaemonConfigPatch) => Promise<unknown>;
+  serverId: string;
 }) {
   const [value, setValue] = useState(initialValue);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const validationError = useMemo(() => hostKnowledgeDraftError(value), [value]);
+  const cloudCacheTarget = useMemo(() => ({ serverId, scope: "global" as const }), [serverId]);
   const handleChange = useCallback((next: ProjectKnowledgeDraft) => {
     setValue(next);
     setDirty(true);
@@ -54,6 +57,7 @@ function HostKnowledgeForm({
         title="全局知识"
         info="全局知识对当前 Paseo 实例中的所有 Project 和 Agent 生效。相对路径从 Paseo 主目录解析。"
         testID="host-knowledge-group"
+        cloudCacheTarget={cloudCacheTarget}
       />
       <View style={styles.footer}>
         <Button
@@ -80,7 +84,12 @@ export function HostKnowledgeSection({ serverId }: { serverId: string }) {
     return <Text style={styles.loading}>正在加载全局知识…</Text>;
   }
   return (
-    <HostKnowledgeForm key={knowledgeKey} initialValue={initialValue} patchConfig={patchConfig} />
+    <HostKnowledgeForm
+      key={knowledgeKey}
+      initialValue={initialValue}
+      patchConfig={patchConfig}
+      serverId={serverId}
+    />
   );
 }
 

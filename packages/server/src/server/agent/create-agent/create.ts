@@ -17,7 +17,9 @@ import type { AgentStorage } from "../agent-storage.js";
 import type { AgentOwner } from "../agent-owner.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
-import { withProjectAgentContext } from "../../project/project-context.js";
+import type { PaseoHostKnowledge } from "@getpaseo/protocol/project-knowledge-schema";
+import { requestCloudKnowledgeAuthorization } from "../../knowledge/cloud-cache/agent-auth.js";
+import type { CloudDocumentCacheService } from "../../knowledge/cloud-cache/service.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
 import { buildAgentPrompt } from "../prompt-attachments.js";
@@ -27,6 +29,7 @@ import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "../timeline-append.js";
+import { prepareAgentCloudKnowledge } from "./cloud-knowledge.js";
 import { resolveCreateAgentIntent } from "./intent.js";
 
 export interface CreateAgentSessionWorktreeResult {
@@ -47,6 +50,8 @@ export interface CreateAgentCommandDependencies {
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
   projectRegistry?: Pick<ProjectRegistry, "get">;
   workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
+  cloudDocumentCacheService?: CloudDocumentCacheService;
+  readGlobalKnowledge?: () => PaseoHostKnowledge | undefined;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -190,24 +195,31 @@ export async function createAgentCommand(
       ? await resolveSessionCreateAgent(dependencies, input)
       : await resolveMcpCreateAgent(dependencies, input);
 
-  const workspaceId = resolved.createOptions.workspaceId;
-  const config =
-    workspaceId && dependencies.projectRegistry && dependencies.workspaceRegistry
-      ? await withProjectAgentContext({
-          config: resolved.config,
-          workspaceId,
-          projectRegistry: dependencies.projectRegistry,
-          workspaceRegistry: dependencies.workspaceRegistry,
-          paseoHome: dependencies.paseoHome,
-          logger: dependencies.logger,
-        })
-      : resolved.config;
+  const cloudKnowledge = await prepareAgentCloudKnowledge({
+    config: resolved.config,
+    workspaceId: resolved.createOptions.workspaceId,
+    paseoHome: dependencies.paseoHome,
+    service: dependencies.cloudDocumentCacheService,
+    readGlobalKnowledge: dependencies.readGlobalKnowledge,
+    projectRegistry: dependencies.projectRegistry,
+    workspaceRegistry: dependencies.workspaceRegistry,
+    logger: dependencies.logger,
+  });
 
   const snapshot = await dependencies.agentManager.createAgent(
-    config,
+    cloudKnowledge.config,
     undefined,
     resolved.createOptions,
   );
+
+  if (dependencies.cloudDocumentCacheService && cloudKnowledge.authorizationRequests.length > 0) {
+    await requestCloudKnowledgeAuthorization({
+      agentId: snapshot.id,
+      requests: cloudKnowledge.authorizationRequests,
+      service: dependencies.cloudDocumentCacheService,
+      agentManager: dependencies.agentManager,
+    });
+  }
 
   resolved.setupContinuation?.startAfterAgentCreate({
     agentId: snapshot.id,

@@ -5,25 +5,28 @@ import type {
   PaseoProjectGeneralKnowledgeResource,
 } from "@getpaseo/protocol/project-knowledge-schema";
 import type { PaseoProjectConfig } from "@getpaseo/protocol/paseo-config-schema";
+import type { ResolvedCloudDocument } from "../knowledge/cloud-cache/types.js";
 
 export interface ResolvedProjectKnowledgeDocument {
   source: string;
   resolvedSource: string;
   content: string | null;
+  cached?: boolean;
+  error?: string | null;
 }
 
 export interface ResolvedProjectKnowledge {
   general: {
     localDocuments: string[];
-    cloudDocuments: string[];
+    cloudDocuments: ResolvedProjectKnowledgeDocument[];
   };
   standards: {
     localDocuments: ResolvedProjectKnowledgeDocument[];
-    cloudDocuments: string[];
+    cloudDocuments: ResolvedProjectKnowledgeDocument[];
   };
   projectSpecific: {
     localDocuments: ResolvedProjectKnowledgeDocument[];
-    cloudDocuments: string[];
+    cloudDocuments: ResolvedProjectKnowledgeDocument[];
   };
 }
 
@@ -81,22 +84,33 @@ function readKnowledgeDocuments(input: {
     });
 }
 
-function cloudDocumentSources(
+function resolveCloudDocuments(
   resources:
     | readonly PaseoProjectGeneralKnowledgeResource[]
     | readonly PaseoProjectDocumentKnowledgeResource[]
     | undefined,
-): string[] {
+  resolveCloudDocument?: (source: string) => ResolvedCloudDocument,
+): ResolvedProjectKnowledgeDocument[] {
   return uniqueSources(
     enabledResources(resources)
       .filter((resource) => resource.type === "cloud-document")
       .map((resource) => resource.source),
-  );
+  ).map((source) => {
+    const resolved = resolveCloudDocument?.(source);
+    return {
+      source,
+      resolvedSource: resolved?.localPath ?? source,
+      content: resolved?.content ?? null,
+      cached: resolved?.cached ?? false,
+      error: resolved?.error ?? null,
+    };
+  });
 }
 
 export function resolveProjectKnowledge(input: {
   projectConfig: PaseoProjectConfig | undefined;
   resolveLocalPath: (source: string) => string;
+  resolveCloudDocument?: (source: string) => ResolvedCloudDocument;
   logger?: Pick<Logger, "warn">;
   projectId?: string;
 }): ResolvedProjectKnowledge {
@@ -108,7 +122,7 @@ export function resolveProjectKnowledge(input: {
           .filter((resource) => resource.type === "local-document")
           .map((resource) => input.resolveLocalPath(resource.source)),
       ),
-      cloudDocuments: cloudDocumentSources(knowledge?.general),
+      cloudDocuments: resolveCloudDocuments(knowledge?.general, input.resolveCloudDocument),
     },
     standards: {
       localDocuments: readKnowledgeDocuments({
@@ -117,7 +131,7 @@ export function resolveProjectKnowledge(input: {
         logger: input.logger,
         projectId: input.projectId,
       }),
-      cloudDocuments: cloudDocumentSources(knowledge?.standards),
+      cloudDocuments: resolveCloudDocuments(knowledge?.standards, input.resolveCloudDocument),
     },
     projectSpecific: {
       localDocuments: readKnowledgeDocuments({
@@ -126,7 +140,7 @@ export function resolveProjectKnowledge(input: {
         logger: input.logger,
         projectId: input.projectId,
       }),
-      cloudDocuments: cloudDocumentSources(knowledge?.projectSpecific),
+      cloudDocuments: resolveCloudDocuments(knowledge?.projectSpecific, input.resolveCloudDocument),
     },
   };
 }
@@ -135,20 +149,32 @@ function formatList(values: readonly string[]): string {
   return values.length > 0 ? values.map((value) => `- ${value}`).join("\n") : "- None configured";
 }
 
+function formatCloudPaths(documents: readonly ResolvedProjectKnowledgeDocument[]): string {
+  if (documents.length === 0) return "- None configured";
+  return documents
+    .map((document) =>
+      document.cached
+        ? `- ${document.resolvedSource} (source: ${document.source})`
+        : `- ${document.resolvedSource} (source: ${document.source}; local cache unavailable)`,
+    )
+    .join("\n");
+}
+
 function formatInjectedDocuments(documents: readonly ResolvedProjectKnowledgeDocument[]): string {
   if (documents.length === 0) return "- None configured";
   return documents
     .map((document) => {
       if (document.content === null) {
         return [
-          `- Source: ${document.resolvedSource}`,
-          "  Status: unavailable; the document could not be read.",
+          `- Source: ${document.source}`,
+          `  Local cache: ${document.resolvedSource}`,
+          `  Status: unavailable; ${document.error ?? "the document could not be read."}`,
         ].join("\n");
       }
       return [
-        `--- BEGIN PROJECT KNOWLEDGE: ${document.resolvedSource} ---`,
+        `--- BEGIN PROJECT KNOWLEDGE: ${document.source} (${document.resolvedSource}) ---`,
         document.content,
-        `--- END PROJECT KNOWLEDGE: ${document.resolvedSource} ---`,
+        `--- END PROJECT KNOWLEDGE: ${document.source} ---`,
       ].join("\n");
     })
     .join("\n\n");
@@ -158,9 +184,10 @@ export function buildProjectKnowledgePrompt(input: {
   generalDirectories: readonly string[];
   knowledge: ResolvedProjectKnowledge;
 }): string {
-  const hasUnavailableStandard = input.knowledge.standards.localDocuments.some(
-    (document) => document.content === null,
-  );
+  const hasUnavailableStandard = [
+    ...input.knowledge.standards.localDocuments,
+    ...input.knowledge.standards.cloudDocuments,
+  ].some((document) => document.content === null);
   return [
     "<paseo_project_knowledge>",
     "General knowledge is optional background material. Load it only when relevant to the current task, and adopt it only when it improves the answer or implementation.",
@@ -168,29 +195,23 @@ export function buildProjectKnowledgePrompt(input: {
     formatList(input.generalDirectories),
     "General local documents:",
     formatList(input.knowledge.general.localDocuments),
-    "General cloud documents:",
-    formatList(input.knowledge.general.cloudDocuments),
+    "General cloud document caches (read the local file when relevant; do not fetch the source URL):",
+    formatCloudPaths(input.knowledge.general.cloudDocuments),
     "",
     "Standard knowledge is mandatory. Read every standard document before acting, obey every applicable requirement, and never knowingly violate it.",
     hasUnavailableStandard
-      ? "At least one local standard document is unavailable. Stop before making changes and tell the user which standard could not be read."
-      : "All configured local standard documents are included below.",
-    input.knowledge.standards.cloudDocuments.length > 0
-      ? "You MUST open and read every standard cloud document before acting. If a document cannot be loaded, stop and tell the user."
-      : "No standard cloud document is configured.",
-    "Standard cloud documents:",
-    formatList(input.knowledge.standards.cloudDocuments),
+      ? "At least one standard document is unavailable. Stop before making changes and tell the user which standard could not be read."
+      : "All configured standard documents are included below.",
     "Standard local document contents:",
     formatInjectedDocuments(input.knowledge.standards.localDocuments),
+    "Standard cloud document cached contents:",
+    formatInjectedDocuments(input.knowledge.standards.cloudDocuments),
     "",
     "Project-specific knowledge is fully provided as Project context. Use the parts relevant to the current task; it is guidance and domain context, not a mandatory standard.",
-    input.knowledge.projectSpecific.cloudDocuments.length > 0
-      ? "Open the project-specific cloud documents when their content is relevant to the task."
-      : "No project-specific cloud document is configured.",
-    "Project-specific cloud documents:",
-    formatList(input.knowledge.projectSpecific.cloudDocuments),
     "Project-specific local document contents:",
     formatInjectedDocuments(input.knowledge.projectSpecific.localDocuments),
+    "Project-specific cloud document cached contents:",
+    formatInjectedDocuments(input.knowledge.projectSpecific.cloudDocuments),
     "</paseo_project_knowledge>",
   ].join("\n");
 }

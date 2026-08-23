@@ -179,6 +179,8 @@ import type { AssistantStore } from "./assistants/assistant-store.js";
 import { buildAssistantInitialPrompt } from "./assistants/assistant-prompt.js";
 import { MemorySession } from "./memory/memory-session.js";
 import type { PaseoMemoryService } from "./memory/memory-service.js";
+import type { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
+import { CloudDocumentCacheSession } from "./knowledge/cloud-cache/cloud-cache-session.js";
 import { TeamStore } from "./team/team-store.js";
 import { TeamSession } from "./team/team-session.js";
 import {
@@ -540,6 +542,7 @@ export interface SessionOptions {
   larkChannelService?: LarkChannelService | null;
   assistantStore?: AssistantStore | null;
   memoryService?: PaseoMemoryService | null;
+  cloudDocumentCacheService?: CloudDocumentCacheService | null;
   teamStore?: TeamStore | null;
   mcpStore?: McpStore | null;
   skillStore?: SkillStore | null;
@@ -731,6 +734,7 @@ export class Session {
   private readonly larkChannelSession: LarkChannelSession | null;
   private readonly assistantSession: AssistantSession | null;
   private readonly memorySession: MemorySession | null;
+  private readonly cloudDocumentCacheSession: CloudDocumentCacheSession | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
   private readonly teamStore: TeamStore | null;
@@ -799,6 +803,7 @@ export class Session {
       larkChannelService,
       assistantStore,
       memoryService,
+      cloudDocumentCacheService,
       teamStore,
       mcpStore,
       skillStore,
@@ -1011,6 +1016,13 @@ export class Session {
       ? new MemorySession({
           emit: (msg) => this.emit(msg),
           service: memoryService,
+          logger: this.sessionLogger,
+        })
+      : null;
+    this.cloudDocumentCacheSession = cloudDocumentCacheService
+      ? new CloudDocumentCacheSession({
+          emit: (msg) => this.emit(msg),
+          service: cloudDocumentCacheService,
           logger: this.sessionLogger,
         })
       : null;
@@ -2012,6 +2024,7 @@ export class Session {
       this.dispatchLoopMessage(msg) ??
       this.dispatchAssistantMessage(msg) ??
       this.dispatchMemoryMessage(msg) ??
+      this.dispatchCloudKnowledgeMessage(msg) ??
       this.dispatchChannelMessage(msg) ??
       this.dispatchTeamMessage(msg) ??
       this.dispatchMcpMessage(msg) ??
@@ -2524,6 +2537,16 @@ export class Session {
       case "memory.get_sync_snapshot.request":
       case "memory.merge_sync_snapshot.request":
         return this.memorySession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchCloudKnowledgeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "knowledge.cloud_document.cache.request":
+      case "knowledge.cloud_document.get_status.request":
+        return this.cloudDocumentCacheSession?.handleRequest(msg);
       default:
         return undefined;
     }

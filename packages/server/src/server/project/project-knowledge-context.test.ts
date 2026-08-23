@@ -49,7 +49,37 @@ describe("Project knowledge context", () => {
     expect(prompt).toContain("must follow this rule");
     expect(prompt).toContain("domain architecture");
     expect(prompt).toContain("https://example.com/standards");
-    expect(prompt).toContain("MUST open and read every standard cloud document");
+    expect(prompt).toContain("local cache unavailable");
+    expect(prompt).toContain("At least one standard document is unavailable");
+  });
+
+  it("injects cached cloud standards and only points general knowledge to its cache", () => {
+    const knowledge = resolveProjectKnowledge({
+      projectConfig: {
+        knowledge: {
+          general: [{ type: "cloud-document", source: "https://example.com/general" }],
+          standards: [{ type: "cloud-document", source: "https://example.com/standards" }],
+        },
+      },
+      resolveLocalPath: (source) => source,
+      resolveCloudDocument: (source) => ({
+        source,
+        cached: true,
+        cachedAt: "2026-08-23T00:00:00.000Z",
+        checkedAt: "2026-08-23T00:00:00.000Z",
+        localPath: `/cache/${source.endsWith("general") ? "general" : "standards"}.md`,
+        stale: false,
+        content: source.endsWith("standards") ? "cached mandatory rule" : "background",
+        error: null,
+        authIssue: null,
+      }),
+    });
+    const prompt = buildProjectKnowledgePrompt({ generalDirectories: [], knowledge });
+
+    expect(prompt).toContain("/cache/general.md");
+    expect(prompt).not.toContain("\nbackground\n");
+    expect(prompt).toContain("cached mandatory rule");
+    expect(prompt).not.toContain("At least one standard document is unavailable");
   });
 
   it("requires the agent to stop when a local standard cannot be read", () => {

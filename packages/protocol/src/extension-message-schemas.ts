@@ -193,6 +193,12 @@ import {
   ReasoningTranslateRequestSchema,
   ReasoningTranslateResponseSchema,
 } from "./reasoning-translation/rpc-schemas.js";
+import {
+  CloudDocumentCacheRequestSchema,
+  CloudDocumentCacheResponseSchema,
+  CloudDocumentStatusRequestSchema,
+  CloudDocumentStatusResponseSchema,
+} from "./knowledge/cloud-cache-rpc-schemas.js";
 
 /**
  * Branch-owned RPC registrations live here so the central protocol unions only
@@ -279,6 +285,8 @@ export const ExtensionSessionInboundSchemas = [
   PluginHttpJobDeleteManyRequestSchema,
   PluginHttpJobCleanupRequestSchema,
   ReasoningTranslateRequestSchema,
+  CloudDocumentCacheRequestSchema,
+  CloudDocumentStatusRequestSchema,
 ] as const;
 
 export const ExtensionSessionOutboundSchemas = [
@@ -369,4 +377,6 @@ export const ExtensionSessionOutboundSchemas = [
   PluginHttpJobDeleteManyResponseSchema,
   PluginHttpJobCleanupResponseSchema,
   ReasoningTranslateResponseSchema,
+  CloudDocumentCacheResponseSchema,
+  CloudDocumentStatusResponseSchema,
 ] as const;

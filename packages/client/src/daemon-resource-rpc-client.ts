@@ -43,6 +43,7 @@ import type {
   SetLarkReminderEnabledOptions,
   UpdateAssistantOptions,
 } from "./daemon-client.js";
+import type { CloudKnowledgeScope } from "@getpaseo/protocol/knowledge/cloud-cache-rpc-schemas";
 
 type ResponsePayload<TType extends SessionOutboundMessage["type"]> =
   Extract<SessionOutboundMessage, { type: TType }> extends { payload: infer TPayload }
@@ -139,6 +140,45 @@ export class DaemonResourceRpcClient {
       requestId: options?.requestId,
       message: { type: "memory.merge_sync_snapshot.request", snapshot },
       responseType: "memory.merge_sync_snapshot.response",
+    });
+  }
+
+  cacheCloudDocument(options: {
+    scope: CloudKnowledgeScope;
+    projectId?: string;
+    source: string;
+    force?: boolean;
+    requestId?: string;
+  }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "knowledge.cloud_document.cache.request",
+        scope: options.scope,
+        projectId: options.projectId,
+        source: options.source,
+        force: options.force,
+      },
+      responseType: "knowledge.cloud_document.cache.response",
+      timeout: 90_000,
+    });
+  }
+
+  getCloudDocumentCacheStatus(options: {
+    scope: CloudKnowledgeScope;
+    projectId?: string;
+    source: string;
+    requestId?: string;
+  }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "knowledge.cloud_document.get_status.request",
+        scope: options.scope,
+        projectId: options.projectId,
+        source: options.source,
+      },
+      responseType: "knowledge.cloud_document.get_status.response",
     });
   }
 

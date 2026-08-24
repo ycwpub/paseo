@@ -9,6 +9,7 @@ const INTERNAL_HOST_SUFFIXES = [
   ".byteintl.net",
 ] as const;
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+const HTTP_FETCH_TIMEOUT_MS = 60_000;
 const AUTH_TEXT_PATTERN =
   /auth(?:entication|orization)?|login|log in|sign in|sso|oauth|unauthorized|forbidden|扫码|登录|授权|无权限/iu;
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/giu;
@@ -221,7 +222,20 @@ async function fetchWithHttp(input: {
   const headers = new Headers();
   if (input.etag) headers.set("If-None-Match", input.etag);
   if (input.lastModified) headers.set("If-Modified-Since", input.lastModified);
-  const response = await fetch(input.source, { headers, redirect: "follow" });
+  const signal = AbortSignal.timeout(HTTP_FETCH_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(input.source, {
+      headers,
+      redirect: "follow",
+      signal,
+    });
+  } catch (error) {
+    if (signal.aborted) {
+      throw new Error("读取云文档超时（60 秒），请稍后重试。", { cause: error });
+    }
+    throw error;
+  }
   if (response.status === 304) {
     return {
       content: "",

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -67,6 +67,106 @@ describe("CloudDocumentCacheService", () => {
     await service.resolve(target);
     await service.resolve(target);
 
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("downloads a replacement when a status check finds the local cache missing", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-cloud-cache-missing-"));
+    roots.push(paseoHome);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: "first copy",
+        etag: '"v1"',
+        lastModified: null,
+        notModified: false,
+      })
+      .mockResolvedValueOnce({
+        content: "replacement copy",
+        etag: '"v2"',
+        lastModified: null,
+        notModified: false,
+      });
+    const service = new CloudDocumentCacheService({
+      paseoHome,
+      logger: createTestLogger(),
+      reader: { fetch },
+    });
+    const target = { scope: "global" as const, source: "https://example.com/missing" };
+    const initial = await service.resolve(target);
+    unlinkSync(initial.localPath!);
+
+    const status = await service.getStatus(target);
+
+    expect(status).toMatchObject({
+      cached: true,
+      stale: false,
+      error: null,
+    });
+    expect(readFileSync(status.localPath!, "utf8")).toBe("replacement copy");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("downloads a replacement when cached content fails its integrity check", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-cloud-cache-corrupt-"));
+    roots.push(paseoHome);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: "valid copy",
+        etag: '"v1"',
+        lastModified: null,
+        notModified: false,
+      })
+      .mockResolvedValueOnce({
+        content: "replacement copy",
+        etag: '"v2"',
+        lastModified: null,
+        notModified: false,
+      });
+    const service = new CloudDocumentCacheService({
+      paseoHome,
+      logger: createTestLogger(),
+      reader: { fetch },
+    });
+    const target = { scope: "global" as const, source: "https://example.com/corrupt" };
+    const initial = await service.resolve(target);
+    writeFileSync(initial.localPath!, "damaged local content");
+
+    const resolved = await service.resolve(target);
+
+    expect(resolved).toMatchObject({
+      cached: true,
+      content: "replacement copy",
+      stale: false,
+      error: null,
+    });
+    expect(readFileSync(resolved.localPath!, "utf8")).toBe("replacement copy");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a replacement download failure instead of leaving status pending", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-cloud-cache-repair-error-"));
+    roots.push(paseoHome);
+    const fetch = vi.fn(async () => {
+      throw new Error("download failed");
+    });
+    const service = new CloudDocumentCacheService({
+      paseoHome,
+      logger: createTestLogger(),
+      reader: { fetch },
+    });
+
+    const status = await service.getStatus({
+      scope: "global",
+      source: "https://example.com/unavailable",
+    });
+
+    expect(status).toMatchObject({
+      cached: false,
+      stale: true,
+      error: "download failed",
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 

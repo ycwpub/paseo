@@ -63,6 +63,8 @@ export interface SidebarProjectEntry {
   iconWorkingDir: string;
   hosts: WorkspaceStructureHostPlacement[];
   workspaces: SidebarWorkspacePlacement[];
+  parentViewKey?: string | null;
+  hierarchyDepth?: number;
 }
 
 export interface SidebarWorkspacePlacementModel {
@@ -478,6 +480,7 @@ export function buildSidebarProjectsFromStructure(input: {
       iconWorkingDir: project.iconWorkingDir,
       hosts: project.hosts,
       workspaceKeys: project.workspaceKeys,
+      parentViewKey: project.parentViewKey,
     })),
   });
 }
@@ -495,6 +498,7 @@ export function buildSidebarProjectsFromHostProjects(input: {
     projectKind: project.projectKind,
     iconWorkingDir: project.iconWorkingDir,
     hosts: project.hosts,
+    parentViewKey: project.parentViewKey,
     workspaces: project.workspaceKeys.map((workspaceKey) =>
       createStructuralWorkspaceEntry({
         project,

@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import type { Logger } from "pino";
+import { hashCloudDocumentContent } from "./content-integrity.js";
 import { CloudDocumentCacheStore } from "./store.js";
 import {
   CloudDocumentAuthenticationError,
@@ -13,10 +13,6 @@ import type {
 } from "./types.js";
 
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-function hashContent(content: string): string {
-  return createHash("sha256").update(content).digest("hex");
-}
 
 function isStale(checkedAt: string, nowMs: number, maxAgeMs: number): boolean {
   const checkedAtMs = Date.parse(checkedAt);
@@ -46,12 +42,7 @@ export class CloudDocumentCacheService {
   }
 
   async getStatus(target: CloudDocumentCacheTarget): Promise<CloudDocumentCacheStatus> {
-    const normalized = this.normalizeTarget(target);
-    const cached = await this.store.read(normalized);
-    const stale = cached
-      ? isStale(cached.metadata.checkedAt, this.now().getTime(), this.maxAgeMs)
-      : true;
-    const resolved = this.store.toResolved(cached, normalized, stale);
+    const resolved = await this.resolve(target);
     const { content: _content, ...status } = resolved;
     return status;
   }
@@ -99,7 +90,7 @@ export class CloudDocumentCacheService {
           ...this.store.toResolved({ metadata, content: cached.content }, target, false),
         };
       }
-      const contentHash = hashContent(fetched.content);
+      const contentHash = hashCloudDocumentContent(fetched.content);
       const unchanged = cached?.metadata.contentHash === contentHash;
       const metadata = await this.store.write({
         target,

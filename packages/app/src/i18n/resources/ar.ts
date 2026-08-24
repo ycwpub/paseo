@@ -293,6 +293,27 @@ export const ar: TranslationResources = {
       save: "حفظ القواعد",
       saved: "تم الحفظ",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "إدارة الذاكرة",
+      detailTitle: "تفاصيل الذاكرة",
+      manage: "إدارة محتوى الذاكرة",
+      manageDescription: "توجد {{count}} ذكريات. افتح الصفحة المخصصة لعرضها أو تعديلها أو حذفها.",
+      openManager: "فتح",
+      backToList: "العودة إلى قائمة الذاكرة",
+      loading: "جارٍ تحميل الذاكرة…",
+      notFound: "هذه الذاكرة غير موجودة أو تم حذفها.",
+      errorTitle: "تعذرت إدارة الذاكرة",
+      scopeEditHint: "يؤدي تغيير النطاق إلى نقل هذه الذاكرة إلى النطاق المحدد.",
+      pagination: {
+        pageSize: "العناصر في الصفحة",
+        noPageSizes: "لا توجد أحجام صفحات متاحة",
+        page: "الصفحة {{page}} من {{totalPages}}",
+        range: "عرض {{start}}–{{end}} من {{total}}",
+        previous: "السابق",
+        next: "التالي",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -367,9 +388,18 @@ export const ar: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "يخطط",
@@ -382,6 +412,7 @@ export const ar: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "لم يتم العثور على Agent",
       failedToLoad: "فشل تحميل الوكيل",
@@ -527,6 +558,8 @@ export const ar: TranslationResources = {
     },
     compaction: {
       loading: "الضغط...",
+      loadingAuto: "جارٍ ضغط السياق تلقائيًا",
+      loadingManual: "جارٍ ضغط السياق يدويًا",
       auto: "يتم ضغط السياق تلقائيًا",
       manual: "تم ضغط السياق يدويًا",
       withTokens: "تم ضغط السياق (رموز{{tokens}}K)",
@@ -1311,7 +1344,7 @@ export const ar: TranslationResources = {
       confirmations: {
         removeTitle: "هل تريد حذف المشروع؟",
         removeMessage:
-          'هل تريد حذف "{{projectName}}" نهائيًا وجميع بياناته التي يديرها Paseo ضمن ~/.paseo/<projectId>؟\n\nلن تُحذف مجلدات المصدر الخارجية. لا يمكن التراجع عن هذا الإجراء.',
+          'هل تريد حذف "{{projectName}}" نهائيًا وجميع بياناته التي يديرها Paseo ضمن ~/.paseo/projects/<projectId>؟\n\nلن تُحذف مجلدات المصدر الخارجية. لا يمكن التراجع عن هذا الإجراء.',
         removeConfirm: "حذف",
         cancel: "يلغي",
       },
@@ -1376,7 +1409,7 @@ export const ar: TranslationResources = {
         hideConfirm: "يخفي",
         removeTitle: "حذف مساحة العمل؟",
         removeMessage:
-          'هل تريد حذف "{{workspaceName}}" وبيانات Paseo الخاصة بها نهائيًا من ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}؟\n\nلن يتم حذف دليل الشفرة الخارجي المرتبط أو تعديل أي ملفات بداخله. لا يمكن التراجع عن هذا الإجراء.',
+          'هل تريد حذف "{{workspaceName}}" وبيانات Paseo الخاصة بها نهائيًا من ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}؟\n\nلن يتم حذف دليل الشفرة الخارجي المرتبط أو تعديل أي ملفات بداخله. لا يمكن التراجع عن هذا الإجراء.',
         removeConfirm: "حذف",
         cancel: "يلغي",
       },
@@ -2940,6 +2973,7 @@ export const ar: TranslationResources = {
       backToProjects: "العودة إلى المشاريع",
       switchHost: "تبديل المضيف",
       projectId: en.settings.project.projectId,
+      parentProjectId: en.settings.project.parentProjectId,
       projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "لا يوجد مجلد للمشروع",
@@ -2949,6 +2983,7 @@ export const ar: TranslationResources = {
       memory: {
         title: "ذاكرة المشروع",
         info: "تحكم في ذاكرة هذا المشروع وحدد المعرفة الدائمة التي يجب أن يتعلمها Paseo.",
+        policyTitle: "قواعد الذاكرة",
         enabledTitle: "استخدام الذاكرة لهذا المشروع",
         enabledHint:
           "عند الإيقاف، لا تقرأ الوكلاء ذاكرة المشروع ولا تنشئها. تبقى الذاكرة العامة متاحة.",
@@ -2960,6 +2995,26 @@ export const ar: TranslationResources = {
         saving: "جارٍ الحفظ...",
         saved: "تم الحفظ",
         saveError: "تعذر حفظ ذاكرة المشروع",
+        content: {
+          title: "محتوى الذاكرة",
+          description:
+            "اعرض أو عدّل أو احذف الذاكرة طويلة المدى لهذا المشروع ومساحات العمل التابعة له. لا يمكن تغيير نطاق الذاكرة هنا.",
+          scope: "نطاق الذاكرة",
+          scopes: {
+            project: "المشروع الحالي",
+            workspace: "مساحة العمل",
+          },
+          selectScope: "اختر نطاق الذاكرة",
+          noScopes: "لا توجد نطاقات ذاكرة متاحة",
+          selectWorkspace: "اختر مساحة عمل",
+          noWorkspace: "لا توجد مساحات عمل متاحة لهذا المشروع",
+          loading: "جارٍ تحميل الذاكرة...",
+          empty: "لا توجد ذكريات مطابقة في هذا النطاق",
+          errorTitle: "تعذر إدارة ذاكرة المشروع",
+          deleteTitle: "حذف «{{title}}»؟",
+          deleteDescription: "لا يمكن استعادة هذه الذاكرة ومعلومات مصدرها.",
+          deleteConfirm: "حذف",
+        },
       },
       edit: {
         title: "تعديل المشروع",

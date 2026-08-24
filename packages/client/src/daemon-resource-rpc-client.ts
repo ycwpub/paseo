@@ -2,6 +2,7 @@ import type {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  PaseoMemorySyncSelection,
   PaseoMemoryUpdateInput,
   PaseoMemorySyncSnapshot,
   PluginAppDefaultAgent,
@@ -127,10 +128,13 @@ export class DaemonResourceRpcClient {
     });
   }
 
-  getMemorySyncSnapshot(options?: { requestId?: string }) {
+  getMemorySyncSnapshot(options?: { requestId?: string; selection?: PaseoMemorySyncSelection }) {
     return this.request({
       requestId: options?.requestId,
-      message: { type: "memory.get_sync_snapshot.request" },
+      message: {
+        type: "memory.get_sync_snapshot.request",
+        ...(options?.selection ? { selection: options.selection } : {}),
+      },
       responseType: "memory.get_sync_snapshot.response",
     });
   }

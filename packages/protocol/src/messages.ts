@@ -2572,6 +2572,7 @@ const MIN_REPOSITORY_PATH_LENGTH = 3;
 export const ProjectAddRequestSchema = z.object({
   type: z.literal("project.add.request"),
   cwd: z.string(),
+  parentProjectId: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -2579,12 +2580,14 @@ export const ProjectCreateDirectoryRequestSchema = z.object({
   type: z.literal("project.create_directory.request"),
   parentPath: z.string(),
   name: z.string(),
+  parentProjectId: z.string().optional(),
   requestId: z.string(),
 });
 
 export const ProjectCreateDirectorylessRequestSchema = z.object({
   type: z.literal("project.create_directoryless.request"),
   name: z.string().min(1).max(120),
+  parentProjectId: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -2612,6 +2615,7 @@ export const ProjectGithubCloneRequestSchema = z.object({
   repo: z.string().trim().min(MIN_REPOSITORY_PATH_LENGTH),
   cloneProtocol: ProjectGithubCloneProtocolSchema.optional(),
   targetDirectory: z.string().trim().min(1),
+  parentProjectId: z.string().optional(),
   requestId: z.string(),
 });
 
@@ -3603,6 +3607,8 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(projectCreateDirectoryless): added on 2026-08-19. Older daemons do not
         // understand directoryless project creation, so clients must gate the entry point.
         projectCreateDirectoryless: z.boolean().optional(),
+        // COMPAT(projectHierarchy): added on 2026-08-27. Older daemons ignore parent links.
+        projectHierarchy: z.boolean().optional(),
         // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
         projectConfigById: z.boolean().optional(),
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
@@ -4156,6 +4162,8 @@ export const FetchRecentProviderSessionsResponseMessageSchema = z.object({
 // workspace is archived.
 export const WorkspaceProjectDescriptorPayloadSchema = z.object({
   projectId: z.string(),
+  // COMPAT(projectHierarchy): added on 2026-08-27. Missing means a top-level Project.
+  parentProjectId: z.string().nullable().optional(),
   // COMPAT(projectKey): added in v0.2.4 on 2026-07-28; remove optional after 2027-01-28.
   projectKey: z.string().optional(),
   projectDisplayName: z.string(),

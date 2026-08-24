@@ -303,6 +303,28 @@ export const es: TranslationResources = {
       save: "Guardar reglas",
       saved: "Guardado",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Gestión de memoria",
+      detailTitle: "Detalles de memoria",
+      manage: "Gestionar contenido de memoria",
+      manageDescription:
+        "Hay {{count}} recuerdos. Abre la página dedicada para verlos, editarlos o eliminarlos.",
+      openManager: "Abrir",
+      backToList: "Volver a la lista de memoria",
+      loading: "Cargando memoria…",
+      notFound: "Este recuerdo no existe o se ha eliminado.",
+      errorTitle: "No se puede gestionar la memoria",
+      scopeEditHint: "Cambiar el ámbito mueve este recuerdo al ámbito seleccionado.",
+      pagination: {
+        pageSize: "Elementos por página",
+        noPageSizes: "No hay tamaños de página disponibles",
+        page: "Página {{page}} de {{totalPages}}",
+        range: "Mostrando {{start}}–{{end}} de {{total}}",
+        previous: "Anterior",
+        next: "Siguiente",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -377,9 +399,18 @@ export const es: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plan",
@@ -392,6 +423,7 @@ export const es: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agentno encontrado",
       failedToLoad: "No se pudo cargar el agente",
@@ -540,6 +572,8 @@ export const es: TranslationResources = {
     },
     compaction: {
       loading: "Compactando...",
+      loadingAuto: "Compactando el contexto automáticamente",
+      loadingManual: "Compactando el contexto manualmente",
       auto: "Contexto compactado automáticamente",
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado (tokens{{tokens}}K)",
@@ -1355,7 +1389,7 @@ export const es: TranslationResources = {
       confirmations: {
         removeTitle: "¿Eliminar proyecto?",
         removeMessage:
-          '¿Eliminar permanentemente "{{projectName}}" y todos sus datos administrados por Paseo en ~/.paseo/<projectId>?\n\nLos directorios de código fuente externos no se eliminarán. Esta acción no se puede deshacer.',
+          '¿Eliminar permanentemente "{{projectName}}" y todos sus datos administrados por Paseo en ~/.paseo/projects/<projectId>?\n\nLos directorios de código fuente externos no se eliminarán. Esta acción no se puede deshacer.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
@@ -1421,7 +1455,7 @@ export const es: TranslationResources = {
         hideConfirm: "Esconder",
         removeTitle: "¿Eliminar espacio de trabajo?",
         removeMessage:
-          '¿Eliminar permanentemente "{{workspaceName}}" y sus datos administrados por Paseo en ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nEl directorio de código externo asociado y sus archivos no se eliminarán ni modificarán. Esta acción no se puede deshacer.',
+          '¿Eliminar permanentemente "{{workspaceName}}" y sus datos administrados por Paseo en ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nEl directorio de código externo asociado y sus archivos no se eliminarán ni modificarán. Esta acción no se puede deshacer.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
@@ -3010,6 +3044,7 @@ export const es: TranslationResources = {
       backToProjects: "Volver a proyectos",
       switchHost: "Cambiar de anfitrión",
       projectId: en.settings.project.projectId,
+      parentProjectId: en.settings.project.parentProjectId,
       projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "El proyecto no tiene directorio",
@@ -3019,6 +3054,7 @@ export const es: TranslationResources = {
       memory: {
         title: "Memoria del proyecto",
         info: "Controla la memoria de este proyecto y define qué conocimiento duradero debe aprender Paseo.",
+        policyTitle: "Reglas de memoria",
         enabledTitle: "Usar memoria para este proyecto",
         enabledHint:
           "Si se desactiva, los agentes no leerán ni crearán memoria del proyecto. La memoria global seguirá disponible.",
@@ -3031,6 +3067,26 @@ export const es: TranslationResources = {
         saving: "Guardando...",
         saved: "Guardado",
         saveError: "No se pudo guardar la memoria del proyecto",
+        content: {
+          title: "Contenido de memoria",
+          description:
+            "Consulta, edita o elimina la memoria a largo plazo de este proyecto y sus espacios de trabajo. Aquí no se puede cambiar el ámbito.",
+          scope: "Ámbito de memoria",
+          scopes: {
+            project: "Proyecto actual",
+            workspace: "Espacio de trabajo",
+          },
+          selectScope: "Selecciona un ámbito de memoria",
+          noScopes: "No hay ámbitos de memoria disponibles",
+          selectWorkspace: "Selecciona un espacio de trabajo",
+          noWorkspace: "Este proyecto no tiene espacios de trabajo disponibles",
+          loading: "Cargando memoria...",
+          empty: "No hay memorias que coincidan en este ámbito",
+          errorTitle: "No se pudo gestionar la memoria del proyecto",
+          deleteTitle: "¿Eliminar «{{title}}»?",
+          deleteDescription: "Esta memoria y la información de su origen no se pueden recuperar.",
+          deleteConfirm: "Eliminar",
+        },
       },
       edit: {
         title: "Editar proyecto",

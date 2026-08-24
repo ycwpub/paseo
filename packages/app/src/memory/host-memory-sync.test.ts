@@ -82,9 +82,12 @@ describe("host memory sync", () => {
   test("merges a source snapshot into the target host", async () => {
     const source = host("source", [snapshot("source", ["a"])]);
     const target = host("target", [snapshot("target", ["b"]), snapshot("target", ["a", "b"])]);
+    const selection = { type: "project", id: "project-1" } as const;
 
-    const result = await syncHostMemoryOneWay({ source, target });
+    const result = await syncHostMemoryOneWay({ source, target, selection });
 
+    expect(source.client.getMemorySyncSnapshot).toHaveBeenCalledWith({ selection });
+    expect(target.client.getMemorySyncSnapshot).toHaveBeenCalledWith({ selection });
     expect(target.client.mergeMemorySyncSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ sourceHostId: "source" }),
     );
@@ -116,7 +119,11 @@ describe("host memory sync", () => {
       return { requestId: "merge-second", memory: memory(), error: null };
     });
 
-    await syncHostMemoryTwoWay({ first, second });
+    await syncHostMemoryTwoWay({
+      first,
+      second,
+      selection: { type: "assistant", id: "assistant-1" },
+    });
 
     expect(events.indexOf("merge-first")).toBeGreaterThan(events.indexOf("read-first"));
     expect(events.indexOf("merge-first")).toBeGreaterThan(events.indexOf("read-second"));

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CloudDocumentAuthenticationError, DefaultCloudDocumentSourceReader } from "./source.js";
 
 describe("DefaultCloudDocumentSourceReader", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("extracts markdown from bytedcli JSON output", async () => {
     const runCommand = vi.fn(async () => ({
       stdout: JSON.stringify({
@@ -54,5 +58,23 @@ describe("DefaultCloudDocumentSourceReader", () => {
         loginUrl: "https://login.example.com/oauth",
       },
     });
+  });
+
+  it("bounds HTTP cloud document downloads with a timeout signal", async () => {
+    const fetch = vi.fn(async () => new Response("# Public document"));
+    vi.stubGlobal("fetch", fetch);
+    const reader = new DefaultCloudDocumentSourceReader();
+
+    const result = await reader.fetch({
+      source: "https://example.com/document",
+    });
+
+    expect(result.content).toBe("# Public document");
+    expect(fetch).toHaveBeenCalledWith(
+      "https://example.com/document",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 });

@@ -291,6 +291,7 @@ import {
 } from "./project-directory-service.js";
 import {
   ensureManagedProjectStorageRoot,
+  ensureManagedWorkspacePath,
   removeManagedProjectStorage,
   removeManagedWorkspaceStorage,
   resolveProjectPath,
@@ -5351,7 +5352,11 @@ export class Session {
     const resolvedProjectRecord =
       projectRecord ?? (await this.projectRegistry.get(workspace.projectId));
     if (resolvedProjectRecord) {
-      ensureManagedProjectStorageRoot(this.paseoHome, resolvedProjectRecord.projectId);
+      ensureManagedWorkspacePath(
+        this.paseoHome,
+        resolvedProjectRecord.projectId,
+        workspace.workspaceId,
+      );
     }
 
     let diffStat: { additions: number; deletions: number } | null = null;
@@ -5457,7 +5462,11 @@ export class Session {
   ): Promise<WorkspaceDescriptorPayload> {
     const projectRecord = await this.projectRegistry.get(result.workspace.projectId);
     if (projectRecord) {
-      ensureManagedProjectStorageRoot(this.paseoHome, projectRecord.projectId);
+      ensureManagedWorkspacePath(
+        this.paseoHome,
+        projectRecord.projectId,
+        result.workspace.workspaceId,
+      );
     }
     return {
       id: result.workspace.workspaceId,
@@ -5642,6 +5651,7 @@ export class Session {
     const icon = await this.projectIcons.snapshot(project);
     return {
       projectId: project.projectId,
+      ...(project.parentProjectId ? { parentProjectId: project.parentProjectId } : {}),
       ...(project.projectKey ? { projectKey: project.projectKey } : {}),
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
@@ -5650,6 +5660,47 @@ export class Session {
       projectRootPath: project.rootPath,
       projectKind: project.kind,
     };
+  }
+
+  private async validateParentProjectId(
+    parentProjectId: string | undefined,
+  ): Promise<string | null> {
+    const normalizedParentProjectId = parentProjectId?.trim();
+    if (!normalizedParentProjectId) return null;
+    const parent = await this.projectRegistry.get(normalizedParentProjectId);
+    if (!parent || parent.archivedAt) {
+      throw new Error(`Parent Project not found: ${normalizedParentProjectId}`);
+    }
+    return normalizedParentProjectId;
+  }
+
+  private async attachParentProject(
+    project: PersistedProjectRecord,
+    parentProjectId: string | null,
+  ): Promise<PersistedProjectRecord> {
+    if (!parentProjectId) return project;
+    if (parentProjectId === project.projectId) {
+      throw new Error("A Project cannot be its own parent");
+    }
+    let ancestorProjectId: string | null | undefined = parentProjectId;
+    const visitedProjectIds = new Set<string>();
+    while (ancestorProjectId && !visitedProjectIds.has(ancestorProjectId)) {
+      if (ancestorProjectId === project.projectId) {
+        throw new Error("A Project parent relationship cannot contain a cycle");
+      }
+      visitedProjectIds.add(ancestorProjectId);
+      const ancestor = await this.projectRegistry.get(ancestorProjectId);
+      ancestorProjectId = ancestor?.parentProjectId;
+    }
+    const updated = await this.projectRegistry.update(project.projectId, (current) => ({
+      ...current,
+      parentProjectId,
+      updatedAt: new Date().toISOString(),
+    }));
+    if (!updated) {
+      throw new Error(`Created Project not found: ${project.projectId}`);
+    }
+    return updated;
   }
 
   private async restoreWorkspaceAndEmit(workspaceId: string): Promise<void> {
@@ -6744,11 +6795,13 @@ export class Session {
     }
 
     try {
+      const parentProjectId = await this.validateParentProjectId(request.parentProjectId);
       const projectsBefore = new Map<string, PersistedProjectRecord>();
       for (const project of await this.projectRegistry.list()) {
         projectsBefore.set(project.projectId, project);
       }
-      const project = await this.workspaceProvisioning.createProjectForDirectory(cwd);
+      const createdProject = await this.workspaceProvisioning.createProjectForDirectory(cwd);
+      const project = await this.attachParentProject(createdProject, parentProjectId);
       this.sessionLogger.info(
         {
           requestedCwd,
@@ -6787,6 +6840,7 @@ export class Session {
     request: Extract<SessionInboundMessage, { type: "project.create_directory.request" }>,
   ): Promise<void> {
     try {
+      const parentProjectId = await this.validateParentProjectId(request.parentProjectId);
       const result = await createProjectDirectory(
         { parentPath: request.parentPath, name: request.name },
         {
@@ -6794,6 +6848,7 @@ export class Session {
             this.workspaceProvisioning.createProjectForDirectory(directoryPath),
         },
       );
+      const project = await this.attachParentProject(result.project, parentProjectId);
       this.emit({
         type: "project.create_directory.response",
         payload: {
@@ -6850,13 +6905,15 @@ export class Session {
       return;
     }
     try {
+      const parentProjectId = await this.validateParentProjectId(request.parentProjectId);
       if (!this.projectRegistry.createDirectoryless) {
         throw new Error("This host does not support directoryless projects");
       }
-      const project = await this.projectRegistry.createDirectoryless({
+      const createdProject = await this.projectRegistry.createDirectoryless({
         displayName: name,
         timestamp: new Date().toISOString(),
       });
+      const project = await this.attachParentProject(createdProject, parentProjectId);
       const initialized = initializeDirectorylessProjectConfig({
         paseoHome: this.paseoHome,
         project,
@@ -6986,6 +7043,7 @@ export class Session {
     let normalizedRepo = request.repo;
     let checkoutPath: string | null = null;
     try {
+      const parentProjectId = await this.validateParentProjectId(request.parentProjectId);
       const repo = normalizeCloneRepository({
         repo: request.repo,
         cloneProtocol: request.cloneProtocol,
@@ -7026,8 +7084,9 @@ export class Session {
         throw error;
       }
 
-      const project =
+      const createdProject =
         await this.workspaceProvisioning.findOrCreateProjectForDirectory(checkoutPath);
+      const project = await this.attachParentProject(createdProject, parentProjectId);
 
       this.emit({
         type: "project.github.clone.response",

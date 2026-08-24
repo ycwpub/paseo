@@ -9,6 +9,10 @@ import {
   resolveKnownHostRoute,
   buildSessionsRoute,
   buildSettingsAddHostRoute,
+  buildHostMemoryDetailRoute,
+  buildHostMemoryRoute,
+  buildProjectMemoryDetailRoute,
+  buildProjectMemoryRoute,
   buildProjectSettingsRoute,
   buildProjectsSettingsRoute,
   decodeFilePathFromPathSegment,
@@ -200,6 +204,22 @@ describe("projects settings routes", () => {
   it("buildProjectSettingsRoute addresses a host-local project id", () => {
     expect(buildProjectSettingsRoute("host a", "project/1")).toBe(
       "/settings/hosts/host%20a/projects/project%2F1",
+    );
+  });
+
+  it("builds host memory list and detail routes", () => {
+    expect(buildHostMemoryRoute("host a")).toBe("/settings/hosts/host%20a/memories");
+    expect(buildHostMemoryDetailRoute("host a", "memory/1")).toBe(
+      "/settings/hosts/host%20a/memories/memory%2F1",
+    );
+  });
+
+  it("builds project memory list and detail routes", () => {
+    expect(buildProjectMemoryRoute("host a", "project/1")).toBe(
+      "/settings/hosts/host%20a/projects/project%2F1/memories",
+    );
+    expect(buildProjectMemoryDetailRoute("host a", "project/1", "memory/1")).toBe(
+      "/settings/hosts/host%20a/projects/project%2F1/memories/memory%2F1",
     );
   });
 

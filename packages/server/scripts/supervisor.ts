@@ -49,6 +49,10 @@ interface SupervisorOptions {
   restartOnCrash?: boolean;
   onSupervisorExit?: () => Promise<void> | void;
   logFile?: SupervisorLogFileOptions;
+  workerHeartbeat?: {
+    intervalMs?: number;
+    timeoutMs?: number;
+  };
 }
 
 export interface SupervisorController {
@@ -119,6 +123,10 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
   const workerEnv = options.workerEnv ?? process.env;
   const workerExecArgv = options.workerExecArgv ?? ["--import", "tsx"];
   const resolveWorkerSpawnSpec = options.resolveWorkerSpawnSpec;
+  const workerHeartbeatIntervalMs =
+    options.workerHeartbeat?.intervalMs ?? WORKER_HEARTBEAT_INTERVAL_MS;
+  const workerHeartbeatTimeoutMs =
+    options.workerHeartbeat?.timeoutMs ?? WORKER_HEARTBEAT_TIMEOUT_MS;
 
   let child: ChildProcess | null = null;
   let restarting = false;
@@ -249,7 +257,7 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
       } else {
         writeLifecycleLog("Worker heartbeat skipped because IPC channel is disconnected");
       }
-    }, WORKER_HEARTBEAT_INTERVAL_MS);
+    }, workerHeartbeatIntervalMs);
     heartbeat.unref();
 
     child.on("disconnect", () => {

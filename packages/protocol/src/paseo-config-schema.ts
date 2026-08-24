@@ -24,6 +24,8 @@ export const PaseoServicePortAllocationSchema = z
 export type PaseoServicePortAllocation = z.infer<typeof PaseoServicePortAllocationSchema>;
 
 export const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY =
+  "~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}";
+export const PREVIOUS_PASEO_WORKSPACE_DATA_DIRECTORY =
   "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
 export const LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/workspaces/{{workspaceId}}";
 
@@ -83,7 +85,10 @@ export function resolvePaseoProjectDirectoryEntries(
     directories?.workspaceData ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.workspaceData,
   );
   for (const entry of workspaceData) {
-    if (entry.path.trim() === LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY) {
+    if (
+      entry.path.trim() === PREVIOUS_PASEO_WORKSPACE_DATA_DIRECTORY ||
+      entry.path.trim() === LEGACY_PASEO_WORKSPACE_DATA_DIRECTORY
+    ) {
       entry.path = DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY;
     }
   }

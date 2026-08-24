@@ -1,7 +1,7 @@
 import type { PaseoMemoryDetail, PaseoMemoryScope } from "@getpaseo/protocol/messages";
 import {
+  areMemoryScopesVisible,
   effectiveMemoryStatus,
-  isMemoryScopeVisible,
   memoryFeedbackWeight,
   memoryFreshnessWeight,
   memoryScopeKey,
@@ -162,13 +162,13 @@ export function retrieveRelevantMemoryMatches(
   const visible = details.filter(
     (detail) =>
       effectiveMemoryStatus(detail, now) === "active" &&
-      (!options.scopes || isMemoryScopeVisible(detail.scope, options.scopes)),
+      (!options.scopes || areMemoryScopesVisible(detail, options.scopes)),
   );
   const baselineMatches = options.includeBaseline
     ? visible
         .filter(
           (detail) =>
-            memoryScopeKey(detail.scope) === "global" &&
+            (detail.scopes ?? [detail.scope]).some((scope) => scope?.type === "global") &&
             detail.category === "preference" &&
             (detail.origin === "explicit" || (detail.importance ?? 0.5) >= 0.8),
         )
@@ -197,7 +197,11 @@ export function retrieveRelevantMemoryMatches(
       const freshness = memoryFreshnessWeight(document.detail, now);
       const feedback = memoryFeedbackWeight(document.detail);
       const explicitBoost = document.detail.origin === "explicit" ? 0.18 : 0;
-      const scopeBoost = memoryScopeKey(document.detail.scope) === "global" ? 0 : 0.12;
+      const scopeBoost = (document.detail.scopes ?? [document.detail.scope]).some(
+        (scope) => memoryScopeKey(scope) !== "global",
+      )
+        ? 0.12
+        : 0;
       const hasTopicalMatch = lexical > 0 || fuzzy > 0;
       const score =
         lexical * 0.58 +

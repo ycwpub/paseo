@@ -4,6 +4,7 @@ import { Pressable, Text, View } from "react-native";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { formatDuration } from "@/utils/time";
+import { STREAM_VIEWPORT_ANCHOR_DATA_KEY } from "./viewport-change-anchor";
 
 interface ProcessingDisclosureProps {
   expanded: boolean;
@@ -26,6 +27,7 @@ export const ProcessingDisclosure = memo(function ProcessingDisclosure({
     ? t("agentStream.process.processedWithDuration", { duration })
     : t("agentStream.process.processed");
   const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
+  const anchorDataSet = useMemo(() => ({ [STREAM_VIEWPORT_ANCHOR_DATA_KEY]: turnId }), [turnId]);
   const Icon = expanded ? ChevronDown : ChevronRight;
   const handleToggle = useCallback(() => onToggle(turnId, isActive), [isActive, onToggle, turnId]);
 
@@ -33,6 +35,7 @@ export const ProcessingDisclosure = memo(function ProcessingDisclosure({
     <View style={styles.container}>
       <Pressable
         style={styles.trigger}
+        dataSet={anchorDataSet}
         onPress={handleToggle}
         accessibilityRole="button"
         accessibilityState={accessibilityState}

@@ -324,6 +324,148 @@ describe("createWebStreamStrategy", () => {
     expect(unmounted).not.toHaveBeenCalled();
   });
 
+  it("keeps a user-selected viewport anchor stable while rows are expanded", async () => {
+    let scrollTop = 400;
+    let expanded = false;
+    HTMLElement.prototype.scrollTo = vi.fn(function (
+      this: HTMLElement,
+      options?: ScrollToOptions | number,
+      y?: number,
+    ) {
+      scrollTop = typeof options === "object" ? (options.top ?? scrollTop) : (y ?? scrollTop);
+    });
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const collapsedItem = userMessage(1);
+    const expandedItem = userMessage(2);
+    const renderers: StreamSegmentRenderers = {
+      ...createRenderers(vi.fn()),
+      renderHistoryMountedRow: (item) => (
+        <div data-stream-viewport-anchor-id="turn-1">{item.id}</div>
+      ),
+    };
+    const renderInput: Omit<StreamRenderInput, "segments" | "boundary"> = {
+      agentId: "agent",
+      renderers,
+      listEmptyComponent: null,
+      viewportRef,
+      routeBottomAnchorRequest: null,
+      isAuthoritativeHistoryReady: true,
+      onNearBottomChange: vi.fn(),
+      onNearHistoryStart: vi.fn().mockReturnValue(true),
+      isLoadingOlderHistory: false,
+      hasOlderHistory: false,
+      olderHistoryProgressKey: null,
+      scrollEnabled: true,
+      listStyle: null,
+      baseListContentContainerStyle: null,
+      forwardListContentContainerStyle: null,
+    };
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+
+    act(() => {
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: { historyVirtualized: [], historyMounted: [collapsedItem], liveHead: [] },
+          boundary: {
+            hasVirtualizedHistory: false,
+            hasMountedHistory: true,
+            hasLiveHead: false,
+          },
+        }),
+      );
+    });
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    Object.defineProperties(scrollContainer, {
+      clientHeight: { configurable: true, value: 500 },
+      scrollHeight: { configurable: true, value: 1600 },
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this === scrollContainer) {
+          return {
+            bottom: 540,
+            height: 500,
+            left: 0,
+            right: 600,
+            top: 40,
+            width: 600,
+            x: 0,
+            y: 40,
+            toJSON: () => {},
+          } as DOMRect;
+        }
+        if (this.dataset.streamViewportAnchorId === "turn-1") {
+          const documentTop = expanded ? 980 : 620;
+          return {
+            bottom: 72 + documentTop - scrollTop,
+            height: 32,
+            left: 0,
+            right: 320,
+            top: 40 + documentTop - scrollTop,
+            width: 320,
+            x: 0,
+            y: 40 + documentTop - scrollTop,
+            toJSON: () => {},
+          } as DOMRect;
+        }
+        return {
+          bottom: 0,
+          height: 0,
+          left: 0,
+          right: 0,
+          top: 0,
+          width: 0,
+          x: 0,
+          y: 0,
+          toJSON: () => {},
+        } as DOMRect;
+      },
+    );
+
+    act(() => {
+      viewportRef.current?.prepareForViewportChange("turn-1");
+      expanded = true;
+      root?.render(
+        strategy.render({
+          ...renderInput,
+          segments: { historyVirtualized: [], historyMounted: [expandedItem], liveHead: [] },
+          boundary: {
+            hasVirtualizedHistory: false,
+            hasMountedHistory: true,
+            hasLiveHead: false,
+          },
+        }),
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    expect(scrollTop).toBe(760);
+    const anchor = container.querySelector('[data-stream-viewport-anchor-id="turn-1"]');
+    if (!(anchor instanceof HTMLElement)) {
+      throw new Error("Expected viewport anchor");
+    }
+    expect(anchor.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top).toBe(
+      220,
+    );
+  });
+
   it("reports the live-head row as the reading position", () => {
     const strategy = createWebStreamStrategy({ isMobileBreakpoint: false });
     const viewportRef = React.createRef<StreamViewportHandle>();

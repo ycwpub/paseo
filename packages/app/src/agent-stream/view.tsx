@@ -76,6 +76,7 @@ import {
   TURN_FOOTER_BOTTOM_SPACING,
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
+  type TurnChangesContext,
   type TurnContentStrategy,
   type TurnMemoryContext,
 } from "./turn-footer";
@@ -165,6 +166,8 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  changes?: TurnChangesContext;
+  changeItemsByAssistantId: ReadonlyMap<string, StreamItem[]>;
   memory?: TurnMemoryContext;
 }): ReactNode {
   if (!input.content) {
@@ -179,6 +182,8 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      changes={input.changes}
+      changeItems={input.changeItemsByAssistantId.get(footerHost.itemId)}
       memory={input.memory}
     />
   ) : null;
@@ -462,6 +467,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [processExpansion],
     );
     const toggleProcessVisibility = useCallback((turnId: string, isActiveTurn: boolean) => {
+      viewportRef.current?.prepareForViewportChange(turnId);
       setProcessExpansion((state) => toggleProcessTurn(state, { turnId, isActive: isActiveTurn }));
     }, []);
 
@@ -787,6 +793,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+        const presentation = resolveReasoningPresentation({
+          provider: context.provider,
+          source: item.source,
+          autoExpandReasoning,
+        });
         return (
           <ThoughtSlot
             itemId={item.id}
@@ -973,6 +984,41 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const bottomTurnFooterHost = streamLayout.auxiliaryTurnFooter;
 
+    const handleReviewTurnChange = useStableEvent((cwd: string, path?: string) => {
+      const persistenceKey = buildWorkspaceTabPersistenceKey({
+        serverId: resolvedServerId,
+        workspaceId: context.workspaceId ?? workspaceRoot,
+      });
+      if (!isMobile && persistenceKey) {
+        openWorkspaceTabFocused(persistenceKey, {
+          kind: "working_diff",
+          cwd,
+          ...(path ? { focusPath: path, focusRequestId: Date.now() } : {}),
+        });
+        return;
+      }
+      const checkout = {
+        serverId: resolvedServerId,
+        cwd,
+        isGit: true,
+      };
+      setExplorerTabForCheckout({ ...checkout, tab: "changes" });
+      openFileExplorerForCheckout({
+        isCompact: isMobile,
+        checkout,
+      });
+    });
+    const turnChangesContext = useMemo(
+      () => ({
+        serverId: resolvedServerId,
+        cwd: workspaceRoot,
+        readOnly,
+        toast: toast ?? null,
+        onReview: handleReviewTurnChange,
+      }),
+      [handleReviewTurnChange, readOnly, resolvedServerId, toast, workspaceRoot],
+    );
+
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
@@ -1001,6 +1047,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          changes: turnChangesContext,
+          changeItemsByAssistantId,
           memory: turnMemoryContext,
         });
       },
@@ -1013,6 +1061,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        changeItemsByAssistantId,
+        turnChangesContext,
         turnMemoryContext,
       ],
     );
@@ -1030,50 +1080,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }),
       [client, pendingPermissionItems],
     );
-    const handleReviewTurnChange = useStableEvent((path: string) => {
-      const persistenceKey = buildWorkspaceTabPersistenceKey({
-        serverId: resolvedServerId,
-        workspaceId: context.workspaceId ?? workspaceRoot,
-      });
-      if (!isMobile && persistenceKey) {
-        openWorkspaceTabFocused(persistenceKey, {
-          kind: "working_diff",
-          focusPath: path,
-          focusRequestId: Date.now(),
-        });
-        return;
-      }
-      const checkout = {
-        serverId: resolvedServerId,
-        cwd: workspaceRoot,
-        isGit: context.projectPlacement?.checkout?.isGit ?? true,
-      };
-      setExplorerTabForCheckout({ ...checkout, tab: "changes" });
-      openFileExplorerForCheckout({
-        isCompact: isMobile,
-        checkout,
-      });
-    });
-    const turnChangesContext = useMemo(
-      () => ({
-        serverId: resolvedServerId,
-        cwd: workspaceRoot,
-        isGit: context.projectPlacement?.checkout?.isGit ?? true,
-        readOnly,
-        toast: toast ?? null,
-        onOpen: handleToolCallOpenFile,
-        onReview: handleReviewTurnChange,
-      }),
-      [
-        context.projectPlacement?.checkout?.isGit,
-        handleReviewTurnChange,
-        handleToolCallOpenFile,
-        readOnly,
-        resolvedServerId,
-        toast,
-        workspaceRoot,
-      ],
-    );
     const turnFooterNode = useMemo(
       () =>
         isTurnActive || bottomTurnFooterHost ? (
@@ -1086,6 +1092,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
             changes={turnChangesContext}
+            changeItems={
+              bottomTurnFooterHost
+                ? changeItemsByAssistantId.get(bottomTurnFooterHost.itemId)
+                : undefined
+            }
             memory={turnMemoryContext}
           />
         ) : null,
@@ -1098,6 +1109,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         bottomTurnFooterHost,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
+        changeItemsByAssistantId,
         turnChangesContext,
         turnMemoryContext,
       ],

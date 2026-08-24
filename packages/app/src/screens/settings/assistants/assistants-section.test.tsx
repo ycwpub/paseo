@@ -308,10 +308,10 @@ describe("AssistantsSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(screen.getByDisplayValue("old summary")).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Assistant memory"), {
+    fireEvent.change(screen.getByLabelText("助手记忆"), {
       target: { value: "# New\nMention risky migrations." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
 
     await waitFor(() =>
       expect(assistantsState.current.updateAssistant).toHaveBeenCalledWith(
@@ -330,7 +330,7 @@ describe("AssistantsSection", () => {
       expect(screen.getByDisplayValue("new summary with Mention risky migrations")).toBeTruthy();
       expect(screen.getAllByDisplayValue(/Mention risky migrations/).length).toBeGreaterThan(1);
     });
-    expect((screen.getByLabelText("Assistant memory") as HTMLTextAreaElement).value).toBe("");
+    expect((screen.getByLabelText("助手记忆") as HTMLTextAreaElement).value).toBe("");
   });
 
   test("saves edited memory summary and detail file contents", async () => {
@@ -356,13 +356,13 @@ describe("AssistantsSection", () => {
     render(<AssistantsSection serverId="server-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByLabelText("Memory summary file content"), {
+    fireEvent.change(screen.getByLabelText("记忆总文件内容"), {
       target: { value: "edited summary" },
     });
     fireEvent.change(screen.getByLabelText("Memory detail file detail-001 content"), {
       target: { value: "# Edited\n\nDetail body" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
 
     await waitFor(() =>
       expect(assistantsState.current.updateAssistant).toHaveBeenCalledWith(
@@ -398,20 +398,18 @@ describe("AssistantsSection", () => {
 
     render(<AssistantsSection serverId="server-1" />);
 
-    fireEvent.change(screen.getByPlaceholderText("Code reviewer"), { target: { value: "Custom" } });
-    fireEvent.change(screen.getByLabelText("Assistant prompt"), {
+    fireEvent.change(screen.getByPlaceholderText("代码审查助手"), { target: { value: "Custom" } });
+    fireEvent.change(screen.getByLabelText("助手提示词"), {
       target: { value: "Use selected resources." },
     });
-    fireEvent.click(screen.getByLabelText("Use all active assistant resources"));
+    fireEvent.click(screen.getByLabelText("使用所有已启用的助手资源"));
     expect(screen.getByTestId("assistant-resource-group-mcp")).toBeTruthy();
     expect(screen.getByTestId("assistant-resource-group-skill")).toBeTruthy();
-    expect(
-      screen.getByText("External tools this assistant may call in new conversations."),
-    ).toBeTruthy();
-    expect(screen.getByText("Instruction packs injected for this assistant.")).toBeTruthy();
+    expect(screen.getByText("该助手在新会话中可以调用的外部工具。")).toBeTruthy();
+    expect(screen.getByText("注入给该助手的指令包。")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Enable MCP MCP A for assistant"));
     fireEvent.click(screen.getByLabelText("Enable skill Skill B for assistant"));
-    fireEvent.click(screen.getByRole("button", { name: "Add assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加助手" }));
 
     await waitFor(() =>
       expect(assistantsState.current.createAssistant).toHaveBeenCalledWith(

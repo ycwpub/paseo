@@ -1,10 +1,18 @@
 import { z } from "zod";
 
 export const PaseoMemoryScopeSchema = z.object({
+  // COMPAT(memory-workspace-scope): retained for old clients and catalog
+  // migration. Current daemons store new memory at Project granularity.
   type: z.enum(["global", "project", "assistant", "workspace"]),
   id: z.string().min(1).optional(),
 });
 export type PaseoMemoryScope = z.infer<typeof PaseoMemoryScopeSchema>;
+
+export const PaseoMemoryScopeDocumentSchema = z.object({
+  scope: PaseoMemoryScopeSchema,
+  path: z.string().min(1),
+});
+export type PaseoMemoryScopeDocument = z.infer<typeof PaseoMemoryScopeDocumentSchema>;
 
 export const PaseoMemoryUserSchema = z.object({
   id: z.string().min(1),
@@ -110,6 +118,10 @@ export const PaseoMemoryDetailSchema = z.object({
   lastAccessedAt: z.string().nullable(),
   // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
   scope: PaseoMemoryScopeSchema.optional(),
+  // COMPAT(memoryMultiScope): added on 2026-08-27; remove optional after 2027-02-27.
+  scopes: z.array(PaseoMemoryScopeSchema).min(1).optional(),
+  // COMPAT(memoryMultiScope): added on 2026-08-27; remove optional after 2027-02-27.
+  scopeDocuments: z.array(PaseoMemoryScopeDocumentSchema).optional(),
   // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
   origin: z.enum(["automatic", "explicit"]).optional(),
   // COMPAT(memoryV2Detail): added in v0.3.2, remove optional after 2027-02-18.
@@ -144,16 +156,35 @@ export type PaseoMemoryDetail = z.infer<typeof PaseoMemoryDetailSchema>;
 export const PaseoMemorySyncDetailSchema = PaseoMemoryDetailSchema.omit({
   path: true,
   charCount: true,
+  scopeDocuments: true,
 }).extend({
   syncOrigin: PaseoMemorySyncOriginSchema,
 });
 export type PaseoMemorySyncDetail = z.infer<typeof PaseoMemorySyncDetailSchema>;
 
+export const PaseoMemorySyncSelectionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("global"),
+    id: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("project"),
+    id: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("assistant"),
+    id: z.string().min(1),
+  }),
+]);
+export type PaseoMemorySyncSelection = z.infer<typeof PaseoMemorySyncSelectionSchema>;
+
 export const PaseoMemorySyncSnapshotSchema = z.object({
   version: z.literal(1),
   sourceHostId: z.string().min(1),
   exportedAt: z.string(),
-  users: z.array(PaseoMemoryUserSchema).min(1),
+  // COMPAT(memoryScopedSync): absent means the legacy full-memory snapshot.
+  selection: PaseoMemorySyncSelectionSchema.optional(),
+  users: z.array(PaseoMemoryUserSchema),
   summaries: z.array(
     z.object({
       userId: z.string().min(1),
@@ -212,6 +243,8 @@ export const PaseoMemoryStateSchema = z.object({
   policies: z.array(PaseoMemoryPolicySchema).optional(),
   // COMPAT(memoryScopePolicies): added in v0.3.2, remove optional after 2027-02-18.
   scopePolicies: z.array(PaseoMemoryScopePolicySchema).optional(),
+  // COMPAT(memoryMultiScope): added on 2026-08-27; remove optional after 2027-02-27.
+  overviewDocuments: z.array(PaseoMemoryScopeDocumentSchema).optional(),
 });
 export type PaseoMemoryState = z.infer<typeof PaseoMemoryStateSchema>;
 
@@ -221,6 +254,8 @@ export const PaseoMemoryCreateInputSchema = z.object({
   content: z.string().min(1),
   keywords: z.array(z.string()).optional(),
   scope: PaseoMemoryScopeSchema.optional(),
+  // COMPAT(memoryMultiScope): added on 2026-08-27; remove optional after 2027-02-27.
+  scopes: z.array(PaseoMemoryScopeSchema).min(1).optional(),
   importance: z.number().min(0).max(1).optional(),
   validUntil: z.string().nullable().optional(),
   sensitive: z.boolean().optional(),
@@ -241,6 +276,8 @@ export const PaseoMemoryUpdateInputSchema = z.object({
         keywords: z.array(z.string()).optional(),
         content: z.string().optional(),
         scope: PaseoMemoryScopeSchema.optional(),
+        // COMPAT(memoryMultiScope): added on 2026-08-27; remove optional after 2027-02-27.
+        scopes: z.array(PaseoMemoryScopeSchema).min(1).optional(),
         status: PaseoMemoryDetailSchema.shape.status,
         importance: z.number().min(0).max(1).optional(),
         validUntil: z.string().nullable().optional(),

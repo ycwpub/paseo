@@ -14,6 +14,10 @@ async function runSupervisorFixture(options: {
   workerSource: string;
   restartOnCrash?: boolean;
   timeoutMs?: number;
+  workerHeartbeat?: {
+    intervalMs?: number;
+    timeoutMs?: number;
+  };
 }): Promise<{
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -41,6 +45,7 @@ async function runSupervisorFixture(options: {
         workerEnv: process.env,
         workerExecArgv: [],
         restartOnCrash: ${JSON.stringify(options.restartOnCrash ?? false)},
+        workerHeartbeat: ${JSON.stringify(options.workerHeartbeat)},
         logFile: {
           path: ${JSON.stringify(logPath)},
           rotate: { maxSize: "1m", maxFiles: 2 },

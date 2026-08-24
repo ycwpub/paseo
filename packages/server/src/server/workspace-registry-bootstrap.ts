@@ -8,6 +8,7 @@ import type { AgentStorage } from "./agent/agent-storage.js";
 import { classifyDirectoryForProjectMembership } from "./workspace-registry-bootstrap-legacy.js";
 import { generateWorkspaceId } from "./workspace-registry-model.js";
 import { backfillWorkspaceIdForLegacyAgents } from "./migrations/backfill-workspace-id.migration.js";
+import { migrateManagedProjectStorage } from "./migrations/migrate-managed-project-storage.migration.js";
 import { migrateLegacyProjectIds } from "./migrations/migrate-project-ids.migration.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import {
@@ -61,6 +62,7 @@ export async function bootstrapWorkspaceRegistries(options: {
 
   await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()]);
   await migrateLegacyProjectIds(options);
+  await migrateManagedProjectStorage(options);
 
   // COMPAT(worktree-branch-identity): added in v0.4.0 on 2026-08-15; remove after
   // 2027-02-15. Older worktrees did not pin branch-off/check-out branch identity.

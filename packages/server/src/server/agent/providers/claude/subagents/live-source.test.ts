@@ -386,6 +386,12 @@ describe("ClaudeTaskProtocolSource", () => {
     );
 
     expect(source.observe(taskNotification("completed", "b51skux0z"))).toEqual([]);
+    expect(
+      source.ownsTaskNotification({
+        taskId: "b51skux0z",
+        toolUseId: "toolu_01MgVdcGPYnqE8cJQuccFtkU",
+      }),
+    ).toBe(false);
   });
 
   it("drops a notification for a task it never declared", () => {

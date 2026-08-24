@@ -298,6 +298,10 @@ function ProjectSettingsBody({
         <Text style={styles.projectId} selectable>
           {t("settings.project.projectId")}: {selectedHost.projectId}
         </Text>
+        <ProjectParentLink
+          serverId={selectedHost.serverId}
+          parentProjectId={selectedHost.parentProjectId}
+        />
         <Text style={styles.projectPath} selectable>
           {t("settings.project.projectPath")}: {selectedHost.projectPath}
         </Text>

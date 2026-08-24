@@ -73,6 +73,7 @@ export interface TaskNotificationSystemMessageLike {
   subtype: "task_notification";
   uuid?: string;
   task_id?: string;
+  tool_use_id?: string;
   status?: "completed" | "failed" | "stopped";
   summary?: string;
   output_file?: string;
@@ -345,26 +346,32 @@ export function mapTaskNotificationSystemRecordToToolCall(
   return toTaskNotificationToolCall(parsed);
 }
 
-export function readTaskNotificationToolUseIdFromHistoryRecord(record: unknown): string | null {
+export function readTaskNotificationEnvelopeFromUserContent(
+  input: MapTaskNotificationUserContentToToolCallInput,
+): TaskNotificationEnvelope | null {
+  return parseTaskNotificationFromUserContent(input);
+}
+
+export function readTaskNotificationEnvelopeFromHistoryRecord(
+  record: unknown,
+): TaskNotificationEnvelope | null {
   const parsedRecord = TaskNotificationHistoryRecordSchema.safeParse(record);
   if (!parsedRecord.success) {
     return null;
   }
   if (parsedRecord.data.type === "user" && parsedRecord.data.message) {
-    return (
-      parseTaskNotificationFromUserContent({
-        content: parsedRecord.data.message.content,
-        messageId: parsedRecord.data.uuid ?? parsedRecord.data.message_id,
-      })?.toolUseId ?? null
-    );
+    return parseTaskNotificationFromUserContent({
+      content: parsedRecord.data.message.content,
+      messageId: parsedRecord.data.uuid ?? parsedRecord.data.message_id,
+    });
   }
-  return parseTaskNotificationFromSystemRecord(record)?.toolUseId ?? null;
+  return parseTaskNotificationFromSystemRecord(record);
 }
 
 export function coerceTaskNotificationHistoryRecordToSystemMessage(
   record: unknown,
 ): TaskNotificationSystemMessageLike | null {
-  const parsed = parseTaskNotificationFromSystemRecord(record);
+  const parsed = readTaskNotificationEnvelopeFromHistoryRecord(record);
   if (!parsed) {
     return null;
   }
@@ -384,6 +391,7 @@ export function coerceTaskNotificationHistoryRecordToSystemMessage(
     subtype: "task_notification",
     ...(parsed.messageId ? { uuid: parsed.messageId } : {}),
     ...(parsed.taskId ? { task_id: parsed.taskId } : {}),
+    ...(parsed.toolUseId ? { tool_use_id: parsed.toolUseId } : {}),
     status,
     ...(parsed.summary ? { summary: parsed.summary } : {}),
     ...(parsed.outputFile ? { output_file: parsed.outputFile } : {}),

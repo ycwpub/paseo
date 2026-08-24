@@ -12,13 +12,10 @@ export interface MemoryScopePolicyOption {
   description?: string;
 }
 
-export type MemoryScopePolicyOptions = Record<
-  Exclude<PaseoMemoryScope["type"], "global">,
-  MemoryScopePolicyOption[]
->;
+export type MemoryScopePolicyOptions = Record<"project" | "assistant", MemoryScopePolicyOption[]>;
 
 function mergeScopeOptions(input: {
-  type: Exclude<PaseoMemoryScope["type"], "global">;
+  type: keyof MemoryScopePolicyOptions;
   entities: readonly MemoryScopeEntity[];
   policies: readonly PaseoMemoryScopePolicy[];
 }): MemoryScopePolicyOption[] {
@@ -50,7 +47,6 @@ function mergeScopeOptions(input: {
 
 export function buildMemoryScopePolicyOptions(input: {
   projects: readonly MemoryScopeEntity[];
-  workspaces: readonly MemoryScopeEntity[];
   assistants: readonly MemoryScopeEntity[];
   policies: readonly PaseoMemoryScopePolicy[];
 }): MemoryScopePolicyOptions {
@@ -58,11 +54,6 @@ export function buildMemoryScopePolicyOptions(input: {
     project: mergeScopeOptions({
       type: "project",
       entities: input.projects,
-      policies: input.policies,
-    }),
-    workspace: mergeScopeOptions({
-      type: "workspace",
-      entities: input.workspaces,
       policies: input.policies,
     }),
     assistant: mergeScopeOptions({

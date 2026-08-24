@@ -15,6 +15,7 @@ function project(input: {
     projectName: input.name,
     hosts: input.hosts.map((host) => ({
       ...host,
+      parentProjectId: null,
       projectName: input.name,
       projectCustomName: null,
       serverName: host.serverId,

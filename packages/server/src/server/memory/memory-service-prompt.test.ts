@@ -77,8 +77,11 @@ describe("PaseoMemoryService prompt integration", () => {
 
     expect(existsSync(totalMemoryPath)).toBe(true);
     const totalMemory = readFileSync(totalMemoryPath, "utf8");
-    expect(totalMemory).toContain("Build workflow");
-    expect(totalMemory).toContain("Build, install, restart, test, then commit.");
-    expect(totalMemory).toContain("../details/");
+    expect(totalMemory).toContain("../users/default/summary.md");
+    expect(totalMemory).not.toContain("Build workflow");
+    expect(totalMemory).not.toContain("Build, install, restart, test, then commit.");
+    const globalOverview = readFileSync(store.getState().summaryPath, "utf8");
+    expect(globalOverview).toContain("Build workflow");
+    expect(globalOverview).toContain("details/");
   });
 });

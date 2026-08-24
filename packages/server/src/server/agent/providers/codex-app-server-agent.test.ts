@@ -120,6 +120,7 @@ interface CodexSessionTestAccess {
   config: AgentSessionConfig;
   client: CodexClientLike | null;
   resolvedSandboxPolicy: Record<string, unknown> | null;
+  currentThreadId: string | null;
 }
 
 interface CodexClientLike {
@@ -988,7 +989,7 @@ describe("Codex app-server provider", () => {
     expect((startCall!.params as Record<string, unknown>).ephemeral).toBeUndefined();
   });
 
-  test("sets a concise default compact prompt on Codex threads", async () => {
+  test("uses the Codex runtime default compact prompt", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const session = createSession({ thinkingOptionId: "medium" });
     session.currentThreadId = null;
@@ -1009,14 +1010,10 @@ describe("Codex app-server provider", () => {
     await session.startTurn("keep this thread compact");
 
     const startCall = requests.find((request) => request.method === "thread/start");
-    expect(startCall?.params).toMatchObject({
-      config: {
-        compact_prompt: expect.stringContaining("Keep the summary under 4,000 tokens"),
-      },
-    });
+    expect(startCall?.params).not.toHaveProperty("config.compact_prompt");
   });
 
-  test("allows explicit Codex config to override the default compact prompt", async () => {
+  test("allows explicit Codex config to set a custom compact prompt", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const session = createSession({
       thinkingOptionId: "medium",
@@ -1548,6 +1545,60 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("persists the Codex home returned by app-server initialization", async () => {
+    const appServer = createFakeCodexAppServer({
+      initialize: () => ({ codexHome: "/tmp/aiden-app-home" }),
+      "collaborationMode/list": () => ({ data: [] }),
+      "skills/list": () => ({ data: [] }),
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await session.connect();
+    castInternals<CodexSessionTestAccess>(session).currentThreadId = "thread-with-custom-home";
+
+    expect(session.describePersistence()?.metadata.codexHome).toBe("/tmp/aiden-app-home");
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
+  test("resumes a persisted thread with its recorded Codex home", async () => {
+    const appServer = createFakeCodexAppServer();
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    const launchEnvironments: Array<Record<string, string> | undefined> = [];
+    const internals = castInternals<{
+      goalsEnabledPromise: Promise<boolean> | null;
+      autoReviewEnabledPromise: Promise<boolean> | null;
+      spawnAppServer: (
+        launchEnv?: Record<string, string>,
+      ) => Promise<ChildProcessWithoutNullStreams>;
+    }>(provider);
+    internals.goalsEnabledPromise = Promise.resolve(false);
+    internals.autoReviewEnabledPromise = Promise.resolve(false);
+    internals.spawnAppServer = async (launchEnv) => {
+      launchEnvironments.push(launchEnv);
+      return appServer.child;
+    };
+
+    const session = await provider.resumeSession({
+      sessionId: "thread-with-custom-home",
+      metadata: {
+        cwd: "/tmp/codex-question-test",
+        modeId: "auto",
+        model: "gpt-5.4",
+        codexHome: "/tmp/aiden-app-home",
+      },
+    });
+
+    expect(launchEnvironments).toEqual([{ CODEX_HOME: "/tmp/aiden-app-home" }]);
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
   test("loads archived Codex history without resuming the native thread", async () => {
     const threadRequests: string[] = [];
     const appServer = createFakeCodexAppServer({
@@ -1858,7 +1909,6 @@ describe("Codex app-server provider", () => {
       OPENAI_BASE_URL: "https://custom-relay.example.com",
     });
     expect(capturedThreadStartConfig(capturedRequests)).toMatchObject({
-      compact_prompt: expect.stringContaining("Keep the summary under 4,000 tokens"),
       model_provider: "codex-iisb",
       model_providers: {
         "codex-iisb": {
@@ -1879,7 +1929,6 @@ describe("Codex app-server provider", () => {
     );
 
     expect(capturedThreadStartConfig(capturedRequests)).toMatchObject({
-      compact_prompt: expect.stringContaining("Keep the summary under 4,000 tokens"),
       model_provider: "codex-custom",
       model_providers: {
         "codex-custom": expect.objectContaining({
@@ -4816,9 +4865,6 @@ describe("Codex app-server provider", () => {
           developerInstructions: expect.stringContaining(
             "brief progress updates sent as commentary messages",
           ),
-          config: {
-            compact_prompt: expect.stringContaining("Keep the summary under 4,000 tokens"),
-          },
         },
       },
     ]);
@@ -5571,10 +5617,9 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
-  test("proactively compacts a high-usage Codex thread before starting the next turn", async () => {
+  test("lets the Codex runtime own automatic compaction for high-usage threads", async () => {
     const session = createSession();
     session.activeForegroundTurnId = null;
-    const events: AgentStreamEvent[] = [];
     const requests: Array<{ method: string; params: unknown }> = [];
     const internals = asInternals(session);
     internals.latestUsage = {
@@ -5590,58 +5635,11 @@ describe("Codex app-server provider", () => {
         return {};
       }),
     };
-    session.subscribe((event) => events.push(event));
 
-    const start = session.startTurn("continue the task");
-    await vi.waitFor(() =>
-      expect(requests).toContainEqual({
-        method: "thread/compact/start",
-        params: { threadId: "test-thread" },
-      }),
-    );
-    internals.handleNotification("item/started", {
-      threadId: "test-thread",
-      item: {
-        type: "contextCompaction",
-        id: "proactive-compact",
-      },
+    await expect(session.startTurn("continue the task")).resolves.toEqual({
+      turnId: "codex-turn-0",
     });
-    internals.handleNotification("item/completed", {
-      threadId: "test-thread",
-      item: {
-        type: "contextCompaction",
-        id: "proactive-compact",
-      },
-    });
-
-    await expect(start).resolves.toEqual({ turnId: "codex-turn-0" });
-    expect(requests.map((request) => request.method)).toEqual([
-      "thread/loaded/list",
-      "thread/compact/start",
-      "turn/start",
-    ]);
-    expect(events).toEqual([
-      {
-        type: "timeline",
-        provider: "codex",
-        turnId: "codex-turn-0",
-        item: {
-          type: "compaction",
-          status: "loading",
-          trigger: "auto",
-        },
-      },
-      {
-        type: "timeline",
-        provider: "codex",
-        turnId: "codex-turn-0",
-        item: {
-          type: "compaction",
-          status: "completed",
-          trigger: "auto",
-        },
-      },
-    ]);
+    expect(requests.map((request) => request.method)).toEqual(["thread/loaded/list", "turn/start"]);
   });
 
   test("automatically compacts and continues a Codex turn after max_output_tokens", async () => {

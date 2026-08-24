@@ -11,6 +11,12 @@ export function getCompactionMarkerLabel({
   trigger,
   preTokens,
 }: CompactionMarkerLabelInput): string {
+  if (status === "loading" && trigger === "auto") {
+    return i18n.t("message.compaction.loadingAuto");
+  }
+  if (status === "loading" && trigger === "manual") {
+    return i18n.t("message.compaction.loadingManual");
+  }
   if (status === "loading") return i18n.t("message.compaction.loading");
   if (trigger === "auto") return i18n.t("message.compaction.auto");
   if (trigger === "manual") return i18n.t("message.compaction.manual");

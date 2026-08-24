@@ -142,7 +142,11 @@ function secondaryWorkspaceTabTargetsEqual(
     return workspaceFileLocationsEqual(left, right);
   }
   if (left.kind === "working_diff" && right.kind === "working_diff") {
-    return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
+    return (
+      left.cwd === right.cwd &&
+      left.focusPath === right.focusPath &&
+      left.focusRequestId === right.focusRequestId
+    );
   }
   if (left.kind === "files" && right.kind === "files") {
     return true;
@@ -268,10 +272,12 @@ function normalizeFileTabTarget(
 function normalizeWorkingDiffTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
 ): WorkspaceTabTarget | null {
+  const cwd = trimNonEmpty(value.cwd)?.replace(/\\/g, "/") ?? null;
   const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
   const focusRequestId = normalizePositiveInteger(value.focusRequestId);
   return {
     kind: "working_diff" as const,
+    ...(cwd ? { cwd } : {}),
     ...(focusPath ? { focusPath } : {}),
     ...(focusRequestId ? { focusRequestId } : {}),
   };

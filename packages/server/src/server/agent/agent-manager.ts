@@ -90,6 +90,7 @@ import {
   type ProviderSubagentDescriptor,
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
+import { shouldPublishWhileForegroundRunIsPending } from "./pending-run-event-policy.js";
 import type { McpStore } from "../mcp/mcp-store.js";
 import type { SkillMaterializer } from "../skill/skill-materializer.js";
 import type { SkillStore } from "../skill/skill-store.js";
@@ -311,7 +312,11 @@ export interface AgentManagerOptions {
   skillStore?: Pick<SkillStore, "list"> | null;
   skillMaterializer?: Pick<SkillMaterializer, "sync" | "syncForWorkspace"> | null;
   appendSystemPrompt?: string;
-  daemonKnowledgePromptComposer?: () => string | null | undefined;
+  daemonKnowledgePromptComposer?: () =>
+    | Promise<string | null | undefined>
+    | string
+    | null
+    | undefined;
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -762,7 +767,9 @@ export class AgentManager {
   private paseoToolsEnabled = true;
   private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
   private appendSystemPrompt: string;
-  private readonly daemonKnowledgePromptComposer: (() => string | null | undefined) | null;
+  private readonly daemonKnowledgePromptComposer:
+    | (() => Promise<string | null | undefined> | string | null | undefined)
+    | null;
   private agentAppendSystemPromptComposer: AgentAppendSystemPromptComposer | null = null;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
@@ -3681,7 +3688,7 @@ export class AgentManager {
       return;
     }
     const pendingRun = this.runs.getPendingRun(agentId);
-    if (pendingRun && !pendingRun.started) {
+    if (pendingRun && !pendingRun.started && !shouldPublishWhileForegroundRunIsPending(event)) {
       pendingRun.stagedEvents.push(event);
       return;
     }
@@ -5052,7 +5059,7 @@ export class AgentManager {
     const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config), { env });
     this.syncSharedSkills({ ensureNativeDirs: true });
     const sharedMcpConfig = this.withSharedMcpServers(storedConfig, agentId);
-    const launchConfig = this.applyDaemonAppendSystemPrompt(
+    const launchConfig = await this.applyDaemonAppendSystemPrompt(
       withRuntimePaseoMcpServer({
         config: sharedMcpConfig,
         agentId,
@@ -5182,13 +5189,13 @@ export class AgentManager {
     }
   }
 
-  private applyDaemonAppendSystemPrompt(
+  private async applyDaemonAppendSystemPrompt(
     config: AgentSessionConfig,
     agentId: string,
-  ): AgentSessionConfig {
+  ): Promise<AgentSessionConfig> {
     const daemonAppendSystemPrompt = composeSystemPromptParts(
       this.appendSystemPrompt,
-      this.daemonKnowledgePromptComposer?.(),
+      await this.daemonKnowledgePromptComposer?.(),
       this.agentAppendSystemPromptComposer?.(agentId, config),
     );
     const next = { ...config };

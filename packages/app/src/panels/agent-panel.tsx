@@ -1412,17 +1412,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
               </View>
             </View>
           ) : null}
-
-          {composerSection}
-
-          {showHistorySyncOverlay ? (
-            <View style={styles.historySyncOverlay} testID="agent-history-overlay">
-              <ThemedLoadingSpinner size="large" uniProps={foregroundMutedColorMapping} />
-            </View>
-          ) : null}
-
-          <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
-        </FileDropZone>
+        </View>
 
         {isArchivingCurrentAgent ? (
           <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
@@ -1821,7 +1811,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   container: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: theme.colors.surface0,
+  },
+  readyLayout: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
   },
   contentContainer: {
     flex: 1,

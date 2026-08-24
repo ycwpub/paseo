@@ -192,12 +192,8 @@ import type { RelayDeviceType, RelayEndpointConfig } from "@getpaseo/protocol/da
 import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
-import {
-  buildHostKnowledgePrompt,
-  resolveHostKnowledge,
-} from "./knowledge/host-knowledge-context.js";
+import { buildHostKnowledgePromptWithCloudCache } from "./knowledge/host-cloud-knowledge-context.js";
 import { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
-import { readCachedCloudKnowledgeDocument } from "./knowledge/cloud-cache/context.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
@@ -1274,18 +1270,12 @@ export async function createPaseoDaemon(
     registry: agentStorage,
     appendSystemPrompt: config.appendSystemPrompt,
     daemonKnowledgePromptComposer: () =>
-      buildHostKnowledgePrompt(
-        resolveHostKnowledge({
-          paseoHome: config.paseoHome,
-          knowledge: daemonConfigStore.get().knowledge,
-          resolveCloudDocument: (source) =>
-            readCachedCloudKnowledgeDocument({
-              paseoHome: config.paseoHome,
-              target: { scope: "global", source },
-            }),
-          logger,
-        }),
-      ),
+      buildHostKnowledgePromptWithCloudCache({
+        paseoHome: config.paseoHome,
+        knowledge: daemonConfigStore.get().knowledge,
+        service: cloudDocumentCacheService,
+        logger,
+      }),
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
@@ -1660,7 +1650,13 @@ export async function createPaseoDaemon(
     },
   });
   assistantStore = new AssistantStore({ paseoHome: config.paseoHome, logger });
-  const memoryStore = new PaseoMemoryStore({ paseoHome: config.paseoHome, logger, serverId });
+  const memoryWorkspaceProjectIndex = await createMemoryWorkspaceProjectIndex(workspaceRegistry);
+  const memoryStore = new PaseoMemoryStore({
+    paseoHome: config.paseoHome,
+    logger,
+    serverId,
+    resolveWorkspaceProjectId: memoryWorkspaceProjectIndex.resolve,
+  });
   const memoryService = new PaseoMemoryService({
     store: memoryStore,
     paseoHome: config.paseoHome,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
@@ -40,10 +40,169 @@ describe("PaseoMemoryStore", () => {
     });
     expect(state.summary).toContain("Build workflow");
     expect(state.summary).toContain("Build the test app, install it, restart app and daemon");
-    expect(state.summary).toContain("../../details/");
+    expect(state.summary).toContain('"details/');
     expect(state.summary).not.toContain(detail.path);
     expect(readFileSync(state.summaryPath, "utf8")).toBe(state.summary);
     expect(readFileSync(detail.path, "utf8")).toContain("Build the test app");
+  });
+
+  test("stores one logical memory in every selected scope with one overview per level", () => {
+    const scopedStore = new PaseoMemoryStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+      resolveWorkspaceProjectId: (workspaceId) =>
+        workspaceId === "workspace-1" ? "project-1" : null,
+    });
+    const detail = scopedStore.upsertExtractedMemory({
+      title: "Paseo CLI workflow",
+      category: "procedure",
+      content: "Use the paseo workflow CLI to discover reusable workflows.",
+      keywords: ["cli", "skill"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scopes: [
+        { type: "workspace", id: "workspace-1" },
+        { type: "project", id: "project-1" },
+        { type: "assistant", id: "assistant-1" },
+        { type: "global" },
+      ],
+    });
+
+    expect(detail.scopes).toEqual([
+      { type: "project", id: "project-1" },
+      { type: "assistant", id: "assistant-1" },
+      { type: "global", id: "default" },
+    ]);
+    expect(detail.scopeDocuments).toHaveLength(3);
+    for (const document of detail.scopeDocuments ?? []) {
+      expect(existsSync(document.path)).toBe(true);
+      expect(readFileSync(document.path, "utf8")).toContain("paseo workflow CLI");
+    }
+    expect(
+      detail.scopeDocuments?.find((document) => document.scope.type === "project")?.path,
+    ).toContain("/projects/project-1/memory/details/");
+    expect(
+      detail.scopeDocuments?.find((document) => document.scope.type === "assistant")?.path,
+    ).toContain("/assistants/assistant-1/memory/learned/details/");
+
+    const state = scopedStore.getState();
+    const overviewPaths = state.overviewDocuments?.map((document) => document.path) ?? [];
+    expect(overviewPaths).toContain(
+      path.join(paseoHome, "projects", "project-1", "memory", "summary.md"),
+    );
+    expect(state.summary).toContain("Paseo CLI workflow");
+    expect(state.summary).not.toContain("projects/project-1/memory/summary.md");
+  });
+
+  test("migrates legacy Workspace memory into its owning Project without losing content", async () => {
+    const original = store.upsertExtractedMemory({
+      title: "Legacy Workspace convention",
+      category: "procedure",
+      content: "Keep this Workspace knowledge after the scope is removed.",
+      keywords: ["migration"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "project", id: "project-1" },
+    });
+    const catalogPath = path.join(paseoHome, "memory", "catalog.json");
+    const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as {
+      details: Array<Record<string, unknown>>;
+    };
+    const workspaceMemoryRoot = path.join(
+      paseoHome,
+      "projects",
+      "project-1",
+      "workspaces",
+      "workspace-1",
+      "memory",
+    );
+    const workspaceDetailPath = path.join(
+      workspaceMemoryRoot,
+      "details",
+      path.basename(original.path),
+    );
+    await mkdir(path.dirname(workspaceDetailPath), { recursive: true });
+    await writeFile(workspaceDetailPath, original.content);
+    await rm(path.join(paseoHome, "projects", "project-1", "memory"), {
+      recursive: true,
+      force: true,
+    });
+    catalog.details[0] = {
+      ...catalog.details[0],
+      scope: { type: "workspace", id: "workspace-1" },
+      scopes: [{ type: "workspace", id: "workspace-1" }],
+    };
+    await writeFile(catalogPath, JSON.stringify(catalog, null, 2));
+
+    const migrated = new PaseoMemoryStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+      resolveWorkspaceProjectId: (workspaceId) =>
+        workspaceId === "workspace-1" ? "project-1" : null,
+    }).getState();
+
+    expect(migrated.details).toHaveLength(1);
+    expect(migrated.details[0]).toMatchObject({
+      scope: { type: "project", id: "project-1" },
+      scopes: [{ type: "project", id: "project-1" }],
+      content: original.content,
+    });
+    expect(migrated.details[0]?.path).toContain("/projects/project-1/memory/details/");
+    expect(existsSync(migrated.details[0]!.path)).toBe(true);
+    expect(existsSync(workspaceMemoryRoot)).toBe(false);
+  });
+
+  test("stores sibling Workspace updates as revisions in their shared Project", () => {
+    const scopedStore = new PaseoMemoryStore({
+      paseoHome,
+      logger: pino({ level: "silent" }),
+      resolveWorkspaceProjectId: (workspaceId) =>
+        workspaceId === "workspace-1" || workspaceId === "workspace-2" ? "project-1" : null,
+    });
+    for (const workspaceId of ["workspace-1", "workspace-2"]) {
+      scopedStore.upsertExtractedMemory({
+        title: "Current branch",
+        category: "project",
+        content: `${workspaceId} uses its own branch.`,
+        keywords: ["branch"],
+        confidence: 1,
+        sourceAgentId: `agent-${workspaceId}`,
+        scopes: [
+          { type: "workspace", id: workspaceId },
+          { type: "project", id: "project-1" },
+        ],
+      });
+    }
+
+    const details = scopedStore
+      .getState()
+      .details.filter((detail) => detail.title === "Current branch");
+    expect(details).toHaveLength(2);
+    expect(details.every((detail) => detail.scope?.type === "project")).toBe(true);
+    expect(details.map((detail) => detail.scope?.id)).toEqual(["project-1", "project-1"]);
+    expect(details.filter((detail) => detail.status === "active")).toHaveLength(1);
+    expect(details.filter((detail) => detail.status === "superseded")).toHaveLength(1);
+  });
+
+  test("does not link unrelated Project overviews from Global memory", () => {
+    store.upsertExtractedMemory({
+      title: "Project-only rollout",
+      category: "project",
+      content: "This rollout belongs only to project-1.",
+      keywords: ["rollout"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "project", id: "project-1" },
+    });
+
+    const state = store.getState();
+    expect(state.summary).not.toContain("Project-only rollout");
+    expect(state.summary).not.toContain("projects/project-1/memory/summary.md");
+    const projectOverview = state.overviewDocuments?.find(
+      (document) => document.scope.type === "project" && document.scope.id === "project-1",
+    );
+    expect(projectOverview).toBeDefined();
+    expect(readFileSync(projectOverview!.path, "utf8")).toContain("Project-only rollout");
   });
 
   test("upserts the same topic instead of appending duplicate files", () => {
@@ -110,9 +269,9 @@ describe("PaseoMemoryStore", () => {
           extractionInstructions: "Remember stable preferences.",
         },
         {
-          scope: { type: "workspace", id: "workspace-1" },
+          scope: { type: "project", id: "project-1" },
           enabled: false,
-          extractionInstructions: "Remember reusable workspace procedures.",
+          extractionInstructions: "Remember reusable project procedures.",
         },
       ],
     });
@@ -136,9 +295,9 @@ describe("PaseoMemoryStore", () => {
         extractionInstructions: "Remember stable preferences.",
       },
       {
-        scope: { type: "workspace", id: "workspace-1" },
+        scope: { type: "project", id: "project-1" },
         enabled: false,
-        extractionInstructions: "Remember reusable workspace procedures.",
+        extractionInstructions: "Remember reusable project procedures.",
       },
     ]);
     expect(store.clear().policies).toEqual(updated.policies);
@@ -384,6 +543,59 @@ describe("PaseoMemoryStore", () => {
     expect(state.details.some((detail) => detail.id === original.id)).toBe(true);
   });
 
+  test("exports only the selected Global, Project, or Assistant memory", () => {
+    store.upsertExtractedMemory({
+      title: "Shared project procedure",
+      category: "procedure",
+      content: "Run the focused tests.",
+      keywords: ["tests"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scopes: [
+        { type: "project", id: "project-1" },
+        { type: "assistant", id: "assistant-1" },
+        { type: "global" },
+      ],
+    });
+    store.upsertExtractedMemory({
+      title: "Other project fact",
+      category: "project",
+      content: "This belongs to project-2.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-2",
+      scope: { type: "project", id: "project-2" },
+    });
+
+    const projectSnapshot = store.getSyncSnapshot({ type: "project", id: "project-1" });
+    expect(projectSnapshot.selection).toEqual({ type: "project", id: "project-1" });
+    expect(projectSnapshot.users).toEqual([]);
+    expect(projectSnapshot.summaries).toEqual([]);
+    expect(projectSnapshot.details).toHaveLength(1);
+    expect(projectSnapshot.details[0]).toMatchObject({
+      title: "Shared project procedure",
+      scope: { type: "project", id: "project-1" },
+      scopes: [{ type: "project", id: "project-1" }],
+    });
+
+    const assistantSnapshot = store.getSyncSnapshot({
+      type: "assistant",
+      id: "assistant-1",
+    });
+    expect(assistantSnapshot.details).toHaveLength(1);
+    expect(assistantSnapshot.details[0]?.scopes).toEqual([
+      { type: "assistant", id: "assistant-1" },
+    ]);
+
+    const globalSnapshot = store.getSyncSnapshot({ type: "global" });
+    expect(globalSnapshot.users).toEqual([
+      expect.objectContaining({ id: store.getState().activeUserId }),
+    ]);
+    expect(globalSnapshot.summaries).toHaveLength(1);
+    expect(globalSnapshot.details).toHaveLength(1);
+    expect(globalSnapshot.details[0]?.scopes).toEqual([{ type: "global", id: "default" }]);
+  });
+
   test("merges host snapshots idempotently across users and scopes", () => {
     const source = new PaseoMemoryStore({
       paseoHome,
@@ -505,6 +717,12 @@ describe("PaseoMemoryStore", () => {
     const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as Record<string, unknown>;
     const details = structuredClone(catalog.details) as Array<Record<string, unknown>>;
     for (const detail of details) detail.scope = { type: "global" };
+    const legacyDetailsPath = path.join(memoryPath, "details");
+    await mkdir(legacyDetailsPath, { recursive: true });
+    await writeFile(
+      path.join(legacyDetailsPath, path.basename(store.getState().details[0]!.path)),
+      "Keep this legacy preference.",
+    );
     await rm(path.join(memoryPath, "users"), { recursive: true, force: true });
     await writeFile(
       path.join(memoryPath, "summary.md"),
@@ -534,7 +752,7 @@ describe("PaseoMemoryStore", () => {
     expect(migrated.details[0]?.scope).toEqual({ type: "global", id: "default" });
     expect(migrated.summary).toContain("# Legacy summary");
     expect(migrated.summaryPath).toContain("/memory/users/default/summary.md");
-    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 3 });
+    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 4 });
   });
 
   test("migrates a version 1 catalog without losing memory", async () => {
@@ -575,6 +793,6 @@ describe("PaseoMemoryStore", () => {
     });
     expect(migrated.users).toEqual([expect.objectContaining({ id: "default", name: "默认用户" })]);
     expect(migrated.activeUserId).toBe("default");
-    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 3 });
+    expect(JSON.parse(readFileSync(catalogPath, "utf8"))).toMatchObject({ version: 4 });
   });
 });

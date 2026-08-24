@@ -176,6 +176,40 @@ describe("buildSidebarProjection", () => {
     ]);
   });
 
+  it("omits child Project workspaces from shortcuts while the parent is collapsed", () => {
+    const childWorkspace = makeWorkspace("child");
+    const parent: SidebarProjectEntry = {
+      ...makeProject([]),
+      viewKey: "parent",
+      projectName: "Parent",
+    };
+    const child: SidebarProjectEntry = {
+      ...makeProject([
+        {
+          ...childWorkspace.placement,
+          projectViewKey: "child",
+          projectName: "Child",
+        },
+      ]),
+      viewKey: "child",
+      projectName: "Child",
+      parentViewKey: "parent",
+    };
+
+    const result = buildSidebarProjection({
+      ...projectionInput(),
+      projects: [parent, child],
+      workspaceEntriesByKey: new Map(),
+      projectNamesByViewKey: new Map([
+        ["parent", "Parent"],
+        ["child", "Child"],
+      ]),
+      collapsedProjectKeys: new Set(["parent"]),
+    });
+
+    expect(result.shortcutModel.shortcutTargets).toEqual([]);
+  });
+
   it("moves hidden projects out of normal groups and shortcut targets", () => {
     const input = projectionInput({ groupMode: "status" });
     input.hiddenProjectKeys = new Set(["project"]);

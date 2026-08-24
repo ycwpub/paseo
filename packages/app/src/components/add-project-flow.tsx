@@ -388,8 +388,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const client = useHostRuntimeClient(hostId ?? "");
   const isLocalDaemon = useIsLocalDaemon(hostId ?? "");
   const recommendedPaths = useRecommendedProjectPaths(hostId);
-  const openProject = useOpenProject(hostId);
-  const cloneGithubProject = useCloneGithubProject(hostId);
+  const openProject = useOpenProject(hostId, request.parentProjectId);
+  const cloneGithubProject = useCloneGithubProject(hostId, request.parentProjectId);
   const upsertProject = useSessionStore((store) => store.upsertProject);
   const setHasHydratedWorkspaces = useSessionStore((store) => store.setHasHydratedWorkspaces);
   const inputRef = useRef<EditingTextInputHandle>(null);
@@ -750,7 +750,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       }),
     );
     try {
-      const payload = await client.createDirectorylessProject({ name });
+      const payload = await client.createDirectorylessProject({
+        name,
+        ...(request.parentProjectId ? { parentProjectId: request.parentProjectId } : {}),
+      });
       if (payload.error || !payload.project) {
         setState((current) =>
           setPageStatus(current, "directoryless-project-name", {
@@ -801,6 +804,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       const payload = await client.createProjectDirectory({
         parentPath: page.parentPath,
         name,
+        ...(request.parentProjectId ? { parentProjectId: request.parentProjectId } : {}),
       });
       if (payload.error || !payload.project) {
         setState((current) =>
@@ -828,7 +832,14 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     } finally {
       submissionInFlightRef.current = false;
     }
-  }, [client, openNewWorkspaceForProject, page, setHasHydratedWorkspaces, upsertProject]);
+  }, [
+    client,
+    openNewWorkspaceForProject,
+    page,
+    request.parentProjectId,
+    setHasHydratedWorkspaces,
+    upsertProject,
+  ]);
 
   const submitActive = useCallback(() => {
     if (page.kind === "directoryless-project-name") {

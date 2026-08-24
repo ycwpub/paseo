@@ -54,6 +54,7 @@ describe("memory user protocol", () => {
       version: 1,
       sourceHostId: "host-1",
       exportedAt: "2026-08-20T00:00:00.000Z",
+      selection: { type: "project", id: "project-1" },
       users: [
         {
           id: "default",
@@ -82,5 +83,6 @@ describe("memory user protocol", () => {
       scopePolicies: [],
     });
     expect(snapshot.details[0]?.syncOrigin.hostId).toBe("host-1");
+    expect(snapshot.selection).toEqual({ type: "project", id: "project-1" });
   });
 });

@@ -18,6 +18,20 @@ function createState(paseoHome: string): PaseoMemoryState {
     activeUserId: "default",
     summary: "Prefer concise Chinese answers.",
     summaryPath: path.join(memoryRoot, "users", "default", "summary.md"),
+    overviewDocuments: [
+      {
+        scope: { type: "global", id: "default" },
+        path: path.join(memoryRoot, "users", "default", "summary.md"),
+      },
+      {
+        scope: { type: "project", id: "project-1" },
+        path: path.join(paseoHome, "projects", "project-1", "memory", "summary.md"),
+      },
+      {
+        scope: { type: "project", id: "project-2" },
+        path: path.join(paseoHome, "projects", "project-2", "memory", "summary.md"),
+      },
+    ],
     details: [
       {
         id: "build",
@@ -78,13 +92,12 @@ describe("MemoryAgentIndex", () => {
     expect(existsSync(indexPath)).toBe(true);
     const content = readFileSync(indexPath, "utf8");
     expect(content).toContain('"../users/default/summary.md"');
-    expect(content).toContain('"../details/build.md"');
-    expect(content).not.toContain("hidden.md");
+    expect(content).toContain('"../../projects/project-1/memory/summary.md"');
+    expect(content).not.toContain("project-2");
     expect(content).not.toContain(state.summaryPath);
     expect(content).not.toContain(state.details[0]!.path);
-    expect(content).toContain("Build, install, restart, test, then commit.");
+    expect(content).not.toContain("Build, install, restart, test, then commit.");
     expect(content).not.toContain("Prefer concise Chinese answers.");
-    expect(content).not.toContain("repeating the entire investigation.");
   });
 
   test("puts only the total memory path and usage guidance in the system prompt", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import pino from "pino";
-import type { PaseoMemoryState } from "@getpaseo/protocol/messages";
+import type { PaseoMemoryState, PaseoMemorySyncSelection } from "@getpaseo/protocol/messages";
 import { MemorySession, type MemoryController } from "./memory-session.js";
 
 function state(enabled: boolean): PaseoMemoryState {
@@ -26,25 +26,23 @@ function state(enabled: boolean): PaseoMemoryState {
 describe("MemorySession", () => {
   test("returns updated memory through the correlated RPC response", async () => {
     let current = state(false);
+    let requestedSelection: PaseoMemorySyncSelection | undefined;
     const controller: MemoryController = {
       getState: () => current,
-      getSyncSnapshot: () => ({
-        version: 1,
-        sourceHostId: "host-1",
-        exportedAt: "2026-08-20T00:00:00.000Z",
-        users: [
-          {
-            id: "default",
-            name: "默认用户",
-            createdAt: "2026-08-20T00:00:00.000Z",
-            updatedAt: "2026-08-20T00:00:00.000Z",
-          },
-        ],
-        summaries: [],
-        details: [],
-        policies: [],
-        scopePolicies: [],
-      }),
+      getSyncSnapshot: (selection) => {
+        requestedSelection = selection;
+        return {
+          version: 1,
+          sourceHostId: "host-1",
+          exportedAt: "2026-08-20T00:00:00.000Z",
+          ...(selection ? { selection } : {}),
+          users: [],
+          summaries: [],
+          details: [],
+          policies: [],
+          scopePolicies: [],
+        };
+      },
       mergeSyncSnapshot: () => current,
       update: (input) => {
         current = { ...current, settings: input.settings ?? current.settings };
@@ -75,5 +73,12 @@ describe("MemorySession", () => {
         },
       },
     ]);
+
+    await session.handleRequest({
+      type: "memory.get_sync_snapshot.request",
+      requestId: "request-2",
+      selection: { type: "project", id: "project-1" },
+    });
+    expect(requestedSelection).toEqual({ type: "project", id: "project-1" });
   });
 });

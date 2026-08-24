@@ -58,7 +58,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import {
+  AdaptiveModalSheet,
+  AdaptiveTextInput,
+  type SheetHeader,
+} from "@/components/adaptive-modal-sheet";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
 import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
@@ -95,6 +99,7 @@ import {
   runMessageInputKeyboardAction,
   stopRealtimeVoice,
 } from "./state";
+import { useExpandedMarkdownDraft } from "./use-expanded-markdown-draft";
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
@@ -374,10 +379,12 @@ function MarkdownExpandButton({
 
 function ExpandedMarkdownEditor({
   visible,
-  value,
+  initialValue,
+  resetKey,
   placeholder,
   onChangeText,
-  onClose,
+  onDismiss,
+  onDone,
   onSend,
   isSendButtonDisabled,
   disabled,
@@ -388,11 +395,13 @@ function ExpandedMarkdownEditor({
   t,
 }: {
   visible: boolean;
-  value: string;
+  initialValue: string;
+  resetKey: number;
   placeholder?: string;
   onChangeText: (text: string) => void;
-  onClose: () => void;
-  onSend: () => void;
+  onDismiss: () => void;
+  onDone: (currentNativeValue?: string) => void;
+  onSend: (currentNativeValue?: string) => void;
   isSendButtonDisabled: boolean;
   disabled?: boolean;
   isSubmitLoading: boolean;
@@ -401,6 +410,45 @@ function ExpandedMarkdownEditor({
   onSelectInstructionTemplate: (template: PaseoInstructionTemplate) => void;
   t: TFunction;
 }) {
+  const inputElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const onChangeTextRef = useRef(onChangeText);
+  onChangeTextRef.current = onChangeText;
+  const handleCompositionEnd = useCallback((event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
+    if (input) {
+      onChangeTextRef.current(input.value);
+    }
+  }, []);
+  const setInputRef = useCallback(
+    (node: TextInput | null) => {
+      inputElementRef.current?.removeEventListener("compositionend", handleCompositionEnd);
+      const element = getTextInputNativeElement(node);
+      if (
+        !isWeb ||
+        !(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)
+      ) {
+        inputElementRef.current = null;
+        return;
+      }
+      inputElementRef.current = element;
+      element.addEventListener("compositionend", handleCompositionEnd);
+    },
+    [handleCompositionEnd],
+  );
+  useEffect(
+    () => () => {
+      inputElementRef.current?.removeEventListener("compositionend", handleCompositionEnd);
+      inputElementRef.current = null;
+    },
+    [handleCompositionEnd],
+  );
+  const readCurrentNativeValue = useCallback(() => inputElementRef.current?.value, []);
+  const handleDone = useCallback(() => {
+    onDone(readCurrentNativeValue());
+  }, [onDone, readCurrentNativeValue]);
+  const handleSend = useCallback(() => {
+    onSend(readCurrentNativeValue());
+  }, [onSend, readCurrentNativeValue]);
   const header = useMemo<SheetHeader>(
     () => ({
       title: "Markdown 输入",
@@ -418,7 +466,7 @@ function ExpandedMarkdownEditor({
     <AdaptiveModalSheet
       header={header}
       visible={visible}
-      onClose={onClose}
+      onClose={onDismiss}
       snapPoints={EXPANDED_EDITOR_SNAP_POINTS}
       testID="message-input-expanded-markdown-editor"
     >
@@ -453,29 +501,31 @@ function ExpandedMarkdownEditor({
             </DropdownMenuContent>
           </DropdownMenu>
         </View>
-        <ThemedTextInput
-          value={value}
+        <AdaptiveTextInput
+          ref={setInputRef}
+          initialValue={initialValue}
+          resetKey={resetKey}
           onChangeText={onChangeText}
           placeholder={placeholder ?? t("composer.placeholders.fallback")}
-          uniProps={textInputPlaceholderColorMapping}
           accessibilityLabel="Markdown 大文本输入"
+          testID="message-input-expanded-markdown-input"
           style={styles.expandedEditorInput}
           multiline
           autoFocus={isWeb}
           textAlignVertical="top"
         />
         <View style={styles.expandedEditorActions}>
-          <Button variant="outline" size="sm" onPress={onClose}>
-            Done
+          <Button variant="outline" size="sm" onPress={handleDone}>
+            完成
           </Button>
           <Button
             variant="default"
             size="sm"
-            onPress={onSend}
+            onPress={handleSend}
             disabled={isSendButtonDisabled || isSubmitLoading || Boolean(disabled)}
             loading={isSubmitLoading}
           >
-            Send
+            发送
           </Button>
         </View>
       </View>
@@ -1522,6 +1572,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           : null,
       [projectTemplateWorkspace],
     );
+    const templateProjectId = projectTemplateContext?.projectId;
+    const templateProjectName = projectTemplateContext?.projectName;
+    const templateProjectRootPath = projectTemplateContext?.projectRootPath;
+    const templateWorkspaceId = projectTemplateContext?.workspaceId;
+    const templateWorkspaceName = projectTemplateContext?.workspaceName;
+    const templateWorkspaceDirectory = projectTemplateContext?.workspaceDirectory;
     const [instructionTemplates, setInstructionTemplates] = useState<PaseoInstructionTemplate[]>(
       [],
     );
@@ -1542,8 +1598,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
       let cancelled = false;
       setIsLoadingInstructionTemplates(true);
-      const projectConfigPromise = projectTemplateContext?.projectRootPath
-        ? client.readProjectConfig(projectTemplateContext.projectRootPath)
+      const projectConfigPromise = templateProjectRootPath
+        ? client.readProjectConfig(templateProjectRootPath)
         : Promise.resolve(null);
       void Promise.all([client.getDaemonConfig(), projectConfigPromise])
         .then(([daemonConfigResult, projectConfigResult]) => {
@@ -1557,15 +1613,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             ),
           );
           setInstructionTemplateVariables(
-            projectTemplateContext
+            templateProjectId
               ? {
                   ...projectConfig?.variables,
-                  projectId: projectTemplateContext.projectId,
-                  projectName: projectTemplateContext.projectName,
-                  projectRoot: projectTemplateContext.projectRootPath,
-                  workspaceId: projectTemplateContext.workspaceId,
-                  workspaceName: projectTemplateContext.workspaceName,
-                  workspaceDirectory: projectTemplateContext.workspaceDirectory,
+                  projectId: templateProjectId,
+                  projectName: templateProjectName ?? "",
+                  projectRoot: templateProjectRootPath ?? "",
+                  workspaceId: templateWorkspaceId ?? "",
+                  workspaceName: templateWorkspaceName ?? "",
+                  workspaceDirectory: templateWorkspaceDirectory ?? "",
                 }
               : {},
           );
@@ -1583,12 +1639,24 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       return () => {
         cancelled = true;
       };
-    }, [client, isExpandedEditorOpen, projectTemplateContext, toast]);
+    }, [
+      client,
+      isExpandedEditorOpen,
+      templateProjectId,
+      templateProjectName,
+      templateProjectRootPath,
+      templateWorkspaceDirectory,
+      templateWorkspaceId,
+      templateWorkspaceName,
+      toast,
+    ]);
 
     const handleSelectInstructionTemplate = useCallback(
       (template: PaseoInstructionTemplate) => {
         const rendered = renderInstructionTemplate(template.content, instructionTemplateVariables);
-        onChangeText(appendInstructionTemplate(valueRef.current, rendered.text));
+        replaceExpandedEditorDraft((currentValue) =>
+          appendInstructionTemplate(currentValue, rendered.text),
+        );
         if (rendered.missingVariables.length > 0) {
           toast.show(
             t("composer.instructionTemplates.missingVariables", {
@@ -1598,7 +1666,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           );
         }
       },
-      [instructionTemplateVariables, onChangeText, t, toast],
+      [instructionTemplateVariables, replaceExpandedEditorDraft, t, toast],
     );
 
     useEffect(() => {
@@ -2070,12 +2138,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const handleOpenExpandedEditor = useCallback(() => {
-      setIsExpandedEditorOpen(true);
-    }, []);
-    const handleCloseExpandedEditor = useCallback(() => {
-      setIsExpandedEditorOpen(false);
+      openExpandedEditor();
+    }, [openExpandedEditor]);
+    const handleDismissExpandedEditor = useCallback(() => {
+      dismissExpandedEditor();
       textInputRef.current?.focus();
-    }, []);
+    }, [dismissExpandedEditor]);
+    const handleCompleteExpandedEditor = useCallback(
+      (currentNativeValue?: string) => {
+        commitAndCloseExpandedEditor(currentNativeValue);
+        textInputRef.current?.focus();
+      },
+      [commitAndCloseExpandedEditor],
+    );
+    const handleSendExpandedEditor = useCallback(
+      (currentNativeValue?: string) => {
+        commitAndCloseExpandedEditor(currentNativeValue);
+        handleDefaultSendAction();
+      },
+      [commitAndCloseExpandedEditor, handleDefaultSendAction],
+    );
 
     const renderVoiceButtonIcon = useCallback(
       ({ hovered }: { hovered?: boolean }) => (
@@ -2219,11 +2301,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
         <ExpandedMarkdownEditor
           visible={isExpandedEditorOpen}
-          value={value}
+          initialValue={expandedEditorInitialValue}
+          resetKey={expandedEditorResetKey}
           placeholder={placeholder}
-          onChangeText={handleInputChange}
-          onClose={handleCloseExpandedEditor}
-          onSend={handleDefaultSendAction}
+          onChangeText={updateExpandedEditorDraft}
+          onDismiss={handleDismissExpandedEditor}
+          onDone={handleCompleteExpandedEditor}
+          onSend={handleSendExpandedEditor}
           isSendButtonDisabled={isSendButtonDisabled}
           disabled={disabled}
           isSubmitLoading={isSubmitLoading}

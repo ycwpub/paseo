@@ -60,6 +60,12 @@ export function removeAssistantMemoryFiles(paseoHome: string, assistantId: strin
   rmSync(assistantMemoryDirectory(paseoHome, assistantId), { recursive: true, force: true });
 }
 
+export function removeAssistantMemorySourceFiles(paseoHome: string, assistantId: string): void {
+  const memoryDirectory = assistantMemoryDirectory(paseoHome, assistantId);
+  rmSync(path.join(memoryDirectory, "summary.md"), { force: true });
+  rmSync(path.join(memoryDirectory, "details"), { recursive: true, force: true });
+}
+
 function truncateSingleLine(value: string, maxChars: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   if (normalized.length <= maxChars) {
@@ -492,7 +498,7 @@ export function materializeAssistantMemoryFiles(input: {
     return emptyMemoryFiles();
   }
 
-  rmSync(memoryDirectory, { recursive: true, force: true });
+  removeAssistantMemorySourceFiles(input.paseoHome, input.assistantId);
   const detailsDirectory = path.join(memoryDirectory, "details");
   const summaryPath = path.join(memoryDirectory, "summary.md");
   const chunks = splitMemoryIntoChunks(normalizedMemory);

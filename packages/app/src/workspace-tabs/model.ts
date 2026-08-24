@@ -15,6 +15,7 @@ export interface WorkspaceDraftTabSetup {
 
 export interface WorkspaceWorkingDiffTabTarget {
   kind: "working_diff";
+  cwd?: string;
   focusPath?: string;
   focusRequestId?: number;
 }

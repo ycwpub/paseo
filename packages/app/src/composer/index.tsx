@@ -66,6 +66,7 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
+import { hasActiveContextCompaction } from "@/timeline/compaction-state";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
@@ -1725,6 +1726,13 @@ function ComposerContentImpl({
   const hasActiveTurn = useSessionStore(
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isActive,
   );
+  const isContextCompacting = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return hasActiveContextCompaction(
+      session?.agentStreamTail.get(agentId),
+      session?.agentStreamHead.get(agentId),
+    );
+  });
   const isCancellingAgent = useSessionStore(
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isCancelling,
   );
@@ -1800,7 +1808,7 @@ function ComposerContentImpl({
         allowEmptySubmit,
         forceSend,
         submitBehavior,
-        isAgentRunning,
+        isAgentRunning: shouldQueueMessage,
         // Parent-managed submits are still valid submit paths even when the
         // transport is disconnected, because the parent decides the failure mode.
         canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
@@ -1832,7 +1840,7 @@ function ComposerContentImpl({
       clearDraft,
       completeSubmit,
       hasExternalContent,
-      isAgentRunning,
+      shouldQueueMessage,
       queueMessage,
       sessionResourceSelection,
       setSelectedAttachments,

@@ -10,6 +10,7 @@ import type {
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
+import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 import {
   resolveSidebarProjectIconTargets,
   type SidebarProjectIconTarget,
@@ -70,7 +71,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   }
   if (input.groupMode === "project") {
     sections.push(
-      ...pinnedGroups.unpinnedProjects.map((project) => ({
+      ...hierarchyVisibleProjects.map((project) => ({
         workspaces: project.workspaces,
         collapsed: input.collapsedProjectKeys.has(project.viewKey),
       })),

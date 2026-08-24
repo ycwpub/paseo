@@ -18,6 +18,7 @@ import {
   memoryCategoryLabel,
   memoryScopeLabel,
 } from "./memory-form-options";
+import { parseMemoryScopes } from "./memory-multi-scope";
 
 interface CreateDraft {
   title: string;
@@ -26,22 +27,26 @@ interface CreateDraft {
   keywords: string;
   scopeType: PaseoMemoryScope["type"];
   scopeId: string;
+  additionalScopes: string;
   importance: string;
   validUntil: string;
   sensitive: boolean;
 }
 
-const EMPTY_DRAFT: CreateDraft = {
-  title: "",
-  category: "other",
-  content: "",
-  keywords: "",
-  scopeType: "global",
-  scopeId: "",
-  importance: "1",
-  validUntil: "",
-  sensitive: false,
-};
+function emptyDraft(scope?: PaseoMemoryScope): CreateDraft {
+  return {
+    title: "",
+    category: "other",
+    content: "",
+    keywords: "",
+    scopeType: scope?.type ?? "global",
+    scopeId: scope?.id ?? "",
+    additionalScopes: "",
+    importance: "1",
+    validUntil: "",
+    sensitive: false,
+  };
+}
 
 function parseImportance(value: string): number {
   const parsed = Number.parseFloat(value);
@@ -51,14 +56,16 @@ function parseImportance(value: string): number {
 export function MemoryCreateCard({
   disabled,
   globalUserId,
+  scope,
   onCreate,
 }: {
   disabled: boolean;
   globalUserId: string;
+  scope?: PaseoMemoryScope;
   onCreate: (input: PaseoMemoryCreateInput) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [draft, setDraft] = useState<CreateDraft>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<CreateDraft>(() => emptyDraft(scope));
   const categoryDisplay = useMemo(
     () => ({ label: memoryCategoryLabel(draft.category) }),
     [draft.category],
@@ -67,7 +74,10 @@ export function MemoryCreateCard({
     () => ({ label: memoryScopeLabel({ type: draft.scopeType, id: draft.scopeId || undefined }) }),
     [draft.scopeId, draft.scopeType],
   );
-  const open = useCallback(() => setExpanded(true), []);
+  const open = useCallback(() => {
+    setDraft(emptyDraft(scope));
+    setExpanded(true);
+  }, [scope]);
   const close = useCallback(() => setExpanded(false), []);
   const setTitle = useCallback(
     (title: string) => setDraft((current) => ({ ...current, title })),
@@ -83,6 +93,10 @@ export function MemoryCreateCard({
   );
   const setScopeId = useCallback(
     (scopeId: string) => setDraft((current) => ({ ...current, scopeId })),
+    [],
+  );
+  const setAdditionalScopes = useCallback(
+    (additionalScopes: string) => setDraft((current) => ({ ...current, additionalScopes })),
     [],
   );
   const setKeywords = useCallback(
@@ -106,6 +120,10 @@ export function MemoryCreateCard({
     [],
   );
   const submit = useCallback(async () => {
+    const primaryScope: PaseoMemoryScope =
+      draft.scopeType === "global"
+        ? { type: "global", id: globalUserId }
+        : { type: draft.scopeType, id: draft.scopeId.trim() };
     await onCreate({
       title: draft.title.trim(),
       category: draft.category,
@@ -114,17 +132,19 @@ export function MemoryCreateCard({
         .split(",")
         .map((keyword) => keyword.trim())
         .filter(Boolean),
-      scope:
-        draft.scopeType === "global"
-          ? { type: "global", id: globalUserId }
-          : { type: draft.scopeType, id: draft.scopeId.trim() },
+      scope: primaryScope,
+      scopes: parseMemoryScopes({
+        primary: primaryScope,
+        additional: draft.additionalScopes,
+        globalUserId,
+      }),
       importance: parseImportance(draft.importance),
       validUntil: draft.validUntil.trim() || null,
       sensitive: draft.sensitive,
     });
-    setDraft(EMPTY_DRAFT);
+    setDraft(emptyDraft(scope));
     setExpanded(false);
-  }, [draft, globalUserId, onCreate]);
+  }, [draft, globalUserId, onCreate, scope]);
 
   if (!expanded) {
     return (
@@ -173,6 +193,14 @@ export function MemoryCreateCard({
             <FormTextInput value={draft.scopeId} onChangeText={setScopeId} editable={!disabled} />
           </Field>
         )}
+        <Field label="其他作用域" hint="一份记忆可以同时保存到多个层级；使用英文逗号分隔">
+          <FormTextInput
+            value={draft.additionalScopes}
+            onChangeText={setAdditionalScopes}
+            editable={!disabled}
+            placeholder="project:prj_x, assistant:asst_x, global"
+          />
+        </Field>
         <Field label="关键词" hint="使用英文逗号分隔关键词">
           <FormTextInput value={draft.keywords} onChangeText={setKeywords} editable={!disabled} />
         </Field>

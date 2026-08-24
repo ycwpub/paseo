@@ -21,6 +21,7 @@ import {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  PaseoMemorySyncSelection,
   PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
   PluginInstallSource,
@@ -2645,19 +2646,24 @@ export class DaemonClient {
     });
   }
 
-  async addProject(cwd: string, requestId?: string): Promise<ProjectAddPayload> {
+  async addProject(
+    cwd: string,
+    requestId?: string,
+    parentProjectId?: string,
+  ): Promise<ProjectAddPayload> {
     return this.sendCorrelatedSessionRequest({
       requestId,
       message: {
         type: "project.add.request",
         cwd,
+        ...(parentProjectId ? { parentProjectId } : {}),
       },
       responseType: "project.add.response",
     });
   }
 
   async createProjectDirectory(
-    input: { parentPath: string; name: string },
+    input: { parentPath: string; name: string; parentProjectId?: string },
     requestId?: string,
   ): Promise<ProjectCreateDirectoryPayload> {
     return this.sendNamespacedCorrelatedSessionRequest<"project.create_directory.response">({
@@ -2666,12 +2672,13 @@ export class DaemonClient {
         type: "project.create_directory.request",
         parentPath: input.parentPath,
         name: input.name,
+        ...(input.parentProjectId ? { parentProjectId: input.parentProjectId } : {}),
       },
     });
   }
 
   async createDirectorylessProject(
-    input: { name: string },
+    input: { name: string; parentProjectId?: string },
     requestId?: string,
   ): Promise<ProjectCreateDirectorylessPayload> {
     return this.sendNamespacedCorrelatedSessionRequest<"project.create_directoryless.response">({
@@ -2679,6 +2686,7 @@ export class DaemonClient {
       message: {
         type: "project.create_directoryless.request",
         name: input.name,
+        ...(input.parentProjectId ? { parentProjectId: input.parentProjectId } : {}),
       },
     });
   }
@@ -2704,6 +2712,7 @@ export class DaemonClient {
       repo: string;
       targetDirectory: string;
       cloneProtocol?: ProjectGithubCloneProtocol;
+      parentProjectId?: string;
     },
     requestId?: string,
   ): Promise<ProjectGithubClonePayload> {
@@ -2712,6 +2721,7 @@ export class DaemonClient {
       repo: input.repo,
       targetDirectory: input.targetDirectory,
       ...(input.cloneProtocol ? { cloneProtocol: input.cloneProtocol } : {}),
+      ...(input.parentProjectId ? { parentProjectId: input.parentProjectId } : {}),
     } as const;
     return this.sendNamespacedCorrelatedSessionRequest<"project.github.clone.response">({
       requestId,
@@ -6118,7 +6128,10 @@ export class DaemonClient {
     return this.resourceRpc.clearMemory(options);
   }
 
-  async getMemorySyncSnapshot(options?: { requestId?: string }) {
+  async getMemorySyncSnapshot(options?: {
+    requestId?: string;
+    selection?: PaseoMemorySyncSelection;
+  }) {
     return this.resourceRpc.getMemorySyncSnapshot(options);
   }
 

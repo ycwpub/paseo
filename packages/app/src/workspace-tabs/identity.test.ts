@@ -67,9 +67,28 @@ describe("working diff tab identity", () => {
     expect(
       normalizeWorkspaceTabTarget({
         ...target,
+        cwd: " C:\\repos\\example ",
         focusPath: " src\\example.ts ",
       }),
-    ).toEqual(target);
+    ).toEqual({
+      ...target,
+      cwd: "C:/repos/example",
+    });
+  });
+
+  it("treats the repository cwd as part of the review target", () => {
+    expect(
+      workspaceTabTargetsEqual(
+        { ...target, cwd: "/repos/service-a" },
+        { ...target, cwd: "/repos/service-a" },
+      ),
+    ).toBe(true);
+    expect(
+      workspaceTabTargetsEqual(
+        { ...target, cwd: "/repos/service-a" },
+        { ...target, cwd: "/repos/service-b" },
+      ),
+    ).toBe(false);
   });
 
   it("treats focus as navigation state rather than tab identity", () => {

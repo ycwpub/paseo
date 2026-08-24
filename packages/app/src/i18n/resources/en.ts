@@ -52,7 +52,7 @@ export const en = {
     users: {
       title: "Global memory user",
       description:
-        "Agents only read and learn global memory for the selected user. Project, Workspace, and Assistant memory remains shared.",
+        "Agents only read and learn global memory for the selected user. Project and Assistant memory remains shared.",
       currentUser: "Current user",
       deleteUser: "Delete current user",
       newUserName: "New user name",
@@ -69,10 +69,18 @@ export const en = {
       sectionTitle: "Multi-host memory sync",
       title: "Share memory between hosts",
       description:
-        "Merge Global, Project, Workspace, and Assistant memories with another connected Paseo host. Existing target memories are preserved.",
+        "Merge Global, Project, and Assistant memories with another connected Paseo host. Existing target memories are preserved.",
       targetHost: "Other host",
       selectHost: "Select a connected host",
       noHosts: "No other compatible hosts are connected",
+      scope: "Memory scope",
+      selectScope: "Select memory to synchronize",
+      noScopes: "No memory scopes are available",
+      scopes: {
+        global: "Global memory (current user)",
+        project: "Project · {{name}}",
+        assistant: "Assistant · {{name}}",
+      },
       online: "Online",
       offline: "Offline",
       push: "Sync to host",
@@ -84,18 +92,18 @@ export const en = {
       completed: "Memory sync completed",
       result: "{{source}} → {{target}}: {{total}} memories after sync ({{added}} added)",
       scopeHint:
-        "Sync is idempotent and keeps both hosts' memories. Host-local settings, encryption keys, and usage history are not synchronized. Scoped memories keep their Project, Workspace, and Assistant IDs.",
+        "Each operation synchronizes only the selected Global, Project, or Assistant memory. Sync is idempotent; Projects and Assistants match by ID.",
     },
     scopeManager: {
       title: "Memory rules",
       description:
-        "Manage which durable information Global, Project, Workspace, and Assistant memory may save.",
+        "Manage which durable information Global, Project, and Assistant memory may save.",
       scopeType: "Memory scope",
       target: "Target",
       selectScopeType: "Select a memory scope",
       selectTarget: "Select a target",
       noScopes: "No memory scopes",
-      noTargets: "No matching Projects, Workspaces, or Assistants",
+      noTargets: "No matching Projects or Assistants",
       types: {
         global: "Global",
         project: "Project",
@@ -114,6 +122,40 @@ export const en = {
       saving: "Saving…",
       saved: "Saved",
       saveError: "Unable to save memory rules",
+    },
+    contentManager: {
+      title: "Memory content",
+      description:
+        "Browse long-term memory by Global, Project, or Assistant scope. Project is the finest-grained memory level and can roll up to Assistant and Global.",
+      pageTitle: "Memory management",
+      detailTitle: "Memory details",
+      manage: "Manage memory content",
+      manageDescription:
+        "{{count}} memories are available. Open the dedicated page to view, edit, or delete them.",
+      openManager: "Open",
+      backToList: "Back to memory list",
+      loading: "Loading memory…",
+      notFound: "This memory does not exist or has been deleted.",
+      errorTitle: "Unable to manage memory",
+      scopeEditHint:
+        "Changing the scope moves this memory to the selected Global, Project, or Assistant scope.",
+      search: "Search",
+      searchPlaceholder: "Search titles, content, or keywords",
+      status: "Status",
+      allStatuses: "All statuses",
+      noStatuses: "No statuses",
+      targetDescription: "{{id}} · {{count}} memories",
+      selectTargetFirst: "Select a target to manage its memory.",
+      empty: "No long-term memory has been saved yet.",
+      noMatches: "No memories in this scope match the current filters.",
+      pagination: {
+        pageSize: "Items per page",
+        noPageSizes: "No page sizes available",
+        page: "Page {{page}} of {{totalPages}}",
+        range: "Showing {{start}}–{{end}} of {{total}}",
+        previous: "Previous",
+        next: "Next",
+      },
     },
   },
   workflows: {
@@ -956,9 +998,18 @@ export const en = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plan",
@@ -971,6 +1022,18 @@ export const en = {
     },
   },
   agentPanel: {
+    taskSummary: {
+      title: "Task summary",
+      open: "Open task summary",
+      close: "Close task summary",
+      todos: "To-dos",
+      outputs: "Task outputs",
+      references: "References",
+      emptyTodos: "No to-dos yet",
+      emptyOutputs: "No task outputs yet",
+      emptyReferences: "No references yet",
+      openFile: "Open {{fileName}}",
+    },
     states: {
       notFound: "Agent not found",
       failedToLoad: "Failed to load agent",
@@ -1116,7 +1179,9 @@ export const en = {
       },
     },
     compaction: {
-      loading: "Compacting...",
+      loading: "Compacting context",
+      loadingAuto: "Automatically compacting context",
+      loadingManual: "Manually compacting context",
       auto: "Context automatically compacted",
       manual: "Context manually compacted",
       withTokens: "Context compacted ({{tokens}}K tokens)",
@@ -1922,7 +1987,7 @@ export const en = {
       confirmations: {
         removeTitle: "Delete project?",
         removeMessage:
-          'Permanently delete "{{projectName}}" and all of its Paseo-managed data under ~/.paseo/<projectId>?\n\nExternal source directories will not be deleted. This cannot be undone.',
+          'Permanently delete "{{projectName}}" and all of its Paseo-managed data under ~/.paseo/projects/<projectId>?\n\nExternal source directories will not be deleted. This cannot be undone.',
         removeConfirm: "Delete",
         cancel: "Cancel",
       },
@@ -1987,7 +2052,7 @@ export const en = {
         hideConfirm: "Hide",
         removeTitle: "Delete workspace?",
         removeMessage:
-          'Permanently delete "{{workspaceName}}" and its Paseo-managed data at ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nThe external source directory and all files in it will not be deleted or modified. This cannot be undone.',
+          'Permanently delete "{{workspaceName}}" and its Paseo-managed data at ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nThe external source directory and all files in it will not be deleted or modified. This cannot be undone.',
         removeConfirm: "Delete",
         cancel: "Cancel",
       },
@@ -3648,6 +3713,7 @@ export const en = {
       backToProjects: "Back to projects",
       switchHost: "Switch host",
       projectId: "Project ID",
+      parentProjectId: "Parent Project ID",
       projectPath: "Project path",
       directoryless: {
         title: "No Project directory",
@@ -3657,6 +3723,7 @@ export const en = {
       memory: {
         title: "Project memory",
         info: "Control whether this Project contributes scoped memory and define what durable Project knowledge Paseo should learn.",
+        policyTitle: "Memory rules",
         enabledTitle: "Use memory for this Project",
         enabledHint:
           "When off, Agents in this Project do not read or create Project-scoped memory. Global memory remains available.",
@@ -3669,6 +3736,26 @@ export const en = {
         saving: "Saving...",
         saved: "Saved",
         saveError: "Couldn't save Project memory",
+        content: {
+          title: "Memory content",
+          description:
+            "View, edit, or delete long-term memory saved for this Project. Project is the finest-grained memory scope.",
+          scope: "Memory scope",
+          scopes: {
+            project: "Current Project",
+            workspace: "Workspace",
+          },
+          selectScope: "Select a memory scope",
+          noScopes: "No memory scopes available",
+          selectWorkspace: "Select a Workspace",
+          noWorkspace: "This Project has no available Workspaces",
+          loading: "Loading memory...",
+          empty: "No memories in this scope match the current filters",
+          errorTitle: "Unable to manage Project memory",
+          deleteTitle: "Delete “{{title}}”?",
+          deleteDescription: "This memory and its source information cannot be recovered.",
+          deleteConfirm: "Delete",
+        },
       },
       edit: {
         title: "Edit project",
@@ -3765,7 +3852,7 @@ export const en = {
         },
         workspaceData: {
           title: "Workspace data directories",
-          hint: "Defaults to ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}, grouping durable progress notes, review artifacts, and outputs by Project.",
+          hint: "Defaults to ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}, grouping durable progress notes, review artifacts, and outputs by Project.",
         },
       },
       indexSkill: {

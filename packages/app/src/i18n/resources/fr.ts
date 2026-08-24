@@ -305,6 +305,28 @@ export const fr: TranslationResources = {
       save: "Enregistrer les règles",
       saved: "Enregistré",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Gestion de la mémoire",
+      detailTitle: "Détails de la mémoire",
+      manage: "Gérer le contenu de la mémoire",
+      manageDescription:
+        "{{count}} souvenirs sont disponibles. Ouvrez la page dédiée pour les consulter, les modifier ou les supprimer.",
+      openManager: "Ouvrir",
+      backToList: "Retour à la liste des souvenirs",
+      loading: "Chargement de la mémoire…",
+      notFound: "Ce souvenir n’existe pas ou a été supprimé.",
+      errorTitle: "Impossible de gérer la mémoire",
+      scopeEditHint: "Changer la portée déplace ce souvenir vers la portée sélectionnée.",
+      pagination: {
+        pageSize: "Éléments par page",
+        noPageSizes: "Aucune taille de page disponible",
+        page: "Page {{page}} sur {{totalPages}}",
+        range: "Affichage de {{start}} à {{end}} sur {{total}}",
+        previous: "Précédent",
+        next: "Suivant",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -379,9 +401,18 @@ export const fr: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plan",
@@ -394,6 +425,7 @@ export const fr: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agentintrouvable",
       failedToLoad: "Échec du chargement de l'agent",
@@ -541,6 +573,8 @@ export const fr: TranslationResources = {
     },
     compaction: {
       loading: "Compactage...",
+      loadingAuto: "Compactage automatique du contexte",
+      loadingManual: "Compactage manuel du contexte",
       auto: "Contexte automatiquement compacté",
       manual: "Contexte compacté manuellement",
       withTokens: "Contexte compacté (jetons{{tokens}}K)",
@@ -1355,7 +1389,7 @@ export const fr: TranslationResources = {
       confirmations: {
         removeTitle: "Supprimer le projet?",
         removeMessage:
-          "Supprimer définitivement «{{projectName}}» et toutes ses données gérées par Paseo sous ~/.paseo/<projectId> ?\n\nLes répertoires de code source externes ne seront pas supprimés. Cette action est irréversible.",
+          "Supprimer définitivement «{{projectName}}» et toutes ses données gérées par Paseo sous ~/.paseo/projects/<projectId> ?\n\nLes répertoires de code source externes ne seront pas supprimés. Cette action est irréversible.",
         removeConfirm: "Supprimer",
         cancel: "Annuler",
       },
@@ -1421,7 +1455,7 @@ export const fr: TranslationResources = {
         hideConfirm: "Cacher",
         removeTitle: "Supprimer l’espace de travail ?",
         removeMessage:
-          "Supprimer définitivement « {{workspaceName}} » et ses données gérées par Paseo dans ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} ?\n\nLe répertoire de code externe associé et ses fichiers ne seront ni supprimés ni modifiés. Cette action est irréversible.",
+          "Supprimer définitivement « {{workspaceName}} » et ses données gérées par Paseo dans ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}} ?\n\nLe répertoire de code externe associé et ses fichiers ne seront ni supprimés ni modifiés. Cette action est irréversible.",
         removeConfirm: "Supprimer",
         cancel: "Annuler",
       },
@@ -3016,6 +3050,7 @@ export const fr: TranslationResources = {
       backToProjects: "Retour aux projets",
       switchHost: "Changer d'hôte",
       projectId: en.settings.project.projectId,
+      parentProjectId: en.settings.project.parentProjectId,
       projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "Aucun dossier de projet",
@@ -3025,6 +3060,7 @@ export const fr: TranslationResources = {
       memory: {
         title: "Mémoire du projet",
         info: "Contrôlez la mémoire propre à ce projet et définissez les connaissances durables que Paseo doit apprendre.",
+        policyTitle: "Règles de mémoire",
         enabledTitle: "Utiliser la mémoire pour ce projet",
         enabledHint:
           "Si elle est désactivée, les agents ne lisent ni ne créent de mémoire de projet. La mémoire globale reste disponible.",
@@ -3037,6 +3073,27 @@ export const fr: TranslationResources = {
         saving: "Enregistrement...",
         saved: "Enregistré",
         saveError: "Impossible d'enregistrer la mémoire du projet",
+        content: {
+          title: "Contenu de la mémoire",
+          description:
+            "Affichez, modifiez ou supprimez la mémoire à long terme de ce projet et de ses espaces de travail. La portée ne peut pas être modifiée ici.",
+          scope: "Portée de la mémoire",
+          scopes: {
+            project: "Projet actuel",
+            workspace: "Espace de travail",
+          },
+          selectScope: "Sélectionner une portée",
+          noScopes: "Aucune portée disponible",
+          selectWorkspace: "Sélectionner un espace de travail",
+          noWorkspace: "Ce projet ne contient aucun espace de travail disponible",
+          loading: "Chargement de la mémoire...",
+          empty: "Aucune mémoire correspondante dans cette portée",
+          errorTitle: "Impossible de gérer la mémoire du projet",
+          deleteTitle: "Supprimer « {{title}} » ?",
+          deleteDescription:
+            "Cette mémoire et les informations sur sa source ne pourront pas être récupérées.",
+          deleteConfirm: "Supprimer",
+        },
       },
       edit: {
         title: "Modifier le projet",

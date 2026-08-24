@@ -47,6 +47,7 @@ export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjec
       },
     ],
     workspaceKeys: [],
+    parentViewKey: null,
   };
 }
 
@@ -86,6 +87,7 @@ export function hostProjectFromWorkspace(input: {
       },
     ],
     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],
+    parentViewKey: null,
   };
 }
 

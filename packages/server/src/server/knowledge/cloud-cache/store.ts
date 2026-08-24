@@ -1,5 +1,6 @@
 import { promises as fs, readFileSync } from "node:fs";
 import { writeFileAtomic, writeJsonFileAtomic } from "../../atomic-file.js";
+import { isCloudDocumentContentValid } from "./content-integrity.js";
 import { resolveCloudDocumentCachePaths } from "./paths.js";
 import type {
   CloudDocumentCacheMetadata,
@@ -38,6 +39,9 @@ export class CloudDocumentCacheStore {
       if (!isMetadata(metadata) || metadata.source !== target.source.trim()) {
         return null;
       }
+      if (!isCloudDocumentContentValid(content, metadata.contentHash)) {
+        return null;
+      }
       return {
         metadata: { ...metadata, contentPath: paths.contentPath },
         content,
@@ -56,9 +60,13 @@ export class CloudDocumentCacheStore {
       if (!isMetadata(metadata) || metadata.source !== target.source.trim()) {
         return null;
       }
+      const content = readFileSync(paths.contentPath, "utf8");
+      if (!isCloudDocumentContentValid(content, metadata.contentHash)) {
+        return null;
+      }
       return {
         metadata: { ...metadata, contentPath: paths.contentPath },
-        content: readFileSync(paths.contentPath, "utf8"),
+        content,
       };
     } catch {
       return null;

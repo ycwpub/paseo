@@ -6,7 +6,6 @@ describe("memory scope policy options", () => {
     expect(
       buildMemoryScopePolicyOptions({
         projects: [{ id: "project-1", label: "Paseo" }],
-        workspaces: [{ id: "workspace-1", label: "feature/memory" }],
         assistants: [],
         policies: [
           {
@@ -23,7 +22,6 @@ describe("memory scope policy options", () => {
       }),
     ).toEqual({
       project: [{ scope: { type: "project", id: "project-1" }, label: "Paseo" }],
-      workspace: [{ scope: { type: "workspace", id: "workspace-1" }, label: "feature/memory" }],
       assistant: [{ scope: { type: "assistant", id: "assistant-old" }, label: "assistant-old" }],
     });
   });

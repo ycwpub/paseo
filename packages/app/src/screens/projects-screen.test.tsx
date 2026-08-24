@@ -230,6 +230,7 @@ function hostEntry(overrides: Partial<ProjectHostEntry> = {}): ProjectHostEntry 
   return {
     serverId: "host-a",
     projectId: "project-a",
+    parentProjectId: null,
     projectName: "Project",
     projectCustomName: null,
     serverName: "alpha",

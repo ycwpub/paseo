@@ -1,6 +1,6 @@
 import path from "node:path";
 import os from "node:os";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildProjectContextPrompt,
@@ -41,7 +41,9 @@ describe("resolveProjectDirectories", () => {
         path.join(workspaceDirectory, ".codex"),
       ],
       indexSkill: [],
-      workspaceData: [path.join(os.homedir(), ".paseo/prj_default/workspaces/wks_default")],
+      workspaceData: [
+        path.join(os.homedir(), ".paseo/projects/prj_default/workspaces/wks_default"),
+      ],
     });
   });
 
@@ -122,6 +124,7 @@ describe("buildProjectContextPrompt", () => {
     const prompt = buildProjectContextPrompt({
       projectId: "prj_1",
       projectName: "Payments",
+      projectRoot: "/managed/projects/prj_1",
       workspaceId: "wks_1",
       workspaceDirectory: "/repo/worktree",
       directories: {
@@ -140,10 +143,13 @@ describe("buildProjectContextPrompt", () => {
     expect(prompt).toContain("General knowledge directories");
     expect(prompt).toContain("read on demand");
     expect(prompt).toContain("MUST NOT create, modify, rename, move, or delete");
+    expect(prompt).toContain("writable Project directory classification takes precedence");
     expect(prompt).toContain("only when the user explicitly asks to update Project knowledge");
     expect(prompt).toContain("decide whether their guidance applies");
     expect(prompt).toContain("read the applicable SKILL.md");
     expect(prompt).toContain("Record durable progress");
+    expect(prompt).toContain("/managed/projects/prj_1/repos");
+    expect(prompt).toContain("project.directories.project");
   });
 });
 
@@ -215,5 +221,153 @@ describe("loadProjectAgentContext", () => {
     ]);
     expect(context?.directories.knowledge).toEqual([path.join(paseoHome, "docs")]);
     expect(context?.variables.owner).toBe("payments");
+  });
+
+  it("classifies unregistered managed repositories as general knowledge", async () => {
+    const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-project-repository-home-"));
+    const workspaceDirectory = mkdtempSync(
+      path.join(os.tmpdir(), "paseo-project-repository-workspace-"),
+    );
+    roots.push(paseoHome, workspaceDirectory);
+    const project = {
+      projectId: "prj_repository",
+      rootPath: null,
+      kind: "non_git" as const,
+      displayName: "Repository",
+      customName: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      archivedAt: null,
+    };
+    const workspace = {
+      workspaceId: "wks_repository",
+      projectId: project.projectId,
+      cwd: workspaceDirectory,
+      kind: "directory" as const,
+      displayName: "Workspace",
+      title: null,
+      branch: null,
+      worktreeRoot: null,
+      baseBranch: null,
+      isPaseoOwnedWorktree: false,
+      mainRepoRoot: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      archivedAt: null,
+      autoArchivedChangeRequestUrl: null,
+      pinnedAt: null,
+    };
+    const projectRoot = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
+    const repository = path.join(projectRoot, "repos/reference-service");
+    mkdirSync(repository, { recursive: true });
+
+    const context = await loadProjectAgentContext({
+      workspaceId: workspace.workspaceId,
+      paseoHome,
+      projectRegistry: { get: async () => project } as never,
+      workspaceRegistry: { get: async () => workspace } as never,
+    });
+
+    expect(context?.directories.knowledge).toEqual([repository]);
+    expect(context?.prompt).toContain(repository);
+    expect(
+      JSON.parse(
+        readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
+      ),
+    ).toMatchObject({
+      project: {
+        knowledge: {
+          general: [
+            {
+              type: "local-directory",
+              source: "{{projectRoot}}/repos/reference-service",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("inherits parent Project knowledge without inheriting parent writable directories", async () => {
+    const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-project-parent-home-"));
+    const workspaceDirectory = mkdtempSync(
+      path.join(os.tmpdir(), "paseo-project-child-workspace-"),
+    );
+    roots.push(paseoHome, workspaceDirectory);
+    const parent = {
+      projectId: "prj_parent",
+      parentProjectId: null,
+      rootPath: null,
+      kind: "non_git" as const,
+      displayName: "Parent",
+      customName: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      archivedAt: null,
+    };
+    const child = {
+      ...parent,
+      projectId: "prj_child",
+      parentProjectId: parent.projectId,
+      displayName: "Child",
+    };
+    const workspace = {
+      workspaceId: "wks_child",
+      projectId: child.projectId,
+      cwd: workspaceDirectory,
+      kind: "directory" as const,
+      displayName: "Workspace",
+      title: null,
+      branch: null,
+      worktreeRoot: null,
+      baseBranch: null,
+      isPaseoOwnedWorktree: false,
+      mainRepoRoot: null,
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+      archivedAt: null,
+      autoArchivedChangeRequestUrl: null,
+      pinnedAt: null,
+    };
+    const parentRoot = resolveManagedProjectStorageRoot(paseoHome, parent.projectId);
+    const parentStandard = path.join(parentRoot, "parent-standard.md");
+    mkdirSync(parentRoot, { recursive: true });
+    writeFileSync(parentStandard, "Always preserve the parent contract.");
+    writeFileSync(
+      resolveGlobalProjectConfigPath(paseoHome, parent.projectId),
+      JSON.stringify({
+        project: {
+          directoryMode: "multiple",
+          knowledge: {
+            standards: [{ type: "local-document", source: "parent-standard.md" }],
+          },
+        },
+      }),
+    );
+
+    const projects = new Map([
+      [parent.projectId, parent],
+      [child.projectId, child],
+    ]);
+    const context = await loadProjectAgentContext({
+      workspaceId: workspace.workspaceId,
+      paseoHome,
+      projectRegistry: {
+        get: async (projectId: string) => projects.get(projectId) ?? null,
+      } as never,
+      workspaceRegistry: { get: async () => workspace } as never,
+    });
+
+    expect(context?.directories.project).toEqual([
+      resolveManagedProjectStorageRoot(paseoHome, child.projectId),
+    ]);
+    expect(context?.knowledge.standards.localDocuments).toEqual([
+      {
+        source: "parent-standard.md",
+        resolvedSource: parentStandard,
+        content: "Always preserve the parent contract.",
+      },
+    ]);
+    expect(context?.prompt).toContain("Always preserve the parent contract.");
   });
 });

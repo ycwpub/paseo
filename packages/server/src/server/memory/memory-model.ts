@@ -46,12 +46,32 @@ export function memoryScopeKey(scope: PaseoMemoryScope | undefined): string {
   return `${normalized.type}:${normalized.id}`;
 }
 
+export function normalizeMemoryScopes(input: {
+  scope?: PaseoMemoryScope;
+  scopes?: readonly PaseoMemoryScope[];
+}): PaseoMemoryScope[] {
+  const values = input.scopes?.length ? input.scopes : [input.scope];
+  const unique = new Map<string, PaseoMemoryScope>();
+  for (const value of values) {
+    const scope = normalizeMemoryScope(value);
+    unique.set(memoryScopeKey(scope), scope);
+  }
+  return [...unique.values()];
+}
+
 export function isMemoryScopeVisible(
   memoryScope: PaseoMemoryScope | undefined,
   visibleScopes: readonly PaseoMemoryScope[],
 ): boolean {
   const key = memoryScopeKey(memoryScope);
   return visibleScopes.some((scope) => memoryScopeKey(scope) === key);
+}
+
+export function areMemoryScopesVisible(
+  memory: Pick<PaseoMemoryDetail, "scope" | "scopes">,
+  visibleScopes: readonly PaseoMemoryScope[],
+): boolean {
+  return normalizeMemoryScopes(memory).some((scope) => isMemoryScopeVisible(scope, visibleScopes));
 }
 
 export function effectiveMemoryStatus(

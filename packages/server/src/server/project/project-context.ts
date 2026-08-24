@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { Logger } from "pino";
 import {
+  DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY,
   PaseoConfigSchema,
   resolvePaseoProjectDirectoryValues,
   type PaseoProjectConfig,
@@ -36,8 +37,12 @@ import {
 import type { CloudDocumentCacheService } from "../knowledge/cloud-cache/service.js";
 import type { CloudDocumentAuthenticationIssue } from "../knowledge/cloud-cache/types.js";
 import { resolveProjectKnowledgeWithCloudCache } from "./project-cloud-knowledge-context.js";
-
-const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
+import { mergeProjectKnowledge } from "./project-knowledge-inheritance.js";
+import { loadParentProjectKnowledge } from "./project-parent-context.js";
+import {
+  buildProjectRepositoryClassificationPrompt,
+  reconcileManagedProjectRepositories,
+} from "./project-repository-classification.js";
 
 export interface ResolvedProjectDirectories {
   project: string[];
@@ -168,6 +173,7 @@ function formatDirectoryList(values: readonly string[]): string {
 export function buildProjectContextPrompt(input: {
   projectId: string;
   projectName: string;
+  projectRoot: string;
   workspaceId: string;
   workspaceDirectory: string;
   directories: ResolvedProjectDirectories;
@@ -199,6 +205,7 @@ export function buildProjectContextPrompt(input: {
       ? [
           "Read only the files relevant to the current task and decide whether their guidance applies.",
           "By default, you MUST NOT create, modify, rename, move, or delete content in knowledge directories.",
+          "If a path is also listed as a Project directory, the writable Project directory classification takes precedence.",
           "You may update knowledge content only when the user explicitly asks to update Project knowledge in the current conversation. A request to change product code or ordinary documentation is not permission to change knowledge.",
           "When explicitly authorized, change only the knowledge files needed for that request.",
         ].join(" ")
@@ -213,6 +220,7 @@ export function buildProjectContextPrompt(input: {
       ? "Record durable progress and important outputs here so interrupted work can be reviewed and continued."
       : "No dedicated workspace data directory is configured.",
     "</paseo_project_context>",
+    buildProjectRepositoryClassificationPrompt(input.projectRoot),
     buildProjectKnowledgePrompt({
       generalDirectories: input.directories.knowledge,
       knowledge: input.knowledge ?? EMPTY_PROJECT_KNOWLEDGE,
@@ -265,6 +273,11 @@ export async function loadProjectAgentContext(input: {
   const projectDirectory = project.rootPath ? path.resolve(project.rootPath) : projectRoot;
   if (input.paseoHome) {
     ensureManagedProjectStorageRoot(input.paseoHome, project.projectId);
+    reconcileManagedProjectRepositories({
+      paseoHome: input.paseoHome,
+      project,
+      logger: input.logger,
+    });
   }
   const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
@@ -287,6 +300,59 @@ export async function loadProjectAgentContext(input: {
     paseoHome: input.paseoHome,
     variables,
   });
+  const inheritedKnowledge = await loadParentProjectKnowledge({
+    project,
+    projectRegistry: input.projectRegistry,
+    resolveLayer: async (ancestor) => {
+      const ancestorRoot = input.paseoHome
+        ? resolveProjectStoragePath({ paseoHome: input.paseoHome, project: ancestor })
+        : (ancestor.rootPath ?? workspace.cwd);
+      const ancestorDirectory = ancestor.rootPath ? path.resolve(ancestor.rootPath) : ancestorRoot;
+      const ancestorConfig = readProjectConfig(
+        ancestor,
+        ancestorRoot,
+        input.paseoHome,
+        input.logger,
+      );
+      const ancestorVariables = {
+        ...ancestorConfig?.variables,
+        projectId: ancestor.projectId,
+        projectName: ancestor.customName ?? ancestor.displayName,
+        projectRoot: ancestorRoot,
+        projectDirectory: ancestorDirectory,
+        workspaceId: workspace.workspaceId,
+        workspaceName: workspace.title ?? workspace.displayName,
+        workspaceDirectory: workspace.cwd,
+      };
+      const ancestorDirectories = resolveProjectDirectories({
+        projectId: ancestor.projectId,
+        projectRoot: ancestorRoot,
+        projectDirectory: ancestorDirectory,
+        workspaceId: workspace.workspaceId,
+        workspaceDirectory: workspace.cwd,
+        projectConfig: ancestorConfig,
+        paseoHome: input.paseoHome,
+        variables: ancestorVariables,
+      });
+      const ancestorCloudKnowledge = await resolveProjectKnowledgeWithCloudCache({
+        projectConfig: ancestorConfig,
+        projectId: ancestor.projectId,
+        paseoHome: input.paseoHome,
+        service: input.cloudDocumentCacheService,
+        logger: input.logger,
+        resolveLocalPath: (source) =>
+          resolveProjectPath(ancestorDirectory, replaceVariables(source.trim(), ancestorVariables)),
+      });
+      return {
+        knowledgeDirectories: ancestorDirectories.knowledge,
+        knowledge: ancestorCloudKnowledge.knowledge,
+        authIssues: ancestorCloudKnowledge.authIssues,
+      };
+    },
+  });
+  directories.knowledge = Array.from(
+    new Set([...inheritedKnowledge.knowledgeDirectories, ...directories.knowledge]),
+  );
   const cloudKnowledge = await resolveProjectKnowledgeWithCloudCache({
     projectConfig,
     projectId: project.projectId,
@@ -296,7 +362,10 @@ export async function loadProjectAgentContext(input: {
     resolveLocalPath: (source) =>
       resolveProjectPath(projectDirectory, replaceVariables(source.trim(), variables)),
   });
-  const knowledge = cloudKnowledge.knowledge;
+  const knowledge = mergeProjectKnowledge([
+    ...inheritedKnowledge.knowledgeLayers,
+    cloudKnowledge.knowledge,
+  ]);
   const larkContextPrompt = input.paseoHome
     ? buildProjectLarkContextPrompt(
         readProjectLarkContextSnapshots(input.paseoHome, project.projectId),
@@ -328,10 +397,11 @@ export async function loadProjectAgentContext(input: {
     directories,
     knowledge,
     variables,
-    authIssues: cloudKnowledge.authIssues,
+    authIssues: [...inheritedKnowledge.authIssues, ...cloudKnowledge.authIssues],
     prompt: buildProjectContextPrompt({
       projectId: project.projectId,
       projectName: project.customName ?? project.displayName,
+      projectRoot,
       workspaceId: workspace.workspaceId,
       workspaceDirectory: workspace.cwd,
       directories,

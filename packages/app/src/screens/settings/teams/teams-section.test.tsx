@@ -270,10 +270,10 @@ describe("TeamsSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
-    expect((screen.getByPlaceholderText("Team name") as HTMLInputElement).value).toBe(
+    expect((screen.getByPlaceholderText("团队名称") as HTMLInputElement).value).toBe(
       "Settlement team",
     );
-    expect(screen.getByRole("button", { name: "Save team" }).getAttribute("data-variant")).toBe(
+    expect(screen.getByRole("button", { name: "保存团队" }).getAttribute("data-variant")).toBe(
       "default",
     );
   });
@@ -284,16 +284,16 @@ describe("TeamsSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect((screen.getByLabelText("Provider") as HTMLSelectElement).value).toBe("codex");
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe("gpt-5.4");
-    expect((screen.getByLabelText("Thinking mode") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByLabelText("模型") as HTMLSelectElement).value).toBe("gpt-5.4");
+    expect((screen.getByLabelText("思考模式") as HTMLSelectElement).value).toBe("high");
 
     fireEvent.change(screen.getByLabelText("Provider"), {
       target: { value: "claude" },
     });
-    fireEvent.change(screen.getByLabelText("Model"), {
+    fireEvent.change(screen.getByLabelText("模型"), {
       target: { value: "claude-sonnet-4-5" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save team" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存团队" }));
 
     await waitFor(() =>
       expect(updateTeam).toHaveBeenCalledWith(

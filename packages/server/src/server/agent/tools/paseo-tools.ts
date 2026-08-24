@@ -1031,7 +1031,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         options.assistantStore && options.teamStore && callerAgentId
           ? describeTeamAssistantChoices(
               { assistantStore: options.assistantStore, teamStore: options.teamStore },
-              resolveCallerAgent()?.labels ?? {},
+              agentManager.getAgent(callerAgentId)?.labels ?? {},
             )
           : "Optional assistant preset ID for the new agent.",
       ),

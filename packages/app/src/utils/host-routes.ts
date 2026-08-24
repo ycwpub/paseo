@@ -595,6 +595,38 @@ export function buildProjectSettingsRoute(serverId: string, projectId: string) {
   return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}` as const;
 }
 
+export function buildHostMemoryRoute(serverId: string) {
+  if (!serverId.trim()) {
+    throw new Error("buildHostMemoryRoute requires a non-empty serverId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/memories` as const;
+}
+
+export function buildHostMemoryDetailRoute(serverId: string, memoryId: string) {
+  if (!serverId.trim() || !memoryId.trim()) {
+    throw new Error("buildHostMemoryDetailRoute requires a serverId and memoryId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/memories/${encodeSegment(memoryId)}` as const;
+}
+
+export function buildProjectMemoryRoute(serverId: string, projectId: string) {
+  if (!serverId.trim() || !projectId.trim()) {
+    throw new Error("buildProjectMemoryRoute requires a serverId and projectId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/memories` as const;
+}
+
+export function buildProjectMemoryDetailRoute(
+  serverId: string,
+  projectId: string,
+  memoryId: string,
+) {
+  if (!serverId.trim() || !projectId.trim() || !memoryId.trim()) {
+    throw new Error("buildProjectMemoryDetailRoute requires a serverId, projectId, and memoryId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/memories/${encodeSegment(memoryId)}` as const;
+}
+
 export function normalizeProjectSettingsRouteId(value: string | string[] | undefined): string {
   const id = Array.isArray(value) ? value[0] : value;
   return typeof id === "string" ? id : "";

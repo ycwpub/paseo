@@ -307,6 +307,28 @@ export const ru: TranslationResources = {
       save: "Сохранить правила",
       saved: "Сохранено",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Управление памятью",
+      detailTitle: "Сведения о памяти",
+      manage: "Управлять содержимым памяти",
+      manageDescription:
+        "Доступно записей: {{count}}. Откройте отдельную страницу для просмотра, редактирования или удаления.",
+      openManager: "Открыть",
+      backToList: "Вернуться к списку памяти",
+      loading: "Загрузка памяти…",
+      notFound: "Эта запись памяти не существует или была удалена.",
+      errorTitle: "Не удалось управлять памятью",
+      scopeEditHint: "Изменение области перемещает запись памяти в выбранную область.",
+      pagination: {
+        pageSize: "Записей на странице",
+        noPageSizes: "Нет доступных размеров страницы",
+        page: "Страница {{page}} из {{totalPages}}",
+        range: "Показано {{start}}–{{end}} из {{total}}",
+        previous: "Назад",
+        next: "Далее",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -381,9 +403,18 @@ export const ru: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "План",
@@ -396,6 +427,7 @@ export const ru: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Агент не найден",
       failedToLoad: "Не удалось загрузить агента",

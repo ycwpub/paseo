@@ -17,6 +17,7 @@ import {
   cleanAssistantMemorySource,
   materializeAssistantMemoryFiles,
   removeAssistantMemoryFiles,
+  removeAssistantMemorySourceFiles,
 } from "./assistant-memory-files.js";
 
 const ASSISTANT_STORE_VERSION = 1;
@@ -151,7 +152,7 @@ export class AssistantStore {
           memoryFiles: current.memoryFiles,
         };
     if (!memoryEnabled || memory.trim().length === 0) {
-      removeAssistantMemoryFiles(this.paseoHome, current.id);
+      removeAssistantMemorySourceFiles(this.paseoHome, current.id);
       materializedMemory = {
         memorySummary: "",
         memoryFiles: { summaryPath: "", detailFiles: [] },

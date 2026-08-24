@@ -111,6 +111,7 @@ import {
   CodexProviderOptionsSchema,
   type CodexProviderOptions,
 } from "./codex/options.js";
+import { resolveCodexSessionHome } from "./codex/session-home.js";
 
 function assertChildWithPipes(
   child: ChildProcess,
@@ -258,14 +259,6 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
-const PASEO_COMPACT_PROMPT =
-  "Compact this coding-agent conversation into a concise state summary for later continuation. " +
-  "Do not reproduce the transcript. Keep the summary under 4,000 tokens and preserve only the " +
-  "user's goal, durable instructions and constraints, decisions, modified files and current diff " +
-  "state, commands or tests and their outcomes, unresolved errors, and exact next steps. Deduplicate " +
-  "repeated messages, routing metadata, logs, tool output, and prior summaries. Never quote large " +
-  "blobs; prioritize actionable state when space is limited.";
-const PROACTIVE_COMPACTION_CONTEXT_USAGE_RATIO = 0.8;
 const MAX_OUTPUT_TOKENS_CONTINUATION_LIMIT = 8;
 const MAX_OUTPUT_TOKENS_CONTINUATION_PROMPT =
   "The previous response reached the model output-token limit before the task completed. Context compaction has been attempted automatically. Continue from the current workspace and conversation state without repeating completed work. Keep responses and tool calls concise, split large patches and command arguments into smaller operations, and finish the original task.";
@@ -3411,7 +3404,6 @@ export class CodexAppServerAgentSession implements AgentSession {
   private maxOutputTokensRecoveryInProgress = false;
   private automaticCompactionWaiter: AutomaticCompactionWaiter | null = null;
   private pendingAutomaticCompactionStarts = 0;
-  private lastProactiveCompactionUsageKey: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
   private planModeEnabled = false;
@@ -3475,6 +3467,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     name: string;
   } | null = null;
   private cachedSkills: Array<{ name: string; description: string; path: string }> | null = null;
+  private codexHome: string | null = null;
 
   constructor(
     config: AgentSessionConfig,
@@ -3569,7 +3562,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.registerRequestHandlers();
 
     try {
-      await client.request("initialize", buildCodexAppServerInitializeParams());
+      const initializeResponse = toObjectRecord(
+        await client.request("initialize", buildCodexAppServerInitializeParams()),
+      );
+      this.codexHome = nonEmptyString(initializeResponse?.codexHome) ?? this.codexHome;
       client.notify("initialized", {});
 
       await this.loadResolvedWorkspaceWrite();
@@ -4781,6 +4777,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         toolPolicy: this.config.toolPolicy,
         systemPrompt: this.config.systemPrompt,
         mcpServers: this.config.mcpServers,
+        codexHome: this.codexHome,
       },
     };
   }
@@ -5011,53 +5008,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
-  private contextUsageKey(): string | null {
-    const max = this.latestUsage?.contextWindowMaxTokens;
-    const used = this.latestUsage?.contextWindowUsedTokens;
-    if (
-      typeof max !== "number" ||
-      !Number.isFinite(max) ||
-      max <= 0 ||
-      typeof used !== "number" ||
-      !Number.isFinite(used) ||
-      used <= 0
-    ) {
-      return null;
-    }
-    return `${max}:${used}`;
-  }
-
-  private async maybeCompactBeforeTurn(): Promise<void> {
-    const max = this.latestUsage?.contextWindowMaxTokens;
-    const used = this.latestUsage?.contextWindowUsedTokens;
-    const usageKey = this.contextUsageKey();
-    if (
-      usageKey === null ||
-      usageKey === this.lastProactiveCompactionUsageKey ||
-      typeof max !== "number" ||
-      typeof used !== "number" ||
-      used / max < PROACTIVE_COMPACTION_CONTEXT_USAGE_RATIO
-    ) {
-      return;
-    }
-
-    this.logger.info(
-      {
-        threadId: this.currentThreadId,
-        contextWindowMaxTokens: max,
-        contextWindowUsedTokens: used,
-      },
-      "Proactively compacting Codex context before starting the next turn",
-    );
-    const completed = await this.runAutomaticCompaction("context_usage");
-    if (completed) {
-      this.lastProactiveCompactionUsageKey = usageKey;
-    }
-  }
-
-  private async runAutomaticCompaction(
-    reason: "context_usage" | "max_output_tokens",
-  ): Promise<boolean> {
+  private async runAutomaticCompaction(reason: "max_output_tokens"): Promise<boolean> {
     if (!this.client || !this.currentThreadId) {
       return false;
     }
@@ -5304,8 +5255,10 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private buildCodexInnerConfig(): Record<string, unknown> | null {
+    // Leave compact_prompt unset by default so Codex uses the same context
+    // reconstruction strategy as its first-party app. Explicit user overrides
+    // in customCodexConfig/providerOptions are still forwarded.
     const innerConfig: Record<string, unknown> = {
-      compact_prompt: PASEO_COMPACT_PROMPT,
       ...this.deps.customCodexConfig,
       ...this.providerOptions,
     };
@@ -7376,6 +7329,14 @@ export class CodexAppServerAgentClient implements AgentClient {
     options?: AgentResumeSessionOptions,
   ): Promise<AgentSession> {
     const storedConfig = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
+    const persistedCodexHome =
+      nonEmptyString(handle.metadata?.codexHome) ??
+      (await resolveCodexSessionHome(handle.sessionId, {
+        codexHome: launchContext?.env?.CODEX_HOME ?? process.env.CODEX_HOME,
+      }));
+    const launchEnv = persistedCodexHome
+      ? { ...launchContext?.env, CODEX_HOME: persistedCodexHome }
+      : launchContext?.env;
     const merged: AgentSessionConfig = {
       ...storedConfig,
       ...overrides,
@@ -7388,8 +7349,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       merged,
       handle,
       this.logger,
-      () =>
-        this.spawnAppServer(launchContext?.env, { goalsEnabled, agentId: launchContext?.agentId }),
+      () => this.spawnAppServer(launchEnv, { goalsEnabled, agentId: launchContext?.agentId }),
       this.sessionDeps(),
       false,
       goalsEnabled,

@@ -2,8 +2,9 @@
 
 ## Project identity
 
-Every Project receives a stable host-managed Project path at `$PASEO_HOME/{projectId}`. This path
-stores `paseo.json`, Project-owned files, and Workspace data regardless of directory mode.
+Every Project receives a stable host-managed Project path at
+`$PASEO_HOME/projects/{projectId}`. This path stores `paseo.json`, Project-owned files, and
+Workspace data regardless of directory mode.
 Single-directory Projects additionally retain the exact directory selected by the caller,
 normalized lexically with `path.resolve` (never `realpath`), as `rootPath`; that directory is a
 project/source directory, not the Project path. Multiple-directory Projects use `rootPath: null`.
@@ -21,6 +22,12 @@ default name.
 `projectId` is the unique project identity. Display/custom project names are not unique and may be
 reused by multiple projects. UI and protocol operations that mutate a project use `projectId`,
 never the display name.
+
+A Project may reference a host-local parent through `parentProjectId`. The sidebar renders child
+Projects below their parent. Agent context for a child inherits Project knowledge from every
+active ancestor, from the root parent to the child, while writable Project directories remain
+isolated to the child. Missing, archived, or cyclic parent links stop inheritance and leave the
+Project visible as a top-level Project.
 
 `kind` is mutable metadata, not identity. Workspace reconciliation watches active directory-backed project roots and
 updates only a project's `kind` and `updatedAt` when `.git` appears or disappears, preserving its
@@ -49,8 +56,8 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 ## Project resource configuration
 
 Project resource configuration is stored at
-`$PASEO_HOME/{projectId}/paseo.json` for every directory mode. Legacy path-shaped IDs use a safe
-hashed directory name so they cannot escape `$PASEO_HOME`.
+`$PASEO_HOME/projects/{projectId}/paseo.json` for every directory mode. Legacy path-shaped IDs use
+a safe hashed directory name so they cannot escape `$PASEO_HOME/projects`.
 
 - A single-directory Project keeps its registered `rootPath` only as its project/source directory.
 - A multiple-directory Project has `rootPath: null` and uses configured project directories plus
@@ -58,11 +65,14 @@ hashed directory name so they cannot escape `$PASEO_HOME`.
 - A Project created without a directory starts in multiple-directory mode with an empty Project
   directory list.
 
-Legacy `paseo.json` files in a single project directory or under the former
-`$PASEO_HOME/projects/...` locations remain readable and migrate to the managed Project path on the
-next successful write. Changing to single-directory mode updates `rootPath` to the selected project
-directory. Changing to multiple-directory mode clears `rootPath`; neither change moves the current
-configuration away from the managed Project path.
+Legacy `paseo.json` files in a single project directory, the former
+`$PASEO_HOME/{projectId}` Project root, or older `$PASEO_HOME/projects/...` locations remain
+readable and migrate to the managed Project path during daemon startup or the next successful
+write. Registry and Agent paths are rewritten before Workspace reconciliation runs. Other
+Project-owned data under the former `$PASEO_HOME/{projectId}` root is merged into the new managed
+Project path without overwriting newer files. Changing to single-directory mode updates
+`rootPath` to the selected project directory. Changing to multiple-directory mode clears
+`rootPath`; neither change moves the current configuration away from the managed Project path.
 
 ```json
 {
@@ -100,8 +110,14 @@ relative resource paths resolve from its registered project directory. For a mul
 Project, they resolve from the managed Project path. `{{projectRoot}}` always means the managed
 Project path, while `{{projectDirectory}}` means the single project directory when present and
 otherwise the managed Project path. Multiple-directory Projects always include their private
-`~/.paseo/{{projectId}}` directory as a writable directory, followed by configured code directories.
-Project-exclusive repositories and files are stored below this private Project path.
+`~/.paseo/projects/{{projectId}}` directory as a writable directory, followed by configured code
+directories. Project-exclusive repositories and files are stored below this private Project path.
+Downloaded repositories live in first-level directories under `{{projectRoot}}/repos`. Before
+downloading, the Agent classifies a repository from the current task: repositories that need code
+changes are added to `project.directories.project`, while reference-only repositories are added to
+`project.knowledge.general` as local directories. On the next Project context load, Paseo
+classifies any unregistered repository as general knowledge; an explicit Project directory entry
+takes precedence.
 For a single-directory Project with no explicit Project directory entry, the active Workspace
 directory is used so worktree Agents do not accidentally edit the main checkout. Project
 directories are writable and read on demand. Configured index Skill directories are consulted
@@ -120,7 +136,8 @@ Project knowledge has three explicit policies:
 
 Cloud documents are cached as Markdown plus metadata before Agent launch. Global cache files live
 under `$PASEO_HOME/knowledge/cloud-documents/`; Project cache files live under
-`$PASEO_HOME/{projectId}/knowledge/cloud-documents/`. A cache is checked again after 24 hours.
+`$PASEO_HOME/projects/{projectId}/knowledge/cloud-documents/`. A cache is checked again after 24
+hours.
 Refresh failure keeps an existing cache available and marks it stale. If the source requires login
 or authorization, Paseo raises a permission request in the Agent conversation that triggered the
 refresh. Credentials, cookies, and tokens are never written to cache metadata.
@@ -139,7 +156,7 @@ When a single-directory Project omits directory configuration, Paseo uses these 
 - Project directories: `{{workspaceDirectory}}`
 - General AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
 - Index Skill directories: none
-- Workspace data directories: `~/.paseo/{{projectId}}/workspaces/{{workspaceId}}`
+- Workspace data directories: `~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}`
 
 Missing default knowledge directories are ignored by the Agent context until they exist. The
 right-side file explorer exposes all four directory categories and supports switching among every
@@ -180,10 +197,18 @@ $PASEO_HOME/
 ├── channels/
 │   └── lark-directory.json              # App-scoped Lark email/Open ID and group/chat ID relations
 ├── memory/
-│   ├── catalog.json                     # Memory users, active user, settings, metadata, provenance, and extraction state
+│   ├── catalog.json                     # Memory settings plus logical-memory metadata and scope projections
 │   ├── users/
-│   │   └── {userId}/summary.md          # Per-user global memory summary and detail index
-│   └── details/                         # Topic detail files loaded only when relevant
+│   │   └── {userId}/
+│   │       ├── summary.md               # Per-user global overview
+│   │       └── details/                 # Global memory detail projections
+│   └── agent-indexes/                   # Runtime indexes containing only visible overview paths
+├── assistants/
+│   └── {assistantId}/
+│       └── memory/
+│           └── learned/
+│               ├── summary.md           # Assistant memory overview
+│               └── details/             # Assistant memory detail projections
 ├── plugins/
 │   ├── catalog.json                     # Plugin marketplaces, installs, enable state, and resource ownership
 │   ├── cache/                           # Installed plugin package copies
@@ -193,11 +218,6 @@ $PASEO_HOME/
 ├── relay-connection-history.json        # 30-day local Relay connection history
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
-├── {projectId}/                         # Project path for every directory mode
-│   ├── paseo.json                       # Project resource configuration
-│   ├── <Project-owned files>
-│   └── workspaces/
-│       └── {workspaceId}/                # Workspace-scoped data
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
@@ -579,6 +599,7 @@ Array of project records.
 | `displayName`        | `string`                    | Stable default name; selected-root basename for directory-backed Projects and the entered name for blank Projects                          |
 | `customName`         | `string \| null`            | User-set override layered over `displayName`. Null means "use the derived name".                                                           |
 | `customIconRevision` | `string \| null`            | Identifies the host-local custom icon stored under `projects/icons/`. Null uses directory discovery when a root exists, otherwise no icon. |
+| `parentProjectId`    | `string \| null`            | Optional host-local parent Project. Child Agents inherit ancestor Project knowledge but not ancestor writable directories.                 |
 | `createdAt`          | `string` (ISO 8601)         |                                                                                                                                            |
 | `updatedAt`          | `string` (ISO 8601)         |                                                                                                                                            |
 | `archivedAt`         | `string \| null` (ISO 8601) | Soft-delete timestamp; required nullable                                                                                                   |

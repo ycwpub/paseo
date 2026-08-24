@@ -238,6 +238,28 @@ const koOverrides = {
       save: "규칙 저장",
       saved: "저장됨",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "메모리 관리",
+      detailTitle: "메모리 상세",
+      manage: "메모리 내용 관리",
+      manageDescription:
+        "{{count}}개의 메모리가 있습니다. 전용 페이지에서 조회, 편집 또는 삭제할 수 있습니다.",
+      openManager: "열기",
+      backToList: "메모리 목록으로 돌아가기",
+      loading: "메모리 불러오는 중…",
+      notFound: "이 메모리는 없거나 삭제되었습니다.",
+      errorTitle: "메모리를 관리할 수 없습니다",
+      scopeEditHint: "범위를 변경하면 이 메모리가 선택한 범위로 이동합니다.",
+      pagination: {
+        pageSize: "페이지당 항목",
+        noPageSizes: "사용 가능한 페이지 크기가 없습니다",
+        page: "{{page}} / {{totalPages}} 페이지",
+        range: "전체 {{total}}개 중 {{start}}–{{end}}개 표시",
+        previous: "이전",
+        next: "다음",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -447,6 +469,8 @@ const koOverrides = {
     },
     compaction: {
       loading: "압축하는 중...",
+      loadingAuto: "컨텍스트를 자동으로 압축하는 중",
+      loadingManual: "컨텍스트를 수동으로 압축하는 중",
       auto: "컨텍스트가 자동으로 압축되었습니다",
       manual: "컨텍스트가 수동으로 압축되었습니다",
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
@@ -1231,7 +1255,7 @@ const koOverrides = {
       confirmations: {
         removeTitle: "프로젝트를 삭제할까요?",
         removeMessage:
-          '"{{projectName}}" 및 ~/.paseo/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
+          '"{{projectName}}" 및 ~/.paseo/projects/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
         removeConfirm: "삭제",
         cancel: "취소",
       },
@@ -1296,7 +1320,7 @@ const koOverrides = {
         hideConfirm: "숨기기",
         removeTitle: "워크스페이스를 삭제하시겠습니까?",
         removeMessage:
-          '"{{workspaceName}}" 및 ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
+          '"{{workspaceName}}" 및 ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
         removeConfirm: "삭제",
         cancel: "취소",
       },

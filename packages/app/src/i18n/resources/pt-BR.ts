@@ -302,6 +302,28 @@ export const ptBR: TranslationResources = {
       save: "Salvar regras",
       saved: "Salvo",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Gerenciamento de memória",
+      detailTitle: "Detalhes da memória",
+      manage: "Gerenciar conteúdo da memória",
+      manageDescription:
+        "Há {{count}} memórias. Abra a página dedicada para visualizar, editar ou excluir.",
+      openManager: "Abrir",
+      backToList: "Voltar à lista de memórias",
+      loading: "Carregando memória…",
+      notFound: "Esta memória não existe ou foi excluída.",
+      errorTitle: "Não foi possível gerenciar a memória",
+      scopeEditHint: "Alterar o escopo move esta memória para o escopo selecionado.",
+      pagination: {
+        pageSize: "Itens por página",
+        noPageSizes: "Nenhum tamanho de página disponível",
+        page: "Página {{page}} de {{totalPages}}",
+        range: "Mostrando {{start}}–{{end}} de {{total}}",
+        previous: "Anterior",
+        next: "Próxima",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -376,9 +398,18 @@ export const ptBR: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plano",
@@ -391,6 +422,7 @@ export const ptBR: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agente não encontrado",
       failedToLoad: "Falha ao carregar agente",
@@ -539,6 +571,8 @@ export const ptBR: TranslationResources = {
     },
     compaction: {
       loading: "Compactando...",
+      loadingAuto: "Compactando o contexto automaticamente",
+      loadingManual: "Compactando o contexto manualmente",
       auto: "Contexto compactado automaticamente",
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado ({{tokens}}K tokens)",
@@ -1345,7 +1379,7 @@ export const ptBR: TranslationResources = {
       confirmations: {
         removeTitle: "Excluir projeto?",
         removeMessage:
-          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
+          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/projects/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
         removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
@@ -1410,7 +1444,7 @@ export const ptBR: TranslationResources = {
         hideConfirm: "Ocultar",
         removeTitle: "Excluir workspace?",
         removeMessage:
-          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
+          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
         removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
@@ -2991,6 +3025,7 @@ export const ptBR: TranslationResources = {
       backToProjects: "Voltar para projetos",
       switchHost: "Trocar host",
       projectId: en.settings.project.projectId,
+      parentProjectId: en.settings.project.parentProjectId,
       projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "O projeto não tem diretório",
@@ -3000,6 +3035,7 @@ export const ptBR: TranslationResources = {
       memory: {
         title: "Memória do projeto",
         info: "Controle a memória deste projeto e defina quais conhecimentos duradouros o Paseo deve aprender.",
+        policyTitle: "Regras de memória",
         enabledTitle: "Usar memória neste projeto",
         enabledHint:
           "Quando desativada, os agentes não leem nem criam memórias do projeto. A memória global continua disponível.",
@@ -3012,6 +3048,26 @@ export const ptBR: TranslationResources = {
         saving: "Salvando...",
         saved: "Salvo",
         saveError: "Não foi possível salvar a memória do projeto",
+        content: {
+          title: "Conteúdo da memória",
+          description:
+            "Veja, edite ou exclua a memória de longo prazo deste projeto e de seus espaços de trabalho. O escopo não pode ser alterado aqui.",
+          scope: "Escopo da memória",
+          scopes: {
+            project: "Projeto atual",
+            workspace: "Espaço de trabalho",
+          },
+          selectScope: "Selecione um escopo de memória",
+          noScopes: "Nenhum escopo de memória disponível",
+          selectWorkspace: "Selecione um espaço de trabalho",
+          noWorkspace: "Este projeto não tem espaços de trabalho disponíveis",
+          loading: "Carregando memória...",
+          empty: "Nenhuma memória corresponde aos filtros neste escopo",
+          errorTitle: "Não foi possível gerenciar a memória do projeto",
+          deleteTitle: "Excluir “{{title}}”?",
+          deleteDescription: "Esta memória e suas informações de origem não podem ser recuperadas.",
+          deleteConfirm: "Excluir",
+        },
       },
       edit: {
         title: "Editar projeto",

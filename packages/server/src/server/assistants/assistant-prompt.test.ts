@@ -3,7 +3,7 @@ import { AssistantSchema } from "@getpaseo/protocol/messages";
 import { buildAssistantInitialPrompt } from "./assistant-prompt.js";
 
 describe("buildAssistantInitialPrompt", () => {
-  test("injects only the assistant memory summary, not the full memory", () => {
+  test("injects only the assistant memory overview path, not memory content", () => {
     const assistant = AssistantSchema.parse({
       id: "assistant-1",
       name: "Reviewer",
@@ -31,8 +31,10 @@ describe("buildAssistantInitialPrompt", () => {
     const prompt = buildAssistantInitialPrompt(assistant, "Please review this diff.");
 
     expect(prompt).toContain("Review carefully.");
-    expect(prompt).toContain("Assistant memory summary");
-    expect(prompt).toContain("/tmp/assistant-memory/detail-001.md");
+    expect(prompt).toContain("Assistant memory overview path");
+    expect(prompt).toContain("/tmp/assistant-memory/summary.md");
+    expect(prompt).not.toContain("/tmp/assistant-memory/detail-001.md");
+    expect(prompt).not.toContain("Migration plan");
     expect(prompt).toContain("Please review this diff.");
     expect(prompt).not.toContain("FULL_DETAIL_SECRET");
   });

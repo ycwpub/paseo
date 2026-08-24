@@ -1,7 +1,8 @@
 import type { PaseoMemoryDetail, PaseoMemoryScope } from "@getpaseo/protocol/messages";
 import { memoryStatus, type MemoryStatusFilter } from "./memory-form-options";
+import { memoryDetailScopes } from "./memory-multi-scope";
 
-export type MemoryScopeFilter = "all" | PaseoMemoryScope["type"];
+export type MemoryScopeFilter = "all" | Exclude<PaseoMemoryScope["type"], "workspace">;
 
 export function parseMemoryImportance(value: string): number {
   const parsed = Number.parseFloat(value);
@@ -31,15 +32,15 @@ export function filterMemoryDetails(input: {
   const query = input.search.trim().toLowerCase();
   return input.details.filter((detail) => {
     if (input.status !== "all" && memoryStatus(detail, input.now) !== input.status) return false;
-    if (input.scope !== "all" && (detail.scope?.type ?? "global") !== input.scope) return false;
+    const scopes = memoryDetailScopes(detail);
+    if (input.scope !== "all" && !scopes.some((scope) => scope.type === input.scope)) return false;
     if (!query) return true;
     return [
       detail.title,
       detail.content,
       detail.category,
       ...detail.keywords,
-      detail.scope?.type ?? "global",
-      detail.scope?.id ?? "",
+      ...scopes.flatMap((scope) => [scope.type, scope.id ?? ""]),
     ]
       .join("\n")
       .toLowerCase()

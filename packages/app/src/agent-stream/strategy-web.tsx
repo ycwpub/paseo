@@ -36,6 +36,7 @@ import {
   type HistoryStartSettleScheduler,
 } from "./history-start-settle-scheduler";
 import { useScrollToMessage } from "./use-scroll-to-message.web";
+import { useWebViewportChangeAnchor } from "./use-web-viewport-change-anchor";
 
 interface CreateWebStreamStrategyInput {
   isMobileBreakpoint: boolean;
@@ -734,6 +735,23 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     reportReadingPosition();
   }, [onNearBottomChange, reportReadingPosition]);
 
+  const viewportChangeAnchor = useWebViewportChangeAnchor({
+    active: isActive,
+    scrollContainerRef,
+    contentRef,
+    onPrepare: () => {
+      cancelPendingStickToBottom();
+      setFollowOutput(false);
+    },
+    onRestore: (scrollTop) => {
+      lastKnownScrollTopRef.current = scrollTop;
+    },
+    onSettle: () => {
+      updateScrollMetrics();
+      evaluateHistoryStart();
+    },
+  });
+
   const { isJumpSettling, scrollToMessage } = useScrollToMessage({
     active: isActive,
     scrollContainerRef,
@@ -956,6 +974,21 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     virtualTotalSize,
   ]);
 
+  useLayoutEffect(() => {
+    if (!isActive || !viewportChangeAnchor.hasPending()) {
+      return;
+    }
+    viewportChangeAnchor.schedule();
+  }, [
+    isActive,
+    renderLiveAuxiliary,
+    segments.historyMounted,
+    segments.historyVirtualized,
+    segments.liveHead,
+    virtualTotalSize,
+    viewportChangeAnchor,
+  ]);
+
   useEffect(() => {
     if (!isActive) {
       return;
@@ -1013,6 +1046,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (historyStartPrependAnchorActiveRef.current) {
         applyHistoryStartPrependAnchor();
       }
+      if (viewportChangeAnchor.hasPending()) {
+        viewportChangeAnchor.schedule();
+      }
       if (historyStartPaginationStateRef.current.status === "settling") {
         scheduleHistoryStartPrependSettle();
       }
@@ -1038,6 +1074,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scheduleHistoryStartPrependSettle,
     scheduleStickToBottom,
     updateScrollMetrics,
+    viewportChangeAnchor,
   ]);
 
   useLayoutEffect(() => {
@@ -1209,7 +1246,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         lastKnownScrollTopRef.current = 0;
         syncNearBottom(scrollContainer, onNearBottomChange);
       },
-      prepareForViewportChange: () => {
+      prepareForViewportChange: (anchorId) => {
+        if (anchorId && viewportChangeAnchor.prepare(anchorId)) {
+          return;
+        }
         if (!followOutputRef.current) {
           return;
         }
@@ -1230,6 +1270,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     onNearBottomChange,
     scheduleStickToBottom,
     scrollToMessage,
+    viewportChangeAnchor,
     viewportRef,
   ]);
 

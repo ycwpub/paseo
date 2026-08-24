@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { PaseoMemoryScope, PaseoMemoryState } from "@getpaseo/protocol/messages";
 import { writePrivateFileAtomicSync } from "../private-files.js";
-import { effectiveMemoryStatus, isMemoryScopeVisible } from "./memory-model.js";
+import { isMemoryScopeVisible } from "./memory-model.js";
 import { buildMemoryTotalDocument, buildMemoryTotalSystemPrompt } from "./memory-total-document.js";
 
 function sanitizeAgentId(agentId: string): string {
@@ -31,21 +31,17 @@ export class MemoryAgentIndex {
     scopes: readonly PaseoMemoryScope[];
   }): string {
     const indexPath = this.pathForAgent(input.agentId);
-    const visibleDetails = input.enabled
-      ? input.state.details.filter(
-          (detail) =>
-            effectiveMemoryStatus(detail) === "active" &&
-            isMemoryScopeVisible(detail.scope, input.scopes),
+    const overviewDocuments = input.enabled
+      ? (input.state.overviewDocuments ?? []).filter((document) =>
+          isMemoryScopeVisible(document.scope, input.scopes),
         )
       : [];
-    const includeSummary = input.enabled && input.scopes.some((scope) => scope.type === "global");
     const content = buildMemoryTotalDocument({
       totalDocumentPath: indexPath,
-      memoryRoot: path.join(this.paseoHome, "memory"),
+      memoryRoot: this.paseoHome,
       enabled: input.enabled,
       scopes: input.scopes,
-      summaryPath: includeSummary ? input.state.summaryPath : undefined,
-      details: visibleDetails,
+      overviewDocuments,
     });
     writePrivateFileAtomicSync(indexPath, content);
     return indexPath;

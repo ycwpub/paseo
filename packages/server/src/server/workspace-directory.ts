@@ -579,6 +579,7 @@ export class WorkspaceDirectory {
           projectRootPath: projectRootPathForWire(project),
           projectKind: project.kind,
         };
+        if (project.parentProjectId) descriptor.parentProjectId = project.parentProjectId;
         if (project.rootPath === null) descriptor.projectDirectoryless = true;
         return descriptor;
       });

@@ -16,9 +16,9 @@ import {
   type MemoryScopePolicyOption,
 } from "./memory-scope-policy-options";
 
-type ManagedScopeType = PaseoMemoryScope["type"];
+type ManagedScopeType = "global" | "project" | "assistant";
 
-const SCOPE_TYPES: ManagedScopeType[] = ["global", "project", "workspace", "assistant"];
+const SCOPE_TYPES: ManagedScopeType[] = ["global", "project", "assistant"];
 const EMPTY_TARGET_OPTIONS: MemoryScopePolicyOption[] = [];
 
 function memoryScopeOptionKey(option: MemoryScopePolicyOption): string {
@@ -44,7 +44,6 @@ export function MemoryScopePoliciesSection({
 
   const entities = useMemo(() => {
     const projectEntities: MemoryScopeEntity[] = [];
-    const workspaceEntities: MemoryScopeEntity[] = [];
     for (const project of projects) {
       for (const host of project.hosts) {
         if (host.serverId !== serverId) continue;
@@ -53,18 +52,10 @@ export function MemoryScopePoliciesSection({
           label: host.projectCustomName ?? host.projectName,
           description: host.repoRoot,
         });
-        for (const workspace of host.workspaces) {
-          workspaceEntities.push({
-            id: workspace.id,
-            label: workspace.title?.trim() || workspace.name,
-            description: host.projectCustomName ?? host.projectName,
-          });
-        }
       }
     }
     return {
       projects: projectEntities,
-      workspaces: workspaceEntities,
       assistants: assistants.assistants.map((assistant) => ({
         id: assistant.id,
         label: assistant.name.trim() || assistant.id,

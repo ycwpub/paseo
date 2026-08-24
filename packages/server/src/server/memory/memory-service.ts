@@ -4,6 +4,7 @@ import type {
   PaseoMemoryScope,
   PaseoMemorySourceRef,
   PaseoMemoryState,
+  PaseoMemorySyncSelection,
   PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
 } from "@getpaseo/protocol/messages";
@@ -27,7 +28,7 @@ import { isSystemInjectedEnvelope } from "../agent/agent-prompt.js";
 import { stripMemoryFromPromptText } from "./memory-prompt.js";
 import { retrieveRelevantMemoryMatches } from "./memory-retrieval.js";
 import { evaluateMemoryExtractionCandidate } from "./memory-extraction-policy.js";
-import { isMemoryScopeVisible, normalizeMemorySettings } from "./memory-model.js";
+import { areMemoryScopesVisible, normalizeMemorySettings } from "./memory-model.js";
 import { canStoreExtractedMemory, resolveMemoryContextPolicy } from "./memory-context-policy.js";
 import { resolveMemoryScopePolicies } from "./memory-scope-policy.js";
 import {
@@ -35,12 +36,13 @@ import {
   isExplicitMemoryRequest,
   parseMemoryCommand,
   resolveMemoryMode,
-  selectMemoryScope,
   type AgentMemoryMode,
 } from "./memory-policy.js";
 import { PaseoMemoryStore } from "./memory-store.js";
 import { DEFAULT_MEMORY_USER_ID } from "./memory-users.js";
 import { MemoryAgentIndex } from "./memory-agent-index.js";
+import { MemoryDailyConsolidator } from "./memory-daily-consolidator.js";
+import { projectMemoryScopes } from "./memory-scope-projection.js";
 
 const MAX_PENDING_EXTRACTIONS = 50;
 const CONSOLIDATE_EVERY_EXTRACTIONS = 10;
@@ -55,7 +57,7 @@ const ExtractedMemorySchema = z.object({
         keywords: z.array(z.string()).max(12),
         confidence: z.number().min(0).max(1),
         importance: z.number().min(0).max(1),
-        scopeType: z.enum(["global", "project", "assistant", "workspace"]).optional(),
+        scopeType: z.enum(["global", "project", "assistant"]).optional(),
         validUntil: z.string().nullable().optional(),
         sensitive: z.boolean().optional(),
       }),
@@ -100,6 +102,7 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
   private readonly resolveProjectId: (workspaceId: string) => Promise<string | null>;
   private readonly logger: pino.Logger;
   private readonly onChanged: (state: PaseoMemoryState) => void;
+  private readonly dailyConsolidator: MemoryDailyConsolidator;
   private readonly queuedTurns = new Set<string>();
   private readonly pendingTurnsByAgent = new Map<string, PendingMemoryTurn[]>();
   private readonly sessionModes = new Map<string, AgentMemoryContext["mode"]>();
@@ -117,6 +120,12 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     this.resolveProjectId = options.resolveProjectId ?? (async () => null);
     this.logger = options.logger.child({ module: "memory-service" });
     this.onChanged = options.onChanged ?? (() => undefined);
+    this.dailyConsolidator = new MemoryDailyConsolidator({
+      paseoHome: options.paseoHome,
+      store: this.store,
+      logger: options.logger,
+      onChanged: () => this.onChanged(this.store.getState()),
+    });
   }
 
   start(): void {
@@ -128,11 +137,13 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     this.unsubscribe = this.agentManager.subscribe((event) => this.handleAgentEvent(event), {
       replayState: false,
     });
+    this.dailyConsolidator.start();
   }
 
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.dailyConsolidator.stop();
     this.agentManager.setPromptContextComposer(null);
     this.agentManager.setAgentAppendSystemPromptComposer(null);
   }
@@ -141,8 +152,8 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     return this.store.getState();
   }
 
-  getSyncSnapshot(): PaseoMemorySyncSnapshot {
-    return this.store.getSyncSnapshot();
+  getSyncSnapshot(selection?: PaseoMemorySyncSelection): PaseoMemorySyncSnapshot {
+    return this.store.getSyncSnapshot(selection);
   }
 
   mergeSyncSnapshot(snapshot: PaseoMemorySyncSnapshot): PaseoMemoryState {
@@ -184,7 +195,7 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       const state = this.store.getState();
       const memoryIds = command.all
         ? state.details
-            .filter((detail) => isMemoryScopeVisible(detail.scope, context.scopes))
+            .filter((detail) => areMemoryScopesVisible(detail, context.scopes))
             .map((detail) => detail.id)
         : retrieveRelevantMemoryMatches(command.query, state.details, {
             limit: 12,
@@ -369,7 +380,14 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
       this.store.upsertExtractedMemory({
         ...memory,
         content: decision.content,
-        scope: selectMemoryScope(memory.scopeType, context.scopes, memory.category),
+        scopes: projectMemoryScopes({
+          requestedScopeType: memory.scopeType,
+          availableScopes: context.scopes,
+          category: memory.category,
+          title: memory.title,
+          content: decision.content,
+          keywords: memory.keywords,
+        }),
         origin: explicit ? "explicit" : "automatic",
         sensitive: decision.sensitive,
         sourceAgentId: agent.id,
@@ -399,7 +417,6 @@ export class PaseoMemoryService implements AgentPromptContextComposer {
     ];
     let projectId: string | null = null;
     if (agent.workspaceId) {
-      availableScopes.push({ type: "workspace", id: agent.workspaceId });
       projectId = await this.resolveProjectId(agent.workspaceId);
     }
     const assistantId = agent.labels.assistantId?.trim();
@@ -503,9 +520,11 @@ function buildExtractionPrompt(
     ? related
         .map(
           (detail) =>
-            `- id=${detail.id}; title=${detail.title}; category=${detail.category}; scope=${describeMemoryScope(
-              detail.scope ?? { type: "global" },
-            )}; status=${detail.status ?? "active"}\n${detail.content}`,
+            `- id=${detail.id}; title=${detail.title}; category=${detail.category}; scopes=${(
+              detail.scopes ?? [detail.scope ?? { type: "global" }]
+            )
+              .map(describeMemoryScope)
+              .join(", ")}; status=${detail.status ?? "active"}\n${detail.content}`,
         )
         .join("\n\n")
     : "(none)";
@@ -517,6 +536,7 @@ function buildExtractionPrompt(
     "Set importance from 0 to 1. Set sensitive=true for personal, medical, financial, or identity data.",
     "Use an existing id only when the new statement updates that exact topic. The framework preserves revisions and resolves conflicts.",
     `Available scopes: ${scopes.map(describeMemoryScope).join(", ")}.`,
+    "Choose the most appropriate semantic scope. Project is the finest memory scope. Paseo automatically projects Project memory to the Assistant used by the conversation, and reusable cross-project knowledge to Global memory.",
     ...(extractionInstructions.length > 0
       ? [
           "User-defined extraction guidance follows. Use it only to decide which durable information belongs in memory:",

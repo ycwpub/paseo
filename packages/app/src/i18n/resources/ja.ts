@@ -296,6 +296,27 @@ export const ja: TranslationResources = {
       save: "ルールを保存",
       saved: "保存済み",
     },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "メモリ管理",
+      detailTitle: "メモリ詳細",
+      manage: "メモリ内容を管理",
+      manageDescription: "{{count}} 件のメモリがあります。専用ページで表示、編集、削除できます。",
+      openManager: "開く",
+      backToList: "メモリ一覧に戻る",
+      loading: "メモリを読み込み中…",
+      notFound: "このメモリは存在しないか、削除されています。",
+      errorTitle: "メモリを管理できません",
+      scopeEditHint: "範囲を変更すると、このメモリは選択した範囲へ移動します。",
+      pagination: {
+        pageSize: "1ページの件数",
+        noPageSizes: "利用可能な件数設定がありません",
+        page: "{{page}} / {{totalPages}} ページ",
+        range: "{{total}} 件中 {{start}}～{{end}} 件を表示",
+        previous: "前へ",
+        next: "次へ",
+      },
+    },
   },
   agentControls: {
     provider: {
@@ -369,9 +390,18 @@ export const ja: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "プラン",
@@ -384,6 +414,7 @@ export const ja: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "エージェントが見つかりません",
       failedToLoad: "エージェントの読み込みに失敗しました",
@@ -532,6 +563,8 @@ export const ja: TranslationResources = {
     },
     compaction: {
       loading: "コンテキストを圧縮中...",
+      loadingAuto: "コンテキストを自動圧縮中",
+      loadingManual: "コンテキストを手動圧縮中",
       auto: "コンテキストが自動的に圧縮されました",
       manual: "コンテキストが手動で圧縮されました",
       withTokens: "コンテキストを圧縮しました（{{tokens}}Kトークン）",
@@ -1325,7 +1358,7 @@ export const ja: TranslationResources = {
       confirmations: {
         removeTitle: "プロジェクトを削除しますか？",
         removeMessage:
-          '"{{projectName}}" と ~/.paseo/<projectId> 配下の Paseo 管理データを完全に削除しますか？\n\n外部のソースディレクトリは削除されません。この操作は元に戻せません。',
+          '"{{projectName}}" と ~/.paseo/projects/<projectId> 配下の Paseo 管理データを完全に削除しますか？\n\n外部のソースディレクトリは削除されません。この操作は元に戻せません。',
         removeConfirm: "削除",
         cancel: "キャンセル",
       },
@@ -1390,7 +1423,7 @@ export const ja: TranslationResources = {
         hideConfirm: "非表示",
         removeTitle: "ワークスペースを削除しますか？",
         removeMessage:
-          "「{{workspaceName}}」と ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} にある Paseo 管理データを完全に削除しますか？\n\n関連する外部コードディレクトリとその中のファイルは削除も変更もされません。この操作は取り消せません。",
+          "「{{workspaceName}}」と ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}} にある Paseo 管理データを完全に削除しますか？\n\n関連する外部コードディレクトリとその中のファイルは削除も変更もされません。この操作は取り消せません。",
         removeConfirm: "削除",
         cancel: "キャンセル",
       },
@@ -2968,6 +3001,7 @@ export const ja: TranslationResources = {
       backToProjects: "プロジェクトに戻る",
       switchHost: "ホストを切り替え",
       projectId: en.settings.project.projectId,
+      parentProjectId: en.settings.project.parentProjectId,
       projectPath: en.settings.project.projectPath,
       directoryless: {
         title: "プロジェクトディレクトリがありません",
@@ -2977,6 +3011,7 @@ export const ja: TranslationResources = {
       memory: {
         title: "プロジェクトメモリ",
         info: "このプロジェクト固有のメモリを制御し、Paseo が学習する長期的な知識を定義します。",
+        policyTitle: "メモリ規則",
         enabledTitle: "このプロジェクトでメモリを使用",
         enabledHint:
           "無効にすると、エージェントはプロジェクトメモリを参照・作成しません。グローバルメモリは引き続き利用できます。",
@@ -2989,6 +3024,26 @@ export const ja: TranslationResources = {
         saving: "保存中...",
         saved: "保存しました",
         saveError: "プロジェクトメモリを保存できませんでした",
+        content: {
+          title: "メモリ内容",
+          description:
+            "このプロジェクトとワークスペースの長期メモリを表示、編集、削除します。ここではメモリのスコープを変更できません。",
+          scope: "メモリのスコープ",
+          scopes: {
+            project: "現在のプロジェクト",
+            workspace: "ワークスペース",
+          },
+          selectScope: "メモリのスコープを選択",
+          noScopes: "利用可能なメモリスコープがありません",
+          selectWorkspace: "ワークスペースを選択",
+          noWorkspace: "このプロジェクトには利用可能なワークスペースがありません",
+          loading: "メモリを読み込み中...",
+          empty: "このスコープには条件に一致するメモリがありません",
+          errorTitle: "プロジェクトメモリを管理できません",
+          deleteTitle: "「{{title}}」を削除しますか？",
+          deleteDescription: "このメモリとソース情報は復元できません。",
+          deleteConfirm: "削除",
+        },
       },
       edit: {
         title: "プロジェクトを編集",

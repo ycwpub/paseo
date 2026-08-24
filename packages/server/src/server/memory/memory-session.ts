@@ -2,6 +2,7 @@ import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/pr
 import type pino from "pino";
 import type {
   PaseoMemoryState,
+  PaseoMemorySyncSelection,
   PaseoMemorySyncSnapshot,
   PaseoMemoryUpdateInput,
 } from "@getpaseo/protocol/messages";
@@ -20,7 +21,7 @@ export type MemorySessionRequest = Extract<
 
 export interface MemoryController {
   getState(): PaseoMemoryState;
-  getSyncSnapshot(): PaseoMemorySyncSnapshot;
+  getSyncSnapshot(selection?: PaseoMemorySyncSelection): PaseoMemorySyncSnapshot;
   mergeSyncSnapshot(snapshot: PaseoMemorySyncSnapshot): PaseoMemoryState;
   update(input: PaseoMemoryUpdateInput): PaseoMemoryState;
   clear(): PaseoMemoryState;
@@ -48,7 +49,7 @@ export class MemorySession {
           type: "memory.get_sync_snapshot.response",
           payload: {
             requestId: message.requestId,
-            snapshot: this.service.getSyncSnapshot(),
+            snapshot: this.service.getSyncSnapshot(message.selection),
             error: null,
           },
         });

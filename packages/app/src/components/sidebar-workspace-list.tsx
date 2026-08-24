@@ -47,7 +47,7 @@ import {
   type ToggleSidebarWorkspacePin,
 } from "@/hooks/use-sidebar-workspace-pin";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import { useHostFeatureMap } from "@/runtime/host-features";
+import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIcons } from "@/projects/icons";
 import {
@@ -443,6 +443,12 @@ function ProjectRowTrailingActions({
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   return (
     <View style={styles.projectTrailingActions}>
+      <SidebarProjectChildAction
+        target={settingsTarget}
+        displayName={displayName}
+        visible={actionsVisible}
+        projectViewKey={projectViewKey}
+      />
       {worktreeTarget ? (
         <NewWorktreeButton
           displayName={displayName}
@@ -474,6 +480,7 @@ function ProjectRowTrailingActions({
 }
 
 const trash2LeadingIcon = <ThemedTrash2 size={14} uniProps={foregroundMutedColorMapping} />;
+const plusLeadingIcon = <ThemedPlus size={14} uniProps={foregroundMutedColorMapping} />;
 const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedColorMapping} />;
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
@@ -576,6 +583,11 @@ function ProjectMenuItems({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const openAddProject = useAddProjectFlowStore((state) => state.openRequest);
+  const supportsProjectHierarchy = useHostFeature(
+    settingsTarget?.serverId ?? "",
+    "projectHierarchy",
+  );
   const handleOpenProjectSettings = useCallback(() => {
     if (!settingsTarget) return;
     router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
@@ -599,6 +611,13 @@ function ProjectMenuItems({
         toast.error(t("sidebar.project.actions.openNewWindowFailed"));
       });
   }, [openNewWindowOptions, t, toast]);
+  const handleCreateChildProject = useCallback(() => {
+    if (!settingsTarget) return;
+    openAddProject({
+      preferredHostId: settingsTarget.serverId,
+      parentProjectId: settingsTarget.projectId,
+    });
+  }, [openAddProject, settingsTarget]);
 
   return (
     <>
@@ -610,6 +629,16 @@ function ProjectMenuItems({
           onSelect={handleOpenProjectSettings}
         >
           {t("sidebar.project.actions.openSettings")}
+        </ProjectMenuItem>
+      ) : null}
+      {settingsTarget && supportsProjectHierarchy ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-create-child-${projectViewKey}`}
+          leading={plusLeadingIcon}
+          onSelect={handleCreateChildProject}
+        >
+          创建子 Project
         </ProjectMenuItem>
       ) : null}
       {canOpenInNewWindow ? (
@@ -1715,6 +1744,11 @@ function ProjectBlock({
     project,
     enabled: selectionEnabled,
   });
+  const hierarchyStyle = useMemo(
+    () =>
+      project.hierarchyDepth ? { marginLeft: Math.min(project.hierarchyDepth, 4) * 18 } : undefined,
+    [project.hierarchyDepth],
+  );
 
   const renderWorkspaceRow = useCallback(
     (
@@ -1890,7 +1924,7 @@ function ProjectBlock({
     <View
       role="group"
       accessibilityLabel={displayName}
-      style={projectChildren ? styles.projectBlockExpanded : undefined}
+      style={[projectChildren ? styles.projectBlockExpanded : undefined, hierarchyStyle]}
     >
       <ProjectHeaderRow
         project={project}
@@ -2254,6 +2288,10 @@ function ProjectModeList({
   const selectionEnabled = isWorkspaceRoute;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const { pinnedChats, unpinnedProjects } = pinnedGroups;
+  const hierarchicalProjects = useMemo(
+    () => flattenVisibleProjectHierarchy(unpinnedProjects, collapsedProjectKeys),
+    [collapsedProjectKeys, unpinnedProjects],
+  );
   const {
     visibleItems: visiblePinnedChats,
     expanded: pinnedChatsExpanded,

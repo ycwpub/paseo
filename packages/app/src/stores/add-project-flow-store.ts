@@ -8,6 +8,7 @@ export interface AddProjectFlowCreatedProject {
 
 export interface OpenAddProjectFlowRequest {
   preferredHostId?: string;
+  parentProjectId?: string;
   initialDirectorylessProjectName?: string;
   onProjectCreated?: (result: AddProjectFlowCreatedProject) => void;
 }
@@ -15,6 +16,7 @@ export interface OpenAddProjectFlowRequest {
 export interface AddProjectFlowRequest {
   id: number;
   preferredHostId?: string;
+  parentProjectId?: string;
   initialDirectorylessProjectName?: string;
   onProjectCreated?: (result: AddProjectFlowCreatedProject) => void;
 }
@@ -32,6 +34,7 @@ function createRequest(input: OpenAddProjectFlowRequest): AddProjectFlowRequest 
   return {
     id: nextRequestId++,
     ...(input.preferredHostId ? { preferredHostId: input.preferredHostId } : {}),
+    ...(input.parentProjectId ? { parentProjectId: input.parentProjectId } : {}),
     ...(input.initialDirectorylessProjectName
       ? { initialDirectorylessProjectName: input.initialDirectorylessProjectName }
       : {}),

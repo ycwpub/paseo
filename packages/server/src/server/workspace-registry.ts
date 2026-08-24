@@ -37,6 +37,12 @@ const PersistedProjectRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  // COMPAT(projectHierarchy): added on 2026-08-27; remove optional after 2027-02-27.
+  parentProjectId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
   createdAt: z.string(),
   updatedAt: z.string(),
   archivedAt: z.string().nullable(),
@@ -137,10 +143,12 @@ export interface ProjectRegistry {
     rootPath: string;
     kind: PersistedProjectKind;
     displayName: string;
+    parentProjectId?: string | null;
     timestamp: string;
   }): Promise<PersistedProjectRecord>;
   createDirectoryless?(input: {
     displayName: string;
+    parentProjectId?: string | null;
     timestamp: string;
   }): Promise<PersistedProjectRecord>;
   upsert(record: PersistedProjectRecord): Promise<void>;
@@ -467,6 +475,7 @@ export class FileBackedProjectRegistry
     rootPath: string;
     kind: PersistedProjectKind;
     displayName: string;
+    parentProjectId?: string | null;
     timestamp: string;
   }): Promise<PersistedProjectRecord> {
     const previous = this.allocationQueue;
@@ -482,6 +491,7 @@ export class FileBackedProjectRegistry
           rootPath: input.rootPath,
           kind: input.kind,
           displayName: input.displayName,
+          parentProjectId: input.parentProjectId ?? null,
           createdAt: input.timestamp,
           updatedAt: input.timestamp,
         });
@@ -495,6 +505,7 @@ export class FileBackedProjectRegistry
 
   async createDirectoryless(input: {
     displayName: string;
+    parentProjectId?: string | null;
     timestamp: string;
   }): Promise<PersistedProjectRecord> {
     const previous = this.allocationQueue;
@@ -510,6 +521,7 @@ export class FileBackedProjectRegistry
           rootPath: null,
           kind: "non_git",
           displayName: input.displayName,
+          parentProjectId: input.parentProjectId ?? null,
           createdAt: input.timestamp,
           updatedAt: input.timestamp,
         });
@@ -712,6 +724,7 @@ export function createPersistedProjectRecord(input: {
   customName?: string | null;
   projectKey?: string | null;
   customIconRevision?: string | null;
+  parentProjectId?: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -721,6 +734,7 @@ export function createPersistedProjectRecord(input: {
     customName: input.customName ?? null,
     projectKey: input.projectKey ?? null,
     customIconRevision: input.customIconRevision ?? null,
+    parentProjectId: input.parentProjectId ?? null,
     archivedAt: input.archivedAt ?? null,
   });
 }

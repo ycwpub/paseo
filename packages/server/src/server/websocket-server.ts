@@ -334,6 +334,7 @@ function createNoopProjectRegistry(): ProjectRegistry {
       projectKey: input.projectKey ?? null,
       customName: null,
       customIconRevision: null,
+      parentProjectId: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
       archivedAt: null,
@@ -1966,6 +1967,8 @@ export class VoiceAssistantWebSocketServer {
         projectCreateDirectory: true,
         // COMPAT(projectCreateDirectoryless): added on 2026-08-19.
         projectCreateDirectoryless: true,
+        // COMPAT(projectHierarchy): added on 2026-08-27.
+        projectHierarchy: true,
         // COMPAT(projectConfigById): added in v0.3.1, remove gate after 2027-02-20.
         projectConfigById: true,
         // COMPAT(commitsList): added in v0.1.110, remove gate after 2027-01-16.

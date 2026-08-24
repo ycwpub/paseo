@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   PaseoMemoryStateSchema,
+  PaseoMemorySyncSelectionSchema,
   PaseoMemorySyncSnapshotSchema,
   PaseoMemoryUpdateInputSchema,
 } from "./types.js";
@@ -45,6 +46,8 @@ export const MemoryClearResponseSchema = z.object({
 export const MemoryGetSyncSnapshotRequestSchema = z.object({
   type: z.literal("memory.get_sync_snapshot.request"),
   requestId: z.string(),
+  // COMPAT(memoryScopedSync): omitted by old clients to request the legacy full snapshot.
+  selection: PaseoMemorySyncSelectionSchema.optional(),
 });
 
 export const MemoryGetSyncSnapshotResponseSchema = z.object({

@@ -51,11 +51,9 @@ export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<v
 export interface TurnChangesContext {
   serverId: string;
   cwd: string;
-  isGit: boolean;
   readOnly: boolean;
   toast: ToastApi | null;
-  onOpen: (path: string) => void;
-  onReview: (path: string) => void;
+  onReview: (cwd: string, path?: string) => void;
 }
 
 export interface TurnMemoryContext {
@@ -78,6 +76,7 @@ export const TurnFooter = memo(function TurnFooter({
   onForkAssistantTurn,
   onForkInFlightTurn,
   changes,
+  changeItems,
   memory,
 }: {
   isRunning: boolean;
@@ -88,6 +87,7 @@ export const TurnFooter = memo(function TurnFooter({
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
   changes?: TurnChangesContext;
+  changeItems?: StreamItem[];
   memory?: TurnMemoryContext;
 }) {
   if (isRunning) {
@@ -111,6 +111,7 @@ export const TurnFooter = memo(function TurnFooter({
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
       changes={changes}
+      changeItems={changeItems}
       memory={memory}
     />
   );
@@ -123,6 +124,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   supportsTimelineCursor,
   onForkAssistantTurn,
   changes,
+  changeItems,
   memory,
 }: {
   strategy: TurnContentStrategy;
@@ -131,6 +133,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   changes?: TurnChangesContext;
+  changeItems?: StreamItem[];
   memory?: TurnMemoryContext;
 }) {
   const turnItems = useMemo(
@@ -152,7 +155,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         onForkAssistantTurn={onForkAssistantTurn}
         turnItems={turnItems}
       />
-      {changes ? <TurnChanges {...changes} items={turnItems} /> : null}
+      {changes ? <TurnChanges {...changes} items={changeItems ?? turnItems} /> : null}
       {memory ? (
         <TurnMemorySources
           agentId={memory.agentId}

@@ -22,6 +22,7 @@ function makeHost(overrides: Partial<ProjectSummary["hosts"][number]>) {
   return {
     serverId: "host-1",
     projectId: "project-1",
+    parentProjectId: null,
     projectName: "Project",
     projectCustomName: null,
     serverName: "Host 1",

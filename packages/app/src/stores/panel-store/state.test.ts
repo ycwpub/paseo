@@ -68,6 +68,22 @@ describe("panel-store explorer tab resolution", () => {
     ).toBe("files");
   });
 
+  it("restores the task summary tab for git and non-git checkouts", () => {
+    const key = buildExplorerCheckoutKey(serverId, cwd)!;
+    for (const isGit of [true, false]) {
+      expect(
+        resolveExplorerTabForCheckout({
+          serverId,
+          cwd,
+          isGit,
+          explorerTabByCheckout: {
+            [key]: "task-summary",
+          },
+        }),
+      ).toBe("task-summary");
+    }
+  });
+
   it("falls back to default when stored tab is invalid", () => {
     const key = buildExplorerCheckoutKey(serverId, cwd)!;
     expect(

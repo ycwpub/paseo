@@ -11,6 +11,7 @@ function descriptor(
 ): ProjectDescriptor {
   return {
     projectId: id,
+    parentProjectId,
     projectKey: key,
     projectDisplayName: "acme/app",
     projectCustomName: null,

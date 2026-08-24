@@ -107,6 +107,7 @@ import {
   CodexProviderOptionsSchema,
   type CodexProviderOptions,
 } from "./codex/options.js";
+import { resolveCodexSessionHome } from "./codex/session-home.js";
 
 function assertChildWithPipes(
   child: ChildProcess,
@@ -3368,6 +3369,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     name: string;
   } | null = null;
   private cachedSkills: Array<{ name: string; description: string; path: string }> | null = null;
+  private codexHome: string | null = null;
 
   constructor(
     config: AgentSessionConfig,
@@ -3462,7 +3464,10 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.registerRequestHandlers();
 
     try {
-      await client.request("initialize", buildCodexAppServerInitializeParams());
+      const initializeResponse = toObjectRecord(
+        await client.request("initialize", buildCodexAppServerInitializeParams()),
+      );
+      this.codexHome = nonEmptyString(initializeResponse?.codexHome) ?? this.codexHome;
       client.notify("initialized", {});
 
       await this.loadResolvedWorkspaceWrite();
@@ -4562,6 +4567,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         toolPolicy: this.config.toolPolicy,
         systemPrompt: this.config.systemPrompt,
         mcpServers: this.config.mcpServers,
+        codexHome: this.codexHome,
       },
     };
   }
@@ -7055,6 +7061,14 @@ export class CodexAppServerAgentClient implements AgentClient {
     options?: AgentResumeSessionOptions,
   ): Promise<AgentSession> {
     const storedConfig = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
+    const persistedCodexHome =
+      nonEmptyString(handle.metadata?.codexHome) ??
+      (await resolveCodexSessionHome(handle.sessionId, {
+        codexHome: launchContext?.env?.CODEX_HOME ?? process.env.CODEX_HOME,
+      }));
+    const launchEnv = persistedCodexHome
+      ? { ...launchContext?.env, CODEX_HOME: persistedCodexHome }
+      : launchContext?.env;
     const merged: AgentSessionConfig = {
       ...storedConfig,
       ...overrides,
@@ -7067,8 +7081,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       merged,
       handle,
       this.logger,
-      () =>
-        this.spawnAppServer(launchContext?.env, { goalsEnabled, agentId: launchContext?.agentId }),
+      () => this.spawnAppServer(launchEnv, { goalsEnabled, agentId: launchContext?.agentId }),
       this.sessionDeps(),
       false,
       goalsEnabled,

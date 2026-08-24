@@ -64,6 +64,7 @@ interface CodexSessionTestAccess {
   config: AgentSessionConfig;
   client: CodexClientLike | null;
   resolvedSandboxPolicy: Record<string, unknown> | null;
+  currentThreadId: string | null;
 }
 
 interface CodexClientLike {
@@ -1197,6 +1198,60 @@ describe("Codex app-server provider", () => {
       },
       capabilities: { experimentalApi: true, mcpServerOpenaiFormElicitation: true },
     });
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
+  test("persists the Codex home returned by app-server initialization", async () => {
+    const appServer = createFakeCodexAppServer({
+      initialize: () => ({ codexHome: "/tmp/aiden-app-home" }),
+      "collaborationMode/list": () => ({ data: [] }),
+      "skills/list": () => ({ data: [] }),
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await session.connect();
+    castInternals<CodexSessionTestAccess>(session).currentThreadId = "thread-with-custom-home";
+
+    expect(session.describePersistence()?.metadata.codexHome).toBe("/tmp/aiden-app-home");
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
+  test("resumes a persisted thread with its recorded Codex home", async () => {
+    const appServer = createFakeCodexAppServer();
+    const provider = new CodexAppServerAgentClient(createTestLogger());
+    const launchEnvironments: Array<Record<string, string> | undefined> = [];
+    const internals = castInternals<{
+      goalsEnabledPromise: Promise<boolean> | null;
+      autoReviewEnabledPromise: Promise<boolean> | null;
+      spawnAppServer: (
+        launchEnv?: Record<string, string>,
+      ) => Promise<ChildProcessWithoutNullStreams>;
+    }>(provider);
+    internals.goalsEnabledPromise = Promise.resolve(false);
+    internals.autoReviewEnabledPromise = Promise.resolve(false);
+    internals.spawnAppServer = async (launchEnv) => {
+      launchEnvironments.push(launchEnv);
+      return appServer.child;
+    };
+
+    const session = await provider.resumeSession({
+      sessionId: "thread-with-custom-home",
+      metadata: {
+        cwd: "/tmp/codex-question-test",
+        modeId: "auto",
+        model: "gpt-5.4",
+        codexHome: "/tmp/aiden-app-home",
+      },
+    });
+
+    expect(launchEnvironments).toEqual([{ CODEX_HOME: "/tmp/aiden-app-home" }]);
     appServer.assertNoErrors();
     await session.close();
   });

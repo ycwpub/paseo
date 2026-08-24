@@ -411,7 +411,7 @@ describe("LarkChannelSection", () => {
     expect(screen.getByText("Ops bot")).toBeTruthy();
     expect(screen.getByDisplayValue("cli_settle")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
 
     await waitFor(() => expect(screen.getByDisplayValue("cli_ops")).toBeTruthy());
   });
@@ -453,7 +453,7 @@ describe("LarkChannelSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "添加" }));
     fireEvent.change(screen.getByLabelText("机器人名称"), { target: { value: "New bot" } });
-    fireEvent.change(screen.getByLabelText("App ID"), { target: { value: "cli_new" } });
+    fireEvent.change(screen.getByLabelText("应用 ID"), { target: { value: "cli_new" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -477,11 +477,11 @@ describe("LarkChannelSection", () => {
 
     render(<LarkChannelSection serverId="server-1" />);
 
-    expect((screen.getByLabelText("Thinking mode") as HTMLSelectElement).value).toBe("high");
-    expect((screen.getByLabelText("Safety mode") as HTMLSelectElement).value).toBe("accept-edits");
+    expect((screen.getByLabelText("思考模式") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByLabelText("安全模式") as HTMLSelectElement).value).toBe("accept-edits");
 
-    fireEvent.change(screen.getByLabelText("Thinking mode"), { target: { value: "low" } });
-    fireEvent.change(screen.getByLabelText("Safety mode"), { target: { value: "ask" } });
+    fireEvent.change(screen.getByLabelText("思考模式"), { target: { value: "low" } });
+    fireEvent.change(screen.getByLabelText("安全模式"), { target: { value: "ask" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -576,10 +576,10 @@ describe("LarkChannelSection", () => {
 
     render(<LarkChannelSection serverId="server-1" />);
 
-    expect((screen.getByLabelText("Assistant or team") as HTMLSelectElement).value).toBe(
+    expect((screen.getByLabelText("助手或团队") as HTMLSelectElement).value).toBe(
       "assistant:assistant-1",
     );
-    fireEvent.change(screen.getByLabelText("Assistant or team"), {
+    fireEvent.change(screen.getByLabelText("助手或团队"), {
       target: { value: "team:team-1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

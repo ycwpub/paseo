@@ -68,6 +68,13 @@ try {
     );
     assert.strictEqual(configured.exitCode, 0, "relay set should succeed");
 
+    // Keep this isolated home away from a developer's already-running daemon.
+    // Pairing intentionally rejects a reachable daemon owned by another home.
+    const configPath = join(paseoHome, "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf-8"));
+    config.daemon = { ...config.daemon, listen: `127.0.0.1:${port}` };
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+
     const result = await daemonCommand(["pair"]);
     assert.strictEqual(result.exitCode, 0, "daemon pair should succeed");
     assert(

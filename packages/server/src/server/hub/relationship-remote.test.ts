@@ -8,6 +8,7 @@ import { afterEach, expect, test } from "vitest";
 import { WebSocket } from "ws";
 import type { HubExecutionAgents } from "./daemon-executions.js";
 import {
+  type HubConnectionState,
   HubRelationshipController,
   type HubRelationshipClock,
   type HubRelationshipRetryPolicy,
@@ -273,6 +274,7 @@ test("controller redials once after a failed upgrade without also handling its c
   const controller = await connectController(hub, clock);
 
   await hub.expectAttemptReleased(1);
+  await expectControllerState(controller, "reconnecting");
 
   expect(controller.status().state).toBe("reconnecting");
   expect(clock.scheduledAttempts()).toEqual([0]);
@@ -562,4 +564,18 @@ async function withDeadline<T>(promise: Promise<T>, message: string): Promise<T>
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function expectControllerState(
+  controller: HubRelationshipController,
+  expected: HubConnectionState,
+): Promise<void> {
+  await withDeadline(
+    (async () => {
+      while (controller.status().state !== expected) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    })(),
+    `Hub controller did not reach ${expected}`,
+  );
 }

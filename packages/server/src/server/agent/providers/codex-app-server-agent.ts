@@ -255,14 +255,6 @@ const CODEX_MODES: AgentMode[] = [
 ];
 
 const DEFAULT_CODEX_MODE_ID = "auto";
-const PASEO_COMPACT_PROMPT =
-  "Compact this coding-agent conversation into a concise state summary for later continuation. " +
-  "Do not reproduce the transcript. Keep the summary under 4,000 tokens and preserve only the " +
-  "user's goal, durable instructions and constraints, decisions, modified files and current diff " +
-  "state, commands or tests and their outcomes, unresolved errors, and exact next steps. Deduplicate " +
-  "repeated messages, routing metadata, logs, tool output, and prior summaries. Never quote large " +
-  "blobs; prioritize actionable state when space is limited.";
-const PROACTIVE_COMPACTION_CONTEXT_USAGE_RATIO = 0.8;
 const MAX_OUTPUT_TOKENS_CONTINUATION_LIMIT = 8;
 const MAX_OUTPUT_TOKENS_CONTINUATION_PROMPT =
   "The previous response reached the model output-token limit before the task completed. Context compaction has been attempted automatically. Continue from the current workspace and conversation state without repeating completed work. Keep responses and tool calls concise, split large patches and command arguments into smaller operations, and finish the original task.";
@@ -3306,7 +3298,6 @@ export class CodexAppServerAgentSession implements AgentSession {
   private maxOutputTokensRecoveryInProgress = false;
   private automaticCompactionWaiter: AutomaticCompactionWaiter | null = null;
   private pendingAutomaticCompactionStarts = 0;
-  private lastProactiveCompactionUsageKey: string | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
   private serviceTier: "fast" | null = null;
   private planModeEnabled = false;
@@ -4205,7 +4196,9 @@ export class CodexAppServerAgentSession implements AgentSession {
         hasDeveloperInstructions: turnStart.hasDeveloperInstructions,
         hasCodexConfig: turnStart.hasCodexConfig,
       });
-      await this.maybeCompactBeforeTurn();
+      // Codex owns automatic compaction thresholds and refreshes its active
+      // context internally. Starting an extra compaction from cached usage can
+      // immediately retrigger after a completed compaction.
       await this.client.request("turn/start", turnStart.params, TURN_START_TIMEOUT_MS);
       return { turnId };
     } catch (error) {
@@ -4772,53 +4765,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
   }
 
-  private contextUsageKey(): string | null {
-    const max = this.latestUsage?.contextWindowMaxTokens;
-    const used = this.latestUsage?.contextWindowUsedTokens;
-    if (
-      typeof max !== "number" ||
-      !Number.isFinite(max) ||
-      max <= 0 ||
-      typeof used !== "number" ||
-      !Number.isFinite(used) ||
-      used <= 0
-    ) {
-      return null;
-    }
-    return `${max}:${used}`;
-  }
-
-  private async maybeCompactBeforeTurn(): Promise<void> {
-    const max = this.latestUsage?.contextWindowMaxTokens;
-    const used = this.latestUsage?.contextWindowUsedTokens;
-    const usageKey = this.contextUsageKey();
-    if (
-      usageKey === null ||
-      usageKey === this.lastProactiveCompactionUsageKey ||
-      typeof max !== "number" ||
-      typeof used !== "number" ||
-      used / max < PROACTIVE_COMPACTION_CONTEXT_USAGE_RATIO
-    ) {
-      return;
-    }
-
-    this.logger.info(
-      {
-        threadId: this.currentThreadId,
-        contextWindowMaxTokens: max,
-        contextWindowUsedTokens: used,
-      },
-      "Proactively compacting Codex context before starting the next turn",
-    );
-    const completed = await this.runAutomaticCompaction("context_usage");
-    if (completed) {
-      this.lastProactiveCompactionUsageKey = usageKey;
-    }
-  }
-
-  private async runAutomaticCompaction(
-    reason: "context_usage" | "max_output_tokens",
-  ): Promise<boolean> {
+  private async runAutomaticCompaction(reason: "max_output_tokens"): Promise<boolean> {
     if (!this.client || !this.currentThreadId) {
       return false;
     }
@@ -5065,8 +5012,10 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private buildCodexInnerConfig(): Record<string, unknown> | null {
+    // Leave compact_prompt unset by default so Codex uses the same context
+    // reconstruction strategy as its first-party app. Explicit user overrides
+    // in customCodexConfig/providerOptions are still forwarded.
     const innerConfig: Record<string, unknown> = {
-      compact_prompt: PASEO_COMPACT_PROMPT,
       ...this.deps.customCodexConfig,
       ...this.providerOptions,
     };

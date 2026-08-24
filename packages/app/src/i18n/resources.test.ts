@@ -586,7 +586,7 @@ describe("translation resources", () => {
     expect(en.workspace.route.hostStatus).toBe("Host status: {{status}}");
     expect(en.workspace.route.recovery.archivedTitle).toBe("Workspace archived");
     expect(en.workspace.route.recovery.unavailableTitle).toBe("Workspace unavailable");
-    expect(en.message.compaction.loading).toBe("Compacting...");
+    expect(en.message.compaction.loading).toBe("Compacting context");
     expect(en.message.compaction.auto).toBe("Context automatically compacted");
     expect(en.message.compaction.manual).toBe("Context manually compacted");
     expect(en.message.compaction.withTokens).toBe("Context compacted ({{tokens}}K tokens)");

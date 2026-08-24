@@ -1076,7 +1076,9 @@ export const zhCN: TranslationResources = {
       empty: "还没有任务。",
     },
     compaction: {
-      loading: "正在压缩...",
+      loading: "正在压缩上下文",
+      loadingAuto: "正在自动压缩上下文",
+      loadingManual: "正在手动压缩上下文",
       auto: "上下文已自动压缩",
       manual: "上下文已手动压缩",
       withTokens: "上下文已压缩（{{tokens}}K tokens）",

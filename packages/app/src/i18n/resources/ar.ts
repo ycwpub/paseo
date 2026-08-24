@@ -513,6 +513,8 @@ export const ar: TranslationResources = {
     },
     compaction: {
       loading: "الضغط...",
+      loadingAuto: "جارٍ ضغط السياق تلقائيًا",
+      loadingManual: "جارٍ ضغط السياق يدويًا",
       auto: "يتم ضغط السياق تلقائيًا",
       manual: "تم ضغط السياق يدويًا",
       withTokens: "تم ضغط السياق (رموز{{tokens}}K)",

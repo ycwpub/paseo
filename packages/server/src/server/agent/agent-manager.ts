@@ -82,6 +82,7 @@ import {
   type ProviderSubagentDescriptor,
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
+import { shouldPublishWhileForegroundRunIsPending } from "./pending-run-event-policy.js";
 import type { McpStore } from "../mcp/mcp-store.js";
 import type { SkillMaterializer } from "../skill/skill-materializer.js";
 import type { SkillStore } from "../skill/skill-store.js";
@@ -3378,7 +3379,7 @@ export class AgentManager {
       "agent.manager.enqueue",
     );
     const pendingRun = this.runs.getPendingRun(agentId);
-    if (pendingRun && !pendingRun.started) {
+    if (pendingRun && !pendingRun.started && !shouldPublishWhileForegroundRunIsPending(event)) {
       pendingRun.stagedEvents.push(event);
       return;
     }

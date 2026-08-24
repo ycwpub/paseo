@@ -525,6 +525,8 @@ export const ptBR: TranslationResources = {
     },
     compaction: {
       loading: "Compactando...",
+      loadingAuto: "Compactando o contexto automaticamente",
+      loadingManual: "Compactando o contexto manualmente",
       auto: "Contexto compactado automaticamente",
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado ({{tokens}}K tokens)",

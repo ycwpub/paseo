@@ -54,7 +54,7 @@ import {
 import { getDesktopHost } from "@/desktop/host";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
-import { useSessionStore } from "@/stores/session-store";
+import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { invalidateCheckoutGitQueriesForServer } from "@/git/query-keys";
 import { queryClient } from "@/data/query-client";
@@ -68,6 +68,7 @@ import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/co
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { encodeImages } from "@/utils/encode-images";
+import { hasActiveContextCompaction } from "@/timeline/compaction-state";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import {
@@ -2268,7 +2269,13 @@ export class HostRuntimeStore {
     const session = store.sessions[serverId];
     const queue = session?.queuedMessages.get(agentId);
     const client = session?.client;
-    if (!client || !queue?.length || session.initializingAgents.get(agentId) === true) {
+    const isBusy =
+      selectAgentTurnPresentation(session, agentId).isActive ||
+      hasActiveContextCompaction(
+        session?.agentStreamTail.get(agentId),
+        session?.agentStreamHead.get(agentId),
+      );
+    if (!client || !queue?.length || session?.initializingAgents.get(agentId) === true || isBusy) {
       return;
     }
     this.queuedAgentDrainInFlight.add(drainKey);

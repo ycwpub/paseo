@@ -527,6 +527,8 @@ export const ru: TranslationResources = {
     },
     compaction: {
       loading: "Уплотнение...",
+      loadingAuto: "Автоматическое сжатие контекста",
+      loadingManual: "Ручное сжатие контекста",
       auto: "Контекст автоматически сжимается",
       manual: "Контекст сжимается вручную",
       withTokens: "Сжатый контекст (токены{{tokens}}K)",

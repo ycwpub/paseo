@@ -4317,4 +4317,62 @@ describe("createAgentStreamReducerQueue", () => {
     expect(commits).toEqual(["agent-1:queued"]);
     expect(scheduler.size).toBe(0);
   });
+
+  it("reports committed compaction completion after updating the timeline", () => {
+    const scheduler = createManualScheduler();
+    let currentTail: StreamItem[] = [];
+    let currentHead: StreamItem[] = [];
+    const committedStatuses: string[] = [];
+    const queue = createAgentStreamReducerQueue({
+      getSnapshot: () => ({
+        currentTail,
+        currentHead,
+        currentCursor: undefined,
+      }),
+      commit: (_agentId, result, events) => {
+        currentTail = result.tail;
+        currentHead = result.head;
+        const latestCompaction = currentTail.find((item) => item.kind === "compaction");
+        const completedEvent = events.some(
+          ({ event }) =>
+            event.type === "timeline" &&
+            event.item.type === "compaction" &&
+            event.item.status === "completed",
+        );
+        if (completedEvent && latestCompaction?.kind === "compaction") {
+          committedStatuses.push(latestCompaction.status);
+        }
+      },
+      handleSideEffects: () => {},
+      scheduleFlush: scheduler.schedule,
+      cancelFlush: scheduler.cancel,
+    });
+
+    queue.enqueue(
+      "agent-1",
+      makeStreamReducerEvent(
+        {
+          type: "timeline",
+          provider: "codex",
+          item: { type: "compaction", status: "loading", trigger: "auto" },
+        },
+        1,
+      ),
+    );
+    queue.flushAgent("agent-1");
+    queue.enqueue(
+      "agent-1",
+      makeStreamReducerEvent(
+        {
+          type: "timeline",
+          provider: "codex",
+          item: { type: "compaction", status: "completed", trigger: "auto" },
+        },
+        2,
+      ),
+    );
+    queue.flushAgent("agent-1");
+
+    expect(committedStatuses).toEqual(["completed"]);
+  });
 });

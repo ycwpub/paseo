@@ -745,6 +745,17 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       setAgentStreamState,
       setAgentTimelineCursor,
       recoverTimelineGap,
+      onCommittedEvents: (agentId, events) => {
+        const completedCompaction = events.some(
+          ({ event }) =>
+            event.type === "timeline" &&
+            event.item.type === "compaction" &&
+            event.item.status === "completed",
+        );
+        if (completedCompaction) {
+          getHostRuntimeStore().drainQueuedAgentMessage(serverId, agentId);
+        }
+      },
     });
 
     const unsubAgentStream = client.on("agent_stream", (message) => {

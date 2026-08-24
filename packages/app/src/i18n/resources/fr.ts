@@ -527,6 +527,8 @@ export const fr: TranslationResources = {
     },
     compaction: {
       loading: "Compactage...",
+      loadingAuto: "Compactage automatique du contexte",
+      loadingManual: "Compactage manuel du contexte",
       auto: "Contexte automatiquement compacté",
       manual: "Contexte compacté manuellement",
       withTokens: "Contexte compacté (jetons{{tokens}}K)",

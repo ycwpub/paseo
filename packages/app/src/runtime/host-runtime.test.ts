@@ -2708,6 +2708,73 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
+  it("keeps queued messages blocked until context compaction completes", async () => {
+    const host = makeHost({ serverId: "srv_compaction_queue_drain" });
+    const fakeClient = new FakeDaemonClient();
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: null,
+        }),
+        getClientId: async () => "cid_compaction_queue_drain",
+      },
+    });
+    const sessionStore = useSessionStore.getState();
+    sessionStore.initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
+    sessionStore.setQueuedMessages(
+      host.serverId,
+      new Map([["agent", [{ id: "after-compaction", text: "continue", attachments: [] }]]]),
+    );
+    sessionStore.setAgentStreamTail(
+      host.serverId,
+      new Map([
+        [
+          "agent",
+          [
+            {
+              kind: "compaction",
+              id: "compaction",
+              timestamp: new Date(0),
+              status: "loading",
+              trigger: "auto",
+            },
+          ],
+        ],
+      ]),
+    );
+
+    store.drainQueuedAgentMessage(host.serverId, "agent");
+    expect(fakeClient.sentAgentMessages).toEqual([]);
+
+    sessionStore.setAgentStreamTail(
+      host.serverId,
+      new Map([
+        [
+          "agent",
+          [
+            {
+              kind: "compaction",
+              id: "compaction",
+              timestamp: new Date(0),
+              status: "completed",
+              trigger: "auto",
+            },
+          ],
+        ],
+      ]),
+    );
+    store.drainQueuedAgentMessage(host.serverId, "agent");
+    await fakeClient.waitForSentMessages(1);
+
+    expect(fakeClient.sentAgentMessages.map(([agentId, text]) => [agentId, text])).toEqual([
+      ["agent", "continue"],
+    ]);
+    useSessionStore.getState().clearSession(host.serverId);
+  });
+
   it("uses legacy GitHub attachments when draining a queue for an old daemon", async () => {
     const host = makeHost({ serverId: "srv_legacy_queue_attachment" });
     const fakeClient = new FakeDaemonClient();

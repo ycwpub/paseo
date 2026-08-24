@@ -1103,7 +1103,9 @@ export const en = {
       empty: "No tasks yet.",
     },
     compaction: {
-      loading: "Compacting...",
+      loading: "Compacting context",
+      loadingAuto: "Automatically compacting context",
+      loadingManual: "Manually compacting context",
       auto: "Context automatically compacted",
       manual: "Context manually compacted",
       withTokens: "Context compacted ({{tokens}}K tokens)",

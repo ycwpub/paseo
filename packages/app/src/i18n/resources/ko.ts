@@ -434,6 +434,8 @@ const koOverrides = {
     },
     compaction: {
       loading: "압축하는 중...",
+      loadingAuto: "컨텍스트를 자동으로 압축하는 중",
+      loadingManual: "컨텍스트를 수동으로 압축하는 중",
       auto: "컨텍스트가 자동으로 압축되었습니다",
       manual: "컨텍스트가 수동으로 압축되었습니다",
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",

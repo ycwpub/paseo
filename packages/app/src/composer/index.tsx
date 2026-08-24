@@ -61,6 +61,7 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
+import { hasActiveContextCompaction } from "@/timeline/compaction-state";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
@@ -1614,12 +1615,20 @@ export function Composer({
   const hasActiveTurn = useSessionStore(
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isActive,
   );
+  const isContextCompacting = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return hasActiveContextCompaction(
+      session?.agentStreamTail.get(agentId),
+      session?.agentStreamHead.get(agentId),
+    );
+  });
   const isCancellingAgent = useSessionStore(
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isCancelling,
   );
   const beginAgentCancellation = useSessionStore((state) => state.beginAgentCancellation);
   const settleAgentCancellation = useSessionStore((state) => state.settleAgentCancellation);
   const isAgentRunning = hasActiveTurn;
+  const shouldQueueMessage = hasActiveTurn || isContextCompacting;
   const hasAgent = agentState.status !== null;
 
   const queueWriter = useMemo<QueueWriter>(
@@ -1663,7 +1672,7 @@ export function Composer({
         allowEmptySubmit,
         forceSend,
         submitBehavior,
-        isAgentRunning,
+        isAgentRunning: shouldQueueMessage,
         // Parent-managed submits are still valid submit paths even when the
         // transport is disconnected, because the parent decides the failure mode.
         canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
@@ -1695,7 +1704,7 @@ export function Composer({
       clearDraft,
       completeSubmit,
       hasExternalContent,
-      isAgentRunning,
+      shouldQueueMessage,
       queueMessage,
       sessionResourceSelection,
       setSelectedAttachments,

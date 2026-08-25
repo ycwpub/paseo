@@ -1501,6 +1501,36 @@ test("createAgent composes current global knowledge with daemon and per-Agent pr
   expect(record?.config).not.toHaveProperty("daemonAppendSystemPrompt");
 });
 
+test("resumeAgentFromPersistence waits for global cloud knowledge before launching", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const client = new TestAgentClient();
+  const manager = new AgentManager({
+    clients: {
+      codex: client,
+    },
+    registry: storage,
+    logger,
+    daemonKnowledgePromptComposer: async () => {
+      await Promise.resolve();
+      return "Downloaded global standard.";
+    },
+    idFactory: () => "00000000-0000-4000-8000-000000000108",
+  });
+  const handle: AgentPersistenceHandle = {
+    provider: "codex",
+    sessionId: "session-cloud-knowledge",
+    metadata: {
+      cwd: workdir,
+    },
+  };
+
+  await manager.resumeAgentFromPersistence(handle);
+
+  expect(client.resumeOverrides[0]?.daemonAppendSystemPrompt).toBe("Downloaded global standard.");
+});
+
 test("daemon append system prompt is injected into Pi configs", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
   const storagePath = join(workdir, "agents");

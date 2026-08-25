@@ -716,7 +716,7 @@ describe("project command-center RPCs", () => {
               projectDisplayName: "new-project",
               projectCustomName: null,
               projectCustomIconRevision: null,
-              projectRootPath: join(paseoHome, "prj_created_directory"),
+              projectRootPath: join(paseoHome, "projects", "prj_created_directory"),
               projectSourceDirectory: directoryPath,
               projectKind: "non_git",
             },

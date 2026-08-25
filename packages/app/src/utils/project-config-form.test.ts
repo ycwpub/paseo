@@ -56,7 +56,7 @@ describe("configToDraft", () => {
     ]);
     expect(draft.projectDirectories.workspaceData).toEqual([
       expect.objectContaining({
-        path: "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}",
+        path: "~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}",
         enabled: true,
       }),
     ]);

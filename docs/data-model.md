@@ -2,8 +2,9 @@
 
 ## Project identity
 
-Every Project receives a stable host-managed Project path at `$PASEO_HOME/{projectId}`. This path
-stores `paseo.json`, Project-owned files, and Workspace data regardless of directory mode.
+Every Project receives a stable host-managed Project path at
+`$PASEO_HOME/projects/{projectId}`. This path stores `paseo.json`, Project-owned files, and
+Workspace data regardless of directory mode.
 Single-directory Projects additionally retain the exact directory selected by the caller,
 normalized lexically with `path.resolve` (never `realpath`), as `rootPath`; that directory is a
 project/source directory, not the Project path. Multiple-directory Projects use `rootPath: null`.
@@ -49,8 +50,8 @@ All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 ## Project resource configuration
 
 Project resource configuration is stored at
-`$PASEO_HOME/{projectId}/paseo.json` for every directory mode. Legacy path-shaped IDs use a safe
-hashed directory name so they cannot escape `$PASEO_HOME`.
+`$PASEO_HOME/projects/{projectId}/paseo.json` for every directory mode. Legacy path-shaped IDs use
+a safe hashed directory name so they cannot escape `$PASEO_HOME/projects`.
 
 - A single-directory Project keeps its registered `rootPath` only as its project/source directory.
 - A multiple-directory Project has `rootPath: null` and uses configured project directories plus
@@ -58,11 +59,13 @@ hashed directory name so they cannot escape `$PASEO_HOME`.
 - A Project created without a directory starts in multiple-directory mode with an empty Project
   directory list.
 
-Legacy `paseo.json` files in a single project directory or under the former
-`$PASEO_HOME/projects/...` locations remain readable and migrate to the managed Project path on the
-next successful write. Changing to single-directory mode updates `rootPath` to the selected project
-directory. Changing to multiple-directory mode clears `rootPath`; neither change moves the current
-configuration away from the managed Project path.
+Legacy `paseo.json` files in a single project directory, the former
+`$PASEO_HOME/{projectId}` Project root, or older `$PASEO_HOME/projects/...` locations remain
+readable and migrate to the managed Project path on the next successful write. Other
+Project-owned data under the former `$PASEO_HOME/{projectId}` root is merged into the new managed
+Project path without overwriting newer files. Changing to single-directory mode updates
+`rootPath` to the selected project directory. Changing to multiple-directory mode clears
+`rootPath`; neither change moves the current configuration away from the managed Project path.
 
 ```json
 {
@@ -100,8 +103,8 @@ relative resource paths resolve from its registered project directory. For a mul
 Project, they resolve from the managed Project path. `{{projectRoot}}` always means the managed
 Project path, while `{{projectDirectory}}` means the single project directory when present and
 otherwise the managed Project path. Multiple-directory Projects always include their private
-`~/.paseo/{{projectId}}` directory as a writable directory, followed by configured code directories.
-Project-exclusive repositories and files are stored below this private Project path.
+`~/.paseo/projects/{{projectId}}` directory as a writable directory, followed by configured code
+directories. Project-exclusive repositories and files are stored below this private Project path.
 For a single-directory Project with no explicit Project directory entry, the active Workspace
 directory is used so worktree Agents do not accidentally edit the main checkout. Project
 directories are writable and read on demand. Configured index Skill directories are consulted
@@ -120,7 +123,8 @@ Project knowledge has three explicit policies:
 
 Cloud documents are cached as Markdown plus metadata before Agent launch. Global cache files live
 under `$PASEO_HOME/knowledge/cloud-documents/`; Project cache files live under
-`$PASEO_HOME/{projectId}/knowledge/cloud-documents/`. A cache is checked again after 24 hours.
+`$PASEO_HOME/projects/{projectId}/knowledge/cloud-documents/`. A cache is checked again after 24
+hours.
 Refresh failure keeps an existing cache available and marks it stale. If the source requires login
 or authorization, Paseo raises a permission request in the Agent conversation that triggered the
 refresh. Credentials, cookies, and tokens are never written to cache metadata.
@@ -139,7 +143,7 @@ When a single-directory Project omits directory configuration, Paseo uses these 
 - Project directories: `{{workspaceDirectory}}`
 - General AI knowledge directories: `.agents`, `.agent`, `.claude`, `.codex`, and `.trae`
 - Index Skill directories: none
-- Workspace data directories: `~/.paseo/{{projectId}}/workspaces/{{workspaceId}}`
+- Workspace data directories: `~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}`
 
 Missing default knowledge directories are ignored by the Agent context until they exist. The
 right-side file explorer exposes all four directory categories and supports switching among every
@@ -193,15 +197,16 @@ $PASEO_HOME/
 ├── relay-connection-history.json        # 30-day local Relay connection history
 ├── schedules/
 │   └── {scheduleId}.json                # One file per schedule
-├── {projectId}/                         # Project path for every directory mode
-│   ├── paseo.json                       # Project resource configuration
-│   ├── <Project-owned files>
-│   └── workspaces/
-│       └── {workspaceId}/                # Workspace-scoped data
 ├── projects/
 │   ├── projects.json                    # Project registry
 │   ├── workspaces.json                  # Workspace registry
-│   ├── {projectId}/                     # Legacy Project metadata/config migration source
+│   ├── {projectId}/                     # Project path for every directory mode
+│   │   ├── paseo.json                   # Project resource configuration
+│   │   ├── <Project-owned files>
+│   │   └── workspaces/
+│   │       └── {workspaceId}/            # Workspace-scoped data
+│   ├── configs/                          # Legacy Project config migration source
+│   ├── directories/                      # Legacy Project directory migration source
 │   └── icons/                           # Host-local custom project icon images
 ├── workspaces/                           # Legacy Workspace data migrated on access
 ├── runtime/

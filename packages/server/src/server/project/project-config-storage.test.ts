@@ -256,10 +256,10 @@ describe("project config storage", () => {
     });
   });
 
-  it("reads the previous Project metadata config and migrates it on the next write", () => {
+  it("reads the previous Project root config and migrates it on the next write", () => {
     const paseoHome = makeDirectory("project-config-home-");
-    const project = { projectId: "prj_legacy_metadata", rootPath: null };
-    const legacyPath = path.join(paseoHome, "projects", project.projectId, "paseo.json");
+    const project = { projectId: "prj_legacy_root", rootPath: null };
+    const legacyPath = path.join(paseoHome, project.projectId, "paseo.json");
     mkdirSync(path.dirname(legacyPath), { recursive: true });
     writeFileSync(
       legacyPath,

@@ -36,7 +36,7 @@ describe("project storage paths", () => {
         paseoHome: "/home/paseo",
         project: { projectId: "prj_single", rootPath: "/repo/app" },
       }),
-    ).toBe(path.resolve("/home/paseo/prj_single"));
+    ).toBe(path.resolve("/home/paseo/projects/prj_single"));
   });
 
   it("uses a readable isolated path for a multiple-directory Project", () => {
@@ -47,7 +47,7 @@ describe("project storage paths", () => {
         paseoHome,
         project: { projectId: "prj_multiple", rootPath: null },
       }),
-    ).toBe(path.join(paseoHome, "prj_multiple"));
+    ).toBe(path.join(paseoHome, "projects", "prj_multiple"));
   });
 
   it("contains legacy path-shaped IDs inside the managed storage root", () => {
@@ -62,7 +62,7 @@ describe("project storage paths", () => {
 
     expect(path.dirname(projectPath)).toBe(path.join(paseoHome, "projects"));
     expect(path.basename(projectPath)).toMatch(/^legacy-[a-f0-9]{64}$/u);
-    expect(path.dirname(projectStorageRoot)).toBe(paseoHome);
+    expect(projectStorageRoot).toBe(projectPath);
     expect(path.basename(projectStorageRoot)).toMatch(/^legacy-[a-f0-9]{64}$/u);
     expect(path.dirname(workspacePath)).toBe(path.join(projectStorageRoot, "workspaces"));
     expect(path.basename(workspacePath)).toMatch(/^legacy-[a-f0-9]{64}$/u);
@@ -91,22 +91,50 @@ describe("project storage paths", () => {
     expect(existsSync(legacyPath)).toBe(false);
   });
 
-  it("moves Project-owned files from the metadata directory into the private Project root", () => {
+  it("migrates the previous private Project root into the projects directory", () => {
     const paseoHome = makeRoot();
     const projectId = "prj_storage_root_migrate";
     const projectPath = ensureManagedProjectPath(paseoHome, projectId);
-    mkdirSync(path.join(projectPath, "checkout", "src"), { recursive: true });
+    const legacyProjectStorageRoot = path.join(paseoHome, projectId);
+    mkdirSync(path.join(legacyProjectStorageRoot, "checkout", "src"), { recursive: true });
     writeFileSync(path.join(projectPath, "paseo.json"), '{"project":{}}');
-    writeFileSync(path.join(projectPath, "checkout", "src", "index.ts"), "export {};");
+    writeFileSync(path.join(legacyProjectStorageRoot, "checkout", "src", "index.ts"), "export {};");
 
     const projectStorageRoot = ensureManagedProjectStorageRoot(paseoHome, projectId);
 
-    expect(projectStorageRoot).toBe(path.join(paseoHome, projectId));
+    expect(projectStorageRoot).toBe(path.join(paseoHome, "projects", projectId));
     expect(readFileSync(path.join(projectPath, "paseo.json"), "utf8")).toBe('{"project":{}}');
-    expect(existsSync(path.join(projectPath, "checkout"))).toBe(false);
     expect(readFileSync(path.join(projectStorageRoot, "checkout", "src", "index.ts"), "utf8")).toBe(
       "export {};",
     );
+    expect(existsSync(legacyProjectStorageRoot)).toBe(false);
+  });
+
+  it("merges the previous Project root without overwriting files in the new root", () => {
+    const paseoHome = makeRoot();
+    const projectId = "prj_storage_root_merge";
+    const projectStorageRoot = resolveManagedProjectStorageRoot(paseoHome, projectId);
+    const legacyProjectStorageRoot = path.join(paseoHome, projectId);
+    mkdirSync(path.join(projectStorageRoot, "checkout"), { recursive: true });
+    mkdirSync(path.join(legacyProjectStorageRoot, "checkout"), { recursive: true });
+    writeFileSync(path.join(projectStorageRoot, "checkout", "shared.txt"), "new root");
+    writeFileSync(path.join(legacyProjectStorageRoot, "checkout", "shared.txt"), "legacy root");
+    writeFileSync(
+      path.join(legacyProjectStorageRoot, "checkout", "legacy-only.txt"),
+      "legacy only",
+    );
+
+    ensureManagedProjectStorageRoot(paseoHome, projectId);
+
+    expect(readFileSync(path.join(projectStorageRoot, "checkout", "shared.txt"), "utf8")).toBe(
+      "new root",
+    );
+    expect(readFileSync(path.join(projectStorageRoot, "checkout", "legacy-only.txt"), "utf8")).toBe(
+      "legacy only",
+    );
+    expect(
+      readFileSync(path.join(legacyProjectStorageRoot, "checkout", "shared.txt"), "utf8"),
+    ).toBe("legacy root");
   });
 
   it("migrates the previous code_repos layout without overwriting Project-root files", () => {
@@ -157,9 +185,28 @@ describe("project storage paths", () => {
 
     const workspacePath = ensureManagedWorkspacePath(paseoHome, projectId, workspaceId);
 
-    expect(workspacePath).toBe(path.join(paseoHome, projectId, "workspaces", workspaceId));
+    expect(workspacePath).toBe(
+      path.join(paseoHome, "projects", projectId, "workspaces", workspaceId),
+    );
     expect(existsSync(path.join(workspacePath, "notes.md"))).toBe(true);
     expect(existsSync(legacyPath)).toBe(false);
+  });
+
+  it("migrates Workspace data from the previous Project root", () => {
+    const paseoHome = makeRoot();
+    const projectId = "prj_scoped_workspace_migrate";
+    const workspaceId = "wks_scoped_migrate";
+    const legacyPath = path.join(paseoHome, projectId, "workspaces", workspaceId);
+    mkdirSync(legacyPath, { recursive: true });
+    writeFileSync(path.join(legacyPath, "notes.md"), "workspace notes");
+
+    const workspacePath = ensureManagedWorkspacePath(paseoHome, projectId, workspaceId);
+
+    expect(workspacePath).toBe(
+      path.join(paseoHome, "projects", projectId, "workspaces", workspaceId),
+    );
+    expect(readFileSync(path.join(workspacePath, "notes.md"), "utf8")).toBe("workspace notes");
+    expect(existsSync(path.join(paseoHome, projectId))).toBe(false);
   });
 
   it("merges legacy Workspace data without overwriting newer Project-scoped files", () => {
@@ -191,6 +238,7 @@ describe("project storage paths", () => {
     );
     const projectStorageRoot = resolveManagedProjectStorageRoot(paseoHome, "prj_remove");
     const projectOwnedFilePath = path.join(projectStorageRoot, "project-notes.md");
+    const legacyProjectStorageRoot = path.join(paseoHome, "prj_remove");
     const otherProjectOwnedCodePath = path.join(
       resolveManagedProjectStorageRoot(paseoHome, "prj_keep"),
       "checkout",
@@ -205,6 +253,12 @@ describe("project storage paths", () => {
       "prj_workspace_keep",
       "wks_keep",
     );
+    const legacyProjectWorkspacePath = path.join(
+      paseoHome,
+      "prj_workspace_remove",
+      "workspaces",
+      "wks_remove",
+    );
     const legacyWorkspacePath = path.join(paseoHome, "workspaces", "wks_remove");
     const sharedCodePath = path.join(paseoHome, "shared-code", "checkout");
     for (const directory of [
@@ -214,7 +268,9 @@ describe("project storage paths", () => {
       otherProjectPath,
       workspacePath,
       otherWorkspacePath,
+      legacyProjectWorkspacePath,
       legacyWorkspacePath,
+      legacyProjectStorageRoot,
     ]) {
       mkdirSync(directory, { recursive: true });
       writeFileSync(path.join(directory, "temporary.txt"), "temporary");
@@ -226,10 +282,12 @@ describe("project storage paths", () => {
 
     expect(existsSync(projectPath)).toBe(false);
     expect(existsSync(projectStorageRoot)).toBe(false);
+    expect(existsSync(legacyProjectStorageRoot)).toBe(false);
     expect(existsSync(projectOwnedFilePath)).toBe(false);
     expect(existsSync(projectOwnedCodePath)).toBe(false);
     expect(existsSync(sharedCodePath)).toBe(true);
     expect(existsSync(workspacePath)).toBe(false);
+    expect(existsSync(legacyProjectWorkspacePath)).toBe(false);
     expect(existsSync(resolveManagedProjectStorageRoot(paseoHome, "prj_workspace_remove"))).toBe(
       true,
     );

@@ -19,7 +19,7 @@ import {
   writePaseoConfigFileForEdit,
 } from "../../utils/paseo-config-file.js";
 import {
-  resolveManagedProjectPath,
+  resolveLegacyManagedProjectStorageRoot,
   resolveManagedProjectStorageRoot,
   resolveProjectPath,
 } from "./project-storage-paths.js";
@@ -58,7 +58,10 @@ export function resolveGlobalProjectConfigPath(paseoHome: string, projectId: str
 }
 
 function resolveLegacyManagedProjectConfigPath(paseoHome: string, projectId: string): string {
-  return path.join(resolveManagedProjectPath(paseoHome, projectId), PASEO_CONFIG_FILE_NAME);
+  return path.join(
+    resolveLegacyManagedProjectStorageRoot(paseoHome, projectId),
+    PASEO_CONFIG_FILE_NAME,
+  );
 }
 
 function resolveLegacyGlobalProjectConfigPath(paseoHome: string, projectId: string): string {

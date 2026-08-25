@@ -11,7 +11,7 @@ describe("paseo config schema", () => {
       project: ["{{workspaceDirectory}}"],
       knowledge: [],
       indexSkill: [],
-      workspaceData: ["~/.paseo/{{projectId}}/workspaces/{{workspaceId}}"],
+      workspaceData: ["~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}"],
     });
   });
 
@@ -62,16 +62,19 @@ describe("paseo config schema", () => {
       project: ["{{workspaceDirectory}}"],
       knowledge: ["docs", "/opt/company/standards", "../legacy"],
       indexSkill: [],
-      workspaceData: ["~/.paseo/{{projectId}}/workspaces/{{workspaceId}}"],
+      workspaceData: ["~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}"],
     });
   });
 
-  it("upgrades the legacy default Workspace data directory", () => {
+  it.each([
+    "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}",
+    "~/.paseo/workspaces/{{workspaceId}}",
+  ])("upgrades the legacy default Workspace data directory %s", (legacyPath) => {
     expect(
       resolvePaseoProjectDirectoryValues({
-        workspaceData: ["~/.paseo/workspaces/{{workspaceId}}"],
+        workspaceData: [legacyPath],
       }).workspaceData,
-    ).toEqual(["~/.paseo/{{projectId}}/workspaces/{{workspaceId}}"]);
+    ).toEqual(["~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}"]);
   });
 
   it("parses an empty config without metadata generation", () => {

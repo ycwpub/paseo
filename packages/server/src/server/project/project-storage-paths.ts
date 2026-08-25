@@ -44,7 +44,6 @@ const RESERVED_PASEO_HOME_STORAGE_NAMES = new Set([
   "worktrees",
 ]);
 const NO_RESERVED_STORAGE_NAMES = new Set<string>();
-const MANAGED_PROJECT_METADATA_NAMES = new Set(["paseo.json"]);
 
 function storageDirectoryName(id: string, reservedNames: ReadonlySet<string>): string {
   if (
@@ -82,6 +81,13 @@ export function resolveManagedProjectPath(paseoHome: string, projectId: string):
 }
 
 export function resolveManagedProjectStorageRoot(paseoHome: string, projectId: string): string {
+  return resolveManagedProjectPath(paseoHome, projectId);
+}
+
+export function resolveLegacyManagedProjectStorageRoot(
+  paseoHome: string,
+  projectId: string,
+): string {
   const homeRoot = path.resolve(paseoHome);
   const resolved = path.resolve(
     homeRoot,
@@ -127,6 +133,19 @@ function resolveLegacyManagedWorkspacePath(paseoHome: string, workspaceId: strin
   return resolveManagedStoragePath(paseoHome, "workspaces", workspaceId, NO_RESERVED_STORAGE_NAMES);
 }
 
+function resolveLegacyProjectWorkspacePath(
+  paseoHome: string,
+  projectId: string,
+  workspaceId: string,
+): string {
+  return resolveManagedStoragePath(
+    resolveLegacyManagedProjectStorageRoot(paseoHome, projectId),
+    "workspaces",
+    workspaceId,
+    NO_RESERVED_STORAGE_NAMES,
+  );
+}
+
 export function ensureManagedProjectPath(paseoHome: string, projectId: string): string {
   const projectPath = resolveManagedProjectPath(paseoHome, projectId);
   const legacyPath = resolveLegacyManagedProjectPath(paseoHome, projectId);
@@ -166,16 +185,10 @@ function mergeManagedStorageWithoutOverwrite(source: string, destination: string
 }
 
 export function ensureManagedProjectStorageRoot(paseoHome: string, projectId: string): string {
-  const metadataPath = ensureManagedProjectPath(paseoHome, projectId);
-  const projectStorageRoot = resolveManagedProjectStorageRoot(paseoHome, projectId);
-  mkdirSync(projectStorageRoot, { recursive: true });
-
-  for (const entry of readdirSync(metadataPath)) {
-    if (MANAGED_PROJECT_METADATA_NAMES.has(entry)) continue;
-    mergeManagedStorageWithoutOverwrite(
-      path.join(metadataPath, entry),
-      path.join(projectStorageRoot, entry),
-    );
+  const projectStorageRoot = ensureManagedProjectPath(paseoHome, projectId);
+  const legacyProjectStorageRoot = resolveLegacyManagedProjectStorageRoot(paseoHome, projectId);
+  if (existsSync(legacyProjectStorageRoot)) {
+    mergeManagedStorageWithoutOverwrite(legacyProjectStorageRoot, projectStorageRoot);
   }
 
   const legacyCodeReposPath = path.join(projectStorageRoot, "code_repos");
@@ -200,6 +213,7 @@ export function ensureManagedWorkspacePath(
   projectId: string,
   workspaceId: string,
 ): string {
+  ensureManagedProjectStorageRoot(paseoHome, projectId);
   const workspacePath = resolveManagedWorkspacePath(paseoHome, projectId, workspaceId);
   const legacyPath = resolveLegacyManagedWorkspacePath(paseoHome, workspaceId);
   mkdirSync(path.dirname(workspacePath), { recursive: true });
@@ -231,7 +245,7 @@ export async function removeManagedProjectStorage(
       recursive: true,
       force: true,
     }),
-    rm(resolveManagedProjectStorageRoot(paseoHome, projectId), {
+    rm(resolveLegacyManagedProjectStorageRoot(paseoHome, projectId), {
       recursive: true,
       force: true,
     }),
@@ -248,6 +262,10 @@ export async function removeManagedWorkspaceStorage(
       recursive: true,
       force: true,
     }),
+    rm(resolveLegacyProjectWorkspacePath(paseoHome, projectId, workspaceId), {
+      recursive: true,
+      force: true,
+    }),
     rm(resolveLegacyManagedWorkspacePath(paseoHome, workspaceId), {
       recursive: true,
       force: true,
@@ -255,5 +273,8 @@ export async function removeManagedWorkspaceStorage(
   ]);
   await rmdir(
     path.join(resolveManagedProjectStorageRoot(paseoHome, projectId), "workspaces"),
+  ).catch(() => undefined);
+  await rmdir(
+    path.join(resolveLegacyManagedProjectStorageRoot(paseoHome, projectId), "workspaces"),
   ).catch(() => undefined);
 }

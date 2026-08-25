@@ -41,7 +41,9 @@ describe("resolveProjectDirectories", () => {
         path.join(workspaceDirectory, ".codex"),
       ],
       indexSkill: [],
-      workspaceData: [path.join(os.homedir(), ".paseo/prj_default/workspaces/wks_default")],
+      workspaceData: [
+        path.join(os.homedir(), ".paseo/projects/prj_default/workspaces/wks_default"),
+      ],
     });
   });
 

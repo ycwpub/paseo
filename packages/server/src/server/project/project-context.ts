@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { Logger } from "pino";
 import {
+  DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY,
   PaseoConfigSchema,
   resolvePaseoProjectDirectoryValues,
   type PaseoProjectConfig,
@@ -36,8 +37,6 @@ import {
 import type { CloudDocumentCacheService } from "../knowledge/cloud-cache/service.js";
 import type { CloudDocumentAuthenticationIssue } from "../knowledge/cloud-cache/types.js";
 import { resolveProjectKnowledgeWithCloudCache } from "./project-cloud-knowledge-context.js";
-
-const DEFAULT_PASEO_WORKSPACE_DATA_DIRECTORY = "~/.paseo/{{projectId}}/workspaces/{{workspaceId}}";
 
 export interface ResolvedProjectDirectories {
   project: string[];

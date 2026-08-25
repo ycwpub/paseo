@@ -1138,7 +1138,7 @@ const koOverrides = {
       confirmations: {
         removeTitle: "프로젝트를 삭제할까요?",
         removeMessage:
-          '"{{projectName}}" 및 ~/.paseo/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
+          '"{{projectName}}" 및 ~/.paseo/projects/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
         removeConfirm: "삭제",
         cancel: "취소",
       },
@@ -1195,7 +1195,7 @@ const koOverrides = {
         hideConfirm: "숨기기",
         removeTitle: "워크스페이스를 삭제하시겠습니까?",
         removeMessage:
-          '"{{workspaceName}}" 및 ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
+          '"{{workspaceName}}" 및 ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
         removeConfirm: "삭제",
         cancel: "취소",
       },

@@ -374,9 +374,18 @@ export const fr: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plan",
@@ -1257,7 +1266,7 @@ export const fr: TranslationResources = {
       confirmations: {
         removeTitle: "Supprimer le projet?",
         removeMessage:
-          "Supprimer définitivement «{{projectName}}» et toutes ses données gérées par Paseo sous ~/.paseo/<projectId> ?\n\nLes répertoires de code source externes ne seront pas supprimés. Cette action est irréversible.",
+          "Supprimer définitivement «{{projectName}}» et toutes ses données gérées par Paseo sous ~/.paseo/projects/<projectId> ?\n\nLes répertoires de code source externes ne seront pas supprimés. Cette action est irréversible.",
         removeConfirm: "Supprimer",
         cancel: "Annuler",
       },
@@ -1315,7 +1324,7 @@ export const fr: TranslationResources = {
         hideConfirm: "Cacher",
         removeTitle: "Supprimer l’espace de travail ?",
         removeMessage:
-          "Supprimer définitivement « {{workspaceName}} » et ses données gérées par Paseo dans ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} ?\n\nLe répertoire de code externe associé et ses fichiers ne seront ni supprimés ni modifiés. Cette action est irréversible.",
+          "Supprimer définitivement « {{workspaceName}} » et ses données gérées par Paseo dans ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}} ?\n\nLe répertoire de code externe associé et ses fichiers ne seront ni supprimés ni modifiés. Cette action est irréversible.",
         removeConfirm: "Supprimer",
         cancel: "Annuler",
       },

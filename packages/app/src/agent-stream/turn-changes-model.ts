@@ -1,6 +1,8 @@
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import type { StreamItem } from "@/types/stream";
 
+export const DEFAULT_VISIBLE_TURN_CHANGE_COUNT = 3;
+
 function normalizePath(path: string, cwd: string): string {
   const normalizedPath = path.trim().replaceAll("\\", "/");
   const normalizedCwd = cwd.trim().replaceAll("\\", "/").replace(/\/+$/, "");
@@ -55,4 +57,27 @@ export function selectTurnChangedFiles(input: {
     const oldPath = file.oldPath ? normalizePath(file.oldPath, input.cwd) : null;
     return changedPaths.has(path) || (oldPath ? changedPaths.has(oldPath) : false);
   });
+}
+
+export function summarizeTurnChangedFiles(files: readonly ParsedDiffFile[]): {
+  fileCount: number;
+  additions: number;
+  deletions: number;
+} {
+  return files.reduce(
+    (summary, file) => ({
+      fileCount: summary.fileCount + 1,
+      additions: summary.additions + file.additions,
+      deletions: summary.deletions + file.deletions,
+    }),
+    { fileCount: 0, additions: 0, deletions: 0 },
+  );
+}
+
+export function selectVisibleTurnChangedFiles(
+  files: readonly ParsedDiffFile[],
+  expanded: boolean,
+  collapsedCount = DEFAULT_VISIBLE_TURN_CHANGE_COUNT,
+): ParsedDiffFile[] {
+  return expanded ? [...files] : files.slice(0, Math.max(0, collapsedCount));
 }

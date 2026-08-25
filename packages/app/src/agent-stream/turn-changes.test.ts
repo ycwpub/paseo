@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import type { StreamItem } from "@/types/stream";
-import { collectTurnChangedPaths, selectTurnChangedFiles } from "./turn-changes-model";
+import {
+  collectTurnChangedPaths,
+  selectTurnChangedFiles,
+  selectVisibleTurnChangedFiles,
+  summarizeTurnChangedFiles,
+} from "./turn-changes-model";
 
 const at = new Date("2026-08-12T08:00:00.000Z");
 
@@ -87,5 +92,29 @@ describe("turn changes", () => {
         cwd: "/workspace",
       }),
     ).toEqual([]);
+  });
+
+  it("summarizes all changed files for the turn-level review card", () => {
+    expect(
+      summarizeTurnChangedFiles([
+        { ...file("src/a.ts"), additions: 12, deletions: 2 },
+        { ...file("src/b.ts"), additions: 4, deletions: 7 },
+      ]),
+    ).toEqual({
+      fileCount: 2,
+      additions: 16,
+      deletions: 9,
+    });
+  });
+
+  it("shows a compact file preview until the user expands the review card", () => {
+    const files = ["a", "b", "c", "d", "e"].map((path) => file(`${path}.ts`));
+
+    expect(selectVisibleTurnChangedFiles(files, false).map((entry) => entry.path)).toEqual([
+      "a.ts",
+      "b.ts",
+      "c.ts",
+    ]);
+    expect(selectVisibleTurnChangedFiles(files, true)).toEqual(files);
   });
 });

@@ -374,9 +374,18 @@ export const ru: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "План",
@@ -1251,7 +1260,7 @@ export const ru: TranslationResources = {
       confirmations: {
         removeTitle: "Удалить проект?",
         removeMessage:
-          "Навсегда удалить «{{projectName}}» и все данные Paseo в ~/.paseo/<projectId>?\n\nВнешние каталоги с исходным кодом удалены не будут. Это действие нельзя отменить.",
+          "Навсегда удалить «{{projectName}}» и все данные Paseo в ~/.paseo/projects/<projectId>?\n\nВнешние каталоги с исходным кодом удалены не будут. Это действие нельзя отменить.",
         removeConfirm: "Удалить",
         cancel: "Отмена",
       },
@@ -1308,7 +1317,7 @@ export const ru: TranslationResources = {
         hideConfirm: "Скрывать",
         removeTitle: "Удалить рабочее пространство?",
         removeMessage:
-          "Безвозвратно удалить «{{workspaceName}}» и управляемые Paseo данные в ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nСвязанный внешний каталог кода и файлы в нём не будут удалены или изменены. Это действие нельзя отменить.",
+          "Безвозвратно удалить «{{workspaceName}}» и управляемые Paseo данные в ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nСвязанный внешний каталог кода и файлы в нём не будут удалены или изменены. Это действие нельзя отменить.",
         removeConfirm: "Удалить",
         cancel: "Отмена",
       },

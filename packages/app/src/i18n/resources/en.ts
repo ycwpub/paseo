@@ -952,9 +952,18 @@ export const en = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plan",
@@ -1829,7 +1838,7 @@ export const en = {
       confirmations: {
         removeTitle: "Delete project?",
         removeMessage:
-          'Permanently delete "{{projectName}}" and all of its Paseo-managed data under ~/.paseo/<projectId>?\n\nExternal source directories will not be deleted. This cannot be undone.',
+          'Permanently delete "{{projectName}}" and all of its Paseo-managed data under ~/.paseo/projects/<projectId>?\n\nExternal source directories will not be deleted. This cannot be undone.',
         removeConfirm: "Delete",
         cancel: "Cancel",
       },
@@ -1886,7 +1895,7 @@ export const en = {
         hideConfirm: "Hide",
         removeTitle: "Delete workspace?",
         removeMessage:
-          'Permanently delete "{{workspaceName}}" and its Paseo-managed data at ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nThe external source directory and all files in it will not be deleted or modified. This cannot be undone.',
+          'Permanently delete "{{workspaceName}}" and its Paseo-managed data at ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nThe external source directory and all files in it will not be deleted or modified. This cannot be undone.',
         removeConfirm: "Delete",
         cancel: "Cancel",
       },
@@ -2520,8 +2529,8 @@ export const en = {
       },
     },
     diff: {
-      changesLabel: "Changes",
-      changesSubtitle: "Working tree diff",
+      changesLabel: "Review",
+      changesSubtitle: "Inspect workspace changes and add inline review comments",
       commitSubtitle: "Commit diff",
       uncommittedSubtitle: "Uncommitted changes",
       baseSubtitle: "Compared with {{baseRef}}",
@@ -3491,7 +3500,7 @@ export const en = {
         },
         workspaceData: {
           title: "Workspace data directories",
-          hint: "Defaults to ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}, grouping durable progress notes, review artifacts, and outputs by Project.",
+          hint: "Defaults to ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}, grouping durable progress notes, review artifacts, and outputs by Project.",
         },
       },
       indexSkill: {

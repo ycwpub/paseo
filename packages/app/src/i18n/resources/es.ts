@@ -372,9 +372,18 @@ export const es: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plan",
@@ -1258,7 +1267,7 @@ export const es: TranslationResources = {
       confirmations: {
         removeTitle: "¿Eliminar proyecto?",
         removeMessage:
-          '¿Eliminar permanentemente "{{projectName}}" y todos sus datos administrados por Paseo en ~/.paseo/<projectId>?\n\nLos directorios de código fuente externos no se eliminarán. Esta acción no se puede deshacer.',
+          '¿Eliminar permanentemente "{{projectName}}" y todos sus datos administrados por Paseo en ~/.paseo/projects/<projectId>?\n\nLos directorios de código fuente externos no se eliminarán. Esta acción no se puede deshacer.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },
@@ -1316,7 +1325,7 @@ export const es: TranslationResources = {
         hideConfirm: "Esconder",
         removeTitle: "¿Eliminar espacio de trabajo?",
         removeMessage:
-          '¿Eliminar permanentemente "{{workspaceName}}" y sus datos administrados por Paseo en ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nEl directorio de código externo asociado y sus archivos no se eliminarán ni modificarán. Esta acción no se puede deshacer.',
+          '¿Eliminar permanentemente "{{workspaceName}}" y sus datos administrados por Paseo en ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nEl directorio de código externo asociado y sus archivos no se eliminarán ni modificarán. Esta acción no se puede deshacer.',
         removeConfirm: "Eliminar",
         cancel: "Cancelar",
       },

@@ -364,9 +364,18 @@ export const ja: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "プラン",
@@ -1230,7 +1239,7 @@ export const ja: TranslationResources = {
       confirmations: {
         removeTitle: "プロジェクトを削除しますか？",
         removeMessage:
-          '"{{projectName}}" と ~/.paseo/<projectId> 配下の Paseo 管理データを完全に削除しますか？\n\n外部のソースディレクトリは削除されません。この操作は元に戻せません。',
+          '"{{projectName}}" と ~/.paseo/projects/<projectId> 配下の Paseo 管理データを完全に削除しますか？\n\n外部のソースディレクトリは削除されません。この操作は元に戻せません。',
         removeConfirm: "削除",
         cancel: "キャンセル",
       },
@@ -1287,7 +1296,7 @@ export const ja: TranslationResources = {
         hideConfirm: "非表示",
         removeTitle: "ワークスペースを削除しますか？",
         removeMessage:
-          "「{{workspaceName}}」と ~/.paseo/{{projectId}}/workspaces/{{workspaceId}} にある Paseo 管理データを完全に削除しますか？\n\n関連する外部コードディレクトリとその中のファイルは削除も変更もされません。この操作は取り消せません。",
+          "「{{workspaceName}}」と ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}} にある Paseo 管理データを完全に削除しますか？\n\n関連する外部コードディレクトリとその中のファイルは削除も変更もされません。この操作は取り消せません。",
         removeConfirm: "削除",
         cancel: "キャンセル",
       },

@@ -926,9 +926,17 @@ export const zhCN: TranslationResources = {
       added: "已新增 {{fileName}}",
       deleted: "已删除 {{fileName}}",
       edited: "已编辑 {{fileName}}",
+      summary: "已编辑 {{count}} 个文件",
       undo: "撤销",
-      review: "审核",
+      review: "审查",
       open: "打开",
+      reviewFile: "审查 {{fileName}}",
+      openFile: "打开 {{fileName}}",
+      showMore: "再显示 {{count}} 个文件",
+      showLess: "收起文件",
+      confirmUndoTitle: "撤销本次编辑？",
+      confirmUndoMessage: "将永久放弃本次回答对 {{count}} 个文件的未提交更改。",
+      confirmUndo: "撤销更改",
     },
     permission: {
       plan: "Plan",
@@ -1782,7 +1790,7 @@ export const zhCN: TranslationResources = {
       confirmations: {
         removeTitle: "删除 Project？",
         removeMessage:
-          "从 Paseo 中删除「{{projectName}}」及其所有 Workspace？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/<projectId> 下的全部内容）。不会删除或修改该 Project 关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
+          "从 Paseo 中删除「{{projectName}}」及其所有 Workspace？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/projects/<projectId> 下的全部内容）。不会删除或修改该 Project 关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
         removeConfirm: "删除",
         cancel: "取消",
       },
@@ -1837,7 +1845,7 @@ export const zhCN: TranslationResources = {
         hideConfirm: "隐藏",
         removeTitle: "删除 Workspace？",
         removeMessage:
-          "永久删除「{{workspaceName}}」及其 Paseo Workspace 数据（~/.paseo/{{projectId}}/workspaces/{{workspaceId}}）？\n\n不会删除或修改该 Workspace 关联的外部代码目录及其中任何文件。此操作无法撤销。",
+          "永久删除「{{workspaceName}}」及其 Paseo Workspace 数据（~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}）？\n\n不会删除或修改该 Workspace 关联的外部代码目录及其中任何文件。此操作无法撤销。",
         removeConfirm: "删除",
         cancel: "取消",
       },
@@ -2457,8 +2465,8 @@ export const zhCN: TranslationResources = {
       },
     },
     diff: {
-      changesLabel: "更改",
-      changesSubtitle: "工作区差异",
+      changesLabel: "审查",
+      changesSubtitle: "查看工作区改动并添加行级审查意见",
       commitSubtitle: "提交差异",
       uncommittedSubtitle: "未提交的更改",
       baseSubtitle: "与 {{baseRef}} 比较",
@@ -3411,7 +3419,7 @@ export const zhCN: TranslationResources = {
         },
         workspaceData: {
           title: "Workspace 数据目录",
-          hint: "默认使用 ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}，按 Project 隔离保存进度记录、审查材料和输出结果。",
+          hint: "默认使用 ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}，按 Project 隔离保存进度记录、审查材料和输出结果。",
         },
       },
       indexSkill: {

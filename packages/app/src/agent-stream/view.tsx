@@ -118,6 +118,7 @@ import {
   AidenClaudeReasoningTranslation,
   shouldTranslateAidenClaudeReasoning,
 } from "./aiden-claude-reasoning-translation";
+import { resolveReasoningPresentation } from "./reasoning-presentation";
 
 function renderLiveAuxiliaryNode(input: {
   processVisibilityControl: ReactNode;
@@ -842,6 +843,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
+        const presentation = resolveReasoningPresentation({
+          provider: context.provider,
+          source: item.source,
+          autoExpandReasoning,
+        });
         return (
           <AidenClaudeReasoningTranslation
             enabled={shouldTranslateAidenClaudeReasoning({
@@ -858,7 +864,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             completed={item.status === "ready"}
           >
             {(displayText) => {
-              if (!autoExpandReasoning) {
+              if (presentation.kind === "message") {
                 return (
                   <AssistantFileLinkResolverProvider
                     client={client}
@@ -896,7 +902,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                     item.status === "ready" ? (item.completedAt ?? item.timestamp) : undefined
                   }
                   isLastInSequence={layoutItem.isLastInToolSequence}
-                  defaultExpanded
+                  defaultExpanded={presentation.defaultExpanded}
                   forceInline
                 />
               );
@@ -1124,7 +1130,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         }),
       [client, pendingPermissionItems],
     );
-    const handleReviewTurnChange = useStableEvent((path: string) => {
+    const handleReviewTurnChange = useStableEvent((path?: string) => {
       const persistenceKey = buildWorkspaceTabPersistenceKey({
         serverId: resolvedServerId,
         workspaceId: context.workspaceId ?? workspaceRoot,
@@ -1132,8 +1138,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       if (!isMobile && persistenceKey) {
         openWorkspaceTabFocused(persistenceKey, {
           kind: "working_diff",
-          focusPath: path,
-          focusRequestId: Date.now(),
+          ...(path ? { focusPath: path, focusRequestId: Date.now() } : {}),
         });
         return;
       }

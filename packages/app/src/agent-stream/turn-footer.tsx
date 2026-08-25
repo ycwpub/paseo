@@ -53,7 +53,7 @@ export interface TurnChangesContext {
   readOnly: boolean;
   toast: ToastApi | null;
   onOpen: (path: string) => void;
-  onReview: (path: string) => void;
+  onReview: (path?: string) => void;
 }
 
 export interface TurnMemoryContext {

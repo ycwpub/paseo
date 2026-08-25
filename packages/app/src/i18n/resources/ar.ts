@@ -362,9 +362,18 @@ export const ar: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "يخطط",
@@ -1217,7 +1226,7 @@ export const ar: TranslationResources = {
       confirmations: {
         removeTitle: "هل تريد حذف المشروع؟",
         removeMessage:
-          'هل تريد حذف "{{projectName}}" نهائيًا وجميع بياناته التي يديرها Paseo ضمن ~/.paseo/<projectId>؟\n\nلن تُحذف مجلدات المصدر الخارجية. لا يمكن التراجع عن هذا الإجراء.',
+          'هل تريد حذف "{{projectName}}" نهائيًا وجميع بياناته التي يديرها Paseo ضمن ~/.paseo/projects/<projectId>؟\n\nلن تُحذف مجلدات المصدر الخارجية. لا يمكن التراجع عن هذا الإجراء.',
         removeConfirm: "حذف",
         cancel: "يلغي",
       },
@@ -1274,7 +1283,7 @@ export const ar: TranslationResources = {
         hideConfirm: "يخفي",
         removeTitle: "حذف مساحة العمل؟",
         removeMessage:
-          'هل تريد حذف "{{workspaceName}}" وبيانات Paseo الخاصة بها نهائيًا من ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}؟\n\nلن يتم حذف دليل الشفرة الخارجي المرتبط أو تعديل أي ملفات بداخله. لا يمكن التراجع عن هذا الإجراء.',
+          'هل تريد حذف "{{workspaceName}}" وبيانات Paseo الخاصة بها نهائيًا من ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}؟\n\nلن يتم حذف دليل الشفرة الخارجي المرتبط أو تعديل أي ملفات بداخله. لا يمكن التراجع عن هذا الإجراء.',
         removeConfirm: "حذف",
         cancel: "يلغي",
       },

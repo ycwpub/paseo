@@ -1,33 +1,29 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Text, View } from "react-native";
-import { FileText } from "lucide-react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { ChevronDown, ChevronUp, ExternalLink, FileDiff, Undo2 } from "lucide-react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
+import { DiffStat } from "@/components/diff-stat";
 import type { ToastApi } from "@/components/toast-host";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { useCheckoutDiffQuery, type ParsedDiffFile } from "@/git/use-diff-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useSessionStore } from "@/stores/session-store";
+import type { Theme } from "@/styles/theme";
 import type { StreamItem } from "@/types/stream";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import { collectTurnChangedPaths, selectTurnChangedFiles } from "./turn-changes-model";
+import {
+  collectTurnChangedPaths,
+  selectTurnChangedFiles,
+  selectVisibleTurnChangedFiles,
+  summarizeTurnChangedFiles,
+} from "./turn-changes-model";
 
-function fileName(path: string): string {
-  return path.replaceAll("\\", "/").split("/").at(-1) ?? path;
-}
-
-function changeLabelKey(
-  file: ParsedDiffFile,
-): "agentStream.changes.added" | "agentStream.changes.deleted" | "agentStream.changes.edited" {
-  if (file.isNew) {
-    return "agentStream.changes.added";
-  }
-  if (file.isDeleted) {
-    return "agentStream.changes.deleted";
-  }
-  return "agentStream.changes.edited";
-}
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedChevronUp = withUnistyles(ChevronUp);
+const ThemedFileDiff = withUnistyles(FileDiff);
+const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 interface TurnChangesProps {
   serverId: string;
@@ -37,67 +33,48 @@ interface TurnChangesProps {
   items: StreamItem[];
   toast: ToastApi | null;
   onOpen: (path: string) => void;
-  onReview: (path: string) => void;
+  onReview: (path?: string) => void;
 }
 
 interface TurnChangeRowProps {
   file: ParsedDiffFile;
-  canRevert: boolean;
-  discardPending: boolean;
-  onRevert: (file: ParsedDiffFile) => void;
   onOpen: (path: string) => void;
   onReview: (path: string) => void;
 }
 
-const TurnChangeRow = memo(function TurnChangeRow({
-  file,
-  canRevert,
-  discardPending,
-  onRevert,
-  onOpen,
-  onReview,
-}: TurnChangeRowProps) {
+const TurnChangeRow = memo(function TurnChangeRow({ file, onOpen, onReview }: TurnChangeRowProps) {
   const { t } = useTranslation();
-  const revert = useCallback(() => onRevert(file), [file, onRevert]);
   const review = useCallback(() => onReview(file.path), [file.path, onReview]);
   const open = useCallback(() => onOpen(file.path), [file.path, onOpen]);
+  const rowStyle = useCallback(
+    ({ pressed }: PressableStateCallbackType) => [
+      styles.fileRowMain,
+      pressed ? styles.fileRowPressed : null,
+    ],
+    [],
+  );
 
   return (
-    <View style={styles.card}>
-      <View style={styles.fileIcon}>
-        <FileText size={20} color={styles.fileIconGlyph.color} />
-      </View>
-      <View style={styles.fileContent}>
-        <Text numberOfLines={1} style={styles.title}>
-          {t(changeLabelKey(file), { fileName: fileName(file.path) })}
+    <View style={styles.fileRow} testID={`turn-change-row-${file.path}`}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t("agentStream.changes.reviewFile", { fileName: file.path })}
+        onPress={review}
+        style={rowStyle}
+      >
+        <Text numberOfLines={2} style={styles.path}>
+          {file.path}
         </Text>
-        <View style={styles.stats}>
-          <Text style={styles.additions}>+{file.additions}</Text>
-          <Text style={styles.deletions}>-{file.deletions}</Text>
-          <Text numberOfLines={1} style={styles.path}>
-            {file.path}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.actions}>
-        {canRevert ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={discardPending}
-            loading={discardPending}
-            onPress={revert}
-          >
-            {t("agentStream.changes.undo")}
-          </Button>
-        ) : null}
-        <Button size="xs" variant="outline" onPress={review}>
-          {t("agentStream.changes.review")}
-        </Button>
-        <Button size="xs" variant="ghost" onPress={open}>
-          {t("agentStream.changes.open")}
-        </Button>
-      </View>
+        <DiffStat additions={file.additions} deletions={file.deletions} />
+      </Pressable>
+      <Button
+        size="xs"
+        variant="ghost"
+        leftIcon={ExternalLink}
+        accessibilityLabel={t("agentStream.changes.openFile", { fileName: file.path })}
+        testID={`turn-change-open-${file.path}`}
+        onPress={open}
+      />
     </View>
   );
 });
@@ -113,6 +90,7 @@ export const TurnChanges = memo(function TurnChanges({
   onReview,
 }: TurnChangesProps) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   const { status } = useCheckoutStatusQuery({ serverId, cwd });
   const baseRef = status?.isGit ? (status.baseRef ?? undefined) : undefined;
   const { files: uncommittedFiles } = useCheckoutDiffQuery({
@@ -157,118 +135,214 @@ export const TurnChanges = memo(function TurnChanges({
   const discardSupported = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutDiscardChanges === true,
   );
-
-  const revertFile = useCallback(
-    async (file: ParsedDiffFile) => {
-      const confirmed = await confirmDialog({
-        title: t("workspace.fileActions.confirmRevert.title"),
-        message: t("workspace.fileActions.confirmRevert.message", { name: file.path }),
-        confirmLabel: t("workspace.fileActions.confirmRevert.confirm"),
-        cancelLabel: t("workspace.fileActions.confirmRevert.cancel"),
-        destructive: true,
-      });
-      if (!confirmed) {
-        return;
-      }
-      try {
-        await discardChanges({
-          serverId,
-          cwd,
-          paths: file.oldPath ? [file.path, file.oldPath] : [file.path],
-        });
-      } catch (cause) {
-        toast?.error(
-          cause instanceof Error ? cause.message : t("workspace.fileActions.confirmRevert.failed"),
-        );
-      }
-    },
-    [cwd, discardChanges, serverId, t, toast],
+  const summary = useMemo(() => summarizeTurnChangedFiles(turnFiles), [turnFiles]);
+  const visibleFiles = useMemo(
+    () => selectVisibleTurnChangedFiles(turnFiles, expanded),
+    [expanded, turnFiles],
   );
+  const hiddenFileCount = Math.max(0, turnFiles.length - visibleFiles.length);
+  const canRevertTurn =
+    !readOnly &&
+    discardSupported &&
+    turnFiles.length > 0 &&
+    turnFiles.every((file) => revertablePaths.has(file.path));
+
+  const revertTurn = useCallback(async () => {
+    const paths = Array.from(
+      new Set(
+        turnFiles.flatMap((file) => (file.oldPath ? [file.path, file.oldPath] : [file.path])),
+      ),
+    );
+    if (paths.length === 0) {
+      return;
+    }
+    const confirmed = await confirmDialog({
+      title: t("agentStream.changes.confirmUndoTitle"),
+      message: t("agentStream.changes.confirmUndoMessage", { count: turnFiles.length }),
+      confirmLabel: t("agentStream.changes.confirmUndo"),
+      cancelLabel: t("workspace.fileActions.confirmRevert.cancel"),
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await discardChanges({
+        serverId,
+        cwd,
+        paths,
+      });
+    } catch (cause) {
+      toast?.error(
+        cause instanceof Error ? cause.message : t("workspace.fileActions.confirmRevert.failed"),
+      );
+    }
+  }, [cwd, discardChanges, serverId, t, toast, turnFiles]);
+  const reviewTurn = useCallback(() => onReview(), [onReview]);
+  const toggleExpanded = useCallback(() => setExpanded((current) => !current), []);
+  const expandedAccessibilityState = useMemo(() => ({ expanded }), [expanded]);
 
   if (turnFiles.length === 0) {
     return null;
   }
 
   return (
-    <View style={styles.list} testID="turn-changes">
-      {turnFiles.map((file) => (
-        <TurnChangeRow
-          key={file.path}
-          file={file}
-          canRevert={!readOnly && discardSupported && revertablePaths.has(file.path)}
-          discardPending={discardPending}
-          onRevert={revertFile}
-          onOpen={onOpen}
-          onReview={onReview}
-        />
-      ))}
+    <View style={styles.card} testID="turn-changes">
+      <View style={styles.header}>
+        <View style={styles.summaryGroup}>
+          <View style={styles.fileIcon}>
+            <ThemedFileDiff size={20} uniProps={mutedIconMapping} />
+          </View>
+          <View style={styles.summaryText}>
+            <Text style={styles.title}>
+              {t("agentStream.changes.summary", { count: summary.fileCount })}
+            </Text>
+            <DiffStat additions={summary.additions} deletions={summary.deletions} />
+          </View>
+        </View>
+        <View style={styles.actions}>
+          {canRevertTurn ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={Undo2}
+              disabled={discardPending}
+              loading={discardPending}
+              testID="turn-changes-undo"
+              onPress={revertTurn}
+            >
+              {t("agentStream.changes.undo")}
+            </Button>
+          ) : null}
+          <Button size="sm" variant="outline" testID="turn-changes-review" onPress={reviewTurn}>
+            {t("agentStream.changes.review")}
+          </Button>
+        </View>
+      </View>
+      <View style={styles.divider} />
+      <View style={styles.files}>
+        {visibleFiles.map((file) => (
+          <TurnChangeRow key={file.path} file={file} onOpen={onOpen} onReview={onReview} />
+        ))}
+      </View>
+      {hiddenFileCount > 0 || expanded ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={expandedAccessibilityState}
+          onPress={toggleExpanded}
+          style={styles.expandButton}
+          testID="turn-changes-expand"
+        >
+          <Text style={styles.expandText}>
+            {expanded
+              ? t("agentStream.changes.showLess")
+              : t("agentStream.changes.showMore", { count: hiddenFileCount })}
+          </Text>
+          {expanded ? (
+            <ThemedChevronUp size={16} uniProps={mutedIconMapping} />
+          ) : (
+            <ThemedChevronDown size={16} uniProps={mutedIconMapping} />
+          )}
+        </Pressable>
+      ) : null}
     </View>
   );
 });
 
 const styles = StyleSheet.create((theme) => ({
-  list: {
-    width: "100%",
-    gap: theme.spacing[2],
-    paddingBottom: theme.spacing[6],
-  },
   card: {
-    minHeight: 76,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
+    width: "100%",
+    overflow: "hidden",
     backgroundColor: theme.colors.surface1,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: theme.borderRadius.xl,
+    paddingBottom: theme.spacing[6],
+  },
+  header: {
+    minHeight: 88,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+  },
+  summaryGroup: {
+    minWidth: 180,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
   },
   fileIcon: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.lg,
   },
-  fileIconGlyph: {
-    color: theme.colors.foregroundMuted,
-  },
-  fileContent: {
+  summaryText: {
     minWidth: 0,
     flex: 1,
+    gap: theme.spacing[1],
   },
   title: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
-  },
-  stats: {
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    marginTop: theme.spacing[1],
-  },
-  additions: {
-    color: theme.colors.palette.green[500],
-    fontSize: theme.fontSize.xs,
-    fontVariant: ["tabular-nums"],
-  },
-  deletions: {
-    color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
-    fontVariant: ["tabular-nums"],
-  },
-  path: {
-    minWidth: 0,
-    flex: 1,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.lg,
+    fontWeight: theme.fontWeight.medium,
   },
   actions: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
+  },
+  divider: {
+    height: theme.borderWidth[1],
+    backgroundColor: theme.colors.border,
+  },
+  files: {
+    paddingHorizontal: theme.spacing[2],
+    paddingTop: theme.spacing[2],
+  },
+  fileRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  fileRowMain: {
+    minWidth: 0,
+    flex: 1,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  fileRowPressed: {
+    backgroundColor: theme.colors.surface2,
+  },
+  path: {
+    minWidth: 0,
+    flex: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+  },
+  expandButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    marginHorizontal: theme.spacing[4],
+    marginTop: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
+  },
+  expandText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
 }));

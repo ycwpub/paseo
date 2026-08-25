@@ -371,9 +371,18 @@ export const ptBR: TranslationResources = {
       added: "Added {{fileName}}",
       deleted: "Deleted {{fileName}}",
       edited: "Edited {{fileName}}",
+      summary: "Edited {{count}} files",
       undo: "Undo",
       review: "Review",
       open: "Open",
+      reviewFile: "Review {{fileName}}",
+      openFile: "Open {{fileName}}",
+      showMore: "Show {{count}} more files",
+      showLess: "Show fewer files",
+      confirmUndoTitle: "Undo this turn's edits?",
+      confirmUndoMessage:
+        "This permanently discards the uncommitted changes from this response across {{count}} files.",
+      confirmUndo: "Undo changes",
     },
     permission: {
       plan: "Plano",
@@ -1248,7 +1257,7 @@ export const ptBR: TranslationResources = {
       confirmations: {
         removeTitle: "Excluir projeto?",
         removeMessage:
-          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
+          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/projects/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
         removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
@@ -1305,7 +1314,7 @@ export const ptBR: TranslationResources = {
         hideConfirm: "Ocultar",
         removeTitle: "Excluir workspace?",
         removeMessage:
-          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
+          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
         removeConfirm: "Excluir",
         cancel: "Cancelar",
       },

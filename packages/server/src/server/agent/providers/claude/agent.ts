@@ -26,9 +26,12 @@ import {
   mapClaudeRunningToolCall,
 } from "./tool-call-mapper.js";
 import {
+  coerceTaskNotificationHistoryRecordToSystemMessage,
   mapTaskNotificationSystemRecordToToolCall,
   mapTaskNotificationUserContentToToolCall,
-  readTaskNotificationToolUseIdFromHistoryRecord,
+  readTaskNotificationEnvelopeFromHistoryRecord,
+  readTaskNotificationEnvelopeFromUserContent,
+  type TaskNotificationEnvelope,
 } from "./task-notification-tool-call.js";
 import {
   findClaudeModel,
@@ -4109,22 +4112,8 @@ class ClaudeAgentSession implements AgentSession {
     message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
     events: AgentStreamEvent[],
   ): void {
-    // TODO: subagent timelines are best-effort. Subagent task_notifications
-    // arrive without parent_tool_use_id but with tool_use_id pointing at the
-    // the parent's subagent tool call, so they slip past the sidechain router and pollute
-    // the parent timeline. Drop them here; eventually thread them into the
-    // parent tool call's sub_agent log instead.
-    const taskUseId = message.tool_use_id;
-    const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
-    // The task protocol owns provider-subagent identity. Workflow launch results arrive before
-    // their terminal notification and clear toolUseCache, so the cache is only a fallback for
-    // older Claude streams which do not announce tasks.
-    if (
-      this.taskProtocolSource.isDeclaredTask(message.task_id) ||
-      isClaudeSubagentToolName(cachedTool?.name)
-    ) {
-      return;
-    }
+    const envelope = readTaskNotificationEnvelopeFromHistoryRecord(message);
+    if (envelope && this.routeTaskNotificationToSubagent(envelope, events)) return;
     const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
     if (taskNotificationItem) {
       events.push({
@@ -4154,6 +4143,22 @@ class ClaudeAgentSession implements AgentSession {
     this.rememberUserMessageId(messageId);
     this.rememberEmittedUserMessageId(messageId);
     const content = message.message?.content;
+    const taskNotificationEnvelope = readTaskNotificationEnvelopeFromUserContent({
+      content,
+      messageId,
+    });
+    if (taskNotificationEnvelope) {
+      const normalizedMessage = coerceTaskNotificationHistoryRecordToSystemMessage(message);
+      if (normalizedMessage) {
+        const observations = this.taskProtocolSource.observe(
+          normalizedMessage as unknown as SDKMessage,
+        );
+        for (const event of foldSubagentObservations(observations)) {
+          events.push({ type: "provider_subagent", provider: "claude", event });
+        }
+      }
+      if (this.routeTaskNotificationToSubagent(taskNotificationEnvelope, events)) return;
+    }
     const taskNotificationItem = mapTaskNotificationUserContentToToolCall({
       content,
       messageId,
@@ -4183,6 +4188,40 @@ class ClaudeAgentSession implements AgentSession {
     if (Array.isArray(content)) {
       this.appendUserContentArrayEvents(content, messageId, events);
     }
+  }
+
+  private routeTaskNotificationToSubagent(
+    envelope: TaskNotificationEnvelope,
+    events: AgentStreamEvent[],
+  ): boolean {
+    // Direct subagent notifications update the provider-owned row through task_id. Resumed tasks
+    // can report a newer tool-use id, so task ownership deliberately accepts either identifier.
+    if (
+      this.taskProtocolSource.ownsTaskNotification({
+        taskId: envelope.taskId,
+        toolUseId: envelope.toolUseId,
+      })
+    ) {
+      return true;
+    }
+
+    // Background tools launched inside a subagent arrive on the parent stream without
+    // parent_tool_use_id. Their tool-use id still belongs to a sidechain action, so complete that
+    // action inside the Subagents pane instead of adding a duplicate Task Notification row.
+    const routedEvents = this.sidechainTracker.handleTaskNotification({
+      toolUseId: envelope.toolUseId,
+      status: envelope.status,
+      summary: envelope.summary,
+    });
+    if (routedEvents.length > 0) {
+      events.push(...routedEvents);
+      return true;
+    }
+
+    const cachedTool = envelope.toolUseId ? this.toolUseCache.get(envelope.toolUseId) : undefined;
+    // Legacy Claude streams may not announce tasks. Preserve their existing Task-tool fallback
+    // without hiding unrelated root-level background shell notifications.
+    return isClaudeSubagentToolName(cachedTool?.name);
   }
 
   private appendUserContentArrayEvents(
@@ -4613,11 +4652,11 @@ class ClaudeAgentSession implements AgentSession {
         return;
       }
       const content = fs.readFileSync(historyPath, "utf8");
-      const restoredProviderSubagentIds = this.ingestPersistedSidechains(
+      const restoredProviderSubagents = this.ingestPersistedSidechains(
         content,
         readClaudeSidechainHistory(historyPath),
       );
-      this.ingestPersistedHistory(content, restoredProviderSubagentIds);
+      this.ingestPersistedHistory(content, restoredProviderSubagents);
     } catch {
       // ignore history load failures
     }
@@ -4625,7 +4664,7 @@ class ClaudeAgentSession implements AgentSession {
 
   private ingestPersistedHistory(
     content: string,
-    restoredProviderSubagentIds: ReadonlySet<string>,
+    restoredProviderSubagents: RestoredProviderSubagentIndex,
   ): void {
     if (!content) {
       return;
@@ -4633,7 +4672,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const timeline: PersistedTimelineEntry[] = [];
     for (const line of content.split(/\r?\n/)) {
-      this.ingestPersistedHistoryLine(line, timeline, restoredProviderSubagentIds);
+      this.ingestPersistedHistoryLine(line, timeline, restoredProviderSubagents);
     }
 
     if (timeline.length > 0) {
@@ -4645,24 +4684,28 @@ class ClaudeAgentSession implements AgentSession {
   private ingestPersistedSidechains(
     parentContent: string,
     sidechains: ClaudeSidechainHistory,
-  ): Set<string> {
+  ): RestoredProviderSubagentIndex {
     const parentEntries = parseClaudeHistoryRecords(parentContent).filter(
       (entry) => entry.isSidechain !== true,
     );
     const sidechainEntries = [parentContent, ...sidechains.contents]
       .flatMap(parseClaudeHistoryRecords)
       .filter((entry) => entry.isSidechain === true && typeof entry.agentId === "string");
+    const replaySubagents = [...groupClaudeSidechainEntries(sidechainEntries)].map(
+      ([agentId, entries]) => ({
+        agentId,
+        meta: sidechains.metaByAgentId.get(agentId) ?? null,
+        entries,
+      }),
+    );
+    const parentFacts = readClaudeReplayParentFacts(parentEntries);
 
     // Replay produces the same observations the live task protocol produces, then folds them
     // with the same function, so identity and status are derived once for both paths.
     const observations = [
       ...observeReplaySubagents({
-        subagents: [...groupClaudeSidechainEntries(sidechainEntries)].map(([agentId, entries]) => ({
-          agentId,
-          meta: sidechains.metaByAgentId.get(agentId) ?? null,
-          entries,
-        })),
-        parent: readClaudeReplayParentFacts(parentEntries),
+        subagents: replaySubagents,
+        parent: parentFacts,
         convertEntry: (entry) => this.convertHistoryEntry(entry as ClaudeHistoryEntry),
       }),
       ...observeReplayWorkflows({
@@ -4686,7 +4729,25 @@ class ClaudeAgentSession implements AgentSession {
         .filter((observation) => observation.kind === "declared")
         .map((observation) => observation.id),
     );
-    if (observations.length === 0) return restoredProviderSubagentIds;
+    const restoredTaskIds = new Set<string>();
+    const restoredActionToolUseIds = new Set<string>();
+    for (const subagent of replaySubagents) {
+      const candidateIds = [
+        subagent.meta?.toolUseId,
+        parentFacts.linksByAgentId.get(subagent.agentId)?.toolCallId,
+      ];
+      if (!candidateIds.some((id) => id && restoredProviderSubagentIds.has(id))) continue;
+      restoredTaskIds.add(subagent.agentId);
+      for (const entry of subagent.entries) {
+        collectClaudeHistoryToolUseIds(entry, restoredActionToolUseIds);
+      }
+    }
+    const restoredIndex: RestoredProviderSubagentIndex = {
+      ids: restoredProviderSubagentIds,
+      taskIds: restoredTaskIds,
+      actionToolUseIds: restoredActionToolUseIds,
+    };
+    if (observations.length === 0) return restoredIndex;
 
     this.persistedProviderSubagentEvents.push(
       ...foldSubagentObservations(observations).map(
@@ -4698,13 +4759,13 @@ class ClaudeAgentSession implements AgentSession {
       ),
     );
     this.historyPending = true;
-    return restoredProviderSubagentIds;
+    return restoredIndex;
   }
 
   private ingestPersistedHistoryLine(
     line: string,
     timeline: PersistedTimelineEntry[],
-    restoredProviderSubagentIds: ReadonlySet<string>,
+    restoredProviderSubagents: RestoredProviderSubagentIndex,
   ): void {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -4726,8 +4787,15 @@ class ClaudeAgentSession implements AgentSession {
     if (entry.isSidechain) {
       return;
     }
-    const notificationToolUseId = readTaskNotificationToolUseIdFromHistoryRecord(entry);
-    if (notificationToolUseId && restoredProviderSubagentIds.has(notificationToolUseId)) {
+    const taskNotification = readTaskNotificationEnvelopeFromHistoryRecord(entry);
+    if (
+      taskNotification &&
+      ((taskNotification.taskId &&
+        restoredProviderSubagents.taskIds.has(taskNotification.taskId)) ||
+        (taskNotification.toolUseId &&
+          (restoredProviderSubagents.ids.has(taskNotification.toolUseId) ||
+            restoredProviderSubagents.actionToolUseIds.has(taskNotification.toolUseId))))
+    ) {
       return;
     }
 
@@ -5671,6 +5739,28 @@ function groupClaudeSidechainEntries(
     entriesByAgentId.set(entry.agentId, grouped);
   }
   return entriesByAgentId;
+}
+
+function collectClaudeHistoryToolUseIds(entry: ClaudeHistoryEntry, ids: Set<string>): void {
+  const content = toObjectRecord(entry.message)?.content;
+  if (!Array.isArray(content)) return;
+  for (const value of content) {
+    const block = toObjectRecord(value);
+    if (
+      (block?.type === "tool_use" ||
+        block?.type === "mcp_tool_use" ||
+        block?.type === "server_tool_use") &&
+      typeof block.id === "string"
+    ) {
+      ids.add(block.id);
+    }
+  }
+}
+
+interface RestoredProviderSubagentIndex {
+  ids: ReadonlySet<string>;
+  taskIds: ReadonlySet<string>;
+  actionToolUseIds: ReadonlySet<string>;
 }
 
 interface ClaudeHistoryEntry {

@@ -76,11 +76,16 @@ interface TaskUpdatedMessage {
 }
 
 interface TaskNotificationMessage {
-  task_id: string;
+  task_id?: string;
   tool_use_id?: string;
   status?: string;
   output_file?: string;
   usage?: { total_tokens?: number; tool_uses?: number; duration_ms?: number };
+}
+
+export interface ClaudeTaskNotificationIdentity {
+  taskId?: string | null;
+  toolUseId?: string | null;
 }
 
 /**
@@ -219,6 +224,18 @@ export class ClaudeTaskProtocolSource {
     return subagentId !== undefined && this.declaredIds.has(subagentId);
   }
 
+  /**
+   * Whether a task notification belongs to a provider subagent declared by this source.
+   *
+   * Claude normally supplies both identifiers, but notifications restored from its queue can
+   * omit one, and resumed tasks can carry a newer tool-use id while retaining the original task
+   * id. Resolve either identifier against the declaration instead of requiring one exact wire
+   * shape.
+   */
+  ownsTaskNotification(identity: ClaudeTaskNotificationIdentity): boolean {
+    return this.resolveDeclaredSubagentId(identity) !== undefined;
+  }
+
   needsSyntheticParentToolCard(subagentId: string): boolean {
     return !this.idsWithExistingParentToolCard.has(subagentId);
   }
@@ -350,24 +367,30 @@ export class ClaudeTaskProtocolSource {
       if (backgrounded) this.backgroundedIds.add(id);
       else this.backgroundedIds.delete(id);
     }
-    return this.observeStatus(message.task_id, message.patch?.status);
+    return id ? this.observeStatusForId(id, message.patch?.status) : [];
   }
 
   private observeTaskNotification(message: TaskNotificationMessage): SubagentObservation[] {
+    const id = this.resolveDeclaredSubagentId({
+      taskId: message.task_id,
+      toolUseId: message.tool_use_id,
+    });
+    if (!id) return [];
     const observations = this.observeWorkflowResult(message);
-    observations.push(...this.observeUsage(message.task_id, message.usage));
-    observations.push(...this.observeStatus(message.task_id, message.status));
+    observations.push(...this.observeUsageForId(id, message.usage));
+    observations.push(...this.observeStatusForId(id, message.status));
     return observations;
   }
 
   private observeWorkflowResult(message: TaskNotificationMessage): SubagentObservation[] {
-    if (!this.workflowTaskIds.has(message.task_id)) return [];
-    const id = this.subagentIdByTaskId.get(message.task_id);
+    const taskId = readString(message.task_id);
+    if (!taskId || !this.workflowTaskIds.has(taskId)) return [];
+    const id = this.subagentIdByTaskId.get(taskId);
     const outputFile = readString(message.output_file);
     if (!id || !outputFile) return [];
     const text = this.readWorkflowResult(outputFile);
-    if (!text || this.lastWorkflowResultByTaskId.get(message.task_id) === text) return [];
-    this.lastWorkflowResultByTaskId.set(message.task_id, text);
+    if (!text || this.lastWorkflowResultByTaskId.get(taskId) === text) return [];
+    this.lastWorkflowResultByTaskId.set(taskId, text);
     return [{ kind: "timeline", id, item: { type: "assistant_message", text } }];
   }
 
@@ -377,16 +400,16 @@ export class ClaudeTaskProtocolSource {
    * sidechain frames at all and would otherwise show no activity while they work.
    */
   private observeTaskProgress(message: TaskProgressMessage): SubagentObservation[] {
-    return this.observeUsage(message.task_id, message.usage);
+    const id = this.subagentIdByTaskId.get(message.task_id);
+    return id ? this.observeUsageForId(id, message.usage) : [];
   }
 
-  private observeUsage(
-    taskId: string,
+  private observeUsageForId(
+    id: string,
     raw: { total_tokens?: number; tool_uses?: number; duration_ms?: number } | undefined,
   ): SubagentObservation[] {
-    const id = this.subagentIdByTaskId.get(taskId);
     const usage = readUsage(raw);
-    if (!id || !usage) return [];
+    if (!usage) return [];
     return this.updatePresentation(id, { usage });
   }
 
@@ -448,12 +471,20 @@ export class ClaudeTaskProtocolSource {
    * descriptor holding a status and no identity, which the track renders as a nameless row.
    * A status without a declaration describes nothing, so it is dropped.
    */
-  private observeStatus(taskId: string, rawStatus: string | undefined): SubagentObservation[] {
-    const id = this.subagentIdByTaskId.get(taskId);
-    if (!id) return [];
+  private observeStatusForId(id: string, rawStatus: string | undefined): SubagentObservation[] {
     const status = mapTaskStatus(rawStatus);
     if (!status || this.lastStatusById.get(id) === status) return [];
     this.lastStatusById.set(id, status);
     return [{ kind: "status", id, status }];
+  }
+
+  private resolveDeclaredSubagentId(identity: ClaudeTaskNotificationIdentity): string | undefined {
+    const taskId = readString(identity.taskId);
+    if (taskId) {
+      const id = this.subagentIdByTaskId.get(taskId);
+      if (id && this.declaredIds.has(id)) return id;
+    }
+    const toolUseId = readString(identity.toolUseId);
+    return toolUseId && this.declaredIds.has(toolUseId) ? toolUseId : undefined;
   }
 }

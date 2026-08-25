@@ -83,6 +83,30 @@ describe("ClaudeTaskProtocolSource", () => {
     ]);
   });
 
+  it("recognizes task notifications by either declared task id or canonical tool-use id", () => {
+    const source = new ClaudeTaskProtocolSource();
+    source.observe(taskStarted());
+
+    expect(
+      source.ownsTaskNotification({
+        taskId: "a1730a6215e1f5cf6",
+        toolUseId: "toolu_new_resume_call",
+      }),
+    ).toBe(true);
+    expect(
+      source.ownsTaskNotification({
+        taskId: "unknown-task",
+        toolUseId: "toolu_01DgLoPMW9",
+      }),
+    ).toBe(true);
+    expect(
+      source.ownsTaskNotification({
+        taskId: "unknown-task",
+        toolUseId: "toolu_background_bash",
+      }),
+    ).toBe(false);
+  });
+
   it("does not re-announce a status that already holds", () => {
     const source = new ClaudeTaskProtocolSource();
     source.observe(taskStarted());
@@ -289,6 +313,12 @@ describe("ClaudeTaskProtocolSource", () => {
     );
 
     expect(source.observe(taskNotification("completed", "b51skux0z"))).toEqual([]);
+    expect(
+      source.ownsTaskNotification({
+        taskId: "b51skux0z",
+        toolUseId: "toolu_01MgVdcGPYnqE8cJQuccFtkU",
+      }),
+    ).toBe(false);
   });
 
   it("drops a notification for a task it never declared", () => {

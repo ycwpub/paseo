@@ -313,4 +313,135 @@ describe("background Claude subagents", () => {
       },
     });
   });
+
+  test("routes a queued background-tool notification into its subagent timeline", async () => {
+    queryFactory.mockImplementation(() =>
+      buildQueryMock([
+        { type: "system", subtype: "init", session_id: "bg-session", permissionMode: "default" },
+        {
+          type: "system",
+          subtype: "task_started",
+          task_id: "agent-task",
+          tool_use_id: "toolu_agent",
+          task_type: "local_agent",
+          subagent_type: "Explore",
+          description: "Inspect application logs",
+        },
+        {
+          type: "assistant",
+          parent_tool_use_id: "toolu_agent",
+          message: {
+            model: "claude-opus-5",
+            content: [
+              {
+                type: "tool_use",
+                id: "toolu_background_bash",
+                name: "Bash",
+                input: { command: "log show", description: "Filter unified log" },
+              },
+            ],
+          },
+        },
+        {
+          type: "user",
+          uuid: "background-notification",
+          message: {
+            role: "user",
+            content: [
+              "<task-notification>",
+              "<task-id>bash-task</task-id>",
+              "<tool-use-id>toolu_background_bash</tool-use-id>",
+              "<status>completed</status>",
+              "<summary>Background command completed</summary>",
+              "</task-notification>",
+            ].join("\n"),
+          },
+        },
+        { type: "result", subtype: "success", usage: {}, total_cost_usd: 0 },
+      ]),
+    );
+    const session = await new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({ provider: "claude", cwd: process.cwd() });
+    const events = await collectUntilTerminal(streamSession(session, "inspect logs"));
+    await session.close();
+
+    expect(
+      events
+        .filter((event) => event.type === "timeline")
+        .map((event) => event.item)
+        .filter((item) => item.type === "tool_call" && item.name === "task_notification"),
+    ).toEqual([]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider_subagent",
+        provider: "claude",
+        event: {
+          type: "timeline",
+          id: "toolu_agent",
+          item: expect.objectContaining({
+            type: "tool_call",
+            callId: "toolu_background_bash",
+            name: "Bash",
+            status: "completed",
+          }),
+        },
+      }),
+    );
+  });
+
+  test("uses task_id to terminalize a queued subagent notification with a newer tool-use id", async () => {
+    queryFactory.mockImplementation(() =>
+      buildQueryMock([
+        { type: "system", subtype: "init", session_id: "bg-session", permissionMode: "default" },
+        {
+          type: "system",
+          subtype: "task_started",
+          task_id: "agent-task",
+          tool_use_id: "toolu_agent",
+          task_type: "local_agent",
+          subagent_type: "Explore",
+          description: "Inspect application logs",
+        },
+        {
+          type: "user",
+          uuid: "agent-notification",
+          message: {
+            role: "user",
+            content: [
+              "<task-notification>",
+              "<task-id>agent-task</task-id>",
+              "<tool-use-id>toolu_resumed_agent_call</tool-use-id>",
+              "<status>completed</status>",
+              '<summary>Agent "Inspect application logs" finished</summary>',
+              "</task-notification>",
+            ].join("\n"),
+          },
+        },
+        { type: "result", subtype: "success", usage: {}, total_cost_usd: 0 },
+      ]),
+    );
+    const session = await new ClaudeAgentClient({
+      logger: createTestLogger(),
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    }).createSession({ provider: "claude", cwd: process.cwd() });
+    const events = await collectUntilTerminal(streamSession(session, "inspect logs"));
+    await session.close();
+
+    expect(
+      events
+        .filter((event) => event.type === "timeline")
+        .map((event) => event.item)
+        .filter((item) => item.type === "tool_call" && item.name === "task_notification"),
+    ).toEqual([]);
+    expect(
+      events
+        .filter((event) => event.type === "provider_subagent")
+        .map((event) => event.event)
+        .findLast((event) => event.type === "upsert"),
+    ).toMatchObject({ id: "toolu_agent", status: "completed" });
+  });
 });

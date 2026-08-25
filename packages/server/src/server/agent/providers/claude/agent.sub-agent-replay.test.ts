@@ -526,6 +526,84 @@ describe("ClaudeAgentSession persisted subagent replay", () => {
     ).toEqual([]);
   });
 
+  test("suppresses a queued notification for a background tool owned by a restored subagent", async () => {
+    const backgroundToolUseId = "call_background_bash";
+    writeSession({
+      parentLines: [
+        taskToolUse(),
+        JSON.stringify({
+          type: "queue-operation",
+          operation: "enqueue",
+          content: [
+            "<task-notification>",
+            "<task-id>background-bash-task</task-id>",
+            `<tool-use-id>${backgroundToolUseId}</tool-use-id>`,
+            "<status>completed</status>",
+            "<summary>Background command completed</summary>",
+            "</task-notification>",
+          ].join("\n"),
+        }),
+      ],
+      meta: JSON.stringify({ toolUseId: TOOL_USE_ID, agentType: "Explore", spawnDepth: 1 }),
+      sidechainLines: [
+        JSON.stringify({
+          type: "assistant",
+          isSidechain: true,
+          agentId: AGENT_ID,
+          sessionId: "replay-session",
+          timestamp: "2026-07-26T06:27:50.000Z",
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: backgroundToolUseId,
+                name: "Bash",
+                input: { command: "log show", description: "Filter unified log" },
+              },
+            ],
+          },
+        }),
+      ],
+    });
+
+    const replayed = await replayEvents();
+    expect(
+      replayed
+        .filter((event) => event.type === "timeline")
+        .map((event) => event.item)
+        .filter((item) => item.type === "tool_call" && item.name === "task_notification"),
+    ).toEqual([]);
+  });
+
+  test("suppresses a restored subagent notification that only retains the task id", async () => {
+    writeSession({
+      parentLines: [
+        taskToolUse(),
+        JSON.stringify({
+          type: "queue-operation",
+          operation: "enqueue",
+          content: [
+            "<task-notification>",
+            `<task-id>${AGENT_ID}</task-id>`,
+            "<status>completed</status>",
+            '<summary>Agent "Summarize the docs" finished</summary>',
+            "</task-notification>",
+          ].join("\n"),
+        }),
+      ],
+      meta: JSON.stringify({ toolUseId: TOOL_USE_ID, agentType: "Explore", spawnDepth: 1 }),
+    });
+
+    const replayed = await replayEvents();
+    expect(
+      replayed
+        .filter((event) => event.type === "timeline")
+        .map((event) => event.item)
+        .filter((item) => item.type === "tool_call" && item.name === "task_notification"),
+    ).toEqual([]);
+  });
+
   test("does not replay a subagent whose toolUseId names no Task call in this transcript", async () => {
     // A grandchild recorded before spawnDepth existed: the Task call it names was made inside a
     // sibling's session, so no tool_result for it can ever reach this parent.

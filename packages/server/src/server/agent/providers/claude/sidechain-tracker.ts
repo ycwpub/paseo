@@ -1,6 +1,7 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import {
+  mapClaudeCanceledToolCall,
   mapClaudeCompletedToolCall,
   mapClaudeFailedToolCall,
   mapClaudeRunningToolCall,
@@ -38,6 +39,12 @@ interface SubAgentActionCandidate {
   input: unknown;
 }
 
+interface SubAgentActionOwner {
+  subagentId: string;
+  toolName: string;
+  input: unknown;
+}
+
 const MAX_SUB_AGENT_LOG_ENTRIES = 200;
 const MAX_SUB_AGENT_SUMMARY_CHARS = 160;
 
@@ -57,6 +64,8 @@ function isClaudeContentChunk(value: unknown): value is ClaudeContentChunk {
 
 export class ClaudeSidechainTracker {
   private readonly activeSidechains = new Map<string, SubAgentActivityState>();
+  /** Inner tool-use id -> the provider subagent timeline that owns that action. */
+  private readonly actionOwnerByKey = new Map<string, SubAgentActionOwner>();
   private readonly getToolInput: (toolUseId: string) => AgentMetadata | null | undefined;
   private readonly isDescriptorOwnedElsewhere: () => boolean;
   private readonly needsSyntheticParentToolCard: (toolUseId: string) => boolean;
@@ -97,7 +106,7 @@ export class ClaudeSidechainTracker {
     let actionUpdated = false;
     for (const action of actionCandidates) {
       if (state.completedActionKeys.has(action.key)) continue;
-      if (this.appendSubAgentAction(state, action)) {
+      if (this.appendSubAgentAction(parentToolUseId, state, action)) {
         actionUpdated = true;
         const toolCall = mapClaudeRunningToolCall({
           name: action.toolName,
@@ -231,6 +240,57 @@ export class ClaudeSidechainTracker {
 
   clear(): void {
     this.activeSidechains.clear();
+    this.actionOwnerByKey.clear();
+  }
+
+  /**
+   * Route a queued task notification back to the subagent action that launched it.
+   *
+   * Background Bash and nested Agent calls report completion to the parent session without a
+   * `parent_tool_use_id`. Their `tool-use-id` still names the action previously observed inside a
+   * sidechain, so use that stable ownership instead of rendering a duplicate Task Notification in
+   * the parent's timeline.
+   */
+  handleTaskNotification(input: {
+    toolUseId?: string | null;
+    status?: string | null;
+    summary?: string | null;
+  }): AgentStreamEvent[] {
+    const toolUseId = readTrimmedString(input.toolUseId);
+    if (!toolUseId) return [];
+    const owner = this.actionOwnerByKey.get(toolUseId);
+    if (!owner) return [];
+
+    const state = this.activeSidechains.get(owner.subagentId);
+    state?.completedActionKeys.add(toolUseId);
+    const params = {
+      name: owner.toolName,
+      callId: toolUseId,
+      input: owner.input,
+      output: input.summary ?? null,
+    };
+    const normalizedStatus = readTrimmedString(input.status)?.toLowerCase();
+    let item = mapClaudeCompletedToolCall(params);
+    if (normalizedStatus === "failed" || normalizedStatus === "error") {
+      item = mapClaudeFailedToolCall({
+        ...params,
+        error: { message: input.summary ?? "Background task failed" },
+      });
+    } else if (
+      normalizedStatus === "stopped" ||
+      normalizedStatus === "canceled" ||
+      normalizedStatus === "cancelled"
+    ) {
+      item = mapClaudeCanceledToolCall(params);
+    }
+    if (!item) return [];
+    return [
+      {
+        type: "provider_subagent",
+        provider: "claude",
+        event: { type: "timeline", id: owner.subagentId, item },
+      },
+    ];
   }
 
   private extractSubAgentTimelineItems(message: SDKMessage): AgentTimelineItem[] {
@@ -412,6 +472,7 @@ export class ClaudeSidechainTracker {
   }
 
   private appendSubAgentAction(
+    subagentId: string,
     state: SubAgentActivityState,
     candidate: SubAgentActionCandidate,
   ): boolean {
@@ -447,6 +508,11 @@ export class ClaudeSidechainTracker {
       input: candidate.input,
       ...(summary ? { summary } : {}),
     });
+    this.actionOwnerByKey.set(candidate.key, {
+      subagentId,
+      toolName: normalizedToolName,
+      input: candidate.input,
+    });
     state.nextActionIndex += 1;
     state.actionKeys.push(candidate.key);
     this.trimSubAgentTail(state);
@@ -458,7 +524,10 @@ export class ClaudeSidechainTracker {
     while (state.actions.length > MAX_SUB_AGENT_LOG_ENTRIES) {
       state.actions.shift();
       const removedKey = state.actionKeys.shift();
-      if (removedKey) state.completedActionKeys.delete(removedKey);
+      if (removedKey) {
+        state.completedActionKeys.delete(removedKey);
+        this.actionOwnerByKey.delete(removedKey);
+      }
     }
   }
 

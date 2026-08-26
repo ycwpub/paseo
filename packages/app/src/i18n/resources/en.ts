@@ -115,6 +115,20 @@ export const en = {
       saved: "Saved",
       saveError: "Unable to save memory rules",
     },
+    contentManager: {
+      title: "Memory content",
+      description:
+        "Browse long-term memory by Global, Project, Workspace, or Assistant scope. Open a memory to view, edit, or delete it.",
+      search: "Search",
+      searchPlaceholder: "Search titles, content, or keywords",
+      status: "Status",
+      allStatuses: "All statuses",
+      noStatuses: "No statuses",
+      targetDescription: "{{id}} · {{count}} memories",
+      selectTargetFirst: "Select a target to manage its memory.",
+      empty: "No long-term memory has been saved yet.",
+      noMatches: "No memories in this scope match the current filters.",
+    },
   },
   workflows: {
     title: "Workflows",
@@ -3395,6 +3409,7 @@ export const en = {
       memory: {
         title: "Project memory",
         info: "Control whether this Project contributes scoped memory and define what durable Project knowledge Paseo should learn.",
+        policyTitle: "Memory rules",
         enabledTitle: "Use memory for this Project",
         enabledHint:
           "When off, Agents in this Project do not read or create Project-scoped memory. Global memory remains available.",
@@ -3407,6 +3422,26 @@ export const en = {
         saving: "Saving...",
         saved: "Saved",
         saveError: "Couldn't save Project memory",
+        content: {
+          title: "Memory content",
+          description:
+            "View, edit, or delete long-term memory saved for this Project and its Workspaces. Memory scope cannot be changed here.",
+          scope: "Memory scope",
+          scopes: {
+            project: "Current Project",
+            workspace: "Workspace",
+          },
+          selectScope: "Select a memory scope",
+          noScopes: "No memory scopes available",
+          selectWorkspace: "Select a Workspace",
+          noWorkspace: "This Project has no available Workspaces",
+          loading: "Loading memory...",
+          empty: "No memories in this scope match the current filters",
+          errorTitle: "Unable to manage Project memory",
+          deleteTitle: "Delete “{{title}}”?",
+          deleteDescription: "This memory and its source information cannot be recovered.",
+          deleteConfirm: "Delete",
+        },
       },
       edit: {
         title: "Edit project",

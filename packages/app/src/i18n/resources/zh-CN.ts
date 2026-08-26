@@ -115,6 +115,20 @@ export const zhCN: TranslationResources = {
       saved: "已保存",
       saveError: "无法保存记忆规范",
     },
+    contentManager: {
+      title: "记忆内容",
+      description:
+        "按全局、Project、Workspace 或助手查看长期记忆。点击一条记忆可查看完整内容、编辑或删除。",
+      search: "搜索",
+      searchPlaceholder: "搜索标题、内容或关键词",
+      status: "状态",
+      allStatuses: "全部状态",
+      noStatuses: "没有可用状态",
+      targetDescription: "{{id}} · {{count}} 条记忆",
+      selectTargetFirst: "请先选择要管理的对象。",
+      empty: "尚未保存长期记忆。",
+      noMatches: "当前范围内没有符合筛选条件的记忆。",
+    },
   },
   workflows: {
     title: "工作流",
@@ -3316,6 +3330,7 @@ export const zhCN: TranslationResources = {
       memory: {
         title: "Project 记忆",
         info: "控制当前 Project 是否使用独立作用域的记忆，并定义 Paseo 应沉淀哪些长期 Project 知识。",
+        policyTitle: "记忆规范",
         enabledTitle: "为当前 Project 开启记忆",
         enabledHint:
           "关闭后，当前 Project 中的 Agent 不再读取或创建 Project 作用域的记忆；全局记忆仍可使用。",
@@ -3327,6 +3342,26 @@ export const zhCN: TranslationResources = {
         saving: "正在保存...",
         saved: "已保存",
         saveError: "无法保存 Project 记忆",
+        content: {
+          title: "记忆内容",
+          description:
+            "查看、编辑或删除当前 Project 及其 Workspace 已保存的长期记忆。此处不能修改记忆所属范围。",
+          scope: "记忆范围",
+          scopes: {
+            project: "当前 Project",
+            workspace: "Workspace",
+          },
+          selectScope: "选择记忆范围",
+          noScopes: "没有可用的记忆范围",
+          selectWorkspace: "选择 Workspace",
+          noWorkspace: "当前 Project 没有可用的 Workspace",
+          loading: "正在加载记忆...",
+          empty: "当前范围内没有符合条件的记忆",
+          errorTitle: "无法管理 Project 记忆",
+          deleteTitle: "删除记忆“{{title}}”？",
+          deleteDescription: "该记忆及其来源信息删除后无法恢复。",
+          deleteConfirm: "删除",
+        },
       },
       edit: {
         title: "编辑项目",

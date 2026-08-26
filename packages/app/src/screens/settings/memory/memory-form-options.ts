@@ -4,27 +4,27 @@ import type { SelectFieldOption } from "@/components/ui/select-field";
 export type MemoryStatusFilter = "all" | "active" | "superseded" | "expired" | "disputed";
 
 export const MEMORY_CATEGORY_OPTIONS: SelectFieldOption<PaseoMemoryDetail["category"]>[] = [
-  { id: "preference", value: "preference", label: "Preference" },
-  { id: "fact", value: "fact", label: "Fact" },
-  { id: "procedure", value: "procedure", label: "Procedure" },
-  { id: "decision", value: "decision", label: "Decision" },
-  { id: "project", value: "project", label: "Project" },
-  { id: "other", value: "other", label: "Other" },
+  { id: "preference", value: "preference", label: "偏好" },
+  { id: "fact", value: "fact", label: "事实" },
+  { id: "procedure", value: "procedure", label: "流程" },
+  { id: "decision", value: "decision", label: "决策" },
+  { id: "project", value: "project", label: "项目知识" },
+  { id: "other", value: "other", label: "其他" },
 ];
 
 export const MEMORY_SCOPE_OPTIONS: SelectFieldOption<PaseoMemoryScope["type"]>[] = [
-  { id: "global", value: "global", label: "Global" },
+  { id: "global", value: "global", label: "全局" },
   { id: "project", value: "project", label: "Project" },
-  { id: "assistant", value: "assistant", label: "Assistant" },
+  { id: "assistant", value: "assistant", label: "助手" },
   { id: "workspace", value: "workspace", label: "Workspace" },
 ];
 
 export const MEMORY_STATUS_OPTIONS: SelectFieldOption<MemoryStatusFilter>[] = [
-  { id: "all", value: "all", label: "All states" },
-  { id: "active", value: "active", label: "Active" },
-  { id: "superseded", value: "superseded", label: "Superseded" },
-  { id: "expired", value: "expired", label: "Expired" },
-  { id: "disputed", value: "disputed", label: "Disputed" },
+  { id: "all", value: "all", label: "全部状态" },
+  { id: "active", value: "active", label: "有效" },
+  { id: "superseded", value: "superseded", label: "已被替代" },
+  { id: "expired", value: "expired", label: "已过期" },
+  { id: "disputed", value: "disputed", label: "有争议" },
 ];
 
 export const MEMORY_DETAIL_STATUS_OPTIONS: SelectFieldOption<
@@ -39,8 +39,11 @@ export function memoryCategoryLabel(category: PaseoMemoryDetail["category"]): st
 }
 
 export function memoryScopeLabel(scope: PaseoMemoryScope | undefined): string {
-  if (!scope || scope.type === "global") return "Global";
-  return `${scope.type[0]?.toUpperCase()}${scope.type.slice(1)} · ${scope.id ?? "unassigned"}`;
+  if (!scope || scope.type === "global") return "全局";
+  let label = "Workspace";
+  if (scope.type === "assistant") label = "助手";
+  if (scope.type === "project") label = "Project";
+  return `${label} · ${scope.id ?? "未指定"}`;
 }
 
 export function memoryStatus(

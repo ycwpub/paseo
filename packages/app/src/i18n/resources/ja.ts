@@ -2804,6 +2804,7 @@ export const ja: TranslationResources = {
       memory: {
         title: "プロジェクトメモリ",
         info: "このプロジェクト固有のメモリを制御し、Paseo が学習する長期的な知識を定義します。",
+        policyTitle: "メモリ規則",
         enabledTitle: "このプロジェクトでメモリを使用",
         enabledHint:
           "無効にすると、エージェントはプロジェクトメモリを参照・作成しません。グローバルメモリは引き続き利用できます。",
@@ -2816,6 +2817,26 @@ export const ja: TranslationResources = {
         saving: "保存中...",
         saved: "保存しました",
         saveError: "プロジェクトメモリを保存できませんでした",
+        content: {
+          title: "メモリ内容",
+          description:
+            "このプロジェクトとワークスペースの長期メモリを表示、編集、削除します。ここではメモリのスコープを変更できません。",
+          scope: "メモリのスコープ",
+          scopes: {
+            project: "現在のプロジェクト",
+            workspace: "ワークスペース",
+          },
+          selectScope: "メモリのスコープを選択",
+          noScopes: "利用可能なメモリスコープがありません",
+          selectWorkspace: "ワークスペースを選択",
+          noWorkspace: "このプロジェクトには利用可能なワークスペースがありません",
+          loading: "メモリを読み込み中...",
+          empty: "このスコープには条件に一致するメモリがありません",
+          errorTitle: "プロジェクトメモリを管理できません",
+          deleteTitle: "「{{title}}」を削除しますか？",
+          deleteDescription: "このメモリとソース情報は復元できません。",
+          deleteConfirm: "削除",
+        },
       },
       edit: {
         title: "プロジェクトを編集",

@@ -2,17 +2,23 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { MemoryScopePolicyEditor } from "@/memory/scope-policy-editor";
 import { SettingsGroup } from "@/screens/settings/settings-group";
+import { SettingsSection } from "@/screens/settings/settings-section";
 import { useHostFeature } from "@/runtime/host-features";
+import type { WorkspaceSummary } from "@/utils/projects";
+import { ProjectMemoryContentSection } from "./project-memory-content-section";
 
 export function ProjectMemoryCard({
   serverId,
   projectId,
+  workspaces,
 }: {
   serverId: string;
   projectId: string;
+  workspaces: readonly WorkspaceSummary[];
 }) {
   const { t } = useTranslation();
-  const isSupported = useHostFeature(serverId, "memoryScopePolicies");
+  const isPolicySupported = useHostFeature(serverId, "memoryScopePolicies");
+  const isMemorySupported = useHostFeature(serverId, "memory");
   const scope = useMemo(() => ({ type: "project" as const, id: projectId }), [projectId]);
   const copy = useMemo(
     () => ({
@@ -29,7 +35,7 @@ export function ProjectMemoryCard({
     [t],
   );
 
-  if (!isSupported) return null;
+  if (!isPolicySupported && !isMemorySupported) return null;
 
   return (
     <SettingsGroup
@@ -37,12 +43,27 @@ export function ProjectMemoryCard({
       info={t("settings.project.memory.info")}
       testID="project-memory-group"
     >
-      <MemoryScopePolicyEditor
-        serverId={serverId}
-        scope={scope}
-        copy={copy}
-        testID="project-memory-policy"
-      />
+      {isPolicySupported ? (
+        <SettingsSection
+          title={t("settings.project.memory.policyTitle")}
+          flush={!isMemorySupported}
+        >
+          <MemoryScopePolicyEditor
+            serverId={serverId}
+            scope={scope}
+            copy={copy}
+            testID="project-memory-policy"
+          />
+        </SettingsSection>
+      ) : null}
+      {isMemorySupported ? (
+        <ProjectMemoryContentSection
+          serverId={serverId}
+          projectId={projectId}
+          workspaces={workspaces}
+          flush
+        />
+      ) : null}
     </SettingsGroup>
   );
 }

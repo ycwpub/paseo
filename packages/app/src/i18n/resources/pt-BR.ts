@@ -2825,6 +2825,7 @@ export const ptBR: TranslationResources = {
       memory: {
         title: "Memória do projeto",
         info: "Controle a memória deste projeto e defina quais conhecimentos duradouros o Paseo deve aprender.",
+        policyTitle: "Regras de memória",
         enabledTitle: "Usar memória neste projeto",
         enabledHint:
           "Quando desativada, os agentes não leem nem criam memórias do projeto. A memória global continua disponível.",
@@ -2837,6 +2838,26 @@ export const ptBR: TranslationResources = {
         saving: "Salvando...",
         saved: "Salvo",
         saveError: "Não foi possível salvar a memória do projeto",
+        content: {
+          title: "Conteúdo da memória",
+          description:
+            "Veja, edite ou exclua a memória de longo prazo deste projeto e de seus espaços de trabalho. O escopo não pode ser alterado aqui.",
+          scope: "Escopo da memória",
+          scopes: {
+            project: "Projeto atual",
+            workspace: "Espaço de trabalho",
+          },
+          selectScope: "Selecione um escopo de memória",
+          noScopes: "Nenhum escopo de memória disponível",
+          selectWorkspace: "Selecione um espaço de trabalho",
+          noWorkspace: "Este projeto não tem espaços de trabalho disponíveis",
+          loading: "Carregando memória...",
+          empty: "Nenhuma memória corresponde aos filtros neste escopo",
+          errorTitle: "Não foi possível gerenciar a memória do projeto",
+          deleteTitle: "Excluir “{{title}}”?",
+          deleteDescription: "Esta memória e suas informações de origem não podem ser recuperadas.",
+          deleteConfirm: "Excluir",
+        },
       },
       edit: {
         title: "Editar projeto",

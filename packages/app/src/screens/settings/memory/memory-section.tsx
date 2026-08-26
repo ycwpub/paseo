@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type {
   PaseoMemoryCreateInput,
   PaseoMemoryDetail,
-  PaseoMemoryScope,
   PaseoMemorySettings,
   PaseoMemoryUserOperation,
 } from "@getpaseo/protocol/messages";
@@ -13,14 +12,10 @@ import { settingsStyles } from "@/styles/settings";
 import { useMemory } from "@/hooks/use-memory";
 import { useHostFeature } from "@/runtime/host-features";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import type { MemoryDetailDraft } from "./memory-detail-card";
+import { memoryDetailEdit, type MemoryDetailDraft } from "./memory-detail-draft";
 import type { MemoryStatusFilter } from "./memory-form-options";
 import { MemorySectionContent } from "./memory-section-content";
-import {
-  parseMemoryImportance,
-  parseMemoryValidUntil,
-  type MemoryScopeFilter,
-} from "./memory-view-model";
+import type { MemoryScopeFilter } from "./memory-view-model";
 
 export function MemorySection({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
@@ -32,7 +27,7 @@ export function MemorySection({ serverId }: { serverId: string }) {
   const [summary, setSummary] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<MemoryStatusFilter>("active");
-  const [scopeFilter, setScopeFilter] = useState<MemoryScopeFilter>("all");
+  const [scopeFilter, setScopeFilter] = useState<MemoryScopeFilter>("global");
   useEffect(() => setSummary(memory?.summary ?? ""), [memory?.activeUserId, memory?.summary]);
 
   const saveSettings = useCallback(
@@ -52,32 +47,13 @@ export function MemorySection({ serverId }: { serverId: string }) {
   );
   const saveDetail = useCallback(
     async (detail: PaseoMemoryDetail, draft: MemoryDetailDraft) => {
-      const scope: PaseoMemoryScope =
-        draft.scopeType === "global"
-          ? {
-              type: "global",
-              id: memory?.activeUserId ?? memory?.users?.[0]?.id ?? "default",
-            }
-          : { type: draft.scopeType, id: draft.scopeId.trim() };
-      if (scope.type !== "global" && !scope.id) {
-        throw new Error(`${scope.type} scope requires an ID`);
-      }
       await updateMemory({
         detailEdits: [
-          {
-            id: detail.id,
-            title: draft.title.trim(),
-            category: draft.category,
-            content: draft.content.trim(),
-            keywords: draft.keywords
-              .split(",")
-              .map((keyword) => keyword.trim())
-              .filter(Boolean),
-            scope,
-            status: draft.status,
-            importance: parseMemoryImportance(draft.importance),
-            validUntil: parseMemoryValidUntil(draft.validUntil),
-          },
+          memoryDetailEdit({
+            detail,
+            draft,
+            globalUserId: memory?.activeUserId ?? memory?.users?.[0]?.id ?? "default",
+          }),
         ],
       });
     },
@@ -106,7 +82,7 @@ export function MemorySection({ serverId }: { serverId: string }) {
   const deleteDetail = useCallback(
     async (detail: PaseoMemoryDetail) => {
       const confirmed = await confirmDialog({
-        title: `Delete ${detail.title}?`,
+        title: `删除记忆“${detail.title}”？`,
         message: "该记忆及其来源信息删除后无法恢复。",
         confirmLabel: "删除",
         destructive: true,

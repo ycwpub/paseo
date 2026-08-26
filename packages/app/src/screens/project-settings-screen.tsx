@@ -307,7 +307,11 @@ function ProjectSettingsBody({
         snapshot={editSnapshot}
       />
 
-      <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
+      <ProjectMemoryCard
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        workspaces={selectedHost.workspaces}
+      />
       <ProjectLinkedPluginProjects
         serverId={selectedHost.serverId}
         projectId={selectedHost.projectId}

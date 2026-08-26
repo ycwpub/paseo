@@ -61,7 +61,8 @@ a safe hashed directory name so they cannot escape `$PASEO_HOME/projects`.
 
 Legacy `paseo.json` files in a single project directory, the former
 `$PASEO_HOME/{projectId}` Project root, or older `$PASEO_HOME/projects/...` locations remain
-readable and migrate to the managed Project path on the next successful write. Other
+readable and migrate to the managed Project path during daemon startup or the next successful
+write. Registry and Agent paths are rewritten before Workspace reconciliation runs. Other
 Project-owned data under the former `$PASEO_HOME/{projectId}` root is merged into the new managed
 Project path without overwriting newer files. Changing to single-directory mode updates
 `rootPath` to the selected project directory. Changing to multiple-directory mode clears

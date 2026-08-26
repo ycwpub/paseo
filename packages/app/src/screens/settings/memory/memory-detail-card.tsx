@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -17,36 +17,11 @@ import {
   memoryScopeLabel,
   memoryStatus,
 } from "./memory-form-options";
+import { memoryDetailDraft, type MemoryDetailDraft } from "./memory-detail-draft";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
-interface MemoryDetailDraft {
-  title: string;
-  category: PaseoMemoryDetail["category"];
-  content: string;
-  keywords: string;
-  scopeType: PaseoMemoryScope["type"];
-  scopeId: string;
-  status: NonNullable<PaseoMemoryDetail["status"]>;
-  importance: string;
-  validUntil: string;
-}
-
-function draftFromDetail(detail: PaseoMemoryDetail): MemoryDetailDraft {
-  return {
-    title: detail.title,
-    category: detail.category,
-    content: detail.content,
-    keywords: detail.keywords.join(", "),
-    scopeType: detail.scope?.type ?? "global",
-    scopeId: detail.scope?.id ?? "",
-    status: memoryStatus(detail),
-    importance: String(detail.importance ?? 0.5),
-    validUntil: detail.validUntil ?? "",
-  };
-}
 
 function rowPressStyle({ pressed }: PressableStateCallbackType) {
   return [settingsStyles.row, styles.header, pressed ? styles.headerPressed : null];
@@ -55,18 +30,24 @@ function rowPressStyle({ pressed }: PressableStateCallbackType) {
 export function MemoryDetailCard({
   detail,
   disabled,
+  scopeEditable = true,
   onSave,
   onDelete,
 }: {
   detail: PaseoMemoryDetail;
   disabled: boolean;
+  scopeEditable?: boolean;
   onSave: (detail: PaseoMemoryDetail, draft: MemoryDetailDraft) => Promise<void>;
   onDelete: (detail: PaseoMemoryDetail) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [draft, setDraft] = useState(() => draftFromDetail(detail));
-  useEffect(() => setDraft(draftFromDetail(detail)), [detail]);
-  const toggle = useCallback(() => setExpanded((value) => !value), []);
+  const [draft, setDraft] = useState(() => memoryDetailDraft(detail));
+  const toggle = useCallback(() => {
+    setExpanded((value) => {
+      if (!value) setDraft(memoryDetailDraft(detail));
+      return !value;
+    });
+  }, [detail]);
   const save = useCallback(() => onSave(detail, draft), [detail, draft, onSave]);
   const remove = useCallback(() => onDelete(detail), [detail, onDelete]);
   const categoryDisplay = useMemo(
@@ -141,11 +122,14 @@ export function MemoryDetailCard({
           <Text style={settingsStyles.rowTitle}>{detail.title}</Text>
           <Text style={settingsStyles.rowHint}>
             {memoryCategoryLabel(detail.category)} · {memoryScopeLabel(detail.scope)} ·{" "}
-            {memoryStatus(detail)} · {(detail.importance ?? 0.5).toFixed(2)}
+            {MEMORY_DETAIL_STATUS_OPTIONS.find((option) => option.value === memoryStatus(detail))
+              ?.label ?? memoryStatus(detail)}{" "}
+            · 重要度 {(detail.importance ?? 0.5).toFixed(2)}
           </Text>
           <Text numberOfLines={expanded ? undefined : 2} style={styles.preview}>
             {detail.content}
           </Text>
+          <Text style={styles.expandHint}>{expanded ? "点击收起" : "点击查看完整内容并编辑"}</Text>
         </View>
       </Pressable>
       {expanded ? (
@@ -179,32 +163,34 @@ export function MemoryDetailCard({
               />
             </View>
           </View>
-          <View style={styles.fieldGrid}>
-            <View style={styles.gridItem}>
-              <SelectField
-                label="作用域"
-                value={draft.scopeType}
-                selectedDisplay={scopeDisplay}
-                options={MEMORY_SCOPE_OPTIONS}
-                onChange={setScopeType}
-                placeholder="选择作用域"
-                emptyText="没有可用作用域"
-                disabled={disabled}
-              />
-            </View>
-            {draft.scopeType === "global" ? null : (
+          {scopeEditable ? (
+            <View style={styles.fieldGrid}>
               <View style={styles.gridItem}>
-                <Field label="作用域 ID">
-                  <FormTextInput
-                    value={draft.scopeId}
-                    onChangeText={setScopeId}
-                    editable={!disabled}
-                    placeholder="Project、助手或 Workspace ID"
-                  />
-                </Field>
+                <SelectField
+                  label="作用域"
+                  value={draft.scopeType}
+                  selectedDisplay={scopeDisplay}
+                  options={MEMORY_SCOPE_OPTIONS}
+                  onChange={setScopeType}
+                  placeholder="选择作用域"
+                  emptyText="没有可用作用域"
+                  disabled={disabled}
+                />
               </View>
-            )}
-          </View>
+              {draft.scopeType === "global" ? null : (
+                <View style={styles.gridItem}>
+                  <Field label="作用域 ID">
+                    <FormTextInput
+                      value={draft.scopeId}
+                      onChangeText={setScopeId}
+                      editable={!disabled}
+                      placeholder="Project、助手或 Workspace ID"
+                    />
+                  </Field>
+                </View>
+              )}
+            </View>
+          ) : null}
           <Field label="关键词" hint="使用英文逗号分隔关键词">
             <FormTextInput value={draft.keywords} onChangeText={setKeywords} editable={!disabled} />
           </Field>
@@ -241,8 +227,8 @@ export function MemoryDetailCard({
             </View>
           </Field>
           <Text style={styles.provenance}>
-            Used {detail.useCount ?? 0} times · helpful {detail.helpfulCount ?? 0} · unhelpful{" "}
-            {detail.unhelpfulCount ?? 0} · {detail.sourceRefs?.length ?? 0} sources
+            已使用 {detail.useCount ?? 0} 次 · 有帮助 {detail.helpfulCount ?? 0} · 无帮助{" "}
+            {detail.unhelpfulCount ?? 0} · {detail.sourceRefs?.length ?? 0} 个来源
           </Text>
           <Text selectable style={styles.path}>
             {detail.path}
@@ -253,10 +239,10 @@ export function MemoryDetailCard({
               disabled={disabled || !draft.title.trim() || !draft.content.trim()}
               onPress={save}
             >
-              Save
+              保存
             </Button>
             <Button size="sm" variant="outline" disabled={disabled} onPress={remove}>
-              Delete
+              删除
             </Button>
           </View>
         </View>
@@ -264,8 +250,6 @@ export function MemoryDetailCard({
     </View>
   );
 }
-
-export type { MemoryDetailDraft };
 
 const styles = StyleSheet.create((theme) => ({
   header: {
@@ -280,6 +264,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: Math.round(theme.fontSize.sm * 1.45),
+    marginTop: theme.spacing[1],
+  },
+  expandHint: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.xs,
     marginTop: theme.spacing[1],
   },
   editor: {

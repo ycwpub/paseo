@@ -31,17 +31,19 @@ interface CreateDraft {
   sensitive: boolean;
 }
 
-const EMPTY_DRAFT: CreateDraft = {
-  title: "",
-  category: "other",
-  content: "",
-  keywords: "",
-  scopeType: "global",
-  scopeId: "",
-  importance: "1",
-  validUntil: "",
-  sensitive: false,
-};
+function emptyDraft(scope?: PaseoMemoryScope): CreateDraft {
+  return {
+    title: "",
+    category: "other",
+    content: "",
+    keywords: "",
+    scopeType: scope?.type ?? "global",
+    scopeId: scope?.id ?? "",
+    importance: "1",
+    validUntil: "",
+    sensitive: false,
+  };
+}
 
 function parseImportance(value: string): number {
   const parsed = Number.parseFloat(value);
@@ -51,14 +53,16 @@ function parseImportance(value: string): number {
 export function MemoryCreateCard({
   disabled,
   globalUserId,
+  scope,
   onCreate,
 }: {
   disabled: boolean;
   globalUserId: string;
+  scope?: PaseoMemoryScope;
   onCreate: (input: PaseoMemoryCreateInput) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [draft, setDraft] = useState<CreateDraft>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<CreateDraft>(() => emptyDraft(scope));
   const categoryDisplay = useMemo(
     () => ({ label: memoryCategoryLabel(draft.category) }),
     [draft.category],
@@ -67,7 +71,10 @@ export function MemoryCreateCard({
     () => ({ label: memoryScopeLabel({ type: draft.scopeType, id: draft.scopeId || undefined }) }),
     [draft.scopeId, draft.scopeType],
   );
-  const open = useCallback(() => setExpanded(true), []);
+  const open = useCallback(() => {
+    setDraft(emptyDraft(scope));
+    setExpanded(true);
+  }, [scope]);
   const close = useCallback(() => setExpanded(false), []);
   const setTitle = useCallback(
     (title: string) => setDraft((current) => ({ ...current, title })),
@@ -122,9 +129,9 @@ export function MemoryCreateCard({
       validUntil: draft.validUntil.trim() || null,
       sensitive: draft.sensitive,
     });
-    setDraft(EMPTY_DRAFT);
+    setDraft(emptyDraft(scope));
     setExpanded(false);
-  }, [draft, globalUserId, onCreate]);
+  }, [draft, globalUserId, onCreate, scope]);
 
   if (!expanded) {
     return (

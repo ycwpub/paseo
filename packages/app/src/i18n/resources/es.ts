@@ -2843,6 +2843,7 @@ export const es: TranslationResources = {
       memory: {
         title: "Memoria del proyecto",
         info: "Controla la memoria de este proyecto y define qué conocimiento duradero debe aprender Paseo.",
+        policyTitle: "Reglas de memoria",
         enabledTitle: "Usar memoria para este proyecto",
         enabledHint:
           "Si se desactiva, los agentes no leerán ni crearán memoria del proyecto. La memoria global seguirá disponible.",
@@ -2855,6 +2856,26 @@ export const es: TranslationResources = {
         saving: "Guardando...",
         saved: "Guardado",
         saveError: "No se pudo guardar la memoria del proyecto",
+        content: {
+          title: "Contenido de memoria",
+          description:
+            "Consulta, edita o elimina la memoria a largo plazo de este proyecto y sus espacios de trabajo. Aquí no se puede cambiar el ámbito.",
+          scope: "Ámbito de memoria",
+          scopes: {
+            project: "Proyecto actual",
+            workspace: "Espacio de trabajo",
+          },
+          selectScope: "Selecciona un ámbito de memoria",
+          noScopes: "No hay ámbitos de memoria disponibles",
+          selectWorkspace: "Selecciona un espacio de trabajo",
+          noWorkspace: "Este proyecto no tiene espacios de trabajo disponibles",
+          loading: "Cargando memoria...",
+          empty: "No hay memorias que coincidan en este ámbito",
+          errorTitle: "No se pudo gestionar la memoria del proyecto",
+          deleteTitle: "¿Eliminar «{{title}}»?",
+          deleteDescription: "Esta memoria y la información de su origen no se pueden recuperar.",
+          deleteConfirm: "Eliminar",
+        },
       },
       edit: {
         title: "Editar proyecto",

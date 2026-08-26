@@ -2847,6 +2847,7 @@ export const fr: TranslationResources = {
       memory: {
         title: "Mémoire du projet",
         info: "Contrôlez la mémoire propre à ce projet et définissez les connaissances durables que Paseo doit apprendre.",
+        policyTitle: "Règles de mémoire",
         enabledTitle: "Utiliser la mémoire pour ce projet",
         enabledHint:
           "Si elle est désactivée, les agents ne lisent ni ne créent de mémoire de projet. La mémoire globale reste disponible.",
@@ -2859,6 +2860,27 @@ export const fr: TranslationResources = {
         saving: "Enregistrement...",
         saved: "Enregistré",
         saveError: "Impossible d'enregistrer la mémoire du projet",
+        content: {
+          title: "Contenu de la mémoire",
+          description:
+            "Affichez, modifiez ou supprimez la mémoire à long terme de ce projet et de ses espaces de travail. La portée ne peut pas être modifiée ici.",
+          scope: "Portée de la mémoire",
+          scopes: {
+            project: "Projet actuel",
+            workspace: "Espace de travail",
+          },
+          selectScope: "Sélectionner une portée",
+          noScopes: "Aucune portée disponible",
+          selectWorkspace: "Sélectionner un espace de travail",
+          noWorkspace: "Ce projet ne contient aucun espace de travail disponible",
+          loading: "Chargement de la mémoire...",
+          empty: "Aucune mémoire correspondante dans cette portée",
+          errorTitle: "Impossible de gérer la mémoire du projet",
+          deleteTitle: "Supprimer « {{title}} » ?",
+          deleteDescription:
+            "Cette mémoire et les informations sur sa source ne pourront pas être récupérées.",
+          deleteConfirm: "Supprimer",
+        },
       },
       edit: {
         title: "Modifier le projet",

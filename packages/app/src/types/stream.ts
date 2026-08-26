@@ -1,6 +1,7 @@
 import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
+import { getTurnInterruptionMessage } from "@/agent-stream/turn-interruption";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 
@@ -1477,7 +1478,19 @@ export function reduceStreamUpdate(
     case "turn_started":
     case "turn_completed":
     case "turn_failed":
-    case "turn_canceled":
+      return finalizeActiveThoughts(state, timestamp);
+    case "turn_canceled": {
+      const activity: ActivityLogItem = {
+        kind: "activity_log",
+        id: createTimelineId("turn-canceled", event.turnId ?? event.reason, timestamp),
+        ...(options?.timelineCursor ? { timelineCursor: options.timelineCursor } : {}),
+        timestamp,
+        activityType: "error",
+        message: getTurnInterruptionMessage(event),
+        metadata: event.reason ? { reason: event.reason } : undefined,
+      };
+      return finalizeActiveThoughts(appendActivityLog(state, activity), timestamp);
+    }
     case "permission_requested":
     case "permission_resolved":
     case "attention_required":

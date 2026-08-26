@@ -815,6 +815,28 @@ function createPaseoWorktreeForMcpTest(options: {
 describe("browser MCP tools", () => {
   const logger = createTestLogger();
 
+  it("lists tools while the caller agent is still being restored", async () => {
+    const server = await createAgentMcpServer({
+      agentManager: new BoundaryAgentManagerFake() as AgentManager,
+      agentStorage: new BoundaryAgentStorageFake() as AgentStorage,
+      providerSnapshotManager:
+        new BoundaryProviderSnapshotManagerFake() as unknown as ProviderSnapshotManager,
+      callerAgentId: "restoring-agent",
+      assistantStore: { get: () => null },
+      teamStore: { get: () => null },
+      logger,
+    });
+    const client = await connectInMemoryMcpClient(server);
+
+    try {
+      const listedTools = await client.listTools();
+      expect(listedTools.tools.map((tool) => tool.name)).toContain("create_agent");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("omits output schemas from tools/list and keeps tool call content model-visible", async () => {
     const agentManager = new BoundaryAgentManagerFake();
     const agentStorage = new BoundaryAgentStorageFake();

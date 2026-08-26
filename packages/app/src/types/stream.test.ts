@@ -1195,6 +1195,31 @@ describe("turn lifecycle events", () => {
     );
   });
 
+  it("shows a visible error when a turn is canceled before completion", () => {
+    const canceledAt = new Date("2025-01-01T12:01:00Z");
+    const state = reduceStreamUpdate(
+      [],
+      {
+        type: "turn_canceled",
+        provider: "codex",
+        turnId: "turn-1",
+        reason: "interrupted",
+      },
+      canceledAt,
+    );
+
+    expect(state).toEqual([
+      expect.objectContaining({
+        kind: "activity_log",
+        timestamp: canceledAt,
+        activityType: "error",
+        message:
+          "This run was interrupted before it finished. If you did not stop it, continue or resend the instruction.",
+        metadata: { reason: "interrupted" },
+      }),
+    ]);
+  });
+
   it("hydrates canonical timeline rows without synthetic turn rows", () => {
     const state = hydrateStreamState([
       {

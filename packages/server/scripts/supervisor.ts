@@ -5,7 +5,7 @@ import { createStream as createRotatingFileStream } from "rotating-file-stream";
 import { signalProcessTree } from "../src/utils/tree-kill.js";
 
 const WORKER_HEARTBEAT_INTERVAL_MS = 1_000;
-const WORKER_HEARTBEAT_TIMEOUT_MS = 15_000;
+const WORKER_HEARTBEAT_TIMEOUT_MS = 60_000;
 const WORKER_TERMINATION_GRACE_MS = 10_000;
 
 interface SupervisorLogFileOptions {
@@ -54,6 +54,10 @@ interface SupervisorOptions {
   restartOnCrash?: boolean;
   onSupervisorExit?: () => Promise<void> | void;
   logFile?: SupervisorLogFileOptions;
+  workerHeartbeat?: {
+    intervalMs?: number;
+    timeoutMs?: number;
+  };
 }
 
 export interface SupervisorController {
@@ -133,6 +137,10 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
   const workerEnv = options.workerEnv ?? process.env;
   const workerExecArgv = options.workerExecArgv ?? ["--import", "tsx"];
   const resolveWorkerSpawnSpec = options.resolveWorkerSpawnSpec;
+  const workerHeartbeatIntervalMs =
+    options.workerHeartbeat?.intervalMs ?? WORKER_HEARTBEAT_INTERVAL_MS;
+  const workerHeartbeatTimeoutMs =
+    options.workerHeartbeat?.timeoutMs ?? WORKER_HEARTBEAT_TIMEOUT_MS;
 
   let child: ChildProcess | null = null;
   let restarting = false;
@@ -264,7 +272,7 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
       } else {
         writeLifecycleLog("Worker heartbeat skipped because IPC channel is disconnected");
       }
-    }, WORKER_HEARTBEAT_INTERVAL_MS);
+    }, workerHeartbeatIntervalMs);
     heartbeat.unref();
 
     const workerWatchdog = setInterval(() => {
@@ -272,7 +280,7 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
         return;
       }
       const heartbeatAgeMs = Date.now() - lastWorkerHeartbeatAt;
-      if (heartbeatAgeMs < WORKER_HEARTBEAT_TIMEOUT_MS) {
+      if (heartbeatAgeMs < workerHeartbeatTimeoutMs) {
         return;
       }
       writeLifecycleLog("Worker heartbeat timed out; restarting worker", {
@@ -281,7 +289,7 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
         workerPid: currentChild.pid ?? null,
       });
       requestRestart("worker_heartbeat_timeout");
-    }, WORKER_HEARTBEAT_INTERVAL_MS);
+    }, workerHeartbeatIntervalMs);
     workerWatchdog.unref();
 
     child.on("disconnect", () => {

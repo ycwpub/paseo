@@ -272,6 +272,60 @@ test("removes legacy client identifier fields from persisted Relay history", asy
   expect(persisted.history[0]).not.toHaveProperty("userAgent");
 });
 
+test("removes history when the identity has not connected during the retention window", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-history-retention-"));
+  tempDirs.push(tempDir);
+  const historyFilePath = path.join(tempDir, "history.json");
+  const now = Date.now();
+  const staleConnectedAt = new Date(now - 31 * 24 * 60 * 60 * 1000).toISOString();
+  const recentConnectedAt = new Date(now - 29 * 24 * 60 * 60 * 1000).toISOString();
+  const recentlyDisconnectedAt = new Date(now - 60 * 1000).toISOString();
+  await writeFile(
+    historyFilePath,
+    JSON.stringify({
+      version: 1,
+      history: [
+        {
+          id: "rlyh_stale",
+          serverId: "srv_stale",
+          hostname: "stale-host",
+          deviceType: "mac",
+          clientId: null,
+          clientHostname: null,
+          role: "server_control",
+          connectionId: null,
+          remoteAddress: "127.0.0.1",
+          remotePort: 12345,
+          connectedAt: staleConnectedAt,
+          disconnectedAt: recentlyDisconnectedAt,
+        },
+        {
+          id: "rlyh_recent",
+          serverId: "srv_recent",
+          hostname: "recent-host",
+          deviceType: "mac",
+          clientId: null,
+          clientHostname: null,
+          role: "server_control",
+          connectionId: null,
+          remoteAddress: "127.0.0.1",
+          remotePort: 12346,
+          connectedAt: recentConnectedAt,
+          disconnectedAt: recentlyDisconnectedAt,
+        },
+      ],
+    }),
+  );
+
+  const relay = await startLocalRelayServer({
+    listen: "127.0.0.1:0",
+    historyFilePath,
+  });
+  controllers.push(relay);
+
+  expect(relay.getStatus().history.map((record) => record.id)).toEqual(["rlyh_recent"]);
+});
+
 test("hosts the Paseo pairing web app at the configured path", async () => {
   const distDir = await createWebAppDist();
   const relay = await startLocalRelayServer({

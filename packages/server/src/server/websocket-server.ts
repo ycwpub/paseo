@@ -2054,6 +2054,8 @@ export class VoiceAssistantWebSocketServer {
         pluginHttpServiceSubmit: true,
         // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
         pluginHttpServiceManagement: true,
+        // COMPAT(pluginHttpServiceLocalTesting): added on 2026-08-27.
+        pluginHttpServiceLocalTesting: true,
       },
     };
   }

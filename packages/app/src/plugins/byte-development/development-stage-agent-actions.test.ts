@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { PluginHttpJob } from "@getpaseo/protocol/messages";
 import {
+  associateDevelopmentStageDraftAgent,
+  buildDevelopmentStageDraftId,
   canReuseDevelopmentStageWorkspace,
-  createDevelopmentStageAgent,
+  prepareDevelopmentStageDraft,
   resolveReusableDevelopmentStageSession,
 } from "./development-stage-agent-actions";
 import { developmentFlowFromJob } from "./flow-model";
@@ -97,10 +99,10 @@ describe("development stage agent actions", () => {
     ).toEqual({ agentId: "agent-1", workspaceId: "workspace-1" });
   });
 
-  it("creates the node Agent inside an existing Project workspace", async () => {
-    const createAgent = vi.fn().mockResolvedValue({ id: "agent-1" });
+  it("prepares the node draft inside an existing Project workspace without creating an Agent", async () => {
+    const createAgent = vi.fn();
     const client = { createAgent } as unknown as DaemonClient;
-    const result = await createDevelopmentStageAgent({
+    const result = await prepareDevelopmentStageDraft({
       client,
       flow: flow(),
       stageId: "development",
@@ -114,25 +116,15 @@ describe("development stage agent actions", () => {
       },
     });
 
-    expect(result).toMatchObject({ agentId: "agent-1", workspaceId: "workspace-1" });
-    expect(createAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "codex",
-        model: "gpt-5.6",
-        cwd: "/repo",
-        workspaceId: "workspace-1",
-        autoArchive: false,
-        labels: expect.objectContaining({
-          "paseo.plugin-project-id": "flow-1",
-          "paseo.development-stage": "development",
-          "paseo.project-id": "project-1",
-        }),
-      }),
-    );
-    expect(createAgent.mock.calls[0]?.[0].initialPrompt).toContain("仅修改支付模块");
+    expect(result).toMatchObject({
+      workspaceId: "workspace-1",
+      workspaceDirectory: "/repo",
+    });
+    expect(result.prompt).toContain("仅修改支付模块");
+    expect(createAgent).not.toHaveBeenCalled();
   });
 
-  it("creates a Project workspace before the Agent when none exists", async () => {
+  it("creates a Project workspace before preparing the draft when none exists", async () => {
     const createWorkspace = vi.fn().mockResolvedValue({
       error: null,
       workspace: {
@@ -141,9 +133,9 @@ describe("development stage agent actions", () => {
         workspaceDirectory: "/repo",
       },
     });
-    const createAgent = vi.fn().mockResolvedValue({ id: "agent-new" });
+    const createAgent = vi.fn();
     const client = { createWorkspace, createAgent } as unknown as DaemonClient;
-    const result = await createDevelopmentStageAgent({
+    const result = await prepareDevelopmentStageDraft({
       client,
       flow: flow(),
       stageId: "prd",
@@ -158,6 +150,7 @@ describe("development stage agent actions", () => {
       title: "支付链路优化",
     });
     expect(result.workspaceId).toBe("workspace-new");
+    expect(createAgent).not.toHaveBeenCalled();
   });
 
   it("rejects a newly created workspace that was attached to another Project", async () => {
@@ -173,7 +166,7 @@ describe("development stage agent actions", () => {
     const client = { createWorkspace, createAgent } as unknown as DaemonClient;
 
     await expect(
-      createDevelopmentStageAgent({
+      prepareDevelopmentStageDraft({
         client,
         flow: flow(),
         stageId: "development",
@@ -191,7 +184,7 @@ describe("development stage agent actions", () => {
     const client = { createAgent } as unknown as DaemonClient;
 
     await expect(
-      createDevelopmentStageAgent({
+      prepareDevelopmentStageDraft({
         client,
         flow: flow(),
         stageId: "review",
@@ -206,5 +199,77 @@ describe("development stage agent actions", () => {
       }),
     ).rejects.toThrow("预期 project-1，实际 project-code-repos");
     expect(createAgent).not.toHaveBeenCalled();
+  });
+
+  it("associates a manually submitted draft with its development stage", async () => {
+    const draftId = buildDevelopmentStageDraftId("draft-1");
+    const currentFlow = flow();
+    const job = {
+      ...currentFlow.job,
+      input: {
+        ...(currentFlow.job.input as Record<string, unknown>),
+        stage_collaboration: {
+          development: {
+            status: "pending",
+            knowledge: "仅修改支付模块",
+            draftId,
+            agentId: null,
+            workspaceId: "workspace-1",
+            startedAt: null,
+            completedAt: null,
+            updatedAt: "2026-08-21T08:00:00.000Z",
+          },
+        },
+      },
+    };
+    const listPluginAppJobs = vi.fn().mockResolvedValue({ jobs: [job], error: null });
+    const updatePluginAppJob = vi.fn().mockImplementation(async (_jobId, input) => ({
+      job: { ...job, input },
+      error: null,
+    }));
+    const client = {
+      listPluginAppJobs,
+      updatePluginAppJob,
+    } as unknown as DaemonClient;
+
+    await expect(
+      associateDevelopmentStageDraftAgent({
+        client,
+        serverId: "server-1",
+        draftId,
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+      }),
+    ).resolves.toBe(true);
+
+    expect(updatePluginAppJob).toHaveBeenCalledWith(
+      "flow-1",
+      expect.objectContaining({
+        stage_collaboration: expect.objectContaining({
+          development: expect.objectContaining({
+            status: "in_progress",
+            draftId: null,
+            agentId: "agent-1",
+            workspaceId: "workspace-1",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("ignores ordinary Project drafts without querying plugin jobs", async () => {
+    const listPluginAppJobs = vi.fn();
+    const client = { listPluginAppJobs } as unknown as DaemonClient;
+
+    await expect(
+      associateDevelopmentStageDraftAgent({
+        client,
+        serverId: "server-1",
+        draftId: "draft-ordinary",
+        agentId: "agent-1",
+        workspaceId: "workspace-1",
+      }),
+    ).resolves.toBe(false);
+    expect(listPluginAppJobs).not.toHaveBeenCalled();
   });
 });

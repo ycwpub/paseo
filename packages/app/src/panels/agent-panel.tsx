@@ -105,6 +105,7 @@ import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents"
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { storeFetchedAgentDetail } from "@/utils/store-fetched-agent-detail";
+import { associateDevelopmentStageDraftAgent } from "@/plugins/byte-development/development-stage-agent-actions";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
@@ -359,6 +360,7 @@ function DraftPanel() {
     retargetCurrentTab,
   } = usePaneContext();
   const { isInteractive } = usePaneFocus();
+  const client = useHostRuntimeClient(serverId);
   invariant(target.kind === "draft", "DraftPanel requires draft target");
 
   const handleCreated = useCallback(
@@ -371,8 +373,19 @@ function DraftPanel() {
         return next;
       });
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
+      if (client) {
+        void associateDevelopmentStageDraftAgent({
+          client,
+          serverId,
+          draftId: target.draftId,
+          agentId: agentSnapshot.id,
+          workspaceId,
+        }).catch((error) => {
+          console.warn("[ByteDevelopment] Failed to associate stage Agent", error);
+        });
+      }
     },
-    [retargetCurrentTab, serverId],
+    [client, retargetCurrentTab, serverId, target.draftId, workspaceId],
   );
 
   return (

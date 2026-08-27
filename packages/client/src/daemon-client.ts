@@ -30,6 +30,7 @@ import {
   PluginHttpJob,
   PluginHttpJobStatus,
   PluginHttpProjectConfig,
+  PluginHttpTestTarget,
   PluginMarketplaceSummary,
   PluginState,
   PluginSummary,
@@ -6412,6 +6413,20 @@ export class DaemonClient {
 
   savePluginHttpConfig(config: Omit<PluginHttpProjectConfig, "updatedAt">) {
     return this.resourceRpc.savePluginHttpConfig(config);
+  }
+
+  getPluginHttpLocalAddresses() {
+    return this.resourceRpc.getPluginHttpLocalAddresses();
+  }
+
+  testPluginHttpRoute(input: {
+    pluginId: string;
+    projectId: string;
+    listenerId: string;
+    target: PluginHttpTestTarget;
+    body?: Record<string, unknown>;
+  }) {
+    return this.resourceRpc.testPluginHttpRoute(input);
   }
 
   deletePluginHttpJobs(processIds: string[]) {

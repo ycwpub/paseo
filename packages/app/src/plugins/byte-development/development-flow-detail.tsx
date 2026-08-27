@@ -169,8 +169,17 @@ function StageCollaborationCard({
 }) {
   const stage = DEVELOPMENT_STAGES.find((candidate) => candidate.id === stageId);
   const collaboration = developmentStageCollaborationFromInput(flow.job.input, stageId);
+  const persistedPrd = useMemo(
+    () => developmentPrdSourceFromInput(flow.job.input),
+    [flow.job.input],
+  );
   const [knowledge, setKnowledge] = useState(collaboration.knowledge);
-  const [prd, setPrd] = useState(() => developmentPrdSourceFromInput(flow.job.input));
+  const [prd, setPrd] = useState(persistedPrd);
+  const prdInputResetKey = useMemo(
+    () => `${flow.id}:${JSON.stringify(persistedPrd)}`,
+    [flow.id, persistedPrd],
+  );
+  const knowledgeInputResetKey = `${flow.id}:${stageId}:${collaboration.knowledge}`;
   const [action, setAction] = useState<
     "save-prd" | "save-knowledge" | "open" | "complete" | "reopen" | null
   >(null);
@@ -220,7 +229,9 @@ function StageCollaborationCard({
   }, [knowledge, onReopenStage, runAction, stageId]);
 
   const busy = action !== null;
-  const openLabel = collaboration.agentId ? "继续 Project 会话" : "在 Project 中开始";
+  let openLabel = "在 Project 中开始";
+  if (collaboration.draftId) openLabel = "继续配置并发送";
+  if (collaboration.agentId) openLabel = "继续 Project 会话";
 
   return (
     <View style={[settingsStyles.card, styles.stageDetailCard]}>
@@ -244,6 +255,7 @@ function StageCollaborationCard({
             active
             serverId={serverId}
             plugin={plugin}
+            inputResetKey={prdInputResetKey}
             value={prd}
             onChange={setPrd}
           />
@@ -267,7 +279,8 @@ function StageCollaborationCard({
         hint="仅作用于当前节点，用于保存该节点的目标、规则、资源、验收标准和其他专有配置；不会自动变成其他节点或 Project 的公共知识。"
       >
         <FormTextInput
-          value={knowledge}
+          initialValue={knowledge}
+          resetKey={knowledgeInputResetKey}
           onChangeText={setKnowledge}
           placeholder="输入当前节点专有的配置和知识"
           multiline
@@ -297,8 +310,8 @@ function StageCollaborationCard({
         </View>
       ) : (
         <Text style={styles.hint}>
-          尚未创建本节点的 Agent。点击“在 Project 中开始”后，会复用 Project workspace
-          并创建专属会话。
+          尚未创建本节点的 Agent。点击“在 Project 中开始”后，只会复用 Project workspace
+          并把节点提示词填入输入框；不会自动提交。请自行选择模型、助手和权限后发送。
         </Text>
       )}
 
@@ -450,6 +463,7 @@ export function DevelopmentFlowDetail({
         onOpenProjectSettings={onOpenProjectSettings}
       />
       <StageCollaborationCard
+        key={`${flow.id}:${selectedStage}`}
         flow={flow}
         serverId={serverId}
         plugin={plugin}

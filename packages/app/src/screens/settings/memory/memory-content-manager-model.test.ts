@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
-import type { PaseoMemoryDetail } from "@getpaseo/protocol/messages";
+import type { PaseoMemoryDetail, PaseoMemoryScopeDocument } from "@getpaseo/protocol/messages";
 import {
   buildMemoryContentTargetOptions,
+  findMemoryOverviewDocument,
   memoryDetailMatchesScope,
 } from "./memory-content-manager-model";
 
@@ -94,5 +95,27 @@ describe("memory content manager model", () => {
         { type: "project", id: "project-1" },
       ),
     ).toBe(true);
+  });
+
+  test("finds the overview document for the selected scope", () => {
+    const documents: PaseoMemoryScopeDocument[] = [
+      {
+        scope: { type: "global", id: "default" },
+        path: "/tmp/global/summary.md",
+        content: "# Global memory",
+      },
+      {
+        scope: { type: "project", id: "project-1" },
+        path: "/tmp/project/summary.md",
+        content: "# Project memory",
+      },
+    ];
+
+    expect(findMemoryOverviewDocument(documents, { type: "project", id: "project-1" })).toEqual(
+      documents[1],
+    );
+    expect(
+      findMemoryOverviewDocument(documents, { type: "assistant", id: "assistant-1" }),
+    ).toBeNull();
   });
 });

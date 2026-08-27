@@ -1,9 +1,9 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Button } from "@/components/ui/button";
 import {
   View,
   Pressable,
   Text,
-  TextInput,
   ActivityIndicator,
   StyleSheet as RNStyleSheet,
   type PressableStateCallbackType,
@@ -24,13 +24,11 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
-  Check,
   ChevronDown,
   ChevronUp,
   Square,
   Pencil,
   Trash2,
-  X,
   AudioLines,
   CircleDot,
   FileText,
@@ -85,6 +83,7 @@ import {
   type QueueWriter,
   type QueuedComposerMessage,
 } from "@/composer/actions";
+import { useQueuedMessageEdit } from "@/composer/use-queued-message-edit";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -94,6 +93,7 @@ import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import {
+  getHostRuntimeStore,
   useHostRuntimeAgentDirectoryStatus,
   useHostRuntimeClient,
   useHostRuntimeIsConnected,
@@ -396,7 +396,8 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
 
 interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
-  onUpdate: (id: string, text: string) => boolean;
+  isDisabled: boolean;
+  onEdit: (id: string) => void;
   onRemove: (id: string) => void;
   onMove: (id: string, direction: "up" | "down") => void;
   onSteer: (id: string) => Promise<void>;
@@ -404,7 +405,7 @@ interface RenderQueueTrackArgs {
 }
 
 function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
-  const { queuedMessages, onUpdate, onRemove, onMove, onSteer, labels } = args;
+  const { queuedMessages, isDisabled, onEdit, onRemove, onMove, onSteer, labels } = args;
   if (queuedMessages.length === 0) return null;
   return (
     <View style={styles.queueTrack}>
@@ -414,13 +415,45 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
           item={item}
           index={index}
           count={queuedMessages.length}
-          onUpdate={onUpdate}
+          isDisabled={isDisabled}
+          onEdit={onEdit}
           onRemove={onRemove}
           onMove={onMove}
           onSteer={onSteer}
           labels={labels}
         />
       ))}
+    </View>
+  );
+}
+
+interface QueuedMessageEditNoticeProps {
+  label: string;
+  cancelLabel: string;
+  cancelAccessibilityLabel: string;
+  onCancel: () => void;
+}
+
+function QueuedMessageEditNotice({
+  label,
+  cancelLabel,
+  cancelAccessibilityLabel,
+  onCancel,
+}: QueuedMessageEditNoticeProps) {
+  return (
+    <View style={styles.queueEditNotice} testID="queued-message-edit-notice">
+      <View style={styles.queueEditNoticeLabel}>
+        <ThemedPencil size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
+        <Text style={styles.queueEditNoticeText}>{label}</Text>
+      </View>
+      <Button
+        variant="ghost"
+        size="xs"
+        onPress={onCancel}
+        accessibilityLabel={cancelAccessibilityLabel}
+      >
+        {cancelLabel}
+      </Button>
     </View>
   );
 }
@@ -726,7 +759,8 @@ interface QueuedMessageRowProps {
   item: QueuedMessage;
   index: number;
   count: number;
-  onUpdate: (id: string, text: string) => boolean;
+  isDisabled: boolean;
+  onEdit: (id: string) => void;
   onRemove: (id: string) => void;
   onMove: (id: string, direction: "up" | "down") => void;
   onSteer: (id: string) => Promise<void>;
@@ -735,8 +769,6 @@ interface QueuedMessageRowProps {
 
 interface QueueActionLabels {
   editLabel: string;
-  saveLabel: string;
-  cancelEditLabel: string;
   removeLabel: string;
   moveUpLabel: string;
   moveDownLabel: string;
@@ -747,28 +779,20 @@ function QueuedMessageRow({
   item,
   index,
   count,
-  onUpdate,
+  isDisabled,
+  onEdit,
   onRemove,
   onMove,
   onSteer,
   labels,
 }: QueuedMessageRowProps) {
-  const [editText, setEditText] = useState<string | null>(null);
   const [isSteering, setIsSteering] = useState(false);
-  const isEditing = editText !== null;
-  const canSave = Boolean(editText?.trim());
+  const actionsDisabled = isDisabled || isSteering;
+  const moveUpDisabled = actionsDisabled || index === 0;
+  const moveDownDisabled = actionsDisabled || index === count - 1;
   const startEditing = useCallback(() => {
-    setEditText(item.text);
-  }, [item.text]);
-  const cancelEditing = useCallback(() => {
-    setEditText(null);
-  }, []);
-  const saveEdit = useCallback(() => {
-    if (editText === null) return;
-    if (onUpdate(item.id, editText)) {
-      setEditText(null);
-    }
-  }, [editText, item.id, onUpdate]);
+    onEdit(item.id);
+  }, [item.id, onEdit]);
   const remove = useCallback(() => {
     onRemove(item.id);
   }, [item.id, onRemove]);
@@ -787,40 +811,6 @@ function QueuedMessageRow({
     }
   }, [item.id, onSteer]);
 
-  if (isEditing) {
-    return (
-      <View style={styles.queueItem}>
-        <TextInput
-          value={editText}
-          onChangeText={setEditText}
-          autoFocus
-          multiline
-          style={styles.queueEditInput}
-          accessibilityLabel={labels.editLabel}
-        />
-        <View style={styles.queueActions}>
-          <Pressable
-            onPress={cancelEditing}
-            style={styles.queueActionButton}
-            accessibilityLabel={labels.cancelEditLabel}
-            accessibilityRole="button"
-          >
-            <ThemedX size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
-          </Pressable>
-          <Pressable
-            onPress={saveEdit}
-            disabled={!canSave}
-            style={[styles.queueActionButton, !canSave && styles.buttonDisabled]}
-            accessibilityLabel={labels.saveLabel}
-            accessibilityRole="button"
-          >
-            <ThemedCheck size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.queueItem}>
       <Text style={styles.queueText} numberOfLines={2} ellipsizeMode="tail">
@@ -829,8 +819,8 @@ function QueuedMessageRow({
       <View style={styles.queueActions}>
         <Pressable
           onPress={moveUp}
-          disabled={index === 0 || isSteering}
-          style={[styles.queueActionButton, (index === 0 || isSteering) && styles.buttonDisabled]}
+          disabled={moveUpDisabled}
+          style={[styles.queueActionButton, moveUpDisabled && styles.buttonDisabled]}
           accessibilityLabel={labels.moveUpLabel}
           accessibilityRole="button"
         >
@@ -838,11 +828,8 @@ function QueuedMessageRow({
         </Pressable>
         <Pressable
           onPress={moveDown}
-          disabled={index === count - 1 || isSteering}
-          style={[
-            styles.queueActionButton,
-            (index === count - 1 || isSteering) && styles.buttonDisabled,
-          ]}
+          disabled={moveDownDisabled}
+          style={[styles.queueActionButton, moveDownDisabled && styles.buttonDisabled]}
           accessibilityLabel={labels.moveDownLabel}
           accessibilityRole="button"
         >
@@ -850,8 +837,8 @@ function QueuedMessageRow({
         </Pressable>
         <Pressable
           onPress={startEditing}
-          disabled={isSteering}
-          style={[styles.queueActionButton, isSteering && styles.buttonDisabled]}
+          disabled={actionsDisabled}
+          style={[styles.queueActionButton, actionsDisabled && styles.buttonDisabled]}
           accessibilityLabel={labels.editLabel}
           accessibilityRole="button"
         >
@@ -859,8 +846,8 @@ function QueuedMessageRow({
         </Pressable>
         <Pressable
           onPress={remove}
-          disabled={isSteering}
-          style={[styles.queueActionButton, isSteering && styles.buttonDisabled]}
+          disabled={actionsDisabled}
+          style={[styles.queueActionButton, actionsDisabled && styles.buttonDisabled]}
           accessibilityLabel={labels.removeLabel}
           accessibilityRole="button"
         >
@@ -868,8 +855,12 @@ function QueuedMessageRow({
         </Pressable>
         <Pressable
           onPress={steer}
-          disabled={isSteering}
-          style={[styles.queueActionButton, styles.queueSteerButton]}
+          disabled={actionsDisabled}
+          style={[
+            styles.queueActionButton,
+            styles.queueSteerButton,
+            actionsDisabled && styles.buttonDisabled,
+          ]}
           accessibilityLabel={labels.steerLabel}
           accessibilityRole="button"
         >
@@ -1395,10 +1386,11 @@ function ComposerContentImpl({
   const setUserInput = onChangeText;
   const workspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
   const {
-    selectedAttachments,
+    selectedAttachments: currentDraftAttachments,
     buildOutgoingAttachments,
     removeAttachment,
     openAttachment,
+    beginSubmit: suppressCurrentWorkspaceAttachments,
     completeSubmit,
     resetSuppression,
   } = composerWorkspaceAttachment.useBinding({
@@ -1762,6 +1754,41 @@ function ComposerContentImpl({
     }),
     [serverId, setQueuedMessages],
   );
+  const resumeQueuedMessages = useCallback(() => {
+    getHostRuntimeStore().drainQueuedAgentMessage(serverId, agentId);
+  }, [agentId, serverId]);
+  const clearSendError = useCallback(() => {
+    setSendError(null);
+  }, []);
+
+  const {
+    isActive: isEditingQueuedMessage,
+    selectedAttachments,
+    visibleMessages: visibleQueuedMessages,
+    begin: editQueuedMessage,
+    cancel: cancelEditingQueuedMessage,
+    submit: submitEditedQueuedMessage,
+    removeAttachment: removeQueuedEditAttachment,
+  } = useQueuedMessageEdit({
+    serverId,
+    agentId,
+    queue: queueWriter,
+    queuedMessages,
+    text: userInput,
+    attachments,
+    currentDraftAttachments,
+    selectedMcpServerIds,
+    selectedSkillIds,
+    setText: setUserInput,
+    setAttachments: setSelectedAttachments,
+    setSelectedMcpServerIds,
+    setSelectedSkillIds,
+    suppressCurrentWorkspaceAttachments,
+    resetWorkspaceAttachmentSuppression: resetSuppression,
+    focusInput,
+    clearError: clearSendError,
+    resumeQueue: resumeQueuedMessages,
+  });
 
   const queueMessage = useCallback(
     (
@@ -1853,6 +1880,9 @@ function ComposerContentImpl({
 
   const handleSubmit = useCallback(
     (payload: MessagePayload) => {
+      if (submitEditedQueuedMessage(payload)) {
+        return;
+      }
       const outgoingAttachments = buildOutgoingAttachments(attachments);
       const clientSlashCommand = resolveClientSlashCommand({
         text: payload.text,
@@ -1879,6 +1909,7 @@ function ComposerContentImpl({
       runClientSlashCommand,
       sendMessageWithContent,
       sessionResourceSelection,
+      submitEditedQueuedMessage,
     ],
   );
 
@@ -2096,17 +2127,6 @@ function ComposerContentImpl({
     });
   }, [agentId, hasAgent, isConnected, serverId, voice]);
 
-  const handleUpdateQueuedMessage = useCallback(
-    (id: string, text: string) =>
-      updateQueuedComposerMessage({
-        agentId,
-        messageId: id,
-        text,
-        queue: queueWriter,
-      }),
-    [agentId, queueWriter],
-  );
-
   const handleRemoveQueuedMessage = useCallback(
     (id: string) => {
       const removed = removeQueuedComposerMessage({
@@ -2167,6 +2187,9 @@ function ComposerContentImpl({
 
   const handleQueue = useCallback(
     (payload: MessagePayload) => {
+      if (submitEditedQueuedMessage(payload)) {
+        return;
+      }
       const outgoingAttachments = buildOutgoingAttachments(attachments);
       const clientSlashCommand = resolveClientSlashCommand({
         text: payload.text,
@@ -2188,6 +2211,7 @@ function ComposerContentImpl({
       runClientSlashCommand,
       sendMessageWithContent,
       sessionResourceSelection,
+      submitEditedQueuedMessage,
     ],
   );
 
@@ -2627,15 +2651,14 @@ function ComposerContentImpl({
   const queueList = useMemo(
     () =>
       renderQueueTrack({
-        queuedMessages,
-        onUpdate: handleUpdateQueuedMessage,
+        queuedMessages: visibleQueuedMessages,
+        isDisabled: isEditingQueuedMessage,
+        onEdit: editQueuedMessage,
         onRemove: handleRemoveQueuedMessage,
         onMove: handleMoveQueuedMessage,
         onSteer: handleSteerQueuedMessage,
         labels: {
           editLabel: t("composer.queue.edit"),
-          saveLabel: t("composer.queue.save"),
-          cancelEditLabel: t("composer.queue.cancelEdit"),
           removeLabel: t("composer.queue.remove"),
           moveUpLabel: t("composer.queue.moveUp"),
           moveDownLabel: t("composer.queue.moveDown"),
@@ -2643,14 +2666,23 @@ function ComposerContentImpl({
         },
       }),
     [
+      editQueuedMessage,
       handleMoveQueuedMessage,
       handleRemoveQueuedMessage,
       handleSteerQueuedMessage,
-      handleUpdateQueuedMessage,
-      queuedMessages,
+      isEditingQueuedMessage,
       t,
+      visibleQueuedMessages,
     ],
   );
+  const queueEditNotice = isEditingQueuedMessage ? (
+    <QueuedMessageEditNotice
+      label={t("composer.queue.edit")}
+      cancelLabel={t("common.actions.cancel")}
+      cancelAccessibilityLabel={t("composer.queue.cancelEdit")}
+      onCancel={cancelEditingQueuedMessage}
+    />
+  ) : null;
 
   const messageInputContainerRef = useRef<View>(null);
 
@@ -2705,6 +2737,7 @@ function ComposerContentImpl({
         <View style={inputAreaContainerStyle}>
           <View style={styles.inputAreaContent}>
             {queueList}
+            {queueEditNotice}
             {sendErrorNode}
 
             <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
@@ -2933,17 +2966,28 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
   },
-  queueEditInput: {
-    flex: 1,
-    minHeight: 36,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.md,
+  queueEditNotice: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: theme.spacing[3],
+    paddingRight: theme.spacing[1],
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
+  },
+  queueEditNoticeLabel: {
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  queueEditNoticeText: {
+    flexShrink: 1,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   queueActions: {
     flexDirection: "row",
@@ -2976,11 +3020,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
 })) as unknown as Record<string, object>;
 
 const ThemedPencil = withUnistyles(Pencil);
-const ThemedCheck = withUnistyles(Check);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronUp = withUnistyles(ChevronUp);
 const ThemedTrash2 = withUnistyles(Trash2);
-const ThemedX = withUnistyles(X);
 const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);

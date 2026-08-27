@@ -935,6 +935,27 @@ describe("sendQueuedComposerMessageNow", () => {
     expect(submitted).toEqual([]);
   });
 
+  it("does not submit a queued message while it is being edited", async () => {
+    const queue = createFakeQueue(
+      new Map([["agent", [{ id: "msg-1", text: "editing", attachments: [], isEditing: true }]]]),
+    );
+    const submitted: Array<{ text: string; attachments: ComposerAttachment[] }> = [];
+    const result = await sendQueuedComposerMessageNow({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+      submitMessage: async (input) => {
+        submitted.push(input);
+      },
+    });
+
+    expect(result).toEqual({ status: "missing" });
+    expect(submitted).toEqual([]);
+    expect(queue.state.get("agent")).toEqual([
+      { id: "msg-1", text: "editing", attachments: [], isEditing: true },
+    ]);
+  });
+
   it("removes the queued entry and submits its text + attachments", async () => {
     const review = reviewWorkspaceAttachment("Queued for send.");
     const queue = createFakeQueue(

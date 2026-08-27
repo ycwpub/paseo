@@ -675,6 +675,11 @@ export class PaseoMemoryStore {
     if (parsed.summary !== undefined) {
       this.writeSummary(parsed.summary.replace(/\r\n?/g, "\n"), this.catalog.activeUserId);
     }
+    for (const update of parsed.scopeSummaryUpdates ?? []) {
+      const scope = this.resolveScopes({ scope: update.scope })[0]!;
+      const summaryPath = this.scopePaths(scope, this.allCatalogScopes()).summaryPath;
+      this.writeScopeSummary(summaryPath, update.content.replace(/\r\n?/g, "\n"));
+    }
     for (const create of parsed.createDetails ?? []) this.createExplicitDetail(create);
     for (const edit of parsed.detailEdits ?? []) this.applyDetailEdit(edit);
     this.applyFeedback(parsed.feedback ?? []);
@@ -1732,9 +1737,19 @@ export class PaseoMemoryStore {
   }
 
   private overviewDocuments() {
-    return this.allCatalogScopes().flatMap((scope) => {
+    const allScopes = this.allCatalogScopes();
+    return allScopes.flatMap((scope) => {
       try {
-        return [{ scope, path: this.scopePaths(scope, this.allCatalogScopes()).summaryPath }];
+        const summaryPath = this.scopePaths(scope, allScopes).summaryPath;
+        return [
+          {
+            scope,
+            path: summaryPath,
+            content: existsSync(summaryPath)
+              ? this.readDetailContent(summaryPath)
+              : defaultScopeSummary(scope),
+          },
+        ];
       } catch {
         return [];
       }

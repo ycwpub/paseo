@@ -70,6 +70,7 @@ import {
 import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
 import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/composer/actions";
+import { getNextQueuedMessage } from "@/composer/queued-message-edit";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { encodeImages } from "@/utils/encode-images";
@@ -2296,11 +2297,11 @@ export class HostRuntimeStore {
         session?.agentStreamTail.get(agentId),
         session?.agentStreamHead.get(agentId),
       );
-    if (!client || !queue?.length || session?.initializingAgents.get(agentId) === true || isBusy) {
+    const next = queue ? getNextQueuedMessage(queue) : null;
+    if (!client || !next || session?.initializingAgents.get(agentId) === true || isBusy) {
       return;
     }
     this.queuedAgentDrainInFlight.add(drainKey);
-    const next = queue[0];
     void sendQueuedComposerMessageNow({
       agentId,
       messageId: next.id,

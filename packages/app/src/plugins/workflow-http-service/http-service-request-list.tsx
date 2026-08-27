@@ -1,7 +1,7 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- Request rows bind selection and expansion to the current persisted job. */
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { CheckSquare2, RefreshCw, Square, Trash2 } from "lucide-react-native";
+import { CheckSquare2, RefreshCw, RotateCcw, Square, Trash2 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { PluginHttpJob } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
@@ -27,15 +27,18 @@ export function HttpServiceRequestList({
   jobs,
   loading,
   onRefresh,
+  onReplay,
   onDeleteMany,
 }: {
   jobs: PluginHttpJob[];
   loading: boolean;
   onRefresh: () => void;
+  onReplay: (job: PluginHttpJob) => Promise<PluginHttpJob>;
   onDeleteMany: (ids: string[]) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [replayingId, setReplayingId] = useState<string | null>(null);
   const deletableSelected = useMemo(
     () =>
       selected.filter((id) => {
@@ -54,13 +57,29 @@ export function HttpServiceRequestList({
     await onDeleteMany(deletableSelected);
     setSelected((current) => current.filter((id) => !deletableSelected.includes(id)));
   }, [deletableSelected, onDeleteMany]);
+  const handleReplay = useCallback(
+    async (job: PluginHttpJob) => {
+      setReplayingId(job.id);
+      try {
+        const replayed = await onReplay(job);
+        setExpandedId(replayed.id);
+      } catch {
+        // The parent surface owns and displays the replay error.
+      } finally {
+        setReplayingId(null);
+      }
+    },
+    [onReplay],
+  );
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.titleGroup}>
           <Text style={styles.title}>请求记录</Text>
-          <Text style={styles.subtitle}>请求先落盘，再异步执行 Workflow；运行中请求不可删除。</Text>
+          <Text style={styles.subtitle}>
+            请求先落盘，再异步执行 Workflow；可使用原输入回放，运行中请求不可删除。
+          </Text>
         </View>
         <Button
           variant="outline"
@@ -122,6 +141,24 @@ export function HttpServiceRequestList({
               </View>
               {expanded ? (
                 <View style={styles.details}>
+                  <View style={styles.detailHeader}>
+                    <View style={styles.detailHeaderText}>
+                      <Text style={styles.detailTitle}>请求详情</Text>
+                      <Text style={styles.detailHint}>
+                        回放会复制本次输入，并使用当前 Workflow 和节点配置生成一条新请求。
+                      </Text>
+                    </View>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      leftIcon={RotateCcw}
+                      loading={replayingId === job.id}
+                      disabled={replayingId !== null}
+                      onPress={() => void handleReplay(job)}
+                    >
+                      回放请求
+                    </Button>
+                  </View>
                   <Text style={styles.detailLabel}>输入</Text>
                   <Text selectable style={styles.code}>
                     {prettyJson(job.input)}
@@ -239,6 +276,27 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[3],
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
+  },
+  detailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+  },
+  detailHeaderText: {
+    flex: 1,
+    minWidth: 220,
+  },
+  detailTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  detailHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    marginTop: 2,
   },
   detailLabel: {
     color: theme.colors.foregroundMuted,

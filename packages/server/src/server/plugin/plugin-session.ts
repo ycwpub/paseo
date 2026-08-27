@@ -31,6 +31,8 @@ export type PluginSessionRequest = Extract<
       | "plugin.http.submit.request"
       | "plugin.http.config.get.request"
       | "plugin.http.config.save.request"
+      | "plugin.http.local_addresses.get.request"
+      | "plugin.http.test.request"
       | "plugin.http.job.delete_many.request"
       | "plugin.http.job.cleanup.request";
   }
@@ -60,6 +62,8 @@ const PLUGIN_SESSION_REQUEST_TYPES = new Set<SessionInboundMessage["type"]>([
   "plugin.app.job.delete.request",
   "plugin.http.config.get.request",
   "plugin.http.config.save.request",
+  "plugin.http.local_addresses.get.request",
+  "plugin.http.test.request",
   "plugin.http.job.delete_many.request",
   "plugin.http.job.cleanup.request",
 ]);
@@ -118,6 +122,8 @@ type PluginHttpManagementRequest = Extract<
     type:
       | "plugin.http.config.get.request"
       | "plugin.http.config.save.request"
+      | "plugin.http.local_addresses.get.request"
+      | "plugin.http.test.request"
       | "plugin.http.job.delete_many.request"
       | "plugin.http.job.cleanup.request";
   }
@@ -499,6 +505,31 @@ export class PluginSession {
         });
         return;
       }
+      case "plugin.http.local_addresses.get.request": {
+        this.host.emit({
+          type: "plugin.http.local_addresses.get.response",
+          payload: {
+            requestId: message.requestId,
+            addresses: this.service.getHttpLocalAddresses(),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.http.test.request": {
+        const result = await this.service.testHttpProjectRoute({
+          pluginId: message.pluginId,
+          projectId: message.projectId,
+          listenerId: message.listenerId,
+          target: message.target,
+          body: message.body,
+        });
+        this.host.emit({
+          type: "plugin.http.test.response",
+          payload: { requestId: message.requestId, ...result },
+        });
+        return;
+      }
       case "plugin.http.job.delete_many.request": {
         const result = await this.service.deleteAppJobs(message.processIds);
         this.host.emit({
@@ -770,6 +801,26 @@ export class PluginSession {
         this.host.emit({
           type: "plugin.http.config.save.response",
           payload: { requestId: message.requestId, config: null, runtimes: [], error },
+        });
+        return;
+      case "plugin.http.local_addresses.get.request":
+        this.host.emit({
+          type: "plugin.http.local_addresses.get.response",
+          payload: { requestId: message.requestId, addresses: [], error },
+        });
+        return;
+      case "plugin.http.test.request":
+        this.host.emit({
+          type: "plugin.http.test.response",
+          payload: {
+            requestId: message.requestId,
+            requestUrl: null,
+            statusCode: null,
+            durationMs: 0,
+            headers: {},
+            bodyText: "",
+            error,
+          },
         });
         return;
       case "plugin.http.job.delete_many.request":

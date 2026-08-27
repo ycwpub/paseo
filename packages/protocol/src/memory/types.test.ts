@@ -49,6 +49,24 @@ describe("memory user protocol", () => {
     }
   });
 
+  test("accepts scoped overview content and updates", () => {
+    expect(
+      PaseoMemoryUpdateInputSchema.parse({
+        scopeSummaryUpdates: [
+          {
+            scope: { type: "project", id: "project-1" },
+            content: "# Project memory",
+          },
+        ],
+      }).scopeSummaryUpdates,
+    ).toEqual([
+      {
+        scope: { type: "project", id: "project-1" },
+        content: "# Project memory",
+      },
+    ]);
+  });
+
   test("accepts a portable multi-host memory snapshot", () => {
     const snapshot = PaseoMemorySyncSnapshotSchema.parse({
       version: 1,

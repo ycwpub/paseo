@@ -453,8 +453,8 @@ export async function startLocalRelayServer(input: {
     const cutoff = now - HISTORY_RETENTION_MS;
     const retained = history.filter((record) => {
       if (!record.disconnectedAt) return true;
-      const disconnectedAt = Date.parse(record.disconnectedAt);
-      return !Number.isFinite(disconnectedAt) || disconnectedAt >= cutoff;
+      const connectedAt = Date.parse(record.connectedAt);
+      return !Number.isFinite(connectedAt) || connectedAt >= cutoff;
     });
     if (retained.length === history.length) return;
     history.splice(0, history.length, ...retained);

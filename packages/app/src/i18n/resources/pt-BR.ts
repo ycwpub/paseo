@@ -2720,6 +2720,10 @@ export const ptBR: TranslationResources = {
           serverHistory: "Server connection history",
           noClientHistory: "No historical client connections.",
           noServerHistory: "No historical server connections.",
+          connectionHistory: "Connection history",
+          connectionCount: "{{count}} connections",
+          expandHistory: "Show all {{count}} connections",
+          collapseHistory: "Collapse connection history",
           connectedAt: "Connected at",
           disconnectedAt: "Disconnected at",
           stillConnected: "Still connected",
@@ -2729,6 +2733,7 @@ export const ptBR: TranslationResources = {
           deleting: "Deleting...",
           roles: {
             client: "Client",
+            server: "Server",
             server_control: "Server control connection",
             server_data: "Server data connection",
           },

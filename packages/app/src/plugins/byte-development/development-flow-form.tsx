@@ -101,7 +101,6 @@ export function DevelopmentFlowForm({
         initialFormValues={initialFormValues}
         hiddenFieldIds={EDIT_HIDDEN_COMPONENT_IDS}
         componentSlots={componentSlots}
-        showConversation={false}
         onFormValuesChange={onFormValuesChange}
         previewTitle="流程配置"
       />

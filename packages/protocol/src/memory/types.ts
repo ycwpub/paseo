@@ -11,6 +11,10 @@ export type PaseoMemoryScope = z.infer<typeof PaseoMemoryScopeSchema>;
 export const PaseoMemoryScopeDocumentSchema = z.object({
   scope: PaseoMemoryScopeSchema,
   path: z.string().min(1),
+  // Overview documents include content so management clients can display and
+  // edit the selected scope without direct filesystem access. Detail document
+  // references leave this field unset.
+  content: z.string().optional(),
 });
 export type PaseoMemoryScopeDocument = z.infer<typeof PaseoMemoryScopeDocumentSchema>;
 
@@ -267,6 +271,14 @@ export const PaseoMemoryUpdateInputSchema = z.object({
   // COMPAT(memoryUsers): added in v0.3.2, remove optional after 2027-02-19.
   userOperation: PaseoMemoryUserOperationSchema.optional(),
   summary: z.string().optional(),
+  scopeSummaryUpdates: z
+    .array(
+      z.object({
+        scope: PaseoMemoryScopeSchema,
+        content: z.string(),
+      }),
+    )
+    .optional(),
   detailEdits: z
     .array(
       z.object({

@@ -280,6 +280,10 @@ try {
     assert.strictEqual(result.exitCode, 0, "restart should succeed even when previously stopped");
     assert(result.stdout.toLowerCase().includes("restarted"), "output should report restart");
 
+    await waitForDaemonReachable(
+      "restarted daemon should become reachable before applying live Relay settings",
+    );
+
     const liveRelayUpdate = await daemonCommand([
       "relay",
       "set",

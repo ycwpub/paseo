@@ -8,11 +8,14 @@ import type {
   PaseoMemoryCreateInput,
   PaseoMemoryDetail,
   PaseoMemoryScope,
+  PaseoMemoryScopeDocument,
 } from "@getpaseo/protocol/messages";
 import { BackHeader } from "@/components/headers/back-header";
+import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { useAssistants } from "@/hooks/use-assistants";
 import { useMemory } from "@/hooks/use-memory";
@@ -31,6 +34,7 @@ import {
 } from "@/utils/host-routes";
 import {
   buildMemoryContentTargetOptions,
+  findMemoryOverviewDocument,
   memoryDetailMatchesScope,
   type MemoryContentTargetOption,
 } from "./memory-content-manager-model";
@@ -45,6 +49,7 @@ import type { MemoryScopeEntity } from "./memory-scope-policy-options";
 import { filterMemoryDetails } from "./memory-view-model";
 
 type ManagedScopeType = "global" | "project" | "assistant";
+type MemoryContentView = "overview" | "details";
 
 const HOST_SCOPE_TYPES: ManagedScopeType[] = ["global", "project", "assistant"];
 const PROJECT_SCOPE_TYPES: ManagedScopeType[] = ["project"];
@@ -57,14 +62,15 @@ export function MemoryManagementScreen({
   serverId,
   projectId,
   memoryId,
+  embedded = false,
 }: {
   serverId: string;
   projectId?: string;
   memoryId?: string;
+  embedded?: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { memory, isLoading, error, updateMemory, isMutating, mutationError } = useMemory(serverId);
   const assistantsSupported = useHostFeature(serverId, "assistants");
   const assistants = useAssistants(serverId, {
@@ -79,7 +85,6 @@ export function MemoryManagementScreen({
   const goBack = useCallback(() => {
     router.navigate(memoryId ? listRoute : settingsRoute);
   }, [listRoute, memoryId, router, settingsRoute]);
-  const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom + 24 }), [insets.bottom]);
   const saveDetail = useCallback(
     async (detail: PaseoMemoryDetail, draft: MemoryDetailDraft) => {
       if (!memory) return;
@@ -117,6 +122,14 @@ export function MemoryManagementScreen({
     },
     [updateMemory],
   );
+  const saveOverview = useCallback(
+    async (document: PaseoMemoryScopeDocument, content: string) => {
+      await updateMemory({
+        scopeSummaryUpdates: [{ scope: document.scope, content }],
+      });
+    },
+    [updateMemory],
+  );
   const openDetail = useCallback(
     (detail: PaseoMemoryDetail) => {
       router.push(
@@ -130,14 +143,17 @@ export function MemoryManagementScreen({
 
   if (isLoading || !memory) {
     return (
-      <View style={styles.container}>
-        <BackHeader title={t("memoryPolicies.contentManager.pageTitle")} onBack={goBack} />
+      <MemoryManagementFrame
+        embedded={embedded}
+        title={t("memoryPolicies.contentManager.pageTitle")}
+        onBack={goBack}
+      >
         <View style={styles.centered}>
           <Text style={settingsStyles.rowHint}>
             {error?.message ?? t("memoryPolicies.contentManager.loading")}
           </Text>
         </View>
-      </View>
+      </MemoryManagementFrame>
     );
   }
 
@@ -157,6 +173,7 @@ export function MemoryManagementScreen({
         disabled={isMutating}
         onCreate={createDetail}
         onOpen={openDetail}
+        onSaveOverview={saveOverview}
       />
     );
   } else if (selectedDetail) {
@@ -186,27 +203,61 @@ export function MemoryManagementScreen({
     );
   }
 
+  const content = (
+    <>
+      {visibleError ? (
+        <Alert
+          variant="error"
+          title={t("memoryPolicies.contentManager.errorTitle")}
+          description={visibleError}
+        />
+      ) : null}
+      {pageContent}
+    </>
+  );
+
+  return (
+    <MemoryManagementFrame
+      embedded={embedded}
+      title={
+        memoryId
+          ? t("memoryPolicies.contentManager.detailTitle")
+          : t("memoryPolicies.contentManager.pageTitle")
+      }
+      onBack={goBack}
+    >
+      {content}
+    </MemoryManagementFrame>
+  );
+}
+
+function MemoryManagementFrame({
+  embedded,
+  title,
+  onBack,
+  children,
+}: {
+  embedded: boolean;
+  title: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom + 24 }), [insets.bottom]);
+
+  if (embedded) {
+    return (
+      <View style={styles.embeddedContent} testID="memory-management-embedded">
+        {children}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <BackHeader
-        title={
-          memoryId
-            ? t("memoryPolicies.contentManager.detailTitle")
-            : t("memoryPolicies.contentManager.pageTitle")
-        }
-        onBack={goBack}
-      />
+      <BackHeader title={title} onBack={onBack} />
       <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-        <View style={styles.content}>
-          {visibleError ? (
-            <Alert
-              variant="error"
-              title={t("memoryPolicies.contentManager.errorTitle")}
-              description={visibleError}
-            />
-          ) : null}
-          {pageContent}
-        </View>
+        <View style={styles.content}>{children}</View>
       </ScrollView>
     </View>
   );
@@ -221,6 +272,7 @@ function MemoryListPage({
   disabled,
   onCreate,
   onOpen,
+  onSaveOverview,
 }: {
   serverId: string;
   projectId?: string;
@@ -230,6 +282,7 @@ function MemoryListPage({
   disabled: boolean;
   onCreate: (input: PaseoMemoryCreateInput) => Promise<void>;
   onOpen: (detail: PaseoMemoryDetail) => void;
+  onSaveOverview: (document: PaseoMemoryScopeDocument, content: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const { projects } = useProjects();
@@ -239,6 +292,7 @@ function MemoryListPage({
   >({});
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<MemoryStatusFilter>(projectId ? "all" : "active");
+  const [contentView, setContentView] = useState<MemoryContentView>("overview");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_MEMORY_PAGE_SIZE);
   const scopeTypes = projectId ? PROJECT_SCOPE_TYPES : HOST_SCOPE_TYPES;
@@ -291,6 +345,15 @@ function MemoryListPage({
     if (scopeType === "project" && projectId) return { type: "project", id: projectId };
     return selectedTarget?.scope ?? null;
   }, [memory.activeUserId, memory.users, projectId, scopeType, selectedTarget]);
+  const selectedOverview = useMemo(() => {
+    const document = findMemoryOverviewDocument(memory.overviewDocuments ?? [], selectedScope);
+    if (document || selectedScope?.type !== "global") return document;
+    return {
+      scope: selectedScope,
+      path: memory.summaryPath,
+      content: memory.summary,
+    };
+  }, [memory.overviewDocuments, memory.summary, memory.summaryPath, selectedScope]);
   const visibleDetails = useMemo(
     () =>
       filterMemoryDetails({
@@ -382,10 +445,32 @@ function MemoryListPage({
     emptyText = t("memoryPolicies.contentManager.empty");
   }
   const showTarget = scopeType !== "global" && !(scopeType === "project" && projectId);
+  const contentViewOptions = useMemo(
+    () => [
+      {
+        value: "overview" as const,
+        label: t("memoryPolicies.contentManager.views.overview"),
+        testID: "memory-content-overview-tab",
+      },
+      {
+        value: "details" as const,
+        label: t("memoryPolicies.contentManager.views.details"),
+        testID: "memory-content-details-tab",
+      },
+    ],
+    [t],
+  );
 
   return (
     <SettingsSection title={t("memoryPolicies.contentManager.title")}>
       <Text style={settingsStyles.rowHint}>{t("memoryPolicies.contentManager.description")}</Text>
+      <SegmentedControl
+        options={contentViewOptions}
+        value={contentView}
+        onValueChange={setContentView}
+        style={styles.contentViewSwitch}
+        testID="memory-content-view-switch"
+      />
       <View style={settingsStyles.card}>
         <View style={styles.filters}>
           <View style={styles.selector}>
@@ -415,59 +500,140 @@ function MemoryListPage({
               />
             </View>
           ) : null}
-          <View style={styles.search}>
-            <Field label={t("memoryPolicies.contentManager.search")}>
-              <FormTextInput
-                value={search}
-                onChangeText={changeSearch}
-                placeholder={t("memoryPolicies.contentManager.searchPlaceholder")}
-              />
-            </Field>
-          </View>
-          <View style={styles.status}>
-            <SelectField
-              label={t("memoryPolicies.contentManager.status")}
-              value={status}
-              selectedDisplay={statusDisplay}
-              options={MEMORY_STATUS_OPTIONS}
-              onChange={changeStatus}
-              placeholder={t("memoryPolicies.contentManager.allStatuses")}
-              emptyText={t("memoryPolicies.contentManager.noStatuses")}
+          {contentView === "details" ? (
+            <>
+              <View style={styles.search}>
+                <Field label={t("memoryPolicies.contentManager.search")}>
+                  <FormTextInput
+                    value={search}
+                    onChangeText={changeSearch}
+                    placeholder={t("memoryPolicies.contentManager.searchPlaceholder")}
+                  />
+                </Field>
+              </View>
+              <View style={styles.status}>
+                <SelectField
+                  label={t("memoryPolicies.contentManager.status")}
+                  value={status}
+                  selectedDisplay={statusDisplay}
+                  options={MEMORY_STATUS_OPTIONS}
+                  onChange={changeStatus}
+                  placeholder={t("memoryPolicies.contentManager.allStatuses")}
+                  emptyText={t("memoryPolicies.contentManager.noStatuses")}
+                />
+              </View>
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      {contentView === "overview" ? (
+        <MemoryOverviewEditor
+          document={selectedOverview}
+          disabled={disabled}
+          onSave={onSaveOverview}
+        />
+      ) : (
+        <>
+          {selectedScope ? (
+            <MemoryCreateCard
+              disabled={disabled}
+              globalUserId={memory.activeUserId ?? memory.users?.[0]?.id ?? "default"}
+              scope={selectedScope}
+              onCreate={onCreate}
+            />
+          ) : null}
+
+          {pagination.items.length === 0 ? (
+            <View style={settingsStyles.card}>
+              <View style={settingsStyles.row}>
+                <Text style={settingsStyles.rowHint}>{emptyText}</Text>
+              </View>
+            </View>
+          ) : (
+            pagination.items.map((detail) => (
+              <MemoryDetailRow key={detail.id} detail={detail} onPress={onOpen} />
+            ))
+          )}
+
+          <View style={styles.paginationCard}>
+            <MemoryPaginationControls
+              pagination={pagination}
+              disabled={disabled}
+              onPageChange={setPage}
+              onPageSizeChange={changePageSize}
             />
           </View>
-        </View>
-      </View>
-
-      {selectedScope ? (
-        <MemoryCreateCard
-          disabled={disabled}
-          globalUserId={memory.activeUserId ?? memory.users?.[0]?.id ?? "default"}
-          scope={selectedScope}
-          onCreate={onCreate}
-        />
-      ) : null}
-
-      {pagination.items.length === 0 ? (
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <Text style={settingsStyles.rowHint}>{emptyText}</Text>
-          </View>
-        </View>
-      ) : (
-        pagination.items.map((detail) => (
-          <MemoryDetailRow key={detail.id} detail={detail} onPress={onOpen} />
-        ))
+        </>
       )}
-
-      <View style={styles.paginationCard}>
-        <MemoryPaginationControls
-          pagination={pagination}
-          disabled={disabled}
-          onPageChange={setPage}
-          onPageSizeChange={changePageSize}
-        />
-      </View>
     </SettingsSection>
+  );
+}
+
+function MemoryOverviewEditor({
+  document,
+  disabled,
+  onSave,
+}: {
+  document: PaseoMemoryScopeDocument | null;
+  disabled: boolean;
+  onSave: (document: PaseoMemoryScopeDocument, content: string) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(document?.content ?? "");
+
+  useEffect(() => {
+    setDraft(document?.content ?? "");
+  }, [document?.content, document?.path]);
+
+  const save = useCallback(async () => {
+    if (!document) return;
+    await onSave(document, draft);
+  }, [document, draft, onSave]);
+
+  if (!document) {
+    return (
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <Text style={settingsStyles.rowHint}>
+            {t("memoryPolicies.contentManager.overviewUnavailable")}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.overview}>
+      <View style={styles.overviewHeader}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>
+            {t("memoryPolicies.contentManager.overviewTitle")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>
+            {t("memoryPolicies.contentManager.overviewDescription")}
+          </Text>
+        </View>
+        <Button
+          size="sm"
+          disabled={disabled || draft === (document.content ?? "")}
+          loading={disabled}
+          onPress={save}
+        >
+          {t("memoryPolicies.contentManager.saveOverview")}
+        </Button>
+      </View>
+      <Text selectable style={settingsStyles.rowHint}>
+        {t("memoryPolicies.contentManager.overviewPath")}: {document.path}
+      </Text>
+      <SettingsTextAreaCard
+        accessibilityLabel={t("memoryPolicies.contentManager.overviewTitle")}
+        value={draft}
+        onChangeText={setDraft}
+        style={styles.overviewInput}
+        testID="memory-overview-input"
+      />
+    </View>
   );
 }
 
@@ -491,6 +657,13 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: "center",
     padding: theme.spacing[4],
     paddingTop: theme.spacing[6],
+  },
+  embeddedContent: {
+    width: "100%",
+    gap: theme.spacing[3],
+  },
+  contentViewSwitch: {
+    alignSelf: "flex-start",
   },
   filters: {
     padding: theme.spacing[4],
@@ -516,5 +689,17 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     backgroundColor: theme.colors.surface1,
     padding: theme.spacing[3],
+  },
+  overview: {
+    gap: theme.spacing[3],
+  },
+  overviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
+  overviewInput: {
+    minHeight: 360,
   },
 }));

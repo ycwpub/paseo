@@ -2,9 +2,12 @@ import type {
   PluginHttpJobStatus,
   PluginHttpJob,
   PluginHttpListenerRuntime,
+  PluginHttpLocalAddress,
   PluginHttpProjectConfig,
   PluginHttpServiceRuntimeStatus,
   PluginHttpServiceSummary,
+  PluginHttpTestResponse,
+  PluginHttpTestTarget,
 } from "@getpaseo/protocol/messages";
 import type { PluginHttpServiceDefinition } from "./plugin-package.js";
 
@@ -54,6 +57,14 @@ export interface PluginHttpServiceRuntime {
     config: PluginHttpProjectConfig;
     runtimes: PluginHttpListenerRuntime[];
   }>;
+  getLocalAddresses(): PluginHttpLocalAddress[];
+  testProjectRoute(input: {
+    pluginId: string;
+    projectId: string;
+    listenerId: string;
+    target: PluginHttpTestTarget;
+    body?: Record<string, unknown>;
+  }): Promise<Omit<PluginHttpTestResponse, "requestId">>;
   copyProjectConfig?(
     pluginId: string,
     sourceProjectId: string,

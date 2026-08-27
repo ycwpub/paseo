@@ -11,6 +11,7 @@ describe("development stage collaboration model", () => {
     const stage = developmentStageCollaborationFromInput({}, "development");
     expect(stage.status).toBe("pending");
     expect(stage.knowledge).toContain("保留已有改动");
+    expect(stage.draftId).toBeNull();
     expect(stage.agentId).toBeNull();
   });
 
@@ -31,6 +32,7 @@ describe("development stage collaboration model", () => {
     expect(developmentStageCollaborationFromInput(input, "technical_design")).toEqual({
       status: "in_progress",
       knowledge: "必须兼容旧接口",
+      draftId: null,
       agentId: "agent-1",
       workspaceId: "workspace-1",
       startedAt: "2026-08-21T08:00:00.000Z",
@@ -45,6 +47,7 @@ describe("development stage collaboration model", () => {
         review: {
           status: "completed",
           knowledge: "检查幂等性",
+          draftId: "draft-1",
           agentId: "agent-1",
           workspaceId: "workspace-1",
           startedAt: "start",
@@ -56,6 +59,7 @@ describe("development stage collaboration model", () => {
     expect(copied.review).toMatchObject({
       status: "pending",
       knowledge: "检查幂等性",
+      draftId: null,
       agentId: null,
       workspaceId: null,
     });

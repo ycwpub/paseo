@@ -7,6 +7,7 @@ export type DevelopmentStageCollaborationStatus = "pending" | "in_progress" | "c
 export interface DevelopmentStageCollaboration {
   status: DevelopmentStageCollaborationStatus;
   knowledge: string;
+  draftId: string | null;
   agentId: string | null;
   workspaceId: string | null;
   startedAt: string | null;
@@ -103,6 +104,7 @@ export function developmentStageCollaborationFromInput(
       typeof stage?.knowledge === "string"
         ? stage.knowledge
         : defaultDevelopmentStageKnowledge(stageId),
+    draftId: readOptionalText(stage?.draftId),
     agentId: readOptionalText(stage?.agentId),
     workspaceId: readOptionalText(stage?.workspaceId),
     startedAt: readOptionalText(stage?.startedAt),
@@ -157,6 +159,7 @@ export function copyDevelopmentStageCollaborations(input: unknown): DevelopmentS
       {
         ...stage,
         status: "pending",
+        draftId: null,
         agentId: null,
         workspaceId: null,
         startedAt: null,

@@ -50,8 +50,8 @@ export function createHttpListener(config: PluginHttpProjectConfig): PluginHttpL
       ? {
           enabled: true,
           submitPath: "/jobs",
-          queryPath: "/jobs/{requestId}",
-          deletePath: "/jobs/{requestId}",
+          queryPath: "/jobs",
+          deletePath: "/jobs",
           workflowPath: firstWorkflow,
           requestTemplate: "",
           responseTemplate: "",

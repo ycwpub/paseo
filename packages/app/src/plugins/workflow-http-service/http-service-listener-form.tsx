@@ -7,11 +7,16 @@ import type {
   PluginHttpJobStatus,
   PluginHttpListener,
   PluginHttpListenerRuntime,
+  PluginHttpLocalAddress,
 } from "@getpaseo/protocol/messages";
+import type { WorkflowScriptSummary } from "@getpaseo/protocol/workflow/types";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
+import type { WorkflowRunTarget } from "@/workflows/run-targets";
+import { HttpServiceHostField } from "./http-service-host-field";
 import { HttpServiceRouteForm } from "./http-service-route-form";
+import { HttpServiceWorkflowFields } from "./http-service-workflow-fields";
 import { createHttpRoute, updateHttpRoute } from "./http-service-model";
 
 const RETENTION_STATUSES: Array<{ value: PluginHttpJobStatus; label: string }> = [
@@ -24,11 +29,25 @@ const RETENTION_STATUSES: Array<{ value: PluginHttpJobStatus; label: string }> =
 export function HttpServiceListenerForm({
   listener,
   runtime,
+  localAddresses,
+  localAddressesLoading,
+  localAddressesError,
+  workflows,
+  workflowsLoading,
+  workflowsError,
+  inspectWorkflowTargets,
   onChange,
   onDelete,
 }: {
   listener: PluginHttpListener;
   runtime: PluginHttpListenerRuntime | null;
+  localAddresses: PluginHttpLocalAddress[];
+  localAddressesLoading: boolean;
+  localAddressesError: string | null;
+  workflows: WorkflowScriptSummary[];
+  workflowsLoading: boolean;
+  workflowsError: string | null;
+  inspectWorkflowTargets: (workflowPath: string) => Promise<WorkflowRunTarget[]>;
   onChange: (listener: PluginHttpListener) => void;
   onDelete: () => void;
 }) {
@@ -43,8 +62,8 @@ export function HttpServiceListenerForm({
       const current = listener.defaultJobApi ?? {
         enabled: true,
         submitPath: "/jobs",
-        queryPath: "/jobs/{requestId}",
-        deletePath: "/jobs/{requestId}",
+        queryPath: "/jobs",
+        deletePath: "/jobs",
         workflowPath: listener.routes[0]?.workflowPath ?? "",
         requestTemplate: "",
         responseTemplate: "",
@@ -97,25 +116,27 @@ export function HttpServiceListenerForm({
           <View style={styles.flexField}>
             <Field label="端口名称">
               <FormTextInput
-                value={listener.name}
+                initialValue={listener.name}
+                resetKey={`${listener.id}:name`}
                 onChangeText={(value) => setField("name", value)}
               />
             </Field>
           </View>
           <View style={styles.flexField}>
-            <Field label="监听地址">
-              <FormTextInput
-                value={listener.host}
-                onChangeText={(value) => setField("host", value)}
-                placeholder="127.0.0.1"
-              />
-            </Field>
+            <HttpServiceHostField
+              value={listener.host}
+              addresses={localAddresses}
+              loading={localAddressesLoading}
+              error={localAddressesError}
+              onChange={(value) => setField("host", value)}
+            />
           </View>
           <View style={styles.portField}>
             <Field label="端口（0 为自动分配）">
               <FormTextInput
                 keyboardType="numeric"
-                value={String(listener.port)}
+                initialValue={String(listener.port)}
+                resetKey={`${listener.id}:port`}
                 onChangeText={(value) => {
                   const parsed = Number(value);
                   setField("port", Number.isInteger(parsed) && parsed >= 0 ? parsed : 0);
@@ -124,13 +145,9 @@ export function HttpServiceListenerForm({
             </Field>
           </View>
         </View>
-        <Field label="鉴权 Token 环境变量" hint="监听非本机地址时必填。">
-          <FormTextInput
-            value={listener.authTokenEnv ?? ""}
-            onChangeText={(value) => setField("authTokenEnv", value.trim() ? value : undefined)}
-            placeholder="PASEO_HTTP_TOKEN"
-          />
-        </Field>
+        <Text style={styles.runtimeText}>
+          HTTP 服务只允许绑定当前 Host 的具体本机 IP，不支持 0.0.0.0、主机名或外部地址。
+        </Text>
       </View>
 
       <View style={styles.sectionCard}>
@@ -151,49 +168,57 @@ export function HttpServiceListenerForm({
               <View style={styles.flexField}>
                 <Field label="提交请求">
                   <FormTextInput
-                    value={listener.defaultJobApi.submitPath}
+                    initialValue={listener.defaultJobApi.submitPath}
+                    resetKey={`${listener.id}:submit-path`}
                     onChangeText={(value) => setDefaultApi({ submitPath: value })}
                   />
                 </Field>
               </View>
               <View style={styles.flexField}>
-                <Field label="查询结果">
+                <Field
+                  label="查询结果"
+                  hint="请求 ID 通过 request_id 参数传入，例如 /jobs?request_id=123。"
+                >
                   <FormTextInput
-                    value={listener.defaultJobApi.queryPath}
+                    initialValue={listener.defaultJobApi.queryPath}
+                    resetKey={`${listener.id}:query-path`}
                     onChangeText={(value) => setDefaultApi({ queryPath: value })}
                   />
                 </Field>
               </View>
               <View style={styles.flexField}>
-                <Field label="删除请求">
+                <Field
+                  label="删除请求"
+                  hint="请求 ID 通过 request_id 参数传入，路径中无需填写参数。"
+                >
                   <FormTextInput
-                    value={listener.defaultJobApi.deletePath}
+                    initialValue={listener.defaultJobApi.deletePath}
+                    resetKey={`${listener.id}:delete-path`}
                     onChangeText={(value) => setDefaultApi({ deletePath: value })}
                   />
                 </Field>
               </View>
             </View>
-            <Field label="Workflow 文件">
-              <FormTextInput
-                value={listener.defaultJobApi.workflowPath}
-                onChangeText={(value) => setDefaultApi({ workflowPath: value })}
-              />
-            </Field>
-            <Field label="处理节点 ID" hint="留空时运行完整 Workflow。">
-              <FormTextInput
-                value={listener.defaultJobApi.targetNodeId ?? ""}
-                onChangeText={(value) =>
-                  setDefaultApi({ targetNodeId: value.trim() ? value : undefined })
-                }
-              />
-            </Field>
+            <HttpServiceWorkflowFields
+              workflowPath={listener.defaultJobApi.workflowPath}
+              targetNodeId={listener.defaultJobApi.targetNodeId}
+              workflows={workflows}
+              workflowsLoading={workflowsLoading}
+              workflowsError={workflowsError}
+              inspectWorkflowTargets={inspectWorkflowTargets}
+              onWorkflowPathChange={(workflowPath) =>
+                setDefaultApi({ workflowPath, targetNodeId: undefined })
+              }
+              onTargetNodeIdChange={(targetNodeId) => setDefaultApi({ targetNodeId })}
+            />
             <Field
               label="请求映射 JSON"
               hint="留空时原样传递。可使用 {{request}}、{{request.xxx}}。"
             >
               <FormTextInput
                 multiline
-                value={listener.defaultJobApi.requestTemplate}
+                initialValue={listener.defaultJobApi.requestTemplate}
+                resetKey={`${listener.id}:request-template`}
                 onChangeText={(value) => setDefaultApi({ requestTemplate: value })}
                 placeholder='{"data": "{{request}}"}'
                 textInputStyle={styles.codeInput}
@@ -205,7 +230,8 @@ export function HttpServiceListenerForm({
             >
               <FormTextInput
                 multiline
-                value={listener.defaultJobApi.responseTemplate}
+                initialValue={listener.defaultJobApi.responseTemplate}
+                resetKey={`${listener.id}:response-template`}
                 onChangeText={(value) => setDefaultApi({ responseTemplate: value })}
                 textInputStyle={styles.codeInput}
               />
@@ -227,6 +253,10 @@ export function HttpServiceListenerForm({
         <HttpServiceRouteForm
           key={route.id}
           route={route}
+          workflows={workflows}
+          workflowsLoading={workflowsLoading}
+          workflowsError={workflowsError}
+          inspectWorkflowTargets={inspectWorkflowTargets}
           onChange={(nextRoute) => onChange(updateHttpRoute(listener, route.id, () => nextRoute))}
           onDelete={() =>
             onChange({
@@ -256,7 +286,8 @@ export function HttpServiceListenerForm({
             <Field label="保留秒数" hint="从请求创建时间开始计算。">
               <FormTextInput
                 keyboardType="numeric"
-                value={String(listener.retention.maxAgeSeconds)}
+                initialValue={String(listener.retention.maxAgeSeconds)}
+                resetKey={`${listener.id}:retention-seconds`}
                 onChangeText={(value) => {
                   const parsed = Number(value);
                   onChange({

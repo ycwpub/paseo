@@ -131,7 +131,7 @@ export const en = {
       detailTitle: "Memory details",
       manage: "Manage memory content",
       manageDescription:
-        "{{count}} memories are available. Open the dedicated page to view, edit, or delete them.",
+        "{{count}} memories are available. View the memory overview and details in the right pane.",
       openManager: "Open",
       backToList: "Back to memory list",
       loading: "Loading memory…",
@@ -148,6 +148,16 @@ export const en = {
       selectTargetFirst: "Select a target to manage its memory.",
       empty: "No long-term memory has been saved yet.",
       noMatches: "No memories in this scope match the current filters.",
+      views: {
+        overview: "Overview",
+        details: "Memory details",
+      },
+      overviewTitle: "Memory overview",
+      overviewDescription:
+        "The overview and detail index for this scope. Paseo rebuilds the index from active memories after saving.",
+      overviewPath: "File path",
+      saveOverview: "Save overview",
+      overviewUnavailable: "No memory overview has been generated for this scope.",
       pagination: {
         pageSize: "Items per page",
         noPageSizes: "No page sizes available",
@@ -3409,6 +3419,10 @@ export const en = {
           serverHistory: "Server connection history",
           noClientHistory: "No historical client connections.",
           noServerHistory: "No historical server connections.",
+          connectionHistory: "Connection history",
+          connectionCount: "{{count}} connections",
+          expandHistory: "Show all {{count}} connections",
+          collapseHistory: "Collapse connection history",
           connectedAt: "Connected at",
           disconnectedAt: "Disconnected at",
           stillConnected: "Still connected",
@@ -3418,6 +3432,7 @@ export const en = {
           deleting: "Deleting...",
           roles: {
             client: "Client",
+            server: "Server",
             server_control: "Server control connection",
             server_data: "Server data connection",
           },

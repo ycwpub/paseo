@@ -3707,6 +3707,8 @@ export const ServerInfoStatusPayloadSchema = z
         pluginHttpServiceSubmit: z.boolean().optional(),
         // COMPAT(pluginHttpServiceManagement): added on 2026-08-20.
         pluginHttpServiceManagement: z.boolean().optional(),
+        // COMPAT(pluginHttpServiceLocalTesting): added on 2026-08-27.
+        pluginHttpServiceLocalTesting: z.boolean().optional(),
       })
       .optional(),
   })

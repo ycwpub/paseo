@@ -388,11 +388,9 @@ function usePluginAppController({
 }) {
   const client = useHostRuntimeClient(serverId);
   const [app, setApp] = useState<PluginAppState | null>(null);
-  const [prompt, setPrompt] = useState("");
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [submittedJob, setSubmittedJob] = useState<PluginHttpJob | null>(null);
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const jobQuery = usePluginAppJob({
@@ -446,40 +444,6 @@ function usePluginAppController({
     plugin?.pluginId,
     projectId,
     visible,
-  ]);
-
-  const handleGenerate = useCallback(() => {
-    if (!client || !plugin?.pluginId || !appDefinition || !prompt.trim()) return;
-    setGenerating(true);
-    setError(null);
-    void client
-      .generatePluginApp(plugin.pluginId, appDefinition.id, projectId, prompt.trim())
-      .then((result) => {
-        if (result.error || !result.app) throw new Error(result.error ?? "页面生成失败");
-        setApp(result.app);
-        const nextForm = initialForm(result.app.document, {
-          ...initialFormValues,
-          ...fixedFormValues,
-        });
-        setForm(nextForm);
-        onFormValuesChange?.(nextForm);
-        setPrompt("");
-        return undefined;
-      })
-      .catch((nextError: unknown) => {
-        setError(nextError instanceof Error ? nextError.message : String(nextError));
-        return undefined;
-      })
-      .finally(() => setGenerating(false));
-  }, [
-    appDefinition,
-    client,
-    fixedFormValues,
-    initialFormValues,
-    onFormValuesChange,
-    plugin?.pluginId,
-    projectId,
-    prompt,
   ]);
 
   const handleFormChange = useCallback(
@@ -555,64 +519,18 @@ function usePluginAppController({
 
   return {
     app,
-    prompt,
-    setPrompt,
     form,
     job,
     loading,
-    generating,
     running,
     jobQueryError,
     jobQueryPending: jobQuery.isFetching,
     error,
-    handleGenerate,
     handleFormChange,
     refreshJob: jobQuery.refetch,
     handleRun,
     loadHtmlPreview,
   };
-}
-
-function ConversationPane({
-  app,
-  prompt,
-  loading,
-  generating,
-  onPromptChange,
-  onGenerate,
-}: {
-  app: PluginAppState | null;
-  prompt: string;
-  loading: boolean;
-  generating: boolean;
-  onPromptChange: (value: string) => void;
-  onGenerate: () => void;
-}) {
-  return (
-    <View style={styles.conversationColumn}>
-      <Text style={styles.sectionTitle}>页面生成与修改</Text>
-      <Text style={styles.sectionHint}>
-        在这里提交一次页面生成指令。日常讨论请点击上方“前往 Project
-        对话”，不要在插件页面维护聊天记录。
-      </Text>
-      <FormTextInput
-        value={prompt}
-        onChangeText={onPromptChange}
-        placeholder="例如：生成一个故障分析表单，提交到 processor 服务，并展示运行状态和结果"
-        multiline
-        textInputStyle={styles.promptInput}
-      />
-      <Button
-        variant="default"
-        onPress={onGenerate}
-        loading={generating}
-        disabled={generating || !prompt.trim()}
-      >
-        {app?.document ? "提交修改指令" : "生成页面"}
-      </Button>
-      {loading ? <Text style={styles.sectionHint}>正在加载页面定义…</Text> : null}
-    </View>
-  );
 }
 
 function PreviewPane({
@@ -673,7 +591,9 @@ function PreviewPane({
       <View style={styles.previewCard}>
         {loading ? <Text style={styles.sectionHint}>加载中…</Text> : null}
         {!loading && !app?.document ? (
-          <Text style={styles.sectionHint}>请在左侧描述需要的界面，再让 Agent 生成页面。</Text>
+          <Text style={styles.sectionHint}>
+            当前还没有插件页面。请点击上方“前往 Project 对话”，让 Agent 生成页面。
+          </Text>
         ) : null}
         {app?.document?.components.map((component) => {
           if (hiddenFieldIds.has(component.id)) return null;
@@ -716,14 +636,12 @@ type PluginAppController = ReturnType<typeof usePluginAppController>;
 
 function PluginAppContent({
   controller,
-  showConversation = true,
   hiddenFieldIds = EMPTY_HIDDEN_FIELD_IDS,
   componentSlots = EMPTY_COMPONENT_SLOTS,
   previewTitle = "实时预览",
   supportsHtmlPreview,
 }: {
   controller: PluginAppController;
-  showConversation?: boolean;
   hiddenFieldIds?: readonly string[];
   componentSlots?: PluginAppComponentSlots;
   previewTitle?: string;
@@ -731,17 +649,13 @@ function PluginAppContent({
 }) {
   const {
     app,
-    prompt,
-    setPrompt,
     form,
     job,
     loading,
-    generating,
     running,
     jobQueryError,
     jobQueryPending,
     error,
-    handleGenerate,
     handleFormChange,
     refreshJob,
     handleRun,
@@ -770,17 +684,7 @@ function PluginAppContent({
 
   return (
     <>
-      <View style={[styles.columns, !showConversation && styles.singleColumn]}>
-        {showConversation ? (
-          <ConversationPane
-            app={app}
-            prompt={prompt}
-            loading={loading}
-            generating={generating}
-            onPromptChange={setPrompt}
-            onGenerate={handleGenerate}
-          />
-        ) : null}
+      <View style={styles.singleColumn}>
         <PreviewPane
           app={app}
           form={form}
@@ -821,7 +725,6 @@ export function PluginAppSurface({
   initialFormValues,
   hiddenFieldIds,
   componentSlots,
-  showConversation = true,
   prepareSubmission,
   onFormValuesChange,
   onJobSubmitted,
@@ -836,7 +739,6 @@ export function PluginAppSurface({
   initialFormValues?: Record<string, unknown>;
   hiddenFieldIds?: readonly string[];
   componentSlots?: PluginAppComponentSlots;
-  showConversation?: boolean;
   prepareSubmission?: (
     form: Record<string, unknown>,
   ) => Promise<Record<string, unknown>> | Record<string, unknown>;
@@ -870,7 +772,6 @@ export function PluginAppSurface({
   return (
     <PluginAppContent
       controller={controller}
-      showConversation={showConversation}
       hiddenFieldIds={hiddenFieldIds}
       componentSlots={componentSlots}
       previewTitle={previewTitle}
@@ -1008,19 +909,9 @@ export function PluginAppModal({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  columns: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    flexWrap: "wrap",
-    gap: theme.spacing[6],
-  },
   singleColumn: {
     flexDirection: "column",
-  },
-  conversationColumn: {
-    flex: 1,
-    minWidth: 300,
-    gap: theme.spacing[3],
+    width: "100%",
   },
   previewColumn: {
     flex: 1.2,
@@ -1042,10 +933,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
-  },
-  promptInput: {
-    minHeight: 110,
-    textAlignVertical: "top",
   },
   previewCard: {
     ...settingsStyles.card,

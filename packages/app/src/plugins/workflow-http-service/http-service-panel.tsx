@@ -7,9 +7,12 @@ import type {
   PluginAppDefinition,
   PluginHttpJob,
   PluginHttpListenerRuntime,
+  PluginHttpLocalAddress,
   PluginHttpProjectConfig,
   PluginSummary,
+  PluginHttpTestTarget,
 } from "@getpaseo/protocol/messages";
+import type { WorkflowScriptSummary } from "@getpaseo/protocol/workflow/types";
 import { Button } from "@/components/ui/button";
 import {
   PluginProjectBoundary,
@@ -17,9 +20,11 @@ import {
 } from "@/plugins/project/plugin-project-boundary";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import { collectWorkflowRunTargets, type WorkflowRunTarget } from "@/workflows/run-targets";
 import { HttpServiceListenerForm } from "./http-service-listener-form";
 import { HttpServiceRequestList } from "./http-service-request-list";
 import { createHttpListener, listenerAddress, updateHttpListener } from "./http-service-model";
+import { HttpServiceTestPanel } from "./http-service-test-panel";
 
 export const HTTP_SERVICE_PLUGIN_ID = "workflow-http-service";
 
@@ -46,8 +51,15 @@ function HttpServiceProjectConsole({
 }) {
   const client = useHostRuntimeClient(serverId);
   const supportsManagement = useHostFeature(serverId, "pluginHttpServiceManagement");
+  const supportsLocalTesting = useHostFeature(serverId, "pluginHttpServiceLocalTesting");
   const [config, setConfig] = useState<PluginHttpProjectConfig | null>(null);
   const [runtimes, setRuntimes] = useState<PluginHttpListenerRuntime[]>([]);
+  const [localAddresses, setLocalAddresses] = useState<PluginHttpLocalAddress[]>([]);
+  const [localAddressesLoading, setLocalAddressesLoading] = useState(false);
+  const [localAddressesError, setLocalAddressesError] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState<WorkflowScriptSummary[]>([]);
+  const [workflowsLoading, setWorkflowsLoading] = useState(false);
+  const [workflowsError, setWorkflowsError] = useState<string | null>(null);
   const [selectedListenerId, setSelectedListenerId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<PluginHttpJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,6 +90,21 @@ function HttpServiceProjectConsole({
     }
   }, [client, pluginId, project.projectId, supportsManagement]);
 
+  const loadLocalAddresses = useCallback(async () => {
+    if (!client || !supportsLocalTesting) return;
+    setLocalAddressesLoading(true);
+    setLocalAddressesError(null);
+    try {
+      const response = await client.getPluginHttpLocalAddresses();
+      if (response.error) throw new Error(response.error);
+      setLocalAddresses(response.addresses);
+    } catch (nextError) {
+      setLocalAddressesError(errorMessage(nextError));
+    } finally {
+      setLocalAddressesLoading(false);
+    }
+  }, [client, supportsLocalTesting]);
+
   const loadJobs = useCallback(async () => {
     if (!client) return;
     setJobLoading(true);
@@ -96,11 +123,40 @@ function HttpServiceProjectConsole({
     }
   }, [client, pluginId, project.projectId]);
 
+  const loadWorkflows = useCallback(async () => {
+    if (!client) return;
+    setWorkflowsLoading(true);
+    setWorkflowsError(null);
+    try {
+      const response = await client.workflowList();
+      if (response.error) throw new Error(response.error);
+      setWorkflows(response.scripts);
+    } catch (nextError) {
+      setWorkflowsError(errorMessage(nextError));
+    } finally {
+      setWorkflowsLoading(false);
+    }
+  }, [client]);
+
+  const inspectWorkflowTargets = useCallback(
+    async (workflowPath: string): Promise<WorkflowRunTarget[]> => {
+      if (!client) throw new Error("Host 尚未连接");
+      const response = await client.workflowInspect({ scriptPath: workflowPath });
+      if (response.error || !response.script) {
+        throw new Error(response.error ?? "无法读取 Workflow");
+      }
+      return collectWorkflowRunTargets(response.script.script.steps);
+    },
+    [client],
+  );
+
   useEffect(() => {
     if (!active) return;
     void loadConfig();
+    void loadLocalAddresses();
     void loadJobs();
-  }, [active, loadConfig, loadJobs]);
+    void loadWorkflows();
+  }, [active, loadConfig, loadJobs, loadLocalAddresses, loadWorkflows]);
 
   const hasActiveJobs = jobs.some((job) => job.status === "queued" || job.status === "running");
   useEffect(() => {
@@ -171,6 +227,29 @@ function HttpServiceProjectConsole({
     [client, loadJobs],
   );
 
+  const replayJob = useCallback(
+    async (job: PluginHttpJob): Promise<PluginHttpJob> => {
+      if (!client) throw new Error("Host 尚未连接");
+      setError(null);
+      try {
+        const response = await client.submitPluginHttpService({
+          pluginId: job.pluginId,
+          serviceName: job.serviceName,
+          input: job.input,
+        });
+        if (response.error || !response.job) {
+          throw new Error(response.error ?? "请求回放失败");
+        }
+        await loadJobs();
+        return response.job;
+      } catch (nextError) {
+        setError(errorMessage(nextError));
+        throw nextError;
+      }
+    },
+    [client, loadJobs],
+  );
+
   const cleanupNow = useCallback(async () => {
     if (!client) return;
     const response = await client.cleanupPluginHttpJobs(pluginId, project.projectId);
@@ -181,10 +260,28 @@ function HttpServiceProjectConsole({
     await loadJobs();
   }, [client, loadJobs, pluginId, project.projectId]);
 
-  if (!supportsManagement) {
+  const testRoute = useCallback(
+    async (input: {
+      listenerId: string;
+      target: PluginHttpTestTarget;
+      body?: Record<string, unknown>;
+    }) => {
+      if (!client) throw new Error("Host 尚未连接");
+      return client.testPluginHttpRoute({
+        pluginId,
+        projectId: project.projectId,
+        ...input,
+      });
+    },
+    [client, pluginId, project.projectId],
+  );
+
+  if (!supportsManagement || !supportsLocalTesting) {
     return (
       <View style={styles.noticeCard}>
-        <Text style={styles.errorText}>当前 Host 不支持 HTTP 服务管理，请更新并重启 daemon。</Text>
+        <Text style={styles.errorText}>
+          当前 Host 不支持本机 HTTP 服务管理与接口测试，请更新并重启 daemon。
+        </Text>
       </View>
     );
   }
@@ -248,8 +345,16 @@ function HttpServiceProjectConsole({
 
       {selectedListener ? (
         <HttpServiceListenerForm
+          key={`listener-editor:${config.updatedAt}:${selectedListener.id}`}
           listener={selectedListener}
           runtime={selectedRuntime}
+          localAddresses={localAddresses}
+          localAddressesLoading={localAddressesLoading}
+          localAddressesError={localAddressesError}
+          workflows={workflows}
+          workflowsLoading={workflowsLoading}
+          workflowsError={workflowsError}
+          inspectWorkflowTargets={inspectWorkflowTargets}
           onChange={(listener) =>
             setConfig(updateHttpListener(config, selectedListener.id, () => listener))
           }
@@ -260,6 +365,14 @@ function HttpServiceProjectConsole({
           <Text style={styles.muted}>请新增一个监听端口。</Text>
         </View>
       )}
+      {selectedListener ? (
+        <HttpServiceTestPanel
+          key={`listener-test:${selectedListener.id}`}
+          listener={selectedListener}
+          runtime={selectedRuntime}
+          onTest={testRoute}
+        />
+      ) : null}
 
       <View style={styles.requestActions}>
         <Button variant="outline" size="sm" leftIcon={Trash2} onPress={cleanupNow}>
@@ -270,6 +383,7 @@ function HttpServiceProjectConsole({
         jobs={jobs}
         loading={jobLoading}
         onRefresh={loadJobs}
+        onReplay={replayJob}
         onDeleteMany={deleteMany}
       />
     </View>

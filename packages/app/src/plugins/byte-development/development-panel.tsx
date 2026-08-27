@@ -21,6 +21,8 @@ import { shouldShowPluginListCreateAction } from "@/plugins/project/plugin-proje
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useAddProjectFlowStore } from "@/stores/add-project-flow-store";
+import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
+import { useDraftStore } from "@/stores/draft-store";
 import { useSessionStore } from "@/stores/session-store";
 import {
   navigateToWorkspace,
@@ -47,11 +49,15 @@ import {
 import { resolveProjectConversationWorkspace } from "./flow-navigation";
 import {
   developmentStageCollaborationFromInput,
+  type DevelopmentStageCollaboration,
   updateDevelopmentStageCollaborationInput,
 } from "./development-stage-collaboration-model";
 import {
-  createDevelopmentStageAgent,
+  buildDevelopmentStageDraftId,
+  canReuseDevelopmentStageWorkspace,
+  prepareDevelopmentStageDraft,
   resolveReusableDevelopmentStageSession,
+  type DevelopmentStageWorkspaceTarget,
 } from "./development-stage-agent-actions";
 import {
   developmentFlowStatusLabel,
@@ -75,6 +81,75 @@ const EMPTY_FLOWS: DevelopmentFlow[] = [];
 function asInputRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   return value as Record<string, unknown>;
+}
+
+async function tryOpenExistingDevelopmentStage(input: {
+  serverId: string;
+  projectId: string;
+  stageId: DevelopmentStageId;
+  knowledge: string;
+  reopen: boolean;
+  currentInput: Record<string, unknown>;
+  collaboration: DevelopmentStageCollaboration;
+  collaborationWorkspace: DevelopmentStageWorkspaceTarget | null;
+  updateFlowInput: (input: Record<string, unknown>) => Promise<PluginHttpJob>;
+  closePluginPanel: () => void;
+}): Promise<boolean> {
+  const reusableSession = resolveReusableDevelopmentStageSession({
+    projectId: input.projectId,
+    agentId: input.collaboration.agentId,
+    workspaceId: input.collaboration.workspaceId,
+    workspace: input.collaborationWorkspace,
+  });
+  if (reusableSession) {
+    await input.updateFlowInput(
+      updateDevelopmentStageCollaborationInput({
+        currentInput: input.currentInput,
+        stageId: input.stageId,
+        patch: {
+          knowledge: input.knowledge,
+          status:
+            input.reopen || input.collaboration.status !== "completed"
+              ? ("in_progress" as const)
+              : ("completed" as const),
+          ...(input.reopen ? { completedAt: null } : {}),
+        },
+      }),
+    );
+    input.closePluginPanel();
+    navigateToAgent({
+      serverId: input.serverId,
+      agentId: reusableSession.agentId,
+      workspaceId: reusableSession.workspaceId,
+      pin: true,
+    });
+    return true;
+  }
+
+  if (
+    !input.collaboration.draftId ||
+    !canReuseDevelopmentStageWorkspace({
+      projectId: input.projectId,
+      workspace: input.collaborationWorkspace,
+    })
+  ) {
+    return false;
+  }
+
+  await input.updateFlowInput(
+    updateDevelopmentStageCollaborationInput({
+      currentInput: input.currentInput,
+      stageId: input.stageId,
+      patch: { knowledge: input.knowledge },
+    }),
+  );
+  input.closePluginPanel();
+  navigateToWorkspace({
+    serverId: input.serverId,
+    workspaceId: input.collaboration.workspaceId!,
+    target: { kind: "draft", draftId: input.collaboration.draftId },
+  });
+  return true;
 }
 
 function statusVariant(status: PluginHttpJob["status"]): "success" | "error" | "muted" {
@@ -679,36 +754,19 @@ export function ByteDevelopmentPanel({
       const collaborationWorkspace = collaboration.workspaceId
         ? (session?.workspaces.get(collaboration.workspaceId) ?? null)
         : null;
-      const reusableSession = resolveReusableDevelopmentStageSession({
+      const openedExisting = await tryOpenExistingDevelopmentStage({
+        serverId,
         projectId,
-        agentId: collaboration.agentId,
-        workspaceId: collaboration.workspaceId,
-        workspace: collaborationWorkspace,
+        stageId,
+        knowledge,
+        reopen,
+        currentInput,
+        collaboration,
+        collaborationWorkspace,
+        updateFlowInput: updateSelectedFlowInput,
+        closePluginPanel,
       });
-      if (reusableSession) {
-        await updateSelectedFlowInput(
-          updateDevelopmentStageCollaborationInput({
-            currentInput,
-            stageId,
-            patch: {
-              knowledge,
-              status:
-                reopen || collaboration.status !== "completed"
-                  ? ("in_progress" as const)
-                  : ("completed" as const),
-              ...(reopen ? { completedAt: null } : {}),
-            },
-          }),
-        );
-        closePluginPanel();
-        navigateToAgent({
-          serverId,
-          agentId: reusableSession.agentId,
-          workspaceId: reusableSession.workspaceId,
-          pin: true,
-        });
-        return;
-      }
+      if (openedExisting) return;
 
       const existingWorkspace = resolveProjectConversationWorkspace({
         projectId,
@@ -716,7 +774,7 @@ export function ByteDevelopmentPanel({
           activeWorkspace?.serverId === serverId ? activeWorkspace.workspaceId : null,
         workspaces: session?.workspaces.values() ?? [],
       });
-      const created = await createDevelopmentStageAgent({
+      const prepared = await prepareDevelopmentStageDraft({
         client,
         flow: selectedFlow,
         stageId,
@@ -733,27 +791,38 @@ export function ByteDevelopmentPanel({
             }
           : null,
       });
+      const draftId = buildDevelopmentStageDraftId(generateDraftId());
+      useDraftStore.getState().saveDraftInput({
+        draftKey: buildDraftStoreKey({
+          serverId,
+          agentId: draftId,
+          draftId,
+        }),
+        draft: {
+          text: prepared.prompt,
+          attachments: [],
+        },
+      });
       await updateSelectedFlowInput(
         updateDevelopmentStageCollaborationInput({
           currentInput,
           stageId,
           patch: {
-            status: "in_progress",
+            status: "pending",
             knowledge,
-            agentId: created.agentId,
-            workspaceId: created.workspaceId,
-            startedAt: created.startedAt,
+            draftId,
+            agentId: null,
+            workspaceId: prepared.workspaceId,
+            startedAt: null,
             completedAt: null,
           },
-          now: created.startedAt,
         }),
       );
       closePluginPanel();
-      navigateToAgent({
+      navigateToWorkspace({
         serverId,
-        agentId: created.agentId,
-        workspaceId: created.workspaceId,
-        pin: true,
+        workspaceId: prepared.workspaceId,
+        target: { kind: "draft", draftId },
       });
     },
     [

@@ -10,6 +10,7 @@ import type {
   PluginHttpJob,
   PluginHttpJobStatus,
   PluginHttpProjectConfig,
+  PluginHttpTestTarget,
   PluginInstallSource,
   PluginMarketplaceSummary,
   PluginState,
@@ -600,6 +601,27 @@ export class DaemonResourceRpcClient {
     return this.request({
       message: { type: "plugin.http.config.save.request", config },
       responseType: "plugin.http.config.save.response",
+    });
+  }
+
+  async getPluginHttpLocalAddresses() {
+    return this.request({
+      message: { type: "plugin.http.local_addresses.get.request" },
+      responseType: "plugin.http.local_addresses.get.response",
+    });
+  }
+
+  async testPluginHttpRoute(input: {
+    pluginId: string;
+    projectId: string;
+    listenerId: string;
+    target: PluginHttpTestTarget;
+    body?: Record<string, unknown>;
+  }) {
+    return this.request({
+      message: { type: "plugin.http.test.request", ...input },
+      responseType: "plugin.http.test.response",
+      timeout: 15_000,
     });
   }
 

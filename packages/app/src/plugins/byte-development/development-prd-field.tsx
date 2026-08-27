@@ -57,12 +57,14 @@ export function DevelopmentPrdField({
   active,
   serverId,
   plugin,
+  inputResetKey,
   value,
   onChange,
 }: {
   active: boolean;
   serverId: string;
   plugin: PluginSummary;
+  inputResetKey: string;
   value: DevelopmentPrdSourceValue;
   onChange: (value: DevelopmentPrdSourceValue) => void;
 }) {
@@ -71,6 +73,8 @@ export function DevelopmentPrdField({
   const [items, setItems] = useState<DevelopmentMeegoItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [resolveLoading, setResolveLoading] = useState(false);
+  const [meegoUrlResetRevision, setMeegoUrlResetRevision] = useState(0);
+  const [meegoPrdResetRevision, setMeegoPrdResetRevision] = useState(0);
   const [listLoaded, setListLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginVisible, setLoginVisible] = useState(false);
@@ -312,6 +316,9 @@ export function DevelopmentPrdField({
         meegoTitle: item?.title ?? value.meegoTitle,
       };
       onChange(pendingValue);
+      if (item) {
+        setMeegoUrlResetRevision((revision) => revision + 1);
+      }
       setResolveLoading(true);
       setError(null);
       runMeegoRequest({
@@ -336,6 +343,8 @@ export function DevelopmentPrdField({
             meegoWorkItemId: resolved.meegoWorkItemId || pendingValue.meegoWorkItemId,
             meegoTitle: resolved.meegoTitle || pendingValue.meegoTitle,
           });
+          setMeegoUrlResetRevision((revision) => revision + 1);
+          setMeegoPrdResetRevision((revision) => revision + 1);
           setResolveLoading(false);
         },
         onAuthRequired: () => setResolveLoading(false),
@@ -388,7 +397,8 @@ export function DevelopmentPrdField({
             hint="可直接粘贴 PRD、需求说明和验收标准；不得包含 Token、Cookie、JWT 或其他密钥。"
           >
             <FormTextInput
-              value={value.prd}
+              initialValue={value.prd}
+              resetKey={`${inputResetKey}:manual-prd`}
               onChangeText={handlePrdChange}
               placeholder="输入 PRD、需求说明及验收标准"
               multiline
@@ -432,7 +442,8 @@ export function DevelopmentPrdField({
               <View style={styles.urlRow}>
                 <View style={styles.urlInput}>
                   <FormTextInput
-                    value={value.meegoUrl}
+                    initialValue={value.meegoUrl}
+                    resetKey={`${inputResetKey}:meego-url:${meegoUrlResetRevision}`}
                     onChangeText={handleUrlChange}
                     placeholder="https://meego.larkoffice.com/..."
                     editable={!resolveLoading}
@@ -459,7 +470,8 @@ export function DevelopmentPrdField({
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <Field label="PRD / 需求说明" hint="已从 Meego 自动获取，可在启动流程前补充或修改。">
               <FormTextInput
-                value={value.prd}
+                initialValue={value.prd}
+                resetKey={`${inputResetKey}:meego-prd:${meegoPrdResetRevision}`}
                 onChangeText={handlePrdChange}
                 placeholder={resolveLoading ? "正在读取 Meego PRD…" : "选择或输入 Meego 后自动填充"}
                 multiline

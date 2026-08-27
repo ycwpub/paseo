@@ -2747,6 +2747,48 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
+  it("keeps later queued messages blocked while the first message is being edited", async () => {
+    const host = makeHost({ serverId: "srv_editing_queue" });
+    const fakeClient = new FakeDaemonClient();
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: null,
+        }),
+        getClientId: async () => "cid_editing_queue",
+      },
+    });
+    const sessionStore = useSessionStore.getState();
+    sessionStore.initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
+    sessionStore.setQueuedMessages(
+      host.serverId,
+      new Map([
+        [
+          "agent",
+          [
+            { id: "editing", text: "editing", attachments: [], isEditing: true },
+            { id: "later", text: "later", attachments: [] },
+          ],
+        ],
+      ]),
+    );
+
+    store.drainQueuedAgentMessage(host.serverId, "agent");
+    await Promise.resolve();
+
+    expect(fakeClient.sentAgentMessages).toEqual([]);
+    expect(useSessionStore.getState().sessions[host.serverId]?.queuedMessages.get("agent")).toEqual(
+      [
+        { id: "editing", text: "editing", attachments: [], isEditing: true },
+        { id: "later", text: "later", attachments: [] },
+      ],
+    );
+    useSessionStore.getState().clearSession(host.serverId);
+  });
+
   it("serializes queued-message drains for the same agent", async () => {
     const host = makeHost({ serverId: "srv_serialized_queue_drain" });
     const fakeClient = new FakeDaemonClient();

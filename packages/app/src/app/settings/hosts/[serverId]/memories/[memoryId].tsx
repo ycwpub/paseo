@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
+import { useMemo } from "react";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
-import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
+import SettingsScreen from "@/screens/settings-screen";
 import { normalizeProjectSettingsRouteId } from "@/utils/host-routes";
 
 export default function HostMemoryDetailRoute() {
@@ -10,10 +11,14 @@ export default function HostMemoryDetailRoute() {
   }>();
   const serverId = normalizeProjectSettingsRouteId(params.serverId);
   const memoryId = normalizeProjectSettingsRouteId(params.memoryId);
+  const view = useMemo(
+    () => ({ kind: "memory" as const, serverId, memoryId }),
+    [memoryId, serverId],
+  );
 
   return (
     <HostRouteBootstrapBoundary>
-      <MemoryManagementScreen serverId={serverId} memoryId={memoryId} />
+      <SettingsScreen view={view} />
     </HostRouteBootstrapBoundary>
   );
 }

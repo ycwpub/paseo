@@ -8,12 +8,23 @@ import {
   type PluginHttpJobStatus,
   type PluginHttpListener,
   type PluginHttpListenerRuntime,
+  type PluginHttpLocalAddress,
   type PluginHttpProjectConfig,
   type PluginHttpServiceSummary,
+  type PluginHttpTestResponse,
+  type PluginHttpTestTarget,
 } from "@getpaseo/protocol/messages";
 import { PluginHttpConfigStore } from "./plugin-http-config-store.js";
 import { PluginHttpJobStore } from "./plugin-http-job-store.js";
+import { assertLocalHttpHost, listLocalHttpAddresses } from "./plugin-http-local-addresses.js";
 import { buildCopiedPluginHttpProjectConfig } from "./plugin-http-project-copy.js";
+import {
+  normalizePluginHttpJobPath,
+  normalizePluginHttpProjectConfigPaths,
+  pluginHttpRequestId,
+  pluginHttpRequestUrlTemplate,
+} from "./plugin-http-request-url.js";
+import { executePluginHttpTest } from "./plugin-http-test-request.js";
 import type {
   MutablePluginHttpServiceStatus,
   PluginHttpServiceBinding,
@@ -49,6 +60,8 @@ interface ActiveServer {
   routes: ActiveRoute[];
 }
 
+type PluginHttpMethod = "POST" | "GET" | "DELETE";
+
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const TERMINAL_STATUSES = new Set<PluginHttpJobStatus>([
@@ -68,18 +81,6 @@ function serverKey(binding: PluginHttpServiceBinding): string {
     return `${host}\u00000\u0000${binding.pluginId}\u0000${projectId ?? ""}\u0000${listenerId ?? name}`;
   }
   return `${host}\u0000${port}`;
-}
-
-function isLoopbackHost(host: string): boolean {
-  const normalized = host.trim().toLowerCase();
-  return (
-    normalized === "localhost" ||
-    normalized === "::1" ||
-    normalized === "[::1]" ||
-    normalized === "0:0:0:0:0:0:0:1" ||
-    normalized.startsWith("::ffff:127.") ||
-    normalized.startsWith("127.")
-  );
 }
 
 function formatHost(host: string): string {
@@ -141,6 +142,33 @@ function authorize(request: IncomingMessage, route: ActiveRoute): boolean {
   return request.headers.authorization === `Bearer ${route.authToken}`;
 }
 
+function findActiveRoute(
+  routes: ActiveRoute[],
+  method: string,
+  requestPath: string,
+): ActiveRoute | undefined {
+  if (method === "POST") {
+    return routes.find((route) => route.submitPath === requestPath);
+  }
+  if (method === "GET") {
+    return routes.find((route) => route.queryPath === requestPath);
+  }
+  if (method === "DELETE") {
+    return routes.find((route) => route.deletePath === requestPath);
+  }
+  return undefined;
+}
+
+function allowedMethodsForPath(routes: ActiveRoute[], requestPath: string): PluginHttpMethod[] {
+  const allowedMethods = new Set<PluginHttpMethod>();
+  for (const route of routes) {
+    if (route.submitPath === requestPath) allowedMethods.add("POST");
+    if (route.queryPath === requestPath) allowedMethods.add("GET");
+    if (route.deletePath === requestPath) allowedMethods.add("DELETE");
+  }
+  return [...allowedMethods];
+}
+
 function getPathValue(value: unknown, pathExpression: string): unknown {
   if (!pathExpression) return value;
   let current = value;
@@ -175,22 +203,6 @@ function applyJsonTemplate(
   const normalized = template?.trim() ?? "";
   if (!normalized) return context.request;
   return applyTemplateValue(JSON.parse(normalized) as unknown, context);
-}
-
-function matchRequestId(template: string, requestPath: string): string | null {
-  const marker = "{requestId}";
-  const markerIndex = template.indexOf(marker);
-  if (markerIndex < 0) return null;
-  const prefix = template.slice(0, markerIndex);
-  const suffix = template.slice(markerIndex + marker.length);
-  if (!requestPath.startsWith(prefix) || !requestPath.endsWith(suffix)) return null;
-  const rawId = requestPath.slice(prefix.length, requestPath.length - suffix.length);
-  if (!rawId || rawId.includes("/")) return null;
-  try {
-    return decodeURIComponent(rawId);
-  } catch {
-    return null;
-  }
 }
 
 function routeServiceName(projectId: string, listenerId: string, routeId: string): string {
@@ -238,6 +250,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
   private readonly workflowService: PluginHttpWorkflowRunner;
   private readonly memoryWriter: PluginWorkflowMemoryWriter | null;
   private readonly now: () => Date;
+  private readonly localAddressProvider: () => PluginHttpLocalAddress[];
   private readonly statuses = new Map<string, PluginHttpServiceSummary>();
   private readonly bindings = new Map<string, PluginHttpServiceBinding>();
   private activeServers: ActiveServer[] = [];
@@ -250,6 +263,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     workflowService: PluginHttpWorkflowRunner;
     memoryWriter?: PluginWorkflowMemoryWriter;
     now?: () => Date;
+    localAddressProvider?: () => PluginHttpLocalAddress[];
   }) {
     this.logger = options.logger.child({ module: "plugin-http-service-manager" });
     this.store = new PluginHttpJobStore(path.join(options.paseoHome, "plugins", "http-jobs"));
@@ -259,6 +273,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     this.workflowService = options.workflowService;
     this.memoryWriter = options.memoryWriter ?? null;
     this.now = options.now ?? (() => new Date());
+    this.localAddressProvider = options.localAddressProvider ?? listLocalHttpAddresses;
     this.store.initialize(this.now().toISOString());
     this.configStore.initialize();
     this.cleanupTimer = setInterval(() => {
@@ -282,18 +297,25 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     pluginId: string,
     projectId: string,
   ): { config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] } {
-    const config =
-      this.configStore.get(pluginId, projectId) ?? this.defaultProjectConfig(pluginId, projectId);
+    const config = normalizePluginHttpProjectConfigPaths(
+      this.configStore.get(pluginId, projectId) ?? this.defaultProjectConfig(pluginId, projectId),
+    );
     return { config, runtimes: this.projectRuntimes(config) };
   }
 
   async saveProjectConfig(
     input: Omit<PluginHttpProjectConfig, "updatedAt">,
   ): Promise<{ config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] }> {
-    const config = PluginHttpProjectConfigSchema.parse({
-      ...input,
-      updatedAt: this.now().toISOString(),
-    });
+    const config = normalizePluginHttpProjectConfigPaths(
+      PluginHttpProjectConfigSchema.parse({
+        ...input,
+        listeners: input.listeners.map((listener) => ({
+          ...listener,
+          authTokenEnv: undefined,
+        })),
+        updatedAt: this.now().toISOString(),
+      }),
+    );
     this.validateProjectConfig(config);
     this.configStore.save(config);
     await this.reconcileAll();
@@ -301,12 +323,45 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     return { config, runtimes: this.projectRuntimes(config) };
   }
 
+  getLocalAddresses(): PluginHttpLocalAddress[] {
+    return this.localAddressProvider();
+  }
+
+  async testProjectRoute(input: {
+    pluginId: string;
+    projectId: string;
+    listenerId: string;
+    target: PluginHttpTestTarget;
+    body?: Record<string, unknown>;
+  }): Promise<Omit<PluginHttpTestResponse, "requestId">> {
+    const storedConfig = this.configStore.get(input.pluginId, input.projectId);
+    const config = storedConfig ? normalizePluginHttpProjectConfigPaths(storedConfig) : null;
+    if (!config) throw new Error("请先保存并应用 HTTP 服务配置");
+    const listener = config.listeners.find((candidate) => candidate.id === input.listenerId);
+    if (!listener) throw new Error("监听端口不存在");
+    const runtime = this.projectRuntimes(config).find(
+      (candidate) => candidate.listenerId === input.listenerId,
+    );
+    if (!runtime) throw new Error("监听端口运行状态不存在");
+    const authToken = listener.authTokenEnv
+      ? (process.env[listener.authTokenEnv]?.trim() ?? "")
+      : "";
+    return executePluginHttpTest({
+      listener,
+      runtime,
+      target: input.target,
+      body: input.body,
+      authToken: authToken || undefined,
+    });
+  }
+
   async copyProjectConfig(
     pluginId: string,
     sourceProjectId: string,
     targetProjectId: string,
   ): Promise<PluginHttpProjectConfig | null> {
-    const source = this.configStore.get(pluginId, sourceProjectId);
+    const storedSource = this.configStore.get(pluginId, sourceProjectId);
+    const source = storedSource ? normalizePluginHttpProjectConfigPaths(storedSource) : null;
     if (!source) return null;
     if (this.configStore.get(pluginId, targetProjectId)) {
       throw new Error("目标 Project 已存在 HTTP 服务配置");
@@ -489,7 +544,10 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     const managedPluginIds = new Set(this.configStore.list().map((config) => config.pluginId));
     const bindings = [
       ...this.staticBindings.filter((binding) => !managedPluginIds.has(binding.pluginId)),
-      ...this.configStore.list().flatMap((config) => this.managedBindings(config)),
+      ...this.configStore
+        .list()
+        .map(normalizePluginHttpProjectConfigPaths)
+        .flatMap((config) => this.managedBindings(config)),
     ];
     const groups = new Map<string, PluginHttpServiceBinding[]>();
     for (const binding of bindings) {
@@ -549,8 +607,8 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
             ...common,
             routeId: route.id,
             path: route.path,
-            queryPath: `${route.path}/{requestId}`,
-            deletePath: `${route.path}/{requestId}`,
+            queryPath: route.path,
+            deletePath: route.path,
             workflowPath: route.workflowPath,
             targetNodeId: route.targetNodeId,
             requestTemplate: route.requestTemplate,
@@ -582,8 +640,8 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
         defaultJobApi: {
           enabled: true,
           submitPath: "/jobs",
-          queryPath: "/jobs/{requestId}",
-          deletePath: "/jobs/{requestId}",
+          queryPath: "/jobs",
+          deletePath: "/jobs",
           workflowPath: first.definition.workflowPath,
           requestTemplate: "",
           responseTemplate: "",
@@ -629,27 +687,25 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
   }
 
   private validateProjectConfig(config: PluginHttpProjectConfig): void {
+    const localAddresses = this.getLocalAddresses();
     const listenerIds = new Set<string>();
     for (const listener of config.listeners) {
       if (listenerIds.has(listener.id)) throw new Error(`Duplicate listener ID: ${listener.id}`);
       listenerIds.add(listener.id);
+      assertLocalHttpHost(listener.host, localAddresses);
       const routeIds = new Set<string>();
-      const paths = new Set<string>();
-      const addPath = (value: string, label: string) => {
-        if (paths.has(value)) throw new Error(`${listener.name}: duplicate HTTP path ${value}`);
-        paths.add(value);
-        if ((label === "query" || label === "delete") && !value.includes("{requestId}")) {
-          throw new Error(`${listener.name}: ${label} path must contain {requestId}`);
+      const routeSignatures = new Set<string>();
+      const addRoute = (method: "POST" | "GET" | "DELETE", value: string) => {
+        const signature = `${method} ${value}`;
+        if (routeSignatures.has(signature)) {
+          throw new Error(`${listener.name}: duplicate HTTP route ${signature}`);
         }
+        routeSignatures.add(signature);
       };
       if (listener.defaultJobApi?.enabled) {
-        addPath(listener.defaultJobApi.submitPath, "submit");
-        addPath(listener.defaultJobApi.queryPath, "query");
-        if (listener.defaultJobApi.deletePath !== listener.defaultJobApi.queryPath) {
-          addPath(listener.defaultJobApi.deletePath, "delete");
-        } else if (!listener.defaultJobApi.deletePath.includes("{requestId}")) {
-          throw new Error(`${listener.name}: delete path must contain {requestId}`);
-        }
+        addRoute("POST", listener.defaultJobApi.submitPath);
+        addRoute("GET", listener.defaultJobApi.queryPath);
+        addRoute("DELETE", listener.defaultJobApi.deletePath);
         if (listener.defaultJobApi.requestTemplate.trim()) {
           JSON.parse(listener.defaultJobApi.requestTemplate);
         }
@@ -661,7 +717,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
         if (routeIds.has(route.id))
           throw new Error(`${listener.name}: duplicate route ID ${route.id}`);
         routeIds.add(route.id);
-        if (route.enabled) addPath(route.path, "route");
+        if (route.enabled) addRoute("POST", route.path);
         if (route.requestTemplate.trim()) JSON.parse(route.requestTemplate);
         if (route.responseTemplate.trim()) JSON.parse(route.responseTemplate);
       }
@@ -734,7 +790,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
           status: "running",
           boundPort,
           submitUrl: `${baseUrl}${route.submitPath}`,
-          resultUrlTemplate: `${baseUrl}${route.queryPath}`,
+          resultUrlTemplate: `${baseUrl}${pluginHttpRequestUrlTemplate(route.queryPath)}`,
           error: null,
         });
       }
@@ -751,10 +807,19 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
 
   private prepareRoutes(bindings: PluginHttpServiceBinding[]): ActiveRoute[] {
     const routes: ActiveRoute[] = [];
+    const localAddresses = this.getLocalAddresses();
     for (const binding of bindings) {
-      const { authTokenEnv, host, path: submitPath } = binding.definition;
-      if (!isLoopbackHost(host) && !authTokenEnv) {
-        this.setError(binding, "Non-loopback HTTP services require authTokenEnv");
+      const {
+        authTokenEnv,
+        host,
+        path: configuredSubmitPath,
+        queryPath: configuredQueryPath,
+        deletePath: configuredDeletePath,
+      } = binding.definition;
+      try {
+        assertLocalHttpHost(host, localAddresses);
+      } catch (error) {
+        this.setError(binding, error instanceof Error ? error.message : String(error));
         continue;
       }
       const authToken = authTokenEnv ? (process.env[authTokenEnv]?.trim() ?? "") : "";
@@ -765,9 +830,9 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
       routes.push({
         binding,
         authToken: authToken || null,
-        submitPath,
-        queryPath: binding.definition.queryPath ?? `${submitPath}/{requestId}`,
-        deletePath: binding.definition.deletePath ?? `${submitPath}/{requestId}`,
+        submitPath: normalizePluginHttpJobPath(configuredSubmitPath),
+        queryPath: normalizePluginHttpJobPath(configuredQueryPath ?? configuredSubmitPath),
+        deletePath: normalizePluginHttpJobPath(configuredDeletePath ?? configuredSubmitPath),
       });
     }
     return routes;
@@ -779,49 +844,53 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     response: ServerResponse,
   ): Promise<void> {
     const requestUrl = new URL(request.url ?? "/", "http://plugin.local");
-    const submitRoute = routes.find((route) => route.submitPath === requestUrl.pathname);
-    if (submitRoute) {
-      if (!authorize(request, submitRoute)) {
+    const method = request.method ?? "GET";
+    const matchedRoute = findActiveRoute(routes, method, requestUrl.pathname);
+    if (matchedRoute) {
+      if (!authorize(request, matchedRoute)) {
         writeJson(response, 401, { error: "Unauthorized" });
         return;
       }
-      if (request.method !== "POST") {
-        response.setHeader("Allow", "POST");
-        writeJson(response, 405, { error: "Method not allowed" });
+      if (method === "POST") {
+        await this.handleSubmission(matchedRoute, request, response);
         return;
       }
-      await this.handleSubmission(submitRoute, request, response);
+      await this.handleJobRequest(matchedRoute, method as "GET" | "DELETE", requestUrl, response);
       return;
     }
 
-    const matched = routes
-      .map((route) => ({
-        route,
-        queryId: matchRequestId(route.queryPath, requestUrl.pathname),
-        deleteId: matchRequestId(route.deletePath, requestUrl.pathname),
-      }))
-      .find((entry) => entry.queryId !== null || entry.deleteId !== null);
-    if (!matched) {
-      writeJson(response, 404, { error: "Not found" });
+    const allowedMethods = allowedMethodsForPath(routes, requestUrl.pathname);
+    if (allowedMethods.length > 0) {
+      response.setHeader("Allow", allowedMethods.join(", "));
+      writeJson(response, 405, { error: "Method not allowed" });
       return;
     }
-    if (!authorize(request, matched.route)) {
-      writeJson(response, 401, { error: "Unauthorized" });
+    writeJson(response, 404, { error: "Not found" });
+  }
+
+  private async handleJobRequest(
+    route: ActiveRoute,
+    method: "GET" | "DELETE",
+    requestUrl: URL,
+    response: ServerResponse,
+  ): Promise<void> {
+    const processId = pluginHttpRequestId(requestUrl);
+    if (!processId) {
+      writeJson(response, 400, { error: "Missing request_id query parameter" });
       return;
     }
-    const processId = matched.queryId ?? matched.deleteId!;
     const job = this.store.get(processId);
     if (
       !job ||
-      job.pluginId !== matched.route.binding.pluginId ||
-      job.serviceName !== matched.route.binding.definition.name
+      job.pluginId !== route.binding.pluginId ||
+      job.serviceName !== route.binding.definition.name
     ) {
       writeJson(response, 404, { error: "Processing job not found" });
       return;
     }
-    if (request.method === "GET" && matched.queryId !== null) {
-      const payload = matched.route.binding.definition.responseTemplate?.trim()
-        ? applyJsonTemplate(matched.route.binding.definition.responseTemplate, {
+    if (method === "GET") {
+      const payload = route.binding.definition.responseTemplate?.trim()
+        ? applyJsonTemplate(route.binding.definition.responseTemplate, {
             request: job,
             job,
             result: job.result,
@@ -830,20 +899,12 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
       writeJson(response, 200, payload);
       return;
     }
-    if (request.method === "DELETE" && matched.deleteId !== null) {
-      if (job.status === "queued" || job.status === "running") {
-        writeJson(response, 409, { error: "Running requests cannot be deleted" });
-        return;
-      }
-      await this.store.delete(job.id);
-      writeJson(response, 200, { processId: job.id, deleted: true });
+    if (job.status === "queued" || job.status === "running") {
+      writeJson(response, 409, { error: "Running requests cannot be deleted" });
       return;
     }
-    response.setHeader(
-      "Allow",
-      matched.route.queryPath === matched.route.deletePath ? "GET, DELETE" : "GET",
-    );
-    writeJson(response, 405, { error: "Method not allowed" });
+    await this.store.delete(job.id);
+    writeJson(response, 200, { processId: job.id, deleted: true });
   }
 
   private async handleSubmission(
@@ -861,7 +922,8 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
       const standardResponse = {
         processId: job.id,
         status: job.status,
-        statusUrl: status?.resultUrlTemplate?.replace("{requestId}", job.id) ?? null,
+        statusUrl:
+          status?.resultUrlTemplate?.replace("{requestId}", encodeURIComponent(job.id)) ?? null,
       };
       const payload = route.binding.definition.responseTemplate?.trim()
         ? applyJsonTemplate(route.binding.definition.responseTemplate, {

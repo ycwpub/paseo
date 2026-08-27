@@ -24,6 +24,7 @@ export interface QueuedComposerMessage {
   attachments: ComposerAttachment[];
   selectedMcpServerIds?: string[];
   selectedSkillIds?: string[];
+  isEditing?: true;
 }
 
 export interface AttachmentPersister {
@@ -352,7 +353,7 @@ export async function sendQueuedComposerMessageNow(
   const queue = input.queue.read(input.agentId);
   const originalIndex = queue.findIndex((item) => item.id === input.messageId);
   const item = queue[originalIndex];
-  if (!item) return { status: "missing" };
+  if (!item || item.isEditing) return { status: "missing" };
   input.queue.write((prev) => {
     const next = new Map(prev);
     next.set(

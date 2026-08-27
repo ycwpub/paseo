@@ -1,14 +1,20 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   DEVELOPMENT_PLUGIN_ID,
+  DEVELOPMENT_SERVICE_NAME,
   DEVELOPMENT_STAGES,
   type DevelopmentFlow,
   type DevelopmentStageId,
 } from "./flow-model";
 import {
   buildDevelopmentStageAgentPrompt,
-  buildDevelopmentStageSystemPrompt,
+  developmentStageCollaborationFromInput,
+  updateDevelopmentStageCollaborationInput,
 } from "./development-stage-collaboration-model";
+import { queryClient } from "@/data/query-client";
+import { developmentFlowsQueryKey, replaceDevelopmentFlow } from "./use-development-flows";
+
+const DEVELOPMENT_STAGE_DRAFT_PREFIX = "development_stage_";
 
 export interface DevelopmentStageWorkspaceTarget {
   id: string;
@@ -39,16 +45,10 @@ export function resolveReusableDevelopmentStageSession(input: {
   return { agentId: input.agentId, workspaceId: input.workspaceId };
 }
 
-function readRequiredAgentSetting(
-  flowInput: Record<string, unknown>,
-  key: "agent_provider" | "agent_model",
-): string {
-  const value = flowInput[key];
-  const normalized = typeof value === "string" ? value.trim() : "";
-  if (!normalized) {
-    throw new Error("开发流程没有默认 Provider 或模型，请先编辑流程配置");
-  }
-  return normalized;
+function asInputRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 async function ensureDevelopmentStageWorkspace(input: {
@@ -97,7 +97,15 @@ async function ensureDevelopmentStageWorkspace(input: {
   };
 }
 
-export async function createDevelopmentStageAgent(input: {
+export function buildDevelopmentStageDraftId(draftId: string): string {
+  return `${DEVELOPMENT_STAGE_DRAFT_PREFIX}${draftId}`;
+}
+
+export function isDevelopmentStageDraftId(draftId: string): boolean {
+  return draftId.startsWith(DEVELOPMENT_STAGE_DRAFT_PREFIX);
+}
+
+export async function prepareDevelopmentStageDraft(input: {
   client: DaemonClient;
   flow: DevelopmentFlow;
   stageId: DevelopmentStageId;
@@ -105,7 +113,7 @@ export async function createDevelopmentStageAgent(input: {
   flowInput: Record<string, unknown>;
   sourceDirectory: string | null;
   existingWorkspace: DevelopmentStageWorkspaceTarget | null;
-}): Promise<{ agentId: string; workspaceId: string; startedAt: string }> {
+}): Promise<{ workspaceId: string; workspaceDirectory: string; prompt: string }> {
   const projectId = input.flow.projectId;
   if (!projectId) throw new Error("开发流程没有关联 Project");
   const workspace = await ensureDevelopmentStageWorkspace({
@@ -117,20 +125,10 @@ export async function createDevelopmentStageAgent(input: {
   });
   const stageLabel =
     DEVELOPMENT_STAGES.find((candidate) => candidate.id === input.stageId)?.label ?? input.stageId;
-  const provider = readRequiredAgentSetting(input.flowInput, "agent_provider");
-  const model = readRequiredAgentSetting(input.flowInput, "agent_model");
-  const startedAt = new Date().toISOString();
-  const agent = await input.client.createAgent({
-    provider,
-    model,
-    cwd: workspace.workspaceDirectory,
+  return {
     workspaceId: workspace.id,
-    title: `${input.flow.title} · ${stageLabel}`,
-    systemPrompt: buildDevelopmentStageSystemPrompt({
-      stageLabel,
-      knowledge: input.knowledge,
-    }),
-    initialPrompt: buildDevelopmentStageAgentPrompt({
+    workspaceDirectory: workspace.workspaceDirectory,
+    prompt: buildDevelopmentStageAgentPrompt({
       stageId: input.stageId,
       stageLabel,
       flowTitle: input.flow.title,
@@ -138,19 +136,56 @@ export async function createDevelopmentStageAgent(input: {
       flowInput: input.flowInput,
       knowledge: input.knowledge,
     }),
-    // A development stage is an ongoing Project conversation. Finishing an
-    // Agent turn or marking the stage complete must not archive the session.
-    autoArchive: false,
-    labels: {
-      "paseo.plugin": DEVELOPMENT_PLUGIN_ID,
-      "paseo.plugin-project-id": input.flow.id,
-      "paseo.development-stage": input.stageId,
-      "paseo.project-id": projectId,
-    },
-  });
-  return {
-    agentId: agent.id,
-    workspaceId: workspace.id,
-    startedAt,
   };
+}
+
+export async function associateDevelopmentStageDraftAgent(input: {
+  client: DaemonClient;
+  serverId: string;
+  draftId: string;
+  agentId: string;
+  workspaceId: string;
+}): Promise<boolean> {
+  if (!isDevelopmentStageDraftId(input.draftId)) return false;
+
+  const result = await input.client.listPluginAppJobs({
+    pluginId: DEVELOPMENT_PLUGIN_ID,
+    serviceName: DEVELOPMENT_SERVICE_NAME,
+    limit: 500,
+  });
+  if (result.error) throw new Error(result.error);
+
+  for (const job of result.jobs) {
+    for (const stage of DEVELOPMENT_STAGES) {
+      const collaboration = developmentStageCollaborationFromInput(job.input, stage.id);
+      if (collaboration.draftId !== input.draftId) continue;
+
+      const startedAt = new Date().toISOString();
+      const updated = await input.client.updatePluginAppJob(
+        job.id,
+        updateDevelopmentStageCollaborationInput({
+          currentInput: asInputRecord(job.input),
+          stageId: stage.id,
+          patch: {
+            status: "in_progress",
+            draftId: null,
+            agentId: input.agentId,
+            workspaceId: input.workspaceId,
+            startedAt,
+            completedAt: null,
+          },
+          now: startedAt,
+        }),
+      );
+      if (updated.error || !updated.job) {
+        throw new Error(updated.error ?? "关联开发节点 Agent 失败");
+      }
+      queryClient.setQueryData(
+        developmentFlowsQueryKey(input.serverId),
+        (current: DevelopmentFlow[] | undefined) => replaceDevelopmentFlow(current, updated.job!),
+      );
+      return true;
+    }
+  }
+  return false;
 }

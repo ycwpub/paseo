@@ -4,16 +4,27 @@ import { Text, View } from "react-native";
 import { Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { PluginHttpRoute } from "@getpaseo/protocol/messages";
+import type { WorkflowScriptSummary } from "@getpaseo/protocol/workflow/types";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
+import type { WorkflowRunTarget } from "@/workflows/run-targets";
+import { HttpServiceWorkflowFields } from "./http-service-workflow-fields";
 
 export function HttpServiceRouteForm({
   route,
+  workflows,
+  workflowsLoading,
+  workflowsError,
+  inspectWorkflowTargets,
   onChange,
   onDelete,
 }: {
   route: PluginHttpRoute;
+  workflows: WorkflowScriptSummary[];
+  workflowsLoading: boolean;
+  workflowsError: string | null;
+  inspectWorkflowTargets: (workflowPath: string) => Promise<WorkflowRunTarget[]>;
   onChange: (route: PluginHttpRoute) => void;
   onDelete: () => void;
 }) {
@@ -43,39 +54,44 @@ export function HttpServiceRouteForm({
       <View style={styles.row}>
         <View style={styles.flexField}>
           <Field label="路径名称">
-            <FormTextInput value={route.name} onChangeText={(value) => setField("name", value)} />
+            <FormTextInput
+              initialValue={route.name}
+              resetKey={`${route.id}:name`}
+              onChangeText={(value) => setField("name", value)}
+            />
           </Field>
         </View>
         <View style={styles.flexField}>
           <Field label="请求 Path">
             <FormTextInput
-              value={route.path}
+              initialValue={route.path}
+              resetKey={`${route.id}:path`}
               onChangeText={(value) => setField("path", value)}
               placeholder="/review"
             />
           </Field>
         </View>
       </View>
-      <Field label="Workflow 文件" hint="填写插件内或本机可访问的 Workflow JSON 绝对路径。">
-        <FormTextInput
-          value={route.workflowPath}
-          onChangeText={(value) => setField("workflowPath", value)}
-        />
-      </Field>
-      <Field label="处理节点 ID" hint="留空时执行完整 Workflow；填写后只运行指定节点。">
-        <FormTextInput
-          value={route.targetNodeId ?? ""}
-          onChangeText={(value) => setField("targetNodeId", value.trim() ? value : undefined)}
-          placeholder="例如：review"
-        />
-      </Field>
+      <HttpServiceWorkflowFields
+        workflowPath={route.workflowPath}
+        targetNodeId={route.targetNodeId}
+        workflows={workflows}
+        workflowsLoading={workflowsLoading}
+        workflowsError={workflowsError}
+        inspectWorkflowTargets={inspectWorkflowTargets}
+        onWorkflowPathChange={(workflowPath) =>
+          onChange({ ...route, workflowPath, targetNodeId: undefined })
+        }
+        onTargetNodeIdChange={(targetNodeId) => setField("targetNodeId", targetNodeId)}
+      />
       <Field
         label="请求映射 JSON"
         hint='留空时原样传递请求。可使用 {{request}}、{{request.xxx}}，例如 {"data": "{{request}}"}。'
       >
         <FormTextInput
           multiline
-          value={route.requestTemplate}
+          initialValue={route.requestTemplate}
+          resetKey={`${route.id}:request-template`}
           onChangeText={(value) => setField("requestTemplate", value)}
           placeholder='{"data": "{{request}}"}'
           textInputStyle={styles.codeInput}
@@ -87,7 +103,8 @@ export function HttpServiceRouteForm({
       >
         <FormTextInput
           multiline
-          value={route.responseTemplate}
+          initialValue={route.responseTemplate}
+          resetKey={`${route.id}:response-template`}
           onChangeText={(value) => setField("responseTemplate", value)}
           placeholder='{"request_id": "{{job.id}}", "status": "{{job.status}}"}'
           textInputStyle={styles.codeInput}

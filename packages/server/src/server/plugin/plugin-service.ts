@@ -8,7 +8,10 @@ import {
   type McpTransport,
   type PluginHttpServiceSummary,
   type PluginHttpListenerRuntime,
+  type PluginHttpLocalAddress,
   type PluginHttpProjectConfig,
+  type PluginHttpTestResponse,
+  type PluginHttpTestTarget,
   type PluginHttpJobStatus,
   type PluginAppDefinition,
   type PluginAppState,
@@ -553,6 +556,22 @@ export class PluginService {
   ): Promise<{ config: PluginHttpProjectConfig; runtimes: PluginHttpListenerRuntime[] }> {
     if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
     return this.httpRuntime.saveProjectConfig(config);
+  }
+
+  getHttpLocalAddresses(): PluginHttpLocalAddress[] {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.getLocalAddresses();
+  }
+
+  testHttpProjectRoute(input: {
+    pluginId: string;
+    projectId: string;
+    listenerId: string;
+    target: PluginHttpTestTarget;
+    body?: Record<string, unknown>;
+  }): Promise<Omit<PluginHttpTestResponse, "requestId">> {
+    if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    return this.httpRuntime.testProjectRoute(input);
   }
 
   cleanupHttpProjectJobs(pluginId: string, projectId: string): Promise<string[]> {

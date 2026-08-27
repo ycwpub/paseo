@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DesktopPluginContentHost } from "./desktop-content-host";
 
@@ -10,6 +10,12 @@ import { DesktopPluginContentHost } from "./desktop-content-host";
 
 const panelState = vi.hoisted(() => ({
   selection: null as { pluginId: string } | null,
+  close: vi.fn(),
+}));
+const routeState = vi.hoisted(() => ({ pathname: "/h/server/workspace/one" }));
+
+vi.mock("expo-router", () => ({
+  usePathname: () => routeState.pathname,
 }));
 
 vi.mock("react-native", () => ({
@@ -43,8 +49,7 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("@/plugins/sidebar-panel/selection-store", () => ({
-  usePluginAppPanelStore: (selector: (state: typeof panelState) => { pluginId: string } | null) =>
-    selector(panelState),
+  usePluginAppPanelStore: (selector: (state: typeof panelState) => unknown) => selector(panelState),
 }));
 
 vi.mock("@/plugins/sidebar-panel/panel-host", () => ({
@@ -54,6 +59,8 @@ vi.mock("@/plugins/sidebar-panel/panel-host", () => ({
 describe("DesktopPluginContentHost", () => {
   beforeEach(() => {
     panelState.selection = null;
+    panelState.close.mockReset();
+    routeState.pathname = "/h/server/workspace/one";
   });
 
   afterEach(cleanup);
@@ -83,5 +90,42 @@ describe("DesktopPluginContentHost", () => {
     expect(screen.getByTestId("desktop-route-content").getAttribute("data-display")).toBe("none");
     expect(screen.getByTestId("current-route")).toBeTruthy();
     expect(screen.getByTestId("plugin-app-side-panel")).toBeTruthy();
+  });
+
+  it("closes the plugin page when the current route changes", async () => {
+    panelState.selection = { pluginId: "byte-development" };
+    const view = render(
+      <DesktopPluginContentHost>
+        <div data-testid="current-route">当前页面</div>
+      </DesktopPluginContentHost>,
+    );
+
+    expect(panelState.close).not.toHaveBeenCalled();
+
+    routeState.pathname = "/sessions";
+    view.rerender(
+      <DesktopPluginContentHost>
+        <div data-testid="current-route">当前页面</div>
+      </DesktopPluginContentHost>,
+    );
+
+    await waitFor(() => expect(panelState.close).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps the plugin page open when only its content rerenders", async () => {
+    panelState.selection = { pluginId: "byte-development" };
+    const view = render(
+      <DesktopPluginContentHost>
+        <div data-testid="current-route">当前页面</div>
+      </DesktopPluginContentHost>,
+    );
+
+    view.rerender(
+      <DesktopPluginContentHost>
+        <div data-testid="current-route">更新后的当前页面</div>
+      </DesktopPluginContentHost>,
+    );
+
+    await waitFor(() => expect(panelState.close).not.toHaveBeenCalled());
   });
 });

@@ -23,8 +23,8 @@ describe("plugin HTTP management schemas", () => {
             defaultJobApi: {
               enabled: true,
               submitPath: "/jobs",
-              queryPath: "/jobs/{requestId}",
-              deletePath: "/jobs/{requestId}",
+              queryPath: "/jobs",
+              deletePath: "/jobs",
               workflowPath: "/tmp/workflow.json",
             },
             routes: [

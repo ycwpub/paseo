@@ -13,6 +13,7 @@ import {
   resolveRelayServerDeviceType,
   resolveRelayServerHostname,
 } from "./relay-connection-display";
+import { groupRelayHistory, type RelayHistoryGroup } from "./relay-history-groups";
 
 const ThemedTrash2 = withUnistyles(Trash2);
 const destructiveColorMapping = (theme: Theme) => ({
@@ -25,6 +26,9 @@ type LocalRelayRuntime = NonNullable<
 >;
 type LocalRelayConnection = LocalRelayRuntime["connections"][number];
 type LocalRelayHistoryRecord = NonNullable<LocalRelayRuntime["history"]>[number];
+type LocalRelayHistoryGroup = RelayHistoryGroup<LocalRelayHistoryRecord>;
+
+const COLLAPSED_HISTORY_TIME_LIMIT = 5;
 
 function resolveRelayDeviceTypeLabel(
   deviceType: LocalRelayConnection["deviceType"],
@@ -167,35 +171,35 @@ function LocalRelayConnectionGroup({
 }
 
 function LocalRelayHistoryGroup({
-  history,
+  groups,
   title,
   empty,
-  deletingId,
+  deletingKey,
   serverDeviceTypeByServerId,
   onDelete,
   t,
 }: {
-  history: LocalRelayHistoryRecord[];
+  groups: LocalRelayHistoryGroup[];
   title: string;
   empty: string;
-  deletingId: string | null;
+  deletingKey: string | null;
   serverDeviceTypeByServerId: ReadonlyMap<string, NonNullable<LocalRelayConnection["deviceType"]>>;
-  onDelete: (historyId: string) => void;
+  onDelete: (group: LocalRelayHistoryGroup) => void;
   t: TFunction;
 }) {
   return (
     <View style={styles.group}>
       <View style={styles.groupHeader}>
         <Text style={styles.groupTitle}>{title}</Text>
-        <Text style={styles.count}>{history.length}</Text>
+        <Text style={styles.count}>{groups.length}</Text>
       </View>
-      {history.length > 0 ? (
+      {groups.length > 0 ? (
         <View style={styles.list}>
-          {history.map((record) => (
+          {groups.map((group) => (
             <LocalRelayHistoryRow
-              key={record.id}
-              record={record}
-              deletingId={deletingId}
+              key={group.key}
+              group={group}
+              deletingKey={deletingKey}
               serverDeviceTypeByServerId={serverDeviceTypeByServerId}
               onDelete={onDelete}
               t={t}
@@ -210,23 +214,40 @@ function LocalRelayHistoryGroup({
 }
 
 function LocalRelayHistoryRow({
-  record,
-  deletingId,
+  group,
+  deletingKey,
   serverDeviceTypeByServerId,
   onDelete,
   t,
 }: {
-  record: LocalRelayHistoryRecord;
-  deletingId: string | null;
+  group: LocalRelayHistoryGroup;
+  deletingKey: string | null;
   serverDeviceTypeByServerId: ReadonlyMap<string, NonNullable<LocalRelayConnection["deviceType"]>>;
-  onDelete: (historyId: string) => void;
+  onDelete: (group: LocalRelayHistoryGroup) => void;
   t: TFunction;
 }) {
-  const handleDelete = useCallback(() => onDelete(record.id), [onDelete, record.id]);
+  const [expanded, setExpanded] = useState(false);
+  const record = group.latest;
+  const visibleRecords = expanded
+    ? group.records
+    : group.records.slice(0, COLLAPSED_HISTORY_TIME_LIMIT);
+  const handleDelete = useCallback(() => onDelete(group), [group, onDelete]);
+  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
   return (
     <View style={styles.row}>
       <View style={styles.details}>
-        <Text style={styles.role}>{t(`settings.host.relay.management.roles.${record.role}`)}</Text>
+        <View style={styles.historyRowHeader}>
+          <Text style={styles.role}>
+            {record.role === "client"
+              ? t("settings.host.relay.management.roles.client")
+              : t("settings.host.relay.management.roles.server")}
+          </Text>
+          <Text style={styles.count}>
+            {t("settings.host.relay.management.connectionCount", {
+              count: group.records.length,
+            })}
+          </Text>
+        </View>
         <View style={styles.fieldGrid}>
           <RelayManagementField
             label={t("settings.host.relay.management.deviceType")}
@@ -272,29 +293,38 @@ function LocalRelayHistoryRow({
             }
             mono
           />
-          <RelayManagementField
-            label={t("settings.host.relay.management.connectedAt")}
-            value={new Date(record.connectedAt).toLocaleString()}
-          />
-          <RelayManagementField
-            label={t("settings.host.relay.management.disconnectedAt")}
-            value={
-              record.disconnectedAt
-                ? new Date(record.disconnectedAt).toLocaleString()
-                : t("settings.host.relay.management.stillConnected")
-            }
-          />
+          <View style={[styles.field, styles.historyTimesField]}>
+            <Text style={styles.fieldLabel}>
+              {t("settings.host.relay.management.connectionHistory")}
+            </Text>
+            <View style={styles.historyTimes}>
+              {visibleRecords.map((historyRecord) => (
+                <Text key={historyRecord.id} style={styles.fieldValue}>
+                  {formatHistoryTime(historyRecord, t)}
+                </Text>
+              ))}
+            </View>
+            {group.records.length > COLLAPSED_HISTORY_TIME_LIMIT ? (
+              <Button variant="ghost" size="xs" onPress={toggleExpanded}>
+                {expanded
+                  ? t("settings.host.relay.management.collapseHistory")
+                  : t("settings.host.relay.management.expandHistory", {
+                      count: group.records.length,
+                    })}
+              </Button>
+            ) : null}
+          </View>
         </View>
       </View>
       <Button
         variant="ghost"
         size="xs"
         leftIcon={removeHistoryIcon}
-        loading={deletingId === record.id}
-        disabled={deletingId !== null}
+        loading={deletingKey === group.key}
+        disabled={deletingKey !== null}
         onPress={handleDelete}
         accessibilityLabel={
-          deletingId === record.id
+          deletingKey === group.key
             ? t("settings.host.relay.management.deleting")
             : t("settings.host.relay.management.delete")
         }
@@ -302,6 +332,26 @@ function LocalRelayHistoryRow({
       />
     </View>
   );
+}
+
+function formatHistoryTime(record: LocalRelayHistoryRecord, t: TFunction): string {
+  const connectedAt = new Date(record.connectedAt).toLocaleString();
+  const disconnectedAt = record.disconnectedAt
+    ? new Date(record.disconnectedAt).toLocaleString()
+    : t("settings.host.relay.management.stillConnected");
+  return `${connectedAt} → ${disconnectedAt}`;
+}
+
+async function deleteRelayHistoryGroup(
+  client: DaemonClient,
+  group: LocalRelayHistoryGroup,
+): Promise<void> {
+  for (const record of group.records) {
+    const result = await client.deleteDaemonRelayHistory(record.id);
+    if (!result.success) {
+      throw new Error(result.error ?? "Failed to delete Relay history");
+    }
+  }
 }
 
 export function LocalRelayManagement({
@@ -323,31 +373,30 @@ export function LocalRelayManagement({
   onError: (message: string) => void;
   t: TFunction;
 }) {
-  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [deletingHistoryKey, setDeletingHistoryKey] = useState<string | null>(null);
   const clientConnections = runtime?.connections.filter(
     (connection) => connection.role === "client",
   );
   const serverConnections = runtime?.connections.filter(
     (connection) => connection.role !== "client",
   );
-  const clientHistory = (runtime?.history ?? []).filter((record) => record.role === "client");
-  const serverHistory = (runtime?.history ?? []).filter((record) => record.role !== "client");
+  const groupedHistory = groupRelayHistory(runtime?.history ?? []);
+  const clientHistoryGroups = groupedHistory.filter((group) => group.latest.role === "client");
+  const serverHistoryGroups = groupedHistory.filter((group) => group.latest.role !== "client");
   const deleteHistory = useCallback(
-    (historyId: string) => {
-      if (!client || deletingHistoryId) return;
-      setDeletingHistoryId(historyId);
-      void client
-        .deleteDaemonRelayHistory(historyId)
-        .then((result) => {
-          if (!result.success) throw new Error(result.error ?? "Failed to delete Relay history");
+    (group: LocalRelayHistoryGroup) => {
+      if (!client || deletingHistoryKey) return;
+      setDeletingHistoryKey(group.key);
+      void deleteRelayHistoryGroup(client, group)
+        .then(() => {
           return onHistoryChanged();
         })
         .catch((deleteError: unknown) => {
           onError(deleteError instanceof Error ? deleteError.message : String(deleteError));
         })
-        .finally(() => setDeletingHistoryId(null));
+        .finally(() => setDeletingHistoryKey(null));
     },
-    [client, deletingHistoryId, onError, onHistoryChanged],
+    [client, deletingHistoryKey, onError, onHistoryChanged],
   );
   return (
     <View style={[settingsStyles.card, styles.card]}>
@@ -390,19 +439,19 @@ export function LocalRelayManagement({
             })}
           </Text>
           <LocalRelayHistoryGroup
-            history={clientHistory}
+            groups={clientHistoryGroups}
             title={t("settings.host.relay.management.clientHistory")}
             empty={t("settings.host.relay.management.noClientHistory")}
-            deletingId={deletingHistoryId}
+            deletingKey={deletingHistoryKey}
             serverDeviceTypeByServerId={serverDeviceTypeByServerId}
             onDelete={deleteHistory}
             t={t}
           />
           <LocalRelayHistoryGroup
-            history={serverHistory}
+            groups={serverHistoryGroups}
             title={t("settings.host.relay.management.serverHistory")}
             empty={t("settings.host.relay.management.noServerHistory")}
-            deletingId={deletingHistoryId}
+            deletingKey={deletingHistoryKey}
             serverDeviceTypeByServerId={serverDeviceTypeByServerId}
             onDelete={deleteHistory}
             t={t}
@@ -473,6 +522,12 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
+  historyRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
   fieldGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -495,6 +550,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   fieldValueMono: {
     fontFamily: theme.fontFamily.mono,
+  },
+  historyTimesField: {
+    flexBasis: "100%",
+  },
+  historyTimes: {
+    gap: theme.spacing[1],
   },
   empty: {
     color: theme.colors.foregroundMuted,

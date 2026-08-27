@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from scripts.meego_auth import MeegoAuthenticationRequired
+from scripts.meego_auth import MeegoAuthenticationRequired, refresh_goapi_session
 
 DEFAULT_HOMEPAGE_URL = "https://meego.larkoffice.com/local_services/story/homepage"
 HOMEPAGE_HSR_PATH = "/goapi/v5/search/general/get_hsr"
@@ -75,24 +75,10 @@ def _session_path() -> Path:
     return data_dir / "meego_session.json"
 
 
-def _load_cookie_bundle() -> tuple[str, str]:
-    injected = os.environ.get("BYTEDCLI_MEEGO_COOKIE", "").strip()
-    if injected:
-        pairs = _cookie_pairs(injected)
-        missing = REQUIRED_COOKIE_NAMES.difference(pairs)
-        if missing:
-            raise MeegoAuthenticationRequired(
-                f"Meego 页面登录信息不完整，缺少：{', '.join(sorted(missing))}",
-                code="MEEGO_GOAPI_AUTH_REQUIRED",
-                provider="goapi",
-            )
-        return injected, pairs["meego_csrf_token"]
-
-    path = _session_path()
+def _read_cached_cookie_bundle(path: Path) -> tuple[str, str]:
     if not path.exists():
         raise MeegoAuthenticationRequired(
-            "需要登录 Meego 页面。请打开 Meego 需求首页完成登录，"
-            "或执行 `bytedcli auth login --session --feishu` 后重试。",
+            "缺少 Meego 页面登录缓存。",
             code="MEEGO_GOAPI_AUTH_REQUIRED",
             provider="goapi",
         )
@@ -100,7 +86,7 @@ def _load_cookie_bundle() -> tuple[str, str]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise MeegoAuthenticationRequired(
-            "Meego 页面登录信息不可用，请重新登录后重试。",
+            "Meego 页面登录缓存不可用。",
             code="MEEGO_GOAPI_AUTH_REQUIRED",
             provider="goapi",
         ) from error
@@ -108,7 +94,7 @@ def _load_cookie_bundle() -> tuple[str, str]:
     cookies = payload.get("cookies") if isinstance(payload, dict) else None
     if not isinstance(cookies, list):
         raise MeegoAuthenticationRequired(
-            "Meego 页面登录信息格式无效，请重新登录后重试。",
+            "Meego 页面登录缓存格式无效。",
             code="MEEGO_GOAPI_AUTH_REQUIRED",
             provider="goapi",
         )
@@ -128,13 +114,51 @@ def _load_cookie_bundle() -> tuple[str, str]:
     missing = REQUIRED_COOKIE_NAMES.difference(pairs)
     if missing:
         raise MeegoAuthenticationRequired(
-            "Meego 页面登录已失效，请重新打开页面登录，"
-            "或执行 `bytedcli auth login --session --feishu` 后重试。",
+            f"Meego 页面登录缓存已失效，缺少有效字段：{', '.join(sorted(missing))}",
             code="MEEGO_GOAPI_AUTH_EXPIRED",
             provider="goapi",
         )
     cookie_header = "; ".join(f"{name}={pairs[name]}" for name in sorted(REQUIRED_COOKIE_NAMES))
     return cookie_header, pairs["meego_csrf_token"]
+
+
+def _load_cookie_bundle() -> tuple[str, str]:
+    injected = os.environ.get("BYTEDCLI_MEEGO_COOKIE", "").strip()
+    if injected:
+        pairs = _cookie_pairs(injected)
+        missing = REQUIRED_COOKIE_NAMES.difference(pairs)
+        if missing:
+            raise MeegoAuthenticationRequired(
+                f"Meego 页面登录信息不完整，缺少：{', '.join(sorted(missing))}",
+                code="MEEGO_GOAPI_AUTH_REQUIRED",
+                provider="goapi",
+            )
+        return injected, pairs["meego_csrf_token"]
+
+    path = _session_path()
+    try:
+        return _read_cached_cookie_bundle(path)
+    except MeegoAuthenticationRequired as cached_error:
+        try:
+            refresh_goapi_session()
+        except MeegoAuthenticationRequired:
+            raise
+        except Exception as refresh_error:
+            raise MeegoAuthenticationRequired(
+                "Meego 页面登录信息已失效，自动刷新失败。"
+                "请更新 bytedcli，或执行 `bytedcli auth login --session --feishu` 后重试。"
+                f"（{refresh_error}）",
+                code=cached_error.code,
+                provider="goapi",
+            ) from refresh_error
+        try:
+            return _read_cached_cookie_bundle(path)
+        except MeegoAuthenticationRequired as refreshed_error:
+            raise MeegoAuthenticationRequired(
+                "Meego 页面登录态已刷新，但缓存仍不可用。请更新 bytedcli 后重试。",
+                code=refreshed_error.code,
+                provider="goapi",
+            ) from refreshed_error
 
 
 def _request_homepage(url: str, body: dict[str, Any], referer: str) -> dict[str, Any]:

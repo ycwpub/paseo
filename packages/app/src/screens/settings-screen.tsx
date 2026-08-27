@@ -127,6 +127,7 @@ import { HostPluginsPage } from "@/screens/settings/plugins-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
+import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
 import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
@@ -1183,6 +1184,8 @@ function SettingsSidebar({
   let selectedHostSection: HostSectionSlug | null = null;
   if (view.kind === "host") {
     selectedHostSection = view.section === "relay" ? "connections" : view.section;
+  } else if (view.kind === "memory") {
+    selectedHostSection = view.projectId ? "projects" : "memory";
   }
   const desktopScrollRef = useRef<ScrollView>(null);
   const handleDesktopScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -1341,8 +1344,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
   const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const routedSettingsHostServerId =
-    view.kind === "host" || view.kind === "project" ? view.serverId : null;
+  const routedSettingsHostServerId = getSettingsViewServerId(view);
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
     routedSettingsHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
   );
@@ -1357,14 +1359,14 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   // The host the four sections scope to: the host on the active view, otherwise
   // the picker choice, otherwise the connected local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
-    if (view.kind === "host" || view.kind === "project") return view.serverId;
+    if (routedSettingsHostServerId) return routedSettingsHostServerId;
     return resolveActiveHostServerId({
       selectedServerId: selectedSettingsHostServerId,
       localServerId,
       hosts,
       orderedHosts: sortedHosts,
     });
-  }, [view, selectedSettingsHostServerId, localServerId, hosts, sortedHosts]);
+  }, [routedSettingsHostServerId, selectedSettingsHostServerId, localServerId, hosts, sortedHosts]);
 
   const handleServiceUrlBehaviorChange = useCallback(
     (behavior: ServiceUrlBehavior) => {
@@ -1493,19 +1495,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const handleSelectHost = useCallback(
     (serverId: string) => {
       setSelectedSettingsHostServerId(serverId);
-      if (view.kind === "project") {
-        const target = buildSettingsHostSectionRoute(serverId, "projects");
-        if (isCompactLayout) {
-          router.push(target);
-        } else {
-          router.replace(target);
-        }
-        return;
-      }
-      if (view.kind !== "host") {
-        return;
-      }
-      const section: HostSectionSlug = view.section === "relay" ? "connections" : view.section;
+      const section = getHostSectionAfterHostSwitch(view);
+      if (!section) return;
       const target = buildSettingsHostSectionRoute(serverId, section);
       if (isCompactLayout) {
         router.push(target);
@@ -1582,6 +1573,15 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
     if (view.kind === "project") {
       return { title: t("settings.projects"), Icon: FolderGit2 };
+    }
+    if (view.kind === "memory") {
+      return {
+        title: view.memoryId
+          ? t("memoryPolicies.contentManager.detailTitle")
+          : t("memoryPolicies.contentManager.pageTitle"),
+        Icon: Brain,
+        onBack: handleBackFromMemory,
+      };
     }
     return null;
   })();
@@ -1781,7 +1781,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               leftStyle={desktopStyles.detailLeft}
             />
             <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-              <View style={styles.content}>{content}</View>
+              <View style={[styles.content, view.kind === "memory" && styles.wideContent]}>
+                {content}
+              </View>
             </ScrollView>
           </View>
         </WindowChromeRegion>
@@ -1819,6 +1821,9 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
+  },
+  wideContent: {
+    maxWidth: 920,
   },
   detailBackButton: {
     padding: theme.spacing[2],

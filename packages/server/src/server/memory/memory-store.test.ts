@@ -203,6 +203,35 @@ describe("PaseoMemoryStore", () => {
     );
     expect(projectOverview).toBeDefined();
     expect(readFileSync(projectOverview!.path, "utf8")).toContain("Project-only rollout");
+    expect(projectOverview?.content).toContain("Project-only rollout");
+  });
+
+  test("updates a scoped overview while preserving the generated detail index", () => {
+    store.upsertExtractedMemory({
+      title: "Project convention",
+      category: "project",
+      content: "Use the Project-specific release process.",
+      keywords: ["release"],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "project", id: "project-1" },
+    });
+
+    const updated = store.update({
+      scopeSummaryUpdates: [
+        {
+          scope: { type: "project", id: "project-1" },
+          content: "# Project overview\n\nOnly stable Project knowledge belongs here.",
+        },
+      ],
+    });
+    const projectOverview = updated.overviewDocuments?.find(
+      (document) => document.scope.type === "project" && document.scope.id === "project-1",
+    );
+
+    expect(projectOverview?.content).toContain("Only stable Project knowledge belongs here.");
+    expect(projectOverview?.content).toContain("Project convention");
+    expect(readFileSync(projectOverview!.path, "utf8")).toBe(projectOverview?.content);
   });
 
   test("upserts the same topic instead of appending duplicate files", () => {

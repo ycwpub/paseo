@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts.meego_auth import (
@@ -9,10 +10,65 @@ from scripts.meego_auth import (
     authentication_error,
     begin_login,
     complete_login,
+    refresh_goapi_session,
 )
 
 
 class MeegoAuthTest(unittest.TestCase):
+    def test_refreshes_goapi_session_without_printing_cookie_values(self) -> None:
+        completed = type(
+            "Completed",
+            (),
+            {
+                "returncode": 0,
+                "stdout": '{"ok":true}',
+                "stderr": "",
+            },
+        )()
+        with (
+            patch("scripts.meego_auth._resolve_bytedcli_binary", return_value=Path("/bin/bytedcli")),
+            patch("scripts.meego_auth._resolve_node_binary", return_value="/bin/node"),
+            patch(
+                "scripts.meego_auth._resolve_meego_goapi_module",
+                return_value=Path("/pkg/dist/auth/meego_goapi.js"),
+            ),
+            patch("scripts.meego_auth.subprocess.run", return_value=completed) as run,
+        ):
+            refresh_goapi_session()
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "/bin/node")
+        self.assertEqual(command[-1], "/pkg/dist/auth/meego_goapi.js")
+        self.assertNotIn("cookieHeader", completed.stdout)
+
+    def test_refresh_goapi_session_preserves_authentication_requirement(self) -> None:
+        completed = type(
+            "Completed",
+            (),
+            {
+                "returncode": 1,
+                "stdout": (
+                    '{"ok":false,"code":"MEEGO_GOAPI_AUTH_REQUIRED",'
+                    '"message":"Feishu session missing"}'
+                ),
+                "stderr": "",
+            },
+        )()
+        with (
+            patch("scripts.meego_auth._resolve_bytedcli_binary", return_value=Path("/bin/bytedcli")),
+            patch("scripts.meego_auth._resolve_node_binary", return_value="/bin/node"),
+            patch(
+                "scripts.meego_auth._resolve_meego_goapi_module",
+                return_value=Path("/pkg/dist/auth/meego_goapi.js"),
+            ),
+            patch("scripts.meego_auth.subprocess.run", return_value=completed),
+            self.assertRaises(MeegoAuthenticationRequired) as raised,
+        ):
+            refresh_goapi_session()
+
+        self.assertEqual(raised.exception.provider, "goapi")
+        self.assertIn("bytedcli auth login --session --feishu", str(raised.exception))
+
     def test_classifies_official_and_page_session_authentication(self) -> None:
         official = MeegoAuthenticationRequired(
             "请运行 bytedcli meego login",

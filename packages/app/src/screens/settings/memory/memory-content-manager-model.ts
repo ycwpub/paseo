@@ -1,4 +1,8 @@
-import type { PaseoMemoryDetail, PaseoMemoryScope } from "@getpaseo/protocol/messages";
+import type {
+  PaseoMemoryDetail,
+  PaseoMemoryScope,
+  PaseoMemoryScopeDocument,
+} from "@getpaseo/protocol/messages";
 import type { MemoryScopeEntity } from "./memory-scope-policy-options";
 import { memoryDetailHasScope, memoryDetailScopes } from "./memory-multi-scope";
 
@@ -80,4 +84,17 @@ export function memoryDetailMatchesScope(
     );
   }
   return memoryDetailHasScope(detail, scope);
+}
+
+export function findMemoryOverviewDocument(
+  documents: readonly PaseoMemoryScopeDocument[],
+  scope: PaseoMemoryScope | null,
+): PaseoMemoryScopeDocument | null {
+  if (!scope) return null;
+  return (
+    documents.find(
+      (document) =>
+        document.scope.type === scope.type && (document.scope.id ?? "") === (scope.id ?? ""),
+    ) ?? null
+  );
 }

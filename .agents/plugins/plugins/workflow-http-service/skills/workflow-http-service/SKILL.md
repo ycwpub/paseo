@@ -23,8 +23,8 @@ The standard API defaults to:
 
 ```text
 POST   /jobs
-GET    /jobs/{requestId}
-DELETE /jobs/{requestId}
+GET    /jobs?request_id={requestId}
+DELETE /jobs?request_id={requestId}
 ```
 
 Submitting a JSON object persists a `queued` request before asynchronously starting the Workflow.
@@ -51,7 +51,10 @@ The plugin's `.http.json` defines the initial service used before a Project over
 - `port: 0` lets Paseo allocate a free local port.
 - `path` is the request submission path.
 - `workflow` points to the processing Workflow.
-- A non-loopback `host` requires `authTokenEnv`.
+- `host` must be a concrete IPv4 address owned by the daemon Host.
+- Use the management console's address list; wildcard, hostname, and external addresses are
+  rejected.
 
 Project overrides are stored outside the read-only installed plugin cache. Use the console instead
-of editing the cached `.http.json`. A non-loopback host still requires `authTokenEnv`.
+of editing the cached `.http.json`. The console can send a test request through the daemon to any
+saved and running listener endpoint without exposing an arbitrary URL to the client.

@@ -134,6 +134,102 @@ def _resolve_meegle_binary() -> str:
     raise RuntimeError("未找到 Meegle CLI，请更新 bytedcli 后重试")
 
 
+def _resolve_bytedcli_binary() -> Path:
+    configured = os.environ.get("BYTE_DEVELOPMENT_BYTEDCLI_BIN", "bytedcli").strip()
+    executable = shutil.which(configured) if os.path.sep not in configured else configured
+    if not executable:
+        raise RuntimeError("未找到 bytedcli，请先安装或更新 bytedcli")
+    return Path(executable).expanduser()
+
+
+def _resolve_node_binary(bytedcli_binary: Path) -> str:
+    configured = os.environ.get("BYTE_DEVELOPMENT_NODE_BIN", "").strip()
+    if configured:
+        executable = shutil.which(configured) if os.path.sep not in configured else configured
+        if executable:
+            return executable
+
+    sibling = bytedcli_binary.parent / "node"
+    if sibling.exists():
+        return str(sibling)
+
+    direct = shutil.which("node")
+    if direct:
+        return direct
+
+    resolved = bytedcli_binary.resolve()
+    for parent in resolved.parents:
+        candidate = parent / "bin" / "node"
+        if candidate.exists():
+            return str(candidate)
+    raise RuntimeError("未找到 Node.js，无法刷新 Meego 页面登录态")
+
+
+def _resolve_meego_goapi_module(bytedcli_binary: Path) -> Path:
+    resolved = bytedcli_binary.resolve()
+    candidates = [
+        resolved.parent / "auth" / "meego_goapi.js",
+        resolved.parent / "dist" / "auth" / "meego_goapi.js",
+    ]
+    for parent in resolved.parents:
+        candidates.append(parent / "dist" / "auth" / "meego_goapi.js")
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise RuntimeError("当前 bytedcli 版本不支持自动刷新 Meego 登录态，请更新 bytedcli")
+
+
+def refresh_goapi_session() -> None:
+    """Refresh the derived Meego cookie cache from the saved Feishu web session."""
+
+    bytedcli_binary = _resolve_bytedcli_binary()
+    node_binary = _resolve_node_binary(bytedcli_binary)
+    module_path = _resolve_meego_goapi_module(bytedcli_binary)
+    script = """
+const modulePath = process.argv[1];
+(async () => {
+  try {
+    const api = require(modulePath);
+    await api.getMeegoGoapiCookieBundle({ skipCache: true });
+    process.stdout.write(JSON.stringify({ ok: true }));
+  } catch (error) {
+    process.stdout.write(JSON.stringify({
+      ok: false,
+      code: typeof error?.code === "string" ? error.code : "",
+      message: error instanceof Error ? error.message : String(error),
+    }));
+    process.exitCode = 1;
+  }
+})();
+""".strip()
+    completed = subprocess.run(
+        [node_binary, "-e", script, str(module_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    try:
+        payload = _json_from_output(completed.stdout)
+    except RuntimeError as error:
+        detail = completed.stderr.strip()
+        raise RuntimeError(detail or "bytedcli 未能刷新 Meego 登录态") from error
+    if completed.returncode == 0 and payload.get("ok") is True:
+        return
+
+    code = _string(payload.get("code")) or "MEEGO_GOAPI_AUTH_REQUIRED"
+    detail = _string(payload.get("message"))
+    if code.startswith("MEEGO_GOAPI_"):
+        message = (
+            "无法从当前飞书登录态刷新 Meego 页面登录信息。"
+            "请执行 `bytedcli auth login --session --feishu`，完成后重新检查。"
+        )
+        if detail and "auth login --session --feishu" not in detail:
+            message = f"{message}（{detail}）"
+        raise MeegoAuthenticationRequired(message, code=code, provider="goapi")
+    raise RuntimeError(detail or "bytedcli 未能刷新 Meego 登录态")
+
+
 def _run_meegle(args: list[str]) -> dict[str, Any]:
     completed = subprocess.run(
         [_resolve_meegle_binary(), *args],

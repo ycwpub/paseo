@@ -82,7 +82,7 @@ describe("PluginHttpServiceManager", () => {
     expect(accepted).toMatchObject({
       processId: expect.any(String),
       status: "queued",
-      statusUrl: expect.stringContaining("/process/"),
+      statusUrl: expect.stringContaining("/process?request_id="),
     });
 
     const job = await waitForSucceeded(accepted.statusUrl);
@@ -94,7 +94,7 @@ describe("PluginHttpServiceManager", () => {
     });
   });
 
-  it("requires bearer-token configuration for non-loopback listeners", async () => {
+  it("rejects wildcard and non-local listener addresses", async () => {
     tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-auth-"));
     manager = new PluginHttpServiceManager({
       paseoHome: tempRoot,
@@ -111,7 +111,7 @@ describe("PluginHttpServiceManager", () => {
 
     expect(manager.getStatus("demo-plugin", "processor")).toMatchObject({
       status: "error",
-      error: "Non-loopback HTTP services require authTokenEnv",
+      error: expect.stringContaining("不是当前 Host 的本机 IP"),
     });
   });
 
@@ -347,6 +347,7 @@ describe("PluginHttpServiceManager", () => {
           enabled: true,
           host: "127.0.0.1",
           port: 0,
+          authTokenEnv: "LEGACY_HTTP_TOKEN",
           defaultJobApi: {
             enabled: true,
             submitPath: "/jobs",
@@ -383,6 +384,12 @@ describe("PluginHttpServiceManager", () => {
       expect.objectContaining({ listenerId: "listener-1", status: "running" }),
       expect.objectContaining({ listenerId: "listener-2", status: "stopped" }),
     ]);
+    expect(saved.config.listeners[0]?.authTokenEnv).toBeUndefined();
+    expect(saved.config.listeners[0]?.defaultJobApi).toMatchObject({
+      submitPath: "/jobs",
+      queryPath: "/jobs",
+      deletePath: "/jobs",
+    });
     const boundPort = saved.runtimes[0]!.boundPort!;
     const submit = await fetch(`http://127.0.0.1:${boundPort}/jobs`, {
       method: "POST",
@@ -390,6 +397,9 @@ describe("PluginHttpServiceManager", () => {
       body: JSON.stringify({ question: "hello" }),
     });
     const accepted = (await submit.json()) as { processId: string; statusUrl: string };
+    expect(accepted.statusUrl).toBe(
+      `http://127.0.0.1:${boundPort}/jobs?request_id=${accepted.processId}`,
+    );
     await waitForSucceeded(accepted.statusUrl);
     expect(runScript).toHaveBeenCalledWith({
       scriptPath: "/tmp/processor.json",
@@ -397,9 +407,41 @@ describe("PluginHttpServiceManager", () => {
       targetNodeId: "review",
     });
 
-    const remove = await fetch(`http://127.0.0.1:${boundPort}/jobs/${accepted.processId}`, {
-      method: "DELETE",
+    const tested = await manager.testProjectRoute({
+      pluginId: "demo-plugin",
+      projectId: "project-1",
+      listenerId: "listener-1",
+      target: { kind: "default_submit" },
+      body: { question: "test panel" },
     });
+    expect(tested).toMatchObject({
+      requestUrl: `http://127.0.0.1:${boundPort}/jobs`,
+      statusCode: 202,
+      error: null,
+      bodyJson: {
+        processId: expect.any(String),
+        status: "queued",
+      },
+    });
+    const testedBody = tested.bodyJson as { processId: string; statusUrl: string };
+    await waitForSucceeded(testedBody.statusUrl);
+    await manager.deleteJob(testedBody.processId);
+
+    const missingRequestId = await fetch(`http://127.0.0.1:${boundPort}/jobs`);
+    expect(missingRequestId.status).toBe(400);
+    await expect(missingRequestId.json()).resolves.toEqual({
+      error: "Missing request_id query parameter",
+    });
+
+    const legacyPath = await fetch(`http://127.0.0.1:${boundPort}/jobs/${accepted.processId}`);
+    expect(legacyPath.status).toBe(404);
+
+    const remove = await fetch(
+      `http://127.0.0.1:${boundPort}/jobs?request_id=${encodeURIComponent(accepted.processId)}`,
+      {
+        method: "DELETE",
+      },
+    );
     expect(remove.status).toBe(200);
     expect(manager.getJob(accepted.processId)).toBeNull();
 

@@ -29,8 +29,8 @@ export type PluginHttpRoute = z.infer<typeof PluginHttpRouteSchema>;
 export const PluginHttpDefaultJobApiSchema = z.object({
   enabled: z.boolean().default(true),
   submitPath: HttpPathSchema.default("/jobs"),
-  queryPath: HttpPathSchema.default("/jobs/{requestId}"),
-  deletePath: HttpPathSchema.default("/jobs/{requestId}"),
+  queryPath: HttpPathSchema.default("/jobs"),
+  deletePath: HttpPathSchema.default("/jobs"),
   workflowPath: z.string().trim().min(1),
   targetNodeId: z.string().trim().optional(),
   requestTemplate: z.string().default(""),
@@ -85,6 +85,30 @@ export const PluginHttpListenerRuntimeSchema = z.object({
 });
 export type PluginHttpListenerRuntime = z.infer<typeof PluginHttpListenerRuntimeSchema>;
 
+export const PluginHttpLocalAddressSchema = z.object({
+  address: z.string().min(1),
+  interfaceName: z.string().min(1).nullable(),
+  kind: z.enum(["loopback", "network"]),
+});
+export type PluginHttpLocalAddress = z.infer<typeof PluginHttpLocalAddressSchema>;
+
+export const PluginHttpTestTargetSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("default_submit") }),
+  z.object({
+    kind: z.literal("default_query"),
+    requestId: z.string().trim().min(1),
+  }),
+  z.object({
+    kind: z.literal("default_delete"),
+    requestId: z.string().trim().min(1),
+  }),
+  z.object({
+    kind: z.literal("route"),
+    routeId: z.string().trim().min(1),
+  }),
+]);
+export type PluginHttpTestTarget = z.infer<typeof PluginHttpTestTargetSchema>;
+
 const PluginHttpConfigPayloadSchema = z.object({
   requestId: z.string(),
   config: PluginHttpProjectConfigSchema.nullable(),
@@ -111,6 +135,42 @@ export const PluginHttpConfigSaveRequestSchema = z.object({
 export const PluginHttpConfigSaveResponseSchema = z.object({
   type: z.literal("plugin.http.config.save.response"),
   payload: PluginHttpConfigPayloadSchema,
+});
+
+export const PluginHttpLocalAddressesGetRequestSchema = z.object({
+  type: z.literal("plugin.http.local_addresses.get.request"),
+  requestId: z.string(),
+});
+export const PluginHttpLocalAddressesGetResponseSchema = z.object({
+  type: z.literal("plugin.http.local_addresses.get.response"),
+  payload: z.object({
+    requestId: z.string(),
+    addresses: z.array(PluginHttpLocalAddressSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const PluginHttpTestRequestSchema = z.object({
+  type: z.literal("plugin.http.test.request"),
+  requestId: z.string(),
+  pluginId: z.string().min(1),
+  projectId: z.string().min(1),
+  listenerId: z.string().min(1),
+  target: PluginHttpTestTargetSchema,
+  body: z.record(z.string(), z.unknown()).optional(),
+});
+export const PluginHttpTestResponseSchema = z.object({
+  type: z.literal("plugin.http.test.response"),
+  payload: z.object({
+    requestId: z.string(),
+    requestUrl: z.string().nullable(),
+    statusCode: z.number().int().nonnegative().nullable(),
+    durationMs: z.number().int().nonnegative(),
+    headers: z.record(z.string(), z.string()),
+    bodyText: z.string(),
+    bodyJson: z.unknown().optional(),
+    error: z.string().nullable(),
+  }),
 });
 
 export const PluginHttpJobDeleteManyRequestSchema = z.object({
@@ -160,6 +220,10 @@ export type PluginHttpConfigGetResponse = z.infer<
 export type PluginHttpConfigSaveResponse = z.infer<
   typeof PluginHttpConfigSaveResponseSchema
 >["payload"];
+export type PluginHttpLocalAddressesGetResponse = z.infer<
+  typeof PluginHttpLocalAddressesGetResponseSchema
+>["payload"];
+export type PluginHttpTestResponse = z.infer<typeof PluginHttpTestResponseSchema>["payload"];
 export type PluginHttpJobCleanupResponse = z.infer<
   typeof PluginHttpJobCleanupResponseSchema
 >["payload"];

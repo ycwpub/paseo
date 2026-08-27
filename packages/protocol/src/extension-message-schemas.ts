@@ -39,6 +39,10 @@ import {
   PluginHttpJobCleanupResponseSchema,
   PluginHttpJobDeleteManyRequestSchema,
   PluginHttpJobDeleteManyResponseSchema,
+  PluginHttpLocalAddressesGetRequestSchema,
+  PluginHttpLocalAddressesGetResponseSchema,
+  PluginHttpTestRequestSchema,
+  PluginHttpTestResponseSchema,
 } from "./plugin/http-management.js";
 import {
   AssistantChangedMessageSchema,
@@ -284,6 +288,8 @@ export const ExtensionSessionInboundSchemas = [
   PluginHttpConfigSaveRequestSchema,
   PluginHttpJobDeleteManyRequestSchema,
   PluginHttpJobCleanupRequestSchema,
+  PluginHttpLocalAddressesGetRequestSchema,
+  PluginHttpTestRequestSchema,
   ReasoningTranslateRequestSchema,
   CloudDocumentCacheRequestSchema,
   CloudDocumentStatusRequestSchema,
@@ -376,6 +382,8 @@ export const ExtensionSessionOutboundSchemas = [
   PluginHttpConfigSaveResponseSchema,
   PluginHttpJobDeleteManyResponseSchema,
   PluginHttpJobCleanupResponseSchema,
+  PluginHttpLocalAddressesGetResponseSchema,
+  PluginHttpTestResponseSchema,
   ReasoningTranslateResponseSchema,
   CloudDocumentCacheResponseSchema,
   CloudDocumentStatusResponseSchema,

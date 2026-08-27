@@ -1,9 +1,18 @@
+from __future__ import annotations
+
 import json
+import os
+import tempfile
+import time
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from scripts.meego_auth import MeegoAuthenticationRequired
 from scripts.meego_homepage import (
     DEFAULT_HOMEPAGE_URL,
+    REQUIRED_COOKIE_NAMES,
+    _load_cookie_bundle,
     list_homepage_items,
     parse_homepage_items,
 )
@@ -53,6 +62,82 @@ def hsr_payload() -> dict:
 
 
 class MeegoHomepageTest(unittest.TestCase):
+    @staticmethod
+    def _write_cookie_cache(path: Path, *, expired: set[str] | None = None) -> None:
+        expired = expired or set()
+        now_ms = int(time.time() * 1000)
+        path.write_text(
+            json.dumps(
+                {
+                    "cookies": [
+                        {
+                            "name": name,
+                            "value": f"value-{name}",
+                            "expiresAt": now_ms - 1 if name in expired else now_ms + 60_000,
+                        }
+                        for name in REQUIRED_COOKIE_NAMES
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_uses_valid_cookie_cache_without_refreshing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "meego_session.json"
+            self._write_cookie_cache(cache_path)
+            with (
+                patch.dict(os.environ, {}, clear=False),
+                patch("scripts.meego_homepage._session_path", return_value=cache_path),
+                patch("scripts.meego_homepage.refresh_goapi_session") as refresh,
+            ):
+                cookie_header, csrf_token = _load_cookie_bundle()
+
+        refresh.assert_not_called()
+        self.assertIn("session=value-session", cookie_header)
+        self.assertEqual(csrf_token, "value-meego_csrf_token")
+
+    def test_refreshes_expired_cookie_cache_from_feishu_session(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "meego_session.json"
+            self._write_cookie_cache(cache_path, expired={"sl_session"})
+
+            def refresh() -> None:
+                self._write_cookie_cache(cache_path)
+
+            with (
+                patch.dict(os.environ, {}, clear=False),
+                patch("scripts.meego_homepage._session_path", return_value=cache_path),
+                patch("scripts.meego_homepage.refresh_goapi_session", side_effect=refresh) as mocked,
+            ):
+                cookie_header, csrf_token = _load_cookie_bundle()
+
+        mocked.assert_called_once_with()
+        self.assertIn("sl_session=value-sl_session", cookie_header)
+        self.assertEqual(csrf_token, "value-meego_csrf_token")
+
+    def test_reports_login_only_when_automatic_refresh_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            cache_path = Path(directory) / "meego_session.json"
+            self._write_cookie_cache(cache_path, expired={"sl_session"})
+            with (
+                patch.dict(os.environ, {}, clear=False),
+                patch("scripts.meego_homepage._session_path", return_value=cache_path),
+                patch(
+                    "scripts.meego_homepage.refresh_goapi_session",
+                    side_effect=MeegoAuthenticationRequired(
+                        "请刷新飞书登录态。",
+                        code="MEEGO_GOAPI_AUTH_REQUIRED",
+                        provider="goapi",
+                    ),
+                ),
+                self.assertRaises(MeegoAuthenticationRequired) as raised,
+            ):
+                _load_cookie_bundle()
+
+        self.assertEqual(raised.exception.code, "MEEGO_GOAPI_AUTH_REQUIRED")
+        self.assertIn("刷新飞书登录态", str(raised.exception))
+
     def test_parses_visible_work_items_from_homepage_hsr(self) -> None:
         items = parse_homepage_items(
             hsr_payload(),

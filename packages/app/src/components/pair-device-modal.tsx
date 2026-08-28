@@ -28,7 +28,7 @@ export function PairDeviceModal({ serverId, visible, onClose, testID }: PairDevi
       visible={visible}
       onClose={onClose}
       snapPoints={SNAP_POINTS}
-      desktopMaxWidth={480}
+      desktopMaxWidth={820}
       testID={testID}
     >
       <PairDeviceSection serverId={serverId} active={visible} />

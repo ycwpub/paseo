@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MoreVertical, Pencil, Plus } from "lucide-react-native";
+import { ArrowLeft, MoreVertical, Pencil, Plus, X } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import type {
   PaseoConfigRaw,
@@ -35,21 +35,31 @@ import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
+import { ProjectKnowledgeEditor } from "@/projects/knowledge/editor";
+import { projectKnowledgeDraftError } from "@/projects/knowledge/model";
 import { ProjectParentLink } from "@/projects/project-parent-link";
-import { ProjectMemoryCard } from "@/screens/settings/memory/project-memory-card";
+import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
+import { ProjectLarkContextEditor } from "@/projects/lark/project-lark-context-editor";
+import { projectLarkGroupDraftError } from "@/projects/lark/project-lark-context-model";
 import { ProjectLinkedPluginProjects } from "@/plugins/project/project-linked-plugin-projects";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { ProjectMemoryCard } from "@/screens/settings/memory/project-memory-card";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
   applyDraftToConfig,
   configToDraft,
   METADATA_PROMPT_KEYS,
+  projectDirectoryPathForDisplay,
   type LifecycleOriginalKind,
   type MetadataPromptKey,
   type ProjectConfigDraft,
+  type ProjectDirectoryDraft,
+  type ProjectDirectoryKey,
   type ProjectScriptDraft,
+  type ProjectVariableDraft,
 } from "@/utils/project-config-form";
 import {
   getProjectHostEntry,
@@ -113,19 +123,17 @@ export default function ProjectSettingsScreen({
     [projectId, projects, serverId],
   );
   const selectedHost = getProjectHostEntry(project, serverId, projectId);
+  const settingsTarget = resolveProjectSettingsTarget(selectedHost);
   const selectedSnapshot = useHostRuntimeSnapshot(serverId);
+  const supportsProjectConfigById = useHostFeature(serverId, "projectConfigById");
   const isHostGone =
     Boolean(serverId) &&
     (selectedSnapshot?.connectionStatus === "offline" ||
       selectedSnapshot?.connectionStatus === "error");
 
   const client = useHostRuntimeClient(serverId);
-  const canEdit =
-    selectedHost?.isOnline === true &&
-    selectedHost.serverId.trim().length > 0 &&
-    selectedHost.repoRoot.trim().length > 0;
 
-  if (!project || !selectedHost || !client || !canEdit) {
+  if (!project || settingsTarget.kind === "unavailable" || !client || isHostGone) {
     return (
       <NoEditableTarget
         onBackToProjects={onBackToProjects}
@@ -137,9 +145,10 @@ export default function ProjectSettingsScreen({
   return (
     <ProjectSettingsBody
       project={project}
-      selectedHost={selectedHost}
+      selectedHost={settingsTarget.host}
       client={client}
       isHostGone={isHostGone}
+      canEditProjectConfig={settingsTarget.kind === "directory-backed" || supportsProjectConfigById}
       onBackToProjects={onBackToProjects}
       showBackToProjects={showBackToProjects}
     />
@@ -194,6 +203,7 @@ interface ProjectSettingsBodyProps {
   selectedHost: ProjectHostEntry;
   client: DaemonClient;
   isHostGone: boolean;
+  canEditProjectConfig: boolean;
   onBackToProjects: () => void;
   showBackToProjects: boolean;
 }
@@ -203,6 +213,7 @@ function ProjectSettingsBody({
   selectedHost,
   client,
   isHostGone,
+  canEditProjectConfig,
   onBackToProjects,
   showBackToProjects,
 }: ProjectSettingsBodyProps) {
@@ -215,13 +226,15 @@ function ProjectSettingsBody({
   }, []);
   const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
   const queryKey = useMemo(
-    () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
-    [selectedHost.serverId, selectedHost.repoRoot],
+    () => ["project-config", selectedHost.serverId, selectedHost.projectId] as const,
+    [selectedHost.projectId, selectedHost.serverId],
   );
 
   const readQuery = useQuery({
     queryKey,
-    queryFn: () => client.readProjectConfig(selectedHost.repoRoot),
+    queryFn: () =>
+      client.readProjectConfig(selectedHost.repoRoot, undefined, selectedHost.projectId),
+    enabled: canEditProjectConfig,
     retry: false,
   });
   const refetchProjectConfig = readQuery.refetch;
@@ -292,14 +305,14 @@ function ProjectSettingsBody({
             <Pencil size={ICON_SIZE} color={styles.iconColor.color} />
           </Pressable>
         </View>
-        <Text style={styles.projectMeta} selectable>
+        <Text style={styles.projectId} selectable>
           {t("settings.project.projectId")}: {selectedHost.projectId}
         </Text>
         <ProjectParentLink
           serverId={selectedHost.serverId}
           parentProjectId={selectedHost.parentProjectId}
         />
-        <Text style={styles.projectMeta} selectable>
+        <Text style={styles.projectPath} selectable>
           {t("settings.project.projectPath")}: {selectedHost.projectPath}
         </Text>
       </View>
@@ -323,20 +336,38 @@ function ProjectSettingsBody({
         projectId={selectedHost.projectId}
       />
 
-      {renderContent({
-        readQuery,
-        loadedConfig,
-        loadedRevision,
-        hasUncommittedWorktreeSetupChanges,
-        readError,
-        selectedHost,
-        queryKey,
-        client,
-        onReload: handleReload,
-        isHostGone,
-        onBackToProjects,
-        showBackToProjects,
-      })}
+      {canEditProjectConfig ? (
+        renderContent({
+          readQuery,
+          loadedConfig,
+          loadedRevision,
+          hasUncommittedWorktreeSetupChanges,
+          readError,
+          selectedHost,
+          queryKey,
+          client,
+          onReload: handleReload,
+          isHostGone,
+          onBackToProjects,
+          showBackToProjects,
+        })
+      ) : (
+        <DirectorylessProjectNotice />
+      )}
+    </View>
+  );
+}
+
+function DirectorylessProjectNotice() {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.errorBlock}>
+      <Alert
+        testID="directoryless-project-notice"
+        variant="info"
+        title={t("settings.project.noEditableTarget")}
+        description={t("settings.project.readFailures.missingSingleHost")}
+      />
     </View>
   );
 }
@@ -403,7 +434,9 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  const formKey = `${selectedHost.serverId}::${
+    selectedHost.projectId
+  }::${revisionToKey(loadedRevision)}`;
   return (
     <ProjectConfigForm
       key={formKey}
@@ -411,6 +444,8 @@ function renderContent({
       revision={loadedRevision}
       hasUncommittedWorktreeSetupChanges={hasUncommittedWorktreeSetupChanges}
       repoRoot={selectedHost.repoRoot}
+      projectId={selectedHost.projectId}
+      serverId={selectedHost.serverId}
       queryKey={queryKey}
       client={client}
       onReload={onReload}
@@ -492,6 +527,8 @@ interface ProjectConfigFormProps {
   revision: PaseoConfigRevision | null;
   hasUncommittedWorktreeSetupChanges: boolean;
   repoRoot: string;
+  projectId: string;
+  serverId: string;
   queryKey: readonly [string, string, string];
   client: DaemonClient;
   onReload: () => void;
@@ -502,6 +539,8 @@ function ProjectConfigForm({
   revision,
   hasUncommittedWorktreeSetupChanges,
   repoRoot,
+  projectId,
+  serverId,
   queryKey,
   client,
   onReload,
@@ -509,10 +548,19 @@ function ProjectConfigForm({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const { config: daemonConfig, patchConfig } = useDaemonConfig(serverId);
 
   const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
   const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
   const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
+  const globalIndexInterval = daemonConfig?.projectIndexing.updateIntervalMinutes ?? 1440;
+  const [globalIndexIntervalText, setGlobalIndexIntervalText] = useState(
+    String(globalIndexInterval),
+  );
+
+  useEffect(() => {
+    setGlobalIndexIntervalText(String(globalIndexInterval));
+  }, [globalIndexInterval]);
 
   const saveMutation = useMutation({
     mutationFn: async (input: {
@@ -521,6 +569,7 @@ function ProjectConfigForm({
     }) => {
       return client.writeProjectConfig({
         repoRoot,
+        projectId,
         config: input.config,
         expectedRevision: input.expectedRevision,
       });
@@ -551,7 +600,10 @@ function ProjectConfigForm({
   const handleSave = useCallback(() => {
     if (writeError?.code === "stale_project_config") return;
     const config = applyDraftToConfig({ draft, base: baseConfig });
-    saveMutation.mutate({ config, expectedRevision: revision });
+    saveMutation.mutate({
+      config,
+      expectedRevision: revision,
+    });
   }, [draft, baseConfig, revision, writeError, saveMutation]);
 
   const handleReload = useCallback(() => {
@@ -580,6 +632,67 @@ function ProjectConfigForm({
       })),
     [updateDraft],
   );
+
+  const handleDirectoryChange = useCallback(
+    (key: ProjectDirectoryKey, values: ProjectDirectoryDraft[]) =>
+      updateDraft((d) => ({
+        ...d,
+        projectDirectories: { ...d.projectDirectories, [key]: values },
+      })),
+    [updateDraft],
+  );
+  const handleDirectoryModeChange = useCallback(
+    (projectDirectoryMode: "single" | "multiple") =>
+      updateDraft((d) => ({
+        ...d,
+        projectDirectoryMode,
+        projectDirectories:
+          projectDirectoryMode === "single"
+            ? {
+                ...d.projectDirectories,
+                project: d.projectDirectories.project.slice(0, 1),
+              }
+            : d.projectDirectories,
+      })),
+    [updateDraft],
+  );
+
+  const handleIndexAutoGenerateChange = useCallback(
+    (value: boolean) => updateDraft((d) => ({ ...d, projectIndexAutoGenerate: value })),
+    [updateDraft],
+  );
+
+  const handleProjectIndexIntervalChange = useCallback(
+    (value: string) => updateDraft((d) => ({ ...d, projectIndexUpdateIntervalText: value })),
+    [updateDraft],
+  );
+
+  const handleVariablesChange = useCallback(
+    (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
+    [updateDraft],
+  );
+  const handleProjectKnowledgeChange = useCallback(
+    (projectKnowledge: ProjectConfigDraft["projectKnowledge"]) =>
+      updateDraft((d) => ({ ...d, projectKnowledge })),
+    [updateDraft],
+  );
+  const handleProjectLarkGroupsChange = useCallback(
+    (projectLarkGroups: ProjectConfigDraft["projectLarkGroups"]) =>
+      updateDraft((d) => ({ ...d, projectLarkGroups })),
+    [updateDraft],
+  );
+
+  const handleSaveGlobalIndexInterval = useCallback(() => {
+    const parsed = Number(globalIndexIntervalText.trim());
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) return;
+    void patchConfig({
+      projectIndexing: { updateIntervalMinutes: parsed },
+    }).catch((error) => {
+      toast.show(error instanceof Error ? error.message : String(error), {
+        variant: "error",
+      });
+    });
+  }, [globalIndexIntervalText, patchConfig, toast]);
 
   const handleRemoveScript = useCallback(
     async (script: ProjectScriptDraft) => {
@@ -648,7 +761,10 @@ function ProjectConfigForm({
         entry.type.trim().length === 0 &&
         entry.portText.trim().length === 0;
       if (!isEmpty) return d;
-      return { ...d, scripts: d.scripts.filter((row) => row.id !== editingScriptId) };
+      return {
+        ...d,
+        scripts: d.scripts.filter((row) => row.id !== editingScriptId),
+      };
     });
     setEditingScriptId(null);
   }, [editingScriptId, updateDraft]);
@@ -662,6 +778,11 @@ function ProjectConfigForm({
   const hasInvalidScripts = useMemo(
     () => draft.scripts.some((script) => validateScript(script, t).hasErrors),
     [draft.scripts, t],
+  );
+  const projectValidation = useMemo(() => validateProjectConfiguration(draft, t), [draft, t]);
+  const cloudCacheTarget = useMemo(
+    () => ({ serverId, scope: "project" as const, projectId }),
+    [projectId, serverId],
   );
 
   const scriptsTrailing = useMemo(
@@ -705,10 +826,40 @@ function ProjectConfigForm({
 
   const isStale = writeError?.code === "stale_project_config";
   const isWriteFailed = writeError?.code === "write_failed";
-  const saveDisabled = saveMutation.isPending || isStale || hasInvalidScripts;
+  const saveDisabled =
+    saveMutation.isPending || isStale || hasInvalidScripts || projectValidation.hasErrors;
 
   return (
     <View>
+      <ProjectResourcesEditor
+        draft={draft}
+        projectDirectoryPath={repoRoot}
+        globalIndexInterval={globalIndexInterval}
+        globalIndexIntervalText={globalIndexIntervalText}
+        validation={projectValidation}
+        onDirectoryModeChange={handleDirectoryModeChange}
+        onDirectoryChange={handleDirectoryChange}
+        onIndexAutoGenerateChange={handleIndexAutoGenerateChange}
+        onProjectIndexIntervalChange={handleProjectIndexIntervalChange}
+        onGlobalIndexIntervalChange={setGlobalIndexIntervalText}
+        onSaveGlobalIndexInterval={handleSaveGlobalIndexInterval}
+        onVariablesChange={handleVariablesChange}
+      />
+
+      <ProjectKnowledgeEditor
+        value={draft.projectKnowledge}
+        error={projectValidation.projectKnowledgeError}
+        onChange={handleProjectKnowledgeChange}
+        cloudCacheTarget={cloudCacheTarget}
+      />
+
+      <ProjectLarkContextEditor
+        serverId={serverId}
+        value={draft.projectLarkGroups}
+        error={projectValidation.projectLarkGroupError}
+        onChange={handleProjectLarkGroupsChange}
+      />
+
       <SettingsGroup
         title={t("settings.project.worktree.title")}
         info={t("settings.project.worktree.info")}
@@ -867,6 +1018,413 @@ function ProjectConfigForm({
     </View>
   );
 }
+
+interface ProjectConfigurationValidation {
+  hasErrors: boolean;
+  projectDirectoryError: string | null;
+  indexIntervalError: string | null;
+  variableError: string | null;
+  projectKnowledgeError: string | null;
+  projectLarkGroupError: string | null;
+}
+
+function validateProjectConfiguration(
+  draft: ProjectConfigDraft,
+  t: TFunction,
+): ProjectConfigurationValidation {
+  const enabledProjectDirectories = draft.projectDirectories.project.filter(
+    (entry) => entry.enabled && entry.path.trim().length > 0,
+  );
+  const projectDirectoryError =
+    draft.projectDirectoryMode === "single" && enabledProjectDirectories.length !== 1
+      ? t("settings.project.resources.project.validation.singleRequired")
+      : null;
+  const interval = draft.projectIndexUpdateIntervalText.trim();
+  const parsedInterval = Number(interval);
+  const indexIntervalError =
+    interval.length > 0 && (!Number.isSafeInteger(parsedInterval) || parsedInterval <= 0)
+      ? t("settings.project.indexSkill.validation.interval")
+      : null;
+
+  const variableNames = draft.projectVariables.map((entry) => entry.name.trim()).filter(Boolean);
+  const invalidVariable = variableNames.find((name) => !/^[A-Za-z_][A-Za-z0-9_.-]*$/u.test(name));
+  const duplicateVariable = variableNames.find(
+    (name, index) => variableNames.indexOf(name) !== index,
+  );
+  let variableError: string | null = null;
+  if (invalidVariable) {
+    variableError = t("settings.project.variables.validation.invalidName", {
+      name: invalidVariable,
+    });
+  } else if (duplicateVariable) {
+    variableError = t("settings.project.variables.validation.duplicateName", {
+      name: duplicateVariable,
+    });
+  }
+  const projectKnowledgeError = projectKnowledgeDraftError(draft.projectKnowledge);
+  const projectLarkGroupError = projectLarkGroupDraftError(draft.projectLarkGroups);
+
+  return {
+    hasErrors: Boolean(
+      projectDirectoryError ||
+      indexIntervalError ||
+      variableError ||
+      projectKnowledgeError ||
+      projectLarkGroupError,
+    ),
+    projectDirectoryError,
+    indexIntervalError,
+    variableError,
+    projectKnowledgeError,
+    projectLarkGroupError,
+  };
+}
+
+interface ProjectResourcesEditorProps {
+  draft: ProjectConfigDraft;
+  projectDirectoryPath: string;
+  globalIndexInterval: number;
+  globalIndexIntervalText: string;
+  validation: ProjectConfigurationValidation;
+  onDirectoryModeChange: (value: "single" | "multiple") => void;
+  onDirectoryChange: (key: ProjectDirectoryKey, values: ProjectDirectoryDraft[]) => void;
+  onIndexAutoGenerateChange: (value: boolean) => void;
+  onProjectIndexIntervalChange: (value: string) => void;
+  onGlobalIndexIntervalChange: (value: string) => void;
+  onSaveGlobalIndexInterval: () => void;
+  onVariablesChange: (values: ProjectVariableDraft[]) => void;
+}
+
+function ProjectResourcesEditor({
+  draft,
+  projectDirectoryPath,
+  globalIndexInterval,
+  globalIndexIntervalText,
+  validation,
+  onDirectoryModeChange,
+  onDirectoryChange,
+  onIndexAutoGenerateChange,
+  onProjectIndexIntervalChange,
+  onGlobalIndexIntervalChange,
+  onSaveGlobalIndexInterval,
+  onVariablesChange,
+}: ProjectResourcesEditorProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <SettingsGroup
+        title={t("settings.project.resources.title")}
+        info={t("settings.project.resources.info")}
+        testID="project-resources-group"
+      >
+        <DirectoryListSection
+          title={t("settings.project.resources.project.title")}
+          hint={t("settings.project.resources.project.hint")}
+          directoryKey="project"
+          values={draft.projectDirectories.project}
+          mode={draft.projectDirectoryMode}
+          projectDirectoryPath={projectDirectoryPath}
+          error={validation.projectDirectoryError}
+          onModeChange={onDirectoryModeChange}
+          onChange={onDirectoryChange}
+        />
+        <DirectoryListSection
+          title={t("settings.project.resources.indexSkill.title")}
+          hint={t("settings.project.resources.indexSkill.hint")}
+          directoryKey="indexSkill"
+          values={draft.projectDirectories.indexSkill}
+          onChange={onDirectoryChange}
+        />
+        <DirectoryListSection
+          title={t("settings.project.resources.workspaceData.title")}
+          hint={t("settings.project.resources.workspaceData.hint")}
+          directoryKey="workspaceData"
+          values={draft.projectDirectories.workspaceData}
+          onChange={onDirectoryChange}
+          flush
+        />
+      </SettingsGroup>
+
+      <SettingsGroup
+        title={t("settings.project.indexSkill.title")}
+        info={t("settings.project.indexSkill.info")}
+        testID="project-index-group"
+      >
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.project.indexSkill.autoGenerate")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.project.indexSkill.autoGenerateHint")}
+              </Text>
+            </View>
+            <Switch
+              value={draft.projectIndexAutoGenerate}
+              onValueChange={onIndexAutoGenerateChange}
+              testID="project-index-auto-generate"
+            />
+          </View>
+          <View style={styles.inlineFormRow}>
+            <View style={styles.inlineFormText}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.project.indexSkill.projectInterval")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.project.indexSkill.projectIntervalHint", {
+                  minutes: globalIndexInterval,
+                })}
+              </Text>
+            </View>
+            <TextInput
+              value={draft.projectIndexUpdateIntervalText}
+              onChangeText={onProjectIndexIntervalChange}
+              keyboardType="number-pad"
+              placeholder={String(globalIndexInterval)}
+              placeholderTextColor={styles.placeholderColor.color}
+              style={styles.compactInput}
+              testID="project-index-project-interval"
+            />
+          </View>
+          {validation.indexIntervalError ? (
+            <Text style={styles.fieldError}>{validation.indexIntervalError}</Text>
+          ) : null}
+          <View style={styles.inlineFormRow}>
+            <View style={styles.inlineFormText}>
+              <Text style={settingsStyles.rowTitle}>
+                {t("settings.project.indexSkill.globalInterval")}
+              </Text>
+              <Text style={settingsStyles.rowHint}>
+                {t("settings.project.indexSkill.globalIntervalHint")}
+              </Text>
+            </View>
+            <TextInput
+              value={globalIndexIntervalText}
+              onChangeText={onGlobalIndexIntervalChange}
+              keyboardType="number-pad"
+              placeholder="1440"
+              placeholderTextColor={styles.placeholderColor.color}
+              style={styles.compactInput}
+              testID="project-index-global-interval"
+            />
+            <Button variant="outline" size="sm" onPress={onSaveGlobalIndexInterval}>
+              {t("settings.project.indexSkill.apply")}
+            </Button>
+          </View>
+        </View>
+      </SettingsGroup>
+
+      <ProjectVariablesEditor
+        values={draft.projectVariables}
+        error={validation.variableError}
+        onChange={onVariablesChange}
+      />
+    </>
+  );
+}
+
+/* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-jsx-as-prop -- Dynamic form rows bind edits to their current row values. */
+function DirectoryListSection({
+  title,
+  hint,
+  directoryKey,
+  values,
+  mode,
+  projectDirectoryPath,
+  error,
+  onModeChange,
+  onChange,
+  flush,
+}: {
+  title: string;
+  hint: string;
+  directoryKey: ProjectDirectoryKey;
+  values: ProjectDirectoryDraft[];
+  mode?: "single" | "multiple";
+  projectDirectoryPath?: string;
+  error?: string | null;
+  onModeChange?: (value: "single" | "multiple") => void;
+  onChange: (key: ProjectDirectoryKey, values: ProjectDirectoryDraft[]) => void;
+  flush?: boolean;
+}) {
+  const { t } = useTranslation();
+  const add = useCallback(
+    () =>
+      onChange(directoryKey, [
+        ...values,
+        {
+          id: `project-directory-${directoryKey}-${Date.now()}`,
+          path: "",
+          enabled: true,
+        },
+      ]),
+    [directoryKey, onChange, values],
+  );
+  const canAdd = mode !== "single" || values.length === 0;
+  return (
+    <SettingsSection
+      title={title}
+      flush={flush}
+      trailing={
+        <Pressable
+          onPress={add}
+          disabled={!canAdd}
+          hitSlop={8}
+          style={[settingsStyles.sectionHeaderLink, !canAdd && styles.disabledControl]}
+        >
+          <Plus size={ICON_SIZE} color={styles.iconColor.color} />
+        </Pressable>
+      }
+    >
+      <Text style={styles.sectionHint}>{hint}</Text>
+      {mode && onModeChange ? (
+        <View style={styles.directoryModeRow}>
+          <Button
+            variant={mode === "single" ? "default" : "outline"}
+            size="sm"
+            onPress={() => onModeChange("single")}
+            testID="project-directory-mode-single"
+          >
+            {t("settings.project.resources.project.single")}
+          </Button>
+          <Button
+            variant={mode === "multiple" ? "default" : "outline"}
+            size="sm"
+            onPress={() => onModeChange("multiple")}
+            testID="project-directory-mode-multiple"
+          >
+            {t("settings.project.resources.project.multiple")}
+          </Button>
+        </View>
+      ) : null}
+      <View style={styles.listEditor}>
+        {values.length === 0 ? (
+          <Text style={styles.emptyScripts}>
+            {t("settings.project.resources.emptyDirectories")}
+          </Text>
+        ) : (
+          values.map((value) => (
+            <View key={value.id} style={styles.listEditorRow}>
+              <Switch
+                value={value.enabled}
+                onValueChange={(enabled) =>
+                  onChange(
+                    directoryKey,
+                    values.map((entry) => (entry.id === value.id ? { ...entry, enabled } : entry)),
+                  )
+                }
+                testID={`project-directory-enabled-${value.id}`}
+              />
+              <TextInput
+                value={
+                  projectDirectoryPath
+                    ? projectDirectoryPathForDisplay(value.path, projectDirectoryPath)
+                    : value.path
+                }
+                onChangeText={(next) =>
+                  onChange(
+                    directoryKey,
+                    values.map((entry) =>
+                      entry.id === value.id ? { ...entry, path: next } : entry,
+                    ),
+                  )
+                }
+                placeholder="./path"
+                placeholderTextColor={styles.placeholderColor.color}
+                style={styles.flexInput}
+              />
+              <Pressable
+                accessibilityLabel={t("settings.project.resources.removeDirectory", { title })}
+                onPress={() =>
+                  onChange(
+                    directoryKey,
+                    values.filter((entry) => entry.id !== value.id),
+                  )
+                }
+                style={styles.removeIconButton}
+              >
+                <X size={ICON_SIZE} color={styles.iconColor.color} />
+              </Pressable>
+            </View>
+          ))
+        )}
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+      </View>
+    </SettingsSection>
+  );
+}
+
+function ProjectVariablesEditor({
+  values,
+  error,
+  onChange,
+}: {
+  values: ProjectVariableDraft[];
+  error: string | null;
+  onChange: (values: ProjectVariableDraft[]) => void;
+}) {
+  const { t } = useTranslation();
+  const add = useCallback(
+    () => onChange([...values, { id: `variable-${Date.now()}`, name: "", value: "" }]),
+    [onChange, values],
+  );
+  return (
+    <SettingsGroup
+      title={t("settings.project.variables.title")}
+      info={t("settings.project.variables.info")}
+      trailing={
+        <Pressable onPress={add} hitSlop={8} style={settingsStyles.sectionHeaderLink}>
+          <Plus size={ICON_SIZE} color={styles.iconColor.color} />
+        </Pressable>
+      }
+      testID="project-variables-group"
+    >
+      <View style={settingsStyles.card}>
+        {values.length === 0 ? (
+          <View style={settingsStyles.row}>
+            <Text style={styles.emptyScripts}>{t("settings.project.variables.empty")}</Text>
+          </View>
+        ) : (
+          values.map((entry) => (
+            <View key={entry.id} style={styles.variableRow}>
+              <TextInput
+                value={entry.name}
+                onChangeText={(name) =>
+                  onChange(
+                    values.map((value) => (value.id === entry.id ? { ...value, name } : value)),
+                  )
+                }
+                placeholder={t("settings.project.variables.namePlaceholder")}
+                placeholderTextColor={styles.placeholderColor.color}
+                style={styles.flexInput}
+              />
+              <TextInput
+                value={entry.value}
+                onChangeText={(value) =>
+                  onChange(values.map((item) => (item.id === entry.id ? { ...item, value } : item)))
+                }
+                placeholder={t("settings.project.variables.valuePlaceholder")}
+                placeholderTextColor={styles.placeholderColor.color}
+                style={styles.flexInput}
+              />
+              <Pressable
+                accessibilityLabel={t("settings.project.variables.remove")}
+                onPress={() => onChange(values.filter((value) => value.id !== entry.id))}
+                style={styles.removeIconButton}
+              >
+                <X size={ICON_SIZE} color={styles.iconColor.color} />
+              </Pressable>
+            </View>
+          ))
+        )}
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+      </View>
+    </SettingsGroup>
+  );
+}
+
+/* oxlint-enable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-jsx-as-prop */
 
 function ResolveSpinnerColor(): string {
   return styles.spinnerColor.color;
@@ -1167,12 +1725,28 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
     flexShrink: 1,
   },
-  projectMeta: {
+  editButton: {
+    padding: theme.spacing[1],
+  },
+  projectId: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
+    fontFamily: Platform.select({ web: "monospace", default: undefined }),
+  },
+  projectPath: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontFamily: Platform.select({ web: "monospace", default: undefined }),
     flexShrink: 1,
   },
-  editButton: {
+  nameEditorRow: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minWidth: 0,
+  },
+  nameEditorIconButton: {
     padding: theme.spacing[1],
   },
   titleIconFallbackText: {
@@ -1191,9 +1765,93 @@ const styles = StyleSheet.create((theme) => ({
   errorBlock: {
     marginTop: theme.spacing[2],
   },
+  noticeBlock: {
+    marginTop: theme.spacing[2],
+  },
   emptyScripts: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
+  },
+  sectionHint: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    marginBottom: theme.spacing[2],
+  },
+  directoryModeRow: {
+    flexDirection: "row",
+    gap: theme.spacing[2],
+    marginBottom: theme.spacing[3],
+  },
+  disabledControl: {
+    opacity: 0.35,
+  },
+  listEditor: {
+    gap: theme.spacing[2],
+  },
+  listEditorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  variableRow: {
+    flexDirection: {
+      xs: "column",
+      md: "row",
+    },
+    alignItems: {
+      xs: "stretch",
+      md: "center",
+    },
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+  },
+  flexInput: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+  },
+  compactInput: {
+    width: 120,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+  },
+  removeIconButton: {
+    padding: theme.spacing[2],
+    alignSelf: "center",
+  },
+  inlineFormRow: {
+    flexDirection: {
+      xs: "column",
+      md: "row",
+    },
+    alignItems: {
+      xs: "stretch",
+      md: "center",
+    },
+    gap: theme.spacing[3],
+    paddingHorizontal: theme.spacing[4],
+    paddingVertical: theme.spacing[3],
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  inlineFormText: {
+    flex: 1,
+    minWidth: 0,
+    gap: theme.spacing[1],
   },
   scriptRow: {
     flexDirection: "row",

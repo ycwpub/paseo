@@ -225,7 +225,7 @@ export function PairDeviceSection({
   });
 
   return (
-    <View style={settingsStyles.section} testID="host-page-pair-device-card">
+    <View style={[settingsStyles.section, styles.section]} testID="host-page-pair-device-card">
       <ClientAccessSection
         client={client}
         clients={clientAccessQuery.data?.clients ?? []}
@@ -788,6 +788,9 @@ function PairDeviceQrContent(props: {
 }
 
 const styles = StyleSheet.create((theme) => ({
+  section: {
+    width: "100%",
+  },
   centered: {
     alignItems: "center",
     justifyContent: "center",

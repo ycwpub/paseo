@@ -26,6 +26,20 @@ describe("supervision parity", () => {
     expect(daemonRunner).not.toContain("src/server/index.ts");
   });
 
+  test("daemon worker sends the heartbeat consumed by the supervisor watchdog", () => {
+    const supervisor = readFileSync(new URL("./supervisor.ts", import.meta.url), "utf8");
+    const daemonWorker = readFileSync(
+      new URL("../src/server/daemon-worker.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(supervisor).toContain('"paseo:worker-heartbeat"');
+    expect(supervisor).toContain("Worker heartbeat timed out; restarting worker");
+    expect(daemonWorker).toContain('type: "paseo:worker-heartbeat"');
+    expect(daemonWorker).toContain("satisfies WorkerHeartbeatMessage");
+    expect(daemonWorker).toContain("setInterval(sendWorkerHeartbeat, 1_000)");
+  });
+
   test("dev runner waits asynchronously for supervisor shutdown", () => {
     const devRunner = readFileSync(new URL("./dev-runner.ts", import.meta.url), "utf8");
 

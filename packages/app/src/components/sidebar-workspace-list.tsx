@@ -90,6 +90,7 @@ import { hasVisibleOrderChanged, mergeWithRemainder } from "@/utils/sidebar-reor
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { SidebarStatusWorkspaceList } from "@/components/sidebar/sidebar-status-list";
+import { SidebarProjectChildAction } from "@/components/sidebar/sidebar-project-child-action";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import {
   SidebarWorkspaceContextMenu,
@@ -427,6 +428,12 @@ function ProjectRowTrailingActions({
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   return (
     <View style={styles.projectTrailingActions}>
+      <SidebarProjectChildAction
+        target={settingsTarget}
+        displayName={displayName}
+        visible={actionsVisible}
+        projectViewKey={projectViewKey}
+      />
       {worktreeTarget ? (
         <NewWorktreeButton
           displayName={displayName}

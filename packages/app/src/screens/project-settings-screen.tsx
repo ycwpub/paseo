@@ -35,6 +35,9 @@ import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
+import { ProjectParentLink } from "@/projects/project-parent-link";
+import { ProjectMemoryCard } from "@/screens/settings/memory/project-memory-card";
+import { ProjectLinkedPluginProjects } from "@/plugins/project/project-linked-plugin-projects";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -289,6 +292,16 @@ function ProjectSettingsBody({
             <Pencil size={ICON_SIZE} color={styles.iconColor.color} />
           </Pressable>
         </View>
+        <Text style={styles.projectMeta} selectable>
+          {t("settings.project.projectId")}: {selectedHost.projectId}
+        </Text>
+        <ProjectParentLink
+          serverId={selectedHost.serverId}
+          parentProjectId={selectedHost.parentProjectId}
+        />
+        <Text style={styles.projectMeta} selectable>
+          {t("settings.project.projectPath")}: {selectedHost.projectPath}
+        </Text>
       </View>
 
       <ProjectEditSheet
@@ -302,6 +315,12 @@ function ProjectSettingsBody({
         client={client}
         supportsCustomIcon={supportsCustomIcon}
         snapshot={editSnapshot}
+      />
+
+      <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
+      <ProjectLinkedPluginProjects
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
       />
 
       {renderContent({
@@ -1146,6 +1165,11 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
+    flexShrink: 1,
+  },
+  projectMeta: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
     flexShrink: 1,
   },
   editButton: {

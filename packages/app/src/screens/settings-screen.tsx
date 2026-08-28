@@ -36,6 +36,9 @@ import {
   SquareTerminal,
   Code2,
   Smartphone,
+  MessageCircle,
+  Wrench,
+  Brain,
   Sparkles,
   Blocks,
   PanelsTopLeft,
@@ -112,10 +115,18 @@ import {
   HostWorkspacesPage,
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
+import {
+  HostAssistantsPage,
+  HostChannelsPage,
+  HostMemoryPage,
+  HostMcpPage,
+  HostSkillsPage,
+} from "@/screens/settings/host-resource-pages";
 import { HostPluginsPage } from "@/screens/settings/plugins-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
+import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
 import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
@@ -183,6 +194,17 @@ interface HostSectionItem {
   icon: ComponentType<{ size: number; color: string }>;
 }
 
+function getSettingsViewServerId(view: SettingsView): string | null {
+  switch (view.kind) {
+    case "host":
+    case "project":
+    case "memory":
+      return view.serverId;
+    default:
+      return null;
+  }
+}
+
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "host", labelKey: "settings.hostSections.host", icon: Server },
   { id: "projects", labelKey: "settings.hostSections.projects", icon: FolderGit2 },
@@ -190,8 +212,13 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
+  { id: "assistants", labelKey: "settings.hostSections.assistants", icon: Bot },
+  { id: "memory", labelKey: "settings.hostSections.memory", icon: Brain },
+  { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
+  { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
+  { id: "channels", labelKey: "settings.hostSections.channels", icon: MessageCircle },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
   { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
   { id: "plugins", labelKey: "settings.hostSections.plugins", icon: Blocks },
@@ -212,10 +239,20 @@ function renderHostSettingsContent(
       return <HostAgentsPage serverId={view.serverId} />;
     case "metadata":
       return <MetadataGenerationPage serverId={view.serverId} />;
+    case "assistants":
+      return <HostAssistantsPage serverId={view.serverId} />;
+    case "memory":
+      return <HostMemoryPage serverId={view.serverId} />;
+    case "mcp":
+      return <HostMcpPage serverId={view.serverId} />;
+    case "skills":
+      return <HostSkillsPage serverId={view.serverId} />;
     case "workspaces":
       return <HostWorkspacesPage serverId={view.serverId} />;
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
+    case "channels":
+      return <HostChannelsPage serverId={view.serverId} />;
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
     case "terminals":
@@ -1066,6 +1103,7 @@ function SettingsSidebar({
   let selectedHostSection: HostSectionSlug | null = null;
   if (view.kind === "host") selectedHostSection = view.section;
   if (view.kind === "project") selectedHostSection = "projects";
+  if (view.kind === "memory") selectedHostSection = view.projectId ? "projects" : "memory";
 
   const sidebarBody = (
     <>
@@ -1203,8 +1241,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
   const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const routedSettingsHostServerId =
-    view.kind === "host" || view.kind === "project" ? view.serverId : null;
+  const routedSettingsHostServerId = getSettingsViewServerId(view);
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
     routedSettingsHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
   );
@@ -1219,7 +1256,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   // The host the four sections scope to: the host on the active view, otherwise
   // the picker choice, otherwise the connected local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
-    if (view.kind === "host" || view.kind === "project") return view.serverId;
+    const routedServerId = getSettingsViewServerId(view);
+    if (routedServerId) return routedServerId;
     return resolveActiveHostServerId({
       selectedServerId: selectedSettingsHostServerId,
       localServerId,
@@ -1362,7 +1400,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const handleSelectHost = useCallback(
     (serverId: string) => {
       setSelectedSettingsHostServerId(serverId);
-      if (view.kind === "project") {
+      if (view.kind === "project" || view.kind === "memory") {
         const target = buildSettingsHostSectionRoute(serverId, "projects");
         if (isCompactLayout) {
           router.push(target);
@@ -1443,6 +1481,14 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     if (view.kind === "project") {
       return { title: t("settings.projects"), Icon: FolderGit2 };
     }
+    if (view.kind === "memory") {
+      return {
+        title: view.memoryId
+          ? t("memoryPolicies.contentManager.detailTitle")
+          : t("memoryPolicies.contentManager.pageTitle"),
+        Icon: Brain,
+      };
+    }
     return null;
   })();
 
@@ -1461,6 +1507,16 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
             projectId={view.projectId}
             onBackToProjects={handleBackFromDetail}
             showBackToProjects={!isCompactLayout}
+          />
+        );
+      }
+      if (view.kind === "memory") {
+        return (
+          <MemoryManagementScreen
+            serverId={view.serverId}
+            projectId={view.projectId}
+            memoryId={view.memoryId}
+            embedded
           />
         );
       }
@@ -1597,7 +1653,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           onBack={handleBackFromDetail}
         />
         <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-          <View style={styles.content}>{content}</View>
+          <View style={[styles.content, view.kind === "memory" && styles.wideContent]}>
+            {content}
+          </View>
         </ScrollView>
         {addHostModals}
       </View>
@@ -1630,7 +1688,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               leftStyle={desktopStyles.detailLeft}
             />
             <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-              <View style={styles.content}>{content}</View>
+              <View style={[styles.content, view.kind === "memory" && styles.wideContent]}>
+                {content}
+              </View>
             </ScrollView>
           </View>
         </WindowChromeRegion>
@@ -1668,6 +1728,9 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
+  },
+  wideContent: {
+    maxWidth: 920,
   },
   aboutValue: {
     color: theme.colors.foregroundMuted,

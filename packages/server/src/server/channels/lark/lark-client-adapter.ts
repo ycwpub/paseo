@@ -38,6 +38,7 @@ export interface LarkMessageGetOptions {
 export interface LarkResolvedUser {
   email: string;
   openId: string;
+  displayName?: string | null;
 }
 
 export interface LarkResolvedChat {
@@ -90,6 +91,10 @@ export interface LarkChannelClientAdapter {
     config: StoredLarkChannelConfig,
     emails: readonly string[],
   ): Promise<LarkResolvedUser[]>;
+  resolveUserByOpenId?(
+    config: StoredLarkChannelConfig,
+    openId: string,
+  ): Promise<LarkResolvedUser | null>;
   resolveChats?(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]>;
 }
 
@@ -424,6 +429,33 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       return (result.data?.user_list ?? []).flatMap((user) =>
         user.email && user.user_id ? [{ email: user.email, openId: user.user_id }] : [],
       );
+    } catch (error) {
+      throw describeLarkError(error);
+    }
+  }
+
+  async resolveUserByOpenId(
+    config: StoredLarkChannelConfig,
+    openId: string,
+  ): Promise<LarkResolvedUser | null> {
+    const client = createClient(config);
+    try {
+      const result = await client.contact.v3.user.get({
+        path: { user_id: openId },
+        params: { user_id_type: "open_id" },
+      });
+      assertSuccess(result);
+      const user = result.data?.user;
+      const email = user?.email?.trim() || user?.enterprise_email?.trim();
+      const resolvedOpenId = user?.open_id?.trim() || openId.trim();
+      if (!email || !resolvedOpenId) {
+        return null;
+      }
+      return {
+        email,
+        openId: resolvedOpenId,
+        displayName: user?.name?.trim() || null,
+      };
     } catch (error) {
       throw describeLarkError(error);
     }

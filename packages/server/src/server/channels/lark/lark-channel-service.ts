@@ -403,6 +403,7 @@ export class LarkChannelService {
     for (const bot of bots) {
       await this.startBot(bot);
     }
+    await this.refreshDirectoryUsers(bots);
   }
 
   async stop(): Promise<void> {
@@ -429,6 +430,7 @@ export class LarkChannelService {
   ): Promise<ReturnType<LarkChannelService["getStatus"]>> {
     const storedBot = this.store.configure(input);
     await this.startBot(storedBot);
+    await this.refreshDirectoryUsers([storedBot]);
     this.emitStatusChanged();
     return this.getStatus();
   }
@@ -1530,9 +1532,51 @@ export class LarkChannelService {
     if (!this.directoryService || !config.appId) return;
     if (event.openId) {
       this.directoryService.observeUser(config.appId, event.openId, event.displayName);
+      void this.refreshDirectoryUser(config.appId, event.openId);
     }
     if (event.chatType?.toLowerCase() !== "p2p" && event.topicName.trim()) {
       this.directoryService.observeChat(config.appId, event.chatId, event.topicName);
+    }
+  }
+
+  private async refreshDirectoryUsers(bots: readonly StoredLarkChannelBot[]): Promise<void> {
+    if (!this.directoryService) return;
+    const directory = this.directoryService.getState();
+    const candidates = new Map<string, { appId: string; openId: string }>();
+    for (const bot of bots) {
+      const appId = bot.config.appId?.trim();
+      if (!appId) continue;
+      const openIds = [
+        bot.config.substitute.openId,
+        ...bot.authorizedUsers.map((user) => user.openId),
+        ...directory.users
+          .filter((user) => user.appId === appId && !user.email)
+          .map((user) => user.openId),
+      ];
+      for (const openId of openIds) {
+        const normalizedOpenId = openId?.trim();
+        if (normalizedOpenId) {
+          candidates.set(`${appId}:${normalizedOpenId}`, { appId, openId: normalizedOpenId });
+        }
+      }
+    }
+    await Promise.all(
+      [...candidates.values()].map(({ appId, openId }) => this.refreshDirectoryUser(appId, openId)),
+    );
+  }
+
+  private async refreshDirectoryUser(appId: string, openId: string): Promise<void> {
+    if (!this.directoryService) return;
+    try {
+      const user = await this.directoryService.refreshUserByOpenId(appId, openId);
+      if (user?.email) {
+        this.emitStatusChanged();
+      }
+    } catch (error) {
+      this.logger.debug(
+        { err: error, appId, openId },
+        "Unable to refresh Lark user email from Open ID",
+      );
     }
   }
 

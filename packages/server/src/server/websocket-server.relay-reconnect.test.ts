@@ -1397,6 +1397,7 @@ describe("relay external socket reconnect behavior", () => {
     expect(serverInfo.features?.workflowProtocolRevision).toBe(4);
     expect(serverInfo.features?.larkReminders).toBe(true);
     expect(serverInfo.features?.reasoningTranslation).toBe(true);
+    expect(serverInfo.features?.pluginManagement).toBe(true);
     expect(serverInfo.features?.agentTurnIdentity).toBeUndefined();
     await server.close();
   });

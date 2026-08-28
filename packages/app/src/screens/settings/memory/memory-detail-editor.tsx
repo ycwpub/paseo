@@ -148,7 +148,7 @@ export function MemoryDetailEditor({
                     value={draft.scopeId}
                     onChangeText={setScopeId}
                     editable={!disabled}
-                    placeholder="Project、助手或 Workspace ID"
+                    placeholder="项目、助手或工作区 ID"
                   />
                 </Field>
               </View>

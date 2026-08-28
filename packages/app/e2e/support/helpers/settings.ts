@@ -37,6 +37,7 @@ type HostSection =
   | "agents"
   | "metadata"
   | "assistants"
+  | "knowledge"
   | "workspaces"
   | "providers"
   | "channels"

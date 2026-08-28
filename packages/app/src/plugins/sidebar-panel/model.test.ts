@@ -66,6 +66,19 @@ describe("plugin sidebar panel model", () => {
     expect(entries.find((entry) => entry.plugin.displayName === "No app")?.app).toBeNull();
   });
 
+  it("tolerates an unavailable plugin list and legacy plugins without apps", () => {
+    const legacyPlugin = {
+      ...plugin("Legacy"),
+      apps: undefined,
+    } as unknown as PluginSummary;
+
+    expect(resolveInstalledPluginEntries(undefined)).toEqual([]);
+    expect(resolveInstalledPluginEntries(null)).toEqual([]);
+    expect(resolveInstalledPluginEntries([legacyPlugin])).toEqual([
+      { plugin: legacyPlugin, app: null },
+    ]);
+  });
+
   it("opens, closes, and switches the selected plugin app", () => {
     const alpha = resolvePluginAppSelection(
       "server-a",

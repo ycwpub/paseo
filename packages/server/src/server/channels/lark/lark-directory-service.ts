@@ -42,6 +42,28 @@ export class LarkDirectoryService {
     return this.store.upsertResolvedUsers(appId, resolved, new Date().toISOString());
   }
 
+  async refreshUserByOpenId(appId: string, openId: string): Promise<LarkDirectoryUser | null> {
+    const normalizedOpenId = openId.trim();
+    if (!normalizedOpenId) {
+      return null;
+    }
+    const existing = this.store.findUser(appId, normalizedOpenId);
+    if (existing?.email) {
+      return existing;
+    }
+    const config = this.requireConfig(appId);
+    if (!this.adapter.resolveUserByOpenId) {
+      return existing;
+    }
+    const resolved = await this.adapter.resolveUserByOpenId(config, normalizedOpenId);
+    if (!resolved) {
+      return existing;
+    }
+    return (
+      this.store.upsertResolvedUsers(appId, [resolved], new Date().toISOString())[0] ?? existing
+    );
+  }
+
   async resolveChats(appId: string, query: string): Promise<LarkDirectoryChat[]> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {

@@ -34,9 +34,8 @@ import {
   type LongTimelineAgent,
 } from "../support/helpers/timeline-pagination";
 
-// Wide enough that the timeline panel clears the rail's MIN_PANEL_WIDTH with room
-// to spare. At 1280 the panel measures 960, which sits too close to the threshold
-// for chrome-width changes elsewhere to stay out of these tests.
+// Wide enough for the full transcript, rail, and hover preview without the surrounding
+// application chrome influencing pointer-placement assertions.
 const WIDE_VIEWPORT = { width: 1440, height: 900 };
 const LOADED_TURNS = 16;
 

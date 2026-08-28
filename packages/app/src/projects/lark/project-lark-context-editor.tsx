@@ -236,7 +236,7 @@ export function ProjectLarkContextEditor({
   return (
     <SettingsGroup
       title="飞书群上下文"
-      info="绑定飞书机器人和群聊后，Paseo 会自动邀请机器人入群，并把最近群消息作为当前 Project 的参考上下文。群消息不会被视为系统指令或操作授权。"
+      info="绑定飞书机器人和群聊后，Paseo 会自动邀请机器人入群，并把最近群消息作为当前项目的参考上下文。群消息不会被视为系统指令或操作授权。"
       trailing={trailing}
       testID="project-lark-context-group"
     >

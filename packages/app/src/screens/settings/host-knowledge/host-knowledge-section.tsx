@@ -55,7 +55,7 @@ function HostKnowledgeForm({
         onChange={handleChange}
         sections={HOST_KNOWLEDGE_SECTIONS}
         title="全局知识"
-        info="全局知识对当前 Paseo 实例中的所有 Project 和 Agent 生效。相对路径从 Paseo 主目录解析。"
+        info="全局知识对当前 Paseo 实例中的所有项目和智能体 生效。相对路径从 Paseo 主目录解析。"
         testID="host-knowledge-group"
         cloudCacheTarget={cloudCacheTarget}
       />

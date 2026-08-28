@@ -59,6 +59,7 @@ import {
 import { ProvidersSection } from "@/screens/settings/providers-section";
 import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
@@ -82,7 +83,6 @@ import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
 import { LocalRelayConfigurationSection } from "./host-local-relay-section";
-import { HostKnowledgeSection } from "./host-knowledge/host-knowledge-section";
 import { InstructionTemplatesSection } from "./agents/instruction-templates-section";
 export {
   HostAssistantsPage,
@@ -755,6 +755,8 @@ export function HostSettingsPage({
 
       <HostStatusBadges serverId={serverId} />
 
+      <HostAppearanceSection host={host} />
+
       <SettingsSection title={t("settings.host.daemon.identity.title")}>
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
@@ -785,8 +787,6 @@ export function HostSettingsPage({
           </View>
         </View>
       </SettingsSection>
-
-      <HostKnowledgeSection serverId={serverId} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 

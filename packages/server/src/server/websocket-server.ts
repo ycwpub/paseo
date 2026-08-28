@@ -2049,7 +2049,7 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         skills: true,
         // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
-        plugins: true,
+        pluginManagement: true,
         // COMPAT(pluginProjectScopedApps): added on 2026-08-20.
         pluginProjectScopedApps: true,
         // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.

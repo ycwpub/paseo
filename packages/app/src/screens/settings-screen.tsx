@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
   Alert,
@@ -41,6 +41,7 @@ import {
   MessageCircle,
   Wrench,
   Brain,
+  BookOpen,
   Pencil,
   Sparkles,
   Blocks,
@@ -130,6 +131,7 @@ import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-p
 import ProjectsScreen from "@/screens/projects-screen";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
+import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowledge-management-section";
 import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
@@ -260,6 +262,7 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   },
   { id: "assistants", labelKey: "settings.hostSections.assistants", icon: Bot },
   { id: "memory", labelKey: "settings.hostSections.memory", icon: Brain },
+  { id: "knowledge", labelKey: "settings.hostSections.knowledge", icon: BookOpen },
   { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
   { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
   {
@@ -304,6 +307,8 @@ function renderHostSettingsContent(
       return <HostAssistantsPage serverId={view.serverId} />;
     case "memory":
       return <HostMemoryPage serverId={view.serverId} />;
+    case "knowledge":
+      return <KnowledgeManagementSection serverId={view.serverId} />;
     case "mcp":
       return <HostMcpPage serverId={view.serverId} />;
     case "skills":
@@ -1268,25 +1273,63 @@ function SettingsSidebar({
     selectedHostSection = view.projectId ? "projects" : "memory";
   }
   const desktopScrollRef = useRef<ScrollView>(null);
+  const desktopScrollRestoreYRef = useRef(isDesktop ? desktopSettingsSidebarScrollY : 0);
+  const desktopScrollRestorePendingRef = useRef(desktopScrollRestoreYRef.current > 0);
+  const desktopScrollRestoreFrameRef = useRef<number | null>(null);
   const handleDesktopScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const nextOffset = event.nativeEvent.contentOffset.y;
-    if (Number.isFinite(nextOffset)) {
-      desktopSettingsSidebarScrollY = Math.max(0, nextOffset);
-    }
-  }, []);
-
-  // Desktop settings sections live on separate routes, so the sidebar is
-  // remounted on every selection. Restore its previous position before paint
-  // instead of making lower navigation items jump back to the top.
-  useLayoutEffect(() => {
-    if (!isDesktop || desktopSettingsSidebarScrollY <= 0) {
+    if (!Number.isFinite(nextOffset) || desktopScrollRestorePendingRef.current) {
       return;
     }
-    desktopScrollRef.current?.scrollTo({
-      y: desktopSettingsSidebarScrollY,
-      animated: false,
+
+    desktopSettingsSidebarScrollY = Math.max(0, nextOffset);
+  }, []);
+
+  const restoreDesktopScrollPosition = useCallback(() => {
+    if (!isDesktop || !desktopScrollRestorePendingRef.current) {
+      return;
+    }
+
+    const restoreY = desktopScrollRestoreYRef.current;
+    if (restoreY <= 0) {
+      desktopScrollRestorePendingRef.current = false;
+      return;
+    }
+
+    if (desktopScrollRestoreFrameRef.current !== null) {
+      cancelAnimationFrame(desktopScrollRestoreFrameRef.current);
+    }
+
+    // The settings sidebar is remounted for every route. Waiting for its
+    // content layout (and two animation frames) prevents an early scrollTo
+    // from being clamped to zero before the long host menu is measurable.
+    desktopScrollRestoreFrameRef.current = requestAnimationFrame(() => {
+      desktopScrollRef.current?.scrollTo({ y: restoreY, animated: false });
+      desktopScrollRestoreFrameRef.current = requestAnimationFrame(() => {
+        desktopScrollRef.current?.scrollTo({ y: restoreY, animated: false });
+        desktopScrollRestoreFrameRef.current = null;
+        desktopScrollRestorePendingRef.current = false;
+      });
     });
   }, [isDesktop]);
+
+  useEffect(() => {
+    if (!isDesktop) {
+      desktopScrollRestorePendingRef.current = false;
+      return;
+    }
+
+    desktopScrollRestoreYRef.current = desktopSettingsSidebarScrollY;
+    desktopScrollRestorePendingRef.current = desktopSettingsSidebarScrollY > 0;
+    restoreDesktopScrollPosition();
+
+    return () => {
+      if (desktopScrollRestoreFrameRef.current !== null) {
+        cancelAnimationFrame(desktopScrollRestoreFrameRef.current);
+        desktopScrollRestoreFrameRef.current = null;
+      }
+    };
+  }, [isDesktop, restoreDesktopScrollPosition]);
 
   const sidebarBody = (
     <>
@@ -1382,6 +1425,7 @@ function SettingsSidebar({
             style={sidebarStyles.scrollBody}
             showsVerticalScrollIndicator={false}
             onScroll={handleDesktopScroll}
+            onContentSizeChange={restoreDesktopScrollPosition}
             scrollEventThrottle={16}
             testID="settings-sidebar-scroll-body"
           >

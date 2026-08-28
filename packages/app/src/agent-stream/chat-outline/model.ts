@@ -1,6 +1,52 @@
 import type { AgentTimelinePromptIndexPayload } from "@getpaseo/client/internal/daemon-client";
+import type { StreamItem } from "@/types/stream";
 
 export type ChatOutlinePrompt = AgentTimelinePromptIndexPayload["prompts"][number];
+
+const PROMPT_PREVIEW_MAX_LENGTH = 120;
+
+function promptPreview(text: string): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= PROMPT_PREVIEW_MAX_LENGTH) {
+    return collapsed;
+  }
+  return `${collapsed.slice(0, PROMPT_PREVIEW_MAX_LENGTH - 1)}…`;
+}
+
+/**
+ * Builds a best-effort prompt index from the rows already loaded by the client.
+ *
+ * Newer daemons provide a complete prompt index, including unloaded history. Keeping this
+ * local fallback means the message rail still appears while capabilities are connecting or
+ * when Paseo is attached to an older daemon; only jumps into unloaded history need the newer
+ * server API.
+ */
+export function buildLoadedChatOutlinePrompts(
+  items: readonly StreamItem[],
+  timelineEpoch: string | null,
+): ChatOutlinePrompt[] {
+  const prompts = new Map<number, ChatOutlinePrompt>();
+  for (const item of items) {
+    if (item.kind !== "user_message" || !item.timelineCursor) continue;
+    if (timelineEpoch !== null && item.timelineCursor.epoch !== timelineEpoch) continue;
+    prompts.set(item.timelineCursor.seq, {
+      seq: item.timelineCursor.seq,
+      timestamp: item.timestamp.toISOString(),
+      preview: promptPreview(item.text),
+    });
+  }
+  return [...prompts.values()].sort((left, right) => left.seq - right.seq);
+}
+
+export function mergeChatOutlinePrompts(
+  indexedPrompts: readonly ChatOutlinePrompt[],
+  loadedPrompts: readonly ChatOutlinePrompt[],
+): ChatOutlinePrompt[] {
+  const prompts = new Map<number, ChatOutlinePrompt>();
+  for (const prompt of loadedPrompts) prompts.set(prompt.seq, prompt);
+  for (const prompt of indexedPrompts) prompts.set(prompt.seq, prompt);
+  return [...prompts.values()].sort((left, right) => left.seq - right.seq);
+}
 
 export function shouldAcceptPromptIndexEpoch(
   timelineEpoch: string | null,

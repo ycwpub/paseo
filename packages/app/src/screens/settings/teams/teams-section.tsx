@@ -62,7 +62,7 @@ function buildMemberProviderOptions(
       id: configuredProvider,
       value: configuredProvider,
       label: configuredProvider,
-      description: "已保存的 Provider",
+      description: "已保存的模型提供方",
     });
   }
   return options;
@@ -324,13 +324,13 @@ function TeamMemberRow({
       {selected && !isLeader ? (
         <View style={styles.memberSettings}>
           <SelectField
-            label="Provider"
+            label="模型提供方"
             value={providerValue}
             selectedDisplay={selectedProviderDisplay}
             options={providerOptions}
             onChange={handleProviderChange}
             placeholder="与负责人一致"
-            emptyText="该主机没有可用 Provider"
+            emptyText="该主机没有可用模型提供方"
             loading={providersLoading}
             searchable
             size="sm"

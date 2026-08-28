@@ -1753,6 +1753,9 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        assistantId={agentInputDraft.assistantId}
+        onAssistantSelect={agentInputDraft.setAssistantId}
+        teamId={agentInputDraft.teamId}
       />
     </ReanimatedAnimated.View>
   );

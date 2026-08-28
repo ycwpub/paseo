@@ -14,7 +14,7 @@ export const MEMORY_CATEGORY_OPTIONS: SelectFieldOption<PaseoMemoryDetail["categ
 
 export const MEMORY_SCOPE_OPTIONS: SelectFieldOption<PaseoMemoryScope["type"]>[] = [
   { id: "global", value: "global", label: "全局" },
-  { id: "project", value: "project", label: "Project" },
+  { id: "project", value: "project", label: "项目" },
   { id: "assistant", value: "assistant", label: "助手" },
 ];
 
@@ -39,9 +39,9 @@ export function memoryCategoryLabel(category: PaseoMemoryDetail["category"]): st
 
 export function memoryScopeLabel(scope: PaseoMemoryScope | undefined): string {
   if (!scope || scope.type === "global") return "全局";
-  let label = "Workspace";
+  let label = "工作区";
   if (scope.type === "assistant") label = "助手";
-  if (scope.type === "project") label = "Project";
+  if (scope.type === "project") label = "项目";
   return `${label} · ${scope.id ?? "未指定"}`;
 }
 

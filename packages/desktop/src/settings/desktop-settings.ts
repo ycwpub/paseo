@@ -7,6 +7,7 @@ import type { AppReleaseChannel } from "../features/auto-updater.js";
 export interface DesktopSettings {
   releaseChannel: AppReleaseChannel;
   notifications: {
+    enabled: boolean;
     playSound: boolean;
   };
   daemon: {
@@ -52,6 +53,7 @@ export interface DesktopSettingsStore {
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   releaseChannel: "stable",
   notifications: {
+    enabled: true,
     playSound: true,
   },
   daemon: {
@@ -134,6 +136,10 @@ function coerceDesktopSettings(input: unknown): DesktopSettings {
   }
 
   if (isRecord(input.notifications)) {
+    const enabled = coerceBoolean(input.notifications.enabled);
+    if (enabled !== null) {
+      result.notifications.enabled = enabled;
+    }
     const playSound = coerceBoolean(input.notifications.playSound);
     if (playSound !== null) {
       result.notifications.playSound = playSound;
@@ -186,9 +192,17 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
   }
 
   if (isRecord(input.notifications)) {
+    const notificationsPatch: Partial<DesktopSettings["notifications"]> = {};
+    const enabled = coerceBoolean(input.notifications.enabled);
+    if (enabled !== null) {
+      notificationsPatch.enabled = enabled;
+    }
     const playSound = coerceBoolean(input.notifications.playSound);
     if (playSound !== null) {
-      patch.notifications = { playSound };
+      notificationsPatch.playSound = playSound;
+    }
+    if (Object.keys(notificationsPatch).length > 0) {
+      patch.notifications = notificationsPatch;
     }
   }
 

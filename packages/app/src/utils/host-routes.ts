@@ -521,6 +521,7 @@ export const HOST_SECTION_SLUGS = [
   "metadata",
   "assistants",
   "memory",
+  "knowledge",
   "mcp",
   "skills",
   "plugins",

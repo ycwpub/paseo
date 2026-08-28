@@ -1,8 +1,9 @@
 import { en, type TranslationResources } from "./en";
-import { completeTranslationResource } from "./complete-resource";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const ko: TranslationResources = completeTranslationResource(en, {
+const koBase = {
   common: {
     back: "뒤로",
     loading: "불러오는 중...",
@@ -2751,4 +2752,9 @@ export const ko: TranslationResources = completeTranslationResource(en, {
       },
     },
   },
-});
+};
+
+export const ko: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(koBase, featureTranslationAdditions.ko),
+);

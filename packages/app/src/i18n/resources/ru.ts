@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const ru: TranslationResources = {
+const ruBase = {
   common: {
     back: "Назад",
     loading: "Загрузка...",
@@ -2888,3 +2890,8 @@ export const ru: TranslationResources = {
     },
   },
 };
+
+export const ru: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(ruBase, featureTranslationAdditions.ru),
+);

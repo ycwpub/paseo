@@ -50,6 +50,7 @@ import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sec
 import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIcons } from "@/projects/icons";
+import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 import {
   buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
@@ -1608,6 +1609,11 @@ function ProjectBlock({
     project,
     enabled: selectionEnabled,
   });
+  const hierarchyStyle = useMemo(
+    () =>
+      project.hierarchyDepth ? { marginLeft: Math.min(project.hierarchyDepth, 4) * 18 } : undefined,
+    [project.hierarchyDepth],
+  );
 
   const renderWorkspaceRow = useCallback(
     (
@@ -1780,7 +1786,7 @@ function ProjectBlock({
     <View
       role="group"
       accessibilityLabel={displayName}
-      style={projectChildren ? styles.projectBlockExpanded : undefined}
+      style={[projectChildren ? styles.projectBlockExpanded : undefined, hierarchyStyle]}
     >
       <ProjectHeaderRow
         project={project}
@@ -2128,6 +2134,10 @@ function ProjectModeList({
   const selectionEnabled = isWorkspaceRoute;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const { pinnedChats, unpinnedProjects } = pinnedGroups;
+  const hierarchicalProjects = useMemo(
+    () => flattenVisibleProjectHierarchy(unpinnedProjects, collapsedProjectKeys),
+    [collapsedProjectKeys, unpinnedProjects],
+  );
   const {
     visibleItems: visiblePinnedChats,
     expanded: pinnedChatsExpanded,
@@ -2386,7 +2396,7 @@ function ProjectModeList({
     ) : (
       <DraggableList
         testID="sidebar-project-list"
-        data={unpinnedProjects}
+        data={hierarchicalProjects}
         keyExtractor={projectViewKeyExtractor}
         renderItem={renderProject}
         onDragEnd={handleProjectDragEnd}

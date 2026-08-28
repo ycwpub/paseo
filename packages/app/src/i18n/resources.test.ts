@@ -146,13 +146,13 @@ describe("translation resources", () => {
       "代码执行成功前，需将包含必填 JSON 对象 data 的结果对象赋值给此变量。",
     );
     expect(zhCN.workflows.nodes.variables.examplesTitle).toBe("变量使用范例");
-    expect(zhCN.workflows.nodes.variables.agentTitle).toBe("Agent 输入变量");
+    expect(zhCN.workflows.nodes.variables.agentTitle).toBe("智能体输入变量");
     expect(zhCN.workflows.nodes.variables.agentDescription).toContain("project.var.*");
     expect(zhCN.workflows.nodes.variables.agentDescription).toContain("node.var.*");
-    expect(zhCN.workflows.nodes.agent.selectProvider).toBe("选择 Provider");
-    expect(zhCN.workflows.nodes.agent.lifecycle).toBe("Agent 生命周期");
+    expect(zhCN.workflows.nodes.agent.selectProvider).toBe("选择模型提供方");
+    expect(zhCN.workflows.nodes.agent.lifecycle).toBe("智能体生命周期");
     expect(zhCN.workflows.nodes.agent.lifecycleOptions.workflow).toBe("整个 Workflow");
-    expect(zhCN.workflows.nodes.agent.archiveAtLifecycleEnd).toBe("Agent 生命周期结束后自动归档");
+    expect(zhCN.workflows.nodes.agent.archiveAtLifecycleEnd).toBe("智能体生命周期结束后自动归档");
     expect(zhCN.workflows.nodes.for.loopBody).toBe("循环体");
     expect(zhCN.workflows.nodes.for.executionMode).toBe("执行模式");
     expect(zhCN.workflows.nodes.for.executionParallel).toBe("并行");
@@ -160,8 +160,15 @@ describe("translation resources", () => {
     expect(zhCN.workflows.nodes.for.parallelLoopVariablesHint).toContain(
       "不允许通过 modify.loop.var 修改",
     );
+    expect(zhCN.settings.project.backToProjects).toBe("返回项目列表");
+    expect(zhCN.settings.project.projectId).toBe("项目 ID");
+    expect(zhCN.settings.project.projectPath).toBe("项目路径");
+    expect(zhCN.settings.project.memory.title).toBe("项目记忆");
+    expect(zhCN.settings.project.memory.policyTitle).toBe("记忆规范");
+    expect(zhCN.settings.project.memory.enabledTitle).toBe("为当前项目开启记忆");
+    expect(zhCN.settings.project.memory.content.title).toBe("记忆内容");
     expect(zhCN.sidebar.project.confirmations.removeMessage).toBe(
-      "从 Paseo 中删除「{{projectName}}」及其所有 Workspace？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/projects/<projectId> 下的全部内容）。不会删除或修改该 Project 关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
+      "从 Paseo 中删除「{{projectName}}」及其所有工作区？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/projects/<projectId> 下的全部内容）。不会删除或修改该项目关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
     );
   });
 
@@ -170,7 +177,7 @@ describe("translation resources", () => {
     // Workflow editing currently falls back to English outside zh-CN. Keep the
     // global fallback ceiling strict enough to catch regressions while allowing
     // that intentionally shared section to grow.
-    const maxFallbackStrings = Math.ceil(totalStrings * 0.31);
+    const maxFallbackStrings = Math.ceil(totalStrings * 0.32);
     expect(countMatchingEnglishStrings(ar)).toBeLessThanOrEqual(maxFallbackStrings);
     expect(countMatchingEnglishStrings(es)).toBeLessThanOrEqual(maxFallbackStrings);
     expect(countMatchingEnglishStrings(fr)).toBeLessThanOrEqual(maxFallbackStrings);
@@ -227,7 +234,7 @@ describe("translation resources", () => {
     expect(ja.settings.providers.models.many).toBe("{{count}}つのモデル");
     expect(ptBR.settings.providers.models.many).toBe("{{count}} modelos");
     expect(ru.settings.providers.models.many).toBe("{{count}} моделей");
-    expect(zhCN.settings.providers.models.many).toBe("{{count}} 个 Model");
+    expect(zhCN.settings.providers.models.many).toBe("{{count}} 个模型");
   });
 
   it("preserves reviewed Korean status labels", () => {
@@ -315,6 +322,7 @@ describe("translation resources", () => {
     expect(en.settings.appearance.fonts.interfaceFont).toBe("Interface font");
     expect(en.settings.shortcuts.actions.rebind).toBe("Rebind");
     expect(en.settings.integrations.commandLine.title).toBe("Command line");
+    expect(en.settings.notifications.enabled).toBe("Send system notifications");
     expect(en.settings.notifications.playSound).toBe("Play sound");
     expect(en.settings.notifications.permission).toBe("Notification permission");
     expect(en.settings.notifications.sentTitle).toBe("Test notification sent");

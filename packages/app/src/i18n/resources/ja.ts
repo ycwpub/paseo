@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const ja: TranslationResources = {
+const jaBase = {
   common: {
     back: "戻る",
     loading: "読み込み中...",
@@ -2948,3 +2950,8 @@ export const ja: TranslationResources = {
     },
   },
 } as const;
+
+export const ja: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(jaBase, featureTranslationAdditions.ja),
+);

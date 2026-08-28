@@ -236,7 +236,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     (skill: Skill) => {
       void confirmDialog({
         title: `Delete ${skill.name}?`,
-        message: "这会从当前主机移除该 Skill。",
+        message: "这会从当前主机移除该技能。",
         confirmLabel: "删除",
         destructive: true,
       }).then((confirmed) => {
@@ -253,7 +253,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     setRefreshMessage(null);
     try {
       await skills.refreshSkills();
-      setRefreshMessage("已扫描本地 Skill 和 MCP 资源。");
+      setRefreshMessage("已扫描本地技能 和 MCP 资源。");
     } catch {
       // The hook exposes the mutation error below.
     }
@@ -285,7 +285,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     return (
       <View style={settingsStyles.row}>
         <Text style={settingsStyles.rowHint}>
-          {skills.skills.length === 0 ? "暂无 Skill。" : "没有匹配的 Skill。"}
+          {skills.skills.length === 0 ? "暂无技能。" : "没有匹配的技能。"}
         </Text>
       </View>
     );
@@ -329,7 +329,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
       </SettingsSection>
 
       {formOpen ? (
-        <SettingsSection title={editingSkill ? "编辑 Skill" : "创建 Skill"}>
+        <SettingsSection title={editingSkill ? "编辑技能" : "创建技能"}>
           <View style={styles.formCard}>
             <Field label="名称" testID="skill-name-field">
               <FormTextInput
@@ -359,20 +359,16 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
               <View style={settingsStyles.row}>
                 <View style={settingsStyles.rowContent}>
                   <Text style={settingsStyles.rowTitle}>已启用</Text>
-                  <Text style={settingsStyles.rowHint}>禁用后不会向 Agent 提供该 Skill。</Text>
+                  <Text style={settingsStyles.rowHint}>禁用后不会向 Agent 提供该技能。</Text>
                 </View>
-                <Switch
-                  value={enabled}
-                  onValueChange={setEnabled}
-                  accessibilityLabel="启用 Skill"
-                />
+                <Switch value={enabled} onValueChange={setEnabled} accessibilityLabel="启用技能" />
               </View>
             ) : null}
-            <Field label="Skill Markdown 内容" testID="skill-content-field">
+            <Field label="技能 Markdown 内容" testID="skill-content-field">
               <SettingsTextAreaCard
                 value={content}
                 onChangeText={setContent}
-                accessibilityLabel="Skill Markdown 内容"
+                accessibilityLabel="技能 Markdown 内容"
                 placeholder={DEFAULT_SKILL_CONTENT}
                 style={styles.contentInput}
               />
@@ -387,7 +383,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
                 disabled={!canSave}
                 loading={skills.isMutating}
               >
-                {editingSkill ? "保存 Skill" : "创建 Skill"}
+                {editingSkill ? "保存技能" : "创建技能"}
               </Button>
               <Button variant="outline" onPress={resetForm} disabled={skills.isMutating}>
                 取消

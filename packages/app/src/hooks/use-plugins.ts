@@ -105,8 +105,12 @@ export function usePlugins(serverId: string, options: { enabled?: boolean } = {}
   );
 
   const state = query.data ?? EMPTY_PLUGIN_STATE;
+  const plugins = Array.isArray(state.plugins) ? state.plugins : [];
+  const marketplaces = Array.isArray(state.marketplaces) ? state.marketplaces : [];
   return {
     ...state,
+    plugins,
+    marketplaces,
     isLoading: query.isLoading,
     isConnected,
     error: query.error,

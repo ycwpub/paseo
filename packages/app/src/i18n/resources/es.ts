@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const es: TranslationResources = {
+const esBase = {
   common: {
     back: "Atrás",
     loading: "Cargando...",
@@ -90,11 +92,11 @@ export const es: TranslationResources = {
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",
       mobile: "Mensaje,@files,/commands",
       fallback: "Mensaje...",
-      terminal: "Prompt",
+      terminal: "Indicación",
     },
     input: {
       accessibilityLabel: "Agente de mensajes...",
-      terminalAccessibilityLabel: "Terminal prompt",
+      terminalAccessibilityLabel: "Entrada del terminal",
       focusHint: "{{shortcut}}para enfocar",
       addAttachment: "Agregar archivo adjunto",
       interruptAgent: "agente de interrupción",
@@ -2985,3 +2987,8 @@ export const es: TranslationResources = {
     },
   },
 };
+
+export const es: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(esBase, featureTranslationAdditions.es),
+);

@@ -11,6 +11,8 @@ import type { TeamStore } from "../../team/team-store.js";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import { LarkChannelService } from "./lark-channel-service.js";
 import { LarkChannelStore } from "./lark-channel-store.js";
+import { LarkDirectoryService } from "./lark-directory-service.js";
+import { LarkDirectoryStore } from "./lark-directory-store.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 
 function makeAgent(
@@ -59,7 +61,7 @@ describe("LarkChannelService", () => {
     await rm(paseoHome, { recursive: true, force: true });
   });
 
-  function createHarness() {
+  function createHarness(options: { withDirectory?: boolean } = {}) {
     const logger = pino({ level: "silent" });
     const store = new LarkChannelStore({ paseoHome, logger });
     const bot = store.configure({
@@ -124,6 +126,10 @@ describe("LarkChannelService", () => {
       getMessage: vi.fn(async () => null),
       listThreadMessages: vi.fn(async () => []),
     };
+    const directoryStore = new LarkDirectoryStore({ paseoHome, logger });
+    const directoryService = options.withDirectory
+      ? new LarkDirectoryService(store, directoryStore, adapter)
+      : null;
     const createAgent = vi.fn(async () => {
       const snapshot = makeAgent("agent-created", "idle");
       agents.set(snapshot.id, snapshot);
@@ -151,6 +157,7 @@ describe("LarkChannelService", () => {
       teamStore,
       logger,
       host: { emitStatusChanged: vi.fn() },
+      directoryService,
     });
     const emitAgentState = (agentId: string, lifecycle: ManagedAgent["lifecycle"]) =>
       (
@@ -167,6 +174,7 @@ describe("LarkChannelService", () => {
       agentManager,
       botId: bot.id,
       createAgent,
+      directoryStore,
       emitAgentState,
       lastMessages,
       service,
@@ -765,6 +773,33 @@ describe("LarkChannelService", () => {
     expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
     expect(harness.createAgent).not.toHaveBeenCalled();
     expect(harness.agentManager.streamAgent).not.toHaveBeenCalled();
+  });
+
+  test("fills the configured substitute user's email from its Open ID on startup", async () => {
+    const harness = createHarness({ withDirectory: true });
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: null,
+      },
+    });
+    harness.adapter.resolveUserByOpenId = vi.fn(async (_config, openId) => ({
+      email: openId === "ou_substitute" ? "substitute@example.com" : "alice@example.com",
+      openId,
+    }));
+
+    await harness.service.start();
+
+    expect(harness.adapter.resolveUserByOpenId).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test" }),
+      "ou_substitute",
+    );
+    expect(harness.directoryStore.findUser("cli_test", "ou_substitute")).toMatchObject({
+      email: "substitute@example.com",
+      openId: "ou_substitute",
+    });
   });
 
   test("creates a Lark topic with the selected team leader context", async () => {

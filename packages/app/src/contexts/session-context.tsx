@@ -42,6 +42,8 @@ import {
 } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
+import { signalDesktopAttention } from "@/desktop/attention/desktop-attention";
+import { getAgentAttentionRouting } from "@/utils/agent-attention";
 import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import {
   getInitKey,
@@ -567,7 +569,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     });
 
     const unsubAgentAttention = client.onAgentAttentionRequired((notification) => {
-      if (notification.shouldNotify) {
+      const routing = getAgentAttentionRouting(notification);
+      if (routing.shouldSignalDesktop) {
+        signalDesktopAttention("finished");
+      }
+      if (routing.shouldProcessNotification) {
         notifyAgentAttention(notification);
       }
     });
@@ -642,6 +648,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       if (message.type !== "agent_permission_request") return;
       const { agentId, request } = message.payload;
 
+      signalDesktopAttention("intervention");
       setPendingPermissions(serverId, (prev) => {
         const next = new Map(prev);
         const key = derivePendingPermissionKey(agentId, request);

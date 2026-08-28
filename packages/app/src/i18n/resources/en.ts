@@ -1,4 +1,7 @@
-export const en = {
+import { mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
+
+const enBase = {
   common: {
     back: "Back",
     loading: "Loading...",
@@ -9,6 +12,7 @@ export const en = {
       copy: "Copy",
       dismiss: "Dismiss",
       retry: "Retry",
+      save: "Save",
       search: "Search",
       select: "Select",
     },
@@ -82,6 +86,9 @@ export const en = {
       settingOff: "Off",
     },
   },
+  errors: {
+    unableToSave: "Unable to save",
+  },
   composer: {
     placeholders: {
       desktop: "Message the agent, tag @files, or use /commands and /skills",
@@ -147,6 +154,7 @@ export const en = {
       initialPromptRequired: "Initial prompt is required",
       alreadyLoading: "Already loading",
       uploadFailed: "Failed to upload file",
+      daemonClientDisconnected: "Daemon client is disconnected",
       noClipboardImage: "No image in clipboard",
       pasteImageFailed: "Failed to paste image",
       fileTooLarge: "{{fileName}} is too large (max {{size}})",
@@ -1056,6 +1064,7 @@ export const en = {
       save: "Save",
       delete: "Delete",
       deleteTitle: "Delete {{name}}?",
+      deleteMessage: "This removes the label from {{count}} workspaces on this host.",
       deleteMessage_one: "This removes the label from {{count}} workspace on this host.",
       deleteMessage_other: "This removes the label from {{count}} workspaces on this host.",
       offline: "This host is offline.",
@@ -2014,6 +2023,10 @@ export const en = {
     },
   },
   desktop: {
+    windowName: {
+      renameTitle: "Rename window",
+      placeholder: "Window name",
+    },
     windowControls: {
       minimize: "Minimize window",
       maximize: "Maximize window",
@@ -2764,6 +2777,9 @@ export const en = {
       title: "Notifications",
       permission: "Notification permission",
       refreshAccessibility: "Refresh notification permission",
+      enabled: "Send system notifications",
+      enabledHint: "Send a macOS system notification when a task finishes or needs attention.",
+      disabledHint: "Turn on system notifications before testing",
       playSound: "Play sound",
       playSoundHint: "Play a sound when a desktop notification arrives",
       island: "Dynamic Island",
@@ -2795,6 +2811,7 @@ export const en = {
       metadata: "Metadata",
       assistants: "Assistants",
       memory: "Memory",
+      knowledge: "Knowledge",
       mcp: "MCP",
       skills: "Skills",
       workspaces: "Workspaces",
@@ -3142,7 +3159,9 @@ export const en = {
     },
     permissions: {
       title: "Permissions",
+      notifications: "Notifications",
       microphone: "Microphone",
+      test: "Test",
       refresh: "Refresh",
       refreshing: "Refreshing...",
       refreshAccessibility: "Refresh desktop permissions",
@@ -3150,6 +3169,8 @@ export const en = {
         granted: "Granted",
         request: "Request",
         requesting: "Requesting...",
+        busySuffix: "{{label}}...",
+        busyExtraAction: "{{label}}...",
       },
     },
     host: {
@@ -3660,6 +3681,8 @@ export const en = {
     },
   },
 } as const;
+
+export const en = mergeTranslationResources(enBase, featureTranslationAdditions.en);
 
 type WidenStringLeaves<T> = {
   [K in keyof T]: T[K] extends string ? string : WidenStringLeaves<T[K]>;

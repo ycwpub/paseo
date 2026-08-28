@@ -35,8 +35,6 @@ import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
-import { ProjectKnowledgeEditor } from "@/projects/knowledge/editor";
-import { projectKnowledgeDraftError } from "@/projects/knowledge/model";
 import { ProjectParentLink } from "@/projects/project-parent-link";
 import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
 import { ProjectLarkContextEditor } from "@/projects/lark/project-lark-context-editor";
@@ -671,11 +669,6 @@ function ProjectConfigForm({
     (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
     [updateDraft],
   );
-  const handleProjectKnowledgeChange = useCallback(
-    (projectKnowledge: ProjectConfigDraft["projectKnowledge"]) =>
-      updateDraft((d) => ({ ...d, projectKnowledge })),
-    [updateDraft],
-  );
   const handleProjectLarkGroupsChange = useCallback(
     (projectLarkGroups: ProjectConfigDraft["projectLarkGroups"]) =>
       updateDraft((d) => ({ ...d, projectLarkGroups })),
@@ -780,10 +773,6 @@ function ProjectConfigForm({
     [draft.scripts, t],
   );
   const projectValidation = useMemo(() => validateProjectConfiguration(draft, t), [draft, t]);
-  const cloudCacheTarget = useMemo(
-    () => ({ serverId, scope: "project" as const, projectId }),
-    [projectId, serverId],
-  );
 
   const scriptsTrailing = useMemo(
     () => (
@@ -844,13 +833,6 @@ function ProjectConfigForm({
         onGlobalIndexIntervalChange={setGlobalIndexIntervalText}
         onSaveGlobalIndexInterval={handleSaveGlobalIndexInterval}
         onVariablesChange={handleVariablesChange}
-      />
-
-      <ProjectKnowledgeEditor
-        value={draft.projectKnowledge}
-        error={projectValidation.projectKnowledgeError}
-        onChange={handleProjectKnowledgeChange}
-        cloudCacheTarget={cloudCacheTarget}
       />
 
       <ProjectLarkContextEditor
@@ -1024,7 +1006,6 @@ interface ProjectConfigurationValidation {
   projectDirectoryError: string | null;
   indexIntervalError: string | null;
   variableError: string | null;
-  projectKnowledgeError: string | null;
   projectLarkGroupError: string | null;
 }
 
@@ -1061,21 +1042,15 @@ function validateProjectConfiguration(
       name: duplicateVariable,
     });
   }
-  const projectKnowledgeError = projectKnowledgeDraftError(draft.projectKnowledge);
   const projectLarkGroupError = projectLarkGroupDraftError(draft.projectLarkGroups);
 
   return {
     hasErrors: Boolean(
-      projectDirectoryError ||
-      indexIntervalError ||
-      variableError ||
-      projectKnowledgeError ||
-      projectLarkGroupError,
+      projectDirectoryError || indexIntervalError || variableError || projectLarkGroupError,
     ),
     projectDirectoryError,
     indexIntervalError,
     variableError,
-    projectKnowledgeError,
     projectLarkGroupError,
   };
 }

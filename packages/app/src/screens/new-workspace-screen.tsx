@@ -2335,6 +2335,10 @@ export function NewWorkspaceScreen({
               autoFocusKey={launchFocusKey}
               commandDraftConfig={composerState?.commandDraftConfig}
               agentControls={agentControlsWithDisabled}
+              assistantId={chatDraft.assistantId}
+              onAssistantSelect={chatDraft.setAssistantId}
+              teamId={chatDraft.teamId}
+              onTeamSelect={chatDraft.setTeamId}
             />
           )}
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

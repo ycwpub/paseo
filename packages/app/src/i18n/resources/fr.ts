@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const fr: TranslationResources = {
+const frBase = {
   common: {
     back: "Dos",
     loading: "Chargement...",
@@ -77,7 +79,7 @@ export const fr: TranslationResources = {
         "changer de modèle modifier le modèle définir le modèle sélectionner le modèle",
       thinkingGroupLabel: "Raisonnement",
       thinkingSearchKeywords: "raisonnement effort réflexion",
-      modeGroupLabel: "Mode",
+      modeGroupLabel: "Mode d’affichage",
       modeSearchKeywords: "accès permission approbation mode",
       planModeGroupLabel: "Mode plan",
       planModeSearchKeywords: "plan planification mode plan",
@@ -91,12 +93,12 @@ export const fr: TranslationResources = {
     placeholders: {
       desktop: "Envoyez un message à l'agent, marquez@filesou utilisez/commandset/skills",
       mobile: "Message,@files,/commands",
-      fallback: "Message...",
-      terminal: "Prompt",
+      fallback: "Écrivez un message...",
+      terminal: "Invite",
     },
     input: {
       accessibilityLabel: "Agent de messagerie...",
-      terminalAccessibilityLabel: "Terminal prompt",
+      terminalAccessibilityLabel: "Invite du terminal",
       focusHint: "{{shortcut}}pour se concentrer",
       addAttachment: "Ajouter une pièce jointe",
       interruptAgent: "Agent d'interruption",
@@ -2994,3 +2996,8 @@ export const fr: TranslationResources = {
     },
   },
 };
+
+export const fr: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(frBase, featureTranslationAdditions.fr),
+);

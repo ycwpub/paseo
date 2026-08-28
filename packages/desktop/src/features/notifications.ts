@@ -97,6 +97,9 @@ export function registerNotificationHandlers(): void {
     const data = toRecord(rawInput?.data);
     const icon = getNotificationIcon();
     const settings = await getDesktopSettingsStore().get();
+    if (!settings.notifications.enabled) {
+      return false;
+    }
     const notification = new Notification({
       title,
       ...(body ? { body } : {}),

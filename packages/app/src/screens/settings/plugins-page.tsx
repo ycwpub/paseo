@@ -321,7 +321,13 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     );
   }
   if (pageState === "unsupported") {
-    return <Alert variant="warning" title={t("settings.plugins.states.updateTitle")} />;
+    return (
+      <Alert
+        variant="warning"
+        title={t("settings.plugins.states.updateTitle")}
+        testID="plugin-management-upgrade-warning"
+      />
+    );
   }
 
   let catalogContent = <Alert title={t("settings.plugins.states.loading")} />;
@@ -367,7 +373,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
   }
 
   return (
-    <View>
+    <View testID="plugin-management-page">
       <SettingsSection title={t("settings.plugins.title")}>
         <Alert
           variant="warning"

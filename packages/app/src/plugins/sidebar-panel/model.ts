@@ -27,12 +27,13 @@ export function isSamePluginAppSelection(
 }
 
 export function resolveInstalledPluginEntries(
-  plugins: readonly PluginSummary[],
+  plugins: readonly PluginSummary[] | null | undefined,
 ): InstalledPluginEntry[] {
-  return plugins
+  return (plugins ?? [])
     .flatMap((plugin) => {
       if (!plugin.installed || !plugin.pluginId) return [];
-      return [{ plugin, app: plugin.enabled ? (plugin.apps[0] ?? null) : null }];
+      const apps = plugin.apps ?? [];
+      return [{ plugin, app: plugin.enabled ? (apps[0] ?? null) : null }];
     })
     .sort((left, right) =>
       left.plugin.displayName.localeCompare(right.plugin.displayName, undefined, {

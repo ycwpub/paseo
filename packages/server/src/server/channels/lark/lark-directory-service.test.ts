@@ -57,6 +57,51 @@ describe("LarkDirectoryService", () => {
     ).rejects.toThrow("missing@example.com");
   });
 
+  test("refreshes and persists a real email for an observed Open ID", async () => {
+    directoryStore.observeUser(
+      "cli_test",
+      { openId: "ou_alice", displayName: "Lark user" },
+      "2026-08-19T00:00:00.000Z",
+    );
+    const resolveUserByOpenId = vi.fn(async () => ({
+      email: "alice@example.com",
+      openId: "ou_alice",
+      displayName: "Alice",
+    }));
+    const service = new LarkDirectoryService(channelStore, directoryStore, {
+      resolveUserByOpenId,
+    } as unknown as LarkChannelClientAdapter);
+
+    await expect(service.refreshUserByOpenId("cli_test", "ou_alice")).resolves.toMatchObject({
+      email: "alice@example.com",
+      openId: "ou_alice",
+    });
+    expect(resolveUserByOpenId).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test", appSecret: "secret" }),
+      "ou_alice",
+    );
+    expect(directoryStore.findUser("cli_test", "ou_alice")).toMatchObject({
+      email: "alice@example.com",
+    });
+  });
+
+  test("does not query Lark again when the email is already known", async () => {
+    directoryStore.upsertResolvedUsers(
+      "cli_test",
+      [{ email: "alice@example.com", openId: "ou_alice" }],
+      "2026-08-19T00:00:00.000Z",
+    );
+    const resolveUserByOpenId = vi.fn();
+    const service = new LarkDirectoryService(channelStore, directoryStore, {
+      resolveUserByOpenId,
+    } as unknown as LarkChannelClientAdapter);
+
+    await expect(service.refreshUserByOpenId("cli_test", "ou_alice")).resolves.toMatchObject({
+      email: "alice@example.com",
+    });
+    expect(resolveUserByOpenId).not.toHaveBeenCalled();
+  });
+
   test("returns all matching groups so the UI can disambiguate them", async () => {
     const resolveChats = vi.fn(async () => [
       { groupId: "group_one", chatId: "oc_one", name: "结算群" },

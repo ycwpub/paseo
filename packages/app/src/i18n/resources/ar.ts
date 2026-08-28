@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const ar: TranslationResources = {
+const arBase = {
   common: {
     back: "خلف",
     loading: "تحميل...",
@@ -2916,3 +2918,8 @@ export const ar: TranslationResources = {
     },
   },
 };
+
+export const ar: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(arBase, featureTranslationAdditions.ar),
+);

@@ -283,11 +283,11 @@ describe("TeamsSection", () => {
     render(<TeamsSection serverId="server-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect((screen.getByLabelText("Provider") as HTMLSelectElement).value).toBe("codex");
+    expect((screen.getByLabelText("模型提供方") as HTMLSelectElement).value).toBe("codex");
     expect((screen.getByLabelText("模型") as HTMLSelectElement).value).toBe("gpt-5.4");
     expect((screen.getByLabelText("思考模式") as HTMLSelectElement).value).toBe("high");
 
-    fireEvent.change(screen.getByLabelText("Provider"), {
+    fireEvent.change(screen.getByLabelText("模型提供方"), {
       target: { value: "claude" },
     });
     fireEvent.change(screen.getByLabelText("模型"), {

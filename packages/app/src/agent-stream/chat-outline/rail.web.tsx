@@ -12,7 +12,10 @@ import type { ChatOutlineRailProps } from "./rail";
 // magnifying a slot must not move the box the pointer is resting on. See docs/hover.md.
 const RAIL_WIDTH = 36;
 const SLOT_HEIGHT = 8;
-const MIN_PANEL_WIDTH = 918;
+// Keep the rail available in ordinary desktop windows and moderately sized split panes.
+// The preview is transient and overlays the transcript, so reserving almost 1,000 px before
+// showing navigation made the feature disappear in the layouts where it is most useful.
+const MIN_PANEL_WIDTH = 640;
 const RESTING_PILL_HEIGHT = 2;
 const MAGNIFIED_PILL_HEIGHT = 4;
 const RESTING_PILL_WIDTH = 10;
@@ -74,7 +77,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   // same band and the same preview once the pointer leaves.
   const attentionIndex = hoveredIndex ?? focusedIndex;
 
-  if (prompts.length < 2) return null;
+  if (prompts.length === 0) return null;
 
   return (
     <View style={styles.panelMeasure} pointerEvents="box-none" onLayout={onLayout}>
@@ -198,12 +201,12 @@ const styles = StyleSheet.create((theme) => ({
   rail: {
     position: "absolute",
     left: theme.spacing[2],
-    top: "10%",
-    bottom: "10%",
+    top: "8%",
+    bottom: "8%",
     width: RAIL_WIDTH,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
+    zIndex: 20,
   },
   // Slots tile the rail with no gaps, so every pixel of the column belongs to a prompt even
   // when a long conversation squeezes them well below their resting height.

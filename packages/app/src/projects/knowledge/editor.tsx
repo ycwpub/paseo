@@ -32,19 +32,19 @@ const SECTION_META: Record<
   general: {
     title: "通用知识",
     description:
-      "提供可按需查阅的背景资料。Agent 根据当前任务决定是否加载和采纳，支持本地目录、本地文档和云文档。",
+      "提供可按需查阅的背景资料。智能体根据当前任务决定是否加载和采纳，支持本地目录、本地文档和云文档。",
     empty: "尚未配置通用知识",
   },
   standards: {
     title: "规范知识",
     description:
-      "所有内容都会提供给 Agent，并要求 Agent 完整读取和严格遵守。支持本地文档和云文档。",
+      "所有内容都会提供给智能体，并要求智能体 完整读取和严格遵守。支持本地文档和云文档。",
     empty: "尚未配置规范知识",
   },
   projectSpecific: {
     title: "项目专有知识",
     description:
-      "所有内容都会提供给 Agent，Agent 根据任务相关性决定如何采纳。支持本地文档和云文档。",
+      "所有内容都会提供给智能体，智能体根据任务相关性决定如何采纳。支持本地文档和云文档。",
     empty: "尚未配置项目专有知识",
   },
 };
@@ -258,8 +258,8 @@ export function ProjectKnowledgeEditor({
   error,
   onChange,
   sections = PROJECT_KNOWLEDGE_SECTIONS,
-  title = "Project 知识",
-  info = "按加载方式和约束强度管理 Agent 使用的 Project 资料",
+  title = "项目知识",
+  info = "按加载方式和约束强度管理智能体使用的项目资料",
   testID = "project-knowledge-group",
   cloudCacheTarget,
 }: {

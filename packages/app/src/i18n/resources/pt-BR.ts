@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const ptBR: TranslationResources = {
+const ptBRBase = {
   common: {
     back: "Voltar",
     loading: "Carregando...",
@@ -2968,3 +2970,8 @@ export const ptBR: TranslationResources = {
     },
   },
 };
+
+export const ptBR: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(ptBRBase, featureTranslationAdditions["pt-BR"]),
+);

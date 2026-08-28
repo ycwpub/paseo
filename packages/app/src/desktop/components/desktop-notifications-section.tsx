@@ -18,6 +18,19 @@ const ThemedRotateCw = withUnistyles(RotateCw, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 
+function getNotificationTestHint(input: {
+  enabled: boolean;
+  permissionGranted: boolean;
+  disabledHint: string;
+  testHint: string;
+  permissionRequiredHint: string;
+}): string {
+  if (!input.enabled) {
+    return input.disabledHint;
+  }
+  return input.permissionGranted ? input.testHint : input.permissionRequiredHint;
+}
+
 export function DesktopNotificationsSection() {
   const { t } = useTranslation();
   const { settings, isSaving, updateSettings } = useDesktopSettings();
@@ -42,6 +55,15 @@ export function DesktopNotificationsSection() {
   const handleRequestNotifications = useCallback(() => {
     void requestPermission("notifications");
   }, [requestPermission]);
+
+  const handleNotificationsEnabledChange = useCallback(
+    (enabled: boolean) => {
+      void updateSettings({ notifications: { enabled } }).catch(() => {
+        // useDesktopSettings owns the user-visible IPC error.
+      });
+    },
+    [updateSettings],
+  );
 
   const handlePlaySoundChange = useCallback(
     (playSound: boolean) => {
@@ -125,6 +147,13 @@ export function DesktopNotificationsSection() {
   }
 
   const notificationsGranted = snapshot?.notifications.state === "granted";
+  const notificationTestHint = getNotificationTestHint({
+    enabled: settings.notifications.enabled,
+    permissionGranted: notificationsGranted,
+    disabledHint: t("settings.notifications.disabledHint"),
+    testHint: t("settings.notifications.testHint"),
+    permissionRequiredHint: t("settings.notifications.permissionRequired"),
+  });
 
   return (
     <SettingsSection title={t("settings.notifications.title")} trailing={refreshButton}>
@@ -138,13 +167,26 @@ export function DesktopNotificationsSection() {
         />
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.enabled")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.notifications.enabledHint")}</Text>
+          </View>
+          <Switch
+            value={settings.notifications.enabled}
+            onValueChange={handleNotificationsEnabledChange}
+            disabled={isSaving}
+            accessibilityLabel={t("settings.notifications.enabled")}
+            testID="desktop-notifications-enabled-switch"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.notifications.playSound")}</Text>
             <Text style={settingsStyles.rowHint}>{t("settings.notifications.playSoundHint")}</Text>
           </View>
           <Switch
             value={settings.notifications.playSound}
             onValueChange={handlePlaySoundChange}
-            disabled={isSaving}
+            disabled={isSaving || !settings.notifications.enabled}
             accessibilityLabel={t("settings.notifications.playSound")}
             testID="desktop-notifications-play-sound-switch"
           />
@@ -199,17 +241,18 @@ export function DesktopNotificationsSection() {
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.notifications.test")}</Text>
-            <Text style={settingsStyles.rowHint}>
-              {notificationsGranted
-                ? t("settings.notifications.testHint")
-                : t("settings.notifications.permissionRequired")}
-            </Text>
+            <Text style={settingsStyles.rowHint}>{notificationTestHint}</Text>
           </View>
           <Button
             variant="outline"
             size="sm"
             onPress={handleSendTestNotification}
-            disabled={!notificationsGranted || isPermissionBusy || isSendingTestNotification}
+            disabled={
+              !settings.notifications.enabled ||
+              !notificationsGranted ||
+              isPermissionBusy ||
+              isSendingTestNotification
+            }
           >
             {isSendingTestNotification
               ? t("settings.notifications.sending")

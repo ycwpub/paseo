@@ -38,3 +38,36 @@ export function completeTranslationResource<T>(reference: T, overrides: unknown)
   }
   return reference;
 }
+
+export function mergeTranslationResources<TBase, TAdditions>(
+  base: TBase,
+  additions: TAdditions,
+): TBase & TAdditions {
+  if (
+    !base ||
+    typeof base !== "object" ||
+    Array.isArray(base) ||
+    !additions ||
+    typeof additions !== "object" ||
+    Array.isArray(additions)
+  ) {
+    return additions as TBase & TAdditions;
+  }
+
+  const baseRecord = base as Record<string, unknown>;
+  const additionsRecord = additions as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...baseRecord };
+  for (const [key, value] of Object.entries(additionsRecord)) {
+    const current = baseRecord[key];
+    merged[key] =
+      current &&
+      typeof current === "object" &&
+      !Array.isArray(current) &&
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value)
+        ? mergeTranslationResources(current, value)
+        : value;
+  }
+  return merged as TBase & TAdditions;
+}

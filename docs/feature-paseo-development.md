@@ -3,6 +3,9 @@
 This document applies only when the current branch is `feature_paseo`. It is the source of truth for
 the branch's feature inventory and for development or rebasing work performed on the branch.
 
+The detailed pre-rebase inventory and the latest item-by-item restoration audit are maintained in
+[`feature-paseo-pre-rebase-inventory.md`](./feature-paseo-pre-rebase-inventory.md).
+
 ## Non-negotiable rules
 
 1. Preserve every feature in the inventory below. A rebase, merge, refactor, conflict resolution, or

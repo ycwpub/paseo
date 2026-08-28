@@ -704,13 +704,13 @@ function CredentialsCard(props: CredentialsCardProps) {
           />
         </Field>
         <SelectField
-          label="Provider"
+          label="模型提供方"
           value={props.provider}
           selectedDisplay={props.selectedProviderDisplay}
           options={props.providerOptions}
           onChange={props.onProviderChange}
-          placeholder="选择 Provider"
-          emptyText="该主机没有可用 Provider"
+          placeholder="选择模型提供方"
+          emptyText="该主机没有可用模型提供方"
           loading={props.providersLoading}
           searchable
           testID="host-page-lark-provider"
@@ -722,7 +722,7 @@ function CredentialsCard(props: CredentialsCardProps) {
           options={props.modelOptions}
           onChange={props.onModelChange}
           placeholder="选择模型"
-          emptyText="该 Provider 没有可用模型"
+          emptyText="该模型提供方 没有可用模型"
           loading={props.providersLoading}
           searchable
           testID="host-page-lark-model"
@@ -747,7 +747,7 @@ function CredentialsCard(props: CredentialsCardProps) {
           options={props.modeOptions}
           onChange={props.onModeChange}
           placeholder="选择安全模式"
-          emptyText="该 Provider 没有可用安全模式"
+          emptyText="该模型提供方 没有可用安全模式"
           loading={props.providersLoading}
           testID="host-page-lark-safety-mode"
           disabled={!props.provider || props.modeOptions.length === 0}
@@ -765,16 +765,16 @@ function CredentialsCard(props: CredentialsCardProps) {
           testID="host-page-lark-target"
         />
         <SelectField
-          label="Project 路径"
+          label="项目路径"
           value={props.cwd || null}
           selectedDisplay={props.selectedProjectDisplay}
           options={props.projectOptions}
           onChange={props.onCwdChange}
-          placeholder="选择 Project"
-          emptyText="该主机没有已打开的 Project"
+          placeholder="选择项目"
+          emptyText="该主机没有已打开的项目"
           searchable
           testID="host-page-lark-project-path"
-          hint="每个飞书话题都会在该 Project 中创建独立的 Paseo 会话。"
+          hint="每个飞书话题都会在该项目 中创建独立的 Paseo 会话。"
         />
         {props.saveError ? <Text style={settingsStyles.rowError}>{props.saveError}</Text> : null}
         <View style={styles.actionsRow}>

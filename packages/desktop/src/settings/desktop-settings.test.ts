@@ -81,7 +81,7 @@ describe("desktop-settings", () => {
 
     expect(settings).toEqual({
       releaseChannel: "stable",
-      notifications: { playSound: true },
+      notifications: { enabled: true, playSound: true },
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
@@ -111,7 +111,7 @@ describe("desktop-settings", () => {
 
     expect(next).toEqual({
       releaseChannel: "beta",
-      notifications: { playSound: true },
+      notifications: { enabled: true, playSound: true },
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
@@ -150,20 +150,36 @@ describe("desktop-settings", () => {
 
     const settings = await createDesktopSettingsStore({ userDataPath }).get();
 
+    expect(settings.notifications.enabled).toBe(true);
     expect(settings.notifications.playSound).toBe(true);
   });
 
-  it("keeps an explicit notification sound choice across restarts", async () => {
+  it("keeps explicit notification choices across restarts", async () => {
     const userDataPath = await createTempUserDataDir();
     directories.add(userDataPath);
 
     await createDesktopSettingsStore({ userDataPath }).patch({
-      notifications: { playSound: false },
+      notifications: { enabled: false, playSound: false },
     });
 
     const settings = await createDesktopSettingsStore({ userDataPath }).get();
 
+    expect(settings.notifications.enabled).toBe(false);
     expect(settings.notifications.playSound).toBe(false);
+  });
+
+  it("patches notification fields independently", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    await store.patch({ notifications: { playSound: false } });
+    const settings = await store.patch({ notifications: { enabled: false } });
+
+    expect(settings.notifications).toEqual({
+      enabled: false,
+      playSound: false,
+    });
   });
 
   it("does not let stale legacy renderer settings override an explicit desktop patch", async () => {
@@ -285,7 +301,7 @@ describe("desktop-settings", () => {
 
     expect(migrated).toEqual({
       releaseChannel: "beta",
-      notifications: { playSound: true },
+      notifications: { enabled: true, playSound: true },
       daemon: {
         manageBuiltInDaemon: false,
         keepRunningAfterQuit: false,

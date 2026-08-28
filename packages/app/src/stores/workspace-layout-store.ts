@@ -111,6 +111,8 @@ interface WorkspaceLayoutStore {
   explorerSidebarPaneIdByWorkspace: Record<string, string | null>;
   sidePaneIdByWorkspace: Record<string, string | null>;
   openTab: (input: OpenWorkspaceTabInput) => string | null;
+  /** Compatibility convenience for callers that always reveal a target in the focused pane. */
+  openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
   /** Reveals the Explorer sidebar without selecting a view. Returns its pane id. */
   showExplorerSidebar: (workspaceKey: string) => string | null;
   hideExplorerSidebar: (workspaceKey: string) => void;
@@ -834,6 +836,13 @@ export function createWorkspaceLayoutStore(
           }));
           return result.tabId;
         },
+        openTabFocused: (workspaceKey, target) =>
+          get().openTab({
+            workspaceKey,
+            target,
+            intent: "reveal",
+            placement: FOCUSED_PANE_PLACEMENT,
+          }),
         showExplorerSidebar: (workspaceKey) => {
           const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
           if (!normalizedWorkspaceKey) {

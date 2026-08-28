@@ -130,7 +130,6 @@ export function useWorkspaceFileSearch(input: { enabled: boolean; query: string 
       clearCommandCenterFocusRestoreElement();
       openWorkspaceFileFromExplorer({
         filePath: path,
-        workspaceRoot: cwd,
         persistenceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
         closeExplorerAfterOpen: true,
         showMobileAgent: usePanelStore.getState().showMobileAgent,
@@ -144,7 +143,7 @@ export function useWorkspaceFileSearch(input: { enabled: boolean; query: string 
         focusWorkspaceTab: useWorkspaceLayoutStore.getState().focusTab,
       });
     },
-    [cwd, serverId, workspaceId],
+    [serverId, workspaceId],
   );
 
   return {

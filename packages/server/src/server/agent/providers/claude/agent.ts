@@ -1588,21 +1588,21 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async fetchCatalog(
-    _options: FetchCatalogOptions,
+    options: FetchCatalogOptions,
     context?: ProviderRefreshContext,
   ): Promise<ProviderCatalog> {
-    // Claude exposes a global catalog here; cwd/force are intentionally irrelevant.
-    let claudeCodeVersion: string | undefined;
-    try {
-      claudeCodeVersion = await runProviderRefreshActivity(context, "version", () =>
-        this.resolveVersion(context?.signal),
-      );
-    } catch (error) {
-      this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
-    }
-    const models = await runProviderRefreshActivity(context, "settings", () =>
-      getClaudeModelsWithSettings(this.logger, this.configDir, claudeCodeVersion),
-    );
+    const models =
+      this.customProviderId === "aiden-claude"
+        ? await runProviderRefreshActivity(context, "settings", () =>
+            getAidenClaudeModels({
+              logger: this.logger,
+              cwd: options.scope === "workspace" ? options.cwd : process.cwd(),
+              configDir: this.aidenConfigDir,
+              force: options.force,
+              runCommand: this.aidenModelCommandRunner,
+            }),
+          )
+        : await this.fetchClaudeModels(context);
     const modeCatalog = claudeModeCatalog(
       createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),
     );
@@ -1612,14 +1612,20 @@ export class ClaudeAgentClient implements AgentClient {
     };
   }
 
-  private async fetchClaudeModels(): Promise<AgentModelDefinition[]> {
+  private async fetchClaudeModels(
+    context?: ProviderRefreshContext,
+  ): Promise<AgentModelDefinition[]> {
     let claudeCodeVersion: string | undefined;
     try {
-      claudeCodeVersion = await this.resolveVersion();
+      claudeCodeVersion = await runProviderRefreshActivity(context, "version", () =>
+        this.resolveVersion(context?.signal),
+      );
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
     }
-    return getClaudeModelsWithSettings(this.logger, this.configDir, claudeCodeVersion);
+    return runProviderRefreshActivity(context, "settings", () =>
+      getClaudeModelsWithSettings(this.logger, this.configDir, claudeCodeVersion),
+    );
   }
 
   async resolveDefaultModeId({ env: launchEnv }: ResolveAgentDefaultModeInput): Promise<string> {

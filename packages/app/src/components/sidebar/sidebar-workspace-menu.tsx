@@ -66,7 +66,6 @@ const markAsReadLeadingIcon = (
 const archiveLeadingIcon = <ThemedArchive size={14} uniProps={foregroundMutedColorMapping} />;
 const pinLeadingIcon = <ThemedPin size={14} uniProps={foregroundMutedColorMapping} />;
 const unpinLeadingIcon = <ThemedPinOff size={14} uniProps={foregroundMutedColorMapping} />;
-const removeLeadingIcon = <ThemedTrash size={14} uniProps={foregroundMutedColorMapping} />;
 
 function renderTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
@@ -86,13 +85,10 @@ export interface SidebarWorkspaceMenuProps {
   onCopyBranchName?: () => void;
   onRename?: () => void;
   onMarkAsRead?: () => void;
-  onArchive?: () => void;
-  onRemove?: () => void;
+  onArchive: () => void;
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
-  removeStatus?: "idle" | "pending" | "success";
-  removePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
   isPinned?: boolean;
   onTogglePin?: () => void;
@@ -137,12 +133,9 @@ function SidebarWorkspaceMenuItems({
   onRename,
   onMarkAsRead,
   onArchive,
-  onRemove,
   archiveLabel,
   archiveStatus,
   archivePendingLabel,
-  removeStatus,
-  removePendingLabel,
   archiveShortcutKeys,
   isPinned,
   onTogglePin,
@@ -237,19 +230,6 @@ function SidebarWorkspaceMenuItems({
           {archiveLabel ?? t("sidebar.workspace.actions.archive")}
         </WorkspaceMenuItem>
       ) : null}
-      {onRemove ? (
-        <WorkspaceMenuItem
-          surface={surface}
-          testID={`sidebar-workspace-menu-remove-${workspaceKey}`}
-          leading={removeLeadingIcon}
-          status={removeStatus}
-          pendingLabel={removePendingLabel}
-          destructive
-          onSelect={onRemove}
-        >
-          {t("sidebar.workspace.actions.remove")}
-        </WorkspaceMenuItem>
-      ) : null}
     </>
   );
 }
@@ -264,12 +244,9 @@ export function SidebarWorkspaceMenu({
   onRename,
   onMarkAsRead,
   onArchive,
-  onRemove,
   archiveLabel,
   archiveStatus,
   archivePendingLabel,
-  removeStatus,
-  removePendingLabel,
   archiveShortcutKeys,
   isPinned,
   onTogglePin,
@@ -312,12 +289,9 @@ export function SidebarWorkspaceMenu({
           onRename={onRename}
           onMarkAsRead={onMarkAsRead}
           onArchive={onArchive}
-          onRemove={onRemove}
           archiveLabel={archiveLabel}
           archiveStatus={archiveStatus}
           archivePendingLabel={archivePendingLabel}
-          removeStatus={removeStatus}
-          removePendingLabel={removePendingLabel}
           archiveShortcutKeys={archiveShortcutKeys}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
@@ -347,12 +321,9 @@ export function SidebarWorkspaceContextMenu({
   onRename,
   onMarkAsRead,
   onArchive,
-  onRemove,
   archiveLabel,
   archiveStatus,
   archivePendingLabel,
-  removeStatus,
-  removePendingLabel,
   archiveShortcutKeys,
   isPinned,
   onTogglePin,
@@ -429,12 +400,9 @@ export function SidebarWorkspaceContextMenu({
           onRename={onRename}
           onMarkAsRead={onMarkAsRead}
           onArchive={onArchive}
-          onRemove={onRemove}
           archiveLabel={archiveLabel}
           archiveStatus={archiveStatus}
           archivePendingLabel={archivePendingLabel}
-          removeStatus={removeStatus}
-          removePendingLabel={removePendingLabel}
           archiveShortcutKeys={archiveShortcutKeys}
           isPinned={isPinned}
           onTogglePin={onTogglePin}

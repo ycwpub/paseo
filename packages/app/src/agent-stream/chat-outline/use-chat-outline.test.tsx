@@ -184,6 +184,7 @@ describe("useChatOutline", () => {
     const revealLoadedItem = vi.fn(() => true);
     const viewport: StreamViewportHandle = {
       scrollToBottom: vi.fn(),
+      scrollToOldest: vi.fn(),
       prepareForViewportChange: vi.fn(),
       scrollToMessage,
     };
@@ -235,6 +236,7 @@ describe("useChatOutline", () => {
     const viewportRef = {
       current: {
         scrollToBottom: vi.fn(),
+        scrollToOldest: vi.fn(),
         prepareForViewportChange: vi.fn(),
         scrollToMessage,
       },
@@ -290,6 +292,7 @@ describe("useChatOutline", () => {
     const scrollToMessage = vi.fn();
     const viewport: StreamViewportHandle = {
       scrollToBottom: vi.fn(),
+      scrollToOldest: vi.fn(),
       prepareForViewportChange: vi.fn(),
       scrollToMessage,
     };

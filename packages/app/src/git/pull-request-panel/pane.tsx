@@ -568,7 +568,7 @@ export function PullRequestPane({
         <View style={styles.divider} />
 
         <Section
-          title="动态"
+          title="Activity"
           open={activityOpen}
           onToggle={handleToggleActivity}
           summary={
@@ -592,13 +592,13 @@ export function PullRequestPane({
                 onPress={handleAddAllToChat}
                 disabled={activityLoading}
               >
-                全部添加到对话
+                Add all to chat
               </Button>
             </View>
           ) : null}
           {activityLoading ? <PrActivitySkeleton /> : null}
           {!activityLoading && visibleEntries.length === 0 ? (
-            <Text style={sectionKitStyles.emptyText}>暂无动态</Text>
+            <Text style={sectionKitStyles.emptyText}>No activity yet</Text>
           ) : null}
           {!activityLoading
             ? visibleEntries.map(({ entry, collapsed }) => (
@@ -699,18 +699,22 @@ function ActivityKebab({
   return (
     <View style={kebabSlotStyle(visible)} pointerEvents={visible ? "auto" : "none"}>
       <DropdownMenu onOpenChange={onMenuOpenChange}>
-        <DropdownMenuTrigger hitSlop={8} style={kebabTriggerStyle} accessibilityLabel="评论操作">
+        <DropdownMenuTrigger
+          hitSlop={8}
+          style={kebabTriggerStyle}
+          accessibilityLabel="Comment actions"
+        >
           {renderKebabTriggerIcon}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" width={200}>
           {attachEnabled && canAddPullRequestActivityToChat(activity) ? (
             <DropdownMenuItem leading={ADD_TO_CHAT_MENU_ICON} onSelect={handleAddToChat}>
-              添加到对话
+              Add to chat
             </DropdownMenuItem>
           ) : null}
           {activity.body.trim() !== "" ? (
             <DropdownMenuItem leading={COPY_MENU_ICON} onSelect={handleCopy}>
-              {t("common.actions.copy")}
+              Copy
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem leading={OPEN_MENU_ICON} onSelect={handleOpen}>
@@ -880,7 +884,7 @@ function SingleActivityCard({
                 leftIcon={MessageSquarePlus}
                 onPress={handleAddToChat}
               >
-                添加到对话
+                Add to chat
               </Button>
             </View>
           ) : null}
@@ -957,7 +961,7 @@ function ReviewCard({
               onPress={handleAddToChat}
               style={styles.checkAddButton}
             >
-              添加到对话
+              Add to chat
             </Button>
           ) : null}
           {collapsed ? (
@@ -991,7 +995,7 @@ function ReviewCard({
                 leftIcon={MessageSquarePlus}
                 onPress={handleAddToChat}
               >
-                添加到对话
+                Add to chat
               </Button>
             </View>
           ) : null}
@@ -1059,8 +1063,8 @@ function ThreadBlock({
             ? formatPullRequestThreadPath(thread.location)
             : t("workspace.git.pr.thread.discussion")}
         </Text>
-        {thread.isResolved ? <StatusBadge label="已解决" variant="success" /> : null}
-        {thread.location?.isOutdated ? <StatusBadge label="已过期" /> : null}
+        {thread.isResolved ? <StatusBadge label="Resolved" variant="success" /> : null}
+        {thread.location?.isOutdated ? <StatusBadge label="Outdated" /> : null}
         <View style={styles.headerTrailing}>
           {collapsed ? (
             <View style={styles.threadCount}>
@@ -1076,7 +1080,7 @@ function ThreadBlock({
               <DropdownMenuTrigger
                 hitSlop={8}
                 style={kebabTriggerStyle}
-                accessibilityLabel="讨论主题操作"
+                accessibilityLabel="Thread actions"
               >
                 {renderKebabTriggerIcon}
               </DropdownMenuTrigger>
@@ -1120,7 +1124,7 @@ function ThreadBlock({
                 leftIcon={MessageSquarePlus}
                 onPress={handleAddThreadToChat}
               >
-                添加到对话
+                Add to chat
               </Button>
             </View>
           ) : null}

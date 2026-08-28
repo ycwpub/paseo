@@ -150,7 +150,7 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
       hitSlop={8}
       style={styles.backButton}
       accessibilityRole="button"
-      accessibilityLabel="返回"
+      accessibilityLabel="Back"
       testID="add-project-flow-back"
     >
       {({ hovered, pressed }) => (
@@ -172,7 +172,7 @@ function methodIcon(method: AddProjectMethodId): FlowRowOption["icon"] {
 }
 
 function directoryOptionSubtitle(option: ProjectPickerOption, shortPath: string): string | null {
-  if (option.kind === "path") return "打开此路径";
+  if (option.kind === "path") return "Open this path";
   if (shortPath === option.path) return null;
   return option.path;
 }
@@ -180,15 +180,14 @@ function directoryOptionSubtitle(option: ProjectPickerOption, shortPath: string)
 function progressText(page: AddProjectPage): string {
   if (page.kind === "github-location") return "Cloning project...";
   if (page.kind === "new-directory-name") return "Creating directory...";
-  if (page.kind === "directoryless-project-name") return "Creating multi-directory project...";
   return "Adding project...";
 }
 
 function emptyText(page: AddProjectPage, host: AddProjectHost | null): string {
-  if (page.kind === "host") return "没有已连接的主机";
+  if (page.kind === "host") return "No connected hosts";
   if (page.kind === "github-search") return "Enter a GitHub URL or owner/repo";
   if (page.kind === "method") return addProjectMethodEmptyText(host);
-  return "没有匹配的选项";
+  return "No matching options";
 }
 
 interface QueryErrorInput {
@@ -200,10 +199,10 @@ interface QueryErrorInput {
 }
 
 function queryErrorText(input: QueryErrorInput): string | null {
-  if (input.searchesDirectories && input.directoryFailed) return "无法搜索目录";
-  if (input.githubFailed) return "无法搜索 GitHub 仓库";
+  if (input.searchesDirectories && input.directoryFailed) return "Unable to search directories";
+  if (input.githubFailed) return "Unable to search GitHub repositories";
   if (input.githubError) return input.githubError;
-  if (input.githubAvailable === false) return input.githubError ?? "GitHub 搜索不可用";
+  if (input.githubAvailable === false) return input.githubError ?? "GitHub search is unavailable";
   return null;
 }
 
@@ -214,19 +213,19 @@ function pageHostId(page: AddProjectPage): string | null {
 function pageTitle(page: AddProjectPage): string {
   switch (page.kind) {
     case "host":
-      return "选择主机";
+      return "Choose host";
     case "method":
-      return "添加 Project";
+      return "Add project";
     case "directory-search":
-      return "搜索目录";
+      return "Search for directory";
     case "github-search":
-      return "从 GitHub 克隆";
+      return "Clone from GitHub";
     case "github-location":
-      return "选择目标位置";
+      return "Choose destination";
     case "new-directory-parent":
-      return "选择父目录";
+      return "Choose parent directory";
     case "new-directory-name":
-      return "命名目录";
+      return "Name directory";
     case "directoryless-project-name":
       return "Name multi-directory project";
   }
@@ -246,7 +245,7 @@ function pagePlaceholder(page: AddProjectInputPage): string {
     case "new-directory-parent":
       return "Search parent directories or enter a path...";
     case "new-directory-name":
-      return "目录名称";
+      return "Directory name";
     case "directoryless-project-name":
       return "Multi-directory project name";
   }
@@ -377,7 +376,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     openAddProjectFlow({
       hosts: availableHosts,
       ...(request.preferredHostId ? { preferredHostId: request.preferredHostId } : {}),
-      ...(request.initialDirectorylessProjectName !== undefined
+      ...(request.initialDirectorylessProjectName
         ? { initialDirectorylessProjectName: request.initialDirectorylessProjectName }
         : {}),
     }),
@@ -388,14 +387,19 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const client = useHostRuntimeClient(hostId ?? "");
   const isLocalDaemon = useIsLocalDaemon(hostId ?? "");
   const recommendedPaths = useRecommendedProjectPaths(hostId);
-  const openProject = useOpenProject(hostId, request.parentProjectId);
-  const cloneGithubProject = useCloneGithubProject(hostId, request.parentProjectId);
+  const openProject = useOpenProject(hostId);
+  const cloneGithubProject = useCloneGithubProject(hostId);
   const upsertProject = useSessionStore((store) => store.upsertProject);
   const setHasHydratedWorkspaces = useSessionStore((store) => store.setHasHydratedWorkspaces);
   const inputRef = useRef<EditingTextInputHandle>(null);
   const submissionInFlightRef = useRef(false);
   const browseInFlightRef = useRef(false);
-  const query = page.kind === "new-directory-name" || page.kind === "method" ? "" : page.query;
+  const query =
+    page.kind === "new-directory-name" ||
+    page.kind === "directoryless-project-name" ||
+    page.kind === "method"
+      ? ""
+      : page.query;
   const pageInputValueRef = useRef(page.kind === "method" ? "" : pageInput(page));
   pageInputValueRef.current = page.kind === "method" ? "" : pageInput(page);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
@@ -451,7 +455,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const githubQuery = useFetchQuery({
     queryKey: ["add-project-flow-github", hostId, debouncedQuery],
     queryFn: async () => {
-      if (!client) throw new Error("主机不可用");
+      if (!client) throw new Error("Host is unavailable");
       const payload = await client.searchGithubRepositories({ query: debouncedQuery, limit: 30 });
       return { query: debouncedQuery, payload };
     },
@@ -499,7 +503,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           return;
         }
         const reason = getOpenProjectFailureReason(result);
-        const message = reason === "directory_not_found" ? "未找到目录" : "无法添加 Project";
+        const message =
+          reason === "directory_not_found" ? "Directory not found" : "Unable to add project";
         setState((current) =>
           setPageStatus(current, sourceKind, { isSubmitting: false, error: message }),
         );
@@ -507,7 +512,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         setState((current) =>
           setPageStatus(current, sourceKind, {
             isSubmitting: false,
-            error: "无法添加 Project",
+            error: "Unable to add project",
           }),
         );
       } finally {
@@ -584,14 +589,14 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         setState((current) =>
           setPageStatus(current, "github-location", {
             isSubmitting: false,
-            error: result.error ?? "无法克隆仓库",
+            error: result.error ?? "Unable to clone repository",
           }),
         );
       } catch (error) {
         setState((current) =>
           setPageStatus(current, "github-location", {
             isSubmitting: false,
-            error: error instanceof Error ? error.message : "无法克隆仓库",
+            error: error instanceof Error ? error.message : "Unable to clone repository",
           }),
         );
       } finally {
@@ -615,8 +620,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (state.hosts.length === 0) {
         choices.push({
           id: "add-host",
-          title: "添加主机",
-          subtitle: "没有已连接的主机",
+          title: "Add host",
+          subtitle: "No connected hosts",
           icon: Plus,
           testID: "add-project-flow-add-host",
           select: () => {
@@ -707,7 +712,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       return pathOptions.map((option) => ({
         id: option.path,
         title: shortenPath(option.path),
-        subtitle: option.kind === "path" ? "使用此父目录" : option.path,
+        subtitle: option.kind === "path" ? "Use this parent" : option.path,
         icon: Folder,
         testID: pathTestId(option.path),
         select: () =>
@@ -735,9 +740,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     const name = page.name.trim();
     if (!name) {
       setState((current) =>
-        setPageStatus(current, "directoryless-project-name", {
-          error: "Enter a project name",
-        }),
+        setPageStatus(current, "directoryless-project-name", { error: "Enter a project name" }),
       );
       return;
     }
@@ -758,7 +761,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         setState((current) =>
           setPageStatus(current, "directoryless-project-name", {
             isSubmitting: false,
-            error: payload.error ?? "无法创建 Project",
+            error: payload.error ?? "Unable to create project",
           }),
         );
         return;
@@ -769,16 +772,13 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         upsertProject,
         setHasHydratedWorkspaces,
       });
-      request.onProjectCreated?.({
-        serverId: page.hostId,
-        project: payload.project,
-      });
+      request.onProjectCreated?.({ serverId: page.hostId, project: payload.project });
       onClose();
     } catch {
       setState((current) =>
         setPageStatus(current, "directoryless-project-name", {
           isSubmitting: false,
-          error: "无法创建 Project",
+          error: "Unable to create project",
         }),
       );
     } finally {
@@ -804,13 +804,12 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       const payload = await client.createProjectDirectory({
         parentPath: page.parentPath,
         name,
-        ...(request.parentProjectId ? { parentProjectId: request.parentProjectId } : {}),
       });
       if (payload.error || !payload.project) {
         setState((current) =>
           setPageStatus(current, "new-directory-name", {
             isSubmitting: false,
-            error: payload.error ?? "无法创建目录",
+            error: payload.error ?? "Unable to create directory",
           }),
         );
         return;
@@ -826,20 +825,13 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       setState((current) =>
         setPageStatus(current, "new-directory-name", {
           isSubmitting: false,
-          error: "无法创建目录",
+          error: "Unable to create directory",
         }),
       );
     } finally {
       submissionInFlightRef.current = false;
     }
-  }, [
-    client,
-    openNewWorkspaceForProject,
-    page,
-    request.parentProjectId,
-    setHasHydratedWorkspaces,
-    upsertProject,
-  ]);
+  }, [client, openNewWorkspaceForProject, page, setHasHydratedWorkspaces, upsertProject]);
 
   const submitActive = useCallback(() => {
     if (page.kind === "directoryless-project-name") {
@@ -1045,7 +1037,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           <View style={styles.footer} testID="add-project-flow-footer">
             <FlowHint keys={NAVIGATION_HINT_KEYS} action="Navigate" />
             <FlowHint keys={SELECT_HINT_KEYS} action="Select" />
-            <FlowHint keys={ESCAPE_HINT_KEYS} action={state.pages.length > 1 ? "返回" : "关闭"} />
+            <FlowHint keys={ESCAPE_HINT_KEYS} action={state.pages.length > 1 ? "Back" : "Close"} />
           </View>
         </View>
       </View>

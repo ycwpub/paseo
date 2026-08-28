@@ -32,6 +32,7 @@ interface AttachedBrowserRegistration {
 contextBridge.exposeInMainWorld("paseoDesktop", {
   platform: process.platform,
   windowChromeMode: readWindowChromeMode(),
+  deviceName: ipcRenderer.sendSync("paseo:get-device-name") as string,
   invoke: (command: string, args?: Record<string, unknown>) =>
     ipcRenderer.invoke("paseo:invoke", command, args),
   getPendingOpenProject: () =>
@@ -65,6 +66,10 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       setFullscreen: (fullscreen: boolean) =>
         ipcRenderer.invoke("paseo:window:setFullscreen", fullscreen),
       isFullscreen: () => ipcRenderer.invoke("paseo:window:isFullscreen"),
+      getName: () => ipcRenderer.invoke("paseo:window:getName") as Promise<string>,
+      setName: (name: string) =>
+        ipcRenderer.invoke("paseo:window:setName", name) as Promise<string>,
+      resetName: () => ipcRenderer.invoke("paseo:window:resetName") as Promise<string>,
       updateChrome: (update: { backgroundColor?: string; trafficLightOffsetY?: number }) =>
         ipcRenderer.invoke("paseo:window:updateChrome", update),
       onResized: (handler: EventHandler): (() => void) => {

@@ -43,6 +43,7 @@ import {
   type ReleaseChannel,
   type ServiceUrlBehavior,
   type Settings,
+  type SendBehavior,
   type SidebarWorkspaceTrailing,
   type SettingsDeps,
   type WorkspaceTitleSource,
@@ -79,6 +80,7 @@ export type {
   ReleaseChannel,
   ServiceUrlBehavior,
   Settings,
+  SendBehavior,
   SettingsDeps,
   SidebarWorkspaceTrailing,
   WorkspaceTitleSource,
@@ -182,8 +184,8 @@ export function useSettings<TSelected>(
       if (updates.monoFontFamily !== undefined) {
         appUpdates.monoFontFamily = updates.monoFontFamily;
       }
-      if (updates.uiFontSize !== undefined) {
-        appUpdates.uiFontSize = updates.uiFontSize;
+      if (updates.uiBaseFontSize !== undefined) {
+        appUpdates.uiBaseFontSize = updates.uiBaseFontSize;
       }
       if (updates.codeFontSize !== undefined) {
         appUpdates.codeFontSize = updates.codeFontSize;

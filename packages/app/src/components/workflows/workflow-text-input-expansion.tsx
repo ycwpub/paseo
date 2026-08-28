@@ -11,7 +11,6 @@ import {
   useWindowDimensions,
   View,
   type StyleProp,
-  type TextInput,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
@@ -21,6 +20,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { FormTextInput } from "@/components/ui/form-field";
+import type { EditingTextInputHandle } from "@/components/ui/text-input/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isWeb } from "@/constants/platform";
 import { calculateExpandedWorkflowEditorHeight } from "@/workflows/expanded-editor-layout";
@@ -117,7 +117,7 @@ export function WorkflowTextInputExpansion({
     [syncCollapsedValue],
   );
   const setCollapsedInputRef = useCallback(
-    (node: TextInput | null) => {
+    (node: EditingTextInputHandle | null) => {
       collapsedInputElementRef.current?.removeEventListener(
         "compositionstart",
         handleCollapsedCompositionStart,
@@ -126,7 +126,10 @@ export function WorkflowTextInputExpansion({
         "compositionend",
         handleCollapsedCompositionEnd,
       );
-      const input = node as unknown as HTMLInputElement | HTMLTextAreaElement | null;
+      const input = (typeof node?.getNativeRef === "function" ? node.getNativeRef() : node) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | null;
       if (!isWeb || !input || typeof input.addEventListener !== "function") {
         collapsedInputElementRef.current = null;
         return;
@@ -181,7 +184,7 @@ export function WorkflowTextInputExpansion({
     [updateExpandedDraft],
   );
   const setExpandedInputRef = useCallback(
-    (node: TextInput | null) => {
+    (node: EditingTextInputHandle | null) => {
       expandedInputElementRef.current?.removeEventListener(
         "keydown",
         handleExpandedInputKeyDown,
@@ -195,7 +198,10 @@ export function WorkflowTextInputExpansion({
         "compositionend",
         handleExpandedCompositionEnd,
       );
-      const input = node as unknown as HTMLInputElement | HTMLTextAreaElement | null;
+      const input = (typeof node?.getNativeRef === "function" ? node.getNativeRef() : node) as
+        | HTMLInputElement
+        | HTMLTextAreaElement
+        | null;
       if (!isWeb || !input || typeof input.addEventListener !== "function") {
         expandedInputElementRef.current = null;
         return;
@@ -325,7 +331,6 @@ export function WorkflowTextInputExpansion({
         style={style}
         textInputStyle={[textInputStyle, WEB_TAB_WIDTH_STYLE]}
         testID={testID}
-        controlled
       />
     );
   }
@@ -344,7 +349,6 @@ export function WorkflowTextInputExpansion({
           style={style}
           textInputStyle={[textInputStyle, styles.collapsedInputText, WEB_TAB_WIDTH_STYLE]}
           testID={testID}
-          controlled
         />
         <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild>

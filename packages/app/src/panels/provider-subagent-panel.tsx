@@ -123,7 +123,7 @@ function ProviderSubagentPanel() {
       !timeline?.hasOlder ||
       !timeline.epoch
     ) {
-      return;
+      return false;
     }
     const firstSeq = timeline.rows.size ? Math.min(...timeline.rows.keys()) : null;
     if (firstSeq === null) return false;

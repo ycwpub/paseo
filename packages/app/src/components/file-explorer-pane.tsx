@@ -77,18 +77,6 @@ import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-dra
 import { confirmDialog } from "@/utils/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
-import {
-  flattenExplorerTree,
-  reconcileRestoredExpandedPaths,
-  restoreExpandedDirectories,
-  setExpandedDirectoryPath,
-  showHiddenFilesAndRestoreExpandedDirectories,
-  type ExplorerTreeRow,
-} from "@/file-explorer/tree";
-import { useWorkspaceFileDragSource } from "@/attachments/use-workspace-file-drag-source";
-import { confirmDialog } from "@/utils/confirm-dialog";
-import { useToast } from "@/contexts/toast-context";
-import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { useOpenDirectoryInEditor } from "@/workspace/open-in-editor/directory";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
@@ -427,82 +415,17 @@ export function FileExplorerPane({
 }: FileExplorerPaneProps) {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
-  const [selectedDirectoryType, setSelectedDirectoryType] =
-    useState<PaseoProjectDirectoryKey>("project");
-  const [selectedRootIndex, setSelectedRootIndex] = useState(0);
-  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
 
   const normalizedWorkspaceRoot = useMemo(() => workspaceRoot.trim(), [workspaceRoot]);
-  const workspace = useSessionStore((state) => {
-    if (!workspaceId) return null;
-    return state.sessions[serverId]?.workspaces.get(workspaceId) ?? null;
-  });
-  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
-  const projectConfigQuery = useQuery({
-    queryKey: [
-      "project-resource-directories",
-      serverId,
-      workspace?.projectId,
-      workspace?.projectRootPath,
-    ],
-    enabled: Boolean(client && workspace?.projectRootPath),
-    queryFn: async () => {
-      if (!client || !workspace?.projectRootPath) return null;
-      const result = await client.readProjectConfig(workspace.projectRootPath);
-      return result.ok ? (result.config?.project ?? null) : null;
-    },
-    retry: false,
-  });
-  const resourceDirectories = useMemo(
-    () =>
-      workspace
-        ? resolveProjectResourceDirectories({
-            projectConfig: projectConfigQuery.data,
-            context: {
-              projectId: workspace.projectId,
-              projectName: workspace.projectDisplayName,
-              projectRoot: workspace.projectRootPath,
-              workspaceId: workspace.id,
-              workspaceName: workspace.name,
-              workspaceDirectory: workspace.workspaceDirectory,
-            },
-          })
-        : {
-            project: normalizedWorkspaceRoot ? [normalizedWorkspaceRoot] : [],
-            knowledge: [],
-            indexSkill: [],
-            workspaceData: [],
-          },
-    [normalizedWorkspaceRoot, projectConfigQuery.data, workspace],
-  );
-  const selectedRoots = resourceDirectories[selectedDirectoryType];
-  const activeRoot = selectedRoots[selectedRootIndex] ?? "";
-
-  useEffect(() => {
-    setSelectedDirectoryType("project");
-    setSelectedRootIndex(0);
-  }, [workspaceId]);
-
-  useEffect(() => {
-    if (selectedRootIndex < selectedRoots.length) return;
-    setSelectedRootIndex(0);
-  }, [selectedRootIndex, selectedRoots.length]);
-
-  const handleSelectDirectoryType = useCallback((type: PaseoProjectDirectoryKey) => {
-    setPendingEdit(null);
-    setSelectedDirectoryType(type);
-    setSelectedRootIndex(0);
-  }, []);
-
   const workspaceStateKey = useMemo(
     () =>
       buildWorkspaceExplorerStateKey({
-        workspaceId: activeRoot === normalizedWorkspaceRoot ? workspaceId : null,
-        workspaceRoot: activeRoot,
+        workspaceId,
+        workspaceRoot: normalizedWorkspaceRoot,
       }),
-    [activeRoot, normalizedWorkspaceRoot, workspaceId],
+    [normalizedWorkspaceRoot, workspaceId],
   );
-  const hasWorkspaceScope = Boolean(workspaceStateKey && activeRoot);
+  const hasWorkspaceScope = Boolean(workspaceStateKey && normalizedWorkspaceRoot);
   const explorerState = useSessionStore((state) =>
     workspaceStateKey && state.sessions[serverId]
       ? state.sessions[serverId]?.fileExplorer.get(workspaceStateKey)
@@ -539,6 +462,7 @@ export function FileExplorerPane({
   const fsEntryDuplicateEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
   );
+  const [pendingEdit, setPendingEdit] = useState<ExplorerPendingEdit | null>(null);
   const downloadFile = useFileDownload({
     serverId,
     workspaceId,
@@ -560,9 +484,8 @@ export function FileExplorerPane({
   );
 
   const explorerDerived = useMemo(() => deriveExplorerFields(explorerState), [explorerState]);
-  const { directories, pendingRequest, rootStatus, isExplorerLoading, error, selectedEntryPath } =
+  const { directories, pendingRequest, isExplorerLoading, error, selectedEntryPath } =
     explorerDerived;
-  const isRootMissing = rootStatus === "missing";
 
   const isDirectoryLoading = useCallback(
     (path: string) => isPendingListForPath({ isExplorerLoading, pendingRequest, path }),
@@ -632,17 +555,9 @@ export function FileExplorerPane({
       if (!hasWorkspaceScope) {
         return;
       }
-      selectExplorerEntry(entry.path);
-      onOpenFile?.(
-        activeRoot === normalizedWorkspaceRoot
-          ? entry.path
-          : buildAbsoluteExplorerPath({
-              workspaceRoot: activeRoot,
-              entryPath: entry.path,
-            }),
-      );
+      onOpenFile?.(entry.path);
     },
-    [activeRoot, hasWorkspaceScope, normalizedWorkspaceRoot, onOpenFile, selectExplorerEntry],
+    [hasWorkspaceScope, onOpenFile],
   );
 
   const handleEntryPress = useCallback(
@@ -673,12 +588,12 @@ export function FileExplorerPane({
     async (path: string) => {
       await Clipboard.setStringAsync(
         buildAbsoluteExplorerPath({
-          workspaceRoot: activeRoot,
+          workspaceRoot: normalizedWorkspaceRoot,
           entryPath: path,
         }),
       );
     },
-    [activeRoot],
+    [normalizedWorkspaceRoot],
   );
 
   const handleCopyRelativePath = useCallback(async (path: string) => {
@@ -1127,7 +1042,7 @@ export function FileExplorerPane({
     });
   }, [requestDirectoryListing]);
 
-  if (!workspace && !hasWorkspaceScope) {
+  if (!hasWorkspaceScope) {
     return (
       <View style={styles.centerState}>
         <Text style={styles.errorText}>{t("workspace.fileExplorer.states.unavailable")}</Text>
@@ -1161,147 +1076,7 @@ export function FileExplorerPane({
         handleRetry={handleRetry}
         sortTriggerStyle={sortTriggerStyle}
       />
-      {hasWorkspaceScope ? (
-        <FileExplorerPaneContent
-          error={error}
-          isRootMissing={isRootMissing}
-          showInitialLoading={showInitialLoading}
-          showBackFromError={showBackFromError}
-          listRows={listRows}
-          onNewEntryAtRoot={fsEntryOpsEnabled ? handleNewEntry : undefined}
-          currentSortLabel={currentSortLabel}
-          isRefreshFetching={isRefreshFetching}
-          treeListRef={treeListRef}
-          scrollbar={scrollbar}
-          renderTreeRow={renderTreeRow}
-          handleSortCycle={handleSortCycle}
-          handleToggleHiddenFiles={handleToggleHiddenFiles}
-          handleRefresh={handleRefresh}
-          handleBackFromError={handleBackFromError}
-          handleRetry={handleRetry}
-          sortTriggerStyle={sortTriggerStyle}
-          iconButtonStyle={iconButtonStyle}
-        />
-      ) : (
-        <View style={styles.centerState}>
-          <Text style={styles.emptyText}>{t("workspace.fileExplorer.resources.empty")}</Text>
-        </View>
-      )}
     </View>
-  );
-}
-
-function ProjectResourceDirectorySelector({
-  directories,
-  selectedType,
-  selectedRootIndex,
-  isSelectedRootMissing,
-  onSelectType,
-  onSelectRootIndex,
-}: {
-  directories: ResolvedProjectResourceDirectories;
-  selectedType: PaseoProjectDirectoryKey;
-  selectedRootIndex: number;
-  isSelectedRootMissing: boolean;
-  onSelectType: (type: PaseoProjectDirectoryKey) => void;
-  onSelectRootIndex: (index: number) => void;
-}) {
-  const { t } = useTranslation();
-  const roots = directories[selectedType];
-  return (
-    <View style={styles.resourceSelector}>
-      <Text style={styles.resourceSelectorTitle}>
-        {t("workspace.fileExplorer.resources.title")}
-      </Text>
-      <View style={styles.resourceTypeGrid}>
-        {PROJECT_RESOURCE_DIRECTORY_KEYS.map((type) => (
-          <ProjectResourceTypeButton
-            key={type}
-            type={type}
-            count={directories[type].length}
-            selected={type === selectedType}
-            onSelect={onSelectType}
-          />
-        ))}
-      </View>
-      {roots.length > 0 ? (
-        <View style={styles.resourceRootList}>
-          {roots.map((root, index) => (
-            <ProjectResourceRootButton
-              key={`${selectedType}:${root}`}
-              root={root}
-              index={index}
-              selected={index === selectedRootIndex}
-              missing={index === selectedRootIndex && isSelectedRootMissing}
-              onSelect={onSelectRootIndex}
-            />
-          ))}
-        </View>
-      ) : (
-        <Text style={styles.resourceEmpty}>{t("workspace.fileExplorer.resources.empty")}</Text>
-      )}
-    </View>
-  );
-}
-
-function ProjectResourceTypeButton({
-  type,
-  count,
-  selected,
-  onSelect,
-}: {
-  type: PaseoProjectDirectoryKey;
-  count: number;
-  selected: boolean;
-  onSelect: (type: PaseoProjectDirectoryKey) => void;
-}) {
-  const { t } = useTranslation();
-  const handlePress = useCallback(() => onSelect(type), [onSelect, type]);
-  return (
-    <Pressable
-      onPress={handlePress}
-      style={[styles.resourceTypeButton, selected && styles.resourceTypeButtonSelected]}
-    >
-      <Text
-        style={[styles.resourceTypeText, selected && styles.resourceTypeTextSelected]}
-        numberOfLines={1}
-      >
-        {t(`workspace.fileExplorer.resources.types.${type}`)}
-      </Text>
-      <Text style={styles.resourceTypeCount}>{count}</Text>
-    </Pressable>
-  );
-}
-
-function ProjectResourceRootButton({
-  root,
-  index,
-  selected,
-  missing,
-  onSelect,
-}: {
-  root: string;
-  index: number;
-  selected: boolean;
-  missing: boolean;
-  onSelect: (index: number) => void;
-}) {
-  const { t } = useTranslation();
-  const handlePress = useCallback(() => onSelect(index), [index, onSelect]);
-  return (
-    <Pressable
-      onPress={handlePress}
-      style={[styles.resourceRootButton, selected && styles.resourceRootButtonSelected]}
-    >
-      <Text style={styles.resourceRootText} accessibilityLabel={root}>
-        {formatProjectResourceDirectoryPath(root)}
-      </Text>
-      {missing ? (
-        <Text style={styles.resourceRootMissing}>
-          {t("workspace.fileExplorer.resources.missing")}
-        </Text>
-      ) : null}
-    </Pressable>
   );
 }
 
@@ -1429,14 +1204,6 @@ function FileExplorerPaneContent(props: FileExplorerPaneContentProps) {
             <Text style={styles.retryButtonText}>{t("workspace.fileExplorer.actions.retry")}</Text>
           </Pressable>
         </View>
-      </View>
-    );
-  }
-
-  if (isRootMissing) {
-    return (
-      <View style={styles.centerState}>
-        <Text style={styles.missingText}>{t("workspace.fileExplorer.resources.missing")}</Text>
       </View>
     );
   }
@@ -1588,7 +1355,6 @@ function deriveExplorerFields(state: AgentFileExplorerState | undefined) {
     directories:
       state?.directories ?? new Map<string, { path: string; entries: ExplorerEntry[] }>(),
     pendingRequest: state?.pendingRequest ?? null,
-    rootStatus: state?.rootStatus ?? "idle",
     isExplorerLoading: state?.isLoading ?? false,
     error: state?.lastError ?? null,
     selectedEntryPath: state?.selectedEntryPath ?? null,
@@ -1879,80 +1645,6 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
   },
-  resourceSelector: {
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  resourceSelectorTitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  resourceTypeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing[1],
-  },
-  resourceTypeButton: {
-    minWidth: "48%",
-    flexGrow: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-  },
-  resourceTypeButtonSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
-  },
-  resourceTypeText: {
-    flex: 1,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  resourceTypeTextSelected: {
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  resourceTypeCount: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  resourceRootList: {
-    gap: theme.spacing[1],
-  },
-  resourceRootButton: {
-    alignItems: "flex-start",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-  },
-  resourceRootButtonSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
-  },
-  resourceRootText: {
-    flexShrink: 1,
-    width: "100%",
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.4,
-  },
-  resourceRootMissing: {
-    color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.semibold,
-  },
-  resourceEmpty: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
   desktopSplit: {
     flex: 1,
     flexDirection: "row",
@@ -2058,11 +1750,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   emptyText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.base,
-    textAlign: "center",
-  },
-  missingText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
     textAlign: "center",

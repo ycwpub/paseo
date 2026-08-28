@@ -200,7 +200,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     queryKey,
     queryFn: async () => {
       if (!client) throw new Error("Plugin host is offline");
-      return client.listPlugins();
+      return client.listRuntimePlugins();
     },
     enabled: Boolean(client && connected && supported),
     dataShape: "list",

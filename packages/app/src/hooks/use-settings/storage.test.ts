@@ -161,12 +161,12 @@ describe("loadAppSettingsFromStorage", () => {
     );
   });
 
-  it("defaults language to Simplified Chinese when storage is empty", async () => {
+  it("defaults language to system when storage is empty", async () => {
     const deps = makeDeps();
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.language).toBe("zh-CN");
+    expect(result.language).toBe("system");
   });
 
   it("defaults workspace title source to title when storage is empty", async () => {
@@ -183,42 +183,6 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.chatOutlineEnabled).toBe(true);
-  });
-
-  it("keeps Aiden Claude reasoning translation disabled by default", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.aidenClaudeTranslateReasoningToChinese).toBe(false);
-  });
-
-  it("loads the Aiden Claude reasoning translation preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          aidenClaudeTranslateReasoningToChinese: true,
-        }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.aidenClaudeTranslateReasoningToChinese).toBe(true);
-  });
-
-  it("does not reuse the removed Aiden Codex reasoning translation preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          aidenCodexTranslateReasoningToChinese: true,
-        }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.aidenClaudeTranslateReasoningToChinese).toBe(false);
   });
 
   it("loads a disabled chat outline preference", async () => {
@@ -403,7 +367,7 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.language).toBe("zh-CN");
   });
 
-  it("drops an unknown persisted language back to Simplified Chinese", async () => {
+  it("drops an unknown persisted language back to system", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ language: "klingon" }),
@@ -412,7 +376,7 @@ describe("loadAppSettingsFromStorage", () => {
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.language).toBe("zh-CN");
+    expect(result.language).toBe("system");
   });
 });
 
@@ -646,7 +610,7 @@ describe("appearance settings", () => {
     expect(result.contentFontSize).toBe(DEFAULT_UI_BASE_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
     expect(result.syntaxTheme).toBe("one");
-    expect(result.toolCallDetailLevel).toBe("overview");
+    expect(result.toolCallDetailLevel).toBe("detailed");
   });
 
   it("migrates the enabled compact tool call preference to overview", async () => {

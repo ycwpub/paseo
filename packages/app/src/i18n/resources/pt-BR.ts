@@ -48,105 +48,6 @@ export const ptBR: TranslationResources = {
       idle: "Ocioso",
     },
   },
-  workflows: {
-    ...en.workflows,
-    graph: {
-      ...en.workflows.graph,
-      fullView: "Plano completo",
-      fullViewTitle: "Grafo completo do workflow",
-      fullViewHint:
-        "Inspecione o grafo de dependências e o caminho de execução, aplique zoom ou abra um nó.",
-      zoomIn: "Ampliar o grafo do workflow",
-      zoomOut: "Reduzir o grafo do workflow",
-      resetZoom: "Redefinir o zoom do grafo",
-      nodeName: "Nome do nó",
-      nodeId: "ID do nó",
-      nodeType: "Tipo do nó",
-      configuration: "Configuração completa do nó",
-    },
-    nodes: {
-      ...en.workflows.nodes,
-      agent: {
-        ...en.workflows.nodes.agent,
-        lifecycle: "Ciclo de vida do agente",
-        lifecycleHint:
-          "Controla por quanto tempo este nó reutiliza o mesmo agente. As chamadas reutilizadas são executadas em ordem.",
-        selectLifecycle: "Selecionar ciclo de vida do agente",
-        lifecycleOptions: {
-          workflow: "Workflow inteiro",
-          workflowDescription:
-            "Cria na primeira execução, reutiliza e libera quando o Workflow termina.",
-          for: "Loop For atual",
-          forDescription:
-            "Cria na primeira iteração, reutiliza no loop For atual e libera ao sair do loop.",
-          single: "Execução única",
-          singleDescription: "Criar um novo agente a cada execução, sem reutilização.",
-        },
-        subsequentPromptMode: "Prompt após a primeira chamada",
-        subsequentPromptModeHint:
-          "Escolha o que enviar quando este nó chamar um agente já inicializado.",
-        selectSubsequentPromptMode: "Selecionar comportamento do prompt seguinte",
-        subsequentPromptModes: {
-          reuseInitial: "Reutilizar prompt inicial",
-          reuseInitialDescription:
-            "Renderizar novamente o prompt inicial com a entrada atual do nó.",
-          custom: "Prompt personalizado",
-          customDescription: "Usar um prompt separado em cada chamada após a primeira.",
-        },
-        subsequentPrompt: "Prompt seguinte personalizado",
-        subsequentPromptHint:
-          "Aceita os mesmos dados de entrada e variáveis de modelo do prompt inicial.",
-        archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
-      },
-      common: {
-        ...en.workflows.nodes.common,
-        environment: "Variáveis de ambiente do nó (JSON)",
-        environmentHint:
-          "Valores de texto opcionais substituem o ambiente de comandos do Workflow neste nó.",
-        environmentStringValues: "Os valores das variáveis de ambiente devem ser textos.",
-      },
-      python: {
-        ...en.workflows.nodes.python,
-        module: "Módulo Python",
-        moduleHint: "Caminho de módulo opcional; configure-o junto com uma função.",
-        function: "Função Python",
-        functionHint:
-          "Recebe toda a entrada do nó e retorna o resultado; aceita funções assíncronas.",
-      },
-      for: {
-        ...en.workflows.nodes.for,
-        breakWhen: "Condição de parada",
-        breakWhenHint: "A expressão deve retornar um booleano; true encerra o loop.",
-        continueWhen: "Condição de continuação",
-        continueWhenHint:
-          "A expressão deve retornar um booleano; true ignora os nós restantes desta iteração.",
-      },
-      contract: {
-        title: "Contrato de dados do nó",
-        description: "Mapeie apenas os campos necessários e valide entrada e saída.",
-        inputs: "Mapeamento de entrada (JSON)",
-        inputsHint:
-          "Expressões completas como {{nodes.scan.outputs.items}} preservam o tipo nativo.",
-        inputSchema: "Esquema de entrada",
-        outputSchema: "Esquema de saída",
-        schemaHint: "Opcional. O Paseo valida antes de continuar.",
-        invalidJson: "Digite um JSON válido.",
-        objectRequired: "O valor deve ser um objeto JSON.",
-      },
-      openDetails: "Abrir detalhes do nó {{name}}",
-      downstream: {
-        label: "Próximo nó",
-        hint: "Escolha o nó do mesmo nível que será executado após este nó.",
-        sequential: "Seguir a ordem da lista",
-        sequentialDescription: "Executar o próximo nó da lista.",
-        end: "Encerrar sequência",
-        endDescription: "Encerrar esta sequência após a conclusão do nó atual.",
-        missing: "Nó ausente: {{id}}",
-        placeholder: "Selecionar próximo nó",
-        empty: "Nenhum próximo nó disponível",
-      },
-    },
-  },
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",
@@ -204,7 +105,6 @@ export const ptBR: TranslationResources = {
       queue: "Fila",
       send: "Enviar",
     },
-    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "Cancelando agente",
       stopAgent: "Parar agente",
@@ -228,20 +128,10 @@ export const ptBR: TranslationResources = {
       addFile: "Enviar arquivo",
       addIssueOrPr: "Adicionar issue ou PR",
       addIssueOrPr_mr: "Adicionar issue ou MR",
-      selectMcpServers: "Select MCP servers",
-      selectSkills: "Select skills",
-      mcpPickerTitle: "MCP servers for this session",
-      skillPickerTitle: "Skills for this session",
-      searchMcpServers: "Search MCP servers...",
-      searchSkills: "Search skills...",
-      noMcpServers: "No enabled MCP servers.",
-      noSkills: "No enabled skills.",
-      openMcpPicker: "Open MCP server picker",
-      openSkillPicker: "Open skill picker",
-      removeMcp: "Remove MCP server {{name}} from this session",
-      removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Solte imagens aqui",
       dropFilesHere: "Solte arquivos aqui",
+      editQueuedMessage: "Editar mensagem na fila",
+      sendQueuedMessageNow: "Enviar mensagem da fila agora",
       openImage: "Abrir anexo de imagem",
       removeImage: "Remover anexo de imagem",
       removeFile: "Remover anexo de arquivo",
@@ -252,15 +142,6 @@ export const ptBR: TranslationResources = {
       removeBrowserElement: "Remover anexo de elemento do navegador",
       openReview: "Abrir anexo de revisão",
       removeReview: "Remover anexo de revisão",
-    },
-    queue: {
-      edit: "Editar mensagem na fila",
-      save: "Salvar mensagem na fila",
-      cancelEdit: "Cancelar edição da mensagem",
-      remove: "Remover mensagem da fila",
-      moveUp: "Mover mensagem para cima",
-      moveDown: "Mover mensagem para baixo",
-      steer: "Orientar",
     },
     errors: {
       failedToSend: "Falha ao enviar mensagem",
@@ -284,45 +165,6 @@ export const ptBR: TranslationResources = {
       searchPlaceholder_mr: "Buscar issues e MRs...",
       title: "Anexar issue ou PR",
       title_mr: "Anexar issue ou MR",
-    },
-  },
-  memoryPolicies: {
-    ...en.memoryPolicies,
-    globalDisabledTitle: "A memória global está desativada",
-    globalDisabledDescription:
-      "A política será salva, mas o Paseo só a usará depois que a Memória for ativada nas configurações do host.",
-    scopeManager: {
-      ...en.memoryPolicies.scopeManager,
-      title: "Regras de memória",
-      description: "Gerencie as informações duráveis que cada escopo de memória pode salvar.",
-      scopeType: "Escopo da memória",
-      target: "Destino",
-      selectTarget: "Selecione um destino",
-      instructionsTitle: "O que deve ser salvo",
-      save: "Salvar regras",
-      saved: "Salvo",
-    },
-    contentManager: {
-      ...en.memoryPolicies.contentManager,
-      pageTitle: "Gerenciamento de memória",
-      detailTitle: "Detalhes da memória",
-      manage: "Gerenciar conteúdo da memória",
-      manageDescription:
-        "Há {{count}} memórias. Abra a página dedicada para visualizar, editar ou excluir.",
-      openManager: "Abrir",
-      backToList: "Voltar à lista de memórias",
-      loading: "Carregando memória…",
-      notFound: "Esta memória não existe ou foi excluída.",
-      errorTitle: "Não foi possível gerenciar a memória",
-      scopeEditHint: "Alterar o escopo move esta memória para o escopo selecionado.",
-      pagination: {
-        pageSize: "Itens por página",
-        noPageSizes: "Nenhum tamanho de página disponível",
-        page: "Página {{page}} de {{totalPages}}",
-        range: "Mostrando {{start}}–{{end}} de {{total}}",
-        previous: "Anterior",
-        next: "Próxima",
-      },
     },
   },
   agentControls: {
@@ -356,61 +198,11 @@ export const ptBR: TranslationResources = {
       model: "Alterar modelo",
       mode: "Alterar modo de permissão",
     },
-    memory: {
-      title: "Memória da conversa",
-      open: "Configurar memória da conversa",
-      enabledTitle: "Usar memória nesta conversa",
-      enabledHint:
-        "Quando desativada, este agente não lê memórias existentes nem aprende novas memórias da conversa.",
-      instructionsTitle: "O que o Paseo deve lembrar desta conversa?",
-      instructionsHint:
-        "Defina tópicos duradouros, como conclusões confirmadas, preferências recorrentes ou decisões. Logs temporários, suposições e segredos continuam excluídos.",
-      instructionsPlaceholder:
-        "Exemplo: lembrar causas confirmadas e decisões finais; ignorar experimentos intermediários.",
-      save: "Salvar",
-      saving: "Salvando...",
-      saved: "Salvo",
-      saveError: "Não foi possível salvar a memória da conversa",
-    },
   },
   agentStream: {
     empty: "Comece a conversar com este agente...",
     scrollToBottom: "Rolar para o fim",
-    scrollToOldest: "Ir para a primeira mensagem",
-    locatingOldest: "Localizando a primeira mensagem",
-    reasoningTranslation: {
-      translating: "Traduzindo o raciocínio para chinês...",
-      failed: "Falha ao traduzir o raciocínio.",
-      unavailable: "Este servidor Paseo não oferece tradução do raciocínio.",
-    },
-    process: {
-      show: "Mostrar processo",
-      hide: "Ocultar processo",
-      processed: "Processado",
-      processedWithDuration: "Processado em {{duration}}",
-    },
-    hooks: {
-      title: "Hooks",
-      calls_one: "{{count}} hook call",
-      calls_other: "{{count}} hook calls",
-    },
-    changes: {
-      added: "Added {{fileName}}",
-      deleted: "Deleted {{fileName}}",
-      edited: "Edited {{fileName}}",
-      summary: "Edited {{count}} files",
-      undo: "Undo",
-      review: "Review",
-      open: "Open",
-      reviewFile: "Review {{fileName}}",
-      openFile: "Open {{fileName}}",
-      showMore: "Show {{count}} more files",
-      showLess: "Show fewer files",
-      confirmUndoTitle: "Undo this turn's edits?",
-      confirmUndoMessage:
-        "This permanently discards the uncommitted changes from this response across {{count}} files.",
-      confirmUndo: "Undo changes",
-    },
+    historyLoadFailed: "Não foi possível carregar o histórico do agente",
     permission: {
       plan: "Plano",
       required: "Permissão necessária",
@@ -422,7 +214,6 @@ export const ptBR: TranslationResources = {
     },
   },
   agentPanel: {
-    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agente não encontrado",
       failedToLoad: "Falha ao carregar agente",
@@ -455,18 +246,9 @@ export const ptBR: TranslationResources = {
     title: "Histórico de agentes",
     empty: "Nenhuma sessão ainda",
     noMatches: "Nenhuma sessão corresponde",
-    noProjectSessions: "Nenhuma sessão para este projeto",
     tooManyMatches: "Muitos resultados — refine a busca",
     hostLoadFailed: "{{host}}: Não foi possível carregar o histórico",
     searchPlaceholder: "Buscar no histórico",
-    projectFilter: {
-      label: "Projeto",
-      title: "Filtrar por projeto",
-      all: "Todos os projetos",
-      empty: "Nenhum projeto disponível",
-      search: "Buscar projetos",
-      hostCount: "{{count}} hosts",
-    },
     actions: {
       loadMore: "Carregar mais",
       clearSearch: "Limpar busca",
@@ -571,8 +353,8 @@ export const ptBR: TranslationResources = {
     },
     compaction: {
       loading: "Compactando...",
-      loadingAuto: "Compactando o contexto automaticamente",
-      loadingManual: "Compactando o contexto manualmente",
+      loadingAuto: "Compactando o contexto automaticamente...",
+      loadingManual: "Compactando o contexto manualmente...",
       auto: "Contexto compactado automaticamente",
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado ({{tokens}}K tokens)",
@@ -671,7 +453,6 @@ export const ptBR: TranslationResources = {
       },
     },
     fileExplorer: {
-      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "Nome",
         modified: "Modificado",
@@ -1280,11 +1061,6 @@ export const ptBR: TranslationResources = {
         status: "Status",
         labels: "Etiquetas",
       },
-      sorting: {
-        label: "Ordenar por",
-        activity: "Atividade recente",
-        manual: "Manual",
-      },
       titleSource: {
         label: "Título",
         title: "Título",
@@ -1336,8 +1112,6 @@ export const ptBR: TranslationResources = {
       home: "Início",
       settings: "Configurações",
       closeSidebar: "Fechar barra lateral",
-      collapseAllWorkspaces: "Recolher todos os workspaces",
-      expandAllWorkspaces: "Expandir todos os workspaces",
     },
     help: {
       trigger: "Ajuda e suporte",
@@ -1368,25 +1142,20 @@ export const ptBR: TranslationResources = {
         openNewWindowFailed: "Não foi possível abrir uma nova janela",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
-        hide: "Ocultar projeto",
-        show: "Mostrar projeto",
-        remove: "Excluir projeto",
-        removing: "Excluindo...",
-      },
-      hidden: {
-        title: "Projetos ocultos ({{count}})",
+        remove: "Remover projeto",
+        removing: "Removendo...",
       },
       confirmations: {
-        removeTitle: "Excluir projeto?",
+        removeTitle: "Remover projeto?",
         removeMessage:
-          'Excluir permanentemente "{{projectName}}" e todos os dados gerenciados pelo Paseo em ~/.paseo/projects/<projectId>?\n\nDiretórios de código-fonte externos não serão excluídos. Esta ação não pode ser desfeita.',
-        removeConfirm: "Excluir",
+          'Remover "{{projectName}}" da barra lateral?\n\nOs arquivos no disco não serão alterados.',
+        removeConfirm: "Remover",
         cancel: "Cancelar",
       },
       toasts: {
         hostDisconnected: "Host não está conectado",
-        removeFailed: "Falha ao excluir o projeto ou alguns de seus dados",
-        updateHostToRemove: "Atualize o host para excluir projetos.",
+        removeFailed: "Falha ao remover alguns workspaces",
+        updateHostToRemove: "Atualize o host para remover projetos.",
       },
       empty: {
         title: "Nenhum projeto ainda",
@@ -1420,32 +1189,15 @@ export const ptBR: TranslationResources = {
         unpin: "Desafixar",
         archive: "Arquivar",
         archiveWorkspace: "Arquivar workspace",
-        remove: "Excluir workspace",
         hideFromSidebar: "Ocultar da barra lateral",
         archiving: "Arquivando...",
-        removing: "Excluindo...",
         hiding: "Ocultando...",
-      },
-      bulkArchive: {
-        select: "Selecionar workspaces",
-        selected: "{{count}} selecionados",
-        cancel: "Cancelar seleção",
-        title: "Arquivar {{count}} workspaces?",
-        message: "Os workspaces selecionados serão arquivados e removidos da barra lateral.",
-        riskyWorktrees:
-          "{{count}} worktree(s) selecionados têm alterações sem commit ou sem push. Seus diretórios podem ser excluídos.",
-        confirm: "Arquivar selecionados",
-        failed: "Falha ao arquivar {{count}} workspaces",
       },
       confirmations: {
         hideTitle: "Ocultar workspace?",
         hideMessage:
           'Ocultar "{{workspaceName}}" da barra lateral?\n\nOs arquivos no disco não serão alterados.',
         hideConfirm: "Ocultar",
-        removeTitle: "Excluir workspace?",
-        removeMessage:
-          'Excluir permanentemente "{{workspaceName}}" e os dados gerenciados pelo Paseo em ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}?\n\nO diretório de código externo associado e seus arquivos não serão excluídos nem modificados. Esta ação não pode ser desfeita.',
-        removeConfirm: "Excluir",
         cancel: "Cancelar",
       },
       rename: {
@@ -1459,7 +1211,6 @@ export const ptBR: TranslationResources = {
         branchNameCopied: "Nome da branch copiado",
         hostDisconnected: "Host não está conectado",
         hideFailed: "Falha ao ocultar workspace",
-        removeFailed: "Falha ao excluir workspace",
         archiveFailed: "Falha ao arquivar workspace",
       },
     },
@@ -1483,9 +1234,6 @@ export const ptBR: TranslationResources = {
       createWorktreeFailed: "Falha ao criar worktree",
       composerStateRequired: "O estado do composer é obrigatório",
       selectModel: "Selecione um modelo",
-      projectHostUnavailable: "This Project is not available on the selected Host",
-      projectDirectoryUnavailable:
-        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -1510,6 +1258,144 @@ export const ptBR: TranslationResources = {
       submit: "Launch",
       promptPlaceholder: "Prompt {{name}}",
       commandPlaceholder: "Run a command, or leave empty for a blank terminal",
+    },
+  },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "A memória global está desativada",
+    globalDisabledDescription:
+      "A política será salva, mas o Paseo só a usará depois que a Memória for ativada nas configurações do host.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Regras de memória",
+      description: "Gerencie as informações duráveis que cada escopo de memória pode salvar.",
+      scopeType: "Escopo da memória",
+      target: "Destino",
+      selectTarget: "Selecione um destino",
+      instructionsTitle: "O que deve ser salvo",
+      save: "Salvar regras",
+      saved: "Salvo",
+    },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Gerenciamento de memória",
+      detailTitle: "Detalhes da memória",
+      manage: "Gerenciar conteúdo da memória",
+      manageDescription:
+        "Há {{count}} memórias. Abra a página dedicada para visualizar, editar ou excluir.",
+      openManager: "Abrir",
+      backToList: "Voltar à lista de memórias",
+      loading: "Carregando memória…",
+      notFound: "Esta memória não existe ou foi excluída.",
+      errorTitle: "Não foi possível gerenciar a memória",
+      scopeEditHint: "Alterar o escopo move esta memória para o escopo selecionado.",
+      pagination: {
+        pageSize: "Itens por página",
+        noPageSizes: "Nenhum tamanho de página disponível",
+        page: "Página {{page}} de {{totalPages}}",
+        range: "Mostrando {{start}}–{{end}} de {{total}}",
+        previous: "Anterior",
+        next: "Próxima",
+      },
+    },
+  },
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plano completo",
+      fullViewTitle: "Grafo completo do workflow",
+      fullViewHint:
+        "Inspecione o grafo de dependências e o caminho de execução, aplique zoom ou abra um nó.",
+      zoomIn: "Ampliar o grafo do workflow",
+      zoomOut: "Reduzir o grafo do workflow",
+      resetZoom: "Redefinir o zoom do grafo",
+      nodeName: "Nome do nó",
+      nodeId: "ID do nó",
+      nodeType: "Tipo do nó",
+      configuration: "Configuração completa do nó",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Ciclo de vida do agente",
+        lifecycleHint:
+          "Controla por quanto tempo este nó reutiliza o mesmo agente. As chamadas reutilizadas são executadas em ordem.",
+        selectLifecycle: "Selecionar ciclo de vida do agente",
+        lifecycleOptions: {
+          workflow: "Workflow inteiro",
+          workflowDescription:
+            "Cria na primeira execução, reutiliza e libera quando o Workflow termina.",
+          for: "Loop For atual",
+          forDescription:
+            "Cria na primeira iteração, reutiliza no loop For atual e libera ao sair do loop.",
+          single: "Execução única",
+          singleDescription: "Criar um novo agente a cada execução, sem reutilização.",
+        },
+        subsequentPromptMode: "Prompt após a primeira chamada",
+        subsequentPromptModeHint:
+          "Escolha o que enviar quando este nó chamar um agente já inicializado.",
+        selectSubsequentPromptMode: "Selecionar comportamento do prompt seguinte",
+        subsequentPromptModes: {
+          reuseInitial: "Reutilizar prompt inicial",
+          reuseInitialDescription:
+            "Renderizar novamente o prompt inicial com a entrada atual do nó.",
+          custom: "Prompt personalizado",
+          customDescription: "Usar um prompt separado em cada chamada após a primeira.",
+        },
+        subsequentPrompt: "Prompt seguinte personalizado",
+        subsequentPromptHint:
+          "Aceita os mesmos dados de entrada e variáveis de modelo do prompt inicial.",
+        archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variáveis de ambiente do nó (JSON)",
+        environmentHint:
+          "Valores de texto opcionais substituem o ambiente de comandos do Workflow neste nó.",
+        environmentStringValues: "Os valores das variáveis de ambiente devem ser textos.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Módulo Python",
+        moduleHint: "Caminho de módulo opcional; configure-o junto com uma função.",
+        function: "Função Python",
+        functionHint:
+          "Recebe toda a entrada do nó e retorna o resultado; aceita funções assíncronas.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condição de parada",
+        breakWhenHint: "A expressão deve retornar um booleano; true encerra o loop.",
+        continueWhen: "Condição de continuação",
+        continueWhenHint:
+          "A expressão deve retornar um booleano; true ignora os nós restantes desta iteração.",
+      },
+      contract: {
+        title: "Contrato de dados do nó",
+        description: "Mapeie apenas os campos necessários e valide entrada e saída.",
+        inputs: "Mapeamento de entrada (JSON)",
+        inputsHint:
+          "Expressões completas como {{nodes.scan.outputs.items}} preservam o tipo nativo.",
+        inputSchema: "Esquema de entrada",
+        outputSchema: "Esquema de saída",
+        schemaHint: "Opcional. O Paseo valida antes de continuar.",
+        invalidJson: "Digite um JSON válido.",
+        objectRequired: "O valor deve ser um objeto JSON.",
+      },
+      openDetails: "Abrir detalhes do nó {{name}}",
+      downstream: {
+        label: "Próximo nó",
+        hint: "Escolha o nó do mesmo nível que será executado após este nó.",
+        sequential: "Seguir a ordem da lista",
+        sequentialDescription: "Executar o próximo nó da lista.",
+        end: "Encerrar sequência",
+        endDescription: "Encerrar esta sequência após a conclusão do nó atual.",
+        missing: "Nó ausente: {{id}}",
+        placeholder: "Selecionar próximo nó",
+        empty: "Nenhum próximo nó disponível",
+      },
     },
   },
   desktop: {
@@ -1929,13 +1815,10 @@ export const ptBR: TranslationResources = {
       alert: {
         failedTitle: "Falha no pareamento",
       },
-      awaitingApproval:
-        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "Cancelar",
         pair: "Parear",
         pairing: "Pareando...",
-        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1949,16 +1832,11 @@ export const ptBR: TranslationResources = {
         "Permita acesso à câmera para escanear o QR code de pareamento do daemon.",
       grantPermission: "Conceder permissão",
       pairing: "Pareando...",
-      awaitingApprovalStatus: "Waiting for approval",
-      awaitingApprovalTitle: "Approve this device on the server",
-      awaitingApprovalBody:
-        "Approve this device under Client management on the Paseo server. It will connect automatically.",
       unableToPair: "Não foi possível parear host",
       errorTitle: "Erro",
     },
     device: {
       loadingOffer: "Carregando oferta de pareamento...",
-      relayListTitle: "Lista de Relay",
       failedToLoadOffer: "Falha ao carregar oferta de pareamento.",
       relayDisabled: "Relay não está ativado. Ative o relay para parear um dispositivo.",
       enableTitle: "Ativar o relay?",
@@ -1981,45 +1859,6 @@ export const ptBR: TranslationResources = {
       retry: "Tentar novamente",
       copy: "Copiar",
       copied: "Copiado",
-      access: {
-        title: "Gerenciamento de clientes",
-        requireApproval: "Require client approval",
-        requireApprovalHint:
-          "When enabled, new clients must be approved here before they can connect.",
-        empty: "No client connection requests.",
-        pending: "Pending approval",
-        allowed: "Conexão permitida",
-        approved: "Approved",
-        paused: "Paused",
-        connected: "Connected",
-        disconnected: "Disconnected",
-        hostname: "Hostname",
-        identityId: "Identity ID",
-        endpoint: "IP / port",
-        endpointUnavailable: "Unavailable",
-        lastConnectedAt: "Última conexão",
-        neverConnected: "Sem registro",
-        unknownName: "Unknown client",
-        macClient: "Versão para Mac",
-        androidClient: "Versão para Android",
-        cliClient: "Versão CLI",
-        browserClient: "Versão para navegador",
-        historyTitle: "Client connection history",
-        historyEmpty: "No historical client connections.",
-        connectedAt: "Connected at",
-        disconnectedAt: "Disconnected at",
-        stillConnected: "Still connected",
-        historyRetention:
-          "History is automatically retained for {{days}} days and can be deleted manually.",
-        approve: "Approve",
-        approving: "Approving...",
-        pause: "Pause",
-        pausing: "Pausing...",
-        resume: "Resume",
-        resuming: "Resuming...",
-        delete: "Delete",
-        deleting: "Deleting...",
-      },
     },
   },
   realtimeVoice: {
@@ -2216,7 +2055,7 @@ export const ptBR: TranslationResources = {
     projects: "Projetos",
     projectList: {
       hostLoadFailed: "Não foi possível carregar projetos do host {{hostName}}: {{message}}",
-      hostLoadTimedOut: "O host {{hostName}} não respondeu a tempo. Tente novamente.",
+      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "Editar {{projectName}}",
     },
     groupInfo: "Sobre {{title}}",
@@ -2244,19 +2083,6 @@ export const ptBR: TranslationResources = {
       refreshAccessibility: "Atualizar permissão de notificações",
       playSound: "Reproduzir som",
       playSoundHint: "Reproduz um som quando chega uma notificação da área de trabalho",
-      island: "Lembretes Dynamic Island",
-      islandHint: "Mostra o status compacto do Agent no topo da tela",
-      islandShowWhenFocused: "Mostrar com o Paseo em foco",
-      islandShowWhenFocusedHint: "Mantém os lembretes visíveis enquanto você usa o Paseo",
-      islandWorking: "Processando a tarefa...",
-      islandTest: "Testar Dynamic Island",
-      islandTestHint: "Mostra um lembrete Dynamic Island no topo da tela atual",
-      islandTestTitle: "Dynamic Island do Paseo",
-      islandTestBody: "A Dynamic Island está sendo exibida corretamente",
-      islandTestSuccess: "Dynamic Island exibida",
-      islandTestSuccessHint: "O lembrete aparece no topo da área de trabalho da tela atual.",
-      islandTestFailed: "Não foi possível exibir a Dynamic Island",
-      islandTestFailedHint: "Confirme que ela está ativa e verifique os registros [island].",
       test: "Testar notificação",
       testHint: "Envia uma notificação usando estas configurações",
       permissionRequired: "Permita o acesso às notificações antes de testar",
@@ -2271,14 +2097,8 @@ export const ptBR: TranslationResources = {
       connections: "Conexões",
       agents: "Agentes",
       metadata: "Metadados",
-      assistants: "Assistentes",
-      memory: "Memória",
-      mcp: "Servidores MCP",
-      skills: "Habilidades",
-      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Provedores",
-      channels: "Canais",
       usage: "Uso",
       terminals: "Terminais",
       plugins: "Plugins",
@@ -2301,16 +2121,6 @@ export const ptBR: TranslationResources = {
     },
     general: {
       title: "Geral",
-      clientIdentity: {
-        hostname: "Nome do host do cliente",
-        hostnameDescription: "Exibido no gerenciamento de clientes do daemon",
-        editHostname: "Editar nome do host do cliente",
-        editHostnameTitle: "Editar nome do host do cliente",
-        hostnamePlaceholder: "Meu Mac",
-        identityId: "ID de identidade do cliente",
-        identityIdDescription: "Identidade única deste cliente Paseo; não pode ser alterada",
-        unavailable: "Indisponível",
-      },
       browserData: {
         title: "Dados do navegador",
         siteData: "Cookies e dados de sites",
@@ -2356,11 +2166,6 @@ export const ptBR: TranslationResources = {
         label: "Sempre expandir raciocínio",
         description:
           "Mostrar os blocos de pensamento e raciocínio do agente totalmente expandidos por padrão",
-      },
-      aidenClaudeReasoningTranslation: {
-        label: "Traduzir o raciocínio do Aiden Claude para chinês",
-        description:
-          "Mostra apenas a tradução em chinês simplificado; desativado, mostra o texto original.",
       },
       toolCallDetail: {
         label: "Exibição de chamadas de ferramentas",
@@ -2590,13 +2395,6 @@ export const ptBR: TranslationResources = {
       refresh: "Atualizar",
       refreshing: "Atualizando...",
       refreshAccessibility: "Atualizar permissões do desktop",
-      test: "Testar",
-      backgroundAttention: {
-        title: "Alertas em segundo plano",
-        soundVolume: "Volume do som de alerta",
-        description:
-          "O Paseo avisa quando um host local ou remoto conectado conclui uma tarefa ou precisa da intervenção do usuário.",
-      },
       actions: {
         granted: "Concedida",
         request: "Solicitar",
@@ -2885,11 +2683,6 @@ export const ptBR: TranslationResources = {
         moveDown: "Mover para baixo",
       },
       daemon: {
-        identity: {
-          title: "Informações de identidade",
-          serverId: "ID de identidade do servidor",
-          serverIdDescription: "Identidade única deste daemon; não pode ser alterada",
-        },
         rename: {
           editLabel: "Editar rótulo",
           title: "Renomear host",
@@ -3028,72 +2821,16 @@ export const ptBR: TranslationResources = {
     project: {
       noEditableTarget: "Este projeto não pode ser editado neste host.",
       backToProjects: "Voltar para projetos",
-      switchHost: "Trocar host",
-      projectId: en.settings.project.projectId,
-      parentProjectId: en.settings.project.parentProjectId,
-      projectPath: en.settings.project.projectPath,
-      directoryless: {
-        title: "O projeto não tem diretório",
-        description:
-          "Você pode editar o nome, o ícone e a memória do projeto. As configurações salvas em paseo.json ficam disponíveis após associar um diretório.",
-      },
-      memory: {
-        title: "Memória do projeto",
-        info: "Controle a memória deste projeto e defina quais conhecimentos duradouros o Paseo deve aprender.",
-        policyTitle: "Regras de memória",
-        enabledTitle: "Usar memória neste projeto",
-        enabledHint:
-          "Quando desativada, os agentes não leem nem criam memórias do projeto. A memória global continua disponível.",
-        instructionsTitle: "O que o Paseo deve lembrar deste projeto?",
-        instructionsHint:
-          "Descreva convenções, decisões de arquitetura, procedimentos recorrentes e fatos estáveis do ambiente.",
-        instructionsPlaceholder:
-          "Exemplo: lembrar decisões de arquitetura e procedimentos de lançamento; ignorar falhas temporárias, logs e segredos.",
-        save: "Salvar",
-        saving: "Salvando...",
-        saved: "Salvo",
-        saveError: "Não foi possível salvar a memória do projeto",
-        content: {
-          title: "Conteúdo da memória",
-          description:
-            "Veja, edite ou exclua a memória de longo prazo deste projeto e de seus espaços de trabalho. O escopo não pode ser alterado aqui.",
-          scope: "Escopo da memória",
-          scopes: {
-            project: "Projeto atual",
-            workspace: "Espaço de trabalho",
-          },
-          selectScope: "Selecione um escopo de memória",
-          noScopes: "Nenhum escopo de memória disponível",
-          selectWorkspace: "Selecione um espaço de trabalho",
-          noWorkspace: "Este projeto não tem espaços de trabalho disponíveis",
-          loading: "Carregando memória...",
-          empty: "Nenhuma memória corresponde aos filtros neste escopo",
-          errorTitle: "Não foi possível gerenciar a memória do projeto",
-          deleteTitle: "Excluir “{{title}}”?",
-          deleteDescription: "Esta memória e suas informações de origem não podem ser recuperadas.",
-          deleteConfirm: "Excluir",
-        },
-      },
       edit: {
         title: "Editar projeto",
-        name: "Nome do projeto",
+        name: "Nome",
         nameLabel: "Nome do projeto",
-        icon: "Ícone do projeto",
+        icon: "Ícone",
         chooseImage: "Escolher imagem",
-        useAutomatic: "Usar ícone padrão",
+        useAutomatic: "Usar automático",
         imageUrl: "URL de imagem ou site",
         save: "Salvar alterações",
         savedToast: "Projeto atualizado",
-      },
-      rename: {
-        renamedToast: "Projeto renomeado",
-        errorFallback: "Não foi possível renomear projeto",
-        renameLabel: "Renomear projeto",
-        resetLabel: "Redefinir nome do projeto para o padrão",
-        projectNameLabel: "Nome do projeto",
-        saveLabel: "Salvar nome do projeto",
-        cancelLabel: "Cancelar renomeação",
-        reset: "Redefinir",
       },
       readFailures: {
         invalidTitle: "Não foi possível analisar paseo.json",
@@ -3145,10 +2882,6 @@ export const ptBR: TranslationResources = {
           remove: "Remover",
         },
       },
-      resources: en.settings.project.resources,
-      indexSkill: en.settings.project.indexSkill,
-      variables: en.settings.project.variables,
-      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Geração de metadados",
         info: "Instruções específicas do projeto injetadas nos prompts de IA que o Paseo usa para gerar metadados. Use-as para aplicar convenções da sua equipe, como nomes de branch, estilo de commit ou formato de PR",

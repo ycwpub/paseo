@@ -47,7 +47,7 @@ import {
   type ToggleSidebarWorkspacePin,
 } from "@/hooks/use-sidebar-workspace-pin";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
+import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIcons } from "@/projects/icons";
 import {
@@ -96,7 +96,6 @@ import {
   SidebarWorkspaceMenu,
 } from "@/components/sidebar/sidebar-workspace-menu";
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
-import { HiddenProjectsSectionHeader } from "@/components/sidebar/hidden-projects-section-header";
 import { PinnedSectionHeader } from "@/components/sidebar/pinned-section-header";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import { useLimitedSidebarGroup } from "@/components/sidebar/use-limited-sidebar-group";
@@ -133,11 +132,9 @@ import {
   type SidebarProjectHostTarget,
   type SidebarProjectIconTarget,
 } from "@/utils/sidebar-project-row-model";
-import { resolveSidebarProjectOpenNewWindowOptions } from "@/utils/sidebar-project-open-new-window";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
-import { useWorkspaceRemove } from "@/workspace/use-workspace-remove";
 import {
   getCurrentProjectRemoveReadiness,
   removeProjectFromHosts,
@@ -218,17 +215,13 @@ interface SidebarWorkspaceListProps {
   /** What `useProjectIcons` is asked for, straight from the projection. See `SidebarProjection`. */
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
-  hiddenProjects: SidebarProjectEntry[];
   projects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   /** Whether a project filter is actually being applied — the resolved list, not the stored one. */
   hasActiveProjectFilter: boolean;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   collapsedProjectKeys: ReadonlySet<string>;
-  hiddenProjectsCollapsed: boolean;
   onToggleProjectCollapsed: (projectViewKey: string) => void;
-  onToggleHiddenProjectsCollapsed: () => void;
-  onSetProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   groupMode: SidebarGroupMode;
   isRefreshing?: boolean;
@@ -262,8 +255,6 @@ interface ProjectHeaderRowProps {
   isDragging: boolean;
   isArchiving?: boolean;
   menuController: ReturnType<typeof useContextMenu> | null;
-  hidden: boolean;
-  onToggleHidden: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus?: "idle" | "pending";
   dragHandleProps?: DraggableListDragHandleProps;
@@ -288,9 +279,6 @@ interface WorkspaceRowInnerProps {
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
   onArchive?: () => void;
-  removeStatus?: "idle" | "pending" | "success";
-  removePendingLabel?: string;
-  onRemove?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
   onRename?: () => void;
@@ -421,8 +409,6 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint,
   isProjectActive,
   onBeginWorkspaceSetup,
-  hidden,
-  onToggleHidden,
   onRemoveProject,
   removeProjectStatus,
 }: {
@@ -435,20 +421,12 @@ function ProjectRowTrailingActions({
   isMobileBreakpoint: boolean;
   isProjectActive: boolean;
   onBeginWorkspaceSetup: () => void;
-  hidden: boolean;
-  onToggleHidden: () => void;
   onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   return (
     <View style={styles.projectTrailingActions}>
-      <SidebarProjectChildAction
-        target={settingsTarget}
-        displayName={displayName}
-        visible={actionsVisible}
-        projectViewKey={projectViewKey}
-      />
       {worktreeTarget ? (
         <NewWorktreeButton
           displayName={displayName}
@@ -465,11 +443,8 @@ function ProjectRowTrailingActions({
         >
           <ProjectKebabMenu
             projectViewKey={projectViewKey}
-            displayName={displayName}
             settingsTarget={settingsTarget}
             projectPath={projectPath}
-            hidden={hidden}
-            onToggleHidden={onToggleHidden}
             onRemoveProject={onRemoveProject}
             removeProjectStatus={removeProjectStatus}
           />
@@ -480,13 +455,10 @@ function ProjectRowTrailingActions({
 }
 
 const trash2LeadingIcon = <ThemedTrash2 size={14} uniProps={foregroundMutedColorMapping} />;
-const plusLeadingIcon = <ThemedPlus size={14} uniProps={foregroundMutedColorMapping} />;
 const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedColorMapping} />;
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
 );
-const hideProjectLeadingIcon = <ThemedEyeOff size={14} uniProps={foregroundMutedColorMapping} />;
-const showProjectLeadingIcon = <ThemedEye size={14} uniProps={foregroundMutedColorMapping} />;
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
@@ -499,20 +471,14 @@ function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
 
 function ProjectKebabMenu({
   projectViewKey,
-  displayName,
   settingsTarget,
   projectPath,
-  hidden,
-  onToggleHidden,
   onRemoveProject,
   removeProjectStatus,
 }: {
   projectViewKey: string;
-  displayName: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
-  hidden: boolean;
-  onToggleHidden: () => void;
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
@@ -532,11 +498,8 @@ function ProjectKebabMenu({
         <ProjectMenuItems
           surface="dropdown"
           projectViewKey={projectViewKey}
-          displayName={displayName}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
-          hidden={hidden}
-          onToggleHidden={onToggleHidden}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
         />
@@ -563,61 +526,35 @@ function ProjectMenuItem({
 function ProjectMenuItems({
   surface,
   projectViewKey,
-  displayName,
   settingsTarget,
   projectPath,
-  hidden,
-  onToggleHidden,
   onRemoveProject,
   removeProjectStatus,
 }: {
   surface: ProjectMenuSurface;
   projectViewKey: string;
-  displayName: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
-  hidden: boolean;
-  onToggleHidden: () => void;
   onRemoveProject: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const openAddProject = useAddProjectFlowStore((state) => state.openRequest);
-  const supportsProjectHierarchy = useHostFeature(
-    settingsTarget?.serverId ?? "",
-    "projectHierarchy",
-  );
   const handleOpenProjectSettings = useCallback(() => {
     if (!settingsTarget) return;
     router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
   }, [settingsTarget]);
-  const openNewWindowOptions = useMemo(
-    () =>
-      resolveSidebarProjectOpenNewWindowOptions({
-        projectPath,
-        displayName,
-        target: settingsTarget,
-      }),
-    [displayName, projectPath, settingsTarget],
-  );
-  const canOpenInNewWindow = getIsElectron() && openNewWindowOptions !== null;
+  const canOpenInNewWindow = getIsElectron() && projectPath.trim().length > 0;
   const handleOpenInNewWindow = useCallback(() => {
-    if (!openNewWindowOptions) return;
+    const trimmedPath = projectPath.trim();
+    if (trimmedPath.length === 0) return;
     void getDesktopHost()
-      ?.window?.openNew?.(openNewWindowOptions)
+      ?.window?.openNew?.({ pendingOpenProjectPath: trimmedPath })
       ?.catch((error) => {
         console.warn("[sidebar] openNew failed", error);
         toast.error(t("sidebar.project.actions.openNewWindowFailed"));
       });
-  }, [openNewWindowOptions, t, toast]);
-  const handleCreateChildProject = useCallback(() => {
-    if (!settingsTarget) return;
-    openAddProject({
-      preferredHostId: settingsTarget.serverId,
-      parentProjectId: settingsTarget.projectId,
-    });
-  }, [openAddProject, settingsTarget]);
+  }, [projectPath, t, toast]);
 
   return (
     <>
@@ -629,16 +566,6 @@ function ProjectMenuItems({
           onSelect={handleOpenProjectSettings}
         >
           {t("sidebar.project.actions.openSettings")}
-        </ProjectMenuItem>
-      ) : null}
-      {settingsTarget && supportsProjectHierarchy ? (
-        <ProjectMenuItem
-          surface={surface}
-          testID={`sidebar-project-menu-create-child-${projectViewKey}`}
-          leading={plusLeadingIcon}
-          onSelect={handleCreateChildProject}
-        >
-          创建子 Project
         </ProjectMenuItem>
       ) : null}
       {canOpenInNewWindow ? (
@@ -658,17 +585,8 @@ function ProjectMenuItems({
       />
       <ProjectMenuItem
         surface={surface}
-        testID={`sidebar-project-menu-${hidden ? "show" : "hide"}-${projectViewKey}`}
-        leading={hidden ? showProjectLeadingIcon : hideProjectLeadingIcon}
-        onSelect={onToggleHidden}
-      >
-        {t(hidden ? "sidebar.project.actions.show" : "sidebar.project.actions.hide")}
-      </ProjectMenuItem>
-      <ProjectMenuItem
-        surface={surface}
         testID={`sidebar-project-menu-remove-${projectViewKey}`}
         leading={trash2LeadingIcon}
-        destructive
         status={removeProjectStatus}
         pendingLabel={t("sidebar.project.actions.removing")}
         onSelect={onRemoveProject}
@@ -692,9 +610,6 @@ function WorkspaceRowRightGroup({
   archivePendingLabel,
   archiveShortcutKeys,
   onArchive,
-  onRemove,
-  removeStatus,
-  removePendingLabel,
   onMarkAsRead,
   onCopyBranchName,
   onCopyPath,
@@ -714,9 +629,6 @@ function WorkspaceRowRightGroup({
   archivePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
   onArchive?: () => void;
-  onRemove?: () => void;
-  removeStatus?: "idle" | "pending" | "success";
-  removePendingLabel?: string;
   onMarkAsRead?: () => void;
   onCopyBranchName?: () => void;
   onCopyPath?: () => void;
@@ -737,7 +649,7 @@ function WorkspaceRowRightGroup({
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
-    hasArchiveAction: Boolean(onArchive || onRemove),
+    hasArchiveAction: Boolean(onArchive),
     isHovered,
     isTouchPlatform,
     showShortcut,
@@ -770,12 +682,9 @@ function WorkspaceRowRightGroup({
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
                 onArchive={onArchive}
-                onRemove={onRemove}
                 archiveLabel={archiveLabel}
                 archiveStatus={archiveStatus}
                 archivePendingLabel={archivePendingLabel}
-                removeStatus={removeStatus}
-                removePendingLabel={removePendingLabel}
                 archiveShortcutKeys={archiveShortcutKeys}
                 isPinned={isPinned}
                 onTogglePin={onTogglePin}
@@ -951,8 +860,6 @@ function ProjectHeaderRow({
   isDragging,
   isArchiving = false,
   menuController,
-  hidden,
-  onToggleHidden,
   onRemoveProject,
   removeProjectStatus = "idle",
   dragHandleProps,
@@ -1058,8 +965,6 @@ function ProjectHeaderRow({
         isMobileBreakpoint={isMobileBreakpoint}
         isProjectActive={isProjectActive}
         onBeginWorkspaceSetup={handleBeginWorkspaceSetup}
-        hidden={hidden}
-        onToggleHidden={onToggleHidden}
         onRemoveProject={onRemoveProject}
         removeProjectStatus={removeProjectStatus}
       />
@@ -1127,11 +1032,8 @@ function ProjectHeaderRow({
         <ProjectMenuItems
           surface="context"
           projectViewKey={project.viewKey}
-          displayName={displayName}
           settingsTarget={settingsTarget}
           projectPath={projectPath}
-          hidden={hidden}
-          onToggleHidden={onToggleHidden}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
         />
@@ -1159,9 +1061,6 @@ function WorkspaceRowInner({
   archiveStatus = "idle",
   archivePendingLabel,
   onArchive,
-  onRemove,
-  removeStatus,
-  removePendingLabel,
   onCopyBranchName,
   onCopyPath,
   onRename,
@@ -1236,12 +1135,9 @@ function WorkspaceRowInner({
               onCopyBranchName={onCopyBranchName}
               onRename={onRename}
               onArchive={onArchive}
-              onRemove={onRemove}
               archiveLabel={archiveLabel}
               archiveStatus={archiveStatus}
               archivePendingLabel={archivePendingLabel}
-              removeStatus={removeStatus}
-              removePendingLabel={removePendingLabel}
               archiveShortcutKeys={archiveShortcutKeys}
               isPinned={isPinned}
               onTogglePin={onTogglePin}
@@ -1285,9 +1181,6 @@ function WorkspaceRowInner({
                   archivePendingLabel={archivePendingLabel}
                   archiveShortcutKeys={archiveShortcutKeys}
                   onArchive={onArchive}
-                  onRemove={onRemove}
-                  removeStatus={removeStatus}
-                  removePendingLabel={removePendingLabel}
                   onCopyBranchName={onCopyBranchName}
                   onCopyPath={onCopyPath}
                   onRename={onRename}
@@ -1340,7 +1233,6 @@ function WorkspaceRowWithMenu({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const isArchiving = workspace.archivingAt !== null || isHidingWorkspace;
@@ -1361,22 +1253,13 @@ function WorkspaceRowWithMenu({
     onArchiveStarted: redirectAfterArchive,
     onSetHiding: setIsHidingWorkspace,
   });
-  const removeController = useWorkspaceRemove({
-    serverId: workspace.serverId,
-    projectId: workspace.projectId,
-    workspaceId: workspace.workspaceId,
-    workspaceName: workspace.title ?? workspace.name,
-    disabled: bulkSelection.active,
-    busy: isArchiving,
-    onRemoveStarted: redirectAfterArchive,
-  });
 
   const handleArchive = useCallback(() => {
-    if (removeController.busy) {
+    if (isArchiving) {
       return;
     }
     archiveController.archive();
-  }, [archiveController, removeController.busy]);
+  }, [archiveController, isArchiving]);
 
   const clipboard = useWorkspaceClipboardActions();
   const handleCopyPath = useCallback(() => {
@@ -1408,14 +1291,14 @@ function WorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
+      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
     });
   }, [clearAttention, toast]);
 
   useKeyboardActionHandler({
     handlerId: `workspace-archive-${workspace.workspaceKey}`,
     actions: ["workspace.archive"],
-    enabled: selected && !removeController.busy,
+    enabled: selected && !isArchiving,
     priority: 0,
     handle: () => {
       handleArchive();
@@ -1432,30 +1315,25 @@ function WorkspaceRowWithMenu({
         leadingProjectIconDataUri={leadingProjectIconDataUri}
         selected={selected}
         shortcutNumber={shortcutNumber}
-        showShortcutBadge={bulkSelection.active ? false : showShortcutBadge}
+        showShortcutBadge={showShortcutBadge}
         onPress={onPress}
         drag={drag}
         isDragging={isDragging}
-        isArchiving={removeController.busy}
+        isArchiving={isArchiving}
         isCreating={isCreating}
         dragHandleProps={dragHandleProps}
         menuController={null}
         archiveLabel={t("sidebar.workspace.actions.archive")}
         archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
-        onArchive={bulkSelection.active ? undefined : handleArchive}
-        onRemove={removeController.action}
-        removeStatus={removeController.status}
-        removePendingLabel={t("sidebar.workspace.actions.removing")}
-        onCopyBranchName={
-          bulkSelection.active || !canCopyBranchName ? undefined : handleCopyBranchName
-        }
-        onCopyPath={bulkSelection.active ? undefined : handleCopyPath}
-        onRename={bulkSelection.active ? undefined : handleOpenRename}
-        onMarkAsRead={bulkSelection.active || !hasClearableAttention ? undefined : handleMarkAsRead}
+        onArchive={handleArchive}
+        onCopyBranchName={canCopyBranchName ? handleCopyBranchName : undefined}
+        onCopyPath={handleCopyPath}
+        onRename={handleOpenRename}
+        onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
-        isPinned={bulkSelection.active ? undefined : isPinned}
-        onTogglePin={bulkSelection.active ? undefined : onTogglePin}
+        isPinned={isPinned}
+        onTogglePin={onTogglePin}
         reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
       />
       <WorkspaceRenameModal
@@ -1509,35 +1387,13 @@ function WorkspaceRowItem({
   isDragging = false,
   dragHandleProps,
 }: WorkspaceRowItemProps) {
-  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const handlePress = useCallback(() => {
-    if (bulkSelection.active) {
-      if (workspaceEntry?.archivingAt === null) {
-        bulkSelection.toggle();
-      }
-      return;
-    }
     if (!workspace.serverId) {
       return;
     }
     onWorkspacePress?.();
     navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
-  }, [
-    bulkSelection,
-    onWorkspacePress,
-    workspace.serverId,
-    workspace.workspaceId,
-    workspaceEntry?.archivingAt,
-  ]);
-
-  const selected = bulkSelection.active
-    ? bulkSelection.selected
-    : isWorkspaceSelected({
-        selection: activeWorkspaceSelection,
-        serverId: workspace.serverId,
-        workspaceId: workspace.workspaceId,
-        enabled: selectionEnabled,
-      });
+  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
 
   return (
     <WorkspaceRow
@@ -1552,7 +1408,12 @@ function WorkspaceRowItem({
       onToggleWorkspacePin={onToggleWorkspacePin}
       reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
       isCreating={isCreating}
-      selected={selected}
+      selected={isWorkspaceSelected({
+        selection: activeWorkspaceSelection,
+        serverId: workspace.serverId,
+        workspaceId: workspace.workspaceId,
+        enabled: selectionEnabled,
+      })}
       onPress={handlePress}
       drag={drag ?? noop}
       isDragging={isDragging}
@@ -1675,8 +1536,6 @@ function ProjectBlock({
   onWorkspacePress,
   onWorkspaceReorder,
   onWorktreeCreated,
-  hidden,
-  onSetProjectHidden,
   drag,
   isDragging,
   dragHandleProps,
@@ -1702,8 +1561,6 @@ function ProjectBlock({
   onWorkspacePress?: () => void;
   onWorkspaceReorder: (projectViewKey: string, workspaces: SidebarWorkspacePlacement[]) => void;
   onWorktreeCreated?: (workspaceId: string) => void;
-  hidden: boolean;
-  onSetProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   drag: () => void;
   isDragging: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
@@ -1744,11 +1601,6 @@ function ProjectBlock({
     project,
     enabled: selectionEnabled,
   });
-  const hierarchyStyle = useMemo(
-    () =>
-      project.hierarchyDepth ? { marginLeft: Math.min(project.hierarchyDepth, 4) * 18 } : undefined,
-    [project.hierarchyDepth],
-  );
 
   const renderWorkspaceRow = useCallback(
     (
@@ -1876,9 +1728,6 @@ function ProjectBlock({
   const handleToggleCollapsed = useCallback(() => {
     onToggleCollapsed(project.viewKey);
   }, [onToggleCollapsed, project.viewKey]);
-  const handleToggleHidden = useCallback(() => {
-    onSetProjectHidden(project.viewKey, !hidden);
-  }, [hidden, onSetProjectHidden, project.viewKey]);
 
   let projectChildren = null;
   if (!collapsed) {
@@ -1924,7 +1773,7 @@ function ProjectBlock({
     <View
       role="group"
       accessibilityLabel={displayName}
-      style={[projectChildren ? styles.projectBlockExpanded : undefined, hierarchyStyle]}
+      style={projectChildren ? styles.projectBlockExpanded : undefined}
     >
       <ProjectHeaderRow
         project={project}
@@ -1944,8 +1793,6 @@ function ProjectBlock({
         isDragging={isDragging}
         isArchiving={isRemovingProject}
         menuController={null}
-        hidden={hidden}
-        onToggleHidden={handleToggleHidden}
         onRemoveProject={handleRemoveProject}
         removeProjectStatus={isRemovingProject ? "pending" : "idle"}
         dragHandleProps={dragHandleProps}
@@ -1978,8 +1825,6 @@ function areProjectBlockPropsEqual(previous: ProjectBlockProps, next: ProjectBlo
     previous.onWorkspacePress === next.onWorkspacePress &&
     previous.onWorkspaceReorder === next.onWorkspaceReorder &&
     previous.onWorktreeCreated === next.onWorktreeCreated &&
-    previous.hidden === next.hidden &&
-    previous.onSetProjectHidden === next.onSetProjectHidden &&
     previous.drag === next.drag &&
     previous.isDragging === next.isDragging &&
     previous.dragHandleProps === next.dragHandleProps &&
@@ -2022,16 +1867,12 @@ export function SidebarWorkspaceList({
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
-  hiddenProjects,
   projects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
   workspaceEntriesByKey,
   collapsedProjectKeys,
-  hiddenProjectsCollapsed,
   onToggleProjectCollapsed,
-  onToggleHiddenProjectsCollapsed,
-  onSetProjectHidden,
   shortcutIndexByWorkspaceKey,
   groupMode,
   isRefreshing: _isRefreshing = false,
@@ -2124,14 +1965,10 @@ export function SidebarWorkspaceList({
       <ProjectModeList
         projects={projects}
         pinnedGroups={pinnedGroups}
-        hiddenProjects={hiddenProjects}
         workspaceEntriesByKey={workspaceEntriesByKey}
         projectIconByProjectViewKey={projectIconByProjectViewKey}
         collapsedProjectKeys={collapsedProjectKeys}
-        hiddenProjectsCollapsed={hiddenProjectsCollapsed}
         onToggleProjectCollapsed={onToggleProjectCollapsed}
-        onToggleHiddenProjectsCollapsed={onToggleHiddenProjectsCollapsed}
-        onSetProjectHidden={onSetProjectHidden}
         shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
         onWorkspacePress={onWorkspacePress}
         onAddProject={onAddProject}
@@ -2223,14 +2060,10 @@ function SidebarGroupedModeList({
 function ProjectModeList({
   projects,
   pinnedGroups,
-  hiddenProjects,
   workspaceEntriesByKey,
   projectIconByProjectViewKey,
   collapsedProjectKeys,
-  hiddenProjectsCollapsed,
   onToggleProjectCollapsed,
-  onToggleHiddenProjectsCollapsed,
-  onSetProjectHidden,
   shortcutIndexByWorkspaceKey,
   onWorkspacePress,
   onAddProject,
@@ -2288,10 +2121,6 @@ function ProjectModeList({
   const selectionEnabled = isWorkspaceRoute;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const { pinnedChats, unpinnedProjects } = pinnedGroups;
-  const hierarchicalProjects = useMemo(
-    () => flattenVisibleProjectHierarchy(unpinnedProjects, collapsedProjectKeys),
-    [collapsedProjectKeys, unpinnedProjects],
-  );
   const {
     visibleItems: visiblePinnedChats,
     expanded: pinnedChatsExpanded,
@@ -2439,7 +2268,6 @@ function ProjectModeList({
         isDragging: boolean;
         dragHandleProps?: DraggableRenderItemInfo<SidebarProjectEntry>["dragHandleProps"];
       },
-      hidden = false,
     ) => {
       return (
         <MemoProjectBlock
@@ -2457,8 +2285,6 @@ function ProjectModeList({
           onWorkspacePress={onWorkspacePress}
           onWorkspaceReorder={handleWorkspaceReorder}
           onWorktreeCreated={handleWorktreeCreated}
-          hidden={hidden}
-          onSetProjectHidden={onSetProjectHidden}
           drag={dragState.drag}
           isDragging={dragState.isDragging}
           dragHandleProps={dragState.dragHandleProps}
@@ -2484,7 +2310,6 @@ function ProjectModeList({
       onToggleWorkspacePin,
       onWorkspacePress,
       onToggleProjectCollapsed,
-      onSetProjectHidden,
       parentGestureRef,
       dragGestureHostPresented,
       projectIconByProjectViewKey,
@@ -2499,11 +2324,6 @@ function ProjectModeList({
   const renderProject = useCallback(
     ({ item, drag, isActive, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) =>
       renderProjectBlock(item, { drag, isDragging: isActive, dragHandleProps }),
-    [renderProjectBlock],
-  );
-  const renderHiddenProject = useCallback(
-    (item: SidebarProjectEntry) =>
-      renderProjectBlock(item, { drag: noop, isDragging: false }, true),
     [renderProjectBlock],
   );
 
@@ -2666,10 +2486,6 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
   },
   pinnedSection: {
-    marginBottom: theme.spacing[1],
-  },
-  hiddenProjectsSection: {
-    marginTop: theme.spacing[2],
     marginBottom: theme.spacing[1],
   },
   // Three times the gap a row keeps from its neighbour, so the break between two groups reads as

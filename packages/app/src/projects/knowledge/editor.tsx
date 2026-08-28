@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { ChevronDown, Plus, X } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";

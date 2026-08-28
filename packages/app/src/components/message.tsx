@@ -573,9 +573,9 @@ export const UserMessage = memo(function UserMessage({
 
 interface AssistantTurnFooterProps {
   getContent: () => string;
+  completedAt?: Date;
+  durationMs?: number;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
-  trailing?: ReactNode;
-  timestamp: Date;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -591,22 +591,75 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     marginTop: 0,
     marginLeft: -theme.spacing[1],
   },
-  timestamp: {
+  labelWrapper: {
+    position: "relative",
+  },
+  labelSizer: {
     color: theme.colors.foregroundMuted,
     fontSize: STREAM_METADATA_FONT_SIZE,
-    fontVariant: ["tabular-nums"],
+    opacity: 0,
+  },
+  labelOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    color: theme.colors.foregroundMuted,
+    fontSize: STREAM_METADATA_FONT_SIZE,
   },
 }));
 
+const TIMESTAMP_REVEAL_MS = 3000;
+
 /**
  * Footer rendered next to the copy button at the end of an assistant turn.
+ * Always shows the turn duration; swaps to the end timestamp on hover (web)
+ * or tap (native). The hidden sizer keeps the label width stable while the
+ * visible text swaps.
  */
 export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   getContent,
+  completedAt,
+  durationMs,
   onFork,
-  trailing,
-  timestamp,
 }: AssistantTurnFooterProps) {
+  const [hovered, setHovered] = useState(false);
+  const [pressedReveal, setPressedReveal] = useState(false);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (revealTimerRef.current) {
+        clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const durationLabel = useMemo(
+    () => (durationMs !== undefined ? `Worked for ${formatDuration(durationMs)}` : ""),
+    [durationMs],
+  );
+  const timestampLabel = useMemo(
+    () => (completedAt ? formatMessageTimestamp(completedAt) : ""),
+    [completedAt],
+  );
+
+  const canSwap = Boolean(timestampLabel);
+  const showTimestamp = canSwap && (isWeb ? hovered : pressedReveal);
+
+  const handleHoverIn = useCallback(() => setHovered(true), []);
+  const handleHoverOut = useCallback(() => setHovered(false), []);
+  const handlePress = useCallback(() => {
+    if (isWeb || !canSwap) return;
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+    }
+    setPressedReveal((prev) => !prev);
+    revealTimerRef.current = setTimeout(() => {
+      setPressedReveal(false);
+      revealTimerRef.current = null;
+    }, TIMESTAMP_REVEAL_MS);
+  }, [canSwap]);
   const handleFork = useCallback(
     (target: AssistantForkTarget) => {
       return onFork?.(target);
@@ -614,7 +667,6 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
     [onFork],
   );
   const canFork = Boolean(onFork);
-  const formattedTimestamp = useMemo(() => formatMessageTimestamp(timestamp), [timestamp]);
 
   return (
     <View style={assistantTurnFooterStylesheet.container}>
@@ -623,10 +675,26 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
       {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
-      {trailing}
-      <Text style={assistantTurnFooterStylesheet.timestamp} testID="assistant-message-timestamp">
-        {formattedTimestamp}
-      </Text>
+      {durationLabel ? (
+        <Pressable
+          onPress={handlePress}
+          onHoverIn={handleHoverIn}
+          onHoverOut={handleHoverOut}
+          accessibilityRole={canSwap ? "button" : undefined}
+          accessibilityLabel={canSwap ? `${durationLabel}, ended ${timestampLabel}` : durationLabel}
+        >
+          <View style={assistantTurnFooterStylesheet.labelWrapper}>
+            {/* Sizer reserves space for whichever label is longer so the
+                container width is stable across hover transitions. */}
+            <Text style={assistantTurnFooterStylesheet.labelSizer} aria-hidden>
+              {durationLabel.length >= timestampLabel.length ? durationLabel : timestampLabel}
+            </Text>
+            <Text style={assistantTurnFooterStylesheet.labelOverlay}>
+              {showTimestamp ? timestampLabel : durationLabel}
+            </Text>
+          </View>
+        </Pressable>
+      ) : null}
     </View>
   );
 });
@@ -678,7 +746,7 @@ interface AssistantMessageProps {
   serverId?: string;
   client?: DaemonClient | null;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
-  variant?: "answer" | "reasoning";
+  phase: MarkdownPhase;
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -691,10 +759,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   containerCompactBottom: {
     paddingBottom: 0,
-  },
-  reasoningContainer: {
-    paddingVertical: theme.spacing[2],
-    opacity: 0.9,
   },
   imageFrame: {
     width: "100%",
@@ -1058,13 +1122,6 @@ const expandableBadgeStylesheet = StyleSheet.create((theme) => ({
   secondaryLabelActive: {
     color: theme.colors.foreground,
   },
-  metadataLabel: {
-    flexShrink: 0,
-    marginLeft: theme.spacing[2],
-    color: theme.colors.foregroundMuted,
-    fontSize: STREAM_METADATA_FONT_SIZE,
-    fontVariant: ["tabular-nums"],
-  },
   shimmerText: {
     color: "transparent",
     fontSize: theme.fontSize.base,
@@ -1401,7 +1458,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   serverId,
   client,
   spacing = "default",
-  variant = "answer",
+  phase,
 }: AssistantMessageProps) {
   const markdownParser = useMemo(createAssistantMarkdownParser, []);
   // Paint a paced prefix while the turn is streaming so text arrives at a steady
@@ -1858,9 +1915,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         assistantMessageStylesheet.containerCompactTop,
       (spacing === "compactBottom" || spacing === "compactBoth") &&
         assistantMessageStylesheet.containerCompactBottom,
-      variant === "reasoning" && assistantMessageStylesheet.reasoningContainer,
     ],
-    [spacing, variant],
+    [spacing],
   );
   const revealDataSet = useMemo(
     () =>
@@ -2279,7 +2335,6 @@ export const TodoListCard = memo(function TodoListCard({
 interface ExpandableBadgeProps {
   label: string;
   secondaryLabel?: string;
-  metadataLabel?: string;
   icon?: ComponentType<{ size?: number; color?: string }>;
   isExpanded: boolean;
   style?: StyleProp<ViewStyle>;
@@ -2363,7 +2418,6 @@ interface ExpandableBadgeLabelRowProps {
   label: string;
   labelStyle: StyleProp<TextStyle>;
   secondaryLabel?: string;
-  metadataLabel?: string;
   secondaryLabelStyle: StyleProp<TextStyle>;
   shouldMeasureWebShimmer: boolean;
   shouldMeasureNativeShimmer: boolean;
@@ -2390,7 +2444,6 @@ function ExpandableBadgeLabelRow({
   label,
   labelStyle,
   secondaryLabel,
-  metadataLabel,
   secondaryLabelStyle,
   shouldMeasureWebShimmer,
   shouldMeasureNativeShimmer,
@@ -2447,11 +2500,6 @@ function ExpandableBadgeLabelRow({
             uniProps={isOpenFileHovered ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         </Pressable>
-      ) : null}
-      {metadataLabel ? (
-        <Text style={expandableBadgeStylesheet.metadataLabel} numberOfLines={1}>
-          {metadataLabel}
-        </Text>
       ) : null}
       {isWebShimmer ? (
         <ExpandableBadgeWebShimmerOverlay
@@ -2651,7 +2699,6 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   label,
   style,
   secondaryLabel,
-  metadataLabel,
   icon,
   isExpanded,
   onToggle,
@@ -2936,7 +2983,6 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             label={label}
             labelStyle={labelStyle}
             secondaryLabel={secondaryLabel}
-            metadataLabel={metadataLabel}
             secondaryLabelStyle={secondaryLabelStyle}
             shouldMeasureWebShimmer={shouldMeasureWebShimmer}
             shouldMeasureNativeShimmer={shouldMeasureNativeShimmer}
@@ -2977,7 +3023,6 @@ export const ExpandableBadge = memo(function ExpandableBadge({
 function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: ExpandableBadgeProps) {
   if (previous.label !== next.label) return false;
   if (previous.secondaryLabel !== next.secondaryLabel) return false;
-  if (previous.metadataLabel !== next.metadataLabel) return false;
   if (previous.icon !== next.icon) return false;
   if (previous.isExpanded !== next.isExpanded) return false;
   if (previous.style !== next.style) return false;
@@ -3003,8 +3048,6 @@ interface ToolCallProps {
   detail?: ToolCallDetail;
   cwd?: string;
   metadata?: Record<string, unknown>;
-  startedAt?: Date;
-  completedAt?: Date;
   isLastInSequence?: boolean;
   disableOuterSpacing?: boolean;
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
@@ -3024,8 +3067,6 @@ export const ToolCall = memo(function ToolCall({
   detail,
   cwd,
   metadata,
-  startedAt,
-  completedAt,
   isLastInSequence = false,
   disableOuterSpacing,
   onInlineDetailsHoverChange,
@@ -3067,10 +3108,6 @@ export const ToolCall = memo(function ToolCall({
         resolveIcon: resolveToolCallIcon,
       }),
     [toolName, status, error, effectiveDetail, metadata, cwd],
-  );
-  const timingLabel = useMemo(
-    () => (startedAt ? formatActionTimeRange({ startedAt, completedAt }) : undefined),
-    [completedAt, startedAt],
   );
   const handleOpenFile = useMemo(() => {
     const openFilePath = presentation.openFilePath;
@@ -3165,7 +3202,6 @@ export const ToolCall = memo(function ToolCall({
       testID="tool-call-badge"
       label={presentation.displayName}
       secondaryLabel={presentation.summary}
-      metadataLabel={timingLabel}
       icon={presentation.icon}
       isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
@@ -3180,13 +3216,6 @@ export const ToolCall = memo(function ToolCall({
   );
 }, areToolCallPropsEqual);
 
-function areToolCallTimestampsEqual(previous: ToolCallProps, next: ToolCallProps): boolean {
-  return (
-    previous.startedAt?.getTime() === next.startedAt?.getTime() &&
-    previous.completedAt?.getTime() === next.completedAt?.getTime()
-  );
-}
-
 function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.toolName !== next.toolName) return false;
   if (previous.args !== next.args) return false;
@@ -3196,7 +3225,6 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.detail !== next.detail) return false;
   if (previous.cwd !== next.cwd) return false;
   if (previous.metadata !== next.metadata) return false;
-  if (!areToolCallTimestampsEqual(previous, next)) return false;
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;

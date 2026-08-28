@@ -129,6 +129,8 @@ import type {
   PaseoConfigRevision,
   WorkspaceCreateRequest,
   WorkspaceRecoveryState,
+  AssistantCreateInput,
+  AssistantUpdateInput,
   PluginListItem,
   PluginLogEntry,
   PluginSourceStatusItem,
@@ -937,6 +939,151 @@ type ProjectListRequest = Extract<SessionInboundMessage, { type: "project.list.r
 export type ProjectListOptions = Omit<ProjectListRequest, "type" | "requestId"> & {
   requestId?: string;
 };
+export interface CreateChatRoomOptions {
+  name: string;
+  purpose?: string | null;
+  requestId?: string;
+}
+export interface InspectChatRoomOptions {
+  room: string;
+  requestId?: string;
+}
+export interface DeleteChatRoomOptions {
+  room: string;
+  requestId?: string;
+}
+export interface PostChatMessageOptions {
+  room: string;
+  body: string;
+  authorAgentId?: string;
+  replyToMessageId?: string | null;
+  requestId?: string;
+}
+export interface ReadChatMessagesOptions {
+  room: string;
+  limit?: number;
+  since?: string;
+  authorAgentId?: string;
+  requestId?: string;
+  timeout?: number;
+}
+export interface WaitForChatMessagesOptions {
+  room: string;
+  afterMessageId?: string | null;
+  timeoutMs?: number;
+  requestId?: string;
+}
+export interface AssistantRequestOptions {
+  requestId?: string;
+}
+export interface CreateAssistantOptions extends AssistantCreateInput {
+  requestId?: string;
+}
+export interface UpdateAssistantOptions extends AssistantUpdateInput {
+  requestId?: string;
+}
+export interface DeleteAssistantOptions {
+  id: string;
+  requestId?: string;
+}
+type ConfigureLarkChannelRequest = Extract<
+  SessionInboundMessage,
+  { type: "channel.lark.configure.request" }
+>;
+export type ConfigureLarkChannelOptions = Omit<
+  ConfigureLarkChannelRequest,
+  "type" | "requestId"
+> & {
+  requestId?: string;
+};
+export interface SetLarkChannelEnabledOptions {
+  botId?: string;
+  enabled: boolean;
+  requestId?: string;
+}
+export interface ApproveLarkPairingOptions {
+  botId?: string;
+  code: string;
+  requestId?: string;
+}
+export interface RejectLarkPairingOptions {
+  botId?: string;
+  code: string;
+  requestId?: string;
+}
+export interface RevokeLarkUserOptions {
+  botId?: string;
+  userId: string;
+  requestId?: string;
+}
+export interface ResolveLarkDirectoryUsersOptions {
+  appId: string;
+  emails: string[];
+  requestId?: string;
+}
+export interface ResolveLarkDirectoryChatsOptions {
+  appId: string;
+  query: string;
+  requestId?: string;
+}
+export interface LarkChannelRequestOptions {
+  botId?: string;
+  requestId?: string;
+}
+export interface ApplyLarkBotOptions {
+  name?: string;
+  requestId?: string;
+}
+export interface GetLarkBotApplicationOptions {
+  applicationId: string;
+  requestId?: string;
+}
+export interface DeleteLarkBotOptions {
+  botId: string;
+  requestId?: string;
+}
+export interface CreateLarkReminderOptions extends LarkReminderCreateInput {
+  requestId?: string;
+}
+export interface SetLarkReminderEnabledOptions {
+  reminderId: string;
+  enabled: boolean;
+  requestId?: string;
+}
+export interface DeleteLarkReminderOptions {
+  reminderId: string;
+  requestId?: string;
+}
+export interface RunLoopOptions {
+  prompt: string;
+  cwd: string;
+  provider?: string;
+  model?: string;
+  modeId?: string;
+  verifierProvider?: string;
+  verifierModel?: string;
+  verifierModeId?: string;
+  verifyPrompt?: string | null;
+  verifyChecks?: string[];
+  name?: string | null;
+  sleepMs?: number;
+  maxIterations?: number;
+  maxTimeMs?: number;
+  requestId?: string;
+}
+export interface InspectLoopOptions {
+  id: string;
+  requestId?: string;
+}
+export interface LoopLogsOptions {
+  id: string;
+  afterSeq?: number;
+  requestId?: string;
+}
+export interface StopLoopOptions {
+  id: string;
+  requestId?: string;
+}
 export interface CreateScheduleOptions {
   prompt: string;
   name?: string | null;
@@ -2541,6 +2688,26 @@ export class DaemonClient {
     });
   }
 
+  async listProjects(options?: string | ProjectListOptions): Promise<ProjectListPayload> {
+    const requestId = typeof options === "string" ? options : options?.requestId;
+    const resolvedRequestId = this.createRequestId(requestId);
+    const message = SessionInboundMessageSchema.parse({
+      type: "project.list.request",
+      requestId: resolvedRequestId,
+      ...(typeof options === "object" && options.sync ? { sync: options.sync } : {}),
+    });
+    return this.sendRequest({
+      requestId: resolvedRequestId,
+      message,
+      options: { skipQueue: true },
+      select: (msg) => {
+        if (msg.type !== "project.list.response") return null;
+        if (msg.payload.requestId !== resolvedRequestId) return null;
+        return msg.payload;
+      },
+    });
+  }
+
   listWorkspaceLabels(options: {
     subscriptionId: string;
     sync?: { generation: string; afterSeq: number };
@@ -2612,26 +2779,6 @@ export class DaemonClient {
       message: {
         type: "workspace.label.delete.inspect.request",
         name: options.name,
-      },
-    });
-  }
-
-  async listProjects(options?: string | ProjectListOptions): Promise<ProjectListPayload> {
-    const requestId = typeof options === "string" ? options : options?.requestId;
-    const resolvedRequestId = this.createRequestId(requestId);
-    const message = SessionInboundMessageSchema.parse({
-      type: "project.list.request",
-      requestId: resolvedRequestId,
-      ...(typeof options === "object" && options.sync ? { sync: options.sync } : {}),
-    });
-    return this.sendRequest({
-      requestId: resolvedRequestId,
-      message,
-      options: { skipQueue: true },
-      select: (msg) => {
-        if (msg.type !== "project.list.response") return null;
-        if (msg.payload.requestId !== resolvedRequestId) return null;
-        return msg.payload;
       },
     });
   }
@@ -5450,203 +5597,6 @@ export class DaemonClient {
     });
   }
 
-  async getPluginCatalog(): Promise<Array<{ id: string; clientBundle: string }>> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.catalog.get.request", requestId },
-      responseType: "plugin.catalog.get.response",
-    });
-    return payload.plugins;
-  }
-
-  async listPlugins(): Promise<PluginListItem[]> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.list.request", requestId },
-      responseType: "plugin.list.response",
-    });
-    return payload.plugins;
-  }
-
-  async getPluginLogs(pluginId: string): Promise<PluginLogEntry[]> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.logs.get.request", requestId, pluginId },
-      responseType: "plugin.logs.get.response",
-    });
-    return payload.entries;
-  }
-
-  async getAgentSkillsStatus(): Promise<AgentSkillsStatus> {
-    const requestId = this.createRequestId();
-    return this.sendCorrelatedSessionRequest({
-      message: { type: "agent.skills.get_status.request", requestId },
-      responseType: "agent.skills.get_status.response",
-    });
-  }
-
-  async reconcileAgentSkills(): Promise<AgentSkillsStatus> {
-    const requestId = this.createRequestId();
-    return this.sendCorrelatedSessionRequest({
-      message: { type: "agent.skills.reconcile.request", requestId },
-      responseType: "agent.skills.reconcile.response",
-    });
-  }
-
-  async uninstallAgentSkills(): Promise<AgentSkillsStatus> {
-    const requestId = this.createRequestId();
-    return this.sendCorrelatedSessionRequest({
-      message: { type: "agent.skills.uninstall.request", requestId },
-      responseType: "agent.skills.uninstall.response",
-    });
-  }
-
-  async saveAgentSkillsSelection(
-    selection: AgentSkillSelection,
-    confirmedRemovals?: readonly string[],
-  ): Promise<AgentSkillsSaveResult> {
-    const requestId = this.createRequestId();
-    return this.sendCorrelatedSessionRequest({
-      message: {
-        type: "agent.skills.save_selection.request",
-        requestId,
-        selection,
-        ...(confirmedRemovals ? { confirmedRemovals: [...confirmedRemovals] } : {}),
-      },
-      responseType: "agent.skills.save_selection.response",
-    });
-  }
-
-  async importLegacyAgentSkillsSelection(selection: AgentSkillSelection): Promise<{
-    imported: boolean;
-    selection: AgentSkillSelection;
-  }> {
-    const requestId = this.createRequestId();
-    return this.sendCorrelatedSessionRequest({
-      message: {
-        type: "agent.skills.import_legacy_selection.request",
-        requestId,
-        selection,
-      },
-      responseType: "agent.skills.import_legacy_selection.response",
-    });
-  }
-
-  async installDirectoryPlugin(path: string, id?: string): Promise<PluginListItem> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.directory.install.request", requestId, path, ...(id ? { id } : {}) },
-      responseType: "plugin.directory.install.response",
-    });
-    return payload.plugin;
-  }
-
-  async installPluginSource(input: {
-    source: string;
-    id?: string;
-    ref?: string;
-    pluginPath?: string;
-  }): Promise<PluginListItem> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.source.install.request", requestId, ...input },
-      responseType: "plugin.source.install.response",
-    });
-    return payload.plugin;
-  }
-
-  async getPluginSourceStatus(pluginId?: string): Promise<PluginSourceStatusItem[]> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "plugin.source.status.request",
-        requestId,
-        ...(pluginId ? { pluginId } : {}),
-      },
-      responseType: "plugin.source.status.response",
-    });
-    return payload.plugins;
-  }
-
-  async updatePluginSources(pluginId?: string): Promise<PluginSourceUpdateItem[]> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "plugin.source.update.request",
-        requestId,
-        ...(pluginId ? { pluginId } : {}),
-      },
-      responseType: "plugin.source.update.response",
-    });
-    return payload.plugins;
-  }
-
-  async inspectDirectoryPlugin(path: string): Promise<{ id: string }> {
-    const requestId = this.createRequestId();
-    return this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.directory.inspect.request", requestId, path },
-      responseType: "plugin.directory.inspect.response",
-    });
-  }
-
-  async reloadPlugin(pluginId: string): Promise<PluginListItem> {
-    return this.managePlugin("reload", pluginId);
-  }
-
-  async enablePlugin(pluginId: string): Promise<PluginListItem> {
-    return this.managePlugin("enable", pluginId);
-  }
-
-  async disablePlugin(pluginId: string): Promise<PluginListItem> {
-    return this.managePlugin("disable", pluginId);
-  }
-
-  async removePlugin(pluginId: string): Promise<void> {
-    const requestId = this.createRequestId();
-    await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: "plugin.remove.request", requestId, pluginId },
-      responseType: "plugin.remove.response",
-    });
-  }
-
-  private async managePlugin(
-    action: "reload" | "enable" | "disable",
-    pluginId: string,
-  ): Promise<PluginListItem> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: { type: `plugin.${action}.request`, requestId, pluginId },
-      responseType: `plugin.${action}.response`,
-    });
-    return payload.plugin;
-  }
-
-  async invokePluginRpc(pluginId: string, method: string, input: unknown): Promise<unknown> {
-    const requestId = this.createRequestId();
-    const payload = await this.sendCorrelatedSessionRequest({
-      requestId,
-      message: {
-        type: "plugin.rpc.invoke.request",
-        requestId,
-        pluginId,
-        method,
-        input,
-      },
-      responseType: "plugin.rpc.invoke.response",
-    });
-    return payload.output;
-  }
-
   async respondToPermissionAndWait(
     agentId: string,
     requestId: string,
@@ -6243,6 +6193,203 @@ export class DaemonClient {
     refresh?: boolean;
   }): Promise<PluginState & { error: string | null }> {
     return this.resourceRpc.listPlugins(options);
+  }
+
+  async listRuntimePlugins(): Promise<PluginListItem[]> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.runtime.list.request", requestId },
+      responseType: "plugin.runtime.list.response",
+    });
+    return payload.plugins;
+  }
+
+  async getPluginCatalog(): Promise<Array<{ id: string; clientBundle: string }>> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.catalog.get.request", requestId },
+      responseType: "plugin.catalog.get.response",
+    });
+    return payload.plugins;
+  }
+
+  async getPluginLogs(pluginId: string): Promise<PluginLogEntry[]> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.logs.get.request", requestId, pluginId },
+      responseType: "plugin.logs.get.response",
+    });
+    return payload.entries;
+  }
+
+  async getAgentSkillsStatus(): Promise<AgentSkillsStatus> {
+    const requestId = this.createRequestId();
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "agent.skills.get_status.request", requestId },
+      responseType: "agent.skills.get_status.response",
+    });
+  }
+
+  async reconcileAgentSkills(): Promise<AgentSkillsStatus> {
+    const requestId = this.createRequestId();
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "agent.skills.reconcile.request", requestId },
+      responseType: "agent.skills.reconcile.response",
+    });
+  }
+
+  async uninstallAgentSkills(): Promise<AgentSkillsStatus> {
+    const requestId = this.createRequestId();
+    return this.sendCorrelatedSessionRequest({
+      message: { type: "agent.skills.uninstall.request", requestId },
+      responseType: "agent.skills.uninstall.response",
+    });
+  }
+
+  async saveAgentSkillsSelection(
+    selection: AgentSkillSelection,
+    confirmedRemovals?: readonly string[],
+  ): Promise<AgentSkillsSaveResult> {
+    const requestId = this.createRequestId();
+    return this.sendCorrelatedSessionRequest({
+      message: {
+        type: "agent.skills.save_selection.request",
+        requestId,
+        selection,
+        ...(confirmedRemovals ? { confirmedRemovals: [...confirmedRemovals] } : {}),
+      },
+      responseType: "agent.skills.save_selection.response",
+    });
+  }
+
+  async importLegacyAgentSkillsSelection(selection: AgentSkillSelection): Promise<{
+    imported: boolean;
+    selection: AgentSkillSelection;
+  }> {
+    const requestId = this.createRequestId();
+    return this.sendCorrelatedSessionRequest({
+      message: {
+        type: "agent.skills.import_legacy_selection.request",
+        requestId,
+        selection,
+      },
+      responseType: "agent.skills.import_legacy_selection.response",
+    });
+  }
+
+  async installDirectoryPlugin(path: string, id?: string): Promise<PluginListItem> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.directory.install.request", requestId, path, ...(id ? { id } : {}) },
+      responseType: "plugin.directory.install.response",
+    });
+    return payload.plugin;
+  }
+
+  async installPluginSource(input: {
+    source: string;
+    id?: string;
+    ref?: string;
+    pluginPath?: string;
+  }): Promise<PluginListItem> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.source.install.request", requestId, ...input },
+      responseType: "plugin.source.install.response",
+    });
+    return payload.plugin;
+  }
+
+  async getPluginSourceStatus(pluginId?: string): Promise<PluginSourceStatusItem[]> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "plugin.source.status.request",
+        requestId,
+        ...(pluginId ? { pluginId } : {}),
+      },
+      responseType: "plugin.source.status.response",
+    });
+    return payload.plugins;
+  }
+
+  async updatePluginSources(pluginId?: string): Promise<PluginSourceUpdateItem[]> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "plugin.source.update.request",
+        requestId,
+        ...(pluginId ? { pluginId } : {}),
+      },
+      responseType: "plugin.source.update.response",
+    });
+    return payload.plugins;
+  }
+
+  async inspectDirectoryPlugin(path: string): Promise<{ id: string }> {
+    const requestId = this.createRequestId();
+    return this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.directory.inspect.request", requestId, path },
+      responseType: "plugin.directory.inspect.response",
+    });
+  }
+
+  async reloadPlugin(pluginId: string): Promise<PluginListItem> {
+    return this.manageRuntimePlugin("reload", pluginId);
+  }
+
+  async enablePlugin(pluginId: string): Promise<PluginListItem> {
+    return this.manageRuntimePlugin("enable", pluginId);
+  }
+
+  async disablePlugin(pluginId: string): Promise<PluginListItem> {
+    return this.manageRuntimePlugin("disable", pluginId);
+  }
+
+  async removePlugin(pluginId: string): Promise<void> {
+    const requestId = this.createRequestId();
+    await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.remove.request", requestId, pluginId },
+      responseType: "plugin.remove.response",
+    });
+  }
+
+  private async manageRuntimePlugin(
+    action: "reload" | "enable" | "disable",
+    pluginId: string,
+  ): Promise<PluginListItem> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: `plugin.${action}.request`, requestId, pluginId },
+      responseType: `plugin.${action}.response`,
+    });
+    return payload.plugin;
+  }
+
+  async invokePluginRpc(pluginId: string, method: string, input: unknown): Promise<unknown> {
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: {
+        type: "plugin.rpc.invoke.request",
+        requestId,
+        pluginId,
+        method,
+        input,
+      },
+      responseType: "plugin.rpc.invoke.response",
+    });
+    return payload.output;
   }
 
   async addPluginMarketplace(path: string): Promise<

@@ -82,7 +82,6 @@ import {
   type HostProjectListItem,
 } from "@/projects/host-projects";
 import { useProjectIcons } from "@/projects/icons";
-import { resolveProjectSourceReadiness } from "@/screens/new-workspace/project-source-readiness";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { ComposerAttachment } from "@/attachments/types";
 import { useDraftWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -148,15 +147,6 @@ function resolveVisibleDraftContextScopeKeys(input: {
     return [];
   }
   return [input.draftContextScopeKey];
-}
-
-function resolveDraftAssistantSelection(
-  setup: WorkspaceDraftTabSetup | null | undefined,
-): Pick<WorkspaceDraftTabSetup, "assistantId" | "teamId"> {
-  return {
-    assistantId: setup?.assistantId ?? null,
-    teamId: setup?.teamId ?? null,
-  };
 }
 
 function isNewWorkspacePending(input: {
@@ -332,7 +322,7 @@ function ProjectPickerTrigger({
           disabled={disabled}
           style={badgePressableStyle}
           accessibilityRole="button"
-          accessibilityLabel="Workspace 所属 Project"
+          accessibilityLabel="Workspace project"
         >
           <View style={styles.badgeIconBox}>
             {projectViewKey ? (
@@ -662,7 +652,7 @@ function IsolationPickerTrigger({
           disabled={disabled}
           style={badgePressableStyle}
           accessibilityRole="button"
-          accessibilityLabel="Workspace 隔离方式"
+          accessibilityLabel="Workspace isolation"
         >
           <View style={styles.badgeIconBox}>
             {isolation === "worktree" ? (
@@ -886,8 +876,6 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     model: input.composerState.effectiveModelId || null,
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     featureValues: input.composerState.featureValues ?? {},
-    assistantId: input.composerState.assistantId ?? null,
-    teamId: input.composerState.teamId ?? null,
   };
 }
 
@@ -1031,20 +1019,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
     model: composerState.effectiveModelId || null,
     thinkingOptionId: composerState.effectiveThinkingOptionId || null,
     featureValues: composerState.featureValues,
-    target: {
-      kind: "draft",
-      draftId,
-      setup: {
-        provider,
-        cwd: workspaceDirectory,
-        modeId: composerState.selectedMode || null,
-        model: composerState.effectiveModelId || null,
-        thinkingOptionId: composerState.effectiveThinkingOptionId || null,
-        featureValues: composerState.featureValues ?? {},
-        assistantId: composerState.assistantId ?? null,
-        teamId: composerState.teamId ?? null,
-      },
-    },
+    target: { kind: "draft", draftId },
   };
 }
 
@@ -1413,14 +1388,14 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         value={project.selectedOptionId}
         onSelect={project.onSelect}
         searchable
-        searchPlaceholder="搜索 Project"
+        searchPlaceholder="Search projects"
         title="Project"
         open={project.openState}
         onOpenChange={project.onOpenChange}
         desktopPlacement="bottom-start"
         desktopMinWidth={360}
         anchorRef={project.anchorRef}
-        emptyText="没有可用 Project。"
+        emptyText="No projects available."
         renderOption={project.renderOption}
         footer={addProjectAction}
       />
@@ -1437,7 +1412,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
         onOpenChange={host.onOpenChange}
         anchorRef={host.anchorRef}
         searchable={false}
-        title="主机"
+        title="Host"
         desktopPlacement="bottom-start"
         desktopMinWidth={200}
         hostOptionTestID={newWorkspaceHostOptionTestID}
@@ -1447,7 +1422,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
             <Pressable
               ref={host.anchorRef}
               accessibilityRole="button"
-              accessibilityLabel="主机"
+              accessibilityLabel="Host"
               onPress={host.open}
               disabled={isPending || host.allHosts.length === 0}
               style={badgePressableStyle}
@@ -1563,7 +1538,6 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   );
 }
 
-// oxlint-disable-next-line complexity -- The workspace creation surface coordinates several independent launch modes.
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -1643,6 +1617,7 @@ export function NewWorkspaceScreen({
     terminalTakesPrompt,
     terminalComposerValue,
     terminalPlaceholder,
+    terminalSubmitLabel,
     launchFocusKey,
   } = useTerminalComposerState({ launchTarget, terminalProfiles, terminalPromptText });
   const terminalTextReplacement = useMemo(
@@ -1685,7 +1660,6 @@ export function NewWorkspaceScreen({
   });
   const draftKey = buildNewWorkspaceDraftKey(draftId);
   const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
-  const draftAssistantSelection = resolveDraftAssistantSelection(forkDraftSetup?.setup);
   const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
   const visibleDraftContextScopeKeys = useMemo(
     () => resolveVisibleDraftContextScopeKeys({ isDraftHandoffActive, draftContextScopeKey }),
@@ -1700,8 +1674,6 @@ export function NewWorkspaceScreen({
       sourceDirectory: selectedSourceDirectory,
       initialSetup: forkDraftSetup?.setup,
     }),
-    initialAssistantId: draftAssistantSelection.assistantId,
-    initialTeamId: draftAssistantSelection.teamId,
   });
   const composerState = chatDraft.composerState;
   const [pickerSelection, dispatchPickerSelection] = useReducer(
@@ -1970,27 +1942,24 @@ export function NewWorkspaceScreen({
       if (!selectedProject) {
         throw new Error("Choose a project");
       }
-      const sourceReadiness = resolveProjectSourceReadiness({
-        project: selectedProject,
-        serverId: selectedServerId,
-      });
-      if (sourceReadiness.kind === "missing_host") {
-        throw new Error(t("newWorkspace.errors.projectHostUnavailable"));
-      }
-      if (sourceReadiness.kind === "missing_directory") {
-        throw new Error(t("newWorkspace.errors.projectDirectoryUnavailable"));
+      if (!selectedSourceDirectory) {
+        throw new Error("Choose a host for this project");
       }
       const firstAgentContext = buildFirstAgentContext(input);
+      const hostProjectId = getHostProjectId(selectedProject, selectedServerId);
+      if (!hostProjectId) {
+        throw new Error("Project is not available on the selected host");
+      }
 
       return {
-        cwd: sourceReadiness.sourceDirectory,
-        projectId: sourceReadiness.projectId,
+        cwd: selectedSourceDirectory,
+        projectId: hostProjectId,
         worktreeSlug: createNameId(),
         ...(firstAgentContext ? { firstAgentContext } : {}),
         ...input.checkoutRequest,
       };
     },
-    [selectedProject, selectedServerId, t],
+    [selectedProject, selectedServerId, selectedSourceDirectory],
   );
 
   const ensureWorkspace = useCallback(
@@ -2006,17 +1975,9 @@ export function NewWorkspaceScreen({
       if (!selectedProject) {
         throw new Error("Choose a project");
       }
-      const sourceReadiness = resolveProjectSourceReadiness({
-        project: selectedProject,
-        serverId: selectedServerId,
-      });
-      if (sourceReadiness.kind === "missing_host") {
-        throw new Error(t("newWorkspace.errors.projectHostUnavailable"));
+      if (!selectedSourceDirectory) {
+        throw new Error("Choose a host for this project");
       }
-      if (sourceReadiness.kind === "missing_directory") {
-        throw new Error(t("newWorkspace.errors.projectDirectoryUnavailable"));
-      }
-      const sourceDirectory = sourceReadiness.sourceDirectory;
       const connectedClient = withConnectedClient();
       const createsWorktree = !supportsWorkspaceMultiplicity || effectiveIsolation === "worktree";
       const checkoutStatusForCreate = createsWorktree
@@ -2024,7 +1985,7 @@ export function NewWorkspaceScreen({
             queryClient,
             client: connectedClient,
             serverId: selectedServerId,
-            cwd: sourceDirectory,
+            cwd: selectedSourceDirectory,
           })
         : null;
       const checkoutRequest = checkoutStatusForCreate
@@ -2037,7 +1998,7 @@ export function NewWorkspaceScreen({
             client: connectedClient,
             isolation: effectiveIsolation,
             project: selectedProject,
-            sourceDirectory,
+            sourceDirectory: selectedSourceDirectory,
             checkoutRequest,
             withInitialAgent: input.withInitialAgent,
             prompt: input.prompt,
@@ -2065,6 +2026,7 @@ export function NewWorkspaceScreen({
       selectedItem,
       selectedProject,
       selectedServerId,
+      selectedSourceDirectory,
       supportsWorkspaceMultiplicity,
       t,
       withConnectedClient,

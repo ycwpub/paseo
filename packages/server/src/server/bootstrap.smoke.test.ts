@@ -314,9 +314,7 @@ describe("paseo daemon bootstrap", () => {
         }),
       ).rejects.toThrow(/disabled/i);
       expect((await client.getDaemonStatus()).relay?.enabled).toBe(true);
-      expect((await client.getDaemonPairingOffer()).url).toContain(
-        "https://after.example.test/#offer=",
-      );
+      expect((await client.getDaemonPairingOffer()).url).toContain("http://127.0.0.1:9/#offer=");
     } finally {
       configureGitProcessPolicy(DEFAULT_GIT_PROCESS_POLICY);
       await client?.close().catch(() => undefined);

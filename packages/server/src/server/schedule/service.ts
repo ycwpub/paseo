@@ -998,6 +998,7 @@ export class ScheduleService {
     requireSchedule(updatedSchedule, params.scheduleId);
   }
 
+  // oxlint-disable-next-line complexity -- Schedule execution keeps target dispatch and workspace cleanup in one lifecycle boundary.
   private async executeSchedule(
     schedule: StoredSchedule,
     runId: string,

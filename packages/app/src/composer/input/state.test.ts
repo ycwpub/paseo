@@ -4,6 +4,7 @@ import {
   computeCanStartDictation,
   resolveActiveSendBehavior,
   resolveComposerSurfacePresentation,
+  runAlternateSendAction,
   runDefaultSendAction,
   runMessageInputKeyboardAction,
   stopRealtimeVoice,
@@ -204,16 +205,27 @@ describe("composer send behavior", () => {
     };
   }
 
-  it("queues the default send action while the agent is running", () => {
-    const action = actions();
+  it("uses Enter to interrupt and Mod+Enter to queue when interrupt is selected", () => {
+    const defaultAction = actions();
     runDefaultSendAction({
+      defaultSendBehavior: "interrupt",
       isAgentRunning: true,
-      onQueue: action.onQueue,
-      handleSendMessage: action.handleSendMessage,
-      handleQueueMessage: action.handleQueueMessage,
+      onQueue: defaultAction.onQueue,
+      handleSendMessage: defaultAction.handleSendMessage,
+      handleQueueMessage: defaultAction.handleQueueMessage,
     });
 
-    expect(action.calls).toEqual(["queue"]);
+    const alternateAction = actions();
+    runAlternateSendAction({
+      defaultSendBehavior: "interrupt",
+      isAgentRunning: true,
+      onQueue: alternateAction.onQueue,
+      handleSendMessage: alternateAction.handleSendMessage,
+      handleQueueMessage: alternateAction.handleQueueMessage,
+    });
+
+    expect(defaultAction.calls).toEqual(["send"]);
+    expect(alternateAction.calls).toEqual(["queue"]);
   });
 
   it("uses Enter to steer and Mod+Enter to queue when steer is selected", () => {
@@ -242,13 +254,24 @@ describe("composer send behavior", () => {
   it("uses Enter to queue and Mod+Enter to submit when queue is selected", () => {
     const defaultAction = actions();
     runDefaultSendAction({
-      isAgentRunning: false,
-      onQueue: action.onQueue,
-      handleSendMessage: action.handleSendMessage,
-      handleQueueMessage: action.handleQueueMessage,
+      defaultSendBehavior: "queue",
+      isAgentRunning: true,
+      onQueue: defaultAction.onQueue,
+      handleSendMessage: defaultAction.handleSendMessage,
+      handleQueueMessage: defaultAction.handleQueueMessage,
     });
 
-    expect(action.calls).toEqual(["send"]);
+    const alternateAction = actions();
+    runAlternateSendAction({
+      defaultSendBehavior: "queue",
+      isAgentRunning: true,
+      onQueue: alternateAction.onQueue,
+      handleSendMessage: alternateAction.handleSendMessage,
+      handleQueueMessage: alternateAction.handleQueueMessage,
+    });
+
+    expect(defaultAction.calls).toEqual(["queue"]);
+    expect(alternateAction.calls).toEqual(["send"]);
   });
 });
 

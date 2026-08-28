@@ -94,10 +94,23 @@ export function readBadgeCount(input: unknown): number {
 }
 
 export type WindowTheme = "light" | "dark";
-export interface WindowChromeUpdate {
+export interface WindowControlsOverlayUpdate {
+  height?: number;
   backgroundColor?: string;
+  foregroundColor?: string;
   trafficLightOffsetY?: number;
 }
+
+export interface WindowControlsOverlayState {
+  height: number;
+  backgroundColor?: string;
+  foregroundColor?: string;
+}
+
+export type WindowChromeUpdate = Pick<
+  WindowControlsOverlayUpdate,
+  "backgroundColor" | "trafficLightOffsetY"
+>;
 
 export function readWindowTheme(input: unknown): WindowTheme | null {
   if (input === "light" || input === "dark") {
@@ -115,12 +128,53 @@ export function getWindowBackgroundColor(theme: WindowTheme): string {
   return theme === "dark" ? "#181B1A" : "#ffffff";
 }
 
-export function getMainWindowChromeOptions(input: {
-  mode: DesktopWindowChromeMode;
-}): Pick<
+export function createWindowControlsOverlayState(theme: WindowTheme): WindowControlsOverlayState {
+  const overlay = getTitleBarOverlayOptions(theme);
+  return {
+    height: overlay.height ?? 29,
+    backgroundColor: overlay.color,
+    foregroundColor: overlay.symbolColor,
+  };
+}
+
+export function getTitleBarOverlayOptions(theme: WindowTheme): Electron.TitleBarOverlayOptions {
+  if (theme === "dark") {
+    return { color: "#181B1A", symbolColor: "#e4e4e7", height: 29 };
+  }
+
+  return { color: "#ffffff", symbolColor: "#09090b", height: 29 };
+}
+
+type MainWindowChromeOptions = Pick<
   Electron.BrowserWindowConstructorOptions,
   "titleBarStyle" | "trafficLightPosition" | "frame" | "titleBarOverlay" | "autoHideMenuBar"
-> {
+>;
+
+export function getMainWindowChromeOptions(
+  input:
+    | { mode: DesktopWindowChromeMode }
+    | {
+        platform: NodeJS.Platform;
+        theme: WindowTheme;
+      },
+): MainWindowChromeOptions {
+  if ("platform" in input) {
+    if (input.platform === "darwin") {
+      return {
+        titleBarStyle: "hidden",
+        titleBarOverlay: true,
+        trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
+      };
+    }
+
+    return {
+      titleBarStyle: "hidden",
+      frame: false,
+      titleBarOverlay: getTitleBarOverlayOptions(input.theme),
+      autoHideMenuBar: true,
+    };
+  }
+
   if (input.mode === "native-mac") {
     return {
       titleBarStyle: "hidden",
@@ -164,6 +218,15 @@ export function resolveWindowBounds(
   return { width, height };
 }
 
+function readFiniteOverlayHeight(input: unknown): number | null {
+  if (typeof input !== "number" || !Number.isFinite(input)) {
+    return null;
+  }
+
+  const rounded = Math.round(input);
+  return rounded >= 1 ? rounded : null;
+}
+
 function readOverlayColor(input: unknown): string | null {
   if (typeof input !== "string") {
     return null;
@@ -180,28 +243,79 @@ function readTrafficLightOffsetY(input: unknown): number | null {
   return Math.abs(input) <= MAX_TRAFFIC_LIGHT_OFFSET_Y ? input : null;
 }
 
-export function readWindowChromeUpdate(input: unknown): WindowChromeUpdate | null {
+export function readWindowControlsOverlayUpdate(
+  input: unknown,
+): WindowControlsOverlayUpdate | null {
   if (!input || typeof input !== "object") {
     return null;
   }
 
   const candidate = input as Record<string, unknown>;
+  const height = readFiniteOverlayHeight(candidate.height);
   const backgroundColor = readOverlayColor(candidate.backgroundColor);
+  const foregroundColor = readOverlayColor(candidate.foregroundColor);
   const trafficLightOffsetY = readTrafficLightOffsetY(candidate.trafficLightOffsetY);
 
-  if (backgroundColor === null && trafficLightOffsetY === null) {
+  if (
+    height === null &&
+    backgroundColor === null &&
+    foregroundColor === null &&
+    trafficLightOffsetY === null
+  ) {
     return null;
   }
 
   return {
+    ...(height !== null ? { height } : {}),
     ...(backgroundColor !== null ? { backgroundColor } : {}),
+    ...(foregroundColor !== null ? { foregroundColor } : {}),
     ...(trafficLightOffsetY !== null ? { trafficLightOffsetY } : {}),
   };
 }
 
+export function readWindowChromeUpdate(input: unknown): WindowChromeUpdate | null {
+  const update = readWindowControlsOverlayUpdate(input);
+  if (!update) {
+    return null;
+  }
+
+  const result: WindowChromeUpdate = {
+    ...(update.backgroundColor !== undefined ? { backgroundColor: update.backgroundColor } : {}),
+    ...(update.trafficLightOffsetY !== undefined
+      ? { trafficLightOffsetY: update.trafficLightOffsetY }
+      : {}),
+  };
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+export function resolveRuntimeTitleBarOverlayOptions(
+  state: WindowControlsOverlayState,
+): Electron.TitleBarOverlayOptions {
+  return {
+    color: state.backgroundColor?.trim() === "" ? undefined : state.backgroundColor,
+    symbolColor: state.foregroundColor?.trim() === "" ? undefined : state.foregroundColor,
+    height: Math.max(0, state.height - 1),
+  };
+}
+
+export function applyWindowControlsOverlayUpdate(input: {
+  win: Pick<BrowserWindow, "setTitleBarOverlay">;
+  current: WindowControlsOverlayState;
+  update: WindowControlsOverlayUpdate;
+}): WindowControlsOverlayState {
+  const next: WindowControlsOverlayState = {
+    height: input.update.height ?? input.current.height,
+    backgroundColor: input.update.backgroundColor ?? input.current.backgroundColor,
+    foregroundColor: input.update.foregroundColor ?? input.current.foregroundColor,
+  };
+
+  input.win.setTitleBarOverlay(resolveRuntimeTitleBarOverlayOptions(next));
+  return next;
+}
+
 export function applyMacWindowControlsUpdate(input: {
   win: Pick<BrowserWindow, "setWindowButtonPosition">;
-  update: WindowChromeUpdate;
+  update: WindowControlsOverlayUpdate;
 }): void {
   if (input.update.trafficLightOffsetY === undefined) {
     return;
@@ -214,6 +328,8 @@ export function applyMacWindowControlsUpdate(input: {
 }
 
 export function registerWindowManager(input: { mode: DesktopWindowChromeMode }): void {
+  const overlayStateByWindow = new WeakMap<BrowserWindow, WindowControlsOverlayState>();
+
   ipcMain.handle("paseo:window:minimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });
@@ -302,6 +418,36 @@ export function registerWindowManager(input: { mode: DesktopWindowChromeMode }):
     if (input.mode === "native-mac") {
       applyMacWindowControlsUpdate({ win, update: nextUpdate });
     }
+  });
+
+  ipcMain.handle("paseo:window:updateWindowControls", (event, update?: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) {
+      return;
+    }
+
+    const nextUpdate = readWindowControlsOverlayUpdate(update);
+    if (!nextUpdate) {
+      return;
+    }
+
+    if (nextUpdate.backgroundColor) {
+      win.setBackgroundColor(nextUpdate.backgroundColor);
+    }
+
+    if (input.mode === "native-mac") {
+      applyMacWindowControlsUpdate({ win, update: nextUpdate });
+      return;
+    }
+
+    const current =
+      overlayStateByWindow.get(win) ?? createWindowControlsOverlayState(resolveSystemWindowTheme());
+    const nextState = applyWindowControlsOverlayUpdate({
+      win,
+      current,
+      update: nextUpdate,
+    });
+    overlayStateByWindow.set(win, nextState);
   });
 }
 

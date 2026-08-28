@@ -19,25 +19,13 @@ import {
   forwardRef,
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import {
-  ArrowUp,
-  Mic,
-  MicOff,
-  CornerDownLeft,
-  Plus,
-  Square,
-  Maximize2,
-  ChevronDown,
-} from "lucide-react-native";
-import Animated from "react-native-reanimated";
+import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import { useDictation } from "@/hooks/use-dictation";
 import { DictationOverlay } from "@/components/dictation-controls";
 import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { PaseoInstructionTemplate } from "@getpaseo/protocol/messages";
 import { useSessionStore } from "@/stores/session-store";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
@@ -50,7 +38,6 @@ import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload, TextReplacement } from "@/composer/types";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
 import { Shortcut } from "@/components/ui/shortcut";
 import {
   DropdownMenu,
@@ -58,11 +45,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AdaptiveModalSheet,
-  AdaptiveTextInput,
-  type SheetHeader,
-} from "@/components/adaptive-modal-sheet";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useIosHardwareKeyboardSubmit } from "@/hooks/use-ios-hardware-keyboard-submit";
 import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
@@ -95,11 +77,11 @@ import {
   applyDictationTranscript,
   computeCanStartDictation,
   resolveComposerSurfacePresentation,
+  runAlternateSendAction,
   runDefaultSendAction,
   runMessageInputKeyboardAction,
   stopRealtimeVoice,
 } from "./state";
-import { useExpandedMarkdownDraft } from "./use-expanded-markdown-draft";
 
 const DEFAULT_SEND_KEYS: ShortcutKey[][] = [["Enter"]];
 const COMPOSER_INPUT_DATASET = { composerInput: "" } as const;
@@ -163,7 +145,6 @@ export interface MessageInputProps {
   activeActionContent?: React.ReactNode;
   voiceServerId?: string;
   voiceAgentId?: string;
-  workspaceId?: string | null;
   /** When true and there's sendable content, calls onQueue instead of onSubmit */
   isAgentRunning?: boolean;
   /** Controls what the default send action (Enter, send button, dictation) does when the agent is
@@ -213,8 +194,6 @@ const MIN_INPUT_HEIGHT_DESKTOP = 46;
 const DEFAULT_MAX_INPUT_HEIGHT = 160;
 const MAX_INPUT_VIEWPORT_RATIO = 0.5;
 const MIN_INPUT_HEIGHT = isWeb ? MIN_INPUT_HEIGHT_DESKTOP : MIN_INPUT_HEIGHT_MOBILE;
-const EXPANDED_EDITOR_SNAP_POINTS = ["70%", "90%"];
-
 type WebTextInputKeyPressEvent = NativeSyntheticEvent<
   TextInputKeyPressEventData & {
     metaKey?: boolean;
@@ -237,19 +216,6 @@ interface TextAreaHandle {
     height?: string;
     overflowY?: string;
   } & Record<string, unknown>;
-}
-
-interface ProjectTemplateContext {
-  projectId: string;
-  projectName: string;
-  projectRootPath: string;
-  workspaceId: string;
-  workspaceName: string;
-  workspaceDirectory: string;
-}
-
-function normalizedComparablePath(value: string): string {
-  return value.replace(/\\/gu, "/").replace(/\/+$/gu, "");
 }
 
 function AttachButtonIcon({
@@ -338,223 +304,6 @@ function AttachmentDropdown({
   );
 }
 
-function MarkdownExpandButton({
-  disabled,
-  onPress,
-  buttonIconSize,
-  style,
-}: {
-  disabled?: boolean;
-  onPress: () => void;
-  buttonIconSize: number;
-  style: React.ComponentProps<typeof Pressable>["style"];
-}) {
-  const renderIcon = useCallback(
-    ({ hovered }: { hovered?: boolean }) => (
-      <ThemedMaximize2
-        size={buttonIconSize}
-        uniProps={hovered ? iconForegroundMapping : iconForegroundMutedMapping}
-      />
-    ),
-    [buttonIconSize],
-  );
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="打开 Markdown 大文本编辑器"
-          onPress={onPress}
-          disabled={disabled}
-          style={style}
-          testID="message-input-expand-button"
-        >
-          {renderIcon}
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent>展开 Markdown 编辑器</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function ExpandedMarkdownEditor({
-  visible,
-  initialValue,
-  resetKey,
-  placeholder,
-  onChangeText,
-  onDismiss,
-  onDone,
-  onSend,
-  isSendButtonDisabled,
-  disabled,
-  isSubmitLoading,
-  instructionTemplates,
-  isLoadingTemplates,
-  onSelectInstructionTemplate,
-  t,
-}: {
-  visible: boolean;
-  initialValue: string;
-  resetKey: number;
-  placeholder?: string;
-  onChangeText: (text: string) => void;
-  onDismiss: () => void;
-  onDone: (currentNativeValue?: string) => void;
-  onSend: (currentNativeValue?: string) => void;
-  isSendButtonDisabled: boolean;
-  disabled?: boolean;
-  isSubmitLoading: boolean;
-  instructionTemplates: PaseoInstructionTemplate[];
-  isLoadingTemplates: boolean;
-  onSelectInstructionTemplate: (template: PaseoInstructionTemplate) => void;
-  t: TFunction;
-}) {
-  const inputElementRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
-  const onChangeTextRef = useRef(onChangeText);
-  onChangeTextRef.current = onChangeText;
-  const handleCompositionEnd = useCallback((event: Event) => {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | null;
-    if (input) {
-      onChangeTextRef.current(input.value);
-    }
-  }, []);
-  const setInputRef = useCallback(
-    (node: TextInput | null) => {
-      inputElementRef.current?.removeEventListener("compositionend", handleCompositionEnd);
-      const element = getTextInputNativeElement(node);
-      if (
-        !isWeb ||
-        !(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)
-      ) {
-        inputElementRef.current = null;
-        return;
-      }
-      inputElementRef.current = element;
-      element.addEventListener("compositionend", handleCompositionEnd);
-    },
-    [handleCompositionEnd],
-  );
-  useEffect(
-    () => () => {
-      inputElementRef.current?.removeEventListener("compositionend", handleCompositionEnd);
-      inputElementRef.current = null;
-    },
-    [handleCompositionEnd],
-  );
-  const readCurrentNativeValue = useCallback(() => inputElementRef.current?.value, []);
-  const handleDone = useCallback(() => {
-    onDone(readCurrentNativeValue());
-  }, [onDone, readCurrentNativeValue]);
-  const handleSend = useCallback(() => {
-    onSend(readCurrentNativeValue());
-  }, [onSend, readCurrentNativeValue]);
-  const header = useMemo<SheetHeader>(
-    () => ({
-      title: "Markdown 输入",
-      subtitle: "支持输入多行文本、列表、代码块和其他 Markdown 内容。",
-    }),
-    [],
-  );
-  let templateTriggerLabel = t("composer.instructionTemplates.empty");
-  if (isLoadingTemplates) {
-    templateTriggerLabel = t("composer.instructionTemplates.loading");
-  } else if (instructionTemplates.length > 0) {
-    templateTriggerLabel = t("composer.instructionTemplates.choose");
-  }
-  return (
-    <AdaptiveModalSheet
-      header={header}
-      visible={visible}
-      onClose={onDismiss}
-      snapPoints={EXPANDED_EDITOR_SNAP_POINTS}
-      testID="message-input-expanded-markdown-editor"
-    >
-      <View style={styles.expandedEditorBody}>
-        <View style={styles.expandedEditorTemplateRow}>
-          <View style={styles.expandedEditorTemplateText}>
-            <Text style={styles.expandedEditorTemplateTitle}>
-              {t("composer.instructionTemplates.title")}
-            </Text>
-            <Text style={styles.expandedEditorTemplateHint}>
-              {t("composer.instructionTemplates.hint")}
-            </Text>
-          </View>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              accessibilityLabel={t("composer.instructionTemplates.chooseAccessibility")}
-              testID="message-input-instruction-template-trigger"
-              style={styles.templateTrigger}
-              disabled={isLoadingTemplates || instructionTemplates.length === 0}
-            >
-              <Text style={styles.templateTriggerText}>{templateTriggerLabel}</Text>
-              <ChevronDown size={14} color={resolveTemplateTriggerIconColor()} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" minWidth={240}>
-              {instructionTemplates.map((template) => (
-                <InstructionTemplateMenuItem
-                  key={template.id}
-                  template={template}
-                  onSelect={onSelectInstructionTemplate}
-                />
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </View>
-        <AdaptiveTextInput
-          ref={setInputRef}
-          initialValue={initialValue}
-          resetKey={resetKey}
-          onChangeText={onChangeText}
-          placeholder={placeholder ?? t("composer.placeholders.fallback")}
-          accessibilityLabel="Markdown 大文本输入"
-          testID="message-input-expanded-markdown-input"
-          style={styles.expandedEditorInput}
-          multiline
-          autoFocus={isWeb}
-          textAlignVertical="top"
-        />
-        <View style={styles.expandedEditorActions}>
-          <Button variant="outline" size="sm" onPress={handleDone}>
-            完成
-          </Button>
-          <Button
-            variant="default"
-            size="sm"
-            onPress={handleSend}
-            disabled={isSendButtonDisabled || isSubmitLoading || Boolean(disabled)}
-            loading={isSubmitLoading}
-          >
-            发送
-          </Button>
-        </View>
-      </View>
-    </AdaptiveModalSheet>
-  );
-}
-
-function InstructionTemplateMenuItem({
-  template,
-  onSelect,
-}: {
-  template: PaseoInstructionTemplate;
-  onSelect: (template: PaseoInstructionTemplate) => void;
-}) {
-  const handleSelect = useCallback(() => onSelect(template), [onSelect, template]);
-  return (
-    <DropdownMenuItem
-      testID={`message-input-instruction-template-${template.id}`}
-      onSelect={handleSelect}
-    >
-      {template.name}
-    </DropdownMenuItem>
-  );
-}
-
-function resolveTemplateTriggerIconColor(): string {
-  return (styles.templateTriggerIcon as { color: string }).color;
-}
-
 function VoiceButtonIcon({
   hovered,
   isDictating,
@@ -640,6 +389,7 @@ interface DesktopKeyPressContext {
   isSubmitDisabled: boolean;
   isSubmitLoading: boolean;
   disabled: boolean;
+  handleAlternateSendAction: () => void;
   handleDefaultSendAction: () => void;
 }
 
@@ -658,16 +408,16 @@ function handleDesktopKeyPressImpl(
     if (handled) return;
   }
 
-  const { shiftKey } = event.nativeEvent;
+  const { shiftKey, metaKey, ctrlKey } = event.nativeEvent;
 
   if (event.nativeEvent.key !== "Enter") return;
   if (!ctx.submitOnEnter) return;
   if (shiftKey) return;
 
-  if (ctx.isAgentRunning && ctx.onQueue) {
+  if ((metaKey || ctrlKey) && ctx.isAgentRunning && ctx.onQueue) {
     if (ctx.isSubmitDisabled || ctx.isSubmitLoading || ctx.disabled) return;
     event.preventDefault();
-    ctx.handleDefaultSendAction();
+    ctx.handleAlternateSendAction();
     return;
   }
 
@@ -1076,7 +826,6 @@ function PrimaryAction({
   if (kind === "send") return <SendButtonTooltip {...sendButtonProps} />;
   return null;
 }
-
 interface ToggleRealtimeVoiceContext {
   voice:
     | {
@@ -1286,7 +1035,7 @@ function computeSendButtonState(input: SendButtonStateInput): SendButtonStateOut
     input.isSubmitLoading && typeof input.onSubmitLoadingPress === "function";
   const isSendButtonDisabled =
     input.disabled || (!canPressLoadingButton && (input.isSubmitDisabled || input.isSubmitLoading));
-  const defaultActionQueues = input.isAgentRunning;
+  const defaultActionQueues = input.defaultSendBehavior === "queue" && input.isAgentRunning;
   return { canPressLoadingButton, isSendButtonDisabled, defaultActionQueues };
 }
 
@@ -1320,7 +1069,6 @@ interface ResolvedMessageInputProps {
   activeActionContent: React.ReactNode;
   voiceServerId: string | undefined;
   voiceAgentId: string | undefined;
-  workspaceId: string | null | undefined;
   isAgentRunning: boolean;
   defaultSendBehavior: "interrupt" | "steer" | "queue";
   onQueue: ((payload: MessagePayload) => void) | undefined;
@@ -1368,7 +1116,6 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     activeActionContent: props.activeActionContent,
     voiceServerId: props.voiceServerId,
     voiceAgentId: props.voiceAgentId,
-    workspaceId: props.workspaceId,
     isAgentRunning: props.isAgentRunning ?? false,
     defaultSendBehavior: props.defaultSendBehavior,
     onQueue: props.onQueue,
@@ -1393,7 +1140,6 @@ function extractErrorMessage(error: unknown): string | null {
 }
 
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
-  // eslint-disable-next-line complexity
   function MessageInput(props, ref) {
     const {
       value,
@@ -1425,8 +1171,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       activeActionContent,
       voiceServerId,
       voiceAgentId,
-      workspaceId,
       isAgentRunning,
+      defaultSendBehavior,
       onQueue,
       onSubmitLoadingPress,
       onKeyPressCallback,
@@ -1539,135 +1285,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         [voiceServerId],
       ),
     );
-    const projectTemplateWorkspace = useSessionStore(
-      useCallback(
-        (state) => {
-          if (!voiceServerId) return null;
-          const workspaces = state.sessions[voiceServerId]?.workspaces;
-          if (!workspaces) return null;
-          if (workspaceId) {
-            return workspaces.get(workspaceId) ?? null;
-          }
-          const comparableCwd = normalizedComparablePath(cwd);
-          for (const workspace of workspaces.values()) {
-            if (normalizedComparablePath(workspace.workspaceDirectory) !== comparableCwd) continue;
-            return workspace;
-          }
-          return null;
-        },
-        [cwd, voiceServerId, workspaceId],
-      ),
-    );
-    const projectTemplateContext = useMemo<ProjectTemplateContext | null>(
-      () =>
-        projectTemplateWorkspace
-          ? {
-              projectId: projectTemplateWorkspace.projectId,
-              projectName: projectTemplateWorkspace.projectDisplayName,
-              projectRootPath: projectTemplateWorkspace.projectRootPath,
-              workspaceId: projectTemplateWorkspace.id,
-              workspaceName: projectTemplateWorkspace.name,
-              workspaceDirectory: projectTemplateWorkspace.workspaceDirectory,
-            }
-          : null,
-      [projectTemplateWorkspace],
-    );
-    const templateProjectId = projectTemplateContext?.projectId;
-    const templateProjectName = projectTemplateContext?.projectName;
-    const templateProjectRootPath = projectTemplateContext?.projectRootPath;
-    const templateWorkspaceId = projectTemplateContext?.workspaceId;
-    const templateWorkspaceName = projectTemplateContext?.workspaceName;
-    const templateWorkspaceDirectory = projectTemplateContext?.workspaceDirectory;
-    const [instructionTemplates, setInstructionTemplates] = useState<PaseoInstructionTemplate[]>(
-      [],
-    );
-    const [instructionTemplateVariables, setInstructionTemplateVariables] = useState<
-      Record<string, string>
-    >({});
-    const [isLoadingInstructionTemplates, setIsLoadingInstructionTemplates] = useState(false);
-
-    useEffect(() => {
-      if (!isExpandedEditorOpen) {
-        return;
-      }
-      if (!client) {
-        setInstructionTemplates([]);
-        setInstructionTemplateVariables({});
-        setIsLoadingInstructionTemplates(false);
-        return;
-      }
-      let cancelled = false;
-      setIsLoadingInstructionTemplates(true);
-      const projectConfigPromise = templateProjectRootPath
-        ? client.readProjectConfig(templateProjectRootPath)
-        : Promise.resolve(null);
-      void Promise.all([client.getDaemonConfig(), projectConfigPromise])
-        .then(([daemonConfigResult, projectConfigResult]) => {
-          if (cancelled) return undefined;
-          const projectConfig =
-            projectConfigResult?.ok === true ? projectConfigResult.config?.project : undefined;
-          setInstructionTemplates(
-            mergeInstructionTemplates(
-              daemonConfigResult.config.instructionTemplates,
-              projectConfig?.instructionTemplates,
-            ),
-          );
-          setInstructionTemplateVariables(
-            templateProjectId
-              ? {
-                  ...projectConfig?.variables,
-                  projectId: templateProjectId,
-                  projectName: templateProjectName ?? "",
-                  projectRoot: templateProjectRootPath ?? "",
-                  workspaceId: templateWorkspaceId ?? "",
-                  workspaceName: templateWorkspaceName ?? "",
-                  workspaceDirectory: templateWorkspaceDirectory ?? "",
-                }
-              : {},
-          );
-          return undefined;
-        })
-        .catch((error) => {
-          if (cancelled) return;
-          setInstructionTemplates([]);
-          setInstructionTemplateVariables({});
-          toast.show(error instanceof Error ? error.message : String(error), { variant: "error" });
-        })
-        .finally(() => {
-          if (!cancelled) setIsLoadingInstructionTemplates(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [
-      client,
-      isExpandedEditorOpen,
-      templateProjectId,
-      templateProjectName,
-      templateProjectRootPath,
-      templateWorkspaceDirectory,
-      templateWorkspaceId,
-      templateWorkspaceName,
-      toast,
-    ]);
-
-    const handleSelectInstructionTemplate = useCallback(
-      (template: PaseoInstructionTemplate) => {
-        const rendered = renderInstructionTemplate(template.content, instructionTemplateVariables);
-        replaceExpandedEditorDraft((currentValue) =>
-          appendInstructionTemplate(currentValue, rendered.text),
-        );
-        if (rendered.missingVariables.length > 0) {
-          toast.show(
-            t("composer.instructionTemplates.missingVariables", {
-              variables: rendered.missingVariables.join(", "),
-            }),
-            { variant: "warning" },
-          );
-        }
-      },
-      [instructionTemplateVariables, replaceExpandedEditorDraft, t, toast],
-    );
 
     useEffect(() => {
       if (appliedTextReplacementKeyRef.current === textReplacement.key) return;
@@ -1690,6 +1307,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         sendAfterTranscriptRef.current = false;
         applyDictationTranscript(text, {
           value: valueRef.current,
+          defaultSendBehavior,
           isAgentRunning,
           onQueue,
           onSubmit,
@@ -1918,12 +1536,23 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const handleDefaultSendAction = useCallback(() => {
       runDefaultSendAction({
+        defaultSendBehavior,
         isAgentRunning,
         onQueue,
         handleSendMessage,
         handleQueueMessage,
       });
-    }, [isAgentRunning, onQueue, handleQueueMessage, handleSendMessage]);
+    }, [defaultSendBehavior, isAgentRunning, onQueue, handleQueueMessage, handleSendMessage]);
+
+    const handleAlternateSendAction = useCallback(() => {
+      runAlternateSendAction({
+        defaultSendBehavior,
+        isAgentRunning,
+        onQueue,
+        handleSendMessage,
+        handleQueueMessage,
+      });
+    }, [defaultSendBehavior, isAgentRunning, handleSendMessage, handleQueueMessage, onQueue]);
 
     const getWebTextArea = useCallback(
       (): TextAreaHandle | null => getWebTextAreaImpl(textInputRef.current),
@@ -1973,6 +1602,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         isSubmitDisabled,
         isSubmitLoading,
         disabled,
+        handleAlternateSendAction,
         handleDefaultSendAction,
       });
     }
@@ -1993,6 +1623,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         isSubmitDisabled,
         isSubmitLoading,
         onSubmitLoadingPress,
+        defaultSendBehavior,
         isAgentRunning,
       });
     useIosHardwareKeyboardSubmit({
@@ -2076,15 +1707,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [isDictating, isDictationStartEnabled],
     );
 
-    const expandButtonStyle = useCallback(
-      ({ hovered }: { hovered?: boolean }) => [
-        styles.voiceButton,
-        Boolean(hovered) && styles.iconButtonHovered,
-        disabled && styles.buttonDisabled,
-      ],
-      [disabled],
-    );
-
     const handleRealtimeVoiceStop = useCallback(() => {
       void handleStopRealtimeVoice();
     }, [handleStopRealtimeVoice]);
@@ -2137,28 +1759,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [onAttachButtonRef, buttonIconSize],
     );
 
-    const handleOpenExpandedEditor = useCallback(() => {
-      openExpandedEditor();
-    }, [openExpandedEditor]);
-    const handleDismissExpandedEditor = useCallback(() => {
-      dismissExpandedEditor();
-      textInputRef.current?.focus();
-    }, [dismissExpandedEditor]);
-    const handleCompleteExpandedEditor = useCallback(
-      (currentNativeValue?: string) => {
-        commitAndCloseExpandedEditor(currentNativeValue);
-        textInputRef.current?.focus();
-      },
-      [commitAndCloseExpandedEditor],
-    );
-    const handleSendExpandedEditor = useCallback(
-      (currentNativeValue?: string) => {
-        commitAndCloseExpandedEditor(currentNativeValue);
-        handleDefaultSendAction();
-      },
-      [commitAndCloseExpandedEditor, handleDefaultSendAction],
-    );
-
     const renderVoiceButtonIcon = useCallback(
       ({ hovered }: { hovered?: boolean }) => (
         <VoiceButtonIcon
@@ -2169,61 +1769,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         />
       ),
       [isDictating, isRealtimeVoiceForCurrentAgent, voice?.isMuted, buttonIconSize],
-    );
-
-    const attachmentButton = (
-      <AttachmentDropdown
-        visible={mode.showAttachments}
-        isConnected={isConnected}
-        disabled={disabled}
-        attachButtonStyle={attachButtonStyle}
-        renderAttachButtonIcon={renderAttachButtonIcon}
-        attachmentMenuItems={attachmentMenuItems}
-        addAttachmentLabel={t("composer.input.addAttachment")}
-      />
-    );
-
-    const rightActions = (
-      <>
-        {beforeVoiceContent}
-        <MarkdownExpandButton
-          disabled={disabled}
-          onPress={handleOpenExpandedEditor}
-          buttonIconSize={buttonIconSize}
-          style={expandButtonStyle}
-        />
-        <VoiceButtonTooltip
-          visible={mode.showVoice}
-          onVoicePress={handleVoicePress}
-          isDictationStartEnabled={isDictationStartEnabled}
-          voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
-          voiceButtonStyle={voiceButtonStyle}
-          renderVoiceButtonIcon={renderVoiceButtonIcon}
-          voiceTooltipText={voiceTooltipText}
-          isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
-          voiceMuteToggleKeys={voiceMuteToggleKeys}
-          dictationToggleKeys={dictationToggleKeys}
-        />
-        {rightContent}
-        <PrimaryAction
-          kind={primaryActionKind}
-          activeActionContent={activeActionContent}
-          shouldShow
-          canPressLoadingButton={canPressLoadingButton}
-          onSubmitLoadingPress={onSubmitLoadingPress}
-          onDefaultSendAction={handleDefaultSendAction}
-          isSendButtonDisabled={isSendButtonDisabled}
-          submitAccessibilityLabel={submitAccessibilityLabel}
-          sendButtonCombinedStyle={sendButtonCombinedStyle}
-          isSubmitLoading={isSubmitLoading}
-          submitIcon={submitIcon}
-          submitLabel={submitLabel}
-          submitButtonTestID={submitButtonTestID}
-          buttonIconSize={buttonIconSize}
-          sendKeys={DEFAULT_SEND_KEYS}
-          sendTooltipLabel={sendTooltipLabel}
-        />
-      </>
     );
 
     return (
@@ -2273,51 +1818,61 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             />
           </RenderProfile>
 
-          {isCompact ? (
-            <>
-              {leftContent ? (
-                <View style={styles.compactControlsSection} testID="message-input-compact-controls">
-                  {leftContent}
-                </View>
-              ) : null}
-              <View style={styles.compactActionRow} testID="message-input-action-row">
-                <View style={styles.compactAttachmentGroup}>{attachmentButton}</View>
-                <View style={styles.rightButtonGroup}>{rightActions}</View>
-              </View>
-            </>
-          ) : (
-            <View style={styles.buttonRow}>
-              {/* Toolbar left: attachment button + agent controls */}
-              <View style={styles.leftButtonGroup}>
-                {attachmentButton}
-                {leftContent}
-              </View>
-
-              {/* Right: voice button, contextual button (realtime/send/cancel) */}
-              <View style={styles.rightButtonGroup}>{rightActions}</View>
+          {/* Button row */}
+          <View style={styles.buttonRow}>
+            {/* Toolbar left: attachment button + agent controls */}
+            <View style={styles.leftButtonGroup}>
+              <AttachmentDropdown
+                visible={mode.showAttachments}
+                isConnected={isConnected}
+                disabled={disabled}
+                attachButtonStyle={attachButtonStyle}
+                renderAttachButtonIcon={renderAttachButtonIcon}
+                attachmentMenuItems={attachmentMenuItems}
+                addAttachmentLabel={t("composer.input.addAttachment")}
+              />
+              {leftContent}
             </View>
-          )}
+
+            {/* Right: voice button, contextual button (realtime/send/cancel) */}
+            <View style={styles.rightButtonGroup}>
+              {beforeVoiceContent}
+              <VoiceButtonTooltip
+                visible={mode.showVoice}
+                onVoicePress={handleVoicePress}
+                isDictationStartEnabled={isDictationStartEnabled}
+                voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
+                voiceButtonStyle={voiceButtonStyle}
+                renderVoiceButtonIcon={renderVoiceButtonIcon}
+                voiceTooltipText={voiceTooltipText}
+                isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
+                voiceMuteToggleKeys={voiceMuteToggleKeys}
+                dictationToggleKeys={dictationToggleKeys}
+              />
+              {rightContent}
+              <PrimaryAction
+                kind={primaryActionKind}
+                activeActionContent={activeActionContent}
+                shouldShow
+                canPressLoadingButton={canPressLoadingButton}
+                onSubmitLoadingPress={onSubmitLoadingPress}
+                onDefaultSendAction={handleDefaultSendAction}
+                isSendButtonDisabled={isSendButtonDisabled}
+                submitAccessibilityLabel={submitAccessibilityLabel}
+                sendButtonCombinedStyle={sendButtonCombinedStyle}
+                isSubmitLoading={isSubmitLoading}
+                submitIcon={submitIcon}
+                submitLabel={submitLabel}
+                submitButtonTestID={submitButtonTestID}
+                buttonIconSize={buttonIconSize}
+                sendKeys={DEFAULT_SEND_KEYS}
+                sendTooltipLabel={sendTooltipLabel}
+              />
+            </View>
+          </View>
         </View>
 
-        <ExpandedMarkdownEditor
-          visible={isExpandedEditorOpen}
-          initialValue={expandedEditorInitialValue}
-          resetKey={expandedEditorResetKey}
-          placeholder={placeholder}
-          onChangeText={updateExpandedEditorDraft}
-          onDismiss={handleDismissExpandedEditor}
-          onDone={handleCompleteExpandedEditor}
-          onSend={handleSendExpandedEditor}
-          isSendButtonDisabled={isSendButtonDisabled}
-          disabled={disabled}
-          isSubmitLoading={isSubmitLoading}
-          instructionTemplates={instructionTemplates}
-          isLoadingTemplates={isLoadingInstructionTemplates}
-          onSelectInstructionTemplate={handleSelectInstructionTemplate}
-          t={t}
-        />
-
-        <Animated.View
+        <View
           style={overlayContainerStyle}
           pointerEvents={surfacePresentation.overlay.pointerEvents}
         >
@@ -2338,7 +1893,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onDiscardFailedRecording={handleDiscardFailedRecording}
             onRealtimeVoiceStop={handleRealtimeVoiceStop}
           />
-        </Animated.View>
+        </View>
       </View>
     );
   },
@@ -2414,24 +1969,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     justifyContent: "space-between",
     marginHorizontal: -6,
   },
-  compactControlsSection: {
-    width: "100%",
-    minWidth: 0,
-    paddingBottom: theme.spacing[2],
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
-  compactActionRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginHorizontal: -6,
-  },
-  compactAttachmentGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
   leftButtonGroup: {
     minWidth: 0,
     flexShrink: 1,
@@ -2500,71 +2037,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   tooltipText: {
     fontSize: theme.fontSize.base,
     color: theme.colors.popoverForeground,
-  },
-  expandedEditorBody: {
-    gap: theme.spacing[4],
-  },
-  expandedEditorTemplateRow: {
-    flexDirection: {
-      xs: "column",
-      md: "row",
-    },
-    alignItems: {
-      xs: "stretch",
-      md: "center",
-    },
-    gap: theme.spacing[3],
-  },
-  expandedEditorTemplateText: {
-    flex: 1,
-    minWidth: 0,
-    gap: theme.spacing[1],
-  },
-  expandedEditorTemplateTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
-  expandedEditorTemplateHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  templateTrigger: {
-    minHeight: 36,
-    minWidth: 160,
-    paddingHorizontal: theme.spacing[3],
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
-  },
-  templateTriggerText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  templateTriggerIcon: {
-    color: theme.colors.foregroundMuted,
-  },
-  expandedEditorInput: {
-    minHeight: 320,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    paddingVertical: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surface1,
-    textAlignVertical: "top",
-  },
-  expandedEditorActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: theme.spacing[2],
   },
   buttonDisabled: {
     opacity: 0.5,

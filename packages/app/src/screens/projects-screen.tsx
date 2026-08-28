@@ -8,6 +8,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useProjects, type ProjectHostError } from "@/hooks/use-projects";
 import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
+import { isProjectDirectoryTimeout } from "@/projects/load-error";
 import { settingsStyles } from "@/styles/settings";
 import { openProjectSettings } from "@/navigation/settings-navigation";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
@@ -60,7 +61,7 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
   if (hostProjects.length === 0) {
     if (scopedErrors.length > 0) {
       return (
-        <View testID="projects-list">
+        <View style={styles.emptyError} testID="projects-list">
           <HostErrorsBanner errors={scopedErrors} onRetry={refetch} />
         </View>
       );
@@ -92,39 +93,33 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
   );
 }
 
-function HostErrorsBanner({
-  errors,
-  onRetry,
-}: {
-  errors: ProjectHostError[];
-  onRetry: () => void;
-}) {
+function HostErrorsBanner({ errors, onRetry }: { errors: ProjectHostError[]; onRetry(): unknown }) {
   const { t } = useTranslation();
+  const handleRetry = useCallback(() => {
+    void onRetry();
+  }, [onRetry]);
   return (
     <View style={styles.errorsBanner} testID="projects-host-errors">
-      <View style={styles.errorsContent}>
-        {errors.map((error) => (
-          <Text key={error.serverId} style={styles.errorsBannerText}>
-            {isProjectDirectoryTimeout(error.message)
-              ? t("settings.projectList.hostLoadTimedOut", {
-                  hostName: error.serverName,
-                })
-              : t("settings.projectList.hostLoadFailed", {
-                  hostName: error.serverName,
-                  message: error.message,
-                })}
-          </Text>
-        ))}
+      {errors.map((error) => (
+        <Text key={error.serverId} style={styles.errorsBannerText}>
+          {isProjectDirectoryTimeout(error.message)
+            ? t("settings.projectList.hostLoadTimedOut", { hostName: error.serverName })
+            : t("settings.projectList.hostLoadFailed", {
+                hostName: error.serverName,
+                message: error.message,
+              })}
+        </Text>
+      ))}
+      <View style={styles.errorsBannerActions}>
+        <Pressable
+          onPress={handleRetry}
+          testID="projects-host-errors-retry"
+          accessibilityRole="button"
+          style={styles.retryButton}
+        >
+          <Text style={styles.retryButtonText}>{t("common.actions.retry")}</Text>
+        </Pressable>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("common.actions.retry")}
-        onPress={onRetry}
-        style={styles.retryButton}
-        testID="projects-host-errors-retry"
-      >
-        <Text style={styles.retryButtonText}>{t("common.actions.retry")}</Text>
-      </Pressable>
     </View>
   );
 }
@@ -209,6 +204,9 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     padding: theme.spacing[6],
   },
+  emptyError: {
+    padding: theme.spacing[6],
+  },
   emptyText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
@@ -219,29 +217,26 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing[3],
     marginBottom: theme.spacing[3],
-    gap: theme.spacing[3],
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  errorsContent: {
-    flex: 1,
     gap: theme.spacing[1],
   },
   errorsBannerText: {
     color: theme.colors.palette.red[300],
     fontSize: theme.fontSize.sm,
   },
+  errorsBannerActions: {
+    alignItems: "flex-start",
+    marginTop: theme.spacing[2],
+  },
   retryButton: {
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1.5],
+    paddingVertical: theme.spacing[2],
   },
   retryButtonText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   row: {
     gap: theme.spacing[3],

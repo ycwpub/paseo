@@ -111,8 +111,7 @@ import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webview
 import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
 import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
-import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
-import { useDraftStore } from "@/stores/draft-store";
+import { generateDraftId } from "@/stores/draft-keys";
 import { resolveWorkspaceRouteId } from "@/utils/workspace-identity";
 import { useOpenAgentTabLabels } from "@/subagents/use-open-agent-tab-labels";
 import {
@@ -199,10 +198,10 @@ import {
 } from "@/screens/workspace/workspace-header-menu";
 import {
   createWorkspaceFileTabTarget,
+  normalizeWorkspaceFileLocation,
   type WorkspaceFileLocation,
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
-import { canonicalizeWorkspaceFileLocation } from "@/workspace/file-open/canonical-location";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest } from "@/panels/pull-request";
@@ -2021,15 +2020,6 @@ function WorkspaceScreenContent({
       const pending = pendingByDraftId[tab.target.draftId];
       return pending?.serverId === normalizedServerId && pending.lifecycle === "active";
     });
-    const replaceableDraftTabId = resolveReplaceableWorkspaceDraftTabId({
-      tab: focusedWorkspaceTab,
-      serverId: normalizedServerId,
-      draftRecord: focusedDraftRecord,
-      pendingCreate:
-        focusedWorkspaceTab?.target.kind === "draft"
-          ? pendingByDraftId[focusedWorkspaceTab.target.draftId]
-          : undefined,
-    });
 
     reconcileWorkspaceTabs(
       persistenceKey,
@@ -2042,7 +2032,6 @@ function WorkspaceScreenContent({
         hasActivePendingTerminalCreate:
           createTerminalMutation.isPending || pendingTerminalCreateInput !== null,
         hasActivePendingDraftCreate: hasActivePendingDraftCreateInWorkspace,
-        replaceableDraftTabId,
       }),
     );
   }, [
@@ -2202,7 +2191,6 @@ function WorkspaceScreenContent({
       persistenceKey,
       requestFileNavigation,
       showMobileAgent,
-      workspaceDirectory,
     ],
   );
 

@@ -746,53 +746,38 @@ function createSessionForWorkspaceTests(
   return session;
 }
 
-test("project.list.request catches up by sequence on the existing RPC", async () => {
-  const emitted: SessionOutboundMessage[] = [];
-  let project = createPersistedProjectRecord({
-    projectId: "project-sequenced",
-    rootPath: "/repo/sequenced",
+test("describing a workspace creates its managed Workspace data directory", async () => {
+  const paseoHome = mkdtempSync(path.join(tmpdir(), "workspace-descriptor-storage-"));
+  temporaryStorageRoots.push(paseoHome);
+  const session = createSessionForWorkspaceTests({ paseoHome });
+  const project = createPersistedProjectRecord({
+    projectId: "proj-descriptor-storage",
+    rootPath: REPO_CWD,
     kind: "git",
-    displayName: "Before",
-    createdAt: "2026-08-12T08:00:00.000Z",
-    updatedAt: "2026-08-12T08:00:00.000Z",
+    displayName: "repo",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
   });
-  const session = createSessionForWorkspaceTests({
-    onMessage: (message) => emitted.push(message),
-    projectRegistry: {
-      initialize: async () => {},
-      existsOnDisk: async () => true,
-      list: async () => [project],
-      get: async () => project,
-      getOrCreateActiveByRoot: async () => project,
-      upsert: async () => {},
-      archive: async () => {},
-      remove: async () => {},
-    },
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-descriptor-storage",
+    projectId: project.projectId,
+    cwd: REPO_CWD,
+    kind: "local_checkout",
+    displayName: "main",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
   });
+  const workspaceStoragePath = resolveManagedWorkspacePath(
+    paseoHome,
+    project.projectId,
+    workspace.workspaceId,
+  );
 
-  await session.handleMessage({
-    type: "project.list.request",
-    requestId: "initial",
-    sync: {},
-  });
-  const initial = findByType(emitted, "project.list.response")?.payload;
-  expect(initial?.sync).toMatchObject({ mode: "snapshot", headSeq: 1 });
+  expect(existsSync(workspaceStoragePath)).toBe(false);
 
-  project = { ...project, displayName: "After", updatedAt: "2026-08-12T08:01:00.000Z" };
-  await session.handleMessage({
-    type: "project.list.request",
-    requestId: "catch-up",
-    sync: {
-      generation: initial?.sync?.generation,
-      afterSeq: initial?.sync?.headSeq,
-    },
-  });
-  const responses = filterByType(emitted, "project.list.response");
-  expect(responses.at(-1)?.payload).toMatchObject({
-    requestId: "catch-up",
-    projects: [{ projectId: "project-sequenced", projectDisplayName: "After", syncSeq: 2 }],
-    sync: { mode: "changes", headSeq: 2, removals: [] },
-  });
+  await session.describeWorkspaceRecord(workspace, project);
+
+  expect(existsSync(workspaceStoragePath)).toBe(true);
 });
 
 test("agent updates preserve queued live transitions across stored metadata reads", async () => {
@@ -3732,6 +3717,7 @@ test("archiving the last workspace emits a remove carrying the now-empty project
       projectDisplayName: "repo",
       projectCustomName: null,
       projectCustomIconRevision: null,
+      projectIconRevision: "automatic:none:v1",
       projectRootPath: resolveManagedProjectStorageRoot("/tmp/paseo-test", project.projectId),
       projectSourceDirectory: REPO_CWD,
       projectKind: "git",
@@ -7995,10 +7981,11 @@ const ICON_PNG_1X1 = Buffer.from([
 test("project.icon.set.request publishes a custom icon that project.icon.get serves back", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "session-project-icon-test-")));
+  const paseoHome = path.join(tempDir, "paseo-home");
   const session = asTestSession(
     createSessionForWorkspaceTests({
-      paseoHome: path.join(tempDir, "paseo-home"),
       onMessage: (message) => emitted.push(message),
+      paseoHome,
     }),
   );
   session.updateClientCapabilities({ [CLIENT_CAPS.projectUpdates]: true });

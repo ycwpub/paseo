@@ -993,6 +993,29 @@ describe("DaemonConfigStore", () => {
   });
 });
 
+describe("validateLocalRelayListenAddress", () => {
+  test("accepts wildcard and assigned private addresses", () => {
+    expect(() =>
+      validateLocalRelayListenAddress("0.0.0.0:6769", ["192.168.1.102", "10.4.232.206"]),
+    ).not.toThrow();
+    expect(() =>
+      validateLocalRelayListenAddress("10.4.232.206:6769", ["192.168.1.102", "10.4.232.206"]),
+    ).not.toThrow();
+  });
+
+  test("rejects an address that is not assigned to this machine with actionable guidance", () => {
+    expect(() =>
+      validateLocalRelayListenAddress("10.71.95.148:6769", [
+        "127.0.0.1",
+        "192.168.1.102",
+        "10.4.232.206",
+      ]),
+    ).toThrow(
+      "LAN Relay listen IP 10.71.95.148 is not assigned to this machine. Use 0.0.0.0 to listen on all interfaces, or choose a local IP: 10.4.232.206, 127.0.0.1, 192.168.1.102.",
+    );
+  });
+});
+
 describe("DaemonConfigStore reload", () => {
   const tempDirs: string[] = [];
 

@@ -4,8 +4,8 @@ import equal from "fast-deep-equal/es6";
 import {
   DaemonClient,
   type DaemonClientConfig,
-  type ConnectionState,
   type DaemonConnectionTransport,
+  type ConnectionState,
   type FetchAgentsOptions,
 } from "@getpaseo/client/internal/daemon-client";
 import {
@@ -27,17 +27,7 @@ import {
   shouldUseTlsForDefaultHostedRelay,
 } from "@/utils/daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
-import {
-  resolveClientDeviceType,
-  resolveClientHostname,
-  resolveClientName,
-  resolveClientType,
-} from "@/utils/client-name";
-import {
-  ConnectionOfferSchema,
-  getConnectionOfferRelays,
-  type ConnectionOffer,
-} from "@getpaseo/protocol/connection-offer";
+import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { isWeb } from "@/constants/platform";
 import {
@@ -59,7 +49,7 @@ import {
 import { getDesktopHost } from "@/desktop/host";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
-import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
+import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { invalidateCheckoutGitQueriesForServer } from "@/git/query-keys";
 import { queryClient } from "@/data/query-client";
@@ -70,11 +60,9 @@ import {
 import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
 import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/composer/actions";
-import { getNextQueuedMessage } from "@/composer/queued-message-edit";
-import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
+import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { encodeImages } from "@/utils/encode-images";
-import { hasActiveContextCompaction } from "@/timeline/compaction-state";
 import { DirectorySync, type RefreshAgentDirectoryResult } from "@/runtime/directory-sync";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import type { ReplicaRowStore } from "@/runtime/replica-cache/row-store";
@@ -90,6 +78,10 @@ import { projectIconCache } from "@/projects/icon-cache";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 import { revokePushNotifications } from "@/push-notifications";
 import { createAppWebSocketFactory } from "./websocket-factory";
+import {
+  INITIAL_WORKSPACE_DIRECTORY_STATUS,
+  type HostRuntimeWorkspaceDirectoryStatus,
+} from "@/runtime/workspace-directory-status";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 export type HostRegistryStatus = "loading" | "ready";
@@ -280,11 +272,7 @@ type HostRuntimeConnectionMachineState =
     };
 
 type HostRuntimeConnectionMachineEvent =
-  | {
-      type: "select_connection";
-      connectionId: string;
-      connection: ActiveConnection;
-    }
+  | { type: "select_connection"; connectionId: string; connection: ActiveConnection }
   | { type: "client_state"; state: ConnectionState; lastError: string | null }
   | { type: "connect_failed"; message: string }
   | { type: "no_connections" }
@@ -579,9 +567,6 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
           endpoint: connection.relayEndpoint,
           useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
           serverId: host.serverId,
-          clientId,
-          clientHostname: base.clientHostname,
-          deviceType: resolveClientDeviceType(),
         }),
         e2ee: {
           enabled: true,
@@ -788,18 +773,6 @@ export class HostRuntimeController {
     });
   }
 
-  markWorkspaceDirectorySyncLoading(): void {
-    this.updateSnapshot(startWorkspaceDirectoryRefresh(this.snapshot));
-  }
-
-  markWorkspaceDirectorySyncReady(): void {
-    this.updateSnapshot(completeWorkspaceDirectoryRefresh());
-  }
-
-  markWorkspaceDirectorySyncError(error: string): void {
-    this.updateSnapshot(failWorkspaceDirectoryRefresh(this.snapshot, error));
-  }
-
   markStartupError(message: string): void {
     this.applyConnectionEvent({ type: "connect_failed", message });
     this.updateSnapshot({
@@ -889,9 +862,7 @@ export class HostRuntimeController {
       if (!this.isCurrentProbeRequest(requestVersion)) {
         return;
       }
-      this.updateSnapshot({
-        probeByConnectionId: new Map(probeByConnectionId),
-      });
+      this.updateSnapshot({ probeByConnectionId: new Map(probeByConnectionId) });
     };
 
     const maybeActivateFirstAvailable = async (
@@ -1065,9 +1036,7 @@ export class HostRuntimeController {
               return;
             }
 
-            const rttMs = await connectedClient.measureLatency({
-              timeoutMs: 5000,
-            });
+            const rttMs = await connectedClient.measureLatency({ timeoutMs: 5000 });
             if (!this.isCurrentProbeRequest(requestVersion)) {
               return;
             }
@@ -1248,10 +1217,7 @@ export class HostRuntimeController {
     if (this.snapshot.hasEverLoadedAgentDirectory) return {};
     const tag = this.connectionMachineState.tag;
     if (tag === "connecting" || tag === "online") {
-      return {
-        agentDirectoryStatus: "initial_loading",
-        agentDirectoryError: null,
-      };
+      return { agentDirectoryStatus: "initial_loading", agentDirectoryError: null };
     }
     if (tag === "error") {
       return {
@@ -1260,15 +1226,6 @@ export class HostRuntimeController {
       };
     }
     return { agentDirectoryStatus: "idle", agentDirectoryError: null };
-  }
-
-  private buildWorkspaceDirectoryStatusPatch(): Partial<HostRuntimeSnapshotPatch> {
-    const error =
-      this.connectionMachineState.tag === "error" ? this.connectionMachineState.message : null;
-    return workspaceDirectoryConnectionPatch(this.snapshot, {
-      status: this.snapshot.connectionStatus,
-      error,
-    });
   }
 
   private async switchToConnection(input: {
@@ -1288,10 +1245,7 @@ export class HostRuntimeController {
     }
     const requestVersion = ++this.switchRequestVersion;
 
-    const clientId = await this.resolveClientIdForSwitch({
-      existingClient,
-      requestVersion,
-    });
+    const clientId = await this.resolveClientIdForSwitch({ existingClient, requestVersion });
     if (clientId === null) return;
 
     if (!this.isSwitchStillValid(requestVersion, expectedProbeVersion)) {
@@ -1326,11 +1280,7 @@ export class HostRuntimeController {
 
     this.activeClient = client;
     this.unsubscribeClientHandlers =
-      this.deps.mountClientHandlers?.({
-        client,
-        host: this.host,
-        connection,
-      }) ?? null;
+      this.deps.mountClientHandlers?.({ client, host: this.host, connection }) ?? null;
     this.applyConnectionEvent({
       type: "select_connection",
       connectionId: connection.id,
@@ -1359,18 +1309,14 @@ export class HostRuntimeController {
       const patch: HostRuntimeSnapshotPatch = {
         ...toSnapshotConnectionPatch(this.connectionMachineState, this.connectionEpoch),
         ...this.buildAgentDirectoryStatusPatch(),
-        ...this.buildWorkspaceDirectoryStatusPatch(),
       };
       this.updateSnapshot(patch);
     });
-    if (typeof client.subscribeConnectionTransport === "function") {
-      this.unsubscribeClientTransport = client.subscribeConnectionTransport((transport) => {
-        if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) {
-          return;
-        }
+    this.unsubscribeClientTransport =
+      client.subscribeConnectionTransport?.((transport) => {
+        if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) return;
         this.updateSnapshot({ transport });
-      });
-    }
+      }) ?? null;
 
     try {
       if (!existingClient) {
@@ -1786,11 +1732,7 @@ export class HostRuntimeStore {
 
     this.hosts = this.hosts.map((host) =>
       host.serverId === oldServerId
-        ? {
-            ...host,
-            serverId: newServerId,
-            updatedAt: new Date().toISOString(),
-          }
+        ? { ...host, serverId: newServerId, updatedAt: new Date().toISOString() }
         : host,
     );
     this.emitHostList();
@@ -1828,11 +1770,7 @@ export class HostRuntimeStore {
     connection: HostConnection;
     label?: string;
     timeoutMs?: number;
-  }): Promise<{
-    profile: HostProfile;
-    serverId: string;
-    hostname: string | null;
-  }> {
+  }): Promise<{ profile: HostProfile; serverId: string; hostname: string | null }> {
     if (input.connection.type === "relay") {
       throw new Error("Cannot probe a relay connection without a server id.");
     }
@@ -1865,11 +1803,7 @@ export class HostRuntimeStore {
     useTls?: boolean;
     password?: string;
     label?: string;
-  }): Promise<{
-    profile: HostProfile;
-    serverId: string;
-    hostname: string | null;
-  }> {
+  }): Promise<{ profile: HostProfile; serverId: string; hostname: string | null }> {
     const endpoint = normalizeHostPort(input.endpoint);
     const password = input.password?.trim();
     return this.probeAndUpsertConnection({
@@ -1924,20 +1858,18 @@ export class HostRuntimeStore {
   }
 
   async upsertConnectionFromOffer(offer: ConnectionOffer, label?: string): Promise<HostProfile> {
-    let profile: HostProfile | null = null;
-    for (const relay of getConnectionOfferRelays(offer)) {
-      // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
-      const useTls = relay.useTls ?? shouldUseTlsForDefaultHostedRelay(relay.endpoint);
-      profile = await this.upsertRelayConnection({
-        serverId: offer.serverId,
-        relayEndpoint: relay.endpoint,
-        useTls,
-        daemonPublicKeyB64: offer.daemonPublicKeyB64,
-        label,
-      });
+    if (!offer.relay) {
+      throw new Error("Pairing offer contains no relay endpoint");
     }
-    if (!profile) throw new Error("Pairing offer contains no relay endpoints");
-    return profile;
+    // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
+    const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
+    return this.upsertRelayConnection({
+      serverId: offer.serverId,
+      relayEndpoint: offer.relay.endpoint,
+      useTls,
+      daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      label,
+    });
   }
 
   async upsertConnectionFromOfferUrl(
@@ -2067,15 +1999,6 @@ export class HostRuntimeStore {
       .filter((entry): entry is HostProfile => entry !== null);
     this.setHostsAndSync(next);
     await this.persistHosts();
-  }
-
-  async reconnectAllClients(): Promise<void> {
-    await Promise.all(
-      [...this.controllers.values()].map(async (controller) => {
-        await controller.stop();
-        await controller.start();
-      }),
-    );
   }
 
   private async upsertHostConnection(input: {
@@ -2291,17 +2214,14 @@ export class HostRuntimeStore {
     const session = store.sessions[serverId];
     const queue = session?.queuedMessages.get(agentId);
     const client = session?.client;
-    const isBusy =
-      selectAgentTurnPresentation(session, agentId).isActive ||
-      hasActiveContextCompaction(
-        session?.agentStreamTail.get(agentId),
-        session?.agentStreamHead.get(agentId),
-      );
-    const next = queue ? getNextQueuedMessage(queue) : null;
-    if (!client || !next || session?.initializingAgents.get(agentId) === true || isBusy) {
+    if (!client || !queue?.length || session.initializingAgents.get(agentId) === true) {
+      return;
+    }
+    if (queue[0]?.isEditing) {
       return;
     }
     this.queuedAgentDrainInFlight.add(drainKey);
+    const next = queue[0];
     void sendQueuedComposerMessageNow({
       agentId,
       messageId: next.id,
@@ -2310,7 +2230,7 @@ export class HostRuntimeStore {
           useSessionStore.getState().sessions[serverId]?.queuedMessages.get(queuedAgentId) ?? [],
         write: (update) => useSessionStore.getState().setQueuedMessages(serverId, update),
       },
-      submitMessage: async ({ text, attachments, selectedMcpServerIds, selectedSkillIds }) => {
+      submitMessage: async ({ text, attachments }) => {
         const supportsForgeAttachments =
           useSessionStore.getState().sessions[serverId]?.serverInfo?.features?.forgeSearch === true;
         await dispatchComposerAgentMessage({
@@ -2323,8 +2243,6 @@ export class HostRuntimeStore {
           }),
           encodeImages,
           submission: createMessageSubmissionWriter(serverId),
-          selectedMcpServerIds,
-          selectedSkillIds,
         });
       },
     })

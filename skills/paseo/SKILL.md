@@ -1,23 +1,9 @@
 ---
 name: paseo
-description: Paseo reference for managing projects, workspaces, workspace scripts, agents, schedules, and heartbeats.
+description: Paseo reference for discovering and running reusable workflows, managing workspaces and workspace scripts, creating and controlling agents, and managing schedules and heartbeats. Use when an agent should check whether Paseo already has an installed workflow for a repeatable or multi-step task, invoke or inspect a workflow, delegate work to another agent, or operate any Paseo resource.
 ---
 
-Paseo is a remote daemon that manages coding agents, terminals. Control it through MCP tools or the CLI.
-
-## Projects
-
-Manage the daemon's project registry through the CLI:
-
-```bash
-paseo project create [path]
-paseo project ls
-paseo project rename <project-id> <name>
-paseo project rename <project-id> --reset
-paseo project delete <project-id>
-```
-
-For a local daemon, `project create` defaults to the current directory and resolves relative paths on the CLI machine. With `--host` or `PASEO_HOST`, always provide a path; the target daemon interprets it on its own machine. Deleting a project archives its active workspaces and removes the project from Paseo without deleting the project directory.
+Paseo is a daemon that supervises AI coding agents on your machine. Control it through tools or a CLI.
 
 ## Workspaces
 
@@ -27,7 +13,7 @@ For a local daemon, `project create` defaults to the current directory and resol
 
 **`archive_workspace`** — `{ workspaceId }`. Archives the workspace, its agents, and its terminals. Local directories remain; Paseo removes an owned worktree only after its final active workspace reference is archived.
 
-**`rename_workspace`** — `{ workspaceId, name }`. Rename workspace.
+Worktree creation and reference accounting are implementation details of `isolation: "worktree"`.
 
 ## Workspace scripts
 
@@ -51,7 +37,7 @@ paseo script stop <name> [--cwd <path> | --workspace <workspace-id>]
 
 **`create_agent`** — required: `title`, `provider` (`claude/opus`, `codex/gpt-5.4`, …), `initialPrompt`. Optional: `workspaceId`, `notifyOnFinish`, `settings`, `labels`. Returns `{ agentId, workspaceId, … }`.
 
-Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. Agent profiles are the preferred source for these values. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
+Initial runtime settings live under `settings`: `modeId`, `thinkingOptionId`, and provider-specific `features`. For Codex fast mode, pass `settings: { features: { "fast_mode": true } }` when creating the agent.
 
 Agent-scoped creation always creates your subagent. Omit `workspaceId` to use your current workspace; pass a workspace returned by `create_workspace` for isolated delegation. Placement never changes parentage.
 
@@ -67,20 +53,7 @@ Agent-scoped `create_agent` defaults `notifyOnFinish` to true. Set it to `false`
 
 **`archive_agent`** — `{ agentId }`. Interrupts if running, removes from active list.
 
-## Agent profiles and provider discovery
-
-**`list_profiles`** — named launch bundles configured by the human. Before choosing how to launch a delegated agent, call this tool and read every profile's `notes`. Pick a named profile the user requested, or the profile whose notes best match the work.
-
-There is no `profile` parameter on `create_agent`. Materialize the selected profile into the call:
-
-- combine `provider` and `model` as the `provider/model` value for `create_agent.provider`
-- copy `modeId` to `settings.modeId`
-- copy `thinkingOptionId` to `settings.thinkingOptionId`
-- copy `featureValues` to `settings.features`
-
-Omit absent values. Do not remember a selected profile or infer drift later; a profile is only launch configuration.
-
-If no profile fits, or no profiles are configured, use the provider discovery tools below rather than guessing. Tell the user when you fall back because no configured profile fits.
+## Provider discovery
 
 **`list_providers`** — compact provider availability and modes.
 
@@ -99,6 +72,36 @@ Only set feature IDs returned by `inspect_provider`. For Codex fast mode, look f
 **`delete_heartbeat`** stops it. MCP intentionally exposes no heartbeat update tool; delete and recreate when its task or cadence changes.
 
 Schedules have the full list/inspect/update/pause/resume/run-once/log/delete surface. Heartbeats deliberately do not.
+
+## Orchestration preferences
+
+User-specific configuration at `~/.paseo/orchestration-preferences.json`. **Before any Paseo skill chooses a provider or creates an agent, it must read this file.** Reading means an actual file read, not relying on these examples or defaults. Never hardcode a provider string in another skill — resolve through this file.
+
+Two parts:
+
+- `providers` — map of role categories to provider strings. Pass straight to `create_agent`'s `provider` field.
+- `preferences` — freeform string array. Read on startup; weave into agent prompts contextually.
+
+Categories: `impl`, `ui`, `research`, `planning`, `audit`. Skills pick the category that matches the role they're launching.
+
+```json
+{
+  "providers": {
+    "impl": "codex/gpt-5.4",
+    "ui": "claude/opus",
+    "research": "codex/gpt-5.4",
+    "planning": "codex/gpt-5.4",
+    "audit": "codex/gpt-5.4"
+  },
+  "preferences": [
+    "Claude Opus is the right choice for anything artistic or human-skill-oriented: copywriting, naming, UX copy, visual design, styling. Codex is the workhorse for mechanical work."
+  ]
+}
+```
+
+If the file is missing, use sensible defaults and tell the user once.
+
+All providers shown in this document are examples, you must resolve real providers either found in the preferences or by calling Paseo provider tooling to find a valid provider.
 
 ## Waiting
 
@@ -126,4 +129,84 @@ paseo heartbeat create --cron "*/15 * * * *" "check the build"
 
 Discover with `paseo --help` and `paseo <cmd> --help`.
 
-For product questions, setup, logs, version problems, or troubleshooting, use the **paseo-help** skill.
+**If `paseo` isn't on PATH but the desktop app is installed**, the bundled CLI is at:
+
+- macOS: `/Applications/Paseo.app/Contents/Resources/bin/paseo`
+- Linux: `<install-dir>/resources/bin/paseo`
+- Windows: `C:\Program Files\Paseo\resources\bin\paseo.cmd`
+
+The desktop app's first-run hook (`installCli`) symlinks this to `~/.local/bin/paseo` (macOS/Linux) or drops a `.cmd` trampoline (Windows) and adds `~/.local/bin` to PATH via shell rc files. If that didn't take, offer to symlink it — don't do it silently.
+
+## Workflows
+
+Workflows are reusable multi-node automations stored under the daemon's
+`$PASEO_HOME/workflows` directory. Discover them through Paseo instead of scanning the directory
+yourself.
+
+Before building an ad hoc multi-step solution or creating an Agent for a task that looks reusable,
+check installed Workflows once. Strong signals include requests for a runbook, pipeline, batch
+operation, repeated diagnosis, multi-stage processing, or an explicitly named Workflow. Skip this
+check for trivial one-step tasks.
+
+When an installed Workflow clearly matches, run that Workflow instead of manually reproducing its
+nodes, reordering its steps, or creating replacement Agents. The Workflow definition owns the
+process. Use a single-node run only when the user asks to test or debug that node. If no Workflow
+matches, continue with normal tools rather than forcing an unrelated Workflow.
+
+Prefer the Agent tools when available:
+
+1. Call **`list_workflows`** to get each Workflow's absolute path, name, description, node count,
+   and modification time.
+2. Call **`inspect_workflow`** with a candidate `scriptPath`. Read its description, first-node input
+   schema, input presets, steps, and side effects. Do not guess the input or run a Workflow from its
+   name alone.
+3. Call **`run_workflow`** with the inspected absolute `scriptPath` and either:
+   - `inputPayload`: a JSON-object string such as `{"project":"paseo"}`, or
+   - `inputPresetId`: an inspected preset ID, optionally with `inputPayload` overrides.
+4. Read `status`, `outputPayload`, `error`, and `nodeRuns` from the result. `outputPayload` is the
+   final `data` object serialized as JSON.
+5. Use **`get_workflow_run`** for a background run and **`cancel_workflow`** only when cancellation
+   is needed.
+
+Run synchronously by default. Use `background: true` for long-running work when the caller does not
+need the result immediately. Inspect unfamiliar Workflows before execution because Bash, Python,
+and Agent nodes can have external side effects.
+
+If Workflow tools are unavailable, use the equivalent CLI:
+
+```bash
+paseo workflow ls --json
+paseo workflow inspect /absolute/path/workflow.json --json
+paseo workflow plan /absolute/path/workflow.json --json
+paseo workflow run /absolute/path/workflow.json '{"project":"paseo"}' --json
+paseo workflow run /absolute/path/workflow.json --preset smoke --json
+paseo workflow run /absolute/path/workflow.json '{"project":"paseo"}' --background --json
+paseo workflow status <run-id> --json
+paseo workflow logs <run-id> --node <node-id> --json
+```
+
+The path is resolved on the daemon host. Use `--host <host:port>` for a remote daemon. Use
+`paseo workflow protocol --json` before authoring or debugging a Workflow to obtain the exact
+definition, node-input, and node-result schemas supported by the connected daemon.
+
+## Ops and debugging
+
+Daemon-client architecture: the daemon owns agent lifecycle, state, and the WebSocket API. Tools, CLI, mobile, and desktop apps are all clients.
+
+|                | Default                                                         |
+| -------------- | --------------------------------------------------------------- |
+| Listen address | `127.0.0.1:6767` (override `PASEO_LISTEN`)                      |
+| Home           | `~/.paseo` (override `PASEO_HOME`)                              |
+| Daemon log     | `$PASEO_HOME/daemon.log`                                        |
+| Agent state    | `$PASEO_HOME/agents/<id>.json`                                  |
+| Worktrees      | `$PASEO_HOME/worktrees/` (or `worktrees.root` in `config.json`) |
+| PID file       | `$PASEO_HOME/paseo.pid`                                         |
+| Health         | `GET http://127.0.0.1:6767/api/health`                          |
+
+Debug order:
+
+1. `tail -n 200 ~/.paseo/daemon.log`.
+2. `paseo daemon status` for liveness.
+3. `curl -s localhost:6767/api/health` if the CLI itself is suspect.
+
+**Never restart the daemon without explicit user approval** — it kills every running agent, including, often, the one asking.

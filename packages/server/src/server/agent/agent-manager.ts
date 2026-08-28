@@ -326,6 +326,20 @@ export interface AgentManagerOptions {
   logger: Logger;
 }
 
+export interface FrameworkPermissionRequest {
+  request: Omit<AgentPermissionRequest, "id" | "provider"> & { id?: string };
+  onResponse: (response: AgentPermissionResponse) => Promise<void> | void;
+}
+
+export interface AgentPromptContextComposer {
+  compose(agent: ManagedAgent, prompt: AgentPromptInput): Promise<AgentPromptInput>;
+}
+
+export type AgentAppendSystemPromptComposer = (
+  agentId: string,
+  config: AgentSessionConfig,
+) => string | null | undefined;
+
 export type ActiveTurnSteerDispatchResult =
   | { status: "inactive" | "steered" }
   | { status: "replaced"; iterator: AsyncGenerator<AgentStreamEvent> };
@@ -335,11 +349,6 @@ function stripSteerOptions(options?: AgentSteerOptions): AgentRunOptions | undef
   const { clearPendingPermissions: _, ...runOptions } = options;
   return runOptions;
 }
-
-export type AgentAppendSystemPromptComposer = (
-  agentId: string,
-  config: AgentSessionConfig,
-) => string | null | undefined;
 
 export interface WaitForAgentOptions {
   signal?: AbortSignal;
@@ -755,6 +764,10 @@ export class AgentManager {
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentRegistrationTasks = new Set<Promise<void>>();
   private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
+  private readonly frameworkPermissionHandlers = new Map<
+    string,
+    Map<string, FrameworkPermissionRequest["onResponse"]>
+  >();
   private readonly lifecycleMutationTails = new Map<string, Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
   private mcpBaseUrl: string | null;
@@ -2354,7 +2367,16 @@ export class AgentManager {
   }): Promise<string> {
     const { agent, agentId, pendingRun, prompt, options } = params;
     try {
-      const result = await agent.session.startTurn(prompt, options);
+      const contextualPrompt = this.promptContextComposer
+        ? await this.promptContextComposer.compose(agent, prompt)
+        : prompt;
+      const effectivePrompt =
+        this.skillStore &&
+        typeof contextualPrompt === "string" &&
+        parseSlashInvocation(contextualPrompt)
+          ? await this.resolveSharedSkillPrompt(agent, contextualPrompt)
+          : contextualPrompt;
+      const result = await agent.session.startTurn(effectivePrompt, options);
       if (pendingRun.settled) {
         throw new Error(`Agent ${agentId} run was canceled before its turn started`);
       }

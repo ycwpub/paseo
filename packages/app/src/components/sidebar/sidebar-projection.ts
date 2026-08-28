@@ -1,16 +1,15 @@
-import { buildStatusGroups } from "@/hooks/sidebar-status-view-model";
+import { buildStatusGroups, type StatusGroup } from "@/hooks/sidebar-status-view-model";
+import { splitHiddenSidebarProjects } from "@/hooks/sidebar-hidden-projects";
 import {
   splitPinnedSidebarGroups,
   type PinnedSidebarGroups,
   type PinnedSidebarKeys,
 } from "@/hooks/use-sidebar-pins";
-import { splitHiddenSidebarProjects } from "@/hooks/sidebar-hidden-projects";
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
 } from "@/hooks/use-sidebar-workspaces-list";
 import type { SidebarGroupMode } from "@/stores/sidebar-view-store";
-import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 import {
   resolveSidebarProjectIconTargets,
   type SidebarProjectIconTarget,
@@ -21,10 +20,13 @@ import {
   type SidebarShortcutSection,
 } from "@/utils/sidebar-shortcuts";
 import { statusWorkspaceGroups, type SidebarWorkspaceGroup } from "./sidebar-labels";
+import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 
 export interface SidebarProjection {
   pinnedGroups: PinnedSidebarGroups;
   workspaceGroups: SidebarWorkspaceGroup[];
+  statusGroups: StatusGroup[];
+  hiddenProjects: SidebarProjectEntry[];
   /**
    * The project icons this projection needs fetched, keyed by `projectViewKey` — one per project,
    * whatever the mode groups by. It sits here rather than beside `useProjectIcons` in the list
@@ -45,25 +47,36 @@ export interface SidebarProjectionInput {
   projectNamesByViewKey: Map<string, string>;
   groupMode: SidebarGroupMode;
   pinnedCollapsed: boolean;
-  hiddenProjectKeys: ReadonlySet<string>;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
+  hiddenProjectKeys?: ReadonlySet<string>;
 }
 
 export function buildSidebarProjection(input: SidebarProjectionInput): SidebarProjection {
+  const { visibleProjects, hiddenProjects } = splitHiddenSidebarProjects(
+    input.projects,
+    input.hiddenProjectKeys ?? new Set(),
+  );
   const pinnedGroups = splitPinnedSidebarGroups({
     projects: visibleProjects,
     keys: input.pinnedKeys,
     pinnedWorkspaceOrder: input.pinnedWorkspaceOrder,
   });
   const pinnedWorkspaceKeys = new Set(input.pinnedKeys.pinnedWorkspaceKeys);
+  const hiddenProjectViewKeys = new Set(hiddenProjects.map((project) => project.viewKey));
   const unpinnedWorkspaces = Array.from(input.workspaceEntriesByKey.values()).filter(
-    (workspace) => !pinnedWorkspaceKeys.has(workspace.workspaceKey),
+    (workspace) =>
+      !pinnedWorkspaceKeys.has(workspace.workspaceKey) &&
+      !hiddenProjectViewKeys.has(workspace.projectViewKey),
   );
   // One switch decides both what the list groups by and what the keyboard shortcuts walk, so the
   // two cannot disagree and a new grouping mode is a compile error here rather than a silent
   // fall-through to the project rows.
   const workspaceGroups = buildWorkspaceGroups(input, unpinnedWorkspaces);
+  const statusGroups =
+    input.groupMode === "status"
+      ? buildStatusGroups(unpinnedWorkspaces, input.projectNamesByViewKey)
+      : [];
 
   const sections: SidebarShortcutSection[] = [];
   if (!input.pinnedCollapsed) {
@@ -71,7 +84,10 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   }
   if (input.groupMode === "project") {
     sections.push(
-      ...hierarchyVisibleProjects.map((project) => ({
+      ...flattenVisibleProjectHierarchy(
+        pinnedGroups.unpinnedProjects,
+        input.collapsedProjectKeys,
+      ).map((project) => ({
         workspaces: project.workspaces,
         collapsed: input.collapsedProjectKeys.has(project.viewKey),
       })),
@@ -88,7 +104,9 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   return {
     pinnedGroups,
     workspaceGroups,
-    projectIconTargets: resolveSidebarProjectIconTargets(input.projects),
+    statusGroups,
+    hiddenProjects,
+    projectIconTargets: resolveSidebarProjectIconTargets(visibleProjects),
     shortcutModel: buildSidebarShortcutSections({ sections }),
   };
 }

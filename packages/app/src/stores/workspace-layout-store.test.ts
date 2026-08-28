@@ -3151,7 +3151,7 @@ describe("workspace-layout-store actions", () => {
         .getState()
         .getWorkspaceTabs(workspaceKey)
         .map((tab) => tab.tabId),
-    ).toEqual(["agent_archived-agent"]);
+    ).toEqual(["agent_archived-agent", "files", "changes_tree"]);
   });
 
   it("keeps hidden agent intents in memory per workspace without persisting them", () => {
@@ -3377,6 +3377,16 @@ describe("workspace-layout-store actions", () => {
         target: { kind: "agent", agentId: "workflow-agent" },
         createdAt: expect.any(Number),
       },
+      {
+        tabId: "files",
+        target: { kind: "files" },
+        createdAt: expect.any(Number),
+      },
+      {
+        tabId: "changes_tree",
+        target: { kind: "changes_tree" },
+        createdAt: expect.any(Number),
+      },
     ]);
     expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("agent_workflow-agent");
   });
@@ -3403,7 +3413,12 @@ describe("workspace-layout-store actions", () => {
     const tabs = collectAllTabs(
       workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
     );
-    expect(tabs.map((tab) => tab.tabId)).toEqual(["draft-with-input", "agent_workflow-agent"]);
+    expect(tabs.map((tab) => tab.tabId)).toEqual([
+      "draft-with-input",
+      "agent_workflow-agent",
+      "files",
+      "changes_tree",
+    ]);
   });
 
   it("reconcileTabs does not re-add locally hidden agent tabs", () => {

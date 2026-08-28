@@ -323,15 +323,10 @@ export class DaemonResourceRpcClient {
   async listPlugins(options?: {
     refresh?: boolean;
   }): Promise<PluginState & { error: string | null }> {
-    const result = await this.request({
+    return (await this.request({
       message: { type: "plugin.list.request", refresh: options?.refresh },
       responseType: "plugin.list.response",
-    });
-    return {
-      plugins: result.plugins,
-      marketplaces: result.marketplaces,
-      error: result.error,
-    };
+    })) as PluginState & { error: string | null };
   }
 
   async addPluginMarketplace(path: string): Promise<

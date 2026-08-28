@@ -13,14 +13,16 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
   function EditingTextInputWeb(allProps, ref) {
     const {
       initialValue = "",
+      value,
       onChangeText,
+      textInputStyle,
       onPasteImages: _,
       onPasteError: __,
       variant: ___,
-      value: ____,
       defaultValue: _____,
+      style,
       ...props
-    } = allProps as EditingTextInputProps & { value?: unknown; defaultValue?: unknown };
+    } = allProps as EditingTextInputProps & { defaultValue?: unknown };
     const inputRef = useRef<TextInput | null>(null);
     const initialTextRef = useRef(initialValue);
     const textRef = useRef(initialTextRef.current);
@@ -50,6 +52,13 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
         input.removeEventListener("compositionend", endComposition);
       };
     }, []);
+
+    useEffect(() => {
+      if (value === undefined || isComposingRef.current || value === textRef.current) return;
+      textRef.current = value;
+      const input = inputRef.current as WebTextInputElement | null;
+      if (input && "value" in input) input.value = value;
+    }, [value]);
 
     const handleChangeText = useCallback((nextText: string) => {
       if (isComposingRef.current || nextText === textRef.current) return;
@@ -82,7 +91,8 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
       <TextInput
         {...props}
         ref={inputRef}
-        defaultValue={initialTextRef.current}
+        defaultValue={value ?? initialTextRef.current}
+        style={[style, textInputStyle]}
         onChangeText={handleChangeText}
       />
     );

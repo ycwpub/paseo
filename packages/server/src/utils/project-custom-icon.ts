@@ -67,18 +67,26 @@ export interface ProjectIconSnapshot {
 
 /** Keeps the icon bytes served by a session aligned with its advertised revision. */
 export class ProjectIconReader {
-  private readonly snapshots = new Map<string, ProjectIconSnapshot>();
+  private readonly snapshots = new Map<
+    string,
+    ProjectIconSnapshot & { customIconRevision: string | null }
+  >();
 
   constructor(private readonly paseoHome: string) {}
 
   async snapshot(project: PersistedProjectRecord): Promise<ProjectIconSnapshot> {
     const snapshot = await readProjectIconSnapshot({ paseoHome: this.paseoHome, project });
-    this.snapshots.set(project.projectId, snapshot);
+    this.snapshots.set(project.projectId, {
+      ...snapshot,
+      customIconRevision: project.customIconRevision,
+    });
     return snapshot;
   }
 
   async read(project: PersistedProjectRecord): Promise<ProjectIcon | null> {
-    return (this.snapshots.get(project.projectId) ?? (await this.snapshot(project))).icon;
+    const cached = this.snapshots.get(project.projectId);
+    if (cached?.customIconRevision === project.customIconRevision) return cached.icon;
+    return (await this.snapshot(project)).icon;
   }
 }
 
@@ -87,33 +95,34 @@ export async function readProjectIconSnapshot(input: {
   paseoHome: string;
   project: PersistedProjectRecord;
 }): Promise<ProjectIconSnapshot> {
-  if (input.project.customIconRevision) {
-    let icon: ProjectIcon | null = null;
-    try {
-      icon = validateIcon(await readFile(cachePath(input.paseoHome, input.project.projectId)));
-    } catch {
-      // A missing/corrupt custom icon is itself a cacheable result until the
-      // registry revision changes.
-    }
+  if (!input.project.customIconRevision) {
+    const icon = input.project.rootPath ? await getProjectIcon(input.project.rootPath) : null;
     return {
       icon,
-      revision: icon
-        ? iconRevision("custom", icon)
-        : `custom:none:${input.project.customIconRevision}`,
+      revision: icon ? iconRevision("automatic", icon) : "automatic:none:v1",
     };
   }
-  const icon = await getProjectIcon(input.project.rootPath);
-  if (!icon) return { icon: null, revision: "automatic:none:v1" };
-  return { icon, revision: iconRevision("automatic", icon) };
+  let icon: ProjectIcon | null = null;
+  try {
+    icon = validateIcon(await readFile(cachePath(input.paseoHome, input.project.projectId)));
+  } catch {
+    // A missing/corrupt custom icon is cacheable until the registry revision changes.
+  }
+  return {
+    icon,
+    revision: icon
+      ? iconRevision("custom", icon)
+      : `custom:none:${input.project.customIconRevision}`,
+  };
 }
 
 function iconRevision(source: "automatic" | "custom", icon: ProjectIcon): string {
-  const fingerprint = createHash("sha256")
+  return createHash("sha256")
     .update(icon.mimeType)
     .update("\0")
     .update(icon.data)
-    .digest("hex");
-  return `${source}:${fingerprint}`;
+    .digest("hex")
+    .replace(/^/, `${source}:`);
 }
 
 export async function removeProjectCustomIcon(input: {

@@ -6,9 +6,9 @@ import {
   History,
   Home,
   Plus,
+  Search,
   Server,
   Settings,
-  Workflow,
   X,
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -34,6 +34,7 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -53,12 +54,11 @@ import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
+import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { usePanelStore } from "@/stores/panel-store";
-import { InstalledPluginSidebarSection } from "@/plugins/sidebar-panel/sidebar-section";
-import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
@@ -70,7 +70,6 @@ import {
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsRoute,
-  buildWorkflowsRoute,
 } from "@/utils/host-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -88,7 +87,6 @@ interface SidebarSharedProps {
   workspaceGroups: SidebarWorkspaceGroup[];
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
-  hiddenProjects: SidebarProjectEntry[];
   projects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   hasActiveProjectFilter: boolean;
@@ -98,13 +96,9 @@ interface SidebarSharedProps {
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
-  hiddenProjectsCollapsed: boolean;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
-  toggleHiddenProjectsCollapsed: () => void;
-  setProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   handleRefresh: () => void;
-  handleWorkspaceNavigate: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
@@ -123,7 +117,6 @@ interface SidebarLabels {
   searchHosts: string;
   sessions: string;
   schedules: string;
-  workflows: string;
   closeSidebar: string;
 }
 
@@ -133,7 +126,6 @@ interface MobileSidebarProps extends SidebarSharedProps {
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
-  handleViewWorkflowsNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -141,7 +133,6 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   active: boolean;
   handleViewMore: () => void;
   handleViewSchedules: () => void;
-  handleViewWorkflows: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
@@ -150,7 +141,6 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
-  const closePluginPanel = usePluginAppPanelStore((state) => state.close);
 
   const {
     projects,
@@ -163,12 +153,8 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     workspaceGroups,
     projectIconTargets,
     pinnedGroups,
-    hiddenProjects,
-    hiddenProjectsCollapsed,
     collapsedProjectKeys,
     toggleProjectCollapsed,
-    toggleHiddenProjectsCollapsed,
-    setProjectHidden,
     groupMode,
     shortcutModel,
   } = useSidebarModel();
@@ -190,45 +176,38 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const openProjectPicker = useOpenAddProject();
 
   const handleOpenProjectMobile = useCallback(() => {
-    closePluginPanel();
     showMobileAgent();
     void openProjectPicker();
-  }, [closePluginPanel, showMobileAgent, openProjectPicker]);
+  }, [showMobileAgent, openProjectPicker]);
 
   const handleOpenProjectDesktop = useCallback(() => {
-    closePluginPanel();
     void openProjectPicker();
-  }, [closePluginPanel, openProjectPicker]);
+  }, [openProjectPicker]);
 
   const handleSettingsMobile = useCallback(() => {
-    closePluginPanel();
     showMobileAgent();
     router.push(buildSettingsRoute());
-  }, [closePluginPanel, showMobileAgent]);
+  }, [showMobileAgent]);
 
   const handleSettingsDesktop = useCallback(() => {
-    closePluginPanel();
     router.push(buildSettingsRoute());
-  }, [closePluginPanel]);
+  }, []);
 
   const handleAddHostMobile = useCallback(() => {
-    closePluginPanel();
     showMobileAgent();
     router.push(buildSettingsAddHostRoute(Date.now()));
-  }, [closePluginPanel, showMobileAgent]);
+  }, [showMobileAgent]);
 
   const handleAddHostDesktop = useCallback(() => {
-    closePluginPanel();
     router.push(buildSettingsAddHostRoute(Date.now()));
-  }, [closePluginPanel]);
+  }, []);
 
   const handleOpenHostSettingsMobile = useCallback(
     (serverId: string) => {
-      closePluginPanel();
       showMobileAgent();
       openHostOverview(serverId);
     },
-    [closePluginPanel, showMobileAgent],
+    [showMobileAgent],
   );
 
   const handleOpenHostSettingsDesktop = useCallback((serverId: string) => {
@@ -236,34 +215,21 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   }, []);
 
   const handleHomeMobile = useCallback(() => {
-    closePluginPanel();
     showMobileAgent();
     router.push(buildOpenProjectRoute());
-  }, [closePluginPanel, showMobileAgent]);
+  }, [showMobileAgent]);
 
   const handleHomeDesktop = useCallback(() => {
-    closePluginPanel();
     router.push(buildOpenProjectRoute());
-  }, [closePluginPanel]);
+  }, []);
 
   const handleViewMoreNavigate = useCallback(() => {
-    closePluginPanel();
     router.push(buildSessionsRoute());
-  }, [closePluginPanel]);
+  }, []);
 
   const handleViewSchedulesNavigate = useCallback(() => {
-    closePluginPanel();
     router.push(buildSchedulesRoute());
-  }, [closePluginPanel]);
-
-  const handleViewWorkflowsNavigate = useCallback(() => {
-    closePluginPanel();
-    router.push(buildWorkflowsRoute() as never);
-  }, [closePluginPanel]);
-
-  const handleWorkspaceNavigate = useCallback(() => {
-    closePluginPanel();
-  }, [closePluginPanel]);
+  }, []);
 
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
@@ -276,7 +242,6 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
-      workflows: t("workflows.title"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -287,7 +252,6 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     workspaceGroups,
     projectIconTargets,
     pinnedGroups,
-    hiddenProjects,
     projects,
     hasProjectsBeforeFilter,
     hasActiveProjectFilter: resolvedProjectFilters.length > 0,
@@ -297,13 +261,9 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isManualRefresh,
     groupMode,
     collapsedProjectKeys,
-    hiddenProjectsCollapsed,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
-    toggleHiddenProjectsCollapsed,
-    setProjectHidden,
     handleRefresh,
-    handleWorkspaceNavigate,
     labels,
     newWorkspaceKeys,
   };
@@ -323,7 +283,6 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
           handleOpenHostSettings={handleOpenHostSettingsMobile}
           handleViewMoreNavigate={handleViewMoreNavigate}
           handleViewSchedulesNavigate={handleViewSchedulesNavigate}
-          handleViewWorkflowsNavigate={handleViewWorkflowsNavigate}
         />
       </RetainedPanelActivity>
     );
@@ -342,7 +301,6 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
         handleViewMore={handleViewMoreNavigate}
         handleViewSchedules={handleViewSchedulesNavigate}
-        handleViewWorkflows={handleViewWorkflowsNavigate}
       />
     </RetainedPanelActivity>
   );
@@ -545,7 +503,6 @@ const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow(
   const activeWorkspaceServerId = activeWorkspaceSelection?.serverId ?? null;
   const activeWorkspaceId = activeWorkspaceSelection?.workspaceId ?? null;
   const activeWorkspace = useWorkspace(activeWorkspaceServerId, activeWorkspaceId);
-  const closePluginPanel = usePluginAppPanelStore((state) => state.close);
   const supportsWorkspaceMultiplicity = useHostFeature(
     activeWorkspaceServerId,
     "workspaceMultiplicity",
@@ -556,7 +513,6 @@ const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow(
   );
 
   const handlePress = useCallback(() => {
-    closePluginPanel();
     onBeforeNavigate?.();
     router.push(
       activeWorkspaceServerId
@@ -571,13 +527,7 @@ const SidebarNewWorkspaceHeaderRow = memo(function SidebarNewWorkspaceHeaderRow(
           )
         : buildNewWorkspaceRoute(),
     );
-  }, [
-    activeWorkspace,
-    activeWorkspaceServerId,
-    canUseActiveWorkspaceContext,
-    closePluginPanel,
-    onBeforeNavigate,
-  ]);
+  }, [activeWorkspace, activeWorkspaceServerId, canUseActiveWorkspaceContext, onBeforeNavigate]);
 
   return (
     <SidebarHeaderRow
@@ -658,7 +608,6 @@ function MobileSidebar({
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
-  hiddenProjects,
   projects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
@@ -668,13 +617,9 @@ function MobileSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
-  hiddenProjectsCollapsed,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
-  toggleHiddenProjectsCollapsed,
-  setProjectHidden,
   handleRefresh,
-  handleWorkspaceNavigate,
   newWorkspaceKeys,
   handleOpenProject,
   handleHome,
@@ -687,13 +632,11 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
-  handleViewWorkflowsNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
-  const isWorkflowsActive = pathname.includes("/workflows");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
   const dragGestureHostPresented = useIsMobilePanelPresented("agent-list");
 
@@ -707,15 +650,9 @@ function MobileSidebar({
     handleViewSchedulesNavigate();
   }, [closeSidebar, handleViewSchedulesNavigate]);
 
-  const handleViewWorkflows = useCallback(() => {
-    closeSidebar();
-    handleViewWorkflowsNavigate();
-  }, [closeSidebar, handleViewWorkflowsNavigate]);
-
   const handleWorkspacePress = useCallback(() => {
-    handleWorkspaceNavigate();
     closeSidebar();
-  }, [closeSidebar, handleWorkspaceNavigate]);
+  }, [closeSidebar]);
 
   const mobileSidebarInsetStyle = useMemo(
     () => ({
@@ -724,10 +661,6 @@ function MobileSidebar({
       backgroundColor: theme.colors.surfaceSidebar,
     }),
     [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
-  );
-  const installedPluginSection = useMemo(
-    () => <InstalledPluginSidebarSection onPluginOpened={closeSidebar} />,
-    [closeSidebar],
   );
 
   return (
@@ -789,16 +722,12 @@ function MobileSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
-            hiddenProjectsCollapsed={hiddenProjectsCollapsed}
             onToggleProjectCollapsed={toggleProjectCollapsed}
-            onToggleHiddenProjectsCollapsed={toggleHiddenProjectsCollapsed}
-            onSetProjectHidden={setProjectHidden}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
-            hiddenProjects={hiddenProjects}
             projects={projects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
@@ -809,7 +738,6 @@ function MobileSidebar({
             onAddProject={handleOpenProject}
             parentGestureRef={closeGestureRef}
             dragGestureHostPresented={dragGestureHostPresented}
-            listFooterComponent={installedPluginSection}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
@@ -833,7 +761,6 @@ function DesktopSidebar({
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
-  hiddenProjects,
   projects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
@@ -843,13 +770,9 @@ function DesktopSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
-  hiddenProjectsCollapsed,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
-  toggleHiddenProjectsCollapsed,
-  setProjectHidden,
   handleRefresh,
-  handleWorkspaceNavigate,
   newWorkspaceKeys,
   handleOpenProject,
   handleHome,
@@ -861,14 +784,12 @@ function DesktopSidebar({
   active,
   handleViewMore,
   handleViewSchedules,
-  handleViewWorkflows,
 }: DesktopSidebarProps) {
   const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
-  const isWorkflowsActive = pathname.includes("/workflows");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -1008,25 +929,19 @@ function DesktopSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
-            hiddenProjectsCollapsed={hiddenProjectsCollapsed}
             onToggleProjectCollapsed={toggleProjectCollapsed}
-            onToggleHiddenProjectsCollapsed={toggleHiddenProjectsCollapsed}
-            onSetProjectHidden={setProjectHidden}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
-            hiddenProjects={hiddenProjects}
             projects={projects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
             workspaceEntriesByKey={workspaceEntriesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
-            onWorkspacePress={handleWorkspaceNavigate}
             onAddProject={handleOpenProject}
-            listFooterComponent={installedPluginSidebarSectionElement}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
@@ -1054,10 +969,64 @@ function DesktopSidebar({
   );
 }
 
+function WorkspacesSectionHeader() {
+  const { theme } = useUnistyles();
+  const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
+  const commandCenterKeys = useShortcutKeys("toggle-command-center");
+  const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
+  const searchButtonStyle = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.workspacesHeaderIconButton,
+      (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
+    ],
+    [],
+  );
+
+  return (
+    <View style={styles.workspacesSectionHeader}>
+      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+      <View style={styles.workspacesSectionActions}>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open command center"
+              testID="sidebar-command-center-search"
+              style={searchButtonStyle}
+              onPress={handleSearchPress}
+            >
+              {({ hovered, pressed }) => (
+                <Search
+                  size={14}
+                  color={
+                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
+                  }
+                />
+              )}
+            </Pressable>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <IconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <View>
+              <SidebarDisplayPreferencesMenu />
+            </View>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="center" offset={8}>
+            <IconTooltipContent label="Display preferences" />
+          </TooltipContent>
+        </Tooltip>
+      </View>
+    </View>
+  );
+}
+
 // Stable element so the sidebar list's listHeaderComponent prop keeps identity across
 // renders (WorkspacesSectionHeader takes no props).
 const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
-const installedPluginSidebarSectionElement = <InstalledPluginSidebarSection />;
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
 // avoid the "Unable to find node on an unmounted component" crash when Unistyles

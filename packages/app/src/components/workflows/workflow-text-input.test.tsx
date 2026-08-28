@@ -24,16 +24,16 @@ vi.mock("@/components/ui/form-field", () => ({
       value?: string;
       initialValue?: string;
       resetKey?: string | number;
-      controlled?: boolean;
       testID?: string;
       onChangeText?: (value: string) => void;
       style?: unknown;
       textInputStyle?: unknown;
     }
   >(function MockFormTextInput(
-    { value, initialValue, resetKey, controlled, testID, onChangeText, style, textInputStyle },
+    { value, initialValue, resetKey, testID, onChangeText, style, textInputStyle },
     ref,
   ) {
+    const controlled = value !== undefined;
     return (
       <textarea
         key={resetKey}

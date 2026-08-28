@@ -11,6 +11,8 @@ import { DaemonSelfUpdateSessionController } from "./daemon-self-update-session-
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "../../workspace-registry.js";
 import type { HubRelationshipManagement } from "../../hub/relationship-controller.js";
+import type { LocalRelayStatus } from "@getpaseo/relay";
+import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
 import type { DaemonConfigReloadResult } from "../../daemon-config-store.js";
 
 export interface DaemonRuntimeConfig {
@@ -120,6 +122,28 @@ export class DaemonSession {
       emitLifecycleIntent: (intent) => this.host.emitLifecycleIntent(intent),
       sessionLogger: this.logger,
     });
+  }
+
+  handleConfigReloadRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.config.reload.request" }>,
+  ): void {
+    try {
+      this.host.emit({
+        type: "daemon.config.reload.response",
+        payload: { requestId: msg.requestId, ...this.reloadConfig() },
+      });
+    } catch (error) {
+      this.logger.error({ err: error }, "Failed to reload daemon config");
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: msg.type,
+          error: error instanceof Error ? error.message : String(error),
+          code: "handler_error",
+        },
+      });
+    }
   }
 
   async handleHubRelationshipRequest(
@@ -266,26 +290,20 @@ export class DaemonSession {
     }
   }
 
-  handleConfigReloadRequest(
-    msg: Extract<SessionInboundMessage, { type: "daemon.config.reload.request" }>,
+  handleDeleteRelayHistoryRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.relay_history.delete.request" }>,
   ): void {
-    try {
-      this.host.emit({
-        type: "daemon.config.reload.response",
-        payload: { requestId: msg.requestId, ...this.reloadConfig() },
-      });
-    } catch (error) {
-      this.logger.error({ err: error }, "Failed to reload daemon config");
-      this.host.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: error instanceof Error ? error.message : String(error),
-          code: "handler_error",
-        },
-      });
-    }
+    const historyId = msg.historyId.trim();
+    const success = this.daemonRuntimeConfig?.deleteLocalRelayHistory?.(historyId) ?? false;
+    this.host.emit({
+      type: "daemon.relay_history.delete.response",
+      payload: {
+        requestId: msg.requestId,
+        historyId,
+        success,
+        error: success ? null : "Relay 历史记录不存在",
+      },
+    });
   }
 
   async handleDiagnosticsRequest(

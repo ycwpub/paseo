@@ -14,7 +14,13 @@ export type SettingsView =
   | { kind: "root" }
   | { kind: "section"; section: SettingsSectionSlug }
   | { kind: "host"; serverId: string; section: HostSectionSlug }
-  | { kind: "project"; serverId: string; projectId: string };
+  | { kind: "project"; serverId: string; projectId: string }
+  | {
+      kind: "memory";
+      serverId: string;
+      projectId?: string;
+      memoryId?: string;
+    };
 
 export function openHostOverview(serverId: string): void {
   router.push(buildSettingsHostSectionRoute(serverId, "host"));
@@ -32,7 +38,13 @@ export function returnFromSettings(view: SettingsView): void {
     return;
   }
 
-  const parent =
-    view.kind === "project" ? buildProjectsSettingsRoute(view.serverId) : buildSettingsRoute();
+  let parent: Href;
+  if (view.kind === "project" || (view.kind === "memory" && view.projectId)) {
+    parent = buildProjectsSettingsRoute(view.serverId);
+  } else if (view.kind === "memory") {
+    parent = buildSettingsHostSectionRoute(view.serverId, "memory");
+  } else {
+    parent = buildSettingsRoute();
+  }
   router.dismissTo(parent as Href);
 }

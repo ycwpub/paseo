@@ -44,7 +44,6 @@ import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
 import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
-import { useWorkspaceRemove } from "@/workspace/use-workspace-remove";
 import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
@@ -524,24 +523,16 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   isDragging?: boolean;
   dragHandleProps?: DraggableListDragHandleProps;
 }) {
-  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
-  const selected = bulkSelection.active
-    ? bulkSelection.selected
-    : activeWorkspaceSelection?.serverId === workspace.serverId &&
-      activeWorkspaceSelection?.workspaceId === workspace.workspaceId;
+  const selected =
+    activeWorkspaceSelection?.serverId === workspace.serverId &&
+    activeWorkspaceSelection?.workspaceId === workspace.workspaceId;
 
   const handlePress = useCallback(() => {
-    if (bulkSelection.active) {
-      if (workspace.archivingAt === null) {
-        bulkSelection.toggle();
-      }
-      return;
-    }
     if (!workspace.serverId) return;
     onWorkspacePress?.();
     navigateToWorkspace({ serverId: workspace.serverId, workspaceId: workspace.workspaceId });
-  }, [bulkSelection, onWorkspacePress, workspace]);
+  }, [onWorkspacePress, workspace.serverId, workspace.workspaceId]);
 
   return (
     <StatusWorkspaceRowWithMenu
@@ -603,7 +594,6 @@ function StatusWorkspaceRowWithMenu({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const bulkSelection = useSidebarWorkspaceBulkSelection(workspace.workspaceKey);
   const [isHidingWorkspace, setIsHidingWorkspace] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const isArchiving = workspace.archivingAt !== null || isHidingWorkspace;
@@ -627,20 +617,11 @@ function StatusWorkspaceRowWithMenu({
     onArchiveStarted: redirectAfterArchive,
     onSetHiding: setIsHidingWorkspace,
   });
-  const removeController = useWorkspaceRemove({
-    serverId: workspace.serverId,
-    projectId: workspace.projectId,
-    workspaceId: workspace.workspaceId,
-    workspaceName: workspace.title ?? workspace.name,
-    disabled: bulkSelection.active,
-    busy: isArchiving,
-    onRemoveStarted: redirectAfterArchive,
-  });
 
   const handleArchive = useCallback(() => {
-    if (removeController.busy) return;
+    if (isArchiving) return;
     archiveController.archive();
-  }, [archiveController, removeController.busy]);
+  }, [archiveController, isArchiving]);
 
   const clipboard = useWorkspaceClipboardActions();
   const handleCopyPath = useCallback(() => {
@@ -666,14 +647,14 @@ function StatusWorkspaceRowWithMenu({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
+      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
     });
   }, [clearAttention, toast]);
 
   useKeyboardActionHandler({
     handlerId: `workspace-archive-${workspace.workspaceKey}`,
     actions: ["workspace.archive"],
-    enabled: selected && !removeController.busy,
+    enabled: selected && !isArchiving,
     priority: 0,
     handle: () => {
       handleArchive();
@@ -690,25 +671,20 @@ function StatusWorkspaceRowWithMenu({
         projectIconDataUri={projectIconDataUri}
         selected={selected}
         shortcutNumber={shortcutNumber}
-        showShortcutBadge={bulkSelection.active ? false : showShortcutBadge}
+        showShortcutBadge={showShortcutBadge}
         onPress={onPress}
-        isArchiving={removeController.busy}
+        isArchiving={isArchiving}
         archiveLabel={t("sidebar.workspace.actions.archive")}
         archiveStatus={isArchiving ? "pending" : "idle"}
         archivePendingLabel={t("sidebar.workspace.actions.archiving")}
-        onArchive={bulkSelection.active ? undefined : handleArchive}
-        onRemove={removeController.action}
-        removeStatus={removeController.status}
-        removePendingLabel={t("sidebar.workspace.actions.removing")}
-        onCopyBranchName={
-          bulkSelection.active || workspace.projectKind !== "git" ? undefined : handleCopyBranchName
-        }
-        onCopyPath={bulkSelection.active ? undefined : handleCopyPath}
-        onRename={bulkSelection.active ? undefined : handleOpenRename}
-        onMarkAsRead={bulkSelection.active || !hasClearableAttention ? undefined : handleMarkAsRead}
+        onArchive={handleArchive}
+        onCopyBranchName={workspace.projectKind === "git" ? handleCopyBranchName : undefined}
+        onCopyPath={handleCopyPath}
+        onRename={handleOpenRename}
+        onMarkAsRead={hasClearableAttention ? handleMarkAsRead : undefined}
         archiveShortcutKeys={selected ? archiveShortcutKeys : null}
-        isPinned={bulkSelection.active ? undefined : isPinned}
-        onTogglePin={bulkSelection.active ? undefined : onTogglePin}
+        isPinned={isPinned}
+        onTogglePin={onTogglePin}
         reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
         inStatusGroup={inStatusGroup}
         drag={drag}
@@ -785,9 +761,6 @@ function StatusWorkspaceRowInnerContent({
   archiveStatus = "idle",
   archivePendingLabel,
   onArchive,
-  onRemove,
-  removeStatus,
-  removePendingLabel,
   onCopyBranchName,
   onCopyPath,
   onRename,
@@ -854,7 +827,7 @@ function StatusWorkspaceRowInnerContent({
         } = resolveTrailingActionVisibility({
           workspace,
           trailing,
-          hasArchiveAction: Boolean(onArchive || onRemove),
+          hasArchiveAction: Boolean(onArchive),
           isHovered,
           isTouchPlatform,
           showShortcut,
@@ -888,12 +861,9 @@ function StatusWorkspaceRowInnerContent({
               onRename={onRename}
               onMarkAsRead={onMarkAsRead}
               onArchive={onArchive}
-              onRemove={onRemove}
               archiveLabel={archiveLabel}
               archiveStatus={archiveStatus}
               archivePendingLabel={archivePendingLabel}
-              removeStatus={removeStatus}
-              removePendingLabel={removePendingLabel}
               archiveShortcutKeys={archiveShortcutKeys}
               isPinned={isPinned}
               onTogglePin={onTogglePin}
@@ -938,12 +908,9 @@ function StatusWorkspaceRowInnerContent({
                     onRename={onRename}
                     onMarkAsRead={onMarkAsRead}
                     onArchive={onArchive}
-                    onRemove={onRemove}
                     archiveLabel={archiveLabel}
                     archiveStatus={archiveStatus}
                     archivePendingLabel={archivePendingLabel}
-                    removeStatus={removeStatus}
-                    removePendingLabel={removePendingLabel}
                     archiveShortcutKeys={archiveShortcutKeys}
                   />
                 ) : null}
@@ -971,12 +938,9 @@ function StatusWorkspaceActionSlot({
   onRename,
   onMarkAsRead,
   onArchive,
-  onRemove,
   archiveLabel,
   archiveStatus,
   archivePendingLabel,
-  removeStatus,
-  removePendingLabel,
   archiveShortcutKeys,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -993,12 +957,9 @@ function StatusWorkspaceActionSlot({
   onRename?: () => void;
   onMarkAsRead?: () => void;
   onArchive?: () => void;
-  onRemove?: () => void;
   archiveLabel?: string;
   archiveStatus?: "idle" | "pending" | "success";
   archivePendingLabel?: string;
-  removeStatus?: "idle" | "pending" | "success";
-  removePendingLabel?: string;
   archiveShortcutKeys?: ShortcutKey[][] | null;
 }) {
   const kebab = useOpenKebabMenuVisibility(showKebab);
@@ -1023,12 +984,9 @@ function StatusWorkspaceActionSlot({
             onRename={onRename}
             onMarkAsRead={onMarkAsRead}
             onArchive={onArchive}
-            onRemove={onRemove}
             archiveLabel={archiveLabel}
             archiveStatus={archiveStatus}
             archivePendingLabel={archivePendingLabel}
-            removeStatus={removeStatus}
-            removePendingLabel={removePendingLabel}
             archiveShortcutKeys={archiveShortcutKeys}
             isPinned={isPinned}
             onTogglePin={onTogglePin}

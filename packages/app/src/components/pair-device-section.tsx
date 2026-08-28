@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as QRCode from "qrcode";
 import { SvgXml } from "react-native-svg";
@@ -9,6 +9,7 @@ import { RotateCw, Copy, Check } from "lucide-react-native";
 import { settingsStyles } from "@/styles/settings";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useOptionalToast } from "@/contexts/toast-context";
 import {

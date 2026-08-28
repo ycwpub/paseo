@@ -95,7 +95,9 @@ export async function runPluginListCommand(
   options: PluginOptions,
   _command: Command,
 ): Promise<ListResult<PluginListItem>> {
-  const data = await withPluginManagementClient(options.host, (client) => client.listPlugins());
+  const data = await withPluginManagementClient(options.host, (client) =>
+    client.listRuntimePlugins(),
+  );
   return { type: "list", data, schema: pluginSchema };
 }
 
@@ -179,7 +181,7 @@ async function remove(
   _command: Command,
 ): Promise<SingleResult<PluginListItem>> {
   const data = await withPluginManagementClient(options.host, async (client) => {
-    const current = (await client.listPlugins()).find((plugin) => plugin.id === pluginId);
+    const current = (await client.listRuntimePlugins()).find((plugin) => plugin.id === pluginId);
     if (!current) throw new Error(`Plugin is not configured: ${pluginId}`);
     await client.removePlugin(pluginId);
     return { ...current, enabled: false, status: "disabled" as const };

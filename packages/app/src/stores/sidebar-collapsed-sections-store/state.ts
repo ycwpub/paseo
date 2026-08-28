@@ -3,6 +3,8 @@ import { z } from "zod";
 export interface CollapsedProjectsState {
   collapsedProjectKeys: Set<string>;
   collapsedWorkspaceGroupKeys: Set<string>;
+  /** Compatibility alias for status grouping consumers. */
+  collapsedStatusGroupKeys: Set<string>;
   collapsedPinned: boolean;
 }
 
@@ -49,7 +51,11 @@ export function toggleWorkspaceGroupCollapsed(
   } else {
     next.add(workspaceGroupKey);
   }
-  return { ...state, collapsedWorkspaceGroupKeys: next };
+  return {
+    ...state,
+    collapsedWorkspaceGroupKeys: next,
+    collapsedStatusGroupKeys: next,
+  };
 }
 
 export function setProjectCollapsed(
@@ -73,7 +79,9 @@ export function setWorkspaceGroupsCollapsed(
   collapsed: boolean,
 ): CollapsedProjectsState {
   const collapsedProjectKeys = new Set(state.collapsedProjectKeys);
-  const collapsedStatusGroupKeys = new Set(state.collapsedStatusGroupKeys);
+  const collapsedStatusGroupKeys = new Set(
+    state.collapsedStatusGroupKeys ?? state.collapsedWorkspaceGroupKeys,
+  );
   for (const key of projectKeys) {
     if (collapsed) {
       collapsedProjectKeys.add(key);
@@ -88,7 +96,12 @@ export function setWorkspaceGroupsCollapsed(
       collapsedStatusGroupKeys.delete(key);
     }
   }
-  return { ...state, collapsedProjectKeys, collapsedStatusGroupKeys };
+  return {
+    ...state,
+    collapsedProjectKeys,
+    collapsedWorkspaceGroupKeys: collapsedStatusGroupKeys,
+    collapsedStatusGroupKeys,
+  };
 }
 
 export function serializeCollapsedProjects(state: CollapsedProjectsState): {
@@ -132,6 +145,7 @@ export function mergePersistedCollapsedProjects<S extends CollapsedProjectsState
     ...current,
     collapsedProjectKeys: restoredProjects,
     collapsedWorkspaceGroupKeys: restoredWorkspaceGroups,
+    collapsedStatusGroupKeys: restoredWorkspaceGroups,
     collapsedPinned: restoredPinned,
   };
 }

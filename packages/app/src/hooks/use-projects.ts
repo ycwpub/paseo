@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { getHostRuntimeStore, useHosts, type HostRuntimeSnapshot } from "@/runtime/host-runtime";
-import { isWorkspaceDirectoryLoading } from "@/runtime/workspace-directory-status";
+import {
+  getHostRuntimeStore,
+  isHostRuntimeDirectoryLoading,
+  useHosts,
+  type HostRuntimeSnapshot,
+} from "@/runtime/host-runtime";
 import {
   useSessionStore,
   type ProjectDescriptor,
@@ -58,14 +62,14 @@ function toProjectHostRuntimeState(
   snapshot: HostRuntimeSnapshot | null,
 ): ProjectHostRuntimeState {
   const isFetching =
-    snapshot?.workspaceDirectoryStatus === "initial_loading" ||
-    snapshot?.workspaceDirectoryStatus === "revalidating";
+    snapshot?.agentDirectoryStatus === "initial_loading" ||
+    snapshot?.agentDirectoryStatus === "revalidating";
   return {
     serverId,
     isOnline: snapshot?.connectionStatus === "online",
-    isLoading: isWorkspaceDirectoryLoading(snapshot),
+    isLoading: isHostRuntimeDirectoryLoading(snapshot),
     isFetching,
-    error: snapshot?.workspaceDirectoryError ?? null,
+    error: snapshot?.agentDirectoryError ?? null,
   };
 }
 

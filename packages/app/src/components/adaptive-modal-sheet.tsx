@@ -215,7 +215,6 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const WEB_EXIT_DURATION_MS = 160;
-const AdaptiveBottomSheetInputContext = createContext(false);
 
 function SheetBackground({ style }: BottomSheetBackgroundProps) {
   const { theme } = useUnistyles();
@@ -654,13 +653,11 @@ export function AdaptiveModalSheet({
         accessible={false}
         presentation={presentation}
       >
-        <AdaptiveBottomSheetInputContext.Provider value>
-          {sizeContentToCurrentSnapPoint ? (
-            <BottomSheetVisibleContent>{sheetContent}</BottomSheetVisibleContent>
-          ) : (
-            sheetContent
-          )}
-        </AdaptiveBottomSheetInputContext.Provider>
+        {sizeContentToCurrentSnapPoint ? (
+          <BottomSheetVisibleContent>{sheetContent}</BottomSheetVisibleContent>
+        ) : (
+          sheetContent
+        )}
       </IsolatedBottomSheetModal>
     );
   }

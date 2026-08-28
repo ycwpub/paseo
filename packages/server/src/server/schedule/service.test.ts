@@ -623,38 +623,118 @@ describe("ScheduleService", () => {
     );
   });
 
-  test("delivers agent-target schedules through the steer-or-interrupt path", async () => {
-    const manager = new AgentManager({
-      logger: createTestLogger(),
-      clients: createTestAgentClients(),
-      registry: agentStorage,
-    });
-    const agent = await manager.createAgent({ provider: "claude", cwd: tempDir }, undefined, {
-      workspaceId: undefined,
-    });
-    const steerOrReplace = vi.spyOn(manager, "steerOrReplaceActiveTurn");
+  test("executes bash schedules and records stdout and stderr", async () => {
     const service = createScheduleService({
       paseoHome: tempDir,
       logger: createTestLogger(),
-      agentManager: manager,
+      agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       now: () => now,
     });
-    const schedule = await service.create({
-      prompt: "Check scheduled work",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "agent", agentId: agent.id },
+
+    const created = await service.create({
+      prompt: "printf hello; printf warn >&2",
+      cadence: { type: "cron", expression: "0 9 * * *" },
+      target: { type: "bash", config: { cwd: tempDir } },
+      runOnCreate: false,
     });
 
-    await service.runOnce(schedule.id);
+    const after = await service.runOnce(created.id);
 
-    expect(steerOrReplace).toHaveBeenCalledTimes(1);
-    expect(steerOrReplace.mock.calls[0]).toEqual([
-      agent.id,
-      expect.stringContaining(`Schedule fired (id=${schedule.id}, run=`),
-      undefined,
-    ]);
+    expect(after.runs).toHaveLength(1);
+    expect(after.runs[0]).toMatchObject({
+      status: "succeeded",
+      agentId: null,
+      output: "stdout:\nhello\n\nstderr:\nwarn",
+      error: null,
+    });
+  });
+
+  test("executes scheduled workflow CLI commands directly without depending on an installed CLI", async () => {
+    const runScriptAndWait = vi.fn(
+      async (): Promise<WorkflowRun> => ({
+        id: "workflow-run-1",
+        scriptPath: join(tempDir, "flow1.json"),
+        scriptSnapshot: {
+          version: 1,
+          name: "Scheduled workflow",
+          steps: [{ id: "noop", type: "bash", initialCommand: "echo '{}'" }],
+        },
+        status: "succeeded",
+        inputPayload: '{"control":""}',
+        outputPayload: '{"control":"done","error":""}',
+        inputFilePath: "",
+        outputFilePath: null,
+        control: "done",
+        error: null,
+        errorCode: null,
+        startedAt: now.toISOString(),
+        endedAt: now.toISOString(),
+        nodeRuns: [],
+      }),
+    );
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      workflowService: {
+        runScript: runScriptAndWait,
+        runScriptAndWait,
+      },
+    });
+    const scriptPath = join(tempDir, "flow1.json");
+    const created = await service.create({
+      prompt: `paseo workflow run '${scriptPath}' '{"control":""}'`,
+      cadence: { type: "cron", expression: "0 9 * * *" },
+      target: { type: "bash", config: { cwd: tempDir } },
+      runOnCreate: false,
+    });
+
+    const after = await service.runOnce(created.id);
+
+    expect(runScriptAndWait).toHaveBeenCalledWith({
+      scriptPath,
+      inputPayload: '{"control":""}',
+      background: false,
+    });
+    expect(after.runs[0]).toMatchObject({
+      status: "succeeded",
+      agentId: null,
+      error: null,
+    });
+    expect(after.runs[0]?.output).toContain('"id": "workflow-run-1"');
+  });
+
+  test("records bash schedule failures with captured output", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+    });
+
+    const created = await service.create({
+      prompt: "printf before; printf nope >&2; exit 7",
+      cadence: { type: "cron", expression: "0 9 * * *" },
+      target: { type: "bash", config: { cwd: tempDir } },
+      runOnCreate: false,
+    });
+
+    const after = await service.runOnce(created.id);
+
+    expect(after.runs[0]).toMatchObject({
+      status: "failed",
+      agentId: null,
+      output: "stdout:\nbefore\n\nstderr:\nnope",
+    });
+    expect(after.runs[0]?.error).toContain("exit code 7");
+    expect(after.runs[0]?.error).toContain("nope");
   });
 
   test("titles scheduled new agents from the schedule prompt", async () => {

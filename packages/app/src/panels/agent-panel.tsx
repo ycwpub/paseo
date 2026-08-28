@@ -23,7 +23,6 @@ import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Composer } from "@/composer";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
@@ -103,9 +102,7 @@ import type { StreamItem, TodoEntry } from "@/types/stream";
 import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
-import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
-import { storeFetchedAgentDetail } from "@/utils/store-fetched-agent-detail";
-import { associateDevelopmentStageDraftAgent } from "@/plugins/byte-development/development-stage-agent-actions";
+import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
@@ -292,6 +289,57 @@ function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string
   return normalized;
 }
 
+function shouldStoreFetchedAgentInActiveDirectory(agent: Agent): boolean {
+  return !agent.archivedAt && Boolean(agent.projectPlacement);
+}
+
+type FetchAgentResult = Awaited<ReturnType<DaemonClient["fetchAgent"]>>;
+
+function storeFetchedAgentDetail(input: {
+  serverId: string;
+  result: NonNullable<FetchAgentResult>;
+}): Agent {
+  const normalized = normalizeAgentSnapshot(input.result.agent, input.serverId);
+  const hydrated: Agent = applyLegacyDaemonWorkspaceOwnership({
+    serverId: input.serverId,
+    agent: {
+      ...normalized,
+      projectPlacement: input.result.project,
+    },
+  });
+  const store = useSessionStore.getState();
+
+  if (shouldStoreFetchedAgentInActiveDirectory(hydrated)) {
+    store.setAgents(input.serverId, (previous) => {
+      const next = new Map(previous);
+      next.set(hydrated.id, hydrated);
+      return next;
+    });
+  } else {
+    store.setAgentDetails(input.serverId, (previous) => {
+      const next = new Map(previous);
+      next.set(hydrated.id, hydrated);
+      return next;
+    });
+  }
+
+  store.setPendingPermissions(input.serverId, (previous) => {
+    const next = new Map(previous);
+    for (const [key, pending] of next.entries()) {
+      if (pending.agentId === hydrated.id) {
+        next.delete(key);
+      }
+    }
+    for (const request of hydrated.pendingPermissions) {
+      const key = derivePendingPermissionKey(hydrated.id, request);
+      next.set(key, { key, agentId: hydrated.id, request });
+    }
+    return next;
+  });
+
+  return hydrated;
+}
+
 function useAgentPanelDescriptor(
   target: { kind: "agent"; agentId: string },
   context: { serverId: string },
@@ -360,7 +408,6 @@ function DraftPanel() {
     retargetCurrentTab,
   } = usePaneContext();
   const { isInteractive } = usePaneFocus();
-  const client = useHostRuntimeClient(serverId);
   invariant(target.kind === "draft", "DraftPanel requires draft target");
 
   const handleCreated = useCallback(
@@ -373,19 +420,8 @@ function DraftPanel() {
         return next;
       });
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
-      if (client) {
-        void associateDevelopmentStageDraftAgent({
-          client,
-          serverId,
-          draftId: target.draftId,
-          agentId: agentSnapshot.id,
-          workspaceId,
-        }).catch((error) => {
-          console.warn("[ByteDevelopment] Failed to associate stage Agent", error);
-        });
-      }
     },
-    [client, retargetCurrentTab, serverId, target.draftId, workspaceId],
+    [retargetCurrentTab, serverId],
   );
 
   return (
@@ -955,20 +991,6 @@ function ChatAgentContent({
     () => buildChatAgentFromState(agentState, projectPlacement),
     [agentState, projectPlacement],
   );
-  const agentAssistantId = useSessionStore((state) => {
-    if (!agentId) return null;
-    const session = state.sessions[serverId];
-    const detail = session?.agentDetails?.get(agentId);
-    const summary = session?.agents?.get(agentId);
-    return detail?.labels?.assistantId ?? summary?.labels?.assistantId ?? null;
-  });
-  const agentTeamId = useSessionStore((state) => {
-    if (!agentId) return null;
-    const session = state.sessions[serverId];
-    const detail = session?.agentDetails?.get(agentId);
-    const summary = session?.agents?.get(agentId);
-    return detail?.labels?.["paseo.team-id"] ?? summary?.labels?.["paseo.team-id"] ?? null;
-  });
   const continuity = useMemo<AgentScreenContinuity>(() => {
     if (!hasActiveCreateHandoff || !agentId) {
       return { kind: "none" };
@@ -1200,8 +1222,6 @@ function ChatAgentContent({
       onAttentionInputFocus={attentionController.clearOnInputFocus}
       onAttentionPromptSend={attentionController.clearOnPromptSend}
       onOpenWorkspaceFile={onOpenWorkspaceFile}
-      agentAssistantId={agentAssistantId}
-      agentTeamId={agentTeamId}
     />
   );
 }
@@ -1232,8 +1252,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onAttentionInputFocus,
   onAttentionPromptSend,
   onOpenWorkspaceFile,
-  agentAssistantId,
-  agentTeamId,
 }: {
   serverId: string;
   workspaceId: string;
@@ -1260,8 +1278,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
-  agentAssistantId: string | null;
-  agentTeamId: string | null;
 }) {
   const { t } = useTranslation();
   const subagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId });
@@ -1286,8 +1302,6 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       serverId,
       agentId,
     }),
-    initialAssistantId: agentAssistantId,
-    initialTeamId: agentTeamId,
   });
   // Stabilize the agentInputDraft object identity so that memo(AgentComposerSection) can bail out
   // when only toast state changes (which does not affect any draft field).
@@ -1425,7 +1439,17 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
               </View>
             </View>
           ) : null}
-        </View>
+
+          {composerSection}
+
+          {showHistorySyncOverlay ? (
+            <View style={styles.historySyncOverlay} testID="agent-history-overlay">
+              <ThemedLoadingSpinner size="large" uniProps={foregroundMutedColorMapping} />
+            </View>
+          ) : null}
+
+          <ToastViewport toast={toast} onDismiss={dismiss} placement="panel" />
+        </FileDropZone>
 
         {isArchivingCurrentAgent ? (
           <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
@@ -1729,9 +1753,6 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
-        assistantId={agentInputDraft.assistantId}
-        onAssistantSelect={agentInputDraft.setAssistantId}
-        teamId={agentInputDraft.teamId}
       />
     </ReanimatedAnimated.View>
   );
@@ -1824,13 +1845,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   container: {
     flex: 1,
-    minWidth: 0,
     backgroundColor: theme.colors.surface0,
-  },
-  readyLayout: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
   },
   contentContainer: {
     flex: 1,

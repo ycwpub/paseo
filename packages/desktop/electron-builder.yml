@@ -29,6 +29,12 @@ asarUnpack:
 extraResources:
   - from: ../app/dist
     to: app-dist
+  - from: ../../.agents/plugins
+    to: .agents/plugins
+  - from: assets/icon.png
+    to: desktop-icons/icon.png
+  - from: assets/icon-attention.png
+    to: desktop-icons/icon-attention.png
   - from: assets/editor-targets
     to: editor-target-icons
 publish:

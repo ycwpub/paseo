@@ -284,81 +284,8 @@ function ExplorerTabButton({
   return (
     <Pressable testID={testID} style={tabStyle} onPress={handlePress}>
       {children}
-      {label !== undefined ? (
-        <Text numberOfLines={1} style={tabTextStyle}>
-          {label}
-        </Text>
-      ) : null}
+      {label !== undefined ? <Text style={tabTextStyle}>{label}</Text> : null}
     </Pressable>
-  );
-}
-
-function resolveExplorerSidebarTab(input: {
-  activeTab: ExplorerTab;
-  isGit: boolean;
-  showPrTab: boolean;
-  hasTaskSummary: boolean;
-}): ExplorerTab {
-  if (!input.isGit && (input.activeTab === "changes" || input.activeTab === "pr")) {
-    return "files";
-  }
-  if (input.activeTab === "pr" && !input.showPrTab) {
-    return input.isGit ? "changes" : "files";
-  }
-  if (input.activeTab === "task-summary" && !input.hasTaskSummary) {
-    return "files";
-  }
-  return input.activeTab;
-}
-
-function TaskSummaryExplorerTab({
-  active,
-  agent,
-  label,
-  onTabPress,
-}: {
-  active: boolean;
-  agent: WorkspaceTaskSummaryAgent | null;
-  label: string;
-  onTabPress: (tab: ExplorerTab) => void;
-}) {
-  if (!agent) {
-    return null;
-  }
-  return (
-    <ExplorerTabButton
-      tab="task-summary"
-      active={active}
-      label={label}
-      onTabPress={onTabPress}
-      testID="explorer-tab-task-summary"
-    />
-  );
-}
-
-function TaskSummaryExplorerPane({
-  active,
-  agent,
-  serverId,
-  workspaceRoot,
-  onOpenFile,
-}: {
-  active: boolean;
-  agent: WorkspaceTaskSummaryAgent | null;
-  serverId: string;
-  workspaceRoot: string;
-  onOpenFile?: (filePath: string) => void;
-}) {
-  if (!active || !agent) {
-    return null;
-  }
-  return (
-    <TaskSummaryPane
-      serverId={serverId}
-      agentId={agent.agentId}
-      cwd={agent.cwd ?? workspaceRoot}
-      onOpenFile={onOpenFile}
-    />
   );
 }
 
@@ -436,12 +363,6 @@ function ExplorerSidebarContent({
             label={t("workspace.tabs.explorerSidebar.files")}
             onTabPress={onTabPress}
             testID="explorer-tab-files"
-          />
-          <TaskSummaryExplorerTab
-            active={resolvedTab === "task-summary"}
-            agent={taskSummaryAgent}
-            label={t("agentPanel.taskSummary.title")}
-            onTabPress={onTabPress}
           />
           {isGit && showPrTab && (
             <ExplorerTabButton
@@ -600,14 +521,10 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   tabsContainer: {
-    flex: 1,
-    minWidth: 0,
     flexDirection: "row",
     gap: theme.spacing[1],
   },
   tab: {
-    minWidth: 0,
-    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],

@@ -267,6 +267,7 @@ export interface WorkspaceTabSnapshot {
   standaloneTerminalIds: Iterable<string>;
   hasActivePendingTerminalCreate?: boolean;
   hasActivePendingDraftCreate?: boolean;
+  /** Empty draft that may be replaced by the first newly discovered Agent tab. */
   replaceableDraftTabId?: string | null;
 }
 
@@ -2319,6 +2320,7 @@ function addMissingEntityTabs(input: {
   hasActivePendingTerminalCreate: boolean;
   hasActivePendingDraftCreate: boolean;
   explorerSidebarPaneId: string | null;
+  replaceableDraftTabId: string | null;
 }): WorkspaceLayout {
   const {
     autoOpenAgentIds,
@@ -2345,6 +2347,19 @@ function addMissingEntityTabs(input: {
     }
     if (hasActivePendingDraftCreate && !representedAgentIds.has(agentId)) {
       continue;
+    }
+    if (replaceableDraftTabId) {
+      const converted = convertDraftToAgentInLayout({
+        layout: nextLayout,
+        tabId: replaceableDraftTabId,
+        agentId,
+      });
+      if (converted) {
+        nextLayout = converted.layout;
+        replaceableDraftTabId = null;
+        currentAgentIds.add(agentId);
+        continue;
+      }
     }
     nextLayout = openEntityTabWithoutFocusing({
       layout: nextLayout,
@@ -2408,6 +2423,7 @@ function seedDraftForEmptyWorkspace(input: {
   );
 }
 
+// oxlint-disable-next-line complexity -- Reconciliation intentionally applies all tab identity and focus invariants in one pass.
 export function reconcileWorkspaceTabs(
   state: WorkspaceTabReconcileState,
   snapshot: WorkspaceTabSnapshot,
@@ -2494,6 +2510,7 @@ export function reconcileWorkspaceTabs(
     hasActivePendingTerminalCreate: snapshot.hasActivePendingTerminalCreate ?? false,
     hasActivePendingDraftCreate: snapshot.hasActivePendingDraftCreate ?? false,
     explorerSidebarPaneId: state.explorerSidebarPaneId,
+    replaceableDraftTabId: snapshot.replaceableDraftTabId ?? null,
   });
 
   nextLayout = seedDraftForEmptyWorkspace({

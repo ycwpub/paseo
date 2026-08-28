@@ -449,6 +449,7 @@ export function createPaseoClient(config: PaseoClientConfig): PaseoClient {
     close: () => daemonClient.close(),
     ensureConnected: () => daemonClient.ensureConnected(),
     getConnectionState: () => daemonClient.getConnectionState(),
+    getConnectionTransport: () => daemonClient.getConnectionTransport(),
   };
 }
 

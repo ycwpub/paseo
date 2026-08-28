@@ -9,6 +9,7 @@ function todo(id: string, items: Array<{ text: string; completed: boolean }>): S
     id,
     provider: "codex",
     timestamp: new Date(1),
+    activity: { type: "created", count: items.length },
     items,
   };
 }

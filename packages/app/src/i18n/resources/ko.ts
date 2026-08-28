@@ -1,7 +1,8 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource } from "./complete-resource";
 import { pluginSettings } from "./plugin-settings";
 
-const koOverrides = {
+export const ko: TranslationResources = completeTranslationResource(en, {
   common: {
     back: "뒤로",
     loading: "불러오는 중...",
@@ -46,62 +47,6 @@ const koOverrides = {
       offline: "오프라인",
       error: "오류",
       idle: "대기 중",
-    },
-  },
-  workflows: {
-    graph: {
-      fullView: "전체 계획",
-      fullViewTitle: "전체 워크플로 그래프",
-      fullViewHint: "전체 종속성 그래프와 실행 경로를 확인하고 확대하거나 노드를 열 수 있습니다.",
-      zoomIn: "워크플로 그래프 확대",
-      zoomOut: "워크플로 그래프 축소",
-      resetZoom: "워크플로 그래프 확대/축소 초기화",
-      nodeName: "노드 이름",
-      nodeId: "노드 ID",
-      nodeType: "노드 유형",
-      configuration: "전체 노드 구성",
-    },
-    nodes: {
-      agent: {
-        lifecycle: "에이전트 수명 주기",
-        lifecycleHint:
-          "이 에이전트 노드가 동일한 에이전트를 재사용하는 기간을 정합니다. 재사용되는 에이전트 호출은 순서대로 실행됩니다.",
-        selectLifecycle: "에이전트 수명 주기 선택",
-        lifecycleOptions: {
-          workflow: "전체 Workflow",
-          workflowDescription: "첫 실행 시 생성하여 재사용하고 Workflow가 끝나면 해제합니다.",
-          for: "현재 For 루프",
-          forDescription:
-            "첫 반복에서 생성하여 현재 For 루프 안에서 재사용하고 루프를 벗어나면 해제합니다.",
-          single: "단일 실행",
-          singleDescription: "실행할 때마다 새 에이전트를 생성하며 재사용하지 않습니다.",
-        },
-        subsequentPromptMode: "첫 실행 이후 프롬프트",
-        subsequentPromptModeHint:
-          "이미 초기화된 에이전트를 다시 호출할 때 보낼 프롬프트를 선택합니다.",
-        selectSubsequentPromptMode: "후속 프롬프트 방식 선택",
-        subsequentPromptModes: {
-          reuseInitial: "초기 프롬프트 재사용",
-          reuseInitialDescription: "현재 노드 입력으로 초기 프롬프트를 다시 렌더링합니다.",
-          custom: "사용자 지정 프롬프트",
-          customDescription: "첫 호출 이후에는 별도로 설정한 프롬프트를 사용합니다.",
-        },
-        subsequentPrompt: "사용자 지정 후속 프롬프트",
-        subsequentPromptHint: "초기 프롬프트와 동일한 입력 데이터 및 템플릿 변수를 지원합니다.",
-        archiveAtLifecycleEnd: "에이전트 수명 주기가 끝나면 자동 보관",
-      },
-      openDetails: "{{name}} 노드 세부 정보 열기",
-      downstream: {
-        label: "다음 노드",
-        hint: "이 노드가 완료된 후 실행할 같은 수준의 노드를 선택하세요.",
-        sequential: "목록 순서 따르기",
-        sequentialDescription: "목록의 다음 노드를 실행합니다.",
-        end: "시퀀스 종료",
-        endDescription: "현재 노드가 완료되면 이 시퀀스를 종료합니다.",
-        missing: "노드 없음: {{id}}",
-        placeholder: "다음 노드 선택",
-        empty: "선택할 수 있는 다음 노드가 없습니다",
-      },
     },
   },
   shell: {
@@ -223,44 +168,6 @@ const koOverrides = {
       title_mr: "이슈 또는 MR 첨부",
     },
   },
-  memoryPolicies: {
-    globalDisabledTitle: "전역 메모리가 꺼져 있습니다",
-    globalDisabledDescription:
-      "정책은 저장되지만 호스트 설정에서 메모리를 켜기 전까지 Paseo가 사용하지 않습니다.",
-    scopeManager: {
-      ...en.memoryPolicies.scopeManager,
-      title: "메모리 규칙",
-      description: "각 메모리 범위에 저장할 영구 정보를 관리합니다.",
-      scopeType: "메모리 범위",
-      target: "대상",
-      selectTarget: "대상 선택",
-      instructionsTitle: "저장할 정보",
-      save: "규칙 저장",
-      saved: "저장됨",
-    },
-    contentManager: {
-      ...en.memoryPolicies.contentManager,
-      pageTitle: "메모리 관리",
-      detailTitle: "메모리 상세",
-      manage: "메모리 내용 관리",
-      manageDescription:
-        "{{count}}개의 메모리가 있습니다. 전용 페이지에서 조회, 편집 또는 삭제할 수 있습니다.",
-      openManager: "열기",
-      backToList: "메모리 목록으로 돌아가기",
-      loading: "메모리 불러오는 중…",
-      notFound: "이 메모리는 없거나 삭제되었습니다.",
-      errorTitle: "메모리를 관리할 수 없습니다",
-      scopeEditHint: "범위를 변경하면 이 메모리가 선택한 범위로 이동합니다.",
-      pagination: {
-        pageSize: "페이지당 항목",
-        noPageSizes: "사용 가능한 페이지 크기가 없습니다",
-        page: "{{page}} / {{totalPages}} 페이지",
-        range: "전체 {{total}}개 중 {{start}}–{{end}}개 표시",
-        previous: "이전",
-        next: "다음",
-      },
-    },
-  },
   agentControls: {
     provider: {
       fallback: "프로바이더",
@@ -291,21 +198,6 @@ const koOverrides = {
       thinking: "사고 모드",
       model: "모델 변경",
       mode: "모드 변경",
-    },
-    memory: {
-      title: "대화 메모리",
-      open: "대화 메모리 설정",
-      enabledTitle: "이 대화에서 메모리 사용",
-      enabledHint:
-        "끄면 이 에이전트는 기존 메모리를 읽지 않고 대화에서 새 메모리를 학습하지 않습니다.",
-      instructionsTitle: "Paseo가 이 대화에서 무엇을 기억해야 하나요?",
-      instructionsHint:
-        "확인된 결론, 반복되는 선호, 최종 결정처럼 오래 유지할 정보를 지정하세요. 임시 로그, 추측, 비밀은 제외됩니다.",
-      instructionsPlaceholder: "예: 확인된 원인과 최종 결정을 기억하고 중간 실험은 무시합니다.",
-      save: "저장",
-      saving: "저장 중...",
-      saved: "저장됨",
-      saveError: "대화 메모리를 저장할 수 없습니다",
     },
   },
   agentStream: {
@@ -353,18 +245,9 @@ const koOverrides = {
     title: "기록",
     empty: "아직 세션이 없습니다",
     noMatches: "일치하는 세션이 없습니다",
-    noProjectSessions: "이 프로젝트의 세션이 없습니다",
     tooManyMatches: "일치 항목이 너무 많습니다 — 검색 범위를 좁히세요",
     hostLoadFailed: "{{host}}: 기록을 불러오지 못했습니다",
     searchPlaceholder: "기록 검색",
-    projectFilter: {
-      label: "프로젝트",
-      title: "프로젝트로 필터링",
-      all: "모든 프로젝트",
-      empty: "사용 가능한 프로젝트가 없습니다",
-      search: "프로젝트 검색",
-      hostCount: "호스트 {{count}}개",
-    },
     actions: {
       loadMore: "더 불러오기",
       clearSearch: "검색 지우기",
@@ -469,8 +352,8 @@ const koOverrides = {
     },
     compaction: {
       loading: "압축하는 중...",
-      loadingAuto: "컨텍스트를 자동으로 압축하는 중",
-      loadingManual: "컨텍스트를 수동으로 압축하는 중",
+      loadingAuto: "컨텍스트를 자동으로 압축하는 중...",
+      loadingManual: "컨텍스트를 수동으로 압축하는 중...",
       auto: "컨텍스트가 자동으로 압축되었습니다",
       manual: "컨텍스트가 수동으로 압축되었습니다",
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
@@ -1212,8 +1095,6 @@ const koOverrides = {
       home: "홈",
       settings: "설정",
       closeSidebar: "사이드바 닫기",
-      collapseAllWorkspaces: "모든 워크스페이스 접기",
-      expandAllWorkspaces: "모든 워크스페이스 펼치기",
     },
     help: {
       trigger: "도움말 및 지원",
@@ -1244,25 +1125,20 @@ const koOverrides = {
         openNewWindowFailed: "새 창을 열 수 없습니다",
         openFolder: "파일 관리자에서 열기",
         openFolderFailed: "폴더를 열 수 없습니다.",
-        hide: "프로젝트 숨기기",
-        show: "프로젝트 표시",
-        remove: "프로젝트 삭제",
-        removing: "삭제 중...",
-      },
-      hidden: {
-        title: "숨겨진 프로젝트 ({{count}})",
+        remove: "프로젝트 제거",
+        removing: "제거하는 중...",
       },
       confirmations: {
-        removeTitle: "프로젝트를 삭제할까요?",
+        removeTitle: "프로젝트를 제거할까요?",
         removeMessage:
-          '"{{projectName}}" 및 ~/.paseo/projects/<projectId> 아래의 모든 Paseo 관리 데이터를 영구 삭제할까요?\n\n외부 소스 디렉터리는 삭제되지 않습니다. 이 작업은 되돌릴 수 없습니다.',
-        removeConfirm: "삭제",
+          '"{{projectName}}"을(를) 사이드바에서 제거할까요?\n\n디스크의 파일은 변경되지 않습니다.',
+        removeConfirm: "제거",
         cancel: "취소",
       },
       toasts: {
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
-        removeFailed: "프로젝트 또는 일부 데이터를 삭제하지 못했습니다",
-        updateHostToRemove: "프로젝트를 삭제하려면 호스트를 업데이트하세요.",
+        removeFailed: "일부 워크스페이스를 제거하지 못했습니다",
+        updateHostToRemove: "프로젝트를 제거하려면 호스트를 업데이트하세요.",
       },
       empty: {
         title: "아직 프로젝트가 없습니다",
@@ -1296,32 +1172,15 @@ const koOverrides = {
         unpin: "고정 해제",
         archive: "보관",
         archiveWorkspace: "워크스페이스 보관",
-        remove: "워크스페이스 삭제",
         hideFromSidebar: "사이드바에서 숨기기",
         archiving: "보관하는 중...",
-        removing: "삭제 중...",
         hiding: "숨기는 중...",
-      },
-      bulkArchive: {
-        select: "워크스페이스 선택",
-        selected: "{{count}}개 선택됨",
-        cancel: "선택 취소",
-        title: "워크스페이스 {{count}}개를 보관할까요?",
-        message: "선택한 워크스페이스가 보관되고 사이드바에서 제거됩니다.",
-        riskyWorktrees:
-          "선택한 worktree 중 {{count}}개에 커밋하지 않았거나 푸시하지 않은 변경 사항이 있습니다. 해당 디렉터리가 삭제될 수 있습니다.",
-        confirm: "선택 항목 보관",
-        failed: "워크스페이스 {{count}}개를 보관하지 못했습니다",
       },
       confirmations: {
         hideTitle: "워크스페이스를 숨길까요?",
         hideMessage:
           '"{{workspaceName}}"을(를) 사이드바에서 숨길까요?\n\n디스크의 파일은 변경되지 않습니다.',
         hideConfirm: "숨기기",
-        removeTitle: "워크스페이스를 삭제하시겠습니까?",
-        removeMessage:
-          '"{{workspaceName}}" 및 ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}}의 Paseo 관리 데이터를 영구 삭제하시겠습니까?\n\n연결된 외부 코드 디렉터리와 그 안의 파일은 삭제되거나 수정되지 않습니다. 이 작업은 취소할 수 없습니다.',
-        removeConfirm: "삭제",
         cancel: "취소",
       },
       rename: {
@@ -1335,7 +1194,6 @@ const koOverrides = {
         branchNameCopied: "브랜치 이름이 복사되었습니다",
         hostDisconnected: "호스트가 연결되어 있지 않습니다",
         hideFailed: "워크스페이스를 숨기지 못했습니다",
-        removeFailed: "워크스페이스를 삭제하지 못했습니다",
         archiveFailed: "워크스페이스를 보관하지 못했습니다.",
       },
     },
@@ -1383,6 +1241,100 @@ const koOverrides = {
       submit: "Launch",
       promptPlaceholder: "Prompt {{name}}",
       commandPlaceholder: "Run a command, or leave empty for a blank terminal",
+    },
+  },
+  memoryPolicies: {
+    globalDisabledTitle: "전역 메모리가 꺼져 있습니다",
+    globalDisabledDescription:
+      "정책은 저장되지만 호스트 설정에서 메모리를 켜기 전까지 Paseo가 사용하지 않습니다.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "메모리 규칙",
+      description: "각 메모리 범위에 저장할 영구 정보를 관리합니다.",
+      scopeType: "메모리 범위",
+      target: "대상",
+      selectTarget: "대상 선택",
+      instructionsTitle: "저장할 정보",
+      save: "규칙 저장",
+      saved: "저장됨",
+    },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "메모리 관리",
+      detailTitle: "메모리 상세",
+      manage: "메모리 내용 관리",
+      manageDescription:
+        "{{count}}개의 메모리가 있습니다. 전용 페이지에서 조회, 편집 또는 삭제할 수 있습니다.",
+      openManager: "열기",
+      backToList: "메모리 목록으로 돌아가기",
+      loading: "메모리 불러오는 중…",
+      notFound: "이 메모리는 없거나 삭제되었습니다.",
+      errorTitle: "메모리를 관리할 수 없습니다",
+      scopeEditHint: "범위를 변경하면 이 메모리가 선택한 범위로 이동합니다.",
+      pagination: {
+        pageSize: "페이지당 항목",
+        noPageSizes: "사용 가능한 페이지 크기가 없습니다",
+        page: "{{page}} / {{totalPages}} 페이지",
+        range: "전체 {{total}}개 중 {{start}}–{{end}}개 표시",
+        previous: "이전",
+        next: "다음",
+      },
+    },
+  },
+  workflows: {
+    graph: {
+      fullView: "전체 계획",
+      fullViewTitle: "전체 워크플로 그래프",
+      fullViewHint: "전체 종속성 그래프와 실행 경로를 확인하고 확대하거나 노드를 열 수 있습니다.",
+      zoomIn: "워크플로 그래프 확대",
+      zoomOut: "워크플로 그래프 축소",
+      resetZoom: "워크플로 그래프 확대/축소 초기화",
+      nodeName: "노드 이름",
+      nodeId: "노드 ID",
+      nodeType: "노드 유형",
+      configuration: "전체 노드 구성",
+    },
+    nodes: {
+      agent: {
+        lifecycle: "에이전트 수명 주기",
+        lifecycleHint:
+          "이 에이전트 노드가 동일한 에이전트를 재사용하는 기간을 정합니다. 재사용되는 에이전트 호출은 순서대로 실행됩니다.",
+        selectLifecycle: "에이전트 수명 주기 선택",
+        lifecycleOptions: {
+          workflow: "전체 Workflow",
+          workflowDescription: "첫 실행 시 생성하여 재사용하고 Workflow가 끝나면 해제합니다.",
+          for: "현재 For 루프",
+          forDescription:
+            "첫 반복에서 생성하여 현재 For 루프 안에서 재사용하고 루프를 벗어나면 해제합니다.",
+          single: "단일 실행",
+          singleDescription: "실행할 때마다 새 에이전트를 생성하며 재사용하지 않습니다.",
+        },
+        subsequentPromptMode: "첫 실행 이후 프롬프트",
+        subsequentPromptModeHint:
+          "이미 초기화된 에이전트를 다시 호출할 때 보낼 프롬프트를 선택합니다.",
+        selectSubsequentPromptMode: "후속 프롬프트 방식 선택",
+        subsequentPromptModes: {
+          reuseInitial: "초기 프롬프트 재사용",
+          reuseInitialDescription: "현재 노드 입력으로 초기 프롬프트를 다시 렌더링합니다.",
+          custom: "사용자 지정 프롬프트",
+          customDescription: "첫 호출 이후에는 별도로 설정한 프롬프트를 사용합니다.",
+        },
+        subsequentPrompt: "사용자 지정 후속 프롬프트",
+        subsequentPromptHint: "초기 프롬프트와 동일한 입력 데이터 및 템플릿 변수를 지원합니다.",
+        archiveAtLifecycleEnd: "에이전트 수명 주기가 끝나면 자동 보관",
+      },
+      openDetails: "{{name}} 노드 세부 정보 열기",
+      downstream: {
+        label: "다음 노드",
+        hint: "이 노드가 완료된 후 실행할 같은 수준의 노드를 선택하세요.",
+        sequential: "목록 순서 따르기",
+        sequentialDescription: "목록의 다음 노드를 실행합니다.",
+        end: "시퀀스 종료",
+        endDescription: "현재 노드가 완료되면 이 시퀀스를 종료합니다.",
+        missing: "노드 없음: {{id}}",
+        placeholder: "다음 노드 선택",
+        empty: "선택할 수 있는 다음 노드가 없습니다",
+      },
     },
   },
   desktop: {
@@ -2038,6 +1990,7 @@ const koOverrides = {
     projects: "프로젝트",
     projectList: {
       hostLoadFailed: "{{hostName}} 호스트에서 프로젝트를 불러올 수 없습니다: {{message}}",
+      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "{{projectName}} 편집",
     },
     groupInfo: "{{title}} 정보",
@@ -2065,20 +2018,6 @@ const koOverrides = {
       refreshAccessibility: "알림 권한 새로 고침",
       playSound: "소리 재생",
       playSoundHint: "데스크톱 알림이 도착하면 소리를 재생합니다",
-      island: "Dynamic Island 알림",
-      islandHint: "화면 상단에 간결한 에이전트 상태 알림을 표시합니다",
-      islandShowWhenFocused: "Paseo가 활성화되어 있어도 표시",
-      islandShowWhenFocusedHint: "Paseo를 사용하는 동안에도 알림을 계속 표시합니다",
-      islandWorking: "작업을 처리하는 중...",
-      islandTest: "Dynamic Island 테스트",
-      islandTestHint: "현재 화면 상단에 Dynamic Island 알림을 표시합니다",
-      islandTestTitle: "Paseo Dynamic Island",
-      islandTestBody: "Dynamic Island가 정상적으로 표시됩니다",
-      islandTestSuccess: "Dynamic Island를 표시했습니다",
-      islandTestSuccessHint: "현재 화면 작업 영역 상단에 알림이 표시됩니다.",
-      islandTestFailed: "Dynamic Island를 표시할 수 없습니다",
-      islandTestFailedHint:
-        "기능이 켜져 있는지 확인하고 데스크톱 로그의 [island] 항목을 확인하세요.",
       test: "알림 테스트",
       testHint: "현재 설정으로 테스트 알림을 보냅니다",
       permissionRequired: "테스트하기 전에 알림 접근을 허용하세요",
@@ -2093,7 +2032,6 @@ const koOverrides = {
       connections: "연결",
       agents: "에이전트",
       metadata: "메타데이터",
-      plugins: "플러그인",
       workspaces: "워크스페이스",
       providers: "프로바이더",
       usage: "사용량",
@@ -2720,26 +2658,6 @@ const koOverrides = {
     project: {
       noEditableTarget: "이 호스트에서는 이 프로젝트를 편집할 수 없습니다.",
       backToProjects: "프로젝트로 돌아가기",
-      directoryless: {
-        title: "프로젝트 디렉터리가 없습니다",
-        description:
-          "프로젝트 이름, 아이콘, 메모리는 편집할 수 있습니다. 디렉터리를 연결하면 paseo.json에 저장되는 설정도 편집할 수 있습니다.",
-      },
-      memory: {
-        title: "프로젝트 메모리",
-        info: "이 프로젝트의 메모리 사용 여부와 Paseo가 학습할 장기 지식을 설정합니다.",
-        enabledTitle: "이 프로젝트에서 메모리 사용",
-        enabledHint:
-          "끄면 에이전트가 프로젝트 메모리를 읽거나 만들지 않습니다. 전역 메모리는 계속 사용할 수 있습니다.",
-        instructionsTitle: "Paseo가 이 프로젝트에서 무엇을 기억해야 하나요?",
-        instructionsHint: "규칙, 아키텍처 결정, 반복 절차, 안정적인 환경 정보를 설명하세요.",
-        instructionsPlaceholder:
-          "예: 아키텍처 결정과 릴리스 절차를 기억하고 임시 오류, 로그, 비밀은 무시합니다.",
-        save: "저장",
-        saving: "저장 중...",
-        saved: "저장됨",
-        saveError: "프로젝트 메모리를 저장할 수 없습니다",
-      },
       edit: {
         title: "프로젝트 편집",
         name: "이름",
@@ -2826,6 +2744,4 @@ const koOverrides = {
       },
     },
   },
-} as const;
-
-export const ko = completeTranslationResource(en, koOverrides);
+});

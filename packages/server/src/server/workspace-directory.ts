@@ -83,7 +83,9 @@ export interface WorkspaceDirectoryDeps {
     Array<{ cwd: string; workspaceId?: string; activity: TerminalActivity | null }>
   >;
   isProviderVisibleToClient(provider: string): boolean;
-  buildProjectDescriptor?(project: PersistedProjectRecord): WorkspaceProjectDescriptor;
+  buildProjectDescriptor?(
+    project: PersistedProjectRecord,
+  ): WorkspaceProjectDescriptor | Promise<WorkspaceProjectDescriptor>;
   buildWorkspaceDescriptor(input: {
     workspace: PersistedWorkspaceRecord;
     projectRecord?: PersistedProjectRecord | null;
@@ -562,27 +564,30 @@ export class WorkspaceDirectory {
         .filter((workspace) => !workspace.archivedAt)
         .map((workspace) => workspace.projectId),
     );
-    return persistedProjects
-      .filter(
-        (project) => !project.archivedAt && !projectIdsWithActiveWorkspaces.has(project.projectId),
-      )
-      .map((project) => {
-        if (this.deps.buildProjectDescriptor) {
-          return this.deps.buildProjectDescriptor(project);
-        }
-        const descriptor: WorkspaceProjectDescriptor = {
-          projectId: project.projectId,
-          projectKey: project.projectKey ?? undefined,
-          projectDisplayName: resolveProjectDisplayName(project),
-          projectCustomName: project.customName ?? null,
-          projectCustomIconRevision: project.customIconRevision ?? null,
-          projectRootPath: projectRootPathForWire(project),
-          projectKind: project.kind,
-        };
-        if (project.parentProjectId) descriptor.parentProjectId = project.parentProjectId;
-        if (project.rootPath === null) descriptor.projectDirectoryless = true;
-        return descriptor;
-      });
+    return Promise.all(
+      persistedProjects
+        .filter(
+          (project) =>
+            !project.archivedAt && !projectIdsWithActiveWorkspaces.has(project.projectId),
+        )
+        .map(async (project) => {
+          if (this.deps.buildProjectDescriptor) {
+            return await this.deps.buildProjectDescriptor(project);
+          }
+          const descriptor: WorkspaceProjectDescriptor = {
+            projectId: project.projectId,
+            projectKey: project.projectKey ?? undefined,
+            projectDisplayName: resolveProjectDisplayName(project),
+            projectCustomName: project.customName ?? null,
+            projectCustomIconRevision: project.customIconRevision ?? null,
+            projectRootPath: projectRootPathForWire(project),
+            projectKind: project.kind,
+          };
+          if (project.parentProjectId) descriptor.parentProjectId = project.parentProjectId;
+          if (project.rootPath === null) descriptor.projectDirectoryless = true;
+          return descriptor;
+        }),
+    );
   }
 
   async listDescriptors(): Promise<WorkspaceDescriptorPayload[]> {

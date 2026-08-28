@@ -14,6 +14,7 @@ export interface ResolveRelayConfigInput {
   persisted: PersistedConfig;
   cliRelayEnabled: boolean | undefined;
   cliRelayUseTls: boolean | undefined;
+  enabledFallback: boolean;
 }
 
 export interface ResolvedRelayConfig {
@@ -273,7 +274,7 @@ export function resolveRelayConfig(input: ResolveRelayConfigInput): ResolvedRela
     input.cliRelayEnabled ??
     parseBooleanEnv(input.env.PASEO_RELAY_ENABLED) ??
     persistedRelay?.enabled ??
-    true;
+    input.enabledFallback;
   endpoints = configuredEnabled ? dedupeRelayEndpoints(endpoints) : [];
   return {
     enabled: endpoints.length > 0 || local.enabled,

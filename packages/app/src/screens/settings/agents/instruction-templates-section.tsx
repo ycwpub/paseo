@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Plus, X } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { SettingsGroup } from "@/screens/settings/settings-group";
 import { settingsStyles } from "@/styles/settings";

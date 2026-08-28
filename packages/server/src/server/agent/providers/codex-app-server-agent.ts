@@ -37,6 +37,8 @@ import {
   type ProviderCatalog,
   type ProviderRefreshContext,
   type ResolveAgentDefaultModeInput,
+  type ResolveAgentCreateConfigInput,
+  type ResolveAgentCreateConfigResult,
 } from "../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
 import { runProviderRefreshActivity } from "../provider-refresh-deadline.js";
@@ -3941,7 +3943,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   ): Promise<void> {
     if (!this.client || !this.currentThreadId) return;
     const params: Record<string, unknown> = { threadId: this.currentThreadId };
-    const developerInstructions = composeSystemPromptParts(
+    const developerInstructions = composeCodexDeveloperInstructions(
       this.config.systemPrompt,
       this.config.daemonAppendSystemPrompt,
     );
@@ -4314,6 +4316,9 @@ export class CodexAppServerAgentSession implements AgentSession {
         hasDeveloperInstructions: turnStart.hasDeveloperInstructions,
         hasCodexConfig: turnStart.hasCodexConfig,
       });
+      // Codex owns automatic compaction thresholds and refreshes its active
+      // context internally. Starting an extra compaction from cached usage can
+      // immediately retrigger after a completed compaction.
       if (pendingStart.cancelRequested) {
         throw new Error("Codex turn start was interrupted before reaching Codex");
       }
@@ -4877,7 +4882,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.maxOutputTokensRecoveryInProgress = false;
     this.finishAutomaticCompaction(false);
     this.pendingAutomaticCompactionStarts = 0;
-    this.activeContextCompactionItemIds.clear();
+    this.pendingRootCompactionItemIds.clear();
+    this.pendingAnonymousRootCompactions = 0;
     if (this.client) {
       await this.client.dispose();
     }
@@ -5655,6 +5661,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!this.isContextCompactionItem(item)) {
       return false;
     }
+    this.finishAutomaticCompaction(true);
     const consumedPendingCompaction = this.consumePendingRootCompaction(item.id);
     const hasDifferentPendingCompaction =
       this.pendingRootCompactionItemIds.size > 0 || this.pendingAnonymousRootCompactions > 0;
@@ -5665,7 +5672,6 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (isLateCompletionForOlderItem) {
       return true;
     }
-    this.finishAutomaticCompaction(true);
     if (this.unpairedCompactionNotificationCompletions > 0) {
       this.unpairedCompactionNotificationCompletions -= 1;
       return true;
@@ -5921,9 +5927,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!this.isContextCompactionItem(item)) {
       return false;
     }
-    if (item.id) {
-      this.activeContextCompactionItemIds.add(item.id);
-    }
+    this.trackPendingRootCompaction(item.id);
     this.emitEvent({
       type: "timeline",
       provider: CODEX_PROVIDER,
@@ -6096,6 +6100,13 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, status);
       return;
     }
+    if (
+      parsed.status === "failed" &&
+      isMaxOutputTokensError(parsed.errorMessage) &&
+      this.tryRecoverAfterMaxOutputTokens()
+    ) {
+      return;
+    }
     this.completePendingRootCompactions();
     if (parsed.status === "failed") {
       this.emitEvent({
@@ -6190,14 +6201,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private settleActiveContextCompaction(): void {
-    for (const itemId of this.activeContextCompactionItemIds) {
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: this.createContextCompactionTimelineItem("completed", itemId),
-      });
-    }
-    this.activeContextCompactionItemIds.clear();
+    this.completePendingRootCompactions();
   }
 
   private resetTurnTrackingState(): void {
@@ -6740,13 +6744,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     ) {
       return;
     }
-    if (this.isContextCompactionItem(parsed.item)) {
-      this.trackPendingRootCompaction(parsed.item.id);
-      this.emitEvent({
-        type: "timeline",
-        provider: CODEX_PROVIDER,
-        item: this.createContextCompactionTimelineItem("loading", parsed.item.id),
-      });
+    if (this.handleStartedContextCompactionItem(parsed.item)) {
       return;
     }
     if (this.handleRegisteredSubAgentActivity(parsed.item)) {

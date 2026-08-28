@@ -31,7 +31,6 @@ import { AddProjectFlowHost } from "@/components/add-project-flow-host";
 import { AppearanceStyleBoundary } from "@/components/appearance-style-boundary";
 import { WorktreeSetupCalloutSource } from "@/components/worktree-setup-callout-source";
 import { DownloadToast } from "@/components/download-toast";
-import { DesktopWindowNameDialog } from "@/components/desktop-window-name-dialog";
 import { QuittingOverlay } from "@/components/quitting-overlay";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { AppDiagnosticHost } from "@/components/app-diagnostic-host";
@@ -119,8 +118,6 @@ import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
-import { DesktopPluginContentHost } from "@/plugins/sidebar-panel/desktop-content-host";
-import { PluginAppPanelHost } from "@/plugins/sidebar-panel/panel-host";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -378,17 +375,11 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const store = getHostRuntimeStore();
     const daemonStartService = getDaemonStartService({ store });
-    void initializeClientHostname()
-      .catch((error) => {
-        console.warn("[ClientIdentity] Failed to load client hostname", error);
-      })
-      .finally(() => {
-        startHostRuntimeBootstrap({
-          store,
-          daemonStartService,
-          shouldStartDaemon: shouldStartBuiltInDaemon,
-        });
-      });
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: shouldStartBuiltInDaemon,
+    });
   }, []);
 
   const anyOnlineHostServerId = useEarliestOnlineHostServerId();
@@ -554,16 +545,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       keyboardShortcutsEnabled={keyboardShortcutsEnabled}
     />
   );
-  const defaultRouteContent = (
-    <View style={rowStyle}>
-      <View style={flexStyle}>{children}</View>
-    </View>
-  );
-  const routeContent = isCompactLayout ? (
-    defaultRouteContent
-  ) : (
-    <DesktopPluginContentHost>{children}</DesktopPluginContentHost>
-  );
   const workspaceChrome = (
     <View style={rowStyle}>
       {!isCompactLayout ? (
@@ -577,12 +558,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
           presentation={explorerSidebarPresentation === "dock" ? "dock" : "overlay"}
         >
           <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
-            {routeContent}
+            <View style={flexStyle}>{children}</View>
           </WindowChromeRegion>
         </CompactExplorerSidebarHost>
       ) : (
         <WindowChromeRegion corners={appChromeLayout.contentCorners}>
-          {routeContent}
+          <View style={flexStyle}>{children}</View>
         </WindowChromeRegion>
       )}
     </View>
@@ -606,7 +587,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <DesktopWindowControls />
       <FloatingPanelPortalHost />
       {isCompactLayout ? sidebarChrome : null}
-      {isCompactLayout ? <PluginAppPanelHost compact /> : null}
       <DownloadToast />
       <RosettaCalloutSource />
       <UpdateCalloutSource />
@@ -624,7 +604,6 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
       <WorkspaceSetupDialog />
       <KeyboardShortcutsDialog />
       <AppDiagnosticHost />
-      <DesktopWindowNameDialog />
       <QuittingOverlay />
     </View>
   );
@@ -787,7 +766,7 @@ function OpenProjectListener() {
       }
 
       chooseHost({
-        title: "选择主机",
+        title: "Choose host",
         onChooseHost: (serverId) => {
           setRequest({
             id: nextOpenProjectRequestId++,
@@ -885,7 +864,6 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/new" ||
       pathname === "/sessions" ||
       pathname === "/schedules" ||
-      pathname === "/workflows" ||
       routeHasKnownHost);
 
   return <AppContainer chromeEnabled={shouldShowAppChrome}>{children}</AppContainer>;
@@ -914,18 +892,13 @@ function RootStack() {
         <Stack.Screen name="open-project" />
         <Stack.Screen name="sessions" />
         <Stack.Screen name="schedules" />
-        <Stack.Screen name="workflows" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
       <Stack.Screen name="h/[serverId]" />
       <Stack.Screen name="settings/hosts/[serverId]/index" />
       <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
-      <Stack.Screen name="settings/hosts/[serverId]/memories/index" />
-      <Stack.Screen name="settings/hosts/[serverId]/memories/[memoryId]" />
       <Stack.Screen name="settings/hosts/[serverId]/projects/index" />
       <Stack.Screen name="settings/hosts/[serverId]/projects/[projectId]" />
-      <Stack.Screen name="settings/hosts/[serverId]/projects/[projectId]/memories/index" />
-      <Stack.Screen name="settings/hosts/[serverId]/projects/[projectId]/memories/[memoryId]" />
     </ThemedStack>
   );
 }

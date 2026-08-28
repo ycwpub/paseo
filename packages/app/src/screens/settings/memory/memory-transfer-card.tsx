@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { SettingsTextArea } from "@/components/settings-textarea";
 import { settingsStyles } from "@/styles/settings";
 

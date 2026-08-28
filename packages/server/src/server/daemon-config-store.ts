@@ -20,9 +20,13 @@ type MutableDaemonConfigPatch = import("@getpaseo/protocol/messages").MutableDae
 type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOverride;
 
 interface SupportedMutableConfigPatch {
-  relay?: { enabled?: boolean };
+  relay?: MutableDaemonConfigPatch["relay"];
   mcp?: { injectIntoAgents?: boolean };
   browserTools?: { enabled?: boolean };
+  clientAccess?: MutableDaemonConfigPatch["clientAccess"];
+  projectIndexing?: MutableDaemonConfigPatch["projectIndexing"];
+  knowledge?: MutableDaemonConfig["knowledge"];
+  instructionTemplates?: MutableDaemonConfig["instructionTemplates"];
   providers?: MutableDaemonConfig["providers"];
   removeProviders?: string[];
   metadataGeneration?: MutableDaemonConfig["metadataGeneration"];
@@ -173,11 +177,43 @@ function isEqualValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function getLocalInterfaceAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flatMap((addresses) => addresses ?? [])
+    .map((address) => address.address);
+}
+
+export function validateLocalRelayListenAddress(
+  listen: string,
+  localAddresses: readonly string[] = getLocalInterfaceAddresses(),
+): void {
+  const { host } = parseHostPort(listen);
+  if (host === "0.0.0.0" || host === "::" || isIP(host) === 0) return;
+
+  const normalizedHost = host.split("%", 1)[0]!;
+  const normalizedAddresses = new Set(localAddresses.map((address) => address.split("%", 1)[0]!));
+  if (normalizedAddresses.has(normalizedHost)) return;
+
+  const availableAddresses = Array.from(normalizedAddresses)
+    .filter((address) => isIP(address) !== 0)
+    .sort()
+    .join(", ");
+  throw new Error(
+    `LAN Relay listen IP ${host} is not assigned to this machine. Use 0.0.0.0 to listen on all interfaces${
+      availableAddresses ? `, or choose a local IP: ${availableAddresses}` : ""
+    }.`,
+  );
+}
+
 const RELOADABLE_PATHS = [
   "daemon.relay.enabled",
   "daemon.mcp.enabled",
   "daemon.mcp.injectIntoAgents",
   "daemon.browserTools.enabled",
+  "daemon.clientAccess.requireApproval",
+  "daemon.projectIndexing.updateIntervalMinutes",
+  "daemon.knowledge",
+  "daemon.instructionTemplates",
   "daemon.hostnames",
   "daemon.cors.allowedOrigins",
   "daemon.trustedProxies",
@@ -201,6 +237,10 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["daemon.mcp.enabled", "mcp.enabled"],
   ["daemon.mcp.injectIntoAgents", "mcp.injectIntoAgents"],
   ["daemon.browserTools.enabled", "browserTools.enabled"],
+  ["daemon.clientAccess.requireApproval", "clientAccess.requireApproval"],
+  ["daemon.projectIndexing.updateIntervalMinutes", "projectIndexing.updateIntervalMinutes"],
+  ["daemon.knowledge", "knowledge"],
+  ["daemon.instructionTemplates", "instructionTemplates"],
   ["daemon.hostnames", "hostnames"],
   ["daemon.cors.allowedOrigins", "cors.allowedOrigins"],
   ["daemon.trustedProxies", "trustedProxies"],
@@ -254,14 +294,23 @@ function compactOwnedPaths(paths: readonly string[], owners: readonly string[]):
   return Array.from(compacted).sort();
 }
 
+// This is intentionally an explicit allowlist so newly added mutable fields cannot
+// become reloadable or persisted by accident.
+// oxlint-disable-next-line complexity
 function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMutableConfigPatch {
   return {
-    ...(patch.relay?.enabled !== undefined ? { relay: { enabled: patch.relay.enabled } } : {}),
+    ...(patch.relay !== undefined ? { relay: patch.relay } : {}),
     ...(patch.mcp?.injectIntoAgents !== undefined
       ? { mcp: { injectIntoAgents: patch.mcp.injectIntoAgents } }
       : {}),
     ...(patch.browserTools?.enabled !== undefined
       ? { browserTools: { enabled: patch.browserTools.enabled } }
+      : {}),
+    ...(patch.clientAccess !== undefined ? { clientAccess: patch.clientAccess } : {}),
+    ...(patch.projectIndexing !== undefined ? { projectIndexing: patch.projectIndexing } : {}),
+    ...(patch.knowledge !== undefined ? { knowledge: patch.knowledge } : {}),
+    ...(patch.instructionTemplates !== undefined
+      ? { instructionTemplates: patch.instructionTemplates }
       : {}),
     ...(patch.providers !== undefined ? { providers: patch.providers } : {}),
     ...(patch.removeProviders !== undefined ? { removeProviders: patch.removeProviders } : {}),
@@ -636,20 +685,56 @@ function mergeMutableAgentPatch(
   return Object.keys(next).length > 0 ? (next as PersistedConfig["agents"]) : undefined;
 }
 
+// Keep each persisted daemon field explicit so partial reloads never overwrite
+// unrelated configuration owned by another surface.
+// oxlint-disable-next-line complexity
 function mergeMutableDaemonPatch(
   persistedDaemon: PersistedConfig["daemon"],
   patch: Omit<SupportedMutableConfigPatch, "removeProviders">,
   persistRelayEnabled: boolean,
 ): PersistedConfig["daemon"] {
   const next = { ...persistedDaemon } as NonNullable<PersistedConfig["daemon"]>;
-  if (persistRelayEnabled && patch.relay?.enabled !== undefined) {
-    next.relay = { ...next.relay, enabled: patch.relay.enabled };
+  if (patch.relay !== undefined) {
+    const explicitEnabled = (patch.relay as { enabled?: unknown }).enabled;
+    const relayEnabled =
+      typeof explicitEnabled === "boolean"
+        ? explicitEnabled
+        : (patch.relay.endpoints?.length ?? 0) > 0 || patch.relay.local?.enabled === true;
+    next.relay = {
+      ...next.relay,
+      ...(persistRelayEnabled ? { enabled: relayEnabled } : {}),
+      ...(patch.relay.endpoints !== undefined ? { endpoints: patch.relay.endpoints } : {}),
+      ...(patch.relay.local !== undefined
+        ? { local: { ...next.relay?.local, ...patch.relay.local } }
+        : {}),
+      // Canonical multi-relay fields replace the legacy single-relay fields.
+      endpoint: undefined,
+      publicEndpoint: undefined,
+      useTls: undefined,
+      publicUseTls: undefined,
+    };
   }
   if (patch.mcp?.injectIntoAgents !== undefined) {
     next.mcp = { ...next.mcp, injectIntoAgents: patch.mcp.injectIntoAgents };
   }
   if (patch.browserTools?.enabled !== undefined) {
     next.browserTools = { ...next.browserTools, enabled: patch.browserTools.enabled };
+  }
+  if (patch.clientAccess?.requireApproval !== undefined) {
+    next.clientAccess = {
+      ...next.clientAccess,
+      requireApproval: patch.clientAccess.requireApproval,
+    };
+  }
+  if (patch.projectIndexing?.updateIntervalMinutes !== undefined) {
+    next.projectIndexing = {
+      ...next.projectIndexing,
+      updateIntervalMinutes: patch.projectIndexing.updateIntervalMinutes,
+    };
+  }
+  if (patch.knowledge !== undefined) next.knowledge = patch.knowledge;
+  if (patch.instructionTemplates !== undefined) {
+    next.instructionTemplates = patch.instructionTemplates;
   }
   if (patch.autoArchiveAfterMerge !== undefined) {
     next.autoArchiveAfterMerge = patch.autoArchiveAfterMerge;

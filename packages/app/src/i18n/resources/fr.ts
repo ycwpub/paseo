@@ -49,106 +49,6 @@ export const fr: TranslationResources = {
       idle: "Inactif",
     },
   },
-  workflows: {
-    ...en.workflows,
-    graph: {
-      ...en.workflows.graph,
-      fullView: "Plan complet",
-      fullViewTitle: "Graphe complet du workflow",
-      fullViewHint:
-        "Inspectez le graphe des dépendances et le chemin d’exécution, zoomez ou ouvrez un nœud.",
-      zoomIn: "Agrandir le graphe du workflow",
-      zoomOut: "Réduire le graphe du workflow",
-      resetZoom: "Réinitialiser le zoom du graphe",
-      nodeName: "Nom du nœud",
-      nodeId: "ID du nœud",
-      nodeType: "Type de nœud",
-      configuration: "Configuration complète du nœud",
-    },
-    nodes: {
-      ...en.workflows.nodes,
-      agent: {
-        ...en.workflows.nodes.agent,
-        lifecycle: "Cycle de vie de l’agent",
-        lifecycleHint:
-          "Définit la durée de réutilisation du même agent par ce nœud. Les appels réutilisés sont exécutés dans l’ordre.",
-        selectLifecycle: "Sélectionner le cycle de vie de l’agent",
-        lifecycleOptions: {
-          workflow: "Workflow entier",
-          workflowDescription:
-            "Créé lors de la première exécution, réutilisé, puis libéré à la fin du Workflow.",
-          for: "Boucle For actuelle",
-          forDescription:
-            "Créé à la première itération, réutilisé dans la boucle For actuelle, puis libéré à sa sortie.",
-          single: "Exécution unique",
-          singleDescription: "Créer un nouvel agent à chaque exécution, sans réutilisation.",
-        },
-        subsequentPromptMode: "Prompt après le premier appel",
-        subsequentPromptModeHint:
-          "Choisissez le prompt envoyé lorsque ce nœud appelle un agent déjà initialisé.",
-        selectSubsequentPromptMode: "Sélectionner le comportement du prompt suivant",
-        subsequentPromptModes: {
-          reuseInitial: "Réutiliser le prompt initial",
-          reuseInitialDescription:
-            "Rendre à nouveau le prompt initial avec les données actuelles du nœud.",
-          custom: "Prompt personnalisé",
-          customDescription: "Utiliser un prompt distinct pour chaque appel après le premier.",
-        },
-        subsequentPrompt: "Prompt suivant personnalisé",
-        subsequentPromptHint:
-          "Prend en charge les mêmes données et variables de modèle que le prompt initial.",
-        archiveAtLifecycleEnd: "Archiver automatiquement à la fin du cycle de vie de l’agent",
-      },
-      common: {
-        ...en.workflows.nodes.common,
-        environment: "Variables d’environnement du nœud (JSON)",
-        environmentHint:
-          "Les valeurs textuelles facultatives remplacent l’environnement de commande du Workflow pour ce nœud.",
-        environmentStringValues:
-          "Les valeurs des variables d’environnement doivent être des chaînes.",
-      },
-      python: {
-        ...en.workflows.nodes.python,
-        module: "Module Python",
-        moduleHint: "Chemin de module facultatif à configurer avec une fonction.",
-        function: "Fonction Python",
-        functionHint:
-          "Reçoit l’entrée complète du nœud et renvoie son résultat ; les fonctions asynchrones sont prises en charge.",
-      },
-      for: {
-        ...en.workflows.nodes.for,
-        breakWhen: "Condition d’arrêt",
-        breakWhenHint: "L’expression doit renvoyer un booléen ; true arrête la boucle.",
-        continueWhen: "Condition de poursuite",
-        continueWhenHint:
-          "L’expression doit renvoyer un booléen ; true ignore les nœuds restants de cette itération.",
-      },
-      contract: {
-        title: "Contrat de données du nœud",
-        description: "Mappez uniquement les champs requis et validez les entrées et sorties.",
-        inputs: "Mappage d’entrée (JSON)",
-        inputsHint:
-          "Une expression complète comme {{nodes.scan.outputs.items}} conserve son type natif.",
-        inputSchema: "Schéma d’entrée",
-        outputSchema: "Schéma de sortie",
-        schemaHint: "Facultatif. Paseo valide l’objet avant de continuer.",
-        invalidJson: "Saisissez un JSON valide.",
-        objectRequired: "La valeur doit être un objet JSON.",
-      },
-      openDetails: "Ouvrir les détails du nœud {{name}}",
-      downstream: {
-        label: "Nœud suivant",
-        hint: "Choisissez le nœud de même niveau à exécuter après celui-ci.",
-        sequential: "Suivre l’ordre de la liste",
-        sequentialDescription: "Exécuter le nœud suivant de la liste.",
-        end: "Terminer la séquence",
-        endDescription: "Terminer cette séquence après le nœud actuel.",
-        missing: "Nœud manquant : {{id}}",
-        placeholder: "Sélectionner le nœud suivant",
-        empty: "Aucun nœud suivant disponible",
-      },
-    },
-  },
   shell: {
     menu: {
       toggleSidebar: "Basculer la barre latérale",
@@ -207,7 +107,6 @@ export const fr: TranslationResources = {
       queue: "File d'attente",
       send: "Envoyer",
     },
-    instructionTemplates: en.composer.instructionTemplates,
     cancel: {
       cancelingAgent: "Agent d'annulation",
       stopAgent: "Agent d'arrêt",
@@ -231,20 +130,10 @@ export const fr: TranslationResources = {
       addFile: "Upload file",
       addIssueOrPr: "Ajouter un problème ouPR",
       addIssueOrPr_mr: "Ajouter un problème ou MR",
-      selectMcpServers: "Select MCP servers",
-      selectSkills: "Select skills",
-      mcpPickerTitle: "MCP servers for this session",
-      skillPickerTitle: "Skills for this session",
-      searchMcpServers: "Search MCP servers...",
-      searchSkills: "Search skills...",
-      noMcpServers: "No enabled MCP servers.",
-      noSkills: "No enabled skills.",
-      openMcpPicker: "Open MCP server picker",
-      openSkillPicker: "Open skill picker",
-      removeMcp: "Remove MCP server {{name}} from this session",
-      removeSkill: "Remove skill {{name}} from this session",
       dropImagesHere: "Déposez des images ici",
       dropFilesHere: "Drop files here",
+      editQueuedMessage: "Modifier le message en file d'attente",
+      sendQueuedMessageNow: "Envoyer le message en file d'attente maintenant",
       openImage: "Ouvrir la pièce jointe de l'image",
       removeImage: "Supprimer l'image jointe",
       removeFile: "Remove file attachment",
@@ -255,15 +144,6 @@ export const fr: TranslationResources = {
       removeBrowserElement: "Supprimer la pièce jointe d'un élément de navigateur",
       openReview: "Ouvrir la pièce jointe de l'avis",
       removeReview: "Supprimer la pièce jointe de l'avis",
-    },
-    queue: {
-      edit: "Modifier le message en file d'attente",
-      save: "Enregistrer le message en file d'attente",
-      cancelEdit: "Annuler la modification du message",
-      remove: "Retirer le message de la file d'attente",
-      moveUp: "Déplacer le message vers le haut",
-      moveDown: "Déplacer le message vers le bas",
-      steer: "Guider",
     },
     errors: {
       failedToSend: "Échec de l'envoi du message",
@@ -287,45 +167,6 @@ export const fr: TranslationResources = {
       searchPlaceholder_mr: "Problèmes de recherche et MR...",
       title: "Joindre le problème ouPR",
       title_mr: "Joindre le problème ou MR",
-    },
-  },
-  memoryPolicies: {
-    ...en.memoryPolicies,
-    globalDisabledTitle: "La mémoire globale est désactivée",
-    globalDisabledDescription:
-      "Cette règle est enregistrée, mais Paseo ne l'utilisera qu'après activation de la mémoire dans les réglages de l'hôte.",
-    scopeManager: {
-      ...en.memoryPolicies.scopeManager,
-      title: "Règles de mémoire",
-      description: "Gérez les informations durables que chaque portée de mémoire peut enregistrer.",
-      scopeType: "Portée de la mémoire",
-      target: "Cible",
-      selectTarget: "Sélectionner une cible",
-      instructionsTitle: "Informations à enregistrer",
-      save: "Enregistrer les règles",
-      saved: "Enregistré",
-    },
-    contentManager: {
-      ...en.memoryPolicies.contentManager,
-      pageTitle: "Gestion de la mémoire",
-      detailTitle: "Détails de la mémoire",
-      manage: "Gérer le contenu de la mémoire",
-      manageDescription:
-        "{{count}} souvenirs sont disponibles. Ouvrez la page dédiée pour les consulter, les modifier ou les supprimer.",
-      openManager: "Ouvrir",
-      backToList: "Retour à la liste des souvenirs",
-      loading: "Chargement de la mémoire…",
-      notFound: "Ce souvenir n’existe pas ou a été supprimé.",
-      errorTitle: "Impossible de gérer la mémoire",
-      scopeEditHint: "Changer la portée déplace ce souvenir vers la portée sélectionnée.",
-      pagination: {
-        pageSize: "Éléments par page",
-        noPageSizes: "Aucune taille de page disponible",
-        page: "Page {{page}} sur {{totalPages}}",
-        range: "Affichage de {{start}} à {{end}} sur {{total}}",
-        previous: "Précédent",
-        next: "Suivant",
-      },
     },
   },
   agentControls: {
@@ -359,61 +200,11 @@ export const fr: TranslationResources = {
       model: "Changer de modèle",
       mode: "Changer de mode",
     },
-    memory: {
-      title: "Mémoire de la conversation",
-      open: "Configurer la mémoire de la conversation",
-      enabledTitle: "Utiliser la mémoire dans cette conversation",
-      enabledHint:
-        "Si elle est désactivée, cet agent ne lit aucune mémoire existante et n'apprend rien de cette conversation.",
-      instructionsTitle: "Que doit retenir Paseo de cette conversation ?",
-      instructionsHint:
-        "Indiquez les conclusions confirmées, préférences récurrentes ou décisions à conserver. Les journaux temporaires, suppositions et secrets restent exclus.",
-      instructionsPlaceholder:
-        "Exemple : retenir les causes confirmées et les décisions finales, ignorer les essais intermédiaires.",
-      save: "Enregistrer",
-      saving: "Enregistrement...",
-      saved: "Enregistré",
-      saveError: "Impossible d'enregistrer la mémoire de la conversation",
-    },
   },
   agentStream: {
     empty: "Commencez à discuter avec cet agent...",
     scrollToBottom: "Faire défiler vers le bas",
-    scrollToOldest: "Aller au premier message",
-    locatingOldest: "Recherche du premier message",
-    reasoningTranslation: {
-      translating: "Traduction du raisonnement en chinois...",
-      failed: "Échec de la traduction du raisonnement.",
-      unavailable: "Ce serveur Paseo ne prend pas en charge la traduction du raisonnement.",
-    },
-    process: {
-      show: "Afficher le processus",
-      hide: "Masquer le processus",
-      processed: "Traité",
-      processedWithDuration: "Traité en {{duration}}",
-    },
-    hooks: {
-      title: "Hooks",
-      calls_one: "{{count}} hook call",
-      calls_other: "{{count}} hook calls",
-    },
-    changes: {
-      added: "Added {{fileName}}",
-      deleted: "Deleted {{fileName}}",
-      edited: "Edited {{fileName}}",
-      summary: "Edited {{count}} files",
-      undo: "Undo",
-      review: "Review",
-      open: "Open",
-      reviewFile: "Review {{fileName}}",
-      openFile: "Open {{fileName}}",
-      showMore: "Show {{count}} more files",
-      showLess: "Show fewer files",
-      confirmUndoTitle: "Undo this turn's edits?",
-      confirmUndoMessage:
-        "This permanently discards the uncommitted changes from this response across {{count}} files.",
-      confirmUndo: "Undo changes",
-    },
+    historyLoadFailed: "Impossible de charger l’historique de l’agent",
     permission: {
       plan: "Plan",
       required: "Autorisation requise",
@@ -425,7 +216,6 @@ export const fr: TranslationResources = {
     },
   },
   agentPanel: {
-    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agentintrouvable",
       failedToLoad: "Échec du chargement de l'agent",
@@ -457,18 +247,9 @@ export const fr: TranslationResources = {
     title: "Historique",
     empty: "Aucune séance pour l'instant",
     noMatches: "Aucune séance correspondante",
-    noProjectSessions: "Aucune séance pour ce projet",
     tooManyMatches: "Trop de résultats — affinez la recherche",
     hostLoadFailed: "{{host}} : Impossible de charger l'historique",
     searchPlaceholder: "Rechercher dans l'historique",
-    projectFilter: {
-      label: "Projet",
-      title: "Filtrer par projet",
-      all: "Tous les projets",
-      empty: "Aucun projet disponible",
-      search: "Rechercher des projets",
-      hostCount: "{{count}} hôtes",
-    },
     actions: {
       loadMore: "Charger plus",
       clearSearch: "Effacer la recherche",
@@ -573,8 +354,8 @@ export const fr: TranslationResources = {
     },
     compaction: {
       loading: "Compactage...",
-      loadingAuto: "Compactage automatique du contexte",
-      loadingManual: "Compactage manuel du contexte",
+      loadingAuto: "Compactage automatique du contexte...",
+      loadingManual: "Compactage manuel du contexte...",
       auto: "Contexte automatiquement compacté",
       manual: "Contexte compacté manuellement",
       withTokens: "Contexte compacté (jetons{{tokens}}K)",
@@ -672,7 +453,6 @@ export const fr: TranslationResources = {
       },
     },
     fileExplorer: {
-      resources: en.workspace.fileExplorer.resources,
       sort: {
         name: "Nom",
         modified: "Modifié",
@@ -1289,11 +1069,6 @@ export const fr: TranslationResources = {
         status: "Statut",
         labels: "Libellés",
       },
-      sorting: {
-        label: "Trier par",
-        activity: "Activité récente",
-        manual: "Manuel",
-      },
       titleSource: {
         label: "Titre",
         title: "Titre",
@@ -1346,8 +1121,6 @@ export const fr: TranslationResources = {
       home: "Maison",
       settings: "Paramètres",
       closeSidebar: "Fermer la barre latérale",
-      collapseAllWorkspaces: "Réduire tous les espaces de travail",
-      expandAllWorkspaces: "Développer tous les espaces de travail",
     },
     help: {
       trigger: "Aide et assistance",
@@ -1378,24 +1151,19 @@ export const fr: TranslationResources = {
         openNewWindowFailed: "Couldn't open a new window",
         openFolder: "Open in file manager",
         openFolderFailed: "Couldn't open folder",
-        hide: "Masquer le projet",
-        show: "Afficher le projet",
         remove: "Supprimer le projet",
         removing: "Suppression...",
-      },
-      hidden: {
-        title: "Projets masqués ({{count}})",
       },
       confirmations: {
         removeTitle: "Supprimer le projet?",
         removeMessage:
-          "Supprimer définitivement «{{projectName}}» et toutes ses données gérées par Paseo sous ~/.paseo/projects/<projectId> ?\n\nLes répertoires de code source externes ne seront pas supprimés. Cette action est irréversible.",
-        removeConfirm: "Supprimer",
+          "Supprimer «{{projectName}}» de la barre latérale?\n\nLes fichiers sur le disque ne seront pas modifiés.",
+        removeConfirm: "Retirer",
         cancel: "Annuler",
       },
       toasts: {
         hostDisconnected: "Hostn'est pas connecté",
-        removeFailed: "Échec de la suppression du projet ou de certaines de ses données",
+        removeFailed: "Échec de la suppression de certains espaces de travail",
         updateHostToRemove: "Mettez à jour le host pour supprimer des projets.",
       },
       empty: {
@@ -1430,33 +1198,15 @@ export const fr: TranslationResources = {
         unpin: "Désépingler",
         archive: "Archive",
         archiveWorkspace: "Archiver l’espace de travail",
-        remove: "Supprimer l’espace de travail",
         hideFromSidebar: "Masquer de la barre latérale",
         archiving: "Archivage...",
-        removing: "Suppression...",
         hiding: "Dissimulation...",
-      },
-      bulkArchive: {
-        select: "Sélectionner des espaces de travail",
-        selected: "{{count}} sélectionnés",
-        cancel: "Annuler la sélection",
-        title: "Archiver {{count}} espaces de travail ?",
-        message:
-          "Les espaces de travail sélectionnés seront archivés et retirés de la barre latérale.",
-        riskyWorktrees:
-          "{{count}} worktree(s) sélectionnés contiennent des modifications non validées ou non envoyées. Leurs dossiers peuvent être supprimés.",
-        confirm: "Archiver la sélection",
-        failed: "Échec de l’archivage de {{count}} espaces de travail",
       },
       confirmations: {
         hideTitle: "Masquer l'espace de travail?",
         hideMessage:
           "Masquer «{{workspaceName}}» dans la barre latérale?\n\nLes fichiers sur le disque ne seront pas modifiés.",
         hideConfirm: "Cacher",
-        removeTitle: "Supprimer l’espace de travail ?",
-        removeMessage:
-          "Supprimer définitivement « {{workspaceName}} » et ses données gérées par Paseo dans ~/.paseo/projects/{{projectId}}/workspaces/{{workspaceId}} ?\n\nLe répertoire de code externe associé et ses fichiers ne seront ni supprimés ni modifiés. Cette action est irréversible.",
-        removeConfirm: "Supprimer",
         cancel: "Annuler",
       },
       rename: {
@@ -1470,7 +1220,6 @@ export const fr: TranslationResources = {
         branchNameCopied: "Nom de la succursale copié",
         hostDisconnected: "Hostn'est pas connecté",
         hideFailed: "Échec du masquage de l'espace de travail",
-        removeFailed: "Échec de la suppression de l’espace de travail",
         archiveFailed: "Échec de l'archivage de l'espace de travail",
       },
     },
@@ -1494,9 +1243,6 @@ export const fr: TranslationResources = {
       createWorktreeFailed: "Échec de la création de l'arbre de travail",
       composerStateRequired: "L'état du compositeur est requis",
       selectModel: "Sélectionnez un modèle",
-      projectHostUnavailable: "This Project is not available on the selected Host",
-      projectDirectoryUnavailable:
-        "This Project has no workspace directory on the selected Host. Update the Host or configure a Project directory.",
     },
     tooltips: {
       project: "Choose the project",
@@ -1521,6 +1267,145 @@ export const fr: TranslationResources = {
       submit: "Launch",
       promptPlaceholder: "Prompt {{name}}",
       commandPlaceholder: "Run a command, or leave empty for a blank terminal",
+    },
+  },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "La mémoire globale est désactivée",
+    globalDisabledDescription:
+      "Cette règle est enregistrée, mais Paseo ne l'utilisera qu'après activation de la mémoire dans les réglages de l'hôte.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Règles de mémoire",
+      description: "Gérez les informations durables que chaque portée de mémoire peut enregistrer.",
+      scopeType: "Portée de la mémoire",
+      target: "Cible",
+      selectTarget: "Sélectionner une cible",
+      instructionsTitle: "Informations à enregistrer",
+      save: "Enregistrer les règles",
+      saved: "Enregistré",
+    },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Gestion de la mémoire",
+      detailTitle: "Détails de la mémoire",
+      manage: "Gérer le contenu de la mémoire",
+      manageDescription:
+        "{{count}} souvenirs sont disponibles. Ouvrez la page dédiée pour les consulter, les modifier ou les supprimer.",
+      openManager: "Ouvrir",
+      backToList: "Retour à la liste des souvenirs",
+      loading: "Chargement de la mémoire…",
+      notFound: "Ce souvenir n’existe pas ou a été supprimé.",
+      errorTitle: "Impossible de gérer la mémoire",
+      scopeEditHint: "Changer la portée déplace ce souvenir vers la portée sélectionnée.",
+      pagination: {
+        pageSize: "Éléments par page",
+        noPageSizes: "Aucune taille de page disponible",
+        page: "Page {{page}} sur {{totalPages}}",
+        range: "Affichage de {{start}} à {{end}} sur {{total}}",
+        previous: "Précédent",
+        next: "Suivant",
+      },
+    },
+  },
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Plan complet",
+      fullViewTitle: "Graphe complet du workflow",
+      fullViewHint:
+        "Inspectez le graphe des dépendances et le chemin d’exécution, zoomez ou ouvrez un nœud.",
+      zoomIn: "Agrandir le graphe du workflow",
+      zoomOut: "Réduire le graphe du workflow",
+      resetZoom: "Réinitialiser le zoom du graphe",
+      nodeName: "Nom du nœud",
+      nodeId: "ID du nœud",
+      nodeType: "Type de nœud",
+      configuration: "Configuration complète du nœud",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Cycle de vie de l’agent",
+        lifecycleHint:
+          "Définit la durée de réutilisation du même agent par ce nœud. Les appels réutilisés sont exécutés dans l’ordre.",
+        selectLifecycle: "Sélectionner le cycle de vie de l’agent",
+        lifecycleOptions: {
+          workflow: "Workflow entier",
+          workflowDescription:
+            "Créé lors de la première exécution, réutilisé, puis libéré à la fin du Workflow.",
+          for: "Boucle For actuelle",
+          forDescription:
+            "Créé à la première itération, réutilisé dans la boucle For actuelle, puis libéré à sa sortie.",
+          single: "Exécution unique",
+          singleDescription: "Créer un nouvel agent à chaque exécution, sans réutilisation.",
+        },
+        subsequentPromptMode: "Prompt après le premier appel",
+        subsequentPromptModeHint:
+          "Choisissez le prompt envoyé lorsque ce nœud appelle un agent déjà initialisé.",
+        selectSubsequentPromptMode: "Sélectionner le comportement du prompt suivant",
+        subsequentPromptModes: {
+          reuseInitial: "Réutiliser le prompt initial",
+          reuseInitialDescription:
+            "Rendre à nouveau le prompt initial avec les données actuelles du nœud.",
+          custom: "Prompt personnalisé",
+          customDescription: "Utiliser un prompt distinct pour chaque appel après le premier.",
+        },
+        subsequentPrompt: "Prompt suivant personnalisé",
+        subsequentPromptHint:
+          "Prend en charge les mêmes données et variables de modèle que le prompt initial.",
+        archiveAtLifecycleEnd: "Archiver automatiquement à la fin du cycle de vie de l’agent",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Variables d’environnement du nœud (JSON)",
+        environmentHint:
+          "Les valeurs textuelles facultatives remplacent l’environnement de commande du Workflow pour ce nœud.",
+        environmentStringValues:
+          "Les valeurs des variables d’environnement doivent être des chaînes.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Module Python",
+        moduleHint: "Chemin de module facultatif à configurer avec une fonction.",
+        function: "Fonction Python",
+        functionHint:
+          "Reçoit l’entrée complète du nœud et renvoie son résultat ; les fonctions asynchrones sont prises en charge.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Condition d’arrêt",
+        breakWhenHint: "L’expression doit renvoyer un booléen ; true arrête la boucle.",
+        continueWhen: "Condition de poursuite",
+        continueWhenHint:
+          "L’expression doit renvoyer un booléen ; true ignore les nœuds restants de cette itération.",
+      },
+      contract: {
+        title: "Contrat de données du nœud",
+        description: "Mappez uniquement les champs requis et validez les entrées et sorties.",
+        inputs: "Mappage d’entrée (JSON)",
+        inputsHint:
+          "Une expression complète comme {{nodes.scan.outputs.items}} conserve son type natif.",
+        inputSchema: "Schéma d’entrée",
+        outputSchema: "Schéma de sortie",
+        schemaHint: "Facultatif. Paseo valide l’objet avant de continuer.",
+        invalidJson: "Saisissez un JSON valide.",
+        objectRequired: "La valeur doit être un objet JSON.",
+      },
+      openDetails: "Ouvrir les détails du nœud {{name}}",
+      downstream: {
+        label: "Nœud suivant",
+        hint: "Choisissez le nœud de même niveau à exécuter après celui-ci.",
+        sequential: "Suivre l’ordre de la liste",
+        sequentialDescription: "Exécuter le nœud suivant de la liste.",
+        end: "Terminer la séquence",
+        endDescription: "Terminer cette séquence après le nœud actuel.",
+        missing: "Nœud manquant : {{id}}",
+        placeholder: "Sélectionner le nœud suivant",
+        empty: "Aucun nœud suivant disponible",
+      },
     },
   },
   desktop: {
@@ -1949,13 +1834,10 @@ export const fr: TranslationResources = {
       alert: {
         failedTitle: "Échec du couplage",
       },
-      awaitingApproval:
-        "Waiting for the server to approve this connection. Pairing will continue automatically.",
       actions: {
         cancel: "Annuler",
         pair: "Paire",
         pairing: "L'appariement...",
-        awaitingApproval: "Waiting for approval...",
       },
     },
     scan: {
@@ -1969,16 +1851,11 @@ export const fr: TranslationResources = {
         "Autorisez l'accès à la caméra pour scanner le code d'appairageQRà partir de votre démon.",
       grantPermission: "Accorder l'autorisation",
       pairing: "L'appariement...",
-      awaitingApprovalStatus: "Waiting for approval",
-      awaitingApprovalTitle: "Approve this device on the server",
-      awaitingApprovalBody:
-        "Approve this device under Client management on the Paseo server. It will connect automatically.",
       unableToPair: "Impossible de coupler l'hôte",
       errorTitle: "Erreur",
     },
     device: {
       loadingOffer: "Chargement de l'offre d'association...",
-      relayListTitle: "Liste des Relay",
       failedToLoadOffer: "Échec du chargement de l'offre d'association.",
       relayDisabled: "Le relais n'est pas activé. Activer le relais pour coupler un appareil.",
       enableTitle: "Activer le relais ?",
@@ -2001,45 +1878,6 @@ export const fr: TranslationResources = {
       retry: "Réessayer",
       copy: "Copie",
       copied: "Copié",
-      access: {
-        title: "Gestion des clients",
-        requireApproval: "Require client approval",
-        requireApprovalHint:
-          "When enabled, new clients must be approved here before they can connect.",
-        empty: "No client connection requests.",
-        pending: "Pending approval",
-        allowed: "Connexion autorisée",
-        approved: "Approved",
-        paused: "Paused",
-        connected: "Connected",
-        disconnected: "Disconnected",
-        hostname: "Hostname",
-        identityId: "Identity ID",
-        endpoint: "IP / port",
-        endpointUnavailable: "Unavailable",
-        lastConnectedAt: "Dernière connexion",
-        neverConnected: "Aucun enregistrement",
-        unknownName: "Unknown client",
-        macClient: "Version Mac",
-        androidClient: "Version Android",
-        cliClient: "Version CLI",
-        browserClient: "Version navigateur",
-        historyTitle: "Client connection history",
-        historyEmpty: "No historical client connections.",
-        connectedAt: "Connected at",
-        disconnectedAt: "Disconnected at",
-        stillConnected: "Still connected",
-        historyRetention:
-          "History is automatically retained for {{days}} days and can be deleted manually.",
-        approve: "Approve",
-        approving: "Approving...",
-        pause: "Pause",
-        pausing: "Pausing...",
-        resume: "Resume",
-        resuming: "Resuming...",
-        delete: "Delete",
-        deleting: "Deleting...",
-      },
     },
   },
   realtimeVoice: {
@@ -2237,7 +2075,7 @@ export const fr: TranslationResources = {
     projects: "Projets",
     projectList: {
       hostLoadFailed: "Impossible de charger les projets depuis l'hôte{{hostName}}:{{message}}",
-      hostLoadTimedOut: "L'hôte {{hostName}} n'a pas répondu à temps. Réessayez.",
+      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "Modifier{{projectName}}",
     },
     groupInfo: "À propos de{{title}}",
@@ -2265,19 +2103,6 @@ export const fr: TranslationResources = {
       refreshAccessibility: "Actualiser l’autorisation des notifications",
       playSound: "Émettre un son",
       playSoundHint: "Émet un son lorsqu’une notification de bureau arrive",
-      island: "Rappels Dynamic Island",
-      islandHint: "Affiche un état compact de l’Agent en haut de l’écran",
-      islandShowWhenFocused: "Afficher quand Paseo est au premier plan",
-      islandShowWhenFocusedHint: "Conserve les rappels visibles pendant l’utilisation de Paseo",
-      islandWorking: "Traitement de la tâche...",
-      islandTest: "Tester Dynamic Island",
-      islandTestHint: "Affiche un rappel Dynamic Island en haut de l’écran actuel",
-      islandTestTitle: "Dynamic Island de Paseo",
-      islandTestBody: "Dynamic Island s’affiche correctement",
-      islandTestSuccess: "Dynamic Island affichée",
-      islandTestSuccessHint: "Le rappel est visible en haut de la zone de travail actuelle.",
-      islandTestFailed: "Impossible d’afficher Dynamic Island",
-      islandTestFailedHint: "Vérifiez son activation et les entrées [island] du journal desktop.",
       test: "Tester la notification",
       testHint: "Envoie une notification avec ces réglages",
       permissionRequired: "Autorisez l’accès aux notifications avant le test",
@@ -2292,14 +2117,8 @@ export const fr: TranslationResources = {
       connections: "Relations",
       agents: "Agents",
       metadata: "Métadonnées",
-      assistants: "Assistants",
-      memory: "Memory",
-      mcp: "Serveurs MCP",
-      skills: "Compétences",
-      plugins: "Plugins",
       workspaces: "Workspaces",
       providers: "Fournisseurs",
-      channels: "Canaux",
       usage: "Utilisation",
       terminals: "Terminals",
       plugins: "Plugins",
@@ -2322,16 +2141,6 @@ export const fr: TranslationResources = {
     },
     general: {
       title: "Général",
-      clientIdentity: {
-        hostname: "Nom d’hôte du client",
-        hostnameDescription: "Affiché dans la gestion des clients du daemon",
-        editHostname: "Modifier le nom d’hôte du client",
-        editHostnameTitle: "Modifier le nom d’hôte du client",
-        hostnamePlaceholder: "Mon Mac",
-        identityId: "ID d’identité du client",
-        identityIdDescription: "Identité unique de ce client Paseo, non modifiable",
-        unavailable: "Indisponible",
-      },
       browserData: {
         title: "Données du navigateur",
         siteData: "Cookies et données des sites",
@@ -2377,11 +2186,6 @@ export const fr: TranslationResources = {
       autoExpandReasoning: {
         label: "Toujours afficher le raisonnement",
         description: "Afficher le raisonnement de l'agent entièrement développé par défaut",
-      },
-      aidenClaudeReasoningTranslation: {
-        label: "Traduire le raisonnement Aiden Claude en chinois",
-        description:
-          "Afficher uniquement la traduction en chinois simplifié, sinon le texte original.",
       },
       toolCallDetail: {
         label: "Affichage des appels d’outils",
@@ -2613,13 +2417,6 @@ export const fr: TranslationResources = {
       refresh: "Rafraîchir",
       refreshing: "Rafraîchissant...",
       refreshAccessibility: "Actualiser les autorisations du bureau",
-      test: "Test",
-      backgroundAttention: {
-        title: "Alertes en arrière-plan",
-        soundVolume: "Volume du son d’alerte",
-        description:
-          "Paseo vous avertit lorsqu’un hôte local ou distant connecté termine une tâche ou nécessite l’intervention de l’utilisateur.",
-      },
       actions: {
         granted: "Accordé",
         request: "Demande",
@@ -2910,11 +2707,6 @@ export const fr: TranslationResources = {
         moveDown: "Déplacer vers le bas",
       },
       daemon: {
-        identity: {
-          title: "Informations d’identité",
-          serverId: "ID d’identité du serveur",
-          serverIdDescription: "Identité unique de ce daemon, non modifiable",
-        },
         rename: {
           editLabel: "Modifier l'étiquette",
           title: "Renommer l'hôte",
@@ -3053,73 +2845,16 @@ export const fr: TranslationResources = {
     project: {
       noEditableTarget: "Ce projet n'est pas modifiable sur cet hôte.",
       backToProjects: "Retour aux projets",
-      switchHost: "Changer d'hôte",
-      projectId: en.settings.project.projectId,
-      parentProjectId: en.settings.project.parentProjectId,
-      projectPath: en.settings.project.projectPath,
-      directoryless: {
-        title: "Aucun dossier de projet",
-        description:
-          "Vous pouvez modifier le nom, l’icône et la mémoire du projet. Les réglages stockés dans paseo.json seront disponibles après l’association d’un dossier.",
-      },
-      memory: {
-        title: "Mémoire du projet",
-        info: "Contrôlez la mémoire propre à ce projet et définissez les connaissances durables que Paseo doit apprendre.",
-        policyTitle: "Règles de mémoire",
-        enabledTitle: "Utiliser la mémoire pour ce projet",
-        enabledHint:
-          "Si elle est désactivée, les agents ne lisent ni ne créent de mémoire de projet. La mémoire globale reste disponible.",
-        instructionsTitle: "Que doit retenir Paseo pour ce projet ?",
-        instructionsHint:
-          "Décrivez les conventions, décisions d'architecture, procédures récurrentes et faits stables de l'environnement.",
-        instructionsPlaceholder:
-          "Exemple : retenir les décisions d'architecture et les procédures de publication, ignorer les erreurs temporaires, journaux et secrets.",
-        save: "Enregistrer",
-        saving: "Enregistrement...",
-        saved: "Enregistré",
-        saveError: "Impossible d'enregistrer la mémoire du projet",
-        content: {
-          title: "Contenu de la mémoire",
-          description:
-            "Affichez, modifiez ou supprimez la mémoire à long terme de ce projet et de ses espaces de travail. La portée ne peut pas être modifiée ici.",
-          scope: "Portée de la mémoire",
-          scopes: {
-            project: "Projet actuel",
-            workspace: "Espace de travail",
-          },
-          selectScope: "Sélectionner une portée",
-          noScopes: "Aucune portée disponible",
-          selectWorkspace: "Sélectionner un espace de travail",
-          noWorkspace: "Ce projet ne contient aucun espace de travail disponible",
-          loading: "Chargement de la mémoire...",
-          empty: "Aucune mémoire correspondante dans cette portée",
-          errorTitle: "Impossible de gérer la mémoire du projet",
-          deleteTitle: "Supprimer « {{title}} » ?",
-          deleteDescription:
-            "Cette mémoire et les informations sur sa source ne pourront pas être récupérées.",
-          deleteConfirm: "Supprimer",
-        },
-      },
       edit: {
         title: "Modifier le projet",
-        name: "Nom du projet",
+        name: "Nom",
         nameLabel: "Nom du projet",
-        icon: "Icône du projet",
+        icon: "Icône",
         chooseImage: "Choisir une image",
-        useAutomatic: "Utiliser l’icône par défaut",
+        useAutomatic: "Utiliser l'automatique",
         imageUrl: "URL d'image ou de site",
         save: "Enregistrer",
         savedToast: "Projet mis à jour",
-      },
-      rename: {
-        renamedToast: "Projet renommé",
-        errorFallback: "Impossible de renommer le projet",
-        renameLabel: "Renommer le projet",
-        resetLabel: "Réinitialiser le nom du projet par défaut",
-        projectNameLabel: "Nom du projet",
-        saveLabel: "Enregistrer le nom du projet",
-        cancelLabel: "Annuler le changement de nom",
-        reset: "Réinitialiser",
       },
       readFailures: {
         invalidTitle: "paseo.json n'a pas pu être analysé",
@@ -3171,10 +2906,6 @@ export const fr: TranslationResources = {
           remove: "Retirer",
         },
       },
-      resources: en.settings.project.resources,
-      indexSkill: en.settings.project.indexSkill,
-      variables: en.settings.project.variables,
-      instructionTemplates: en.settings.project.instructionTemplates,
       metadata: {
         title: "Génération de métadonnées",
         info: "Instructions spécifiques au projet injectées dans les invites de l'IA quePaseoutilise pour générer des métadonnées: utilisez-les pour appliquer les conventions de votre équipe telles que la dénomination des branches, le style de validation ou le formatPR.",

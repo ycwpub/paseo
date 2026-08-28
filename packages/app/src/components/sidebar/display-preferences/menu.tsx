@@ -21,7 +21,6 @@ import {
   GitBranch,
   GitPullRequest,
   Globe,
-  ListOrdered,
   Server,
   Settings2,
   Tag,
@@ -92,11 +91,6 @@ const GROUPING_ICONS: Record<SidebarGroupMode, OptionIcon> = {
   status: withUnistyles(CircleDashed),
 };
 
-const SORTING_ICONS: Record<SidebarSortMode, OptionIcon> = {
-  activity: withUnistyles(Clock),
-  manual: withUnistyles(ListOrdered),
-};
-
 const TITLE_SOURCE_ICONS: Record<WorkspaceTitleSource, OptionIcon> = {
   title: withUnistyles(Type),
   branch: withUnistyles(GitBranch),
@@ -127,18 +121,12 @@ const TRAILING_ICONS: Record<SidebarTrailingChoice, OptionIcon> = {
 };
 
 const GROUPING_MODES: readonly SidebarGroupMode[] = ["project", "status"];
-const SORTING_MODES: readonly SidebarSortMode[] = ["activity", "manual"];
 const TITLE_SOURCES: readonly WorkspaceTitleSource[] = ["title", "branch"];
 const TRAILING_CHOICES: readonly SidebarTrailingChoice[] = ["diff", "timestamp"];
 
 const GROUPING_LABEL_KEYS: Record<SidebarGroupMode, string> = {
   project: "sidebar.display.grouping.project",
   status: "sidebar.display.grouping.status",
-};
-
-const SORTING_LABEL_KEYS: Record<SidebarSortMode, string> = {
-  activity: "sidebar.display.sorting.activity",
-  manual: "sidebar.display.sorting.manual",
 };
 
 const TITLE_SOURCE_LABEL_KEYS: Record<WorkspaceTitleSource, string> = {
@@ -214,20 +202,6 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
             selectedValue={preferences.grouping}
             onSelect={preferences.setGrouping}
             testIDPrefix="sidebar-grouping"
-          />
-        ),
-      },
-      {
-        id: "sorting",
-        title: t("sidebar.display.sorting.label"),
-        content: (
-          <OptionList
-            values={SORTING_MODES}
-            icons={SORTING_ICONS}
-            labelKeys={SORTING_LABEL_KEYS}
-            selectedValue={preferences.sorting}
-            onSelect={preferences.setSorting}
-            testIDPrefix="sidebar-sorting"
           />
         ),
       },

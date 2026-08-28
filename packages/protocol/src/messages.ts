@@ -228,16 +228,6 @@ const MutableBrowserToolsConfigSchema = z
   })
   .passthrough();
 
-export const RelayEndpointConfigSchema = z
-  .object({
-    endpoint: z.string().trim().min(1),
-    useTls: z.boolean(),
-    publicEndpoint: z.string().trim().min(1).optional(),
-    publicUseTls: z.boolean().optional(),
-    pairingBaseUrl: z.url().optional(),
-  })
-  .passthrough();
-
 export const PluginIdSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
 
 export const DirectoryPluginSourceSchema = z
@@ -317,7 +307,6 @@ export const MutableDaemonConfigSchema = z
 
 export const MutableDaemonConfigPatchSchema = z
   .object({
-    relay: MutableRelayConfigSchema.partial().optional(),
     mcp: z.object({ injectIntoAgents: z.boolean().optional() }).passthrough().optional(),
     browserTools: MutableBrowserToolsConfigSchema.partial().optional(),
     relay: z
@@ -1527,7 +1516,7 @@ export const PluginCatalogGetRequestSchema = z.object({
 });
 
 export const PluginListRequestSchema = z.object({
-  type: z.literal("plugin.list.request"),
+  type: z.literal("plugin.runtime.list.request"),
   requestId: z.string(),
 });
 
@@ -3685,8 +3674,6 @@ export const ServerInfoStatusPayloadSchema = z
         mcpServers: z.boolean().optional(),
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         skills: z.boolean().optional(),
-        // COMPAT(pluginManagement): added in v0.3.2, remove gate after 2027-02-18.
-        plugins: z.boolean().optional(),
         // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons keep app state global.
         pluginProjectScopedApps: z.boolean().optional(),
         // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.
@@ -6481,7 +6468,7 @@ export const PluginLogEntrySchema = z.object({
 export type PluginLogEntry = z.infer<typeof PluginLogEntrySchema>;
 
 export const PluginListResponseSchema = z.object({
-  type: z.literal("plugin.list.response"),
+  type: z.literal("plugin.runtime.list.response"),
   payload: z.object({ requestId: z.string(), plugins: z.array(PluginListItemSchema) }),
 });
 

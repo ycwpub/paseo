@@ -9,7 +9,6 @@ import {
 } from "@/stores/session-store";
 import { planTimelineOlderFetch } from "@/timeline/timeline-sync-plan";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { TIMELINE_OLDEST_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 
 export interface LoadOlderAgentHistoryClient {
   fetchAgentTimeline: (
@@ -171,10 +170,7 @@ export function useLoadOlderAgentHistory({
         await getHostRuntimeStore().fetchAgentTimeline(
           serverId,
           agentId,
-          planTimelineOlderFetch(
-            { epoch: cursor.epoch, seq: cursor.startSeq },
-            TIMELINE_OLDEST_FETCH_PAGE_SIZE,
-          ),
+          planTimelineOlderFetch({ epoch: cursor.epoch, seq: cursor.startSeq }),
         );
 
         const nextSession = useSessionStore.getState().sessions[serverId];

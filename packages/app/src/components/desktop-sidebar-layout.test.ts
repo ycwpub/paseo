@@ -5,7 +5,6 @@ import {
   resolveDesktopAppContentMinimum,
   resolveDesktopSidebarVisibility,
   resolveDesktopSidebarWidth,
-  resolveDesktopWorkspaceExplorerWidth,
 } from "@/components/desktop-sidebar-layout";
 
 describe("desktop sidebar layout", () => {

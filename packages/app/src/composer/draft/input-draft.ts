@@ -102,6 +102,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   const text = draft?.text ?? "";
   const attachments = draft?.attachments ?? [];
   const isHydrated = hydratedDraftKey === draftKey;
+  const initialAssistantId = input.initialAssistantId ?? null;
+  const initialTeamId = input.initialTeamId ?? null;
   const textReplacementRevisionRef = useRef(0);
   const [textReplacement, setTextReplacement] = useState<TextReplacement>(() => ({
     key: `${draftKey}:0`,
@@ -267,26 +269,21 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   const [assistantId, setAssistantIdState] = useState<string | null>(initialAssistantId);
   const [teamId, setTeamIdState] = useState<string | null>(initialTeamId);
   const assistantDraftKeyRef = useRef(draftKey);
+  const teamDraftKeyRef = useRef(draftKey);
   const appliedInitialAssistantIdRef = useRef<string | null>(initialAssistantId);
+  const appliedInitialTeamIdRef = useRef<string | null>(initialTeamId);
   const assistantOverriddenByUserRef = useRef(false);
+  const teamOverriddenByUserRef = useRef(false);
 
   const setAssistantId = useCallback((id: string | null) => {
     assistantOverriddenByUserRef.current = true;
     setAssistantIdState(id);
   }, []);
-  const teamDraftKeyRef = useRef(draftKey);
-  const appliedInitialTeamIdRef = useRef<string | null>(initialTeamId);
-  const teamOverriddenByUserRef = useRef(false);
   const setTeamId = useCallback((id: string | null) => {
     teamOverriddenByUserRef.current = true;
     setTeamIdState(id);
   }, []);
 
-  // Sync assistantId from agent labels/draft setup. The selected assistant can
-  // arrive after the agent panel first renders (directory/detail hydration), and
-  // the same component instance can be reused for another draft/agent. Apply the
-  // incoming value unless the user has already made an explicit selection in the
-  // current draft.
   useEffect(() => {
     if (assistantDraftKeyRef.current !== draftKey) {
       assistantDraftKeyRef.current = draftKey;
@@ -295,15 +292,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       setAssistantIdState(initialAssistantId);
       return;
     }
-
-    if (appliedInitialAssistantIdRef.current === initialAssistantId) {
-      return;
-    }
-
+    if (appliedInitialAssistantIdRef.current === initialAssistantId) return;
     appliedInitialAssistantIdRef.current = initialAssistantId;
-    if (!assistantOverriddenByUserRef.current) {
-      setAssistantIdState(initialAssistantId);
-    }
+    if (!assistantOverriddenByUserRef.current) setAssistantIdState(initialAssistantId);
   }, [draftKey, initialAssistantId]);
 
   useEffect(() => {
@@ -314,13 +305,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       setTeamIdState(initialTeamId);
       return;
     }
-    if (appliedInitialTeamIdRef.current === initialTeamId) {
-      return;
-    }
+    if (appliedInitialTeamIdRef.current === initialTeamId) return;
     appliedInitialTeamIdRef.current = initialTeamId;
-    if (!teamOverriddenByUserRef.current) {
-      setTeamIdState(initialTeamId);
-    }
+    if (!teamOverriddenByUserRef.current) setTeamIdState(initialTeamId);
   }, [draftKey, initialTeamId]);
 
   const workingDir = lockedWorkingDir || formState.workingDir;
@@ -400,12 +387,12 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     draftFeatureValues,
     applyDraftAgentProfile,
     formState,
-    setDraftFeatureValue,
-    workingDir,
     assistantId,
     setAssistantId,
+    setDraftFeatureValue,
     teamId,
     setTeamId,
+    workingDir,
   ]);
 
   return {

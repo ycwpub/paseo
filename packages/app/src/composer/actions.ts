@@ -24,7 +24,7 @@ export interface QueuedComposerMessage {
   attachments: ComposerAttachment[];
   selectedMcpServerIds?: string[];
   selectedSkillIds?: string[];
-  isEditing?: true;
+  isEditing?: boolean;
 }
 
 export interface AttachmentPersister {
@@ -55,8 +55,6 @@ export interface ComposerSendClient {
       activeTurnBehavior?: ActiveTurnBehavior;
       images: Array<{ data: string; mimeType: string }>;
       attachments: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
-      selectedMcpServerIds?: string[];
-      selectedSkillIds?: string[];
     },
   ) => Promise<void>;
   uploadFile: (input: { fileName: string; mimeType: string; bytes: Uint8Array }) => Promise<{
@@ -224,8 +222,6 @@ export interface QueueComposerMessageInput {
   agentId: string;
   text: string;
   attachments: ComposerAttachment[];
-  selectedMcpServerIds?: string[];
-  selectedSkillIds?: string[];
   queue: QueueWriter;
 }
 
@@ -242,8 +238,6 @@ export function queueComposerMessage(input: QueueComposerMessageInput): QueueCom
     id: generateMessageId(),
     text: trimmed,
     attachments: input.attachments,
-    selectedMcpServerIds: input.selectedMcpServerIds,
-    selectedSkillIds: input.selectedSkillIds,
   };
   input.queue.write((prev) => {
     const next = new Map(prev);
@@ -253,92 +247,41 @@ export function queueComposerMessage(input: QueueComposerMessageInput): QueueCom
   return { queued: item };
 }
 
-export interface UpdateQueuedComposerMessageInput {
+export interface EditQueuedComposerMessageInput {
   agentId: string;
   messageId: string;
+  queue: QueueWriter;
+}
+
+export interface EditQueuedComposerMessageResult {
   text: string;
-  queue: QueueWriter;
+  attachments: UserComposerAttachment[];
 }
 
-export function updateQueuedComposerMessage(input: UpdateQueuedComposerMessageInput): boolean {
-  const trimmed = input.text.trim();
-  if (!trimmed) return false;
-  const queue = input.queue.read(input.agentId);
-  const index = queue.findIndex((item) => item.id === input.messageId);
-  if (index === -1) return false;
-  input.queue.write((prev) => {
-    const next = new Map(prev);
-    const messages = [...(prev.get(input.agentId) ?? [])];
-    const item = messages.find((message) => message.id === input.messageId);
-    if (!item) return prev;
-    messages[messages.indexOf(item)] = { ...item, text: trimmed };
-    next.set(input.agentId, messages);
-    return next;
-  });
-  return true;
-}
-
-export interface RemoveQueuedComposerMessageInput {
-  agentId: string;
-  messageId: string;
-  queue: QueueWriter;
-}
-
-export function removeQueuedComposerMessage(
-  input: RemoveQueuedComposerMessageInput,
-): QueuedComposerMessage | null {
-  const item = input.queue.read(input.agentId).find((message) => message.id === input.messageId);
+export function editQueuedComposerMessage(
+  input: EditQueuedComposerMessageInput,
+): EditQueuedComposerMessageResult | null {
+  const item = input.queue.read(input.agentId).find((q) => q.id === input.messageId);
   if (!item) return null;
   input.queue.write((prev) => {
     const next = new Map(prev);
     next.set(
       input.agentId,
-      (prev.get(input.agentId) ?? []).filter((message) => message.id !== input.messageId),
+      (prev.get(input.agentId) ?? []).filter((q) => q.id !== input.messageId),
     );
     return next;
   });
-  return item;
-}
-
-export interface MoveQueuedComposerMessageInput {
-  agentId: string;
-  messageId: string;
-  direction: "up" | "down";
-  queue: QueueWriter;
-}
-
-export function moveQueuedComposerMessage(input: MoveQueuedComposerMessageInput): boolean {
-  const queue = input.queue.read(input.agentId);
-  const index = queue.findIndex((message) => message.id === input.messageId);
-  if (index === -1) return false;
-  const targetIndex = input.direction === "up" ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= queue.length) return false;
-  input.queue.write((prev) => {
-    const next = new Map(prev);
-    const messages = [...(prev.get(input.agentId) ?? [])];
-    const currentIndex = messages.findIndex((message) => message.id === input.messageId);
-    const currentTargetIndex = input.direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (currentIndex === -1 || currentTargetIndex < 0 || currentTargetIndex >= messages.length) {
-      return prev;
-    }
-    const [item] = messages.splice(currentIndex, 1);
-    messages.splice(currentTargetIndex, 0, item);
-    next.set(input.agentId, messages);
-    return next;
-  });
-  return true;
+  return {
+    text: item.text,
+    attachments: userAttachmentsOnly(item.attachments),
+  };
 }
 
 export interface SendQueuedComposerMessageNowInput {
   agentId: string;
   messageId: string;
   queue: QueueWriter;
-  submitMessage: (input: {
-    text: string;
-    attachments: ComposerAttachment[];
-    selectedMcpServerIds?: string[];
-    selectedSkillIds?: string[];
-  }) => Promise<void>;
+  submitMessage: (input: { text: string; attachments: ComposerAttachment[] }) => Promise<void>;
   failedToSendMessage?: string;
 }
 
@@ -350,10 +293,8 @@ export type SendQueuedComposerMessageNowResult =
 export async function sendQueuedComposerMessageNow(
   input: SendQueuedComposerMessageNowInput,
 ): Promise<SendQueuedComposerMessageNowResult> {
-  const queue = input.queue.read(input.agentId);
-  const originalIndex = queue.findIndex((item) => item.id === input.messageId);
-  const item = queue[originalIndex];
-  if (!item || item.isEditing) return { status: "missing" };
+  const item = input.queue.read(input.agentId).find((q) => q.id === input.messageId);
+  if (!item) return { status: "missing" };
   input.queue.write((prev) => {
     const next = new Map(prev);
     next.set(
@@ -363,19 +304,12 @@ export async function sendQueuedComposerMessageNow(
     return next;
   });
   try {
-    await input.submitMessage({
-      text: item.text,
-      attachments: item.attachments,
-      selectedMcpServerIds: item.selectedMcpServerIds,
-      selectedSkillIds: item.selectedSkillIds,
-    });
+    await input.submitMessage({ text: item.text, attachments: item.attachments });
     return { status: "submitted" };
   } catch (error) {
     input.queue.write((prev) => {
       const next = new Map(prev);
-      const messages = [...(prev.get(input.agentId) ?? [])];
-      messages.splice(Math.min(originalIndex, messages.length), 0, item);
-      next.set(input.agentId, messages);
+      next.set(input.agentId, [item, ...(prev.get(input.agentId) ?? [])]);
       return next;
     });
     return {
@@ -416,11 +350,11 @@ export function buildForgeAttachment(item: ForgeSearchItem): UserComposerAttachm
     : { kind: "forge_issue", item };
 }
 
-function isForgeAttachment(attachment: UserComposerAttachment): attachment is Extract<
+function isForgeAttachment(
+  attachment: UserComposerAttachment,
+): attachment is Extract<
   UserComposerAttachment,
-  {
-    kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr";
-  }
+  { kind: "forge_issue" | "forge_change_request" | "github_issue" | "github_pr" }
 > {
   return (
     attachment.kind === "forge_issue" ||

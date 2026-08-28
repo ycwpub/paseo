@@ -17,7 +17,10 @@ import {
   TerminalProfileSchema,
 } from "@getpaseo/protocol/messages";
 import { PaseoHostKnowledgeSchema } from "@getpaseo/protocol/project-knowledge-schema";
-import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
+import {
+  PaseoInstructionTemplateSchema,
+  PaseoServicePortAllocationSchema,
+} from "@getpaseo/protocol/paseo-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);

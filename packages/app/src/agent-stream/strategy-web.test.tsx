@@ -744,6 +744,7 @@ describe("createWebStreamStrategy", () => {
       onNearHistoryStart,
       isLoadingOlderHistory: false,
       hasOlderHistory: true,
+      olderHistoryProgressKey: "epoch-1:20",
       scrollEnabled: true,
       listStyle: null,
       baseListContentContainerStyle: null,
@@ -800,6 +801,7 @@ describe("createWebStreamStrategy", () => {
             liveHead: [],
           },
           isLoadingOlderHistory: true,
+          olderHistoryProgressKey: "epoch-1:0",
         }),
       );
     });

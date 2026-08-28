@@ -68,22 +68,6 @@ describe("panel-store explorer tab resolution", () => {
     ).toBe("files");
   });
 
-  it("restores the task summary tab for git and non-git checkouts", () => {
-    const key = buildExplorerCheckoutKey(serverId, cwd)!;
-    for (const isGit of [true, false]) {
-      expect(
-        resolveExplorerTabForCheckout({
-          serverId,
-          cwd,
-          isGit,
-          explorerTabByCheckout: {
-            [key]: "task-summary",
-          },
-        }),
-      ).toBe("task-summary");
-    }
-  });
-
   it("falls back to default when stored tab is invalid", () => {
     const key = buildExplorerCheckoutKey(serverId, cwd)!;
     expect(
@@ -222,7 +206,7 @@ describe("panel-store compact file explorer actions", () => {
     expect(patch.explorerTab).toBe("files");
   });
 
-  it("toggles the explorer closed without closing the expanded agent list", () => {
+  it("toggles the explorer closed without changing the active tab", () => {
     const state = makePanelState({
       mobilePanel: { target: "file-explorer", revision: 1 },
       explorerTab: "files",

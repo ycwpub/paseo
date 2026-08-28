@@ -423,8 +423,7 @@ function isSameCatchUpRequest(
   left: ProjectedTimelineForwardFetchPlan | undefined,
   right: ProjectedTimelineForwardFetchPlan | undefined,
 ): boolean {
-  if (!left || !right) return left === right;
-  if (left.direction !== right.direction) return false;
+  if (!left || !right || left.direction !== right.direction) return false;
   if (left.direction !== "after" || right.direction !== "after") return true;
   return left.cursor.epoch === right.cursor.epoch && left.cursor.seq === right.cursor.seq;
 }

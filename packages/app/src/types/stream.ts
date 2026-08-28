@@ -5,10 +5,10 @@ import type {
 } from "@getpaseo/protocol/agent-types";
 import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
-import { getTurnInterruptionMessage } from "@/agent-stream/turn-interruption";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import type { InstalledPluginTimelineItem, TimelineItemTransform } from "@/plugins/timeline";
+import { getTurnInterruptionMessage } from "@/agent-stream/turn-interruption";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -717,6 +717,7 @@ export interface ThoughtItem {
   id: string;
   timelineCursor?: TimelinePosition;
   turnId?: string;
+  source?: "thinking" | "text";
   text: string;
   timestamp: Date;
   startedAt?: Date;
@@ -888,17 +889,14 @@ export function appendOptimisticUserMessageToStream(params: {
   if (tail.some((item) => item.id === message.id) || head.some((item) => item.id === message.id)) {
     return { tail, head, changedTail: false, changedHead: false };
   }
-
   if (placement === "active-head" && head.length > 0) {
-    const flushedTail = flushHeadToTail(tail, head);
     return {
-      tail: [...flushedTail, message],
+      tail: [...flushHeadToTail(tail, head), message],
       head: [],
       changedTail: true,
       changedHead: true,
     };
   }
-
   return {
     tail: [...tail, message],
     head,
@@ -1525,7 +1523,7 @@ function reduceTimelineEvent(
       };
       projected.push(streamItem);
     }
-    return finalizeActiveThoughts(projected);
+    return finalizeActiveThoughts(projected, timestamp);
   }
   switch (item.type) {
     case "user_message":
@@ -1540,6 +1538,7 @@ function reduceTimelineEvent(
           timelineCursor,
           event.turnId,
         ),
+        timestamp,
       );
     case "assistant_message":
       return finalizeActiveThoughts(
@@ -1624,23 +1623,23 @@ export function reduceStreamUpdate(
     case "turn_started":
     case "turn_completed":
     case "turn_failed":
-      return finalizeActiveThoughts(state, timestamp);
-    case "turn_canceled": {
-      const activity: ActivityLogItem = {
-        kind: "activity_log",
-        id: createTimelineId("turn-canceled", event.turnId ?? event.reason, timestamp),
-        ...(options?.timelineCursor ? { timelineCursor: options.timelineCursor } : {}),
-        timestamp,
-        activityType: "error",
-        message: getTurnInterruptionMessage(event),
-        metadata: event.reason ? { reason: event.reason } : undefined,
-      };
-      return finalizeActiveThoughts(appendActivityLog(state, activity), timestamp);
-    }
     case "permission_requested":
     case "permission_resolved":
     case "attention_required":
       return finalizeActiveThoughts(state, timestamp);
+    case "turn_canceled": {
+      const message = getTurnInterruptionMessage(event);
+      const activity: ActivityLogItem = {
+        kind: "activity_log",
+        id: createTimelineId("turn-canceled", `${event.turnId ?? ""}:${event.reason}`, timestamp),
+        ...(event.turnId ? { turnId: event.turnId } : {}),
+        timestamp,
+        activityType: "error",
+        message,
+        metadata: { reason: event.reason },
+      };
+      return finalizeActiveThoughts(appendActivityLog(state, activity), timestamp);
+    }
     default:
       return state;
   }
@@ -1914,12 +1913,6 @@ export interface SettledAgentStream {
   changedHead: boolean;
 }
 
-/**
- * Reconcile a live stream after the authoritative agent lifecycle reports that
- * no turn is running. This is a fallback for a dropped terminal stream event:
- * preserve any partial assistant output, finish active thoughts, and clear the
- * live head so the UI cannot remain stuck in an executing state.
- */
 export function settleInactiveAgentStream(
   tail: StreamItem[],
   head: StreamItem[],

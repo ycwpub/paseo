@@ -66,7 +66,7 @@ export function planTimelineOlderFetch(cursor: TimelineSyncCursor) {
   return {
     direction: "before",
     cursor,
-    limit,
+    limit: TIMELINE_OLDER_FETCH_PAGE_SIZE,
     projection: "projected",
   } as const;
 }

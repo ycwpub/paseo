@@ -2126,8 +2126,8 @@ export class Session {
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchOrchestrationSkillsMessage(msg) ??
-      this.dispatchPluginDirectoryMessage(msg) ??
-      this.dispatchPluginMessage(msg) ??
+      this.dispatchPluginRuntimeDirectoryMessage(msg) ??
+      this.dispatchPluginRuntimeMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchScheduleMessage(msg) ??
       this.dispatchWorkflowMessage(msg) ??
@@ -2205,10 +2205,10 @@ export class Session {
     }
   }
 
-  private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    if (msg.type === "plugin.list.request") {
+  private dispatchPluginRuntimeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (msg.type === "plugin.runtime.list.request") {
       this.emit({
-        type: "plugin.list.response",
+        type: "plugin.runtime.list.response",
         payload: { requestId: msg.requestId, plugins: this.pluginRuntime?.listPlugins() ?? [] },
       });
       return undefined;
@@ -2287,7 +2287,9 @@ export class Session {
     return undefined;
   }
 
-  private dispatchPluginDirectoryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchPluginRuntimeDirectoryMessage(
+    msg: SessionInboundMessage,
+  ): Promise<void> | undefined {
     if (msg.type === "plugin.source.install.request") {
       if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
       return this.pluginRuntime
@@ -2545,6 +2547,9 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
+      case "daemon.relay_history.delete.request":
+        this.daemonSession.handleDeleteRelayHistoryRequest(msg);
+        return undefined;
       case "daemon.config.reload.request":
         this.daemonSession.handleConfigReloadRequest(msg);
         return undefined;
@@ -3649,7 +3654,7 @@ export class Session {
         this.bufferOrEmitWorkspaceUpdate(subscription, {
           kind: "remove",
           id: workspaceId,
-          ...(project ? { emptyProject: this.buildProjectDescriptor(project) } : {}),
+          ...(project ? { emptyProject: await this.buildProjectDescriptor(project) } : {}),
         });
       }
 
@@ -5648,6 +5653,12 @@ export class Session {
   private async buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): Promise<WorkspaceProjectDescriptorPayload> {
+    ensureManagedProjectStorageRoot(this.paseoHome, project.projectId);
+    const projectPath = resolveProjectPath({ paseoHome: this.paseoHome, project });
+    const sourceDirectory = resolveProjectSourceDirectory({
+      paseoHome: this.paseoHome,
+      project,
+    });
     const icon = await this.projectIcons.snapshot(project);
     return {
       projectId: project.projectId,
@@ -5657,7 +5668,9 @@ export class Session {
       projectCustomName: project.customName ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
       projectIconRevision: icon.revision,
-      projectRootPath: project.rootPath,
+      projectRootPath: projectPath,
+      projectSourceDirectory: sourceDirectory.path,
+      ...(project.rootPath === null ? { projectDirectoryless: true } : {}),
       projectKind: project.kind,
     };
   }
@@ -6854,7 +6867,7 @@ export class Session {
         payload: {
           requestId: request.requestId,
           directoryPath: result.directoryPath,
-          project: await this.buildProjectDescriptor(result.project),
+          project: await this.buildProjectDescriptor(project),
           error: null,
           errorCode: null,
         },
@@ -6943,7 +6956,7 @@ export class Session {
         type: "project.create_directoryless.response",
         payload: {
           requestId: request.requestId,
-          project: this.buildProjectDescriptor(project),
+          project: await this.buildProjectDescriptor(project),
           error: null,
         },
       });
@@ -8005,6 +8018,13 @@ export class Session {
           agentId,
           prompt,
           messageId: msg.messageId,
+          sessionResourceSelection:
+            msg.selectedMcpServerIds || msg.selectedSkillIds
+              ? {
+                  selectedMcpServerIds: msg.selectedMcpServerIds,
+                  selectedSkillIds: msg.selectedSkillIds,
+                }
+              : undefined,
           activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
           clearPendingPermissions: true,
           logger: this.sessionLogger,

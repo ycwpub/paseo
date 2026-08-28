@@ -18,6 +18,7 @@ import { InMemoryAgentTimelineStore } from "./agent-timeline-store.js";
 import { toAgentPayload } from "./agent-projections.js";
 import { projectTimelineRows } from "./timeline-projection.js";
 import { getOpenAgentTabLabel, PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import type { McpServer, Skill } from "@getpaseo/protocol/messages";
 import { formatSystemNotificationPrompt, startAgentRun } from "./agent-prompt.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent-loading.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
@@ -531,50 +532,6 @@ class CloseRecordingTestAgentSession extends TestAgentSession {
 
   override async close(): Promise<void> {
     this.closed = true;
-  }
-}
-
-class McpCapableTestAgentClient extends TestAgentClient {
-  override readonly capabilities = {
-    ...TEST_CAPABILITIES,
-    supportsMcpServers: true,
-  };
-
-  override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
-    this.createdConfigs.push(config);
-    return new McpCapableTestAgentSession(config);
-  }
-
-  override async resumeSession(
-    _handle: AgentPersistenceHandle,
-    config?: Partial<AgentSessionConfig>,
-  ): Promise<AgentSession> {
-    this.resumeOverrides.push(config);
-    return new McpCapableTestAgentSession({
-      ...config,
-      provider: this.provider,
-      cwd: config?.cwd ?? process.cwd(),
-    });
-  }
-}
-
-class CommandAwareTestAgentSession extends TestAgentSession {
-  readonly prompts: AgentPromptInput[] = [];
-
-  constructor(
-    config: AgentSessionConfig,
-    private readonly commands: AgentSlashCommand[] = [],
-  ) {
-    super(config);
-  }
-
-  override async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
-    this.prompts.push(prompt);
-    return super.startTurn(prompt);
-  }
-
-  async listCommands(): Promise<AgentSlashCommand[]> {
-    return this.commands;
   }
 }
 
@@ -1217,6 +1174,54 @@ class McpCapableTestAgentClient extends TestAgentClient {
     ...TEST_CAPABILITIES,
     supportsMcpServers: true,
   };
+
+  override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+    this.createdConfigs.push(config);
+    return new McpCapableTestAgentSession(config);
+  }
+
+  override async resumeSession(
+    _handle: AgentPersistenceHandle,
+    config?: Partial<AgentSessionConfig>,
+  ): Promise<AgentSession> {
+    this.resumeOverrides.push(config);
+    return new McpCapableTestAgentSession({
+      ...config,
+      provider: this.provider,
+      cwd: config?.cwd ?? process.cwd(),
+    });
+  }
+}
+
+class CommandAwareTestAgentSession extends TestAgentSession {
+  readonly prompts: AgentPromptInput[] = [];
+
+  constructor(
+    config: AgentSessionConfig,
+    private readonly commands: AgentSlashCommand[] = [],
+  ) {
+    super(config);
+  }
+
+  override async startTurn(prompt: AgentPromptInput): Promise<{ turnId: string }> {
+    this.prompts.push(prompt);
+    return super.startTurn(prompt);
+  }
+
+  async listCommands(): Promise<AgentSlashCommand[]> {
+    return this.commands;
+  }
+}
+
+class CommandAwareTestAgentClient extends TestAgentClient {
+  readonly sessions: CommandAwareTestAgentSession[] = [];
+
+  constructor(
+    provider: AgentProvider = "codex",
+    private readonly commands: AgentSlashCommand[] = [],
+  ) {
+    super(provider);
+  }
 
   override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
     this.createdConfigs.push(config);
@@ -7351,6 +7356,99 @@ test("streamAgent clears pending run when startTurn fails before a turn id exist
       canceled: false,
     }),
   );
+});
+
+test("publishes compaction progress while startTurn is still pending", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-pending-compaction-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const compactionStarted = deferred<void>();
+  const finishCompaction = deferred<void>();
+
+  class PendingCompactionSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-after-compaction";
+      this.pushEvent({
+        type: "timeline",
+        provider: this.provider,
+        turnId,
+        item: { type: "compaction", status: "loading", trigger: "auto" },
+      });
+      compactionStarted.resolve();
+      await finishCompaction.promise;
+      this.pushEvent({
+        type: "timeline",
+        provider: this.provider,
+        turnId,
+        item: { type: "compaction", status: "completed", trigger: "auto" },
+      });
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class PendingCompactionClient extends TestAgentClient {
+    readonly session = new PendingCompactionSession({ provider: "codex", cwd: workdir });
+
+    override async createSession(): Promise<AgentSession> {
+      return this.session;
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new PendingCompactionClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000132",
+  });
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  const events: AgentManagerEvent[] = [];
+  manager.subscribe((event) => events.push(event), { agentId: agent.id, replayState: false });
+
+  const run = manager.runAgent(agent.id, "continue after compaction");
+  await compactionStarted.promise;
+  await vi.waitFor(() => {
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "agent_stream",
+        event: expect.objectContaining({
+          type: "timeline",
+          item: { type: "compaction", status: "loading", trigger: "auto" },
+        }),
+      }),
+    );
+  });
+
+  finishCompaction.resolve();
+  await expect(run).resolves.toEqual(
+    expect.objectContaining({
+      sessionId: expect.any(String),
+      canceled: false,
+    }),
+  );
+  expect(
+    events.filter(
+      (event) =>
+        event.type === "agent_stream" &&
+        event.event.type === "timeline" &&
+        event.event.item.type === "compaction",
+    ),
+  ).toEqual([
+    expect.objectContaining({
+      event: expect.objectContaining({
+        item: { type: "compaction", status: "loading", trigger: "auto" },
+      }),
+    }),
+    expect.objectContaining({
+      event: expect.objectContaining({
+        item: { type: "compaction", status: "completed", trigger: "auto" },
+      }),
+    }),
+  ]);
 });
 
 test("acknowledged cancellation settles a pending run before it has a turn id", async () => {

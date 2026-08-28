@@ -15,6 +15,27 @@ type BrowserAutomationExecuteResponse = Extract<
 export type DesktopNotificationPermission = "granted" | "denied" | "default";
 export type DesktopWindowChromeMode = "native-mac" | "custom-windows" | "custom-linux";
 
+export interface DesktopAttentionBridge {
+  signal?: (reason: "finished" | "intervention") => Promise<boolean>;
+}
+
+export type DesktopIslandKind = "running" | "finished" | "error" | "permission" | "info";
+
+export interface DesktopIslandPayload {
+  id?: string;
+  kind: DesktopIslandKind;
+  title: string;
+  body?: string;
+  data?: Record<string, unknown>;
+  durationMs?: number;
+}
+
+export interface DesktopIslandBridge {
+  show?: (payload: DesktopIslandPayload) => Promise<boolean>;
+  dismiss?: (id?: string) => Promise<boolean>;
+  clear?: () => Promise<boolean>;
+}
+
 export interface DesktopDialogAskOptions {
   title?: string;
   okLabel?: string;
@@ -60,27 +81,6 @@ export interface DesktopNotificationBridge {
   ) => Promise<boolean>;
 }
 
-export interface DesktopAttentionBridge {
-  signal?: (reason: "finished" | "intervention") => Promise<boolean>;
-}
-
-export type DesktopIslandKind = "running" | "finished" | "error" | "permission" | "info";
-
-export interface DesktopIslandPayload {
-  id?: string;
-  kind: DesktopIslandKind;
-  title: string;
-  body?: string;
-  data?: Record<string, unknown>;
-  durationMs?: number;
-}
-
-export interface DesktopIslandBridge {
-  show?: (payload: DesktopIslandPayload) => Promise<boolean>;
-  dismiss?: (id?: string) => Promise<boolean>;
-  clear?: () => Promise<boolean>;
-}
-
 export interface DesktopOpenerBridge {
   openUrl?: (url: string) => Promise<void>;
 }
@@ -121,6 +121,9 @@ export interface DesktopWindowChromeUpdate {
 
 export interface DesktopWindowBridge {
   label?: string;
+  getName?: () => Promise<string>;
+  setName?: (name: string) => Promise<string>;
+  resetName?: () => Promise<string>;
   minimize?: () => Promise<void>;
   close?: () => Promise<void>;
   toggleMaximize?: () => Promise<void>;
@@ -138,10 +141,7 @@ export interface DesktopWindowBridge {
 }
 
 export interface DesktopWindowModuleBridge {
-  openNew?: (options?: {
-    pendingOpenProjectPath?: string | null;
-    initialRoute?: string | null;
-  }) => Promise<void>;
+  openNew?: (options?: { pendingOpenProjectPath?: string | null }) => Promise<void>;
   getCurrentWindow?: () => DesktopWindowBridge;
 }
 
@@ -198,6 +198,7 @@ export interface DesktopInvokeBridge {
 
 export interface DesktopHostBridge {
   platform?: string;
+  deviceName?: string;
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;

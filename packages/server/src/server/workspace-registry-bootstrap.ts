@@ -46,6 +46,7 @@ function resolveAgentUpdatedAt(record: StoredAgentRecord): string {
   return record.lastActivityAt || record.updatedAt || record.createdAt || new Date(0).toISOString();
 }
 
+// oxlint-disable-next-line complexity -- Bootstrap intentionally coordinates migration, recovery, and materialization in one ordered transaction.
 export async function bootstrapWorkspaceRegistries(options: {
   serverId?: string;
   paseoHome: string;

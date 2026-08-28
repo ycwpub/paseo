@@ -43,12 +43,16 @@ describe("timeline sync planning", () => {
     });
   });
 
-  test("older history can use a larger bounded page for jump-to-oldest", () => {
-    expect(planTimelineOlderFetch({ epoch: "epoch-1", seq: 25 }, 300)).toEqual({
+  test("an unloaded prompt jump merges a window with half a page newer than the target", () => {
+    expect(planTimelinePromptJump({ epoch: "epoch-1", seq: 42 })).toEqual({
       direction: "before",
-      cursor: { epoch: "epoch-1", seq: 25 },
-      limit: 300,
+      cursor: {
+        epoch: "epoch-1",
+        seq: 42 + Math.floor(TIMELINE_FETCH_PAGE_SIZE / 2) + 1,
+      },
+      limit: TIMELINE_FETCH_PAGE_SIZE,
       projection: "projected",
+      mergeWindow: true,
     });
   });
 

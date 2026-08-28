@@ -136,7 +136,6 @@ export function CompactExplorerSidebarHost({
       }
       openWorkspaceFileFromExplorer({
         filePath,
-        workspaceRoot: model.workspaceRoot,
         persistenceKey: model.persistenceKey,
         closeExplorerAfterOpen: presentation === "overlay",
         showMobileAgent,

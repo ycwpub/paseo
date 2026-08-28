@@ -1,10 +1,8 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { Button } from "@/components/ui/button";
 import {
   View,
   Pressable,
   Text,
-  ActivityIndicator,
   StyleSheet as RNStyleSheet,
   type PressableStateCallbackType,
 } from "react-native";
@@ -24,11 +22,9 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useShallow } from "zustand/shallow";
 import {
-  ChevronDown,
-  ChevronUp,
+  ArrowUp,
   Square,
   Pencil,
-  Trash2,
   AudioLines,
   CircleDot,
   FileText,
@@ -36,8 +32,6 @@ import {
   Image as ImageIcon,
   ClipboardPaste,
   Paperclip,
-  Sparkles,
-  Wrench,
 } from "lucide-react-native";
 import * as Clipboard from "expo-clipboard";
 import Animated from "react-native-reanimated";
@@ -64,7 +58,6 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { encodeImages } from "@/utils/encode-images";
 import { focusWithRetries } from "@/utils/web-focus";
-import { hasActiveContextCompaction } from "@/timeline/compaction-state";
 import {
   cancelComposerAgent,
   dispatchComposerAgentMessage,
@@ -75,7 +68,6 @@ import {
   pickAndPersistImages,
   queueComposerMessage,
   removeComposerAttachmentAtIndex,
-  removeQueuedComposerMessage,
   sendQueuedComposerMessageNow,
   toggleForgeAttachmentFromPicker,
   uploadFileAttachments,
@@ -83,7 +75,6 @@ import {
   type QueueWriter,
   type QueuedComposerMessage,
 } from "@/composer/actions";
-import { useQueuedMessageEdit } from "@/composer/use-queued-message-edit";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -93,7 +84,6 @@ import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import {
-  getHostRuntimeStore,
   useHostRuntimeAgentDirectoryStatus,
   useHostRuntimeClient,
   useHostRuntimeIsConnected,
@@ -138,13 +128,6 @@ import { AttachmentLightbox } from "@/components/attachment-lightbox";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import { useForgeSearchQuery } from "@/git/use-forge-search-query";
-import { useMcpServers } from "@/hooks/use-mcp-servers";
-import { useSkills } from "@/hooks/use-skills";
-import { useAssistants } from "@/hooks/use-assistants";
-import {
-  buildAssistantResourceApplyKey,
-  resolveSessionResourceSelectionFromAssistant,
-} from "@/composer/resource-selection";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { getForgePresentation } from "@/git/forge";
@@ -268,7 +251,6 @@ function buildRealtimeVoiceButtonStyle(
 }
 
 function buildAgentStateSelector(serverId: string, agentId: string) {
-  // oxlint-disable-next-line complexity -- Optional persisted agent fields are projected independently.
   return (state: ReturnType<typeof useSessionStore.getState>) => {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
     return {
@@ -278,7 +260,6 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
       model: agent?.model ?? null,
       provider: agent?.provider ?? null,
-      workspaceId: agent?.workspaceId ?? null,
     };
   };
 }
@@ -318,8 +299,6 @@ function resolveContextWindowPlacement(
   return reserveSlot ? <View style={styles.contextWindowMeterSlot}>{meter}</View> : null;
 }
 
-const noopAssistantSelect = (_id: string | null) => {};
-
 interface RenderLeftContentArgs {
   agentControls: DraftAgentControlsProps | undefined;
   agentId: string;
@@ -333,12 +312,7 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
   const { agentControls, agentId, serverId, focusInput, isCompactLayout } = args;
   if (!args.showAgentControls) return null;
   if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
-    return (
-      <View style={styles.leftContentRow}>
-        <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />
-        {assistantSelector}
-      </View>
-    );
+    return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
   }
   return (
     <AgentControls
@@ -362,11 +336,6 @@ interface RenderAttachmentTrayArgs {
     openGithub: (kind: string, numberLabel: string) => string;
     removeGithub: (kind: string, numberLabel: string) => string;
   };
-}
-
-interface SessionResourceSelection {
-  selectedMcpServerIds: string[];
-  selectedSkillIds: string[];
 }
 
 function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | null {
@@ -396,64 +365,28 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
 
 interface RenderQueueTrackArgs {
   queuedMessages: readonly QueuedMessage[];
-  isDisabled: boolean;
-  onEdit: (id: string) => void;
-  onRemove: (id: string) => void;
-  onMove: (id: string, direction: "up" | "down") => void;
-  onSteer: (id: string) => Promise<void>;
-  labels: QueueActionLabels;
+  handleEditQueuedMessage: (id: string) => void;
+  handleSendQueuedNow: (id: string) => Promise<void>;
+  editLabel: string;
+  sendNowLabel: string;
 }
 
 function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
-  const { queuedMessages, isDisabled, onEdit, onRemove, onMove, onSteer, labels } = args;
+  const { queuedMessages, handleEditQueuedMessage, handleSendQueuedNow, editLabel, sendNowLabel } =
+    args;
   if (queuedMessages.length === 0) return null;
   return (
     <View style={styles.queueTrack}>
-      {queuedMessages.map((item, index) => (
+      {queuedMessages.map((item) => (
         <QueuedMessageRow
           key={item.id}
           item={item}
-          index={index}
-          count={queuedMessages.length}
-          isDisabled={isDisabled}
-          onEdit={onEdit}
-          onRemove={onRemove}
-          onMove={onMove}
-          onSteer={onSteer}
-          labels={labels}
+          onEdit={handleEditQueuedMessage}
+          onSendNow={handleSendQueuedNow}
+          editLabel={editLabel}
+          sendNowLabel={sendNowLabel}
         />
       ))}
-    </View>
-  );
-}
-
-interface QueuedMessageEditNoticeProps {
-  label: string;
-  cancelLabel: string;
-  cancelAccessibilityLabel: string;
-  onCancel: () => void;
-}
-
-function QueuedMessageEditNotice({
-  label,
-  cancelLabel,
-  cancelAccessibilityLabel,
-  onCancel,
-}: QueuedMessageEditNoticeProps) {
-  return (
-    <View style={styles.queueEditNotice} testID="queued-message-edit-notice">
-      <View style={styles.queueEditNoticeLabel}>
-        <ThemedPencil size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
-        <Text style={styles.queueEditNoticeText}>{label}</Text>
-      </View>
-      <Button
-        variant="ghost"
-        size="xs"
-        onPress={onCancel}
-        accessibilityLabel={cancelAccessibilityLabel}
-      >
-        {cancelLabel}
-      </Button>
     </View>
   );
 }
@@ -541,43 +474,6 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
       openLabel={labels.openGithub}
       removeLabel={labels.removeGithub}
     />
-  );
-}
-
-interface WorkspaceFileAttachmentPillProps {
-  attachment: WorkspaceFileComposerAttachment;
-  index: number;
-  disabled: boolean;
-  onRemove: (index: number) => void;
-  removeLabel: string;
-}
-
-function WorkspaceFileAttachmentPill({
-  attachment,
-  index,
-  disabled,
-  onRemove,
-  removeLabel,
-}: WorkspaceFileAttachmentPillProps) {
-  const handleRemove = useCallback(() => {
-    onRemove(index);
-  }, [index, onRemove]);
-  const fileName = attachment.path.split("/").pop() ?? attachment.path;
-  return (
-    <AttachmentPill
-      testID="composer-workspace-file-attachment-pill"
-      onOpen={noopCallback}
-      onRemove={handleRemove}
-      openAccessibilityLabel={fileName}
-      removeAccessibilityLabel={removeLabel}
-      disabled={disabled}
-    >
-      <AttachmentLabel
-        icon={filePillIcon}
-        title={fileName}
-        subtitle={getWorkspaceFileAttachmentSubtitle(attachment)}
-      />
-    </AttachmentPill>
   );
 }
 
@@ -757,60 +653,25 @@ function resolveMessageInputPassthroughAction(
 
 interface QueuedMessageRowProps {
   item: QueuedMessage;
-  index: number;
-  count: number;
-  isDisabled: boolean;
   onEdit: (id: string) => void;
-  onRemove: (id: string) => void;
-  onMove: (id: string, direction: "up" | "down") => void;
-  onSteer: (id: string) => Promise<void>;
-  labels: QueueActionLabels;
-}
-
-interface QueueActionLabels {
+  onSendNow: (id: string) => void;
   editLabel: string;
-  removeLabel: string;
-  moveUpLabel: string;
-  moveDownLabel: string;
-  steerLabel: string;
+  sendNowLabel: string;
 }
 
 function QueuedMessageRow({
   item,
-  index,
-  count,
-  isDisabled,
   onEdit,
-  onRemove,
-  onMove,
-  onSteer,
-  labels,
+  onSendNow,
+  editLabel,
+  sendNowLabel,
 }: QueuedMessageRowProps) {
-  const [isSteering, setIsSteering] = useState(false);
-  const actionsDisabled = isDisabled || isSteering;
-  const moveUpDisabled = actionsDisabled || index === 0;
-  const moveDownDisabled = actionsDisabled || index === count - 1;
-  const startEditing = useCallback(() => {
+  const handleEdit = useCallback(() => {
     onEdit(item.id);
-  }, [item.id, onEdit]);
-  const remove = useCallback(() => {
-    onRemove(item.id);
-  }, [item.id, onRemove]);
-  const moveUp = useCallback(() => {
-    onMove(item.id, "up");
-  }, [item.id, onMove]);
-  const moveDown = useCallback(() => {
-    onMove(item.id, "down");
-  }, [item.id, onMove]);
-  const steer = useCallback(async () => {
-    setIsSteering(true);
-    try {
-      await onSteer(item.id);
-    } finally {
-      setIsSteering(false);
-    }
-  }, [item.id, onSteer]);
-
+  }, [onEdit, item.id]);
+  const handleSendNow = useCallback(() => {
+    onSendNow(item.id);
+  }, [onSendNow, item.id]);
   return (
     <View style={styles.queueItem}>
       <Text style={styles.queueText} numberOfLines={2} ellipsizeMode="tail">
@@ -818,57 +679,20 @@ function QueuedMessageRow({
       </Text>
       <View style={styles.queueActions}>
         <Pressable
-          onPress={moveUp}
-          disabled={moveUpDisabled}
-          style={[styles.queueActionButton, moveUpDisabled && styles.buttonDisabled]}
-          accessibilityLabel={labels.moveUpLabel}
-          accessibilityRole="button"
-        >
-          <ThemedChevronUp size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
-        </Pressable>
-        <Pressable
-          onPress={moveDown}
-          disabled={moveDownDisabled}
-          style={[styles.queueActionButton, moveDownDisabled && styles.buttonDisabled]}
-          accessibilityLabel={labels.moveDownLabel}
-          accessibilityRole="button"
-        >
-          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
-        </Pressable>
-        <Pressable
-          onPress={startEditing}
-          disabled={actionsDisabled}
-          style={[styles.queueActionButton, actionsDisabled && styles.buttonDisabled]}
-          accessibilityLabel={labels.editLabel}
+          onPress={handleEdit}
+          style={styles.queueActionButton}
+          accessibilityLabel={editLabel}
           accessibilityRole="button"
         >
           <ThemedPencil size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
         </Pressable>
         <Pressable
-          onPress={remove}
-          disabled={actionsDisabled}
-          style={[styles.queueActionButton, actionsDisabled && styles.buttonDisabled]}
-          accessibilityLabel={labels.removeLabel}
+          onPress={handleSendNow}
+          style={[styles.queueActionButton, styles.queueSendButton]}
+          accessibilityLabel={sendNowLabel}
           accessibilityRole="button"
         >
-          <ThemedTrash2 size={ICON_SIZE.sm} uniProps={iconForegroundMapping} />
-        </Pressable>
-        <Pressable
-          onPress={steer}
-          disabled={actionsDisabled}
-          style={[
-            styles.queueActionButton,
-            styles.queueSteerButton,
-            actionsDisabled && styles.buttonDisabled,
-          ]}
-          accessibilityLabel={labels.steerLabel}
-          accessibilityRole="button"
-        >
-          {isSteering ? (
-            <ThemedActivityIndicator size={ICON_SIZE.sm} uniProps={iconAccentForegroundMapping} />
-          ) : (
-            <Text style={styles.queueSteerButtonText}>{labels.steerLabel}</Text>
-          )}
+          <ThemedArrowUp size={ICON_SIZE.sm} uniProps={iconAccentForegroundMapping} />
         </Pressable>
       </View>
     </View>
@@ -917,9 +741,7 @@ function ImageAttachmentPill({
 interface GithubAttachmentPillProps {
   attachment: Extract<
     ComposerAttachment,
-    {
-      kind: "forge_change_request" | "forge_issue" | "github_pr" | "github_issue";
-    }
+    { kind: "forge_change_request" | "forge_issue" | "github_pr" | "github_issue" }
   >;
   index: number;
   disabled: boolean;
@@ -1006,6 +828,43 @@ function FileAttachmentPill({
   );
 }
 
+interface WorkspaceFileAttachmentPillProps {
+  attachment: WorkspaceFileComposerAttachment;
+  index: number;
+  disabled: boolean;
+  onRemove: (index: number) => void;
+  removeLabel: string;
+}
+
+function WorkspaceFileAttachmentPill({
+  attachment,
+  index,
+  disabled,
+  onRemove,
+  removeLabel,
+}: WorkspaceFileAttachmentPillProps) {
+  const handleRemove = useCallback(() => {
+    onRemove(index);
+  }, [index, onRemove]);
+  const fileName = attachment.path.split("/").pop() ?? attachment.path;
+  return (
+    <AttachmentPill
+      testID="composer-workspace-file-attachment-pill"
+      onOpen={noopCallback}
+      onRemove={handleRemove}
+      openAccessibilityLabel={fileName}
+      removeAccessibilityLabel={removeLabel}
+      disabled={disabled}
+    >
+      <AttachmentLabel
+        icon={filePillIcon}
+        title={fileName}
+        subtitle={getWorkspaceFileAttachmentSubtitle(attachment)}
+      />
+    </AttachmentPill>
+  );
+}
+
 interface GithubPickerOptionProps {
   label: string;
   testID: string;
@@ -1042,33 +901,6 @@ function GithubPickerOption({
       selected={selected}
       active={active}
       onPress={handlePress}
-      leadingSlot={leadingSlot}
-    />
-  );
-}
-
-function ResourcePickerOption({
-  option,
-  selected,
-  active,
-  onPress,
-  kind,
-}: {
-  option: ComboboxOption;
-  selected: boolean;
-  active: boolean;
-  onPress: () => void;
-  kind: "mcp" | "skill";
-}) {
-  const leadingSlot = kind === "mcp" ? mcpOptionIcon : skillOptionIcon;
-  return (
-    <ComboboxItem
-      testID={`composer-${kind}-resource-option-${option.id}`}
-      label={option.label}
-      description={option.description}
-      selected={selected}
-      active={active}
-      onPress={onPress}
       leadingSlot={leadingSlot}
     />
   );
@@ -1129,9 +961,17 @@ interface ComposerProps {
   externalKeyboardShift?: boolean;
   /** Optional panel/container layout breakpoint. Defaults to the screen breakpoint. */
   isCompactLayout?: boolean;
-  /** Composer presentation mode. */
+  /**
+   * What this composer is for. Terminal drops the chat-agent affordances and
+   * uses the terminal font; see `@/composer/input-mode`. Callers set the mode
+   * and nothing else — never branch on it at the call site.
+   */
   inputMode?: ComposerInputMode;
-  /** Optional placeholder override. */
+  /** Renders `value` as static text on the same surface, for content there is nothing to type into. */
+  readOnly?: boolean;
+  /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
+  submitLabel?: string;
+  /** Overrides the mode's default placeholder, for text only the caller can build. */
   placeholder?: string;
   /** Selected assistant ID for the current draft, if any. */
   assistantId?: string | null;
@@ -1151,10 +991,7 @@ const StableMessageInput = memo(MessageInput);
 function resolveContextWindowValues(
   rawMax: number | null,
   rawUsed: number | null,
-): {
-  contextWindowMaxTokens: number | null;
-  contextWindowUsedTokens: number | null;
-} {
+): { contextWindowMaxTokens: number | null; contextWindowUsedTokens: number | null } {
   if (typeof rawMax === "number" && typeof rawUsed === "number") {
     return { contextWindowMaxTokens: rawMax, contextWindowUsedTokens: rawUsed };
   }
@@ -1368,6 +1205,8 @@ function ComposerContentImpl({
     agentDirectoryStatus,
   });
 
+  const { settings: appSettings } = useAppSettings();
+
   const agentState = useSessionStore(useShallow(buildAgentStateSelector(serverId, agentId)));
 
   const queuedMessagesRaw = useSessionStore((state) =>
@@ -1386,11 +1225,12 @@ function ComposerContentImpl({
   const setUserInput = onChangeText;
   const workspaceAttachments = useWorkspaceAttachmentsForScopes(attachmentScopeKeys);
   const {
-    selectedAttachments: currentDraftAttachments,
+    selectedAttachments,
     buildOutgoingAttachments,
     removeAttachment,
     openAttachment,
-    beginSubmit: suppressCurrentWorkspaceAttachments,
+    beginSubmit,
+    clearSentAttachments,
     completeSubmit,
     resetSuppression,
   } = composerWorkspaceAttachment.useBinding({
@@ -1416,71 +1256,6 @@ function ComposerContentImpl({
     onChangeRequestDetected: onForgeChangeRequestDetected,
     onChangeRequestAdded: onForgeChangeRequestAutoAttach,
   });
-  const mcpCatalog = useMcpServers(serverId, { enabled: isConnected });
-  const skillCatalog = useSkills(serverId, { enabled: isConnected });
-  const assistantCatalog = useAssistants(serverId, { enabled: isConnected });
-  const selectableMcpServers = useMemo(
-    () => mcpCatalog.servers.filter((server) => server.enabled),
-    [mcpCatalog.servers],
-  );
-  const selectableSkills = useMemo(
-    () => skillCatalog.skills.filter((skill) => skill.enabled && Boolean(skill.content?.trim())),
-    [skillCatalog.skills],
-  );
-  const [selectedMcpServerIds, setSelectedMcpServerIds] = useState<string[]>([]);
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
-  const [isMcpPickerOpen, setIsMcpPickerOpen] = useState(false);
-  const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
-  const resourceSelectionAppliedForRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!isConnected || mcpCatalog.isLoading || skillCatalog.isLoading) return;
-    if (assistantId && assistantCatalog.isLoading) return;
-    const key = buildAssistantResourceApplyKey({
-      serverId,
-      agentId,
-      assistantId,
-    });
-    if (resourceSelectionAppliedForRef.current === key) return;
-    const selectedAssistant = assistantId
-      ? (assistantCatalog.assistants.find((assistant) => assistant.id === assistantId) ?? null)
-      : null;
-    if (assistantId && !selectedAssistant) return;
-    const nextSelection = resolveSessionResourceSelectionFromAssistant({
-      assistant: selectedAssistant,
-      selectableMcpServerIds: selectableMcpServers.map((server) => server.id),
-      selectableSkillIds: selectableSkills.map((skill) => skill.id),
-    });
-    setSelectedMcpServerIds(nextSelection.selectedMcpServerIds);
-    setSelectedSkillIds(nextSelection.selectedSkillIds);
-    resourceSelectionAppliedForRef.current = key;
-  }, [
-    agentId,
-    assistantCatalog.assistants,
-    assistantCatalog.isLoading,
-    assistantId,
-    isConnected,
-    mcpCatalog.isLoading,
-    selectableMcpServers,
-    selectableSkills,
-    serverId,
-    skillCatalog.isLoading,
-  ]);
-
-  useEffect(() => {
-    const available = new Set(selectableMcpServers.map((server) => server.id));
-    setSelectedMcpServerIds((current) => current.filter((id) => available.has(id)));
-  }, [selectableMcpServers]);
-
-  useEffect(() => {
-    const available = new Set(selectableSkills.map((skill) => skill.id));
-    setSelectedSkillIds((current) => current.filter((id) => available.has(id)));
-  }, [selectableSkills]);
-
-  const sessionResourceSelection = useMemo<SessionResourceSelection>(
-    () => ({ selectedMcpServerIds, selectedSkillIds }),
-    [selectedMcpServerIds, selectedSkillIds],
-  );
   const [cursorIndex, setCursorIndex] = useState(0);
   const cursorPublication = useMemo(() => new AfterPaintPublication<number>(setCursorIndex), []);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1628,11 +1403,7 @@ function ComposerContentImpl({
       if (!workspaceId) {
         return;
       }
-      const attachment = resolveWorkspaceFileDrop({
-        payload,
-        serverId,
-        workspaceId,
-      });
+      const attachment = resolveWorkspaceFileDrop({ payload, serverId, workspaceId });
       if (!attachment) {
         return;
       }
@@ -1647,20 +1418,10 @@ function ComposerContentImpl({
   }, [focusInput, onFocusInput]);
 
   const submitMessage = useCallback(
-    async (
-      text: string,
-      submitAttachments: ComposerAttachment[],
-      selection: SessionResourceSelection,
-    ) => {
+    async (text: string, submitAttachments: ComposerAttachment[]) => {
       onMessageSent?.();
       if (onSubmitMessageRef.current) {
-        await onSubmitMessageRef.current({
-          text,
-          attachments: submitAttachments,
-          cwd,
-          selectedMcpServerIds: selection.selectedMcpServerIds,
-          selectedSkillIds: selection.selectedSkillIds,
-        });
+        await onSubmitMessageRef.current({ text, attachments: submitAttachments, cwd });
         return;
       }
       if (!sendAgentMessageRef.current) {
@@ -1718,13 +1479,6 @@ function ComposerContentImpl({
   const hasActiveTurn = useSessionStore(
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isActive,
   );
-  const isContextCompacting = useSessionStore((state) => {
-    const session = state.sessions[serverId];
-    return hasActiveContextCompaction(
-      session?.agentStreamTail.get(agentId),
-      session?.agentStreamHead.get(agentId),
-    );
-  });
   const isCancellingAgent = useSessionStore(
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isCancelling,
   );
@@ -1754,54 +1508,13 @@ function ComposerContentImpl({
     }),
     [serverId, setQueuedMessages],
   );
-  const resumeQueuedMessages = useCallback(() => {
-    getHostRuntimeStore().drainQueuedAgentMessage(serverId, agentId);
-  }, [agentId, serverId]);
-  const clearSendError = useCallback(() => {
-    setSendError(null);
-  }, []);
-
-  const {
-    isActive: isEditingQueuedMessage,
-    selectedAttachments,
-    visibleMessages: visibleQueuedMessages,
-    begin: editQueuedMessage,
-    cancel: cancelEditingQueuedMessage,
-    submit: submitEditedQueuedMessage,
-    removeAttachment: removeQueuedEditAttachment,
-  } = useQueuedMessageEdit({
-    serverId,
-    agentId,
-    queue: queueWriter,
-    queuedMessages,
-    text: userInput,
-    attachments,
-    currentDraftAttachments,
-    selectedMcpServerIds,
-    selectedSkillIds,
-    setText: setUserInput,
-    setAttachments: setSelectedAttachments,
-    setSelectedMcpServerIds,
-    setSelectedSkillIds,
-    suppressCurrentWorkspaceAttachments,
-    resetWorkspaceAttachmentSuppression: resetSuppression,
-    focusInput,
-    clearError: clearSendError,
-    resumeQueue: resumeQueuedMessages,
-  });
 
   const queueMessage = useCallback(
-    (
-      queuedMessage: string,
-      queuedAttachments: ComposerAttachment[],
-      selection: SessionResourceSelection,
-    ) => {
+    (queuedMessage: string, queuedAttachments: ComposerAttachment[]) => {
       const result = queueComposerMessage({
         agentId,
         text: queuedMessage,
         attachments: queuedAttachments,
-        selectedMcpServerIds: selection.selectedMcpServerIds,
-        selectedSkillIds: selection.selectedSkillIds,
         queue: queueWriter,
       });
       if (!result.queued) return;
@@ -1826,7 +1539,6 @@ function ComposerContentImpl({
       outgoingMessage: string,
       outgoingAttachments: ComposerAttachment[],
       forceSend?: boolean,
-      selection: SessionResourceSelection = sessionResourceSelection,
     ) => {
       const result = await submitAgentInput({
         message: outgoingMessage,
@@ -1835,15 +1547,18 @@ function ComposerContentImpl({
         allowEmptySubmit,
         forceSend,
         submitBehavior,
-        isAgentRunning: shouldQueueMessage,
+        isAgentRunning,
         // Parent-managed submits are still valid submit paths even when the
         // transport is disconnected, because the parent decides the failure mode.
         canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
         queueMessage: ({ message: queuedText, attachments: queuedAttachments }) => {
-          queueMessage(queuedText, queuedAttachments, selection);
+          queueMessage(queuedText, queuedAttachments);
         },
         submitMessage: async ({ message: submitText, attachments: submitAttachments }) => {
-          await submitMessage(submitText, submitAttachments, selection);
+          if (submitBehavior !== "preserve-and-lock") {
+            beginSubmit(submitAttachments);
+          }
+          await submitMessage(submitText, submitAttachments);
         },
         clearDraft,
         setUserInput: replaceUserInput,
@@ -1864,12 +1579,12 @@ function ComposerContentImpl({
     },
     [
       allowEmptySubmit,
+      beginSubmit,
       clearDraft,
       completeSubmit,
       hasExternalContent,
-      shouldQueueMessage,
+      isAgentRunning,
       queueMessage,
-      sessionResourceSelection,
       setSelectedAttachments,
       replaceUserInput,
       submitBehavior,
@@ -1880,9 +1595,6 @@ function ComposerContentImpl({
 
   const handleSubmit = useCallback(
     (payload: MessagePayload) => {
-      if (submitEditedQueuedMessage(payload)) {
-        return;
-      }
       const outgoingAttachments = buildOutgoingAttachments(attachments);
       const clientSlashCommand = resolveClientSlashCommand({
         text: payload.text,
@@ -1895,12 +1607,7 @@ function ComposerContentImpl({
       if (blurOnSubmit) {
         messageInputRef.current?.blur();
       }
-      void sendMessageWithContent(
-        payload.text,
-        outgoingAttachments,
-        payload.forceSend,
-        sessionResourceSelection,
-      );
+      void sendMessageWithContent(payload.text, outgoingAttachments, payload.forceSend);
     },
     [
       attachments,
@@ -1908,8 +1615,6 @@ function ComposerContentImpl({
       buildOutgoingAttachments,
       runClientSlashCommand,
       sendMessageWithContent,
-      sessionResourceSelection,
-      submitEditedQueuedMessage,
     ],
   );
 
@@ -1977,10 +1682,7 @@ function ComposerContentImpl({
       const oversized = files.find((f) => f.bytes.byteLength > MAX_FILE_SIZE_BYTES);
       if (oversized) {
         toastErrorRef.current(
-          t("composer.errors.fileTooLarge", {
-            size: "50MB",
-            fileName: oversized.fileName,
-          }),
+          t("composer.errors.fileTooLarge", { size: "50MB", fileName: oversized.fileName }),
         );
         return;
       }
@@ -2049,11 +1751,7 @@ function ComposerContentImpl({
         return;
       }
       setSelectedAttachments((prev) =>
-        removeComposerAttachmentAtIndex({
-          attachments: prev,
-          index,
-          deleteAttachments,
-        }),
+        removeComposerAttachmentAtIndex({ attachments: prev, index, deleteAttachments }),
       );
     },
     [forgeAutoAttach, removeAttachment, selectedAttachments, setSelectedAttachments],
@@ -2127,9 +1825,9 @@ function ComposerContentImpl({
     });
   }, [agentId, hasAgent, isConnected, serverId, voice]);
 
-  const handleRemoveQueuedMessage = useCallback(
+  const handleEditQueuedMessage = useCallback(
     (id: string) => {
-      const removed = removeQueuedComposerMessage({
+      const result = editQueuedComposerMessage({
         agentId,
         messageId: id,
         queue: queueWriter,
@@ -2137,59 +1835,31 @@ function ComposerContentImpl({
       if (!result) return;
       replaceUserInput(result.text);
       setSelectedAttachments(result.attachments);
-      if (result.selectedMcpServerIds) {
-        setSelectedMcpServerIds(result.selectedMcpServerIds);
-      }
-      if (result.selectedSkillIds) {
-        setSelectedSkillIds(result.selectedSkillIds);
-      }
     },
     [agentId, queueWriter, replaceUserInput, setSelectedAttachments],
   );
 
-  const handleMoveQueuedMessage = useCallback(
-    (id: string, direction: "up" | "down") => {
-      moveQueuedComposerMessage({
-        agentId,
-        messageId: id,
-        direction,
-        queue: queueWriter,
-      });
-    },
-    [agentId, queueWriter],
-  );
-
-  const handleSteerQueuedMessage = useCallback(
+  const handleSendQueuedNow = useCallback(
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
+      // Reuse the regular send path; server-side send atomically interrupts any active run.
       const result = await sendQueuedComposerMessageNow({
         agentId,
         messageId: id,
         queue: queueWriter,
-        submitMessage: ({
-          text,
-          attachments: queuedAttachments,
-          selectedMcpServerIds: queuedMcpIds,
-          selectedSkillIds: queuedSkillIds,
-        }) =>
-          submitMessage(text, queuedAttachments, {
-            selectedMcpServerIds: queuedMcpIds ?? selectedMcpServerIds,
-            selectedSkillIds: queuedSkillIds ?? selectedSkillIds,
-          }),
+        submitMessage: ({ text, attachments: queuedAttachments }) =>
+          submitMessage(text, queuedAttachments),
         failedToSendMessage: t("composer.errors.failedToSend"),
       });
       if (result.status === "failed") {
         setSendError(result.errorMessage);
       }
     },
-    [agentId, queueWriter, selectedMcpServerIds, selectedSkillIds, submitMessage, t],
+    [agentId, queueWriter, submitMessage, t],
   );
 
   const handleQueue = useCallback(
     (payload: MessagePayload) => {
-      if (submitEditedQueuedMessage(payload)) {
-        return;
-      }
       const outgoingAttachments = buildOutgoingAttachments(attachments);
       const clientSlashCommand = resolveClientSlashCommand({
         text: payload.text,
@@ -2198,21 +1868,9 @@ function ComposerContentImpl({
       if (clientSlashCommand && runClientSlashCommand(clientSlashCommand)) {
         return;
       }
-      void sendMessageWithContent(
-        payload.text,
-        outgoingAttachments,
-        undefined,
-        sessionResourceSelection,
-      );
+      queueMessage(payload.text, outgoingAttachments);
     },
-    [
-      attachments,
-      buildOutgoingAttachments,
-      runClientSlashCommand,
-      sendMessageWithContent,
-      sessionResourceSelection,
-      submitEditedQueuedMessage,
-    ],
+    [attachments, buildOutgoingAttachments, queueMessage, runClientSlashCommand],
   );
 
   const hasSendableContent = userInput.trim().length > 0 || selectedAttachments.length > 0;
@@ -2378,37 +2036,6 @@ function ComposerContentImpl({
     [githubSearchItems, githubSearchQueryTrimmed],
   );
 
-  const mcpOptions: ComboboxOption[] = useMemo(
-    () =>
-      selectableMcpServers.map((server) => ({
-        id: server.id,
-        label: server.name,
-        description: server.description ?? server.transport.type,
-      })),
-    [selectableMcpServers],
-  );
-  const skillOptions: ComboboxOption[] = useMemo(
-    () =>
-      selectableSkills.map((skill) => ({
-        id: skill.id,
-        label: skill.name,
-        description: skill.description ?? "Skill",
-      })),
-    [selectableSkills],
-  );
-  const selectedMcpIdSet = useMemo(() => new Set(selectedMcpServerIds), [selectedMcpServerIds]);
-  const selectedSkillIdSet = useMemo(() => new Set(selectedSkillIds), [selectedSkillIds]);
-  const toggleMcpServerSelection = useCallback((id: string) => {
-    setSelectedMcpServerIds((current) =>
-      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
-    );
-  }, []);
-  const toggleSkillSelection = useCallback((id: string) => {
-    setSelectedSkillIds((current) =>
-      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
-    );
-  }, []);
-
   const attachmentMenuItems = useMemo<AttachmentMenuItem[]>(() => {
     const items: AttachmentMenuItem[] = [
       {
@@ -2442,24 +2069,6 @@ function ComposerContentImpl({
         },
       },
       ...pluginAttachments.menuItems,
-      {
-        id: "mcp",
-        label: t("composer.attachments.selectMcpServers"),
-        icon: <ThemedWrench size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
-        disabled: mcpCatalog.isLoading || selectableMcpServers.length === 0,
-        onSelect: () => {
-          setIsMcpPickerOpen(true);
-        },
-      },
-      {
-        id: "skills",
-        label: t("composer.attachments.selectSkills"),
-        icon: <ThemedSparkles size={ICON_SIZE.md} uniProps={iconForegroundMutedMapping} />,
-        disabled: skillCatalog.isLoading || selectableSkills.length === 0,
-        onSelect: () => {
-          setIsSkillPickerOpen(true);
-        },
-      },
       {
         id: "file",
         label: t("composer.attachments.addFile"),
@@ -2573,49 +2182,6 @@ function ComposerContentImpl({
     [githubSearchItems, selectedAttachments, handleToggleGithubItem],
   );
 
-  const renderMcpPickerOption = useCallback(
-    ({
-      option,
-      active,
-      onPress,
-    }: {
-      option: ComboboxOption;
-      selected: boolean;
-      active: boolean;
-      onPress: () => void;
-    }) => (
-      <ResourcePickerOption
-        option={option}
-        selected={selectedMcpIdSet.has(option.id)}
-        active={active}
-        onPress={onPress}
-        kind="mcp"
-      />
-    ),
-    [selectedMcpIdSet],
-  );
-  const renderSkillPickerOption = useCallback(
-    ({
-      option,
-      active,
-      onPress,
-    }: {
-      option: ComboboxOption;
-      selected: boolean;
-      active: boolean;
-      onPress: () => void;
-    }) => (
-      <ResourcePickerOption
-        option={option}
-        selected={selectedSkillIdSet.has(option.id)}
-        active={active}
-        onPress={onPress}
-        kind="skill"
-      />
-    ),
-    [selectedSkillIdSet],
-  );
-
   const composerContainerStyle = useMemo(
     () => [animatedStaticStyles.container, keyboardAnimatedStyle],
     [keyboardAnimatedStyle],
@@ -2639,10 +2205,7 @@ function ComposerContentImpl({
           openGithub: (kind: string, numberLabel: string) =>
             t("composer.attachments.openGithub", { kind, number: numberLabel }),
           removeGithub: (kind: string, numberLabel: string) =>
-            t("composer.attachments.removeGithub", {
-              kind,
-              number: numberLabel,
-            }),
+            t("composer.attachments.removeGithub", { kind, number: numberLabel }),
         },
       }),
     [handleOpenAttachment, handleRemoveAttachment, isComposerLocked, selectedAttachments, t],
@@ -2651,38 +2214,14 @@ function ComposerContentImpl({
   const queueList = useMemo(
     () =>
       renderQueueTrack({
-        queuedMessages: visibleQueuedMessages,
-        isDisabled: isEditingQueuedMessage,
-        onEdit: editQueuedMessage,
-        onRemove: handleRemoveQueuedMessage,
-        onMove: handleMoveQueuedMessage,
-        onSteer: handleSteerQueuedMessage,
-        labels: {
-          editLabel: t("composer.queue.edit"),
-          removeLabel: t("composer.queue.remove"),
-          moveUpLabel: t("composer.queue.moveUp"),
-          moveDownLabel: t("composer.queue.moveDown"),
-          steerLabel: t("composer.queue.steer"),
-        },
+        queuedMessages,
+        handleEditQueuedMessage,
+        handleSendQueuedNow,
+        editLabel: t("composer.attachments.editQueuedMessage"),
+        sendNowLabel: t("composer.attachments.sendQueuedMessageNow"),
       }),
-    [
-      editQueuedMessage,
-      handleMoveQueuedMessage,
-      handleRemoveQueuedMessage,
-      handleSteerQueuedMessage,
-      isEditingQueuedMessage,
-      t,
-      visibleQueuedMessages,
-    ],
+    [handleEditQueuedMessage, handleSendQueuedNow, queuedMessages, t],
   );
-  const queueEditNotice = isEditingQueuedMessage ? (
-    <QueuedMessageEditNotice
-      label={t("composer.queue.edit")}
-      cancelLabel={t("common.actions.cancel")}
-      cancelAccessibilityLabel={t("composer.queue.cancelEdit")}
-      onCancel={cancelEditingQueuedMessage}
-    />
-  ) : null;
 
   const messageInputContainerRef = useRef<View>(null);
 
@@ -2737,7 +2276,6 @@ function ComposerContentImpl({
         <View style={inputAreaContainerStyle}>
           <View style={styles.inputAreaContent}>
             {queueList}
-            {queueEditNotice}
             {sendErrorNode}
 
             <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
@@ -2839,30 +2377,6 @@ const animatedStaticStyles = RNStyleSheet.create({
 });
 
 const styles = StyleSheet.create((theme: Theme) => ({
-  leftContentRow: {
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flexShrink: 1,
-  },
-  agentControlsRow: {
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    flexShrink: 1,
-  },
-  compactLeftContent: {
-    width: "100%",
-    minWidth: 0,
-    flexDirection: "column",
-    alignItems: "stretch",
-    gap: theme.spacing[1],
-  },
-  compactAgentControlsRow: {
-    width: "100%",
-    minWidth: 0,
-  },
   borderSeparator: {
     height: theme.borderWidth[1],
     backgroundColor: theme.colors.border,
@@ -2966,52 +2480,21 @@ const styles = StyleSheet.create((theme: Theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
   },
-  queueEditNotice: {
-    minHeight: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingLeft: theme.spacing[3],
-    paddingRight: theme.spacing[1],
-    backgroundColor: theme.colors.surface1,
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-  },
-  queueEditNoticeLabel: {
-    minWidth: 0,
+  queueActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
   },
-  queueEditNoticeText: {
-    flexShrink: 1,
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  queueActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
   queueActionButton: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.surface2,
   },
-  queueSteerButton: {
-    width: "auto",
-    minWidth: 48,
-    paddingHorizontal: theme.spacing[2],
+  queueSendButton: {
     backgroundColor: theme.colors.accent,
-  },
-  queueSteerButtonText: {
-    color: theme.colors.accentForeground,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
   },
   sendErrorText: {
     color: theme.colors.palette.red[500],
@@ -3020,28 +2503,17 @@ const styles = StyleSheet.create((theme: Theme) => ({
 })) as unknown as Record<string, object>;
 
 const ThemedPencil = withUnistyles(Pencil);
-const ThemedChevronDown = withUnistyles(ChevronDown);
-const ThemedChevronUp = withUnistyles(ChevronUp);
-const ThemedTrash2 = withUnistyles(Trash2);
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
+const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedAudioLines = withUnistyles(AudioLines);
 const ThemedPaperclip = withUnistyles(Paperclip);
-const ThemedSparkles = withUnistyles(Sparkles);
-const ThemedWrench = withUnistyles(Wrench);
 const ThemedImageIcon = withUnistyles(ImageIcon);
 const ThemedClipboardPaste = withUnistyles(ClipboardPaste);
 const ThemedFileText = withUnistyles(FileText);
-const iconForegroundMapping = (theme: Theme) => ({
-  color: theme.colors.foreground,
-});
-const iconForegroundMutedMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-});
-const iconAccentForegroundMapping = (theme: Theme) => ({
-  color: theme.colors.accentForeground,
-});
+const iconForegroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const iconForegroundMutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const iconAccentForegroundMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
 
 function renderForgeAttachmentIcon(icon: string): ReactElement {
   return (
@@ -3056,7 +2528,3 @@ const githubIssuePillIcon = (
   <ThemedCircleDot size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
 );
 const filePillIcon = <ThemedFileText size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />;
-const mcpOptionIcon = <ThemedWrench size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />;
-const skillOptionIcon = (
-  <ThemedSparkles size={ICON_SIZE.sm} uniProps={iconForegroundMutedMapping} />
-);

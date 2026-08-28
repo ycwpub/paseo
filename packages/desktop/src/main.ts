@@ -3,11 +3,6 @@ process.emitWarning = (() => {}) as typeof process.emitWarning;
 import log from "electron-log/main";
 import path from "node:path";
 import { hostname as getSystemHostname } from "node:os";
-log.transports.console.level = "info";
-log.initialize({ spyRendererConsole: true });
-
-import { inheritLoginShellEnv } from "./login-shell-env.js";
-
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -26,6 +21,7 @@ import {
   shell,
   webContents,
 } from "electron";
+import { inheritLoginShellEnv } from "./login-shell-env.js";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
@@ -103,15 +99,34 @@ import {
   type AgentDeepLinkTarget,
 } from "@getpaseo/protocol/agent-deep-link";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
+import { resolveDesktopAppIdentity, resolveEarlyDesktopUserDataPath } from "./app-identity.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const APP_SCHEME = "paseo";
 const PASEO_DEBUG = process.env.PASEO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
 const UPDATE_QUIT_DEADLINE_MS = 5_000;
-const IS_TEST_BUILD = path.basename(process.execPath).toLowerCase().includes("test");
-const APP_NAME =
-  process.env.PASEO_TEST_APP_NAME?.trim() || (IS_TEST_BUILD ? app.getName() : "Paseo");
+const { appName: APP_NAME, isTestBuild: IS_TEST_BUILD } = resolveDesktopAppIdentity({
+  execPath: process.execPath,
+  testAppNameOverride: process.env.PASEO_TEST_APP_NAME,
+});
+const forcedUserDataDir = process.env.PASEO_ELECTRON_USER_DATA_DIR?.trim();
+const earlyUserDataDir = resolveEarlyDesktopUserDataPath({
+  appDataPath: app.getPath("appData"),
+  appName: APP_NAME,
+  forcedUserDataDir,
+  isPackaged: app.isPackaged,
+  isTestBuild: IS_TEST_BUILD,
+});
+
+app.setName(APP_NAME);
+if (earlyUserDataDir) {
+  app.setPath("userData", earlyUserDataDir);
+}
+
+log.transports.console.level = "info";
+log.initialize({ spyRendererConsole: true });
+
 const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
   platform: process.platform,
   override: process.env.PASEO_DESKTOP_WINDOW_CONTROLS,
@@ -129,12 +144,11 @@ const bootstrapComplete = new Promise<void>((resolve) => {
 });
 let bootstrapIsComplete = false;
 
-app.setName(APP_NAME);
-
 // For test builds, use the same PASEO_HOME as production so that workspaces,
 // providers, assistants, channels, and agent config are shared (no duplicate
-// configuration needed). Only the listen port is changed to avoid conflicts
-// when both apps run simultaneously.
+// configuration needed). Electron renderer data is isolated so persisted
+// production hosts, caches, and navigation state cannot leak into the test app.
+// Only the daemon home is shared; the listen port is changed to avoid conflicts.
 if (IS_TEST_BUILD) {
   if (!process.env.PASEO_LISTEN) {
     process.env.PASEO_LISTEN = process.env.PASEO_TEST_LISTEN ?? "127.0.0.1:6769";
@@ -142,6 +156,7 @@ if (IS_TEST_BUILD) {
   log.info("[test-build] shared daemon home, isolated listen port", {
     paseoHome: process.env.PASEO_HOME ?? "~/.paseo",
     paseoListen: process.env.PASEO_LISTEN,
+    userData: app.getPath("userData"),
     execPath: process.execPath,
   });
 }
@@ -304,9 +319,7 @@ function installBrowserWindowOpenHandler(input: {
 // In dev mode, detect git worktrees and isolate each instance so multiple
 // Electron windows can run side-by-side (separate userData = separate lock).
 let devWorktreeName: string | null = null;
-const forcedUserDataDir = process.env.PASEO_ELECTRON_USER_DATA_DIR?.trim();
 if (forcedUserDataDir) {
-  app.setPath("userData", forcedUserDataDir);
   log.info("[dev-user-data] forced userData dir:", forcedUserDataDir);
 } else if (!app.isPackaged) {
   try {

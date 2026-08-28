@@ -1402,6 +1402,16 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isLoopbackEndpoint(endpoint: string): boolean {
+  const normalized = endpoint.trim().toLowerCase();
+  return (
+    normalized.startsWith("localhost:") ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("[::1]:") ||
+    normalized.startsWith("::1:")
+  );
+}
+
 function rekeyMap<V>(map: Map<string, V>, oldKey: string, newKey: string): void {
   const value = map.get(oldKey);
   if (value === undefined) {
@@ -1904,11 +1914,47 @@ export class HostRuntimeStore {
     if (!serverId) {
       throw new Error("Desktop daemon did not return a server id.");
     }
-    return this.upsertHostConnection({
+    const profile = await this.upsertHostConnection({
       serverId,
       label: input.hostname ?? undefined,
       connection,
     });
+    if (connection.type !== "directTcp" || !isLoopbackEndpoint(connection.endpoint)) {
+      return profile;
+    }
+
+    const staleLoopbackConnectionIds = profile.connections
+      .filter(
+        (candidate) =>
+          candidate.type === "directTcp" &&
+          candidate.id !== connection.id &&
+          isLoopbackEndpoint(candidate.endpoint),
+      )
+      .map((candidate) => candidate.id);
+    if (staleLoopbackConnectionIds.length === 0) {
+      return profile;
+    }
+
+    const staleConnectionIdSet = new Set(staleLoopbackConnectionIds);
+    const updatedAt = new Date().toISOString();
+    const next = this.hosts.map((host) => {
+      if (host.serverId !== serverId) {
+        return host;
+      }
+      const preferredWasStale =
+        host.preferredConnectionId !== null && staleConnectionIdSet.has(host.preferredConnectionId);
+      return {
+        ...host,
+        connections: host.connections.filter(
+          (candidate) => !staleConnectionIdSet.has(candidate.id),
+        ),
+        preferredConnectionId: preferredWasStale ? connection.id : host.preferredConnectionId,
+        updatedAt,
+      };
+    });
+    this.setHostsAndSync(next);
+    await this.persistHosts();
+    return next.find((host) => host.serverId === serverId) ?? profile;
   }
 
   private async updateHost(

@@ -148,14 +148,17 @@ let bootstrapIsComplete = false;
 // providers, assistants, channels, and agent config are shared (no duplicate
 // configuration needed). Electron renderer data is isolated so persisted
 // production hosts, caches, and navigation state cannot leak into the test app.
-// Only the daemon home is shared; the listen port is changed to avoid conflicts.
+// The daemon home and endpoint are shared so the test app observes the same
+// process recorded in ~/.paseo/paseo.pid. A different endpoint may only be
+// requested explicitly for an intentionally isolated test environment.
 if (IS_TEST_BUILD) {
-  if (!process.env.PASEO_LISTEN) {
-    process.env.PASEO_LISTEN = process.env.PASEO_TEST_LISTEN ?? "127.0.0.1:6769";
+  const testListen = process.env.PASEO_TEST_LISTEN?.trim();
+  if (!process.env.PASEO_LISTEN && testListen) {
+    process.env.PASEO_LISTEN = testListen;
   }
-  log.info("[test-build] shared daemon home, isolated listen port", {
+  log.info("[test-build] shared daemon home and endpoint", {
     paseoHome: process.env.PASEO_HOME ?? "~/.paseo",
-    paseoListen: process.env.PASEO_LISTEN,
+    paseoListen: process.env.PASEO_LISTEN ?? "daemon default",
     userData: app.getPath("userData"),
     execPath: process.execPath,
   });

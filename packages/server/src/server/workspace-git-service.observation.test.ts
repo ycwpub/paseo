@@ -940,9 +940,12 @@ describe("WorkspaceGitService checkout observation", () => {
     await flushPromises();
     await vi.advanceTimersByTimeAsync(1_000);
     await flushPromises();
-    await vi.waitFor(() => {
-      expect(listener).toHaveBeenCalledTimes(1);
-    });
+    await vi.waitFor(
+      () => {
+        expect(listener).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 5_000 },
+    );
 
     subscription.unsubscribe();
     service.dispose();

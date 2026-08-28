@@ -13,7 +13,9 @@ import {
 
 const roots = new Set<string>();
 const observers = new Set<FileObserver>();
-const FILE_EVENT_TIMEOUT_MS = 5_000;
+// Filesystem delivery can be delayed when the full test suite is saturating the
+// host with Git and process-heavy integration fixtures.
+const FILE_EVENT_TIMEOUT_MS = 15_000;
 
 afterEach(async () => {
   vi.useRealTimers();

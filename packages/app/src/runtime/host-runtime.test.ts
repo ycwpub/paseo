@@ -3334,6 +3334,46 @@ describe("HostRuntimeStore", () => {
     }
   });
 
+  it("replaces a stale loopback desktop connection with the daemon's current endpoint", async () => {
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host }) => ({
+          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: host.label ?? null,
+        }),
+        getClientId: async () => "cid_test_runtime",
+      },
+      storage: createMemoryHostRuntimeStorage(),
+    });
+
+    try {
+      await store.upsertConnectionFromListen({
+        listenAddress: "127.0.0.1:6769",
+        serverId: "srv_desktop",
+        hostname: "desktop",
+      });
+      await store.upsertConnectionFromListen({
+        listenAddress: "127.0.0.1:6767",
+        serverId: "srv_desktop",
+        hostname: "desktop",
+      });
+
+      const host = store.getHosts().find((candidate) => candidate.serverId === "srv_desktop");
+      expect(host?.connections).toEqual([
+        {
+          id: "direct:localhost:6767",
+          type: "directTcp",
+          endpoint: "localhost:6767",
+        },
+      ]);
+      expect(host?.preferredConnectionId).toBe("direct:localhost:6767");
+    } finally {
+      store.syncHosts([]);
+    }
+  });
+
   it("upsertDirectConnection stores SSL and password settings", async () => {
     const store = new HostRuntimeStore({
       deps: {

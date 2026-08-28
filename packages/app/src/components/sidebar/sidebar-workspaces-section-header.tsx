@@ -147,7 +147,7 @@ export function WorkspacesSectionHeader() {
       <Text style={styles.title}>
         {bulkArchive.active
           ? t("sidebar.workspace.bulkArchive.selected", { count: bulkArchive.selectedCount })
-          : "Workspaces"}
+          : t("shell.commandCenter.workspaces")}
       </Text>
       <View style={styles.actions}>
         {bulkArchive.active ? (

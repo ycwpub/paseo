@@ -200,6 +200,18 @@ export const en = {
     empty: "Start chatting with this agent...",
     scrollToBottom: "Scroll to bottom",
     historyLoadFailed: "Couldn't load agent history",
+    changes: {
+      summary: "Changed files ({{count}})",
+      undo: "Undo",
+      review: "Review",
+      reviewFile: "Review {{fileName}}",
+      confirmUndoTitle: "Undo changes from this turn?",
+      confirmUndoMessage:
+        "This will discard the uncommitted changes to {{count}} files from this turn. This action cannot be undone.",
+      confirmUndo: "Undo changes",
+      showMore: "Show {{count}} more files",
+      showLess: "Show less",
+    },
     permission: {
       plan: "Plan",
       required: "Permission Required",
@@ -211,6 +223,21 @@ export const en = {
     },
   },
   agentPanel: {
+    taskSummary: {
+      title: "Task summary",
+      subtitle: "To-dos, outputs, and references for the current task",
+      open: "Open task summary",
+      close: "Close task summary",
+      todos: "To-dos",
+      outputs: "Task outputs",
+      references: "References",
+      emptyTodos: "No to-dos yet",
+      emptyOutputs: "No task outputs yet",
+      emptyReferences: "No references yet",
+      emptyTitle: "No active task",
+      emptyDescription: "Open an agent conversation to view its task summary.",
+      openFile: "Open {{fileName}}",
+    },
     states: {
       notFound: "Agent not found",
       failedToLoad: "Failed to load agent",

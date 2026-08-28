@@ -203,6 +203,7 @@ export const ru: TranslationResources = {
     empty: "Начните общаться с этим агентом...",
     scrollToBottom: "Прокрутить вниз",
     historyLoadFailed: "Не удалось загрузить историю агента",
+    changes: en.agentStream.changes,
     permission: {
       plan: "План",
       required: "Требуется разрешение",
@@ -214,6 +215,7 @@ export const ru: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Агент не найден",
       failedToLoad: "Не удалось загрузить агента",

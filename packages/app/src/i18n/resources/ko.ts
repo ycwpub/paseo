@@ -204,6 +204,7 @@ export const ko: TranslationResources = completeTranslationResource(en, {
     empty: "이 에이전트와 대화를 시작하세요...",
     scrollToBottom: "맨 아래로 스크롤",
     historyLoadFailed: "에이전트 기록을 로드할 수 없습니다.",
+    changes: en.agentStream.changes,
     permission: {
       plan: "계획",
       required: "권한 필요",
@@ -215,6 +216,7 @@ export const ko: TranslationResources = completeTranslationResource(en, {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "에이전트를 찾을 수 없습니다",
       failedToLoad: "에이전트를 불러오지 못했습니다",

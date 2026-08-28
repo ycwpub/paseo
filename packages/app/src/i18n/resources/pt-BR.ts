@@ -203,6 +203,7 @@ export const ptBR: TranslationResources = {
     empty: "Comece a conversar com este agente...",
     scrollToBottom: "Rolar para o fim",
     historyLoadFailed: "Não foi possível carregar o histórico do agente",
+    changes: en.agentStream.changes,
     permission: {
       plan: "Plano",
       required: "Permissão necessária",
@@ -214,6 +215,7 @@ export const ptBR: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agente não encontrado",
       failedToLoad: "Falha ao carregar agente",

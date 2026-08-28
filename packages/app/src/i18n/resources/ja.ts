@@ -203,6 +203,7 @@ export const ja: TranslationResources = {
     empty: "このエージェントとチャットを始めましょう...",
     scrollToBottom: "下にスクロール",
     historyLoadFailed: "エージェントの履歴を読み込めませんでした",
+    changes: en.agentStream.changes,
     permission: {
       plan: "プラン",
       required: "権限が必要です",
@@ -214,6 +215,7 @@ export const ja: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "エージェントが見つかりません",
       failedToLoad: "エージェントの読み込みに失敗しました",

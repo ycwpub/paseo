@@ -59,6 +59,8 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { usePanelStore } from "@/stores/panel-store";
+import { InstalledPluginSidebarSection } from "@/plugins/sidebar-panel/sidebar-section";
+import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
@@ -99,6 +101,7 @@ interface SidebarSharedProps {
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
   handleRefresh: () => void;
+  handleWorkspaceNavigate: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
@@ -141,6 +144,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const closePluginPanel = usePluginAppPanelStore((state) => state.close);
 
   const {
     projects,
@@ -176,60 +180,79 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const openProjectPicker = useOpenAddProject();
 
   const handleOpenProjectMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     void openProjectPicker();
-  }, [showMobileAgent, openProjectPicker]);
+  }, [closePluginPanel, showMobileAgent, openProjectPicker]);
 
   const handleOpenProjectDesktop = useCallback(() => {
+    closePluginPanel();
     void openProjectPicker();
-  }, [openProjectPicker]);
+  }, [closePluginPanel, openProjectPicker]);
 
   const handleSettingsMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     router.push(buildSettingsRoute());
-  }, [showMobileAgent]);
+  }, [closePluginPanel, showMobileAgent]);
 
   const handleSettingsDesktop = useCallback(() => {
+    closePluginPanel();
     router.push(buildSettingsRoute());
-  }, []);
+  }, [closePluginPanel]);
 
   const handleAddHostMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     router.push(buildSettingsAddHostRoute(Date.now()));
-  }, [showMobileAgent]);
+  }, [closePluginPanel, showMobileAgent]);
 
   const handleAddHostDesktop = useCallback(() => {
+    closePluginPanel();
     router.push(buildSettingsAddHostRoute(Date.now()));
-  }, []);
+  }, [closePluginPanel]);
 
   const handleOpenHostSettingsMobile = useCallback(
     (serverId: string) => {
+      closePluginPanel();
       showMobileAgent();
       openHostOverview(serverId);
     },
-    [showMobileAgent],
+    [closePluginPanel, showMobileAgent],
   );
 
-  const handleOpenHostSettingsDesktop = useCallback((serverId: string) => {
-    openHostOverview(serverId);
-  }, []);
+  const handleOpenHostSettingsDesktop = useCallback(
+    (serverId: string) => {
+      closePluginPanel();
+      openHostOverview(serverId);
+    },
+    [closePluginPanel],
+  );
 
   const handleHomeMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     router.push(buildOpenProjectRoute());
-  }, [showMobileAgent]);
+  }, [closePluginPanel, showMobileAgent]);
 
   const handleHomeDesktop = useCallback(() => {
+    closePluginPanel();
     router.push(buildOpenProjectRoute());
-  }, []);
+  }, [closePluginPanel]);
 
   const handleViewMoreNavigate = useCallback(() => {
+    closePluginPanel();
     router.push(buildSessionsRoute());
-  }, []);
+  }, [closePluginPanel]);
 
   const handleViewSchedulesNavigate = useCallback(() => {
+    closePluginPanel();
     router.push(buildSchedulesRoute());
-  }, []);
+  }, [closePluginPanel]);
+
+  const handleWorkspaceNavigate = useCallback(() => {
+    closePluginPanel();
+  }, [closePluginPanel]);
 
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
@@ -264,6 +287,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
     handleRefresh,
+    handleWorkspaceNavigate,
     labels,
     newWorkspaceKeys,
   };
@@ -620,6 +644,7 @@ function MobileSidebar({
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
   handleRefresh,
+  handleWorkspaceNavigate,
   newWorkspaceKeys,
   handleOpenProject,
   handleHome,
@@ -651,8 +676,9 @@ function MobileSidebar({
   }, [closeSidebar, handleViewSchedulesNavigate]);
 
   const handleWorkspacePress = useCallback(() => {
+    handleWorkspaceNavigate();
     closeSidebar();
-  }, [closeSidebar]);
+  }, [closeSidebar, handleWorkspaceNavigate]);
 
   const mobileSidebarInsetStyle = useMemo(
     () => ({
@@ -661,6 +687,10 @@ function MobileSidebar({
       backgroundColor: theme.colors.surfaceSidebar,
     }),
     [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
+  );
+  const installedPluginSection = useMemo(
+    () => <InstalledPluginSidebarSection onPluginOpened={closeSidebar} />,
+    [closeSidebar],
   );
 
   return (
@@ -738,6 +768,7 @@ function MobileSidebar({
             onAddProject={handleOpenProject}
             parentGestureRef={closeGestureRef}
             dragGestureHostPresented={dragGestureHostPresented}
+            listFooterComponent={installedPluginSection}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
@@ -773,6 +804,7 @@ function DesktopSidebar({
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
   handleRefresh,
+  handleWorkspaceNavigate,
   newWorkspaceKeys,
   handleOpenProject,
   handleHome,
@@ -941,10 +973,13 @@ function DesktopSidebar({
             workspaceEntriesByKey={workspaceEntriesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
+            onWorkspacePress={handleWorkspaceNavigate}
             onAddProject={handleOpenProject}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
+
+        <InstalledPluginSidebarSection />
 
         <SidebarCalloutSlot />
 

@@ -14,10 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import type { WorkflowRunTarget } from "@/workflows/run-targets";
+import {
+  EMPTY_HTTP_SERVICE_HANDLER_RESOURCES,
+  HttpServiceHandlerFields,
+  type HttpServiceHandlerEditorResources,
+} from "./http-service-handler-fields";
 import { HttpServiceHostField } from "./http-service-host-field";
 import { HttpServiceRouteForm } from "./http-service-route-form";
-import { HttpServiceWorkflowFields } from "./http-service-workflow-fields";
-import { createHttpRoute, updateHttpRoute } from "./http-service-model";
+import { createDefaultHttpHandler, createHttpRoute, updateHttpRoute } from "./http-service-model";
 
 const RETENTION_STATUSES: Array<{ value: PluginHttpJobStatus; label: string }> = [
   { value: "succeeded", label: "成功" },
@@ -36,6 +40,7 @@ export function HttpServiceListenerForm({
   workflowsLoading,
   workflowsError,
   inspectWorkflowTargets,
+  handlerResources = EMPTY_HTTP_SERVICE_HANDLER_RESOURCES,
   onChange,
   onDelete,
 }: {
@@ -48,6 +53,7 @@ export function HttpServiceListenerForm({
   workflowsLoading: boolean;
   workflowsError: string | null;
   inspectWorkflowTargets: (workflowPath: string) => Promise<WorkflowRunTarget[]>;
+  handlerResources?: HttpServiceHandlerEditorResources;
   onChange: (listener: PluginHttpListener) => void;
   onDelete: () => void;
 }) {
@@ -64,7 +70,7 @@ export function HttpServiceListenerForm({
         submitPath: "/jobs",
         queryPath: "/jobs",
         deletePath: "/jobs",
-        workflowPath: listener.routes[0]?.workflowPath ?? "",
+        handler: listener.routes[0]?.handler ?? createDefaultHttpHandler(),
         requestTemplate: "",
         responseTemplate: "",
       };
@@ -199,17 +205,14 @@ export function HttpServiceListenerForm({
                 </Field>
               </View>
             </View>
-            <HttpServiceWorkflowFields
-              workflowPath={listener.defaultJobApi.workflowPath}
-              targetNodeId={listener.defaultJobApi.targetNodeId}
+            <HttpServiceHandlerFields
+              handler={listener.defaultJobApi.handler}
               workflows={workflows}
               workflowsLoading={workflowsLoading}
               workflowsError={workflowsError}
               inspectWorkflowTargets={inspectWorkflowTargets}
-              onWorkflowPathChange={(workflowPath) =>
-                setDefaultApi({ workflowPath, targetNodeId: undefined })
-              }
-              onTargetNodeIdChange={(targetNodeId) => setDefaultApi({ targetNodeId })}
+              {...handlerResources}
+              onChange={(handler) => setDefaultApi({ handler })}
             />
             <Field
               label="请求映射 JSON"
@@ -257,6 +260,7 @@ export function HttpServiceListenerForm({
           workflowsLoading={workflowsLoading}
           workflowsError={workflowsError}
           inspectWorkflowTargets={inspectWorkflowTargets}
+          handlerResources={handlerResources}
           onChange={(nextRoute) => onChange(updateHttpRoute(listener, route.id, () => nextRoute))}
           onDelete={() =>
             onChange({

@@ -1,8 +1,10 @@
 import type {
+  PluginHttpHandler,
   PluginHttpListener,
   PluginHttpProjectConfig,
   PluginHttpRoute,
 } from "@getpaseo/protocol/messages";
+import { createWorkflowStep } from "@/workflows/editor-model";
 
 function nextId(prefix: string, existingIds: readonly string[]): string {
   const used = new Set(existingIds);
@@ -25,10 +27,15 @@ export function createHttpRoute(listener: PluginHttpListener): PluginHttpRoute {
     path: `/${id}`,
     requestTemplate: "",
     responseTemplate: "",
-    workflowPath: listener.defaultJobApi?.workflowPath ?? "",
-    targetNodeId: undefined,
+    handler: listener.defaultJobApi?.handler ?? createDefaultHttpHandler(),
     maxBodyBytes: 1024 * 1024,
   };
+}
+
+export function createDefaultHttpHandler(workflowPath = ""): PluginHttpHandler {
+  return workflowPath
+    ? { mode: "workflow", workflowPath }
+    : { mode: "custom_node", step: createWorkflowStep("bash", []) };
 }
 
 export function createHttpListener(config: PluginHttpProjectConfig): PluginHttpListener {
@@ -36,27 +43,28 @@ export function createHttpListener(config: PluginHttpProjectConfig): PluginHttpL
     "listener",
     config.listeners.map((listener) => listener.id),
   );
-  const firstWorkflow =
-    config.listeners[0]?.defaultJobApi?.workflowPath ??
-    config.listeners[0]?.routes[0]?.workflowPath ??
-    "";
+  const firstWorkflowHandler = [
+    config.listeners[0]?.defaultJobApi?.handler,
+    config.listeners[0]?.routes[0]?.handler,
+  ].find(
+    (handler): handler is Extract<PluginHttpHandler, { mode: "workflow" }> =>
+      handler?.mode === "workflow",
+  );
   return {
     id,
     name: `监听端口 ${config.listeners.length + 1}`,
     enabled: false,
     host: "127.0.0.1",
     port: 0,
-    defaultJobApi: firstWorkflow
-      ? {
-          enabled: true,
-          submitPath: "/jobs",
-          queryPath: "/jobs",
-          deletePath: "/jobs",
-          workflowPath: firstWorkflow,
-          requestTemplate: "",
-          responseTemplate: "",
-        }
-      : undefined,
+    defaultJobApi: {
+      enabled: true,
+      submitPath: "/jobs",
+      queryPath: "/jobs",
+      deletePath: "/jobs",
+      handler: firstWorkflowHandler ?? createDefaultHttpHandler(),
+      requestTemplate: "",
+      responseTemplate: "",
+    },
     routes: [],
     retention: {
       enabled: false,

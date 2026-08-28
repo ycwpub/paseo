@@ -16,11 +16,11 @@ const MIN_PANEL_WIDTH = 918;
 const RESTING_PILL_HEIGHT = 2;
 const MAGNIFIED_PILL_HEIGHT = 4;
 const RESTING_PILL_WIDTH = 10;
-const ACTIVE_PILL_WIDTH = 18;
-const MAGNIFIED_PILL_WIDTH = 26;
-const PREVIEW_WIDTH = 260;
-const PREVIEW_HEIGHT = 48;
-const PREVIEW_GAP = 4;
+const ACTIVE_PILL_WIDTH = 22;
+const MAGNIFIED_PILL_WIDTH = 30;
+const PREVIEW_WIDTH = 320;
+const PREVIEW_HEIGHT = 76;
+const PREVIEW_GAP = 6;
 
 export const ChatOutlineRail = memo(function ChatOutlineRail({
   prompts,
@@ -91,9 +91,10 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
             <ChatOutlineTick
               key={prompt.seq}
               index={index}
+              promptCount={prompts.length}
               seq={prompt.seq}
               preview={prompt.preview}
-              label={`${index + 1} of ${prompts.length}: ${prompt.preview}`}
+              label={`${index + 1}/${prompts.length}: ${prompt.preview}`}
               isActive={prompt.seq === activeSeq}
               hasAttention={index === attentionIndex}
               magnification={
@@ -114,6 +115,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
 
 interface ChatOutlineTickProps {
   index: number;
+  promptCount: number;
   seq: number;
   preview: string;
   label: string;
@@ -127,6 +129,7 @@ interface ChatOutlineTickProps {
 
 const ChatOutlineTick = memo(function ChatOutlineTick({
   index,
+  promptCount,
   seq,
   preview,
   label,
@@ -175,7 +178,10 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
       </Pressable>
       {hasAttention ? (
         <View style={styles.preview} pointerEvents="none" aria-hidden testID="chat-outline-preview">
-          <Text style={styles.previewText} numberOfLines={2}>
+          <Text style={styles.previewPosition}>
+            {index + 1} / {promptCount}
+          </Text>
+          <Text style={styles.previewText} numberOfLines={3}>
             {preview}
           </Text>
         </View>
@@ -223,15 +229,18 @@ const styles = StyleSheet.create((theme) => ({
   pill: {
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.borderAccent,
+    opacity: 0.72,
     transitionProperty: "width, height, background-color",
     transitionDuration: "140ms",
     transitionTimingFunction: "ease-out",
   },
   pillActive: {
-    backgroundColor: theme.colors.foregroundExtraMuted,
+    backgroundColor: theme.colors.foreground,
+    opacity: 1,
   },
   pillAttention: {
     backgroundColor: theme.colors.foreground,
+    opacity: 1,
   },
   preview: {
     position: "absolute",
@@ -242,14 +251,21 @@ const styles = StyleSheet.create((theme) => ({
     height: PREVIEW_HEIGHT,
     justifyContent: "center",
     paddingHorizontal: theme.spacing[3],
+    gap: theme.spacing[1],
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     ...theme.shadow.md,
   },
+  previewPosition: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
+  },
   previewText: {
     fontSize: theme.fontSize.sm,
+    lineHeight: 19,
     color: theme.colors.foreground,
   },
 }));

@@ -2787,8 +2787,8 @@ export const zhCN: TranslationResources = {
         title: "详细程度",
       },
       chatOutline: {
-        title: "聊天大纲",
-        description: "显示用于在提示词之间跳转的大纲",
+        title: "历史输入导航",
+        description: "在聊天左侧显示输入节点，悬停预览，点击跳转到对应的历史输入",
       },
       fonts: {
         title: "字体",

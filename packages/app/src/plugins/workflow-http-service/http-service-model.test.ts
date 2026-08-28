@@ -21,7 +21,16 @@ describe("HTTP service model", () => {
     const withFirst = { ...config, listeners: [first] };
     const second = createHttpListener(withFirst);
     expect([first.id, second.id]).toEqual(["listener-1", "listener-2"]);
-    expect(createHttpRoute({ ...first, routes: [] }).id).toBe("route-1");
+    const route = createHttpRoute({ ...first, routes: [] });
+    expect(route.id).toBe("route-1");
+    expect(first.defaultJobApi?.handler).toMatchObject({
+      mode: "custom_node",
+      step: { type: "bash" },
+    });
+    expect(route.handler).toMatchObject({
+      mode: "custom_node",
+      step: { type: "bash" },
+    });
   });
 
   it("updates only the selected listener", () => {

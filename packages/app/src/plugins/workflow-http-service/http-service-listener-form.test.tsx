@@ -71,27 +71,40 @@ vi.mock("./http-service-route-form", () => ({
   HttpServiceRouteForm: () => null,
 }));
 
-vi.mock("./http-service-workflow-fields", () => ({
-  HttpServiceWorkflowFields: ({
-    workflowPath,
-    targetNodeId,
+vi.mock("./http-service-handler-fields", () => ({
+  EMPTY_HTTP_SERVICE_HANDLER_RESOURCES: {},
+  HttpServiceHandlerFields: ({
+    handler,
   }: {
-    workflowPath: string;
-    targetNodeId?: string;
+    handler:
+      | { mode: "workflow"; workflowPath: string; targetNodeId?: string }
+      | { mode: "custom_node"; step: { id: string } };
   }) => (
     <>
       <label>
-        <span>Workflow 文件</span>
-        <select value={workflowPath} onChange={() => undefined}>
-          <option value={workflowPath}>{workflowPath}</option>
+        <span>处理方式</span>
+        <select value={handler.mode} onChange={() => undefined}>
+          <option value={handler.mode}>{handler.mode}</option>
         </select>
       </label>
-      <label>
-        <span>处理节点 ID</span>
-        <select value={targetNodeId ?? ""} onChange={() => undefined}>
-          <option value={targetNodeId ?? ""}>{targetNodeId ?? "完整 Workflow"}</option>
-        </select>
-      </label>
+      {handler.mode === "workflow" ? (
+        <>
+          <label>
+            <span>Workflow 文件</span>
+            <select value={handler.workflowPath} onChange={() => undefined}>
+              <option value={handler.workflowPath}>{handler.workflowPath}</option>
+            </select>
+          </label>
+          <label>
+            <span>处理节点 ID</span>
+            <select value={handler.targetNodeId ?? ""} onChange={() => undefined}>
+              <option value={handler.targetNodeId ?? ""}>
+                {handler.targetNodeId ?? "完整 Workflow"}
+              </option>
+            </select>
+          </label>
+        </>
+      ) : null}
     </>
   ),
 }));
@@ -109,8 +122,11 @@ const listener: PluginHttpListener = {
     submitPath: "/jobs",
     queryPath: "/jobs",
     deletePath: "/jobs",
-    workflowPath: "/tmp/processor.json",
-    targetNodeId: "review",
+    handler: {
+      mode: "workflow",
+      workflowPath: "/tmp/processor.json",
+      targetNodeId: "review",
+    },
     requestTemplate: '{"data":"{{request}}"}',
     responseTemplate: '{"status":"{{job.status}}"}',
   },
@@ -171,7 +187,11 @@ describe("HttpServiceListenerForm", () => {
         submitPath: "/tasks",
         queryPath: "/tasks",
         deletePath: "/tasks",
-        targetNodeId: "prepare",
+        handler: {
+          mode: "workflow",
+          workflowPath: "/tmp/processor.json",
+          targetNodeId: "prepare",
+        },
       },
     };
     rerender(

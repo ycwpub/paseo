@@ -2937,8 +2937,8 @@ export const en = {
         title: "Detail level",
       },
       chatOutline: {
-        title: "Chat outline",
-        description: "Show an outline for jumping between prompts",
+        title: "Prompt history navigation",
+        description: "Show prompt markers beside the chat; hover to preview and click to jump",
       },
       fonts: {
         title: "Fonts",

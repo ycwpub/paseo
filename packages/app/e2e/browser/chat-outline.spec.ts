@@ -97,6 +97,7 @@ test.describe("desktop chat outline", () => {
     test("previews the prompt under the pointer, anywhere across its row", async ({ page }) => {
       await hoverChatOutlinePrompt(page, 2);
       await expectChatOutlinePreview(page, agent.prompts[1]);
+      await expect(page.getByTestId("chat-outline-preview")).toContainText(`2 / ${LOADED_TURNS}`);
 
       await pointAtChatOutlineRowEdge(page, 7);
       await expectChatOutlinePreview(page, agent.prompts[6]);

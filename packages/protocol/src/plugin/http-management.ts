@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkflowStepSchema } from "../workflow/types.js";
 import { PluginHttpJobSchema, PluginHttpJobStatusSchema } from "./types.js";
 
 const HttpPathSchema = z
@@ -7,35 +8,70 @@ const HttpPathSchema = z
   .min(1)
   .refine((value) => value.startsWith("/"), "HTTP path must start with /");
 
-export const PluginHttpRouteSchema = z.object({
-  id: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  enabled: z.boolean().default(true),
-  method: z.enum(["POST"]).default("POST"),
-  path: HttpPathSchema,
-  requestTemplate: z.string().default(""),
-  responseTemplate: z.string().default(""),
-  workflowPath: z.string().trim().min(1),
-  targetNodeId: z.string().trim().optional(),
-  maxBodyBytes: z
-    .number()
-    .int()
-    .positive()
-    .max(10 * 1024 * 1024)
-    .default(1024 * 1024),
-});
+export const PluginHttpHandlerSchema = z.discriminatedUnion("mode", [
+  z
+    .object({
+      mode: z.literal("workflow"),
+      workflowPath: z.string().trim().min(1),
+      targetNodeId: z.string().trim().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("custom_node"),
+      step: WorkflowStepSchema,
+    })
+    .strict(),
+]);
+export type PluginHttpHandler = z.infer<typeof PluginHttpHandlerSchema>;
+
+function migrateLegacyHandler(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (record.handler !== undefined || typeof record.workflowPath !== "string") return value;
+  return {
+    ...record,
+    handler: {
+      mode: "workflow",
+      workflowPath: record.workflowPath,
+      ...(typeof record.targetNodeId === "string" ? { targetNodeId: record.targetNodeId } : {}),
+    },
+  };
+}
+
+export const PluginHttpRouteSchema = z.preprocess(
+  migrateLegacyHandler,
+  z.object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    enabled: z.boolean().default(true),
+    method: z.enum(["POST"]).default("POST"),
+    path: HttpPathSchema,
+    requestTemplate: z.string().default(""),
+    responseTemplate: z.string().default(""),
+    handler: PluginHttpHandlerSchema,
+    maxBodyBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(10 * 1024 * 1024)
+      .default(1024 * 1024),
+  }),
+);
 export type PluginHttpRoute = z.infer<typeof PluginHttpRouteSchema>;
 
-export const PluginHttpDefaultJobApiSchema = z.object({
-  enabled: z.boolean().default(true),
-  submitPath: HttpPathSchema.default("/jobs"),
-  queryPath: HttpPathSchema.default("/jobs"),
-  deletePath: HttpPathSchema.default("/jobs"),
-  workflowPath: z.string().trim().min(1),
-  targetNodeId: z.string().trim().optional(),
-  requestTemplate: z.string().default(""),
-  responseTemplate: z.string().default(""),
-});
+export const PluginHttpDefaultJobApiSchema = z.preprocess(
+  migrateLegacyHandler,
+  z.object({
+    enabled: z.boolean().default(true),
+    submitPath: HttpPathSchema.default("/jobs"),
+    queryPath: HttpPathSchema.default("/jobs"),
+    deletePath: HttpPathSchema.default("/jobs"),
+    handler: PluginHttpHandlerSchema,
+    requestTemplate: z.string().default(""),
+    responseTemplate: z.string().default(""),
+  }),
+);
 export type PluginHttpDefaultJobApi = z.infer<typeof PluginHttpDefaultJobApiSchema>;
 
 export const PluginHttpRetentionSchema = z.object({

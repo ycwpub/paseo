@@ -9,7 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import type { WorkflowRunTarget } from "@/workflows/run-targets";
-import { HttpServiceWorkflowFields } from "./http-service-workflow-fields";
+import {
+  EMPTY_HTTP_SERVICE_HANDLER_RESOURCES,
+  HttpServiceHandlerFields,
+  type HttpServiceHandlerEditorResources,
+} from "./http-service-handler-fields";
 
 export function HttpServiceRouteForm({
   route,
@@ -17,6 +21,7 @@ export function HttpServiceRouteForm({
   workflowsLoading,
   workflowsError,
   inspectWorkflowTargets,
+  handlerResources = EMPTY_HTTP_SERVICE_HANDLER_RESOURCES,
   onChange,
   onDelete,
 }: {
@@ -25,6 +30,7 @@ export function HttpServiceRouteForm({
   workflowsLoading: boolean;
   workflowsError: string | null;
   inspectWorkflowTargets: (workflowPath: string) => Promise<WorkflowRunTarget[]>;
+  handlerResources?: HttpServiceHandlerEditorResources;
   onChange: (route: PluginHttpRoute) => void;
   onDelete: () => void;
 }) {
@@ -72,17 +78,14 @@ export function HttpServiceRouteForm({
           </Field>
         </View>
       </View>
-      <HttpServiceWorkflowFields
-        workflowPath={route.workflowPath}
-        targetNodeId={route.targetNodeId}
+      <HttpServiceHandlerFields
+        handler={route.handler}
         workflows={workflows}
         workflowsLoading={workflowsLoading}
         workflowsError={workflowsError}
         inspectWorkflowTargets={inspectWorkflowTargets}
-        onWorkflowPathChange={(workflowPath) =>
-          onChange({ ...route, workflowPath, targetNodeId: undefined })
-        }
-        onTargetNodeIdChange={(targetNodeId) => setField("targetNodeId", targetNodeId)}
+        {...handlerResources}
+        onChange={(handler) => setField("handler", handler)}
       />
       <Field
         label="请求映射 JSON"

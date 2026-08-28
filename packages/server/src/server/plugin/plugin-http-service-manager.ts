@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Logger } from "pino";
 import {
   PluginHttpProjectConfigSchema,
+  type PluginHttpHandler,
   type PluginHttpJob,
   type PluginHttpJobStatus,
   type PluginHttpListener,
@@ -14,6 +15,10 @@ import {
   type PluginHttpTestResponse,
   type PluginHttpTestTarget,
 } from "@getpaseo/protocol/messages";
+import {
+  buildPluginHttpCustomWorkflow,
+  materializePluginHttpCustomWorkflow,
+} from "./plugin-http-custom-workflow.js";
 import { PluginHttpConfigStore } from "./plugin-http-config-store.js";
 import { PluginHttpJobStore } from "./plugin-http-job-store.js";
 import { assertLocalHttpHost, listLocalHttpAddresses } from "./plugin-http-local-addresses.js";
@@ -249,6 +254,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
   private readonly configStore: PluginHttpConfigStore;
   private readonly workflowService: PluginHttpWorkflowRunner;
   private readonly memoryWriter: PluginWorkflowMemoryWriter | null;
+  private readonly inlineWorkflowDirectory: string;
   private readonly now: () => Date;
   private readonly localAddressProvider: () => PluginHttpLocalAddress[];
   private readonly statuses = new Map<string, PluginHttpServiceSummary>();
@@ -269,6 +275,12 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
     this.store = new PluginHttpJobStore(path.join(options.paseoHome, "plugins", "http-jobs"));
     this.configStore = new PluginHttpConfigStore(
       path.join(options.paseoHome, "plugins", "http-services"),
+    );
+    this.inlineWorkflowDirectory = path.join(
+      options.paseoHome,
+      "plugins",
+      "http-services",
+      "inline-workflows",
     );
     this.workflowService = options.workflowService;
     this.memoryWriter = options.memoryWriter ?? null;
@@ -579,6 +591,13 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
         listenerId: listener.id,
       };
       if (listener.defaultJobApi?.enabled) {
+        const workflow = this.resolveHandlerWorkflow({
+          config,
+          listener,
+          routeId: "default",
+          routeName: `${listener.name} 默认异步请求接口`,
+          handler: listener.defaultJobApi.handler,
+        });
         bindings.push({
           pluginId: config.pluginId,
           pluginName: config.pluginId,
@@ -589,8 +608,8 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
             path: listener.defaultJobApi.submitPath,
             queryPath: listener.defaultJobApi.queryPath,
             deletePath: listener.defaultJobApi.deletePath,
-            workflowPath: listener.defaultJobApi.workflowPath,
-            targetNodeId: listener.defaultJobApi.targetNodeId,
+            workflowPath: workflow.workflowPath,
+            targetNodeId: workflow.targetNodeId,
             requestTemplate: listener.defaultJobApi.requestTemplate,
             responseTemplate: listener.defaultJobApi.responseTemplate,
             maxBodyBytes: 1024 * 1024,
@@ -599,6 +618,13 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
       }
       for (const route of listener.routes) {
         if (!route.enabled) continue;
+        const workflow = this.resolveHandlerWorkflow({
+          config,
+          listener,
+          routeId: route.id,
+          routeName: route.name,
+          handler: route.handler,
+        });
         bindings.push({
           pluginId: config.pluginId,
           pluginName: config.pluginId,
@@ -609,8 +635,8 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
             path: route.path,
             queryPath: route.path,
             deletePath: route.path,
-            workflowPath: route.workflowPath,
-            targetNodeId: route.targetNodeId,
+            workflowPath: workflow.workflowPath,
+            targetNodeId: workflow.targetNodeId,
             requestTemplate: route.requestTemplate,
             responseTemplate: route.responseTemplate,
             maxBodyBytes: route.maxBodyBytes,
@@ -642,7 +668,10 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
           submitPath: "/jobs",
           queryPath: "/jobs",
           deletePath: "/jobs",
-          workflowPath: first.definition.workflowPath,
+          handler: {
+            mode: "workflow" as const,
+            workflowPath: first.definition.workflowPath,
+          },
           requestTemplate: "",
           responseTemplate: "",
         },
@@ -654,7 +683,10 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
           path: binding.definition.path,
           requestTemplate: "",
           responseTemplate: "",
-          workflowPath: binding.definition.workflowPath,
+          handler: {
+            mode: "workflow" as const,
+            workflowPath: binding.definition.workflowPath,
+          },
           maxBodyBytes: binding.definition.maxBodyBytes,
         })),
         retention: {
@@ -712,6 +744,7 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
         if (listener.defaultJobApi.responseTemplate.trim()) {
           JSON.parse(listener.defaultJobApi.responseTemplate);
         }
+        this.validateHandler(listener.defaultJobApi.handler, `${listener.name} 默认异步请求接口`);
       }
       for (const route of listener.routes) {
         if (routeIds.has(route.id))
@@ -720,8 +753,47 @@ export class PluginHttpServiceManager implements PluginHttpServiceRuntime {
         if (route.enabled) addRoute("POST", route.path);
         if (route.requestTemplate.trim()) JSON.parse(route.requestTemplate);
         if (route.responseTemplate.trim()) JSON.parse(route.responseTemplate);
+        this.validateHandler(route.handler, `${listener.name} / ${route.name}`);
       }
     }
+  }
+
+  private validateHandler(handler: PluginHttpHandler, label: string): void {
+    if (handler.mode === "workflow") return;
+    try {
+      buildPluginHttpCustomWorkflow({ name: label, step: handler.step });
+    } catch (error) {
+      throw new Error(
+        `${label}：自定义处理节点配置无效：${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+  }
+
+  private resolveHandlerWorkflow(input: {
+    config: PluginHttpProjectConfig;
+    listener: PluginHttpListener;
+    routeId: string;
+    routeName: string;
+    handler: PluginHttpHandler;
+  }): { workflowPath: string; targetNodeId?: string } {
+    if (input.handler.mode === "workflow") {
+      return {
+        workflowPath: input.handler.workflowPath,
+        targetNodeId: input.handler.targetNodeId,
+      };
+    }
+    return {
+      workflowPath: materializePluginHttpCustomWorkflow({
+        directory: this.inlineWorkflowDirectory,
+        pluginId: input.config.pluginId,
+        projectId: input.config.projectId,
+        listenerId: input.listener.id,
+        routeId: input.routeId,
+        name: `${input.listener.name} / ${input.routeName}`,
+        step: input.handler.step,
+      }),
+    };
   }
 
   private projectRuntimes(config: PluginHttpProjectConfig): PluginHttpListenerRuntime[] {

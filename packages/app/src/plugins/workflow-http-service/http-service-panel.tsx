@@ -18,6 +18,10 @@ import {
   PluginProjectBoundary,
   type PluginProjectContext,
 } from "@/plugins/project/plugin-project-boundary";
+import { useAssistants } from "@/hooks/use-assistants";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
+import { useTeams } from "@/hooks/use-teams";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { collectWorkflowRunTargets, type WorkflowRunTarget } from "@/workflows/run-targets";
@@ -52,6 +56,12 @@ function HttpServiceProjectConsole({
   const client = useHostRuntimeClient(serverId);
   const supportsManagement = useHostFeature(serverId, "pluginHttpServiceManagement");
   const supportsLocalTesting = useHostFeature(serverId, "pluginHttpServiceLocalTesting");
+  const supportsTeams = useHostFeature(serverId, "teams");
+  const supportsWorkflowPython = useHostFeature(serverId, "workflowPython");
+  const providersSnapshot = useProvidersSnapshot(serverId, { enabled: active });
+  const assistantsResult = useAssistants(serverId, { enabled: active });
+  const teamsResult = useTeams(serverId, { enabled: active && supportsTeams });
+  const daemonConfig = useDaemonConfig(active ? serverId : null);
   const [config, setConfig] = useState<PluginHttpProjectConfig | null>(null);
   const [runtimes, setRuntimes] = useState<PluginHttpListenerRuntime[]>([]);
   const [localAddresses, setLocalAddresses] = useState<PluginHttpLocalAddress[]>([]);
@@ -172,6 +182,30 @@ function HttpServiceProjectConsole({
   const selectedRuntime = useMemo(
     () => runtimes.find((runtime) => runtime.listenerId === selectedListenerId) ?? null,
     [runtimes, selectedListenerId],
+  );
+  const handlerResources = useMemo(
+    () => ({
+      providerEntries: providersSnapshot.entries ?? [],
+      providersLoading: providersSnapshot.isLoading,
+      assistants: assistantsResult.assistants,
+      assistantsLoading: assistantsResult.isLoading,
+      teams: teamsResult.teams,
+      teamsLoading: teamsResult.isLoading,
+      promptTemplates: daemonConfig.config?.instructionTemplates ?? [],
+      promptTemplatesLoading: daemonConfig.isLoading,
+      allowPython: supportsWorkflowPython,
+    }),
+    [
+      assistantsResult.assistants,
+      assistantsResult.isLoading,
+      daemonConfig.config?.instructionTemplates,
+      daemonConfig.isLoading,
+      providersSnapshot.entries,
+      providersSnapshot.isLoading,
+      supportsWorkflowPython,
+      teamsResult.isLoading,
+      teamsResult.teams,
+    ],
   );
 
   const save = useCallback(async () => {
@@ -355,6 +389,7 @@ function HttpServiceProjectConsole({
           workflowsLoading={workflowsLoading}
           workflowsError={workflowsError}
           inspectWorkflowTargets={inspectWorkflowTargets}
+          handlerResources={handlerResources}
           onChange={(listener) =>
             setConfig(updateHttpListener(config, selectedListener.id, () => listener))
           }

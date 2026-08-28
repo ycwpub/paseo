@@ -511,11 +511,16 @@ Gatekeeper, QCSS, or other release gates.
 
 ## Built-in HTTP Service plugin
 
-The bundled **HTTP 服务** plugin publishes Workflows as asynchronous HTTP APIs. Open its app,
+The bundled **HTTP 服务** plugin publishes Workflow-backed handlers as asynchronous HTTP APIs. Open its app,
 select or create a Project, and manage multiple independently enabled ports. Each port can enable
 the standard submit/query/delete API and add custom paths with independent request mappings,
-response mappings, Workflow files, and processing node IDs. The same page shows the request state
-machine, structured input/output, errors, batch deletion, and retention cleanup.
+response mappings, and processing handlers. The same page shows the request state machine,
+structured input/output, errors, batch deletion, and retention cleanup.
+
+Each request Path can either reuse an existing Workflow (optionally starting from a selected node)
+or define one custom Bash, Python, Agent, Switch, or For node directly. Custom nodes are persisted
+as plugin-private managed Workflows and run through the same Workflow engine; they do not need a
+separate file in the user's Workflow list.
 
 `.http.json` remains the package default and supplies the initial listener/route template. Saving
 the Project configuration persists an override under `$PASEO_HOME/plugins/http-services/`; the

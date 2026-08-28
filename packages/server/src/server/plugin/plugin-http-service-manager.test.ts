@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -353,8 +353,11 @@ describe("PluginHttpServiceManager", () => {
             submitPath: "/jobs",
             queryPath: "/jobs/{requestId}",
             deletePath: "/jobs/{requestId}",
-            workflowPath: "/tmp/processor.json",
-            targetNodeId: "review",
+            handler: {
+              mode: "workflow",
+              workflowPath: "/tmp/processor.json",
+              targetNodeId: "review",
+            },
             requestTemplate: '{"data":"{{request}}"}',
             responseTemplate: "",
           },
@@ -459,5 +462,90 @@ describe("PluginHttpServiceManager", () => {
     await expect(manager.cleanupProjectJobs("demo-plugin", "project-1")).resolves.toEqual([
       retained.id,
     ]);
+  });
+
+  it("materializes and executes a custom handler node through the Workflow runtime", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-http-custom-node-"));
+    const runScript = vi.fn(async () => ({ id: "workflow-run-custom" }));
+    manager = new PluginHttpServiceManager({
+      paseoHome: tempRoot,
+      logger: createTestLogger(),
+      workflowService: {
+        runScript,
+        waitForRun: async () => ({
+          status: "succeeded",
+          outputPayload: JSON.stringify({ data: { handled: true } }),
+          error: null,
+          errorCode: null,
+          endedAt: "2026-08-28T08:05:00.000Z",
+        }),
+      },
+    });
+    await manager.reconcile([]);
+
+    await manager.saveProjectConfig({
+      version: 1,
+      pluginId: "demo-plugin",
+      projectId: "project-custom",
+      listeners: [
+        {
+          id: "listener-1",
+          name: "自定义服务",
+          enabled: true,
+          host: "127.0.0.1",
+          port: 0,
+          routes: [
+            {
+              id: "custom",
+              name: "自定义 Bash",
+              enabled: true,
+              method: "POST",
+              path: "/custom",
+              requestTemplate: "",
+              responseTemplate: "",
+              handler: {
+                mode: "custom_node",
+                step: {
+                  id: "bash",
+                  name: "处理请求",
+                  type: "bash",
+                  initialCommand: 'output={"data":{"handled":true}}',
+                },
+              },
+              maxBodyBytes: 1024 * 1024,
+            },
+          ],
+          retention: {
+            enabled: false,
+            maxAgeSeconds: 3600,
+            statuses: ["succeeded"],
+          },
+        },
+      ],
+    });
+
+    const job = await manager.submit("demo-plugin", "project-custom:listener-1:custom", {
+      request: "hello",
+    });
+    for (
+      let attempt = 0;
+      attempt < 50 && manager.getJob(job.id)?.status !== "succeeded";
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(runScript).toHaveBeenCalledWith({
+      scriptPath: expect.stringContaining("/plugins/http-services/inline-workflows/"),
+      inputPayload: JSON.stringify({ request: "hello" }),
+      targetNodeId: undefined,
+    });
+    const scriptPath = runScript.mock.calls[0]?.[0].scriptPath;
+    expect(JSON.parse(readFileSync(scriptPath!, "utf8"))).toMatchObject({
+      apiVersion: "paseo.sh/workflow/v1",
+      kind: "Workflow",
+      version: 1,
+      steps: [{ id: "bash", type: "bash" }],
+    });
   });
 });

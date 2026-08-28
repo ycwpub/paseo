@@ -13,7 +13,9 @@ Install the plugin, open **HTTP 服务控制台**, then select an existing Proje
 Project with a user-defined name. The console supports:
 
 - multiple listener ports with independent enable/disable switches;
-- multiple POST paths per port, each with a Workflow file and optional target node ID;
+- multiple POST paths per port, each independently choosing either:
+  - an existing Workflow file with an optional target node ID; or
+  - one custom Workflow node configured directly in the HTTP service;
 - JSON request mappings using `{{request}}` and `{{request.xxx}}`;
 - JSON response mappings using `{{job.id}}`, `{{job.status}}`, and `{{result}}`;
 - standard submit, query, and delete endpoints;
@@ -30,6 +32,11 @@ DELETE /jobs?request_id={requestId}
 Submitting a JSON object persists a `queued` request before asynchronously starting the Workflow.
 The state then becomes `running` and finally `succeeded`, `failed`, `cancelled`, or `timed_out`.
 Queued and running requests cannot be deleted.
+
+Custom handlers support the same Bash, Python, Agent, Switch, and For node contracts as the
+Workflow editor. Paseo stores each custom handler as a private managed Workflow under the plugin
+runtime directory, so it receives the same input/output validation, retries, artifacts, lifecycle,
+and run observability without requiring a user-visible Workflow file.
 
 ## Package defaults
 

@@ -294,6 +294,31 @@ function mergeRuntimeSettings(
   };
 }
 
+function applyDerivedProviderRuntimeDefaults(
+  providerId: string,
+  runtimeSettings: ProviderRuntimeSettings | undefined,
+): ProviderRuntimeSettings | undefined {
+  if (runtimeSettings?.command) {
+    return runtimeSettings;
+  }
+  let command: string[] | null = null;
+  if (providerId === "aiden-codex") {
+    command = ["aiden", "x", "codex"];
+  } else if (providerId === "aiden-claude") {
+    command = ["aiden", "x", "claude"];
+  }
+  if (!command) {
+    return runtimeSettings;
+  }
+  return {
+    ...runtimeSettings,
+    command: {
+      mode: "replace",
+      argv: command,
+    },
+  };
+}
+
 function applyOverrideToDefinition(
   definition: AgentProviderDefinition,
   override?: ProviderOverride,
@@ -830,9 +855,9 @@ function addDerivedProviders(
       );
     }
 
-    const mergedRuntimeSettings = mergeRuntimeSettings(
-      baseProvider.runtimeSettings,
-      toRuntimeSettings(override),
+    const mergedRuntimeSettings = applyDerivedProviderRuntimeDefaults(
+      providerId,
+      mergeRuntimeSettings(baseProvider.runtimeSettings, toRuntimeSettings(override)),
     );
     const baseDefinition = baseProvider.definition;
     const baseFactory = getProviderClientFactory(baseProviderId);

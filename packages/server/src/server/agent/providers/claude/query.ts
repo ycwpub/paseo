@@ -8,6 +8,11 @@ import {
 } from "../../provider-launch-config.js";
 import { buildSelfNodeCommand } from "../../../paseo-env.js";
 import { spawnProcess } from "../../../../utils/spawn.js";
+import {
+  adaptAidenClaudeSpawnArgs,
+  createAidenRuntimeEnvOverlay,
+  isAidenRuntimeProvider,
+} from "../aiden/runtime-compat.js";
 
 // Keep the raw SDK query import in this module only. Claude process launch behavior
 // must stay shared between production and tests so Windows .cmd/.bat handling cannot
@@ -19,6 +24,8 @@ export type ClaudeQueryFactory = (input: ClaudeQueryInput) => Query;
 
 export interface ClaudeQueryContext {
   runtimeSettings?: ProviderRuntimeSettings;
+  customProviderId?: string;
+  aidenConfigDir?: string;
   launchEnv?: Record<string, string>;
   queryFactory?: ClaudeQueryFactory;
   /** Called with the spawned child process so the caller can tree-kill it on close. */
@@ -32,6 +39,7 @@ function isChildProcessWithStreams(child: ChildProcess): child is ChildProcessWi
 function resolveClaudeSpawnCommand(
   spawnOptions: SpawnOptions,
   runtimeSettings?: ProviderRuntimeSettings,
+  customProviderId?: string,
 ): { command: string; args: string[] } {
   const commandConfig = runtimeSettings?.command;
   if (!commandConfig || commandConfig.mode === "default") {
@@ -48,6 +56,14 @@ function resolveClaudeSpawnCommand(
     };
   }
 
+  if (isAidenRuntimeProvider(customProviderId, "claude")) {
+    const adapted = adaptAidenClaudeSpawnArgs(spawnOptions.args);
+    return {
+      command: commandConfig.argv[0],
+      args: [...commandConfig.argv.slice(1), ...adapted.launcherArgs, ...adapted.passthroughArgs],
+    };
+  }
+
   return {
     command: commandConfig.argv[0],
     args: [...commandConfig.argv.slice(1), ...spawnOptions.args],
@@ -58,26 +74,37 @@ function applyRuntimeSettingsToClaudeOptions(
   options: ClaudeOptions,
   context: ClaudeQueryContext,
 ): ClaudeOptions {
-  const { runtimeSettings, launchEnv, onChildProcess } = context;
+  const { runtimeSettings, customProviderId, aidenConfigDir, launchEnv, onChildProcess } = context;
   return {
     ...options,
     spawnClaudeCodeProcess: (spawnOptions) => {
-      const resolved = resolveClaudeSpawnCommand(spawnOptions, runtimeSettings);
+      const resolved = resolveClaudeSpawnCommand(spawnOptions, runtimeSettings, customProviderId);
       // When the SDK passes a default JS runtime ("node"/"bun"), replace it with
       // process.execPath — the actual node binary running the daemon. This avoids
       // PATH lookup failures in the managed runtime bundle.
       // When the SDK passes a native binary path (from pathToClaudeCodeExecutable)
       // or the user overrides the command via runtime settings, use that directly.
       const isDefaultRuntime = resolved.command === "node" || resolved.command === "bun";
-      const providerEnvSpec = createProviderEnvSpec({
+      const baseProviderEnv = createProviderEnv({
         baseEnv: spawnOptions.env,
         runtimeSettings,
         overlays: [launchEnv],
       });
+      const aidenRuntimeEnv = createAidenRuntimeEnvOverlay({
+        providerId: customProviderId,
+        target: "claude",
+        baseEnv: baseProviderEnv,
+        configDir: aidenConfigDir,
+      });
+      const providerEnvSpec = createProviderEnvSpec({
+        baseEnv: spawnOptions.env,
+        runtimeSettings,
+        overlays: [launchEnv, aidenRuntimeEnv],
+      });
       const providerEnv = createProviderEnv({
         baseEnv: spawnOptions.env,
         runtimeSettings,
-        overlays: [launchEnv],
+        overlays: [launchEnv, aidenRuntimeEnv],
       });
       const selfNodeCommand = isDefaultRuntime
         ? buildSelfNodeCommand(resolved.args, providerEnv)

@@ -581,6 +581,31 @@ export function buildSettingsHostSectionRoute(serverId: string, section: HostSec
   return `/settings/hosts/${encodeSegment(normalized)}/${section}` as const;
 }
 
+export const HOST_RESOURCE_SYNC_PAGES = [
+  "memory",
+  "knowledge",
+  "mcp",
+  "skills",
+  "plugins",
+  "assistants",
+] as const;
+
+export type HostResourceSyncPage = (typeof HOST_RESOURCE_SYNC_PAGES)[number];
+
+export function normalizeHostResourceSyncPage(value: string): HostResourceSyncPage | null {
+  return (HOST_RESOURCE_SYNC_PAGES as readonly string[]).includes(value)
+    ? (value as HostResourceSyncPage)
+    : null;
+}
+
+export function buildHostResourceSyncRoute(serverId: string, page: HostResourceSyncPage) {
+  const normalized = trimNonEmpty(serverId);
+  if (!normalized) {
+    throw new Error("buildHostResourceSyncRoute requires a non-empty serverId");
+  }
+  return `/settings/hosts/${encodeSegment(normalized)}/connections/sync/${page}` as const;
+}
+
 export function buildAssistantSettingsRoute(serverId: string, assistantId?: string) {
   const normalizedServerId = trimNonEmpty(serverId);
   if (!normalizedServerId) {

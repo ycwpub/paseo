@@ -30,6 +30,7 @@ describe("feature_paseo server integration parity", () => {
       "memoryScopePolicies",
       "memoryUsers",
       "memorySync",
+      "localResourceSync",
       "cloudKnowledgeCache",
       "reasoningTranslation",
       "teams",

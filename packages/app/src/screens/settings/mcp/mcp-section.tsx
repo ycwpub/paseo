@@ -7,7 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useHostFeature } from "@/runtime/host-features";
@@ -335,14 +334,6 @@ export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
         {mcp.mutationError ? (
           <Text style={settingsStyles.rowError}>{mcp.mutationError.message}</Text>
         ) : null}
-      </SettingsSection>
-      <SettingsSection title="多主机共享">
-        <HostResourceSyncCard
-          serverId={serverId}
-          kind="mcp"
-          requiredFeature="mcpServers"
-          warning="MCP 同步会复制完整传输配置，包括命令、环境变量、请求头和其中可能包含的凭据。请只同步到可信主机。"
-        />
       </SettingsSection>
     </View>
   );

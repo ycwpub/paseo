@@ -20,7 +20,6 @@ import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { PluginLogsSheet } from "@/screens/settings/plugins/plugin-logs-sheet";
-import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { usePanelStore } from "@/stores/panel-store";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -541,14 +540,6 @@ export function PluginsSection({ serverId }: { serverId: string }) {
           </View>
         </SettingsSection>
       ) : null}
-
-      <HostResourceSyncCard
-        serverId={serverId}
-        kind="plugins"
-        requiredFeature="plugins"
-        description="同步插件安装来源、启用状态及其运行时能力；目标主机不会删除已有插件。"
-        warning="本地目录插件要求目标主机存在相同路径；插件市场插件要求目标主机能够访问相同插件市场。"
-      />
 
       <SettingsSection title="添加本地来源">
         <View style={styles.formCard}>

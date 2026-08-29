@@ -14,13 +14,6 @@ import { MemoryHostSyncCard } from "./memory-host-sync-card";
 import { MemoryScopePoliciesSection } from "./memory-scope-policies-section";
 import { MemoryTransferCard } from "./memory-transfer-card";
 
-export const MEMORY_SETTINGS_PAGE_TITLES: Record<HostMemorySettingsPage, string> = {
-  policies: "记忆规范",
-  summary: "总记忆文件",
-  sync: "多主机记忆同步",
-  transfer: "导入与导出",
-};
-
 function MemorySummaryPage({
   summary,
   summaryPath,

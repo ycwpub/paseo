@@ -19,6 +19,13 @@ describe("settings feature routes", () => {
         projectId: "project",
       }),
     ).toBe("projects");
+    expect(
+      getHostSectionAfterHostSwitch({
+        kind: "resource-sync",
+        serverId: "host",
+        page: "memory",
+      }),
+    ).toBe("connections");
   });
 
   it("resolves the host for nested feature routes", () => {
@@ -27,6 +34,13 @@ describe("settings feature routes", () => {
         kind: "assistant",
         serverId: "host",
         assistantId: "assistant",
+      }),
+    ).toBe("host");
+    expect(
+      getSettingsViewServerId({
+        kind: "resource-sync",
+        serverId: "host",
+        page: "knowledge",
       }),
     ).toBe("host");
     expect(getSettingsViewServerId({ kind: "section", section: "general" })).toBeNull();

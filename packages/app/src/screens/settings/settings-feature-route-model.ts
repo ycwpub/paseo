@@ -9,6 +9,7 @@ export function getSettingsViewServerId(view: SettingsView): string | null {
     case "project-lark-groups":
     case "memory":
     case "memory-page":
+    case "resource-sync":
     case "assistant":
     case "team":
     case "instruction-templates":
@@ -37,6 +38,9 @@ export function getHostSectionAfterHostSwitch(view: SettingsView): HostSectionSl
   }
   if (view.kind === "memory-page") {
     return "memory";
+  }
+  if (view.kind === "resource-sync") {
+    return "connections";
   }
   if (view.kind === "assistant" || view.kind === "team") {
     return "assistants";

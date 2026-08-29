@@ -1,5 +1,5 @@
 import type { ComponentType, ReactNode } from "react";
-import { BookOpen, Bot, MessageCircle, Sparkles, Wrench } from "lucide-react-native";
+import { BookOpen, Bot, MessageCircle, RefreshCw, Sparkles, Wrench } from "lucide-react-native";
 import type { SettingsView } from "@/navigation/settings-navigation";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import ProjectLarkGroupsScreen from "@/screens/project-lark-groups-screen";
@@ -14,6 +14,8 @@ import {
   HostSkillEditorPage,
   HostTeamEditorPage,
 } from "@/screens/settings/host-page";
+import { HostResourceSyncPage } from "@/screens/settings/shared/host-resource-sync-page";
+import { HOST_RESOURCE_SYNC_PAGE_TITLES } from "@/screens/settings/shared/host-resource-sync-model";
 
 export interface SettingsDetailHeader {
   title: string;
@@ -25,7 +27,6 @@ export interface SettingsDetailHeader {
 export function renderNestedSettingsContent(
   view: SettingsView,
   onDone: () => void,
-  isCompactLayout: boolean,
 ): ReactNode | undefined {
   switch (view.kind) {
     case "project":
@@ -34,7 +35,7 @@ export function renderNestedSettingsContent(
           serverId={view.serverId}
           projectId={view.projectId}
           onBackToProjects={onDone}
-          showBackToProjects={!isCompactLayout}
+          showBackToProjects={false}
         />
       );
     case "project-lark-groups":
@@ -58,6 +59,8 @@ export function renderNestedSettingsContent(
       );
     case "memory-page":
       return <HostMemorySettingsPage serverId={view.serverId} page={view.page} />;
+    case "resource-sync":
+      return <HostResourceSyncPage serverId={view.serverId} page={view.page} />;
     case "assistant":
       return (
         <HostAssistantEditorPage
@@ -124,6 +127,12 @@ export function getResourceDetailHeader(
       return { title: "飞书群上下文", Icon: MessageCircle, onBack };
     case "project-knowledge":
       return { title: "Project 知识", Icon: BookOpen, onBack };
+    case "resource-sync":
+      return {
+        title: HOST_RESOURCE_SYNC_PAGE_TITLES[view.page],
+        Icon: RefreshCw,
+        onBack,
+      };
     default:
       return null;
   }

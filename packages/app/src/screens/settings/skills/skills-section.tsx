@@ -7,7 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
 import { useSkills } from "@/hooks/use-skills";
 import { useHostFeature } from "@/runtime/host-features";
@@ -275,9 +274,6 @@ export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps
         {skills.mutationError ? (
           <Text style={settingsStyles.rowError}>{skills.mutationError.message}</Text>
         ) : null}
-      </SettingsSection>
-      <SettingsSection title="多主机共享">
-        <HostResourceSyncCard serverId={serverId} kind="skills" requiredFeature="skills" />
       </SettingsSection>
     </View>
   );

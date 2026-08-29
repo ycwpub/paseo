@@ -127,13 +127,15 @@ import {
 } from "@/screens/settings/host-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
-import { MEMORY_SETTINGS_PAGE_TITLES } from "@/screens/settings/memory/memory-settings-page";
+import { MEMORY_SETTINGS_PAGE_TITLES } from "@/screens/settings/memory/memory-settings-page-titles";
 import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowledge-management-section";
 import {
   getResourceDetailHeader,
   renderNestedSettingsContent,
   type SettingsDetailHeader,
 } from "@/screens/settings/settings-feature-routes";
+import { SettingsDetailNavigationHeader } from "@/screens/settings/settings-detail-navigation-header";
+import type { LarkChannelDetailNavigation } from "@/screens/settings/channels/lark-channel-section";
 import {
   getHostSectionAfterHostSwitch,
   getSettingsViewServerId,
@@ -272,6 +274,7 @@ function renderHostSettingsContent(
   view: Extract<SettingsView, { kind: "host" }>,
   onHostRemoved: () => void,
   onOpenLocalRelay: () => void,
+  onChannelDetailNavigationChange: (navigation: LarkChannelDetailNavigation | null) => void,
 ): ReactNode {
   switch (view.section) {
     case "projects":
@@ -301,7 +304,12 @@ function renderHostSettingsContent(
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
     case "channels":
-      return <HostChannelsPage serverId={view.serverId} />;
+      return (
+        <HostChannelsPage
+          serverId={view.serverId}
+          onDetailNavigationChange={onChannelDetailNavigationChange}
+        />
+      );
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
     case "terminals":
@@ -1346,6 +1354,125 @@ export interface SettingsScreenProps {
   openAddHostIntent?: string | null;
 }
 
+interface SettingsDetailHeaderCallbacks {
+  closeLocalRelay: () => void;
+  backFromDetail: () => void;
+}
+
+function resolveSettingsDetailHeader(input: {
+  view: SettingsView;
+  channelDetailNavigation: LarkChannelDetailNavigation | null;
+  callbacks: SettingsDetailHeaderCallbacks;
+  t: TFunction;
+}): SettingsDetailHeader | null {
+  const { view, channelDetailNavigation, callbacks, t } = input;
+  if (view.kind === "host") {
+    if (view.section === "channels" && channelDetailNavigation) {
+      return {
+        title: channelDetailNavigation.title,
+        Icon: MessageCircle,
+        onBack: channelDetailNavigation.onBack,
+      };
+    }
+    if (view.section === "relay") {
+      return {
+        title: t("settings.host.relay.lan.title"),
+        Icon: Network,
+        onBack: callbacks.closeLocalRelay,
+      };
+    }
+    const item = HOST_SECTION_ITEMS.find((section) => section.id === view.section);
+    return item ? { title: t(item.labelKey), Icon: item.icon } : null;
+  }
+  if (view.kind === "section") {
+    const item = SIDEBAR_SECTION_ITEMS.find((section) => section.id === view.section);
+    return item ? { title: t(item.labelKey), Icon: item.icon } : null;
+  }
+  if (view.kind === "project") {
+    return { title: "项目设置", Icon: FolderGit2, onBack: callbacks.backFromDetail };
+  }
+  if (view.kind === "memory") {
+    return {
+      title: view.memoryId
+        ? t("memoryPolicies.contentManager.detailTitle")
+        : t("memoryPolicies.contentManager.pageTitle"),
+      Icon: Brain,
+      onBack: callbacks.backFromDetail,
+    };
+  }
+  if (view.kind === "memory-page") {
+    return {
+      title: MEMORY_SETTINGS_PAGE_TITLES[view.page],
+      Icon: Brain,
+      onBack: callbacks.backFromDetail,
+    };
+  }
+  return getResourceDetailHeader(view, callbacks.backFromDetail);
+}
+
+function navigateBackWithHistory(input: {
+  canGoBack: () => boolean;
+  back: () => void;
+  fallback: () => void;
+}): void {
+  if (input.canGoBack()) {
+    input.back();
+    return;
+  }
+  input.fallback();
+}
+
+function renderDesktopSettingsDetailHeader(input: {
+  detailHeader: SettingsDetailHeader | null;
+  iconSize: number;
+  iconColor: string;
+}): ReactNode {
+  if (!input.detailHeader) {
+    return null;
+  }
+  if (input.detailHeader.onBack) {
+    return (
+      <SettingsDetailNavigationHeader
+        title={input.detailHeader.title}
+        titleAccessory={input.detailHeader.titleAccessory}
+        onBack={input.detailHeader.onBack}
+      />
+    );
+  }
+  const DetailIcon = input.detailHeader.Icon;
+  return (
+    <>
+      <HeaderIconBadge>
+        <DetailIcon size={input.iconSize} color={input.iconColor} />
+      </HeaderIconBadge>
+      <ScreenTitle testID="settings-detail-header-title">{input.detailHeader.title}</ScreenTitle>
+      {input.detailHeader.titleAccessory}
+    </>
+  );
+}
+
+/* oxlint-disable react-perf/jsx-no-jsx-as-prop -- ScreenHeader intentionally exposes its left slot as a ReactNode prop. */
+function SettingsMobileDetailHeader({
+  detailHeader,
+  fallbackBack,
+}: {
+  detailHeader: SettingsDetailHeader | null;
+  fallbackBack: () => void;
+}) {
+  if (!detailHeader) {
+    return <BackHeader onBack={fallbackBack} />;
+  }
+  const headerLeft = (
+    <SettingsDetailNavigationHeader
+      title={detailHeader.title}
+      titleAccessory={detailHeader.titleAccessory}
+      onBack={detailHeader.onBack ?? fallbackBack}
+    />
+  );
+  return <ScreenHeader left={headerLeft} />;
+}
+/* oxlint-enable react-perf/jsx-no-jsx-as-prop */
+
 export default function SettingsScreen({ view, openAddHostIntent = null }: SettingsScreenProps) {
   const router = useRouter();
   const { theme } = useUnistyles();
@@ -1373,6 +1500,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
     routedSettingsHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
   );
+  const [channelDetailNavigation, setChannelDetailNavigation] =
+    useState<LarkChannelDetailNavigation | null>(null);
   useFocusEffect(
     useCallback(() => {
       setSelectedSettingsHostServerId(
@@ -1594,56 +1723,26 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   }, [activeHostServerId, isCompactLayout, router, view]);
 
   const handleBackFromDetail = useCallback(() => {
-    returnFromSettings(view);
-  }, [view]);
-
-  const handleBackFromMemory = useCallback(() => {
-    returnFromSettings(view);
-  }, [view]);
+    navigateBackWithHistory({
+      canGoBack: () => router.canGoBack(),
+      back: () => router.back(),
+      fallback: () => returnFromSettings(view),
+    });
+  }, [router, view]);
 
   const handleBackToWorkspace = useCallback(() => {
     returnFromSettings({ kind: "root" });
   }, []);
 
-  const detailHeader = ((): SettingsDetailHeader | null => {
-    if (view.kind === "host") {
-      if (view.section === "relay") {
-        return {
-          title: t("settings.host.relay.lan.title"),
-          Icon: Network,
-          onBack: handleCloseLocalRelay,
-        };
-      }
-      const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
-      if (!item) return null;
-      return { title: t(item.labelKey), Icon: item.icon };
-    }
-    if (view.kind === "section") {
-      const item = SIDEBAR_SECTION_ITEMS.find((s) => s.id === view.section);
-      if (!item) return null;
-      return { title: t(item.labelKey), Icon: item.icon };
-    }
-    if (view.kind === "project") {
-      return { title: t("settings.projects"), Icon: FolderGit2 };
-    }
-    if (view.kind === "memory") {
-      return {
-        title: view.memoryId
-          ? t("memoryPolicies.contentManager.detailTitle")
-          : t("memoryPolicies.contentManager.pageTitle"),
-        Icon: Brain,
-        onBack: handleBackFromMemory,
-      };
-    }
-    if (view.kind === "memory-page") {
-      return {
-        title: MEMORY_SETTINGS_PAGE_TITLES[view.page],
-        Icon: Brain,
-        onBack: handleBackFromDetail,
-      };
-    }
-    return getResourceDetailHeader(view, handleBackFromDetail);
-  })();
+  const detailHeader = resolveSettingsDetailHeader({
+    view,
+    channelDetailNavigation,
+    callbacks: {
+      closeLocalRelay: handleCloseLocalRelay,
+      backFromDetail: handleBackFromDetail,
+    },
+    t,
+  });
 
   let content: ReactNode;
   if (view.kind === "section" && view.section === "layout") {
@@ -1651,13 +1750,14 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   } else {
     content = (() => {
       if (view.kind === "host") {
-        return renderHostSettingsContent(view, handleHostRemoved, handleOpenLocalRelay);
+        return renderHostSettingsContent(
+          view,
+          handleHostRemoved,
+          handleOpenLocalRelay,
+          setChannelDetailNavigation,
+        );
       }
-      const nestedContent = renderNestedSettingsContent(
-        view,
-        handleBackFromDetail,
-        isCompactLayout,
-      );
+      const nestedContent = renderNestedSettingsContent(view, handleBackFromDetail);
       if (nestedContent !== undefined) return nestedContent;
       if (view.kind === "section") {
         switch (view.section) {
@@ -1720,26 +1820,11 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     );
   }
 
-  const desktopDetailHeaderLeft = detailHeader ? (
-    <>
-      {detailHeader.onBack ? (
-        <Pressable
-          onPress={detailHeader.onBack}
-          style={styles.detailBackButton}
-          accessibilityRole="button"
-          accessibilityLabel={t("common.actions.back")}
-          testID="settings-detail-back"
-        >
-          <ArrowLeft size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-        </Pressable>
-      ) : null}
-      <HeaderIconBadge>
-        <detailHeader.Icon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-      </HeaderIconBadge>
-      <ScreenTitle testID="settings-detail-header-title">{detailHeader.title}</ScreenTitle>
-      {detailHeader.titleAccessory}
-    </>
-  ) : null;
+  const desktopDetailHeaderLeft = renderDesktopSettingsDetailHeader({
+    detailHeader,
+    iconSize: theme.iconSize.md,
+    iconColor: theme.colors.foregroundMuted,
+  });
 
   const addHostModals = (
     <>
@@ -1798,10 +1883,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
-        <BackHeader
-          title={detailHeader?.title}
-          titleAccessory={detailHeader?.titleAccessory}
-          onBack={handleBackFromDetail}
+        <SettingsMobileDetailHeader
+          detailHeader={detailHeader}
+          fallbackBack={handleBackFromDetail}
         />
         <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <View style={styles.content}>{content}</View>
@@ -1879,10 +1963,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   wideContent: {
     maxWidth: 920,
-  },
-  detailBackButton: {
-    padding: theme.spacing[2],
-    borderRadius: theme.borderRadius.lg,
   },
   aboutValue: {
     color: theme.colors.foregroundMuted,

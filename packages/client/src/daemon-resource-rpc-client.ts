@@ -2,6 +2,9 @@ import type {
   McpServer,
   McpServerCreateInput,
   McpServerUpdateInput,
+  LocalResourceExistingPolicy,
+  LocalResourceMissingPolicy,
+  LocalResourceSnapshot,
   PaseoMemorySyncSelection,
   PaseoMemoryUpdateInput,
   PaseoMemorySyncSnapshot,
@@ -192,6 +195,41 @@ export class DaemonResourceRpcClient {
         source: options.source,
       },
       responseType: "knowledge.cloud_document.get_status.response",
+    });
+  }
+
+  exportLocalResource(options: { path: string; requestId?: string }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "resource_sync.local.export.request",
+        path: options.path,
+      },
+      responseType: "resource_sync.local.export.response",
+      timeout: 120_000,
+    });
+  }
+
+  applyLocalResource(options: {
+    path: string;
+    snapshot: LocalResourceSnapshot;
+    missingPolicy: LocalResourceMissingPolicy;
+    existingPolicy: LocalResourceExistingPolicy;
+    sourceLabel?: string;
+    requestId?: string;
+  }) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "resource_sync.local.apply.request",
+        path: options.path,
+        snapshot: options.snapshot,
+        missingPolicy: options.missingPolicy,
+        existingPolicy: options.existingPolicy,
+        sourceLabel: options.sourceLabel,
+      },
+      responseType: "resource_sync.local.apply.response",
+      timeout: 120_000,
     });
   }
 

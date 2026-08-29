@@ -29,6 +29,7 @@ describe("feature_paseo protocol parity", () => {
       "memoryScopePolicies",
       "memoryUsers",
       "memorySync",
+      "localResourceSync",
       "cloudKnowledgeCache",
       "reasoningTranslation",
       "teams",

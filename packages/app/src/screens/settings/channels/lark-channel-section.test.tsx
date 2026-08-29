@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import React, { type ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { LarkChannelBotStatus, LarkChannelStatus } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LarkChannelSection } from "./lark-channel-section";
@@ -403,8 +403,14 @@ describe("LarkChannelSection", () => {
       }),
       makeBot({ id: "bot-2", name: "Ops bot", appId: "cli_ops" }),
     ]);
+    const onDetailNavigationChange = vi.fn();
 
-    render(<LarkChannelSection serverId="server-1" />);
+    render(
+      <LarkChannelSection
+        serverId="server-1"
+        onDetailNavigationChange={onDetailNavigationChange}
+      />,
+    );
 
     expect(screen.getAllByText("袁昌旺的paseo_mac").length).toBeGreaterThan(0);
     expect(screen.getByText(/本地备注：Settlement bot/)).toBeTruthy();
@@ -415,7 +421,11 @@ describe("LarkChannelSection", () => {
     expect(screen.getByText(/下方连接、模型与项目配置只对这个飞书机器人生效/)).toBeTruthy();
     expect(screen.getByDisplayValue("cli_settle")).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId("host-page-lark-back"));
+    const detailNavigation = onDetailNavigationChange.mock.calls
+      .map(([navigation]) => navigation)
+      .find((navigation) => navigation?.title === "编辑飞书机器人");
+    expect(detailNavigation).toBeTruthy();
+    act(() => detailNavigation?.onBack());
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-2"));
 
     await waitFor(() => expect(screen.getByDisplayValue("cli_ops")).toBeTruthy());
@@ -653,15 +663,26 @@ describe("LarkChannelSection", () => {
 
   test("opens reminders on a dedicated secondary page", () => {
     channelState.current.status = makeStatus([makeBot()]);
+    const onDetailNavigationChange = vi.fn();
 
-    render(<LarkChannelSection serverId="server-1" />);
+    render(
+      <LarkChannelSection
+        serverId="server-1"
+        onDetailNavigationChange={onDetailNavigationChange}
+      />,
+    );
 
     expect(screen.queryByTestId("host-page-channels-reminders")).toBeNull();
     fireEvent.click(screen.getByTestId("host-page-lark-open-reminders"));
     expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
     expect(screen.getByText("飞书定时提醒")).toBeTruthy();
+    expect(screen.queryByText("返回飞书设置")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("host-page-lark-back"));
+    const detailNavigation = onDetailNavigationChange.mock.calls
+      .map(([navigation]) => navigation)
+      .find((navigation) => navigation?.title === "飞书定时提醒");
+    expect(detailNavigation).toBeTruthy();
+    act(() => detailNavigation?.onBack());
     expect(screen.getByTestId("host-page-channels")).toBeTruthy();
   });
 });

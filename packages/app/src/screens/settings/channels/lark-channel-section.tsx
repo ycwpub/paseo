@@ -103,11 +103,13 @@ const foregroundIconMapping = (theme: Theme) => ({ color: theme.colors.foregroun
 
 interface LarkChannelSectionProps {
   serverId: string;
+  onDetailNavigationChange?: (navigation: LarkChannelDetailNavigation | null) => void;
 }
 
 interface LarkChannelLoadedContentProps {
   serverId: string;
   channel: UseLarkChannelResult;
+  onDetailNavigationChange?: (navigation: LarkChannelDetailNavigation | null) => void;
 }
 
 interface StatusCardProps {
@@ -126,6 +128,17 @@ interface BotListCardProps {
 }
 
 type LarkChannelPage = "overview" | "bot" | "substitute" | "reminders";
+
+export interface LarkChannelDetailNavigation {
+  title: string;
+  onBack: () => void;
+}
+
+const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, string> = {
+  bot: "编辑飞书机器人",
+  substitute: "替身模式",
+  reminders: "飞书定时提醒",
+};
 
 function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
   const application = channel.application ?? null;
@@ -875,20 +888,9 @@ function SubstituteSettingsCard(props: SubstituteSettingsCardProps) {
   );
 }
 
-function SecondaryPageHeader({
-  title,
-  description,
-  onBack,
-}: {
-  title: string;
-  description: string;
-  onBack: () => void;
-}) {
+function SecondaryPageIntro({ title, description }: { title: string; description: string }) {
   return (
     <View style={styles.secondaryPageHeader}>
-      <Button variant="ghost" size="sm" onPress={onBack} testID="host-page-lark-back">
-        返回飞书设置
-      </Button>
       <View style={settingsStyles.rowContent}>
         <Text style={styles.secondaryPageTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{description}</Text>
@@ -1276,7 +1278,11 @@ function useLarkModelControls(input: {
   };
 }
 
-function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedContentProps) {
+function LarkChannelLoadedContent({
+  serverId,
+  channel,
+  onDetailNavigationChange,
+}: LarkChannelLoadedContentProps) {
   const assistants = useAssistants(serverId);
   const supportsTeams = useHostFeature(serverId, "teams");
   const supportsLarkDirectory = useHostFeature(serverId, "larkDirectory");
@@ -1469,6 +1475,19 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   const handleOpenReminders = useCallback(() => {
     setPage("reminders");
   }, []);
+
+  useEffect(() => {
+    if (!onDetailNavigationChange) return;
+    if (page === "overview") {
+      onDetailNavigationChange(null);
+      return;
+    }
+    onDetailNavigationChange({
+      title: page === "bot" && creatingBot ? "添加飞书机器人" : LARK_CHANNEL_PAGE_TITLES[page],
+      onBack: handleBackToOverview,
+    });
+    return () => onDetailNavigationChange(null);
+  }, [creatingBot, handleBackToOverview, onDetailNavigationChange, page]);
   const handleBotNameChange = useCallback((value: string) => {
     setBotName(value);
     setSaveError(null);
@@ -1702,10 +1721,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     ),
     bot: (
       <View testID="host-page-channels-bot">
-        <SecondaryPageHeader
+        <SecondaryPageIntro
           title={creatingBot ? "添加飞书机器人" : "编辑飞书机器人"}
           description="配置机器人凭证、默认模型、助手或团队以及项目。"
-          onBack={handleBackToOverview}
         />
         <StatusCard
           channel={channel}
@@ -1728,10 +1746,9 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     ),
     substitute: (
       <View testID="host-page-channels-substitute">
-        <SecondaryPageHeader
+        <SecondaryPageIntro
           title="替身模式"
           description={`配置 ${selectedBotStatus ? getBotDisplayName(selectedBotStatus) : "当前机器人"} 的替身回复规则。`}
-          onBack={handleBackToOverview}
         />
         <SubstituteSettingsCard
           status={selectedBotStatus}
@@ -1755,11 +1772,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     ),
     reminders: (
       <View testID="host-page-channels-reminders">
-        <SecondaryPageHeader
-          title="飞书定时提醒"
-          description="创建和管理飞书群定时提醒任务。"
-          onBack={handleBackToOverview}
-        />
+        <SecondaryPageIntro title="飞书定时提醒" description="创建和管理飞书群定时提醒任务。" />
         <LarkReminderSection
           serverId={serverId}
           bots={botStatuses}
@@ -1775,14 +1788,23 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   return pages[page];
 }
 
-export function LarkChannelSection({ serverId }: LarkChannelSectionProps) {
+export function LarkChannelSection({
+  serverId,
+  onDetailNavigationChange,
+}: LarkChannelSectionProps) {
   const supportsLark = useHostFeature(serverId, "larkChannel");
   const channel = useLarkChannel(serverId, { enabled: supportsLark });
 
   if (!supportsLark) return <UpgradeRequiredCard />;
   if (channel.isLoading) return <LoadingCard />;
   if (channel.error && !channel.status) return <ErrorCard message={channel.error.message} />;
-  return <LarkChannelLoadedContent serverId={serverId} channel={channel} />;
+  return (
+    <LarkChannelLoadedContent
+      serverId={serverId}
+      channel={channel}
+      onDetailNavigationChange={onDetailNavigationChange}
+    />
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({

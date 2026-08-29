@@ -28,16 +28,6 @@ const ENTRIES: readonly MemorySettingsEntry[] = [
     description: "定义不同记忆范围允许保存哪些长期信息。",
   },
   {
-    id: "summary",
-    title: "总记忆文件",
-    description: "查看文件存储路径，并编辑当前用户的记忆总览。",
-  },
-  {
-    id: "sync",
-    title: "多主机记忆同步",
-    description: "按全局、Project 或助手范围在不同主机之间同步记忆。",
-  },
-  {
     id: "transfer",
     title: "导入与导出",
     description: "导出完整记忆数据，或通过 JSON 合并、替换当前记忆。",
@@ -82,16 +72,14 @@ function MemorySettingsEntryRow({
 export function MemorySettingsEntrySection({
   serverId,
   memoryCount,
-  syncSupported,
 }: {
   serverId: string;
   memoryCount: number;
-  syncSupported: boolean;
 }) {
   return (
     <SettingsSection title="记忆管理">
       <View style={settingsStyles.card}>
-        {ENTRIES.filter((entry) => entry.id !== "sync" || syncSupported).map((entry) => (
+        {ENTRIES.map((entry) => (
           <MemorySettingsEntryRow
             key={entry.id}
             serverId={serverId}

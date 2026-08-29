@@ -15,6 +15,7 @@ import {
   buildHostMemoryDetailRoute,
   buildHostMemoryRoute,
   buildHostMemorySettingsPageRoute,
+  buildHostResourceSyncRoute,
   buildInstructionTemplateSettingsRoute,
   buildInstructionTemplatesSettingsRoute,
   buildMcpServerSettingsRoute,
@@ -24,6 +25,7 @@ import {
   buildProjectLarkGroupsSettingsRoute,
   buildProjectSettingsRoute,
   buildProjectsSettingsRoute,
+  normalizeHostResourceSyncPage,
   decodeFilePathFromPathSegment,
   decodeWorkspaceIdFromPathSegment,
   encodeFilePathForPathSegment,
@@ -276,6 +278,14 @@ describe("projects settings routes", () => {
     );
     expect(normalizeHostMemorySettingsPage("summary")).toBe("summary");
     expect(normalizeHostMemorySettingsPage("unknown")).toBeNull();
+  });
+
+  it("builds and validates host resource sync routes", () => {
+    expect(buildHostResourceSyncRoute("host a", "memory")).toBe(
+      "/settings/hosts/host%20a/connections/sync/memory",
+    );
+    expect(normalizeHostResourceSyncPage("knowledge")).toBe("knowledge");
+    expect(normalizeHostResourceSyncPage("unknown")).toBeNull();
   });
 
   it("builds project memory list and detail routes", () => {

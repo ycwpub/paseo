@@ -21,7 +21,6 @@ interface MemorySectionContentProps {
   isMutating: boolean;
   visibleError: string | null;
   usersSupported: boolean;
-  syncSupported: boolean;
   onSaveSettings: (settings: PaseoMemorySettings) => Promise<void>;
   onChangeUser: (operation: PaseoMemoryUserOperation) => Promise<void>;
   onClearAll: () => Promise<void>;
@@ -45,7 +44,6 @@ export function MemorySectionContent({
   isMutating,
   visibleError,
   usersSupported,
-  syncSupported,
   onSaveSettings,
   onChangeUser,
   onClearAll,
@@ -109,11 +107,7 @@ export function MemorySectionContent({
         </View>
       </SettingsSection>
 
-      <MemorySettingsEntrySection
-        serverId={serverId}
-        memoryCount={memory.details.length}
-        syncSupported={syncSupported}
-      />
+      <MemorySettingsEntrySection serverId={serverId} memoryCount={memory.details.length} />
     </View>
   );
 }

@@ -50,6 +50,7 @@ interface KnowledgeManagementSectionProps {
   serverId: string;
   initialScope?: KnowledgeScope;
   initialProjectId?: string | null;
+  syncOnly?: boolean;
 }
 
 const SCOPE_OPTIONS = [
@@ -109,7 +110,7 @@ function buildKnowledgeSyncTarget(input: {
     ? {
         scope: "project",
         projectId: targetHost.projectId,
-        repoRoot: targetHost.repoRoot,
+        repoRoot: targetHost.repoRoot.trim() || targetHost.projectPath,
       }
     : null;
 }
@@ -150,8 +151,8 @@ function KnowledgeHostSync({
         kind="knowledge"
         requiredFeature={requiredFeature}
         disabled={disabled}
-        description="同步当前选中的知识范围。知识条目按类型和来源合并，不会删除任一主机已有内容。"
-        warning="本地目录和本地文档只同步配置路径，不复制文件内容；请确保目标主机存在对应路径。云文档链接可直接共享。"
+        description="同步当前选中的知识范围。云文档共享配置；本地目录和本地文档会按所选策略同步实际内容。"
+        warning="“合并”会保留目标独有内容；同名但内容不同的文件会另存为带来源主机标记的冲突副本，不会静默覆盖。"
         resolveKnowledgeTarget={resolveKnowledgeTarget}
       />
     </SettingsSection>
@@ -162,6 +163,7 @@ export function KnowledgeManagementSection({
   serverId,
   initialScope = "global",
   initialProjectId = null,
+  syncOnly = false,
 }: KnowledgeManagementSectionProps) {
   const { projects, isLoading } = useProjects();
   const supportsAssistants = useHostFeature(serverId, "assistants");
@@ -244,10 +246,11 @@ export function KnowledgeManagementSection({
 
   return (
     <View testID="knowledge-management-section">
-      <SettingsSection title="知识管理">
+      <SettingsSection title={syncOnly ? "选择同步范围" : "知识管理"}>
         <Text style={styles.description}>
-          集中管理当前主机的全局知识、Project 知识和助手知识。全局知识适用于所有 Project；Project
-          知识仅在所选 Project 中生效；助手知识仅在使用所选助手时生效。
+          {syncOnly
+            ? "选择要在不同主机之间同步的知识范围。"
+            : "集中管理当前主机的全局知识、Project 知识和助手知识。全局知识适用于所有 Project；Project 知识仅在所选 Project 中生效；助手知识仅在使用所选助手时生效。"}
         </Text>
         <SegmentedControl
           options={SCOPE_OPTIONS}
@@ -296,23 +299,25 @@ export function KnowledgeManagementSection({
         ) : null}
       </SettingsSection>
 
-      <KnowledgeHostSync
-        serverId={serverId}
-        scope={scope}
-        projects={projects}
-        selectedTarget={selectedTarget}
-        selectedAssistant={selectedAssistant}
-      />
-
-      <KnowledgeScopeContent
-        serverId={serverId}
-        scope={scope}
-        selectedTarget={selectedTarget}
-        projectsLoading={isLoading}
-        supportsAssistants={supportsAssistants}
-        selectedAssistant={selectedAssistant}
-        assistants={assistants}
-      />
+      {syncOnly ? (
+        <KnowledgeHostSync
+          serverId={serverId}
+          scope={scope}
+          projects={projects}
+          selectedTarget={selectedTarget}
+          selectedAssistant={selectedAssistant}
+        />
+      ) : (
+        <KnowledgeScopeContent
+          serverId={serverId}
+          scope={scope}
+          selectedTarget={selectedTarget}
+          projectsLoading={isLoading}
+          supportsAssistants={supportsAssistants}
+          selectedAssistant={selectedAssistant}
+          assistants={assistants}
+        />
+      )}
     </View>
   );
 }

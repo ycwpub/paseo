@@ -6149,6 +6149,14 @@ export class DaemonClient {
     return this.resourceRpc.getCloudDocumentCacheStatus(options);
   }
 
+  async exportLocalResource(options: { path: string; requestId?: string }) {
+    return this.resourceRpc.exportLocalResource(options);
+  }
+
+  async applyLocalResource(options: Parameters<DaemonResourceRpcClient["applyLocalResource"]>[0]) {
+    return this.resourceRpc.applyLocalResource(options);
+  }
+
   async translateReasoning(options: {
     agentId: string;
     text: string;

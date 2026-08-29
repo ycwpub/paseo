@@ -661,6 +661,46 @@ test("new provider extending claude appears in registry", () => {
   });
 });
 
+test("legacy Aiden provider definitions receive their built-in launcher commands", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      "aiden-claude": {
+        extends: "claude",
+        label: "Aiden Claude",
+      },
+      "aiden-codex": {
+        extends: "codex",
+        label: "Aiden Codex",
+      },
+    },
+  });
+
+  registry["aiden-claude"].createClient(logger);
+  registry["aiden-codex"].createClient(logger);
+
+  expect(mockState.constructorArgs.claude).toContainEqual({
+    runtimeSettings: {
+      command: {
+        mode: "replace",
+        argv: ["aiden", "x", "claude"],
+      },
+    },
+    customProvider: {
+      id: "aiden-claude",
+      label: "Aiden Claude",
+      extends: "claude",
+    },
+  });
+  expect(mockState.constructorArgs.codex).toContainEqual({
+    runtimeSettings: {
+      command: {
+        mode: "replace",
+        argv: ["aiden", "x", "codex"],
+      },
+    },
+  });
+});
+
 test("built-in OMP override keeps the real OMP adapter enabled and launchable", async () => {
   const omp = new FakeOmp(["custom-omp"]);
   const registry = buildProviderRegistry(logger, {

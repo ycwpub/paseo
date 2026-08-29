@@ -12,7 +12,10 @@ import {
   InstructionTemplateEditorPage,
   InstructionTemplatesListPage,
 } from "./agents/instruction-templates-section";
-import { LarkChannelSection } from "./channels/lark-channel-section";
+import {
+  LarkChannelSection,
+  type LarkChannelDetailNavigation,
+} from "./channels/lark-channel-section";
 import { McpEditorPage, McpSection } from "./mcp/mcp-section";
 import { MemorySection } from "./memory/memory-section";
 import { MemorySettingsPage } from "./memory/memory-settings-page";
@@ -236,10 +239,16 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
   );
 }
 
-export function HostChannelsPage({ serverId }: { serverId: string }) {
+export function HostChannelsPage({
+  serverId,
+  onDetailNavigationChange,
+}: {
+  serverId: string;
+  onDetailNavigationChange?: (navigation: LarkChannelDetailNavigation | null) => void;
+}) {
   return (
     <HostResourcePage serverId={serverId}>
-      <LarkChannelSection serverId={serverId} />
+      <LarkChannelSection serverId={serverId} onDetailNavigationChange={onDetailNavigationChange} />
     </HostResourcePage>
   );
 }

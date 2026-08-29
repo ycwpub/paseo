@@ -213,6 +213,12 @@ import {
   CloudDocumentStatusRequestSchema,
   CloudDocumentStatusResponseSchema,
 } from "./knowledge/cloud-cache-rpc-schemas.js";
+import {
+  LocalResourceApplyRequestSchema,
+  LocalResourceApplyResponseSchema,
+  LocalResourceExportRequestSchema,
+  LocalResourceExportResponseSchema,
+} from "./resource-sync/rpc-schemas.js";
 
 /**
  * Branch-owned RPC registrations live here so the central protocol unions only
@@ -307,6 +313,8 @@ export const ExtensionSessionInboundSchemas = [
   ReasoningTranslateRequestSchema,
   CloudDocumentCacheRequestSchema,
   CloudDocumentStatusRequestSchema,
+  LocalResourceExportRequestSchema,
+  LocalResourceApplyRequestSchema,
 ] as const;
 
 export const ExtensionSessionOutboundSchemas = [
@@ -405,4 +413,6 @@ export const ExtensionSessionOutboundSchemas = [
   ReasoningTranslateResponseSchema,
   CloudDocumentCacheResponseSchema,
   CloudDocumentStatusResponseSchema,
+  LocalResourceExportResponseSchema,
+  LocalResourceApplyResponseSchema,
 ] as const;

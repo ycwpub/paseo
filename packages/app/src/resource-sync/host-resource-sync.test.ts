@@ -7,6 +7,31 @@ import {
   type ResourceSyncHost,
 } from "./host-resource-sync";
 
+const LOCAL_SNAPSHOT = {
+  version: 1 as const,
+  rootKind: "directory" as const,
+  entries: [],
+  totalFiles: 0,
+  totalDirectories: 0,
+  totalBytes: 0,
+  skippedPaths: [],
+};
+
+function appliedLocalResult() {
+  return {
+    result: {
+      status: "applied" as const,
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      conflicts: 0,
+      bytesWritten: 10,
+      conflictPaths: [],
+    },
+    error: null,
+  };
+}
+
 function skill(overrides: Partial<Skill> = {}): Skill {
   return {
     id: "skill-1",
@@ -350,6 +375,7 @@ describe("host resource sync", () => {
           },
         ],
       })),
+      exportLocalResource: vi.fn(async () => ({ snapshot: LOCAL_SNAPSHOT, error: null })),
     });
     const target = host("target", {
       listUnifiedPlugins: vi.fn(async () => ({
@@ -360,6 +386,7 @@ describe("host resource sync", () => {
       installPluginSource,
       installPlugin,
       setPluginEnabled,
+      applyLocalResource: vi.fn(async () => appliedLocalResult()),
     });
 
     const result = await syncHostResourcesOneWay({
@@ -403,6 +430,7 @@ describe("host resource sync", () => {
           requestId: "source",
           config: sourceConfig,
         })),
+        exportLocalResource: vi.fn(async () => ({ snapshot: LOCAL_SNAPSHOT, error: null })),
       }),
       knowledgeTarget: { scope: "global" as const },
     };
@@ -413,6 +441,7 @@ describe("host resource sync", () => {
           config: targetConfig,
         })),
         patchDaemonConfig,
+        applyLocalResource: vi.fn(async () => appliedLocalResult()),
       }),
       knowledgeTarget: { scope: "global" as const },
     };
@@ -433,5 +462,74 @@ describe("host resource sync", () => {
         standards: [{ type: "local-document", source: "/rules/source.md" }],
       },
     });
+  });
+
+  it("passes the selected local content policy to the target host", async () => {
+    const applyLocalResource = vi.fn(async () => appliedLocalResult());
+    const source = host("source", {
+      listUnifiedPlugins: vi.fn(async () => ({
+        error: null,
+        marketplaces: [],
+        plugins: [
+          {
+            id: "runtime:local",
+            pluginId: "local",
+            name: "local",
+            displayName: "Local",
+            version: "0.0.0",
+            description: "",
+            keywords: [],
+            sourceType: "local",
+            sourcePath: "/plugins/local",
+            installed: true,
+            enabled: true,
+            installable: false,
+            updateAvailable: false,
+            skills: [],
+            mcpServers: [],
+            httpServices: [],
+            apps: [],
+            unsupportedComponents: [],
+            warnings: [],
+            runtime: {
+              path: "/plugins/local",
+              enabled: true,
+              status: "running",
+              source: "directory",
+            },
+          },
+        ],
+      })),
+      exportLocalResource: vi.fn(async () => ({ snapshot: LOCAL_SNAPSHOT, error: null })),
+    });
+    const target = host("target", {
+      listUnifiedPlugins: vi.fn(async () => ({
+        error: null,
+        marketplaces: [],
+        plugins: [],
+      })),
+      applyLocalResource,
+      installPlugin: vi.fn(async () => ({
+        plugin: null,
+        state: { plugins: [], marketplaces: [] },
+        error: null,
+      })),
+    });
+
+    await syncHostResourcesOneWay({
+      source,
+      target,
+      kind: "plugins",
+      localContentPolicy: { missing: "create", existing: "overwrite" },
+    });
+
+    expect(applyLocalResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/plugins/local",
+        missingPolicy: "create",
+        existingPolicy: "overwrite",
+        sourceLabel: "source",
+      }),
+    );
   });
 });

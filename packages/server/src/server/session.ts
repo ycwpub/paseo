@@ -204,6 +204,7 @@ import { MemorySession } from "./memory/memory-session.js";
 import type { PaseoMemoryService } from "./memory/memory-service.js";
 import type { CloudDocumentCacheService } from "./knowledge/cloud-cache/service.js";
 import { CloudDocumentCacheSession } from "./knowledge/cloud-cache/cloud-cache-session.js";
+import { LocalResourceSyncSession } from "./resource-sync/local-resource-sync-session.js";
 import { TeamStore } from "./team/team-store.js";
 import { TeamSession } from "./team/team-session.js";
 import {
@@ -826,6 +827,7 @@ export class Session {
   private readonly assistantSession: AssistantSession | null;
   private readonly memorySession: MemorySession | null;
   private readonly cloudDocumentCacheSession: CloudDocumentCacheSession | null;
+  private readonly localResourceSyncSession: LocalResourceSyncSession;
   private readonly cloudDocumentCacheService: CloudDocumentCacheService | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
@@ -1132,6 +1134,7 @@ export class Session {
         })
       : null;
     this.cloudDocumentCacheService = cloudDocumentCacheService ?? null;
+    this.localResourceSyncSession = new LocalResourceSyncSession((msg) => this.emit(msg));
     const reasoningTranslationService: ReasoningTranslationService =
       createAidenClaudeReasoningTranslationService({
         agentManager: this.agentManager,
@@ -2156,6 +2159,7 @@ export class Session {
       this.dispatchAssistantMessage(msg) ??
       this.dispatchMemoryMessage(msg) ??
       this.dispatchCloudKnowledgeMessage(msg) ??
+      this.dispatchLocalResourceSyncMessage(msg) ??
       this.dispatchChannelMessage(msg) ??
       this.dispatchTeamMessage(msg) ??
       this.dispatchMcpMessage(msg) ??
@@ -2918,6 +2922,16 @@ export class Session {
       case "knowledge.cloud_document.cache.request":
       case "knowledge.cloud_document.get_status.request":
         return this.cloudDocumentCacheSession?.handleRequest(msg);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchLocalResourceSyncMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "resource_sync.local.export.request":
+      case "resource_sync.local.apply.request":
+        return this.localResourceSyncSession.handleRequest(msg);
       default:
         return undefined;
     }

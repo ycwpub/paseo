@@ -422,6 +422,8 @@ interface ClaudeAgentSessionOptions {
   logger: Logger;
   queryFactory?: ClaudeQueryFactory;
   resolveBinary: () => Promise<string>;
+  customProviderId?: string;
+  aidenConfigDir?: string;
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -1556,6 +1558,8 @@ export class ClaudeAgentClient implements AgentClient {
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
+      customProviderId: this.customProviderId,
+      aidenConfigDir: this.aidenConfigDir,
     });
   }
 
@@ -1584,6 +1588,8 @@ export class ClaudeAgentClient implements AgentClient {
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
+      customProviderId: this.customProviderId,
+      aidenConfigDir: this.aidenConfigDir,
     });
   }
 
@@ -2075,6 +2081,8 @@ class ClaudeAgentSession implements AgentSession {
   private readonly logger: Logger;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
+  private readonly customProviderId?: string;
+  private readonly aidenConfigDir?: string;
   private query: Query | null = null;
   private childProcess: ChildProcess | null = null;
   private input: AsyncMessageInput<SDKUserMessage> | null = null;
@@ -2153,6 +2161,8 @@ class ClaudeAgentSession implements AgentSession {
     this.logger = options.logger.child({ agentId: this.agentId });
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary;
+    this.customProviderId = options.customProviderId;
+    this.aidenConfigDir = options.aidenConfigDir;
     this.contextUsage = new ClaudeContextUsageState(
       findClaudeModel(this.config.model)?.contextWindowMaxTokens,
     );
@@ -3178,6 +3188,8 @@ class ClaudeAgentSession implements AgentSession {
       { prompt: input.iterable, options },
       {
         runtimeSettings: this.runtimeSettings,
+        customProviderId: this.customProviderId,
+        aidenConfigDir: this.aidenConfigDir,
         launchEnv: this.launchEnv,
         queryFactory: this.queryFactory,
         onChildProcess: (child) => {

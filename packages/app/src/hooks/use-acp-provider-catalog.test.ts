@@ -22,7 +22,7 @@ describe("ACP provider catalog", () => {
       if (entry.installLink) {
         expect(entry.installLink).toMatch(/^https:\/\//);
       }
-      if (entry.extends === "acp") {
+      if (entry.extends === "acp" || entry.id.startsWith("aiden-")) {
         expect(entry.command?.length).toBeGreaterThan(0);
         expect(entry.command?.[0]).not.toBe("");
       } else {
@@ -86,6 +86,7 @@ describe("ACP provider catalog", () => {
           extends: "codex",
           label: "Aiden Codex",
           description: "Codex provided through Aiden.",
+          command: ["aiden", "x", "codex"],
           env: {},
         },
       },
@@ -96,6 +97,7 @@ describe("ACP provider catalog", () => {
           extends: "claude",
           label: "Aiden Claude",
           description: "Claude provided through Aiden.",
+          command: ["aiden", "x", "claude"],
           env: {},
         },
       },

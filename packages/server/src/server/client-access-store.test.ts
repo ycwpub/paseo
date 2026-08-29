@@ -110,6 +110,8 @@ describe("ClientAccessStore", () => {
 
   test("persists connection history with start, end, and manual deletion", () => {
     const { filePath, store } = createStore();
+    const connectedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const disconnectedAt = new Date().toISOString();
     const historyId = store.startConnection(
       {
         clientId: "client-history",
@@ -122,9 +124,9 @@ describe("ClientAccessStore", () => {
         transport: "direct",
         peer: "external",
       },
-      "2026-07-30T00:00:00.000Z",
+      connectedAt,
     );
-    expect(store.endConnection(historyId, "2026-07-30T00:05:00.000Z")).toBe(true);
+    expect(store.endConnection(historyId, disconnectedAt)).toBe(true);
 
     const logger = {
       child: vi.fn(() => logger),
@@ -137,8 +139,8 @@ describe("ClientAccessStore", () => {
         id: historyId,
         clientId: "client-history",
         clientHostname: "macbook",
-        connectedAt: "2026-07-30T00:00:00.000Z",
-        disconnectedAt: "2026-07-30T00:05:00.000Z",
+        connectedAt,
+        disconnectedAt,
       }),
     ]);
     expect(reloaded.deleteHistory(historyId)).toBe(true);

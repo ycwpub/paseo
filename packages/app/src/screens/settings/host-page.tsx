@@ -62,6 +62,7 @@ import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section"
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { HostResourceSyncEntrySection } from "@/screens/settings/shared/host-resource-sync-entry-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
@@ -293,6 +294,7 @@ export function HostConnectionsPage({
   return (
     <View>
       <HostConnectionError serverId={serverId} />
+      <HostResourceSyncEntrySection serverId={serverId} />
       <RelayConfigurationSection serverId={serverId} onOpenLocalRelay={onOpenLocalRelay} />
       <ConnectionsSection host={host} />
     </View>

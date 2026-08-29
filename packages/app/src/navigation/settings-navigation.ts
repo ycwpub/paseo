@@ -2,6 +2,7 @@ import { router, type Href } from "expo-router";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
   buildHostMemoryRoute,
+  buildHostResourceSyncRoute,
   buildInstructionTemplatesSettingsRoute,
   buildOpenProjectRoute,
   buildProjectKnowledgeSettingsRoute,
@@ -12,6 +13,7 @@ import {
   buildSettingsHostSectionRoute,
   buildSettingsRoute,
   type HostMemorySettingsPage,
+  type HostResourceSyncPage,
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
@@ -30,6 +32,7 @@ export type SettingsView =
   | { kind: "mcp-server"; serverId: string; mcpServerId?: string }
   | { kind: "skill"; serverId: string; skillId?: string }
   | { kind: "memory-page"; serverId: string; page: HostMemorySettingsPage }
+  | { kind: "resource-sync"; serverId: string; page: HostResourceSyncPage }
   | {
       kind: "memory";
       serverId: string;
@@ -51,6 +54,10 @@ export function openProjectLarkGroupsSettings(serverId: string, projectId: strin
 
 export function openProjectKnowledgeSettings(serverId: string, projectId: string): void {
   router.push(buildProjectKnowledgeSettingsRoute(serverId, projectId));
+}
+
+export function openHostResourceSync(serverId: string, page: HostResourceSyncPage): void {
+  router.push(buildHostResourceSyncRoute(serverId, page));
 }
 
 export function returnFromSettings(view: SettingsView): void {
@@ -82,6 +89,8 @@ export function returnFromSettings(view: SettingsView): void {
     parent = buildSettingsHostSectionRoute(view.serverId, "skills");
   } else if (view.kind === "memory-page") {
     parent = buildSettingsHostSectionRoute(view.serverId, "memory");
+  } else if (view.kind === "resource-sync") {
+    parent = buildSettingsHostSectionRoute(view.serverId, "connections");
   } else if (view.kind === "memory") {
     parent = buildSettingsHostSectionRoute(view.serverId, "memory");
   } else {

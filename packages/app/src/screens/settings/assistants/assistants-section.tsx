@@ -15,7 +15,6 @@ import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
 import { useAssistants } from "@/hooks/use-assistants";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
@@ -766,14 +765,6 @@ export function AssistantsSection({ serverId, onCreate, onEdit }: AssistantsSect
         {assistants.error ? (
           <Text style={settingsStyles.rowError}>{assistants.error.message}</Text>
         ) : null}
-      </SettingsSection>
-      <SettingsSection title="多主机共享">
-        <HostResourceSyncCard
-          serverId={serverId}
-          kind="assistants"
-          requiredFeature="assistants"
-          description="同步助手定义、提示词、资源选择、助手知识和助手记忆。自定义选择的技能与 MCP 会按名称映射到目标主机。"
-        />
       </SettingsSection>
     </View>
   );

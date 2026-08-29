@@ -2091,6 +2091,8 @@ export class VoiceAssistantWebSocketServer {
         memoryUsers: true,
         // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
         memorySync: true,
+        // COMPAT(localResourceSync): added on 2026-08-29.
+        localResourceSync: true,
         // COMPAT(cloudKnowledgeCache): added on 2026-08-23.
         cloudKnowledgeCache: true,
         // COMPAT(reasoningTranslation): added in v0.3.2, remove gate after 2027-02-19.

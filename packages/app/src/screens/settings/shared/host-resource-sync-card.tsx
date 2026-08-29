@@ -10,6 +10,7 @@ import {
   syncHostResourcesTwoWay,
   type HostResourceSyncKind,
   type KnowledgeSyncTarget,
+  type LocalContentSyncPolicy,
   type ResourceSyncDirectionResult,
   type ResourceSyncHost,
 } from "@/resource-sync/host-resource-sync";
@@ -37,10 +38,56 @@ function formatResult(
   targetLabel: string,
 ): string {
   const summary = `${sourceLabel} → ${targetLabel}：新增 ${result.created}，更新 ${result.updated}，跳过 ${result.skipped}`;
+  const localSummary =
+    result.localCreated +
+      result.localUpdated +
+      result.localSkipped +
+      result.localConflicts +
+      result.bytesTransferred >
+    0
+      ? `；本地内容新增 ${result.localCreated}，更新 ${result.localUpdated}，跳过 ${result.localSkipped}，冲突副本 ${result.localConflicts}`
+      : "";
+  const completed = `${summary}${localSummary}`;
   return result.failures.length > 0
-    ? `${summary}，失败 ${result.failures.length}\n${result.failures.join("\n")}`
-    : summary;
+    ? `${completed}，失败 ${result.failures.length}\n${result.failures.join("\n")}`
+    : completed;
 }
+
+const MISSING_POLICY_OPTIONS: SelectFieldOption<LocalContentSyncPolicy["missing"]>[] = [
+  {
+    id: "skip",
+    value: "skip",
+    label: "不创建，跳过",
+    description: "目标路径不存在时不写入内容，也不创建依赖该路径的新资源。",
+  },
+  {
+    id: "create",
+    value: "create",
+    label: "创建并同步",
+    description: "自动创建目标目录或文件，并同步来源主机的实际内容。",
+  },
+];
+
+const EXISTING_POLICY_OPTIONS: SelectFieldOption<LocalContentSyncPolicy["existing"]>[] = [
+  {
+    id: "merge",
+    value: "merge",
+    label: "合并（推荐）",
+    description: "保留目标独有内容；同名冲突文件另存为来源主机副本，避免数据丢失。",
+  },
+  {
+    id: "overwrite",
+    value: "overwrite",
+    label: "覆盖同名内容",
+    description: "用来源内容覆盖同名文件，但保留目标目录中仅目标端存在的内容。",
+  },
+  {
+    id: "skip",
+    value: "skip",
+    label: "保留目标，跳过",
+    description: "目标路径已存在时不修改其中任何内容。",
+  },
+];
 
 export function HostResourceSyncCard({
   serverId,
@@ -62,23 +109,49 @@ export function HostResourceSyncCard({
   const hosts = useHosts();
   const hostIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
   const featureMap = useHostFeatureMap(hostIds, requiredFeature ?? "memorySync");
+  const localResourceFeatureMap = useHostFeatureMap(hostIds, "localResourceSync");
   const connectionStatuses = useHostRuntimeConnectionStatuses(hostIds);
+  const supportsLocalContentPolicy = kind === "knowledge" || kind === "plugins";
   const candidates = useMemo(
     () =>
       hosts.filter(
         (host) =>
           host.serverId !== serverId &&
           (!requiredFeature || featureMap.get(host.serverId) === true) &&
+          (!supportsLocalContentPolicy || localResourceFeatureMap.get(host.serverId) === true) &&
           (kind !== "knowledge" ||
             !resolveKnowledgeTarget ||
             resolveKnowledgeTarget(host.serverId)),
       ),
-    [featureMap, hosts, kind, requiredFeature, resolveKnowledgeTarget, serverId],
+    [
+      featureMap,
+      hosts,
+      kind,
+      localResourceFeatureMap,
+      requiredFeature,
+      resolveKnowledgeTarget,
+      serverId,
+      supportsLocalContentPolicy,
+    ],
   );
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [action, setAction] = useState<SyncAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [missingPolicy, setMissingPolicy] = useState<LocalContentSyncPolicy["missing"]>("skip");
+  const [existingPolicy, setExistingPolicy] = useState<LocalContentSyncPolicy["existing"]>("merge");
+  const missingPolicyDisplay = useMemo(
+    () => ({
+      label: MISSING_POLICY_OPTIONS.find((option) => option.value === missingPolicy)?.label ?? "",
+    }),
+    [missingPolicy],
+  );
+  const existingPolicyDisplay = useMemo(
+    () => ({
+      label: EXISTING_POLICY_OPTIONS.find((option) => option.value === existingPolicy)?.label ?? "",
+    }),
+    [existingPolicy],
+  );
 
   useEffect(() => {
     if (selectedServerId && candidates.some((host) => host.serverId === selectedServerId)) return;
@@ -109,6 +182,8 @@ export function HostResourceSyncCard({
   );
   const selectedOnline =
     selectedHost !== null && connectionStatuses.get(selectedHost.serverId) === "online";
+  const currentSupportsLocalContent =
+    !supportsLocalContentPolicy || localResourceFeatureMap.get(serverId) === true;
 
   const runSync = useCallback(
     async (nextAction: SyncAction) => {
@@ -149,6 +224,7 @@ export function HostResourceSyncCard({
             source: current,
             target: other,
             kind,
+            localContentPolicy: { missing: missingPolicy, existing: existingPolicy },
           });
           setResult(formatResult(synced, current.label, other.label));
         } else if (nextAction === "pull") {
@@ -156,6 +232,7 @@ export function HostResourceSyncCard({
             source: other,
             target: current,
             kind,
+            localContentPolicy: { missing: missingPolicy, existing: existingPolicy },
           });
           setResult(formatResult(synced, other.label, current.label));
         } else {
@@ -163,6 +240,7 @@ export function HostResourceSyncCard({
             first: current,
             second: other,
             kind,
+            localContentPolicy: { missing: missingPolicy, existing: existingPolicy },
           });
           setResult(
             [
@@ -178,11 +256,11 @@ export function HostResourceSyncCard({
         setAction(null);
       }
     },
-    [hosts, kind, resolveKnowledgeTarget, selectedHost, serverId],
+    [existingPolicy, hosts, kind, missingPolicy, resolveKnowledgeTarget, selectedHost, serverId],
   );
 
   const fieldsDisabled = disabled || action !== null;
-  const syncDisabled = fieldsDisabled || !selectedOnline;
+  const syncDisabled = fieldsDisabled || !selectedOnline || !currentSupportsLocalContent;
   const push = useCallback(() => void runSync("push"), [runSync]);
   const pull = useCallback(() => void runSync("pull"), [runSync]);
   const both = useCallback(() => void runSync("both"), [runSync]);
@@ -205,6 +283,39 @@ export function HostResourceSyncCard({
           emptyText="暂无支持该功能的其他主机"
           disabled={fieldsDisabled}
         />
+        {supportsLocalContentPolicy ? (
+          <View style={styles.policyFields}>
+            <SelectField
+              label="目标路径不存在时"
+              value={missingPolicy}
+              selectedDisplay={missingPolicyDisplay}
+              options={MISSING_POLICY_OPTIONS}
+              onChange={setMissingPolicy}
+              placeholder="选择目标路径缺失时的处理方式"
+              emptyText="暂无可用策略"
+              disabled={fieldsDisabled}
+              testID={`host-resource-sync-${kind}-missing-policy`}
+            />
+            <SelectField
+              label="目标路径已存在时"
+              value={existingPolicy}
+              selectedDisplay={existingPolicyDisplay}
+              options={EXISTING_POLICY_OPTIONS}
+              onChange={setExistingPolicy}
+              placeholder="选择目标路径已存在时的处理方式"
+              emptyText="暂无可用策略"
+              disabled={fieldsDisabled}
+              testID={`host-resource-sync-${kind}-existing-policy`}
+            />
+          </View>
+        ) : null}
+        {!currentSupportsLocalContent ? (
+          <Alert
+            variant="warning"
+            title="当前主机不支持本地内容同步"
+            description="请更新当前主机的 Paseo 服务后再同步知识或本地插件。"
+          />
+        ) : null}
         <View style={styles.actions}>
           <Button size="sm" variant="outline" disabled={syncDisabled} onPress={push}>
             {action === "push" ? "正在同步…" : "推送到目标"}
@@ -233,5 +344,8 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing[2],
+  },
+  policyFields: {
+    gap: theme.spacing[3],
   },
 }));

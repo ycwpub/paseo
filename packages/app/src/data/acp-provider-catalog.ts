@@ -21,6 +21,7 @@ const CATALOG_DATA = [
     version: "built-in",
     iconId: "claude-acp",
     extends: "claude",
+    command: ["aiden", "x", "claude"],
   },
   {
     id: "aiden-codex",
@@ -29,6 +30,7 @@ const CATALOG_DATA = [
     version: "built-in",
     iconId: "codex-acp",
     extends: "codex",
+    command: ["aiden", "x", "codex"],
   },
   {
     id: "agoragentic-acp",

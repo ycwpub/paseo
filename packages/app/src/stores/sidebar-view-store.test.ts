@@ -64,6 +64,14 @@ describe("sidebar view store", () => {
     expect(useSidebarViewStore.getState().hostFilters).toEqual([]);
   });
 
+  it("switches between recent-activity and manual project ordering", () => {
+    useSidebarViewStore.getState().setSortMode("manual");
+    expect(useSidebarViewStore.getState().sortMode).toBe("manual");
+
+    useSidebarViewStore.getState().setSortMode("activity");
+    expect(useSidebarViewStore.getState().sortMode).toBe("activity");
+  });
+
   it("keeps host filters that still point at available hosts", () => {
     const store = useSidebarViewStore.getState();
     store.toggleHostFilter("host-a");

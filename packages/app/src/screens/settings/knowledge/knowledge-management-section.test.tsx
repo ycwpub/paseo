@@ -74,7 +74,7 @@ vi.mock("@/screens/settings/settings-section", () => ({
 }));
 
 vi.mock("@/screens/settings/shared/host-resource-sync-card", () => ({
-  HostResourceSyncCard: () => null,
+  HostResourceSyncCard: () => <div data-testid="knowledge-sync-card" />,
 }));
 
 vi.mock("@/components/ui/segmented-control", async () => {
@@ -223,6 +223,14 @@ vi.mock("@/projects/knowledge/editor", async () => {
 });
 
 describe("KnowledgeManagementSection", () => {
+  test("shows only scope selection and sync controls on the sync page", () => {
+    render(<KnowledgeManagementSection serverId="server-1" syncOnly />);
+
+    expect(screen.getByText("选择同步范围")).toBeTruthy();
+    expect(screen.getByTestId("knowledge-sync-card")).toBeTruthy();
+    expect(screen.queryByText("全局知识内容")).toBeNull();
+  });
+
   test("manages knowledge for the selected Assistant", async () => {
     assistantState.updateAssistant.mockReset();
     assistantState.updateAssistant.mockResolvedValue(assistantState.assistant);

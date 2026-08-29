@@ -3665,6 +3665,9 @@ export const ServerInfoStatusPayloadSchema = z
         memoryUsers: z.boolean().optional(),
         // COMPAT(memorySync): added in v0.3.2, remove gate after 2027-02-20.
         memorySync: z.boolean().optional(),
+        // COMPAT(localResourceSync): added on 2026-08-29. Older daemons only
+        // synchronize local resource paths and cannot transfer their contents.
+        localResourceSync: z.boolean().optional(),
         // COMPAT(cloudKnowledgeCache): added on 2026-08-23. Older daemons do not
         // support local cloud-document caching or its management RPCs.
         cloudKnowledgeCache: z.boolean().optional(),

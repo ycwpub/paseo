@@ -161,6 +161,7 @@ export {
   type PaseoMemoryUserOperation,
 } from "./memory/types.js";
 export * from "./memory/rpc-schemas.js";
+export * from "./resource-sync/rpc-schemas.js";
 export {
   TeamAssistantSchema,
   TeamCreateInputSchema,

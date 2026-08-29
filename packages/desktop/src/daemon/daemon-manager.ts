@@ -18,7 +18,11 @@ import {
   type AppUpdateCheckIntent,
   type AppReleaseChannel,
 } from "../features/auto-updater.js";
-import { getCliInstallStatus, installCli } from "../integrations/cli-install/index.js";
+import {
+  getBundledCliShimPath,
+  getCliInstallStatus,
+  installCli,
+} from "../integrations/cli-install/index.js";
 import {
   openLocalTransportSession,
   sendLocalTransportMessage,
@@ -34,6 +38,10 @@ import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
 import { getDesktopAppLogs } from "../diagnostics/app-logs.js";
+import {
+  deleteLegacySkillSelection,
+  readLegacySkillSelection,
+} from "../integrations/legacy-skill-selection.js";
 import { tailFile } from "../diagnostics/tail-file.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
@@ -490,6 +498,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     envOverlay: {
       PASEO_DESKTOP_MANAGED: "1",
       ...(desktopBuildId ? { PASEO_DESKTOP_BUILD_ID: desktopBuildId } : {}),
+      PASEO_CLI: getBundledCliShimPath(),
       PASEO_WEB_UI_ENABLED: "false",
     },
     stdio: ["ignore", "ignore", "ignore"],
@@ -700,6 +709,8 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     get_local_daemon_version: () => getLocalDaemonVersion(),
     install_cli: () => installCli(),
     get_cli_install_status: () => getCliInstallStatus(),
+    read_legacy_skill_selection: () => readLegacySkillSelection(),
+    delete_legacy_skill_selection: () => deleteLegacySkillSelection(),
   };
 }
 

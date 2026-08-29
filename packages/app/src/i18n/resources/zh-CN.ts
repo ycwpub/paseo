@@ -1377,7 +1377,7 @@ const zhCNBase = {
     },
   },
   workflows: {
-    title: "工作流",
+    title: "本地工作流",
     actions: {
       refresh: "刷新",
       new: "新建工作流",

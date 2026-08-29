@@ -68,6 +68,35 @@ parallel plugin lifecycle.
 6. New plugin capabilities must be added to the unified manifest, summary, service, and page instead
    of adding a new top-level plugin service, store, list RPC, or settings section.
 
+## Main-owned foundations and feature-owned extensions
+
+The branch must keep one owner for each shared concept:
+
+| Area                | Main-owned foundation                                                                | Feature-owned extension                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Plugins             | installation, enable/disable, process lifecycle, updates, logs, contribution runtime | unified resource catalog, Project binding, declarative apps, Workflow HTTP services           |
+| Skills              | bundled orchestration Skill selection, distribution, update, and migration           | user/plugin Skill catalog, scanning, editing, Agent selection, multi-host sync                |
+| Projects            | registry, CRUD, identity, Workspace placement, CLI                                   | hierarchy, multi-directory context, knowledge, memory, Lark context, plugin project binding   |
+| Explorer            | pane/tab layout, Files, Changes, pull request surfaces                               | task summary, review/undo affordances, historical-input navigation                            |
+| Connections         | direct, Relay, pairing, SSH, daemon/client transport state                           | approval history, client identity, local Relay management and connection presentation         |
+| Agent configuration | Agent Profile stores reusable provider/model/runtime parameters                      | Assistant stores prompt, knowledge, memory, MCP, and Skill identity; Team composes Assistants |
+
+Do not create a second lifecycle, registry, settings entry, or connection state machine for an
+extension. Add adapters and contribution points to the foundation instead.
+
+The daemon starts its WebSocket server paused, permits only internal plugin sessions while the
+plugin catalog settles, and opens normal Direct/Relay/Hub clients afterward. `DirectorySyncService`,
+Workspace Labels, and orchestration Skills are daemon-scoped services and must be injected into
+every Session rather than recreated or omitted during bootstrap conflict resolution.
+
+Local Workflow and Hub Workflow are intentionally distinct:
+
+- **Local Workflow** uses the Workflow v1 protocol, local visual editor, local runtime, HTTP service
+  integration, and `$PASEO_HOME/workflows`.
+- **Hub Workflow** uses the Hub project/deployment flow and `.paseo/workflows`.
+
+The app label must say **本地工作流 / Local workflows** wherever the local editor is opened.
+
 ## Conflict-minimizing extension boundaries
 
 Feature work should use these boundaries before modifying an upstream-owned implementation file:

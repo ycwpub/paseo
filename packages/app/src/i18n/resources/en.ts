@@ -1404,7 +1404,7 @@ const enBase = {
     },
   },
   workflows: {
-    title: "Workflows",
+    title: "Local workflows",
     actions: {
       refresh: "Refresh",
       new: "New workflow",

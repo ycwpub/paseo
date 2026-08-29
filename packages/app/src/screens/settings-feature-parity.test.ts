@@ -74,6 +74,15 @@ describe("feature_paseo integration parity", () => {
     expect(instructionTemplates).toContain("InstructionTemplateEditorPage");
   });
 
+  test("keeps bundled skill lifecycle and the unified skill catalog on one page", () => {
+    const hostPage = source("./settings/host-page.tsx");
+    const hostResources = source("./settings/host-resource-pages.tsx");
+
+    expect(hostPage).not.toContain("<AgentSkillsSection");
+    expect(hostResources).toContain("<AgentSkillsSection");
+    expect(hostResources).toContain("<SkillsSection");
+  });
+
   test("keeps global, Project, and Assistant knowledge in the standalone knowledge manager", () => {
     const knowledgeManager = source("./settings/knowledge/knowledge-management-section.tsx");
 

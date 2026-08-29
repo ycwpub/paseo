@@ -64,18 +64,25 @@ not retain non-Git directories.
 
 **Key modules:**
 
-| Module                          | Responsibility                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------- |
-| `server/bootstrap.ts`           | Daemon initialization: HTTP server, WS server, agent manager, storage, relay  |
-| `server/websocket-server.ts`    | WebSocket connection management, hello handshake, binary frame routing        |
-| `server/session.ts`             | Per-client session state, timeline subscriptions, terminal operations         |
-| `server/agent/agent-manager.ts` | Agent lifecycle state machine, timeline tracking, subscriber management       |
-| `server/agent/agent-storage.ts` | File-backed JSON persistence at `$PASEO_HOME/agents/`                         |
-| `server/agent/tools/`           | Transport-neutral catalog for workspaces, agents, permissions, and automation |
-| `server/agent/mcp-server.ts`    | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK       |
-| `server/agent/providers/`       | Provider adapters (see "Agent providers" below)                               |
-| `server/relay-transport.ts`     | Outbound relay connection with E2E encryption                                 |
-| `server/schedule/`              | Cron-based scheduled agents                                                   |
+| Module                                  | Responsibility                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------------- |
+| `server/bootstrap.ts`                   | Daemon initialization and minimal service wiring                                    |
+| `server/websocket-server.ts`            | Connection lifecycle, hello handshake, capability advertisement, session wiring     |
+| `server/session.ts`                     | Per-client request routing, subscriptions, and terminal operations                  |
+| `server/directory-sync/`                | Shared latest-state sequences for Projects, Workspaces, and Agents                  |
+| `server/workspace-labels/`              | Host-local label catalog, mutations, and subscriptions                              |
+| `server/agent/agent-manager.ts`         | Agent lifecycle state machine, timeline tracking, subscriber management             |
+| `server/agent/agent-storage.ts`         | File-backed JSON persistence at `$PASEO_HOME/agents/`                               |
+| `server/agent/tools/`                   | Transport-neutral catalog for workspaces, agents, permissions, and automation       |
+| `server/agent/mcp-server.ts`            | Thin MCP adapter that registers the Paseo tool catalog with the MCP SDK             |
+| `server/agent/providers/`               | Provider adapters (see "Agent providers" below)                                     |
+| `server/orchestration-skills/`          | Bundled Skill selection, distribution, update, and migration                        |
+| `server/plugins/`                       | Authoritative executable plugin lifecycle inherited from main                       |
+| `server/plugins/unified-plugin-service` | Plugin resource composition for Skills, MCP, apps, HTTP services, and Project links |
+| `server/workflow/`                      | Local Workflow v1 validation, planning, execution, isolation, and artifacts         |
+| `server/memory/`, `server/knowledge/`   | Global/Project/Assistant context persistence and local cloud-document caching       |
+| `server/relay-transport.ts`             | Outbound relay connection with E2E encryption                                       |
+| `server/schedule/`                      | Cron-based scheduled agents                                                         |
 
 ### `packages/protocol` — Wire schemas and shared protocol types
 
@@ -90,6 +97,10 @@ Owns the low-level daemon WebSocket driver plus the higher-level `PaseoClient`
 facade. App and CLI may import the low-level driver from
 `@getpaseo/client/internal/daemon-client` during migration, while new SDK-shaped
 code imports from `@getpaseo/client`.
+
+`PaseoApi` is the capability-only boundary over Projects, Workspaces, Agents, providers, and
+configuration. `PaseoClient` adds connection lifecycle. Plugin UI borrows this API from the selected
+Host; plugin subprocesses use the same API over their daemon-owned IPC session.
 
 ### `packages/client-go` — Minimal Go client
 
@@ -121,6 +132,12 @@ code, prompts, and tool output; encrypted-at-rest storage is a separate product/
 Its serialized payload has a 1 MiB byte budget and evicts whole host snapshots in least-recently-
 written order; a single oversized host is omitted rather than partially restored.
 
+Projects, Workspaces, and Agents have independent monotonic sequences under one daemon generation.
+The daemon retains the latest projection and bounded tombstones rather than an event log. A missing,
+expired, or previous-generation cursor receives a full snapshot. Workspace label definitions use a
+separate explicitly subscribed sequence; workspace assignments remain part of Workspace directory
+synchronization.
+
 ### `packages/cli` — Command-line client
 
 Commander.js CLI with Docker-style commands. Common agent operations are also exposed at the top level (e.g. `paseo ls`, `paseo run`).
@@ -131,7 +148,9 @@ Commander.js CLI with Docker-style commands. Common agent operations are also ex
 - `paseo script ls/start/stop`
 - `paseo schedule create/ls/inspect/update/pause/resume/run-once/logs/delete`
 - `paseo heartbeat create/update/delete`
-- `paseo workspace create/ls/archive`
+- `paseo project create/ls/rename/delete`
+- `paseo workspace create/ls/rename/archive`
+- `paseo workflow ls/inspect/plan/run/status/logs/cancel/protocol`
 - `paseo permit allow/deny/ls`
 - `paseo provider ls/models`
 - hidden legacy `paseo worktree create/ls/archive` compatibility alias
@@ -160,6 +179,16 @@ See [SECURITY.md](../SECURITY.md) for the full threat model.
 The optional Hub relationship is daemon-outbound and does not use the relay. Its connection,
 authorization, ownership, persistence, and lifecycle contract is documented in [hub.md](hub.md).
 
+Local Workflow and Hub Workflow are separate products:
+
+- **Local Workflow** is stored under the selected daemon's `$PASEO_HOME/workflows`, edited in the
+  app's **Local workflows** page, and executed by the local Workflow v1 runtime.
+- **Hub Workflow** is defined under `.paseo/workflows` for Hub deployment and is managed through
+  `paseo hub ...`.
+
+They may share concepts, but neither storage nor execution lifecycle is silently substituted for
+the other.
+
 ### `packages/desktop` — Desktop app (Electron)
 
 Electron wrapper for macOS, Linux, and Windows.
@@ -167,6 +196,11 @@ Electron wrapper for macOS, Linux, and Windows.
 - Can spawn the daemon as a managed subprocess
 - Native file access for workspace integration
 - Same WebSocket client as mobile app
+
+The desktop starts the daemon with the bundled CLI path in `PASEO_CLI`, so terminal sessions and
+Agent tools resolve the same packaged CLI version. It also retains a compatibility bridge that
+imports the legacy desktop Skill selection into the daemon-owned orchestration Skill configuration,
+then removes the legacy file only after persistence succeeds.
 
 **Multi-window (hybrid land-on model).** `createWindow()` in `main.ts` is reusable: `⌘⇧N`/File→New Window, relaunching the app (`second-instance`), and the sidebar "Open in new window" action each open a fresh `BrowserWindow`. Every window shows the full sidebar — there is no per-window project ownership or filtering. "Land on a project" is delivered by a per-`webContents` `PendingOpenProjectStore`: each window pulls its own pending project path on mount (`paseo:get-pending-open-project`) and runs the normal open-project flow, identical to a CLI `paseo <path>` launch.
 

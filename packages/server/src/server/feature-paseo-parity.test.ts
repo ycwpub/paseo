@@ -61,6 +61,30 @@ describe("feature_paseo server integration parity", () => {
     expect(bootstrap).toContain("new PaseoMemoryService");
     expect(bootstrap).toContain("new UnifiedPluginService");
     expect(bootstrap).toContain("new LarkChannelService");
+    expect(bootstrap).toContain("createOrchestrationSkills(daemonConfigStore)");
+    expect(bootstrap).toContain("createWorkspaceLabelService({");
+    expect(bootstrap).toContain("await workspaceLabelService.initialize()");
+  });
+
+  test("keeps main startup ordering and shared session services", () => {
+    const bootstrap = source("./bootstrap.ts");
+    const websocketServer = source("./websocket-server.ts");
+
+    expect(bootstrap).toContain("startPaused: true");
+    expect(bootstrap).toMatch(
+      /await pluginService\.start\(\);\s+wsServer\.beginAcceptingConnections\(\);/,
+    );
+    expect(websocketServer).toContain(
+      'private connectionLifecycle: "starting" | "accepting" | "stopping"',
+    );
+    expect(websocketServer).toContain("this.pluginSocketIds.has(ws)");
+    expect(websocketServer).toContain("directorySync: this.directorySync");
+    expect(websocketServer).toContain("orchestrationSkills: this.orchestrationSkills");
+    expect(websocketServer).toContain(
+      "workspaceLabelService: this.workspaceLabelService ?? undefined",
+    );
+    expect(websocketServer).toContain("directorySync: true");
+    expect(websocketServer).toContain("{ workspaceLabels: true }");
   });
 
   test("routes workflow, memory, plugin, Lark, and reasoning requests", () => {

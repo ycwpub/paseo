@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { StyleSheet } from "react-native-unistyles";
 
 import { useHosts } from "@/runtime/host-runtime";
+import { AgentSkillsSection } from "@/agent-skills";
 import { settingsStyles } from "@/styles/settings";
 import type { Assistant, McpServer, Skill, Team } from "@getpaseo/protocol/messages";
 import { AssistantEditorPage, AssistantsSection } from "./assistants/assistants-section";
@@ -210,6 +211,7 @@ export function HostSkillsPage({ serverId }: { serverId: string }) {
   );
   return (
     <HostResourcePage serverId={serverId}>
+      <AgentSkillsSection serverId={serverId} />
       <SkillsSection serverId={serverId} onCreate={createSkill} onEdit={editSkill} />
     </HostResourcePage>
   );

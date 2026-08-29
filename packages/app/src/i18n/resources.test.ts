@@ -117,7 +117,7 @@ describe("translation resources", () => {
   });
 
   it("provides Chinese labels for the complete workflow editor", () => {
-    expect(zhCN.workflows.title).toBe("工作流");
+    expect(zhCN.workflows.title).toBe("本地工作流");
     expect(zhCN.workflows.editor.workflowTimeout).toBe("工作流超时（秒）");
     expect(zhCN.workflows.nodes.bash.initialCommand).toBe("初始命令");
     expect(zhCN.workflows.nodes.contract.inputs).toBe("input.data 映射（可选）");

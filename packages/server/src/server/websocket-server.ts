@@ -35,12 +35,18 @@ import { asUint8Array, decodeBinaryFrame } from "@getpaseo/protocol/binary-frame
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
-import { Session, type SessionLifecycleIntent, type SessionRuntimeMetrics } from "./session.js";
+import {
+  Session,
+  type SessionLifecycleIntent,
+  type SessionOptions,
+  type SessionRuntimeMetrics,
+} from "./session.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { attachMutableProviderConfigOwner } from "./agent/mutable-provider-config-owner.js";
 import type {
   WorkspaceGitRuntimeSnapshot,
   WorkspaceGitService,
@@ -108,6 +114,8 @@ import type { TeamStore } from "./team/team-store.js";
 import type { McpStore } from "./mcp/mcp-store.js";
 import type { SkillStore } from "./skill/skill-store.js";
 import type { UnifiedPluginService } from "./plugins/unified-plugin-service.js";
+import { DirectorySyncService } from "./directory-sync/index.js";
+import type { WorkspaceLabelService } from "./workspace-labels/index.js";
 import {
   CLIENT_ACCESS_HISTORY_RETENTION_DAYS,
   ClientAccessStore,
@@ -179,6 +187,7 @@ interface WebSocketServerConfig {
   getHostnames?: () => HostnamesConfig | undefined;
   daemonStatusRpc?: boolean;
   relayConfig?: boolean;
+  startPaused?: boolean;
 }
 
 type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
@@ -639,6 +648,9 @@ export class VoiceAssistantWebSocketServer {
   private readonly mcpStore: McpStore | null;
   private readonly skillStore: SkillStore | null;
   private readonly pluginService: UnifiedPluginService | null;
+  private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
+  private readonly workspaceLabelService: WorkspaceLabelService | null;
+  private readonly directorySync = new DirectorySyncService();
   private readonly clientAccessStore: ClientAccessStore;
   private readonly daemonKeyPair: KeyPair | null;
   private readonly directUpgradeTokens = new Map<
@@ -649,7 +661,7 @@ export class VoiceAssistantWebSocketServer {
   private directWss: WebSocketServer | null = null;
   private directCandidateBaseUrls: string[] = [];
   private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
-  private acceptingConnections = true;
+  private connectionLifecycle: "starting" | "accepting" | "stopping" = "accepting";
   private readonly advertiseDaemonStatusRpc: boolean;
   private readonly advertiseRelayConfig: boolean;
 
@@ -708,11 +720,14 @@ export class VoiceAssistantWebSocketServer {
     memoryService?: PaseoMemoryService | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
     cloudDocumentCacheService?: CloudDocumentCacheService | null,
+    orchestrationSkills?: SessionOptions["orchestrationSkills"],
+    workspaceLabelService?: WorkspaceLabelService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
     this.advertiseRelayConfig = wsConfig.relayConfig !== false;
+    this.connectionLifecycle = wsConfig.startPaused === true ? "starting" : "accepting";
     this.serverId = serverId;
     if (typeof daemonVersion !== "string" || daemonVersion.trim().length === 0) {
       throw new MissingDaemonVersionError();
@@ -729,6 +744,8 @@ export class VoiceAssistantWebSocketServer {
     this.mcpStore = mcpStore ?? null;
     this.skillStore = skillStore ?? null;
     this.pluginService = pluginService ?? null;
+    this.orchestrationSkills = orchestrationSkills;
+    this.workspaceLabelService = workspaceLabelService ?? null;
     this.workflowService = workflowService ?? null;
     this.loopService = loopService ?? null;
     this.daemonKeyPair = daemonKeyPair ?? null;
@@ -778,17 +795,21 @@ export class VoiceAssistantWebSocketServer {
       this.speech?.onReadinessChange((snapshot) => {
         this.publishSpeechReadiness(snapshot);
       }) ?? null;
-    this.unsubscribeDaemonConfigChange = this.daemonConfigStore.onChange((config, details) => {
-      const nextAgentManagerState = this.providerSnapshotManager.applyMutableProviderConfig(
-        config.providers,
-        { removeProviders: details.removedProviders },
-      );
-      this.agentManager.updateProviderRegistry(nextAgentManagerState);
+    const unsubscribeProviderConfig = attachMutableProviderConfigOwner({
+      store: this.daemonConfigStore,
+      providerSnapshotManager: this.providerSnapshotManager,
+      updateProviderRegistry: (state) => this.agentManager.updateProviderRegistry(state),
+    });
+    const unsubscribeChange = this.daemonConfigStore.onChange((config) => {
       if (!config.clientAccess.requireApproval) {
         this.acceptPendingClientAdmissions();
       }
       this.broadcastDaemonConfigChanged(config);
     });
+    this.unsubscribeDaemonConfigChange = () => {
+      unsubscribeProviderConfig();
+      unsubscribeChange();
+    };
 
     const pushLogger = this.logger.child({ module: "push" });
     this.pushNotifications = createPushNotifications({
@@ -1066,8 +1087,12 @@ export class VoiceAssistantWebSocketServer {
     hostnames: HostnamesConfig | undefined,
     callback: (res: boolean, code?: number, message?: string) => void,
   ): void {
-    if (!this.acceptingConnections) {
-      callback(false, 503, "Server shutting down");
+    if (this.connectionLifecycle !== "accepting") {
+      callback(
+        false,
+        503,
+        this.connectionLifecycle === "starting" ? "Server starting" : "Server shutting down",
+      );
       return;
     }
 
@@ -1138,7 +1163,11 @@ export class VoiceAssistantWebSocketServer {
   }
 
   public publishProjectUpdate(update: ProjectUpdate): void {
-    for (const session of this.listTrustedSessions()) session.emitProjectUpdate(update);
+    for (const session of this.listTrustedSessions()) {
+      void session
+        .emitProjectUpdate(update)
+        .catch((error) => this.logger.warn({ err: error }, "Failed to publish project update"));
+    }
   }
 
   public publishSpeechReadiness(readiness: SpeechReadinessSnapshot | null): void {
@@ -1168,7 +1197,7 @@ export class VoiceAssistantWebSocketServer {
     pluginId: string,
     ws: WebSocketLike,
   ): Promise<{ closed: Promise<void> }> {
-    if (!this.acceptingConnections) {
+    if (this.connectionLifecycle === "stopping") {
       throw new Error(`Cannot attach plugin session while shutting down: ${pluginId}`);
     }
     let resolveClosed: () => void = () => undefined;
@@ -1195,8 +1224,11 @@ export class VoiceAssistantWebSocketServer {
       agents: HubExecutionAgents;
     },
   ): Promise<void> {
-    if (!this.acceptingConnections) {
-      ws.close(WS_CLOSE_SERVER_SHUTDOWN, "Server shutting down");
+    if (this.connectionLifecycle !== "accepting") {
+      ws.close(
+        WS_CLOSE_SERVER_SHUTDOWN,
+        this.connectionLifecycle === "starting" ? "Server starting" : "Server shutting down",
+      );
       return;
     }
 
@@ -1226,7 +1258,13 @@ export class VoiceAssistantWebSocketServer {
   }
 
   public prepareForShutdown(): void {
-    this.acceptingConnections = false;
+    this.connectionLifecycle = "stopping";
+  }
+
+  public beginAcceptingConnections(): void {
+    if (this.connectionLifecycle === "starting") {
+      this.connectionLifecycle = "accepting";
+    }
   }
 
   public async close(): Promise<void> {
@@ -1467,9 +1505,14 @@ export class VoiceAssistantWebSocketServer {
     request?: unknown,
     metadata?: ExternalSocketMetadata,
   ): Promise<void> {
-    if (!this.acceptingConnections) {
+    const pluginCanAttachDuringStartup =
+      this.connectionLifecycle === "starting" && this.pluginSocketIds.has(ws);
+    if (this.connectionLifecycle !== "accepting" && !pluginCanAttachDuringStartup) {
       try {
-        ws.close(WS_CLOSE_SERVER_SHUTDOWN, "Server shutting down");
+        ws.close(
+          WS_CLOSE_SERVER_SHUTDOWN,
+          this.connectionLifecycle === "starting" ? "Server starting" : "Server shutting down",
+        );
       } catch {
         // ignore close errors
       }
@@ -1624,6 +1667,8 @@ export class VoiceAssistantWebSocketServer {
       agentStorage: this.agentStorage,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
+      workspaceLabelService: this.workspaceLabelService ?? undefined,
+      directorySync: this.directorySync,
       scheduleService: this.scheduleService,
       workflowService: this.workflowService,
       loopService: this.loopService ?? undefined,
@@ -1633,6 +1678,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceAutoName: this.workspaceAutoName,
       daemonConfigStore: this.daemonConfigStore,
       pluginRuntime: this.pluginService ?? undefined,
+      orchestrationSkills: this.orchestrationSkills,
       mcpBaseUrl: this.mcpBaseUrl,
       stt: () => this.speech?.resolveStt() ?? null,
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
@@ -1953,6 +1999,10 @@ export class VoiceAssistantWebSocketServer {
         : {}),
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
+        // COMPAT(directorySync): added in v0.3.x, remove gate after 2027-02-12.
+        directorySync: true,
+        // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
+        ...(this.workspaceLabelService ? { workspaceLabels: true } : {}),
         // COMPAT(providersSnapshot): keep optional until all clients rely on snapshot flow.
         providersSnapshot: true,
         // COMPAT(providersSnapshotCwd): added in v0.3.2, remove gate after 2027-02-10.
@@ -2785,7 +2835,7 @@ export class VoiceAssistantWebSocketServer {
     ws: WebSocketLike,
     data: Buffer | ArrayBuffer | Buffer[] | string,
   ): void {
-    if (!this.acceptingConnections) {
+    if (!this.canHandleSocketMessage(ws)) {
       return;
     }
 
@@ -2883,6 +2933,13 @@ export class VoiceAssistantWebSocketServer {
     } catch (error) {
       this.handleRawMessageError({ ws, data, error, log });
     }
+  }
+
+  private canHandleSocketMessage(ws: WebSocketLike): boolean {
+    if (this.connectionLifecycle === "stopping") {
+      return false;
+    }
+    return this.connectionLifecycle !== "starting" || this.pluginSocketIds.has(ws);
   }
 
   private dispatchClientAccessMessage(

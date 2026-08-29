@@ -320,6 +320,7 @@ function createServer(options?: {
   speechReadiness?: SpeechReadinessSnapshot | null;
   logger?: ReturnType<typeof createLogger>;
   requireClientApproval?: boolean;
+  startPaused?: boolean;
 }) {
   const speechReadiness = options?.speechReadiness ?? null;
   let daemonConfigChangeListener: DaemonConfigChangeListener | null = null;
@@ -329,6 +330,7 @@ function createServer(options?: {
   };
   const daemonConfigStore = {
     get: vi.fn(() => mutableConfig),
+    onApply: vi.fn(() => () => {}),
     onChange: vi.fn((listener: DaemonConfigChangeListener) => {
       daemonConfigChangeListener = listener;
       return () => {
@@ -359,7 +361,7 @@ function createServer(options?: {
     "/tmp/paseo-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
-    { allowedOrigins: new Set() },
+    { allowedOrigins: new Set(), startPaused: options?.startPaused },
     createWorkspaceAutoNameStub(),
     undefined,
     speechReadiness
@@ -1017,6 +1019,27 @@ describe("relay external socket reconnect behavior", () => {
       heldCleanup.finish();
       await closePromise;
     }
+  });
+
+  test("accepts plugin startup sessions while application sessions remain paused", async () => {
+    const server = createServer({ startPaused: true });
+    const applicationSocket = new MockSocket();
+    await server.attachExternalSocket(applicationSocket, { transport: "relay" });
+    expect(applicationSocket.readyState).toBe(3);
+
+    const pluginSocket = new MockSocket();
+    const attachment = await server.attachPluginSocket("startup", pluginSocket);
+    pluginSocket.emit("message", JSON.stringify(createHelloMessage("plugin:startup")));
+    expect(sessionMock.instances).toHaveLength(1);
+
+    server.beginAcceptingConnections();
+    const readySocket = new MockSocket();
+    await attachRelayAndHello({ server, socket: readySocket, clientId: "ready-client" });
+    expect(sessionMock.instances).toHaveLength(2);
+
+    pluginSocket.emit("close", 1000, "done");
+    await attachment.closed;
+    await server.close();
   });
 
   test("closes pending connection when hello timeout elapses", async () => {

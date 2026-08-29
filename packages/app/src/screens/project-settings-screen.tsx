@@ -5,7 +5,15 @@ import { Platform, Pressable, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MoreVertical, Pencil, Plus, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  ChevronRight,
+  MessageCircle,
+  MoreVertical,
+  Pencil,
+  Plus,
+  X,
+} from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import type {
   PaseoConfigRaw,
@@ -37,9 +45,11 @@ import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
 import { ProjectParentLink } from "@/projects/project-parent-link";
 import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
-import { ProjectLarkContextEditor } from "@/projects/lark/project-lark-context-editor";
-import { projectLarkGroupDraftError } from "@/projects/lark/project-lark-context-model";
 import { ProjectLinkedPluginProjects } from "@/plugins/project/project-linked-plugin-projects";
+import {
+  openProjectKnowledgeSettings,
+  openProjectLarkGroupsSettings,
+} from "@/navigation/settings-navigation";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -99,6 +109,10 @@ const METADATA_PROMPT_FIELDS: Record<MetadataPromptKey, MetadataPromptField> = {
 };
 
 const WORKTREE_DOCS_URL = "https://paseo.sh/docs/worktrees";
+
+function projectLarkGroupsEntryStyle({ pressed }: { pressed: boolean }) {
+  return [settingsStyles.row, pressed ? styles.entryPressed : null];
+}
 
 type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"]>>;
 
@@ -328,6 +342,7 @@ function ProjectSettingsBody({
         snapshot={editSnapshot}
       />
 
+      <ProjectKnowledgeCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
       <ProjectMemoryCard serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
       <ProjectLinkedPluginProjects
         serverId={selectedHost.serverId}
@@ -669,12 +684,6 @@ function ProjectConfigForm({
     (projectVariables: ProjectVariableDraft[]) => updateDraft((d) => ({ ...d, projectVariables })),
     [updateDraft],
   );
-  const handleProjectLarkGroupsChange = useCallback(
-    (projectLarkGroups: ProjectConfigDraft["projectLarkGroups"]) =>
-      updateDraft((d) => ({ ...d, projectLarkGroups })),
-    [updateDraft],
-  );
-
   const handleSaveGlobalIndexInterval = useCallback(() => {
     const parsed = Number(globalIndexIntervalText.trim());
     if (!Number.isSafeInteger(parsed) || parsed <= 0) return;
@@ -820,6 +829,12 @@ function ProjectConfigForm({
 
   return (
     <View>
+      <ProjectLarkGroupsEntry
+        serverId={serverId}
+        projectId={projectId}
+        bindingCount={draft.projectLarkGroups.length}
+      />
+
       <ProjectResourcesEditor
         draft={draft}
         projectDirectoryPath={repoRoot}
@@ -833,13 +848,6 @@ function ProjectConfigForm({
         onGlobalIndexIntervalChange={setGlobalIndexIntervalText}
         onSaveGlobalIndexInterval={handleSaveGlobalIndexInterval}
         onVariablesChange={handleVariablesChange}
-      />
-
-      <ProjectLarkContextEditor
-        serverId={serverId}
-        value={draft.projectLarkGroups}
-        error={projectValidation.projectLarkGroupError}
-        onChange={handleProjectLarkGroupsChange}
       />
 
       <SettingsGroup
@@ -1006,7 +1014,6 @@ interface ProjectConfigurationValidation {
   projectDirectoryError: string | null;
   indexIntervalError: string | null;
   variableError: string | null;
-  projectLarkGroupError: string | null;
 }
 
 function validateProjectConfiguration(
@@ -1042,17 +1049,81 @@ function validateProjectConfiguration(
       name: duplicateVariable,
     });
   }
-  const projectLarkGroupError = projectLarkGroupDraftError(draft.projectLarkGroups);
-
   return {
-    hasErrors: Boolean(
-      projectDirectoryError || indexIntervalError || variableError || projectLarkGroupError,
-    ),
+    hasErrors: Boolean(projectDirectoryError || indexIntervalError || variableError),
     projectDirectoryError,
     indexIntervalError,
     variableError,
-    projectLarkGroupError,
   };
+}
+
+function ProjectLarkGroupsEntry({
+  serverId,
+  projectId,
+  bindingCount,
+}: {
+  serverId: string;
+  projectId: string;
+  bindingCount: number;
+}) {
+  const open = useCallback(() => {
+    openProjectLarkGroupsSettings(serverId, projectId);
+  }, [projectId, serverId]);
+
+  return (
+    <SettingsSection title="飞书群上下文" testID="project-lark-groups-entry-section">
+      <View style={settingsStyles.card}>
+        <Pressable
+          onPress={open}
+          accessibilityRole="button"
+          accessibilityLabel="配置飞书群上下文"
+          testID="project-lark-groups-entry"
+          style={projectLarkGroupsEntryStyle}
+        >
+          <View style={styles.entryIcon}>
+            <MessageCircle size={18} color={styles.iconColor.color} />
+          </View>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>飞书群上下文</Text>
+            <Text style={settingsStyles.rowHint}>
+              {bindingCount > 0
+                ? `已绑定 ${bindingCount} 个群聊；使用用户身份搜索群聊并邀请机器人入群。`
+                : "使用用户身份搜索群聊、邀请机器人入群并同步项目上下文。"}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={styles.iconColor.color} />
+        </Pressable>
+      </View>
+    </SettingsSection>
+  );
+}
+
+function ProjectKnowledgeCard({ serverId, projectId }: { serverId: string; projectId: string }) {
+  const open = useCallback(() => {
+    openProjectKnowledgeSettings(serverId, projectId);
+  }, [projectId, serverId]);
+
+  return (
+    <SettingsGroup
+      title="项目知识"
+      info="管理仅对当前 Project 生效的通用知识、规范知识和项目专有知识。"
+      testID="project-knowledge-entry-group"
+    >
+      <SettingsSection title="知识配置" flush>
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>配置知识</Text>
+              <Text style={settingsStyles.rowHint}>进入知识管理页面，并自动选择当前 Project。</Text>
+            </View>
+            <Button size="sm" variant="outline" onPress={open} testID="project-knowledge-entry">
+              配置知识
+            </Button>
+          </View>
+        </View>
+      </SettingsSection>
+    </SettingsGroup>
+  );
 }
 
 interface ProjectResourcesEditorProps {
@@ -1730,6 +1801,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   iconColor: {
     color: theme.colors.foregroundMuted,
+  },
+  entryIcon: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+  },
+  entryPressed: {
+    opacity: 0.72,
   },
   centered: {
     flex: 1,

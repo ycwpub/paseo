@@ -15,6 +15,7 @@ import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import { useRouter } from "expo-router";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import type { DaemonConnectionTransport } from "@getpaseo/client/internal/daemon-client";
 import type { TerminalProfile } from "@getpaseo/protocol/messages";
@@ -74,6 +75,7 @@ import {
 } from "@/utils/daemon-endpoints";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
+import { buildInstructionTemplatesSettingsRoute } from "@/utils/host-routes";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
 import { formatLatency } from "@/utils/latency";
 import { ICON_SIZE } from "@/styles/theme";
@@ -83,14 +85,21 @@ import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
 import { LocalRelayConfigurationSection } from "./host-local-relay-section";
-import { InstructionTemplatesSection } from "./agents/instruction-templates-section";
+import { InstructionTemplatesEntrySection } from "./agents/instruction-templates-section";
 export {
+  HostAssistantEditorPage,
   HostAssistantsPage,
   HostChannelsPage,
+  HostInstructionTemplateEditorPage,
+  HostInstructionTemplatesPage,
   HostMemoryPage,
+  HostMemorySettingsPage,
+  HostMcpEditorPage,
   HostMcpPage,
   HostPluginsPage,
+  HostSkillEditorPage,
   HostSkillsPage,
+  HostTeamEditorPage,
 } from "./host-resource-pages";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
@@ -643,8 +652,12 @@ export function HostLocalRelayPage({ serverId }: { serverId: string }) {
 
 export function HostAgentsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const host = useHostProfile(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
+  const openInstructionTemplates = useCallback(() => {
+    router.push(buildInstructionTemplatesSettingsRoute(serverId));
+  }, [router, serverId]);
 
   if (!host) {
     return <HostNotFound />;
@@ -659,7 +672,7 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
             <BrowserToolsOptInCard serverId={serverId} />
             <AppendSystemPromptCard serverId={serverId} />
           </SettingsSection>
-          <InstructionTemplatesSection serverId={serverId} />
+          <InstructionTemplatesEntrySection serverId={serverId} onOpen={openInstructionTemplates} />
         </>
       ) : (
         <View style={[settingsStyles.card, styles.emptyCard]}>

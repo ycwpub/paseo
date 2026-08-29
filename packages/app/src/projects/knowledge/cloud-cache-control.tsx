@@ -10,8 +10,9 @@ import { useHostRuntimeClient } from "@/runtime/host-runtime";
 
 export interface CloudKnowledgeCacheTarget {
   serverId: string;
-  scope: "global" | "project";
+  scope: "global" | "project" | "assistant";
   projectId?: string;
+  assistantId?: string;
 }
 
 function isCloudDocumentSource(source: string): boolean {
@@ -26,6 +27,35 @@ function cacheStatusText(status: {
   if (!status.cached) return "尚未缓存";
   const label = status.stale ? "已有旧缓存" : "已缓存";
   return status.cachedAt ? `${label} · ${new Date(status.cachedAt).toLocaleString()}` : label;
+}
+
+function cacheButtonText(status: { cached: boolean } | null | undefined): string {
+  return status?.cached ? "刷新缓存" : "缓存到本地";
+}
+
+function cacheLocalPath(status: { localPath: string | null } | null | undefined): string | null {
+  return status?.localPath ?? null;
+}
+
+function CloudKnowledgeCachePath({
+  localPath,
+  loading,
+}: {
+  localPath: string | null | undefined;
+  loading: boolean;
+}) {
+  let pathText = localPath;
+  if (!pathText) {
+    pathText = loading ? "正在获取缓存文件路径…" : "暂未获取到缓存文件路径";
+  }
+  return (
+    <View style={styles.pathRow} testID="cloud-knowledge-cache-path">
+      <Text style={styles.pathLabel}>缓存文件路径</Text>
+      <Text selectable style={styles.pathText}>
+        {pathText}
+      </Text>
+    </View>
+  );
 }
 
 export function CloudKnowledgeCacheControl({
@@ -44,6 +74,7 @@ export function CloudKnowledgeCacheControl({
     target.serverId,
     target.scope,
     target.projectId ?? "",
+    target.assistantId ?? "",
     trimmedSource,
   ] as const;
   const validSource = isCloudDocumentSource(trimmedSource);
@@ -57,6 +88,7 @@ export function CloudKnowledgeCacheControl({
       const result = await client.getCloudDocumentCacheStatus({
         scope: target.scope,
         projectId: target.projectId,
+        assistantId: target.assistantId,
         source: trimmedSource,
       });
       if (result.error) throw new Error(result.error);
@@ -69,6 +101,7 @@ export function CloudKnowledgeCacheControl({
       const result = await client.cacheCloudDocument({
         scope: target.scope,
         projectId: target.projectId,
+        assistantId: target.assistantId,
         source: trimmedSource,
         force: true,
       });
@@ -93,22 +126,25 @@ export function CloudKnowledgeCacheControl({
 
   return (
     <View style={styles.container}>
-      <Pressable
-        accessibilityLabel="强制缓存云文档"
-        disabled={cacheMutation.isPending}
-        onPress={cache}
-        style={styles.button}
-      >
-        {cacheMutation.isPending ? (
-          <LoadingSpinner size="small" color={styles.buttonText.color} />
-        ) : (
-          <RefreshCw size={13} color={styles.buttonText.color} />
-        )}
-        <Text style={styles.buttonText}>{status?.cached ? "刷新缓存" : "缓存到本地"}</Text>
-      </Pressable>
-      <Text style={error ? styles.errorText : styles.statusText} numberOfLines={2}>
-        {error ?? statusText}
-      </Text>
+      <View style={styles.statusRow}>
+        <Pressable
+          accessibilityLabel="强制缓存云文档"
+          disabled={cacheMutation.isPending}
+          onPress={cache}
+          style={styles.button}
+        >
+          {cacheMutation.isPending ? (
+            <LoadingSpinner size="small" color={styles.buttonText.color} />
+          ) : (
+            <RefreshCw size={13} color={styles.buttonText.color} />
+          )}
+          <Text style={styles.buttonText}>{cacheButtonText(status)}</Text>
+        </Pressable>
+        <Text style={error ? styles.errorText : styles.statusText} numberOfLines={2}>
+          {error ?? statusText}
+        </Text>
+      </View>
+      <CloudKnowledgeCachePath localPath={cacheLocalPath(status)} loading={statusQuery.isLoading} />
     </View>
   );
 }
@@ -117,6 +153,9 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     width: "100%",
     paddingLeft: 152,
+    gap: theme.spacing[2],
+  },
+  statusRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
@@ -147,6 +186,24 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 160,
     color: theme.colors.destructive,
+    fontSize: theme.fontSize.xs,
+  },
+  pathRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
+  },
+  pathLabel: {
+    flexShrink: 0,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  pathText: {
+    flex: 1,
+    minWidth: 0,
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
   },
 }));

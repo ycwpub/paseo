@@ -71,7 +71,12 @@ export interface LarkChannelClientAdapter {
     text: string,
   ): Promise<LarkThreadReplyResult>;
   listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]>;
-  addBotToChat?(config: StoredLarkChannelConfig, chatId: string, appId: string): Promise<void>;
+  addBotToChat?(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    appId: string,
+    userAccessToken: string,
+  ): Promise<void>;
   getMessage(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -95,7 +100,11 @@ export interface LarkChannelClientAdapter {
     config: StoredLarkChannelConfig,
     openId: string,
   ): Promise<LarkResolvedUser | null>;
-  resolveChats?(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]>;
+  resolveChats?(
+    config: StoredLarkChannelConfig,
+    query: string,
+    userAccessToken: string,
+  ): Promise<LarkResolvedChat[]>;
 }
 
 function requireCredentials(config: StoredLarkChannelConfig): { appId: string; appSecret: string } {
@@ -396,19 +405,23 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     config: StoredLarkChannelConfig,
     chatId: string,
     appId: string,
+    userAccessToken: string,
   ): Promise<void> {
     const client = createClient(config);
     try {
-      const result = await client.im.v1.chatMembers.create({
-        path: { chat_id: chatId },
-        params: {
-          member_id_type: "app_id",
-          succeed_type: 1,
+      const result = await client.im.v1.chatMembers.create(
+        {
+          path: { chat_id: chatId },
+          params: {
+            member_id_type: "app_id",
+            succeed_type: 1,
+          },
+          data: {
+            id_list: [appId],
+          },
         },
-        data: {
-          id_list: [appId],
-        },
-      });
+        lark.withUserAccessToken(userAccessToken),
+      );
       assertSuccess(result);
     } catch (error) {
       throw describeLarkError(error);
@@ -461,11 +474,18 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     }
   }
 
-  async resolveChats(config: StoredLarkChannelConfig, query: string): Promise<LarkResolvedChat[]> {
+  async resolveChats(
+    config: StoredLarkChannelConfig,
+    query: string,
+    userAccessToken: string,
+  ): Promise<LarkResolvedChat[]> {
     const client = createClient(config);
     try {
       if (/^oc_[A-Za-z0-9_-]+$/u.test(query)) {
-        const result = await client.im.v1.chat.get({ path: { chat_id: query } });
+        const result = await client.im.v1.chat.get(
+          { path: { chat_id: query } },
+          lark.withUserAccessToken(userAccessToken),
+        );
         assertSuccess(result);
         return [
           {
@@ -475,13 +495,26 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
           },
         ];
       }
-      const result = await client.im.v1.chat.search({
-        params: { query, page_size: 50, user_id_type: "open_id" },
-      });
+      const result = await client.im.v2.chat.search(
+        {
+          data: { query },
+          params: { page_size: 100, user_id_type: "open_id" },
+        },
+        lark.withUserAccessToken(userAccessToken),
+      );
       assertSuccess(result);
       const chats = (result.data?.items ?? []).flatMap((chat) =>
-        chat.chat_id && chat.name
-          ? [{ groupId: chat.chat_id, chatId: chat.chat_id, name: chat.name }]
+        chat.meta_data?.chat_id
+          ? [
+              {
+                groupId: chat.id || chat.meta_data.chat_id,
+                chatId: chat.meta_data.chat_id,
+                name:
+                  chat.meta_data.name?.trim() ||
+                  chat.display_info?.trim() ||
+                  chat.meta_data.chat_id,
+              },
+            ]
           : [],
       );
       const exact = chats.filter((chat) => chat.name.trim() === query);

@@ -58,6 +58,14 @@ export const featureTranslationAdditions = {
     agentStream: {
       scrollToOldest: "Jump to first message",
       locatingOldest: "Locating first message",
+      chatOutline: {
+        question: "Question",
+        answer: "Answer",
+        model: "Model",
+        time: "Time",
+        pendingAnswer: "Waiting for an answer",
+        unknownModel: "Unknown model",
+      },
       reasoningTranslation: {
         translating: "Translating reasoning to Chinese...",
         failed: "Reasoning translation failed.",
@@ -3665,6 +3673,14 @@ export const featureTranslationAdditions = {
     agentStream: {
       scrollToOldest: "跳转到第一条消息",
       locatingOldest: "正在定位第一条消息",
+      chatOutline: {
+        question: "问题",
+        answer: "回答",
+        model: "模型",
+        time: "时间",
+        pendingAnswer: "等待回答",
+        unknownModel: "未知模型",
+      },
       reasoningTranslation: {
         translating: "正在翻译思考过程…",
         failed: "思考过程翻译失败。",

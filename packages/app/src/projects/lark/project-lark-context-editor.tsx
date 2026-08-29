@@ -20,6 +20,7 @@ import {
   createProjectLarkGroupDraft,
   type ProjectLarkGroupDraft,
 } from "./project-lark-context-model";
+import { LarkUserOAuthCard } from "./lark-user-oauth-card";
 
 function formatBotLabel(bot: LarkChannelBotStatus): string {
   const name = bot.name?.trim() || bot.bot?.name?.trim() || "未命名机器人";
@@ -34,6 +35,7 @@ interface ProjectLarkContextEditorProps {
 }
 
 interface ProjectLarkBindingEditorProps {
+  serverId: string;
   group: ProjectLarkGroupDraft;
   index: number;
   isLast: boolean;
@@ -50,6 +52,7 @@ interface ProjectLarkBindingEditorProps {
 }
 
 function ProjectLarkBindingEditor({
+  serverId,
   group,
   index,
   isLast,
@@ -139,6 +142,7 @@ function ProjectLarkBindingEditor({
           searchable
           testID={`project-lark-context-bot-${index}`}
         />
+        {appId ? <LarkUserOAuthCard serverId={serverId} appId={appId} /> : null}
         <LarkChatDirectoryField
           label="飞书群"
           hint="可按群名称、群 ID 或 chatId 查询。保存后机器人会自动加入该群。"
@@ -252,6 +256,7 @@ export function ProjectLarkContextEditor({
         value.map((group, index) => (
           <ProjectLarkBindingEditor
             key={group.rowId}
+            serverId={serverId}
             group={group}
             index={index}
             isLast={index === value.length - 1}

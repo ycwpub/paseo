@@ -10,6 +10,10 @@ const MAC_ATTENTION_SOUND_PATH = "/System/Library/Sounds/Glass.aiff";
 
 export type DesktopAttentionReason = "finished" | "intervention";
 
+interface DesktopAttentionSignalOptions {
+  allowWhenFocused?: boolean;
+}
+
 interface DesktopAttentionControllerDependencies {
   isAppFocused(): boolean;
   showAttentionIcon(): void;
@@ -19,7 +23,7 @@ interface DesktopAttentionControllerDependencies {
 }
 
 export interface DesktopAttentionController {
-  signal(volume: number): boolean;
+  signal(volume: number, options?: DesktopAttentionSignalOptions): boolean;
   clear(): void;
   isActive(): boolean;
 }
@@ -30,8 +34,8 @@ export function createDesktopAttentionController(
   let active = false;
 
   return {
-    signal(volume) {
-      if (dependencies.isAppFocused()) {
+    signal(volume, options) {
+      if (dependencies.isAppFocused() && options?.allowWhenFocused !== true) {
         if (active) {
           active = false;
           dependencies.showNormalIcon();
@@ -120,6 +124,15 @@ function readAttentionReason(input: unknown): DesktopAttentionReason | null {
   return reason === "finished" || reason === "intervention" ? reason : null;
 }
 
+function readAllowWhenFocused(input: unknown): boolean {
+  return (
+    Boolean(input) &&
+    typeof input === "object" &&
+    !Array.isArray(input) &&
+    (input as { allowWhenFocused?: unknown }).allowWhenFocused === true
+  );
+}
+
 export function registerAppAttentionHandlers(): void {
   const controller = createDesktopAttentionController({
     isAppFocused: isAnyPaseoWindowFocused,
@@ -136,7 +149,13 @@ export function registerAppAttentionHandlers(): void {
       return false;
     }
     const settings = await getDesktopSettingsStore().get();
-    return controller.signal(settings.attention.soundVolume);
+    return controller.signal(settings.attention.soundVolume, {
+      allowWhenFocused: readAllowWhenFocused(input),
+    });
+  });
+
+  ipcMain.handle("paseo:attention:clear", () => {
+    controller.clear();
   });
 
   app.on("browser-window-focus", () => {

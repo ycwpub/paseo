@@ -56,26 +56,46 @@ describe("buildLoadedChatOutlinePrompts", () => {
         "epoch-1",
       ),
     ).toEqual([
-      { seq: 2, timestamp: timestamp.toISOString(), preview: "first message" },
+      {
+        seq: 2,
+        timestamp: timestamp.toISOString(),
+        preview: "first message",
+        answerPreview: "answer",
+      },
       { seq: 9, timestamp: timestamp.toISOString(), preview: "second message" },
     ]);
   });
 
-  it("keeps loaded prompts visible while merging a complete server index", () => {
+  it("keeps loaded prompts visible and prefers their live answer while merging an index", () => {
     expect(
       mergeChatOutlinePrompts(
         [
           { seq: 2, timestamp: "indexed-2", preview: "indexed second" },
-          { seq: 7, timestamp: "indexed-7", preview: "indexed seventh" },
+          {
+            seq: 7,
+            timestamp: "indexed-7",
+            preview: "indexed seventh",
+            answerPreview: "stale answer",
+          },
         ],
         [
-          { seq: 7, timestamp: "loaded-7", preview: "loaded seventh" },
+          {
+            seq: 7,
+            timestamp: "loaded-7",
+            preview: "loaded seventh",
+            answerPreview: "live answer",
+          },
           { seq: 9, timestamp: "loaded-9", preview: "live ninth" },
         ],
       ),
     ).toEqual([
       { seq: 2, timestamp: "indexed-2", preview: "indexed second" },
-      { seq: 7, timestamp: "indexed-7", preview: "indexed seventh" },
+      {
+        seq: 7,
+        timestamp: "indexed-7",
+        preview: "indexed seventh",
+        answerPreview: "live answer",
+      },
       { seq: 9, timestamp: "loaded-9", preview: "live ninth" },
     ]);
   });

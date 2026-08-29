@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type pino from "pino";
@@ -109,6 +109,7 @@ export class AssistantStore {
       memory,
       memorySummary: materializedMemory.memorySummary,
       memoryFiles: materializedMemory.memoryFiles,
+      knowledge: parsed.knowledge,
       resourceSelection: parsed.resourceSelection,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -174,6 +175,7 @@ export class AssistantStore {
       memory,
       memorySummary: materializedMemory.memorySummary,
       memoryFiles: materializedMemory.memoryFiles,
+      ...(parsed.knowledge !== undefined ? { knowledge: parsed.knowledge } : {}),
       ...(parsed.resourceSelection !== undefined
         ? { resourceSelection: parsed.resourceSelection }
         : {}),
@@ -192,6 +194,10 @@ export class AssistantStore {
       return false;
     }
     removeAssistantMemoryFiles(this.paseoHome, id);
+    rmSync(path.join(this.paseoHome, "assistants", id, "knowledge"), {
+      recursive: true,
+      force: true,
+    });
     this.replaceAndPersist({ ...this.payload, assistants });
     return true;
   }

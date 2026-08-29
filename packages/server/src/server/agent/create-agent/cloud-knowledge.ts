@@ -1,4 +1,5 @@
 import type { PaseoHostKnowledge } from "@getpaseo/protocol/project-knowledge-schema";
+import type { Assistant } from "@getpaseo/protocol/messages";
 import type { Logger } from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
 import { refreshCloudKnowledgeDocuments } from "../../knowledge/cloud-cache/context.js";
@@ -21,8 +22,10 @@ interface PrepareAgentCloudKnowledgeInput {
   paseoHome?: string;
   service?: CloudDocumentCacheService;
   readGlobalKnowledge?: () => PaseoHostKnowledge | undefined;
+  assistant?: Assistant | null;
   projectRegistry?: Pick<ProjectRegistry, "get">;
   workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
+  readPluginProjectContext?: (projectId: string) => string | null;
   logger: Logger;
 }
 
@@ -56,6 +59,29 @@ async function resolveGlobalAuthorizationRequests(
   }));
 }
 
+async function resolveAssistantAuthorizationRequests(
+  input: PrepareAgentCloudKnowledgeInput,
+): Promise<AgentCloudKnowledgeAuthorizationRequest[]> {
+  if (!input.service || !input.assistant) return [];
+  const sources = collectCloudSources(input.assistant.knowledge);
+  const resolution = await refreshCloudKnowledgeDocuments({
+    service: input.service,
+    targets: sources.map((source) => ({
+      scope: "assistant",
+      assistantId: input.assistant!.id,
+      source,
+    })),
+  });
+  return resolution.authIssues.map((issue) => ({
+    target: {
+      scope: "assistant",
+      assistantId: input.assistant!.id,
+      source: issue.source,
+    },
+    issue,
+  }));
+}
+
 async function resolveProjectContext(input: PrepareAgentCloudKnowledgeInput): Promise<{
   config: AgentSessionConfig;
   authorizationRequests: AgentCloudKnowledgeAuthorizationRequest[];
@@ -73,6 +99,7 @@ async function resolveProjectContext(input: PrepareAgentCloudKnowledgeInput): Pr
     workspaceRegistry: input.workspaceRegistry,
     paseoHome: input.paseoHome,
     cloudDocumentCacheService: input.service,
+    readPluginProjectContext: input.readPluginProjectContext,
     onAuthIssues: (issues) => {
       if (!projectId) return;
       for (const issue of issues) {
@@ -91,14 +118,17 @@ export async function prepareAgentCloudKnowledge(input: PrepareAgentCloudKnowled
   config: AgentSessionConfig;
   authorizationRequests: AgentCloudKnowledgeAuthorizationRequest[];
 }> {
-  const [globalAuthorizationRequests, projectContext] = await Promise.all([
-    resolveGlobalAuthorizationRequests(input),
-    resolveProjectContext(input),
-  ]);
+  const [globalAuthorizationRequests, assistantAuthorizationRequests, projectContext] =
+    await Promise.all([
+      resolveGlobalAuthorizationRequests(input),
+      resolveAssistantAuthorizationRequests(input),
+      resolveProjectContext(input),
+    ]);
   return {
     config: projectContext.config,
     authorizationRequests: [
       ...globalAuthorizationRequests,
+      ...assistantAuthorizationRequests,
       ...projectContext.authorizationRequests,
     ],
   };

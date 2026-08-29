@@ -13,6 +13,7 @@ import { LarkChannelService } from "./lark-channel-service.js";
 import { LarkChannelStore } from "./lark-channel-store.js";
 import { LarkDirectoryService } from "./lark-directory-service.js";
 import { LarkDirectoryStore } from "./lark-directory-store.js";
+import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 
 function makeAgent(
@@ -128,7 +129,9 @@ describe("LarkChannelService", () => {
     };
     const directoryStore = new LarkDirectoryStore({ paseoHome, logger });
     const directoryService = options.withDirectory
-      ? new LarkDirectoryService(store, directoryStore, adapter)
+      ? new LarkDirectoryService(store, directoryStore, adapter, {
+          getValidUserAccessToken: vi.fn(async () => "u-token"),
+        } as unknown as LarkUserOAuthService)
       : null;
     const createAgent = vi.fn(async () => {
       const snapshot = makeAgent("agent-created", "idle");

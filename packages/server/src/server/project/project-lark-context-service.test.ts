@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PaseoConfigRaw } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "../channels/lark/lark-client-adapter.js";
 import type { StoredLarkChannelBot } from "../channels/lark/lark-channel-store.js";
+import type { LarkUserOAuthService } from "../channels/lark/lark-user-oauth-service.js";
 import type { PersistedProjectRecord } from "../workspace-registry.js";
 import { resolveGlobalProjectConfigPath } from "./project-config-storage.js";
 import {
@@ -74,6 +75,10 @@ function writeProjectConfig(paseoHome: string, projectId: string, config: PaseoC
 }
 
 describe("ProjectLarkContextService", () => {
+  const userOAuthService = {
+    getValidUserAccessToken: vi.fn(async () => "u-token"),
+  } as unknown as LarkUserOAuthService;
+
   it("invites the configured bot, stores recent messages, and observes new messages", async () => {
     const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-project-lark-"));
     roots.push(paseoHome);
@@ -120,6 +125,7 @@ describe("ProjectLarkContextService", () => {
       projectRegistry: { list: async () => [project] },
       channelStore: { getBot: () => createBot() },
       adapter,
+      userOAuthService,
       logger: {
         child: () => ({
           warn: vi.fn(),
@@ -133,6 +139,7 @@ describe("ProjectLarkContextService", () => {
       expect.objectContaining({ appId: "cli_test" }),
       "oc_support",
       "cli_test",
+      "u-token",
     );
     expect(listChatMessages).toHaveBeenCalledTimes(2);
     expect(listChatMessages).toHaveBeenLastCalledWith(
@@ -184,6 +191,7 @@ describe("ProjectLarkContextService", () => {
           throw new Error("缺少群成员管理权限");
         },
       } as unknown as LarkChannelClientAdapter,
+      userOAuthService,
       logger: {
         child: () => ({
           warn: vi.fn(),
@@ -197,6 +205,43 @@ describe("ProjectLarkContextService", () => {
 
     expect(readProjectLarkContextSnapshots(paseoHome, project.projectId)[0]?.error).toContain(
       "缺少群成员管理权限",
+    );
+  });
+
+  it("does not invite the bot with its own identity when user OAuth is unavailable", async () => {
+    const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-project-lark-oauth-error-"));
+    roots.push(paseoHome);
+    const project = createProject("prj_lark_oauth_error");
+    writeProjectConfig(paseoHome, project.projectId, {
+      project: {
+        larkGroups: [{ id: "group", botId: "bot-1", chatId: "oc_private" }],
+      },
+    });
+    const addBotToChat = vi.fn();
+    const service = new ProjectLarkContextService({
+      paseoHome,
+      projectRegistry: { list: async () => [project] },
+      channelStore: { getBot: () => createBot() },
+      adapter: { addBotToChat } as unknown as LarkChannelClientAdapter,
+      userOAuthService: {
+        getValidUserAccessToken: vi.fn(async () => {
+          throw new Error("请先完成 OAuth 授权");
+        }),
+      } as unknown as LarkUserOAuthService,
+      logger: {
+        child: () => ({
+          warn: vi.fn(),
+        }),
+      } as never,
+    });
+
+    await service.start();
+    await service.syncNow();
+    await service.stop();
+
+    expect(addBotToChat).not.toHaveBeenCalled();
+    expect(readProjectLarkContextSnapshots(paseoHome, project.projectId)[0]?.error).toContain(
+      "请先完成 OAuth 授权",
     );
   });
 });

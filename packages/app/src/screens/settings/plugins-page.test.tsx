@@ -101,7 +101,7 @@ function createClient() {
     on: vi.fn(() => () => undefined),
     getDaemonConfig: vi.fn(async () => ({ config: { pluginsEnabled: true } })),
     patchDaemonConfig: vi.fn(async () => ({ config: { pluginsEnabled: true } })),
-    listRuntimePlugins: vi.fn(async (): Promise<PluginListItem[]> => []),
+    listPlugins: vi.fn(async (): Promise<PluginListItem[]> => []),
     inspectDirectoryPlugin: vi.fn(async () => ({ id: "example" })),
     installDirectoryPlugin: vi.fn(async () => plugin()),
     reloadPlugin: vi.fn(async () => plugin()),
@@ -157,7 +157,7 @@ describe("HostPluginsPage", () => {
 
   it("renders a catalog error and retries through the real query", async () => {
     const client = createClient();
-    client.listRuntimePlugins.mockRejectedValueOnce(new Error("catalog exploded"));
+    client.listPlugins.mockRejectedValueOnce(new Error("catalog exploded"));
     renderPage(client);
 
     expect(await screen.findByText("Unable to load plugins")).toBeDefined();
@@ -165,7 +165,7 @@ describe("HostPluginsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    await waitFor(() => expect(client.listRuntimePlugins).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.listPlugins).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("No plugins configured")).toBeDefined();
   });
 
@@ -176,7 +176,7 @@ describe("HostPluginsPage", () => {
     ["removePlugin", "Remove", "Removing…", true],
   ] as const)("renders %s pending on its plugin row", async (method, trigger, pending, enabled) => {
     const client = createClient();
-    client.listRuntimePlugins.mockResolvedValue([plugin(enabled)]);
+    client.listPlugins.mockResolvedValue([plugin(enabled)]);
     client[method].mockImplementation(() => never<never>());
     renderPage(client);
 
@@ -205,7 +205,7 @@ describe("HostPluginsPage", () => {
   it("hides the logs action when the host does not advertise support", async () => {
     runtime.logsSupported = false;
     const client = createClient();
-    client.listRuntimePlugins.mockResolvedValue([plugin()]);
+    client.listPlugins.mockResolvedValue([plugin()]);
     renderPage(client);
 
     await screen.findByText("example");
@@ -214,7 +214,7 @@ describe("HostPluginsPage", () => {
 
   it("opens readable stdout and stderr logs and refreshes them", async () => {
     const client = createClient();
-    client.listRuntimePlugins.mockResolvedValue([plugin()]);
+    client.listPlugins.mockResolvedValue([plugin()]);
     client.getPluginLogs.mockResolvedValue([
       {
         sequence: 1,
@@ -246,7 +246,7 @@ describe("HostPluginsPage", () => {
 
   it("shows empty and recoverable error states for plugin logs", async () => {
     const client = createClient();
-    client.listRuntimePlugins.mockResolvedValue([plugin()]);
+    client.listPlugins.mockResolvedValue([plugin()]);
     client.getPluginLogs.mockRejectedValueOnce(new Error("logs exploded"));
     renderPage(client);
 

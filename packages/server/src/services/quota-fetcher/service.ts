@@ -8,6 +8,7 @@ export interface ProviderUsageServiceOptions {
   logger: Logger;
   fetchers?: ProviderUsageFetcher[];
   fetch?: ProviderApiFetch;
+  paseoHome?: string;
   cacheTtlMs?: number;
   now?: () => number;
 }
@@ -34,6 +35,7 @@ export class ProviderUsageService {
       createProviderUsageFetchers({
         logger: this.logger,
         fetch: options.fetch,
+        paseoHome: options.paseoHome,
       });
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_PROVIDER_USAGE_CACHE_TTL_MS;
     this.now = options.now ?? Date.now;

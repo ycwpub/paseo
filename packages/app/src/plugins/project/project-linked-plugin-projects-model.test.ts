@@ -8,6 +8,8 @@ function appState(overrides: Partial<PluginAppState> = {}): PluginAppState {
     appId: "main",
     projectId: "project-a",
     defaultAgent: { provider: "codex", model: "gpt-5.6" },
+    knowledge: "",
+    data: {},
     document: {
       version: 1,
       title: "结算计算器",
@@ -21,7 +23,7 @@ function appState(overrides: Partial<PluginAppState> = {}): PluginAppState {
 }
 
 describe("project linked plugin projects model", () => {
-  it("keeps only plugin projects associated with the current Project", () => {
+  it("keeps only the latest plugin project associated with the current Project", () => {
     const projects = buildLinkedPluginProjects({
       projectId: "project-a",
       appStateSources: [
@@ -69,15 +71,10 @@ describe("project linked plugin projects model", () => {
         pluginProjectId: "flow-a",
         title: "支付链路改造",
       }),
-      expect.objectContaining({
-        pluginId: "web-app",
-        title: "结算计算器",
-        description: "网页应用 · codex / gpt-5.6",
-      }),
     ]);
   });
 
-  it("sorts linked projects by latest update first", () => {
+  it("selects the latest linked project when legacy data contains more than one", () => {
     const projects = buildLinkedPluginProjects({
       projectId: "project-a",
       appStateSources: [
@@ -105,6 +102,6 @@ describe("project linked plugin projects model", () => {
       ],
     });
 
-    expect(projects.map((project) => project.pluginId)).toEqual(["web-app", "byte-development"]);
+    expect(projects.map((project) => project.pluginId)).toEqual(["web-app"]);
   });
 });

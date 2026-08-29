@@ -23,6 +23,7 @@ describe("feature_paseo server integration parity", () => {
       "larkChannel",
       "larkReminders",
       "larkDirectory",
+      "larkUserOAuth",
       "assistants",
       "memory",
       "memoryPolicies",
@@ -34,6 +35,7 @@ describe("feature_paseo server integration parity", () => {
       "teams",
       "mcpServers",
       "skills",
+      "plugins",
       "pluginManagement",
       "pluginProjectScopedApps",
       "pluginProjectDefaultAgent",
@@ -56,7 +58,7 @@ describe("feature_paseo server integration parity", () => {
 
     expect(bootstrap).toContain("new WorkflowService");
     expect(bootstrap).toContain("new PaseoMemoryService");
-    expect(bootstrap).toContain("new PluginService");
+    expect(bootstrap).toContain("new UnifiedPluginService");
     expect(bootstrap).toContain("new LarkChannelService");
   });
 

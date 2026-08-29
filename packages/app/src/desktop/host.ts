@@ -16,7 +16,11 @@ export type DesktopNotificationPermission = "granted" | "denied" | "default";
 export type DesktopWindowChromeMode = "native-mac" | "custom-windows" | "custom-linux";
 
 export interface DesktopAttentionBridge {
-  signal?: (reason: "finished" | "intervention") => Promise<boolean>;
+  signal?: (
+    reason: "finished" | "intervention",
+    options?: { allowWhenFocused?: boolean },
+  ) => Promise<boolean>;
+  clear?: () => Promise<void>;
 }
 
 export type DesktopIslandKind = "running" | "finished" | "error" | "permission" | "info";

@@ -112,6 +112,10 @@ import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView } from "@/plugins/timeline";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 
+function resolveChatOutlineModel(context: AgentScreenAgent): string | null {
+  return context.runtimeInfo?.model ?? context.model ?? context.provider ?? null;
+}
+
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
@@ -1158,6 +1162,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <ChatOutlineRail
             prompts={chatOutline.prompts}
             activePrompt={chatOutline.activePrompt}
+            model={resolveChatOutlineModel(context)}
             onJumpToPrompt={chatOutline.jumpToPrompt}
           />
           {(!isNearBottom || isTimelineDetached) && (

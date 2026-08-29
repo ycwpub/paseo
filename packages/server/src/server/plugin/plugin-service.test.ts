@@ -16,6 +16,8 @@ import { McpStore } from "../mcp/mcp-store.js";
 import { SkillMaterializer } from "../skill/skill-materializer.js";
 import { SkillStore } from "../skill/skill-store.js";
 import { PluginService } from "./plugin-service.js";
+import type { PluginAppState } from "@getpaseo/protocol/messages";
+import type { PluginAppRuntime } from "./plugin-app-runtime-types.js";
 import type {
   PluginHttpServiceBinding,
   PluginHttpServiceRuntime,
@@ -116,6 +118,75 @@ function declarePluginApp(pluginRoot: string): void {
     }),
     "utf8",
   );
+}
+
+function createPluginAppRuntime(): PluginAppRuntime {
+  const states = new Map<string, PluginAppState>();
+  const key = (pluginId: string, appId: string, projectId: string) =>
+    `${pluginId}\u0000${appId}\u0000${projectId}`;
+  const createState = (
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    defaultAgent: PluginAppState["defaultAgent"],
+  ): PluginAppState => ({
+    pluginId,
+    appId,
+    projectId,
+    defaultAgent,
+    name: `${pluginId}-${appId}`,
+    knowledge: "",
+    data: {},
+    document: null,
+    conversation: [],
+    createdAt: "2026-08-29T00:00:00.000Z",
+    updatedAt: "2026-08-29T00:00:00.000Z",
+  });
+  return {
+    get: (pluginId, appId, projectId) => {
+      const state = states.get(key(pluginId, appId, projectId));
+      if (!state) throw new Error("插件项目不存在");
+      return state;
+    },
+    configure: ({ pluginId, appId, projectId, defaultAgent }) => {
+      const state =
+        states.get(key(pluginId, appId, projectId)) ??
+        createState(pluginId, appId, projectId, defaultAgent);
+      const updated = { ...state, defaultAgent };
+      states.set(key(pluginId, appId, projectId), updated);
+      return updated;
+    },
+    updateProject: (pluginId, appId, projectId, update) => {
+      const current = states.get(key(pluginId, appId, projectId));
+      if (!current) throw new Error("插件项目不存在");
+      const updated = {
+        ...current,
+        ...(update.name !== undefined ? { name: update.name } : {}),
+        ...(update.knowledge !== undefined ? { knowledge: update.knowledge } : {}),
+        ...(update.data !== undefined ? { data: { ...current.data, ...update.data } } : {}),
+        updatedAt: "2026-08-29T00:01:00.000Z",
+      };
+      states.set(key(pluginId, appId, projectId), updated);
+      return updated;
+    },
+    listProjects: (pluginId, appId) =>
+      [...states.values()].filter((state) => state.pluginId === pluginId && state.appId === appId),
+    getHtmlPreview: () => null,
+    copyProject: () => {
+      throw new Error("unused");
+    },
+    deleteProject: (pluginId, appId, projectId) => states.delete(key(pluginId, appId, projectId)),
+    generate: async () => {
+      throw new Error("unused");
+    },
+    submit: async () => {
+      throw new Error("unused");
+    },
+    getJob: () => null,
+    listJobs: () => [],
+    updateJob: async () => null,
+    deleteJob: async () => false,
+  };
 }
 
 describe("PluginService", () => {
@@ -365,5 +436,52 @@ describe("PluginService", () => {
 
     await service.setEnabled("demo-plugin", false);
     expect(activeBindings).toEqual([]);
+  });
+
+  it("binds exactly one plugin project and exposes it to Project agents", async () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-project-service-"));
+    const { service } = createService(tempRoot);
+    service.attachAppRuntime(createPluginAppRuntime());
+
+    service.configureApp("web-app", "main", "prj_1", {
+      provider: "codex",
+      model: "gpt-5.6",
+    });
+
+    expect(() =>
+      service.configureApp("byte-reconciliation", "main", "prj_1", {
+        provider: "codex",
+        model: "gpt-5.6",
+      }),
+    ).toThrow("一个 Project 只能绑定一个插件项目");
+
+    expect(service.getPluginProjectForProject("prj_1")).toMatchObject({
+      projectId: "prj_1",
+      pluginId: "web-app",
+      name: "web-app-main",
+      knowledge: "",
+      data: {},
+    });
+    expect(service.buildProjectAgentContext("prj_1")).toContain("get_plugin_project");
+
+    await expect(
+      service.updatePluginProjectForProject("prj_1", {
+        name: "结算工具",
+        knowledge: "对账差异需要先核对账期。",
+        data: { owner: "settlement" },
+      }),
+    ).resolves.toMatchObject({
+      name: "结算工具",
+      knowledge: "对账差异需要先核对账期。",
+      data: { owner: "settlement" },
+    });
+
+    expect(service.deleteAppProject("web-app", "main", "prj_1")).toBe(true);
+    expect(() =>
+      service.configureApp("byte-reconciliation", "main", "prj_1", {
+        provider: "codex",
+        model: "gpt-5.6",
+      }),
+    ).not.toThrow();
   });
 });

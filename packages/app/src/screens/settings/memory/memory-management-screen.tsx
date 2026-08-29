@@ -45,6 +45,7 @@ import { MemoryDetailRow } from "./memory-detail-row";
 import { MEMORY_STATUS_OPTIONS, type MemoryStatusFilter } from "./memory-form-options";
 import { DEFAULT_MEMORY_PAGE_SIZE, paginateMemoryItems } from "./memory-pagination";
 import { MemoryPaginationControls } from "./memory-pagination-controls";
+import { ProjectMemoryPolicySection } from "./project-memory-card";
 import type { MemoryScopeEntity } from "./memory-scope-policy-options";
 import { filterMemoryDetails } from "./memory-view-model";
 
@@ -212,6 +213,7 @@ export function MemoryManagementScreen({
           description={visibleError}
         />
       ) : null}
+      <ProjectMemoryPolicy serverId={serverId} projectId={projectId} memoryId={memoryId} />
       {pageContent}
     </>
   );
@@ -229,6 +231,19 @@ export function MemoryManagementScreen({
       {content}
     </MemoryManagementFrame>
   );
+}
+
+function ProjectMemoryPolicy({
+  serverId,
+  projectId,
+  memoryId,
+}: {
+  serverId: string;
+  projectId?: string;
+  memoryId?: string;
+}) {
+  if (!projectId || memoryId) return null;
+  return <ProjectMemoryPolicySection serverId={serverId} projectId={projectId} />;
 }
 
 function MemoryManagementFrame({

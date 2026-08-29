@@ -136,6 +136,7 @@ export class CloudDocumentCacheService {
     return {
       scope: target.scope,
       ...(target.projectId ? { projectId: target.projectId } : {}),
+      ...(target.assistantId ? { assistantId: target.assistantId } : {}),
       source,
     };
   }

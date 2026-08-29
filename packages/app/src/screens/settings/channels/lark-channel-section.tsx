@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Linking, Text, View } from "react-native";
 import * as QRCode from "qrcode";
 import { SvgXml } from "react-native-svg";
@@ -120,9 +120,12 @@ interface BotListCardProps {
   bots: LarkChannelBotStatus[];
   selectedBotId: string | null;
   creating: boolean;
-  onSelect: (botId: string) => void;
+  onEdit: (botId: string) => void;
+  onOpenSubstitute: (botId: string) => void;
   onAdd: () => void;
 }
+
+type LarkChannelPage = "overview" | "bot" | "substitute" | "reminders";
 
 function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
   const application = channel.application ?? null;
@@ -544,16 +547,20 @@ function BotListRow({
   bot,
   selected,
   isFirst,
-  onSelect,
+  onEdit,
+  onOpenSubstitute,
 }: {
   bot: LarkChannelBotStatus;
   selected: boolean;
   isFirst: boolean;
-  onSelect: (botId: string) => void;
+  onEdit: (botId: string) => void;
+  onOpenSubstitute: (botId: string) => void;
 }) {
-  const handleSelect = useCallback(() => {
-    onSelect(bot.id);
-  }, [bot.id, onSelect]);
+  const handleEdit = useCallback(() => onEdit(bot.id), [bot.id, onEdit]);
+  const handleOpenSubstitute = useCallback(
+    () => onOpenSubstitute(bot.id),
+    [bot.id, onOpenSubstitute],
+  );
 
   return (
     <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
@@ -561,19 +568,36 @@ function BotListRow({
         <Text style={settingsStyles.rowTitle}>{getBotDisplayName(bot)}</Text>
         <Text style={settingsStyles.rowHint}>{getBotListDescription(bot)}</Text>
       </View>
-      <Button
-        size="sm"
-        variant={selected ? "default" : "outline"}
-        onPress={handleSelect}
-        testID={`host-page-lark-bot-select-${bot.id}`}
-      >
-        {selected ? "编辑中" : "编辑"}
-      </Button>
+      <View style={styles.inlineActions}>
+        <Button
+          size="sm"
+          variant={selected ? "default" : "outline"}
+          onPress={handleEdit}
+          testID={`host-page-lark-bot-edit-${bot.id}`}
+        >
+          编辑
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onPress={handleOpenSubstitute}
+          testID={`host-page-lark-bot-substitute-${bot.id}`}
+        >
+          替身模式
+        </Button>
+      </View>
     </View>
   );
 }
 
-function BotListCard({ bots, selectedBotId, creating, onSelect, onAdd }: BotListCardProps) {
+function BotListCard({
+  bots,
+  selectedBotId,
+  creating,
+  onEdit,
+  onOpenSubstitute,
+  onAdd,
+}: BotListCardProps) {
   return (
     <SettingsSection title={`飞书机器人列表（${bots.length}）`}>
       <View style={settingsStyles.card}>
@@ -584,7 +608,8 @@ function BotListCard({ bots, selectedBotId, creating, onSelect, onAdd }: BotList
               bot={bot}
               selected={!creating && bot.id === selectedBotId}
               isFirst={index === 0}
-              onSelect={onSelect}
+              onEdit={onEdit}
+              onOpenSubstitute={onOpenSubstitute}
             />
           ))
         ) : (
@@ -628,7 +653,7 @@ function CredentialsCard(props: CredentialsCardProps) {
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>正在编辑：{selectedBotName}</Text>
             <Text style={settingsStyles.rowHint}>
-              下方配置（包括替身模式）只对这个飞书机器人生效
+              下方连接、模型与项目配置只对这个飞书机器人生效
               {props.status?.appId ? ` · ${props.status.appId}` : ""}。
             </Text>
           </View>
@@ -670,39 +695,6 @@ function CredentialsCard(props: CredentialsCardProps) {
           {props.showOptional ? "隐藏可选设置" : "显示可选设置"}
         </Button>
         {props.showOptional ? <OptionalCredentialFields {...props} /> : null}
-        <View style={styles.substituteHeader}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>替身模式</Text>
-            <Text style={settingsStyles.rowHint}>
-              群聊中有人 @ 当前机器人或被附身用户时，由当前机器人代其回复。
-              {selectedBotName ? ` 当前机器人：${selectedBotName}。` : ""}
-            </Text>
-          </View>
-          <Switch
-            value={props.substituteEnabled}
-            onValueChange={props.onSubstituteEnabledChange}
-            accessibilityLabel="启用替身模式"
-            testID="host-page-lark-substitute-enabled"
-          />
-        </View>
-        {props.directorySupported ? (
-          <SubstituteDirectoryField {...props} />
-        ) : (
-          <LegacySubstituteOpenIdField {...props} />
-        )}
-        <Field
-          label="用户名（备注）"
-          hint="仅作为备注和回复上下文，不参与身份匹配。"
-          testID="host-page-lark-substitute-name"
-        >
-          <FormTextInput
-            initialValue={props.substituteName}
-            resetKey={`substitute-name:${props.formRevision}`}
-            onChangeText={props.onSubstituteNameChange}
-            placeholder="例如：张三"
-            editable={props.substituteEnabled}
-          />
-        </Field>
         <SelectField
           label="模型提供方"
           value={props.provider}
@@ -803,6 +795,124 @@ function CredentialsCard(props: CredentialsCardProps) {
           </Button>
           <Button variant="ghost" onPress={props.onOpenDocs} leftIcon={ExternalLink}>
             Lark docs
+          </Button>
+        </View>
+      </View>
+    </SettingsSection>
+  );
+}
+
+type SubstituteSettingsCardProps = Pick<
+  CredentialsCardProps,
+  | "status"
+  | "formRevision"
+  | "appId"
+  | "substituteEnabled"
+  | "substituteOpenId"
+  | "substituteName"
+  | "directory"
+  | "directorySupported"
+  | "saveError"
+  | "saving"
+  | "connected"
+  | "onSubstituteEnabledChange"
+  | "onSubstituteOpenIdChange"
+  | "resolveDirectoryUsers"
+  | "onSubstituteNameChange"
+  | "onSave"
+>;
+
+function SubstituteSettingsCard(props: SubstituteSettingsCardProps) {
+  const selectedBotName = props.status ? getBotDisplayName(props.status) : "未选择机器人";
+  return (
+    <SettingsSection title="替身模式">
+      <View style={styles.formCard}>
+        <View style={styles.substituteHeader}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{selectedBotName}</Text>
+            <Text style={settingsStyles.rowHint}>
+              群聊中有人 @ 当前机器人或被附身用户时，由当前机器人代其回复。
+            </Text>
+          </View>
+          <Switch
+            value={props.substituteEnabled}
+            onValueChange={props.onSubstituteEnabledChange}
+            accessibilityLabel="启用替身模式"
+            testID="host-page-lark-substitute-enabled"
+          />
+        </View>
+        {props.directorySupported ? (
+          <SubstituteDirectoryField {...props} />
+        ) : (
+          <LegacySubstituteOpenIdField {...props} />
+        )}
+        <Field
+          label="回复称呼（可选）"
+          hint="仅用于回复上下文；留空时使用飞书中的用户名称，不参与身份匹配。"
+          testID="host-page-lark-substitute-name"
+        >
+          <FormTextInput
+            initialValue={props.substituteName}
+            resetKey={`substitute-name:${props.formRevision}`}
+            onChangeText={props.onSubstituteNameChange}
+            placeholder="例如：张三"
+            editable={props.substituteEnabled}
+          />
+        </Field>
+        {props.saveError ? <Text style={settingsStyles.rowError}>{props.saveError}</Text> : null}
+        <View style={styles.actionsRow}>
+          <Button
+            variant="default"
+            onPress={props.onSave}
+            loading={props.saving}
+            disabled={!props.connected || !props.status}
+          >
+            保存替身模式
+          </Button>
+        </View>
+      </View>
+    </SettingsSection>
+  );
+}
+
+function SecondaryPageHeader({
+  title,
+  description,
+  onBack,
+}: {
+  title: string;
+  description: string;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.secondaryPageHeader}>
+      <Button variant="ghost" size="sm" onPress={onBack} testID="host-page-lark-back">
+        返回飞书设置
+      </Button>
+      <View style={settingsStyles.rowContent}>
+        <Text style={styles.secondaryPageTitle}>{title}</Text>
+        <Text style={settingsStyles.rowHint}>{description}</Text>
+      </View>
+    </View>
+  );
+}
+
+function ReminderEntryCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <SettingsSection title="提醒">
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>飞书定时提醒</Text>
+            <Text style={settingsStyles.rowHint}>管理提醒对象、提醒频率、发送身份和历史任务。</Text>
+          </View>
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={onOpen}
+            testID="host-page-lark-open-reminders"
+          >
+            管理
           </Button>
         </View>
       </View>
@@ -1193,6 +1303,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
   const [showOptional, setShowOptional] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [formRevision, setFormRevision] = useState(0);
+  const [page, setPage] = useState<LarkChannelPage>("overview");
   const status = channel.status;
   const directory = getStatusDirectory(status);
   const botStatuses = useMemo(() => buildBotStatuses(status), [status]);
@@ -1331,11 +1442,33 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     setSelectedBotId(botId);
     setSaveError(null);
   }, []);
+  const handleEditBot = useCallback(
+    (botId: string) => {
+      handleSelectBot(botId);
+      setPage("bot");
+    },
+    [handleSelectBot],
+  );
+  const handleOpenSubstitute = useCallback(
+    (botId: string) => {
+      handleSelectBot(botId);
+      setPage("substitute");
+    },
+    [handleSelectBot],
+  );
   const handleAddBot = useCallback(() => {
     setCreatingBot(true);
     setSelectedBotId(null);
     clearFormForNewBot();
+    setPage("bot");
   }, [clearFormForNewBot]);
+  const handleBackToOverview = useCallback(() => {
+    setPage("overview");
+    setSaveError(null);
+  }, []);
+  const handleOpenReminders = useCallback(() => {
+    setPage("reminders");
+  }, []);
   const handleBotNameChange = useCallback((value: string) => {
     setBotName(value);
     setSaveError(null);
@@ -1480,6 +1613,7 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
       if (!nextBotId) {
         clearFormForNewBot();
       }
+      setPage("overview");
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     }
@@ -1488,102 +1622,157 @@ function LarkChannelLoadedContent({ serverId, channel }: LarkChannelLoadedConten
     void Linking.openURL(LARK_DOCS_URL);
   }, []);
 
-  return (
-    <View testID="host-page-channels">
-      <BotApplicationCard channel={channel} />
-      <BotListCard
-        bots={botStatuses}
-        selectedBotId={selectedBotStatus?.id ?? selectedBotId}
-        creating={creatingBot}
-        onSelect={handleSelectBot}
-        onAdd={handleAddBot}
-      />
-      <StatusCard
-        channel={channel}
-        status={selectedBotStatus}
-        onEnabledChange={handleEnabledChange}
-      />
-      <CredentialsCard
-        status={selectedBotStatus}
-        botName={botName}
-        creating={creatingBot}
-        canDelete={canDeleteSelectedBot(status, selectedBotStatus)}
-        formRevision={formRevision}
-        appId={appId}
-        appSecret={appSecret}
-        encryptKey={encryptKey}
-        verificationToken={verificationToken}
-        substituteEnabled={substituteEnabled}
-        substituteOpenId={substituteOpenId}
-        substituteName={substituteName}
-        directory={directory}
-        directorySupported={supportsLarkDirectory}
-        targetValue={targetValue}
-        provider={provider}
-        model={model}
-        modeId={effectiveModeId}
-        thinkingOptionId={effectiveThinkingOptionId}
-        cwd={cwd}
-        showOptional={showOptional}
-        targetOptions={targetOptions}
-        selectedTargetDisplay={selectedTargetDisplay}
-        targetsLoading={assistants.isLoading || teams.isLoading}
-        providerOptions={providerOptions}
-        selectedProviderDisplay={selectedProviderDisplay}
-        modelOptions={modelOptions}
-        selectedModelDisplay={selectedModelDisplay}
-        modeOptions={modeOptions}
-        selectedModeDisplay={selectedModeDisplay}
-        thinkingOptions={thinkingOptions}
-        selectedThinkingDisplay={selectedThinkingDisplay}
-        providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
-        projectOptions={projectOptions}
-        selectedProjectDisplay={selectedProjectDisplay}
-        saveError={saveError}
-        saving={channel.isMutating}
-        connected={channel.isConnected}
-        onBotNameChange={handleBotNameChange}
-        onAppIdChange={setAppId}
-        onAppSecretChange={setAppSecret}
-        onEncryptKeyChange={setEncryptKey}
-        onVerificationTokenChange={setVerificationToken}
-        onSubstituteEnabledChange={setSubstituteEnabled}
-        onSubstituteOpenIdChange={setSubstituteOpenId}
-        resolveDirectoryUsers={channel.resolveDirectoryUsers}
-        onSubstituteNameChange={setSubstituteName}
-        onTargetChange={handleTargetChange}
-        onProviderChange={handleProviderChange}
-        onModelChange={handleModelChange}
-        onModeChange={setModeId}
-        onThinkingChange={setThinkingOptionId}
-        onCwdChange={handleProjectChange}
-        onToggleOptional={handleToggleOptional}
-        onSave={handleSave}
-        onTest={handleTest}
-        onDelete={handleDeleteBot}
-        onOpenDocs={openDocs}
-      />
-      <PairingRequestsCard
-        pairings={selectedBotStatus?.pendingPairings ?? EMPTY_PAIRINGS}
-        onApprove={handleApprovePairing}
-        onReject={handleRejectPairing}
-      />
-      <AuthorizedUsersCard
-        users={selectedBotStatus?.authorizedUsers ?? EMPTY_AUTHORIZED_USERS}
-        appId={selectedBotAppId}
-        directory={directory}
-        onRevoke={handleRevokeUser}
-      />
-      <LarkReminderSection
-        serverId={serverId}
-        bots={botStatuses}
-        directory={directory}
-        directorySupported={supportsLarkDirectory}
-        resolveDirectoryUsers={channel.resolveDirectoryUsers}
-        resolveDirectoryChats={channel.resolveDirectoryChats}
-      />
-    </View>
+  const credentialsCard = (
+    <CredentialsCard
+      status={selectedBotStatus}
+      botName={botName}
+      creating={creatingBot}
+      canDelete={canDeleteSelectedBot(status, selectedBotStatus)}
+      formRevision={formRevision}
+      appId={appId}
+      appSecret={appSecret}
+      encryptKey={encryptKey}
+      verificationToken={verificationToken}
+      substituteEnabled={substituteEnabled}
+      substituteOpenId={substituteOpenId}
+      substituteName={substituteName}
+      directory={directory}
+      directorySupported={supportsLarkDirectory}
+      targetValue={targetValue}
+      provider={provider}
+      model={model}
+      modeId={effectiveModeId}
+      thinkingOptionId={effectiveThinkingOptionId}
+      cwd={cwd}
+      showOptional={showOptional}
+      targetOptions={targetOptions}
+      selectedTargetDisplay={selectedTargetDisplay}
+      targetsLoading={assistants.isLoading || teams.isLoading}
+      providerOptions={providerOptions}
+      selectedProviderDisplay={selectedProviderDisplay}
+      modelOptions={modelOptions}
+      selectedModelDisplay={selectedModelDisplay}
+      modeOptions={modeOptions}
+      selectedModeDisplay={selectedModeDisplay}
+      thinkingOptions={thinkingOptions}
+      selectedThinkingDisplay={selectedThinkingDisplay}
+      providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
+      projectOptions={projectOptions}
+      selectedProjectDisplay={selectedProjectDisplay}
+      saveError={saveError}
+      saving={channel.isMutating}
+      connected={channel.isConnected}
+      onBotNameChange={handleBotNameChange}
+      onAppIdChange={setAppId}
+      onAppSecretChange={setAppSecret}
+      onEncryptKeyChange={setEncryptKey}
+      onVerificationTokenChange={setVerificationToken}
+      onSubstituteEnabledChange={setSubstituteEnabled}
+      onSubstituteOpenIdChange={setSubstituteOpenId}
+      resolveDirectoryUsers={channel.resolveDirectoryUsers}
+      onSubstituteNameChange={setSubstituteName}
+      onTargetChange={handleTargetChange}
+      onProviderChange={handleProviderChange}
+      onModelChange={handleModelChange}
+      onModeChange={setModeId}
+      onThinkingChange={setThinkingOptionId}
+      onCwdChange={handleProjectChange}
+      onToggleOptional={handleToggleOptional}
+      onSave={handleSave}
+      onTest={handleTest}
+      onDelete={handleDeleteBot}
+      onOpenDocs={openDocs}
+    />
   );
+
+  const pages: Record<LarkChannelPage, ReactElement> = {
+    overview: (
+      <View testID="host-page-channels">
+        <BotApplicationCard channel={channel} />
+        <BotListCard
+          bots={botStatuses}
+          selectedBotId={selectedBotStatus?.id ?? selectedBotId}
+          creating={creatingBot}
+          onEdit={handleEditBot}
+          onOpenSubstitute={handleOpenSubstitute}
+          onAdd={handleAddBot}
+        />
+        <ReminderEntryCard onOpen={handleOpenReminders} />
+      </View>
+    ),
+    bot: (
+      <View testID="host-page-channels-bot">
+        <SecondaryPageHeader
+          title={creatingBot ? "添加飞书机器人" : "编辑飞书机器人"}
+          description="配置机器人凭证、默认模型、助手或团队以及项目。"
+          onBack={handleBackToOverview}
+        />
+        <StatusCard
+          channel={channel}
+          status={selectedBotStatus}
+          onEnabledChange={handleEnabledChange}
+        />
+        {credentialsCard}
+        <PairingRequestsCard
+          pairings={selectedBotStatus?.pendingPairings ?? EMPTY_PAIRINGS}
+          onApprove={handleApprovePairing}
+          onReject={handleRejectPairing}
+        />
+        <AuthorizedUsersCard
+          users={selectedBotStatus?.authorizedUsers ?? EMPTY_AUTHORIZED_USERS}
+          appId={selectedBotAppId}
+          directory={directory}
+          onRevoke={handleRevokeUser}
+        />
+      </View>
+    ),
+    substitute: (
+      <View testID="host-page-channels-substitute">
+        <SecondaryPageHeader
+          title="替身模式"
+          description={`配置 ${selectedBotStatus ? getBotDisplayName(selectedBotStatus) : "当前机器人"} 的替身回复规则。`}
+          onBack={handleBackToOverview}
+        />
+        <SubstituteSettingsCard
+          status={selectedBotStatus}
+          formRevision={formRevision}
+          appId={appId}
+          substituteEnabled={substituteEnabled}
+          substituteOpenId={substituteOpenId}
+          substituteName={substituteName}
+          directory={directory}
+          directorySupported={supportsLarkDirectory}
+          saveError={saveError}
+          saving={channel.isMutating}
+          connected={channel.isConnected}
+          onSubstituteEnabledChange={setSubstituteEnabled}
+          onSubstituteOpenIdChange={setSubstituteOpenId}
+          resolveDirectoryUsers={channel.resolveDirectoryUsers}
+          onSubstituteNameChange={setSubstituteName}
+          onSave={handleSave}
+        />
+      </View>
+    ),
+    reminders: (
+      <View testID="host-page-channels-reminders">
+        <SecondaryPageHeader
+          title="飞书定时提醒"
+          description="创建和管理飞书群定时提醒任务。"
+          onBack={handleBackToOverview}
+        />
+        <LarkReminderSection
+          serverId={serverId}
+          bots={botStatuses}
+          directory={directory}
+          directorySupported={supportsLarkDirectory}
+          resolveDirectoryUsers={channel.resolveDirectoryUsers}
+          resolveDirectoryChats={channel.resolveDirectoryChats}
+        />
+      </View>
+    ),
+  };
+
+  return pages[page];
 }
 
 export function LarkChannelSection({ serverId }: LarkChannelSectionProps) {
@@ -1658,5 +1847,14 @@ const styles = StyleSheet.create((theme) => ({
   inlineActions: {
     flexDirection: "row",
     gap: theme.spacing[2],
+  },
+  secondaryPageHeader: {
+    gap: theme.spacing[3],
+    marginBottom: theme.spacing[6],
+  },
+  secondaryPageTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xl,
+    fontWeight: theme.fontWeight.medium,
   },
 }));

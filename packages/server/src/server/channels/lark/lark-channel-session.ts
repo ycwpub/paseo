@@ -19,6 +19,10 @@ export type LarkChannelSessionRequest = Extract<
       | "channel.lark.revoke_user.request"
       | "channel.lark.directory.resolve_users.request"
       | "channel.lark.directory.resolve_chats.request"
+      | "channel.lark.user_oauth.get_status.request"
+      | "channel.lark.user_oauth.start.request"
+      | "channel.lark.user_oauth.complete.request"
+      | "channel.lark.user_oauth.disconnect.request"
       | "channel.lark.reminder.list.request"
       | "channel.lark.reminder.create.request"
       | "channel.lark.reminder.set_enabled.request"
@@ -42,12 +46,48 @@ type LarkChannelResponse = Extract<
       | "channel.lark.revoke_user.response"
       | "channel.lark.directory.resolve_users.response"
       | "channel.lark.directory.resolve_chats.response"
+      | "channel.lark.user_oauth.get_status.response"
+      | "channel.lark.user_oauth.start.response"
+      | "channel.lark.user_oauth.complete.response"
+      | "channel.lark.user_oauth.disconnect.response"
       | "channel.lark.reminder.list.response"
       | "channel.lark.reminder.create.response"
       | "channel.lark.reminder.set_enabled.response"
       | "channel.lark.reminder.delete.response";
   }
 >;
+
+type LarkDirectoryOrOAuthRequest = Extract<
+  LarkChannelSessionRequest,
+  {
+    type:
+      | "channel.lark.directory.resolve_users.request"
+      | "channel.lark.directory.resolve_chats.request"
+      | "channel.lark.user_oauth.get_status.request"
+      | "channel.lark.user_oauth.start.request"
+      | "channel.lark.user_oauth.complete.request"
+      | "channel.lark.user_oauth.disconnect.request";
+  }
+>;
+
+type LarkUserOAuthRequest = Extract<
+  LarkDirectoryOrOAuthRequest,
+  { type: `channel.lark.user_oauth.${string}` }
+>;
+
+function isDirectoryOrOAuthRequest(
+  message: LarkChannelSessionRequest,
+): message is LarkDirectoryOrOAuthRequest {
+  return (
+    message.type === "channel.lark.directory.resolve_users.request" ||
+    message.type === "channel.lark.directory.resolve_chats.request" ||
+    message.type.startsWith("channel.lark.user_oauth.")
+  );
+}
+
+function isUserOAuthRequest(message: LarkChannelSessionRequest): message is LarkUserOAuthRequest {
+  return message.type.startsWith("channel.lark.user_oauth.");
+}
 
 export interface LarkChannelSessionHost {
   emit(message: SessionOutboundMessage): void;
@@ -75,6 +115,10 @@ export class LarkChannelSession {
 
   async handleRequest(message: LarkChannelSessionRequest): Promise<void> {
     try {
+      if (isDirectoryOrOAuthRequest(message)) {
+        await this.handleDirectoryOrOAuthRequest(message);
+        return;
+      }
       switch (message.type) {
         case "channel.lark.get_status.request":
           this.emitResponse({
@@ -189,32 +233,6 @@ export class LarkChannelSession {
             },
           });
           return;
-        case "channel.lark.directory.resolve_users.request": {
-          const users = await this.service.resolveDirectoryUsers(message.appId, message.emails);
-          this.emitResponse({
-            type: "channel.lark.directory.resolve_users.response",
-            payload: {
-              requestId: message.requestId,
-              users,
-              status: this.service.getStatus(),
-              error: null,
-            },
-          });
-          return;
-        }
-        case "channel.lark.directory.resolve_chats.request": {
-          const chats = await this.service.resolveDirectoryChats(message.appId, message.query);
-          this.emitResponse({
-            type: "channel.lark.directory.resolve_chats.response",
-            payload: {
-              requestId: message.requestId,
-              chats,
-              status: this.service.getStatus(),
-              error: null,
-            },
-          });
-          return;
-        }
         case "channel.lark.reminder.list.request":
           this.emitResponse({
             type: "channel.lark.reminder.list.response",
@@ -281,11 +299,93 @@ export class LarkChannelSession {
     }
   }
 
+  private async handleDirectoryOrOAuthRequest(message: LarkDirectoryOrOAuthRequest): Promise<void> {
+    switch (message.type) {
+      case "channel.lark.directory.resolve_users.request": {
+        const users = await this.service.resolveDirectoryUsers(message.appId, message.emails);
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_users.response",
+          payload: {
+            requestId: message.requestId,
+            users,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "channel.lark.directory.resolve_chats.request": {
+        const chats = await this.service.resolveDirectoryChats(message.appId, message.query);
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_chats.response",
+          payload: {
+            requestId: message.requestId,
+            chats,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "channel.lark.user_oauth.get_status.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.get_status.response",
+          payload: {
+            requestId: message.requestId,
+            status: this.service.getUserOAuthStatus(message.appId),
+            error: null,
+          },
+        });
+        return;
+      case "channel.lark.user_oauth.start.request": {
+        const authorization = this.service.startUserOAuth(message.appId, message.redirectUri);
+        this.emitResponse({
+          type: "channel.lark.user_oauth.start.response",
+          payload: {
+            requestId: message.requestId,
+            authorizationUrl: authorization.authorizationUrl,
+            state: authorization.state,
+            error: null,
+          },
+        });
+        return;
+      }
+      case "channel.lark.user_oauth.complete.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.complete.response",
+          payload: {
+            requestId: message.requestId,
+            status: await this.service.completeUserOAuth(
+              message.appId,
+              message.codeOrCallbackUrl,
+              message.state,
+            ),
+            error: null,
+          },
+        });
+        return;
+      case "channel.lark.user_oauth.disconnect.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.disconnect.response",
+          payload: {
+            requestId: message.requestId,
+            status: this.service.disconnectUserOAuth(message.appId),
+            error: null,
+          },
+        });
+        return;
+    }
+  }
+
   private emitResponse(message: LarkChannelResponse): void {
     this.host.emit(message);
   }
 
   private emitErrorResponse(message: LarkChannelSessionRequest, error: string): void {
+    if (isUserOAuthRequest(message)) {
+      this.emitUserOAuthErrorResponse(message, error);
+      return;
+    }
     const payload = {
       requestId: message.requestId,
       status: this.service.getStatus(),
@@ -388,6 +488,40 @@ export class LarkChannelSession {
             reminders: this.service.listReminders(),
             error,
           },
+        });
+        return;
+    }
+  }
+
+  private emitUserOAuthErrorResponse(message: LarkUserOAuthRequest, error: string): void {
+    switch (message.type) {
+      case "channel.lark.user_oauth.get_status.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.get_status.response",
+          payload: { requestId: message.requestId, status: null, error },
+        });
+        return;
+      case "channel.lark.user_oauth.start.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.start.response",
+          payload: {
+            requestId: message.requestId,
+            authorizationUrl: null,
+            state: null,
+            error,
+          },
+        });
+        return;
+      case "channel.lark.user_oauth.complete.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.complete.response",
+          payload: { requestId: message.requestId, status: null, error },
+        });
+        return;
+      case "channel.lark.user_oauth.disconnect.request":
+        this.emitResponse({
+          type: "channel.lark.user_oauth.disconnect.response",
+          payload: { requestId: message.requestId, status: null, error },
         });
         return;
     }

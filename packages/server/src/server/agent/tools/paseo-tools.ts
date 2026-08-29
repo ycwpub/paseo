@@ -99,6 +99,10 @@ import { registerBrowserTools } from "../../browser-tools/tools.js";
 import type { BrowserToolsBroker } from "../../browser-tools/broker.js";
 import type { AssistantStore } from "../../assistants/assistant-store.js";
 import type { TeamStore } from "../../team/team-store.js";
+import type {
+  PluginProjectSnapshot,
+  PluginProjectUpdate,
+} from "../../plugin/plugin-project-binding-store.js";
 import {
   describeTeamAssistantChoices,
   resolveTeamChildCreateContext,
@@ -149,6 +153,13 @@ export interface PaseoToolHostDependencies {
   browserToolsBroker?: BrowserToolsBroker | null;
   assistantStore?: Pick<AssistantStore, "get"> | null;
   teamStore?: Pick<TeamStore, "get"> | null;
+  pluginProjectService?: {
+    getPluginProjectForProject(projectId: string): PluginProjectSnapshot | null;
+    updatePluginProjectForProject(
+      projectId: string,
+      update: PluginProjectUpdate,
+    ): Promise<PluginProjectSnapshot>;
+  } | null;
   paseoHome?: string;
   worktreesRoot?: string;
   /**
@@ -202,6 +213,20 @@ const WorkspaceAutomationSummarySchema = z.object({
   isolation: z.enum(["local", "worktree"]),
   kind: z.enum(["directory", "local_checkout", "worktree"]),
   title: z.string().nullable(),
+});
+
+const PluginProjectSnapshotSchema = z.object({
+  projectId: z.string(),
+  pluginProjectId: z.string(),
+  pluginId: z.string(),
+  kind: z.enum(["app", "job"]),
+  appId: z.string().optional(),
+  serviceName: z.string().optional(),
+  name: z.string(),
+  knowledge: z.string(),
+  data: z.record(z.string(), z.unknown()),
+  createdAt: z.string(),
+  updatedAt: z.string(),
 });
 
 function toWorkspaceAutomationSummary(workspace: PersistedWorkspaceRecord) {
@@ -673,6 +698,27 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       throw new Error(`Parent agent ${callerAgentId} not found`);
     }
     return parentAgent;
+  };
+
+  const resolveCallerProjectId = async (): Promise<string> => {
+    const callerAgent = resolveCallerAgent();
+    if (!callerAgent) {
+      throw new Error("插件项目工具只能由 Project 内的 Agent 调用");
+    }
+    if (!callerAgent.workspaceId) {
+      throw new Error(`当前 Agent ${callerAgent.id} 未关联 Workspace，无法确定 Project`);
+    }
+    if (!options.workspaceRegistry) {
+      throw new Error("Workspace registry is not configured");
+    }
+    const workspace = await options.workspaceRegistry.get(callerAgent.workspaceId);
+    if (!workspace || workspace.archivedAt) {
+      throw new Error(`当前 Agent 关联的 Workspace ${callerAgent.workspaceId} 不存在或已归档`);
+    }
+    if (!workspace.projectId.trim()) {
+      throw new Error(`当前 Workspace ${workspace.workspaceId} 未关联 Project`);
+    }
+    return workspace.projectId;
   };
 
   const resolveScopedCwd = (requestedCwd?: string, opts?: { required?: boolean }): string => {
@@ -1256,6 +1302,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         assistantId: parsedArgs.assistantId,
         initialPrompt: parsedArgs.initialPrompt,
         labels: parsedArgs.labels,
+        paseoHome: options.paseoHome,
       },
     );
   }
@@ -1470,6 +1517,66 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       return {
         content: [],
         structuredContent: ensureValidJson({ workspaces }),
+      };
+    },
+  );
+
+  registerTool(
+    "get_plugin_project",
+    {
+      title: "查询插件项目",
+      description: "查询当前 Agent 所属 Project 唯一绑定的插件项目，包括插件项目知识和结构化信息。",
+      inputSchema: {},
+      outputSchema: PluginProjectSnapshotSchema.shape,
+    },
+    async () => {
+      if (!options.pluginProjectService) {
+        throw new Error("插件项目服务未配置");
+      }
+      const projectId = await resolveCallerProjectId();
+      const snapshot = options.pluginProjectService.getPluginProjectForProject(projectId);
+      if (!snapshot) {
+        throw new Error(`当前 Project ${projectId} 未绑定插件项目`);
+      }
+      return {
+        content: [],
+        structuredContent: ensureValidJson(snapshot),
+      };
+    },
+  );
+
+  registerTool(
+    "update_plugin_project",
+    {
+      title: "更新插件项目",
+      description:
+        "更新当前 Agent 所属 Project 唯一绑定的插件项目。可更新名称、知识和结构化信息，不能操作其他 Project。",
+      inputSchema: z
+        .object({
+          name: z.string().trim().min(1).optional(),
+          knowledge: z.string().optional(),
+          data: z.record(z.string(), z.unknown()).optional(),
+        })
+        .refine(
+          (input) =>
+            input.name !== undefined || input.knowledge !== undefined || input.data !== undefined,
+          "至少需要提供 name、knowledge 或 data 中的一项",
+        ),
+      outputSchema: PluginProjectSnapshotSchema.shape,
+    },
+    async ({ name, knowledge, data }) => {
+      if (!options.pluginProjectService) {
+        throw new Error("插件项目服务未配置");
+      }
+      const projectId = await resolveCallerProjectId();
+      const snapshot = await options.pluginProjectService.updatePluginProjectForProject(projectId, {
+        ...(name !== undefined ? { name } : {}),
+        ...(knowledge !== undefined ? { knowledge } : {}),
+        ...(data !== undefined ? { data } : {}),
+      });
+      return {
+        content: [],
+        structuredContent: ensureValidJson(snapshot),
       };
     },
   );

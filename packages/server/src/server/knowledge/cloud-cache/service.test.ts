@@ -15,7 +15,7 @@ describe("CloudDocumentCacheService", () => {
     }
   });
 
-  it("stores global and Project caches in their scoped directories", async () => {
+  it("stores global, Project, and Assistant caches in their scoped directories", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-cloud-cache-"));
     roots.push(paseoHome);
     const reader: CloudDocumentSourceReader = {
@@ -41,11 +41,20 @@ describe("CloudDocumentCacheService", () => {
       projectId: "prj_test",
       source: "https://example.com/project",
     });
+    const assistant = await service.resolve({
+      scope: "assistant",
+      assistantId: "assistant-1",
+      source: "https://example.com/assistant",
+    });
 
     expect(global.localPath).toContain(path.join("knowledge", "cloud-documents"));
     expect(project.localPath).toContain(path.join("prj_test", "knowledge", "cloud-documents"));
+    expect(assistant.localPath).toContain(
+      path.join("assistants", "assistant-1", "knowledge", "cloud-documents"),
+    );
     expect(readFileSync(global.localPath!, "utf8")).toBe("# cached");
     expect(readFileSync(project.localPath!, "utf8")).toBe("# cached");
+    expect(readFileSync(assistant.localPath!, "utf8")).toBe("# cached");
   });
 
   it("uses a fresh cache without downloading again", async () => {
@@ -68,6 +77,31 @@ describe("CloudDocumentCacheService", () => {
     await service.resolve(target);
 
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unsafe Assistant cache identifiers", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-cloud-cache-unsafe-"));
+    roots.push(paseoHome);
+    const service = new CloudDocumentCacheService({
+      paseoHome,
+      logger: createTestLogger(),
+      reader: {
+        fetch: vi.fn(async () => ({
+          content: "unused",
+          etag: null,
+          lastModified: null,
+          notModified: false,
+        })),
+      },
+    });
+
+    await expect(
+      service.resolve({
+        scope: "assistant",
+        assistantId: "../outside",
+        source: "https://example.com/unsafe",
+      }),
+    ).rejects.toThrow("assistantId is invalid");
   });
 
   it("downloads a replacement when a status check finds the local cache missing", async () => {

@@ -45,7 +45,7 @@ export function buildLinkedPluginProjects(input: {
   for (const source of input.appStateSources) {
     for (const state of source.states) {
       if (state.projectId !== input.projectId || !state.defaultAgent) continue;
-      const appTitle = state.document?.title?.trim() || source.target.appName;
+      const appTitle = state.name?.trim() || state.document?.title?.trim() || source.target.appName;
       projects.push({
         id: `app:${source.target.pluginId}:${source.target.appId}:${input.projectId}`,
         pluginId: source.target.pluginId,
@@ -74,12 +74,14 @@ export function buildLinkedPluginProjects(input: {
     });
   }
 
-  return projects.sort((left, right) => {
-    const byUpdatedAt = right.updatedAt.localeCompare(left.updatedAt);
-    if (byUpdatedAt !== 0) return byUpdatedAt;
-    const byPlugin = left.pluginName.localeCompare(right.pluginName, undefined, {
-      sensitivity: "base",
-    });
-    return byPlugin !== 0 ? byPlugin : left.title.localeCompare(right.title);
-  });
+  return projects
+    .sort((left, right) => {
+      const byUpdatedAt = right.updatedAt.localeCompare(left.updatedAt);
+      if (byUpdatedAt !== 0) return byUpdatedAt;
+      const byPlugin = left.pluginName.localeCompare(right.pluginName, undefined, {
+        sensitivity: "base",
+      });
+      return byPlugin !== 0 ? byPlugin : left.title.localeCompare(right.title);
+    })
+    .slice(0, 1);
 }

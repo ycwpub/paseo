@@ -238,6 +238,8 @@ import { LarkChannelService } from "./channels/lark/lark-channel-service.js";
 import { LarkReminderService } from "./channels/lark/lark-reminder-service.js";
 import { LarkDirectoryService } from "./channels/lark/lark-directory-service.js";
 import { LarkDirectoryStore } from "./channels/lark/lark-directory-store.js";
+import { LarkUserOAuthService } from "./channels/lark/lark-user-oauth-service.js";
+import { LarkUserOAuthStore } from "./channels/lark/lark-user-oauth-store.js";
 import { AssistantStore } from "./assistants/assistant-store.js";
 import { PaseoMemoryStore } from "./memory/memory-store.js";
 import { PaseoMemoryService } from "./memory/memory-service.js";
@@ -246,7 +248,7 @@ import { TeamStore } from "./team/team-store.js";
 import { McpStore } from "./mcp/mcp-store.js";
 import { SkillMaterializer } from "./skill/skill-materializer.js";
 import { SkillStore } from "./skill/skill-store.js";
-import { PluginService } from "./plugin/plugin-service.js";
+import { UnifiedPluginService } from "./plugins/unified-plugin-service.js";
 import { PluginHttpServiceManager } from "./plugin/plugin-http-service-manager.js";
 import { PluginAppService } from "./plugin/plugin-app-service.js";
 import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
@@ -1273,9 +1275,11 @@ export async function createPaseoDaemon(
   } catch (error) {
     logger.warn({ err: error }, "Failed to import provider MCP servers and skills during startup");
   }
-  const pluginService = new PluginService({
+  const pluginService = new UnifiedPluginService({
     paseoHome: config.paseoHome,
     logger,
+    daemonConfigStore,
+    daemonVersion,
     mcpStore,
     skillStore,
   });
@@ -1572,6 +1576,8 @@ export async function createPaseoDaemon(
     workspaceRegistry,
     cloudDocumentCacheService,
     readGlobalKnowledge: () => daemonConfigStore.get().knowledge,
+    readPluginProjectContext: (projectId) => pluginService.buildProjectAgentContext(projectId),
+    readAssistant: (assistantId) => assistantStore.get(assistantId),
     createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
   };
@@ -1658,10 +1664,15 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     logger,
   });
+  const larkUserOAuthStore = new LarkUserOAuthStore({
+    paseoHome: config.paseoHome,
+  });
+  const larkUserOAuthService = new LarkUserOAuthService(larkChannelStore, larkUserOAuthStore);
   const larkDirectoryService = new LarkDirectoryService(
     larkChannelStore,
     larkDirectoryStore,
     larkChannelAdapter,
+    larkUserOAuthService,
   );
   const larkReminderService = new LarkReminderService({
     paseoHome: config.paseoHome,
@@ -1706,9 +1717,11 @@ export async function createPaseoDaemon(
     projectRegistry,
     channelStore: larkChannelStore,
     adapter: larkChannelAdapter,
+    userOAuthService: larkUserOAuthService,
     logger,
   });
   larkChannelService = new LarkChannelService({
+    paseoHome: config.paseoHome,
     store: larkChannelStore,
     adapter: larkChannelAdapter,
     agentManager,
@@ -1719,6 +1732,7 @@ export async function createPaseoDaemon(
     logger,
     reminderService: larkReminderService,
     directoryService: larkDirectoryService,
+    userOAuthService: larkUserOAuthService,
     incomingMessageObserver: (botId, event) =>
       projectLarkContextService.observeIncomingMessage(botId, event),
     host: {
@@ -1962,6 +1976,7 @@ export async function createPaseoDaemon(
     browserToolsBroker,
     assistantStore,
     teamStore,
+    pluginProjectService: pluginService,
     paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
@@ -2243,6 +2258,8 @@ export async function createPaseoDaemon(
               workspaceSetupRuntime,
               cloudDocumentCacheService,
             );
+            pluginService.bindPaseoSessionHost(wsServer);
+            await pluginService.start();
             await wsServer.startLanDirectListener();
             await hubRelationships.start();
 
@@ -2277,6 +2294,7 @@ export async function createPaseoDaemon(
       await projectLarkContextService.start();
     } catch (error) {
       await projectLarkContextService.stop().catch(() => undefined);
+      await pluginService.stopAllPlugins().catch(() => undefined);
       await pluginHttpServiceManager.stop().catch(() => undefined);
       await serviceProxy.stopStandalone().catch(() => undefined);
       if (mainStarted) {
@@ -2306,6 +2324,7 @@ export async function createPaseoDaemon(
     await providerSnapshotManager.shutdown();
     terminalManager.killAll();
     speechService.stop();
+    await pluginService.stopAllPlugins().catch(() => undefined);
     await pluginHttpServiceManager.stop().catch(() => undefined);
     await workflowService.stop().catch(() => undefined);
     await scheduleService.stop().catch(() => undefined);

@@ -26,6 +26,7 @@ import type {
   PluginAppSubmitInput,
 } from "./plugin-app-runtime-types.js";
 import type { PluginHttpServiceRuntime } from "./plugin-http-runtime-types.js";
+import type { PluginProjectUpdate } from "./plugin-project-binding-store.js";
 
 export interface PluginAppContext {
   definition: PluginAppDefinition;
@@ -231,6 +232,26 @@ export class PluginAppService implements PluginAppRuntime {
     return this.store.save({
       ...current,
       defaultAgent: input.defaultAgent,
+      updatedAt: timestamp,
+    });
+  }
+
+  updateProject(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    update: PluginProjectUpdate,
+  ): PluginAppState {
+    const context = this.options.resolveApp(pluginId, appId);
+    const timestamp = this.now().toISOString();
+    const current = this.store.get(pluginId, context.definition, projectId, timestamp);
+    const name = update.name?.trim();
+    return this.store.save({
+      ...current,
+      ...(name ? { name } : {}),
+      ...(name && current.document ? { document: { ...current.document, title: name } } : {}),
+      ...(update.knowledge !== undefined ? { knowledge: update.knowledge } : {}),
+      ...(update.data ? { data: { ...current.data, ...update.data } } : {}),
       updatedAt: timestamp,
     });
   }

@@ -14,6 +14,7 @@ import {
   memoryScopeLabel,
 } from "./memory-form-options";
 import { memoryDetailDraft, type MemoryDetailDraft } from "./memory-detail-draft";
+import { memoryStoragePaths } from "./memory-storage-paths";
 
 export function MemoryDetailEditor({
   detail,
@@ -31,6 +32,7 @@ export function MemoryDetailEditor({
   onTitleChange?: (title: string) => void;
 }) {
   const [draft, setDraft] = useState(() => memoryDetailDraft(detail));
+  const storagePaths = useMemo(() => memoryStoragePaths(detail), [detail]);
 
   const save = useCallback(() => onSave(detail, draft), [detail, draft, onSave]);
   const remove = useCallback(() => onDelete(detail), [detail, onDelete]);
@@ -206,9 +208,14 @@ export function MemoryDetailEditor({
         已使用 {detail.useCount ?? 0} 次 · 有帮助 {detail.helpfulCount ?? 0} · 无帮助{" "}
         {detail.unhelpfulCount ?? 0} · {detail.sourceRefs?.length ?? 0} 个来源
       </Text>
-      <Text selectable style={styles.path}>
-        {detail.path}
-      </Text>
+      <View style={styles.paths}>
+        <Text style={styles.pathLabel}>存储路径</Text>
+        {storagePaths.map((path) => (
+          <Text key={path} selectable style={styles.path}>
+            {path}
+          </Text>
+        ))}
+      </View>
       <View style={styles.actions}>
         <Button
           size="sm"
@@ -252,8 +259,16 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
   },
+  paths: {
+    gap: theme.spacing[1],
+  },
+  pathLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
   path: {
     color: theme.colors.foregroundExtraMuted,
+    fontFamily: theme.fontFamily.mono,
     fontSize: theme.fontSize.xs,
   },
   actions: {

@@ -10,13 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { usePlugins } from "@/hooks/use-plugins";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { DEVELOPMENT_PLUGIN_ID } from "@/plugins/byte-development/flow-model";
 import { resolvePluginAppSelection } from "@/plugins/sidebar-panel/model";
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { HttpServiceModal } from "@/plugins/workflow-http-service/http-service-modal";
 import { HTTP_SERVICE_PLUGIN_ID } from "@/plugins/workflow-http-service/http-service-panel";
 import { useHostFeature } from "@/runtime/host-features";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { PluginLogsSheet } from "@/screens/settings/plugins/plugin-logs-sheet";
+import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { usePanelStore } from "@/stores/panel-store";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -41,6 +45,9 @@ function PluginUpgradeCard() {
 
 function capabilitySummary(plugin: PluginSummary): string {
   const parts: string[] = [];
+  if (plugin.runtime) {
+    parts.push("运行时代码");
+  }
   if (plugin.skills.length > 0) {
     parts.push(`${plugin.skills.length} skill${plugin.skills.length === 1 ? "" : "s"}`);
   }
@@ -56,6 +63,12 @@ function capabilitySummary(plugin: PluginSummary): string {
     parts.push(`${plugin.apps.length} 个应用`);
   }
   return parts.length > 0 ? parts.join(" · ") : "没有支持的资源";
+}
+
+function runtimeStatusLabel(status: NonNullable<PluginSummary["runtime"]>["status"]): string {
+  if (status === "running") return "运行中";
+  if (status === "failed") return "失败";
+  return "已停用";
 }
 
 function PluginAppButton({
@@ -80,6 +93,7 @@ function PluginAppButton({
   );
 }
 
+// oxlint-disable-next-line complexity -- A unified row renders every optional plugin capability.
 function PluginRow({
   plugin,
   isFirst,
@@ -88,6 +102,9 @@ function PluginRow({
   onToggle,
   onUninstall,
   onOpenApp,
+  onReload,
+  onOpenLogs,
+  supportsLogs,
 }: {
   plugin: PluginSummary;
   isFirst: boolean;
@@ -96,6 +113,9 @@ function PluginRow({
   onToggle: (plugin: PluginSummary, enabled: boolean) => void;
   onUninstall: (plugin: PluginSummary) => void;
   onOpenApp: (plugin: PluginSummary, app: PluginAppDefinition) => void;
+  onReload: (plugin: PluginSummary) => void;
+  onOpenLogs: (plugin: PluginSummary) => void;
+  supportsLogs: boolean;
 }) {
   const rowStyle = useMemo(
     () => [
@@ -110,6 +130,8 @@ function PluginRow({
     (enabled: boolean) => onToggle(plugin, enabled),
     [onToggle, plugin],
   );
+  const handleReload = useCallback(() => onReload(plugin), [onReload, plugin]);
+  const handleOpenLogs = useCallback(() => onOpenLogs(plugin), [onOpenLogs, plugin]);
   return (
     <View style={rowStyle} testID={`plugin-row-${plugin.id}`}>
       <View style={styles.pluginBody}>
@@ -118,6 +140,16 @@ function PluginRow({
           <Text style={styles.badge}>v{plugin.version}</Text>
           {plugin.category ? <Text style={styles.badge}>{plugin.category}</Text> : null}
           {plugin.installed && !plugin.enabled ? <Text style={styles.badge}>已禁用</Text> : null}
+          {plugin.runtime ? (
+            <Text
+              style={[
+                styles.badge,
+                plugin.runtime.status === "failed" ? styles.runtimeFailedBadge : null,
+              ]}
+            >
+              运行时：{runtimeStatusLabel(plugin.runtime.status)}
+            </Text>
+          ) : null}
         </View>
         <Text style={settingsStyles.rowHint}>{plugin.description}</Text>
         <Text style={styles.capabilityText}>{capabilitySummary(plugin)}</Text>
@@ -151,6 +183,9 @@ function PluginRow({
           <Text style={styles.pathText}>Source: {plugin.marketplaceName}</Text>
         ) : null}
         {plugin.sourcePath ? <Text style={styles.pathText}>{plugin.sourcePath}</Text> : null}
+        {plugin.runtime?.path && plugin.runtime.path !== plugin.sourcePath ? (
+          <Text style={styles.pathText}>运行时目录：{plugin.runtime.path}</Text>
+        ) : null}
         {plugin.unsupportedComponents.length > 0 ? (
           <Text style={styles.warningText}>
             Not active in Paseo yet: {plugin.unsupportedComponents.join(", ")}
@@ -165,6 +200,21 @@ function PluginRow({
       <View style={styles.actions}>
         {plugin.installed && plugin.pluginId ? (
           <>
+            {plugin.runtime && supportsLogs ? (
+              <Button size="sm" variant="outline" onPress={handleOpenLogs} disabled={isMutating}>
+                日志
+              </Button>
+            ) : null}
+            {plugin.runtime ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onPress={handleReload}
+                disabled={isMutating || !plugin.enabled}
+              >
+                重新加载
+              </Button>
+            ) : null}
             <Switch
               value={plugin.enabled}
               onValueChange={handleToggle}
@@ -224,8 +274,13 @@ function MarketplaceRow({
   );
 }
 
+// oxlint-disable-next-line complexity -- The catalog coordinates all unified plugin lifecycle actions.
 export function PluginsSection({ serverId }: { serverId: string }) {
   const supportsPlugins = useHostFeature(serverId, "plugins");
+  const supportsRuntimePlugins = useHostFeature(serverId, "pluginManagement");
+  const supportsPluginLogs = useHostFeature(serverId, "pluginLogs");
+  const client = useHostRuntimeClient(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
   const plugins = usePlugins(serverId, { enabled: supportsPlugins });
   const openPluginPanel = usePluginAppPanelStore((state) => state.open);
   const openDesktopAgentList = usePanelStore((state) => state.openDesktopAgentList);
@@ -236,6 +291,7 @@ export function PluginsSection({ serverId }: { serverId: string }) {
     plugin: PluginSummary;
     app: PluginAppDefinition;
   } | null>(null);
+  const [logsPluginId, setLogsPluginId] = useState<string | null>(null);
 
   const installed = useMemo(
     () => plugins.plugins.filter((plugin) => plugin.installed),
@@ -322,6 +378,35 @@ export function PluginsSection({ serverId }: { serverId: string }) {
     },
     [plugins],
   );
+  const handleReload = useCallback(
+    (plugin: PluginSummary) => {
+      if (!client || !plugin.pluginId || !plugin.runtime) return;
+      setMessage(null);
+      void client
+        .reloadPlugin(plugin.pluginId)
+        .then(() => plugins.refresh())
+        .then(() => setMessage(`${plugin.displayName} 已重新加载。`))
+        .catch((error: unknown) =>
+          setMessage(error instanceof Error ? error.message : String(error)),
+        );
+    },
+    [client, plugins],
+  );
+  const handleOpenLogs = useCallback((plugin: PluginSummary) => {
+    if (plugin.pluginId) setLogsPluginId(plugin.pluginId);
+  }, []);
+  const handleToggleRuntime = useCallback(
+    (enabled: boolean) => {
+      setMessage(null);
+      void patchConfig({ pluginsEnabled: enabled })
+        .then(() => plugins.refresh())
+        .then(() => setMessage(enabled ? "运行时插件已启用。" : "运行时插件已停用。"))
+        .catch((error: unknown) =>
+          setMessage(error instanceof Error ? error.message : String(error)),
+        );
+    },
+    [patchConfig, plugins],
+  );
 
   const handleUninstall = useCallback(
     (plugin: PluginSummary) => {
@@ -359,6 +444,7 @@ export function PluginsSection({ serverId }: { serverId: string }) {
     [openDesktopAgentList, openPluginPanel, serverId],
   );
   const handleCloseApp = useCallback(() => setSelectedApp(null), []);
+  const handleCloseLogs = useCallback(() => setLogsPluginId(null), []);
 
   if (!supportsPlugins) return <PluginUpgradeCard />;
 
@@ -381,6 +467,9 @@ export function PluginsSection({ serverId }: { serverId: string }) {
         onToggle={handleToggle}
         onUninstall={handleUninstall}
         onOpenApp={handleOpenApp}
+        onReload={handleReload}
+        onOpenLogs={handleOpenLogs}
+        supportsLogs={supportsPluginLogs}
       />
     ));
   } else {
@@ -431,11 +520,41 @@ export function PluginsSection({ serverId }: { serverId: string }) {
         </View>
       </SettingsSection>
 
+      {supportsRuntimePlugins ? (
+        <SettingsSection title="运行时">
+          <View style={settingsStyles.card}>
+            <View style={settingsStyles.row}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>启用插件运行时代码</Text>
+                <Text style={settingsStyles.rowHint}>
+                  控制插件的进程隔离运行时代码；Skills、MCP、应用和 HTTP
+                  等声明式资源仍由同一插件统一管理。
+                </Text>
+              </View>
+              <Switch
+                value={config?.pluginsEnabled === true}
+                onValueChange={handleToggleRuntime}
+                disabled={plugins.isMutating}
+                accessibilityLabel="启用插件运行时代码"
+              />
+            </View>
+          </View>
+        </SettingsSection>
+      ) : null}
+
+      <HostResourceSyncCard
+        serverId={serverId}
+        kind="plugins"
+        requiredFeature="plugins"
+        description="同步插件安装来源、启用状态及其运行时能力；目标主机不会删除已有插件。"
+        warning="本地目录插件要求目标主机存在相同路径；插件市场插件要求目标主机能够访问相同插件市场。"
+      />
+
       <SettingsSection title="添加本地来源">
         <View style={styles.formCard}>
           <Field
             label="插件或市场路径"
-            hint="请选择包含 .codex-plugin/plugin.json 的插件目录，或插件市场根目录/文件。"
+            hint="请选择包含 paseo-plugin.json 或 .codex-plugin/plugin.json 的插件目录，或插件市场根目录/文件。"
           >
             <FormTextInput
               value={sourcePath}
@@ -479,6 +598,9 @@ export function PluginsSection({ serverId }: { serverId: string }) {
                 onToggle={handleToggle}
                 onUninstall={handleUninstall}
                 onOpenApp={handleOpenApp}
+                onReload={handleReload}
+                onOpenLogs={handleOpenLogs}
+                supportsLogs={supportsPluginLogs}
               />
             ))
           ) : (
@@ -519,6 +641,14 @@ export function PluginsSection({ serverId }: { serverId: string }) {
         <View style={settingsStyles.card}>{availableContent}</View>
       </SettingsSection>
       {appModal}
+      {client && logsPluginId ? (
+        <PluginLogsSheet
+          client={client}
+          pluginId={logsPluginId}
+          serverId={serverId}
+          onClose={handleCloseLogs}
+        />
+      ) : null}
     </View>
   );
 }
@@ -576,6 +706,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 2,
     fontSize: theme.fontSize.xs,
+  },
+  runtimeFailedBadge: {
+    color: theme.colors.destructive,
   },
   capabilityText: {
     color: theme.colors.foreground,

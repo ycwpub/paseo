@@ -581,6 +581,64 @@ export function buildSettingsHostSectionRoute(serverId: string, section: HostSec
   return `/settings/hosts/${encodeSegment(normalized)}/${section}` as const;
 }
 
+export function buildAssistantSettingsRoute(serverId: string, assistantId?: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    throw new Error("buildAssistantSettingsRoute requires a non-empty serverId");
+  }
+  const normalizedAssistantId = trimNonEmpty(assistantId);
+  const target = normalizedAssistantId ?? "new";
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/assistants/${encodeSegment(target)}` as const;
+}
+
+export function buildTeamSettingsRoute(serverId: string, teamId?: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    throw new Error("buildTeamSettingsRoute requires a non-empty serverId");
+  }
+  const normalizedTeamId = trimNonEmpty(teamId);
+  const target = normalizedTeamId ?? "new";
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/teams/${encodeSegment(target)}` as const;
+}
+
+export function buildInstructionTemplatesSettingsRoute(serverId: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    throw new Error("buildInstructionTemplatesSettingsRoute requires a non-empty serverId");
+  }
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/instruction-templates` as const;
+}
+
+export function buildInstructionTemplateSettingsRoute(serverId: string, templateId?: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    throw new Error("buildInstructionTemplateSettingsRoute requires a non-empty serverId");
+  }
+  const normalizedTemplateId = trimNonEmpty(templateId);
+  const target = normalizedTemplateId ?? "new";
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/instruction-templates/${encodeSegment(target)}` as const;
+}
+
+export function buildMcpServerSettingsRoute(serverId: string, mcpServerId?: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    throw new Error("buildMcpServerSettingsRoute requires a non-empty serverId");
+  }
+  const normalizedMcpServerId = trimNonEmpty(mcpServerId);
+  const target = normalizedMcpServerId ?? "new";
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/mcp-servers/${encodeSegment(target)}` as const;
+}
+
+export function buildSkillSettingsRoute(serverId: string, skillId?: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  if (!normalizedServerId) {
+    throw new Error("buildSkillSettingsRoute requires a non-empty serverId");
+  }
+  const normalizedSkillId = trimNonEmpty(skillId);
+  const target = normalizedSkillId ?? "new";
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/skills/${encodeSegment(target)}` as const;
+}
+
 export function buildProjectsSettingsRoute(serverId: string) {
   const normalized = trimNonEmpty(serverId);
   if (!normalized) {
@@ -596,6 +654,20 @@ export function buildProjectSettingsRoute(serverId: string, projectId: string) {
   return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}` as const;
 }
 
+export function buildProjectLarkGroupsSettingsRoute(serverId: string, projectId: string) {
+  if (!serverId.trim() || !projectId.trim()) {
+    throw new Error("buildProjectLarkGroupsSettingsRoute requires a serverId and projectId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/lark-groups` as const;
+}
+
+export function buildProjectKnowledgeSettingsRoute(serverId: string, projectId: string) {
+  if (!serverId.trim() || !projectId.trim()) {
+    throw new Error("buildProjectKnowledgeSettingsRoute requires a serverId and projectId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/knowledge` as const;
+}
+
 export function buildHostMemoryRoute(serverId: string) {
   if (!serverId.trim()) {
     throw new Error("buildHostMemoryRoute requires a non-empty serverId");
@@ -608,6 +680,22 @@ export function buildHostMemoryDetailRoute(serverId: string, memoryId: string) {
     throw new Error("buildHostMemoryDetailRoute requires a serverId and memoryId");
   }
   return `/settings/hosts/${encodeSegment(serverId)}/memories/${encodeSegment(memoryId)}` as const;
+}
+
+export const HOST_MEMORY_SETTINGS_PAGES = ["policies", "summary", "sync", "transfer"] as const;
+export type HostMemorySettingsPage = (typeof HOST_MEMORY_SETTINGS_PAGES)[number];
+
+export function normalizeHostMemorySettingsPage(value: string): HostMemorySettingsPage | null {
+  return (HOST_MEMORY_SETTINGS_PAGES as readonly string[]).includes(value)
+    ? (value as HostMemorySettingsPage)
+    : null;
+}
+
+export function buildHostMemorySettingsPageRoute(serverId: string, page: HostMemorySettingsPage) {
+  if (!serverId.trim()) {
+    throw new Error("buildHostMemorySettingsPageRoute requires a non-empty serverId");
+  }
+  return `/settings/hosts/${encodeSegment(serverId)}/memory/${page}` as const;
 }
 
 export function buildProjectMemoryRoute(serverId: string, projectId: string) {

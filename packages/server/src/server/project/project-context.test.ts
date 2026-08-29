@@ -213,6 +213,15 @@ describe("loadProjectAgentContext", () => {
       paseoHome,
       projectRegistry: { get: async () => project } as never,
       workspaceRegistry: { get: async () => workspace } as never,
+      readPluginProjectContext: (projectId) =>
+        projectId === project.projectId
+          ? [
+              "<paseo_plugin_project>",
+              "Plugin-project knowledge: settlement rules",
+              "Use get_plugin_project and update_plugin_project.",
+              "</paseo_plugin_project>",
+            ].join("\n")
+          : null,
     });
 
     expect(context?.directories.project).toEqual([
@@ -221,6 +230,9 @@ describe("loadProjectAgentContext", () => {
     ]);
     expect(context?.directories.knowledge).toEqual([path.join(paseoHome, "docs")]);
     expect(context?.variables.owner).toBe("payments");
+    expect(context?.prompt).toContain("Plugin-project knowledge: settlement rules");
+    expect(context?.prompt).toContain("get_plugin_project");
+    expect(context?.prompt).toContain("update_plugin_project");
   });
 
   it("classifies unregistered managed repositories as general knowledge", async () => {

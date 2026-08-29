@@ -22,7 +22,7 @@ export function buildManagedPluginProjects(
       {
         state,
         projectId,
-        projectName: option?.projectName ?? projectId,
+        projectName: state.name ?? option?.projectName ?? projectId,
         sourceDirectory: option?.sourceDirectory ?? null,
         option,
       },

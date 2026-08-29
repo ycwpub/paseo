@@ -37,6 +37,10 @@ import type {
   DeleteLarkReminderOptions,
   GetLarkBotApplicationOptions,
   LarkChannelRequestOptions,
+  LarkUserOAuthCompleteOptions,
+  LarkUserOAuthDisconnectOptions,
+  LarkUserOAuthGetStatusOptions,
+  LarkUserOAuthStartOptions,
   RejectLarkPairingOptions,
   ResolveLarkDirectoryChatsOptions,
   ResolveLarkDirectoryUsersOptions,
@@ -151,6 +155,7 @@ export class DaemonResourceRpcClient {
   cacheCloudDocument(options: {
     scope: CloudKnowledgeScope;
     projectId?: string;
+    assistantId?: string;
     source: string;
     force?: boolean;
     requestId?: string;
@@ -161,6 +166,7 @@ export class DaemonResourceRpcClient {
         type: "knowledge.cloud_document.cache.request",
         scope: options.scope,
         projectId: options.projectId,
+        assistantId: options.assistantId,
         source: options.source,
         force: options.force,
       },
@@ -172,6 +178,7 @@ export class DaemonResourceRpcClient {
   getCloudDocumentCacheStatus(options: {
     scope: CloudKnowledgeScope;
     projectId?: string;
+    assistantId?: string;
     source: string;
     requestId?: string;
   }) {
@@ -181,6 +188,7 @@ export class DaemonResourceRpcClient {
         type: "knowledge.cloud_document.get_status.request",
         scope: options.scope,
         projectId: options.projectId,
+        assistantId: options.assistantId,
         source: options.source,
       },
       responseType: "knowledge.cloud_document.get_status.response",
@@ -320,7 +328,7 @@ export class DaemonResourceRpcClient {
     return { ok: result.ok, error: result.error };
   }
 
-  async listPlugins(options?: {
+  async listUnifiedPlugins(options?: {
     refresh?: boolean;
   }): Promise<PluginState & { error: string | null }> {
     return (await this.request({
@@ -755,6 +763,53 @@ export class DaemonResourceRpcClient {
         query: options.query,
       },
       responseType: "channel.lark.directory.resolve_chats.response",
+    });
+  }
+
+  getLarkUserOAuthStatus(options: LarkUserOAuthGetStatusOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.user_oauth.get_status.request",
+        appId: options.appId,
+      },
+      responseType: "channel.lark.user_oauth.get_status.response",
+    });
+  }
+
+  startLarkUserOAuth(options: LarkUserOAuthStartOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.user_oauth.start.request",
+        appId: options.appId,
+        redirectUri: options.redirectUri,
+      },
+      responseType: "channel.lark.user_oauth.start.response",
+    });
+  }
+
+  completeLarkUserOAuth(options: LarkUserOAuthCompleteOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.user_oauth.complete.request",
+        appId: options.appId,
+        codeOrCallbackUrl: options.codeOrCallbackUrl,
+        state: options.state,
+      },
+      responseType: "channel.lark.user_oauth.complete.response",
+    });
+  }
+
+  disconnectLarkUserOAuth(options: LarkUserOAuthDisconnectOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.user_oauth.disconnect.request",
+        appId: options.appId,
+      },
+      responseType: "channel.lark.user_oauth.disconnect.response",
     });
   }
 

@@ -43,6 +43,12 @@ import {
   type PluginMarketplaceEntry,
 } from "./plugin-marketplace.js";
 import { PluginStore, pluginAuthorName, type InstalledPluginRecord } from "./plugin-store.js";
+import {
+  PluginProjectBindingStore,
+  type PluginProjectBinding,
+  type PluginProjectSnapshot,
+  type PluginProjectUpdate,
+} from "./plugin-project-binding-store.js";
 
 interface MarketplaceState {
   summary: PluginMarketplaceSummary;
@@ -68,6 +74,11 @@ interface SyncedResourceState {
   mcpEnabled: Record<string, boolean>;
 }
 
+interface PluginProjectBindingCandidate {
+  binding: PluginProjectBinding;
+  timestamp: string;
+}
+
 function sanitizePathSegment(value: string): string {
   return (
     value
@@ -80,6 +91,42 @@ function sanitizePathSegment(value: string): string {
 
 function canonicalName(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readOptionalText(record: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function pluginJobKnowledge(input: Record<string, unknown>): string {
+  const values: string[] = [];
+  const projectKnowledge = readOptionalText(input, "plugin_project_knowledge");
+  if (projectKnowledge) values.push(projectKnowledge);
+  const stages = asRecord(input.stage_collaboration);
+  for (const [stageId, rawStage] of Object.entries(stages)) {
+    const knowledge = readOptionalText(asRecord(rawStage), "knowledge");
+    if (knowledge) values.push(`${stageId}:\n${knowledge}`);
+  }
+  return [...new Set(values)].join("\n\n");
+}
+
+function isProjectJob(job: PluginHttpJob): boolean {
+  if (!job.projectId) return false;
+  const input = asRecord(job.input);
+  return (
+    job.status === "draft" ||
+    readOptionalText(input, "flow_title", "plugin_project_name") !== null ||
+    input.plugin_project === true
+  );
 }
 
 function replacePluginVariables(value: string, pluginRoot: string, pluginData: string): string {
@@ -368,6 +415,7 @@ export class PluginService {
   private readonly mcpStore: McpStore;
   private readonly skillStore: SkillStore;
   private readonly store: PluginStore;
+  private readonly projectBindings: PluginProjectBindingStore;
   private readonly bundledMarketplacePaths: string[];
   private httpRuntime: PluginHttpServiceRuntime | null = null;
   private appRuntime: PluginAppRuntime | null = null;
@@ -387,6 +435,9 @@ export class PluginService {
     this.mcpStore = options.mcpStore;
     this.skillStore = options.skillStore;
     this.store = new PluginStore(options.paseoHome);
+    this.projectBindings = new PluginProjectBindingStore(
+      path.join(options.paseoHome, "plugins", "project-bindings"),
+    );
     this.bundledMarketplacePaths =
       options.bundledMarketplacePaths ?? bundledPluginMarketplaceCandidates();
   }
@@ -394,6 +445,7 @@ export class PluginService {
   initialize(): void {
     ensurePrivateDirectory(this.cacheRoot);
     ensurePrivateDirectory(this.dataRoot);
+    this.projectBindings.initialize();
     for (const installed of this.store.listInstalled()) {
       try {
         const pluginPackage = loadPluginPackage(installed.cachePath);
@@ -410,14 +462,20 @@ export class PluginService {
     this.refresh();
   }
 
+  getInstalledPackagePath(pluginId: string): string | null {
+    return this.store.getInstalled(pluginId)?.cachePath ?? null;
+  }
+
   async attachHttpRuntime(runtime: PluginHttpServiceRuntime): Promise<PluginState> {
     this.httpRuntime = runtime;
     await this.reconcileHttpServices();
+    this.reconcileProjectBindings();
     return this.getState();
   }
 
   attachAppRuntime(runtime: PluginAppRuntime): void {
     this.appRuntime = runtime;
+    this.reconcileProjectBindings();
   }
 
   getApp(pluginId: string, appId: string, projectId: string): PluginAppState {
@@ -431,7 +489,15 @@ export class PluginService {
     defaultAgent: PluginAppState["defaultAgent"],
   ): PluginAppState {
     if (!defaultAgent) throw new Error("Default Agent provider and model are required");
-    return this.requireAppRuntime().configure({ pluginId, appId, projectId, defaultAgent });
+    this.assertProjectBindingAvailable(projectId, {
+      kind: "app",
+      pluginId,
+      appId,
+      pluginProjectId: this.appPluginProjectId(pluginId, appId, projectId),
+    });
+    const app = this.requireAppRuntime().configure({ pluginId, appId, projectId, defaultAgent });
+    this.claimAppProject(app);
+    return app;
   }
 
   listAppProjects(pluginId: string, appId: string): PluginAppState[] {
@@ -452,6 +518,12 @@ export class PluginService {
     sourceProjectId: string,
     targetProjectId: string,
   ): Promise<PluginAppState> {
+    this.assertProjectBindingAvailable(targetProjectId, {
+      kind: "app",
+      pluginId,
+      appId,
+      pluginProjectId: this.appPluginProjectId(pluginId, appId, targetProjectId),
+    });
     const appRuntime = this.requireAppRuntime();
     const app = appRuntime.copyProject({
       pluginId,
@@ -461,6 +533,7 @@ export class PluginService {
     });
     try {
       await this.httpRuntime?.copyProjectConfig?.(pluginId, sourceProjectId, targetProjectId);
+      this.claimAppProject(app);
       return app;
     } catch (error) {
       appRuntime.deleteProject(pluginId, appId, targetProjectId);
@@ -469,7 +542,11 @@ export class PluginService {
   }
 
   deleteAppProject(pluginId: string, appId: string, projectId: string): boolean {
-    return this.requireAppRuntime().deleteProject(pluginId, appId, projectId);
+    const deleted = this.requireAppRuntime().deleteProject(pluginId, appId, projectId);
+    if (deleted) {
+      this.projectBindings.release(projectId, this.appPluginProjectId(pluginId, appId, projectId));
+    }
+    return deleted;
   }
 
   generateApp(
@@ -490,14 +567,22 @@ export class PluginService {
     return this.httpRuntime.submit(pluginId, serviceName, input);
   }
 
-  createAppJobDraft(
+  async createAppJobDraft(
     pluginId: string,
     serviceName: string,
     projectId: string,
     input: unknown,
   ): Promise<PluginHttpJob> {
     if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
-    return this.httpRuntime.createDraft(pluginId, serviceName, projectId, input);
+    this.assertProjectBindingAvailable(projectId);
+    const job = await this.httpRuntime.createDraft(pluginId, serviceName, projectId, input);
+    try {
+      this.claimJobProject(job);
+      return job;
+    } catch (error) {
+      await this.httpRuntime.deleteJob(job.id);
+      throw error;
+    }
   }
 
   startAppJob(processId: string): Promise<PluginHttpJob | null> {
@@ -525,14 +610,26 @@ export class PluginService {
     return this.httpRuntime.listJobs(options);
   }
 
-  updateAppJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
+  async updateAppJob(processId: string, input: unknown): Promise<PluginHttpJob | null> {
     if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+    const current = this.httpRuntime.getJob(processId);
+    if (current?.projectId) {
+      const nextProjectId = readOptionalText(asRecord(input), "projectId", "project_id");
+      if (nextProjectId && nextProjectId !== current.projectId) {
+        throw new Error("插件项目不能切换到其他 Project，请创建新的插件项目");
+      }
+    }
     return this.httpRuntime.updateJob(processId, input);
   }
 
-  deleteAppJob(processId: string): Promise<boolean> {
+  async deleteAppJob(processId: string): Promise<boolean> {
     if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
-    return this.httpRuntime.deleteJob(processId);
+    const current = this.httpRuntime.getJob(processId);
+    const deleted = await this.httpRuntime.deleteJob(processId);
+    if (deleted && current?.projectId) {
+      this.projectBindings.release(current.projectId, current.id);
+    }
+    return deleted;
   }
 
   deleteAppJobs(processIds: string[]): Promise<{
@@ -540,7 +637,81 @@ export class PluginService {
     skipped: Array<{ processId: string; reason: string }>;
   }> {
     if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
-    return this.httpRuntime.deleteJobs(processIds);
+    const projectsByProcessId = new Map(
+      processIds.flatMap((processId) => {
+        const job = this.httpRuntime?.getJob(processId);
+        return job?.projectId ? [[processId, job.projectId] as const] : [];
+      }),
+    );
+    return this.httpRuntime.deleteJobs(processIds).then((result) => {
+      for (const processId of result.deleted) {
+        const projectId = projectsByProcessId.get(processId);
+        if (projectId) this.projectBindings.release(projectId, processId);
+      }
+      return result;
+    });
+  }
+
+  getPluginProjectForProject(projectId: string): PluginProjectSnapshot | null {
+    const binding = this.resolveProjectBinding(projectId);
+    return binding ? this.snapshotForBinding(binding) : null;
+  }
+
+  async updatePluginProjectForProject(
+    projectId: string,
+    update: PluginProjectUpdate,
+  ): Promise<PluginProjectSnapshot> {
+    const binding = this.resolveProjectBinding(projectId);
+    if (!binding) {
+      throw new Error(`Project ${projectId} 未绑定插件项目`);
+    }
+    if (binding.kind === "app") {
+      if (!binding.appId) throw new Error("插件项目缺少 appId");
+      const updated = this.requireAppRuntime().updateProject(
+        binding.pluginId,
+        binding.appId,
+        binding.projectId,
+        update,
+      );
+      this.claimAppProject(updated);
+    } else {
+      if (!this.httpRuntime) throw new Error("Plugin HTTP runtime is not ready");
+      const job = this.httpRuntime.getJob(binding.pluginProjectId);
+      if (!job) throw new Error("插件项目不存在或已删除");
+      const currentInput = asRecord(job.input);
+      const updated = await this.httpRuntime.updateJob(job.id, {
+        ...currentInput,
+        ...update.data,
+        ...(update.name?.trim() ? { flow_title: update.name.trim() } : {}),
+        ...(update.knowledge !== undefined ? { plugin_project_knowledge: update.knowledge } : {}),
+        projectId: binding.projectId,
+      });
+      if (!updated) throw new Error("插件项目信息更新失败");
+      this.claimJobProject(updated);
+    }
+    const snapshot = this.snapshotForBinding(binding);
+    if (!snapshot) throw new Error("插件项目信息更新后无法读取");
+    return snapshot;
+  }
+
+  buildProjectAgentContext(projectId: string): string | null {
+    const snapshot = this.getPluginProjectForProject(projectId);
+    if (!snapshot) return null;
+    return [
+      "<paseo_plugin_project>",
+      `This Project is bound to exactly one plugin project: ${snapshot.name}.`,
+      `Plugin project ID: ${snapshot.pluginProjectId}`,
+      `Plugin ID: ${snapshot.pluginId}`,
+      snapshot.appId ? `Plugin app ID: ${snapshot.appId}` : null,
+      snapshot.serviceName ? `Plugin service: ${snapshot.serviceName}` : null,
+      "Use the get_plugin_project tool to inspect its current structured information.",
+      "Use the update_plugin_project tool when the user's work changes plugin-project information or knowledge.",
+      "Plugin-project knowledge:",
+      snapshot.knowledge.trim() || "No plugin-project knowledge has been recorded.",
+      "</paseo_plugin_project>",
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n");
   }
 
   getHttpProjectConfig(
@@ -1070,6 +1241,223 @@ export class PluginService {
   private async reconcileHttpServices(): Promise<void> {
     if (!this.httpRuntime) return;
     await this.httpRuntime.reconcile(this.enabledHttpServiceBindings());
+  }
+
+  private appPluginProjectId(pluginId: string, appId: string, projectId: string): string {
+    return `app:${pluginId}:${appId}:${projectId}`;
+  }
+
+  private claimAppProject(app: PluginAppState): PluginProjectBinding {
+    if (!app.projectId) throw new Error("插件项目缺少 Project ID");
+    return this.projectBindings.claim(
+      {
+        projectId: app.projectId,
+        pluginProjectId: this.appPluginProjectId(app.pluginId, app.appId, app.projectId),
+        pluginId: app.pluginId,
+        kind: "app",
+        appId: app.appId,
+      },
+      app.updatedAt,
+    ).binding;
+  }
+
+  private claimJobProject(job: PluginHttpJob): PluginProjectBinding {
+    if (!job.projectId) throw new Error("插件项目缺少 Project ID");
+    return this.projectBindings.claim(
+      {
+        projectId: job.projectId,
+        pluginProjectId: job.id,
+        pluginId: job.pluginId,
+        kind: "job",
+        serviceName: job.serviceName,
+      },
+      job.endedAt ?? job.startedAt ?? job.createdAt,
+    ).binding;
+  }
+
+  private assertProjectBindingAvailable(
+    projectId: string,
+    expected?: Pick<
+      PluginProjectBinding,
+      "kind" | "pluginId" | "appId" | "serviceName" | "pluginProjectId"
+    >,
+  ): void {
+    const current = this.resolveProjectBinding(projectId);
+    if (!current) return;
+    const same =
+      expected !== undefined &&
+      current.kind === expected.kind &&
+      current.pluginId === expected.pluginId &&
+      current.appId === expected.appId &&
+      current.serviceName === expected.serviceName &&
+      current.pluginProjectId === expected.pluginProjectId;
+    if (same) return;
+    throw new Error(
+      `Project ${projectId} 已绑定插件项目 ${current.pluginId}/${current.pluginProjectId}，一个 Project 只能绑定一个插件项目`,
+    );
+  }
+
+  private resolveProjectBinding(projectId: string): PluginProjectBinding | null {
+    const current = this.projectBindings.get(projectId);
+    if (current && this.snapshotForBinding(current)) return current;
+    if (current) this.projectBindings.release(projectId, current.pluginProjectId);
+    this.reconcileProjectBindings(projectId);
+    return this.projectBindings.get(projectId);
+  }
+
+  private reconcileProjectBindings(onlyProjectId?: string): void {
+    const candidates = [
+      ...this.collectAppProjectBindingCandidates(onlyProjectId),
+      ...this.collectJobProjectBindingCandidates(onlyProjectId),
+    ];
+    const now = new Date().toISOString();
+    candidates.sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+    for (const candidate of candidates) {
+      if (this.projectBindings.get(candidate.binding.projectId)) continue;
+      this.projectBindings.claim(
+        {
+          projectId: candidate.binding.projectId,
+          pluginProjectId: candidate.binding.pluginProjectId,
+          pluginId: candidate.binding.pluginId,
+          kind: candidate.binding.kind,
+          ...(candidate.binding.appId ? { appId: candidate.binding.appId } : {}),
+          ...(candidate.binding.serviceName ? { serviceName: candidate.binding.serviceName } : {}),
+        },
+        candidate.binding.updatedAt || now,
+      );
+    }
+  }
+
+  private collectAppProjectBindingCandidates(
+    onlyProjectId?: string,
+  ): PluginProjectBindingCandidate[] {
+    if (!this.appRuntime) return [];
+    const candidates: PluginProjectBindingCandidate[] = [];
+    for (const plugin of this.getState().plugins) {
+      if (!plugin.installed || !plugin.enabled || !plugin.pluginId) continue;
+      for (const app of plugin.apps) {
+        candidates.push(
+          ...this.readAppProjectBindingCandidates(plugin.pluginId, app.id, onlyProjectId),
+        );
+      }
+    }
+    return candidates;
+  }
+
+  private readAppProjectBindingCandidates(
+    pluginId: string,
+    appId: string,
+    onlyProjectId?: string,
+  ): PluginProjectBindingCandidate[] {
+    if (!this.appRuntime) return [];
+    try {
+      return this.appRuntime.listProjects(pluginId, appId).flatMap((state) => {
+        if (
+          !state.projectId ||
+          !state.defaultAgent ||
+          (onlyProjectId !== undefined && state.projectId !== onlyProjectId)
+        ) {
+          return [];
+        }
+        return [
+          {
+            binding: {
+              projectId: state.projectId,
+              pluginProjectId: this.appPluginProjectId(
+                state.pluginId,
+                state.appId,
+                state.projectId,
+              ),
+              pluginId: state.pluginId,
+              kind: "app" as const,
+              appId: state.appId,
+              createdAt: state.createdAt,
+              updatedAt: state.updatedAt,
+            },
+            timestamp: state.updatedAt,
+          },
+        ];
+      });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, pluginId, appId },
+        "Failed to inspect plugin app projects while reconciling bindings",
+      );
+      return [];
+    }
+  }
+
+  private collectJobProjectBindingCandidates(
+    onlyProjectId?: string,
+  ): PluginProjectBindingCandidate[] {
+    if (!this.httpRuntime) return [];
+    return this.httpRuntime
+      .listJobs({
+        ...(onlyProjectId ? { projectId: onlyProjectId } : {}),
+        limit: Number.MAX_SAFE_INTEGER,
+      })
+      .flatMap((job) => {
+        if (!isProjectJob(job) || !job.projectId) return [];
+        const timestamp = job.endedAt ?? job.startedAt ?? job.createdAt;
+        return [
+          {
+            binding: {
+              projectId: job.projectId,
+              pluginProjectId: job.id,
+              pluginId: job.pluginId,
+              kind: "job" as const,
+              serviceName: job.serviceName,
+              createdAt: job.createdAt,
+              updatedAt: timestamp,
+            },
+            timestamp,
+          },
+        ];
+      });
+  }
+
+  private snapshotForBinding(binding: PluginProjectBinding): PluginProjectSnapshot | null {
+    if (binding.kind === "app") {
+      if (!binding.appId || !this.appRuntime) return null;
+      let state: PluginAppState | undefined;
+      try {
+        state = this.appRuntime
+          .listProjects(binding.pluginId, binding.appId)
+          .find((candidate) => candidate.projectId === binding.projectId);
+      } catch (error) {
+        this.logger.warn(
+          {
+            err: error,
+            pluginId: binding.pluginId,
+            appId: binding.appId,
+            projectId: binding.projectId,
+          },
+          "Failed to read bound plugin app project",
+        );
+        return null;
+      }
+      if (!state) return null;
+      return {
+        ...binding,
+        name: state.name ?? state.document?.title?.trim() ?? binding.appId,
+        knowledge: state.knowledge,
+        data: state.data,
+        updatedAt: state.updatedAt,
+      };
+    }
+    if (!this.httpRuntime) return null;
+    const job = this.httpRuntime.getJob(binding.pluginProjectId);
+    if (!job || job.projectId !== binding.projectId) return null;
+    const data = asRecord(job.input);
+    return {
+      ...binding,
+      name:
+        readOptionalText(data, "flow_title", "plugin_project_name", "title") ??
+        `${binding.pluginId}/${binding.serviceName ?? "project"}`,
+      knowledge: pluginJobKnowledge(data),
+      data,
+      updatedAt: job.endedAt ?? job.startedAt ?? job.createdAt,
+    };
   }
 
   private requireAppRuntime(): PluginAppRuntime {

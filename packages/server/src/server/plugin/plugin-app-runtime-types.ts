@@ -3,6 +3,7 @@ import type {
   PluginAppState,
   PluginHttpJob,
 } from "@getpaseo/protocol/messages";
+import type { PluginProjectUpdate } from "./plugin-project-binding-store.js";
 
 export interface PluginAppConfigureInput {
   pluginId: string;
@@ -36,6 +37,12 @@ export interface PluginAppSubmitInput {
 export interface PluginAppRuntime {
   get(pluginId: string, appId: string, projectId: string): PluginAppState;
   configure(input: PluginAppConfigureInput): PluginAppState;
+  updateProject(
+    pluginId: string,
+    appId: string,
+    projectId: string,
+    update: PluginProjectUpdate,
+  ): PluginAppState;
   listProjects(pluginId: string, appId: string): PluginAppState[];
   getHtmlPreview(
     pluginId: string,

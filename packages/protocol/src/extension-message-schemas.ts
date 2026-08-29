@@ -62,6 +62,16 @@ import {
   LarkDirectoryResolveUsersResponseSchema,
 } from "./channel/lark/directory-rpc-schemas.js";
 import {
+  LarkUserOAuthCompleteRequestSchema,
+  LarkUserOAuthCompleteResponseSchema,
+  LarkUserOAuthDisconnectRequestSchema,
+  LarkUserOAuthDisconnectResponseSchema,
+  LarkUserOAuthGetStatusRequestSchema,
+  LarkUserOAuthGetStatusResponseSchema,
+  LarkUserOAuthStartRequestSchema,
+  LarkUserOAuthStartResponseSchema,
+} from "./channel/lark/user-oauth-rpc-schemas.js";
+import {
   LarkChannelApprovePairingRequestSchema,
   LarkChannelApprovePairingResponseSchema,
   LarkChannelApplyBotRequestSchema,
@@ -230,6 +240,10 @@ export const ExtensionSessionInboundSchemas = [
   LarkChannelRevokeUserRequestSchema,
   LarkDirectoryResolveUsersRequestSchema,
   LarkDirectoryResolveChatsRequestSchema,
+  LarkUserOAuthGetStatusRequestSchema,
+  LarkUserOAuthStartRequestSchema,
+  LarkUserOAuthCompleteRequestSchema,
+  LarkUserOAuthDisconnectRequestSchema,
   LarkReminderListRequestSchema,
   LarkReminderCreateRequestSchema,
   LarkReminderSetEnabledRequestSchema,
@@ -319,6 +333,10 @@ export const ExtensionSessionOutboundSchemas = [
   LarkChannelStatusChangedMessageSchema,
   LarkDirectoryResolveUsersResponseSchema,
   LarkDirectoryResolveChatsResponseSchema,
+  LarkUserOAuthGetStatusResponseSchema,
+  LarkUserOAuthStartResponseSchema,
+  LarkUserOAuthCompleteResponseSchema,
+  LarkUserOAuthDisconnectResponseSchema,
   LarkReminderListResponseSchema,
   LarkReminderCreateResponseSchema,
   LarkReminderSetEnabledResponseSchema,

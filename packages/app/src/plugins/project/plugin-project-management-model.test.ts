@@ -13,6 +13,8 @@ const APP_STATE: PluginAppState = {
   appId: "console",
   projectId: "project-1",
   defaultAgent: { provider: "codex", model: "gpt-5.6" },
+  knowledge: "",
+  data: {},
   document: null,
   conversation: [],
   createdAt: "2026-08-20T00:00:00.000Z",

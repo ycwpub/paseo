@@ -378,6 +378,35 @@ function uniqueAppDefinitions(definitions: PluginAppDefinition[]): PluginAppDefi
   });
 }
 
+function loadManifest(root: string): PluginManifest {
+  const codexManifestPath = path.join(root, ".codex-plugin", "plugin.json");
+  if (existsSync(codexManifestPath)) {
+    return PluginManifestSchema.parse(
+      JSON.parse(readFileSync(codexManifestPath, "utf8")) as unknown,
+    );
+  }
+
+  const paseoManifestPath = path.join(root, "paseo-plugin.json");
+  if (!existsSync(paseoManifestPath)) {
+    throw new Error(`Missing paseo-plugin.json or .codex-plugin/plugin.json in ${root}`);
+  }
+  const raw = JSON.parse(readFileSync(paseoManifestPath, "utf8")) as unknown;
+  if (!isRecord(raw)) throw new Error(`Invalid plugin manifest: ${paseoManifestPath}`);
+  const resources = isRecord(raw.resources) ? raw.resources : {};
+  const name = stringValue(raw.name) ?? stringValue(raw.id);
+  if (!name) throw new Error(`Plugin manifest requires id or name: ${paseoManifestPath}`);
+  return PluginManifestSchema.parse({
+    ...raw,
+    name,
+    version: stringValue(raw.version) ?? "0.0.0",
+    description: stringValue(raw.description) ?? `Paseo plugin ${name}`,
+    skills: raw.skills ?? resources.skills,
+    mcpServers: raw.mcpServers ?? resources.mcpServers,
+    httpServices: raw.httpServices ?? resources.httpServices,
+    apps: raw.apps ?? resources.apps,
+  });
+}
+
 export function assertPluginTreeSafe(pluginRoot: string): void {
   const root = realpathSync(pluginRoot);
   const visit = (directory: string): void => {
@@ -398,13 +427,7 @@ export function loadPluginPackage(pluginRootInput: string): LoadedPluginPackage 
     throw new Error(`Plugin directory does not exist: ${pluginRootInput}`);
   }
   const root = realpathSync(pluginRootInput);
-  const manifestPath = path.join(root, ".codex-plugin", "plugin.json");
-  if (!existsSync(manifestPath)) {
-    throw new Error(`Missing .codex-plugin/plugin.json in ${root}`);
-  }
-  const manifest = PluginManifestSchema.parse(
-    JSON.parse(readFileSync(manifestPath, "utf8")) as unknown,
-  );
+  const manifest = loadManifest(root);
   if (!PLUGIN_NAME_PATTERN.test(manifest.name)) {
     throw new Error(`Plugin name must be kebab-case: ${manifest.name}`);
   }

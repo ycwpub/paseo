@@ -12,7 +12,12 @@ const REQUIRED_TENANT_SCOPES = [
   "im:chat:read",
   "contact:user.id:readonly",
 ] as const;
-const REQUIRED_USER_SCOPES = ["im:message.group_msg:get_as_user"] as const;
+const REQUIRED_USER_SCOPES = [
+  "im:message.group_msg:get_as_user",
+  "im:chat:read",
+  "im:chat.members:write_only",
+  "offline_access",
+] as const;
 const REQUIRED_TENANT_EVENTS = ["im.message.receive_v1"] as const;
 
 interface MutableApplication extends LarkBotApplication {

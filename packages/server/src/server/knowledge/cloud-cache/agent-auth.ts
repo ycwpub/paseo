@@ -55,7 +55,7 @@ export async function requestCloudKnowledgeAuthorization(input: {
 }): Promise<void> {
   const uniqueRequests = new Map(
     input.requests.map((request) => [
-      `${request.target.scope}:${request.target.projectId ?? ""}:${request.target.source}`,
+      `${request.target.scope}:${request.target.projectId ?? ""}:${request.target.assistantId ?? ""}:${request.target.source}`,
       request,
     ]),
   );
@@ -86,6 +86,7 @@ export async function requestCloudKnowledgeAuthorization(input: {
           source: issue.source,
           scope: target.scope,
           projectId: target.projectId ?? null,
+          assistantId: target.assistantId ?? null,
           loginUrl: issue.loginUrl,
           authCommand: issue.authCommand,
         },

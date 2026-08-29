@@ -12,6 +12,7 @@ export interface ProviderUsageFetcher {
 export interface ProviderUsageFetcherFactoryOptions {
   logger: Logger;
   fetch?: ProviderApiFetch;
+  paseoHome?: string;
 }
 
 export interface ProviderUsageFetcherManifestEntry {

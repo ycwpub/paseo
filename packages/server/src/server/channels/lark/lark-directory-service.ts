@@ -6,6 +6,7 @@ import type {
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
 import type { LarkDirectoryStore } from "./lark-directory-store.js";
+import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 function uniqueEmails(emails: readonly string[]): string[] {
   return Array.from(
@@ -13,11 +14,14 @@ function uniqueEmails(emails: readonly string[]): string[] {
   );
 }
 
+const DIRECTORY_CHAT_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 export class LarkDirectoryService {
   constructor(
     private readonly channelStore: LarkChannelStore,
     private readonly store: LarkDirectoryStore,
     private readonly adapter: LarkChannelClientAdapter,
+    private readonly userOAuthService: LarkUserOAuthService,
   ) {}
 
   getState(): LarkDirectory {
@@ -73,19 +77,49 @@ export class LarkDirectoryService {
     if (!this.adapter.resolveChats) {
       throw new Error("This Paseo daemon does not support Lark group lookup");
     }
-    const resolved = await this.adapter.resolveChats(config, normalizedQuery);
+    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(appId);
+    const resolved = await this.adapter.resolveChats(config, normalizedQuery, userAccessToken);
     if (resolved.length === 0) {
       throw new Error(`No visible Lark group found for: ${normalizedQuery}`);
     }
     return this.store.upsertChats(appId, resolved, new Date().toISOString());
   }
 
-  observeUser(appId: string, openId: string, displayName?: string | null): void {
-    this.store.observeUser(appId, { openId, displayName }, new Date().toISOString());
+  async refreshChatById(
+    appId: string,
+    chatId: string,
+    options: { force?: boolean } = {},
+  ): Promise<LarkDirectoryChat | null> {
+    const normalizedChatId = chatId.trim();
+    if (!normalizedChatId) {
+      return null;
+    }
+    const existing = this.store.findChat(appId, normalizedChatId);
+    const updatedAt = existing ? Date.parse(existing.updatedAt) : Number.NaN;
+    if (
+      existing &&
+      !options.force &&
+      Number.isFinite(updatedAt) &&
+      Date.now() - updatedAt < DIRECTORY_CHAT_REFRESH_INTERVAL_MS
+    ) {
+      return existing;
+    }
+    const config = this.requireConfig(appId);
+    if (!this.adapter.resolveChats) {
+      return existing;
+    }
+    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(appId);
+    const resolved = await this.adapter.resolveChats(config, normalizedChatId, userAccessToken);
+    const chat =
+      resolved.find((entry) => entry.chatId.trim() === normalizedChatId) ?? resolved[0] ?? null;
+    if (!chat) {
+      return existing;
+    }
+    return this.store.upsertChats(appId, [chat], new Date().toISOString())[0] ?? existing;
   }
 
-  observeChat(appId: string, chatId: string, name: string): void {
-    this.store.upsertChats(appId, [{ groupId: chatId, chatId, name }], new Date().toISOString());
+  observeUser(appId: string, openId: string, displayName?: string | null): void {
+    this.store.observeUser(appId, { openId, displayName }, new Date().toISOString());
   }
 
   private requireConfig(appId: string): StoredLarkChannelConfig {

@@ -14,6 +14,13 @@ interface AgentAttentionRoutingInput {
   shouldNotify: boolean;
 }
 
+interface DesktopAgentAttentionInput {
+  reason: "finished" | "error" | "permission";
+  agentId: string;
+  focusedAgentId: string | null;
+  isAppActivelyVisible: boolean;
+}
+
 export type AgentAttentionClearTrigger =
   | "focus-entry"
   | "input-focus"
@@ -35,6 +42,18 @@ export function getAgentAttentionRouting(input: AgentAttentionRoutingInput): {
     // server's cross-client notification deduplication flag.
     shouldSignalDesktop: input.reason === "finished",
     shouldProcessNotification: input.shouldNotify,
+  };
+}
+
+export function getDesktopAgentAttentionDecision(input: DesktopAgentAttentionInput): {
+  shouldSignal: boolean;
+  allowWhenFocused: boolean;
+} {
+  const isViewingCompletedAgent =
+    input.isAppActivelyVisible && input.focusedAgentId === input.agentId;
+  return {
+    shouldSignal: input.reason === "finished" && !isViewingCompletedAgent,
+    allowWhenFocused: input.isAppActivelyVisible,
   };
 }
 

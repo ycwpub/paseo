@@ -18,6 +18,7 @@ import type { AgentOwner } from "../agent-owner.js";
 import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import type { ProjectRegistry, WorkspaceRegistry } from "../../workspace-registry.js";
 import type { PaseoHostKnowledge } from "@getpaseo/protocol/project-knowledge-schema";
+import type { Assistant } from "@getpaseo/protocol/messages";
 import { requestCloudKnowledgeAuthorization } from "../../knowledge/cloud-cache/agent-auth.js";
 import type { CloudDocumentCacheService } from "../../knowledge/cloud-cache/service.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
@@ -52,6 +53,8 @@ export interface CreateAgentCommandDependencies {
   workspaceRegistry?: Pick<WorkspaceRegistry, "get">;
   cloudDocumentCacheService?: CloudDocumentCacheService;
   readGlobalKnowledge?: () => PaseoHostKnowledge | undefined;
+  readAssistant?: (assistantId: string) => Assistant | null;
+  readPluginProjectContext?: (projectId: string) => string | null;
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
@@ -201,8 +204,12 @@ export async function createAgentCommand(
     paseoHome: dependencies.paseoHome,
     service: dependencies.cloudDocumentCacheService,
     readGlobalKnowledge: dependencies.readGlobalKnowledge,
+    assistant: resolved.createOptions.labels?.assistantId
+      ? (dependencies.readAssistant?.(resolved.createOptions.labels.assistantId) ?? null)
+      : null,
     projectRegistry: dependencies.projectRegistry,
     workspaceRegistry: dependencies.workspaceRegistry,
+    readPluginProjectContext: dependencies.readPluginProjectContext,
     logger: dependencies.logger,
   });
 

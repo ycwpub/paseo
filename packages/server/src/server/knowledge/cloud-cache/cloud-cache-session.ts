@@ -23,6 +23,7 @@ export class CloudDocumentCacheSession {
       const target = {
         scope: message.scope,
         ...(message.projectId ? { projectId: message.projectId } : {}),
+        ...(message.assistantId ? { assistantId: message.assistantId } : {}),
         source: message.source,
       };
       const resolved =

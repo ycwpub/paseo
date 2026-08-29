@@ -91,6 +91,39 @@ describe("AssistantStore", () => {
     expect(reloaded.get(assistant.id)?.resourceSelection).toEqual(updated?.resourceSelection);
   });
 
+  test("persists Assistant knowledge", () => {
+    const assistant = store.create({
+      name: "Knowledge assistant",
+      prompt: "Use the configured knowledge.",
+      knowledge: {
+        general: [{ type: "local-directory", source: "references", enabled: true }],
+        standards: [
+          {
+            type: "cloud-document",
+            source: "https://example.com/assistant-standard",
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    expect(assistant.knowledge?.general).toHaveLength(1);
+    const updated = store.update({
+      id: assistant.id,
+      knowledge: {
+        general: [{ type: "local-document", source: "overview.md", enabled: true }],
+        standards: [],
+      },
+    });
+    expect(updated?.knowledge).toEqual({
+      general: [{ type: "local-document", source: "overview.md", enabled: true }],
+      standards: [],
+    });
+
+    const reloaded = new AssistantStore({ paseoHome, logger: pino({ level: "silent" }) });
+    expect(reloaded.get(assistant.id)?.knowledge).toEqual(updated?.knowledge);
+  });
+
   test("materializes summary and detail files for legacy stored memory", () => {
     const legacyPayload = {
       version: 1,

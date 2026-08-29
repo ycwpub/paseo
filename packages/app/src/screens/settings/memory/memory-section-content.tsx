@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { Text, View } from "react-native";
-import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   PaseoMemorySettings,
@@ -10,31 +9,23 @@ import type {
 } from "@getpaseo/protocol/messages";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
-import { MemoryHostSyncCard } from "./memory-host-sync-card";
-import { MemoryManagementEntrySection } from "./memory-management-entry-section";
 import { MemorySettingsCard } from "./memory-settings-card";
-import { MemoryScopePoliciesSection } from "./memory-scope-policies-section";
-import { MemoryTransferCard } from "./memory-transfer-card";
+import { MemorySettingsEntrySection } from "./memory-settings-entry-section";
 import { MemoryUserCard } from "./memory-user-card";
 
 interface MemorySectionContentProps {
   serverId: string;
   memory: PaseoMemoryState;
-  summary: string;
   isMutating: boolean;
   visibleError: string | null;
   usersSupported: boolean;
   syncSupported: boolean;
-  onSummaryChange: (summary: string) => void;
   onSaveSettings: (settings: PaseoMemorySettings) => Promise<void>;
   onChangeUser: (operation: PaseoMemoryUserOperation) => Promise<void>;
-  onSaveSummary: () => Promise<void>;
   onClearAll: () => Promise<void>;
   onConsolidate: () => Promise<void>;
-  onImport: (json: string, replace: boolean) => Promise<void>;
 }
 
 function extractionStatus(memory: PaseoMemoryState): string {
@@ -51,28 +42,15 @@ function extractionStatus(memory: PaseoMemoryState): string {
 export function MemorySectionContent({
   serverId,
   memory,
-  summary,
   isMutating,
   visibleError,
   usersSupported,
   syncSupported,
-  onSummaryChange,
   onSaveSettings,
   onChangeUser,
-  onSaveSummary,
   onClearAll,
   onConsolidate,
-  onImport,
 }: MemorySectionContentProps) {
-  const { t } = useTranslation();
-  const summaryTrailing = useMemo(
-    () => (
-      <Button size="sm" disabled={isMutating} onPress={onSaveSummary}>
-        保存
-      </Button>
-    ),
-    [isMutating, onSaveSummary],
-  );
   const users = useMemo<readonly PaseoMemoryUser[]>(
     () =>
       memory.users?.length
@@ -131,35 +109,11 @@ export function MemorySectionContent({
         </View>
       </SettingsSection>
 
-      <MemoryScopePoliciesSection serverId={serverId} memory={memory} />
-
-      <MemoryManagementEntrySection serverId={serverId} memoryCount={memory.details.length} />
-
-      {syncSupported ? (
-        <SettingsSection title={t("memoryPolicies.sync.sectionTitle")}>
-          <MemoryHostSyncCard serverId={serverId} memory={memory} disabled={isMutating} />
-        </SettingsSection>
-      ) : null}
-
-      <SettingsSection title="总记忆文件" trailing={summaryTrailing}>
-        <Text selectable style={settingsStyles.rowHint}>
-          {memory.summaryPath}
-        </Text>
-        <SettingsTextAreaCard
-          accessibilityLabel="Paseo 记忆总览"
-          value={summary}
-          onChangeText={onSummaryChange}
-          style={styles.summaryInput}
-        />
-      </SettingsSection>
-
-      <SettingsSection title="导入与导出">
-        <MemoryTransferCard
-          exportJson={memory.exportJson ?? ""}
-          disabled={isMutating}
-          onImport={onImport}
-        />
-      </SettingsSection>
+      <MemorySettingsEntrySection
+        serverId={serverId}
+        memoryCount={memory.details.length}
+        syncSupported={syncSupported}
+      />
     </View>
   );
 }
@@ -172,8 +126,5 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing[2],
-  },
-  summaryInput: {
-    minHeight: 220,
   },
 }));

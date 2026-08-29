@@ -1,8 +1,9 @@
-export type CloudKnowledgeScope = "global" | "project";
+export type CloudKnowledgeScope = "global" | "project" | "assistant";
 
 export interface CloudDocumentCacheTarget {
   scope: CloudKnowledgeScope;
   projectId?: string;
+  assistantId?: string;
   source: string;
 }
 

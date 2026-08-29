@@ -456,7 +456,7 @@ test("DaemonClient rejects a replacement prompt when cancellation is not acknowl
 
   try {
     await client.connect();
-    const agent = await client.createAgent({ provider: "codex", cwd });
+    const agent = await client.createAgent({ provider: "codex", cwd, modeId: "full-access" });
     await client.sendMessage(agent.id, "Keep working on the first prompt.");
 
     await expect(client.sendMessage(agent.id, "Replace it with this prompt.")).rejects.toThrow(
@@ -478,7 +478,7 @@ test("DaemonClient rejects Stop when cancellation is not acknowledged", async ()
 
   try {
     await client.connect();
-    const agent = await client.createAgent({ provider: "codex", cwd });
+    const agent = await client.createAgent({ provider: "codex", cwd, modeId: "full-access" });
     await client.sendMessage(agent.id, "Keep working until stopped.");
 
     await expect(client.cancelAgent(agent.id)).rejects.toThrow(
@@ -1249,7 +1249,10 @@ test("receives server_info on websocket connect", async () => {
   expect(serverInfo?.features?.daemonSelfUpdate).toBe(true);
   expect(serverInfo?.features?.worktreeRestore).toBe(true);
   expect(serverInfo?.features?.workspaceRecovery).toBe(true);
-  expect(serverInfo?.features?.pluginManagement).toBe(true);
+  expect(serverInfo?.features).toMatchObject({
+    plugins: true,
+    pluginManagement: true,
+  });
 
   await client.close();
 }, 15000);

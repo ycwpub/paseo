@@ -11,6 +11,7 @@ import {
   memoryScopesLabel,
   memoryStatus,
 } from "./memory-form-options";
+import { memoryStoragePaths } from "./memory-storage-paths";
 
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -32,6 +33,7 @@ export function MemoryDetailRow({
     [status],
   );
   const handlePress = useCallback(() => onPress(detail), [detail, onPress]);
+  const storagePaths = useMemo(() => memoryStoragePaths(detail), [detail]);
 
   return (
     <View style={settingsStyles.card}>
@@ -50,6 +52,14 @@ export function MemoryDetailRow({
           <Text numberOfLines={3} style={styles.preview}>
             {detail.content}
           </Text>
+          <View style={styles.paths}>
+            <Text style={styles.pathLabel}>存储路径</Text>
+            {storagePaths.map((path) => (
+              <Text key={path} selectable style={styles.path}>
+                {path}
+              </Text>
+            ))}
+          </View>
         </View>
         <ThemedChevronRight size={18} uniProps={mutedIconMapping} />
       </Pressable>
@@ -80,5 +90,18 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: Math.round(theme.fontSize.sm * 1.45),
+  },
+  paths: {
+    gap: theme.spacing[1],
+    marginTop: theme.spacing[1],
+  },
+  pathLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  path: {
+    color: theme.colors.foregroundExtraMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
   },
 }));

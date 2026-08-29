@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PluginAppDefinitionSchema } from "./app-types.js";
+import { PluginRuntimeSummarySchema } from "./runtime-types.js";
 
 export const PluginAuthorSchema = z.union([
   z.string(),
@@ -140,6 +141,7 @@ export const PluginSummarySchema = z.object({
   mcpServers: z.array(z.string()),
   httpServices: z.array(PluginHttpServiceSummarySchema),
   apps: z.array(PluginAppDefinitionSchema),
+  runtime: PluginRuntimeSummarySchema.optional(),
   unsupportedComponents: z.array(PluginUnsupportedComponentSchema),
   warnings: z.array(z.string()),
   installedAt: z.number().optional(),

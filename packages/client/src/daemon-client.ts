@@ -682,6 +682,22 @@ type LarkDirectoryResolveChatsPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.resolve_chats.response" }
 >["payload"];
+type LarkUserOAuthGetStatusPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.user_oauth.get_status.response" }
+>["payload"];
+type LarkUserOAuthStartPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.user_oauth.start.response" }
+>["payload"];
+type LarkUserOAuthCompletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.user_oauth.complete.response" }
+>["payload"];
+type LarkUserOAuthDisconnectPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.user_oauth.disconnect.response" }
+>["payload"];
 type LarkReminderListPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.reminder.list.response" }
@@ -1024,6 +1040,25 @@ export interface ResolveLarkDirectoryUsersOptions {
 export interface ResolveLarkDirectoryChatsOptions {
   appId: string;
   query: string;
+  requestId?: string;
+}
+export interface LarkUserOAuthGetStatusOptions {
+  appId: string;
+  requestId?: string;
+}
+export interface LarkUserOAuthStartOptions {
+  appId: string;
+  redirectUri: string;
+  requestId?: string;
+}
+export interface LarkUserOAuthCompleteOptions {
+  appId: string;
+  codeOrCallbackUrl: string;
+  state: string;
+  requestId?: string;
+}
+export interface LarkUserOAuthDisconnectOptions {
+  appId: string;
   requestId?: string;
 }
 export interface LarkChannelRequestOptions {
@@ -6094,8 +6129,9 @@ export class DaemonClient {
   }
 
   async cacheCloudDocument(options: {
-    scope: "global" | "project";
+    scope: "global" | "project" | "assistant";
     projectId?: string;
+    assistantId?: string;
     source: string;
     force?: boolean;
     requestId?: string;
@@ -6104,8 +6140,9 @@ export class DaemonClient {
   }
 
   async getCloudDocumentCacheStatus(options: {
-    scope: "global" | "project";
+    scope: "global" | "project" | "assistant";
     projectId?: string;
+    assistantId?: string;
     source: string;
     requestId?: string;
   }) {
@@ -6189,13 +6226,13 @@ export class DaemonClient {
     return this.resourceRpc.deleteSkill(id);
   }
 
-  async listPlugins(options?: {
+  async listUnifiedPlugins(options?: {
     refresh?: boolean;
   }): Promise<PluginState & { error: string | null }> {
-    return this.resourceRpc.listPlugins(options);
+    return this.resourceRpc.listUnifiedPlugins(options);
   }
 
-  async listRuntimePlugins(): Promise<PluginListItem[]> {
+  async listPlugins(): Promise<PluginListItem[]> {
     const requestId = this.createRequestId();
     const payload = await this.sendCorrelatedSessionRequest({
       requestId,
@@ -6648,6 +6685,28 @@ export class DaemonClient {
     options: ResolveLarkDirectoryChatsOptions,
   ): Promise<LarkDirectoryResolveChatsPayload> {
     return this.resourceRpc.resolveLarkDirectoryChats(options);
+  }
+
+  async getLarkUserOAuthStatus(
+    options: LarkUserOAuthGetStatusOptions,
+  ): Promise<LarkUserOAuthGetStatusPayload> {
+    return this.resourceRpc.getLarkUserOAuthStatus(options);
+  }
+
+  async startLarkUserOAuth(options: LarkUserOAuthStartOptions): Promise<LarkUserOAuthStartPayload> {
+    return this.resourceRpc.startLarkUserOAuth(options);
+  }
+
+  async completeLarkUserOAuth(
+    options: LarkUserOAuthCompleteOptions,
+  ): Promise<LarkUserOAuthCompletePayload> {
+    return this.resourceRpc.completeLarkUserOAuth(options);
+  }
+
+  async disconnectLarkUserOAuth(
+    options: LarkUserOAuthDisconnectOptions,
+  ): Promise<LarkUserOAuthDisconnectPayload> {
+    return this.resourceRpc.disconnectLarkUserOAuth(options);
   }
 
   async listLarkReminders(requestId?: string): Promise<LarkReminderListPayload> {

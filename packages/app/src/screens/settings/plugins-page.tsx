@@ -200,7 +200,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     queryKey,
     queryFn: async () => {
       if (!client) throw new Error("Plugin host is offline");
-      return client.listRuntimePlugins();
+      return client.listPlugins();
     },
     enabled: Boolean(client && connected && supported),
     dataShape: "list",
@@ -321,13 +321,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     );
   }
   if (pageState === "unsupported") {
-    return (
-      <Alert
-        variant="warning"
-        title={t("settings.plugins.states.updateTitle")}
-        testID="plugin-management-upgrade-warning"
-      />
-    );
+    return <Alert variant="warning" title={t("settings.plugins.states.updateTitle")} />;
   }
 
   let catalogContent = <Alert title={t("settings.plugins.states.loading")} />;
@@ -373,7 +367,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
   }
 
   return (
-    <View testID="plugin-management-page">
+    <View>
       <SettingsSection title={t("settings.plugins.title")}>
         <Alert
           variant="warning"

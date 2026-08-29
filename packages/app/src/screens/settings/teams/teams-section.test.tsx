@@ -5,7 +5,7 @@ import React, { type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Assistant, Team } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { TeamsSection } from "./teams-section";
+import { TeamEditorPage, TeamsSection } from "./teams-section";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 afterEach(cleanup);
@@ -266,9 +266,7 @@ vi.mock("@/screens/settings/settings-section", () => ({
 
 describe("TeamsSection", () => {
   test("shows the existing team name when editing", () => {
-    render(<TeamsSection serverId="server-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    render(<TeamEditorPage serverId="server-1" teamId="team-1" onDone={vi.fn()} />);
 
     expect((screen.getByPlaceholderText("团队名称") as HTMLInputElement).value).toBe(
       "Settlement team",
@@ -280,9 +278,8 @@ describe("TeamsSection", () => {
 
   test("edits and saves teammate provider, model, and thinking settings", async () => {
     updateTeam.mockClear();
-    render(<TeamsSection serverId="server-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const onDone = vi.fn();
+    render(<TeamEditorPage serverId="server-1" teamId="team-1" onDone={onDone} />);
     expect((screen.getByLabelText("模型提供方") as HTMLSelectElement).value).toBe("codex");
     expect((screen.getByLabelText("模型") as HTMLSelectElement).value).toBe("gpt-5.4");
     expect((screen.getByLabelText("思考模式") as HTMLSelectElement).value).toBe("high");
@@ -307,5 +304,19 @@ describe("TeamsSection", () => {
         }),
       ),
     );
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps the first-level page as a list and opens create or edit callbacks", () => {
+    const onCreate = vi.fn();
+    const onEdit = vi.fn();
+    render(<TeamsSection serverId="server-1" onCreate={onCreate} onEdit={onEdit} />);
+
+    expect(screen.queryByPlaceholderText("团队名称")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "创建团队" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "team-1" }));
   });
 });

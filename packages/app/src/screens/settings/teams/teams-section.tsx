@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
@@ -46,7 +46,7 @@ function buildMemberProviderOptions(
       id: INHERIT_LEADER_VALUE,
       value: INHERIT_LEADER_VALUE,
       label: "与负责人一致",
-      description: "Use the leader's current provider.",
+      description: "使用负责人的当前模型提供方。",
     },
     ...entries
       .filter((entry) => entry.enabled !== false)
@@ -77,7 +77,7 @@ function buildMemberModelOptions(
     id: INHERIT_LEADER_VALUE,
     value: INHERIT_LEADER_VALUE,
     label: "与负责人一致",
-    description: "Use the leader's current model.",
+    description: "使用负责人的当前模型。",
   };
   const options: SelectFieldOption<string>[] = [inherited];
   const modelIds = new Set<string>();
@@ -144,7 +144,7 @@ function buildMemberThinkingOptions(
     id: INHERIT_LEADER_VALUE,
     value: INHERIT_LEADER_VALUE,
     label: "与负责人一致",
-    description: "Use the leader's current thinking mode.",
+    description: "使用负责人的当前思考模式。",
   });
   for (const model of models) {
     for (const option of model.thinkingOptions ?? []) {
@@ -177,7 +177,7 @@ function TeamsUpgradeCard() {
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>团队功能需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
-              Update the selected Paseo daemon to create and use assistant teams.
+              请更新所选主机的 Paseo 服务后再创建和使用团队。
             </Text>
           </View>
         </View>
@@ -206,15 +206,15 @@ function TeamRow({
       <View style={settingsStyles.rowContent}>
         <Text style={settingsStyles.rowTitle}>{team.name}</Text>
         <Text style={settingsStyles.rowHint}>
-          Leader: {leaderName} · {memberCount} assistants
+          负责人：{leaderName} · {memberCount} 个助手
         </Text>
       </View>
       <View style={styles.actions}>
         <Button size="sm" variant="outline" onPress={handleEdit}>
-          Edit
+          编辑
         </Button>
         <Button size="sm" variant="outline" onPress={handleDelete}>
-          Delete
+          删除
         </Button>
       </View>
     </View>
@@ -367,28 +367,40 @@ function TeamMemberRow({
   );
 }
 
-export function TeamsSection({ serverId }: { serverId: string }) {
+export function TeamEditorPage({
+  serverId,
+  teamId,
+  onDone,
+}: {
+  serverId: string;
+  teamId?: string;
+  onDone: () => void;
+}) {
   const supportsTeams = useHostFeature(serverId, "teams");
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const assistants = useAssistants(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId, { enabled: supportsTeams });
-  const [form, setForm] = useState<TeamFormState | null>(null);
-
-  const beginCreate = useCallback(() => setForm(openCreateTeamForm()), []);
-  const beginEdit = useCallback((team: Team) => setForm(openEditTeamForm(team)), []);
-  const closeForm = useCallback(() => setForm(null), []);
+  const editingTeam = useMemo(
+    () => (teamId ? (teams.teams.find((team) => team.id === teamId) ?? null) : null),
+    [teamId, teams.teams],
+  );
+  const [form, setForm] = useState<TeamFormState>(() => openCreateTeamForm());
+  const initializedTeamIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editingTeam || initializedTeamIdRef.current === editingTeam.id) return;
+    initializedTeamIdRef.current = editingTeam.id;
+    setForm(openEditTeamForm(editingTeam));
+  }, [editingTeam]);
   const handleNameChange = useCallback(
-    (name: string) => setForm((current) => (current ? { ...current, name } : null)),
+    (name: string) => setForm((current) => ({ ...current, name })),
     [],
   );
   const handleToggleAssistant = useCallback(
-    (assistantId: string) =>
-      setForm((current) => (current ? toggleTeamAssistant(current, assistantId) : null)),
+    (assistantId: string) => setForm((current) => toggleTeamAssistant(current, assistantId)),
     [],
   );
   const handleSetLeader = useCallback(
-    (assistantId: string) =>
-      setForm((current) => (current ? setTeamLeader(current, assistantId) : null)),
+    (assistantId: string) => setForm((current) => setTeamLeader(current, assistantId)),
     [],
   );
   const handleMemberSettingsChange = useCallback(
@@ -399,31 +411,12 @@ export function TeamsSection({ serverId }: { serverId: string }) {
         model?: string | null;
         thinkingOptionId?: string | null;
       },
-    ) =>
-      setForm((current) =>
-        current ? setTeamMemberSettings(current, assistantId, settings) : null,
-      ),
+    ) => setForm((current) => setTeamMemberSettings(current, assistantId, settings)),
     [],
   );
 
-  const handleDelete = useCallback(
-    (team: Team) => {
-      Alert.alert("删除团队？", `将移除“${team.name}”。`, [
-        { text: "取消", style: "cancel" },
-        {
-          text: "删除",
-          style: "destructive",
-          onPress: () => {
-            void teams.deleteTeam(team.id);
-          },
-        },
-      ]);
-    },
-    [teams],
-  );
-
   const handleSave = useCallback(async () => {
-    if (!form || !canSubmitTeamForm(form) || !form.leaderAssistantId) return;
+    if (!canSubmitTeamForm(form) || !form.leaderAssistantId) return;
     if (form.mode === "create") {
       await teams.createTeam({
         name: form.name.trim(),
@@ -440,100 +433,143 @@ export function TeamsSection({ serverId }: { serverId: string }) {
         memberSettings: buildTeamMemberSettingsInput(form),
       });
     }
-    setForm(null);
-  }, [form, teams]);
-  const addTeamAction = useMemo(
-    () =>
-      form ? null : (
-        <Button size="sm" variant="outline" onPress={beginCreate}>
-          Add team
-        </Button>
-      ),
-    [beginCreate, form],
-  );
+    onDone();
+  }, [form, onDone, teams]);
 
   if (!supportsTeams) {
     return <TeamsUpgradeCard />;
   }
+  if (teamId && teams.isLoading) {
+    return <Text style={settingsStyles.rowHint}>正在加载团队…</Text>;
+  }
+  if (teamId && !editingTeam) {
+    return (
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <Text style={settingsStyles.rowHint}>找不到要编辑的团队。</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <SettingsSection title="团队" trailing={addTeamAction}>
-      {form ? (
-        <View style={settingsStyles.card}>
-          <View style={styles.form}>
-            <Field label="团队名称">
-              <FormTextInput
-                initialValue={form.name}
-                resetKey={`team-name:${form.mode}:${form.teamId ?? "new"}`}
-                onChangeText={handleNameChange}
-                placeholder="团队名称"
+    <SettingsSection title={teamId ? "编辑团队" : "创建团队"}>
+      <View style={settingsStyles.card} testID="team-editor-page">
+        <View style={styles.form}>
+          <Field label="团队名称">
+            <FormTextInput
+              initialValue={form.name}
+              resetKey={`team-name:${form.mode}:${form.teamId ?? "new"}`}
+              onChangeText={handleNameChange}
+              placeholder="团队名称"
+            />
+          </Field>
+          <View style={styles.memberHeader}>
+            <Text style={settingsStyles.rowTitle}>助手</Text>
+            <Text style={settingsStyles.rowHint}>至少选择两个助手，并指定一名负责人。</Text>
+          </View>
+          {assistants.assistants.map((assistant) => {
+            const selected = form.assistantIds.includes(assistant.id);
+            const isLeader = form.leaderAssistantId === assistant.id;
+            return (
+              <TeamMemberRow
+                key={assistant.id}
+                assistant={assistant}
+                selected={selected}
+                isLeader={isLeader}
+                onToggle={handleToggleAssistant}
+                onSetLeader={handleSetLeader}
+                settings={form.memberSettings[assistant.id] ?? EMPTY_MEMBER_SETTINGS}
+                providerEntries={providersSnapshot.entries ?? []}
+                providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
+                onSettingsChange={handleMemberSettingsChange}
               />
-            </Field>
-            <View style={styles.memberHeader}>
-              <Text style={settingsStyles.rowTitle}>助手</Text>
-              <Text style={settingsStyles.rowHint}>至少选择两个助手，并指定一名负责人。</Text>
-            </View>
-            {assistants.assistants.map((assistant) => {
-              const selected = form.assistantIds.includes(assistant.id);
-              const isLeader = form.leaderAssistantId === assistant.id;
-              return (
-                <TeamMemberRow
-                  key={assistant.id}
-                  assistant={assistant}
-                  selected={selected}
-                  isLeader={isLeader}
-                  onToggle={handleToggleAssistant}
-                  onSetLeader={handleSetLeader}
-                  settings={form.memberSettings[assistant.id] ?? EMPTY_MEMBER_SETTINGS}
-                  providerEntries={providersSnapshot.entries ?? []}
-                  providersLoading={providersSnapshot.isLoading || providersSnapshot.isFetching}
-                  onSettingsChange={handleMemberSettingsChange}
-                />
-              );
-            })}
-            {assistants.assistants.length < 2 ? (
-              <Text style={settingsStyles.rowHint}>
-                Create at least two assistants before creating a team.
-              </Text>
-            ) : null}
-            {teams.mutationError ? (
-              <Text style={settingsStyles.rowError}>{teams.mutationError.message}</Text>
-            ) : null}
-            <View style={styles.actions}>
-              <Button variant="outline" onPress={closeForm} disabled={teams.isMutating}>
-                Cancel
-              </Button>
-              <Button
-                variant="default"
-                onPress={handleSave}
-                disabled={!canSubmitTeamForm(form) || !teams.isConnected}
-                loading={teams.isMutating}
-              >
-                {form.mode === "create" ? "创建团队" : "保存团队"}
-              </Button>
-            </View>
+            );
+          })}
+          {assistants.assistants.length < 2 ? (
+            <Text style={settingsStyles.rowHint}>创建团队前，请先创建至少两个助手。</Text>
+          ) : null}
+          {teams.mutationError ? (
+            <Text style={settingsStyles.rowError}>{teams.mutationError.message}</Text>
+          ) : null}
+          <View style={styles.actions}>
+            <Button variant="outline" onPress={onDone} disabled={teams.isMutating}>
+              取消
+            </Button>
+            <Button
+              variant="default"
+              onPress={handleSave}
+              disabled={!canSubmitTeamForm(form) || !teams.isConnected}
+              loading={teams.isMutating}
+            >
+              {form.mode === "create" ? "创建团队" : "保存团队"}
+            </Button>
           </View>
         </View>
-      ) : (
-        <View style={settingsStyles.card}>
-          {teams.teams.length > 0 ? (
-            teams.teams.map((team) => (
-              <TeamRow
-                key={team.id}
-                team={team}
-                leaderName={resolveTeamLeader(team, assistants.assistants)?.name || "助手不存在"}
-                memberCount={resolveTeamAssistantIds(team).length}
-                onEdit={beginEdit}
-                onDelete={handleDelete}
-              />
-            ))
-          ) : (
-            <View style={settingsStyles.row}>
-              <Text style={settingsStyles.rowHint}>暂无团队。</Text>
-            </View>
-          )}
-        </View>
-      )}
+      </View>
+      {teams.error ? <Text style={settingsStyles.rowError}>{teams.error.message}</Text> : null}
+    </SettingsSection>
+  );
+}
+
+export function TeamsSection({
+  serverId,
+  onCreate,
+  onEdit,
+}: {
+  serverId: string;
+  onCreate: () => void;
+  onEdit: (team: Team) => void;
+}) {
+  const supportsTeams = useHostFeature(serverId, "teams");
+  const teams = useTeams(serverId, { enabled: supportsTeams });
+  const assistants = useAssistants(serverId, { enabled: supportsTeams });
+  const handleDelete = useCallback(
+    (team: Team) => {
+      Alert.alert("删除团队？", `将移除“${team.name}”。`, [
+        { text: "取消", style: "cancel" },
+        {
+          text: "删除",
+          style: "destructive",
+          onPress: () => {
+            void teams.deleteTeam(team.id);
+          },
+        },
+      ]);
+    },
+    [teams],
+  );
+  const createAction = useMemo(
+    () => (
+      <Button size="sm" variant="default" onPress={onCreate}>
+        创建团队
+      </Button>
+    ),
+    [onCreate],
+  );
+
+  if (!supportsTeams) return <TeamsUpgradeCard />;
+
+  return (
+    <SettingsSection title="团队" trailing={createAction}>
+      <View style={settingsStyles.card}>
+        {teams.teams.length > 0 ? (
+          teams.teams.map((team) => (
+            <TeamRow
+              key={team.id}
+              team={team}
+              leaderName={resolveTeamLeader(team, assistants.assistants)?.name || "助手不存在"}
+              memberCount={resolveTeamAssistantIds(team).length}
+              onEdit={onEdit}
+              onDelete={handleDelete}
+            />
+          ))
+        ) : (
+          <View style={settingsStyles.row}>
+            <Text style={settingsStyles.rowHint}>暂无团队。点击“创建团队”开始配置。</Text>
+          </View>
+        )}
+      </View>
       {teams.error ? <Text style={settingsStyles.rowError}>{teams.error.message}</Text> : null}
     </SettingsSection>
   );

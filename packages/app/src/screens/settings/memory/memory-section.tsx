@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { PaseoMemorySettings, PaseoMemoryUserOperation } from "@getpaseo/protocol/messages";
@@ -16,8 +16,6 @@ export function MemorySection({ serverId }: { serverId: string }) {
   const syncSupported = useHostFeature(serverId, "memorySync");
   const { memory, isLoading, error, updateMemory, clearMemory, isMutating, mutationError } =
     useMemory(serverId, { enabled: supported });
-  const [summary, setSummary] = useState("");
-  useEffect(() => setSummary(memory?.summary ?? ""), [memory?.activeUserId, memory?.summary]);
 
   const saveSettings = useCallback(
     async (settings: PaseoMemorySettings) => {
@@ -25,9 +23,6 @@ export function MemorySection({ serverId }: { serverId: string }) {
     },
     [updateMemory],
   );
-  const saveSummary = useCallback(async () => {
-    await updateMemory({ summary });
-  }, [summary, updateMemory]);
   const changeUser = useCallback(
     async (operation: PaseoMemoryUserOperation) => {
       if (operation.type === "delete") {
@@ -58,22 +53,6 @@ export function MemorySection({ serverId }: { serverId: string }) {
   const consolidate = useCallback(async () => {
     await updateMemory({ consolidate: true });
   }, [updateMemory]);
-  const importMemory = useCallback(
-    async (json: string, replace: boolean) => {
-      if (replace) {
-        const confirmed = await confirmDialog({
-          title: "替换全部 Paseo 记忆？",
-          message: "应用导入内容前会删除当前记忆。",
-          confirmLabel: "替换",
-          destructive: true,
-        });
-        if (!confirmed) return;
-      }
-      await updateMemory({ importJson: json, replaceOnImport: replace });
-    },
-    [updateMemory],
-  );
-
   if (!supported) {
     return (
       <SettingsSection title="记忆">
@@ -104,18 +83,14 @@ export function MemorySection({ serverId }: { serverId: string }) {
     <MemorySectionContent
       serverId={serverId}
       memory={memory}
-      summary={summary}
       isMutating={isMutating}
       visibleError={visibleError}
       usersSupported={usersSupported}
       syncSupported={syncSupported}
-      onSummaryChange={setSummary}
       onSaveSettings={saveSettings}
       onChangeUser={changeUser}
-      onSaveSummary={saveSummary}
       onClearAll={clearAll}
       onConsolidate={consolidate}
-      onImport={importMemory}
     />
   );
 }

@@ -53,4 +53,19 @@ describe("cloud knowledge cache RPC schemas", () => {
       }).success,
     ).toBe(true);
   });
+
+  it("accepts Assistant-scoped cache requests", () => {
+    expect(
+      SessionInboundMessageSchema.parse({
+        type: "knowledge.cloud_document.cache.request",
+        requestId: "req-assistant",
+        scope: "assistant",
+        assistantId: "assistant-1",
+        source: "https://example.com/assistant-standard",
+      }),
+    ).toMatchObject({
+      scope: "assistant",
+      assistantId: "assistant-1",
+    });
+  });
 });

@@ -114,6 +114,7 @@ export function resolveTeamLeaderCreateContext(
     assistantId?: string;
     userPrompt: string;
     labels: Record<string, string>;
+    paseoHome?: string;
   },
 ): ResolvedTeamAgentContext {
   const team = requireTeam(catalogs.teamStore, input.teamId);
@@ -127,7 +128,7 @@ export function resolveTeamLeaderCreateContext(
     .join("\n\n---\n\n");
   return {
     assistantId,
-    prompt: buildAssistantInitialPrompt(leader, teamPrompt),
+    prompt: buildAssistantInitialPrompt(leader, teamPrompt, { paseoHome: input.paseoHome }),
     labels: {
       ...input.labels,
       ...assistantLabels(leader),
@@ -147,6 +148,7 @@ export function resolveTeamChildCreateContext(
     assistantId?: string;
     initialPrompt: string;
     labels?: Record<string, string>;
+    paseoHome?: string;
   },
 ): ResolvedTeamAgentContext {
   const labels = clearTeamIdentityLabels(input.labels);
@@ -158,7 +160,9 @@ export function resolveTeamChildCreateContext(
     const assistant = requireAssistant(catalogs.assistantStore, input.assistantId);
     return {
       assistantId: assistant.id,
-      prompt: buildAssistantInitialPrompt(assistant, input.initialPrompt),
+      prompt: buildAssistantInitialPrompt(assistant, input.initialPrompt, {
+        paseoHome: input.paseoHome,
+      }),
       labels: { ...labels, ...assistantLabels(assistant) },
     };
   }
@@ -195,7 +199,9 @@ export function resolveTeamChildCreateContext(
         }
       : {}),
     prompt: assistant
-      ? buildAssistantInitialPrompt(assistant, input.initialPrompt)
+      ? buildAssistantInitialPrompt(assistant, input.initialPrompt, {
+          paseoHome: input.paseoHome,
+        })
       : input.initialPrompt,
     labels: {
       ...labels,

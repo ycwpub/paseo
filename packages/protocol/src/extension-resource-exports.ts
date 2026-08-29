@@ -67,6 +67,7 @@ export {
   type LarkDirectoryUser,
 } from "./channel/lark/directory-types.js";
 export * from "./channel/lark/directory-rpc-schemas.js";
+export * from "./channel/lark/user-oauth-rpc-schemas.js";
 export {
   LarkChannelAuthorizedUserSchema,
   LarkChannelBotSchema,
@@ -223,6 +224,7 @@ export {
   type PluginSummary,
   type PluginUnsupportedComponent,
 } from "./plugin/types.js";
+export * from "./plugin/runtime-types.js";
 export * from "./plugin/app-rpc-schemas.js";
 export * from "./plugin/rpc-schemas.js";
 export * from "./client-access/rpc-schemas.js";

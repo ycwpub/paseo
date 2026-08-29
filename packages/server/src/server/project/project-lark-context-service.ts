@@ -10,6 +10,7 @@ import type {
 } from "../channels/lark/lark-client-adapter.js";
 import type { LarkChannelStore } from "../channels/lark/lark-channel-store.js";
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
+import type { LarkUserOAuthService } from "../channels/lark/lark-user-oauth-service.js";
 import type { PersistedProjectRecord, ProjectRegistry } from "../workspace-registry.js";
 import { readProjectConfigForProject } from "./project-config-storage.js";
 import {
@@ -141,6 +142,7 @@ export class ProjectLarkContextService {
   private readonly projectRegistry: Pick<ProjectRegistry, "list">;
   private readonly channelStore: Pick<LarkChannelStore, "getBot">;
   private readonly adapter: LarkChannelClientAdapter;
+  private readonly userOAuthService: LarkUserOAuthService;
   private readonly logger: pino.Logger;
   private readonly bindingsByRoute = new Map<string, ActiveBinding[]>();
   private readonly writeQueues = new Map<string, Promise<void>>();
@@ -152,12 +154,14 @@ export class ProjectLarkContextService {
     projectRegistry: Pick<ProjectRegistry, "list">;
     channelStore: Pick<LarkChannelStore, "getBot">;
     adapter: LarkChannelClientAdapter;
+    userOAuthService: LarkUserOAuthService;
     logger: pino.Logger;
   }) {
     this.paseoHome = options.paseoHome;
     this.projectRegistry = options.projectRegistry;
     this.channelStore = options.channelStore;
     this.adapter = options.adapter;
+    this.userOAuthService = options.userOAuthService;
     this.logger = options.logger.child({ module: "project-lark-context-service" });
   }
 
@@ -258,14 +262,16 @@ export class ProjectLarkContextService {
           if (!this.adapter.addBotToChat) {
             throw new Error("当前飞书适配器不支持自动邀请机器人入群");
           }
-          await this.adapter.addBotToChat(bot.config, binding.chatId, appId);
+          const userAccessToken = await this.userOAuthService.getValidUserAccessToken(appId);
+          await this.adapter.addBotToChat(bot.config, binding.chatId, appId, userAccessToken);
           history = await this.adapter.listChatMessages(bot.config, binding.chatId, options);
         }
       } else {
         if (!this.adapter.addBotToChat) {
           throw new Error("当前飞书适配器不支持自动邀请机器人入群");
         }
-        await this.adapter.addBotToChat(bot.config, binding.chatId, appId);
+        const userAccessToken = await this.userOAuthService.getValidUserAccessToken(appId);
+        await this.adapter.addBotToChat(bot.config, binding.chatId, appId, userAccessToken);
       }
       const messages = history
         .map(normalizeApiMessage)

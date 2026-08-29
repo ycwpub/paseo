@@ -108,6 +108,28 @@ function ProjectKnowledgeTypeSelector({
   );
 }
 
+function KnowledgeResourceStoragePath({
+  resource,
+  cloudCacheTarget,
+}: {
+  resource: ProjectKnowledgeResourceDraft;
+  cloudCacheTarget?: CloudKnowledgeCacheTarget;
+}) {
+  if (resource.type === "cloud-document" && cloudCacheTarget) {
+    return <CloudKnowledgeCacheControl target={cloudCacheTarget} source={resource.source} />;
+  }
+  return (
+    <View style={styles.pathContainer}>
+      <Text style={styles.pathLabel}>
+        {resource.type === "cloud-document" ? "云文档地址" : "存储路径"}
+      </Text>
+      <Text selectable style={styles.pathText}>
+        {resource.source.trim() || "尚未填写"}
+      </Text>
+    </View>
+  );
+}
+
 function ProjectKnowledgeRow({
   section,
   resource,
@@ -159,9 +181,7 @@ function ProjectKnowledgeRow({
       >
         <X size={ICON_SIZE} color={styles.iconColor.color} />
       </Pressable>
-      {resource.type === "cloud-document" && cloudCacheTarget ? (
-        <CloudKnowledgeCacheControl target={cloudCacheTarget} source={resource.source} />
-      ) : null}
+      <KnowledgeResourceStoragePath resource={resource} cloudCacheTarget={cloudCacheTarget} />
     </View>
   );
 }
@@ -376,6 +396,20 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,
+  },
+  pathContainer: {
+    width: "100%",
+    paddingLeft: 152,
+    gap: theme.spacing[1],
+  },
+  pathLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  pathText: {
+    color: theme.colors.foregroundExtraMuted,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.xs,
   },
   emptyText: {
     color: theme.colors.foregroundMuted,

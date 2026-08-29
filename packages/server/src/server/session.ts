@@ -77,6 +77,23 @@ import {
   type WorkspaceLabelService,
 } from "./workspace-labels/index.js";
 
+type LarkUserOAuthInboundMessage = Extract<
+  SessionInboundMessage,
+  {
+    type:
+      | "channel.lark.user_oauth.get_status.request"
+      | "channel.lark.user_oauth.start.request"
+      | "channel.lark.user_oauth.complete.request"
+      | "channel.lark.user_oauth.disconnect.request";
+  }
+>;
+
+function isLarkUserOAuthInboundMessage(
+  message: SessionInboundMessage,
+): message is LarkUserOAuthInboundMessage {
+  return message.type.startsWith("channel.lark.user_oauth.");
+}
+
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -197,7 +214,7 @@ import { McpStore } from "./mcp/mcp-store.js";
 import { McpSession } from "./mcp/mcp-session.js";
 import { SkillStore } from "./skill/skill-store.js";
 import { SkillSession } from "./skill/skill-session.js";
-import type { PluginService } from "./plugin/plugin-service.js";
+import type { UnifiedPluginService } from "./plugins/unified-plugin-service.js";
 import { isPluginSessionRequest, PluginSession } from "./plugin/plugin-session.js";
 import {
   createAidenClaudeReasoningTranslationService,
@@ -585,7 +602,7 @@ export interface SessionOptions {
   teamStore?: TeamStore | null;
   mcpStore?: McpStore | null;
   skillStore?: SkillStore | null;
-  pluginService?: PluginService | null;
+  pluginService?: UnifiedPluginService | null;
 }
 
 export type SessionLifecycleIntent =
@@ -809,12 +826,14 @@ export class Session {
   private readonly assistantSession: AssistantSession | null;
   private readonly memorySession: MemorySession | null;
   private readonly cloudDocumentCacheSession: CloudDocumentCacheSession | null;
+  private readonly cloudDocumentCacheService: CloudDocumentCacheService | null;
   private readonly assistantStore: AssistantStore | null;
   private readonly teamSession: TeamSession | null;
   private readonly teamStore: TeamStore | null;
   private readonly mcpSession: McpSession | null;
   private readonly skillSession: SkillSession | null;
   private readonly pluginSession: PluginSession | null;
+  private readonly pluginService: UnifiedPluginService | null;
   private readonly reasoningTranslationSession: ReasoningTranslationSession;
   private readonly workspaceScripts: WorkspaceScriptsService;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
@@ -904,6 +923,7 @@ export class Session {
     this.projectIcons = new ProjectIconReader(paseoHome);
     this.worktreesRoot = worktreesRoot;
     this.pluginRuntime = pluginRuntime;
+    this.pluginService = pluginService ?? null;
     this.orchestrationSkills = orchestrationSkills;
     this.unsubscribePluginChanges = this.subscribeToPluginChanges(pluginRuntime);
     this.sessionLogger = logger.child({
@@ -1111,6 +1131,7 @@ export class Session {
           logger: this.sessionLogger,
         })
       : null;
+    this.cloudDocumentCacheService = cloudDocumentCacheService ?? null;
     const reasoningTranslationService: ReasoningTranslationService =
       createAidenClaudeReasoningTranslationService({
         agentManager: this.agentManager,
@@ -2356,6 +2377,9 @@ export class Session {
     if (!pluginRuntime) return null;
     return pluginRuntime.subscribe((pluginId) => {
       this.emit({ type: "status", payload: { status: "plugin_catalog_changed", pluginId } });
+      if (this.pluginService) {
+        this.emit({ type: "plugin.changed", payload: this.pluginService.getState() });
+      }
     });
   }
 
@@ -2900,6 +2924,9 @@ export class Session {
   }
 
   private dispatchChannelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (isLarkUserOAuthInboundMessage(msg)) {
+      return this.larkChannelSession?.handleRequest(msg);
+    }
     switch (msg.type) {
       case "channel.lark.get_status.request":
       case "channel.lark.apply_bot.request":
@@ -3924,6 +3951,7 @@ export class Session {
           assistantId: input.assistantId,
           userPrompt: input.initialPrompt ?? "",
           labels,
+          paseoHome: this.paseoHome,
         },
       );
       return {
@@ -3945,7 +3973,9 @@ export class Session {
     }
     return {
       effectiveConfig: input.config,
-      effectiveInitialPrompt: buildAssistantInitialPrompt(assistant, input.initialPrompt ?? ""),
+      effectiveInitialPrompt: buildAssistantInitialPrompt(assistant, input.initialPrompt ?? "", {
+        paseoHome: this.paseoHome,
+      }),
       effectiveLabels: {
         ...labels,
         assistantId: assistant.id,
@@ -4042,6 +4072,11 @@ export class Session {
           providerSnapshotManager: this.providerSnapshotManager,
           projectRegistry: this.projectRegistry,
           workspaceRegistry: this.workspaceRegistry,
+          cloudDocumentCacheService: this.cloudDocumentCacheService ?? undefined,
+          readGlobalKnowledge: () => this.daemonConfigStore.get().knowledge,
+          readAssistant: (assistantId) => this.assistantStore?.get(assistantId) ?? null,
+          readPluginProjectContext: (projectId) =>
+            this.pluginService?.buildProjectAgentContext(projectId) ?? null,
         },
         {
           kind: "session",

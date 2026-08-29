@@ -148,6 +148,11 @@ export const PluginAppStateSchema = z.object({
   // COMPAT(pluginProjectDefaultAgent): added on 2026-08-20.
   defaultAgent: PluginAppDefaultAgentSchema.nullable().default(null),
   category: z.string().optional(),
+  name: z.string().trim().min(1).optional(),
+  // Plugin-project knowledge is inherited by the associated Paseo Project.
+  knowledge: z.string().default(""),
+  // Agent-editable plugin-project metadata that does not belong to the UI document schema.
+  data: z.record(z.string(), z.unknown()).default({}),
   document: PluginAppDocumentSchema.nullable(),
   // COMPAT(pluginAppHtmlPreview): added on 2026-08-21. Older daemons omit it.
   htmlPath: z.string().optional(),

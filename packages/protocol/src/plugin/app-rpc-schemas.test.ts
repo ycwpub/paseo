@@ -43,6 +43,8 @@ describe("plugin app RPC schemas", () => {
     });
     expect(legacyResponse.payload.app?.projectId).toBeUndefined();
     expect(legacyResponse.payload.app?.defaultAgent).toBeNull();
+    expect(legacyResponse.payload.app?.knowledge).toBe("");
+    expect(legacyResponse.payload.app?.data).toEqual({});
   });
 
   it("accepts Agent interface generation requests", () => {

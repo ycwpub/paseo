@@ -5,6 +5,7 @@ import { Save } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type {
+  Assistant,
   PaseoConfigRaw,
   PaseoConfigRevision,
   ProjectConfigRpcError,
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { useFetchQuery } from "@/data/query";
+import { useAssistants, type UseAssistantsResult } from "@/hooks/use-assistants";
 import { useProjects } from "@/hooks/use-projects";
 import { ProjectKnowledgeEditor } from "@/projects/knowledge/editor";
 import {
@@ -21,34 +23,152 @@ import {
   projectKnowledgeToDraft,
   type ProjectKnowledgeDraft,
 } from "@/projects/knowledge/model";
+import type { KnowledgeSyncTarget } from "@/resource-sync/host-resource-sync";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
+import type { ProjectSummary } from "@/utils/projects";
 import { HostKnowledgeSection } from "../host-knowledge/host-knowledge-section";
+import {
+  hostKnowledgeDraftError,
+  hostKnowledgeDraftToConfig,
+  hostKnowledgeToDraft,
+} from "../host-knowledge/host-knowledge-model";
 import {
   applyProjectKnowledgeToConfig,
   buildKnowledgeProjectTargets,
   type KnowledgeProjectTarget,
 } from "./knowledge-management-model";
 
-type KnowledgeScope = "global" | "project";
+type KnowledgeScope = "global" | "project" | "assistant";
 type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"]>>;
 const EMPTY_PROJECT_CONFIG: PaseoConfigRaw = {};
 
+interface KnowledgeManagementSectionProps {
+  serverId: string;
+  initialScope?: KnowledgeScope;
+  initialProjectId?: string | null;
+}
+
 const SCOPE_OPTIONS = [
-  { value: "global" as const, label: "全局知识", testID: "knowledge-scope-global" },
-  { value: "project" as const, label: "Project 知识", testID: "knowledge-scope-project" },
+  {
+    value: "global" as const,
+    label: "全局知识",
+    testID: "knowledge-scope-global",
+  },
+  {
+    value: "project" as const,
+    label: "Project 知识",
+    testID: "knowledge-scope-project",
+  },
+  {
+    value: "assistant" as const,
+    label: "助手知识",
+    testID: "knowledge-scope-assistant",
+  },
 ];
 
 function projectTargetKey(target: KnowledgeProjectTarget): string {
   return target.projectId;
 }
 
-export function KnowledgeManagementSection({ serverId }: { serverId: string }) {
+function assistantTargetKey(assistant: Assistant): string {
+  return assistant.id;
+}
+
+function buildKnowledgeSyncTarget(input: {
+  scope: KnowledgeScope;
+  targetServerId: string;
+  sourceServerId: string;
+  selectedTarget: KnowledgeProjectTarget | null;
+  selectedAssistant: Assistant | null;
+  projects: readonly ProjectSummary[];
+}): KnowledgeSyncTarget | null {
+  if (input.scope === "global") return { scope: "global" };
+  if (input.scope === "assistant") {
+    return input.selectedAssistant
+      ? {
+          scope: "assistant",
+          assistantId: input.selectedAssistant.id,
+          assistantName: input.selectedAssistant.name,
+        }
+      : null;
+  }
+  if (!input.selectedTarget) return null;
+  const project = input.projects.find((entry) =>
+    entry.hosts.some(
+      (host) =>
+        host.serverId === input.sourceServerId &&
+        host.projectId === input.selectedTarget?.projectId,
+    ),
+  );
+  const targetHost = project?.hosts.find((host) => host.serverId === input.targetServerId);
+  return targetHost
+    ? {
+        scope: "project",
+        projectId: targetHost.projectId,
+        repoRoot: targetHost.repoRoot,
+      }
+    : null;
+}
+
+function KnowledgeHostSync({
+  serverId,
+  scope,
+  projects,
+  selectedTarget,
+  selectedAssistant,
+}: {
+  serverId: string;
+  scope: KnowledgeScope;
+  projects: readonly ProjectSummary[];
+  selectedTarget: KnowledgeProjectTarget | null;
+  selectedAssistant: Assistant | null;
+}) {
+  const resolveKnowledgeTarget = useCallback(
+    (targetServerId: string) =>
+      buildKnowledgeSyncTarget({
+        scope,
+        targetServerId,
+        sourceServerId: serverId,
+        selectedTarget,
+        selectedAssistant,
+        projects,
+      }),
+    [projects, scope, selectedAssistant, selectedTarget, serverId],
+  );
+  const requiredFeature = scope === "assistant" ? "assistants" : undefined;
+  const disabled =
+    (scope === "project" && !selectedTarget) || (scope === "assistant" && !selectedAssistant);
+
+  return (
+    <SettingsSection title="多主机共享">
+      <HostResourceSyncCard
+        serverId={serverId}
+        kind="knowledge"
+        requiredFeature={requiredFeature}
+        disabled={disabled}
+        description="同步当前选中的知识范围。知识条目按类型和来源合并，不会删除任一主机已有内容。"
+        warning="本地目录和本地文档只同步配置路径，不复制文件内容；请确保目标主机存在对应路径。云文档链接可直接共享。"
+        resolveKnowledgeTarget={resolveKnowledgeTarget}
+      />
+    </SettingsSection>
+  );
+}
+
+export function KnowledgeManagementSection({
+  serverId,
+  initialScope = "global",
+  initialProjectId = null,
+}: KnowledgeManagementSectionProps) {
   const { projects, isLoading } = useProjects();
-  const [scope, setScope] = useState<KnowledgeScope>("global");
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const supportsAssistants = useHostFeature(serverId, "assistants");
+  const assistants = useAssistants(serverId, { enabled: supportsAssistants });
+  const [scope, setScope] = useState<KnowledgeScope>(initialScope);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initialProjectId);
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null);
   const targets = useMemo(
     () => buildKnowledgeProjectTargets(projects, serverId),
     [projects, serverId],
@@ -86,13 +206,48 @@ export function KnowledgeManagementSection({ serverId }: { serverId: string }) {
   const selectProject = useCallback((target: KnowledgeProjectTarget) => {
     setSelectedProjectId(target.projectId);
   }, []);
+  const selectedAssistant = useMemo(
+    () =>
+      assistants.assistants.find((assistant) => assistant.id === selectedAssistantId) ??
+      assistants.assistants[0] ??
+      null,
+    [assistants.assistants, selectedAssistantId],
+  );
+  useEffect(() => {
+    if (selectedAssistant && selectedAssistant.id !== selectedAssistantId) {
+      setSelectedAssistantId(selectedAssistant.id);
+    }
+  }, [selectedAssistant, selectedAssistantId]);
+  const assistantOptions = useMemo<SelectFieldOption<Assistant>[]>(
+    () =>
+      assistants.assistants.map((assistant) => ({
+        id: assistant.id,
+        value: assistant,
+        label: assistant.name.trim() || "未命名助手",
+        description: assistant.description.trim() || assistant.id,
+      })),
+    [assistants.assistants],
+  );
+  const selectedAssistantDisplay = useMemo(
+    () =>
+      selectedAssistant
+        ? {
+            label: selectedAssistant.name.trim() || "未命名助手",
+            description: selectedAssistant.description.trim() || selectedAssistant.id,
+          }
+        : null,
+    [selectedAssistant],
+  );
+  const selectAssistant = useCallback((assistant: Assistant) => {
+    setSelectedAssistantId(assistant.id);
+  }, []);
 
   return (
     <View testID="knowledge-management-section">
       <SettingsSection title="知识管理">
         <Text style={styles.description}>
-          集中管理当前主机的全局知识和各个 Project 的知识。全局知识适用于所有 Project；Project
-          知识仅在所选 Project 中生效。
+          集中管理当前主机的全局知识、Project 知识和助手知识。全局知识适用于所有 Project；Project
+          知识仅在所选 Project 中生效；助手知识仅在使用所选助手时生效。
         </Text>
         <SegmentedControl
           options={SCOPE_OPTIONS}
@@ -120,25 +275,178 @@ export function KnowledgeManagementSection({ serverId }: { serverId: string }) {
             </View>
           </View>
         ) : null}
+        {scope === "assistant" && supportsAssistants ? (
+          <View style={settingsStyles.card}>
+            <View style={styles.projectSelector}>
+              <SelectField
+                label="选择助手"
+                value={selectedAssistant}
+                selectedDisplay={selectedAssistantDisplay}
+                options={assistantOptions}
+                onChange={selectAssistant}
+                getValueKey={assistantTargetKey}
+                searchable
+                loading={assistants.isLoading}
+                placeholder="选择要管理知识的助手"
+                emptyText="当前主机没有可管理的助手"
+                testID="knowledge-assistant-selector"
+              />
+            </View>
+          </View>
+        ) : null}
       </SettingsSection>
 
-      {scope === "global" ? <HostKnowledgeSection serverId={serverId} /> : null}
-      {scope === "project" && selectedTarget ? (
+      <KnowledgeHostSync
+        serverId={serverId}
+        scope={scope}
+        projects={projects}
+        selectedTarget={selectedTarget}
+        selectedAssistant={selectedAssistant}
+      />
+
+      <KnowledgeScopeContent
+        serverId={serverId}
+        scope={scope}
+        selectedTarget={selectedTarget}
+        projectsLoading={isLoading}
+        supportsAssistants={supportsAssistants}
+        selectedAssistant={selectedAssistant}
+        assistants={assistants}
+      />
+    </View>
+  );
+}
+
+function KnowledgeScopeContent({
+  serverId,
+  scope,
+  selectedTarget,
+  projectsLoading,
+  supportsAssistants,
+  selectedAssistant,
+  assistants,
+}: {
+  serverId: string;
+  scope: KnowledgeScope;
+  selectedTarget: KnowledgeProjectTarget | null;
+  projectsLoading: boolean;
+  supportsAssistants: boolean;
+  selectedAssistant: Assistant | null;
+  assistants: UseAssistantsResult;
+}) {
+  if (scope === "global") {
+    return <HostKnowledgeSection serverId={serverId} />;
+  }
+  if (scope === "project") {
+    if (selectedTarget) {
+      return (
         <ProjectKnowledgeManager
           key={`${serverId}:${selectedTarget.projectId}`}
           serverId={serverId}
           target={selectedTarget}
         />
-      ) : null}
-      {scope === "project" && !selectedTarget && !isLoading ? (
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <Text style={settingsStyles.rowHint}>
-              请先创建 Project，再在这里维护 Project 知识。
-            </Text>
-          </View>
+      );
+    }
+    return projectsLoading ? null : (
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <Text style={settingsStyles.rowHint}>请先创建 Project，再在这里维护 Project 知识。</Text>
         </View>
-      ) : null}
+      </View>
+    );
+  }
+  if (!supportsAssistants) {
+    return (
+      <Alert
+        variant="warning"
+        title="无法管理助手知识"
+        description="当前主机版本不支持助手，请更新主机后再试。"
+      />
+    );
+  }
+  if (selectedAssistant) {
+    return (
+      <AssistantKnowledgeManager
+        key={`${serverId}:${selectedAssistant.id}:${selectedAssistant.updatedAt}`}
+        serverId={serverId}
+        assistant={selectedAssistant}
+        assistants={assistants}
+      />
+    );
+  }
+  return assistants.isLoading ? null : (
+    <View style={settingsStyles.card}>
+      <View style={settingsStyles.row}>
+        <Text style={settingsStyles.rowHint}>请先创建助手，再在这里维护助手知识。</Text>
+      </View>
+    </View>
+  );
+}
+
+function AssistantKnowledgeManager({
+  serverId,
+  assistant,
+  assistants,
+}: {
+  serverId: string;
+  assistant: Assistant;
+  assistants: Pick<UseAssistantsResult, "updateAssistant" | "isMutating" | "isConnected">;
+}) {
+  const [value, setValue] = useState(() => hostKnowledgeToDraft(assistant.knowledge));
+  const [dirty, setDirty] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const validationError = useMemo(() => hostKnowledgeDraftError(value), [value]);
+  const cloudCacheTarget = useMemo(
+    () => ({
+      serverId,
+      scope: "assistant" as const,
+      assistantId: assistant.id,
+    }),
+    [assistant.id, serverId],
+  );
+  const change = useCallback((next: ProjectKnowledgeDraft) => {
+    setValue(next);
+    setDirty(true);
+    setSaveError(null);
+  }, []);
+  const save = useCallback(async () => {
+    if (!assistants.isConnected || assistants.isMutating || validationError) return;
+    setSaveError(null);
+    try {
+      await assistants.updateAssistant({
+        id: assistant.id,
+        knowledge: hostKnowledgeDraftToConfig(value),
+      });
+      setDirty(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    }
+  }, [assistant.id, assistants, validationError, value]);
+
+  return (
+    <View testID="assistant-knowledge-manager">
+      <ProjectKnowledgeEditor
+        value={value}
+        error={validationError ?? saveError}
+        onChange={change}
+        sections={["general", "standards"]}
+        title={`${assistant.name.trim() || "未命名助手"} · 助手知识`}
+        info="仅在使用当前助手时生效。通用知识按需加载和采纳；规范知识会完整提供给智能体，并要求严格遵守。"
+        testID="assistant-knowledge-group"
+        cloudCacheTarget={cloudCacheTarget}
+      />
+      <View style={styles.footer}>
+        <Button
+          variant="default"
+          leftIcon={Save}
+          disabled={!assistants.isConnected || !dirty || Boolean(validationError)}
+          loading={assistants.isMutating}
+          onPress={save}
+          testID="assistant-knowledge-save"
+        >
+          保存助手知识
+        </Button>
+      </View>
     </View>
   );
 }

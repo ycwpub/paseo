@@ -1,4 +1,12 @@
-import { useCallback, useMemo, useReducer, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { Assistant, AssistantResourceSelection } from "@getpaseo/protocol/messages";
@@ -7,6 +15,7 @@ import { Field, FormTextInput } from "@/components/ui/form-field";
 import { Switch } from "@/components/ui/switch";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
 import { useAssistants } from "@/hooks/use-assistants";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
@@ -15,6 +24,8 @@ import { useHostFeature } from "@/runtime/host-features";
 
 interface AssistantsSectionProps {
   serverId: string;
+  onCreate: () => void;
+  onEdit: (assistant: Assistant) => void;
 }
 
 function AssistantsUpgradeCard() {
@@ -25,7 +36,7 @@ function AssistantsUpgradeCard() {
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>助手功能需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
-              Update the selected Paseo daemon to create and manage assistants.
+              请更新所选主机的 Paseo 服务后再创建和管理助手。
             </Text>
           </View>
         </View>
@@ -60,10 +71,10 @@ function AssistantRow({
       </View>
       <View style={styles.rowActions}>
         <Button size="sm" variant="outline" onPress={handleEdit}>
-          Edit
+          编辑
         </Button>
         <Button size="sm" variant="outline" onPress={handleDelete}>
-          Delete
+          删除
         </Button>
       </View>
     </View>
@@ -172,18 +183,14 @@ function AssistantResourceSelectionEditor({
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>MCP 与 Skills</Text>
           <Text style={settingsStyles.rowHint}>
-            Default uses every active MCP server and skill. Choose custom to limit what this
-            assistant enables for new conversations.
+            默认使用全部已启用的 MCP 服务和技能；也可改为自定义，仅启用指定资源。
           </Text>
         </View>
       </View>
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>使用所有已启用的 MCP 服务和 Skills</Text>
-          <Text style={settingsStyles.rowHint}>
-            New conversations will pick up active resources automatically when this assistant is
-            selected.
-          </Text>
+          <Text style={settingsStyles.rowHint}>新会话选择此助手时，将自动使用当前启用的资源。</Text>
         </View>
         <Switch
           value={isAllEnabled}
@@ -197,7 +204,9 @@ function AssistantResourceSelectionEditor({
             kind="mcp"
             title="MCP 服务"
             hint="该助手在新会话中可以调用的外部工具。"
-            countLabel={`${mcpServers.filter((server) => selectedMcpIdSet.has(server.id)).length}/${mcpServers.length} selected`}
+            countLabel={`已选择 ${
+              mcpServers.filter((server) => selectedMcpIdSet.has(server.id)).length
+            }/${mcpServers.length}`}
           >
             {mcpServers.length > 0 ? (
               mcpServers.map((server) => (
@@ -219,7 +228,9 @@ function AssistantResourceSelectionEditor({
             kind="skill"
             title="技能"
             hint="注入给该助手的指令包。"
-            countLabel={`${skills.filter((skill) => selectedSkillIdSet.has(skill.id)).length}/${skills.length} selected`}
+            countLabel={`已选择 ${
+              skills.filter((skill) => selectedSkillIdSet.has(skill.id)).length
+            }/${skills.length}`}
           >
             {skills.length > 0 ? (
               skills.map((skill) => (
@@ -244,7 +255,7 @@ function AssistantResourceSelectionEditor({
 }
 
 function formatCharCount(charCount: number): string {
-  return `${charCount.toLocaleString()} chars`;
+  return `${charCount.toLocaleString()} 字符`;
 }
 
 function AssistantMemorySummaryBody({
@@ -370,7 +381,7 @@ function AssistantMemoryArtifacts({
           <View style={styles.memoryArtifactTitleBlock}>
             <Text style={styles.memoryArtifactTitle}>记忆总文件</Text>
             <Text style={styles.memoryArtifactHint}>
-              Included in the first agent prompt. Detailed memories stay in files.
+              首次调用智能体时提供总览，详细记忆保存在子文件中。
             </Text>
           </View>
           <Text style={styles.memoryArtifactBadge}>{summary ? "已生成" : "待生成"}</Text>
@@ -397,10 +408,10 @@ function AssistantMemoryArtifacts({
           <View style={styles.memoryArtifactTitleBlock}>
             <Text style={styles.memoryArtifactTitle}>记忆子文件</Text>
             <Text style={styles.memoryArtifactHint}>
-              Agents can open only the specific detail file needed for a task.
+              智能体可根据任务需要按需读取对应的记忆子文件。
             </Text>
           </View>
-          <Text style={styles.memoryArtifactBadge}>{detailFiles.length} files</Text>
+          <Text style={styles.memoryArtifactBadge}>{detailFiles.length} 个文件</Text>
         </View>
         {detailFiles.length > 0 ? (
           <View style={styles.detailFilesList}>
@@ -421,7 +432,15 @@ function AssistantMemoryArtifacts({
   );
 }
 
-export function AssistantsSection({ serverId }: AssistantsSectionProps) {
+export function AssistantEditorPage({
+  serverId,
+  assistantId,
+  onDone,
+}: {
+  serverId: string;
+  assistantId?: string;
+  onDone: () => void;
+}) {
   const supportsAssistants = useHostFeature(serverId, "assistants");
   const assistants = useAssistants(serverId, { enabled: supportsAssistants });
   const mcpCatalog = useMcpServers(serverId, { enabled: supportsAssistants });
@@ -456,23 +475,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
   const [dirtyMemoryDetailFileIds, setDirtyMemoryDetailFileIds] = useState<string[]>([]);
   const [editingAssistantId, setEditingAssistantId] = useState<string | null>(null);
   const [formResetKey, bumpFormResetKey] = useReducer((key: number) => key + 1, 0);
-
-  const resetForm = useCallback(() => {
-    setEditingAssistantId(null);
-    setName("");
-    setDescription("");
-    setPrompt("");
-    setMemoryEnabled(false);
-    setMemory("");
-    setResourceSelectionMode("all-enabled");
-    setSelectedMcpServerIds([]);
-    setSelectedSkillIds([]);
-    setEditingMemorySummary("");
-    setEditingMemoryFiles(null);
-    setMemorySummaryDirty(false);
-    setDirtyMemoryDetailFileIds([]);
-    bumpFormResetKey();
-  }, []);
+  const initializedAssistantIdRef = useRef<string | null>(null);
 
   const handleEdit = useCallback((assistant: Assistant) => {
     setEditingAssistantId(assistant.id);
@@ -490,6 +493,18 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
     setDirtyMemoryDetailFileIds([]);
     bumpFormResetKey();
   }, []);
+  const editingAssistant = useMemo(
+    () =>
+      assistantId
+        ? (assistants.assistants.find((assistant) => assistant.id === assistantId) ?? null)
+        : null,
+    [assistantId, assistants.assistants],
+  );
+  useEffect(() => {
+    if (!editingAssistant || initializedAssistantIdRef.current === editingAssistant.id) return;
+    initializedAssistantIdRef.current = editingAssistant.id;
+    handleEdit(editingAssistant);
+  }, [editingAssistant, handleEdit]);
 
   const handleMemorySummaryChange = useCallback((value: string) => {
     setEditingMemorySummary(value);
@@ -546,7 +561,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
         editingMemoryFiles?.detailFiles
           .filter((file) => dirtyMemoryDetailFileIds.includes(file.id))
           .map((file) => ({ id: file.id, content: file.content ?? "" })) ?? [];
-      const updatedAssistant = await assistants.updateAssistant({
+      await assistants.updateAssistant({
         id: editingAssistantId,
         name,
         description,
@@ -557,8 +572,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
         ...(memoryEnabled && memorySummaryDirty ? { memorySummary: editingMemorySummary } : {}),
         ...(memoryEnabled && memoryDetailFileEdits.length > 0 ? { memoryDetailFileEdits } : {}),
       });
-      handleEdit(updatedAssistant);
-      return;
+      onDone();
     } else {
       await assistants.createAssistant({
         name,
@@ -568,8 +582,8 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
         memory,
         resourceSelection: assistantResourceSelection,
       });
+      onDone();
     }
-    resetForm();
   }, [
     assistantResourceSelection,
     assistants,
@@ -578,39 +592,43 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
     editingAssistantId,
     editingMemoryFiles,
     editingMemorySummary,
-    handleEdit,
     memory,
     memoryEnabled,
     memorySummaryDirty,
     name,
+    onDone,
     prompt,
-    resetForm,
   ]);
-
-  const handleDelete = useCallback(
-    (id: string) => {
-      void assistants.deleteAssistant(id);
-    },
-    [assistants],
-  );
 
   const canCreate = prompt.trim().length > 0;
   const isEditingAssistant = Boolean(editingAssistantId);
   const sourceMemoryLabel = isEditingAssistant ? "追加源记忆" : "源记忆";
   const sourceMemoryHint = isEditingAssistant
-    ? "Add only new memory here. Existing memory is preserved and shown in the summary/detail files below."
-    : "Use Markdown to store stable preferences and context. Saving splits it into summary/detail files.";
+    ? "仅在此追加新记忆；现有记忆会保留，并展示在下方总文件和子文件中。"
+    : "使用 Markdown 保存稳定偏好和上下文；保存后会拆分为总文件和子文件。";
   const sourceMemoryPlaceholder = isEditingAssistant
-    ? "Add new memories to append. Leave empty to keep current memory unchanged."
+    ? "填写要追加的新记忆；留空则保持现有记忆不变。"
     : "使用 Markdown 保存稳定的偏好和上下文。";
 
   if (!supportsAssistants) {
     return <AssistantsUpgradeCard />;
   }
+  if (assistantId && assistants.isLoading) {
+    return <Text style={settingsStyles.rowHint}>正在加载助手…</Text>;
+  }
+  if (assistantId && !editingAssistant) {
+    return (
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <Text style={settingsStyles.rowHint}>找不到要编辑的助手。</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View testID="host-page-assistants">
-      <SettingsSection title={editingAssistantId ? "编辑助手" : "创建助手"}>
+    <View testID="assistant-editor-page">
+      <SettingsSection title={assistantId ? "编辑助手" : "创建助手"}>
         <View style={styles.formCard}>
           <Field label="名称" testID="assistant-name-field">
             <FormTextInput
@@ -651,7 +669,7 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>记忆</Text>
               <Text style={settingsStyles.rowHint}>
-                Store memory as summary/detail files. Only the summary is sent in the first message.
+                记忆按总文件和子文件保存，首次消息仅提供总览。
               </Text>
             </View>
             <Switch
@@ -696,32 +714,66 @@ export function AssistantsSection({ serverId }: AssistantsSectionProps) {
             >
               {editingAssistantId ? "保存更改" : "添加助手"}
             </Button>
-            {editingAssistantId ? (
-              <Button variant="outline" onPress={resetForm} disabled={assistants.isMutating}>
-                Cancel
-              </Button>
-            ) : null}
+            <Button variant="outline" onPress={onDone} disabled={assistants.isMutating}>
+              取消
+            </Button>
           </View>
         </View>
       </SettingsSection>
+    </View>
+  );
+}
 
-      <SettingsSection title="助手">
-        <View style={settingsStyles.card}>
+export function AssistantsSection({ serverId, onCreate, onEdit }: AssistantsSectionProps) {
+  const supportsAssistants = useHostFeature(serverId, "assistants");
+  const assistants = useAssistants(serverId, { enabled: supportsAssistants });
+  const handleDelete = useCallback(
+    (id: string) => {
+      void assistants.deleteAssistant(id);
+    },
+    [assistants],
+  );
+  const createAction = useMemo(
+    () => (
+      <Button size="sm" variant="default" onPress={onCreate}>
+        创建助手
+      </Button>
+    ),
+    [onCreate],
+  );
+
+  if (!supportsAssistants) return <AssistantsUpgradeCard />;
+
+  return (
+    <View>
+      <SettingsSection title="助手" trailing={createAction}>
+        <View style={settingsStyles.card} testID="host-page-assistants">
           {assistants.assistants.length > 0 ? (
             assistants.assistants.map((assistant) => (
               <AssistantRow
                 key={assistant.id}
                 assistant={assistant}
-                onEdit={handleEdit}
+                onEdit={onEdit}
                 onDelete={handleDelete}
               />
             ))
           ) : (
             <View style={settingsStyles.row}>
-              <Text style={settingsStyles.rowHint}>暂无助手。</Text>
+              <Text style={settingsStyles.rowHint}>暂无助手。点击“创建助手”开始配置。</Text>
             </View>
           )}
         </View>
+        {assistants.error ? (
+          <Text style={settingsStyles.rowError}>{assistants.error.message}</Text>
+        ) : null}
+      </SettingsSection>
+      <SettingsSection title="多主机共享">
+        <HostResourceSyncCard
+          serverId={serverId}
+          kind="assistants"
+          requiredFeature="assistants"
+          description="同步助手定义、提示词、资源选择、助手知识和助手记忆。自定义选择的技能与 MCP 会按名称映射到目标主机。"
+        />
       </SettingsSection>
     </View>
   );

@@ -61,7 +61,12 @@ describe("LarkBotApplicationService", () => {
               "im:chat:read",
               "contact:user.id:readonly",
             ],
-            user: ["im:message.group_msg:get_as_user"],
+            user: [
+              "im:message.group_msg:get_as_user",
+              "im:chat:read",
+              "im:chat.members:write_only",
+              "offline_access",
+            ],
           },
           events: { items: { tenant: ["im.message.receive_v1"] } },
         },

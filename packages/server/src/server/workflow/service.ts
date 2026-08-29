@@ -207,6 +207,7 @@ interface ResolvedWorkflowRunInput {
 
 export class WorkflowService {
   private readonly logger: Logger;
+  private readonly paseoHome: string;
   private readonly workflowsDir: string;
   private readonly runDataDir: string;
   private readonly store: WorkflowRunStore;
@@ -232,6 +233,7 @@ export class WorkflowService {
   private acceptingRuns = true;
 
   constructor(options: WorkflowServiceOptions) {
+    this.paseoHome = options.paseoHome;
     this.logger = options.logger.child({ module: "workflow-service" });
     this.workflowsDir = join(options.paseoHome, "workflows");
     this.runDataDir = join(options.paseoHome, "workflow-run-data");
@@ -1235,6 +1237,7 @@ export class WorkflowService {
           assistantId: step.config.assistantId,
           userPrompt: prompt,
           labels: cleanLabels,
+          paseoHome: this.paseoHome,
         },
       );
       return { prompt: context.prompt, labels: context.labels };
@@ -1250,7 +1253,7 @@ export class WorkflowService {
       throw new Error(`Assistant ${step.config.assistantId} not found`);
     }
     return {
-      prompt: buildAssistantInitialPrompt(assistant, prompt),
+      prompt: buildAssistantInitialPrompt(assistant, prompt, { paseoHome: this.paseoHome }),
       labels: {
         ...cleanLabels,
         assistantId: assistant.id,

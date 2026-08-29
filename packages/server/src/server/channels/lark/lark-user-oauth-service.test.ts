@@ -1,0 +1,205 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LarkChannelStore } from "./lark-channel-store.js";
+import {
+  LarkUserAuthorizationRequiredError,
+  LarkUserOAuthService,
+  type LarkUserOAuthGateway,
+} from "./lark-user-oauth-service.js";
+import { LarkUserOAuthStore } from "./lark-user-oauth-store.js";
+
+const roots: string[] = [];
+
+afterEach(() => {
+  vi.useRealTimers();
+  for (const root of roots.splice(0)) {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function createHarness(gatewayOverrides: Partial<LarkUserOAuthGateway> = {}) {
+  const paseoHome = mkdtempSync(path.join(os.tmpdir(), "paseo-lark-oauth-service-"));
+  roots.push(paseoHome);
+  const store = new LarkUserOAuthStore({ paseoHome });
+  const gateway: LarkUserOAuthGateway = {
+    exchangeAuthorizationCode: vi.fn(async () => ({
+      accessToken: "u-token",
+      refreshToken: "r-token",
+      expiresIn: 7200,
+      refreshTokenExpiresIn: 2_592_000,
+      scope: "offline_access im:chat:read im:chat.members:write_only",
+    })),
+    refreshAccessToken: vi.fn(async () => ({
+      accessToken: "u-token-refreshed",
+      refreshToken: "r-token-refreshed",
+      expiresIn: 7200,
+      refreshTokenExpiresIn: 2_592_000,
+    })),
+    getUserInfo: vi.fn(async () => ({
+      openId: "ou_test",
+      email: "test@example.com",
+      displayName: "张三",
+    })),
+    ...gatewayOverrides,
+  };
+  const channelStore = {
+    getBots: () => [
+      {
+        config: {
+          enabled: true,
+          appId: "cli_test",
+          appSecret: "secret",
+          domain: "feishu",
+        },
+      },
+    ],
+  } as unknown as Pick<LarkChannelStore, "getBots">;
+  return {
+    gateway,
+    service: new LarkUserOAuthService(channelStore, store, gateway),
+    store,
+  };
+}
+
+describe("LarkUserOAuthService", () => {
+  it("exchanges an authorization code and stores refreshable user credentials", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T02:00:00.000Z"));
+    const { gateway, service, store } = createHarness();
+    const authorization = service.startAuthorization("cli_test", "paseo://oauth/lark");
+    const url = new URL(authorization.authorizationUrl);
+    expect(url.searchParams.get("client_id")).toBe("cli_test");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("scope")?.split(" ")).toEqual(
+      expect.arrayContaining(["offline_access", "im:chat:read", "im:chat.members:write_only"]),
+    );
+
+    await expect(
+      service.completeAuthorization(
+        "cli_test",
+        `paseo://oauth/lark?code=oauth-code&state=${authorization.state}`,
+        authorization.state,
+      ),
+    ).resolves.toMatchObject({
+      authorized: true,
+      openId: "ou_test",
+      email: "test@example.com",
+    });
+    expect(gateway.exchangeAuthorizationCode).toHaveBeenCalledWith({
+      config: expect.objectContaining({ appId: "cli_test" }),
+      code: "oauth-code",
+      redirectUri: "paseo://oauth/lark",
+    });
+    expect(store.get("cli_test")).toMatchObject({
+      userAccessToken: "u-token",
+      refreshToken: "r-token",
+      displayName: "张三",
+    });
+  });
+
+  it("refreshes an expiring token once for concurrent callers and rotates the refresh token", async () => {
+    let releaseRefresh: (() => void) | null = null;
+    const waitForRelease = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const refreshAccessToken = vi.fn(async () => {
+      await waitForRelease;
+      return {
+        accessToken: "u-token-new",
+        refreshToken: "r-token-new",
+        expiresIn: 7200,
+        refreshTokenExpiresIn: 2_592_000,
+      };
+    });
+    const { service, store } = createHarness({ refreshAccessToken });
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-old",
+      refreshToken: "r-token-old",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope: "offline_access im:chat:read im:chat.members:write_only",
+      openId: "ou_test",
+      email: null,
+      displayName: null,
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const first = service.getValidUserAccessToken("cli_test");
+    const second = service.getValidUserAccessToken("cli_test");
+    expect(refreshAccessToken).toHaveBeenCalledTimes(1);
+    releaseRefresh?.();
+
+    await expect(Promise.all([first, second])).resolves.toEqual(["u-token-new", "u-token-new"]);
+    expect(store.get("cli_test")).toMatchObject({
+      userAccessToken: "u-token-new",
+      refreshToken: "r-token-new",
+    });
+  });
+
+  it("keeps the current refresh token when the refresh response does not rotate it", async () => {
+    const { service, store } = createHarness({
+      refreshAccessToken: vi.fn(async () => ({
+        accessToken: "u-token-new",
+        expiresIn: 7200,
+      })),
+    });
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-old",
+      refreshToken: "r-token-old",
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope: "offline_access",
+      openId: null,
+      email: null,
+      displayName: null,
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await expect(service.getValidUserAccessToken("cli_test")).resolves.toBe("u-token-new");
+    expect(store.get("cli_test")?.refreshToken).toBe("r-token-old");
+  });
+
+  it("removes invalid credentials and requires a new authorization when refresh fails", async () => {
+    const { service, store } = createHarness({
+      refreshAccessToken: vi.fn(async () => {
+        throw new Error("refresh denied");
+      }),
+    });
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-old",
+      refreshToken: "r-token-old",
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope: "offline_access",
+      openId: null,
+      email: null,
+      displayName: null,
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await expect(service.getValidUserAccessToken("cli_test")).rejects.toBeInstanceOf(
+      LarkUserAuthorizationRequiredError,
+    );
+    expect(store.get("cli_test")).toBeNull();
+  });
+
+  it("rejects a callback with a mismatched state", async () => {
+    const { service } = createHarness();
+    const authorization = service.startAuthorization("cli_test", "paseo://oauth/lark");
+    await expect(
+      service.completeAuthorization(
+        "cli_test",
+        "paseo://oauth/lark?code=oauth-code&state=wrong",
+        authorization.state,
+      ),
+    ).rejects.toThrow("state 不匹配");
+  });
+});

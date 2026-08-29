@@ -43,7 +43,10 @@ import {
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { signalDesktopAttention } from "@/desktop/attention/desktop-attention";
-import { getAgentAttentionRouting } from "@/utils/agent-attention";
+import {
+  getAgentAttentionRouting,
+  getDesktopAgentAttentionDecision,
+} from "@/utils/agent-attention";
 import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import {
   getInitKey,
@@ -570,8 +573,19 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubAgentAttention = client.onAgentAttentionRequired((notification) => {
       const routing = getAgentAttentionRouting(notification);
-      if (routing.shouldSignalDesktop) {
-        signalDesktopAttention("finished");
+      const currentSession = useSessionStore.getState().sessions[serverId];
+      const desktopAttention = getDesktopAgentAttentionDecision({
+        reason: notification.reason,
+        agentId: notification.agentId,
+        focusedAgentId: currentSession?.focusedAgentId ?? null,
+        isAppActivelyVisible: getIsAppActivelyVisible(appStateRef.current),
+      });
+      if (routing.shouldSignalDesktop && desktopAttention.shouldSignal) {
+        signalDesktopAttention("finished", {
+          // A focused Paseo window may be showing Settings, another Project, or another
+          // conversation. Only the completed conversation itself suppresses Dock attention.
+          allowWhenFocused: desktopAttention.allowWhenFocused,
+        });
       }
       if (routing.shouldProcessNotification) {
         notifyAgentAttention(notification);

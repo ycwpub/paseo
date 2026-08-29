@@ -3651,6 +3651,8 @@ export const ServerInfoStatusPayloadSchema = z
         larkReminders: z.boolean().optional(),
         // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
         larkDirectory: z.boolean().optional(),
+        // COMPAT(larkUserOAuth): added in v0.3.2, remove gate after 2027-02-28.
+        larkUserOAuth: z.boolean().optional(),
         // COMPAT(assistants): added in v0.1.108, remove gate after 2027-01-13.
         assistants: z.boolean().optional(),
         // COMPAT(memory): added in v0.3.2, remove gate after 2027-02-18.
@@ -4584,6 +4586,7 @@ export const AgentTimelineListPromptsResponseMessageSchema = z.object({
         seq: z.number().int().nonnegative(),
         timestamp: z.string(),
         preview: z.string(),
+        answerPreview: z.string().optional(),
       }),
     ),
     error: z.string().nullable(),

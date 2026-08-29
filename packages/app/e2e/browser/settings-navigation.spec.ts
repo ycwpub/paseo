@@ -108,6 +108,7 @@ test.describe("Settings sidebar navigation", () => {
 
     await expect(page.getByTestId("knowledge-management-section")).toBeVisible();
     await expect(page.getByTestId("knowledge-scope-global")).toBeVisible();
+    await expect(page.getByTestId("knowledge-scope-assistant")).toBeVisible();
     await page.getByTestId("knowledge-scope-project").click();
     await expect(page.getByTestId("knowledge-project-selector")).toBeVisible();
   });
@@ -118,6 +119,7 @@ test.describe("Settings sidebar navigation", () => {
 
     await openSettingsHostSection(page, getServerId(), "plugins");
 
+    await expect(page.getByTestId("host-page-plugins")).toBeVisible();
     await expect(page.getByTestId("plugin-management-page")).toBeVisible();
     await expect(page.getByTestId("plugin-management-upgrade-warning")).toHaveCount(0);
   });

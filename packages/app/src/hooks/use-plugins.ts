@@ -20,7 +20,7 @@ export function usePlugins(serverId: string, options: { enabled?: boolean } = {}
     enabled: enabled && Boolean(client && isConnected),
     queryFn: async () => {
       if (!client) throw new Error("Host is disconnected");
-      const result = await client.listPlugins();
+      const result = await client.listUnifiedPlugins();
       if (result.error) throw new Error(result.error);
       return { plugins: result.plugins, marketplaces: result.marketplaces };
     },
@@ -34,7 +34,7 @@ export function usePlugins(serverId: string, options: { enabled?: boolean } = {}
   const refresh = useCallback(async () => {
     if (!client) return Promise.reject(new Error("Host is disconnected"));
     await mutation.mutateAsync(async () => {
-      const result = await client.listPlugins({ refresh: true });
+      const result = await client.listUnifiedPlugins({ refresh: true });
       if (result.error) throw new Error(result.error);
       return { plugins: result.plugins, marketplaces: result.marketplaces };
     });

@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PointerEvent as RNPointerEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
@@ -21,15 +22,17 @@ const MAGNIFIED_PILL_HEIGHT = 4;
 const RESTING_PILL_WIDTH = 10;
 const ACTIVE_PILL_WIDTH = 22;
 const MAGNIFIED_PILL_WIDTH = 30;
-const PREVIEW_WIDTH = 320;
-const PREVIEW_HEIGHT = 76;
+const PREVIEW_WIDTH = 380;
+const PREVIEW_HEIGHT = 188;
 const PREVIEW_GAP = 6;
 
 export const ChatOutlineRail = memo(function ChatOutlineRail({
   prompts,
   activePrompt,
+  model,
   onJumpToPrompt,
 }: ChatOutlineRailProps) {
+  const { t, i18n } = useTranslation();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const activeSeq = useSyncExternalStore(activePrompt.subscribe, activePrompt.getActiveSeq);
@@ -97,7 +100,17 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
               promptCount={prompts.length}
               seq={prompt.seq}
               preview={prompt.preview}
+              answerPreview={prompt.answerPreview}
+              model={model}
+              timestamp={prompt.timestamp}
+              locale={i18n.resolvedLanguage ?? i18n.language}
               label={`${index + 1}/${prompts.length}: ${prompt.preview}`}
+              questionLabel={t("agentStream.chatOutline.question")}
+              answerLabel={t("agentStream.chatOutline.answer")}
+              modelLabel={t("agentStream.chatOutline.model")}
+              timeLabel={t("agentStream.chatOutline.time")}
+              pendingAnswerLabel={t("agentStream.chatOutline.pendingAnswer")}
+              unknownModelLabel={t("agentStream.chatOutline.unknownModel")}
               isActive={prompt.seq === activeSeq}
               hasAttention={index === attentionIndex}
               magnification={
@@ -121,7 +134,17 @@ interface ChatOutlineTickProps {
   promptCount: number;
   seq: number;
   preview: string;
+  answerPreview?: string;
+  model: string | null;
+  timestamp: string;
+  locale: string;
   label: string;
+  questionLabel: string;
+  answerLabel: string;
+  modelLabel: string;
+  timeLabel: string;
+  pendingAnswerLabel: string;
+  unknownModelLabel: string;
   isActive: boolean;
   hasAttention: boolean;
   magnification: number;
@@ -135,7 +158,17 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   promptCount,
   seq,
   preview,
+  answerPreview,
+  model,
+  timestamp,
+  locale,
   label,
+  questionLabel,
+  answerLabel,
+  modelLabel,
+  timeLabel,
+  pendingAnswerLabel,
+  unknownModelLabel,
   isActive,
   hasAttention,
   magnification,
@@ -143,6 +176,10 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   onFocusChange,
   onJumpToPrompt,
 }: ChatOutlineTickProps) {
+  const formattedTime = useMemo(
+    () => formatChatOutlineTimestamp(timestamp, locale),
+    [locale, timestamp],
+  );
   const handlePress = useCallback(() => {
     onJumpToPrompt(seq);
     onFocusChange(index, false);
@@ -181,17 +218,52 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
       </Pressable>
       {hasAttention ? (
         <View style={styles.preview} pointerEvents="none" aria-hidden testID="chat-outline-preview">
-          <Text style={styles.previewPosition}>
-            {index + 1} / {promptCount}
-          </Text>
-          <Text style={styles.previewText} numberOfLines={3}>
-            {preview}
-          </Text>
+          <View style={styles.previewHeader}>
+            <Text style={styles.previewPosition}>
+              {index + 1} / {promptCount}
+            </Text>
+            <Text style={styles.previewTime}>
+              {timeLabel} · {formattedTime}
+            </Text>
+          </View>
+          <View style={styles.previewSection}>
+            <Text style={styles.previewLabel}>{questionLabel}</Text>
+            <Text style={styles.previewText} numberOfLines={2}>
+              {preview}
+            </Text>
+          </View>
+          <View style={styles.previewDivider} />
+          <View style={styles.previewSection}>
+            <Text style={styles.previewLabel}>{answerLabel}</Text>
+            <Text
+              style={[styles.previewText, !answerPreview && styles.previewPlaceholder]}
+              numberOfLines={3}
+            >
+              {answerPreview || pendingAnswerLabel}
+            </Text>
+          </View>
+          <View style={styles.previewFooter}>
+            <Text style={styles.previewMetaLabel}>{modelLabel}</Text>
+            <Text style={styles.previewModel} numberOfLines={1}>
+              {model || unknownModelLabel}
+            </Text>
+          </View>
         </View>
       ) : null}
     </View>
   );
 });
+
+export function formatChatOutlineTimestamp(timestamp: string, locale: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return new Intl.DateTimeFormat(locale, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
 
 const styles = StyleSheet.create((theme) => ({
   panelMeasure: {
@@ -252,23 +324,64 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: -PREVIEW_HEIGHT / 2,
     width: PREVIEW_WIDTH,
     height: PREVIEW_HEIGHT,
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing[3],
-    gap: theme.spacing[1],
+    padding: theme.spacing[3],
+    gap: theme.spacing[2],
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     ...theme.shadow.md,
   },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+  },
   previewPosition: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     fontWeight: theme.fontWeight.medium,
   },
+  previewTime: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  previewSection: {
+    gap: theme.spacing[1],
+  },
+  previewLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.semibold,
+  },
   previewText: {
     fontSize: theme.fontSize.sm,
     lineHeight: 19,
     color: theme.colors.foreground,
+  },
+  previewPlaceholder: {
+    color: theme.colors.foregroundMuted,
+  },
+  previewDivider: {
+    height: theme.borderWidth[1],
+    backgroundColor: theme.colors.border,
+  },
+  previewFooter: {
+    marginTop: "auto",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingTop: theme.spacing[1],
+  },
+  previewMetaLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.xs,
+  },
+  previewModel: {
+    flex: 1,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.xs,
+    fontWeight: theme.fontWeight.medium,
   },
 }));

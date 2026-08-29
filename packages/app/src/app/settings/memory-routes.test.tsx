@@ -6,6 +6,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import HostMemoryDetailRoute from "./hosts/[serverId]/memories/[memoryId]";
 import HostMemoryListRoute from "./hosts/[serverId]/memories";
+import HostMemorySettingsPageRoute from "./hosts/[serverId]/memory/[memoryPage]";
 import ProjectMemoryDetailRoute from "./hosts/[serverId]/projects/[projectId]/memories/[memoryId]";
 import ProjectMemoryListRoute from "./hosts/[serverId]/projects/[projectId]/memories";
 
@@ -50,6 +51,15 @@ describe("memory settings routes", () => {
 
     expect(screen.getByTestId("settings-screen").textContent).toBe(
       JSON.stringify({ kind: "memory", serverId: "host-1", memoryId: "memory-1" }),
+    );
+  });
+
+  test("renders a host memory settings page inside the settings shell", () => {
+    routeParams = { serverId: "host-1", memoryPage: "summary" };
+    render(<HostMemorySettingsPageRoute />);
+
+    expect(screen.getByTestId("settings-screen").textContent).toBe(
+      JSON.stringify({ kind: "memory-page", serverId: "host-1", page: "summary" }),
     );
   });
 

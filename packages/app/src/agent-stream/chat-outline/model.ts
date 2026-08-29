@@ -1,16 +1,19 @@
 import type { AgentTimelinePromptIndexPayload } from "@getpaseo/client/internal/daemon-client";
 import type { StreamItem } from "@/types/stream";
 
-export type ChatOutlinePrompt = AgentTimelinePromptIndexPayload["prompts"][number];
+export type ChatOutlinePrompt = AgentTimelinePromptIndexPayload["prompts"][number] & {
+  answerPreview?: string;
+};
 
 const PROMPT_PREVIEW_MAX_LENGTH = 120;
+const ANSWER_PREVIEW_MAX_LENGTH = 240;
 
-function promptPreview(text: string): string {
+function textPreview(text: string, maxLength: number): string {
   const collapsed = text.replace(/\s+/g, " ").trim();
-  if (collapsed.length <= PROMPT_PREVIEW_MAX_LENGTH) {
+  if (collapsed.length <= maxLength) {
     return collapsed;
   }
-  return `${collapsed.slice(0, PROMPT_PREVIEW_MAX_LENGTH - 1)}…`;
+  return `${collapsed.slice(0, maxLength - 1)}…`;
 }
 
 /**
@@ -26,15 +29,54 @@ export function buildLoadedChatOutlinePrompts(
   timelineEpoch: string | null,
 ): ChatOutlinePrompt[] {
   const prompts = new Map<number, ChatOutlinePrompt>();
-  for (const item of items) {
-    if (item.kind !== "user_message" || !item.timelineCursor) continue;
-    if (timelineEpoch !== null && item.timelineCursor.epoch !== timelineEpoch) continue;
-    prompts.set(item.timelineCursor.seq, {
-      seq: item.timelineCursor.seq,
-      timestamp: item.timestamp.toISOString(),
-      preview: promptPreview(item.text),
-    });
+  let currentPrompt: ChatOutlinePrompt | null = null;
+  let currentAnswer = "";
+  const orderedItems = items
+    .map((item, index) => ({ item, index }))
+    .filter(
+      ({ item }) =>
+        !item.timelineCursor ||
+        timelineEpoch === null ||
+        item.timelineCursor.epoch === timelineEpoch,
+    )
+    .sort(
+      (left, right) =>
+        (left.item.timelineCursor?.seq ?? Number.MAX_SAFE_INTEGER) -
+          (right.item.timelineCursor?.seq ?? Number.MAX_SAFE_INTEGER) || left.index - right.index,
+    );
+
+  const flushAnswer = () => {
+    if (!currentPrompt) return;
+    const answerPreview = textPreview(currentAnswer, ANSWER_PREVIEW_MAX_LENGTH);
+    if (!answerPreview) return;
+    const completedPrompt = { ...currentPrompt, answerPreview };
+    prompts.set(completedPrompt.seq, completedPrompt);
+    currentPrompt = completedPrompt;
+  };
+
+  for (const { item } of orderedItems) {
+    if (item.kind === "user_message" && item.timelineCursor) {
+      flushAnswer();
+      currentAnswer = "";
+      currentPrompt = {
+        seq: item.timelineCursor.seq,
+        timestamp: item.timestamp.toISOString(),
+        preview: textPreview(item.text, PROMPT_PREVIEW_MAX_LENGTH),
+      };
+      prompts.set(currentPrompt.seq, currentPrompt);
+      continue;
+    }
+    if (
+      currentPrompt &&
+      item.kind === "assistant_message" &&
+      (!item.timelineCursor ||
+        timelineEpoch === null ||
+        item.timelineCursor.epoch === timelineEpoch)
+    ) {
+      currentAnswer += item.text;
+    }
   }
+  flushAnswer();
   return [...prompts.values()].sort((left, right) => left.seq - right.seq);
 }
 
@@ -43,8 +85,20 @@ export function mergeChatOutlinePrompts(
   loadedPrompts: readonly ChatOutlinePrompt[],
 ): ChatOutlinePrompt[] {
   const prompts = new Map<number, ChatOutlinePrompt>();
-  for (const prompt of loadedPrompts) prompts.set(prompt.seq, prompt);
   for (const prompt of indexedPrompts) prompts.set(prompt.seq, prompt);
+  for (const prompt of loadedPrompts) {
+    const indexed = prompts.get(prompt.seq);
+    prompts.set(
+      prompt.seq,
+      indexed
+        ? {
+            ...prompt,
+            ...indexed,
+            answerPreview: prompt.answerPreview ?? indexed.answerPreview,
+          }
+        : prompt,
+    );
+  }
   return [...prompts.values()].sort((left, right) => left.seq - right.seq);
 }
 

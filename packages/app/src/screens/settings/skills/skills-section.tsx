@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { Skill } from "@getpaseo/protocol/messages";
@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
 import { useSkills } from "@/hooks/use-skills";
 import { useHostFeature } from "@/runtime/host-features";
@@ -14,6 +15,8 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 
 interface SkillsSectionProps {
   serverId: string;
+  onCreate: () => void;
+  onEdit: (skill: Skill) => void;
 }
 
 const DEFAULT_SKILL_CONTENT = `---
@@ -121,34 +124,21 @@ function SkillRow({
           accessibilityLabel={`启用 ${skill.name}`}
         />
         <Button size="sm" variant="outline" onPress={handleEdit} disabled={isReadOnly}>
-          Edit
+          编辑
         </Button>
         <Button size="sm" variant="destructive" onPress={handleDelete} disabled={isReadOnly}>
-          Delete
+          删除
         </Button>
       </View>
     </View>
   );
 }
 
-export function SkillsSection({ serverId }: SkillsSectionProps) {
+export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps) {
   const supportsSkills = useHostFeature(serverId, "skills");
   const skills = useSkills(serverId, { enabled: supportsSkills });
-  const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [tagsInput, setTagsInput] = useState("");
-  const [content, setContent] = useState(DEFAULT_SKILL_CONTENT);
-  const [enabled, setEnabled] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-  const [formResetKey, bumpFormResetKey] = useReducer((key: number) => key + 1, 0);
-
-  const editingSkill = useMemo(
-    () => skills.skills.find((skill) => skill.id === editingSkillId) ?? null,
-    [editingSkillId, skills.skills],
-  );
 
   const filteredSkills = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -167,64 +157,6 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     });
   }, [searchQuery, skills.skills]);
 
-  const resetForm = useCallback(() => {
-    setEditingSkillId(null);
-    setFormOpen(false);
-    setName("");
-    setDescription("");
-    setTagsInput("");
-    setContent(DEFAULT_SKILL_CONTENT);
-    setEnabled(true);
-    bumpFormResetKey();
-  }, []);
-
-  const openCreateForm = useCallback(() => {
-    setEditingSkillId(null);
-    setName("");
-    setDescription("");
-    setTagsInput("");
-    setContent(DEFAULT_SKILL_CONTENT);
-    setEnabled(true);
-    setFormOpen(true);
-    bumpFormResetKey();
-  }, []);
-
-  const openEditForm = useCallback((skill: Skill) => {
-    setEditingSkillId(skill.id);
-    setName(skill.name);
-    setDescription(skill.description ?? "");
-    setTagsInput(formatTags(skill.tags));
-    setContent(skill.content ?? "");
-    setEnabled(skill.enabled);
-    setFormOpen(true);
-    bumpFormResetKey();
-  }, []);
-
-  const handleSave = useCallback(async () => {
-    const trimmedName = name.trim();
-    const trimmedContent = content.trim();
-    if (!trimmedName || !trimmedContent) return;
-
-    if (editingSkill) {
-      await skills.updateSkill({
-        id: editingSkill.id,
-        name: trimmedName,
-        description,
-        content,
-        enabled,
-        tags: parseTagsInput(tagsInput),
-      });
-    } else {
-      await skills.createSkill({
-        name: trimmedName,
-        description,
-        content,
-        tags: parseTagsInput(tagsInput),
-      });
-    }
-    resetForm();
-  }, [content, description, editingSkill, enabled, name, resetForm, skills, tagsInput]);
-
   const handleToggleEnabled = useCallback(
     (skill: Skill, nextEnabled: boolean) => {
       void skills.updateSkill({ id: skill.id, enabled: nextEnabled });
@@ -235,7 +167,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
   const handleDelete = useCallback(
     (skill: Skill) => {
       void confirmDialog({
-        title: `Delete ${skill.name}?`,
+        title: `删除 ${skill.name}？`,
         message: "这会从当前主机移除该技能。",
         confirmLabel: "删除",
         destructive: true,
@@ -253,13 +185,12 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     setRefreshMessage(null);
     try {
       await skills.refreshSkills();
-      setRefreshMessage("已扫描本地技能 和 MCP 资源。");
+      setRefreshMessage("已扫描本地技能和 MCP 资源。");
     } catch {
       // The hook exposes the mutation error below.
     }
   }, [skills]);
 
-  const canSave = name.trim().length > 0 && content.trim().length > 0 && skills.isConnected;
   const skillListContent = useMemo(() => {
     if (skills.isLoading) {
       return (
@@ -276,7 +207,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
           skill={skill}
           isFirst={index === 0}
           onToggleEnabled={handleToggleEnabled}
-          onEdit={openEditForm}
+          onEdit={onEdit}
           onDelete={handleDelete}
         />
       ));
@@ -293,7 +224,7 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
     filteredSkills,
     handleDelete,
     handleToggleEnabled,
-    openEditForm,
+    onEdit,
     skills.isLoading,
     skills.skills.length,
   ]);
@@ -307,9 +238,9 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
       <SettingsSection title="技能">
         <View style={styles.headerCard}>
           <View style={styles.headerText}>
-            <Text style={settingsStyles.rowTitle}>管理可复用的 Agent Skills</Text>
+            <Text style={settingsStyles.rowTitle}>管理可复用的智能体技能</Text>
             <Text style={settingsStyles.rowHint}>
-              创建自定义 Skill、编辑 Markdown 指令，并启用或禁用。
+              创建自定义技能、编辑 Markdown 指令，并启用或禁用。
             </Text>
           </View>
           <View style={styles.headerActions}>
@@ -321,85 +252,20 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
             >
               扫描本地资源
             </Button>
-            <Button variant="default" onPress={openCreateForm} disabled={!skills.isConnected}>
-              添加 Skill
+            <Button variant="default" onPress={onCreate} disabled={!skills.isConnected}>
+              创建技能
             </Button>
           </View>
         </View>
       </SettingsSection>
 
-      {formOpen ? (
-        <SettingsSection title={editingSkill ? "编辑技能" : "创建技能"}>
-          <View style={styles.formCard}>
-            <Field label="名称" testID="skill-name-field">
-              <FormTextInput
-                initialValue={name}
-                resetKey={`skill-name-${formResetKey}`}
-                onChangeText={setName}
-                placeholder="code-review"
-              />
-            </Field>
-            <Field label="描述" testID="skill-description-field">
-              <FormTextInput
-                initialValue={description}
-                resetKey={`skill-description-${formResetKey}`}
-                onChangeText={setDescription}
-                placeholder="用于审查代码改动"
-              />
-            </Field>
-            <Field label="标签" hint="使用英文逗号分隔。" testID="skill-tags-field">
-              <FormTextInput
-                initialValue={tagsInput}
-                resetKey={`skill-tags-${formResetKey}`}
-                onChangeText={setTagsInput}
-                placeholder="review, code"
-              />
-            </Field>
-            {editingSkill ? (
-              <View style={settingsStyles.row}>
-                <View style={settingsStyles.rowContent}>
-                  <Text style={settingsStyles.rowTitle}>已启用</Text>
-                  <Text style={settingsStyles.rowHint}>禁用后不会向 Agent 提供该技能。</Text>
-                </View>
-                <Switch value={enabled} onValueChange={setEnabled} accessibilityLabel="启用技能" />
-              </View>
-            ) : null}
-            <Field label="技能 Markdown 内容" testID="skill-content-field">
-              <SettingsTextAreaCard
-                value={content}
-                onChangeText={setContent}
-                accessibilityLabel="技能 Markdown 内容"
-                placeholder={DEFAULT_SKILL_CONTENT}
-                style={styles.contentInput}
-              />
-            </Field>
-            {skills.mutationError ? (
-              <Text style={settingsStyles.rowError}>{skills.mutationError.message}</Text>
-            ) : null}
-            <View style={styles.actionsRow}>
-              <Button
-                variant="default"
-                onPress={handleSave}
-                disabled={!canSave}
-                loading={skills.isMutating}
-              >
-                {editingSkill ? "保存技能" : "创建技能"}
-              </Button>
-              <Button variant="outline" onPress={resetForm} disabled={skills.isMutating}>
-                取消
-              </Button>
-            </View>
-          </View>
-        </SettingsSection>
-      ) : null}
-
-      <SettingsSection title={`可用 Skills（${skills.skills.length}）`}>
+      <SettingsSection title={`可用技能（${skills.skills.length}）`}>
         <View style={styles.searchCard}>
           <Field label="搜索">
             <FormTextInput
               initialValue={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="搜索 Skills"
+              placeholder="搜索技能"
             />
           </Field>
         </View>
@@ -410,7 +276,162 @@ export function SkillsSection({ serverId }: SkillsSectionProps) {
           <Text style={settingsStyles.rowError}>{skills.mutationError.message}</Text>
         ) : null}
       </SettingsSection>
+      <SettingsSection title="多主机共享">
+        <HostResourceSyncCard serverId={serverId} kind="skills" requiredFeature="skills" />
+      </SettingsSection>
     </View>
+  );
+}
+
+export function SkillEditorPage({
+  serverId,
+  skillId,
+  onDone,
+}: {
+  serverId: string;
+  skillId?: string;
+  onDone: () => void;
+}) {
+  const supportsSkills = useHostFeature(serverId, "skills");
+  const skills = useSkills(serverId, { enabled: supportsSkills });
+  const editingSkill = useMemo(
+    () => skills.skills.find((skill) => skill.id === skillId) ?? null,
+    [skillId, skills.skills],
+  );
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tagsInput, setTagsInput] = useState("");
+  const [content, setContent] = useState(DEFAULT_SKILL_CONTENT);
+  const [enabled, setEnabled] = useState(true);
+  const [formResetKey, bumpFormResetKey] = useReducer((key: number) => key + 1, 0);
+
+  useEffect(() => {
+    if (!editingSkill) return;
+    setName(editingSkill.name);
+    setDescription(editingSkill.description ?? "");
+    setTagsInput(formatTags(editingSkill.tags));
+    setContent(editingSkill.content ?? "");
+    setEnabled(editingSkill.enabled);
+    bumpFormResetKey();
+  }, [editingSkill]);
+
+  const handleSave = useCallback(async () => {
+    const trimmedName = name.trim();
+    const trimmedContent = content.trim();
+    if (!trimmedName || !trimmedContent) return;
+
+    try {
+      if (editingSkill) {
+        await skills.updateSkill({
+          id: editingSkill.id,
+          name: trimmedName,
+          description,
+          content,
+          enabled,
+          tags: parseTagsInput(tagsInput),
+        });
+      } else {
+        await skills.createSkill({
+          name: trimmedName,
+          description,
+          content,
+          tags: parseTagsInput(tagsInput),
+        });
+      }
+      onDone();
+    } catch {
+      // The hook exposes the mutation error below.
+    }
+  }, [content, description, editingSkill, enabled, name, onDone, skills, tagsInput]);
+
+  const canSave = name.trim().length > 0 && content.trim().length > 0 && skills.isConnected;
+
+  if (!supportsSkills) {
+    return <SkillsUpgradeCard />;
+  }
+
+  if (skillId && !skills.isLoading && !editingSkill) {
+    return (
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>找不到技能</Text>
+            <Text style={settingsStyles.rowHint}>该技能可能已被删除或不再可编辑。</Text>
+          </View>
+          <Button size="sm" variant="outline" onPress={onDone}>
+            返回列表
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <SettingsSection title={skillId ? "编辑技能" : "创建技能"}>
+      <View style={styles.formCard}>
+        <Field label="名称" testID="skill-name-field">
+          <FormTextInput
+            initialValue={name}
+            resetKey={`skill-name-${formResetKey}`}
+            onChangeText={setName}
+            placeholder="code-review"
+          />
+        </Field>
+        <Field label="描述" testID="skill-description-field">
+          <FormTextInput
+            initialValue={description}
+            resetKey={`skill-description-${formResetKey}`}
+            onChangeText={setDescription}
+            placeholder="用于审查代码改动"
+          />
+        </Field>
+        <Field label="标签" hint="使用英文逗号分隔。" testID="skill-tags-field">
+          <FormTextInput
+            initialValue={tagsInput}
+            resetKey={`skill-tags-${formResetKey}`}
+            onChangeText={setTagsInput}
+            placeholder="review, code"
+          />
+        </Field>
+        {editingSkill ? (
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>已启用</Text>
+              <Text style={settingsStyles.rowHint}>禁用后不会向 Agent 提供该技能。</Text>
+            </View>
+            <Switch value={enabled} onValueChange={setEnabled} accessibilityLabel="启用技能" />
+          </View>
+        ) : null}
+        <Field label="技能 Markdown 内容" testID="skill-content-field">
+          <SettingsTextAreaCard
+            key={`skill-content-${skillId ?? "new"}-${editingSkill?.updatedAt ?? "loading"}`}
+            value={content}
+            onChangeText={setContent}
+            accessibilityLabel="技能 Markdown 内容"
+            placeholder={DEFAULT_SKILL_CONTENT}
+            style={styles.contentInput}
+            testID="skill-content-input"
+          />
+        </Field>
+        {skills.mutationError ? (
+          <Text style={settingsStyles.rowError}>{skills.mutationError.message}</Text>
+        ) : null}
+        <View style={styles.actionsRow}>
+          <Button variant="outline" onPress={onDone} disabled={skills.isMutating}>
+            取消
+          </Button>
+          <Button
+            variant="default"
+            onPress={handleSave}
+            disabled={!canSave || (skillId !== undefined && !editingSkill)}
+            loading={skills.isMutating}
+            testID="save-skill"
+          >
+            {skillId ? "保存技能" : "创建技能"}
+          </Button>
+        </View>
+      </View>
+    </SettingsSection>
   );
 }
 

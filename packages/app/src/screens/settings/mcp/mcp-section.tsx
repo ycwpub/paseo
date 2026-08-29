@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { McpServer, McpTransport } from "@getpaseo/protocol/messages";
@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { HostResourceSyncCard } from "@/screens/settings/shared/host-resource-sync-card";
 import { settingsStyles } from "@/styles/settings";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useHostFeature } from "@/runtime/host-features";
@@ -20,6 +21,8 @@ import {
 
 interface McpSectionProps {
   serverId: string;
+  onCreate: () => void;
+  onEdit: (server: McpServer) => void;
 }
 
 const EMPTY_MCP_JSON = `{
@@ -40,7 +43,7 @@ function McpUpgradeCard() {
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>MCP 服务管理需要更新主机</Text>
             <Text style={settingsStyles.rowHint}>
-              Update the selected Paseo daemon to add, edit, test, and remove MCP servers.
+              请更新所选 Paseo 服务，以添加、编辑、测试和删除 MCP 服务。
             </Text>
           </View>
         </View>
@@ -58,10 +61,10 @@ function summarizeTransport(transport: McpTransport): string {
 }
 
 function statusLabel(server: McpServer): string {
-  if (server.lastTestStatus === "connected") return "Connected";
-  if (server.lastTestStatus === "error") return "Error";
-  if (server.lastTestStatus === "testing") return "Testing";
-  if (server.lastTestStatus === "disconnected") return "Disconnected";
+  if (server.lastTestStatus === "connected") return "已连接";
+  if (server.lastTestStatus === "error") return "错误";
+  if (server.lastTestStatus === "testing") return "测试中";
+  if (server.lastTestStatus === "disconnected") return "已断开";
   return server.enabled ? "未测试" : "已禁用";
 }
 
@@ -150,35 +153,26 @@ function McpServerRow({
           accessibilityLabel={`Enable ${server.name}`}
         />
         <Button size="sm" variant="outline" onPress={handleTest} loading={isTesting}>
-          Test
+          测试
         </Button>
         <Button size="sm" variant="outline" onPress={handleEdit} disabled={isPluginOwned}>
-          Edit
+          编辑
         </Button>
         <Button size="sm" variant="destructive" onPress={handleDelete} disabled={isPluginOwned}>
-          Delete
+          删除
         </Button>
       </View>
     </View>
   );
 }
 
-export function McpSection({ serverId }: McpSectionProps) {
+export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
   const supportsMcpServers = useHostFeature(serverId, "mcpServers");
   const mcp = useMcpServers(serverId, { enabled: supportsMcpServers });
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingServerId, setEditingServerId] = useState<string | null>(null);
-  const [jsonInput, setJsonInput] = useState("");
-  const [jsonError, setJsonError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [testingServerIds, setTestingServerIds] = useState<string[]>([]);
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-
-  const editingServer = useMemo(
-    () => mcp.servers.find((server) => server.id === editingServerId) ?? null,
-    [editingServerId, mcp.servers],
-  );
 
   const filteredServers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -195,84 +189,6 @@ export function McpSection({ serverId }: McpSectionProps) {
       return haystack.includes(query);
     });
   }, [mcp.servers, searchQuery]);
-
-  const resetEditor = useCallback(() => {
-    setEditorOpen(false);
-    setEditingServerId(null);
-    setJsonInput("");
-    setJsonError(null);
-  }, []);
-
-  const openCreateEditor = useCallback(() => {
-    setEditingServerId(null);
-    setJsonInput(EMPTY_MCP_JSON);
-    setJsonError(null);
-    setEditorOpen(true);
-  }, []);
-
-  const openEditEditor = useCallback((server: McpServer) => {
-    setEditingServerId(server.id);
-    setJsonInput(buildServerJson(server));
-    setJsonError(null);
-    setEditorOpen(true);
-  }, []);
-
-  const handleSubmitJson = useCallback(async () => {
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(jsonInput);
-    } catch (error) {
-      setJsonError(error instanceof Error ? error.message : "请输入有效的 JSON。");
-      return;
-    }
-
-    const parseResult = parseMcpJsonImport(parsedJson);
-    if (!parseResult.isValid) {
-      setJsonError(getMcpJsonImportErrorMessage(parseResult.errorKey));
-      return;
-    }
-
-    if (editingServer && parseResult.servers.length !== 1) {
-      setJsonError("编辑时 JSON 中必须且只能包含一个 MCP 服务。");
-      return;
-    }
-
-    try {
-      if (editingServer) {
-        const parsedServer = parseResult.servers[0]!;
-        const transport = normalizeStdioTransport(parsedServer.transport);
-        await mcp.updateServer({
-          id: editingServer.id,
-          name: parsedServer.name,
-          description: parsedServer.description,
-          transport,
-          originalJson: buildMcpOriginalJson(
-            parsedServer.name,
-            parsedServer.description,
-            transport,
-          ),
-        });
-      } else {
-        for (const parsedServer of parseResult.servers) {
-          const transport = normalizeStdioTransport(parsedServer.transport);
-          await mcp.createServer({
-            name: parsedServer.name,
-            description: parsedServer.description,
-            enabled: true,
-            transport,
-            originalJson: buildMcpOriginalJson(
-              parsedServer.name,
-              parsedServer.description,
-              transport,
-            ),
-          });
-        }
-      }
-      resetEditor();
-    } catch (error) {
-      setJsonError(error instanceof Error ? error.message : String(error));
-    }
-  }, [editingServer, jsonInput, mcp, resetEditor]);
 
   const handleToggleEnabled = useCallback(
     (server: McpServer, enabled: boolean) => {
@@ -291,8 +207,8 @@ export function McpSection({ serverId }: McpSectionProps) {
         const result = await mcp.testServer(server.id);
         setTestMessage(
           result.status === "connected"
-            ? `${server.name}: connection test passed.`
-            : `${server.name}: ${result.error ?? "connection test failed."}`,
+            ? `${server.name}：连接测试通过。`
+            : `${server.name}：${result.error ?? "连接测试失败。"}`,
         );
       } catch (error) {
         setTestMessage(`${server.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -306,7 +222,7 @@ export function McpSection({ serverId }: McpSectionProps) {
   const handleDelete = useCallback(
     (server: McpServer) => {
       void confirmDialog({
-        title: `Delete ${server.name}?`,
+        title: `删除 ${server.name}？`,
         message: "这会从当前主机移除该 MCP 服务。",
         confirmLabel: "删除",
         destructive: true,
@@ -348,7 +264,7 @@ export function McpSection({ serverId }: McpSectionProps) {
           isTesting={testingServerIds.includes(server.id)}
           onToggleEnabled={handleToggleEnabled}
           onTest={handleTest}
-          onEdit={openEditEditor}
+          onEdit={onEdit}
           onDelete={handleDelete}
         />
       ));
@@ -368,7 +284,7 @@ export function McpSection({ serverId }: McpSectionProps) {
     handleToggleEnabled,
     mcp.isLoading,
     mcp.servers.length,
-    openEditEditor,
+    onEdit,
     testingServerIds,
   ]);
 
@@ -383,7 +299,7 @@ export function McpSection({ serverId }: McpSectionProps) {
           <View style={styles.headerText}>
             <Text style={settingsStyles.rowTitle}>管理 Model Context Protocol 服务</Text>
             <Text style={settingsStyles.rowHint}>
-              Import Claude/Codex-style MCP JSON, enable or disable servers, and test connections.
+              导入 Claude/Codex 格式的 MCP JSON，启用或禁用服务，并测试连接。
             </Text>
           </View>
           <View style={styles.headerActions}>
@@ -393,52 +309,16 @@ export function McpSection({ serverId }: McpSectionProps) {
               loading={mcp.isMutating}
               disabled={!mcp.isConnected}
             >
-              Scan local resources
+              扫描本地资源
             </Button>
-            <Button variant="default" onPress={openCreateEditor} disabled={!mcp.isConnected}>
-              Add from JSON
+            <Button variant="default" onPress={onCreate} disabled={!mcp.isConnected}>
+              从 JSON 添加
             </Button>
           </View>
         </View>
       </SettingsSection>
 
-      {editorOpen ? (
-        <SettingsSection title={editingServer ? "编辑 MCP 服务" : "导入 MCP JSON"}>
-          <View style={styles.formCard}>
-            <Field
-              label="MCP JSON"
-              hint='Accepts { "mcpServers": { ... } } or an array of named servers.'
-            >
-              <SettingsTextAreaCard
-                value={jsonInput}
-                onChangeText={setJsonInput}
-                accessibilityLabel="MCP JSON 配置"
-                placeholder={EMPTY_MCP_JSON}
-                style={styles.jsonInput}
-              />
-            </Field>
-            {jsonError ? <Text style={settingsStyles.rowError}>{jsonError}</Text> : null}
-            {mcp.mutationError ? (
-              <Text style={settingsStyles.rowError}>{mcp.mutationError.message}</Text>
-            ) : null}
-            <View style={styles.actionsRow}>
-              <Button
-                variant="default"
-                onPress={handleSubmitJson}
-                loading={mcp.isMutating}
-                disabled={!mcp.isConnected}
-              >
-                {editingServer ? "保存服务" : "导入"}
-              </Button>
-              <Button variant="outline" onPress={resetEditor} disabled={mcp.isMutating}>
-                Cancel
-              </Button>
-            </View>
-          </View>
-        </SettingsSection>
-      ) : null}
-
-      <SettingsSection title={`Configured servers (${mcp.servers.length})`}>
+      <SettingsSection title={`已配置服务（${mcp.servers.length}）`}>
         <View style={styles.searchCard}>
           <Field label="搜索">
             <FormTextInput
@@ -456,7 +336,157 @@ export function McpSection({ serverId }: McpSectionProps) {
           <Text style={settingsStyles.rowError}>{mcp.mutationError.message}</Text>
         ) : null}
       </SettingsSection>
+      <SettingsSection title="多主机共享">
+        <HostResourceSyncCard
+          serverId={serverId}
+          kind="mcp"
+          requiredFeature="mcpServers"
+          warning="MCP 同步会复制完整传输配置，包括命令、环境变量、请求头和其中可能包含的凭据。请只同步到可信主机。"
+        />
+      </SettingsSection>
     </View>
+  );
+}
+
+export function McpEditorPage({
+  serverId,
+  mcpServerId,
+  onDone,
+}: {
+  serverId: string;
+  mcpServerId?: string;
+  onDone: () => void;
+}) {
+  const supportsMcpServers = useHostFeature(serverId, "mcpServers");
+  const mcp = useMcpServers(serverId, { enabled: supportsMcpServers });
+  const editingServer = useMemo(
+    () => mcp.servers.find((server) => server.id === mcpServerId) ?? null,
+    [mcp.servers, mcpServerId],
+  );
+  const [jsonInput, setJsonInput] = useState(EMPTY_MCP_JSON);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (editingServer) {
+      setJsonInput(buildServerJson(editingServer));
+      setJsonError(null);
+    }
+  }, [editingServer]);
+
+  const handleSubmitJson = useCallback(async () => {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(jsonInput);
+    } catch (error) {
+      setJsonError(error instanceof Error ? error.message : "请输入有效的 JSON。");
+      return;
+    }
+
+    const parseResult = parseMcpJsonImport(parsedJson);
+    if (!parseResult.isValid) {
+      setJsonError(getMcpJsonImportErrorMessage(parseResult.errorKey));
+      return;
+    }
+
+    if (mcpServerId && parseResult.servers.length !== 1) {
+      setJsonError("编辑时 JSON 中必须且只能包含一个 MCP 服务。");
+      return;
+    }
+
+    try {
+      if (editingServer) {
+        const parsedServer = parseResult.servers[0]!;
+        const transport = normalizeStdioTransport(parsedServer.transport);
+        await mcp.updateServer({
+          id: editingServer.id,
+          name: parsedServer.name,
+          description: parsedServer.description,
+          transport,
+          originalJson: buildMcpOriginalJson(
+            parsedServer.name,
+            parsedServer.description,
+            transport,
+          ),
+        });
+      } else {
+        for (const parsedServer of parseResult.servers) {
+          const transport = normalizeStdioTransport(parsedServer.transport);
+          await mcp.createServer({
+            name: parsedServer.name,
+            description: parsedServer.description,
+            enabled: true,
+            transport,
+            originalJson: buildMcpOriginalJson(
+              parsedServer.name,
+              parsedServer.description,
+              transport,
+            ),
+          });
+        }
+      }
+      onDone();
+    } catch (error) {
+      setJsonError(error instanceof Error ? error.message : String(error));
+    }
+  }, [editingServer, jsonInput, mcp, mcpServerId, onDone]);
+
+  if (!supportsMcpServers) {
+    return <McpUpgradeCard />;
+  }
+
+  if (mcpServerId && !mcp.isLoading && !editingServer) {
+    return (
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>找不到 MCP 服务</Text>
+            <Text style={settingsStyles.rowHint}>该服务可能已被删除或不再可编辑。</Text>
+          </View>
+          <Button size="sm" variant="outline" onPress={onDone}>
+            返回列表
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <SettingsSection title={mcpServerId ? "编辑 MCP 服务" : "创建 MCP 服务"}>
+      <View style={styles.formCard}>
+        <Field
+          label="MCP JSON"
+          hint='支持 { "mcpServers": { ... } }，创建时也可以一次导入多个具名服务。'
+        >
+          <SettingsTextAreaCard
+            key={`mcp-json-${mcpServerId ?? "new"}-${editingServer?.updatedAt ?? "loading"}`}
+            value={jsonInput}
+            onChangeText={setJsonInput}
+            accessibilityLabel="MCP JSON 配置"
+            placeholder={EMPTY_MCP_JSON}
+            style={styles.jsonInput}
+            testID="mcp-json-input"
+          />
+        </Field>
+        {jsonError ? <Text style={settingsStyles.rowError}>{jsonError}</Text> : null}
+        {mcp.mutationError ? (
+          <Text style={settingsStyles.rowError}>{mcp.mutationError.message}</Text>
+        ) : null}
+        <View style={styles.actionsRow}>
+          <Button variant="outline" onPress={onDone} disabled={mcp.isMutating}>
+            取消
+          </Button>
+          <Button
+            variant="default"
+            onPress={handleSubmitJson}
+            loading={mcp.isMutating}
+            disabled={!mcp.isConnected || (mcpServerId !== undefined && !editingServer)}
+            testID="save-mcp-server"
+          >
+            {mcpServerId ? "保存服务" : "创建服务"}
+          </Button>
+        </View>
+      </View>
+    </SettingsSection>
   );
 }
 

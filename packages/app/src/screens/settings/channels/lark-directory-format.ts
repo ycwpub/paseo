@@ -1,12 +1,19 @@
 import type { LarkDirectoryChat, LarkDirectoryUser } from "@getpaseo/protocol/messages";
 
 export function formatLarkUserLabel(user: LarkDirectoryUser): string {
+  const displayName = user.displayName?.trim();
   const email = user.email?.trim();
-  return email ? `${user.openId}(${email})` : user.openId;
+  if (displayName && email) return `${displayName}（${email}）`;
+  if (displayName) return displayName;
+  if (email) return email;
+  return user.openId;
 }
 
 export function formatLarkChatLabel(chat: LarkDirectoryChat): string {
-  return `${chat.chatId}(${chat.name}、${chat.groupId})`;
+  const name = chat.name.trim();
+  const groupId = chat.groupId.trim();
+  if (name && groupId) return `${name}（${groupId}）`;
+  return name || groupId || chat.chatId;
 }
 
 export function findLarkDirectoryUser(
@@ -31,11 +38,11 @@ export function formatLarkUserOpenId(
   users: readonly LarkDirectoryUser[],
   appId: string | null | undefined,
   openId: string,
-  _fallbackDisplayName?: string | null,
+  fallbackDisplayName?: string | null,
 ): string {
   const relation = findLarkDirectoryUser(users, appId, openId);
   if (relation) return formatLarkUserLabel(relation);
-  return openId;
+  return fallbackDisplayName?.trim() || openId;
 }
 
 export function formatLarkChatId(

@@ -57,6 +57,13 @@ export class LarkDirectoryStore {
     );
   }
 
+  findChat(appId: string, chatId: string): LarkDirectoryChat | null {
+    this.ensureLoaded();
+    return (
+      this.payload.chats.find((entry) => entry.appId === appId && entry.chatId === chatId) ?? null
+    );
+  }
+
   upsertResolvedUsers(
     appId: string,
     users: readonly { email: string; openId: string; displayName?: string | null }[],

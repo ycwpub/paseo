@@ -5,7 +5,7 @@ import React, { type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Assistant } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { AssistantsSection } from "./assistants-section";
+import { AssistantEditorPage, AssistantsSection } from "./assistants-section";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -116,6 +116,10 @@ vi.mock("@/hooks/use-assistants", () => ({
     isMutating: false,
     mutationError: null,
   }),
+}));
+
+vi.mock("@/screens/settings/shared/host-resource-sync-card", () => ({
+  HostResourceSyncCard: () => null,
 }));
 
 vi.mock("@/hooks/use-mcp-servers", () => ({
@@ -233,9 +237,18 @@ vi.mock("@/components/settings-textarea", () => ({
 }));
 
 vi.mock("@/screens/settings/settings-section", () => ({
-  SettingsSection: ({ title, children }: { title: string; children: ReactNode }) => (
+  SettingsSection: ({
+    title,
+    trailing,
+    children,
+  }: {
+    title: string;
+    trailing?: ReactNode;
+    children: ReactNode;
+  }) => (
     <section>
       <h2>{title}</h2>
+      {trailing}
       {children}
     </section>
   ),
@@ -303,9 +316,8 @@ describe("AssistantsSection", () => {
     assistantsState.current.assistants = [existingAssistant];
     assistantsState.current.updateAssistant.mockResolvedValue(updatedAssistant);
 
-    render(<AssistantsSection serverId="server-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const onDone = vi.fn();
+    render(<AssistantEditorPage serverId="server-1" assistantId="assistant-1" onDone={onDone} />);
     expect(screen.getByDisplayValue("old summary")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("助手记忆"), {
@@ -326,11 +338,7 @@ describe("AssistantsSection", () => {
       | undefined;
     expect(updateInput).not.toHaveProperty("memorySummary");
     expect(updateInput).not.toHaveProperty("memoryDetailFileEdits");
-    await waitFor(() => {
-      expect(screen.getByDisplayValue("new summary with Mention risky migrations")).toBeTruthy();
-      expect(screen.getAllByDisplayValue(/Mention risky migrations/).length).toBeGreaterThan(1);
-    });
-    expect((screen.getByLabelText("助手记忆") as HTMLTextAreaElement).value).toBe("");
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   test("saves edited memory summary and detail file contents", async () => {
@@ -353,9 +361,8 @@ describe("AssistantsSection", () => {
     assistantsState.current.assistants = [existingAssistant];
     assistantsState.current.updateAssistant.mockResolvedValue(updatedAssistant);
 
-    render(<AssistantsSection serverId="server-1" />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const onDone = vi.fn();
+    render(<AssistantEditorPage serverId="server-1" assistantId="assistant-1" onDone={onDone} />);
     fireEvent.change(screen.getByLabelText("记忆总文件内容"), {
       target: { value: "edited summary" },
     });
@@ -378,10 +385,7 @@ describe("AssistantsSection", () => {
         }),
       ),
     );
-    await waitFor(() => {
-      expect(screen.getByDisplayValue("edited summary")).toBeTruthy();
-      expect(screen.getByDisplayValue(/Detail body/)).toBeTruthy();
-    });
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   test("saves custom assistant MCP and skill selection", async () => {
@@ -396,9 +400,11 @@ describe("AssistantsSection", () => {
       }),
     );
 
-    render(<AssistantsSection serverId="server-1" />);
+    render(<AssistantEditorPage serverId="server-1" onDone={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText("代码审查助手"), { target: { value: "Custom" } });
+    fireEvent.change(screen.getByPlaceholderText("代码审查助手"), {
+      target: { value: "Custom" },
+    });
     fireEvent.change(screen.getByLabelText("助手提示词"), {
       target: { value: "Use selected resources." },
     });
@@ -424,5 +430,20 @@ describe("AssistantsSection", () => {
         }),
       ),
     );
+  });
+
+  test("keeps the first-level page as a list and opens create or edit callbacks", () => {
+    assistantsState.current.assistants = [makeAssistant()];
+    const onCreate = vi.fn();
+    const onEdit = vi.fn();
+
+    render(<AssistantsSection serverId="server-1" onCreate={onCreate} onEdit={onEdit} />);
+
+    expect(screen.queryByLabelText("助手提示词")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "创建助手" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+
+    expect(onCreate).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "assistant-1" }));
   });
 });

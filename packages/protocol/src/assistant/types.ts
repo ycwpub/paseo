@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaseoHostKnowledgeSchema } from "../project-knowledge-schema.js";
 
 export const AssistantMemoryDetailFileSchema = z.object({
   id: z.string().min(1),
@@ -35,6 +36,7 @@ export const AssistantSchema = z.object({
   memory: z.string(),
   memorySummary: z.string().default(""),
   memoryFiles: AssistantMemoryFilesSchema,
+  knowledge: PaseoHostKnowledgeSchema.optional(),
   resourceSelection: AssistantResourceSelectionSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -47,6 +49,7 @@ export const AssistantCreateInputSchema = z.object({
   prompt: z.string(),
   memoryEnabled: z.boolean().optional(),
   memory: z.string().optional(),
+  knowledge: PaseoHostKnowledgeSchema.optional(),
   resourceSelection: AssistantResourceSelectionSchema.optional(),
 });
 export type AssistantCreateInput = z.infer<typeof AssistantCreateInputSchema>;
@@ -60,6 +63,7 @@ export const AssistantUpdateInputSchema = z.object({
   memory: z.string().optional(),
   memoryAppend: z.string().optional(),
   memorySummary: z.string().optional(),
+  knowledge: PaseoHostKnowledgeSchema.optional(),
   resourceSelection: AssistantResourceSelectionSchema.optional(),
   memoryDetailFileEdits: z
     .array(

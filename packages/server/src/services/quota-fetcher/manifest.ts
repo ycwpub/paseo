@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type {
   ProviderUsageFetcher,
   ProviderUsageFetcherFactoryOptions,
@@ -17,11 +18,32 @@ import { ZaiQuotaProvider } from "./providers/zai.js";
 export const PROVIDER_USAGE_FETCHERS: readonly ProviderUsageFetcherManifestEntry[] = [
   {
     providerId: "aiden-claude",
-    create: (options) => new AidenClaudeQuotaProvider({ logger: options.logger }),
+    create: (options) =>
+      new AidenClaudeQuotaProvider({
+        logger: options.logger,
+        ...(options.paseoHome
+          ? {
+              cacheFilePath: join(
+                options.paseoHome,
+                "cache",
+                "provider-usage",
+                "aiden-claude.json",
+              ),
+            }
+          : {}),
+      }),
   },
   {
     providerId: "aiden-codex",
-    create: (options) => new AidenCodexQuotaProvider({ logger: options.logger }),
+    create: (options) =>
+      new AidenCodexQuotaProvider({
+        logger: options.logger,
+        ...(options.paseoHome
+          ? {
+              cacheFilePath: join(options.paseoHome, "cache", "provider-usage", "aiden-codex.json"),
+            }
+          : {}),
+      }),
   },
   {
     providerId: "traecli",

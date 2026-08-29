@@ -51,6 +51,7 @@ import {
 } from "./lark-message-format.js";
 import type { LarkReminderService } from "./lark-reminder-service.js";
 import type { LarkDirectoryService } from "./lark-directory-service.js";
+import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -312,6 +313,7 @@ function extractLarkMentionOpenIds(text: string): string[] {
 }
 
 export class LarkChannelService {
+  private readonly paseoHome: string | undefined;
   private readonly store: LarkChannelStore;
   private readonly adapter: LarkChannelClientAdapter;
   private readonly agentManager: AgentManager;
@@ -323,6 +325,7 @@ export class LarkChannelService {
   private readonly host: LarkChannelServiceHost;
   private readonly reminderService: LarkReminderService | null;
   private readonly directoryService: LarkDirectoryService | null;
+  private readonly userOAuthService: LarkUserOAuthService | null;
   private readonly incomingMessageObserver:
     | ((botId: string, event: NormalizedLarkMessageEvent) => Promise<void> | void)
     | null;
@@ -335,6 +338,7 @@ export class LarkChannelService {
   private reconnectEventCutoff: number | null = null;
 
   constructor(options: {
+    paseoHome?: string;
     store: LarkChannelStore;
     adapter: LarkChannelClientAdapter;
     agentManager: AgentManager;
@@ -346,11 +350,13 @@ export class LarkChannelService {
     host: LarkChannelServiceHost;
     reminderService?: LarkReminderService | null;
     directoryService?: LarkDirectoryService | null;
+    userOAuthService?: LarkUserOAuthService | null;
     incomingMessageObserver?: (
       botId: string,
       event: NormalizedLarkMessageEvent,
     ) => Promise<void> | void;
   }) {
+    this.paseoHome = options.paseoHome;
     this.store = options.store;
     this.adapter = options.adapter;
     this.agentManager = options.agentManager;
@@ -362,6 +368,7 @@ export class LarkChannelService {
     this.host = options.host;
     this.reminderService = options.reminderService ?? null;
     this.directoryService = options.directoryService ?? null;
+    this.userOAuthService = options.userOAuthService ?? null;
     this.incomingMessageObserver = options.incomingMessageObserver ?? null;
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
       void this.handleAgentManagerEvent(event);
@@ -392,6 +399,26 @@ export class LarkChannelService {
     return chats;
   }
 
+  getUserOAuthStatus(appId: string) {
+    if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
+    return this.userOAuthService.getStatus(appId);
+  }
+
+  startUserOAuth(appId: string, redirectUri: string) {
+    if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
+    return this.userOAuthService.startAuthorization(appId, redirectUri);
+  }
+
+  completeUserOAuth(appId: string, codeOrCallbackUrl: string, state: string) {
+    if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
+    return this.userOAuthService.completeAuthorization(appId, codeOrCallbackUrl, state);
+  }
+
+  disconnectUserOAuth(appId: string) {
+    if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
+    return this.userOAuthService.disconnect(appId);
+  }
+
   async start(): Promise<void> {
     this.reminderService?.start();
     this.reconnectEventCutoff ??= Date.now() - RECONNECT_EVENT_GRACE_MS;
@@ -404,6 +431,7 @@ export class LarkChannelService {
       await this.startBot(bot);
     }
     await this.refreshDirectoryUsers(bots);
+    await this.refreshDirectoryChats(bots);
   }
 
   async stop(): Promise<void> {
@@ -431,6 +459,7 @@ export class LarkChannelService {
     const storedBot = this.store.configure(input);
     await this.startBot(storedBot);
     await this.refreshDirectoryUsers([storedBot]);
+    await this.refreshDirectoryChats([storedBot]);
     this.emitStatusChanged();
     return this.getStatus();
   }
@@ -1128,7 +1157,7 @@ export class LarkChannelService {
     try {
       context = resolveTeamLeaderCreateContext(
         { assistantStore: this.assistantStore, teamStore: this.teamStore },
-        { teamId: target.teamId, userPrompt: prompt, labels },
+        { teamId: target.teamId, userPrompt: prompt, labels, paseoHome: this.paseoHome },
       );
     } catch (error) {
       this.logger.warn({ err: error, teamId: target.teamId }, "Failed to resolve Lark team target");
@@ -1166,7 +1195,9 @@ export class LarkChannelService {
       thinkingOptionId: target.thinkingOptionId ?? null,
       cwd: target.cwd,
       workspaceId: target.workspaceId,
-      initialPrompt: buildAssistantInitialPrompt(assistant, prompt),
+      initialPrompt: buildAssistantInitialPrompt(assistant, prompt, {
+        paseoHome: this.paseoHome,
+      }),
       assistantId: assistant.id,
       labels: { ...labels, assistantId: assistant.id, assistantName: assistant.name },
     };
@@ -1534,8 +1565,8 @@ export class LarkChannelService {
       this.directoryService.observeUser(config.appId, event.openId, event.displayName);
       void this.refreshDirectoryUser(config.appId, event.openId);
     }
-    if (event.chatType?.toLowerCase() !== "p2p" && event.topicName.trim()) {
-      this.directoryService.observeChat(config.appId, event.chatId, event.topicName);
+    if (event.chatType?.toLowerCase() !== "p2p") {
+      void this.refreshDirectoryChat(config.appId, event.chatId);
     }
   }
 
@@ -1565,6 +1596,26 @@ export class LarkChannelService {
     );
   }
 
+  private async refreshDirectoryChats(bots: readonly StoredLarkChannelBot[]): Promise<void> {
+    if (!this.directoryService) return;
+    const candidates = new Map<string, { appId: string; chatId: string }>();
+    for (const bot of bots) {
+      const appId = bot.config.appId?.trim();
+      if (!appId) continue;
+      for (const user of bot.authorizedUsers) {
+        const chatId = user.chatId.trim();
+        if (chatId) {
+          candidates.set(`${appId}:${chatId}`, { appId, chatId });
+        }
+      }
+    }
+    await Promise.all(
+      [...candidates.values()].map(({ appId, chatId }) =>
+        this.refreshDirectoryChat(appId, chatId, true),
+      ),
+    );
+  }
+
   private async refreshDirectoryUser(appId: string, openId: string): Promise<void> {
     if (!this.directoryService) return;
     try {
@@ -1576,6 +1627,21 @@ export class LarkChannelService {
       this.logger.debug(
         { err: error, appId, openId },
         "Unable to refresh Lark user email from Open ID",
+      );
+    }
+  }
+
+  private async refreshDirectoryChat(appId: string, chatId: string, force = false): Promise<void> {
+    if (!this.directoryService) return;
+    try {
+      const chat = await this.directoryService.refreshChatById(appId, chatId, { force });
+      if (chat) {
+        this.emitStatusChanged();
+      }
+    } catch (error) {
+      this.logger.debug(
+        { err: error, appId, chatId },
+        "Failed to refresh Lark group directory entry",
       );
     }
   }

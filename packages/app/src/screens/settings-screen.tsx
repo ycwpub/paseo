@@ -42,12 +42,10 @@ import {
   Wrench,
   Brain,
   BookOpen,
-  Pencil,
   Sparkles,
   Blocks,
   PanelsTopLeft,
 } from "lucide-react-native";
-import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
@@ -68,7 +66,7 @@ import {
   type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
-import { getHostRuntimeStore, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
+import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import {
   orderHostsLocalFirst,
@@ -122,16 +120,25 @@ import {
   HostMcpPage,
   HostSkillsPage,
   HostChannelsPage,
+  HostPluginsPage,
   HostUsagePage,
   HostWorkspacesPage,
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
-import { HostPluginsPage } from "@/screens/settings/plugins-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
-import ProjectSettingsScreen from "@/screens/project-settings-screen";
-import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
+import { MEMORY_SETTINGS_PAGE_TITLES } from "@/screens/settings/memory/memory-settings-page";
 import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowledge-management-section";
+import {
+  getResourceDetailHeader,
+  renderNestedSettingsContent,
+  type SettingsDetailHeader,
+} from "@/screens/settings/settings-feature-routes";
+import {
+  getHostSectionAfterHostSwitch,
+  getSettingsViewServerId,
+} from "@/screens/settings/settings-feature-route-model";
+import { ClientIdentitySettingsRows } from "@/screens/settings/client-identity-settings-rows";
 import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
@@ -147,9 +154,6 @@ import {
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
 import { isNative, isWeb } from "@/constants/platform";
-import { getOrCreateClientId } from "@/utils/client-id";
-import { initializeClientHostname, saveClientHostname } from "@/utils/client-hostname";
-import { resolveClientHostname } from "@/utils/client-name";
 
 // ---------------------------------------------------------------------------
 // View model
@@ -214,27 +218,6 @@ interface HostSectionItem {
   id: HostSectionSlug;
   labelKey: string;
   icon: ComponentType<{ size: number; color: string }>;
-}
-
-function getSettingsViewServerId(view: SettingsView): string | null {
-  switch (view.kind) {
-    case "host":
-    case "project":
-    case "memory":
-      return view.serverId;
-    default:
-      return null;
-  }
-}
-
-function getHostSectionAfterHostSwitch(view: SettingsView): HostSectionSlug | null {
-  if (view.kind === "host") {
-    return view.section === "relay" ? "connections" : view.section;
-  }
-  if (view.kind === "project" || view.kind === "memory") {
-    return "projects";
-  }
-  return null;
 }
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
@@ -470,7 +453,6 @@ function GeneralSection({
   handleTerminalScrollbackLinesChange,
 }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
-  const { theme } = useUnistyles();
   const activeLocale = getActiveLocale(i18n.language);
   const sendBehaviorOptions = useMemo(() => getSendBehaviorOptions(t), [t]);
   const selectedSendBehaviorLabel =
@@ -490,9 +472,6 @@ function GeneralSection({
   const [terminalScrollbackValue, setTerminalScrollbackValue] = useState(
     String(settings.terminalScrollbackLines),
   );
-  const [clientHostname, setClientHostname] = useState(resolveClientHostname() ?? "");
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [isEditingClientHostname, setIsEditingClientHostname] = useState(false);
 
   const handleTerminalScrollbackChangeText = useCallback((value: string) => {
     setTerminalScrollbackValue(value.replace(/[^\d]/g, ""));
@@ -515,75 +494,10 @@ function GeneralSection({
     setTerminalScrollbackValue(String(settings.terminalScrollbackLines));
   }, [settings.terminalScrollbackLines]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all([initializeClientHostname(), getOrCreateClientId()])
-      .then(([, resolvedClientId]) => {
-        if (cancelled) return undefined;
-        setClientHostname(resolveClientHostname() ?? "");
-        setClientId(resolvedClientId);
-        return undefined;
-      })
-      .catch((error) => {
-        console.warn("[ClientIdentity] Failed to load client identity", error);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleClientHostnameSubmit = useCallback(async (value: string) => {
-    const savedHostname = await saveClientHostname(value);
-    setClientHostname(savedHostname);
-    getHostRuntimeStore().ensureConnectedAll();
-  }, []);
-
-  const openClientHostnameEditor = useCallback(() => {
-    setIsEditingClientHostname(true);
-  }, []);
-  const closeClientHostnameEditor = useCallback(() => {
-    setIsEditingClientHostname(false);
-  }, []);
-
   return (
     <SettingsSection title={t("settings.general.title")}>
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
-              {t("settings.general.clientIdentity.hostname")}
-            </Text>
-            <Text style={settingsStyles.rowHint}>
-              {t("settings.general.clientIdentity.hostnameDescription")}
-            </Text>
-          </View>
-          <Pressable
-            onPress={openClientHostnameEditor}
-            hitSlop={8}
-            style={styles.clientHostnameButton}
-            accessibilityRole="button"
-            accessibilityLabel={t("settings.general.clientIdentity.editHostname")}
-            testID="general-client-hostname-edit"
-          >
-            <Text style={styles.clientHostnameValue} numberOfLines={2}>
-              {clientHostname || t("settings.general.clientIdentity.unavailable")}
-            </Text>
-            <Pencil size={14} color={theme.colors.foregroundMuted} />
-          </Pressable>
-        </View>
-        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>
-              {t("settings.general.clientIdentity.identityId")}
-            </Text>
-            <Text style={settingsStyles.rowHint}>
-              {t("settings.general.clientIdentity.identityIdDescription")}
-            </Text>
-          </View>
-          <Text style={styles.clientIdentityId} selectable>
-            {clientId ?? t("settings.loading")}
-          </Text>
-        </View>
+        <ClientIdentitySettingsRows />
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
@@ -688,17 +602,6 @@ function GeneralSection({
           />
         </View>
       </View>
-      <AdaptiveRenameModal
-        visible={isEditingClientHostname}
-        title={t("settings.general.clientIdentity.editHostnameTitle")}
-        initialValue={clientHostname}
-        placeholder={t("settings.general.clientIdentity.hostnamePlaceholder")}
-        submitLabel={t("common.actions.save")}
-        onClose={closeClientHostnameEditor}
-        onSubmit={handleClientHostnameSubmit}
-        maxLength={255}
-        testID="general-client-hostname-modal"
-      />
     </SettingsSection>
   );
 }
@@ -1266,12 +1169,7 @@ function SettingsSidebar({
     [insets.top, isDesktop],
   );
   const selectedSectionId = view.kind === "section" ? view.section : null;
-  let selectedHostSection: HostSectionSlug | null = null;
-  if (view.kind === "host") {
-    selectedHostSection = view.section === "relay" ? "connections" : view.section;
-  } else if (view.kind === "memory") {
-    selectedHostSection = view.projectId ? "projects" : "memory";
-  }
+  const selectedHostSection = getHostSectionAfterHostSwitch(view);
   const desktopScrollRef = useRef<ScrollView>(null);
   const desktopScrollRestoreYRef = useRef(isDesktop ? desktopSettingsSidebarScrollY : 0);
   const desktopScrollRestorePendingRef = useRef(desktopScrollRestoreYRef.current > 0);
@@ -1707,12 +1605,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     returnFromSettings({ kind: "root" });
   }, []);
 
-  const detailHeader = ((): {
-    title: string;
-    Icon: ComponentType<{ size: number; color: string }>;
-    titleAccessory?: ReactNode;
-    onBack?: () => void;
-  } | null => {
+  const detailHeader = ((): SettingsDetailHeader | null => {
     if (view.kind === "host") {
       if (view.section === "relay") {
         return {
@@ -1742,7 +1635,14 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         onBack: handleBackFromMemory,
       };
     }
-    return null;
+    if (view.kind === "memory-page") {
+      return {
+        title: MEMORY_SETTINGS_PAGE_TITLES[view.page],
+        Icon: Brain,
+        onBack: handleBackFromDetail,
+      };
+    }
+    return getResourceDetailHeader(view, handleBackFromDetail);
   })();
 
   let content: ReactNode;
@@ -1753,26 +1653,12 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       if (view.kind === "host") {
         return renderHostSettingsContent(view, handleHostRemoved, handleOpenLocalRelay);
       }
-      if (view.kind === "project") {
-        return (
-          <ProjectSettingsScreen
-            serverId={view.serverId}
-            projectId={view.projectId}
-            onBackToProjects={handleBackFromDetail}
-            showBackToProjects={!isCompactLayout}
-          />
-        );
-      }
-      if (view.kind === "memory") {
-        return (
-          <MemoryManagementScreen
-            serverId={view.serverId}
-            projectId={view.projectId}
-            memoryId={view.memoryId}
-            embedded
-          />
-        );
-      }
+      const nestedContent = renderNestedSettingsContent(
+        view,
+        handleBackFromDetail,
+        isCompactLayout,
+      );
+      if (nestedContent !== undefined) return nestedContent;
       if (view.kind === "section") {
         switch (view.section) {
           case "general":
@@ -2043,31 +1929,6 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
-    textAlign: "right",
-  },
-  clientHostnameButton: {
-    maxWidth: "55%",
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  clientHostnameValue: {
-    flexShrink: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  clientIdentityId: {
-    maxWidth: "55%",
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontFamily: theme.fontFamily.mono,
     textAlign: "right",
   },
   placeholder: {

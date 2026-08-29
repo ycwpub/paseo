@@ -63,4 +63,14 @@ describe("desktop app attention", () => {
     expect(harness.bounceDock).not.toHaveBeenCalled();
     expect(harness.playSound).not.toHaveBeenCalled();
   });
+
+  it("alerts while Paseo is focused when the completed task is on another screen", () => {
+    const harness = createHarness();
+    harness.setFocused(true);
+
+    expect(harness.controller.signal(0.5, { allowWhenFocused: true })).toBe(true);
+    expect(harness.showAttentionIcon).toHaveBeenCalledOnce();
+    expect(harness.bounceDock).toHaveBeenCalledOnce();
+    expect(harness.playSound).toHaveBeenCalledWith(0.5);
+  });
 });

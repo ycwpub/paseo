@@ -179,12 +179,14 @@ vi.mock("@/components/ui/button", () => ({
     children,
     onPress,
     disabled,
+    testID,
   }: {
     children: ReactNode;
     onPress?: () => void;
     disabled?: boolean;
+    testID?: string;
   }) => (
-    <button type="button" disabled={disabled} onClick={onPress}>
+    <button type="button" disabled={disabled} onClick={onPress} data-testid={testID}>
       {children}
     </button>
   ),
@@ -406,12 +408,15 @@ describe("LarkChannelSection", () => {
 
     expect(screen.getAllByText("袁昌旺的paseo_mac").length).toBeGreaterThan(0);
     expect(screen.getByText(/本地备注：Settlement bot/)).toBeTruthy();
-    expect(screen.getByText(/下方配置（包括替身模式）只对这个飞书机器人生效/)).toBeTruthy();
-    expect(screen.getByText(/当前机器人：袁昌旺的paseo_mac/)).toBeTruthy();
     expect(screen.getByText("Ops bot")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
+    expect(screen.getByText("编辑飞书机器人")).toBeTruthy();
+    expect(screen.getByText(/下方连接、模型与项目配置只对这个飞书机器人生效/)).toBeTruthy();
     expect(screen.getByDisplayValue("cli_settle")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+    fireEvent.click(screen.getByTestId("host-page-lark-back"));
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-2"));
 
     await waitFor(() => expect(screen.getByDisplayValue("cli_ops")).toBeTruthy());
   });
@@ -439,6 +444,7 @@ describe("LarkChannelSection", () => {
 
     expect(screen.getByText("飞书机器人列表（1）")).toBeTruthy();
     expect(screen.getAllByText(/cli_legacy/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-__legacy_lark_bot__"));
     expect(screen.getByDisplayValue("cli_legacy")).toBeTruthy();
   });
 
@@ -466,6 +472,7 @@ describe("LarkChannelSection", () => {
     channelState.current.status = makeStatus([existingBot]);
     render(<LarkChannelSection serverId="server-1" />);
 
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     fireEvent.click(screen.getByRole("button", { name: "Delete bot" }));
     await waitFor(() => expect(channelState.current.deleteBot).toHaveBeenCalledWith("bot-1"));
   });
@@ -477,6 +484,7 @@ describe("LarkChannelSection", () => {
 
     render(<LarkChannelSection serverId="server-1" />);
 
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect((screen.getByLabelText("思考模式") as HTMLSelectElement).value).toBe("high");
     expect((screen.getByLabelText("安全模式") as HTMLSelectElement).value).toBe("accept-edits");
 
@@ -529,6 +537,7 @@ describe("LarkChannelSection", () => {
 
     render(<LarkChannelSection serverId="server-1" />);
 
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-substitute-bot-1"));
     const emailInput = await waitFor(() => screen.getByPlaceholderText("user@example.com"));
     fireEvent.change(emailInput, {
       target: { value: " alice@example.com " },
@@ -539,10 +548,11 @@ describe("LarkChannelSection", () => {
         "alice@example.com",
       ]),
     );
+    expect(await screen.findByText("Alice（alice@example.com）")).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("例如：张三"), {
       target: { value: " Alice " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存替身模式" }));
 
     await waitFor(() =>
       expect(channelState.current.configure).toHaveBeenCalledWith(
@@ -555,6 +565,50 @@ describe("LarkChannelSection", () => {
         }),
       ),
     );
+  });
+
+  test("shows authorized users and groups with friendly directory identities", async () => {
+    const bot = makeBot({
+      authorizedUsers: [
+        {
+          id: "authorized-1",
+          openId: "ou_alice",
+          unionId: null,
+          chatId: "oc_settlement",
+          displayName: "Alice",
+          authorizedAt: "2026-08-29T00:00:00.000Z",
+        },
+      ],
+    });
+    channelState.current.status = {
+      ...makeStatus([bot]),
+      directory: {
+        users: [
+          {
+            appId: "cli_settle",
+            email: "alice@example.com",
+            openId: "ou_alice",
+            displayName: "张三",
+            updatedAt: "2026-08-29T00:00:00.000Z",
+          },
+        ],
+        chats: [
+          {
+            appId: "cli_settle",
+            groupId: "group_settlement",
+            chatId: "oc_settlement",
+            name: "结算研发群",
+            updatedAt: "2026-08-29T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
+    expect(await screen.findByText("张三（alice@example.com）")).toBeTruthy();
+    expect(screen.getByText("结算研发群（group_settlement）")).toBeTruthy();
   });
 
   test("selects a team as the Lark bot target", async () => {
@@ -576,6 +630,7 @@ describe("LarkChannelSection", () => {
 
     render(<LarkChannelSection serverId="server-1" />);
 
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect((screen.getByLabelText("助手或团队") as HTMLSelectElement).value).toBe(
       "assistant:assistant-1",
     );
@@ -594,5 +649,19 @@ describe("LarkChannelSection", () => {
         }),
       ),
     );
+  });
+
+  test("opens reminders on a dedicated secondary page", () => {
+    channelState.current.status = makeStatus([makeBot()]);
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    expect(screen.queryByTestId("host-page-channels-reminders")).toBeNull();
+    fireEvent.click(screen.getByTestId("host-page-lark-open-reminders"));
+    expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
+    expect(screen.getByText("飞书定时提醒")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("host-page-lark-back"));
+    expect(screen.getByTestId("host-page-channels")).toBeTruthy();
   });
 });

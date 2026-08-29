@@ -68,6 +68,33 @@ describe("plugin package", () => {
     expect(result.unsupportedComponents).toEqual(["hooks"]);
   });
 
+  it("loads declarative resources from the main paseo-plugin.json manifest", () => {
+    tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-unified-plugin-package-"));
+    const pluginRoot = path.join(tempRoot, "demo");
+    mkdirSync(path.join(pluginRoot, "skills", "review"), { recursive: true });
+    writeFileSync(
+      path.join(pluginRoot, "paseo-plugin.json"),
+      JSON.stringify({
+        id: "demo-plugin",
+        name: "demo-plugin",
+        version: "1.2.3",
+        description: "Unified plugin",
+        resources: { skills: "./skills/" },
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      path.join(pluginRoot, "skills", "review", "SKILL.md"),
+      "---\nname: review\ndescription: Review changes\n---\n\nReview the code.\n",
+      "utf8",
+    );
+
+    const result = loadPluginPackage(pluginRoot);
+
+    expect(result.manifest.name).toBe("demo-plugin");
+    expect(result.skills.map((skill) => skill.name)).toEqual(["review"]);
+  });
+
   it("rejects component paths and symlinks that escape the package", () => {
     tempRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-plugin-package-safe-"));
     const pluginRoot = path.join(tempRoot, "demo");

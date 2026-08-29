@@ -178,6 +178,7 @@ export function buildProjectContextPrompt(input: {
   workspaceDirectory: string;
   directories: ResolvedProjectDirectories;
   knowledge?: ResolvedProjectKnowledge;
+  pluginProjectPrompt?: string;
   larkContextPrompt?: string;
 }): string {
   const indexInstructions =
@@ -225,6 +226,7 @@ export function buildProjectContextPrompt(input: {
       generalDirectories: input.directories.knowledge,
       knowledge: input.knowledge ?? EMPTY_PROJECT_KNOWLEDGE,
     }),
+    ...(input.pluginProjectPrompt ? [input.pluginProjectPrompt] : []),
     ...(input.larkContextPrompt ? [input.larkContextPrompt] : []),
   ].join("\n");
 }
@@ -254,12 +256,20 @@ function readProjectConfig(
   }
 }
 
+function readPluginProjectPrompt(
+  reader: ((projectId: string) => string | null) | undefined,
+  projectId: string,
+): string {
+  return reader?.(projectId) ?? "";
+}
+
 export async function loadProjectAgentContext(input: {
   workspaceId: string;
   projectRegistry: Pick<ProjectRegistry, "get">;
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
   paseoHome?: string;
   cloudDocumentCacheService?: CloudDocumentCacheService;
+  readPluginProjectContext?: (projectId: string) => string | null;
   logger?: Pick<Logger, "warn">;
 }): Promise<ProjectAgentContext | null> {
   const workspace = await input.workspaceRegistry.get(input.workspaceId);
@@ -371,6 +381,10 @@ export async function loadProjectAgentContext(input: {
         readProjectLarkContextSnapshots(input.paseoHome, project.projectId),
       )
     : "";
+  const pluginProjectPrompt = readPluginProjectPrompt(
+    input.readPluginProjectContext,
+    project.projectId,
+  );
   const managedWorkspacePath = input.paseoHome
     ? resolveManagedWorkspacePath(input.paseoHome, project.projectId, workspace.workspaceId)
     : null;
@@ -406,6 +420,7 @@ export async function loadProjectAgentContext(input: {
       workspaceDirectory: workspace.cwd,
       directories,
       knowledge,
+      pluginProjectPrompt,
       larkContextPrompt,
     }),
   };
@@ -418,6 +433,7 @@ export async function withProjectAgentContext(input: {
   workspaceRegistry: Pick<WorkspaceRegistry, "get">;
   paseoHome?: string;
   cloudDocumentCacheService?: CloudDocumentCacheService;
+  readPluginProjectContext?: (projectId: string) => string | null;
   onAuthIssues?: (issues: readonly CloudDocumentAuthenticationIssue[]) => void;
   logger?: Pick<Logger, "warn">;
 }): Promise<AgentSessionConfig> {

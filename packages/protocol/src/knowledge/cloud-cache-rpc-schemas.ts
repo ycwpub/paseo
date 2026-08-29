@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const CloudKnowledgeScopeSchema = z.enum(["global", "project"]);
+export const CloudKnowledgeScopeSchema = z.enum(["global", "project", "assistant"]);
 
 export const CloudDocumentAuthenticationIssueSchema = z.object({
   kind: z.literal("authentication_required"),
@@ -24,6 +24,7 @@ export const CloudDocumentCacheStatusSchema = z.object({
 const CloudDocumentTargetFields = {
   scope: CloudKnowledgeScopeSchema,
   projectId: z.string().optional(),
+  assistantId: z.string().optional(),
   source: z.string(),
 };
 

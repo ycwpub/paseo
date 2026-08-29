@@ -5,6 +5,7 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
+import { formatProviderUsageError, isProviderUsageTemporarilyUnavailable } from "./copy";
 import { formatAgo } from "./format";
 import type { ProviderUsage } from "./types";
 import { ProviderUsageWindowBar } from "./window-bar";
@@ -26,12 +27,21 @@ const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted 
 
 function statusText(usage: ProviderUsage): string | null {
   if (usage.status === "available") return null;
+  if (usage.details?.some((detail) => detail.id === "aiden-login-required")) {
+    return "需要登录";
+  }
+  if (
+    isProviderUsageTemporarilyUnavailable(usage.error) ||
+    (usage.status === "unavailable" && usage.providerId.startsWith("aiden-"))
+  ) {
+    return "暂无用量";
+  }
   return usage.status === "error" ? "错误" : "不可用";
 }
 
 function footerText(usage: ProviderUsage): string | null {
   const updated = formatAgo(usage.fetchedAt);
-  const parts = [usage.sourceLabel, updated ? `Updated ${updated}` : null].filter(
+  const parts = [usage.sourceLabel, updated ? `更新于 ${updated}` : null].filter(
     (part): part is string => typeof part === "string" && part.length > 0,
   );
   return parts.length > 0 ? parts.join(" · ") : null;
@@ -81,7 +91,7 @@ export function ProviderUsageCard({
 
       {usage.error ? (
         <Text style={styles.error} numberOfLines={3}>
-          {usage.error}
+          {formatProviderUsageError(usage.error)}
         </Text>
       ) : null}
 
@@ -103,7 +113,10 @@ export function ProviderUsageCard({
               <Text style={styles.detailLabel} numberOfLines={1}>
                 {detail.label}
               </Text>
-              <Text style={styles.detailValue} numberOfLines={1}>
+              <Text
+                style={styles.detailValue}
+                numberOfLines={detail.id.startsWith("aiden-") ? 3 : 1}
+              >
                 {detail.value}
               </Text>
             </View>
@@ -183,6 +196,8 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   detailValue: {
+    flex: 1,
+    textAlign: "right",
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
   },

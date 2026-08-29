@@ -12,6 +12,13 @@ describe("feature_paseo integration parity", () => {
     expect(layout).toContain('<Stack.Screen name="workflows"');
     expect(layout).toContain('name="settings/hosts/[serverId]/memories/index"');
     expect(layout).toContain('name="settings/hosts/[serverId]/memories/[memoryId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/assistants/[assistantId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/teams/[teamId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/instruction-templates/index"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/instruction-templates/[templateId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/mcp-servers/[mcpServerId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/skills/[skillId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/memory/[memoryPage]"');
     expect(layout).toContain(
       'name="settings/hosts/[serverId]/projects/[projectId]/memories/index"',
     );
@@ -30,6 +37,9 @@ describe("feature_paseo integration parity", () => {
 
   test("keeps restored host resources and memory management reachable", () => {
     const settings = source("./settings-screen.tsx");
+    const featureRoutes = source("./settings/settings-feature-routes.tsx");
+    const hostResources = source("./settings/host-resource-pages.tsx");
+    const settingsRouting = `${settings}\n${featureRoutes}`;
 
     for (const component of [
       "HostConnectionsPage",
@@ -44,35 +54,46 @@ describe("feature_paseo integration parity", () => {
       "ProjectSettingsScreen",
       "MemoryManagementScreen",
     ]) {
-      expect(settings).toContain(`<${component}`);
+      expect(settingsRouting).toContain(`<${component}`);
     }
+    expect(settings).not.toContain('from "@/screens/settings/plugins-page"');
+    expect(hostResources).toContain("<PluginsSection");
+    expect(hostResources).not.toContain("<RuntimePluginsSection");
     expect(settings).toContain('view.kind === "memory"');
   });
 
   test("keeps host appearance, relay, and instruction templates visible", () => {
     const hostPage = source("./settings/host-page.tsx");
+    const instructionTemplates = source("./settings/agents/instruction-templates-section.tsx");
 
     expect(hostPage).toContain("<HostAppearanceSection");
     expect(hostPage).not.toContain("<HostKnowledgeSection");
     expect(hostPage).toContain("<RelayConfigurationSection");
-    expect(hostPage).toContain("<InstructionTemplatesSection");
+    expect(hostPage).toContain("<InstructionTemplatesEntrySection");
+    expect(instructionTemplates).toContain("InstructionTemplatesListPage");
+    expect(instructionTemplates).toContain("InstructionTemplateEditorPage");
   });
 
-  test("keeps global and Project knowledge in the standalone knowledge manager", () => {
+  test("keeps global, Project, and Assistant knowledge in the standalone knowledge manager", () => {
     const knowledgeManager = source("./settings/knowledge/knowledge-management-section.tsx");
 
     expect(knowledgeManager).toContain("<HostKnowledgeSection");
     expect(knowledgeManager).toContain("<ProjectKnowledgeEditor");
     expect(knowledgeManager).toContain("knowledge-scope-global");
     expect(knowledgeManager).toContain("knowledge-scope-project");
+    expect(knowledgeManager).toContain("knowledge-scope-assistant");
   });
 
   test("keeps project memory, Lark context, plugins, and parent navigation visible", () => {
     const projectSettings = source("./project-settings-screen.tsx");
+    const projectMemory = source("./settings/memory/project-memory-card.tsx");
 
+    expect(projectSettings).toContain("<ProjectKnowledgeCard");
     expect(projectSettings).toContain("<ProjectMemoryCard");
     expect(projectSettings).not.toContain("<ProjectKnowledgeEditor");
-    expect(projectSettings).toContain("<ProjectLarkContextEditor");
+    expect(projectSettings).toContain("<ProjectLarkGroupsEntry");
+    expect(projectSettings).toContain("配置知识");
+    expect(projectMemory).toContain("配置记忆");
     expect(projectSettings).toContain("<ProjectLinkedPluginProjects");
     expect(projectSettings).toContain("<ProjectParentLink");
     expect(projectSettings).toContain("projectDirectoryMode");
@@ -124,10 +145,9 @@ describe("feature_paseo integration parity", () => {
     expect(sessionContext).toContain(
       'import { signalDesktopAttention } from "@/desktop/attention/desktop-attention"',
     );
-    expect(sessionContext).toContain(
-      'import { getAgentAttentionRouting } from "@/utils/agent-attention"',
-    );
-    expect(sessionContext).toContain('signalDesktopAttention("finished")');
+    expect(sessionContext).toContain("getAgentAttentionRouting");
+    expect(sessionContext).toContain("getDesktopAgentAttentionDecision");
+    expect(sessionContext).toContain('signalDesktopAttention("finished", {');
     expect(sessionContext).toContain('signalDesktopAttention("intervention")');
   });
 });

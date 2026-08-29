@@ -381,6 +381,7 @@ export interface ScheduleServiceOptions {
 }
 
 export class ScheduleService {
+  private readonly paseoHome: string;
   private readonly store: ScheduleStore;
   private readonly logger: Logger;
   private readonly agentManager: ScheduleAgentManager;
@@ -404,6 +405,7 @@ export class ScheduleService {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: ScheduleServiceOptions) {
+    this.paseoHome = options.paseoHome;
     this.store = new ScheduleStore(join(options.paseoHome, "schedules"));
     this.logger = options.logger.child({ module: "schedule-service" });
     this.agentManager = options.agentManager;
@@ -1181,7 +1183,7 @@ export class ScheduleService {
       throw new ScheduleTargetGoneError(`Assistant ${assistantId} no longer exists`);
     }
     return {
-      prompt: buildAssistantInitialPrompt(assistant, prompt),
+      prompt: buildAssistantInitialPrompt(assistant, prompt, { paseoHome: this.paseoHome }),
       labels: {
         assistantId: assistant.id,
         assistantName: assistant.name,

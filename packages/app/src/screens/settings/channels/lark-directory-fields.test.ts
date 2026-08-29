@@ -25,19 +25,39 @@ const chat = {
 
 describe("Lark directory labels", () => {
   test("formats friendly user and group labels", () => {
-    expect(formatLarkUserLabel(user)).toBe("ou_alice(alice@example.com)");
-    expect(formatLarkChatLabel(chat)).toBe("oc_settlement(结算群、group_settlement)");
+    expect(formatLarkUserLabel(user)).toBe("Alice（alice@example.com）");
+    expect(
+      formatLarkUserLabel({
+        ...user,
+        displayName: "张三",
+        email: "zhangsan@example.com",
+      }),
+    ).toBe("张三（zhangsan@example.com）");
+    expect(formatLarkChatLabel(chat)).toBe("结算群（group_settlement）");
   });
 
-  test("does not replace a missing email with a generic user name", () => {
+  test("falls back to the available friendly user identity", () => {
     expect(
       formatLarkUserLabel({
         ...user,
         email: null,
         displayName: "Lark user",
       }),
+    ).toBe("Lark user");
+    expect(
+      formatLarkUserLabel({
+        ...user,
+        displayName: null,
+      }),
+    ).toBe("alice@example.com");
+    expect(
+      formatLarkUserLabel({
+        ...user,
+        email: null,
+        displayName: null,
+      }),
     ).toBe("ou_alice");
-    expect(formatLarkUserOpenId([], "cli_test", "ou_alice", "Lark user")).toBe("ou_alice");
+    expect(formatLarkUserOpenId([], "cli_test", "ou_alice", "张三")).toBe("张三");
   });
 
   test("scopes relation lookup by bot App ID", () => {

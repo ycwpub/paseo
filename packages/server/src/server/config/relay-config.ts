@@ -19,6 +19,7 @@ export interface ResolveRelayConfigInput {
 
 export interface ResolvedRelayConfig {
   enabled: boolean;
+  enabledMutable: boolean;
   endpoints: RelayEndpointConfig[];
   pairingBaseUrls: string[];
   local: {
@@ -266,18 +267,17 @@ function resolveLocalRelayConfig(input: ResolveRelayConfigInput): ResolvedRelayC
 
 export function resolveRelayConfig(input: ResolveRelayConfigInput): ResolvedRelayConfig {
   const persistedRelay = input.persisted.daemon?.relay;
+  const environmentEnabled = parseBooleanEnv(input.env.PASEO_RELAY_ENABLED);
   let endpoints = resolveConfiguredRelayEndpoints(input);
   const pairingBaseUrls = resolveConfiguredRelayPairingBaseUrls(input, endpoints);
   endpoints = endpoints.map(({ pairingBaseUrl: _legacyPairingBaseUrl, ...endpoint }) => endpoint);
   const local = resolveLocalRelayConfig(input);
   const configuredEnabled =
-    input.cliRelayEnabled ??
-    parseBooleanEnv(input.env.PASEO_RELAY_ENABLED) ??
-    persistedRelay?.enabled ??
-    input.enabledFallback;
+    input.cliRelayEnabled ?? environmentEnabled ?? persistedRelay?.enabled ?? input.enabledFallback;
   endpoints = configuredEnabled ? dedupeRelayEndpoints(endpoints) : [];
   return {
     enabled: endpoints.length > 0 || local.enabled,
+    enabledMutable: input.cliRelayEnabled === undefined && environmentEnabled === undefined,
     endpoints,
     pairingBaseUrls,
     local,

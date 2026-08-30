@@ -5,7 +5,6 @@ import { createStream as createRotatingFileStream } from "rotating-file-stream";
 import { signalProcessTree } from "../src/utils/tree-kill.js";
 
 const WORKER_HEARTBEAT_INTERVAL_MS = 1_000;
-const WORKER_HEARTBEAT_TIMEOUT_MS = 60_000;
 const WORKER_TERMINATION_GRACE_MS = 10_000;
 
 interface SupervisorLogFileOptions {
@@ -56,7 +55,6 @@ interface SupervisorOptions {
   logFile?: SupervisorLogFileOptions;
   workerHeartbeat?: {
     intervalMs?: number;
-    timeoutMs?: number;
   };
 }
 
@@ -139,8 +137,6 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
   const resolveWorkerSpawnSpec = options.resolveWorkerSpawnSpec;
   const workerHeartbeatIntervalMs =
     options.workerHeartbeat?.intervalMs ?? WORKER_HEARTBEAT_INTERVAL_MS;
-  const workerHeartbeatTimeoutMs =
-    options.workerHeartbeat?.timeoutMs ?? WORKER_HEARTBEAT_TIMEOUT_MS;
 
   let child: ChildProcess | null = null;
   let restarting = false;
@@ -258,7 +254,6 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
     }
 
     const currentChild = child;
-    let lastWorkerHeartbeatAt = Date.now();
     const heartbeat = setInterval(() => {
       const message: SupervisorHeartbeatMessage = { type: "paseo:supervisor-heartbeat" };
       if (currentChild.connected) {
@@ -274,23 +269,6 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
       }
     }, workerHeartbeatIntervalMs);
     heartbeat.unref();
-
-    const workerWatchdog = setInterval(() => {
-      if (child !== currentChild || restarting || shuttingDown) {
-        return;
-      }
-      const heartbeatAgeMs = Date.now() - lastWorkerHeartbeatAt;
-      if (heartbeatAgeMs < workerHeartbeatTimeoutMs) {
-        return;
-      }
-      writeLifecycleLog("Worker heartbeat timed out; restarting worker", {
-        heartbeatAgeMs,
-        supervisorPid: process.pid,
-        workerPid: currentChild.pid ?? null,
-      });
-      requestRestart("worker_heartbeat_timeout");
-    }, workerHeartbeatIntervalMs);
-    workerWatchdog.unref();
 
     child.on("disconnect", () => {
       writeLifecycleLog("Worker IPC channel disconnected");
@@ -308,7 +286,6 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
 
     child.on("message", (msg: unknown) => {
       if (isWorkerHeartbeatMessage(msg)) {
-        lastWorkerHeartbeatAt = Date.now();
         return;
       }
       const lifecycleMessage = parseLifecycleMessage(msg);
@@ -341,7 +318,6 @@ export function runSupervisor(options: SupervisorOptions): SupervisorController 
 
     child.on("exit", (code, signal) => {
       clearInterval(heartbeat);
-      clearInterval(workerWatchdog);
       clearForceKillTimer();
       const exitDescriptor = describeExit(code, signal);
       writeLifecycleLog("Worker exited", { code, signal, exit: exitDescriptor });

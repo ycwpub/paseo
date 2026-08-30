@@ -54,6 +54,43 @@ describe("daemon relay config", () => {
     expect(config.relayEndpoint).toBeUndefined();
   });
 
+  test("marks a valid environment Relay override immutable", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: {
+          enabled: false,
+          endpoints: [{ endpoint: "relay.example.com:443", useTls: true }],
+        },
+      },
+    });
+
+    const config = loadConfig(home, { env: { PASEO_RELAY_ENABLED: "true" } });
+
+    expect(config.relayEnabled).toBe(true);
+    expect(config.relayEnabledMutable).toBe(false);
+  });
+
+  test.each(["", "treu"])(
+    "ignores invalid Relay override %j without locking config",
+    async (value) => {
+      const home = await createPaseoHome({
+        version: 1,
+        daemon: {
+          relay: {
+            enabled: false,
+            endpoints: [{ endpoint: "relay.example.com:443", useTls: true }],
+          },
+        },
+      });
+
+      const config = loadConfig(home, { env: { PASEO_RELAY_ENABLED: value } });
+
+      expect(config.relayEnabled).toBe(false);
+      expect(config.relayEnabledMutable).toBe(true);
+    },
+  );
+
   test("loads multiple Relay endpoints from PASEO_RELAY_ENDPOINTS", async () => {
     const home = await createPaseoHome({ version: 1 });
     const config = loadConfig(home, {

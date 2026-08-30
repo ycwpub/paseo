@@ -6,6 +6,8 @@ import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { renderPairingQr } from "./pairing-qr.js";
 import { getOrCreateServerId } from "./server-id.js";
 
+const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
+
 export interface LocalPairingOffer {
   relayEnabled: boolean;
   url: string | null;
@@ -68,10 +70,18 @@ export async function generateLocalPairingOffer(args: {
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(args.paseoHome, args.logger);
   const resolveFallbackPairingBaseUrl = (relay: (typeof relayEndpoints)[number]): string =>
     relay.pairingBaseUrl?.trim() || resolveRelayPairingBaseUrl(relay);
-  // Only explicitly configured pairing frontends are shared by every Relay.
-  // Discovered and local Relay URLs belong to their own endpoint and must not
-  // leak into offers generated for unrelated Relays.
+  // Explicit pairing frontends take precedence. A non-default legacy appBaseUrl
+  // remains a shared fallback for older configurations, while discovered and
+  // local Relay URLs stay scoped to their own endpoint.
   const sharedPairingBaseUrls = dedupePairingBaseUrls(args.relayPairingBaseUrls ?? []);
+  const legacyAppBaseUrl = args.appBaseUrl?.trim().replace(/\/+$/, "");
+  if (
+    sharedPairingBaseUrls.length === 0 &&
+    legacyAppBaseUrl &&
+    legacyAppBaseUrl !== DEFAULT_APP_BASE_URL
+  ) {
+    sharedPairingBaseUrls.push(legacyAppBaseUrl);
+  }
   const primaryPairingBaseUrl =
     sharedPairingBaseUrls[0] ?? resolveFallbackPairingBaseUrl(relayEndpoints[0]!);
   const offer = await createConnectionOfferV2({

@@ -36,7 +36,15 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
 import { type GestureType } from "react-native-gesture-handler";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
 import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
-import { ExternalLink, Settings, MoreVertical, Plus, Trash2 } from "lucide-react-native";
+import {
+  ExternalLink,
+  FolderPlus,
+  MoreVertical,
+  Plus,
+  Puzzle,
+  Settings,
+  Trash2,
+} from "lucide-react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { DraggableList, type DraggableRenderItemInfo } from "./draggable-list";
 import type { DraggableListDragHandleProps } from "./draggable-list.types";
@@ -47,7 +55,7 @@ import {
   type ToggleSidebarWorkspacePin,
 } from "@/hooks/use-sidebar-workspace-pin";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import { useHostFeatureMap } from "@/runtime/host-features";
+import { useHostFeature, useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIcons } from "@/projects/icons";
 import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
@@ -91,7 +99,7 @@ import { hasVisibleOrderChanged, mergeWithRemainder } from "@/utils/sidebar-reor
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { SidebarStatusWorkspaceList } from "@/components/sidebar/sidebar-status-list";
-import { SidebarProjectChildAction } from "@/components/sidebar/sidebar-project-child-action";
+import { useSidebarProjectPluginLink } from "@/components/sidebar/sidebar-project-plugin-link";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import {
   SidebarWorkspaceContextMenu,
@@ -153,6 +161,7 @@ import type { HostBadgeModel } from "@/hosts/appearance";
 import { useHostBadges } from "@/hosts/use-host-badges";
 import { useSidebarRowItems } from "@/components/sidebar/display-preferences/model";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
+import { useAddProjectFlowStore } from "@/stores/add-project-flow-store";
 
 const workspaceKeyExtractor = (workspace: SidebarWorkspacePlacement) => workspace.workspaceKey;
 
@@ -165,6 +174,8 @@ const ThemedPlus = withUnistyles(Plus);
 const ThemedMoreVertical = withUnistyles(MoreVertical);
 const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedSettings = withUnistyles(Settings);
+const ThemedFolderPlus = withUnistyles(FolderPlus);
+const ThemedPuzzle = withUnistyles(Puzzle);
 
 const foregroundColorMapping = (theme: Theme) => ({
   color: theme.colors.foreground,
@@ -429,12 +440,6 @@ function ProjectRowTrailingActions({
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   return (
     <View style={styles.projectTrailingActions}>
-      <SidebarProjectChildAction
-        target={settingsTarget}
-        displayName={displayName}
-        visible={actionsVisible}
-        projectViewKey={projectViewKey}
-      />
       {worktreeTarget ? (
         <NewWorktreeButton
           displayName={displayName}
@@ -444,7 +449,7 @@ function ProjectRowTrailingActions({
           testID={`sidebar-project-new-worktree-${projectViewKey}`}
         />
       ) : null}
-      {onRemoveProject ? (
+      {settingsTarget || onRemoveProject ? (
         <View
           style={!actionsVisible && styles.projectKebabButtonHidden}
           pointerEvents={actionsVisible ? "auto" : "none"}
@@ -467,6 +472,12 @@ const settingsLeadingIcon = <ThemedSettings size={14} uniProps={foregroundMutedC
 const openInNewWindowLeadingIcon = (
   <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />
 );
+const createChildProjectLeadingIcon = (
+  <ThemedFolderPlus size={14} uniProps={foregroundMutedColorMapping} />
+);
+const openPluginProjectLeadingIcon = (
+  <ThemedPuzzle size={14} uniProps={foregroundMutedColorMapping} />
+);
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
@@ -487,12 +498,13 @@ function ProjectKebabMenu({
   projectViewKey: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
-  onRemoveProject: () => void;
+  onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
   return (
-    <DropdownMenu compactMode="sheet">
+    <DropdownMenu compactMode="sheet" open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         hitSlop={8}
         style={projectKebabStyle}
@@ -510,6 +522,7 @@ function ProjectKebabMenu({
           projectPath={projectPath}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
+          active={open}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -538,16 +551,28 @@ function ProjectMenuItems({
   projectPath,
   onRemoveProject,
   removeProjectStatus,
+  active,
 }: {
   surface: ProjectMenuSurface;
   projectViewKey: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
-  onRemoveProject: () => void;
+  onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
+  active: boolean;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
+  const supportsProjectHierarchy = useHostFeature(
+    settingsTarget?.serverId ?? "",
+    "projectHierarchy",
+  );
+  const openAddProject = useAddProjectFlowStore((state) => state.openRequest);
+  const pluginLink = useSidebarProjectPluginLink({
+    active: active && settingsTarget !== null,
+    serverId: settingsTarget?.serverId ?? "",
+    projectId: settingsTarget?.projectId ?? "",
+  });
   const handleOpenProjectSettings = useCallback(() => {
     if (!settingsTarget) return;
     router.navigate(buildProjectSettingsRoute(settingsTarget.serverId, settingsTarget.projectId));
@@ -563,9 +588,36 @@ function ProjectMenuItems({
         toast.error(t("sidebar.project.actions.openNewWindowFailed"));
       });
   }, [projectPath, t, toast]);
+  const handleCreateChildProject = useCallback(() => {
+    if (!settingsTarget) return;
+    openAddProject({
+      preferredHostId: settingsTarget.serverId,
+      parentProjectId: settingsTarget.projectId,
+    });
+  }, [openAddProject, settingsTarget]);
 
   return (
     <>
+      {settingsTarget && supportsProjectHierarchy ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-create-child-${projectViewKey}`}
+          leading={createChildProjectLeadingIcon}
+          onSelect={handleCreateChildProject}
+        >
+          创建子 Project
+        </ProjectMenuItem>
+      ) : null}
+      {pluginLink.link ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-open-plugin-${projectViewKey}`}
+          leading={openPluginProjectLeadingIcon}
+          onSelect={pluginLink.open}
+        >
+          跳转到插件项目
+        </ProjectMenuItem>
+      ) : null}
       {settingsTarget ? (
         <ProjectMenuItem
           surface={surface}
@@ -591,16 +643,18 @@ function ProjectMenuItems({
         path={projectPath}
         testID={`sidebar-project-menu-open-folder-${projectViewKey}`}
       />
-      <ProjectMenuItem
-        surface={surface}
-        testID={`sidebar-project-menu-remove-${projectViewKey}`}
-        leading={trash2LeadingIcon}
-        status={removeProjectStatus}
-        pendingLabel={t("sidebar.project.actions.removing")}
-        onSelect={onRemoveProject}
-      >
-        {t("sidebar.project.actions.remove")}
-      </ProjectMenuItem>
+      {onRemoveProject ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-remove-${projectViewKey}`}
+          leading={trash2LeadingIcon}
+          status={removeProjectStatus}
+          pendingLabel={t("sidebar.project.actions.removing")}
+          onSelect={onRemoveProject}
+        >
+          {t("sidebar.project.actions.remove")}
+        </ProjectMenuItem>
+      ) : null}
     </>
   );
 }
@@ -984,7 +1038,7 @@ function ProjectHeaderRow({
     </>
   );
 
-  if (!onRemoveProject) {
+  if (!settingsTarget && !onRemoveProject) {
     return (
       <View
         {...dragAttributes}
@@ -1044,6 +1098,7 @@ function ProjectHeaderRow({
           projectPath={projectPath}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
+          active={contextMenuOpen}
         />
       </ContextMenuContent>
     </ContextMenu>

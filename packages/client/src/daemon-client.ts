@@ -7090,7 +7090,7 @@ export class DaemonClient {
     }
 
     try {
-      this.transport.send(this.createHelloMessage());
+      this.sendJsonMessage("hello", "hello", this.createHelloMessage());
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to send hello message";
       this.lastErrorValue = message;
@@ -7102,8 +7102,8 @@ export class DaemonClient {
     }
   }
 
-  private createHelloMessage(): string {
-    return JSON.stringify({
+  private createHelloMessage() {
+    return {
       type: "hello",
       clientId: this.config.clientId,
       ...(this.config.clientName?.trim() ? { clientName: this.config.clientName.trim() } : {}),
@@ -7122,7 +7122,7 @@ export class DaemonClient {
         ...this.config.capabilities,
       },
       ...(this.config.appVersion ? { appVersion: this.config.appVersion } : {}),
-    });
+    };
   }
 
   private handleDirectConnectionOffer(offer: { candidates: string[]; expiresAt: string }): void {
@@ -7262,7 +7262,7 @@ export class DaemonClient {
             return;
           }
           try {
-            transport.send(this.createHelloMessage());
+            transport.send(JSON.stringify(this.createHelloMessage()));
           } catch (error) {
             finish(error instanceof Error ? error : new Error(String(error)));
           }
@@ -7505,6 +7505,10 @@ export class DaemonClient {
       return;
     }
 
+    this.traceInstant("paseo.ws.message.inbound", {
+      envelopeType: "session",
+      messageType: parsed.data.message.type,
+    });
     this.handleSessionMessage(parsed.data.message);
     const msgType = parsed.data.message.type;
     this.runtimeMetrics?.recordMessage(msgType, bytes, perfNow() - startMs);

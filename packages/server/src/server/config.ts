@@ -574,7 +574,7 @@ export function resolveConfigFromPersisted(
     staticDir: "public",
     agentClients: {},
     relayEnabled: relay.enabled,
-    relayEnabledMutable: true,
+    relayEnabledMutable: relay.enabledMutable,
     relayEndpoints: relay.endpoints,
     relayPairingBaseUrls: relay.pairingBaseUrls,
     ...resolveLegacyRelaySummary(relay.endpoints),

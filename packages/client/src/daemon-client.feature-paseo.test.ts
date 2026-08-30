@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   DaemonClient,
   FileExplorerRequestError,
+  type DaemonClientTrace,
   type DaemonTransport,
   type Logger,
 } from "./daemon-client";
@@ -36,6 +37,24 @@ function createMockLogger() {
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+  };
+}
+
+interface TraceRecord {
+  phase: "begin" | "end";
+  name?: string;
+  args?: Record<string, string>;
+}
+
+function createTraceRecorder(): { trace: DaemonClientTrace; records: TraceRecord[] } {
+  const records: TraceRecord[] = [];
+  return {
+    trace: {
+      isEnabled: () => true,
+      beginSection: (name, args) => records.push({ phase: "begin", name, args }),
+      endSection: () => records.push({ phase: "end" }),
+    },
+    records,
   };
 }
 
@@ -165,6 +184,56 @@ afterEach(async () => {
   clients.length = 0;
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+test("traces WebSocket frames, message types, and JSON parse duration", async () => {
+  const mock = createMockTransport();
+  const recorder = createTraceRecorder();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "trace_unit_test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+    trace: recorder.trace,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen({ preserveSent: true });
+  await connectPromise;
+
+  expect(recorder.records).toEqual([
+    {
+      phase: "begin",
+      name: "paseo.ws.message.outbound",
+      args: { envelopeType: "hello", messageType: "hello" },
+    },
+    { phase: "end" },
+    {
+      phase: "begin",
+      name: "paseo.ws.frame.outbound",
+      args: { kind: "text", size: expect.any(String) },
+    },
+    { phase: "end" },
+    {
+      phase: "begin",
+      name: "paseo.ws.frame.inbound",
+      args: { kind: "text", size: expect.any(String) },
+    },
+    {
+      phase: "begin",
+      name: "paseo.ws.json.parse",
+      args: { size: expect.any(String) },
+    },
+    { phase: "end" },
+    {
+      phase: "begin",
+      name: "paseo.ws.message.inbound",
+      args: { envelopeType: "session", messageType: "status" },
+    },
+    { phase: "end" },
+    { phase: "end" },
+  ]);
 });
 
 test("exposes the normalized client id", () => {

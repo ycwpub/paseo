@@ -176,7 +176,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   triggerText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   panel: {
     width: "100%",
@@ -204,7 +204,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   memoryMeta: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   memoryContent: {
     color: theme.colors.foregroundMuted,
@@ -218,7 +218,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   error: {
     color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingHorizontal: theme.spacing[3],
     paddingBottom: theme.spacing[3],
   },

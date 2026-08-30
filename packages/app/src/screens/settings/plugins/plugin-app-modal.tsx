@@ -974,7 +974,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   fieldHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   outputCard: {
@@ -985,7 +985,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   outputLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   statusText: {
@@ -995,12 +995,12 @@ const styles = StyleSheet.create((theme) => ({
   metadataText: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   codeText: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   resultText: {
     color: theme.colors.foreground,

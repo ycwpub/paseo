@@ -175,12 +175,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   note: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 19,
   },
   codeLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   codeCard: {
@@ -194,7 +194,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   code: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 19,
     fontFamily: theme.fontFamily.mono,
   },

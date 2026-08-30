@@ -87,6 +87,8 @@ import { useActiveWorktreeNewAction } from "@/hooks/use-active-worktree-new-acti
 import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-action";
 import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
+import { useClearDesktopAttentionWhenRead } from "@/desktop/attention/use-clear-attention-when-read";
+import { ensureFeaturePanelsRegistered } from "@/panels/register-feature-panels";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { resolveExplorerSidebarPresentation } from "@/workspace-tabs/explorer-sidebar";
 import { KeyboardShiftProvider } from "@/hooks/use-keyboard-shift-style";
@@ -885,6 +887,7 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
 
 function FaviconStatusSync() {
   useFaviconStatus();
+  useClearDesktopAttentionWhenRead();
   return null;
 }
 
@@ -991,6 +994,7 @@ function RootProviders({ children }: { children: ReactNode }) {
 }
 
 function RootAppTree() {
+  ensureFeaturePanelsRegistered();
   return (
     <GestureHandlerRootView style={flexStyle}>
       <View style={layoutStyles.surfaceFill}>

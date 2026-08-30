@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useOptionalToast } from "@/contexts/toast-api-context";
+import { useToast } from "@/contexts/toast-api-context";
 import {
   daemonPairingQueryKey,
   relayPairingOffersEqual,
@@ -310,7 +310,7 @@ function ClientAccessSection({
   requireApprovalLoading: boolean;
   onRequireApprovalChange: (value: boolean) => Promise<void>;
 }) {
-  const toast = useOptionalToast();
+  const toast = useToast();
   const [operation, setOperation] = useState<{
     clientId: string;
     action: "approve" | "pause" | "resume" | "delete";
@@ -328,8 +328,7 @@ function ClientAccessSection({
         onChanged();
       } catch (error) {
         const message = toErrorMessage(error);
-        if (toast) toast.error(message);
-        else console.warn("[ClientAccess] Failed to approve client", message);
+        toast.error(message);
       } finally {
         setOperation(null);
       }
@@ -348,8 +347,7 @@ function ClientAccessSection({
         onChanged();
       } catch (error) {
         const message = toErrorMessage(error);
-        if (toast) toast.error(message);
-        else console.warn("[ClientAccess] Failed to update client", message);
+        toast.error(message);
       } finally {
         setOperation(null);
       }
@@ -368,8 +366,7 @@ function ClientAccessSection({
         onChanged();
       } catch (error) {
         const message = toErrorMessage(error);
-        if (toast) toast.error(message);
-        else console.warn("[ClientAccess] Failed to delete client", message);
+        toast.error(message);
       } finally {
         setOperation(null);
       }
@@ -380,8 +377,7 @@ function ClientAccessSection({
     (value: boolean) => {
       void onRequireApprovalChange(value).catch((error: unknown) => {
         const message = toErrorMessage(error);
-        if (toast) toast.error(message);
-        else console.warn("[ClientAccess] Failed to update approval setting", message);
+        toast.error(message);
       });
     },
     [onRequireApprovalChange, toast],
@@ -853,12 +849,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   accessClientId: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   accessMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   accessActions: {
     flexDirection: "row",
@@ -894,7 +890,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   hint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
   relayHeader: {
@@ -909,7 +905,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   relayEndpoint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   qrContainer: {
@@ -942,7 +938,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   linkInput: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     outlineStyle: "none",

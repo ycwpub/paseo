@@ -116,18 +116,22 @@ describe("feature_paseo integration parity", () => {
 
   test("keeps all four Explorer feature entries registered", () => {
     const manifest = runtimeSource("../panels/panel-manifest.ts");
-    const registry = runtimeSource("../panels/register-panels.ts");
-    const catalog = runtimeSource("../workspace-tabs/launcher/internal/catalog.ts");
+    const coreRegistry = runtimeSource("../panels/register-panels.ts");
+    const featureRegistry = runtimeSource("../panels/register-feature-panels.ts");
+    const coreCatalog = runtimeSource("../workspace-tabs/launcher/internal/catalog.ts");
+    const featureCatalog = runtimeSource(
+      "../workspace-tabs/launcher/internal/task-summary-catalog.ts",
+    );
     const explorer = runtimeSource("../components/compact-explorer-sidebar.tsx");
 
     for (const kind of ["files", "changes_tree", "task_summary", "pull_request"]) {
       expect(manifest).toContain(`${kind}: {`);
     }
-    expect(registry).toContain("registerPanel(taskSummaryPanelRegistration)");
-    expect(registry).toContain("registerPanel(pullRequestPanelRegistration)");
-    expect(registry).toContain("registerPanel(changesTreePanelRegistration)");
-    expect(catalog).toContain('"taskSummary"');
-    expect(catalog).toContain('"pullRequest"');
+    expect(featureRegistry).toContain("registerPanel(taskSummaryPanelRegistration)");
+    expect(coreRegistry).toContain("registerPanel(pullRequestPanelRegistration)");
+    expect(coreRegistry).toContain("registerPanel(changesTreePanelRegistration)");
+    expect(featureCatalog).toContain('"taskSummary"');
+    expect(coreCatalog).toContain('"pullRequest"');
     expect(explorer).toContain('tab="task-summary"');
   });
 

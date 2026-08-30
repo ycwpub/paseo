@@ -73,7 +73,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     color: theme.colors.accentForeground,
     backgroundColor: theme.colors.accent,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   stageContent: {
     flex: 1,
@@ -82,7 +82,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stageLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   stageDescription: {

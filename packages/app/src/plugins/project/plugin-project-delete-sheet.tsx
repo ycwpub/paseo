@@ -112,7 +112,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   unavailable: {
     color: theme.colors.statusDanger,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
 }));

@@ -222,19 +222,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionTitle: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   description: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   code: {
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     borderRadius: theme.borderRadius.sm,
     backgroundColor: theme.colors.surface2,
   },

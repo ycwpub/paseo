@@ -361,7 +361,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runtimeText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: 2,
   },
   switchGroup: {

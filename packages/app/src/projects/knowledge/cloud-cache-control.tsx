@@ -174,19 +174,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   buttonText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   statusText: {
     flex: 1,
     minWidth: 160,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   errorText: {
     flex: 1,
     minWidth: 160,
     color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   pathRow: {
     width: "100%",
@@ -197,13 +197,13 @@ const styles = StyleSheet.create((theme) => ({
   pathLabel: {
     flexShrink: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   pathText: {
     flex: 1,
     minWidth: 0,
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

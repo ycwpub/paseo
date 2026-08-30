@@ -308,7 +308,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionCount: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   sectionContent: {
     paddingTop: theme.spacing[2],

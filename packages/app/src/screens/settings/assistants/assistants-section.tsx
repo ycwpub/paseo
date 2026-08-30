@@ -861,15 +861,15 @@ const styles = StyleSheet.create((theme) => ({
   },
   resourceGroupHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
     marginTop: theme.spacing[1],
   },
   resourceGroupBadge: {
     color: theme.colors.foregroundMuted,
     backgroundColor: theme.colors.surface3,
     borderRadius: theme.borderRadius.full,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     overflow: "hidden",
@@ -929,15 +929,15 @@ const styles = StyleSheet.create((theme) => ({
   },
   memoryArtifactHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
     marginTop: theme.spacing[1],
   },
   memoryArtifactBadge: {
     color: theme.colors.foregroundMuted,
     backgroundColor: theme.colors.surface3,
     borderRadius: theme.borderRadius.full,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     overflow: "hidden",
@@ -945,13 +945,13 @@ const styles = StyleSheet.create((theme) => ({
   memoryArtifactPath: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   memoryArtifactEmpty: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   memoryPreviewCard: {
     backgroundColor: theme.colors.surface1,
@@ -964,8 +964,8 @@ const styles = StyleSheet.create((theme) => ({
   memoryPreviewText: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.5),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.5),
   },
   memoryArtifactEditor: {
     minHeight: 180,
@@ -994,7 +994,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   detailFileMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   detailPreviewCard: {
     backgroundColor: theme.colors.surface2,

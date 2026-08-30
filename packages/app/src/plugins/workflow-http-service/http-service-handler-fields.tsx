@@ -250,6 +250,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   summaryText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

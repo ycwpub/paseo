@@ -71,11 +71,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   label: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   projectId: {
     color: theme.colors.accent,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   icon: {
     color: theme.colors.foregroundMuted,

@@ -376,7 +376,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   summaryMetaRow: {
     flexDirection: "row",
@@ -385,7 +385,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   summaryMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   metaGrid: {
     flexDirection: "row",
@@ -399,7 +399,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   metaLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   metaValue: {
     color: theme.colors.foreground,

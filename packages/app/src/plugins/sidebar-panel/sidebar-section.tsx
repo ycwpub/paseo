@@ -137,7 +137,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionTitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
   },
   launcherGrid: {
@@ -185,11 +185,11 @@ const styles = StyleSheet.create((theme) => ({
   pluginName: {
     width: "100%",
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
   tooltipText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

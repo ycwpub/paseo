@@ -88,7 +88,7 @@ describe("openProjectDirectly", () => {
     });
 
     expect(result).toEqual({ ok: true, project: projectPayload });
-    expect(session.projects).toEqual([
+    expect(session.projects).toMatchObject([
       {
         serverId: SERVER_ID,
         project: {
@@ -187,7 +187,7 @@ describe("cloneGithubProjectDirectly", () => {
         cloneProtocol: "https",
       },
     ]);
-    expect(session.projects).toEqual([
+    expect(session.projects).toMatchObject([
       {
         serverId: SERVER_ID,
         project: {

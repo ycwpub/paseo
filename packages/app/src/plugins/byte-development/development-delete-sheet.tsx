@@ -160,12 +160,12 @@ const styles = StyleSheet.create((theme) => ({
   warningText: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
   unavailable: {
     color: theme.colors.statusDanger,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
 }));

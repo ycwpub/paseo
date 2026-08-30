@@ -451,7 +451,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   templateId: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderRadius: theme.borderRadius.sm,
@@ -475,7 +475,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   fieldHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   input: {
     color: theme.colors.foreground,

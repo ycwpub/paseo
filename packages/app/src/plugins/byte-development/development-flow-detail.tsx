@@ -588,7 +588,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     color: theme.colors.foregroundMuted,
     backgroundColor: theme.colors.surface3,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   stageIndexHighlighted: {
     color: theme.colors.accentForeground,
@@ -601,7 +601,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   stageLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   stageState: {
     color: theme.colors.foregroundMuted,
@@ -656,12 +656,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   infoLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   infoValue: {
     flex: 1,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "right",
   },
   legacyCard: {
@@ -676,7 +676,7 @@ const styles = StyleSheet.create((theme) => ({
   codeText: {
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
   hint: {

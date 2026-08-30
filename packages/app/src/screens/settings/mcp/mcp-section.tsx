@@ -525,7 +525,7 @@ const styles = StyleSheet.create((theme) => ({
   jsonInput: {
     minHeight: 260,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   actionsRow: {
     flexDirection: "row",
@@ -555,7 +555,7 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   statusBadgeMuted: {
     opacity: 0.7,
@@ -563,13 +563,13 @@ const styles = StyleSheet.create((theme) => ({
   monoHint: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
     marginTop: theme.spacing[1],
   },
   toolsEmpty: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[2],
   },
   toolsList: {
@@ -588,7 +588,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   toolPillText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   sectionMessage: {
     color: theme.colors.foregroundMuted,

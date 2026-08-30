@@ -29,7 +29,10 @@ import {
   getTerminalProfileIcon,
   resolveTerminalProfiles,
 } from "@getpaseo/protocol/terminal-profiles";
-import { getBuiltInLaunchOrder, type BuiltInLaunchItemId } from "./internal/catalog";
+import {
+  getBuiltInLaunchOrder,
+  type BuiltInLaunchItemId,
+} from "./internal/task-summary-catalog";
 
 export type WorkspaceTabLaunchPurpose = "primary" | "supporting";
 
@@ -42,7 +45,10 @@ export interface NewTabLauncher {
   showPullRequest: boolean;
   showBrowser: boolean;
   terminalDisabled: boolean;
-  launch: (selection: NewTabSelection, destination: WorkspaceTabLaunchDestination) => void;
+  launch: (
+    selection: NewTabSelection,
+    destination: WorkspaceTabLaunchDestination
+  ) => void;
 }
 
 export interface WorkspaceTabLaunchItem {
@@ -72,7 +78,11 @@ export function NewTabLauncherProvider({
   value: NewTabLauncher;
   children: ReactNode;
 }) {
-  return <NewTabLauncherContext.Provider value={value}>{children}</NewTabLauncherContext.Provider>;
+  return (
+    <NewTabLauncherContext.Provider value={value}>
+      {children}
+    </NewTabLauncherContext.Provider>
+  );
 }
 
 const BUILT_IN_SELECTIONS: Record<BuiltInLaunchItemId, NewTabSelection> = {
@@ -86,9 +96,14 @@ const BUILT_IN_SELECTIONS: Record<BuiltInLaunchItemId, NewTabSelection> = {
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
 };
 
-function getLaunchPresentation(kind: WorkspaceTabTarget["kind"]): PanelPresentation {
+function getLaunchPresentation(
+  kind: WorkspaceTabTarget["kind"]
+): PanelPresentation {
   const registration = getPanelRegistration(kind);
-  invariant(registration?.presentation, `Panel ${kind} has no launch presentation`);
+  invariant(
+    registration?.presentation,
+    `Panel ${kind} has no launch presentation`
+  );
   return registration.presentation;
 }
 
@@ -107,10 +122,11 @@ export function useWorkspaceTabLaunchCatalog(input: {
   ensurePanelsRegistered();
 
   const launchSelection = useCallback(
-    (selection: NewTabSelection) => (destination: WorkspaceTabLaunchDestination) => {
-      launcher.launch(selection, destination);
-    },
-    [launcher],
+    (selection: NewTabSelection) =>
+      (destination: WorkspaceTabLaunchDestination) => {
+        launcher.launch(selection, destination);
+      },
+    [launcher]
   );
   const editTerminalProfiles = useCallback(() => {
     router.push(buildSettingsHostSectionRoute(serverId, "terminals") as Href);
@@ -122,7 +138,10 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const filesPresentation = getLaunchPresentation("files");
     const taskSummaryPresentation = getLaunchPresentation("task_summary");
     const pullRequestPresentation = getLaunchPresentation("pull_request");
-    const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
+    const builtIns: Record<
+      BuiltInLaunchItemId,
+      WorkspaceTabLaunchItem & { hidden?: boolean }
+    > = {
       agent: {
         id: "agent",
         label: t("workspace.tabs.fallback.agent"),
@@ -199,7 +218,9 @@ export function useWorkspaceTabLaunchCatalog(input: {
     };
     const tabItems = getBuiltInLaunchOrder(purpose).flatMap((id) => {
       const item = builtIns[id];
-      return item.hidden || !panelSupportsHost(item.panelKind, host) ? [] : [item];
+      return item.hidden || !panelSupportsHost(item.panelKind, host)
+        ? []
+        : [item];
     });
 
     const pluginItems: WorkspaceTabLaunchItem[] = [];
@@ -211,7 +232,12 @@ export function useWorkspaceTabLaunchCatalog(input: {
         if (!pluginPanelSupportsLocation(panel, location)) continue;
         const selection: NewTabSelection = {
           kind: "target",
-          target: { kind: "plugin", pluginId: plugin.id, panelId: panel.id, context: "workspace" },
+          target: {
+            kind: "plugin",
+            pluginId: plugin.id,
+            panelId: panel.id,
+            context: "workspace",
+          },
         };
         pluginItems.push({
           id: `plugin:${plugin.id}:${panel.id}`,
@@ -225,7 +251,9 @@ export function useWorkspaceTabLaunchCatalog(input: {
     }
 
     const profiles = resolveTerminalProfiles(config?.terminalProfiles);
-    const groups: WorkspaceTabLaunchGroup[] = [{ id: "tabs", label: null, items: tabItems }];
+    const groups: WorkspaceTabLaunchGroup[] = [
+      { id: "tabs", label: null, items: tabItems },
+    ];
     if (pluginItems.length > 0) {
       groups.push({ id: "plugin-panels", label: null, items: pluginItems });
     }
@@ -262,4 +290,4 @@ export function useWorkspaceTabLaunchCatalog(input: {
   ]);
 }
 
-export { getBuiltInLaunchOrder } from "./internal/catalog";
+export { getBuiltInLaunchOrder } from "./internal/task-summary-catalog";

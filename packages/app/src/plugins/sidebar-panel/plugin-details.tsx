@@ -76,7 +76,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   metadata: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   resourceText: {
     color: theme.colors.foreground,
@@ -85,7 +85,7 @@ const styles = StyleSheet.create((theme) => ({
   pathText: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   hint: {
     color: theme.colors.foregroundMuted,
@@ -93,6 +93,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   errorText: {
     color: theme.colors.destructive,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

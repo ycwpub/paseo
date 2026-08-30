@@ -198,7 +198,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   muted: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
   warning: {
@@ -229,7 +229,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   metadataText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   codeBlock: {
     maxHeight: 260,
@@ -240,7 +240,7 @@ const styles = StyleSheet.create((theme) => ({
   codeText: {
     color: theme.colors.foreground,
     fontFamily: "monospace",
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
 }));

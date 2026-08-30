@@ -10,7 +10,6 @@ import {
 
 export function useOpenProject(
   serverId: string | null,
-  parentProjectId?: string,
 ): (path: string) => Promise<OpenProjectResult> {
   const normalizedServerId = serverId?.trim() ?? "";
   const client = useHostRuntimeClient(normalizedServerId);
@@ -32,7 +31,6 @@ export function useOpenProject(
         isConnected,
         canAddProject,
         client,
-        parentProjectId,
         upsertProject,
         setHasHydratedWorkspaces,
       });
@@ -44,7 +42,6 @@ export function useOpenProject(
       client,
       isConnected,
       normalizedServerId,
-      parentProjectId,
       setHasHydratedWorkspaces,
     ],
   );
@@ -52,7 +49,6 @@ export function useOpenProject(
 
 export function useCloneGithubProject(
   serverId: string | null,
-  parentProjectId?: string,
 ): (
   repo: string,
   targetDirectory: string,
@@ -71,20 +67,12 @@ export function useCloneGithubProject(
         repo,
         targetDirectory,
         ...(cloneProtocol ? { cloneProtocol } : {}),
-        ...(parentProjectId ? { parentProjectId } : {}),
         isConnected,
         client,
         upsertProject,
         setHasHydratedWorkspaces,
       });
     },
-    [
-      client,
-      isConnected,
-      normalizedServerId,
-      parentProjectId,
-      setHasHydratedWorkspaces,
-      upsertProject,
-    ],
+    [client, isConnected, normalizedServerId, setHasHydratedWorkspaces, upsertProject],
   );
 }

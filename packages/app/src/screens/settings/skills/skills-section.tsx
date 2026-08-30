@@ -475,7 +475,7 @@ const styles = StyleSheet.create((theme) => ({
   contentInput: {
     minHeight: 280,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   actionsRow: {
     flexDirection: "row",
@@ -505,13 +505,13 @@ const styles = StyleSheet.create((theme) => ({
     overflow: "hidden",
     paddingVertical: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   monoHint: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
     marginTop: theme.spacing[1],
   },
   sectionMessage: {

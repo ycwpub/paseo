@@ -533,7 +533,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   listenerTabMeta: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   statusDot: {
     width: 8,

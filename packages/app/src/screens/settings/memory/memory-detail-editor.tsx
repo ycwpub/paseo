@@ -257,19 +257,19 @@ const styles = StyleSheet.create((theme) => ({
   },
   provenance: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   paths: {
     gap: theme.spacing[1],
   },
   pathLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   path: {
     color: theme.colors.foregroundExtraMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   actions: {
     flexDirection: "row",

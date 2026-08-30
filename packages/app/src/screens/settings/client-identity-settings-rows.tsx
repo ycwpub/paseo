@@ -124,7 +124,7 @@ const styles = StyleSheet.create((theme) => ({
   clientIdentityId: {
     maxWidth: "55%",
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
     textAlign: "right",
   },

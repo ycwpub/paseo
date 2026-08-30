@@ -98,6 +98,7 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
+import { completeQueuedSubmit } from "@/composer/queued-submit-lifecycle";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -1522,15 +1523,22 @@ function ComposerContentImpl({
         attachments: queuedAttachments,
         queue: queueWriter,
       });
-      if (!result.queued) return;
-
-      replaceUserInput("");
-      setSelectedAttachments([]);
-      resetSuppression();
+      if (
+        !completeQueuedSubmit({
+          queued: Boolean(result.queued),
+          clearDraft,
+          clearInput: () => replaceUserInput(""),
+          clearAttachments: () => setSelectedAttachments([]),
+          resetSuppression,
+        })
+      ) {
+        return;
+      }
       clearSentAttachments(queuedAttachments);
     },
     [
       agentId,
+      clearDraft,
       clearSentAttachments,
       queueWriter,
       resetSuppression,

@@ -951,7 +951,7 @@ const styles = StyleSheet.create((theme) => ({
   hint: {
     marginTop: theme.spacing[1],
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   headerMeta: {
     alignItems: { xs: "flex-start", md: "flex-end" },
@@ -959,11 +959,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   direction: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   count: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   legend: {
@@ -1019,7 +1019,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   legendText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   scrollContent: {
     minWidth: "100%",
@@ -1229,7 +1229,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   boundaryText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   inputPort: {
@@ -1258,6 +1258,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   footerHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
 }));

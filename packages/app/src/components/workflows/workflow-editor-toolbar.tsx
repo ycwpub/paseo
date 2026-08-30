@@ -140,8 +140,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     flexShrink: 1,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.45),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
   },
   pathValue: {
     fontFamily: theme.fontFamily.mono,

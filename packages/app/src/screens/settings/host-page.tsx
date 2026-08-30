@@ -2233,7 +2233,7 @@ const styles = StyleSheet.create((theme) => ({
   identityId: {
     maxWidth: "55%",
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
     textAlign: "right",
   },
@@ -2309,7 +2309,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   relayColumnHeader: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   relayTableRow: {

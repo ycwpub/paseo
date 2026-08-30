@@ -1114,7 +1114,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   countText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   flowItems: {
     gap: theme.spacing[2],
@@ -1142,7 +1142,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   flowProject: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   flowMeta: {
     flexDirection: "row",
@@ -1152,7 +1152,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   flowTime: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   main: {
     flex: 1,

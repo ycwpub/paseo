@@ -89,8 +89,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   value: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.45),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
     fontFamily: "monospace",
   },
   expandButton: {

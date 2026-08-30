@@ -2325,7 +2325,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   branchDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   emptyBranch: {
     minHeight: 52,
@@ -2338,7 +2338,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyBranchText: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   addNodeBar: {
     minHeight: 44,
@@ -2367,7 +2367,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   addNodeLabelText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   addNodeActions: {
     flex: 1,
@@ -2442,11 +2442,11 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   stepId: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   stepHeaderActions: {
@@ -2512,8 +2512,8 @@ const styles = StyleSheet.create((theme) => ({
   codeInput: {
     minHeight: 128,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.5),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.5),
   },
   promptInput: {
     minHeight: 112,
@@ -2554,14 +2554,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   variableExamplesDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   variableExampleCode: {
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     borderRadius: theme.borderRadius.sm,
     backgroundColor: theme.colors.surface2,
   },
@@ -2578,23 +2578,23 @@ const styles = StyleSheet.create((theme) => ({
     width: 150,
     color: theme.colors.accent,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   variableExampleArrow: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   variableExampleResult: {
     minWidth: 84,
     color: theme.colors.foreground,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   variableExampleDescription: {
     flex: 1,
     minWidth: 180,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   sectionTitleRow: {
     flexDirection: "row",
@@ -2608,7 +2608,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionDescription: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   variableRow: {
     flexDirection: "row",
@@ -2665,7 +2665,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   branchConditionLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   branchConditionInput: {
     flex: 1,

@@ -264,15 +264,15 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 2,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   description: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   time: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   stateText: {
     color: theme.colors.foregroundMuted,

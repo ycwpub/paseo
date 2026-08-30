@@ -696,7 +696,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 2,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   runtimeFailedBadge: {
     color: theme.colors.destructive,
@@ -723,7 +723,7 @@ const styles = StyleSheet.create((theme) => ({
   pathText: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     flexWrap: "wrap",
   },
   warningText: {

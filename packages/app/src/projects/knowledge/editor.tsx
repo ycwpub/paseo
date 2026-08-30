@@ -404,12 +404,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   pathLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   pathText: {
     color: theme.colors.foregroundExtraMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   emptyText: {
     color: theme.colors.foregroundMuted,

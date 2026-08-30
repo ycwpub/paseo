@@ -543,7 +543,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.full,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
   },
@@ -554,12 +554,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   metaText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   successText: {
     color: theme.colors.statusSuccess,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   rowActions: {

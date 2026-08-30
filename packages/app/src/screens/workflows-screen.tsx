@@ -1710,8 +1710,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   workspace: {
     flex: 1,
@@ -1746,7 +1746,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   listTitle: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   listCount: {
@@ -1755,7 +1755,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
     textAlign: "center",
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.surface3,
   },
@@ -1769,7 +1769,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   listError: {
     color: theme.colors.statusDanger,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
   },
   listEmptyIcon: {
@@ -1832,12 +1832,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   workflowRowDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   workflowRowMeta: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   editorPane: {
     flex: 1,
@@ -1904,7 +1904,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   runCard: {
@@ -1956,18 +1956,18 @@ const styles = StyleSheet.create((theme) => ({
   runId: {
     flex: 1,
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
     textAlign: "right",
   },
   runOutput: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   runError: {
     color: theme.colors.statusDanger,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   selectedNodeRuns: {
     gap: theme.spacing[2],
@@ -1976,7 +1976,7 @@ const styles = StyleSheet.create((theme) => ({
   selectedNodeEmpty: {
     padding: theme.spacing[4],
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     textAlign: "center",
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
@@ -2022,7 +2022,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runNodeName: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   runNodeIdentity: {
     minWidth: 0,
@@ -2031,7 +2031,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runNodeId: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
   },
   runNodeIcon: {
@@ -2039,7 +2039,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runNodeStatus: {
     color: theme.colors.statusSuccess,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   runNodeStatusFailed: {
     color: theme.colors.statusDanger,
@@ -2056,7 +2056,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runNodeMeta: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   runNodeDetails: {
     gap: theme.spacing[2],
@@ -2071,20 +2071,20 @@ const styles = StyleSheet.create((theme) => ({
   },
   runValueLabel: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   runValueText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   runValueMono: {
     fontFamily: theme.fontFamily.mono,
   },
   runPayloadValue: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.45),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.45),
     fontFamily: theme.fontFamily.mono,
     padding: theme.spacing[2],
     borderRadius: theme.borderRadius.sm,
@@ -2101,7 +2101,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   runProcessLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
     fontFamily: theme.fontFamily.mono,
   },

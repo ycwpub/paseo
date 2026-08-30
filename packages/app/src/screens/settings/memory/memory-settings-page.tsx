@@ -175,7 +175,7 @@ const styles = StyleSheet.create((theme) => ({
   path: {
     color: theme.colors.foregroundMuted,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   summaryInput: {

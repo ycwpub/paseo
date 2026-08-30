@@ -1777,12 +1777,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   projectId: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: Platform.select({ web: "monospace", default: undefined }),
   },
   projectPath: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: Platform.select({ web: "monospace", default: undefined }),
     flexShrink: 1,
   },
@@ -1829,7 +1829,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginBottom: theme.spacing[2],
   },
   directoryModeRow: {

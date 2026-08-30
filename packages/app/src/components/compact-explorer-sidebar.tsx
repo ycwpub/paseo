@@ -94,7 +94,10 @@ export function CompactExplorerSidebar({
     workspaceRoot,
     isGit,
   });
-  const usePanelKeyboardPadding = shouldUseCompactExplorerKeyboardPadding({ isGit, explorerTab });
+  const usePanelKeyboardPadding = shouldUseCompactExplorerKeyboardPadding({
+    isGit,
+    explorerTab: explorerTab === "task-summary" ? "files" : explorerTab,
+  });
   const { style: mobileKeyboardInsetStyle } = useKeyboardShiftStyle({
     mode: "padding",
     enabled: usePanelKeyboardPadding,

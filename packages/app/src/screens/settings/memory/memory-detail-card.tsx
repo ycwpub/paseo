@@ -286,7 +286,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   expandHint: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   editor: {
@@ -316,11 +316,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   provenance: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   path: {
     color: theme.colors.foregroundExtraMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   actions: {
     flexDirection: "row",

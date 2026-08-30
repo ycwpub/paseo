@@ -142,15 +142,15 @@ const styles = StyleSheet.create((theme) => ({
   description: {
     marginTop: theme.spacing[1],
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.4),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.4),
   },
   jsonInput: {
     minHeight: 110,
     fontFamily: "monospace",
   },
   error: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.destructive,
   },
 }));

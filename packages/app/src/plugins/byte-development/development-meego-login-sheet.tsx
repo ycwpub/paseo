@@ -174,7 +174,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   linkText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     lineHeight: 18,
   },
   hint: {

@@ -178,7 +178,7 @@ export function DesktopPermissionsSection() {
 
 const styles = StyleSheet.create((theme) => ({
   errorText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     paddingHorizontal: theme.spacing[4],
     paddingBottom: theme.spacing[2],
   },

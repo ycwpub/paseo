@@ -155,8 +155,8 @@ const styles = StyleSheet.create((theme) => ({
   codeInput: {
     minHeight: 180,
     fontFamily: theme.fontFamily.mono,
-    fontSize: theme.fontSize.xs,
-    lineHeight: Math.round(theme.fontSize.xs * 1.5),
+    fontSize: theme.fontSize.sm,
+    lineHeight: Math.round(theme.fontSize.sm * 1.5),
   },
   threeColumn: {
     flexDirection: "row",

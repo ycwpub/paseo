@@ -490,7 +490,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   count: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   group: {
     gap: theme.spacing[2],
@@ -541,7 +541,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   fieldLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
   fieldValue: {
@@ -563,7 +563,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   historyHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   deleteButton: {
     alignSelf: "flex-end",

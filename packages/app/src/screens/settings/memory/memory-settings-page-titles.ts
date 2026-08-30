@@ -1,4 +1,4 @@
-import type { HostMemorySettingsPage } from "@/utils/host-routes";
+import type { HostMemorySettingsPage } from "@/utils/host-feature-routes";
 
 export const MEMORY_SETTINGS_PAGE_TITLES: Record<HostMemorySettingsPage, string> = {
   policies: "记忆规范",

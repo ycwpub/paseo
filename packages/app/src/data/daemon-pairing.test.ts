@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { relayPairingOffersEqual } from "./daemon-pairing";
+import { relayPairingOffersEqual } from "./daemon-pairing-model";
 
 const offer = {
   endpoint: "10.37.55.187:6769",

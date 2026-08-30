@@ -1,7 +1,8 @@
-import type { ActivePromptSource, ChatOutlinePrompt } from "./model";
+import type { LoadedChatOutlinePrompt } from "./loaded-prompt-model";
+import type { ActivePromptSource } from "./model";
 
 export interface ChatOutlineRailProps {
-  prompts: ChatOutlinePrompt[];
+  prompts: LoadedChatOutlinePrompt[];
   activePrompt: ActivePromptSource;
   model: string | null;
   onJumpToPrompt: (seq: number) => void;

@@ -69,7 +69,7 @@ import {
   type ProjectDirectoryKey,
   type ProjectScriptDraft,
   type ProjectVariableDraft,
-} from "@/utils/project-config-form";
+} from "@/projects/config/project-config-editor-model";
 import {
   getProjectHostEntry,
   getProjectSummaryForHostProject,

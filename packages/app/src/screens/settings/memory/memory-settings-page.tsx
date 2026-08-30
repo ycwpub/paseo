@@ -9,7 +9,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import type { HostMemorySettingsPage } from "@/utils/host-routes";
+import type { HostMemorySettingsPage } from "@/utils/host-feature-routes";
 import { MemoryHostSyncCard } from "./memory-host-sync-card";
 import { MemoryScopePoliciesSection } from "./memory-scope-policies-section";
 import { MemoryTransferCard } from "./memory-transfer-card";

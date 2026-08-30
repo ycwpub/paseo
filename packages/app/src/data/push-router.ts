@@ -6,8 +6,9 @@ import type {
 } from "@getpaseo/protocol/messages";
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
-import { daemonConfigQueryKey, normalizeMutableDaemonConfig } from "@/data/daemon-config";
-import { daemonPairingQueryKey } from "@/data/daemon-pairing";
+import { daemonConfigQueryKey } from "@/data/daemon-config";
+import { normalizeMutableDaemonConfig } from "@/data/daemon-config-normalization";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing-model";
 import { larkChannelQueryKey } from "@/data/lark-channel";
 import { teamsQueryKey } from "@/data/team";
 import { mcpServersQueryKey } from "@/data/mcp";

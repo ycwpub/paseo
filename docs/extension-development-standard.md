@@ -75,6 +75,12 @@ removed once the branch reaches the 100-file target.
   registrations, or adapters. They must not become a second home for branch business logic.
 - Move an existing block into a new module before extending it when the block belongs to a
   `feature_paseo` capability.
+- Put branch-owned regression cases in a sibling
+  `*.capability-regressions.test.*` / `*.capability-regressions.spec.*` file. Keep an existing main
+  test file unchanged when the main assertions still describe supported compatibility behavior.
+  Tests that intentionally replace obsolete main behavior may remain in the original file after
+  explicit review; do not weaken production types or keep duplicate suites solely to reduce the
+  file count.
 - Do not split behavior into several commits to bypass the limit: all commits and uncommitted
   changes are measured together against the fixed upstream tree.
 - Do not copy an upstream subsystem into a parallel implementation. Use the main-owned foundations

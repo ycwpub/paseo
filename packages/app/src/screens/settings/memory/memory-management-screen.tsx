@@ -25,13 +25,15 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
+  buildProjectSettingsRoute,
+} from "@/utils/host-routes";
+import {
   buildHostMemoryDetailRoute,
   buildHostMemoryRoute,
   buildProjectMemoryDetailRoute,
   buildProjectMemoryRoute,
-  buildProjectSettingsRoute,
   buildSettingsHostSectionRoute,
-} from "@/utils/host-routes";
+} from "@/utils/host-feature-routes";
 import {
   buildMemoryContentTargetOptions,
   findMemoryOverviewDocument,

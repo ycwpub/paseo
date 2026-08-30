@@ -11,11 +11,11 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient, useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
+import { normalizeHostPort } from "@/utils/daemon-endpoints";
 import {
-  normalizeHostPort,
   normalizeLocalRelayPairingBaseUrl,
   normalizeLocalRelayWebAppPath,
-} from "@/utils/daemon-endpoints";
+} from "@/utils/relay-daemon-endpoints";
 import { LocalRelayManagement } from "./host-relay-management";
 import { buildRelayHostLabelMap, buildRelayServerDeviceTypeMap } from "./relay-connection-display";
 import { SettingsSection } from "./settings-section";

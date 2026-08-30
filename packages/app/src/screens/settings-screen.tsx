@@ -149,11 +149,13 @@ import {
   useEnableBuiltInDaemonOption,
 } from "@/desktop/hooks/use-enable-built-in-daemon-option";
 import {
-  buildSettingsHostSectionRoute,
   buildSettingsSectionRoute,
-  type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
+import {
+  buildSettingsHostSectionRoute,
+  type HostSectionSlug,
+} from "@/utils/host-feature-routes";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
 import { isNative, isWeb } from "@/constants/platform";

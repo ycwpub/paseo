@@ -11,7 +11,7 @@ import {
   type SelectFieldOption,
 } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
-import { formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
+import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { useAssistants } from "@/hooks/use-assistants";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useTeams } from "@/hooks/use-teams";

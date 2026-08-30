@@ -21,11 +21,11 @@ import {
 import { defaultHostAppearance, type HostBadgeDisplay, type HostColor } from "@/hosts/appearance";
 import {
   buildDaemonWebSocketUrl,
-  buildRelayWebSocketUrl,
   decodeOfferFragmentPayload,
   normalizeHostPort,
   shouldUseTlsForDefaultHostedRelay,
 } from "@/utils/daemon-endpoints";
+import { buildRelayWebSocketUrl } from "@/utils/relay-daemon-endpoints";
 import { resolveAppVersion } from "@/utils/app-version";
 import { ConnectionOfferSchema, type ConnectionOffer } from "@getpaseo/protocol/connection-offer";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";

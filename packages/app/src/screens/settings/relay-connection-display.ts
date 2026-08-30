@@ -1,6 +1,6 @@
 import type { HostProfile } from "@/types/host-connection";
 import type { DaemonServerInfo } from "@/stores/session-store";
-import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
+import type { RelayDeviceType } from "@getpaseo/protocol/relay-endpoint-config";
 
 export function formatRelayPeerEndpoint(
   remoteAddress: string | null,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ToastApi, ToastShowOptions } from "@/components/toast-host";
 import type { AgentTimelineCursorState } from "@/stores/session-store";
-import { TIMELINE_OLDER_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
+import { TIMELINE_OLDER_FETCH_PAGE_SIZE } from "@/timeline/history-fetch-policy";
 import {
   loadOlderAgentHistory,
   type LoadOlderAgentHistoryClient,

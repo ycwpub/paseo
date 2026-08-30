@@ -273,6 +273,7 @@ const styles = StyleSheet.create((theme) => ({
   cardList: {
     width: "100%",
     gap: theme.spacing[3],
+    paddingBottom: theme.spacing[6],
   },
   card: {
     width: "100%",

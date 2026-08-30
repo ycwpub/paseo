@@ -5,7 +5,7 @@ import {
   parseRelayEndpointInput,
   shouldUseTlsForDefaultHostedRelay,
   type RelayEndpointConfig,
-} from "@getpaseo/protocol/daemon-endpoints";
+} from "@getpaseo/protocol/relay-endpoint-config";
 
 import type { PersistedConfig } from "../persisted-config.js";
 

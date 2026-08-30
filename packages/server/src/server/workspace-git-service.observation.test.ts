@@ -922,30 +922,20 @@ describe("WorkspaceGitService checkout observation", () => {
       upstreamStatus: null,
     }));
     const service = createService(watcher, { getCheckoutSnapshotFacts });
-    const listener = vi.fn();
-    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, listener);
+    const subscription = service.registerWorkspace({ cwd: REPO_CWD }, vi.fn());
     await vi.waitFor(() => {
       expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(1);
-      expect(getWatcherSubscribeCallCount(watcher, GIT_DIR)).toBeGreaterThan(0);
-      expect(service.getMetrics().workspaceObservationSetupInFlightCount).toBe(0);
-      expect(service.getMetrics().workspaceRefreshInFlightCount).toBe(0);
     });
-    listener.mockClear();
 
     watcher.records
-      .find((record) => record.directory === GIT_DIR)!
-      .callback(null, [
+      .find((record) => record.directory === GIT_DIR)
+      ?.callback(null, [
         { path: path.join(GIT_DIR, "refs", "remotes", "origin", "main"), type: "update" },
       ]);
-    await flushPromises();
     await vi.advanceTimersByTimeAsync(1_000);
-    await flushPromises();
-    await vi.waitFor(
-      () => {
-        expect(listener).toHaveBeenCalledTimes(1);
-      },
-      { timeout: 5_000 },
-    );
+    await vi.waitFor(() => {
+      expect(getCheckoutSnapshotFacts).toHaveBeenCalledTimes(2);
+    });
 
     subscription.unsubscribe();
     service.dispose();

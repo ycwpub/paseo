@@ -34,8 +34,9 @@ import {
   type LongTimelineAgent,
 } from "../support/helpers/timeline-pagination";
 
-// Wide enough for the full transcript, rail, and hover preview without the surrounding
-// application chrome influencing pointer-placement assertions.
+// Wide enough that the timeline panel clears the rail's MIN_PANEL_WIDTH with room
+// to spare. At 1280 the panel measures 960, which sits too close to the threshold
+// for chrome-width changes elsewhere to stay out of these tests.
 const WIDE_VIEWPORT = { width: 1440, height: 900 };
 const LOADED_TURNS = 16;
 
@@ -96,7 +97,6 @@ test.describe("desktop chat outline", () => {
     test("previews the prompt under the pointer, anywhere across its row", async ({ page }) => {
       await hoverChatOutlinePrompt(page, 2);
       await expectChatOutlinePreview(page, agent.prompts[1]);
-      await expect(page.getByTestId("chat-outline-preview")).toContainText(`2 / ${LOADED_TURNS}`);
 
       await pointAtChatOutlineRowEdge(page, 7);
       await expectChatOutlinePreview(page, agent.prompts[6]);

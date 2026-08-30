@@ -73,10 +73,10 @@ import {
   formatRelayEndpointInput,
   normalizeRelayPairingBaseUrl,
   parseRelayEndpointInput,
-} from "@/utils/daemon-endpoints";
+} from "@/utils/relay-daemon-endpoints";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
-import { buildInstructionTemplatesSettingsRoute } from "@/utils/host-routes";
+import { buildInstructionTemplatesSettingsRoute } from "@/utils/host-feature-routes";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
 import { formatLatency } from "@/utils/latency";
 import { ICON_SIZE } from "@/styles/theme";

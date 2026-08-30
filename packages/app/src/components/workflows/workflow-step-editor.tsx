@@ -49,7 +49,7 @@ import { WorkflowNodeEnvironmentField } from "@/components/workflows/workflow-no
 import { WorkflowPythonStepFields } from "@/components/workflows/workflow-python-step-fields";
 import { WorkflowStepHelp } from "@/components/workflows/workflow-step-help";
 import { WorkflowTextInput } from "@/components/workflows/workflow-text-input";
-import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
+import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { resolveTeamAssistantIds, resolveTeamLeader } from "@/teams/team-members";
 import {
   applyInstructionTemplateToAgentSystemPrompt,

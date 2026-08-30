@@ -9,7 +9,7 @@ import { SettingsGroup } from "@/screens/settings/settings-group";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useHostFeature } from "@/runtime/host-features";
 import { settingsStyles } from "@/styles/settings";
-import { buildProjectMemoryRoute } from "@/utils/host-routes";
+import { buildProjectMemoryRoute } from "@/utils/host-feature-routes";
 import { memoryDetailHasScope } from "./memory-multi-scope";
 
 export function ProjectMemoryCard({

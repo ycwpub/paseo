@@ -6,7 +6,7 @@ import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowled
 import { MemoryHostSyncCard } from "@/screens/settings/memory/memory-host-sync-card";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
-import type { HostResourceSyncPage } from "@/utils/host-routes";
+import type { HostResourceSyncPage } from "@/utils/host-feature-routes";
 import { HostResourceSyncCard } from "./host-resource-sync-card";
 
 function MemoryResourceSyncPage({ serverId }: { serverId: string }) {

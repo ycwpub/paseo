@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
-import { normalizeMutableDaemonConfig } from "@/data/daemon-config";
+import { normalizeMutableDaemonConfig } from "@/data/daemon-config-normalization";
 
 const daemonConfig: MutableDaemonConfig = {
   mcp: { injectIntoAgents: true },

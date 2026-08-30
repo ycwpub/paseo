@@ -8,7 +8,7 @@ import {
   buildHostMemoryRoute,
   buildHostMemorySettingsPageRoute,
   type HostMemorySettingsPage,
-} from "@/utils/host-routes";
+} from "@/utils/host-feature-routes";
 
 interface MemorySettingsEntry {
   id: "content" | HostMemorySettingsPage;

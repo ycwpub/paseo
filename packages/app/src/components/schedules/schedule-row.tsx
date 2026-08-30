@@ -16,10 +16,10 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { settingsStyles } from "@/styles/settings";
 import type { Theme } from "@/styles/theme";
 import type { ScheduleDerivedState } from "@/schedules/schedule-derivation";
+import { isRunnableSchedule } from "@/schedules/runnable-schedule";
 import {
   formatCadence,
   formatNextRun,
-  isRunnableSchedule,
   resolveScheduleTitle,
   scheduleProductName,
 } from "@/utils/schedule-format";

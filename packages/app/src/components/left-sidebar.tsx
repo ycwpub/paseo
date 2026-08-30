@@ -74,8 +74,8 @@ import {
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsRoute,
-  buildWorkflowsRoute,
 } from "@/utils/host-routes";
+import { buildWorkflowsRoute } from "@/utils/host-feature-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";

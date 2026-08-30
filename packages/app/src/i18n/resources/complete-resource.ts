@@ -39,10 +39,26 @@ export function completeTranslationResource<T>(reference: T, overrides: unknown)
   return reference;
 }
 
+export type MergedTranslationResources<TBase, TAdditions> = TBase extends readonly unknown[]
+  ? TAdditions
+  : TBase extends object
+    ? TAdditions extends object
+      ? {
+          [K in keyof TBase | keyof TAdditions]: K extends keyof TAdditions
+            ? K extends keyof TBase
+              ? MergedTranslationResources<TBase[K], TAdditions[K]>
+              : TAdditions[K]
+            : K extends keyof TBase
+              ? TBase[K]
+              : never;
+        }
+      : TAdditions
+    : TAdditions;
+
 export function mergeTranslationResources<TBase, TAdditions>(
   base: TBase,
   additions: TAdditions,
-): TBase & TAdditions {
+): MergedTranslationResources<TBase, TAdditions> {
   if (
     !base ||
     typeof base !== "object" ||
@@ -51,7 +67,7 @@ export function mergeTranslationResources<TBase, TAdditions>(
     typeof additions !== "object" ||
     Array.isArray(additions)
   ) {
-    return additions as TBase & TAdditions;
+    return additions as MergedTranslationResources<TBase, TAdditions>;
   }
 
   const baseRecord = base as Record<string, unknown>;
@@ -69,5 +85,5 @@ export function mergeTranslationResources<TBase, TAdditions>(
         ? mergeTranslationResources(current, value)
         : value;
   }
-  return merged as TBase & TAdditions;
+  return merged as MergedTranslationResources<TBase, TAdditions>;
 }

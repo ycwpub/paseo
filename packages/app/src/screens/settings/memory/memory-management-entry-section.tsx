@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
-import { buildHostMemoryRoute, buildProjectMemoryRoute } from "@/utils/host-routes";
+import { buildHostMemoryRoute, buildProjectMemoryRoute } from "@/utils/host-feature-routes";
 
 export function MemoryManagementEntrySection({
   serverId,

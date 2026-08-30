@@ -7,7 +7,7 @@ import {
   useSessionStore,
   type AgentTimelineCursorState,
 } from "@/stores/session-store";
-import { planTimelineOlderFetch } from "@/timeline/timeline-sync-plan";
+import { planTimelineOlderFetch } from "@/timeline/history-sync-plan";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 
 export interface LoadOlderAgentHistoryClient {

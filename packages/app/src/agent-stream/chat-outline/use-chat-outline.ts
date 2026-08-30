@@ -7,16 +7,18 @@ import { planTimelinePromptJump } from "@/timeline/timeline-sync-plan";
 import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
 import {
-  buildLoadedChatOutlinePrompts,
   createActivePromptPublisher,
-  mergeChatOutlinePrompts,
   resolveActivePromptSeq,
   shouldAcceptPromptIndexEpoch,
   type ActivePromptSource,
-  type ChatOutlinePrompt,
 } from "./model";
+import {
+  buildLoadedChatOutlinePrompts,
+  mergeChatOutlinePrompts,
+  type LoadedChatOutlinePrompt,
+} from "./loaded-prompt-model";
 
-const NO_PROMPTS: ChatOutlinePrompt[] = [];
+const NO_PROMPTS: LoadedChatOutlinePrompt[] = [];
 const NO_STREAM_ITEMS: StreamItem[] = [];
 
 interface PendingPromptJump {
@@ -41,7 +43,7 @@ export interface UseChatOutlineInput {
 }
 
 export interface ChatOutline {
-  prompts: ChatOutlinePrompt[];
+  prompts: LoadedChatOutlinePrompt[];
   activePrompt: ActivePromptSource;
   jumpToPrompt: (seq: number) => void;
   reportReadingPosition: (rowId: string | null) => void;

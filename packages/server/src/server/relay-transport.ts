@@ -1,7 +1,10 @@
 import { WebSocket } from "ws";
 import type pino from "pino";
 import type { KeyPair } from "@getpaseo/relay/e2ee";
-import { buildRelayWebSocketUrl, type RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
+import {
+  buildRelayWebSocketUrl,
+  type RelayDeviceType,
+} from "@getpaseo/protocol/relay-endpoint-config";
 import type { ExternalSocketMetadata } from "./websocket-server.js";
 import {
   wrapDaemonEncryptedWebSocket,

@@ -1,7 +1,8 @@
 import type { Logger } from "pino";
-import { resolveRelayPairingBaseUrl } from "@getpaseo/protocol/daemon-endpoints";
+import { resolveRelayPairingBaseUrl } from "@getpaseo/protocol/relay-endpoint-config";
 
-import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
+import { encodeOfferToFragmentUrl } from "./connection-offer.js";
+import { createMultiRelayConnectionOfferV2 } from "./multi-relay-connection-offer.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { renderPairingQr } from "./pairing-qr.js";
 import { getOrCreateServerId } from "./server-id.js";
@@ -84,7 +85,7 @@ export async function generateLocalPairingOffer(args: {
   }
   const primaryPairingBaseUrl =
     sharedPairingBaseUrls[0] ?? resolveFallbackPairingBaseUrl(relayEndpoints[0]!);
-  const offer = await createConnectionOfferV2({
+  const offer = await createMultiRelayConnectionOfferV2({
     serverId,
     daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
     relays: relayEndpoints.map((relay) => ({
@@ -105,10 +106,10 @@ export async function generateLocalPairingOffer(args: {
       return pairingBaseUrls.map(async (pairingBaseUrl): Promise<LocalRelayPairingOffer> => {
         const endpoint = relay.publicEndpoint ?? relay.endpoint;
         const useTls = relay.publicUseTls ?? relay.useTls;
-        const relayOffer = await createConnectionOfferV2({
+        const relayOffer = await createMultiRelayConnectionOfferV2({
           serverId,
           daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
-          relay: { endpoint, useTls },
+          relays: [{ endpoint, useTls }],
         });
         const relayUrl = encodeOfferToFragmentUrl({
           offer: relayOffer,

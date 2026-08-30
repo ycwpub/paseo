@@ -1,23 +1,25 @@
 import { router, type Href } from "expo-router";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
+  buildOpenProjectRoute,
+  buildProjectSettingsRoute,
+  buildProjectsSettingsRoute,
+  buildSettingsRoute,
+  type SettingsSectionSlug,
+} from "@/utils/host-routes";
+import {
   buildAssistantSettingsRoute,
   buildHostMemoryRoute,
   buildHostResourceSyncRoute,
   buildInstructionTemplatesSettingsRoute,
-  buildOpenProjectRoute,
   buildProjectKnowledgeSettingsRoute,
   buildProjectMemoryRoute,
   buildProjectLarkGroupsSettingsRoute,
-  buildProjectSettingsRoute,
-  buildProjectsSettingsRoute,
   buildSettingsHostSectionRoute,
-  buildSettingsRoute,
   type HostMemorySettingsPage,
   type HostResourceSyncPage,
   type HostSectionSlug,
-  type SettingsSectionSlug,
-} from "@/utils/host-routes";
+} from "@/utils/host-feature-routes";
 
 export type SettingsView =
   | { kind: "root" }

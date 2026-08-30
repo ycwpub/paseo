@@ -1,4 +1,4 @@
-import type { HostResourceSyncPage } from "@/utils/host-routes";
+import type { HostResourceSyncPage } from "@/utils/host-feature-routes";
 
 export interface HostResourceSyncEntry {
   page: HostResourceSyncPage;

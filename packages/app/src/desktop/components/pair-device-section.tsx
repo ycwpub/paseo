@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useFetchQuery } from "@/data/query";
-import { daemonPairingQueryKey } from "@/data/daemon-pairing";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing-model";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";

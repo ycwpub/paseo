@@ -3,8 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
 import { useReplicaQuery } from "@/data/query";
-import { daemonConfigQueryKey, normalizeMutableDaemonConfig } from "@/data/daemon-config";
-import { daemonPairingQueryKey } from "@/data/daemon-pairing";
+import { daemonConfigQueryKey } from "@/data/daemon-config";
+import { normalizeMutableDaemonConfig } from "@/data/daemon-config-normalization";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing-model";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
 interface UseDaemonConfigResult {

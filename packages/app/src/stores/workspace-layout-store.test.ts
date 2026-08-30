@@ -135,9 +135,7 @@ function contentTabs(tabs: WorkspaceTab[]): WorkspaceTab[] {
     (tab) =>
       tab.target.kind !== "new_tab" &&
       tab.target.kind !== "files" &&
-      tab.target.kind !== "changes_tree" &&
-      tab.target.kind !== "task_summary" &&
-      tab.target.kind !== "pull_request",
+      tab.target.kind !== "changes_tree",
   );
 }
 
@@ -147,7 +145,7 @@ function expectGroup(node: SplitNode): Extract<SplitNode, { kind: "group" }> {
 }
 
 describe("workspace-layout-store helpers", () => {
-  it("seeds all four default views in the Explorer sidebar", () => {
+  it("seeds Files and Changes in the default Explorer sidebar", () => {
     const layout = createWorkspaceLayoutWithExplorerSidebar();
     const tabs = collectAllTabs(layout.root);
 
@@ -155,8 +153,6 @@ describe("workspace-layout-store helpers", () => {
       { kind: "new_tab" },
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "task_summary" },
-      { kind: "pull_request" },
     ]);
     expect(findPaneById(layout.root, "explorer")?.focusedTabId).toBe(
       tabs.find((tab) => tab.target.kind === "changes_tree")?.tabId,
@@ -185,8 +181,6 @@ describe("workspace-layout-store helpers", () => {
       { kind: "new_tab" },
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "task_summary" },
-      { kind: "pull_request" },
     ]);
     const restoredNewTab = restoredTabs.find((tab) => tab.target.kind === "new_tab");
     expect(restoredNewTab).toBeTruthy();
@@ -413,8 +407,6 @@ describe("workspace-layout-store version 2 migration", () => {
     expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "task_summary" },
-      { kind: "pull_request" },
     ]);
 
     const sidePane = findPaneById(layout.root, sidePaneId);
@@ -733,7 +725,7 @@ describe("workspace-layout-store actions", () => {
     ).toBe(first);
   });
 
-  it("creates duplicate Pull request instances alongside the Explorer view", () => {
+  it("creates duplicate Pull request instances explicitly", () => {
     const workspaceKey = createWorkspaceKey();
     const store = workspaceLayoutStore.getState();
     const first = store.openTab({ workspaceKey, target: { kind: "pull_request" }, intent: "new" });
@@ -743,7 +735,7 @@ describe("workspace-layout-store actions", () => {
       collectAllTabs(workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root).filter(
         (tab) => tab.target.kind === "pull_request",
       ),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 
   it("preserves same-kind state, clears cross-kind state, and accepts an explicit override", () => {
@@ -1116,8 +1108,6 @@ describe("workspace-layout-store actions", () => {
     expect(explorerPane?.tabIds.map((tabId) => tabsById.get(tabId)?.target)).toEqual([
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "task_summary" },
-      { kind: "pull_request" },
     ]);
     expect(restored.getState().splitSizesByWorkspace).toEqual({});
     await expect(AsyncStorage.getItem("workspace-layout-state")).resolves.not.toBeNull();
@@ -1191,7 +1181,6 @@ describe("workspace-layout-store actions", () => {
       "agent",
       "files",
       "changes_tree",
-      "task_summary",
       "pull_request",
     ]);
     expect(state.explorerSidebarPaneIdByWorkspace[workspaceKey]).toBe(explorerSidebarPaneId);
@@ -1228,14 +1217,7 @@ describe("workspace-layout-store actions", () => {
       const persisted = await AsyncStorage.getItem("workspace-layout-state");
       expect(persisted).not.toBeNull();
       const root = JSON.parse(persisted ?? "{}").state.layoutByWorkspace[workspaceKey].root;
-      expect(collectTabIds(root)).toEqual([
-        first,
-        second,
-        "files",
-        "changes_tree",
-        "task_summary",
-        "pull_request",
-      ]);
+      expect(collectTabIds(root)).toEqual([first, second, "files", "changes_tree"]);
     });
 
     const restored = createWorkspaceLayoutStore(createDeterministicWorkspaceLayoutIds());
@@ -2188,7 +2170,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       hidden: true,
-      tabIds: ["files", "changes_tree", "task_summary", "pull_request"],
+      tabIds: ["files", "changes_tree"],
     });
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
     expect(layout.focusedPaneId).toBe("main");
@@ -2196,7 +2178,7 @@ describe("workspace-layout-store actions", () => {
     store.showExplorerSidebar(workspaceKey);
     layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)).toMatchObject({
-      tabIds: ["files", "changes_tree", "task_summary", "pull_request"],
+      tabIds: ["files", "changes_tree"],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(sizes);
@@ -2280,7 +2262,7 @@ describe("workspace-layout-store actions", () => {
     expect(layout.focusedPaneId).toBe("main");
     expect(findPaneById(layout.root, paneId)).toMatchObject({
       focusedTabId: targetTabId,
-      tabIds: ["files", "changes_tree", "task_summary", "pull_request", targetTabId],
+      tabIds: ["files", "changes_tree", targetTabId],
     });
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
     expect(expectGroup(layout.root).group.sizes).toEqual(group.sizes);
@@ -2832,8 +2814,6 @@ describe("workspace-layout-store actions", () => {
     expect(findPaneById(layout.root, explorerSidebarPaneId)?.tabIds).toEqual([
       "files",
       "changes_tree",
-      "task_summary",
-      "pull_request",
     ]);
   });
 
@@ -2975,8 +2955,6 @@ describe("workspace-layout-store actions", () => {
       },
       { kind: "files" },
       { kind: "changes_tree" },
-      { kind: "task_summary" },
-      { kind: "pull_request" },
     ]);
   });
 
@@ -3151,29 +3129,6 @@ describe("workspace-layout-store actions", () => {
       explorerPaneIdByWorkspace: {},
       sidePaneIdByWorkspace: {},
     });
-  });
-
-  it("keeps an explicitly pinned archived Agent tab while reconciling active agents", () => {
-    const workspaceKey = createWorkspaceKey();
-    const store = workspaceLayoutStore.getState();
-    store.openTabFocused(workspaceKey, { kind: "agent", agentId: "archived-agent" });
-    store.pinAgent(workspaceKey, "archived-agent");
-
-    store.reconcileTabs(workspaceKey, {
-      agentsHydrated: true,
-      terminalsHydrated: true,
-      activeAgentIds: [],
-      autoOpenAgentIds: [],
-      knownAgentIds: ["archived-agent"],
-      standaloneTerminalIds: [],
-    });
-
-    expect(
-      workspaceLayoutStore
-        .getState()
-        .getWorkspaceTabs(workspaceKey)
-        .map((tab) => tab.tabId),
-    ).toEqual(["agent_archived-agent", "files", "changes_tree", "task_summary", "pull_request"]);
   });
 
   it("keeps hidden agent intents in memory per workspace without persisting them", () => {
@@ -3371,88 +3326,6 @@ describe("workspace-layout-store actions", () => {
       },
     ]);
     expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("draft-agent");
-  });
-
-  it("reconcileTabs replaces the focused empty draft with an externally created Agent", () => {
-    const workspaceKey = createWorkspaceKey();
-    const store = workspaceLayoutStore.getState();
-    const draftTabId = store.openTabFocused(workspaceKey, {
-      kind: "draft",
-      draftId: "draft-default",
-    });
-
-    store.reconcileTabs(workspaceKey, {
-      agentsHydrated: true,
-      terminalsHydrated: true,
-      activeAgentIds: ["workflow-agent"],
-      autoOpenAgentIds: ["workflow-agent"],
-      knownAgentIds: ["workflow-agent"],
-      standaloneTerminalIds: [],
-      hasActivePendingDraftCreate: false,
-      replaceableDraftTabId: draftTabId,
-    });
-
-    const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    expect(collectAllTabs(layout.root)).toEqual([
-      {
-        tabId: "agent_workflow-agent",
-        target: { kind: "agent", agentId: "workflow-agent" },
-        createdAt: expect.any(Number),
-      },
-      {
-        tabId: "files",
-        target: { kind: "files" },
-        createdAt: expect.any(Number),
-      },
-      {
-        tabId: "changes_tree",
-        target: { kind: "changes_tree" },
-        createdAt: expect.any(Number),
-      },
-      {
-        tabId: "task_summary",
-        target: { kind: "task_summary" },
-        createdAt: expect.any(Number),
-      },
-      {
-        tabId: "pull_request",
-        target: { kind: "pull_request" },
-        createdAt: expect.any(Number),
-      },
-    ]);
-    expect(findPaneById(layout.root, "main")?.focusedTabId).toBe("agent_workflow-agent");
-  });
-
-  it("reconcileTabs keeps a draft when it is not marked replaceable", () => {
-    const workspaceKey = createWorkspaceKey();
-    const store = workspaceLayoutStore.getState();
-    store.openTabFocused(workspaceKey, {
-      kind: "draft",
-      draftId: "draft-with-input",
-    });
-
-    store.reconcileTabs(workspaceKey, {
-      agentsHydrated: true,
-      terminalsHydrated: true,
-      activeAgentIds: ["workflow-agent"],
-      autoOpenAgentIds: ["workflow-agent"],
-      knownAgentIds: ["workflow-agent"],
-      standaloneTerminalIds: [],
-      hasActivePendingDraftCreate: false,
-      replaceableDraftTabId: null,
-    });
-
-    const tabs = collectAllTabs(
-      workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey].root,
-    );
-    expect(tabs.map((tab) => tab.tabId)).toEqual([
-      "draft-with-input",
-      "agent_workflow-agent",
-      "files",
-      "changes_tree",
-      "task_summary",
-      "pull_request",
-    ]);
   });
 
   it("reconcileTabs does not re-add locally hidden agent tabs", () => {
@@ -4019,7 +3892,7 @@ describe("workspace-layout-store actions", () => {
     let layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     const hiddenPane = findPaneById(layout.root, paneId);
     expect(hiddenPane?.hidden).toBeUndefined();
-    expect(hiddenPane?.tabIds).toHaveLength(3);
+    expect(hiddenPane?.tabIds).toHaveLength(1);
     expect(
       collectAllTabs(layout.root).find((tab) => tab.tabId === hiddenPane?.focusedTabId)?.target,
     ).toEqual({ kind: "changes_tree" });
@@ -4057,12 +3930,7 @@ describe("workspace-layout-store actions", () => {
 
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
-    expect(findPaneById(layout.root, paneId)?.tabIds).toEqual([
-      "changes_tree",
-      "task_summary",
-      "pull_request",
-      "working_diff",
-    ]);
+    expect(findPaneById(layout.root, paneId)?.tabIds).toEqual(["changes_tree", "working_diff"]);
   });
 
   it("closing Files keeps Changes on screen without removing the final ordinary pane", () => {
@@ -4088,7 +3956,7 @@ describe("workspace-layout-store actions", () => {
     expect(collectAllPanes(layout.root).map((pane) => pane.id)).toEqual(["main", paneId]);
     expect(findPaneById(layout.root, "main")?.tabIds).toHaveLength(1);
     const finalPane = findPaneById(layout.root, paneId);
-    expect(finalPane?.tabIds).toHaveLength(3);
+    expect(finalPane?.tabIds).toHaveLength(1);
     expect(
       collectAllTabs(layout.root).find((tab) => tab.tabId === finalPane?.focusedTabId)?.target,
     ).toEqual({ kind: "changes_tree" });
@@ -4181,7 +4049,7 @@ describe("workspace-layout-store actions", () => {
     const layout = workspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
     expect(findPaneContainingTab(layout.root, changesTabId)?.id).toBe("main");
     const sidePane = findPaneById(layout.root, paneId);
-    expect(sidePane?.tabIds).toEqual(["files", "changes_tree", "task_summary", "pull_request"]);
+    expect(sidePane?.tabIds).toEqual(["files", "changes_tree"]);
     expect(findPaneById(layout.root, paneId)?.hidden).toBeUndefined();
   });
   it("keeps the final ordinary pane when Explorer is visible", () => {

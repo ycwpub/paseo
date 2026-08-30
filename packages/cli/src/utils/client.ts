@@ -3,11 +3,11 @@ import { hostname } from "node:os";
 import { loadConfig, resolvePaseoHome } from "@getpaseo/server";
 import {
   buildDaemonWebSocketUrl,
-  buildRelayWebSocketUrl,
   normalizeHostPort,
   parseConnectionUri,
   shouldUseTlsForDefaultHostedRelay,
 } from "@getpaseo/protocol/daemon-endpoints";
+import { buildRelayWebSocketUrl } from "@getpaseo/protocol/relay-endpoint-config";
 import {
   getConnectionOfferRelays,
   parseConnectionOfferFromUrl,

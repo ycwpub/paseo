@@ -15,7 +15,7 @@ import {
   parseRelayEndpointInput,
   resolveRelayPairingBaseUrl,
   type RelayEndpointConfig,
-} from "@getpaseo/protocol/daemon-endpoints";
+} from "@getpaseo/protocol/relay-endpoint-config";
 import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
 import type {
   CommandOptions,

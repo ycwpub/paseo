@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
+import type { RelayDeviceType } from "@getpaseo/protocol/relay-endpoint-config";
 import { getDesktopHost } from "@/desktop/host";
 import { getClientHostnameOverride } from "./client-hostname";
 

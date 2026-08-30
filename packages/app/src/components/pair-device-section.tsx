@@ -11,12 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { useOptionalToast } from "@/contexts/toast-context";
+import { useOptionalToast } from "@/contexts/toast-api-context";
 import {
   daemonPairingQueryKey,
   relayPairingOffersEqual,
   type RelayPairingOfferView,
-} from "@/data/daemon-pairing";
+} from "@/data/daemon-pairing-model";
 import { useFetchQuery } from "@/data/query";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";

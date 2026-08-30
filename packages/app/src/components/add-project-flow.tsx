@@ -56,7 +56,7 @@ import {
   type AddProjectHost,
   type AddProjectPage,
   type GithubRepositoryChoice,
-} from "@/add-project-flow/model";
+} from "@/add-project-flow/directoryless-project-model";
 import {
   buildAddProjectMethods,
   addProjectMethodEmptyText,
@@ -67,7 +67,7 @@ import {
   joinDirectoryPath,
   pathBaseName,
   type AddProjectMethodId,
-} from "@/add-project-flow/options";
+} from "@/add-project-flow/directoryless-project-options";
 import {
   buildProjectPickerOptions,
   type ProjectPickerOption,
@@ -78,9 +78,18 @@ import { getIsElectronRuntime } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { pickDirectory } from "@/desktop/pick-directory";
 import { useFetchQuery } from "@/data/query";
-import { getOpenProjectFailureReason, registerProjectDescriptor } from "@/hooks/open-project";
-import { useIsLocalDaemon, useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { useCloneGithubProject, useOpenProject } from "@/hooks/use-open-project";
+import {
+  getOpenProjectFailureReason,
+  registerProjectDescriptor,
+} from "@/hooks/open-project";
+import {
+  useIsLocalDaemon,
+  useLocalDaemonServerId,
+} from "@/hooks/use-is-local-daemon";
+import {
+  useCloneGithubProject,
+  useOpenProject,
+} from "@/hooks/use-open-project";
 import {
   OverlayLayerProvider,
   useGlobalWebOverlayLayer,
@@ -97,7 +106,10 @@ import { useRecommendedProjectPaths } from "@/stores/session-store-hooks";
 import type { AddProjectFlowRequest } from "@/stores/add-project-flow-store";
 import type { Theme } from "@/styles/theme";
 import { shortenPath } from "@/utils/shorten-path";
-import { buildNewWorkspaceRoute, buildSettingsAddHostRoute } from "@/utils/host-routes";
+import {
+  buildNewWorkspaceRoute,
+  buildSettingsAddHostRoute,
+} from "@/utils/host-routes";
 
 interface AddProjectFlowProps {
   request: AddProjectFlowRequest;
@@ -134,8 +146,12 @@ const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 }));
 
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
-const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const foregroundColorMapping = (theme: Theme) => ({
+  color: theme.colors.foreground,
+});
+const foregroundMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
+});
 
 const lastCloneParentByHost = new Map<string, string>();
 const EMPTY_PATHS: string[] = [];
@@ -156,7 +172,11 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
       {({ hovered, pressed }) => (
         <ThemedArrowLeft
           size={18}
-          uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
+          uniProps={
+            hovered || pressed
+              ? foregroundColorMapping
+              : foregroundMutedColorMapping
+          }
         />
       )}
     </Pressable>
@@ -171,7 +191,10 @@ function methodIcon(method: AddProjectMethodId): FlowRowOption["icon"] {
   return Search;
 }
 
-function directoryOptionSubtitle(option: ProjectPickerOption, shortPath: string): string | null {
+function directoryOptionSubtitle(
+  option: ProjectPickerOption,
+  shortPath: string
+): string | null {
   if (option.kind === "path") return "Open this path";
   if (shortPath === option.path) return null;
   return option.path;
@@ -199,10 +222,12 @@ interface QueryErrorInput {
 }
 
 function queryErrorText(input: QueryErrorInput): string | null {
-  if (input.searchesDirectories && input.directoryFailed) return "Unable to search directories";
+  if (input.searchesDirectories && input.directoryFailed)
+    return "Unable to search directories";
   if (input.githubFailed) return "Unable to search GitHub repositories";
   if (input.githubError) return input.githubError;
-  if (input.githubAvailable === false) return input.githubError ?? "GitHub search is unavailable";
+  if (input.githubAvailable === false)
+    return input.githubError ?? "GitHub search is unavailable";
   return null;
 }
 
@@ -252,7 +277,8 @@ function pagePlaceholder(page: AddProjectInputPage): string {
 }
 
 function pageInput(page: AddProjectInputPage): string {
-  return page.kind === "new-directory-name" || page.kind === "directoryless-project-name"
+  return page.kind === "new-directory-name" ||
+    page.kind === "directoryless-project-name"
     ? page.name
     : page.query;
 }
@@ -261,18 +287,27 @@ function pathTestId(path: string): string {
   return `add-project-flow-path-${encodeURIComponent(path)}`;
 }
 
-function FlowRow({ option, active }: { option: FlowRowOption; active: boolean }) {
+function FlowRow({
+  option,
+  active,
+}: {
+  option: FlowRowOption;
+  active: boolean;
+}) {
   const accessibilityState = useMemo(
     () => ({ disabled: option.disabled === true, selected: active }),
-    [active, option.disabled],
+    [active, option.disabled]
   );
   const rowStyle = useCallback(
-    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+    ({
+      hovered = false,
+      pressed,
+    }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.row,
       (active || hovered || pressed) && styles.rowActive,
       option.disabled && styles.disabled,
     ],
-    [active, option.disabled],
+    [active, option.disabled]
   );
   return (
     <Pressable
@@ -315,10 +350,10 @@ function FlowHint({ keys, action }: { keys: string[]; action: string }) {
 function setPageStatus(
   state: AddProjectFlowState,
   kind: AddProjectPage["kind"],
-  input: { isSubmitting?: boolean; error?: string | null },
+  input: { isSubmitting?: boolean; error?: string | null }
 ): AddProjectFlowState {
   return updateCurrentAddProjectPage(state, (page) =>
-    page.kind === kind ? { ...page, ...input } : page,
+    page.kind === kind ? { ...page, ...input } : page
   );
 }
 
@@ -330,14 +365,26 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const connectionStatuses = useHostRuntimeConnectionStatuses(hostIds);
   const projectAddByHost = useHostFeatureMap(hostIds, "projectAdd");
   // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
-  const stableProjectIdentityByHost = useHostFeatureMap(hostIds, "stableProjectIdentity");
+  const stableProjectIdentityByHost = useHostFeatureMap(
+    hostIds,
+    "stableProjectIdentity"
+  );
   // COMPAT(projectGithubClone): added in v0.1.108, remove gate after 2027-01-15.
   const githubCloneByHost = useHostFeatureMap(hostIds, "projectGithubClone");
   // COMPAT(workspaceGithubRepositorySearch): added in v0.1.108, remove gate after 2027-01-15.
-  const githubSearchByHost = useHostFeatureMap(hostIds, "workspaceGithubRepositorySearch");
+  const githubSearchByHost = useHostFeatureMap(
+    hostIds,
+    "workspaceGithubRepositorySearch"
+  );
   // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
-  const createDirectoryByHost = useHostFeatureMap(hostIds, "projectCreateDirectory");
-  const createDirectorylessProjectByHost = useHostFeatureMap(hostIds, "projectCreateDirectoryless");
+  const createDirectoryByHost = useHostFeatureMap(
+    hostIds,
+    "projectCreateDirectory"
+  );
+  const createDirectorylessProjectByHost = useHostFeatureMap(
+    hostIds,
+    "projectCreateDirectoryless"
+  );
   const localServerId = useLocalDaemonServerId();
   const availableHosts = useMemo<AddProjectHost[]>(
     () =>
@@ -351,10 +398,16 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             serverId: host.serverId,
             label: host.label,
             canAddProject,
-            canBrowse: canAddProject && getIsElectronRuntime() && localServerId === host.serverId,
-            canCloneGithubRepositories: githubCloneByHost.get(host.serverId) === true,
-            canSearchGithubRepositories: githubSearchByHost.get(host.serverId) === true,
-            canCreateDirectory: createDirectoryByHost.get(host.serverId) === true,
+            canBrowse:
+              canAddProject &&
+              getIsElectronRuntime() &&
+              localServerId === host.serverId,
+            canCloneGithubRepositories:
+              githubCloneByHost.get(host.serverId) === true,
+            canSearchGithubRepositories:
+              githubSearchByHost.get(host.serverId) === true,
+            canCreateDirectory:
+              createDirectoryByHost.get(host.serverId) === true,
             canCreateDirectorylessProject:
               createDirectorylessProjectByHost.get(host.serverId) === true,
           },
@@ -370,27 +423,36 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       localServerId,
       projectAddByHost,
       stableProjectIdentityByHost,
-    ],
+    ]
   );
   const [state, setState] = useState(() =>
     openAddProjectFlow({
       hosts: availableHosts,
-      ...(request.preferredHostId ? { preferredHostId: request.preferredHostId } : {}),
-      ...(request.initialDirectorylessProjectName
-        ? { initialDirectorylessProjectName: request.initialDirectorylessProjectName }
+      ...(request.preferredHostId
+        ? { preferredHostId: request.preferredHostId }
         : {}),
-    }),
+      ...(request.initialDirectorylessProjectName
+        ? {
+            initialDirectorylessProjectName:
+              request.initialDirectorylessProjectName,
+          }
+        : {}),
+    })
   );
   const page = currentAddProjectPage(state);
   const hostId = pageHostId(page);
-  const host = hostId ? state.hosts.find((candidate) => candidate.serverId === hostId) : null;
+  const host = hostId
+    ? state.hosts.find((candidate) => candidate.serverId === hostId)
+    : null;
   const client = useHostRuntimeClient(hostId ?? "");
   const isLocalDaemon = useIsLocalDaemon(hostId ?? "");
   const recommendedPaths = useRecommendedProjectPaths(hostId);
   const openProject = useOpenProject(hostId);
   const cloneGithubProject = useCloneGithubProject(hostId);
   const upsertProject = useSessionStore((store) => store.upsertProject);
-  const setHasHydratedWorkspaces = useSessionStore((store) => store.setHasHydratedWorkspaces);
+  const setHasHydratedWorkspaces = useSessionStore(
+    (store) => store.setHasHydratedWorkspaces
+  );
   const inputRef = useRef<EditingTextInputHandle>(null);
   const submissionInFlightRef = useRef(false);
   const browseInFlightRef = useRef(false);
@@ -400,7 +462,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     page.kind === "method"
       ? ""
       : page.query;
-  const pageInputValueRef = useRef(page.kind === "method" ? "" : pageInput(page));
+  const pageInputValueRef = useRef(
+    page.kind === "method" ? "" : pageInput(page)
+  );
   pageInputValueRef.current = page.kind === "method" ? "" : pageInput(page);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
@@ -410,10 +474,14 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         current,
         availableHosts,
         request.preferredHostId,
-        request.initialDirectorylessProjectName,
-      ),
+        request.initialDirectorylessProjectName
+      )
     );
-  }, [availableHosts, request.initialDirectorylessProjectName, request.preferredHostId]);
+  }, [
+    availableHosts,
+    request.initialDirectorylessProjectName,
+    request.preferredHostId,
+  ]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -443,8 +511,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       return {
         query: debouncedQuery,
         paths:
-          payload.entries?.flatMap((entry) => (entry.kind === "directory" ? [entry.path] : [])) ??
-          [],
+          payload.entries?.flatMap((entry) =>
+            entry.kind === "directory" ? [entry.path] : []
+          ) ?? [],
       };
     },
     enabled: Boolean(client && searchesDirectories),
@@ -456,10 +525,17 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     queryKey: ["add-project-flow-github", hostId, debouncedQuery],
     queryFn: async () => {
       if (!client) throw new Error("Host is unavailable");
-      const payload = await client.searchGithubRepositories({ query: debouncedQuery, limit: 30 });
+      const payload = await client.searchGithubRepositories({
+        query: debouncedQuery,
+        limit: 30,
+      });
       return { query: debouncedQuery, payload };
     },
-    enabled: Boolean(client && page.kind === "github-search" && host?.canSearchGithubRepositories),
+    enabled: Boolean(
+      client &&
+        page.kind === "github-search" &&
+        host?.canSearchGithubRepositories
+    ),
     dataShape: "value",
     retry: false,
     staleTimeMs: 15_000,
@@ -483,10 +559,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           projectId: project.projectId,
           sourceDirectory: project.projectRootPath,
           displayName: project.projectDisplayName,
-        }),
+        })
       );
     },
-    [onClose],
+    [onClose]
   );
 
   const openAddedProject = useCallback(
@@ -494,7 +570,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (!hostId || submissionInFlightRef.current) return;
       submissionInFlightRef.current = true;
       setState((current) =>
-        setPageStatus(current, sourceKind, { isSubmitting: true, error: null }),
+        setPageStatus(current, sourceKind, { isSubmitting: true, error: null })
       );
       try {
         const result = await openProject(path);
@@ -504,22 +580,27 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         }
         const reason = getOpenProjectFailureReason(result);
         const message =
-          reason === "directory_not_found" ? "Directory not found" : "Unable to add project";
+          reason === "directory_not_found"
+            ? "Directory not found"
+            : "Unable to add project";
         setState((current) =>
-          setPageStatus(current, sourceKind, { isSubmitting: false, error: message }),
+          setPageStatus(current, sourceKind, {
+            isSubmitting: false,
+            error: message,
+          })
         );
       } catch {
         setState((current) =>
           setPageStatus(current, sourceKind, {
             isSubmitting: false,
             error: "Unable to add project",
-          }),
+          })
         );
       } finally {
         submissionInFlightRef.current = false;
       }
     },
-    [hostId, openNewWorkspaceForProject, openProject],
+    [hostId, openNewWorkspaceForProject, openProject]
   );
 
   const browse = useCallback(async () => {
@@ -530,7 +611,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (path) await openAddedProject(path, "method");
     } catch {
       setState((current) =>
-        setPageStatus(current, "method", { error: "Unable to browse for a directory" }),
+        setPageStatus(current, "method", {
+          error: "Unable to browse for a directory",
+        })
       );
     } finally {
       browseInFlightRef.current = false;
@@ -543,7 +626,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (method === "directory-search") {
         setState((current) => openDirectorySearchPage(current, hostId));
       } else if (method === "directoryless-project") {
-        setState((current) => openDirectorylessProjectNamePage(current, hostId));
+        setState((current) =>
+          openDirectorylessProjectNamePage(current, hostId)
+        );
       } else if (method === "browse") {
         void browse();
       } else if (method === "github") {
@@ -552,12 +637,15 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         setState((current) => openNewDirectoryParentPage(current, hostId));
       }
     },
-    [browse, hostId],
+    [browse, hostId]
   );
 
   const directoryPaths = useMemo(
-    () => (directoryQuery.data?.query === query ? directoryQuery.data.paths : EMPTY_PATHS),
-    [directoryQuery.data, query],
+    () =>
+      directoryQuery.data?.query === query
+        ? directoryQuery.data.paths
+        : EMPTY_PATHS,
+    [directoryQuery.data, query]
   );
   const pathOptions = useMemo(
     () =>
@@ -566,20 +654,23 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         serverPaths: directoryPaths,
         query,
       }),
-    [directoryPaths, query, recommendedPaths],
+    [directoryPaths, query, recommendedPaths]
   );
   const cloneRepository = useCallback(
     async (locationPage: GithubLocationPage, parentPath: string) => {
       if (submissionInFlightRef.current) return;
       submissionInFlightRef.current = true;
       setState((current) =>
-        setPageStatus(current, "github-location", { isSubmitting: true, error: null }),
+        setPageStatus(current, "github-location", {
+          isSubmitting: true,
+          error: null,
+        })
       );
       try {
         const result = await cloneGithubProject(
           locationPage.repository.cloneUrl,
           parentPath,
-          locationPage.repository.cloneProtocol,
+          locationPage.repository.cloneProtocol
         );
         if (result.ok) {
           lastCloneParentByHost.set(locationPage.hostId, parentPath);
@@ -590,33 +681,38 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           setPageStatus(current, "github-location", {
             isSubmitting: false,
             error: result.error ?? "Unable to clone repository",
-          }),
+          })
         );
       } catch (error) {
         setState((current) =>
           setPageStatus(current, "github-location", {
             isSubmitting: false,
-            error: error instanceof Error ? error.message : "Unable to clone repository",
-          }),
+            error:
+              error instanceof Error
+                ? error.message
+                : "Unable to clone repository",
+          })
         );
       } finally {
         submissionInFlightRef.current = false;
       }
     },
-    [cloneGithubProject, openNewWorkspaceForProject],
+    [cloneGithubProject, openNewWorkspaceForProject]
   );
   const rows = useMemo<FlowRowOption[]>(() => {
     if (page.kind === "host") {
-      const choices = filterAddProjectHosts(state.hosts, page.query).map<FlowRowOption>(
-        (choice) => ({
-          id: choice.serverId,
-          title: choice.label,
-          subtitle: choice.serverId,
-          icon: Server,
-          testID: `add-project-flow-host-${choice.serverId}`,
-          select: () => setState((current) => chooseAddProjectHost(current, choice.serverId)),
-        }),
-      );
+      const choices = filterAddProjectHosts(
+        state.hosts,
+        page.query
+      ).map<FlowRowOption>((choice) => ({
+        id: choice.serverId,
+        title: choice.label,
+        subtitle: choice.serverId,
+        icon: Server,
+        testID: `add-project-flow-host-${choice.serverId}`,
+        select: () =>
+          setState((current) => chooseAddProjectHost(current, choice.serverId)),
+      }));
       if (state.hosts.length === 0) {
         choices.push({
           id: "add-host",
@@ -658,28 +754,38 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       });
     }
     if (page.kind === "github-search") {
-      const search = githubQuery.data?.query === page.query ? githubQuery.data.payload : null;
+      const search =
+        githubQuery.data?.query === page.query
+          ? githubQuery.data.payload
+          : null;
       const repositories = search?.repositories ?? [];
       const normalizedQuery = page.query.trim().toLowerCase();
       const hasExactSearchResult = repositories.some(
         (repository) =>
           repository.nameWithOwner.toLowerCase() === normalizedQuery ||
-          repository.cloneUrl.toLowerCase() === normalizedQuery,
+          repository.cloneUrl.toLowerCase() === normalizedQuery
       );
       const manualRepositories = hasExactSearchResult
         ? []
         : buildManualGithubRepositoryChoices(page.query);
-      const repositoryChoices: GithubRepositoryChoice[] = [...manualRepositories, ...repositories];
+      const repositoryChoices: GithubRepositoryChoice[] = [
+        ...manualRepositories,
+        ...repositories,
+      ];
       return repositoryChoices.map((repository) => ({
         id: repository.id,
         title: repository.cloneProtocol
-          ? `${repository.nameWithOwner} via ${repository.cloneProtocol.toUpperCase()}`
+          ? `${
+              repository.nameWithOwner
+            } via ${repository.cloneProtocol.toUpperCase()}`
           : repository.nameWithOwner,
         subtitle: repository.description,
         icon: Github,
         testID: `add-project-flow-repository-${repository.id}`,
         select: () =>
-          setState((current) => openGithubLocationPage(current, page.hostId, repository)),
+          setState((current) =>
+            openGithubLocationPage(current, page.hostId, repository)
+          ),
       }));
     }
     if (page.kind === "github-location") {
@@ -716,7 +822,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         icon: Folder,
         testID: pathTestId(option.path),
         select: () =>
-          setState((current) => openNewDirectoryNamePage(current, page.hostId, option.path)),
+          setState((current) =>
+            openNewDirectoryNamePage(current, page.hostId, option.path)
+          ),
       }));
     }
     return [];
@@ -734,13 +842,16 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     state.hosts,
   ]);
 
-  const activeIndex = rows.length === 0 ? 0 : Math.min(page.activeIndex, rows.length - 1);
+  const activeIndex =
+    rows.length === 0 ? 0 : Math.min(page.activeIndex, rows.length - 1);
   const createDirectorylessProject = useCallback(async () => {
     if (page.kind !== "directoryless-project-name" || !client) return;
     const name = page.name.trim();
     if (!name) {
       setState((current) =>
-        setPageStatus(current, "directoryless-project-name", { error: "Enter a project name" }),
+        setPageStatus(current, "directoryless-project-name", {
+          error: "Enter a project name",
+        })
       );
       return;
     }
@@ -750,19 +861,21 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       setPageStatus(current, "directoryless-project-name", {
         isSubmitting: true,
         error: null,
-      }),
+      })
     );
     try {
       const payload = await client.createDirectorylessProject({
         name,
-        ...(request.parentProjectId ? { parentProjectId: request.parentProjectId } : {}),
+        ...(request.parentProjectId
+          ? { parentProjectId: request.parentProjectId }
+          : {}),
       });
       if (payload.error || !payload.project) {
         setState((current) =>
           setPageStatus(current, "directoryless-project-name", {
             isSubmitting: false,
             error: payload.error ?? "Unable to create project",
-          }),
+          })
         );
         return;
       }
@@ -772,14 +885,17 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         upsertProject,
         setHasHydratedWorkspaces,
       });
-      request.onProjectCreated?.({ serverId: page.hostId, project: payload.project });
+      request.onProjectCreated?.({
+        serverId: page.hostId,
+        project: payload.project,
+      });
       onClose();
     } catch {
       setState((current) =>
         setPageStatus(current, "directoryless-project-name", {
           isSubmitting: false,
           error: "Unable to create project",
-        }),
+        })
       );
     } finally {
       submissionInFlightRef.current = false;
@@ -791,14 +907,19 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     const name = page.name.trim();
     if (!name || name === "." || name === ".." || /[\\/]/.test(name)) {
       setState((current) =>
-        setPageStatus(current, "new-directory-name", { error: "Enter a directory name" }),
+        setPageStatus(current, "new-directory-name", {
+          error: "Enter a directory name",
+        })
       );
       return;
     }
     if (submissionInFlightRef.current) return;
     submissionInFlightRef.current = true;
     setState((current) =>
-      setPageStatus(current, "new-directory-name", { isSubmitting: true, error: null }),
+      setPageStatus(current, "new-directory-name", {
+        isSubmitting: true,
+        error: null,
+      })
     );
     try {
       const payload = await client.createProjectDirectory({
@@ -810,7 +931,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           setPageStatus(current, "new-directory-name", {
             isSubmitting: false,
             error: payload.error ?? "Unable to create directory",
-          }),
+          })
         );
         return;
       }
@@ -826,12 +947,18 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         setPageStatus(current, "new-directory-name", {
           isSubmitting: false,
           error: "Unable to create directory",
-        }),
+        })
       );
     } finally {
       submissionInFlightRef.current = false;
     }
-  }, [client, openNewWorkspaceForProject, page, setHasHydratedWorkspaces, upsertProject]);
+  }, [
+    client,
+    openNewWorkspaceForProject,
+    page,
+    setHasHydratedWorkspaces,
+    upsertProject,
+  ]);
 
   const submitActive = useCallback(() => {
     if (page.kind === "directoryless-project-name") {
@@ -844,7 +971,13 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     }
     const option = rows[activeIndex];
     if (option && !option.disabled) option.select();
-  }, [activeIndex, createDirectory, createDirectorylessProject, page.kind, rows]);
+  }, [
+    activeIndex,
+    createDirectory,
+    createDirectorylessProject,
+    page.kind,
+    rows,
+  ]);
 
   const handleKey = useCallback(
     (key: string): boolean => {
@@ -860,12 +993,12 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       const next = moveAddProjectSelection(
         activeIndex,
         rows.map((row) => row.disabled !== true),
-        key === "ArrowDown" ? "next" : "previous",
+        key === "ArrowDown" ? "next" : "previous"
       );
       setState((current) => setAddProjectActiveIndex(current, next));
       return true;
     },
-    [activeIndex, handleBack, rows, submitActive],
+    [activeIndex, handleBack, rows, submitActive]
   );
 
   const modalLayer = useGlobalWebOverlayLayer("modal", isWeb);
@@ -875,7 +1008,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       event.preventDefault();
       return true;
     },
-    [handleKey],
+    [handleKey]
   );
   const setWebOverlayScope = useWebOverlayRegistration({
     active: isWeb,
@@ -889,7 +1022,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         handleKey(key);
       }
     },
-    [handleKey],
+    [handleKey]
   );
 
   const handleInputChange = useCallback((value: string) => {
@@ -910,7 +1043,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       ? githubQuery.data.payload
       : null;
   const loading =
-    (searchesDirectories && (query !== debouncedQuery || directoryQuery.isFetching)) ||
+    (searchesDirectories &&
+      (query !== debouncedQuery || directoryQuery.isFetching)) ||
     (page.kind === "github-search" &&
       host?.canSearchGithubRepositories === true &&
       (query !== debouncedQuery || githubQuery.isFetching));
@@ -927,9 +1061,18 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       : null;
 
   const modal = (
-    <Modal visible transparent animationType="fade" onRequestClose={isWeb ? undefined : handleBack}>
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={isWeb ? undefined : handleBack}
+    >
       <View style={styles.overlay} testID="add-project-flow">
-        <Pressable style={styles.backdrop} onPress={onClose} testID="add-project-flow-backdrop" />
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          testID="add-project-flow-backdrop"
+        />
         <View
           ref={setWebOverlayScope}
           style={styles.panel}
@@ -938,7 +1081,9 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
         >
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              {state.pages.length > 1 ? <FlowBackButton onPress={handleBack} /> : null}
+              {state.pages.length > 1 ? (
+                <FlowBackButton onPress={handleBack} />
+              ) : null}
               <View style={styles.titleGroup} testID="add-project-flow-title">
                 <Text style={styles.title} numberOfLines={1}>
                   {pageTitle(page)}
@@ -992,7 +1137,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             testID="add-project-flow-results"
           >
             {preview ? (
-              <Text style={styles.preview} testID="add-project-flow-path-preview">
+              <Text
+                style={styles.preview}
+                testID="add-project-flow-path-preview"
+              >
                 {shortenPath(preview)}
               </Text>
             ) : null}
@@ -1007,7 +1155,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
               </Text>
             ) : null}
             {!isSubmitting && queryError ? (
-              <Text style={styles.errorText} testID="add-project-flow-query-error">
+              <Text
+                style={styles.errorText}
+                testID="add-project-flow-query-error"
+              >
                 {queryError}
               </Text>
             ) : null}
@@ -1020,7 +1171,11 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             (!loading || page.kind === "github-search") &&
             (!queryError || page.kind === "github-search")
               ? rows.map((option, index) => (
-                  <FlowRow key={option.id} option={option} active={index === activeIndex} />
+                  <FlowRow
+                    key={option.id}
+                    option={option}
+                    active={index === activeIndex}
+                  />
                 ))
               : null}
             {!isSubmitting &&
@@ -1037,14 +1192,21 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           <View style={styles.footer} testID="add-project-flow-footer">
             <FlowHint keys={NAVIGATION_HINT_KEYS} action="Navigate" />
             <FlowHint keys={SELECT_HINT_KEYS} action="Select" />
-            <FlowHint keys={ESCAPE_HINT_KEYS} action={state.pages.length > 1 ? "Back" : "Close"} />
+            <FlowHint
+              keys={ESCAPE_HINT_KEYS}
+              action={state.pages.length > 1 ? "Back" : "Close"}
+            />
           </View>
         </View>
       </View>
     </Modal>
   );
 
-  return createElement(OverlayLayerProvider, { layer: isWeb ? modalLayer : 0 }, modal);
+  return createElement(
+    OverlayLayerProvider,
+    { layer: isWeb ? modalLayer : 0 },
+    modal
+  );
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -1138,7 +1300,11 @@ const styles = StyleSheet.create((theme) => ({
   iconSlot: { width: 18, alignItems: "center" },
   rowText: { flex: 1, minWidth: 0 },
   rowTitle: { color: theme.colors.foreground, fontSize: theme.fontSize.base },
-  rowSubtitle: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm, marginTop: 2 },
+  rowSubtitle: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    marginTop: 2,
+  },
   preview: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,

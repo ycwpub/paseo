@@ -7,7 +7,8 @@ vi.mock("@/components/toast-host", () => ({
   useToastHost: vi.fn(),
 }));
 
-import { useOptionalToast, useToast } from "./toast-context";
+import { useOptionalToast } from "./toast-api-context";
+import { useToast } from "./toast-context";
 
 describe("toast context", () => {
   it("allows portal content to render safely without a provider", () => {

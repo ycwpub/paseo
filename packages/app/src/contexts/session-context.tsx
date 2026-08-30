@@ -46,7 +46,7 @@ import { signalDesktopAttention } from "@/desktop/attention/desktop-attention";
 import {
   getAgentAttentionRouting,
   getDesktopAgentAttentionDecision,
-} from "@/utils/agent-attention";
+} from "@/desktop/attention/agent-attention-policy";
 import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import {
   getInitKey,

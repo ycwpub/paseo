@@ -579,11 +579,7 @@ describe("paseo daemon bootstrap", () => {
         appVersion: "0.1.82",
       });
       await client.connect();
-      await client.patchDaemonConfig({
-        relay: {
-          endpoints: [{ endpoint: "127.0.0.1:9", useTls: false }],
-        },
-      });
+      await client.patchDaemonConfig({ relay: { enabled: true } });
       releaseEnrollment();
       await starting;
 
@@ -940,7 +936,7 @@ export default function contribute(plugin: unknown) {
           includeQr: false,
         });
         expect(pairing.relayEnabled).toBe(true);
-        expect(pairing.url?.startsWith("http://127.0.0.1:9/#offer=")).toBe(true);
+        expect(pairing.url?.startsWith("https://app.paseo.sh/#offer=")).toBe(true);
       } finally {
         await daemon.stop().catch(() => undefined);
         await daemon.agentManager.flush().catch(() => undefined);

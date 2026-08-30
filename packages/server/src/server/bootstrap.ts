@@ -188,7 +188,10 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
-import type { RelayDeviceType, RelayEndpointConfig } from "@getpaseo/protocol/daemon-endpoints";
+import type {
+  RelayDeviceType,
+  RelayEndpointConfig,
+} from "@getpaseo/protocol/relay-endpoint-config";
 import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";

@@ -41,7 +41,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
 } from "@getpaseo/protocol/messages";
-import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
+import type { RelayDeviceType } from "@getpaseo/protocol/relay-endpoint-config";
 import {
   normalizeWorkspaceOpaqueId,
   normalizeWorkspacePath,

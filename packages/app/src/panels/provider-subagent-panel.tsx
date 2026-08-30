@@ -19,10 +19,8 @@ import { useTranslation } from "react-i18next";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
-import {
-  TIMELINE_FETCH_PAGE_SIZE,
-  TIMELINE_OLDEST_FETCH_PAGE_SIZE,
-} from "@/timeline/timeline-fetch-policy";
+import { TIMELINE_OLDEST_FETCH_PAGE_SIZE } from "@/timeline/history-fetch-policy";
+import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 import type { TurnPresentation } from "@/timeline/turn-liveness";
 
 const EMPTY_PERMISSIONS = new Map<string, PendingPermission>();

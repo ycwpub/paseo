@@ -3,10 +3,10 @@ import { buildCreateAgentPreferences, buildSeededHost, TEST_HOST_LABEL } from ".
 import { getServerId } from "./server-id";
 import { expectAppRoute } from "./route-assertions";
 import {
-  buildSettingsHostSectionRoute,
   buildSettingsRoute,
   buildSettingsSectionRoute,
 } from "@/utils/host-routes";
+import { buildSettingsHostSectionRoute } from "@/utils/host-feature-routes";
 
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@paseo:e2e-disable-default-seed-once";
 const SEED_NONCE_KEY = "@paseo:e2e-seed-nonce";

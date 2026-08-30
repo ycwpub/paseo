@@ -21,7 +21,7 @@ export {
   parseConnectionOfferFromUrl,
   type ConnectionOffer,
 } from "@getpaseo/protocol/connection-offer";
-export { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
+export { buildRelayWebSocketUrl } from "@getpaseo/protocol/relay-endpoint-config";
 export {
   buildDaemonWebSocketUrl,
   deriveLabelFromEndpoint,

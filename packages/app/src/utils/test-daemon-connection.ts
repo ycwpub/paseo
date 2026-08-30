@@ -9,11 +9,8 @@ import {
   resolveClientName,
   resolveClientType,
 } from "./client-name";
-import {
-  buildDaemonWebSocketUrl,
-  buildRelayWebSocketUrl,
-  shouldUseTlsForDefaultHostedRelay,
-} from "./daemon-endpoints";
+import { buildDaemonWebSocketUrl, shouldUseTlsForDefaultHostedRelay } from "./daemon-endpoints";
+import { buildRelayWebSocketUrl } from "./relay-daemon-endpoints";
 import {
   buildDesktopDaemonTransportUrl,
   createDesktopDaemonTransportFactory,

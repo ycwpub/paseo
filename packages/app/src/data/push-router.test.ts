@@ -4,7 +4,7 @@ import type { MutableDaemonConfig, SessionOutboundMessage } from "@getpaseo/prot
 import { checkoutDiffQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
-import { daemonPairingQueryKey } from "@/data/daemon-pairing";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing-model";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
 import {
   checkoutDiffPushRoute,

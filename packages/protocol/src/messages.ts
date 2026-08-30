@@ -4,7 +4,7 @@ import {
   MutableRelayConfigSchema,
   RelayEndpointConfigSchema,
 } from "./relay-config-schema.js";
-import { RELAY_DEVICE_TYPES } from "./daemon-endpoints.js";
+import { RELAY_DEVICE_TYPES } from "./relay-endpoint-config.js";
 import { TerminalActivitySchema } from "./terminal-activity.js";
 import { CLIENT_CAPS } from "./client-capabilities.js";
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-lifecycle.js";

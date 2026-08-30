@@ -32,7 +32,7 @@ import {
   buildSkillSettingsRoute,
   buildTeamSettingsRoute,
   type HostMemorySettingsPage,
-} from "@/utils/host-routes";
+} from "@/utils/host-feature-routes";
 
 function HostResourcePage({ serverId, children }: { serverId: string; children: ReactNode }) {
   const { t } = useTranslation();

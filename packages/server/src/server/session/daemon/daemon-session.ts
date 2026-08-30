@@ -12,7 +12,7 @@ import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "../../workspace-registry.js";
 import type { HubRelationshipManagement } from "../../hub/relationship-controller.js";
 import type { LocalRelayStatus } from "@getpaseo/relay";
-import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
+import type { RelayDeviceType } from "@getpaseo/protocol/relay-endpoint-config";
 import type { DaemonConfigReloadResult } from "../../daemon-config-store.js";
 
 export interface DaemonRuntimeConfig {

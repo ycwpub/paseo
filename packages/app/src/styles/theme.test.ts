@@ -11,7 +11,6 @@ import {
 describe("Typography scale", () => {
   it("names 14px as the default interface tier", () => {
     expect(FONT_SIZE).toEqual({
-      xs: 12,
       code: 12,
       content: 15,
       sm: 12,

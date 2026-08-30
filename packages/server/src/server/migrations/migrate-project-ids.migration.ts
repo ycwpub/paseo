@@ -2,7 +2,8 @@
 // before project IDs became independent random identifiers.
 import type { Logger } from "pino";
 
-import { generateProjectId, isGeneratedProjectId } from "../workspace-registry-model.js";
+import { isGeneratedProjectId } from "../project/project-id.js";
+import { generateProjectId } from "../workspace-registry-model.js";
 import type { ProjectRegistry, WorkspaceRegistry } from "../workspace-registry.js";
 
 export async function migrateLegacyProjectIds(options: {

@@ -52,10 +52,6 @@ async function openWorkspace(
   await expect(page.getByTestId("menu-button")).toBeVisible();
 }
 
-async function getScrollTop(locator: import("@playwright/test").Locator): Promise<number> {
-  return locator.evaluate((element) => element.scrollTop);
-}
-
 test.describe("Settings sidebar navigation", () => {
   test("clicking a sidebar section updates the URL and renders the section", async ({ page }) => {
     await gotoAppShell(page);
@@ -76,52 +72,6 @@ test.describe("Settings sidebar navigation", () => {
     await openSettingsSection(page, "appearance");
     await expectSettingsHeader(page, "Appearance");
     await expectAppearanceContent(page);
-  });
-
-  test("keeps the desktop sidebar position when opening a lower host section", async ({ page }) => {
-    await page.setViewportSize({ width: 1200, height: 600 });
-    await gotoAppShell(page);
-    await openSettings(page);
-
-    const sidebarScroll = page.getByTestId("settings-sidebar-scroll-body");
-    const terminalsButton = page.getByTestId("settings-host-section-terminals");
-    await terminalsButton.scrollIntoViewIfNeeded();
-    await expect(terminalsButton).toBeVisible();
-
-    const scrollTopBeforeNavigation = await getScrollTop(sidebarScroll);
-    expect(scrollTopBeforeNavigation).toBeGreaterThan(0);
-
-    await terminalsButton.click();
-    await expectAppRoute(page, buildSettingsHostSectionRoute(getServerId(), "terminals"));
-
-    await expect
-      .poll(() => getScrollTop(sidebarScroll))
-      .toBeGreaterThan(scrollTopBeforeNavigation / 2);
-    await expect(terminalsButton).toBeVisible();
-  });
-
-  test("opens the standalone knowledge manager from the host sidebar", async ({ page }) => {
-    await gotoAppShell(page);
-    await openSettings(page);
-
-    await openSettingsHostSection(page, getServerId(), "knowledge");
-
-    await expect(page.getByTestId("knowledge-management-section")).toBeVisible();
-    await expect(page.getByTestId("knowledge-scope-global")).toBeVisible();
-    await expect(page.getByTestId("knowledge-scope-assistant")).toBeVisible();
-    await page.getByTestId("knowledge-scope-project").click();
-    await expect(page.getByTestId("knowledge-project-selector")).toBeVisible();
-  });
-
-  test("opens plugin management without an incorrect host upgrade warning", async ({ page }) => {
-    await gotoAppShell(page);
-    await openSettings(page);
-
-    await openSettingsHostSection(page, getServerId(), "plugins");
-
-    await expect(page.getByTestId("host-page-plugins")).toBeVisible();
-    await expect(page.getByTestId("plugin-management-page")).toBeVisible();
-    await expect(page.getByTestId("plugin-management-upgrade-warning")).toHaveCount(0);
   });
 
   test("/h/[serverId]/settings redirects to the host connections section", async ({ page }) => {

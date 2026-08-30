@@ -33,7 +33,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agent-controls/utils";
+import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
 import { LarkUserDirectoryField } from "./lark-directory-fields";
 import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";

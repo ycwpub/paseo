@@ -1,14 +1,12 @@
-import React, { type ReactNode } from "react";
+import React, { type ComponentType, type ReactNode } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { ArrowLeft } from "lucide-react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
-
-const ThemedArrowLeft = withUnistyles(ArrowLeft);
-const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+import { StyleSheet } from "react-native-unistyles";
 
 interface SettingsDetailNavigationHeaderProps {
   title: string;
+  Icon: ComponentType<{ size: number; color: string }>;
+  iconColor: string;
   titleAccessory?: ReactNode;
   onBack: () => void;
 }
@@ -22,10 +20,12 @@ function backPressableStyle({
 
 /**
  * Canonical header for secondary and tertiary settings pages:
- * a single back icon followed by the current page title.
+ * a plain back affordance, the page icon, and the current page title.
  */
 export function SettingsDetailNavigationHeader({
   title,
+  Icon,
+  iconColor,
   titleAccessory,
   onBack,
 }: SettingsDetailNavigationHeaderProps) {
@@ -38,8 +38,11 @@ export function SettingsDetailNavigationHeader({
         style={backPressableStyle}
         testID="settings-detail-back"
       >
-        <ThemedArrowLeft size={18} uniProps={mutedIconMapping} />
+        <ArrowLeft size={18} color={iconColor} />
       </Pressable>
+      <View style={styles.pageIcon} testID="settings-detail-page-icon">
+        <Icon size={18} color={iconColor} />
+      </View>
       <Text style={styles.title} numberOfLines={1} testID="settings-detail-header-title">
         {title}
       </Text>
@@ -61,12 +64,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     padding: theme.spacing[2],
-    borderRadius: theme.borderRadius.lg,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
   },
   backButtonActive: {
-    backgroundColor: theme.colors.surface2,
+    opacity: 0.6,
+  },
+  pageIcon: {
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     flexShrink: 1,

@@ -88,6 +88,7 @@ export function useLarkUserOAuth(serverId: string, appId: string) {
     start: startMutation.mutateAsync,
     complete: completeMutation.mutateAsync,
     disconnect: disconnectMutation.mutateAsync,
+    refreshStatus: query.refetch,
     isMutating:
       startMutation.isPending || completeMutation.isPending || disconnectMutation.isPending,
     mutationError:

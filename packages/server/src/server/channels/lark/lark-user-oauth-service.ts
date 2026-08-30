@@ -7,9 +7,13 @@ import { LarkUserOAuthStore, type StoredLarkUserOAuthCredential } from "./lark-u
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const AUTHORIZATION_STATE_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
-const USER_OAUTH_SCOPES = ["offline_access", "im:chat:read", "im:chat.members:write_only"].join(
-  " ",
-);
+const USER_OAUTH_SCOPE_LIST = [
+  "offline_access",
+  "im:chat:read",
+  "im:chat.members:write_only",
+  "im:message.group_msg:get_as_user",
+] as const;
+const USER_OAUTH_SCOPES = USER_OAUTH_SCOPE_LIST.join(" ");
 
 interface PendingAuthorization {
   appId: string;
@@ -90,6 +94,11 @@ function addSeconds(timestamp: number, seconds: number | undefined): string {
   ).toISOString();
 }
 
+function hasRequiredScopes(scope: string | null | undefined): boolean {
+  const grantedScopes = new Set(scope?.split(/\s+/u).filter(Boolean) ?? []);
+  return USER_OAUTH_SCOPE_LIST.every((requiredScope) => grantedScopes.has(requiredScope));
+}
+
 function parseCodeAndState(codeOrCallbackUrl: string): {
   code: string;
   callbackState: string | null;
@@ -130,10 +139,11 @@ export class LarkUserOAuthService {
     const refreshExpired =
       credential?.refreshTokenExpiresAt != null &&
       Date.parse(credential.refreshTokenExpiresAt) <= Date.now();
+    const missingRequiredScopes = credential ? !hasRequiredScopes(credential.scope) : true;
     return {
       appId: normalizedAppId,
-      authorized: Boolean(credential && !refreshExpired),
-      needsAuthorization: !credential || refreshExpired,
+      authorized: Boolean(credential && !refreshExpired && !missingRequiredScopes),
+      needsAuthorization: !credential || refreshExpired || missingRequiredScopes,
       expiresAt: credential?.expiresAt ?? null,
       refreshTokenExpiresAt: credential?.refreshTokenExpiresAt ?? null,
       openId: credential?.openId ?? null,
@@ -151,7 +161,11 @@ export class LarkUserOAuthService {
     state: string;
   } {
     const config = this.requireConfig(appId);
-    const normalizedRedirectUri = new URL(redirectUri.trim()).toString();
+    const parsedRedirectUri = new URL(redirectUri.trim());
+    if (!["http:", "https:"].includes(parsedRedirectUri.protocol)) {
+      throw new Error("飞书 OAuth 回调地址必须使用 HTTP 或 HTTPS");
+    }
+    const normalizedRedirectUri = parsedRedirectUri.toString();
     const state = randomUUID();
     this.pending.set(state, {
       appId: appId.trim(),
@@ -221,6 +235,22 @@ export class LarkUserOAuthService {
     return this.getStatus(normalizedAppId);
   }
 
+  async completeAuthorizationCallback(
+    codeOrCallbackUrl: string,
+    state: string,
+  ): Promise<LarkUserOAuthStatus> {
+    const pending = this.pending.get(state);
+    if (!pending || pending.expiresAt <= Date.now()) {
+      this.pending.delete(state);
+      throw new Error("飞书 OAuth 授权状态无效或已过期，请重新发起授权");
+    }
+    return this.completeAuthorization(pending.appId, codeOrCallbackUrl, state);
+  }
+
+  discardAuthorization(state: string): void {
+    this.pending.delete(state);
+  }
+
   disconnect(appId: string): LarkUserOAuthStatus {
     const normalizedAppId = appId.trim();
     this.store.delete(normalizedAppId);
@@ -231,6 +261,9 @@ export class LarkUserOAuthService {
     const normalizedAppId = appId.trim();
     const credential = this.store.get(normalizedAppId);
     if (!credential) throw new LarkUserAuthorizationRequiredError(normalizedAppId);
+    if (!hasRequiredScopes(credential.scope)) {
+      throw new LarkUserAuthorizationRequiredError(normalizedAppId);
+    }
     if (Date.parse(credential.expiresAt) > Date.now() + ACCESS_TOKEN_REFRESH_WINDOW_MS) {
       return credential.userAccessToken;
     }

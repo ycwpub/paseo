@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { LarkReminderCreateInputSchema, LarkReminderSchema } from "./reminder-types.js";
+import {
+  LarkReminderCreateInputSchema,
+  LarkReminderSchema,
+  LarkReminderUpdateInputSchema,
+} from "./reminder-types.js";
 
 const LarkReminderMutationPayloadSchema = z.object({
   requestId: z.string(),
@@ -29,6 +33,17 @@ export const LarkReminderCreateRequestSchema = LarkReminderCreateInputSchema.ext
 
 export const LarkReminderCreateResponseSchema = z.object({
   type: z.literal("channel.lark.reminder.create.response"),
+  payload: LarkReminderMutationPayloadSchema,
+});
+
+export const LarkReminderUpdateRequestSchema = LarkReminderUpdateInputSchema.extend({
+  type: z.literal("channel.lark.reminder.update.request"),
+  requestId: z.string(),
+  reminderId: z.string().min(1),
+});
+
+export const LarkReminderUpdateResponseSchema = z.object({
+  type: z.literal("channel.lark.reminder.update.response"),
   payload: LarkReminderMutationPayloadSchema,
 });
 

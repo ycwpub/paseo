@@ -913,6 +913,7 @@ function RootStack() {
       <Stack.Screen name="settings/hosts/[serverId]/index" />
       <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />
       <Stack.Screen name="settings/hosts/[serverId]/assistants/[assistantId]" />
+      <Stack.Screen name="settings/hosts/[serverId]/assistants/[assistantId]/memory" />
       <Stack.Screen name="settings/hosts/[serverId]/teams/[teamId]" />
       <Stack.Screen name="settings/hosts/[serverId]/instruction-templates/index" />
       <Stack.Screen name="settings/hosts/[serverId]/instruction-templates/[templateId]" />

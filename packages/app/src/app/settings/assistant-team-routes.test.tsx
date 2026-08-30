@@ -5,6 +5,7 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import AssistantSettingsRoute from "./hosts/[serverId]/assistants/[assistantId]";
+import AssistantMemorySettingsRoute from "./hosts/[serverId]/assistants/[assistantId]/memory";
 import InstructionTemplateSettingsRoute from "./hosts/[serverId]/instruction-templates/[templateId]";
 import InstructionTemplatesSettingsRoute from "./hosts/[serverId]/instruction-templates";
 import McpServerSettingsRoute from "./hosts/[serverId]/mcp-servers/[mcpServerId]";
@@ -49,6 +50,18 @@ describe("Assistant and Team settings routes", () => {
     render(<AssistantSettingsRoute />);
     expect(screen.getByTestId("settings-screen").textContent).toBe(
       JSON.stringify({ kind: "assistant", serverId: "host-1", assistantId: "assistant-1" }),
+    );
+  });
+
+  test("opens Assistant memory as a third-level page", () => {
+    routeParams = { serverId: "host-1", assistantId: "assistant-1" };
+    render(<AssistantMemorySettingsRoute />);
+    expect(screen.getByTestId("settings-screen").textContent).toBe(
+      JSON.stringify({
+        kind: "assistant-memory",
+        serverId: "host-1",
+        assistantId: "assistant-1",
+      }),
     );
   });
 

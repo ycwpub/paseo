@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   LarkReminderCreateRequestSchema,
   LarkReminderListResponseSchema,
+  LarkReminderUpdateRequestSchema,
 } from "./reminder-rpc-schemas.js";
 
 describe("Lark reminder RPC schemas", () => {
@@ -20,19 +21,49 @@ describe("Lark reminder RPC schemas", () => {
     expect(request.targetOpenIds).toEqual(["ou_alice", "ou_bob"]);
   });
 
-  it("requires an environment variable for user-authored reminders", () => {
-    expect(() =>
-      LarkReminderCreateRequestSchema.parse({
-        type: "channel.lark.reminder.create.request",
-        requestId: "request-2",
-        botId: "bot-1",
-        chatId: "oc_team",
-        targetOpenIds: ["ou_alice"],
-        message: "请回复确认",
-        frequencySeconds: 60,
-        sender: { type: "user", userAccessTokenEnv: "" },
-      }),
-    ).toThrow();
+  it("accepts a user-authored reminder without exposing token configuration", () => {
+    const request = LarkReminderCreateRequestSchema.parse({
+      type: "channel.lark.reminder.create.request",
+      requestId: "request-2",
+      botId: "bot-1",
+      chatId: "oc_team",
+      targetOpenIds: ["ou_alice"],
+      message: "请回复确认",
+      frequencySeconds: 60,
+      sender: { type: "user" },
+    });
+    expect(request.sender).toEqual({ type: "user" });
+  });
+
+  it("drops the legacy environment variable field from older clients", () => {
+    const request = LarkReminderCreateRequestSchema.parse({
+      type: "channel.lark.reminder.create.request",
+      requestId: "request-legacy",
+      botId: "bot-1",
+      chatId: "oc_team",
+      targetOpenIds: ["ou_alice"],
+      message: "请回复确认",
+      frequencySeconds: 60,
+      sender: { type: "user", userAccessTokenEnv: "LARK_USER_ACCESS_TOKEN" },
+    });
+    expect(request.sender).toEqual({ type: "user" });
+  });
+
+  it("accepts updates for an existing reminder", () => {
+    const request = LarkReminderUpdateRequestSchema.parse({
+      type: "channel.lark.reminder.update.request",
+      requestId: "request-update",
+      reminderId: "reminder-1",
+      name: "更新后的提醒",
+      botId: "bot-1",
+      chatId: "oc_team",
+      targetOpenIds: ["ou_alice"],
+      message: "请重新确认",
+      frequencySeconds: 300,
+      sender: { type: "bot" },
+    });
+    expect(request.reminderId).toBe("reminder-1");
+    expect(request.message).toBe("请重新确认");
   });
 
   it("returns persisted reminder state", () => {

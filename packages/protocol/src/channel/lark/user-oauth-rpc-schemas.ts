@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+export const DEFAULT_LARK_USER_OAUTH_REDIRECT_URI = "http://127.0.0.1:6767/oauth/lark";
+
+const LarkUserOAuthRedirectUriSchema = z
+  .string()
+  .trim()
+  .url()
+  .refine((value) => ["http:", "https:"].includes(new URL(value).protocol), {
+    message: "飞书 OAuth 回调地址必须使用 HTTP 或 HTTPS",
+  });
+
 export const LarkUserOAuthStatusSchema = z.object({
   appId: z.string(),
   authorized: z.boolean(),
@@ -33,7 +43,7 @@ export const LarkUserOAuthStartRequestSchema = z.object({
   type: z.literal("channel.lark.user_oauth.start.request"),
   requestId: z.string(),
   appId: z.string().trim().min(1),
-  redirectUri: z.string().trim().url(),
+  redirectUri: LarkUserOAuthRedirectUriSchema,
 });
 
 export const LarkUserOAuthStartResponseSchema = z.object({

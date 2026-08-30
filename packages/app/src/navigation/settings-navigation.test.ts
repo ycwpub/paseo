@@ -37,6 +37,16 @@ describe("returnFromSettings", () => {
     expect(mocks.dismissTo).toHaveBeenCalledWith("/settings/hosts/host-1/memories");
   });
 
+  test("returns Assistant memory to its Assistant editor", () => {
+    returnFromSettings({
+      kind: "assistant-memory",
+      serverId: "host-1",
+      assistantId: "assistant-1",
+    });
+
+    expect(mocks.dismissTo).toHaveBeenCalledWith("/settings/hosts/host-1/assistants/assistant-1");
+  });
+
   test("returns a Project memory detail to its Project memory content list", () => {
     returnFromSettings({
       kind: "memory",

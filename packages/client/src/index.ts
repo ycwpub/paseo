@@ -53,6 +53,7 @@ export type {
   DeleteLarkBotOptions,
   DeleteLarkReminderOptions,
   SetLarkReminderEnabledOptions,
+  UpdateLarkReminderOptions,
   DaemonConnectionTransport,
   WebSocketFactory,
   WebSocketLike,

@@ -3,6 +3,8 @@ import {
   findLarkDirectoryChat,
   findLarkDirectoryUser,
   formatLarkChatLabel,
+  formatLarkChatId,
+  formatLarkUserIdentity,
   formatLarkUserLabel,
   formatLarkUserOpenId,
 } from "./lark-directory-format";
@@ -24,32 +26,32 @@ const chat = {
 };
 
 describe("Lark directory labels", () => {
-  test("formats friendly user and group labels", () => {
-    expect(formatLarkUserLabel(user)).toBe("Alice（alice@example.com）");
+  test("formats user and group labels with every stable identity", () => {
+    expect(formatLarkUserLabel(user)).toBe("Alice（alice@example.com，ou_alice）");
     expect(
       formatLarkUserLabel({
         ...user,
         displayName: "张三",
         email: "zhangsan@example.com",
       }),
-    ).toBe("张三（zhangsan@example.com）");
-    expect(formatLarkChatLabel(chat)).toBe("结算群（group_settlement）");
+    ).toBe("张三（zhangsan@example.com，ou_alice）");
+    expect(formatLarkChatLabel(chat)).toBe("结算群（group_settlement，oc_settlement）");
   });
 
-  test("falls back to the available friendly user identity", () => {
+  test("falls back to available identity fields without dropping the Open ID", () => {
     expect(
       formatLarkUserLabel({
         ...user,
         email: null,
         displayName: "Lark user",
       }),
-    ).toBe("Lark user");
+    ).toBe("Lark user（ou_alice）");
     expect(
       formatLarkUserLabel({
         ...user,
         displayName: null,
       }),
-    ).toBe("alice@example.com");
+    ).toBe("alice@example.com（ou_alice）");
     expect(
       formatLarkUserLabel({
         ...user,
@@ -57,7 +59,25 @@ describe("Lark directory labels", () => {
         displayName: null,
       }),
     ).toBe("ou_alice");
-    expect(formatLarkUserOpenId([], "cli_test", "ou_alice", "张三")).toBe("张三");
+    expect(formatLarkUserOpenId([], "cli_test", "ou_alice", "张三")).toBe("张三（ou_alice）");
+    expect(
+      formatLarkUserIdentity({
+        displayName: "张三",
+        email: "zhangsan@example.com",
+        openId: "ou_alice",
+      }),
+    ).toBe("张三（zhangsan@example.com，ou_alice）");
+  });
+
+  test("falls back to raw IDs and avoids repeating an identical group ID", () => {
+    expect(formatLarkUserOpenId([], "cli_test", "ou_unknown")).toBe("ou_unknown");
+    expect(formatLarkChatId([], "cli_test", "oc_unknown")).toBe("oc_unknown");
+    expect(
+      formatLarkChatLabel({
+        ...chat,
+        groupId: "oc_settlement",
+      }),
+    ).toBe("结算群（oc_settlement）");
   });
 
   test("scopes relation lookup by bot App ID", () => {

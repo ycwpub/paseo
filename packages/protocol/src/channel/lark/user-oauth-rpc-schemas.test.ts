@@ -1,23 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
   LarkUserOAuthCompleteRequestSchema,
   LarkUserOAuthGetStatusResponseSchema,
   LarkUserOAuthStartRequestSchema,
 } from "./user-oauth-rpc-schemas.js";
 
 describe("Lark user OAuth RPC schemas", () => {
-  it("accepts a custom-scheme OAuth redirect URI", () => {
+  it("uses a loopback HTTP callback that the daemon can receive", () => {
     expect(
+      LarkUserOAuthStartRequestSchema.parse({
+        type: "channel.lark.user_oauth.start.request",
+        requestId: "request-1",
+        appId: "cli_test",
+        redirectUri: DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+      }),
+    ).toMatchObject({
+      appId: "cli_test",
+      redirectUri: "http://127.0.0.1:6767/oauth/lark",
+    });
+  });
+
+  it("rejects custom-scheme redirects that Feishu does not support", () => {
+    expect(() =>
       LarkUserOAuthStartRequestSchema.parse({
         type: "channel.lark.user_oauth.start.request",
         requestId: "request-1",
         appId: "cli_test",
         redirectUri: "paseo://oauth/lark",
       }),
-    ).toMatchObject({
-      appId: "cli_test",
-      redirectUri: "paseo://oauth/lark",
-    });
+    ).toThrow("必须使用 HTTP 或 HTTPS");
   });
 
   it("requires the OAuth state when completing authorization", () => {

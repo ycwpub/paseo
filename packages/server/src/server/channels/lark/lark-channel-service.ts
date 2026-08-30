@@ -4,6 +4,7 @@ import type {
   LarkChannelStatus,
   LarkReminder,
   LarkReminderCreateInput,
+  LarkReminderUpdateInput,
   SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
 import type { AgentManager, AgentManagerEvent } from "../../agent/agent-manager.js";
@@ -553,6 +554,11 @@ export class LarkChannelService {
   createReminder(input: LarkReminderCreateInput): LarkReminder {
     if (!this.reminderService) throw new Error("Lark reminders are unavailable");
     return this.reminderService.create(input);
+  }
+
+  updateReminder(reminderId: string, input: LarkReminderUpdateInput): LarkReminder {
+    if (!this.reminderService) throw new Error("Lark reminders are unavailable");
+    return this.reminderService.update(reminderId, input);
   }
 
   setReminderEnabled(reminderId: string, enabled: boolean): LarkReminder {

@@ -5,6 +5,7 @@ import React, { type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Assistant } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { AssistantMemoryEditorPage } from "./assistant-memory-editor-page";
 import { AssistantEditorPage, AssistantsSection } from "./assistants-section";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -215,6 +216,39 @@ vi.mock("@/components/ui/switch", () => ({
     }),
 }));
 
+vi.mock("@/components/ui/select-field", () => ({
+  SelectField: ({
+    label,
+    value,
+    options,
+    onChange,
+    disabled,
+  }: {
+    label: string;
+    value: number;
+    options: Array<{ value: number; label: string }>;
+    onChange: (value: number) => void;
+    disabled?: boolean;
+  }) => (
+    <label>
+      <span>{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        // oxlint-disable-next-line react-perf/jsx-no-new-function-as-prop -- test-only DOM adapter
+        onChange={(event) => onChange(Number(event.currentTarget.value))}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  ),
+}));
+
 vi.mock("@/components/settings-textarea", () => ({
   SettingsTextAreaCard: ({
     value,
@@ -293,6 +327,46 @@ describe("AssistantsSection", () => {
     assistantsState.current.createAssistant.mockReset();
     assistantsState.current.updateAssistant.mockReset();
     assistantsState.current.deleteAssistant.mockReset();
+    resourceState.mcpServers = [
+      {
+        id: "mcp-a",
+        name: "MCP A",
+        enabled: true,
+        transport: { type: "stdio" as const, command: "mcp-a" },
+        createdAt: 1,
+        updatedAt: 1,
+        originalJson: "{}",
+      },
+      {
+        id: "mcp-b",
+        name: "MCP B",
+        enabled: true,
+        transport: { type: "stdio" as const, command: "mcp-b" },
+        createdAt: 1,
+        updatedAt: 1,
+        originalJson: "{}",
+      },
+    ];
+    resourceState.skills = [
+      {
+        id: "skill-a",
+        name: "Skill A",
+        source: "user" as const,
+        enabled: true,
+        content: "# Skill A",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "skill-b",
+        name: "Skill B",
+        source: "user" as const,
+        enabled: true,
+        content: "# Skill B",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
   });
 
   test("refreshes memory summary/detail previews after appending source memory", async () => {
@@ -316,14 +390,13 @@ describe("AssistantsSection", () => {
     assistantsState.current.assistants = [existingAssistant];
     assistantsState.current.updateAssistant.mockResolvedValue(updatedAssistant);
 
-    const onDone = vi.fn();
-    render(<AssistantEditorPage serverId="server-1" assistantId="assistant-1" onDone={onDone} />);
+    render(<AssistantMemoryEditorPage serverId="server-1" assistantId="assistant-1" />);
     expect(screen.getByDisplayValue("old summary")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("助手记忆"), {
       target: { value: "# New\nMention risky migrations." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存助手记忆" }));
 
     await waitFor(() =>
       expect(assistantsState.current.updateAssistant).toHaveBeenCalledWith(
@@ -338,7 +411,6 @@ describe("AssistantsSection", () => {
       | undefined;
     expect(updateInput).not.toHaveProperty("memorySummary");
     expect(updateInput).not.toHaveProperty("memoryDetailFileEdits");
-    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   test("saves edited memory summary and detail file contents", async () => {
@@ -361,15 +433,14 @@ describe("AssistantsSection", () => {
     assistantsState.current.assistants = [existingAssistant];
     assistantsState.current.updateAssistant.mockResolvedValue(updatedAssistant);
 
-    const onDone = vi.fn();
-    render(<AssistantEditorPage serverId="server-1" assistantId="assistant-1" onDone={onDone} />);
+    render(<AssistantMemoryEditorPage serverId="server-1" assistantId="assistant-1" />);
     fireEvent.change(screen.getByLabelText("记忆总文件内容"), {
       target: { value: "edited summary" },
     });
     fireEvent.change(screen.getByLabelText("Memory detail file detail-001 content"), {
       target: { value: "# Edited\n\nDetail body" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存更改" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存助手记忆" }));
 
     await waitFor(() =>
       expect(assistantsState.current.updateAssistant).toHaveBeenCalledWith(
@@ -385,7 +456,61 @@ describe("AssistantsSection", () => {
         }),
       ),
     );
-    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test("opens Assistant memory from the Assistant editor instead of editing it inline", () => {
+    assistantsState.current.assistants = [makeAssistant()];
+    const onOpenMemory = vi.fn();
+
+    render(
+      <AssistantEditorPage
+        serverId="server-1"
+        assistantId="assistant-1"
+        onDone={vi.fn()}
+        onOpenMemory={onOpenMemory}
+      />,
+    );
+
+    expect(screen.queryByLabelText("记忆总文件内容")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "配置记忆" }));
+    expect(onOpenMemory).toHaveBeenCalledWith("assistant-1");
+  });
+
+  test("paginates MCP and Skill lists independently with 10 items per page", () => {
+    resourceState.mcpServers = Array.from({ length: 11 }, (_, index) => ({
+      id: `mcp-${index + 1}`,
+      name: `MCP ${index + 1}`,
+      enabled: true,
+      transport: { type: "stdio" as const, command: `mcp-${index + 1}` },
+      createdAt: 1,
+      updatedAt: 1,
+      originalJson: "{}",
+    }));
+    resourceState.skills = Array.from({ length: 11 }, (_, index) => ({
+      id: `skill-${index + 1}`,
+      name: `Skill ${index + 1}`,
+      source: "user" as const,
+      enabled: true,
+      content: `# Skill ${index + 1}`,
+      createdAt: 1,
+      updatedAt: 1,
+    }));
+
+    render(<AssistantEditorPage serverId="server-1" onDone={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText("使用所有已启用的助手资源"));
+
+    expect(screen.getByText("MCP 10")).toBeTruthy();
+    expect(screen.queryByText("MCP 11")).toBeNull();
+    expect(screen.getByText("Skill 10")).toBeTruthy();
+    expect(screen.queryByText("Skill 11")).toBeNull();
+
+    const nextButtons = screen.getAllByRole("button", { name: /^(下一页|Next)$/ });
+    fireEvent.click(nextButtons[0]!);
+    expect(screen.getByText("MCP 11")).toBeTruthy();
+    expect(screen.queryByText("Skill 11")).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^(下一页|Next)$/ })[1]!);
+    expect(screen.getByText("Skill 11")).toBeTruthy();
   });
 
   test("saves custom assistant MCP and skill selection", async () => {

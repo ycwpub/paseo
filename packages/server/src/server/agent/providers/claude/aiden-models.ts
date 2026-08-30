@@ -5,11 +5,15 @@ import * as path from "node:path";
 import type { Logger } from "pino";
 
 import type { AgentModelDefinition } from "../../agent-sdk-types.js";
+import {
+  AIDEN_CUSTOM_MODEL_PREFIX,
+  mergeAidenModelRecords,
+  readAidenCachedModels,
+} from "../aiden/model-catalog.js";
 
 const AIDEN_MODEL_COMMAND_TIMEOUT_MS = 20_000;
 const AIDEN_MODEL_COMMAND_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const AIDEN_CUSTOM_MODEL_NAME_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
-const AIDEN_CUSTOM_MODEL_PREFIX = "[custom]";
 
 export interface AidenModelCommandResult {
   stdout: string;
@@ -49,6 +53,12 @@ export async function getAidenClaudeModels(
   options: AidenClaudeModelDiscoveryOptions,
 ): Promise<AgentModelDefinition[]> {
   const settings = await readAidenSettings(options.logger, options.cwd, options.configDir);
+  const cachedModels = await readAidenCachedModels({
+    logger: options.logger,
+    cwd: options.cwd,
+    configDir: options.configDir,
+    target: "claude",
+  });
   const runCommand = options.runCommand ?? runAidenModelCommand;
   const command = options.command ?? process.env.AIDEN_BIN ?? "aiden";
 
@@ -79,9 +89,13 @@ export async function getAidenClaudeModels(
     );
   }
 
-  if (discovered.length === 0) {
-    discovered = settings.customModels;
-  }
+  const localModels = mergeAidenModelRecords(cachedModels, settings.customModels);
+  const localFallbackModels = discovered.some(
+    (model) => !model.id.startsWith(AIDEN_CUSTOM_MODEL_PREFIX),
+  )
+    ? localModels.filter((model) => model.id.startsWith(AIDEN_CUSTOM_MODEL_PREFIX))
+    : localModels;
+  discovered = mergeAidenModelRecords(discovered, localFallbackModels);
 
   const selectedModel = normalizeSelectedModel(settings.selectedModel, discovered);
   return discovered.map((model) => {
@@ -156,7 +170,7 @@ function parseAidenClaudeModel(rawModel: unknown): AidenModelRecord | null {
   if (cliType && !isAidenClaudeCliType(cliType)) {
     return null;
   }
-  return {
+  const model: AidenModelRecord = {
     id,
     label:
       readTrimmedString(rawModel.display_name ?? rawModel.displayName ?? rawModel.label) ??
@@ -167,6 +181,8 @@ function parseAidenClaudeModel(rawModel: unknown): AidenModelRecord | null {
     contextWindowMaxTokens: readPositiveInteger(rawModel.context_length ?? rawModel.contextLength),
     isDefault: rawModel.default === true || rawModel.is_default === true,
   };
+  model.description ??= describeAidenModel(model);
+  return model;
 }
 
 function isAidenClaudeCliType(cliType: string): boolean {

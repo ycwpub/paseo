@@ -94,6 +94,24 @@ function isLarkUserOAuthInboundMessage(
   return message.type.startsWith("channel.lark.user_oauth.");
 }
 
+type LarkReminderInboundMessage = Extract<
+  SessionInboundMessage,
+  {
+    type:
+      | "channel.lark.reminder.list.request"
+      | "channel.lark.reminder.create.request"
+      | "channel.lark.reminder.update.request"
+      | "channel.lark.reminder.set_enabled.request"
+      | "channel.lark.reminder.delete.request";
+  }
+>;
+
+function isLarkReminderInboundMessage(
+  message: SessionInboundMessage,
+): message is LarkReminderInboundMessage {
+  return message.type.startsWith("channel.lark.reminder.");
+}
+
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -2938,7 +2956,7 @@ export class Session {
   }
 
   private dispatchChannelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    if (isLarkUserOAuthInboundMessage(msg)) {
+    if (isLarkUserOAuthInboundMessage(msg) || isLarkReminderInboundMessage(msg)) {
       return this.larkChannelSession?.handleRequest(msg);
     }
     switch (msg.type) {
@@ -2954,10 +2972,6 @@ export class Session {
       case "channel.lark.revoke_user.request":
       case "channel.lark.directory.resolve_users.request":
       case "channel.lark.directory.resolve_chats.request":
-      case "channel.lark.reminder.list.request":
-      case "channel.lark.reminder.create.request":
-      case "channel.lark.reminder.set_enabled.request":
-      case "channel.lark.reminder.delete.request":
         return this.larkChannelSession?.handleRequest(msg);
       default:
         return undefined;

@@ -80,4 +80,127 @@ describe("Aiden Codex runtime", () => {
       fs.rmSync(codexHome, { recursive: true, force: true });
     }
   });
+
+  test("completes a custom-only app-server catalog from Aiden's local cache", async () => {
+    const aidenConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-aiden-catalog-"));
+    const cacheDir = path.join(aidenConfigDir, "x", "models-cache");
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(aidenConfigDir, "settings.json"),
+      JSON.stringify({
+        xLauncherSelections: { codex: { model: "gpt-5.5" } },
+        xCustomModels: {
+          "gpt-5.6": {
+            visible: { codex: true, claude_code: true },
+            description: "Custom GPT",
+            claude_code: { series: "Custom GPT", alias: "sonnet" },
+          },
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(cacheDir, "claudecode.json"),
+      JSON.stringify({
+        schema_version: 1,
+        fetched_at_ms: 1,
+        sections: [
+          {
+            cliType: "claudecode",
+            entries: [
+              {
+                modelName: "gpt-5.5",
+                displayName: "gpt-5.5",
+                series: "GPT 系列",
+                config: {
+                  visible: true,
+                  description: "GPT 系列",
+                  context_length: 272_000,
+                },
+                modelMetadata: {
+                  context_window: 272_000,
+                  default_reasoning_level: "medium",
+                  supported_reasoning_levels: [
+                    { effort: "low", description: "Fast" },
+                    { effort: "high", description: "Deep" },
+                  ],
+                },
+                claudeCode: { series: "GPT 系列", alias: "opus" },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const fakeClient = {
+      request: vi.fn(async (method: string) => {
+        if (method === "model/list") {
+          return { data: [{ id: "[custom]gpt-5.6", displayName: "[custom]gpt-5.6" }] };
+        }
+        if (method === "getUserSavedConfig" || method === "config/read") {
+          return { config: {} };
+        }
+        return {};
+      }),
+      notify: vi.fn(),
+      dispose: vi.fn(async () => {}),
+    };
+    const client = new CodexAppServerAgentClient(
+      createTestLogger(),
+      {
+        command: {
+          mode: "replace",
+          argv: [process.execPath, "x", "codex"],
+        },
+      },
+      {
+        customProvider: {
+          id: "aiden-codex",
+          label: "Aiden Codex",
+          extends: "codex",
+        },
+        aidenConfigDir,
+        _createCodexClient: () => fakeClient,
+      },
+    );
+    const internals = asInternals<{
+      spawnAppServer(): Promise<ChildProcessWithoutNullStreams>;
+      fetchModelsFromAppServer(options: {
+        scope: "workspace";
+        cwd: string;
+        force: boolean;
+      }): Promise<
+        Array<{
+          id: string;
+          isDefault?: boolean;
+          contextWindowMaxTokens?: number;
+          thinkingOptions?: Array<{ id: string }>;
+        }>
+      >;
+    }>(client);
+    internals.spawnAppServer = async () => childProcessStub();
+
+    try {
+      const models = await internals.fetchModelsFromAppServer({
+        scope: "workspace",
+        cwd: os.tmpdir(),
+        force: false,
+      });
+
+      expect(models.map((model) => model.id)).toEqual(["gpt-5.5", "[custom]gpt-5.6"]);
+      expect(models[0]).toEqual(
+        expect.objectContaining({
+          isDefault: true,
+          contextWindowMaxTokens: 272_000,
+          thinkingOptions: [
+            expect.objectContaining({ id: "low" }),
+            expect.objectContaining({ id: "high" }),
+            expect.objectContaining({ id: "medium" }),
+          ],
+        }),
+      );
+    } finally {
+      fs.rmSync(aidenConfigDir, { recursive: true, force: true });
+    }
+  });
 });

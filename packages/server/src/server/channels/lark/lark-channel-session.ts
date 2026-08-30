@@ -25,6 +25,7 @@ export type LarkChannelSessionRequest = Extract<
       | "channel.lark.user_oauth.disconnect.request"
       | "channel.lark.reminder.list.request"
       | "channel.lark.reminder.create.request"
+      | "channel.lark.reminder.update.request"
       | "channel.lark.reminder.set_enabled.request"
       | "channel.lark.reminder.delete.request";
   }
@@ -52,6 +53,7 @@ type LarkChannelResponse = Extract<
       | "channel.lark.user_oauth.disconnect.response"
       | "channel.lark.reminder.list.response"
       | "channel.lark.reminder.create.response"
+      | "channel.lark.reminder.update.response"
       | "channel.lark.reminder.set_enabled.response"
       | "channel.lark.reminder.delete.response";
   }
@@ -265,6 +267,27 @@ export class LarkChannelSession {
           });
           return;
         }
+        case "channel.lark.reminder.update.request": {
+          const reminder = this.service.updateReminder(message.reminderId, {
+            name: message.name,
+            botId: message.botId,
+            chatId: message.chatId,
+            targetOpenIds: message.targetOpenIds,
+            message: message.message,
+            frequencySeconds: message.frequencySeconds,
+            sender: message.sender,
+          });
+          this.emitResponse({
+            type: "channel.lark.reminder.update.response",
+            payload: {
+              requestId: message.requestId,
+              reminder,
+              reminders: this.service.listReminders(),
+              error: null,
+            },
+          });
+          return;
+        }
         case "channel.lark.reminder.set_enabled.request": {
           const reminder = this.service.setReminderEnabled(message.reminderId, message.enabled);
           this.emitResponse({
@@ -459,6 +482,17 @@ export class LarkChannelSession {
       case "channel.lark.reminder.create.request":
         this.emitResponse({
           type: "channel.lark.reminder.create.response",
+          payload: {
+            requestId: message.requestId,
+            reminder: null,
+            reminders: this.service.listReminders(),
+            error,
+          },
+        });
+        return;
+      case "channel.lark.reminder.update.request":
+        this.emitResponse({
+          type: "channel.lark.reminder.update.response",
           payload: {
             requestId: message.requestId,
             reminder: null,

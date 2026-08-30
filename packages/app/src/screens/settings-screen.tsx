@@ -1434,6 +1434,8 @@ function renderDesktopSettingsDetailHeader(input: {
     return (
       <SettingsDetailNavigationHeader
         title={input.detailHeader.title}
+        Icon={input.detailHeader.Icon}
+        iconColor={input.iconColor}
         titleAccessory={input.detailHeader.titleAccessory}
         onBack={input.detailHeader.onBack}
       />
@@ -1455,9 +1457,11 @@ function renderDesktopSettingsDetailHeader(input: {
 function SettingsMobileDetailHeader({
   detailHeader,
   fallbackBack,
+  iconColor,
 }: {
   detailHeader: SettingsDetailHeader | null;
   fallbackBack: () => void;
+  iconColor: string;
 }) {
   if (!detailHeader) {
     return <BackHeader onBack={fallbackBack} />;
@@ -1465,6 +1469,8 @@ function SettingsMobileDetailHeader({
   const headerLeft = (
     <SettingsDetailNavigationHeader
       title={detailHeader.title}
+      Icon={detailHeader.Icon}
+      iconColor={iconColor}
       titleAccessory={detailHeader.titleAccessory}
       onBack={detailHeader.onBack ?? fallbackBack}
     />
@@ -1886,6 +1892,7 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         <SettingsMobileDetailHeader
           detailHeader={detailHeader}
           fallbackBack={handleBackFromDetail}
+          iconColor={theme.colors.foregroundMuted}
         />
         <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <View style={styles.content}>{content}</View>

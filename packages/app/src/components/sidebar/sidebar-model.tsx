@@ -12,7 +12,10 @@ import {
   type SidebarWorkspaceEntry,
   type SidebarWorkspacesListResult,
 } from "@/hooks/use-sidebar-workspaces-list";
-import { sortSidebarProjectsByActivity } from "@/hooks/sidebar-workspaces-view-model";
+import {
+  sortSidebarProjectsByActivity,
+  sortSidebarProjectsByName,
+} from "@/hooks/sidebar-workspaces-view-model";
 import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entries";
 import { usePinnedSidebarKeys, type PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
@@ -108,16 +111,19 @@ export function SidebarModelProvider({
     list.workspacePlacements,
     active !== false || needsWorkspaceEntries,
   );
-  const orderedProjects = useMemo(
-    () =>
-      sortMode === "activity"
-        ? sortSidebarProjectsByActivity({
-            projects: list.projects,
-            workspaceEntriesByKey,
-          })
-        : list.projects,
-    [list.projects, sortMode, workspaceEntriesByKey],
-  );
+  const orderedProjects = useMemo(() => {
+    switch (sortMode) {
+      case "activity":
+        return sortSidebarProjectsByActivity({
+          projects: list.projects,
+          workspaceEntriesByKey,
+        });
+      case "name":
+        return sortSidebarProjectsByName(list.projects);
+      case "manual":
+        return list.projects;
+    }
+  }, [list.projects, sortMode, workspaceEntriesByKey]);
   const resolvedProjectFilters = useMemo(
     () =>
       resolveActiveProjectFilters(

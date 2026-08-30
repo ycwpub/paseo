@@ -11,6 +11,7 @@ export function getSettingsViewServerId(view: SettingsView): string | null {
     case "memory-page":
     case "resource-sync":
     case "assistant":
+    case "assistant-memory":
     case "team":
     case "instruction-templates":
     case "instruction-template":
@@ -42,7 +43,7 @@ export function getHostSectionAfterHostSwitch(view: SettingsView): HostSectionSl
   if (view.kind === "resource-sync") {
     return "connections";
   }
-  if (view.kind === "assistant" || view.kind === "team") {
+  if (view.kind === "assistant" || view.kind === "assistant-memory" || view.kind === "team") {
     return "assistants";
   }
   if (view.kind === "instruction-templates" || view.kind === "instruction-template") {

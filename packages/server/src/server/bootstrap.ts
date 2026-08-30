@@ -242,6 +242,10 @@ import { LarkDirectoryService } from "./channels/lark/lark-directory-service.js"
 import { LarkDirectoryStore } from "./channels/lark/lark-directory-store.js";
 import { LarkUserOAuthService } from "./channels/lark/lark-user-oauth-service.js";
 import { LarkUserOAuthStore } from "./channels/lark/lark-user-oauth-store.js";
+import {
+  createLarkUserOAuthCallbackRoute,
+  LARK_USER_OAUTH_CALLBACK_PATH,
+} from "./channels/lark/lark-user-oauth-callback-route.js";
 import { AssistantStore } from "./assistants/assistant-store.js";
 import { PaseoMemoryStore } from "./memory/memory-store.js";
 import { PaseoMemoryService } from "./memory/memory-service.js";
@@ -807,6 +811,7 @@ export async function createPaseoDaemon(
     daemonRuntimeConfig.appBaseUrl = appBaseUrl;
   });
   let wsServer: VoiceAssistantWebSocketServer | null = null;
+  let larkUserOAuthService: LarkUserOAuthService | null = null;
   const daemonRuntimeConfig: DaemonRuntimeConfig = {
     listen: config.listen,
     worktreesRoot: config.worktreesRoot,
@@ -1109,6 +1114,17 @@ export async function createPaseoDaemon(
     "/api/terminal-activity",
     express.json(),
     createTerminalActivityRouteHandler(terminalManager),
+  );
+
+  // OAuth redirects originate in the external browser and therefore cannot
+  // attach the daemon bearer token. The random, one-time state is the
+  // capability used to authenticate this loopback-only callback.
+  app.get(
+    LARK_USER_OAUTH_CALLBACK_PATH,
+    createLarkUserOAuthCallbackRoute({
+      getService: () => larkUserOAuthService,
+      logger,
+    }),
   );
 
   // Serve the bundled browser web UI when enabled. Mounted after service-proxy
@@ -1678,7 +1694,7 @@ export async function createPaseoDaemon(
   const larkUserOAuthStore = new LarkUserOAuthStore({
     paseoHome: config.paseoHome,
   });
-  const larkUserOAuthService = new LarkUserOAuthService(larkChannelStore, larkUserOAuthStore);
+  larkUserOAuthService = new LarkUserOAuthService(larkChannelStore, larkUserOAuthStore);
   const larkDirectoryService = new LarkDirectoryService(
     larkChannelStore,
     larkDirectoryStore,
@@ -1689,6 +1705,7 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     channelStore: larkChannelStore,
     adapter: larkChannelAdapter,
+    userOAuthService: larkUserOAuthService,
     logger,
     emitChanged: (reminders) => {
       wsServer?.broadcast(

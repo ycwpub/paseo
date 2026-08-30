@@ -36,6 +36,7 @@ describe("feature_paseo server integration parity", () => {
       "teams",
       "mcpServers",
       "skills",
+      "skillManagement",
       "plugins",
       "pluginManagement",
       "pluginProjectScopedApps",

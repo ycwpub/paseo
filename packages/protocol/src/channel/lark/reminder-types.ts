@@ -6,7 +6,6 @@ export const LarkReminderSenderSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("user"),
-    userAccessTokenEnv: z.string().trim().min(1),
   }),
 ]);
 export type LarkReminderSender = z.infer<typeof LarkReminderSenderSchema>;
@@ -60,3 +59,8 @@ export const LarkReminderCreateInputSchema = z.object({
   enabled: z.boolean().default(true),
 });
 export type LarkReminderCreateInput = z.infer<typeof LarkReminderCreateInputSchema>;
+
+export const LarkReminderUpdateInputSchema = LarkReminderCreateInputSchema.omit({
+  enabled: true,
+});
+export type LarkReminderUpdateInput = z.infer<typeof LarkReminderUpdateInputSchema>;

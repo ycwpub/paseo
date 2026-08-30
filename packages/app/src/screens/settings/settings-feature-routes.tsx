@@ -1,5 +1,13 @@
 import type { ComponentType, ReactNode } from "react";
-import { BookOpen, Bot, MessageCircle, RefreshCw, Sparkles, Wrench } from "lucide-react-native";
+import {
+  BookOpen,
+  Bot,
+  Brain,
+  MessageCircle,
+  RefreshCw,
+  Sparkles,
+  Wrench,
+} from "lucide-react-native";
 import type { SettingsView } from "@/navigation/settings-navigation";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import ProjectLarkGroupsScreen from "@/screens/project-lark-groups-screen";
@@ -7,6 +15,7 @@ import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowled
 import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
 import {
   HostAssistantEditorPage,
+  HostAssistantMemoryEditorPage,
   HostInstructionTemplateEditorPage,
   HostInstructionTemplatesPage,
   HostMemorySettingsPage,
@@ -69,6 +78,10 @@ export function renderNestedSettingsContent(
           onDone={onDone}
         />
       );
+    case "assistant-memory":
+      return (
+        <HostAssistantMemoryEditorPage serverId={view.serverId} assistantId={view.assistantId} />
+      );
     case "team":
       return <HostTeamEditorPage serverId={view.serverId} teamId={view.teamId} onDone={onDone} />;
     case "instruction-templates":
@@ -105,6 +118,8 @@ export function getResourceDetailHeader(
   switch (view.kind) {
     case "assistant":
       return { title: view.assistantId ? "编辑助手" : "创建助手", Icon: Bot, onBack };
+    case "assistant-memory":
+      return { title: "助手记忆", Icon: Brain, onBack };
     case "team":
       return { title: view.teamId ? "编辑团队" : "创建团队", Icon: Bot, onBack };
     case "instruction-templates":

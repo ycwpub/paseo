@@ -11,6 +11,7 @@ import type {
   LarkChannelPendingPairing,
   LarkChannelStatus,
   LarkDirectory,
+  LarkReminder,
   Team,
 } from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
@@ -36,7 +37,7 @@ import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/composer/agen
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
 import { LarkUserDirectoryField } from "./lark-directory-fields";
 import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
-import { LarkReminderSection } from "./lark-reminder-section";
+import { LarkReminderEditor, LarkReminderSection } from "./lark-reminder-section";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
@@ -127,7 +128,13 @@ interface BotListCardProps {
   onAdd: () => void;
 }
 
-type LarkChannelPage = "overview" | "bot" | "substitute" | "reminders";
+type LarkChannelPage =
+  | "overview"
+  | "bot"
+  | "substitute"
+  | "reminders"
+  | "reminder-create"
+  | "reminder-edit";
 
 export interface LarkChannelDetailNavigation {
   title: string;
@@ -138,7 +145,13 @@ const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, str
   bot: "编辑飞书机器人",
   substitute: "替身模式",
   reminders: "飞书定时提醒",
+  "reminder-create": "创建定时任务",
+  "reminder-edit": "编辑定时任务",
 };
+
+function getLarkChannelParentPage(page: LarkChannelPage): LarkChannelPage {
+  return page === "reminder-create" || page === "reminder-edit" ? "reminders" : "overview";
+}
 
 function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
   const application = channel.application ?? null;
@@ -296,6 +309,8 @@ interface CredentialsCardProps {
 interface PairingRowProps {
   pairing: LarkChannelPendingPairing;
   isFirst: boolean;
+  appId: string | null;
+  directory: LarkDirectory | null;
   onApprove: (code: string) => void;
   onReject: (code: string) => void;
 }
@@ -922,6 +937,53 @@ function ReminderEntryCard({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+function ReminderEditPage({
+  serverId,
+  bots,
+  directory,
+  directorySupported,
+  reminder,
+  resolveDirectoryUsers,
+  resolveDirectoryChats,
+  onSaved,
+}: {
+  serverId: string;
+  bots: LarkChannelBotStatus[];
+  directory: LarkDirectory | null;
+  directorySupported: boolean;
+  reminder: LarkReminder | null;
+  resolveDirectoryUsers: UseLarkChannelResult["resolveDirectoryUsers"];
+  resolveDirectoryChats: UseLarkChannelResult["resolveDirectoryChats"];
+  onSaved: () => void;
+}) {
+  return (
+    <View testID="host-page-channels-reminder-edit">
+      <SecondaryPageIntro title="编辑定时任务" description="修改并保存当前飞书定时提醒。" />
+      {reminder ? (
+        <LarkReminderEditor
+          key={reminder.id}
+          serverId={serverId}
+          bots={bots}
+          directory={directory}
+          directorySupported={directorySupported}
+          resolveDirectoryUsers={resolveDirectoryUsers}
+          resolveDirectoryChats={resolveDirectoryChats}
+          reminder={reminder}
+          onSaved={onSaved}
+        />
+      ) : (
+        <SettingsSection title="定时任务">
+          <View style={settingsStyles.card}>
+            <View style={settingsStyles.row}>
+              <Text style={settingsStyles.rowHint}>未找到要编辑的定时任务，请返回列表重试。</Text>
+            </View>
+          </View>
+        </SettingsSection>
+      )}
+    </View>
+  );
+}
+
 function LegacySubstituteOpenIdField(
   props: Pick<
     CredentialsCardProps,
@@ -1005,7 +1067,7 @@ function OptionalCredentialFields(props: CredentialsCardProps) {
   );
 }
 
-function PairingRow({ pairing, isFirst, onApprove, onReject }: PairingRowProps) {
+function PairingRow({ pairing, isFirst, appId, directory, onApprove, onReject }: PairingRowProps) {
   const handleApprove = useCallback(() => {
     onApprove(pairing.code);
   }, [onApprove, pairing.code]);
@@ -1016,8 +1078,19 @@ function PairingRow({ pairing, isFirst, onApprove, onReject }: PairingRowProps) 
   return (
     <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{pairing.displayName}</Text>
-        <Text style={settingsStyles.rowHint}>Code {pairing.code}</Text>
+        <Text style={settingsStyles.rowTitle}>
+          {pairing.openId
+            ? formatLarkUserOpenId(
+                directory?.users ?? [],
+                appId,
+                pairing.openId,
+                pairing.displayName,
+              )
+            : pairing.displayName}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {formatLarkChatId(directory?.chats ?? [], appId, pairing.chatId)} · 配对码 {pairing.code}
+        </Text>
       </View>
       <View style={styles.inlineActions}>
         <Button size="sm" variant="default" onPress={handleApprove}>
@@ -1033,6 +1106,8 @@ function PairingRow({ pairing, isFirst, onApprove, onReject }: PairingRowProps) 
 
 function PairingRequestsCard(props: {
   pairings: LarkChannelPendingPairing[];
+  appId: string | null;
+  directory: LarkDirectory | null;
   onApprove: (code: string) => void;
   onReject: (code: string) => void;
 }) {
@@ -1045,6 +1120,8 @@ function PairingRequestsCard(props: {
               key={pairing.code}
               pairing={pairing}
               isFirst={index === 0}
+              appId={props.appId}
+              directory={props.directory}
               onApprove={props.onApprove}
               onReject={props.onReject}
             />
@@ -1310,6 +1387,7 @@ function LarkChannelLoadedContent({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [formRevision, setFormRevision] = useState(0);
   const [page, setPage] = useState<LarkChannelPage>("overview");
+  const [editingReminder, setEditingReminder] = useState<LarkReminder | null>(null);
   const status = channel.status;
   const directory = getStatusDirectory(status);
   const botStatuses = useMemo(() => buildBotStatuses(status), [status]);
@@ -1468,13 +1546,27 @@ function LarkChannelLoadedContent({
     clearFormForNewBot();
     setPage("bot");
   }, [clearFormForNewBot]);
-  const handleBackToOverview = useCallback(() => {
-    setPage("overview");
-    setSaveError(null);
-  }, []);
   const handleOpenReminders = useCallback(() => {
+    setEditingReminder(null);
     setPage("reminders");
   }, []);
+  const handleCreateReminder = useCallback(() => {
+    setEditingReminder(null);
+    setPage("reminder-create");
+  }, []);
+  const handleEditReminder = useCallback((reminder: LarkReminder) => {
+    setEditingReminder(reminder);
+    setPage("reminder-edit");
+  }, []);
+  const handleReminderSaved = useCallback(() => {
+    setEditingReminder(null);
+    setPage("reminders");
+  }, []);
+  const handleDetailBack = useCallback(() => {
+    setEditingReminder(null);
+    setSaveError(null);
+    setPage(getLarkChannelParentPage(page));
+  }, [page]);
 
   useEffect(() => {
     if (!onDetailNavigationChange) return;
@@ -1484,10 +1576,10 @@ function LarkChannelLoadedContent({
     }
     onDetailNavigationChange({
       title: page === "bot" && creatingBot ? "添加飞书机器人" : LARK_CHANNEL_PAGE_TITLES[page],
-      onBack: handleBackToOverview,
+      onBack: handleDetailBack,
     });
     return () => onDetailNavigationChange(null);
-  }, [creatingBot, handleBackToOverview, onDetailNavigationChange, page]);
+  }, [creatingBot, handleDetailBack, onDetailNavigationChange, page]);
   const handleBotNameChange = useCallback((value: string) => {
     setBotName(value);
     setSaveError(null);
@@ -1733,6 +1825,8 @@ function LarkChannelLoadedContent({
         {credentialsCard}
         <PairingRequestsCard
           pairings={selectedBotStatus?.pendingPairings ?? EMPTY_PAIRINGS}
+          appId={selectedBotAppId}
+          directory={directory}
           onApprove={handleApprovePairing}
           onReject={handleRejectPairing}
         />
@@ -1780,8 +1874,40 @@ function LarkChannelLoadedContent({
           directorySupported={supportsLarkDirectory}
           resolveDirectoryUsers={channel.resolveDirectoryUsers}
           resolveDirectoryChats={channel.resolveDirectoryChats}
+          onCreate={handleCreateReminder}
+          onEdit={handleEditReminder}
         />
       </View>
+    ),
+    "reminder-create": (
+      <View testID="host-page-channels-reminder-create">
+        <SecondaryPageIntro
+          title="创建定时任务"
+          description="配置提醒群、被提醒人、频率和发送身份。"
+        />
+        <LarkReminderEditor
+          key="create"
+          serverId={serverId}
+          bots={botStatuses}
+          directory={directory}
+          directorySupported={supportsLarkDirectory}
+          resolveDirectoryUsers={channel.resolveDirectoryUsers}
+          resolveDirectoryChats={channel.resolveDirectoryChats}
+          onSaved={handleReminderSaved}
+        />
+      </View>
+    ),
+    "reminder-edit": (
+      <ReminderEditPage
+        serverId={serverId}
+        bots={botStatuses}
+        directory={directory}
+        directorySupported={supportsLarkDirectory}
+        reminder={editingReminder}
+        resolveDirectoryUsers={channel.resolveDirectoryUsers}
+        resolveDirectoryChats={channel.resolveDirectoryChats}
+        onSaved={handleReminderSaved}
+      />
     ),
   };
 

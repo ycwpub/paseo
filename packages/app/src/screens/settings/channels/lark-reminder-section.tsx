@@ -8,11 +8,13 @@ import type {
   LarkDirectoryUser,
   LarkReminder,
   LarkReminderSender,
+  LarkReminderUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
+import { LarkUserOAuthCard } from "@/projects/lark/lark-user-oauth-card";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
@@ -21,6 +23,25 @@ import { LarkReminderAudienceFields } from "./lark-reminder-audience-fields";
 import { useLarkReminders } from "./use-lark-reminders";
 
 type SenderType = LarkReminderSender["type"];
+
+interface LarkReminderSharedProps {
+  serverId: string;
+  bots: LarkChannelBotStatus[];
+  directory: LarkDirectory | null;
+  directorySupported: boolean;
+  resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
+}
+
+interface LarkReminderSectionProps extends LarkReminderSharedProps {
+  onCreate: () => void;
+  onEdit: (reminder: LarkReminder) => void;
+}
+
+interface LarkReminderEditorProps extends LarkReminderSharedProps {
+  reminder?: LarkReminder | null;
+  onSaved: () => void;
+}
 
 function botLabel(bot: LarkChannelBotStatus): string {
   return bot.bot?.name || bot.name || bot.appId || bot.id;
@@ -35,6 +56,81 @@ function splitOpenIds(value: string): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function getAvailableReminderBots(
+  bots: LarkChannelBotStatus[],
+  reminder: LarkReminder | null | undefined,
+): LarkChannelBotStatus[] {
+  return bots.filter((bot) => bot.enabled || bot.id === reminder?.botId);
+}
+
+function buildReminderBotOptions(bots: LarkChannelBotStatus[]): SelectFieldOption<string>[] {
+  return bots.map((bot) => ({
+    id: bot.id,
+    value: bot.id,
+    label: botLabel(bot),
+    description: bot.appId ?? bot.id,
+  }));
+}
+
+function createReminderEditorInitialState(
+  reminder: LarkReminder | null | undefined,
+  bots: LarkChannelBotStatus[],
+) {
+  return {
+    name: reminder?.name ?? "",
+    botId: reminder?.botId ?? bots[0]?.id ?? null,
+    chatId: reminder?.chatId ?? "",
+    targetOpenIds: reminder?.targetOpenIds ?? [],
+    rawTargetOpenIds: reminder?.targetOpenIds.join(", ") ?? "",
+    message: reminder?.message ?? "",
+    frequencyMinutes: reminder ? String(reminder.frequencySeconds / 60) : "30",
+    senderType: reminder?.sender.type ?? ("bot" as SenderType),
+  };
+}
+
+interface ReminderEditorValues {
+  name: string;
+  botId: string | null;
+  chatId: string;
+  targetOpenIds: string[];
+  rawTargetOpenIds: string;
+  message: string;
+  frequencyMinutes: string;
+  senderType: SenderType;
+}
+
+function buildReminderUpdateInput(
+  values: ReminderEditorValues,
+  directorySupported: boolean,
+  selectedBot: LarkChannelBotStatus | null,
+): { input: LarkReminderUpdateInput | null; error: string | null } {
+  const parsedFrequency = Number(values.frequencyMinutes);
+  const openIds = directorySupported ? values.targetOpenIds : splitOpenIds(values.rawTargetOpenIds);
+  if (!values.botId) return { input: null, error: "请选择已启用的飞书机器人" };
+  if (!values.chatId.trim()) return { input: null, error: "请输入群 ID" };
+  if (openIds.length === 0) return { input: null, error: "至少通过邮箱选择一个被提醒人" };
+  if (!values.message.trim()) return { input: null, error: "请输入提醒文案" };
+  if (!Number.isInteger(parsedFrequency) || parsedFrequency < 1) {
+    return { input: null, error: "提醒频率必须是大于等于 1 的整数分钟" };
+  }
+  if (values.senderType === "user" && !selectedBot?.appId) {
+    return { input: null, error: "用户身份发送需要选择已配置 App ID 的飞书机器人" };
+  }
+  return {
+    input: {
+      name: values.name.trim() || undefined,
+      botId: values.botId,
+      chatId: values.chatId.trim(),
+      targetOpenIds: openIds,
+      message: values.message.trim(),
+      frequencySeconds: parsedFrequency * 60,
+      sender:
+        values.senderType === "bot" ? ({ type: "bot" } as const) : ({ type: "user" } as const),
+    },
+    error: null,
+  };
 }
 
 function statusLabel(reminder: LarkReminder): string {
@@ -61,6 +157,7 @@ function ReminderRow({
   botAppId,
   directory,
   busy,
+  onEdit,
   onEnabledChange,
   onDelete,
 }: {
@@ -68,9 +165,11 @@ function ReminderRow({
   botAppId: string | null;
   directory: LarkDirectory | null;
   busy: boolean;
+  onEdit: (reminder: LarkReminder) => void;
   onEnabledChange: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
 }) {
+  const handleEdit = useCallback(() => onEdit(reminder), [onEdit, reminder]);
   const handleEnabledChange = useCallback(
     (enabled: boolean) => onEnabledChange(reminder.id, enabled),
     [onEnabledChange, reminder.id],
@@ -83,9 +182,7 @@ function ReminderRow({
       .join("、")}`,
     `每 ${reminder.frequencySeconds / 60} 分钟`,
     `已发送 ${reminder.sendCount} 次`,
-    reminder.sender.type === "bot"
-      ? "机器人身份"
-      : `用户身份（${reminder.sender.userAccessTokenEnv}）`,
+    reminder.sender.type === "bot" ? "机器人身份" : "用户身份（OAuth 自动维护）",
   ].join(" · ");
   return (
     <View style={styles.reminderRow}>
@@ -99,7 +196,13 @@ function ReminderRow({
         <Text style={styles.metaText}>下次提醒：{formatDate(reminder.nextRunAt)}</Text>
         {reminder.reply ? (
           <Text style={styles.successText}>
-            {reminder.reply.displayName} 已于 {formatDate(reminder.reply.repliedAt)} 回复
+            {formatLarkUserOpenId(
+              directory?.users ?? [],
+              botAppId,
+              reminder.reply.openId,
+              reminder.reply.displayName,
+            )}{" "}
+            已于 {formatDate(reminder.reply.repliedAt)} 回复
           </Text>
         ) : null}
         {reminder.lastError ? (
@@ -107,6 +210,9 @@ function ReminderRow({
         ) : null}
       </View>
       <View style={styles.rowActions}>
+        <Button size="sm" variant="outline" onPress={handleEdit} disabled={busy}>
+          编辑
+        </Button>
         <Switch
           value={reminder.status === "active"}
           onValueChange={handleEnabledChange}
@@ -121,48 +227,122 @@ function ReminderRow({
   );
 }
 
+function UpgradeRequiredCard() {
+  return (
+    <SettingsSection title="定时任务">
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <Text style={settingsStyles.rowHint}>更新 Paseo daemon 后可管理飞书定时提醒。</Text>
+        </View>
+      </View>
+    </SettingsSection>
+  );
+}
+
 export function LarkReminderSection({
+  serverId,
+  bots,
+  directory,
+  onCreate,
+  onEdit,
+}: LarkReminderSectionProps) {
+  const supported = useHostFeature(serverId, "larkReminders");
+  const reminders = useLarkReminders(serverId, supported);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const handleEnabledChange = useCallback(
+    (id: string, enabled: boolean) => {
+      setActionError(null);
+      void reminders.setEnabled(id, enabled).catch((error) => {
+        setActionError(error instanceof Error ? error.message : String(error));
+      });
+    },
+    [reminders],
+  );
+  const handleDelete = useCallback(
+    (id: string) => {
+      setActionError(null);
+      void reminders.deleteReminder(id).catch((error) => {
+        setActionError(error instanceof Error ? error.message : String(error));
+      });
+    },
+    [reminders],
+  );
+
+  if (!supported) return <UpgradeRequiredCard />;
+
+  return (
+    <SettingsSection title={`定时任务（${reminders.reminders.length}）`}>
+      <View style={styles.listHeader}>
+        <Text style={settingsStyles.rowHint}>
+          任一被提醒人在群内回复后，任务会自动停止；也可以随时编辑、停止或删除。
+        </Text>
+        <Button variant="default" onPress={onCreate} testID="host-page-lark-create-reminder">
+          创建定时任务
+        </Button>
+      </View>
+      {actionError || reminders.error ? (
+        <Text style={settingsStyles.rowError}>{actionError ?? reminders.error?.message}</Text>
+      ) : null}
+      <View style={settingsStyles.card}>
+        {reminders.reminders.length > 0 ? (
+          reminders.reminders.map((reminder, index) => (
+            <View key={reminder.id} style={index === 0 ? undefined : settingsStyles.rowBorder}>
+              <ReminderRow
+                reminder={reminder}
+                botAppId={bots.find((bot) => bot.id === reminder.botId)?.appId ?? null}
+                directory={directory}
+                busy={reminders.isMutating}
+                onEdit={onEdit}
+                onEnabledChange={handleEnabledChange}
+                onDelete={handleDelete}
+              />
+            </View>
+          ))
+        ) : (
+          <View style={settingsStyles.row}>
+            <Text style={settingsStyles.rowHint}>
+              {reminders.isLoading ? "正在加载定时任务…" : "暂无定时任务。"}
+            </Text>
+          </View>
+        )}
+      </View>
+    </SettingsSection>
+  );
+}
+
+export function LarkReminderEditor({
   serverId,
   bots,
   directory,
   directorySupported,
   resolveDirectoryUsers,
   resolveDirectoryChats,
-}: {
-  serverId: string;
-  bots: LarkChannelBotStatus[];
-  directory: LarkDirectory | null;
-  directorySupported: boolean;
-  resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
-  resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
-}) {
+  reminder,
+  onSaved,
+}: LarkReminderEditorProps) {
   const supported = useHostFeature(serverId, "larkReminders");
   const reminders = useLarkReminders(serverId, supported);
-  const enabledBots = useMemo(() => bots.filter((bot) => bot.enabled), [bots]);
+  const isEditing = Boolean(reminder);
+  const availableBots = useMemo(() => getAvailableReminderBots(bots, reminder), [bots, reminder]);
   const botOptions = useMemo<SelectFieldOption<string>[]>(
-    () =>
-      enabledBots.map((bot) => ({
-        id: bot.id,
-        value: bot.id,
-        label: botLabel(bot),
-        description: bot.appId ?? bot.id,
-      })),
-    [enabledBots],
+    () => buildReminderBotOptions(availableBots),
+    [availableBots],
   );
-  const [name, setName] = useState("");
-  const [botId, setBotId] = useState<string | null>(enabledBots[0]?.id ?? null);
-  const [chatId, setChatId] = useState("");
-  const [targetOpenIds, setTargetOpenIds] = useState<string[]>([]);
-  const [rawTargetOpenIds, setRawTargetOpenIds] = useState("");
-  const [message, setMessage] = useState("");
-  const [frequencyMinutes, setFrequencyMinutes] = useState("30");
-  const [senderType, setSenderType] = useState<SenderType>("bot");
-  const [userAccessTokenEnv, setUserAccessTokenEnv] = useState("LARK_USER_ACCESS_TOKEN");
+  const [initialState] = useState(() => createReminderEditorInitialState(reminder, availableBots));
+  const [name, setName] = useState(initialState.name);
+  const [botId, setBotId] = useState<string | null>(initialState.botId);
+  const [chatId, setChatId] = useState(initialState.chatId);
+  const [targetOpenIds, setTargetOpenIds] = useState<string[]>(initialState.targetOpenIds);
+  const [rawTargetOpenIds, setRawTargetOpenIds] = useState(initialState.rawTargetOpenIds);
+  const [message, setMessage] = useState(initialState.message);
+  const [frequencyMinutes, setFrequencyMinutes] = useState(initialState.frequencyMinutes);
+  const [senderType, setSenderType] = useState<SenderType>(initialState.senderType);
   const [formError, setFormError] = useState<string | null>(null);
 
   const selectedBot = useMemo(
-    () => enabledBots.find((bot) => bot.id === botId) ?? null,
-    [botId, enabledBots],
+    () => availableBots.find((bot) => bot.id === botId) ?? null,
+    [availableBots, botId],
   );
   const selectedBotDisplay = useMemo(
     () => (selectedBot ? { label: botLabel(selectedBot) } : null),
@@ -180,228 +360,151 @@ export function LarkReminderSection({
         id: "user",
         value: "user",
         label: "用户身份",
-        description: "使用环境变量中的 user_access_token 发送，不在 Paseo 中保存 Token",
+        description: "使用当前飞书 OAuth 授权身份发送，Token 由 Paseo 安全保存并自动续期",
       },
     ],
     [],
   );
   const selectedSenderDisplay = useMemo(
-    () => ({
-      label: senderType === "bot" ? "机器人身份" : "用户身份",
-    }),
+    () => ({ label: senderType === "bot" ? "机器人身份" : "用户身份" }),
     [senderType],
   );
 
-  const handleCreate = useCallback(async () => {
-    const parsedFrequency = Number(frequencyMinutes);
-    const openIds = directorySupported ? targetOpenIds : splitOpenIds(rawTargetOpenIds);
-    if (!botId) {
-      setFormError("请选择已启用的飞书机器人");
-      return;
-    }
-    if (!chatId.trim()) {
-      setFormError("请输入群 ID");
-      return;
-    }
-    if (openIds.length === 0) {
-      setFormError("至少通过邮箱选择一个被提醒人");
-      return;
-    }
-    if (!message.trim()) {
-      setFormError("请输入提醒文案");
-      return;
-    }
-    if (!Number.isInteger(parsedFrequency) || parsedFrequency < 1) {
-      setFormError("提醒频率必须是大于等于 1 的整数分钟");
-      return;
-    }
-    if (senderType === "user" && !userAccessTokenEnv.trim()) {
-      setFormError("用户身份发送必须填写 user_access_token 环境变量名");
+  const handleSave = useCallback(async () => {
+    const result = buildReminderUpdateInput(
+      {
+        name,
+        botId,
+        chatId,
+        targetOpenIds,
+        rawTargetOpenIds,
+        message,
+        frequencyMinutes,
+        senderType,
+      },
+      directorySupported,
+      selectedBot,
+    );
+    if (!result.input) {
+      setFormError(result.error);
       return;
     }
     try {
       setFormError(null);
-      await reminders.create({
-        name: name.trim() || undefined,
-        botId,
-        chatId: chatId.trim(),
-        targetOpenIds: openIds,
-        message: message.trim(),
-        frequencySeconds: parsedFrequency * 60,
-        sender:
-          senderType === "bot"
-            ? { type: "bot" }
-            : { type: "user", userAccessTokenEnv: userAccessTokenEnv.trim() },
-        enabled: true,
-      });
-      setName("");
-      setChatId("");
-      setTargetOpenIds([]);
-      setRawTargetOpenIds("");
-      setMessage("");
+      if (reminder) {
+        await reminders.update(reminder.id, result.input);
+      } else {
+        await reminders.create({ ...result.input, enabled: true });
+      }
+      onSaved();
     } catch (error) {
       setFormError(error instanceof Error ? error.message : String(error));
     }
   }, [
     botId,
     chatId,
+    directorySupported,
     frequencyMinutes,
     message,
     name,
-    directorySupported,
+    onSaved,
     rawTargetOpenIds,
+    reminder,
     reminders,
+    selectedBot,
     senderType,
     targetOpenIds,
-    userAccessTokenEnv,
   ]);
 
-  const handleEnabledChange = useCallback(
-    (id: string, enabled: boolean) => {
-      setFormError(null);
-      void reminders.setEnabled(id, enabled).catch((error) => {
-        setFormError(error instanceof Error ? error.message : String(error));
-      });
-    },
-    [reminders],
-  );
-  const handleDelete = useCallback(
-    (id: string) => {
-      setFormError(null);
-      void reminders.deleteReminder(id).catch((error) => {
-        setFormError(error instanceof Error ? error.message : String(error));
-      });
-    },
-    [reminders],
-  );
-
-  if (!supported) {
-    return (
-      <SettingsSection title="飞书定时提醒">
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <Text style={settingsStyles.rowHint}>更新 Paseo daemon 后可管理飞书定时提醒。</Text>
-          </View>
-        </View>
-      </SettingsSection>
-    );
-  }
+  if (!supported) return <UpgradeRequiredCard />;
 
   return (
-    <>
-      <SettingsSection title="创建飞书定时提醒">
-        <View style={styles.formCard}>
-          <Text style={settingsStyles.rowHint}>
-            任一被提醒人在任务启动后向该群发送消息，即视为已回复并自动停止。提醒间隔最短 1
-            分钟；也可以随时手动停止或删除。
-          </Text>
-          <Field label="任务名称">
-            <FormTextInput value={name} onChangeText={setName} placeholder="例如：等待方案确认" />
-          </Field>
-          <SelectField
-            label="飞书机器人"
-            value={botId}
-            selectedDisplay={selectedBotDisplay}
-            options={botOptions}
-            onChange={setBotId}
-            placeholder="选择已启用的机器人"
-            emptyText="暂无已启用的机器人"
+    <SettingsSection title={isEditing ? "编辑定时任务" : "创建定时任务"}>
+      <View style={styles.formCard}>
+        <Text style={settingsStyles.rowHint}>
+          任一被提醒人在任务启动后向该群发送消息，即视为已回复并自动停止。提醒间隔最短 1 分钟。
+        </Text>
+        <Field label="任务名称">
+          <FormTextInput value={name} onChangeText={setName} placeholder="例如：等待方案确认" />
+        </Field>
+        <SelectField
+          label="飞书机器人"
+          value={botId}
+          selectedDisplay={selectedBotDisplay}
+          options={botOptions}
+          onChange={setBotId}
+          placeholder="选择已启用的机器人"
+          emptyText="暂无已启用的机器人"
+        />
+        <LarkReminderAudienceFields
+          directorySupported={directorySupported}
+          selectedBot={selectedBot}
+          directory={directory}
+          chatId={chatId}
+          targetOpenIds={targetOpenIds}
+          rawTargetOpenIds={rawTargetOpenIds}
+          onChatIdChange={setChatId}
+          onTargetOpenIdsChange={setTargetOpenIds}
+          onRawTargetOpenIdsChange={setRawTargetOpenIds}
+          resolveDirectoryUsers={resolveDirectoryUsers}
+          resolveDirectoryChats={resolveDirectoryChats}
+        />
+        <Field label="@ 提醒文案">
+          <FormTextInput
+            value={message}
+            onChangeText={setMessage}
+            placeholder="请确认并回复本消息"
+            multiline
+            textInputStyle={styles.textarea}
           />
-          <LarkReminderAudienceFields
-            directorySupported={directorySupported}
-            selectedBot={selectedBot}
-            directory={directory}
-            chatId={chatId}
-            targetOpenIds={targetOpenIds}
-            rawTargetOpenIds={rawTargetOpenIds}
-            onChatIdChange={setChatId}
-            onTargetOpenIdsChange={setTargetOpenIds}
-            onRawTargetOpenIdsChange={setRawTargetOpenIds}
-            resolveDirectoryUsers={resolveDirectoryUsers}
-            resolveDirectoryChats={resolveDirectoryChats}
+        </Field>
+        <Field label="提醒频率（分钟）">
+          <FormTextInput
+            value={frequencyMinutes}
+            onChangeText={setFrequencyMinutes}
+            keyboardType="numeric"
+            placeholder="30"
           />
-          <Field label="@ 提醒文案">
-            <FormTextInput
-              value={message}
-              onChangeText={setMessage}
-              placeholder="请确认并回复本消息"
-              multiline
-              textInputStyle={styles.textarea}
-            />
-          </Field>
-          <Field label="提醒频率（分钟）">
-            <FormTextInput
-              value={frequencyMinutes}
-              onChangeText={setFrequencyMinutes}
-              keyboardType="numeric"
-              placeholder="30"
-            />
-          </Field>
-          <SelectField
-            label="发送身份"
-            value={senderType}
-            selectedDisplay={selectedSenderDisplay}
-            options={senderOptions}
-            onChange={setSenderType}
-            placeholder="选择发送身份"
-            emptyText="无可用发送身份"
-          />
-          {senderType === "user" ? (
-            <Field
-              label="user_access_token 环境变量"
-              hint="仅保存环境变量名；Token 必须由 daemon 进程环境提供。"
-            >
-              <FormTextInput
-                value={userAccessTokenEnv}
-                onChangeText={setUserAccessTokenEnv}
-                placeholder="LARK_USER_ACCESS_TOKEN"
-              />
-            </Field>
-          ) : null}
-          {formError || reminders.error ? (
-            <Text style={settingsStyles.rowError}>{formError ?? reminders.error?.message}</Text>
-          ) : null}
-          <View style={styles.submitRow}>
-            <Button
-              variant="default"
-              onPress={handleCreate}
-              loading={reminders.isMutating}
-              disabled={reminders.isMutating || enabledBots.length === 0}
-            >
-              创建并开启
-            </Button>
-          </View>
+        </Field>
+        <SelectField
+          label="发送身份"
+          value={senderType}
+          selectedDisplay={selectedSenderDisplay}
+          options={senderOptions}
+          onChange={setSenderType}
+          placeholder="选择发送身份"
+          emptyText="无可用发送身份"
+        />
+        {senderType === "user" && selectedBot?.appId ? (
+          <LarkUserOAuthCard serverId={serverId} appId={selectedBot.appId} />
+        ) : null}
+        {formError || reminders.error ? (
+          <Text style={settingsStyles.rowError}>{formError ?? reminders.error?.message}</Text>
+        ) : null}
+        <View style={styles.submitRow}>
+          <Button
+            variant="default"
+            onPress={handleSave}
+            loading={reminders.isMutating}
+            disabled={reminders.isMutating || availableBots.length === 0}
+          >
+            {isEditing ? "保存" : "创建并开启"}
+          </Button>
         </View>
-      </SettingsSection>
-      <SettingsSection title={`提醒任务（${reminders.reminders.length}）`}>
-        <View style={settingsStyles.card}>
-          {reminders.reminders.length > 0 ? (
-            reminders.reminders.map((reminder, index) => (
-              <View key={reminder.id} style={index === 0 ? undefined : settingsStyles.rowBorder}>
-                <ReminderRow
-                  reminder={reminder}
-                  botAppId={bots.find((bot) => bot.id === reminder.botId)?.appId ?? null}
-                  directory={directory}
-                  busy={reminders.isMutating}
-                  onEnabledChange={handleEnabledChange}
-                  onDelete={handleDelete}
-                />
-              </View>
-            ))
-          ) : (
-            <View style={settingsStyles.row}>
-              <Text style={settingsStyles.rowHint}>
-                {reminders.isLoading ? "正在加载提醒任务…" : "暂无提醒任务。"}
-              </Text>
-            </View>
-          )}
-        </View>
-      </SettingsSection>
-    </>
+      </View>
+    </SettingsSection>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
+  listHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+    justifyContent: "space-between",
+    marginBottom: theme.spacing[3],
+  },
   formCard: {
     backgroundColor: theme.colors.surface1,
     borderColor: theme.colors.border,
@@ -420,6 +523,7 @@ const styles = StyleSheet.create((theme) => ({
   reminderRow: {
     alignItems: "center",
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing[4],
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
@@ -427,6 +531,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   reminderContent: {
     flex: 1,
+    minWidth: 240,
   },
   reminderTitleRow: {
     alignItems: "center",
@@ -460,6 +565,7 @@ const styles = StyleSheet.create((theme) => ({
   rowActions: {
     alignItems: "center",
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing[3],
   },
 }));

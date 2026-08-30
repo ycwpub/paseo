@@ -616,6 +616,17 @@ export function buildAssistantSettingsRoute(serverId: string, assistantId?: stri
   return `/settings/hosts/${encodeSegment(normalizedServerId)}/assistants/${encodeSegment(target)}` as const;
 }
 
+export function buildAssistantMemorySettingsRoute(serverId: string, assistantId: string) {
+  const normalizedServerId = trimNonEmpty(serverId);
+  const normalizedAssistantId = trimNonEmpty(assistantId);
+  if (!normalizedServerId || !normalizedAssistantId) {
+    throw new Error(
+      "buildAssistantMemorySettingsRoute requires a non-empty serverId and assistantId",
+    );
+  }
+  return `/settings/hosts/${encodeSegment(normalizedServerId)}/assistants/${encodeSegment(normalizedAssistantId)}/memory` as const;
+}
+
 export function buildTeamSettingsRoute(serverId: string, teamId?: string) {
   const normalizedServerId = trimNonEmpty(serverId);
   if (!normalizedServerId) {

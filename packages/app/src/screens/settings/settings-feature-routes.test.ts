@@ -43,6 +43,23 @@ describe("settings feature routes", () => {
         page: "knowledge",
       }),
     ).toBe("host");
+    expect(
+      getSettingsViewServerId({
+        kind: "assistant-memory",
+        serverId: "host",
+        assistantId: "assistant",
+      }),
+    ).toBe("host");
     expect(getSettingsViewServerId({ kind: "section", section: "general" })).toBeNull();
+  });
+
+  it("keeps Assistant memory under the Assistant host section", () => {
+    expect(
+      getHostSectionAfterHostSwitch({
+        kind: "assistant-memory",
+        serverId: "host",
+        assistantId: "assistant",
+      }),
+    ).toBe("assistants");
   });
 });

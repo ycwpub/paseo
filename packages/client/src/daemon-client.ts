@@ -38,6 +38,7 @@ import {
   SkillCreateInput,
   SkillUpdateInput,
   type LarkReminderCreateInput,
+  type LarkReminderUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import { DaemonResourceRpcClient } from "./daemon-resource-rpc-client.js";
@@ -706,6 +707,10 @@ type LarkReminderCreatePayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.reminder.create.response" }
 >["payload"];
+type LarkReminderUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.reminder.update.response" }
+>["payload"];
 type LarkReminderSetEnabledPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.reminder.set_enabled.response" }
@@ -1078,6 +1083,10 @@ export interface DeleteLarkBotOptions {
   requestId?: string;
 }
 export interface CreateLarkReminderOptions extends LarkReminderCreateInput {
+  requestId?: string;
+}
+export interface UpdateLarkReminderOptions extends LarkReminderUpdateInput {
+  reminderId: string;
   requestId?: string;
 }
 export interface SetLarkReminderEnabledOptions {
@@ -6723,6 +6732,10 @@ export class DaemonClient {
 
   async createLarkReminder(options: CreateLarkReminderOptions): Promise<LarkReminderCreatePayload> {
     return this.resourceRpc.createLarkReminder(options);
+  }
+
+  async updateLarkReminder(options: UpdateLarkReminderOptions): Promise<LarkReminderUpdatePayload> {
+    return this.resourceRpc.updateLarkReminder(options);
   }
 
   async setLarkReminderEnabled(

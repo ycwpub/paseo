@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAssistantSettingsRoute,
+  buildAssistantMemorySettingsRoute,
   buildHostAgentDetailRoute,
   buildHostRootRoute,
   buildHostWorkspaceOpenRoute,
@@ -229,6 +230,9 @@ describe("projects settings routes", () => {
     expect(buildAssistantSettingsRoute("host a")).toBe("/settings/hosts/host%20a/assistants/new");
     expect(buildAssistantSettingsRoute("host a", "assistant/1")).toBe(
       "/settings/hosts/host%20a/assistants/assistant%2F1",
+    );
+    expect(buildAssistantMemorySettingsRoute("host a", "assistant/1")).toBe(
+      "/settings/hosts/host%20a/assistants/assistant%2F1/memory",
     );
   });
 

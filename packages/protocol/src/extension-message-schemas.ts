@@ -104,6 +104,8 @@ import {
   LarkReminderListResponseSchema,
   LarkReminderSetEnabledRequestSchema,
   LarkReminderSetEnabledResponseSchema,
+  LarkReminderUpdateRequestSchema,
+  LarkReminderUpdateResponseSchema,
 } from "./channel/lark/reminder-rpc-schemas.js";
 import {
   DaemonClientAccessApproveRequestSchema,
@@ -252,6 +254,7 @@ export const ExtensionSessionInboundSchemas = [
   LarkUserOAuthDisconnectRequestSchema,
   LarkReminderListRequestSchema,
   LarkReminderCreateRequestSchema,
+  LarkReminderUpdateRequestSchema,
   LarkReminderSetEnabledRequestSchema,
   LarkReminderDeleteRequestSchema,
   DaemonClientAccessListRequestSchema,
@@ -347,6 +350,7 @@ export const ExtensionSessionOutboundSchemas = [
   LarkUserOAuthDisconnectResponseSchema,
   LarkReminderListResponseSchema,
   LarkReminderCreateResponseSchema,
+  LarkReminderUpdateResponseSchema,
   LarkReminderSetEnabledResponseSchema,
   LarkReminderDeleteResponseSchema,
   LarkReminderChangedMessageSchema,

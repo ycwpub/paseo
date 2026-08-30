@@ -1,6 +1,7 @@
 import { router, type Href } from "expo-router";
 import { navigateToLastWorkspace } from "@/stores/navigation-active-workspace-store";
 import {
+  buildAssistantSettingsRoute,
   buildHostMemoryRoute,
   buildHostResourceSyncRoute,
   buildInstructionTemplatesSettingsRoute,
@@ -26,6 +27,7 @@ export type SettingsView =
   | { kind: "project-knowledge"; serverId: string; projectId: string }
   | { kind: "project-lark-groups"; serverId: string; projectId: string }
   | { kind: "assistant"; serverId: string; assistantId?: string }
+  | { kind: "assistant-memory"; serverId: string; assistantId: string }
   | { kind: "team"; serverId: string; teamId?: string }
   | { kind: "instruction-templates"; serverId: string }
   | { kind: "instruction-template"; serverId: string; templateId?: string }
@@ -60,19 +62,24 @@ export function openHostResourceSync(serverId: string, page: HostResourceSyncPag
   router.push(buildHostResourceSyncRoute(serverId, page));
 }
 
-export function returnFromSettings(view: SettingsView): void {
-  if (view.kind === "root") {
-    if (!navigateToLastWorkspace()) {
-      router.replace(buildOpenProjectRoute());
-    }
-    return;
+function returnFromSettingsRoot(view: SettingsView): boolean {
+  if (view.kind !== "root") return false;
+  if (!navigateToLastWorkspace()) {
+    router.replace(buildOpenProjectRoute());
   }
+  return true;
+}
+
+export function returnFromSettings(view: SettingsView): void {
+  if (returnFromSettingsRoot(view)) return;
 
   let parent: Href;
   if (view.kind === "memory" && view.memoryId) {
     parent = view.projectId
       ? buildProjectMemoryRoute(view.serverId, view.projectId)
       : buildHostMemoryRoute(view.serverId);
+  } else if (view.kind === "assistant-memory") {
+    parent = buildAssistantSettingsRoute(view.serverId, view.assistantId);
   } else if (view.kind === "project-lark-groups" || view.kind === "project-knowledge") {
     parent = buildProjectSettingsRoute(view.serverId, view.projectId);
   } else if (view.kind === "project" || (view.kind === "memory" && view.projectId)) {

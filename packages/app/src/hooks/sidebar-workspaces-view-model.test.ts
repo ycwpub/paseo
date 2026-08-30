@@ -14,6 +14,7 @@ import {
   deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
   sortSidebarProjectsByActivity,
+  sortSidebarProjectsByName,
   type ProjectStatusSession,
   type SidebarProjectEntry,
   type SidebarWorkspacePlacement,
@@ -367,6 +368,53 @@ describe("sortSidebarProjectsByActivity", () => {
     expect(sorted[0]?.workspaces.map((entry) => entry.workspaceId)).toEqual([
       "b-second",
       "b-first",
+    ]);
+  });
+});
+
+describe("sortSidebarProjectsByName", () => {
+  it("sorts by display name naturally without changing workspace order", () => {
+    const projects = buildSidebarProjectsFromStructure({
+      projects: [
+        project({
+          projectKey: "project-10",
+          projectName: "Project 10",
+          workspaceKeys: ["ten-second", "ten-first"],
+        }),
+        project({
+          projectKey: "alpha",
+          projectName: "alpha",
+          workspaceKeys: ["alpha"],
+        }),
+        project({
+          projectKey: "project-2",
+          projectName: "Project 2",
+          workspaceKeys: ["two"],
+        }),
+      ],
+    }).toReversed();
+
+    const sorted = sortSidebarProjectsByName(projects);
+
+    expect(sorted.map((entry) => entry.projectName)).toEqual(["alpha", "Project 2", "Project 10"]);
+    expect(
+      sorted
+        .find((entry) => entry.viewKey === "project-10")
+        ?.workspaces.map((entry) => entry.workspaceId),
+    ).toEqual(["ten-second", "ten-first"]);
+  });
+
+  it("uses the project key to make equal names deterministic", () => {
+    const projects = buildSidebarProjectsFromStructure({
+      projects: [
+        project({ projectKey: "project-b", projectName: "Same", workspaceKeys: [] }),
+        project({ projectKey: "project-a", projectName: "same", workspaceKeys: [] }),
+      ],
+    });
+
+    expect(sortSidebarProjectsByName(projects).map((entry) => entry.viewKey)).toEqual([
+      "project-a",
+      "project-b",
     ]);
   });
 });

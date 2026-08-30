@@ -1,19 +1,31 @@
 import type { LarkDirectoryChat, LarkDirectoryUser } from "@getpaseo/protocol/messages";
 
+interface LarkUserIdentity {
+  displayName?: string | null;
+  email?: string | null;
+  openId?: string | null;
+}
+
+function compactIdentityParts(parts: readonly (string | null | undefined)[]): string[] {
+  return Array.from(new Set(parts.map((part) => part?.trim() ?? "").filter(Boolean)));
+}
+
+function formatIdentityParts(parts: readonly (string | null | undefined)[]): string {
+  const [primary, ...details] = compactIdentityParts(parts);
+  if (!primary) return "";
+  return details.length > 0 ? `${primary}（${details.join("，")}）` : primary;
+}
+
+export function formatLarkUserIdentity(user: LarkUserIdentity): string {
+  return formatIdentityParts([user.displayName, user.email, user.openId]);
+}
+
 export function formatLarkUserLabel(user: LarkDirectoryUser): string {
-  const displayName = user.displayName?.trim();
-  const email = user.email?.trim();
-  if (displayName && email) return `${displayName}（${email}）`;
-  if (displayName) return displayName;
-  if (email) return email;
-  return user.openId;
+  return formatLarkUserIdentity(user);
 }
 
 export function formatLarkChatLabel(chat: LarkDirectoryChat): string {
-  const name = chat.name.trim();
-  const groupId = chat.groupId.trim();
-  if (name && groupId) return `${name}（${groupId}）`;
-  return name || groupId || chat.chatId;
+  return formatIdentityParts([chat.name, chat.groupId, chat.chatId]);
 }
 
 export function findLarkDirectoryUser(
@@ -42,7 +54,7 @@ export function formatLarkUserOpenId(
 ): string {
   const relation = findLarkDirectoryUser(users, appId, openId);
   if (relation) return formatLarkUserLabel(relation);
-  return fallbackDisplayName?.trim() || openId;
+  return formatLarkUserIdentity({ displayName: fallbackDisplayName, openId });
 }
 
 export function formatLarkChatId(

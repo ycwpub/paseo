@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { LarkReminder, LarkReminderCreateInput } from "@getpaseo/protocol/messages";
+import type {
+  LarkReminder,
+  LarkReminderCreateInput,
+  LarkReminderUpdateInput,
+} from "@getpaseo/protocol/messages";
 import { useReplicaQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
@@ -14,6 +18,7 @@ export interface UseLarkRemindersResult {
   isMutating: boolean;
   error: Error | null;
   create: (input: LarkReminderCreateInput) => Promise<LarkReminder>;
+  update: (reminderId: string, input: LarkReminderUpdateInput) => Promise<LarkReminder>;
   setEnabled: (reminderId: string, enabled: boolean) => Promise<LarkReminder>;
   deleteReminder: (reminderId: string) => Promise<void>;
 }
@@ -95,6 +100,26 @@ export function useLarkReminders(serverId: string, enabled: boolean): UseLarkRem
     [client, mutation],
   );
 
+  const update = useCallback(
+    (reminderId: string, input: LarkReminderUpdateInput) => {
+      if (!client) return Promise.reject(new Error("Host is disconnected"));
+      return mutation
+        .mutateAsync(async () => {
+          const result = await client.updateLarkReminder({ reminderId, ...input });
+          if (result.error || !result.reminder) {
+            throw new Error(result.error ?? "Lark reminder was not updated");
+          }
+          return result.reminders;
+        })
+        .then((reminders) => {
+          const updated = reminders.find((entry) => entry.id === reminderId);
+          if (!updated) throw new Error("Updated Lark reminder was not returned");
+          return updated;
+        });
+    },
+    [client, mutation],
+  );
+
   const deleteReminder = useCallback(
     async (reminderId: string) => {
       if (!client) throw new Error("Host is disconnected");
@@ -115,6 +140,7 @@ export function useLarkReminders(serverId: string, enabled: boolean): UseLarkRem
     isMutating: mutation.isPending,
     error: query.error ?? mutation.error,
     create,
+    update,
     setEnabled,
     deleteReminder,
   };

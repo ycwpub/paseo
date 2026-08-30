@@ -99,11 +99,13 @@ export {
   LarkReminderSchema,
   LarkReminderSenderSchema,
   LarkReminderStatusSchema,
+  LarkReminderUpdateInputSchema,
   type LarkReminder,
   type LarkReminderCreateInput,
   type LarkReminderReply,
   type LarkReminderSender,
   type LarkReminderStatus,
+  type LarkReminderUpdateInput,
 } from "./channel/lark/reminder-types.js";
 export * from "./channel/lark/reminder-rpc-schemas.js";
 export {

@@ -64,7 +64,10 @@ describe("sidebar view store", () => {
     expect(useSidebarViewStore.getState().hostFilters).toEqual([]);
   });
 
-  it("switches between recent-activity and manual project ordering", () => {
+  it("switches between recent-activity, project-name, and manual project ordering", () => {
+    useSidebarViewStore.getState().setSortMode("name");
+    expect(useSidebarViewStore.getState().sortMode).toBe("name");
+
     useSidebarViewStore.getState().setSortMode("manual");
     expect(useSidebarViewStore.getState().sortMode).toBe("manual");
 
@@ -135,6 +138,21 @@ describe("sidebar view store", () => {
       groupMode: "status",
       sortMode: "manual",
       hostFilters: ["host-a", "host-b"],
+      projectFilters: [],
+      labelFilter: { labels: [] },
+    });
+  });
+
+  it("keeps project-name ordering during version migration", () => {
+    expect(
+      migrateSidebarViewState({
+        groupMode: "project",
+        sortMode: "name",
+      }),
+    ).toEqual({
+      groupMode: "project",
+      sortMode: "name",
+      hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
     });

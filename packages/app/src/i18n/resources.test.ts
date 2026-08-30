@@ -167,6 +167,9 @@ describe("translation resources", () => {
     expect(zhCN.settings.project.memory.policyTitle).toBe("记忆规范");
     expect(zhCN.settings.project.memory.enabledTitle).toBe("为当前项目开启记忆");
     expect(zhCN.settings.project.memory.content.title).toBe("记忆内容");
+    expect(zhCN.settings.host.skills.unsupported).toBe(
+      "当前主机版本暂不支持编排技能管理，请更新 Paseo 守护进程",
+    );
     expect(zhCN.sidebar.project.confirmations.removeMessage).toBe(
       "从 Paseo 中删除「{{projectName}}」及其所有工作区？\n\n仅会删除每台关联主机上的 Paseo 项目数据（~/.paseo/projects/<projectId> 下的全部内容）。不会删除或修改该项目关联的外部代码目录及其中任何文件。Paseo 项目数据删除后无法恢复。",
     );

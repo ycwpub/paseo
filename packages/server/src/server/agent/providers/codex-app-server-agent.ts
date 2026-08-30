@@ -119,6 +119,12 @@ import {
   createAidenRuntimeEnvOverlay,
   isAidenRuntimeProvider,
 } from "./aiden/runtime-compat.js";
+import {
+  AIDEN_CUSTOM_MODEL_PREFIX,
+  normalizeAidenSelectedModel,
+  readAidenLocalModelCatalog,
+  type AidenModelRecord,
+} from "./aiden/model-catalog.js";
 
 function assertChildWithPipes(
   child: ChildProcess,
@@ -286,6 +292,7 @@ interface CodexAppServerAgentDeps {
     extends: string;
   };
   customCodexConfig?: Record<string, unknown> | null;
+  aidenConfigDir?: string;
   _createCodexClient?: (
     child: ChildProcessWithoutNullStreams,
     logger: Logger,
@@ -921,6 +928,7 @@ interface CodexModel {
   description?: string;
   isDefault?: boolean;
   model?: string;
+  contextWindowMaxTokens?: number;
   defaultReasoningEffort?: string;
   supportedReasoningEfforts?: CodexReasoningEffortEntry[];
 }
@@ -934,6 +942,7 @@ const CodexModelListResponseSchema = z.object({
         description: z.string().optional(),
         isDefault: z.boolean().optional(),
         model: z.string().optional(),
+        contextWindowMaxTokens: z.number().int().positive().optional(),
         defaultReasoningEffort: z.string().optional(),
         supportedReasoningEfforts: z
           .array(
@@ -3135,7 +3144,7 @@ const CodexNotificationSchema = z.union([
 ]);
 
 async function readCodexConfiguredDefaults(
-  client: CodexAppServerClient,
+  client: CodexAppServerClientLike,
   logger: Logger,
 ): Promise<CodexConfiguredDefaults> {
   let savedConfigDefaults: CodexConfiguredDefaults = {};
@@ -7443,11 +7452,11 @@ export class CodexAppServerAgentClient implements AgentClient {
   }
 
   async fetchCatalog(
-    _options: FetchCatalogOptions,
+    options: FetchCatalogOptions,
     context?: ProviderRefreshContext,
   ): Promise<ProviderCatalog> {
     const [models, autoReviewEnabled] = await Promise.all([
-      this.fetchModelsFromAppServer(context),
+      this.fetchModelsFromAppServer(options, context),
       runProviderRefreshActivity(context, "version", () =>
         this.resolveAutoReviewEnabled(context?.signal),
       ),
@@ -7467,11 +7476,24 @@ export class CodexAppServerAgentClient implements AgentClient {
       : DEFAULT_CODEX_MODE_ID;
   }
 
+  // This method owns one client lifecycle across live discovery, local Aiden merge, and fallback.
+  // eslint-disable-next-line complexity
   private async fetchModelsFromAppServer(
+    options: FetchCatalogOptions,
     context?: ProviderRefreshContext,
   ): Promise<AgentModelDefinition[]> {
-    // Codex model/list is global to the app server in this flow; cwd/force are intentionally ignored.
-    let client: CodexAppServerClient | undefined;
+    const isAidenCodex = isAidenRuntimeProvider(this.deps.customProvider?.id, "codex");
+    const localCatalog = isAidenCodex
+      ? await readAidenLocalModelCatalog({
+          logger: this.logger,
+          cwd: options.scope === "workspace" ? options.cwd : process.cwd(),
+          configDir: this.deps.aidenConfigDir,
+          target: "codex",
+        })
+      : null;
+    // Codex model/list is global to the app server in this flow. Aiden's local
+    // cache is only used to complete or recover its own derived provider list.
+    let client: CodexAppServerClientLike | undefined;
     let disposePromise: Promise<void> | undefined;
     const dispose = () => {
       if (!client) return Promise.resolve();
@@ -7484,7 +7506,9 @@ export class CodexAppServerAgentClient implements AgentClient {
     try {
       await runProviderRefreshActivity(context, "app-server.start", async () => {
         const child = await this.spawnAppServer();
-        client = new CodexAppServerClient(child, this.logger);
+        client =
+          this.deps._createCodexClient?.(child, this.logger, () => ({})) ??
+          new CodexAppServerClient(child, this.logger);
         if (context?.signal.aborted) await dispose();
       });
       if (!client) throw new Error("Codex app-server did not start");
@@ -7497,11 +7521,18 @@ export class CodexAppServerAgentClient implements AgentClient {
         client!.request("model/list", {}),
       );
       const parsedResponse = CodexModelListResponseSchema.safeParse(rawResponse);
-      const models = parsedResponse.success ? (parsedResponse.data.data ?? []) : [];
+      const discoveredModels = parsedResponse.success ? (parsedResponse.data.data ?? []) : [];
+      const models = mergeCodexModelsWithAidenCatalog(discoveredModels, localCatalog?.models ?? []);
       const configuredDefaults = await runProviderRefreshActivity(context, "config/read", () =>
         readCodexConfiguredDefaults(client!, this.logger),
       );
-      const configuredDefaultModelId = configuredDefaults.model;
+      const configuredDefaultModelId =
+        configuredDefaults.model ??
+        normalizeAidenSelectedModel(
+          localCatalog?.selectedModel ?? null,
+          localCatalog?.models ?? [],
+        ) ??
+        undefined;
       const configuredDefaultThinkingOptionId = configuredDefaults.thinkingOptionId;
       const hasConfiguredDefaultModel =
         typeof configuredDefaultModelId === "string"
@@ -7512,6 +7543,24 @@ export class CodexAppServerAgentClient implements AgentClient {
           configuredDefaultModelId,
           configuredDefaultThinkingOptionId,
           hasConfiguredDefaultModel,
+        }),
+      );
+    } catch (error) {
+      if (context?.signal.aborted || !localCatalog || localCatalog.models.length === 0) {
+        throw error;
+      }
+      this.logger.warn(
+        { err: error },
+        "Failed to load Aiden Codex models from app-server; using the local Aiden catalog",
+      );
+      const models = mergeCodexModelsWithAidenCatalog([], localCatalog.models);
+      const configuredDefaultModelId =
+        normalizeAidenSelectedModel(localCatalog.selectedModel, localCatalog.models) ?? undefined;
+      return models.map((model) =>
+        buildCodexModelDefinition(model, {
+          configuredDefaultModelId,
+          configuredDefaultThinkingOptionId: undefined,
+          hasConfiguredDefaultModel: configuredDefaultModelId !== undefined,
         }),
       );
     } finally {
@@ -7629,6 +7678,7 @@ function buildCodexModelDefinition(
     label: normalizeCodexModelLabel(model.displayName ?? ""),
     description: model.description,
     isDefault: isDefaultModel,
+    contextWindowMaxTokens: model.contextWindowMaxTokens,
     thinkingOptions: thinkingOptions.length > 0 ? thinkingOptions : undefined,
     defaultThinkingOptionId,
     metadata: {
@@ -7637,6 +7687,57 @@ function buildCodexModelDefinition(
       supportedReasoningEfforts: model.supportedReasoningEfforts,
     },
   };
+}
+
+function mergeCodexModelsWithAidenCatalog(
+  discoveredModels: readonly CodexModel[],
+  localModels: readonly AidenModelRecord[],
+): CodexModel[] {
+  const hasDiscoveredBuiltInModel = discoveredModels.some(
+    (model) => !model.id.startsWith(AIDEN_CUSTOM_MODEL_PREFIX),
+  );
+  const merged = new Map<string, CodexModel>();
+  const fallbackModels = hasDiscoveredBuiltInModel
+    ? localModels.filter((model) => model.id.startsWith(AIDEN_CUSTOM_MODEL_PREFIX))
+    : localModels;
+  const addLocalModel = (localModel: AidenModelRecord) => {
+    const cachedModel: CodexModel = {
+      id: localModel.id,
+      displayName: localModel.label ?? localModel.id,
+      description: localModel.description ?? describeAidenCachedModel(localModel),
+      isDefault: localModel.isDefault,
+      contextWindowMaxTokens: localModel.contextWindowMaxTokens,
+      defaultReasoningEffort: localModel.defaultReasoningEffort,
+      supportedReasoningEfforts: localModel.supportedReasoningEfforts,
+    };
+    const discovered = merged.get(localModel.id);
+    merged.set(localModel.id, discovered ? { ...cachedModel, ...discovered } : cachedModel);
+  };
+
+  if (hasDiscoveredBuiltInModel) {
+    for (const model of discoveredModels) {
+      merged.set(model.id, model);
+    }
+    for (const localModel of fallbackModels) {
+      addLocalModel(localModel);
+    }
+  } else {
+    for (const localModel of fallbackModels) {
+      addLocalModel(localModel);
+    }
+    for (const model of discoveredModels) {
+      const cached = merged.get(model.id);
+      merged.set(model.id, cached ? { ...cached, ...model } : model);
+    }
+  }
+  return [...merged.values()];
+}
+
+function describeAidenCachedModel(model: AidenModelRecord): string {
+  const details = [model.series, model.alias].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+  return details.length > 0 ? `${details.join(" · ")} · From Aiden` : "From Aiden";
 }
 
 function buildCodexThinkingOptionMap(

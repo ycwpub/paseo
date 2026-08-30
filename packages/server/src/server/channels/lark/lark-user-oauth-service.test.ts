@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LarkChannelStore } from "./lark-channel-store.js";
+import { DEFAULT_LARK_USER_OAUTH_REDIRECT_URI } from "@getpaseo/protocol/messages";
 import {
   LarkUserAuthorizationRequiredError,
   LarkUserOAuthService,
@@ -29,7 +30,8 @@ function createHarness(gatewayOverrides: Partial<LarkUserOAuthGateway> = {}) {
       refreshToken: "r-token",
       expiresIn: 7200,
       refreshTokenExpiresIn: 2_592_000,
-      scope: "offline_access im:chat:read im:chat.members:write_only",
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
     })),
     refreshAccessToken: vi.fn(async () => ({
       accessToken: "u-token-refreshed",
@@ -64,11 +66,22 @@ function createHarness(gatewayOverrides: Partial<LarkUserOAuthGateway> = {}) {
 }
 
 describe("LarkUserOAuthService", () => {
+  it("rejects custom-scheme redirects before creating pending authorization", () => {
+    const { service } = createHarness();
+
+    expect(() => service.startAuthorization("cli_test", "paseo://oauth/lark")).toThrow(
+      "必须使用 HTTP 或 HTTPS",
+    );
+  });
+
   it("exchanges an authorization code and stores refreshable user credentials", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-29T02:00:00.000Z"));
     const { gateway, service, store } = createHarness();
-    const authorization = service.startAuthorization("cli_test", "paseo://oauth/lark");
+    const authorization = service.startAuthorization(
+      "cli_test",
+      DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+    );
     const url = new URL(authorization.authorizationUrl);
     expect(url.searchParams.get("client_id")).toBe("cli_test");
     expect(url.searchParams.get("response_type")).toBe("code");
@@ -79,7 +92,7 @@ describe("LarkUserOAuthService", () => {
     await expect(
       service.completeAuthorization(
         "cli_test",
-        `paseo://oauth/lark?code=oauth-code&state=${authorization.state}`,
+        `${DEFAULT_LARK_USER_OAUTH_REDIRECT_URI}?code=oauth-code&state=${authorization.state}`,
         authorization.state,
       ),
     ).resolves.toMatchObject({
@@ -90,7 +103,7 @@ describe("LarkUserOAuthService", () => {
     expect(gateway.exchangeAuthorizationCode).toHaveBeenCalledWith({
       config: expect.objectContaining({ appId: "cli_test" }),
       code: "oauth-code",
-      redirectUri: "paseo://oauth/lark",
+      redirectUri: DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
     });
     expect(store.get("cli_test")).toMatchObject({
       userAccessToken: "u-token",
@@ -120,7 +133,8 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope: "offline_access im:chat:read im:chat.members:write_only",
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
       openId: "ou_test",
       email: null,
       displayName: null,
@@ -153,7 +167,8 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope: "offline_access",
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
       openId: null,
       email: null,
       displayName: null,
@@ -163,6 +178,31 @@ describe("LarkUserOAuthService", () => {
 
     await expect(service.getValidUserAccessToken("cli_test")).resolves.toBe("u-token-new");
     expect(store.get("cli_test")?.refreshToken).toBe("r-token-old");
+  });
+
+  it("requires reauthorization when the stored grant lacks user message permission", async () => {
+    const { service, store } = createHarness();
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-old",
+      refreshToken: "r-token-old",
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope: "offline_access im:chat:read im:chat.members:write_only",
+      openId: "ou_test",
+      email: "test@example.com",
+      displayName: "张三",
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(service.getStatus("cli_test")).toMatchObject({
+      authorized: false,
+      needsAuthorization: true,
+    });
+    await expect(service.getValidUserAccessToken("cli_test")).rejects.toBeInstanceOf(
+      LarkUserAuthorizationRequiredError,
+    );
   });
 
   it("removes invalid credentials and requires a new authorization when refresh fails", async () => {
@@ -177,7 +217,8 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope: "offline_access",
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
       openId: null,
       email: null,
       displayName: null,
@@ -193,13 +234,31 @@ describe("LarkUserOAuthService", () => {
 
   it("rejects a callback with a mismatched state", async () => {
     const { service } = createHarness();
-    const authorization = service.startAuthorization("cli_test", "paseo://oauth/lark");
+    const authorization = service.startAuthorization(
+      "cli_test",
+      DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+    );
     await expect(
       service.completeAuthorization(
         "cli_test",
-        "paseo://oauth/lark?code=oauth-code&state=wrong",
+        `${DEFAULT_LARK_USER_OAUTH_REDIRECT_URI}?code=oauth-code&state=wrong`,
         authorization.state,
       ),
     ).rejects.toThrow("state 不匹配");
+  });
+
+  it("completes authorization directly from the HTTP callback state", async () => {
+    const { service } = createHarness();
+    const authorization = service.startAuthorization(
+      "cli_test",
+      DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+    );
+
+    await expect(
+      service.completeAuthorizationCallback("oauth-code", authorization.state),
+    ).resolves.toMatchObject({
+      authorized: true,
+      email: "test@example.com",
+    });
   });
 });

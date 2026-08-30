@@ -88,6 +88,7 @@ import { LocalRelayConfigurationSection } from "./host-local-relay-section";
 import { InstructionTemplatesEntrySection } from "./agents/instruction-templates-section";
 export {
   HostAssistantEditorPage,
+  HostAssistantMemoryEditorPage,
   HostAssistantsPage,
   HostChannelsPage,
   HostInstructionTemplateEditorPage,

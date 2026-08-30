@@ -3,22 +3,36 @@
  */
 import React from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { RefreshCw } from "lucide-react-native";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsDetailNavigationHeader } from "./settings-detail-navigation-header";
 
 describe("SettingsDetailNavigationHeader", () => {
   afterEach(cleanup);
 
-  it("shows only the back icon and current page title", () => {
+  it("shows the page icon between the plain back affordance and title", () => {
     const goBack = vi.fn();
 
-    render(<SettingsDetailNavigationHeader title="飞书定时提醒" onBack={goBack} />);
+    render(
+      <SettingsDetailNavigationHeader
+        title="同步记忆"
+        Icon={RefreshCw}
+        iconColor="#666"
+        onBack={goBack}
+      />,
+    );
 
-    expect(screen.getByText("飞书定时提醒")).toBeTruthy();
-    expect(screen.queryByText("渠道")).toBeNull();
+    expect(screen.getByText("同步记忆")).toBeTruthy();
     expect(screen.queryByText("返回")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("settings-detail-back"));
+    const header = screen.getByTestId("settings-detail-navigation-header");
+    const back = screen.getByTestId("settings-detail-back");
+    const pageIcon = screen.getByTestId("settings-detail-page-icon");
+    const title = screen.getByTestId("settings-detail-header-title");
+    expect(Array.from(header.children)).toEqual([back, pageIcon, title]);
+    expect(back.getAttribute("style") ?? "").not.toMatch(/background|border/);
+
+    fireEvent.click(back);
     expect(goBack).toHaveBeenCalledTimes(1);
   });
 
@@ -31,6 +45,8 @@ describe("SettingsDetailNavigationHeader", () => {
     render(
       <SettingsDetailNavigationHeader
         title="编辑助手"
+        Icon={RefreshCw}
+        iconColor="#666"
         titleAccessory={titleAccessory}
         onBack={vi.fn()}
       />,

@@ -51,6 +51,7 @@ import type {
   SetLarkChannelEnabledOptions,
   SetLarkReminderEnabledOptions,
   UpdateAssistantOptions,
+  UpdateLarkReminderOptions,
 } from "./daemon-client.js";
 import type { CloudKnowledgeScope } from "@getpaseo/protocol/knowledge/cloud-cache-rpc-schemas";
 
@@ -865,6 +866,15 @@ export class DaemonResourceRpcClient {
       requestId,
       message: { type: "channel.lark.reminder.create.request", ...reminder },
       responseType: "channel.lark.reminder.create.response",
+    });
+  }
+
+  updateLarkReminder(options: UpdateLarkReminderOptions) {
+    const { requestId, ...reminder } = options;
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.reminder.update.request", ...reminder },
+      responseType: "channel.lark.reminder.update.response",
     });
   }
 

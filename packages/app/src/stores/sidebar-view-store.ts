@@ -6,7 +6,7 @@ import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
 export type SidebarGroupMode = "project" | "status";
-export type SidebarSortMode = "activity" | "manual";
+export type SidebarSortMode = "activity" | "name" | "manual";
 
 const SIDEBAR_VIEW_STORAGE_KEY = "sidebar-view";
 const LEGACY_SIDEBAR_GROUP_MODE_STORAGE_KEY = "sidebar-group-mode";
@@ -89,7 +89,7 @@ const SidebarLabelFilterSchema = z.object({
 });
 const SidebarViewPersistedStateSchema = z.strictObject({
   groupMode: PersistedSidebarGroupModeSchema.optional(),
-  sortMode: z.enum(["activity", "manual"]).optional(),
+  sortMode: z.enum(["activity", "name", "manual"]).optional(),
   hostFilters: z.array(z.string()).optional(),
   hostFilter: z.string().nullable().optional(),
   projectFilters: z.array(z.string()).optional(),
@@ -149,7 +149,8 @@ export function migrateSidebarViewState(persistedState: unknown): SidebarViewPer
 
   return {
     groupMode: state.groupMode === "status" ? "status" : "project",
-    sortMode: state.sortMode === "manual" ? "manual" : "activity",
+    sortMode:
+      state.sortMode === "manual" || state.sortMode === "name" ? state.sortMode : "activity",
     hostFilters: readHostFilters(state),
     projectFilters: state.projectFilters ?? [],
     labelFilter: state.labelFilter

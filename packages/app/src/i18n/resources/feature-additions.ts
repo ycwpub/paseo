@@ -121,6 +121,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "Sort by",
           activity: "Recent activity",
+          name: "Project name",
           manual: "Manual",
         },
       },
@@ -573,6 +574,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "الترتيب حسب",
           activity: "النشاط الأخير",
+          name: "اسم المشروع",
           manual: "يدوي",
         },
       },
@@ -1023,6 +1025,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "Ordenar por",
           activity: "Actividad reciente",
+          name: "Nombre del proyecto",
           manual: "Manual",
         },
       },
@@ -1475,6 +1478,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "Trier par",
           activity: "Activité récente",
+          name: "Nom du projet",
           manual: "Manuel",
         },
       },
@@ -1927,6 +1931,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "並び順",
           activity: "最近のアクティビティ",
+          name: "プロジェクト名",
           manual: "手動",
         },
       },
@@ -2376,6 +2381,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "Sort by",
           activity: "Recent activity",
+          name: "프로젝트 이름",
           manual: "Manual",
         },
       },
@@ -2827,6 +2833,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "Ordenar por",
           activity: "Atividade recente",
+          name: "Nome do projeto",
           manual: "Manual",
         },
       },
@@ -3279,6 +3286,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "Сортировать по",
           activity: "Недавняя активность",
+          name: "Название проекта",
           manual: "Вручную",
         },
       },
@@ -3736,6 +3744,7 @@ export const featureTranslationAdditions = {
         sorting: {
           label: "排序方式",
           activity: "最近活动",
+          name: "项目名称",
           manual: "手动",
         },
       },

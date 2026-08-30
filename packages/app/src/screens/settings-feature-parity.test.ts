@@ -13,6 +13,7 @@ describe("feature_paseo integration parity", () => {
     expect(layout).toContain('name="settings/hosts/[serverId]/memories/index"');
     expect(layout).toContain('name="settings/hosts/[serverId]/memories/[memoryId]"');
     expect(layout).toContain('name="settings/hosts/[serverId]/assistants/[assistantId]"');
+    expect(layout).toContain('name="settings/hosts/[serverId]/assistants/[assistantId]/memory"');
     expect(layout).toContain('name="settings/hosts/[serverId]/teams/[teamId]"');
     expect(layout).toContain('name="settings/hosts/[serverId]/instruction-templates/index"');
     expect(layout).toContain('name="settings/hosts/[serverId]/instruction-templates/[templateId]"');

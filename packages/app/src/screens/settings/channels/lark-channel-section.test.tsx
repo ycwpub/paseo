@@ -3,7 +3,11 @@
  */
 import React, { type ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { LarkChannelBotStatus, LarkChannelStatus } from "@getpaseo/protocol/messages";
+import type {
+  LarkChannelBotStatus,
+  LarkChannelStatus,
+  LarkReminder,
+} from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LarkChannelSection } from "./lark-channel-section";
 
@@ -300,7 +304,54 @@ vi.mock("@/screens/settings/settings-section", () => ({
 }));
 
 vi.mock("./lark-reminder-section", () => ({
-  LarkReminderSection: () => null,
+  LarkReminderSection: ({
+    onCreate,
+    onEdit,
+  }: {
+    onCreate: () => void;
+    onEdit: (reminder: LarkReminder) => void;
+  }) => {
+    const handleEdit = React.useCallback(() => {
+      onEdit({
+        id: "reminder-1",
+        name: "等待确认",
+        botId: "bot-1",
+        chatId: "oc_group",
+        targetOpenIds: ["ou_alice"],
+        message: "请确认",
+        frequencySeconds: 600,
+        sender: { type: "bot" },
+        status: "active",
+        createdAt: "2026-08-29T00:00:00.000Z",
+        updatedAt: "2026-08-29T00:00:00.000Z",
+        startedAt: "2026-08-29T00:00:00.000Z",
+        completedAt: null,
+        lastSentAt: null,
+        nextRunAt: "2026-08-29T00:00:00.000Z",
+        sendCount: 0,
+        lastError: null,
+        reply: null,
+      });
+    }, [onEdit]);
+    return (
+      <div>
+        <button type="button" onClick={onCreate}>
+          创建定时任务
+        </button>
+        <button type="button" onClick={handleEdit}>
+          编辑定时任务
+        </button>
+      </div>
+    );
+  },
+  LarkReminderEditor: ({ reminder, onSaved }: { reminder?: LarkReminder; onSaved: () => void }) => (
+    <div>
+      <span>{reminder ? `正在编辑 ${reminder.name}` : "正在创建定时任务"}</span>
+      <button type="button" onClick={onSaved}>
+        保存定时任务
+      </button>
+    </div>
+  ),
 }));
 
 function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotStatus {
@@ -558,7 +609,7 @@ describe("LarkChannelSection", () => {
         "alice@example.com",
       ]),
     );
-    expect(await screen.findByText("Alice（alice@example.com）")).toBeTruthy();
+    expect(await screen.findByText("Alice（alice@example.com，ou_alice）")).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("例如：张三"), {
       target: { value: " Alice " },
     });
@@ -617,8 +668,55 @@ describe("LarkChannelSection", () => {
     render(<LarkChannelSection serverId="server-1" />);
 
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
-    expect(await screen.findByText("张三（alice@example.com）")).toBeTruthy();
-    expect(screen.getByText("结算研发群（group_settlement）")).toBeTruthy();
+    expect(await screen.findByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
+    expect(screen.getByText("结算研发群（group_settlement，oc_settlement）")).toBeTruthy();
+  });
+
+  test("shows pending pairing users and groups with complete directory identities", async () => {
+    const bot = makeBot({
+      pendingPairings: [
+        {
+          code: "pair-123",
+          openId: "ou_alice",
+          unionId: null,
+          chatId: "oc_settlement",
+          displayName: "Alice",
+          createdAt: "2026-08-29T00:00:00.000Z",
+          expiresAt: "2026-08-29T00:10:00.000Z",
+        },
+      ],
+    });
+    channelState.current.status = {
+      ...makeStatus([bot]),
+      directory: {
+        users: [
+          {
+            appId: "cli_settle",
+            email: "alice@example.com",
+            openId: "ou_alice",
+            displayName: "张三",
+            updatedAt: "2026-08-29T00:00:00.000Z",
+          },
+        ],
+        chats: [
+          {
+            appId: "cli_settle",
+            groupId: "group_settlement",
+            chatId: "oc_settlement",
+            name: "结算研发群",
+            updatedAt: "2026-08-29T00:00:00.000Z",
+          },
+        ],
+      },
+    };
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
+    expect(await screen.findByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
+    expect(
+      screen.getByText("结算研发群（group_settlement，oc_settlement） · 配对码 pair-123"),
+    ).toBeTruthy();
   });
 
   test("selects a team as the Lark bot target", async () => {
@@ -684,5 +782,40 @@ describe("LarkChannelSection", () => {
     expect(detailNavigation).toBeTruthy();
     act(() => detailNavigation?.onBack());
     expect(screen.getByTestId("host-page-channels")).toBeTruthy();
+  });
+
+  test("opens create and edit reminder forms as nested detail pages", () => {
+    channelState.current.status = makeStatus([makeBot()]);
+    const onDetailNavigationChange = vi.fn();
+
+    render(
+      <LarkChannelSection
+        serverId="server-1"
+        onDetailNavigationChange={onDetailNavigationChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("host-page-lark-open-reminders"));
+    fireEvent.click(screen.getByRole("button", { name: "创建定时任务" }));
+    expect(screen.getByTestId("host-page-channels-reminder-create")).toBeTruthy();
+    expect(screen.getByText("正在创建定时任务")).toBeTruthy();
+
+    const createNavigation = onDetailNavigationChange.mock.calls
+      .map(([navigation]) => navigation)
+      .find((navigation) => navigation?.title === "创建定时任务");
+    expect(createNavigation).toBeTruthy();
+    act(() => createNavigation?.onBack());
+    expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑定时任务" }));
+    expect(screen.getByTestId("host-page-channels-reminder-edit")).toBeTruthy();
+    expect(screen.getByText("正在编辑 等待确认")).toBeTruthy();
+
+    const editNavigation = onDetailNavigationChange.mock.calls
+      .map(([navigation]) => navigation)
+      .find((navigation) => navigation?.title === "编辑定时任务");
+    expect(editNavigation).toBeTruthy();
+    act(() => editNavigation?.onBack());
+    expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
   });
 });

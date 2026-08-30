@@ -20,6 +20,11 @@ import { useAssistants } from "@/hooks/use-assistants";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useSkills } from "@/hooks/use-skills";
 import { useHostFeature } from "@/runtime/host-features";
+import {
+  AssistantResourcePaginationControls,
+  DEFAULT_ASSISTANT_RESOURCE_PAGE_SIZE,
+  paginateAssistantResources,
+} from "./assistant-resource-pagination";
 
 interface AssistantsSectionProps {
   serverId: string;
@@ -167,14 +172,40 @@ function AssistantResourceSelectionEditor({
   onToggleSkill: (id: string) => void;
 }) {
   const isAllEnabled = mode === "all-enabled";
+  const [mcpPage, setMcpPage] = useState(1);
+  const [mcpPageSize, setMcpPageSize] = useState(DEFAULT_ASSISTANT_RESOURCE_PAGE_SIZE);
+  const [skillPage, setSkillPage] = useState(1);
+  const [skillPageSize, setSkillPageSize] = useState(DEFAULT_ASSISTANT_RESOURCE_PAGE_SIZE);
   const selectedMcpIdSet = useMemo(() => new Set(selectedMcpServerIds), [selectedMcpServerIds]);
   const selectedSkillIdSet = useMemo(() => new Set(selectedSkillIds), [selectedSkillIds]);
+  const mcpPagination = useMemo(
+    () => paginateAssistantResources(mcpServers, mcpPage, mcpPageSize),
+    [mcpPage, mcpPageSize, mcpServers],
+  );
+  const skillPagination = useMemo(
+    () => paginateAssistantResources(skills, skillPage, skillPageSize),
+    [skillPage, skillPageSize, skills],
+  );
+  useEffect(() => {
+    if (mcpPage !== mcpPagination.page) setMcpPage(mcpPagination.page);
+  }, [mcpPage, mcpPagination.page]);
+  useEffect(() => {
+    if (skillPage !== skillPagination.page) setSkillPage(skillPagination.page);
+  }, [skillPage, skillPagination.page]);
   const handleUseAllChange = useCallback(
     (value: boolean) => {
       onModeChange(value ? "all-enabled" : "custom");
     },
     [onModeChange],
   );
+  const handleMcpPageSizeChange = useCallback((pageSize: number) => {
+    setMcpPageSize(pageSize);
+    setMcpPage(1);
+  }, []);
+  const handleSkillPageSizeChange = useCallback((pageSize: number) => {
+    setSkillPageSize(pageSize);
+    setSkillPage(1);
+  }, []);
 
   return (
     <View style={styles.resourceCard} testID="assistant-resource-selection">
@@ -208,17 +239,26 @@ function AssistantResourceSelectionEditor({
             }/${mcpServers.length}`}
           >
             {mcpServers.length > 0 ? (
-              mcpServers.map((server) => (
-                <AssistantResourceOption
-                  key={server.id}
-                  id={server.id}
-                  name={server.name}
-                  description={server.description}
-                  selected={selectedMcpIdSet.has(server.id)}
-                  accessibilityLabel={`Enable MCP ${server.name} for assistant`}
-                  onToggle={onToggleMcpServer}
-                />
-              ))
+              <>
+                {mcpPagination.items.map((server) => (
+                  <AssistantResourceOption
+                    key={server.id}
+                    id={server.id}
+                    name={server.name}
+                    description={server.description}
+                    selected={selectedMcpIdSet.has(server.id)}
+                    accessibilityLabel={`Enable MCP ${server.name} for assistant`}
+                    onToggle={onToggleMcpServer}
+                  />
+                ))}
+                {mcpServers.length > DEFAULT_ASSISTANT_RESOURCE_PAGE_SIZE ? (
+                  <AssistantResourcePaginationControls
+                    pagination={mcpPagination}
+                    onPageChange={setMcpPage}
+                    onPageSizeChange={handleMcpPageSizeChange}
+                  />
+                ) : null}
+              </>
             ) : (
               <Text style={settingsStyles.rowHint}>没有已启用的 MCP 服务。</Text>
             )}
@@ -232,17 +272,26 @@ function AssistantResourceSelectionEditor({
             }/${skills.length}`}
           >
             {skills.length > 0 ? (
-              skills.map((skill) => (
-                <AssistantResourceOption
-                  key={skill.id}
-                  id={skill.id}
-                  name={skill.name}
-                  description={skill.description}
-                  selected={selectedSkillIdSet.has(skill.id)}
-                  accessibilityLabel={`Enable skill ${skill.name} for assistant`}
-                  onToggle={onToggleSkill}
-                />
-              ))
+              <>
+                {skillPagination.items.map((skill) => (
+                  <AssistantResourceOption
+                    key={skill.id}
+                    id={skill.id}
+                    name={skill.name}
+                    description={skill.description}
+                    selected={selectedSkillIdSet.has(skill.id)}
+                    accessibilityLabel={`Enable skill ${skill.name} for assistant`}
+                    onToggle={onToggleSkill}
+                  />
+                ))}
+                {skills.length > DEFAULT_ASSISTANT_RESOURCE_PAGE_SIZE ? (
+                  <AssistantResourcePaginationControls
+                    pagination={skillPagination}
+                    onPageChange={setSkillPage}
+                    onPageSizeChange={handleSkillPageSizeChange}
+                  />
+                ) : null}
+              </>
             ) : (
               <Text style={settingsStyles.rowHint}>没有已启用的 Skill。</Text>
             )}
@@ -353,7 +402,7 @@ function AssistantMemoryDetailFile({
   );
 }
 
-function AssistantMemoryArtifacts({
+export function AssistantMemoryArtifacts({
   memorySummary,
   memoryFiles,
   isEditing,
@@ -435,10 +484,12 @@ export function AssistantEditorPage({
   serverId,
   assistantId,
   onDone,
+  onOpenMemory,
 }: {
   serverId: string;
   assistantId?: string;
   onDone: () => void;
+  onOpenMemory?: (assistantId: string) => void;
 }) {
   const supportsAssistants = useHostFeature(serverId, "assistants");
   const assistants = useAssistants(serverId, { enabled: supportsAssistants });
@@ -466,12 +517,6 @@ export function AssistantEditorPage({
     useState<AssistantResourceSelection["mode"]>("all-enabled");
   const [selectedMcpServerIds, setSelectedMcpServerIds] = useState<string[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
-  const [editingMemorySummary, setEditingMemorySummary] = useState("");
-  const [editingMemoryFiles, setEditingMemoryFiles] = useState<Assistant["memoryFiles"] | null>(
-    null,
-  );
-  const [memorySummaryDirty, setMemorySummaryDirty] = useState(false);
-  const [dirtyMemoryDetailFileIds, setDirtyMemoryDetailFileIds] = useState<string[]>([]);
   const [editingAssistantId, setEditingAssistantId] = useState<string | null>(null);
   const [formResetKey, bumpFormResetKey] = useReducer((key: number) => key + 1, 0);
   const initializedAssistantIdRef = useRef<string | null>(null);
@@ -486,10 +531,6 @@ export function AssistantEditorPage({
     setResourceSelectionMode(assistant.resourceSelection.mode);
     setSelectedMcpServerIds(assistant.resourceSelection.selectedMcpServerIds);
     setSelectedSkillIds(assistant.resourceSelection.selectedSkillIds);
-    setEditingMemorySummary(assistant.memorySummary);
-    setEditingMemoryFiles(assistant.memoryFiles);
-    setMemorySummaryDirty(false);
-    setDirtyMemoryDetailFileIds([]);
     bumpFormResetKey();
   }, []);
   const editingAssistant = useMemo(
@@ -504,26 +545,6 @@ export function AssistantEditorPage({
     initializedAssistantIdRef.current = editingAssistant.id;
     handleEdit(editingAssistant);
   }, [editingAssistant, handleEdit]);
-
-  const handleMemorySummaryChange = useCallback((value: string) => {
-    setEditingMemorySummary(value);
-    setMemorySummaryDirty(true);
-  }, []);
-
-  const handleDetailFileContentChange = useCallback((id: string, value: string) => {
-    setEditingMemoryFiles((current) => {
-      if (!current) {
-        return current;
-      }
-      return {
-        ...current,
-        detailFiles: current.detailFiles.map((file) =>
-          file.id === id ? { ...file, content: value, charCount: value.length } : file,
-        ),
-      };
-    });
-    setDirtyMemoryDetailFileIds((current) => (current.includes(id) ? current : [...current, id]));
-  }, []);
 
   const handleResourceSelectionModeChange = useCallback(
     (nextMode: AssistantResourceSelection["mode"]) => {
@@ -555,21 +576,12 @@ export function AssistantEditorPage({
 
   const handleSaveAssistant = useCallback(async () => {
     if (editingAssistantId) {
-      const memoryAppend = memory.trim();
-      const memoryDetailFileEdits =
-        editingMemoryFiles?.detailFiles
-          .filter((file) => dirtyMemoryDetailFileIds.includes(file.id))
-          .map((file) => ({ id: file.id, content: file.content ?? "" })) ?? [];
       await assistants.updateAssistant({
         id: editingAssistantId,
         name,
         description,
         prompt,
-        memoryEnabled,
         resourceSelection: assistantResourceSelection,
-        ...(memoryEnabled && memoryAppend.length > 0 ? { memoryAppend } : {}),
-        ...(memoryEnabled && memorySummaryDirty ? { memorySummary: editingMemorySummary } : {}),
-        ...(memoryEnabled && memoryDetailFileEdits.length > 0 ? { memoryDetailFileEdits } : {}),
       });
       onDone();
     } else {
@@ -587,13 +599,9 @@ export function AssistantEditorPage({
     assistantResourceSelection,
     assistants,
     description,
-    dirtyMemoryDetailFileIds,
     editingAssistantId,
-    editingMemoryFiles,
-    editingMemorySummary,
     memory,
     memoryEnabled,
-    memorySummaryDirty,
     name,
     onDone,
     prompt,
@@ -608,6 +616,9 @@ export function AssistantEditorPage({
   const sourceMemoryPlaceholder = isEditingAssistant
     ? "填写要追加的新记忆；留空则保持现有记忆不变。"
     : "使用 Markdown 保存稳定的偏好和上下文。";
+  const handleOpenMemory = useCallback(() => {
+    if (editingAssistantId) onOpenMemory?.(editingAssistantId);
+  }, [editingAssistantId, onOpenMemory]);
 
   if (!supportsAssistants) {
     return <AssistantsUpgradeCard />;
@@ -664,43 +675,61 @@ export function AssistantEditorPage({
             onToggleMcpServer={handleToggleMcpServer}
             onToggleSkill={handleToggleSkill}
           />
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>记忆</Text>
-              <Text style={settingsStyles.rowHint}>
-                记忆按总文件和子文件保存，首次消息仅提供总览。
-              </Text>
-            </View>
-            <Switch
-              value={memoryEnabled}
-              onValueChange={setMemoryEnabled}
-              accessibilityLabel="启用助手记忆"
-            />
-          </View>
-          {memoryEnabled ? (
-            <>
-              <Field
-                label={sourceMemoryLabel}
-                hint={sourceMemoryHint}
-                testID="assistant-memory-field"
+          {isEditingAssistant && editingAssistant ? (
+            <View style={styles.memoryEntryCard} testID="assistant-memory-entry">
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>助手记忆</Text>
+                <Text style={settingsStyles.rowHint}>
+                  {editingAssistant.memoryEnabled ? "已启用" : "未启用"} ·{" "}
+                  {editingAssistant.memoryFiles.detailFiles.length} 个记忆子文件
+                </Text>
+                {editingAssistant.memoryFiles.summaryPath ? (
+                  <Text selectable numberOfLines={2} style={styles.memoryArtifactPath}>
+                    {editingAssistant.memoryFiles.summaryPath}
+                  </Text>
+                ) : null}
+              </View>
+              <Button
+                size="sm"
+                variant="outline"
+                onPress={handleOpenMemory}
+                disabled={!onOpenMemory}
               >
-                <SettingsTextAreaCard
-                  value={memory}
-                  onChangeText={setMemory}
-                  placeholder={sourceMemoryPlaceholder}
-                  accessibilityLabel="助手记忆"
-                  style={styles.memoryInput}
+                配置记忆
+              </Button>
+            </View>
+          ) : (
+            <>
+              <View style={settingsStyles.row}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>记忆</Text>
+                  <Text style={settingsStyles.rowHint}>
+                    记忆按总文件和子文件保存，首次消息仅提供总览。
+                  </Text>
+                </View>
+                <Switch
+                  value={memoryEnabled}
+                  onValueChange={setMemoryEnabled}
+                  accessibilityLabel="启用助手记忆"
                 />
-              </Field>
-              <AssistantMemoryArtifacts
-                memorySummary={editingMemorySummary}
-                memoryFiles={editingMemoryFiles}
-                isEditing={isEditingAssistant}
-                onMemorySummaryChange={handleMemorySummaryChange}
-                onDetailFileContentChange={handleDetailFileContentChange}
-              />
+              </View>
+              {memoryEnabled ? (
+                <Field
+                  label={sourceMemoryLabel}
+                  hint={sourceMemoryHint}
+                  testID="assistant-memory-field"
+                >
+                  <SettingsTextAreaCard
+                    value={memory}
+                    onChangeText={setMemory}
+                    placeholder={sourceMemoryPlaceholder}
+                    accessibilityLabel="助手记忆"
+                    style={styles.memoryInput}
+                  />
+                </Field>
+              ) : null}
             </>
-          ) : null}
+          )}
           {assistants.mutationError ? (
             <Text style={settingsStyles.rowError}>{assistants.mutationError.message}</Text>
           ) : null}
@@ -860,6 +889,17 @@ const styles = StyleSheet.create((theme) => ({
   },
   memoryInput: {
     minHeight: 120,
+  },
+  memoryEntryCard: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing[3],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
   },
   memoryArtifacts: {
     gap: theme.spacing[3],

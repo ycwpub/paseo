@@ -95,6 +95,7 @@ const GROUPING_ICONS: Record<SidebarGroupMode, OptionIcon> = {
 
 const SORTING_ICONS: Record<SidebarSortMode, OptionIcon> = {
   activity: withUnistyles(Clock),
+  name: withUnistyles(Type),
   manual: withUnistyles(ListOrdered),
 };
 
@@ -128,7 +129,7 @@ const TRAILING_ICONS: Record<SidebarTrailingChoice, OptionIcon> = {
 };
 
 const GROUPING_MODES: readonly SidebarGroupMode[] = ["project", "status"];
-const SORTING_MODES: readonly SidebarSortMode[] = ["activity", "manual"];
+const SORTING_MODES: readonly SidebarSortMode[] = ["activity", "name", "manual"];
 const TITLE_SOURCES: readonly WorkspaceTitleSource[] = ["title", "branch"];
 const TRAILING_CHOICES: readonly SidebarTrailingChoice[] = ["diff", "timestamp"];
 
@@ -139,6 +140,7 @@ const GROUPING_LABEL_KEYS: Record<SidebarGroupMode, string> = {
 
 const SORTING_LABEL_KEYS: Record<SidebarSortMode, string> = {
   activity: "sidebar.display.sorting.activity",
+  name: "sidebar.display.sorting.name",
   manual: "sidebar.display.sorting.manual",
 };
 

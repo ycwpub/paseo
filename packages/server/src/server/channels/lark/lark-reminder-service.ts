@@ -1,14 +1,20 @@
 import type pino from "pino";
 import {
   LarkReminderCreateInputSchema,
+  LarkReminderUpdateInputSchema,
   type LarkReminder,
   type LarkReminderCreateInput,
   type LarkReminderReply,
+  type LarkReminderUpdateInput,
 } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 import { LarkReminderStore } from "./lark-reminder-store.js";
+import {
+  LarkUserAuthorizationRequiredError,
+  type LarkUserOAuthService,
+} from "./lark-user-oauth-service.js";
 
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
@@ -101,20 +107,23 @@ export interface LarkReminderServiceOptions {
   paseoHome: string;
   channelStore: LarkChannelStore;
   adapter: LarkReminderAdapter;
+  userOAuthService: Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">;
   logger: pino.Logger;
   emitChanged: (reminders: LarkReminder[]) => void;
   now?: () => Date;
-  env?: NodeJS.ProcessEnv;
 }
 
 export class LarkReminderService {
   private readonly store: LarkReminderStore;
   private readonly channelStore: LarkChannelStore;
   private readonly adapter: LarkReminderAdapter;
+  private readonly userOAuthService: Pick<
+    LarkUserOAuthService,
+    "getStatus" | "getValidUserAccessToken"
+  >;
   private readonly logger: pino.Logger;
   private readonly emitChanged: (reminders: LarkReminder[]) => void;
   private readonly now: () => Date;
-  private readonly env: NodeJS.ProcessEnv;
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly running = new Set<string>();
   private started = false;
@@ -123,10 +132,10 @@ export class LarkReminderService {
     this.store = new LarkReminderStore(options.paseoHome);
     this.channelStore = options.channelStore;
     this.adapter = options.adapter;
+    this.userOAuthService = options.userOAuthService;
     this.logger = options.logger.child({ module: "lark-reminder-service" });
     this.emitChanged = options.emitChanged;
     this.now = options.now ?? (() => new Date());
-    this.env = options.env ?? process.env;
   }
 
   list(): LarkReminder[] {
@@ -149,17 +158,48 @@ export class LarkReminderService {
 
   create(input: LarkReminderCreateInput): LarkReminder {
     const parsed = LarkReminderCreateInputSchema.parse(input);
-    this.requireBotConfig(parsed.botId);
-    this.validateSender(parsed.sender);
+    const config = this.requireBotConfig(parsed.botId);
+    this.validateSender(config, parsed.sender);
     const reminder = this.store.create(parsed, this.now().toISOString());
     if (reminder.status === "active") this.schedule(reminder);
     this.emit();
     return reminder;
   }
 
+  update(id: string, input: LarkReminderUpdateInput): LarkReminder {
+    const current = this.store.get(id);
+    if (!current) throw new Error("Lark reminder not found");
+    const parsed = LarkReminderUpdateInputSchema.parse(input);
+    const config = this.requireBotConfig(parsed.botId);
+    this.validateSender(config, parsed.sender);
+    this.cancelTimer(id);
+    const now = this.now().toISOString();
+    const updated = this.store.update(id, (reminder) => ({
+      ...reminder,
+      name: parsed.name?.trim() || parsed.message.slice(0, 80),
+      botId: parsed.botId,
+      chatId: parsed.chatId,
+      targetOpenIds: Array.from(new Set(parsed.targetOpenIds)),
+      message: parsed.message,
+      frequencySeconds: parsed.frequencySeconds,
+      sender: parsed.sender,
+      nextRunAt: reminder.status === "active" ? now : reminder.nextRunAt,
+      lastError: null,
+      updatedAt: now,
+    }));
+    if (!updated) throw new Error("Lark reminder not found");
+    if (updated.status === "active") this.schedule(updated);
+    this.emit();
+    return updated;
+  }
+
   setEnabled(id: string, enabled: boolean): LarkReminder {
     const current = this.store.get(id);
     if (!current) throw new Error("Lark reminder not found");
+    if (enabled) {
+      const config = this.requireBotConfig(current.botId);
+      this.validateSender(config, current.sender);
+    }
     this.cancelTimer(id);
     const now = this.now().toISOString();
     const updated = this.store.update(id, (reminder) => ({
@@ -174,8 +214,6 @@ export class LarkReminderService {
     }));
     if (!updated) throw new Error("Lark reminder not found");
     if (enabled) {
-      this.requireBotConfig(updated.botId);
-      this.validateSender(updated.sender);
       this.schedule(updated);
     }
     this.emit();
@@ -259,7 +297,7 @@ export class LarkReminderService {
       const activeReminder = this.store.get(id);
       if (!activeReminder || activeReminder.status !== "active") return;
       const config = this.requireBotConfig(activeReminder.botId);
-      this.validateSender(activeReminder.sender);
+      this.validateSender(config, activeReminder.sender);
       const now = this.now();
       const nextRunAt = new Date(
         now.getTime() + activeReminder.frequencySeconds * 1000,
@@ -286,7 +324,7 @@ export class LarkReminderService {
         const fatal =
           message.includes("not found") ||
           message.includes("disabled") ||
-          message.includes("user access token");
+          error instanceof LarkUserAuthorizationRequiredError;
         return {
           ...current,
           status: fatal ? "error" : current.status,
@@ -342,15 +380,10 @@ export class LarkReminderService {
       await this.adapter.sendText(config, reminder.chatId, text);
       return;
     }
-    const token = this.env[reminder.sender.userAccessTokenEnv]?.trim();
-    if (!token) {
-      throw new Error(
-        `Lark user access token is missing from environment variable ${reminder.sender.userAccessTokenEnv}`,
-      );
-    }
     if (!this.adapter.sendTextAsUser) {
       throw new Error("Lark user identity sending is not supported by this host");
     }
+    const token = await this.userOAuthService.getValidUserAccessToken(config.appId!);
     await this.adapter.sendTextAsUser(config, reminder.chatId, text, token);
   }
 
@@ -379,13 +412,10 @@ export class LarkReminderService {
     return bot.config;
   }
 
-  private validateSender(sender: LarkReminder["sender"]): void {
+  private validateSender(config: StoredLarkChannelConfig, sender: LarkReminder["sender"]): void {
     if (sender.type !== "user") return;
-    const token = this.env[sender.userAccessTokenEnv]?.trim();
-    if (!token) {
-      throw new Error(
-        `Lark user access token is missing from environment variable ${sender.userAccessTokenEnv}`,
-      );
+    if (!this.userOAuthService.getStatus(config.appId!).authorized) {
+      throw new LarkUserAuthorizationRequiredError(config.appId!);
     }
   }
 

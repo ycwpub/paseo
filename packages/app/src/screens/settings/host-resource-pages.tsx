@@ -9,6 +9,7 @@ import { AgentSkillsSection } from "@/agent-skills";
 import { settingsStyles } from "@/styles/settings";
 import type { Assistant, McpServer, Skill, Team } from "@getpaseo/protocol/messages";
 import { AssistantEditorPage, AssistantsSection } from "./assistants/assistants-section";
+import { AssistantMemoryEditorPage } from "./assistants/assistant-memory-editor-page";
 import {
   InstructionTemplateEditorPage,
   InstructionTemplatesListPage,
@@ -25,6 +26,7 @@ import { SkillEditorPage, SkillsSection } from "./skills/skills-section";
 import { TeamEditorPage, TeamsSection } from "./teams/teams-section";
 import {
   buildAssistantSettingsRoute,
+  buildAssistantMemorySettingsRoute,
   buildInstructionTemplateSettingsRoute,
   buildMcpServerSettingsRoute,
   buildSkillSettingsRoute,
@@ -82,9 +84,33 @@ export function HostAssistantEditorPage({
   assistantId?: string;
   onDone: () => void;
 }) {
+  const router = useRouter();
+  const openMemory = useCallback(
+    (id: string) => router.push(buildAssistantMemorySettingsRoute(serverId, id)),
+    [router, serverId],
+  );
   return (
     <HostResourcePage serverId={serverId}>
-      <AssistantEditorPage serverId={serverId} assistantId={assistantId} onDone={onDone} />
+      <AssistantEditorPage
+        serverId={serverId}
+        assistantId={assistantId}
+        onDone={onDone}
+        onOpenMemory={openMemory}
+      />
+    </HostResourcePage>
+  );
+}
+
+export function HostAssistantMemoryEditorPage({
+  serverId,
+  assistantId,
+}: {
+  serverId: string;
+  assistantId: string;
+}) {
+  return (
+    <HostResourcePage serverId={serverId}>
+      <AssistantMemoryEditorPage serverId={serverId} assistantId={assistantId} />
     </HostResourcePage>
   );
 }

@@ -1,22 +1,21 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { LarkUserOAuthStatus } from "@getpaseo/protocol/messages";
+import {
+  DEFAULT_LARK_USER_OAUTH_REDIRECT_URI,
+  type LarkUserOAuthStatus,
+} from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { formatLarkUserIdentity } from "@/screens/settings/channels/lark-directory-format";
 import { useLarkUserOAuth } from "@/screens/settings/channels/use-lark-user-oauth";
-
-const DEFAULT_REDIRECT_URI = "paseo://oauth/lark";
 
 function formatAuthorizedIdentity(status: LarkUserOAuthStatus | null): string {
   if (!status?.authorized) return "尚未授权";
-  if (status.displayName && status.email) {
-    return `已授权：${status.displayName}（${status.email}）`;
-  }
-  const identity = status.displayName || status.email;
+  const identity = formatLarkUserIdentity(status);
   return identity ? `已授权：${identity}` : "已授权";
 }
 
@@ -25,8 +24,6 @@ interface AuthorizationStartFieldsProps {
   authorizationState: string;
   isAuthorized: boolean;
   isMutating: boolean;
-  redirectUri: string;
-  onRedirectUriChange: (value: string) => void;
   onStart: () => void;
 }
 
@@ -35,18 +32,19 @@ function AuthorizationStartFields({
   authorizationState,
   isAuthorized,
   isMutating,
-  redirectUri,
-  onRedirectUriChange,
   onStart,
 }: AuthorizationStartFieldsProps) {
   if (isAuthorized && !authorizationState) return null;
   return (
     <>
-      <Field label="OAuth 回调地址" hint="需要与飞书开发者后台配置的重定向 URL 完全一致。">
+      <Field
+        label="OAuth 回调地址"
+        hint="请将该地址添加到飞书开发者后台的重定向 URL。授权完成后 Paseo 会自动处理回调。"
+      >
         <FormTextInput
-          value={redirectUri}
-          onChangeText={onRedirectUriChange}
-          editable={!isMutating}
+          value={DEFAULT_LARK_USER_OAUTH_REDIRECT_URI}
+          editable={false}
+          selectTextOnFocus
           autoCapitalize="none"
         />
       </Field>
@@ -55,47 +53,13 @@ function AuthorizationStartFields({
         size="sm"
         onPress={onStart}
         loading={isMutating}
-        disabled={!appId.trim() || !redirectUri.trim()}
+        disabled={!appId.trim()}
       >
         {authorizationState ? "重新打开授权页面" : "授权飞书用户"}
       </Button>
-    </>
-  );
-}
-
-interface AuthorizationCompleteFieldsProps {
-  authorizationState: string;
-  callbackValue: string;
-  isMutating: boolean;
-  onCallbackValueChange: (value: string) => void;
-  onComplete: () => void;
-}
-
-function AuthorizationCompleteFields({
-  authorizationState,
-  callbackValue,
-  isMutating,
-  onCallbackValueChange,
-  onComplete,
-}: AuthorizationCompleteFieldsProps) {
-  if (!authorizationState) return null;
-  return (
-    <>
-      <Field
-        label="授权回调"
-        hint="授权完成后，粘贴浏览器地址栏中的完整回调地址；也可以只粘贴 code。"
-      >
-        <FormTextInput
-          value={callbackValue}
-          onChangeText={onCallbackValueChange}
-          editable={!isMutating}
-          autoCapitalize="none"
-          placeholder="paseo://oauth/lark?code=...&state=..."
-        />
-      </Field>
-      <Button size="sm" onPress={onComplete} loading={isMutating} disabled={!callbackValue.trim()}>
-        完成授权
-      </Button>
+      {authorizationState ? (
+        <Text style={settingsStyles.rowHint}>等待浏览器完成授权，成功后本页面会自动更新。</Text>
+      ) : null}
     </>
   );
 }
@@ -120,48 +84,44 @@ function OAuthErrorMessages({
 
 export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId: string }) {
   const oauth = useLarkUserOAuth(serverId, appId);
-  const [redirectUri, setRedirectUri] = useState(DEFAULT_REDIRECT_URI);
+  const refreshOAuthStatus = oauth.refreshStatus;
   const [authorizationState, setAuthorizationState] = useState("");
-  const [callbackValue, setCallbackValue] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   const startAuthorization = useCallback(async () => {
     setLocalError(null);
     try {
-      const result = await oauth.start(redirectUri.trim());
+      const result = await oauth.start(DEFAULT_LARK_USER_OAUTH_REDIRECT_URI);
       setAuthorizationState(result.state);
       await openExternalUrl(result.authorizationUrl);
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
     }
-  }, [oauth, redirectUri]);
-
-  const completeAuthorization = useCallback(async () => {
-    setLocalError(null);
-    try {
-      await oauth.complete({
-        codeOrCallbackUrl: callbackValue.trim(),
-        state: authorizationState,
-      });
-      setCallbackValue("");
-      setAuthorizationState("");
-    } catch (error) {
-      setLocalError(error instanceof Error ? error.message : String(error));
-    }
-  }, [authorizationState, callbackValue, oauth]);
+  }, [oauth]);
 
   const disconnect = useCallback(async () => {
     setLocalError(null);
     try {
       await oauth.disconnect();
       setAuthorizationState("");
-      setCallbackValue("");
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
     }
   }, [oauth]);
 
   const isAuthorized = oauth.status?.authorized === true;
+
+  useEffect(() => {
+    if (!authorizationState || isAuthorized) return;
+    const timer = setInterval(() => {
+      void refreshOAuthStatus();
+    }, 1_000);
+    return () => clearInterval(timer);
+  }, [authorizationState, isAuthorized, refreshOAuthStatus]);
+
+  useEffect(() => {
+    if (isAuthorized) setAuthorizationState("");
+  }, [isAuthorized]);
 
   return (
     <SettingsSection title="飞书用户身份授权">
@@ -178,16 +138,7 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
           authorizationState={authorizationState}
           isAuthorized={isAuthorized}
           isMutating={oauth.isMutating}
-          redirectUri={redirectUri}
-          onRedirectUriChange={setRedirectUri}
           onStart={startAuthorization}
-        />
-        <AuthorizationCompleteFields
-          authorizationState={authorizationState}
-          callbackValue={callbackValue}
-          isMutating={oauth.isMutating}
-          onCallbackValueChange={setCallbackValue}
-          onComplete={completeAuthorization}
         />
         {isAuthorized ? (
           <Button variant="outline" size="sm" onPress={disconnect} loading={oauth.isMutating}>

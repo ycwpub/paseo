@@ -2153,6 +2153,8 @@ export class VoiceAssistantWebSocketServer {
         mcpServers: true,
         // COMPAT(mcpSkillManagement): added in v0.1.X, remove when daemon floor includes it.
         skills: true,
+        // COMPAT(skillManagement): added in v0.4.0, remove gate after 2027-08-16.
+        skillManagement: true,
         // COMPAT(plugins): added in v0.3.0, remove gate after 2027-08-07.
         plugins: true,
         // COMPAT(pluginManagement): added in v0.4.0, remove gate after 2027-08-14.

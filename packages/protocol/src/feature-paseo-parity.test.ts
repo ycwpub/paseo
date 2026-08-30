@@ -35,6 +35,7 @@ describe("feature_paseo protocol parity", () => {
       "teams",
       "mcpServers",
       "skills",
+      "skillManagement",
       "plugins",
       "pluginManagement",
       "pluginProjectScopedApps",

@@ -32,6 +32,24 @@ async function createClaudeConfigDir(settings: unknown): Promise<string> {
   return configDir;
 }
 
+async function writeAidenModelCache(
+  configDir: string,
+  filename: string,
+  cliType: string,
+  entries: unknown[],
+): Promise<void> {
+  const cacheDir = path.join(configDir, "x", "models-cache");
+  await fs.mkdir(cacheDir, { recursive: true });
+  await fs.writeFile(
+    path.join(cacheDir, filename),
+    JSON.stringify({
+      schema_version: 1,
+      fetched_at_ms: 1,
+      sections: [{ cliType, entries }],
+    }),
+  );
+}
+
 async function createClaudeConfigDirWithRawSettings(settings: string): Promise<string> {
   const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-"));
   createdClaudeConfigDirs.push(configDir);
@@ -461,6 +479,85 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
         isDefault: true,
       },
     ]);
+  });
+
+  it("falls back to Aiden's complete local model cache when online discovery fails", async () => {
+    const aidenConfigDir = await createClaudeConfigDir({
+      xLauncherSelections: {
+        claude: {
+          model: "gpt-5.5",
+        },
+      },
+      xCustomModels: {
+        "gpt-5.6": {
+          visible: { codex: true, claude_code: true },
+          description: "Custom GPT",
+          claude_code: { series: "Custom GPT", alias: "sonnet" },
+        },
+      },
+    });
+    await writeAidenModelCache(aidenConfigDir, "claudecode.json", "claudecode", [
+      {
+        modelName: "Doubao-Seed-2.1-Pro",
+        displayName: "Doubao-Seed-2.1-Pro",
+        series: "Doubao 系列",
+        config: {
+          visible: true,
+          description: "Doubao 系列",
+          context_length: 224_000,
+        },
+        modelMetadata: {
+          context_window: 224_000,
+        },
+        claudeCode: {
+          series: "Doubao 系列",
+          alias: "opus",
+        },
+      },
+      {
+        modelName: "gpt-5.5",
+        displayName: "gpt-5.5",
+        series: "GPT 系列",
+        config: {
+          visible: true,
+          description: "GPT 系列",
+          context_length: 272_000,
+        },
+        modelMetadata: {
+          context_window: 272_000,
+        },
+        claudeCode: {
+          series: "GPT 系列",
+          alias: "opus",
+        },
+      },
+    ]);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      customProvider: { id: "aiden-claude" },
+      aidenConfigDir,
+      aidenModelCommandRunner: async () => {
+        throw new Error("Aiden login required");
+      },
+    });
+
+    const { models } = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: os.tmpdir(),
+      force: false,
+    });
+
+    expect(models.map((model) => model.id)).toEqual([
+      "Doubao-Seed-2.1-Pro",
+      "gpt-5.5",
+      "[custom]gpt-5.6",
+    ]);
+    expect(models.find((model) => model.id === "gpt-5.5")).toEqual(
+      expect.objectContaining({
+        contextWindowMaxTokens: 272_000,
+        isDefault: true,
+      }),
+    );
   });
 
   it("keeps Aiden model discovery scoped to the Aiden Claude provider", async () => {

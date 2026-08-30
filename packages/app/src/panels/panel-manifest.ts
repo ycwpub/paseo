@@ -53,6 +53,11 @@ const manifests = {
     supportedHosts: ["explorer"],
     resourceKey: () => "files",
   },
+  task_summary: {
+    kind: "task_summary",
+    supportedHosts: ["explorer"],
+    resourceKey: () => "task_summary",
+  },
   pull_request: {
     kind: "pull_request",
     supportedHosts: ["main", "explorer"],

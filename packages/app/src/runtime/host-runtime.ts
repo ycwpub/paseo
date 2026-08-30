@@ -4,6 +4,7 @@ import equal from "fast-deep-equal/es6";
 import {
   DaemonClient,
   type DaemonClientConfig,
+  type DaemonConnectionTransport,
   type ConnectionState,
   type FetchAgentsOptions,
 } from "@getpaseo/client/internal/daemon-client";
@@ -74,6 +75,15 @@ import { projectIconCache } from "@/projects/icon-cache";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 import { revokePushNotifications } from "@/push-notifications";
 import { createAppWebSocketFactory } from "./websocket-factory";
+import {
+  approvalPendingClient,
+  pruneSupersededLoopbackConnections,
+  shouldDeferQueuedMessage,
+} from "./feature-paseo-host-runtime-integration";
+import {
+  INITIAL_WORKSPACE_DIRECTORY_STATUS,
+  type HostRuntimeWorkspaceDirectoryStatus,
+} from "./workspace-directory-status";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 export type HostRegistryStatus = "loading" | "ready";
@@ -104,9 +114,13 @@ export interface HostRuntimeSnapshot {
   agentDirectoryStatus: HostRuntimeAgentDirectoryStatus;
   agentDirectoryError: string | null;
   hasEverLoadedAgentDirectory: boolean;
+  workspaceDirectoryStatus: HostRuntimeWorkspaceDirectoryStatus;
+  workspaceDirectoryError: string | null;
+  hasEverLoadedWorkspaceDirectory: boolean;
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
   connectionEpoch: number;
+  transport?: DaemonConnectionTransport | null;
 }
 
 type HostRuntimeSnapshotPatch = Partial<Omit<HostRuntimeSnapshot, "serverId" | "clientGeneration">>;
@@ -295,7 +309,7 @@ function buildConnectionStateFromStatus(
       lastOnlineAt: new Date().toISOString(),
     };
   }
-  if (status === "connecting" || status === "idle") {
+  if (status === "connecting" || status === "awaiting_approval" || status === "idle") {
     return {
       tag: "connecting",
       activeConnectionId: previousActiveConnectionId,
@@ -600,6 +614,7 @@ export class HostRuntimeController {
   private listeners = new Set<() => void>();
   private activeClient: DaemonClient | null = null;
   private unsubscribeClientStatus: (() => void) | null = null;
+  private unsubscribeClientTransport: (() => void) | null = null;
   private unsubscribeClientHandlers: (() => void) | null = null;
   private probeIntervalHandle: ReturnType<typeof setInterval> | null = null;
   private started = false;
@@ -631,6 +646,7 @@ export class HostRuntimeController {
       agentDirectoryStatus: "idle",
       agentDirectoryError: null,
       hasEverLoadedAgentDirectory: false,
+      ...INITIAL_WORKSPACE_DIRECTORY_STATUS,
       probeByConnectionId: new Map(),
       clientGeneration: 0,
     };
@@ -682,6 +698,10 @@ export class HostRuntimeController {
     if (this.unsubscribeClientStatus) {
       this.unsubscribeClientStatus();
       this.unsubscribeClientStatus = null;
+    }
+    if (this.unsubscribeClientTransport) {
+      this.unsubscribeClientTransport();
+      this.unsubscribeClientTransport = null;
     }
     if (this.unsubscribeClientHandlers) {
       this.unsubscribeClientHandlers();
@@ -1028,7 +1048,21 @@ export class HostRuntimeController {
               latencyMs: rttMs,
             });
             publishProbeState();
-          } catch {
+          } catch (error) {
+            const approvalClient = approvalPendingClient(error);
+            if (approvalClient) {
+              connectedClient = approvalClient;
+              const activated = await maybeActivateFirstAvailable(connection.id, connectedClient);
+              shouldCloseClient = !activated;
+              if (this.isCurrentProbeRequest(requestVersion)) {
+                probeByConnectionId.set(connection.id, {
+                  status: "pending",
+                  latencyMs: null,
+                });
+                publishProbeState();
+              }
+              return;
+            }
             if (this.isCurrentProbeRequest(requestVersion)) {
               probeByConnectionId.set(connection.id, {
                 status: "unavailable",
@@ -1167,6 +1201,10 @@ export class HostRuntimeController {
       this.unsubscribeClientStatus();
       this.unsubscribeClientStatus = null;
     }
+    if (this.unsubscribeClientTransport) {
+      this.unsubscribeClientTransport();
+      this.unsubscribeClientTransport = null;
+    }
     if (this.unsubscribeClientHandlers) {
       this.unsubscribeClientHandlers();
       this.unsubscribeClientHandlers = null;
@@ -1277,6 +1315,11 @@ export class HostRuntimeController {
       };
       this.updateSnapshot(patch);
     });
+    this.unsubscribeClientTransport =
+      client.subscribeConnectionTransport?.((transport) => {
+        if (!this.isCurrentSwitchRequest(requestVersion) || this.activeClient !== client) return;
+        this.updateSnapshot({ transport });
+      }) ?? null;
 
     try {
       if (!existingClient) {
@@ -1818,6 +1861,9 @@ export class HostRuntimeStore {
   }
 
   async upsertConnectionFromOffer(offer: ConnectionOffer, label?: string): Promise<HostProfile> {
+    if (!offer.relay) {
+      throw new Error("Pairing offer contains no relay endpoint");
+    }
     // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
     const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
     return this.upsertRelayConnection({
@@ -1861,11 +1907,21 @@ export class HostRuntimeStore {
     if (!serverId) {
       throw new Error("Desktop daemon did not return a server id.");
     }
-    return this.upsertHostConnection({
+    const profile = await this.upsertHostConnection({
       serverId,
       label: input.hostname ?? undefined,
       connection,
     });
+    const next = pruneSupersededLoopbackConnections({
+      hosts: this.hosts,
+      serverId,
+      connection,
+      updatedAt: new Date().toISOString(),
+    });
+    if (!next) return profile;
+    this.setHostsAndSync(next);
+    await this.persistHosts();
+    return next.find((host) => host.serverId === serverId) ?? profile;
   }
 
   private async updateHost(
@@ -2172,6 +2228,9 @@ export class HostRuntimeStore {
     const queue = session?.queuedMessages.get(agentId);
     const client = session?.client;
     if (!client || !queue?.length || session.initializingAgents.get(agentId) === true) {
+      return;
+    }
+    if (shouldDeferQueuedMessage(queue)) {
       return;
     }
     this.queuedAgentDrainInFlight.add(drainKey);

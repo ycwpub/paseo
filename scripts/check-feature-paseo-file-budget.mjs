@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   collectUpstreamOwnedChanges,
+  collectUpstreamOwnedOverlayBases,
   excludeEquivalentRestoredDeletions,
   parseFileBudgetArguments,
   parseNameStatus,
@@ -43,6 +44,18 @@ function readChanges(options) {
   });
 }
 
+function listRuntimeOverlayPaths(cached) {
+  const args = ["ls-files", "-z"];
+  if (!cached) {
+    args.push("--cached", "--others", "--exclude-standard");
+  }
+  args.push("--", "packages/app/src");
+  return git(args)
+    .split("\0")
+    .filter(Boolean)
+    .filter((path) => cached || existsSync(path));
+}
+
 function main() {
   const options = parseFileBudgetArguments(process.argv.slice(2));
   if (currentBranch() !== "feature_paseo") {
@@ -51,19 +64,39 @@ function main() {
   }
 
   const upstreamPaths = listUpstreamPaths(options.upstream);
-  const modifiedPaths = collectUpstreamOwnedChanges(readChanges(options), upstreamPaths);
-  const summary = `${modifiedPaths.length}/${options.maxModified}`;
+  const modifiedPaths = new Set(collectUpstreamOwnedChanges(readChanges(options), upstreamPaths));
+  for (const path of collectUpstreamOwnedOverlayBases(
+    listRuntimeOverlayPaths(options.cached),
+    upstreamPaths,
+  )) {
+    modifiedPaths.add(path);
+  }
+  const sortedModifiedPaths = [...modifiedPaths].sort();
+  const summary = `${sortedModifiedPaths.length}/${options.maxModified}`;
 
-  if (modifiedPaths.length <= options.maxModified) {
+  if (sortedModifiedPaths.length <= options.maxModified) {
     console.log(`feature_paseo upstream-owned file budget: ${summary}`);
     return;
   }
 
+  if (sortedModifiedPaths.length <= options.legacyCeiling) {
+    console.warn(
+      `feature_paseo upstream-owned migration debt: ${summary}; ` +
+        `hard legacy ceiling ${options.legacyCeiling}`,
+    );
+    console.warn(
+      "Runtime overlays are counted as modifications of their base files. " +
+        "Reduce this debt by extracting feature modules and removing obsolete shared-file edits.",
+    );
+    return;
+  }
+
   console.error(`feature_paseo upstream-owned file budget exceeded: ${summary}`);
+  console.error(`Legacy migration ceiling exceeded: ${options.legacyCeiling}`);
   console.error(
     "Move implementation and tests into new feature-owned files; keep upstream files as thin wiring.",
   );
-  for (const path of modifiedPaths) console.error(`- ${path}`);
+  for (const path of sortedModifiedPaths) console.error(`- ${path}`);
   process.exitCode = 1;
 }
 

@@ -559,6 +559,7 @@ export const SPACING = {
 } as const;
 
 export const FONT_SIZE = {
+  xs: 12,
   code: 12,
   content: 15,
   sm: 12,

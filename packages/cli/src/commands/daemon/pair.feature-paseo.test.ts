@@ -14,6 +14,7 @@ function createClient(input: {
     useTls: boolean;
     publicEndpoint?: string;
   }>;
+  pairingBaseUrls?: string[];
   local: {
     enabled: boolean;
     listen: string;
@@ -43,6 +44,7 @@ function createClient(input: {
         config: {
           relay: {
             endpoints: input.endpoints,
+            pairingBaseUrls: input.pairingBaseUrls ?? [],
             local: input.local,
           },
         },
@@ -103,5 +105,31 @@ test("waits for the local Relay to appear in the runtime pairing offer", async (
   const result = await resultPromise;
 
   expect(result.offers).toHaveLength(2);
+  expect(getDaemonPairingOffer).toHaveBeenCalledTimes(2);
+});
+
+test("waits for every Relay and pairing frontend combination", async () => {
+  vi.useFakeTimers();
+  const completeOffers = [
+    { endpoint: "relay.paseo.sh:443", useTls: true },
+    { endpoint: "relay.paseo.sh:443", useTls: true },
+    { endpoint: "10.71.95.148:6769", useTls: false },
+    { endpoint: "10.71.95.148:6769", useTls: false },
+  ];
+  const { client, getDaemonPairingOffer } = createClient({
+    endpoints: [{ endpoint: "relay.paseo.sh:443", useTls: true }],
+    pairingBaseUrls: ["https://connect.example.com", "https://connect-alt.example.com"],
+    local: {
+      enabled: true,
+      listen: "10.71.95.148:6769",
+    },
+    offers: [completeOffers.slice(0, 2), completeOffers],
+  });
+
+  const resultPromise = getCompleteDaemonPairingOffer(client as PairingClient, 1_000);
+  await vi.advanceTimersByTimeAsync(100);
+  const result = await resultPromise;
+
+  expect(result.offers).toHaveLength(4);
   expect(getDaemonPairingOffer).toHaveBeenCalledTimes(2);
 });

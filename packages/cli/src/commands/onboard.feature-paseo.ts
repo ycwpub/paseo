@@ -19,6 +19,7 @@ import {
   type DaemonStartOptions,
 } from "./daemon/local-daemon.js";
 import { getCompleteDaemonPairingOffer } from "./feature-paseo-daemon/pair.js";
+import { normalizeOnboardPairingOffer } from "./onboard-pairing-offer.js";
 import { tryConnectToDaemon } from "../utils/client.js";
 
 interface OnboardOptions extends DaemonStartOptions {
@@ -41,10 +42,6 @@ type OnboardPersistedConfig = PersistedConfig & {
   };
 };
 
-type LegacyLocalPairingOffer = Omit<LocalPairingOffer, "offers"> & {
-  offers?: LocalPairingOffer["offers"] | null;
-};
-
 const DEFAULT_READY_TIMEOUT_MS = 10 * 60 * 1000;
 const READY_PROBE_TIMEOUT_MS = 1200;
 const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
@@ -52,13 +49,6 @@ const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
 class OnboardCancelledError extends Error {}
 
 const plainNoteFormat = (line: string): string => line;
-
-export function normalizeOnboardPairingOffer(pairing: LegacyLocalPairingOffer): LocalPairingOffer {
-  return {
-    ...pairing,
-    offers: Array.isArray(pairing.offers) ? pairing.offers : [],
-  };
-}
 
 function renderNote(message: string, title: string): void {
   note(message, title, { format: plainNoteFormat });

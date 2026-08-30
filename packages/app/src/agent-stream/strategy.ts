@@ -42,7 +42,8 @@ export interface StreamEdgeSlotProps {
 
 export interface StreamViewportHandle {
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
-  prepareForViewportChange: () => void;
+  scrollToOldest: () => void;
+  prepareForViewportChange: (anchorId?: string) => void;
   scrollToMessage?: (itemId: string) => void;
 }
 
@@ -77,7 +78,7 @@ export interface StreamRenderInput {
   onNearHistoryStart: () => boolean | Promise<boolean>;
   isLoadingOlderHistory: boolean;
   hasOlderHistory: boolean;
-  olderHistoryProgressKey: string | null;
+  olderHistoryProgressKey?: string | null;
   scrollEnabled: boolean;
   listStyle: StyleProp<ViewStyle>;
   baseListContentContainerStyle: StyleProp<ViewStyle>;

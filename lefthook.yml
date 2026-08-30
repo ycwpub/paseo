@@ -14,3 +14,5 @@ pre-commit:
       run: npm run typecheck
     - name: feature-paseo-file-budget
       run: node scripts/check-feature-paseo-file-budget.mjs --cached
+    - name: feature-paseo-overlay-debt
+      run: node scripts/check-feature-paseo-overlays.mjs --cached

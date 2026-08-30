@@ -68,7 +68,7 @@ function PluginPanelBody({ theme }: { theme: PluginTheme }) {
     return <PluginPanelUnavailable />;
   }
   if (!runtime) {
-    return <PluginPanelUnavailable message="Plugin host is offline." />;
+    return <PluginPanelUnavailable message="插件主机已离线。" />;
   }
 
   let panel;
@@ -141,7 +141,7 @@ function usePluginPanelDescriptor(
   );
   if (!panel) {
     return {
-      label: "Plugin unavailable",
+      label: "插件不可用",
       subtitle: target.pluginId,
       tooltip: "This plugin panel is unavailable",
       titleState: "ready",

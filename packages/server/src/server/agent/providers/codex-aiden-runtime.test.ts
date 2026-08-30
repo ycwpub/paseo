@@ -73,7 +73,7 @@ describe("Aiden Codex runtime", () => {
         "goals",
       ]);
       expect(options.envOverlay?.NODE_OPTIONS).toContain("--trace-warnings");
-      expect(options.envOverlay?.NODE_OPTIONS).toContain("paseo-aiden-model-fallback-v1.cjs");
+      expect(options.envOverlay?.NODE_OPTIONS).toContain("paseo-aiden-model-fallback-v2.cjs");
       expect(options.envOverlay?.PASEO_AIDEN_RUNTIME_TARGET).toBe("codex");
       expect(options.envOverlay?.CODEX_HOME).toBe(codexHome);
     } finally {

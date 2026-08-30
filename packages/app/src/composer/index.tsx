@@ -36,11 +36,7 @@ import {
 import * as Clipboard from "expo-clipboard";
 import Animated from "react-native-reanimated";
 import { FOOTER_HEIGHT, MAX_CONTENT_WIDTH } from "@/constants/layout";
-import {
-  AgentControls,
-  DraftAgentControls,
-  type DraftAgentControlsProps,
-} from "@/composer/agent-controls";
+import { type DraftAgentControlsProps } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
@@ -82,6 +78,7 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
+import { ComposerAgentIdentityControls } from "@/composer/assistant-selector/composer-agent-identity-controls";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import {
   useHostRuntimeAgentDirectoryStatus,
@@ -94,7 +91,6 @@ import {
   persistAttachmentFromDataUrl,
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
-import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
 import { resolveActiveSendBehavior } from "./input/state";
 import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
@@ -306,20 +302,25 @@ interface RenderLeftContentArgs {
   focusInput: () => void;
   isCompactLayout: boolean;
   showAgentControls: boolean;
+  assistantId: string | null | undefined;
+  onAssistantSelect: ((id: string | null) => void) | undefined;
+  teamId: string | null | undefined;
+  onTeamSelect: ((teamId: string | null, leaderAssistantId: string | null) => void) | undefined;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
-  const { agentControls, agentId, serverId, focusInput, isCompactLayout } = args;
   if (!args.showAgentControls) return null;
-  if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
-    return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
-  }
   return (
-    <AgentControls
-      agentId={agentId}
-      serverId={serverId}
-      onDropdownClose={focusInput}
-      isCompactLayout={isCompactLayout}
+    <ComposerAgentIdentityControls
+      agentControls={args.agentControls}
+      agentId={args.agentId}
+      serverId={args.serverId}
+      focusInput={args.focusInput}
+      isCompactLayout={args.isCompactLayout}
+      assistantId={args.assistantId}
+      onAssistantSelect={args.onAssistantSelect}
+      teamId={args.teamId}
+      onTeamSelect={args.onTeamSelect}
     />
   );
 }
@@ -973,6 +974,14 @@ interface ComposerProps {
   submitLabel?: string;
   /** Overrides the mode's default placeholder, for text only the caller can build. */
   placeholder?: string;
+  /** Selected assistant ID for the current draft, if any. */
+  assistantId?: string | null;
+  /** Called when the user selects or clears an assistant. */
+  onAssistantSelect?: (id: string | null) => void;
+  /** Selected assistant team for a new conversation. */
+  teamId?: string | null;
+  /** Called when the user selects or clears a team. */
+  onTeamSelect?: (teamId: string | null, leaderAssistantId: string | null) => void;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -1178,6 +1187,10 @@ function ComposerContentImpl({
   readOnly = false,
   submitLabel,
   placeholder,
+  assistantId,
+  onAssistantSelect,
+  teamId,
+  onTeamSelect,
 }: ComposerContentProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -2109,8 +2122,23 @@ function ComposerContentImpl({
         focusInput,
         isCompactLayout,
         showAgentControls: mode.showAgentControls,
+        assistantId,
+        onAssistantSelect,
+        teamId,
+        onTeamSelect,
       }),
-    [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
+    [
+      agentControls,
+      agentId,
+      assistantId,
+      focusInput,
+      isCompactLayout,
+      mode.showAgentControls,
+      onAssistantSelect,
+      onTeamSelect,
+      serverId,
+      teamId,
+    ],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {

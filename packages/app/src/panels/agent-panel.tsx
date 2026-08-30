@@ -1316,6 +1316,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     isHydrated,
     attachmentFocusRequestId,
     composerState,
+    assistantId,
+    setAssistantId,
+    teamId,
+    setTeamId,
   } = rawAgentInputDraft;
   const agentInputDraft = useMemo(
     (): AgentInputDraft => ({
@@ -1329,6 +1333,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       isHydrated,
       attachmentFocusRequestId,
       composerState,
+      assistantId,
+      setAssistantId,
+      teamId,
+      setTeamId,
     }),
     [
       text,
@@ -1341,6 +1349,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       isHydrated,
       attachmentFocusRequestId,
       composerState,
+      assistantId,
+      setAssistantId,
+      teamId,
+      setTeamId,
     ],
   );
   const composerSection = (
@@ -1741,6 +1753,9 @@ function ActiveAgentComposer({
         onMessageSent={onMessageSent}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
+        assistantId={agentInputDraft.assistantId}
+        onAssistantSelect={agentInputDraft.setAssistantId}
+        teamId={agentInputDraft.teamId}
       />
     </ReanimatedAnimated.View>
   );

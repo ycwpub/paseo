@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getIsElectronRuntimeMac } from "@/constants/layout";
 import { useAggregatedAgents } from "./use-aggregated-agents";
 import { getDesktopHost } from "@/desktop/host";
+import { clearDesktopAttention } from "@/desktop/attention/desktop-attention";
 import { useWorkspaceStatusesForBadges } from "@/stores/session-store-hooks";
 import { deriveMacDockBadgeCountFromWorkspaceStatuses } from "@/utils/desktop-badge-state";
 import { isNative } from "@/constants/platform";
@@ -121,8 +122,12 @@ export function useFaviconStatus() {
 
     const dockBadgeCount = deriveMacDockBadgeCountFromWorkspaceStatuses(workspaceStatuses);
     if (dockBadgeCount !== lastDockBadgeCountRef.current) {
+      const previousDockBadgeCount = lastDockBadgeCountRef.current;
       lastDockBadgeCountRef.current = dockBadgeCount;
       void updateMacDockBadge(dockBadgeCount);
+      if (previousDockBadgeCount !== undefined && dockBadgeCount === undefined) {
+        clearDesktopAttention();
+      }
     }
   }, [agents, colorScheme, workspaceStatuses]);
 }

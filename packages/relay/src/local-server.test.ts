@@ -227,6 +227,8 @@ test("removes legacy client identifier fields from persisted Relay history", asy
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-history-"));
   tempDirs.push(tempDir);
   const historyFilePath = path.join(tempDir, "history.json");
+  const connectedAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const disconnectedAt = new Date(Date.now() - 60 * 1000).toISOString();
   await writeFile(
     historyFilePath,
     JSON.stringify({
@@ -244,8 +246,8 @@ test("removes legacy client identifier fields from persisted Relay history", asy
           remoteAddress: "127.0.0.1",
           remotePort: 12345,
           userAgent: "Mozilla/5.0 private fingerprint",
-          connectedAt: "2026-07-31T00:00:00.000Z",
-          disconnectedAt: "2026-07-31T00:01:00.000Z",
+          connectedAt,
+          disconnectedAt,
         },
       ],
     }),

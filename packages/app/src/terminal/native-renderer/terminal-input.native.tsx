@@ -311,7 +311,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       // autoCorrect/spellCheck/autoCapitalize being off, not from the layout.
       <TextInput
         ref={inputRef}
-        accessibilityLabel="Terminal input"
+        accessibilityLabel="终端输入"
         accessible={true}
         autoCapitalize="none"
         autoCorrect={false}

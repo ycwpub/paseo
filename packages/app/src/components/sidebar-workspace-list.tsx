@@ -50,6 +50,7 @@ import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sec
 import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIcons } from "@/projects/icons";
+import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 import {
   buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
@@ -90,6 +91,7 @@ import { hasVisibleOrderChanged, mergeWithRemainder } from "@/utils/sidebar-reor
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { SidebarStatusWorkspaceList } from "@/components/sidebar/sidebar-status-list";
+import { SidebarProjectFeatureMenuItems } from "@/components/sidebar/sidebar-project-feature-menu-items";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import {
   SidebarWorkspaceContextMenu,
@@ -436,7 +438,7 @@ function ProjectRowTrailingActions({
           testID={`sidebar-project-new-worktree-${projectViewKey}`}
         />
       ) : null}
-      {onRemoveProject ? (
+      {settingsTarget || onRemoveProject ? (
         <View
           style={!actionsVisible && styles.projectKebabButtonHidden}
           pointerEvents={actionsVisible ? "auto" : "none"}
@@ -479,12 +481,13 @@ function ProjectKebabMenu({
   projectViewKey: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
-  onRemoveProject: () => void;
+  onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
 }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
   return (
-    <DropdownMenu compactMode="sheet">
+    <DropdownMenu compactMode="sheet" open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         hitSlop={8}
         style={projectKebabStyle}
@@ -502,6 +505,7 @@ function ProjectKebabMenu({
           projectPath={projectPath}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
+          active={open}
         />
       </DropdownMenuContent>
     </DropdownMenu>
@@ -530,13 +534,15 @@ function ProjectMenuItems({
   projectPath,
   onRemoveProject,
   removeProjectStatus,
+  active,
 }: {
   surface: ProjectMenuSurface;
   projectViewKey: string;
   settingsTarget: { serverId: string; projectId: string } | null;
   projectPath: string;
-  onRemoveProject: () => void;
+  onRemoveProject?: () => void;
   removeProjectStatus: "idle" | "pending" | "success";
+  active: boolean;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -558,6 +564,12 @@ function ProjectMenuItems({
 
   return (
     <>
+      <SidebarProjectFeatureMenuItems
+        active={active}
+        projectViewKey={projectViewKey}
+        settingsTarget={settingsTarget}
+        surface={surface}
+      />
       {settingsTarget ? (
         <ProjectMenuItem
           surface={surface}
@@ -583,16 +595,18 @@ function ProjectMenuItems({
         path={projectPath}
         testID={`sidebar-project-menu-open-folder-${projectViewKey}`}
       />
-      <ProjectMenuItem
-        surface={surface}
-        testID={`sidebar-project-menu-remove-${projectViewKey}`}
-        leading={trash2LeadingIcon}
-        status={removeProjectStatus}
-        pendingLabel={t("sidebar.project.actions.removing")}
-        onSelect={onRemoveProject}
-      >
-        {t("sidebar.project.actions.remove")}
-      </ProjectMenuItem>
+      {onRemoveProject ? (
+        <ProjectMenuItem
+          surface={surface}
+          testID={`sidebar-project-menu-remove-${projectViewKey}`}
+          leading={trash2LeadingIcon}
+          status={removeProjectStatus}
+          pendingLabel={t("sidebar.project.actions.removing")}
+          onSelect={onRemoveProject}
+        >
+          {t("sidebar.project.actions.remove")}
+        </ProjectMenuItem>
+      ) : null}
     </>
   );
 }
@@ -976,7 +990,7 @@ function ProjectHeaderRow({
     </>
   );
 
-  if (!onRemoveProject) {
+  if (!settingsTarget && !onRemoveProject) {
     return (
       <View
         {...dragAttributes}
@@ -1036,6 +1050,7 @@ function ProjectHeaderRow({
           projectPath={projectPath}
           onRemoveProject={onRemoveProject}
           removeProjectStatus={removeProjectStatus}
+          active={contextMenuOpen}
         />
       </ContextMenuContent>
     </ContextMenu>
@@ -1601,6 +1616,11 @@ function ProjectBlock({
     project,
     enabled: selectionEnabled,
   });
+  const hierarchyStyle = useMemo(
+    () =>
+      project.hierarchyDepth ? { marginLeft: Math.min(project.hierarchyDepth, 4) * 18 } : undefined,
+    [project.hierarchyDepth],
+  );
 
   const renderWorkspaceRow = useCallback(
     (
@@ -1773,7 +1793,7 @@ function ProjectBlock({
     <View
       role="group"
       accessibilityLabel={displayName}
-      style={projectChildren ? styles.projectBlockExpanded : undefined}
+      style={[projectChildren ? styles.projectBlockExpanded : undefined, hierarchyStyle]}
     >
       <ProjectHeaderRow
         project={project}
@@ -2113,6 +2133,7 @@ function ProjectModeList({
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder);
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder);
+  const setSortMode = useSidebarViewStore((state) => state.setSortMode);
 
   const isWorkspaceRoute = useMemo(
     () => Boolean(pathname && parseHostWorkspaceRouteFromPathname(pathname)),
@@ -2121,6 +2142,10 @@ function ProjectModeList({
   const selectionEnabled = isWorkspaceRoute;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const { pinnedChats, unpinnedProjects } = pinnedGroups;
+  const hierarchicalProjects = useMemo(
+    () => flattenVisibleProjectHierarchy(unpinnedProjects, collapsedProjectKeys),
+    [collapsedProjectKeys, unpinnedProjects],
+  );
   const {
     visibleItems: visiblePinnedChats,
     expanded: pinnedChatsExpanded,
@@ -2206,8 +2231,9 @@ function ProjectModeList({
           reorderedVisibleKeys: reorderedProjectKeys,
         }),
       );
+      setSortMode("manual");
     },
-    [getProjectOrder, setProjectOrder],
+    [getProjectOrder, setProjectOrder, setSortMode],
   );
 
   const handleWorkspaceReorder = useCallback(
@@ -2230,8 +2256,9 @@ function ProjectModeList({
           reorderedVisibleKeys: reorderedWorkspaceKeys,
         }),
       );
+      setSortMode("manual");
     },
-    [getWorkspaceOrder, setWorkspaceOrder],
+    [getWorkspaceOrder, setSortMode, setWorkspaceOrder],
   );
 
   const handleWorktreeCreated = useCallback((workspaceId: string) => {
@@ -2379,7 +2406,7 @@ function ProjectModeList({
     ) : (
       <DraggableList
         testID="sidebar-project-list"
-        data={unpinnedProjects}
+        data={hierarchicalProjects}
         keyExtractor={projectViewKeyExtractor}
         renderItem={renderProject}
         onDragEnd={handleProjectDragEnd}

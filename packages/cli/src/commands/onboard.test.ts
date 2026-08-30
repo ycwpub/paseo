@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { normalizeOnboardPairingOffer } from "./onboard.js";
+import { normalizeOnboardPairingOffer } from "./onboard-pairing-offer.js";
 
 describe("normalizeOnboardPairingOffer", () => {
   test("supports legacy pairing offers without a relay offers list", () => {

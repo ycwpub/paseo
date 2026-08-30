@@ -83,7 +83,8 @@ export async function getCompleteDaemonPairingOffer(
       config.config.relay.local.publicEndpoint ?? config.config.relay.local.listen,
     );
   }
-  const expectedOfferCount = expectedEndpoints.size;
+  const pairingBaseUrlCount = Math.max(1, config.config.relay.pairingBaseUrls.length);
+  const expectedOfferCount = expectedEndpoints.size * pairingBaseUrlCount;
   const deadline = Date.now() + timeoutMs;
   let offer = await client.getDaemonPairingOffer({ timeout: Math.max(1, timeoutMs) });
 

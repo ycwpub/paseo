@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const AIDEN_MODEL_FALLBACK_PRELOAD_VERSION = 1;
+const AIDEN_MODEL_FALLBACK_PRELOAD_VERSION = 2;
 const AIDEN_MODEL_FALLBACK_PRELOAD_FILE = `paseo-aiden-model-fallback-v${AIDEN_MODEL_FALLBACK_PRELOAD_VERSION}.cjs`;
 
 export type AidenRuntimeTarget = "codex" | "claude";
@@ -91,6 +91,52 @@ function hasCompatibleLocalCustomModel() {
   return false;
 }
 
+function hasAidenCommandAuth() {
+  const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+  try {
+    const source = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+    return /^[\t ]*\[[\t ]*model_providers\.aiden_aiproxy\.auth[\t ]*\][\t ]*(?:#.*)?$/mu.test(
+      source,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isAidenEnvKeyOverride(value) {
+  return (
+    typeof value === 'string' &&
+    /^[\t ]*model_providers\.aiden_aiproxy\.env_key[\t ]*=/u.test(value)
+  );
+}
+
+function isAidenEnvKeyArgument(arg) {
+  if (isAidenEnvKeyOverride(arg)) return true;
+  if (typeof arg !== 'string' || (!arg.startsWith('-c=') && !arg.startsWith('--config='))) {
+    return false;
+  }
+  return isAidenEnvKeyOverride(arg.slice(arg.indexOf('=') + 1));
+}
+
+function stripAidenEnvKeyOverrides(args) {
+  const nextArgs = [];
+  let changed = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if ((arg === '-c' || arg === '--config') && isAidenEnvKeyOverride(args[index + 1])) {
+      index += 1;
+      changed = true;
+      continue;
+    }
+    if (isAidenEnvKeyArgument(arg)) {
+      changed = true;
+      continue;
+    }
+    nextArgs.push(arg);
+  }
+  return changed ? nextArgs : args;
+}
+
 function requestUrl(input) {
   try {
     if (typeof input === 'string') return input;
@@ -165,28 +211,30 @@ if (typeof originalFetch === 'function') {
 const originalSpawn = childProcess.spawn;
 childProcess.spawn = function paseoAidenCodexAuthCompat(command, args, options) {
   if (Array.isArray(args) && /(^|[\\/])codex(?:\.exe)?$/i.test(String(command))) {
-    const hasAidenEnvKey = args.some(
-      (arg) => typeof arg === 'string' && arg.includes('model_providers.aiden_aiproxy.env_key='),
-    );
-    const hasAuthOverride = args.some(
+    const nextArgs = hasAidenCommandAuth() ? stripAidenEnvKeyOverrides(args) : args;
+    const hasAidenEnvKey = nextArgs.some((arg) => isAidenEnvKeyArgument(arg));
+    const hasAuthOverride = nextArgs.some(
       (arg) =>
         typeof arg === 'string' &&
         arg.includes('model_providers.aiden_aiproxy.requires_openai_auth='),
     );
     if (hasAidenEnvKey && !hasAuthOverride) {
-      const nextArgs = [...args];
-      let insertAt = nextArgs.findIndex(
+      const compatibleArgs = [...nextArgs];
+      let insertAt = compatibleArgs.findIndex(
         (arg) =>
           typeof arg === 'string' &&
           ['app-server', 'exec', 'resume', 'review'].includes(arg),
       );
-      if (insertAt < 0) insertAt = nextArgs.length;
-      nextArgs.splice(
+      if (insertAt < 0) insertAt = compatibleArgs.length;
+      compatibleArgs.splice(
         insertAt,
         0,
         '-c',
         'model_providers.aiden_aiproxy.requires_openai_auth=false',
       );
+      return originalSpawn.call(this, command, compatibleArgs, options);
+    }
+    if (nextArgs !== args) {
       return originalSpawn.call(this, command, nextArgs, options);
     }
   }
@@ -242,25 +290,45 @@ export function mergeNodeRequireOption(
 
 export function patchAidenCodexConfigToml(source: string): string {
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const commandAuthPattern =
+    /^[\t ]*\[[\t ]*model_providers\.aiden_aiproxy\.auth[\t ]*\][\t ]*(?:#.*)?$/mu;
+  const hasCommandAuth = commandAuthPattern.test(source);
+  let patchedSource = source;
+  if (hasCommandAuth) {
+    const firstSectionIndex = /^[\t ]*\[/mu.exec(source)?.index ?? source.length;
+    const preamble = source
+      .slice(0, firstSectionIndex)
+      .replace(/^[\t ]*model_providers\.aiden_aiproxy\.env_key[\t ]*=.*(?:\r?\n|$)/gmu, "");
+    patchedSource = `${preamble}${source.slice(firstSectionIndex)}`;
+  }
   const sectionPattern = /^\[model_providers\.aiden_aiproxy\][^\S\r\n]*(?:\r?\n|$)/mu;
-  const sectionMatch = sectionPattern.exec(source);
+  const sectionMatch = sectionPattern.exec(patchedSource);
   if (!sectionMatch) {
-    const separator = source.length === 0 || source.endsWith(newline) ? "" : newline;
-    return `${source}${separator}${source.length > 0 ? newline : ""}[model_providers.aiden_aiproxy]${newline}requires_openai_auth = false${newline}`;
+    const providerSection = `[model_providers.aiden_aiproxy]${newline}requires_openai_auth = false${newline}`;
+    const commandAuthMatch = commandAuthPattern.exec(patchedSource);
+    if (commandAuthMatch) {
+      return `${patchedSource.slice(0, commandAuthMatch.index)}${providerSection}${newline}${patchedSource.slice(commandAuthMatch.index)}`;
+    }
+    const separator = patchedSource.length === 0 || patchedSource.endsWith(newline) ? "" : newline;
+    return `${patchedSource}${separator}${patchedSource.length > 0 ? newline : ""}${providerSection}`;
   }
 
   const sectionStart = sectionMatch.index;
   const bodyStart = sectionStart + sectionMatch[0].length;
-  const nextSectionMatch = /^\[/mu.exec(source.slice(bodyStart));
-  const sectionEnd = nextSectionMatch === null ? source.length : bodyStart + nextSectionMatch.index;
-  const sectionBody = source.slice(bodyStart, sectionEnd);
+  const nextSectionMatch = /^\[/mu.exec(patchedSource.slice(bodyStart));
+  const sectionEnd =
+    nextSectionMatch === null ? patchedSource.length : bodyStart + nextSectionMatch.index;
+  let sectionBody = patchedSource.slice(bodyStart, sectionEnd);
+  if (hasCommandAuth) {
+    sectionBody = sectionBody.replace(/^[\t ]*env_key[\t ]*=.*(?:\r?\n|$)/gmu, "");
+  }
   const authPattern = /^requires_openai_auth[^\S\r\n]*=.*$/mu;
   if (authPattern.test(sectionBody)) {
     const patchedBody = sectionBody.replace(authPattern, "requires_openai_auth = false");
-    return `${source.slice(0, bodyStart)}${patchedBody}${source.slice(sectionEnd)}`;
+    return `${patchedSource.slice(0, bodyStart)}${patchedBody}${patchedSource.slice(sectionEnd)}`;
   }
 
-  return `${source.slice(0, bodyStart)}requires_openai_auth = false${newline}${source.slice(bodyStart)}`;
+  return `${patchedSource.slice(0, bodyStart)}requires_openai_auth = false${newline}${sectionBody}${patchedSource.slice(sectionEnd)}`;
 }
 
 export function ensureAidenCodexHomeConfig(codexHome: string): void {

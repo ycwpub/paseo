@@ -19,20 +19,57 @@ Branch-specific architecture and product documentation lives under [`docs/featur
 4. Shared upstream-owned files may contain only the stable, auditable minimum wiring required for
    imports, exports, routing, registration, capability exposure, or integration. Extract business
    logic into a feature-owned module before adding that wiring.
-5. The complete `feature_paseo` branch may differ from its fixed upstream baseline in at most 100
-   files that already existed at that baseline. Added feature-owned files do not consume this
-   budget. The limit is branch-wide, not per commit or per change set, and is a ceiling rather than
-   a target.
-6. Do not duplicate existing abstractions or weaken the architecture solely to avoid a shared-file
+5. Do not use same-basename `.feature-paseo.ts` / `.feature-paseo.tsx` source overlays to make the
+   modified-file count look smaller. An overlay still conflicts semantically with upstream and
+   creates a parallel copy of main-owned code.
+6. Drive the complete `feature_paseo` branch down to at most 100 conflict-bearing files that already
+   existed at the fixed upstream baseline. Until the legacy debt reaches that target, no change may
+   increase the frozen migration ceiling. Added feature-owned files do not consume this budget.
+7. Do not duplicate existing abstractions or weaken the architecture solely to avoid a shared-file
    change.
-7. Never treat a clean Git index, a successful rebase, typecheck, or lint result as proof that branch
+8. Never treat a clean Git index, a successful rebase, typecheck, or lint result as proof that branch
    features were preserved. Feature preservation requires the inventory audit described below.
+
+## Overlay removal policy
+
+The branch previously introduced broad same-basename source overlays to avoid recording changes to
+main-owned files. That optimizes the metric rather than the rebase outcome: upstream edits still
+conflict with the copied implementation, while normal merge tooling can no longer show a small,
+auditable integration diff.
+
+All new and migrated work must follow these three rules:
+
+1. Continue extracting business logic from large modified files into newly added feature-owned
+   modules.
+2. Keep the original main-owned file limited to small, stable imports, registration, routing, and
+   adapter wiring.
+3. Never introduce or expand broad overlays merely to satisfy a file-count target; do not maintain a
+   second copy of a main subsystem.
+
+The existing runtime overlays are temporary migration debt, not an approved extension mechanism.
+`scripts/check-feature-paseo-overlays.mjs` freezes that debt against commit
+`faa79fa9da8a45c088b0cfa8f00afdd3fec9da32`: no new runtime overlay path may be added and no retained
+overlay may grow beyond its baseline size. Every refactor should reduce the reported overlay file or
+line count. Once the legacy list reaches zero, remove the Metro/Vite/TypeScript overlay machinery and
+its manifest.
+
+The 100-file limit remains a ceiling, but it must be met by extracting cohesive feature modules and
+removing obsolete shared-file edits—not by hiding modified implementations behind resolver
+overrides.
 
 ## Upstream-owned file budget
 
-The branch keeps rebase conflicts bounded by limiting its complete accumulated diff to 100 paths
-that already existed at the fixed upstream baseline
-`463415ae846cbcfef0df691e413a1a73a9213757`.
+The branch target is at most 100 conflict-bearing paths that already existed at the fixed upstream
+baseline `463415ae846cbcfef0df691e413a1a73a9213757`.
+
+The budget checker treats every runtime overlay as a modification of the upstream file it shadows.
+Deleting an overlay and replacing it with thin wiring therefore does not make the metric worse; the
+old implementation was already a conflict-bearing modification and must be counted honestly.
+
+Correcting that accounting exposed 264 legacy conflict-bearing paths. During migration, the checker
+uses 264 as a hard non-growth ceiling while continuing to report the 100-file target. This temporary
+ceiling must only move downward. It must never be raised to make a change pass, and it must be
+removed once the branch reaches the 100-file target.
 
 - Put most business implementation, state, tests, and documentation for a branch feature in new
   feature-owned files.
@@ -182,10 +219,12 @@ Before completing any feature change:
    record the integration point in the inventory.
 4. Run `node scripts/check-feature-paseo-file-budget.mjs`. If the change exceeds 100 upstream-owned
    files, extract feature modules before continuing.
-5. Add or update a targeted regression test that fails if the feature implementation remains present
+5. Run `node scripts/check-feature-paseo-overlays.mjs` and verify the legacy overlay count and line
+   count never increase.
+6. Add or update a targeted regression test that fails if the feature implementation remains present
    but its route, menu, export, registration, or capability wiring disappears.
-6. Update this inventory in the same commit.
-7. Run targeted tests, typecheck, lint, and formatting required by `CLAUDE.md`.
+7. Update this inventory in the same commit.
+8. Run targeted tests, typecheck, lint, and formatting required by `CLAUDE.md`.
 
 ## Mandatory rebase procedure
 

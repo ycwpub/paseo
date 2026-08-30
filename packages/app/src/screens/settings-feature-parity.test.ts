@@ -1,8 +1,30 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
+}
+
+const featureOverrideManifest = source("../../feature-paseo-source-overrides.txt");
+
+function runtimeSource(relativePath: string): string {
+  const baseUrl = new URL(relativePath, import.meta.url);
+  const extensionMatch = baseUrl.pathname.match(/(\.[^.]+)$/);
+  if (!extensionMatch) {
+    return readFileSync(baseUrl, "utf8");
+  }
+
+  const featureUrl = new URL(
+    baseUrl.href.replace(extensionMatch[0], `.feature-paseo${extensionMatch[0]}`),
+  );
+  const featurePath = fileURLToPath(featureUrl);
+  const marker = featureUrl.pathname.split("/packages/app/")[1];
+  const isRuntimeOverride =
+    marker != null &&
+    featureOverrideManifest.includes(` -> packages/app/${decodeURIComponent(marker)}`);
+
+  return readFileSync(isRuntimeOverride && existsSync(featurePath) ? featureUrl : baseUrl, "utf8");
 }
 
 describe("feature_paseo integration parity", () => {
@@ -28,7 +50,7 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps workflow and installed plugins reachable from the sidebar", () => {
-    const sidebar = source("../components/left-sidebar.tsx");
+    const sidebar = runtimeSource("../components/left-sidebar.tsx");
 
     expect(sidebar).toContain('testID="sidebar-workflows"');
     expect(sidebar).toContain("<InstalledPluginSidebarSection");
@@ -37,7 +59,7 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps restored host resources and memory management reachable", () => {
-    const settings = source("./settings-screen.tsx");
+    const settings = runtimeSource("./settings-screen.tsx");
     const featureRoutes = source("./settings/settings-feature-routes.tsx");
     const hostResources = source("./settings/host-resource-pages.tsx");
     const settingsRouting = `${settings}\n${featureRoutes}`;
@@ -64,7 +86,7 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps host appearance, relay, and instruction templates visible", () => {
-    const hostPage = source("./settings/host-page.tsx");
+    const hostPage = runtimeSource("./settings/host-page.tsx");
     const instructionTemplates = source("./settings/agents/instruction-templates-section.tsx");
 
     expect(hostPage).toContain("<HostAppearanceSection");
@@ -76,7 +98,7 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps bundled skill lifecycle and the unified skill catalog on one page", () => {
-    const hostPage = source("./settings/host-page.tsx");
+    const hostPage = runtimeSource("./settings/host-page.tsx");
     const hostResources = source("./settings/host-resource-pages.tsx");
 
     expect(hostPage).not.toContain("<AgentSkillsSection");
@@ -95,7 +117,7 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps project memory, Lark context, plugins, and parent navigation visible", () => {
-    const projectSettings = source("./project-settings-screen.tsx");
+    const projectSettings = runtimeSource("./project-settings-screen.tsx");
     const projectMemory = source("./settings/memory/project-memory-card.tsx");
 
     expect(projectSettings).toContain("<ProjectKnowledgeCard");
@@ -111,10 +133,10 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps all four Explorer feature entries registered", () => {
-    const manifest = source("../panels/panel-manifest.ts");
-    const registry = source("../panels/register-panels.ts");
-    const catalog = source("../workspace-tabs/launcher/internal/catalog.ts");
-    const explorer = source("../components/compact-explorer-sidebar.tsx");
+    const manifest = runtimeSource("../panels/panel-manifest.ts");
+    const registry = runtimeSource("../panels/register-panels.ts");
+    const catalog = runtimeSource("../workspace-tabs/launcher/internal/catalog.ts");
+    const explorer = runtimeSource("../components/compact-explorer-sidebar.tsx");
 
     for (const kind of ["files", "changes_tree", "task_summary", "pull_request"]) {
       expect(manifest).toContain(`${kind}: {`);
@@ -129,16 +151,23 @@ describe("feature_paseo integration parity", () => {
 
   test("keeps assistant and team selection connected to every chat composer", () => {
     const composer = source("../composer/index.tsx");
-    const agentPanel = source("../panels/agent-panel.tsx");
-    const workspaceDraft = source("../composer/draft/workspace-tab.tsx");
-    const newWorkspace = source("./new-workspace-screen.tsx");
+    const identityControls = source(
+      "../composer/assistant-selector/composer-agent-identity-controls.tsx",
+    );
+    const agentPanel = runtimeSource("../panels/agent-panel.tsx");
+    const workspaceDraft = runtimeSource("../composer/draft/workspace-tab.tsx");
+    const newWorkspace = runtimeSource("./new-workspace-screen.tsx");
 
     expect(composer).toContain(
+      'import { ComposerAgentIdentityControls } from "@/composer/assistant-selector/composer-agent-identity-controls"',
+    );
+    expect(composer).toContain("<ComposerAgentIdentityControls");
+    expect(identityControls).toContain(
       'import { AssistantSelector } from "@/composer/assistant-selector/assistant-selector"',
     );
-    expect(composer).toContain("<AssistantSelector");
-    expect(composer).toContain("selectedTeamId={args.teamId ?? null}");
-    expect(composer).toContain("onSelectTeam={args.onTeamSelect}");
+    expect(identityControls).toContain("<AssistantSelector");
+    expect(identityControls).toContain("selectedTeamId={teamId ?? null}");
+    expect(identityControls).toContain("onSelectTeam={onTeamSelect}");
 
     for (const chatSurface of [agentPanel, workspaceDraft, newWorkspace]) {
       expect(chatSurface).toContain("assistantId=");
@@ -150,7 +179,7 @@ describe("feature_paseo integration parity", () => {
   });
 
   test("keeps Dock attention connected to completed tasks and permission requests", () => {
-    const sessionContext = source("../contexts/session-context.tsx");
+    const sessionContext = runtimeSource("../contexts/session-context.tsx");
 
     expect(sessionContext).toContain(
       'import { signalDesktopAttention } from "@/desktop/attention/desktop-attention"',

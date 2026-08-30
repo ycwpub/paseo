@@ -121,7 +121,7 @@ describe("Aiden runtime compatibility", () => {
       baseEnv: { NODE_OPTIONS: "--trace-warnings", CODEX_HOME: codexHome },
     });
     expect(env.NODE_OPTIONS).toContain("--trace-warnings");
-    expect(env.NODE_OPTIONS).toContain("paseo-aiden-model-fallback-v1.cjs");
+    expect(env.NODE_OPTIONS).toContain("paseo-aiden-model-fallback-v2.cjs");
     expect(env.PASEO_AIDEN_RUNTIME_TARGET).toBe("codex");
     expect(env.CODEX_HOME).toBe(codexHome);
     expect(fs.readFileSync(path.join(codexHome, "config.toml"), "utf8")).toContain(
@@ -145,6 +145,7 @@ describe("Aiden runtime compatibility", () => {
     const source = `model = "[custom]gpt-5.6"
 
 [model_providers.aiden_aiproxy]
+env_key = "AIDEN_X_LOCAL_GATEWAY_API_KEY"
 wire_api = "responses"
 
 [model_providers.aiden_aiproxy.auth]
@@ -164,6 +165,23 @@ command = "aiden"
         source.replace('wire_api = "responses"', "requires_openai_auth = true"),
       ),
     ).toContain("requires_openai_auth = false");
+  });
+
+  test("removes dotted Aiden env_key when command auth is configured", () => {
+    const source = [
+      'model_providers.aiden_aiproxy.env_key = "AIDEN_X_LOCAL_GATEWAY_API_KEY"',
+      "",
+      "[model_providers.aiden_aiproxy.auth]",
+      'command = "aiden"',
+      'args = ["auth", "get-bytecloud-jwt-token"]',
+      "",
+    ].join("\r\n");
+    const patched = patchAidenCodexConfigToml(source);
+    expect(patched).not.toContain("env_key");
+    expect(patched).toContain(
+      "[model_providers.aiden_aiproxy]\r\nrequires_openai_auth = false\r\n",
+    );
+    expect(patched).toContain('[model_providers.aiden_aiproxy.auth]\r\ncommand = "aiden"\r\n');
   });
 
   test("creates an isolated Aiden Codex config without exposing unrelated settings", () => {
@@ -223,7 +241,8 @@ command = "aiden"
     ).toEqual({ object: "list", data: [] });
   });
 
-  test("adds the Codex provider-auth compatibility override before the subcommand", () => {
+  test("adds the Codex provider-auth compatibility override without command auth", () => {
+    const codexHome = temporaryDirectory("paseo-aiden-codex-home-");
     const preloadPath = materializeAidenModelFallbackPreload(
       temporaryDirectory("paseo-aiden-preload-"),
     );
@@ -243,6 +262,10 @@ childProcess.spawn("/usr/local/bin/codex", [
     const args = JSON.parse(
       execFileSync(process.execPath, ["-e", script, preloadPath], {
         encoding: "utf8",
+        env: {
+          ...process.env,
+          CODEX_HOME: codexHome,
+        },
       }),
     ) as string[];
     expect(args).toEqual([
@@ -252,5 +275,49 @@ childProcess.spawn("/usr/local/bin/codex", [
       "model_providers.aiden_aiproxy.requires_openai_auth=false",
       "app-server",
     ]);
+  });
+
+  test("removes Aiden env_key overrides when command auth is configured", () => {
+    const codexHome = temporaryDirectory("paseo-aiden-codex-home-");
+    fs.writeFileSync(
+      path.join(codexHome, "config.toml"),
+      `[model_providers.aiden_aiproxy]
+requires_openai_auth = false
+
+[model_providers.aiden_aiproxy.auth]
+command = "aiden"
+args = ["auth", "get-bytecloud-jwt-token"]
+`,
+    );
+    const preloadPath = materializeAidenModelFallbackPreload(
+      temporaryDirectory("paseo-aiden-preload-"),
+    );
+    const script = `
+const childProcess = require("node:child_process");
+childProcess.spawn = (_command, args) => {
+  process.stdout.write(JSON.stringify(args));
+  return {};
+};
+require(process.argv[1]);
+childProcess.spawn("/usr/local/bin/codex", [
+  "--config=model_providers.aiden_aiproxy.env_key=\\"FIRST_KEY\\"",
+  "-c",
+  "model_providers.aiden_aiproxy.env_key=\\"SECOND_KEY\\"",
+  "-c",
+  "features.goals=true",
+  "resume",
+  "thread-id",
+]);
+`;
+    const args = JSON.parse(
+      execFileSync(process.execPath, ["-e", script, preloadPath], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CODEX_HOME: codexHome,
+        },
+      }),
+    ) as string[];
+    expect(args).toEqual(["-c", "features.goals=true", "resume", "thread-id"]);
   });
 });

@@ -169,6 +169,33 @@ describe("relay-transport control lifecycle", () => {
     expect(hasLogMessage(logger, "info", "relay_control_connected")).toBe(true);
   });
 
+  test("discovers the Relay-hosted pairing frontend path from the control channel", () => {
+    const logger = createMockLogger();
+    const onPairingBaseUrl = vi.fn();
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async () => {},
+      relayEndpoint: "10.37.55.187:6769",
+      relayUseTls: false,
+      serverId: "srv_test",
+      onPairingBaseUrl,
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(
+      JSON.stringify({
+        type: "sync",
+        pairingBaseUrl: "http://10.37.55.187:6769/app",
+        connectionIds: [],
+      }),
+    );
+
+    expect(onPairingBaseUrl).toHaveBeenCalledWith("http://10.37.55.187:6769/app");
+  });
+
   test("terminates and reconnects when control socket opens but never becomes ready", () => {
     vi.useFakeTimers();
     const logger = createMockLogger();
@@ -230,17 +257,30 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
+      serverHostname: "paseo-daemon.local",
+      serverDeviceType: "mac",
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
 
     const control = relay.sockets[0];
+    expect(new URL(control.url).searchParams.get("hostname")).toBe("paseo-daemon.local");
+    expect(new URL(control.url).searchParams.get("deviceType")).toBe("mac");
     control.open();
     control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
-    control.message(JSON.stringify({ type: "connected", connectionId: "clt_test" }));
+    control.message(
+      JSON.stringify({
+        type: "connected",
+        connectionId: "clt_test",
+        remoteAddress: "10.37.55.187",
+        remotePort: 54321,
+      }),
+    );
 
     const dataSocket = relay.sockets[1];
     expect(dataSocket).toBeDefined();
+    expect(new URL(dataSocket.url).searchParams.get("hostname")).toBe("paseo-daemon.local");
+    expect(new URL(dataSocket.url).searchParams.get("deviceType")).toBe("mac");
     dataSocket.open();
 
     await Promise.resolve();
@@ -249,8 +289,10 @@ describe("relay-transport control lifecycle", () => {
     expect(attachedMetadata).toEqual([
       {
         transport: "relay",
-        externalSessionKey: "session:clt_test",
-        relayConnectionId: "clt_test",
+        externalSessionKey: "relay:wss://relay.paseo.sh:443:clt_test",
+        relayConnectionId: "wss://relay.paseo.sh:443:clt_test",
+        remoteAddress: "10.37.55.187",
+        remotePort: 54321,
       },
     ]);
   });

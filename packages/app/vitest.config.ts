@@ -2,8 +2,6 @@ import { defineConfig, configDefaults } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 import path from "path";
 import fs from "fs";
-import { featurePaseoTestOverrides } from "./feature-paseo-test-overrides";
-import { featurePaseoOverlayPlugin } from "./feature-paseo-vite-plugin";
 
 const appNodeModules = path.resolve(__dirname, "node_modules");
 const rootNodeModules = path.resolve(__dirname, "../../node_modules");
@@ -15,10 +13,9 @@ const resolvePackageEntry = (packageName: string) => {
 };
 
 export default defineConfig({
-  plugins: [featurePaseoOverlayPlugin(path.resolve(__dirname, "src"))],
   test: {
     environment: "node",
-    exclude: [...configDefaults.exclude, "e2e/**", ...featurePaseoTestOverrides],
+    exclude: [...configDefaults.exclude, "e2e/**"],
     projects: [
       {
         extends: true,
@@ -26,13 +23,8 @@ export default defineConfig({
           name: "unit",
           environment: "node",
           include: ["src/**/*.{test,spec}.{ts,tsx}", "native-release-version.test.ts"],
-          setupFiles: [path.resolve(__dirname, "vitest.feature-paseo.setup.ts")],
-          exclude: [
-            ...configDefaults.exclude,
-            "e2e/**",
-            "src/**/*.browser.{test,spec}.{ts,tsx}",
-            ...featurePaseoTestOverrides,
-          ],
+          setupFiles: [path.resolve(__dirname, "vitest.setup.ts")],
+          exclude: [...configDefaults.exclude, "e2e/**", "src/**/*.browser.{test,spec}.{ts,tsx}"],
         },
       },
       {

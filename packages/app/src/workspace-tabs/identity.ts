@@ -57,6 +57,7 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
     }
     case "changes_tree":
     case "files":
+    case "task_summary":
     case "pull_request":
       return { kind: value.kind };
     case "setup": {
@@ -93,6 +94,10 @@ export function normalizeWorkspaceDraftTabSetup(
       typeof record.thinkingOptionId === "string" ? record.thinkingOptionId : null,
     ),
     featureValues: isPlainRecord(record.featureValues) ? { ...record.featureValues } : {},
+    assistantId: trimOptionalString(
+      typeof record.assistantId === "string" ? record.assistantId : null,
+    ),
+    teamId: trimOptionalString(typeof record.teamId === "string" ? record.teamId : null),
   };
 }
 
@@ -138,15 +143,19 @@ function secondaryWorkspaceTabTargetsEqual(
     return workspaceFileLocationsEqual(left, right);
   }
   if (left.kind === "working_diff" && right.kind === "working_diff") {
-    return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
+    return (
+      left.cwd === right.cwd &&
+      left.focusPath === right.focusPath &&
+      left.focusRequestId === right.focusRequestId
+    );
   }
-  if (left.kind === "files" && right.kind === "files") {
-    return true;
-  }
-  if (left.kind === "changes_tree" && right.kind === "changes_tree") {
-    return true;
-  }
-  if (left.kind === "pull_request" && right.kind === "pull_request") {
+  if (
+    left.kind === right.kind &&
+    (left.kind === "files" ||
+      left.kind === "task_summary" ||
+      left.kind === "changes_tree" ||
+      left.kind === "pull_request")
+  ) {
     return true;
   }
   if (left.kind === "setup" && right.kind === "setup") {
@@ -171,7 +180,9 @@ function workspaceDraftTabSetupsEqual(
     left.modeId === right.modeId &&
     left.model === right.model &&
     left.thinkingOptionId === right.thinkingOptionId &&
-    recordsShallowEqual(left.featureValues, right.featureValues)
+    recordsShallowEqual(left.featureValues, right.featureValues) &&
+    (left.assistantId ?? null) === (right.assistantId ?? null) &&
+    (left.teamId ?? null) === (right.teamId ?? null)
   );
 }
 
@@ -219,7 +230,12 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   if (target.kind === "working_diff") {
     return "working_diff";
   }
-  if (target.kind === "changes_tree" || target.kind === "files" || target.kind === "pull_request") {
+  if (
+    target.kind === "changes_tree" ||
+    target.kind === "files" ||
+    target.kind === "task_summary" ||
+    target.kind === "pull_request"
+  ) {
     return target.kind;
   }
   if (target.kind === "plugin") {
@@ -262,10 +278,12 @@ function normalizeFileTabTarget(
 function normalizeWorkingDiffTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
 ): WorkspaceTabTarget | null {
+  const cwd = trimNonEmpty(value.cwd)?.replace(/\\/g, "/") ?? null;
   const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
   const focusRequestId = normalizePositiveInteger(value.focusRequestId);
   return {
     kind: "working_diff" as const,
+    ...(cwd ? { cwd } : {}),
     ...(focusPath ? { focusPath } : {}),
     ...(focusRequestId ? { focusRequestId } : {}),
   };

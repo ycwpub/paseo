@@ -117,6 +117,12 @@ describe("daemon bearer auth", () => {
       const health = await fetch(`http://127.0.0.1:${daemonHandle.port}/api/health`);
       expect(health.status).toBe(200);
 
+      const oauthCallback = await fetch(
+        `http://127.0.0.1:${daemonHandle.port}/oauth/lark?code=test&state=invalid`,
+      );
+      expect(oauthCallback.status).toBe(400);
+      expect(oauthCallback.headers.get("content-type")).toContain("text/html");
+
       const status = await fetch(`http://127.0.0.1:${daemonHandle.port}/api/status`);
       expect(status.status).toBe(401);
     } finally {

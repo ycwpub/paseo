@@ -27,8 +27,8 @@ try {
   assert(!onboard.stdout.includes("Scan to pair"), "onboard output should not include scan header");
   assert(!onboard.stdout.includes("#offer="), "onboard output should not include a pairing offer");
   assert(
-    onboard.stdout.includes("Daemon is running with relay off"),
-    "onboard output should explain the direct connection path",
+    onboard.stdout.includes("Relay is disabled"),
+    "onboard output should explain why pairing is unavailable",
   );
   assert(
     onboard.stdout.includes("CLI quick reference"),
@@ -54,9 +54,12 @@ try {
 
   console.log("Test 2: --no-relay suppresses pairing for an already-running daemon");
   const enableRelay =
-    await $`PASEO_HOME=${paseoHome} npx paseo daemon pair --home ${paseoHome} --relay`.nothrow();
-  assert.strictEqual(enableRelay.exitCode, 0, `relay enable should succeed: ${enableRelay.stderr}`);
-  assert(enableRelay.stdout.includes("#offer="), "relay enable should produce a pairing offer");
+    await $`PASEO_HOME=${paseoHome} npx paseo relay set --home ${paseoHome} --endpoint wss://relay.example.com:443 --pairing-url https://connect.example.com`.nothrow();
+  assert.strictEqual(
+    enableRelay.exitCode,
+    0,
+    `relay configuration should succeed: ${enableRelay.stderr}`,
+  );
 
   const noRelayOnboard =
     await $`PASEO_HOME=${paseoHome} PASEO_LISTEN=127.0.0.1:${port} npx paseo --no-relay`.nothrow();

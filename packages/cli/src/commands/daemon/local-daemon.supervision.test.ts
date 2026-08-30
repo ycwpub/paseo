@@ -10,7 +10,7 @@ import {
   resolveLocalDaemonState,
   startLocalDaemonDetached,
   startLocalDaemonForeground,
-} from "./local-daemon.js";
+} from "../daemon-management/local-daemon.js";
 
 type RecordedDaemonLaunch =
   | {
@@ -210,5 +210,14 @@ describe("local daemon launch supervision", () => {
     expect(state.relayEndpoint).toBe("paseo.example.com");
     expect(state.relayUseTls).toBe(false);
     expect(state.relayPublicUseTls).toBe(true);
+  });
+
+  test("local daemon state does not synthesize a default public Relay", async () => {
+    const home = await createPaseoHome({ version: 1 });
+
+    const state = resolveLocalDaemonState({ home });
+
+    expect(state.relayEnabled).toBe(false);
+    expect(state.relayEndpoint).toBeNull();
   });
 });

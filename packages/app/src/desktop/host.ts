@@ -15,6 +15,31 @@ type BrowserAutomationExecuteResponse = Extract<
 export type DesktopNotificationPermission = "granted" | "denied" | "default";
 export type DesktopWindowChromeMode = "native-mac" | "custom-windows" | "custom-linux";
 
+export interface DesktopAttentionBridge {
+  signal?: (
+    reason: "finished" | "intervention",
+    options?: { allowWhenFocused?: boolean },
+  ) => Promise<boolean>;
+  clear?: () => Promise<void>;
+}
+
+export type DesktopIslandKind = "running" | "finished" | "error" | "permission" | "info";
+
+export interface DesktopIslandPayload {
+  id?: string;
+  kind: DesktopIslandKind;
+  title: string;
+  body?: string;
+  data?: Record<string, unknown>;
+  durationMs?: number;
+}
+
+export interface DesktopIslandBridge {
+  show?: (payload: DesktopIslandPayload) => Promise<boolean>;
+  dismiss?: (id?: string) => Promise<boolean>;
+  clear?: () => Promise<boolean>;
+}
+
 export interface DesktopDialogAskOptions {
   title?: string;
   okLabel?: string;
@@ -100,6 +125,9 @@ export interface DesktopWindowChromeUpdate {
 
 export interface DesktopWindowBridge {
   label?: string;
+  getName?: () => Promise<string>;
+  setName?: (name: string) => Promise<string>;
+  resetName?: () => Promise<string>;
   minimize?: () => Promise<void>;
   close?: () => Promise<void>;
   toggleMaximize?: () => Promise<void>;
@@ -174,6 +202,7 @@ export interface DesktopInvokeBridge {
 
 export interface DesktopHostBridge {
   platform?: string;
+  deviceName?: string;
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
@@ -182,6 +211,8 @@ export interface DesktopHostBridge {
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;
   notification?: DesktopNotificationBridge;
+  attention?: DesktopAttentionBridge;
+  island?: DesktopIslandBridge;
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
   webUtils?: DesktopWebUtilsBridge;

@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
+import {
+  TIMELINE_FETCH_PAGE_SIZE,
+  TIMELINE_OLDER_FETCH_PAGE_SIZE,
+} from "@/timeline/timeline-fetch-policy";
 import {
   isTimelineCatchUpComplete,
   isTimelineResumeSnapshotAuthoritative,
@@ -35,7 +38,7 @@ describe("timeline sync planning", () => {
     expect(plan).toEqual({
       direction: "before",
       cursor: { epoch: "epoch-1", seq: 25 },
-      limit: TIMELINE_FETCH_PAGE_SIZE,
+      limit: TIMELINE_OLDER_FETCH_PAGE_SIZE,
       projection: "projected",
     });
   });

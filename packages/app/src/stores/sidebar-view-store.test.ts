@@ -41,6 +41,7 @@ describe("sidebar view store", () => {
   beforeEach(() => {
     useSidebarViewStore.setState({
       groupMode: "project",
+      sortMode: "activity",
       hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -61,6 +62,17 @@ describe("sidebar view store", () => {
     store.clearHostFilters();
 
     expect(useSidebarViewStore.getState().hostFilters).toEqual([]);
+  });
+
+  it("switches between recent-activity, project-name, and manual project ordering", () => {
+    useSidebarViewStore.getState().setSortMode("name");
+    expect(useSidebarViewStore.getState().sortMode).toBe("name");
+
+    useSidebarViewStore.getState().setSortMode("manual");
+    expect(useSidebarViewStore.getState().sortMode).toBe("manual");
+
+    useSidebarViewStore.getState().setSortMode("activity");
+    expect(useSidebarViewStore.getState().sortMode).toBe("activity");
   });
 
   it("keeps host filters that still point at available hosts", () => {
@@ -93,6 +105,7 @@ describe("sidebar view store", () => {
       }),
     ).toEqual({
       groupMode: "status",
+      sortMode: "activity",
       hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -107,6 +120,7 @@ describe("sidebar view store", () => {
       }),
     ).toEqual({
       groupMode: "status",
+      sortMode: "activity",
       hostFilters: ["host-a"],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -117,11 +131,28 @@ describe("sidebar view store", () => {
     expect(
       migrateSidebarViewState({
         groupMode: "status",
+        sortMode: "manual",
         hostFilters: ["host-a", "host-b"],
       }),
     ).toEqual({
       groupMode: "status",
+      sortMode: "manual",
       hostFilters: ["host-a", "host-b"],
+      projectFilters: [],
+      labelFilter: { labels: [] },
+    });
+  });
+
+  it("keeps project-name ordering during version migration", () => {
+    expect(
+      migrateSidebarViewState({
+        groupMode: "project",
+        sortMode: "name",
+      }),
+    ).toEqual({
+      groupMode: "project",
+      sortMode: "name",
+      hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
     });
@@ -231,6 +262,7 @@ describe("sidebar view store", () => {
       }),
     ).toEqual({
       groupMode: "project",
+      sortMode: "activity",
       hostFilters: ["host-a"],
       projectFilters: ["project-a", "project-b"],
       labelFilter: { labels: [] },
@@ -240,6 +272,7 @@ describe("sidebar view store", () => {
   it("never keeps project filters from state the schema rejects", () => {
     expect(migrateSidebarViewState({ projectFilters: "project-a" })).toEqual({
       groupMode: "project",
+      sortMode: "activity",
       hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },

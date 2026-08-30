@@ -33,11 +33,19 @@ export interface FakeDesktopBridge extends DesktopSettingsBridge {
 const DEFAULT_DESKTOP: DesktopSettings = {
   releaseChannel: "stable",
   notifications: {
+    enabled: true,
     playSound: true,
   },
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
+  },
+  attention: {
+    soundVolume: 0.5,
+  },
+  island: {
+    enabled: true,
+    showWhenFocused: true,
   },
 };
 

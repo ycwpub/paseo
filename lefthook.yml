@@ -12,7 +12,7 @@ pre-commit:
       run: npm run lint -- {staged_files}
     - name: typecheck
       run: npm run typecheck
-    - name: feature-paseo-file-budget
-      run: node scripts/check-feature-paseo-file-budget.mjs --cached
-    - name: feature-paseo-overlay-debt
-      run: node scripts/check-feature-paseo-overlays.mjs --cached
+    - name: upstream-file-budget
+      run: node scripts/check-upstream-file-budget.mjs --cached
+    - name: no-source-overlays
+      run: node scripts/check-source-overlays.mjs --cached

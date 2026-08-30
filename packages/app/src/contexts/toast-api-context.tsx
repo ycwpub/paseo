@@ -3,8 +3,12 @@ import type { ToastApi } from "@/components/toast-host";
 
 const ToastContext = createContext<ToastApi | null>(null);
 
+export function useOptionalToast(): ToastApi | null {
+  return useContext(ToastContext);
+}
+
 export function useToast(): ToastApi {
-  const value = useContext(ToastContext);
+  const value = useOptionalToast();
   if (!value) {
     throw new Error("useToast must be used within ToastProvider");
   }

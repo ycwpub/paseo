@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useFetchQuery } from "@/data/query";
-import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
+import { daemonPairingQueryKey } from "@/data/daemon-pairing";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
@@ -51,7 +51,7 @@ export function PairDeviceSection({ serverId, onClose }: PairDeviceSectionProps)
   const canConfigureRelay = supportsPairingRpc && serverFeatures?.relayConfig === true;
 
   const pairingQuery = useFetchQuery({
-    queryKey: daemonPairingOfferQueryKey(serverId),
+    queryKey: daemonPairingQueryKey(serverId),
     queryFn: async () => {
       if (!client) throw new Error(t("workspace.terminal.hostDisconnected"));
       return client.getDaemonPairingOffer();

@@ -36,6 +36,7 @@ import {
   type HistoryStartSettleScheduler,
 } from "./history-start-settle-scheduler";
 import { useScrollToMessage } from "./use-scroll-to-message.web";
+import { useWebViewportChangeAnchor } from "./use-web-viewport-change-anchor";
 
 interface CreateWebStreamStrategyInput {
   isMobileBreakpoint: boolean;
@@ -45,6 +46,8 @@ interface HistoryStartPrependAnchor {
   progressKey: string;
   rowId: string;
   viewportOffset: number;
+  scrollHeight: number;
+  scrollTop: number;
 }
 
 type ScrollBehaviorLike = "auto" | "smooth";
@@ -292,7 +295,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     onNearHistoryStart,
     isLoadingOlderHistory,
     hasOlderHistory,
-    olderHistoryProgressKey,
+    olderHistoryProgressKey = null,
     scrollEnabled,
     isMobileBreakpoint,
   } = props;
@@ -431,6 +434,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
           rowId: anchorRow.id,
           viewportOffset:
             anchorElement.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top,
+          scrollHeight: scrollContainer.scrollHeight,
+          scrollTop: scrollContainer.scrollTop,
         };
       } else {
         historyStartPrependAnchorRef.current = null;
@@ -490,8 +495,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     }
     const viewportOffset =
       anchorElement.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
-    scrollContainer.scrollTop += viewportOffset - anchor.viewportOffset;
-    lastKnownScrollTopRef.current = scrollContainer.scrollTop;
+    const measuredDelta = viewportOffset - anchor.viewportOffset;
+    const contentGrowth = Math.max(0, scrollContainer.scrollHeight - anchor.scrollHeight);
+    const scrollTop =
+      Math.abs(measuredDelta) > 0.5
+        ? scrollContainer.scrollTop + measuredDelta
+        : anchor.scrollTop + contentGrowth;
+    scrollContainer.scrollTo({ top: scrollTop, behavior: "auto" });
+    lastKnownScrollTopRef.current = scrollTop;
   });
   const scheduleHistoryStartPrependSettle = useStableEvent(() => {
     let scheduler = historyStartSettleSchedulerRef.current;
@@ -719,6 +730,23 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     reportReadingPosition();
   }, [onNearBottomChange, reportReadingPosition]);
 
+  const viewportChangeAnchor = useWebViewportChangeAnchor({
+    active: isActive,
+    scrollContainerRef,
+    contentRef,
+    onPrepare: () => {
+      cancelPendingStickToBottom();
+      setFollowOutput(false);
+    },
+    onRestore: (scrollTop) => {
+      lastKnownScrollTopRef.current = scrollTop;
+    },
+    onSettle: () => {
+      updateScrollMetrics();
+      evaluateHistoryStart();
+    },
+  });
+
   const { isJumpSettling, scrollToMessage } = useScrollToMessage({
     active: isActive,
     scrollContainerRef,
@@ -865,6 +893,21 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     virtualTotalSize,
   ]);
 
+  useLayoutEffect(() => {
+    if (!isActive || !viewportChangeAnchor.hasPending()) {
+      return;
+    }
+    viewportChangeAnchor.schedule();
+  }, [
+    isActive,
+    renderLiveAuxiliary,
+    segments.historyMounted,
+    segments.historyVirtualized,
+    segments.liveHead,
+    virtualTotalSize,
+    viewportChangeAnchor,
+  ]);
+
   useEffect(() => {
     if (!isActive) {
       return;
@@ -922,6 +965,9 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (historyStartPrependAnchorActiveRef.current) {
         applyHistoryStartPrependAnchor();
       }
+      if (viewportChangeAnchor.hasPending()) {
+        viewportChangeAnchor.schedule();
+      }
       if (historyStartPaginationStateRef.current.status === "settling") {
         scheduleHistoryStartPrependSettle();
       }
@@ -947,6 +993,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scheduleHistoryStartPrependSettle,
     scheduleStickToBottom,
     updateScrollMetrics,
+    viewportChangeAnchor,
   ]);
 
   useLayoutEffect(() => {
@@ -960,6 +1007,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
     const markUpwardViewportInput = () => {
       markUpwardInputEvidence();
+      stopFollowingOutputFromUserIntent();
       if (scrollContainer.scrollTop <= USER_SCROLL_DELTA_EPSILON) {
         rearmHistoryStartFromUserIntent();
       }
@@ -1096,6 +1144,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     isActive,
     markUpwardInputEvidence,
     rearmHistoryStartFromUserIntent,
+    stopFollowingOutputFromUserIntent,
   ]);
 
   useEffect(() => {
@@ -1105,7 +1154,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         cancelPendingStickToBottom();
         forceStickToBottom();
       },
-      prepareForViewportChange: () => {
+      scrollToOldest: () => {
+        setFollowOutput(false);
+        scrollContainerRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      },
+      prepareForViewportChange: (anchorId) => {
+        if (anchorId && viewportChangeAnchor.prepare(anchorId)) {
+          return;
+        }
         if (!followOutputRef.current) {
           return;
         }
@@ -1125,6 +1181,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     forceStickToBottom,
     scheduleStickToBottom,
     scrollToMessage,
+    viewportChangeAnchor,
     viewportRef,
   ]);
 

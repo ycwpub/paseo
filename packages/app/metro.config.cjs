@@ -2,7 +2,6 @@ const { getDefaultConfig } = require("expo/metro-config");
 const { resolve } = require("metro-resolver");
 const fs = require("fs");
 const path = require("path");
-const { applyFeaturePaseoOverlay } = require("./feature-paseo-overlay.cjs");
 
 const projectRoot = __dirname;
 const appNodeModulesRoot = path.resolve(projectRoot, "node_modules");
@@ -52,7 +51,7 @@ function isLocalModuleImport(moduleName) {
   );
 }
 
-function resolveWithCustomWebOverlay(context, moduleName, platform) {
+function resolveWithCustomWebPlatform(context, moduleName, platform) {
   const shouldResolveCustomWebVariant =
     platform === "web" &&
     customWebPlatform.length > 0 &&
@@ -68,21 +67,18 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
     };
 
     try {
-      return applyFeaturePaseoOverlay(
-        defaultResolveRequest(overlayContext, moduleName, null),
-        appSrcRoot,
-      );
+      return defaultResolveRequest(overlayContext, moduleName, null);
     } catch {
-      // Ignore overlay misses and continue with normal web resolution.
+      // Ignore custom-platform misses and continue with normal web resolution.
     }
   }
 
-  return applyFeaturePaseoOverlay(defaultResolveRequest(context, moduleName, platform), appSrcRoot);
+  return defaultResolveRequest(context, moduleName, platform);
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (isFdroidBuild && platform === "android" && fdroidModuleOverrides[moduleName]) {
-    return resolveWithCustomWebOverlay(context, fdroidModuleOverrides[moduleName], platform);
+    return resolveWithCustomWebPlatform(context, fdroidModuleOverrides[moduleName], platform);
   }
 
   const origin = context.originModulePath;
@@ -90,11 +86,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     const tsModuleName = moduleName.replace(/\.js$/, ".ts");
     const candidatePath = path.resolve(path.dirname(origin), tsModuleName);
     if (fs.existsSync(candidatePath)) {
-      return resolveWithCustomWebOverlay(context, tsModuleName, platform);
+      return resolveWithCustomWebPlatform(context, tsModuleName, platform);
     }
   }
 
-  return resolveWithCustomWebOverlay(context, moduleName, platform);
+  return resolveWithCustomWebPlatform(context, moduleName, platform);
 };
 
 if (process.env.PASEO_SERVE_SIM_PREVIEW === "1") {

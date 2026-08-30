@@ -585,6 +585,19 @@ test("findOrCreateProjectForDirectory keeps nested selected roots independent", 
   expect(await projectRegistry.list()).toHaveLength(2);
 });
 
+test("createProjectForDirectory allocates a new project for an already registered root", async () => {
+  const repo = path.join(tmpDir, "repo");
+  gitRoots.add(repo);
+
+  const first = await provisioning.createProjectForDirectory(repo);
+  const second = await provisioning.createProjectForDirectory(repo);
+
+  expect(first.rootPath).toBe(repo);
+  expect(second.rootPath).toBe(repo);
+  expect(second.projectId).not.toBe(first.projectId);
+  expect(await projectRegistry.list()).toHaveLength(2);
+});
+
 test("runInImportWorkspace uses an active requested workspace without creating another", async () => {
   const cwd = path.join(tmpDir, "requested");
   mkdirSync(cwd);

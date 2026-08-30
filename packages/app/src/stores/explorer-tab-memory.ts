@@ -1,7 +1,7 @@
-export type ExplorerTab = "changes" | "files" | "pr";
+export type ExplorerTab = "changes" | "files" | "task-summary" | "pr";
 
 export function isExplorerTab(value: unknown): value is ExplorerTab {
-  return value === "changes" || value === "files" || value === "pr";
+  return value === "changes" || value === "files" || value === "task-summary" || value === "pr";
 }
 
 export function buildExplorerCheckoutKey(serverId: string, cwd: string): string | null {

@@ -88,6 +88,41 @@ describe("useChatOutline", () => {
     expect(result.current.prompts[0]?.seq).toBe(2);
   });
 
+  it("shows loaded prompts without waiting for the server prompt-index capability", async () => {
+    const viewportRef = createRef<StreamViewportHandle>();
+    const timestamp = new Date("2026-08-28T00:00:00.000Z");
+    const { result } = renderHook(() =>
+      useChatOutline({
+        agentId: "agent-1",
+        serverId: "server-1",
+        timelineEpoch: "epoch-1",
+        tail: [
+          {
+            id: "loaded-prompt",
+            kind: "user_message",
+            text: "已加载的历史输入",
+            timestamp,
+            timelineCursor: { epoch: "epoch-1", seq: 7 },
+          },
+        ],
+        head: [],
+        enabled: true,
+        supportsPromptIndex: false,
+        viewportRef,
+        onJumpError: vi.fn(),
+      }),
+    );
+
+    expect(result.current.prompts).toEqual([
+      {
+        seq: 7,
+        timestamp: timestamp.toISOString(),
+        preview: "已加载的历史输入",
+      },
+    ]);
+    expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
+  });
+
   it("keeps the newest prompt index response within one epoch", async () => {
     const older = deferred<{
       epoch: string;
@@ -184,6 +219,7 @@ describe("useChatOutline", () => {
     const revealLoadedItem = vi.fn(() => true);
     const viewport: StreamViewportHandle = {
       scrollToBottom: vi.fn(),
+      scrollToOldest: vi.fn(),
       prepareForViewportChange: vi.fn(),
       scrollToMessage,
     };
@@ -235,6 +271,7 @@ describe("useChatOutline", () => {
     const viewportRef = {
       current: {
         scrollToBottom: vi.fn(),
+        scrollToOldest: vi.fn(),
         prepareForViewportChange: vi.fn(),
         scrollToMessage,
       },
@@ -290,6 +327,7 @@ describe("useChatOutline", () => {
     const scrollToMessage = vi.fn();
     const viewport: StreamViewportHandle = {
       scrollToBottom: vi.fn(),
+      scrollToOldest: vi.fn(),
       prepareForViewportChange: vi.fn(),
       scrollToMessage,
     };

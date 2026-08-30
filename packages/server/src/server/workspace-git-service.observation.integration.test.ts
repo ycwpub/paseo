@@ -217,7 +217,7 @@ test("recursive observation updates tracked state and prunes ignored storms", as
     { timeout: 5_000 },
   );
 
-  writeFileSync(trackedPath, "base\n");
+  writeFileSync(trackedPath, "warmup\n");
   await vi.waitFor(
     () => {
       const events = deliveredEvents.flatMap((batch) => batch.events);

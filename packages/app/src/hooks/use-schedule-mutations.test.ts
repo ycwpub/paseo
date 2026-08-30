@@ -7,7 +7,7 @@ import type {
   FetchAggregatedSchedulesState,
 } from "@/schedules/aggregated-schedules";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
-import { updateAggregatedSchedulesData } from "./use-schedule-mutations";
+import { mergeReturnedSchedule, updateAggregatedSchedulesData } from "./use-schedule-mutations";
 
 function schedule(overrides: Partial<AggregatedSchedule> = {}): AggregatedSchedule {
   const base: ScheduleSummary = {
@@ -87,5 +87,29 @@ describe("schedule mutation cache updates", () => {
       data: [schedule({ status: "paused" })],
       hostErrors: [],
     });
+  });
+
+  it("merges the schedule returned by resume while preserving host metadata", () => {
+    const ended = schedule({
+      status: "completed",
+      maxRuns: 1,
+      nextRunAt: null,
+      lastRunAt: "2026-07-02T00:00:00.000Z",
+    });
+    const returned: ScheduleSummary = {
+      ...ended,
+      status: "active",
+      nextRunAt: "2026-07-02T00:01:00.000Z",
+      maxRuns: 2,
+      updatedAt: "2026-07-02T00:00:30.000Z",
+    };
+
+    expect(mergeReturnedSchedule([ended], "host-a", returned)).toEqual([
+      {
+        ...returned,
+        serverId: "host-a",
+        serverName: "Host A",
+      },
+    ]);
   });
 });

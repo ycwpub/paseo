@@ -25,7 +25,12 @@ describe("buildTimelinePromptIndex", () => {
     expect(buildTimelinePromptIndex("epoch-1", rows)).toEqual({
       epoch: "epoch-1",
       prompts: [
-        { seq: 3, timestamp: "2026-01-01T00:00:00.000Z", preview: "First prompt" },
+        {
+          seq: 3,
+          timestamp: "2026-01-01T00:00:00.000Z",
+          preview: "First prompt",
+          answerPreview: "response",
+        },
         { seq: 8, timestamp: "2026-01-01T00:00:02.000Z", preview: "Second prompt" },
       ],
     });
@@ -50,5 +55,37 @@ describe("buildTimelinePromptIndex", () => {
     expect(result.prompts).toHaveLength(1);
     expect(result.prompts[0]?.preview).toHaveLength(120);
     expect(result.prompts[0]?.preview.endsWith("…")).toBe(true);
+  });
+
+  it("combines assistant chunks within a turn and bounds the answer preview", () => {
+    const rows: AgentTimelineRow[] = [
+      {
+        seq: 1,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        item: { type: "user_message", text: "Question" },
+      },
+      {
+        seq: 2,
+        timestamp: "2026-01-01T00:00:01.000Z",
+        item: { type: "assistant_message", text: "First " },
+      },
+      {
+        seq: 3,
+        timestamp: "2026-01-01T00:00:02.000Z",
+        item: { type: "assistant_message", text: `answer ${"x".repeat(300)}` },
+      },
+      {
+        seq: 4,
+        timestamp: "2026-01-01T00:00:03.000Z",
+        item: { type: "user_message", text: "Next question" },
+      },
+    ];
+
+    const result = buildTimelinePromptIndex("epoch-1", rows);
+
+    expect(result.prompts[0]?.answerPreview).toHaveLength(240);
+    expect(result.prompts[0]?.answerPreview).toMatch(/^First answer /);
+    expect(result.prompts[0]?.answerPreview?.endsWith("…")).toBe(true);
+    expect(result.prompts[1]?.answerPreview).toBeUndefined();
   });
 });

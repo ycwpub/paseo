@@ -32,6 +32,24 @@ async function createClaudeConfigDir(settings: unknown): Promise<string> {
   return configDir;
 }
 
+async function writeAidenModelCache(
+  configDir: string,
+  filename: string,
+  cliType: string,
+  entries: unknown[],
+): Promise<void> {
+  const cacheDir = path.join(configDir, "x", "models-cache");
+  await fs.mkdir(cacheDir, { recursive: true });
+  await fs.writeFile(
+    path.join(cacheDir, filename),
+    JSON.stringify({
+      schema_version: 1,
+      fetched_at_ms: 1,
+      sections: [{ cliType, entries }],
+    }),
+  );
+}
+
 async function createClaudeConfigDirWithRawSettings(settings: string): Promise<string> {
   const configDir = await fs.mkdtemp(path.join(os.tmpdir(), "paseo-claude-models-"));
   createdClaudeConfigDirs.push(configDir);
@@ -322,10 +340,67 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
     ]);
   });
 
-  it("lets an exact settings model override the hidden Fable compatibility entry", async () => {
-    const configDir = await createClaudeConfigDir({ model: "claude-fable-5[1m]" });
-    vi.stubEnv("CLAUDE_CONFIG_DIR", configDir);
-    const client = createCatalogClient();
+  it("loads only Claude-compatible models from Aiden for Aiden Claude", async () => {
+    const aidenConfigDir = await createClaudeConfigDir({
+      xLauncherSelections: {
+        claude: {
+          model: "gpt-5.5",
+        },
+      },
+      xCustomModels: {
+        "gpt-5.6": {
+          protocol: "responses",
+          model: "gpt-5.6-sol",
+          visible: { codex: true, claude_code: true },
+          claude_code: { series: "Custom GPT", alias: "sonnet" },
+        },
+        "hidden-model": {
+          protocol: "responses",
+          model: "hidden",
+          visible: { claude_code: false },
+          claude_code: { series: "Hidden", alias: "sonnet" },
+        },
+        "codex-only": {
+          protocol: "responses",
+          model: "codex-only",
+          visible: true,
+        },
+      },
+    });
+    const runCommand = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        schema_version: 1,
+        models: [
+          {
+            cli_type: "claudecode",
+            id: "gpt-5.5",
+            series: "GPT",
+            alias: "sonnet",
+            context_length: 400_000,
+          },
+          {
+            cli_type: "claudecode",
+            id: "[custom]gpt-5.6",
+            series: "Custom GPT",
+            alias: "sonnet",
+          },
+          {
+            cli_type: "codex",
+            id: "codex-only",
+          },
+        ],
+      }),
+      stderr: "",
+    }));
+    const resolveVersion = vi.fn(async () => "2.1.219");
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      customProvider: { id: "aiden-claude" },
+      configDir: aidenConfigDir,
+      aidenConfigDir,
+      aidenModelCommandRunner: runCommand,
+      resolveVersion,
+    });
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -333,17 +408,174 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       force: true,
     });
 
-    const configured = models.filter((model) => model.id === "claude-fable-5[1m]");
-    expect(configured).toHaveLength(1);
-    expect(configured[0]).toMatchObject({
-      id: "claude-fable-5[1m]",
-      isSelectable: true,
-      defaultThinkingOptionId: "high",
-    });
+    expect(models).toEqual([
+      {
+        provider: "claude",
+        id: "gpt-5.5",
+        label: "gpt-5.5",
+        description: "GPT · sonnet · From Aiden",
+        contextWindowMaxTokens: 400_000,
+        isDefault: true,
+      },
+      {
+        provider: "claude",
+        id: "[custom]gpt-5.6",
+        label: "[custom]gpt-5.6",
+        description: "Custom GPT · sonnet · From Aiden",
+      },
+    ]);
+    expect(runCommand).toHaveBeenCalledWith(
+      "aiden",
+      ["x", "models", "--json", "--claude", "--no-cache", "--timeout", "15000"],
+      expect.objectContaining({ cwd: os.tmpdir() }),
+    );
+    expect(resolveVersion).not.toHaveBeenCalled();
   });
 
-  it("omits models that require a newer Claude Code version", async () => {
-    const client = createCatalogClient("2.1.218");
+  it("falls back only to local Aiden models when the Aiden catalog is unavailable", async () => {
+    const aidenConfigDir = await createClaudeConfigDir({
+      model: "gpt-5.6",
+      xCustomModels: {
+        "gpt-5.6": {
+          protocol: "responses",
+          model: "gpt-5.6-sol",
+          visible: { codex: true, claude_code: true },
+          claude_code: { series: "Custom GPT", alias: "sonnet" },
+        },
+        "hidden-model": {
+          protocol: "responses",
+          model: "hidden",
+          visible: { claude_code: false },
+          claude_code: { series: "Hidden", alias: "sonnet" },
+        },
+        "codex-only": {
+          protocol: "responses",
+          model: "codex-only",
+          visible: true,
+        },
+      },
+    });
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      customProvider: { id: "aiden-claude" },
+      aidenConfigDir,
+      aidenModelCommandRunner: async () => {
+        throw new Error("Aiden login required");
+      },
+    });
+
+    const { models } = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: os.tmpdir(),
+      force: false,
+    });
+
+    expect(models).toEqual([
+      {
+        provider: "claude",
+        id: "[custom]gpt-5.6",
+        label: "[custom]gpt-5.6",
+        description: "Custom model gpt-5.6 from Aiden",
+        isDefault: true,
+      },
+    ]);
+  });
+
+  it("falls back to Aiden's complete local model cache when online discovery fails", async () => {
+    const aidenConfigDir = await createClaudeConfigDir({
+      xLauncherSelections: {
+        claude: {
+          model: "gpt-5.5",
+        },
+      },
+      xCustomModels: {
+        "gpt-5.6": {
+          visible: { codex: true, claude_code: true },
+          description: "Custom GPT",
+          claude_code: { series: "Custom GPT", alias: "sonnet" },
+        },
+      },
+    });
+    await writeAidenModelCache(aidenConfigDir, "claudecode.json", "claudecode", [
+      {
+        modelName: "Doubao-Seed-2.1-Pro",
+        displayName: "Doubao-Seed-2.1-Pro",
+        series: "Doubao 系列",
+        config: {
+          visible: true,
+          description: "Doubao 系列",
+          context_length: 224_000,
+        },
+        modelMetadata: {
+          context_window: 224_000,
+        },
+        claudeCode: {
+          series: "Doubao 系列",
+          alias: "opus",
+        },
+      },
+      {
+        modelName: "gpt-5.5",
+        displayName: "gpt-5.5",
+        series: "GPT 系列",
+        config: {
+          visible: true,
+          description: "GPT 系列",
+          context_length: 272_000,
+        },
+        modelMetadata: {
+          context_window: 272_000,
+        },
+        claudeCode: {
+          series: "GPT 系列",
+          alias: "opus",
+        },
+      },
+    ]);
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      customProvider: { id: "aiden-claude" },
+      aidenConfigDir,
+      aidenModelCommandRunner: async () => {
+        throw new Error("Aiden login required");
+      },
+    });
+
+    const { models } = await client.fetchCatalog({
+      scope: "workspace",
+      cwd: os.tmpdir(),
+      force: false,
+    });
+
+    expect(models.map((model) => model.id)).toEqual([
+      "Doubao-Seed-2.1-Pro",
+      "gpt-5.5",
+      "[custom]gpt-5.6",
+    ]);
+    expect(models.find((model) => model.id === "gpt-5.5")).toEqual(
+      expect.objectContaining({
+        contextWindowMaxTokens: 272_000,
+        isDefault: true,
+      }),
+    );
+  });
+
+  it("keeps Aiden model discovery scoped to the Aiden Claude provider", async () => {
+    const aidenConfigDir = await createClaudeConfigDir({
+      xCustomModels: {
+        "gpt-5.6": {
+          protocol: "responses",
+          model: "gpt-5.6-sol",
+          claude_code: { series: "Custom GPT", alias: "sonnet" },
+        },
+      },
+    });
+    const client = new ClaudeAgentClient({
+      logger: createTestLogger(),
+      configDir: aidenConfigDir,
+      aidenConfigDir,
+      resolveVersion: async () => "2.1.219",
+    });
 
     const { models } = await client.fetchCatalog({
       scope: "workspace",
@@ -351,8 +583,7 @@ describe("ClaudeAgentClient.fetchCatalog", () => {
       force: true,
     });
 
-    expect(models.map((model) => model.id)).not.toContain("claude-opus-5[1m]");
-    expect(models.map((model) => model.id)).not.toContain("claude-opus-5");
+    expect(models).toEqual(getClaudeModels());
   });
 });
 

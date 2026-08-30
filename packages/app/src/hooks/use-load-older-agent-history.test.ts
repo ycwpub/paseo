@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ToastApi, ToastShowOptions } from "@/components/toast-host";
 import type { AgentTimelineCursorState } from "@/stores/session-store";
-import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
+import { TIMELINE_OLDER_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 import {
   loadOlderAgentHistory,
   type LoadOlderAgentHistoryClient,
@@ -149,7 +149,7 @@ describe("loadOlderAgentHistory", () => {
         request: {
           direction: "before",
           cursor: { epoch: "epoch-1", seq: 10 },
-          limit: TIMELINE_FETCH_PAGE_SIZE,
+          limit: TIMELINE_OLDER_FETCH_PAGE_SIZE,
           projection: "projected",
         },
       },

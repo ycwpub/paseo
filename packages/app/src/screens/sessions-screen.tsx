@@ -2,6 +2,7 @@ import { useMemo, useState, useCallback, useEffect, type ReactElement } from "re
 import { View, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { ChevronLeft } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -13,8 +14,15 @@ import { AgentList } from "@/components/agent-list";
 import { SearchField } from "@/components/ui/search-field";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
+import { HistoryProjectFilter } from "@/components/projects/history-project-filter";
+import {
+  ALL_PROJECTS_OPTION_ID,
+  filterHistoryProjects,
+  resolveHistoryProjectKeysByServerId,
+} from "@/components/projects/history-project-filter-model";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
 
@@ -53,10 +61,74 @@ function resolveEmptyText(input: {
   t: TFunction;
   isSearching: boolean;
   isAllHosts: boolean;
+  isProjectFiltered: boolean;
 }): string {
   if (input.isSearching) return input.t("sessions.noMatches");
+  if (input.isProjectFiltered) return input.t("sessions.noProjectSessions");
   if (input.isAllHosts) return input.t("sessions.empty");
-  return "No sessions for this host";
+  return "此主机暂无会话";
+}
+
+function SessionsFilterRow({
+  isSearchSupported,
+  searchInput,
+  onChangeSearch,
+  hosts,
+  showHostFilter,
+  selectedHost,
+  onSelectHost,
+  showProjectFilter,
+  projects,
+  selectedProject,
+  onSelectProject,
+  projectsLoading,
+  t,
+}: {
+  isSearchSupported: boolean;
+  searchInput: string;
+  onChangeSearch: (value: string) => void;
+  hosts: ReturnType<typeof useHosts>;
+  showHostFilter: boolean;
+  selectedHost: string;
+  onSelectHost: (serverId: string) => void;
+  showProjectFilter: boolean;
+  projects: ReturnType<typeof useProjects>["projects"];
+  selectedProject: string;
+  onSelectProject: (projectViewKey: string) => void;
+  projectsLoading: boolean;
+  t: TFunction;
+}): ReactElement {
+  return (
+    <View style={styles.filterContainer}>
+      {isSearchSupported ? (
+        <SearchField
+          value={searchInput}
+          onChangeText={onChangeSearch}
+          placeholder={t("sessions.searchPlaceholder")}
+          clearAccessibilityLabel={t("sessions.actions.clearSearch")}
+          testID="sessions-search-input"
+          clearTestID="sessions-search-clear"
+        />
+      ) : null}
+      {showHostFilter ? (
+        <HostFilter
+          hosts={hosts}
+          selectedHost={selectedHost}
+          onSelectHost={onSelectHost}
+          triggerTestID="sessions-host-filter-trigger"
+          hostOptionTestID={sessionsHostOptionTestID}
+        />
+      ) : null}
+      {showProjectFilter ? (
+        <HistoryProjectFilter
+          projects={projects}
+          selectedProject={selectedProject}
+          onSelectProject={onSelectProject}
+          loading={projectsLoading}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 export function SessionsScreen() {
@@ -73,10 +145,24 @@ function SessionsScreenContent() {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const hosts = useHosts();
+  const { projects, isLoading: projectsLoading } = useProjects();
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
+  const [selectedProject, setSelectedProject] = useState(ALL_PROJECTS_OPTION_ID);
   const [searchInput, setSearchInput] = useState("");
   const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const historyServerId = selectedHost === ALL_HOSTS_OPTION_ID ? null : selectedHost;
+  const availableProjects = useMemo(
+    () => filterHistoryProjects(projects, historyServerId),
+    [historyServerId, projects],
+  );
+  const selectedProjectSummary = useMemo(
+    () => availableProjects.find((project) => project.viewKey === selectedProject),
+    [availableProjects, selectedProject],
+  );
+  const projectKeysByServerId = useMemo(
+    () => resolveHistoryProjectKeysByServerId(selectedProjectSummary, historyServerId),
+    [historyServerId, selectedProjectSummary],
+  );
   const {
     agents,
     hasMore,
@@ -92,6 +178,7 @@ function SessionsScreenContent() {
   } = useAgentHistory({
     serverId: historyServerId,
     search,
+    projectKeysByServerId,
   });
   const isSearching = isSearchSupported && search.length > 0;
 
@@ -103,6 +190,15 @@ function SessionsScreenContent() {
       setSelectedHost(ALL_HOSTS_OPTION_ID);
     }
   }, [hosts, selectedHost]);
+
+  useEffect(() => {
+    if (
+      selectedProject !== ALL_PROJECTS_OPTION_ID &&
+      !availableProjects.some((project) => project.viewKey === selectedProject)
+    ) {
+      setSelectedProject(ALL_PROJECTS_OPTION_ID);
+    }
+  }, [availableProjects, selectedProject]);
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
 
@@ -116,9 +212,11 @@ function SessionsScreenContent() {
     t,
     isSearching,
     isAllHosts: selectedHost === ALL_HOSTS_OPTION_ID,
+    isProjectFiltered: selectedProject !== ALL_PROJECTS_OPTION_ID,
   });
   const showHostFilter = hosts.length > 1;
-  const showFilterRow = showHostFilter || isSearchSupported;
+  const showProjectFilter = availableProjects.length > 0 || projectsLoading;
+  const showFilterRow = showHostFilter || showProjectFilter || isSearchSupported;
   const showLoadError = isError && agents.length === 0;
 
   const handleBack = useCallback(() => {
@@ -153,27 +251,21 @@ function SessionsScreenContent() {
     <View style={styles.container}>
       <MenuHeader title={t("sessions.title")} />
       {showFilterRow ? (
-        <View style={styles.filterContainer}>
-          {isSearchSupported ? (
-            <SearchField
-              value={searchInput}
-              onChangeText={setSearchInput}
-              placeholder={t("sessions.searchPlaceholder")}
-              clearAccessibilityLabel={t("sessions.actions.clearSearch")}
-              testID="sessions-search-input"
-              clearTestID="sessions-search-clear"
-            />
-          ) : null}
-          {showHostFilter ? (
-            <HostFilter
-              hosts={hosts}
-              selectedHost={selectedHost}
-              onSelectHost={setSelectedHost}
-              triggerTestID="sessions-host-filter-trigger"
-              hostOptionTestID={sessionsHostOptionTestID}
-            />
-          ) : null}
-        </View>
+        <SessionsFilterRow
+          isSearchSupported={isSearchSupported}
+          searchInput={searchInput}
+          onChangeSearch={setSearchInput}
+          hosts={hosts}
+          showHostFilter={showHostFilter}
+          selectedHost={selectedHost}
+          onSelectHost={setSelectedHost}
+          showProjectFilter={showProjectFilter}
+          projects={availableProjects}
+          selectedProject={selectedProject}
+          onSelectProject={setSelectedProject}
+          projectsLoading={projectsLoading}
+          t={t}
+        />
       ) : null}
       {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
       {isInitialLoad ? (
@@ -183,7 +275,7 @@ function SessionsScreenContent() {
       ) : null}
       {!isInitialLoad && showLoadError ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Unable to load sessions</Text>
+          <Text style={styles.emptyText}>无法加载会话</Text>
           <Button variant="ghost" onPress={handleRefresh}>
             Try again
           </Button>
@@ -229,6 +321,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
+    flexWrap: "wrap",
     paddingHorizontal: {
       xs: theme.spacing[3],
       md: theme.spacing[6],

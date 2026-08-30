@@ -304,9 +304,15 @@ const disabledCodexEntry: ProviderSnapshotEntry = {
 
 function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDaemonConfig {
   return {
-    relay: { enabled: false },
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: false },
+    clientAccess: { requireApproval: true },
+    projectIndexing: { updateIntervalMinutes: 1440 },
+    relay: {
+      endpoints: [],
+      pairingBaseUrls: [],
+      local: { enabled: false, listen: "0.0.0.0:6769" },
+    },
     providers,
     metadataGeneration: { providers: [] },
     autoArchiveAfterMerge: false,

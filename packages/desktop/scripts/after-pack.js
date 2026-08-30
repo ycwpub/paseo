@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.feature-paseo.js");
+const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
 const { buildIslandHost } = require("./build-island-host.js");
 
 const EXECUTABLE_NAME = "Paseo";

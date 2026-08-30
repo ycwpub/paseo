@@ -13,6 +13,9 @@ import {
 
 const roots = new Set<string>();
 const observers = new Set<FileObserver>();
+// Filesystem delivery can be delayed when the full test suite is saturating the
+// host with Git and process-heavy integration fixtures.
+const FILE_EVENT_TIMEOUT_MS = 15_000;
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -42,7 +45,9 @@ test("observes nested files while pruning excluded directories", async () => {
   const observedPath = join(observed, "observed.txt");
   await writeFile(observedPath, "observed");
 
-  await expect.poll(() => events.map((event) => event.path)).toContain(observedPath);
+  await expect
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toContain(observedPath);
   expect(events.map((event) => event.path)).not.toContain(join(ignored, "ignored.txt"));
   await subscription.unsubscribe();
 });
@@ -55,15 +60,28 @@ test("covers files populated immediately inside a newly created directory", asyn
     events.push(...batch);
   });
 
+  const readinessMarker = join(root, "observer-ready.txt");
+  await writeFile(readinessMarker, "ready");
+  await expect
+    .poll(() => events.some((event) => event.path === readinessMarker), {
+      timeout: FILE_EVENT_TIMEOUT_MS,
+    })
+    .toBe(true);
+  events.length = 0;
+
   const createdDirectory = join(root, "new", "nested");
   await mkdir(createdDirectory, { recursive: true });
   const firstPath = join(createdDirectory, "first.txt");
   await writeFile(firstPath, "first");
-  await expect.poll(() => events.map((event) => event.path)).toContain(firstPath);
+  await expect
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toContain(firstPath);
 
   const secondPath = join(createdDirectory, "second.txt");
   await writeFile(secondPath, "second");
-  await expect.poll(() => events.map((event) => event.path)).toContain(secondPath);
+  await expect
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toContain(secondPath);
   await subscription.unsubscribe();
 });
 
@@ -84,7 +102,9 @@ test("re-admits an excluded directory without replacing the subscription", async
   await subscription.updateIgnore([]);
   const observedPath = join(ignored, "observed.txt");
   await writeFile(observedPath, "observed");
-  await expect.poll(() => events.map((event) => event.path)).toContain(observedPath);
+  await expect
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toContain(observedPath);
   await subscription.unsubscribe();
 });
 
@@ -123,7 +143,9 @@ test("an ignore update is a barrier for later delivery", async () => {
   );
   const sentinel = join(root, "still-observed.txt");
   await writeFile(sentinel, "observed");
-  await expect.poll(() => deliveredPaths.has(sentinel)).toBe(true);
+  await expect
+    .poll(() => deliveredPaths.has(sentinel), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toBe(true);
 
   expect(
     delivered
@@ -146,11 +168,15 @@ test("survives atomic replacement and remains observable", async () => {
   const replacement = join(root, "replacement.txt");
   await writeFile(replacement, "after");
   await rename(replacement, target);
-  await expect.poll(() => events.map((event) => event.path)).toContain(target);
+  await expect
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toContain(target);
 
   events.length = 0;
   await writeFile(target, "again");
-  await expect.poll(() => events.map((event) => event.path)).toContain(target);
+  await expect
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
+    .toContain(target);
   await subscription.unsubscribe();
 });
 
@@ -164,8 +190,21 @@ test("classifies a removed file as deleted", async () => {
     events.push(...batch);
   });
 
+  const readinessMarker = join(root, "observer-ready.txt");
+  await writeFile(readinessMarker, "ready");
+  await expect
+    .poll(() => events.some((event) => event.path === readinessMarker), {
+      timeout: FILE_EVENT_TIMEOUT_MS,
+    })
+    .toBe(true);
+  events.length = 0;
+
   await rm(target);
-  await expect.poll(() => events.find((event) => event.path === target)?.type).toBe("delete");
+  await expect
+    .poll(() => events.find((event) => event.path === target)?.type, {
+      timeout: FILE_EVENT_TIMEOUT_MS,
+    })
+    .toBe("delete");
   await subscription.unsubscribe();
 });
 
@@ -185,7 +224,7 @@ test("observes files moved into the tree with their directory", async () => {
   const movedTo = join(root, "prepared");
   await rename(movedFrom, movedTo);
   await expect
-    .poll(() => events.map((event) => event.path))
+    .poll(() => events.map((event) => event.path), { timeout: FILE_EVENT_TIMEOUT_MS })
     .toContain(join(movedTo, "already-written.txt"));
   await subscription.unsubscribe();
 });
@@ -256,7 +295,7 @@ test("observes a thousand concurrent writes and remains healthy after delete and
   }
   const sentinel = join(directories[15], "still-observed.txt");
   await writeFile(sentinel, "alive");
-  await expect.poll(() => observed.has(sentinel)).toBe(true);
+  await expect.poll(() => observed.has(sentinel), { timeout: FILE_EVENT_TIMEOUT_MS }).toBe(true);
   await subscription.unsubscribe();
 }, 90_000);
 

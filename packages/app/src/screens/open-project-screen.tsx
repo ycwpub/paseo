@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
 import { FolderOpen, Inbox, Plug, Smartphone } from "lucide-react-native";
@@ -18,7 +19,7 @@ import {
 } from "@/constants/layout";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
+import { PairDeviceModal } from "@/components/pair-device-modal";
 import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -55,7 +56,7 @@ export function OpenProjectScreen() {
 
   const handleOpenImportSession = useCallback(() => {
     chooseHost({
-      title: "Import from host",
+      title: "从主机导入",
       onChooseHost: (serverId) => {
         setImportServerId(serverId);
         setIsImportSheetOpen(true);
@@ -79,7 +80,7 @@ export function OpenProjectScreen() {
 
   const handleOpenProviders = useCallback(() => {
     chooseHost({
-      title: "Choose host",
+      title: "选择主机",
       onChooseHost: (serverId) => {
         router.push(buildSettingsHostSectionRoute(serverId, "providers"));
       },
@@ -131,12 +132,14 @@ export function OpenProjectScreen() {
       <View style={styles.communityRow}>
         <CommunityLinks />
       </View>
-      <PairDeviceModal
-        serverId={localServerId ?? ""}
-        visible={isPairDeviceOpen}
-        onClose={handleClosePairDevice}
-        testID="open-project-pair-device-modal"
-      />
+      {localServerId ? (
+        <PairDeviceModal
+          serverId={localServerId}
+          visible={isPairDeviceOpen}
+          onClose={handleClosePairDevice}
+          testID="open-project-pair-device-modal"
+        />
+      ) : null}
       <ImportSessionSheet
         visible={isImportSheetOpen}
         client={importClient}

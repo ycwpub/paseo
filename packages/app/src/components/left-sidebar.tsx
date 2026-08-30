@@ -9,6 +9,7 @@ import {
   Search,
   Server,
   Settings,
+  Workflow,
   X,
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
@@ -25,6 +26,7 @@ import { Gesture } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { resolveDesktopSidebarWidth } from "@/components/desktop-sidebar-layout";
@@ -59,6 +61,8 @@ import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { usePanelStore } from "@/stores/panel-store";
+import { InstalledPluginSidebarSection } from "@/plugins/sidebar-panel/sidebar-section";
+import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
@@ -70,6 +74,7 @@ import {
   buildSessionsRoute,
   buildSettingsAddHostRoute,
   buildSettingsRoute,
+  buildWorkflowsRoute,
 } from "@/utils/host-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import type { ShortcutKey } from "@/utils/format-shortcut";
@@ -99,6 +104,7 @@ interface SidebarSharedProps {
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
   handleRefresh: () => void;
+  handleWorkspaceNavigate: () => void;
   handleOpenProject: () => void;
   handleHome: () => void;
   handleSettings: () => void;
@@ -117,6 +123,7 @@ interface SidebarLabels {
   searchHosts: string;
   sessions: string;
   schedules: string;
+  workflows: string;
   closeSidebar: string;
 }
 
@@ -126,6 +133,7 @@ interface MobileSidebarProps extends SidebarSharedProps {
   closeSidebar: () => void;
   handleViewMoreNavigate: () => void;
   handleViewSchedulesNavigate: () => void;
+  handleViewWorkflowsNavigate: () => void;
 }
 
 interface DesktopSidebarProps extends SidebarSharedProps {
@@ -133,6 +141,7 @@ interface DesktopSidebarProps extends SidebarSharedProps {
   active: boolean;
   handleViewMore: () => void;
   handleViewSchedules: () => void;
+  handleViewWorkflows: () => void;
 }
 
 export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boolean }) {
@@ -141,6 +150,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const insets = useSafeAreaInsets();
   const isCompactLayout = useIsCompactFormFactor();
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
+  const closePluginPanel = usePluginAppPanelStore((state) => state.close);
 
   const {
     projects,
@@ -176,60 +186,84 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const openProjectPicker = useOpenAddProject();
 
   const handleOpenProjectMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     void openProjectPicker();
-  }, [showMobileAgent, openProjectPicker]);
+  }, [closePluginPanel, showMobileAgent, openProjectPicker]);
 
   const handleOpenProjectDesktop = useCallback(() => {
+    closePluginPanel();
     void openProjectPicker();
-  }, [openProjectPicker]);
+  }, [closePluginPanel, openProjectPicker]);
 
   const handleSettingsMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     router.push(buildSettingsRoute());
-  }, [showMobileAgent]);
+  }, [closePluginPanel, showMobileAgent]);
 
   const handleSettingsDesktop = useCallback(() => {
+    closePluginPanel();
     router.push(buildSettingsRoute());
-  }, []);
+  }, [closePluginPanel]);
 
   const handleAddHostMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     router.push(buildSettingsAddHostRoute(Date.now()));
-  }, [showMobileAgent]);
+  }, [closePluginPanel, showMobileAgent]);
 
   const handleAddHostDesktop = useCallback(() => {
+    closePluginPanel();
     router.push(buildSettingsAddHostRoute(Date.now()));
-  }, []);
+  }, [closePluginPanel]);
 
   const handleOpenHostSettingsMobile = useCallback(
     (serverId: string) => {
+      closePluginPanel();
       showMobileAgent();
       openHostOverview(serverId);
     },
-    [showMobileAgent],
+    [closePluginPanel, showMobileAgent],
   );
 
-  const handleOpenHostSettingsDesktop = useCallback((serverId: string) => {
-    openHostOverview(serverId);
-  }, []);
+  const handleOpenHostSettingsDesktop = useCallback(
+    (serverId: string) => {
+      closePluginPanel();
+      openHostOverview(serverId);
+    },
+    [closePluginPanel],
+  );
 
   const handleHomeMobile = useCallback(() => {
+    closePluginPanel();
     showMobileAgent();
     router.push(buildOpenProjectRoute());
-  }, [showMobileAgent]);
+  }, [closePluginPanel, showMobileAgent]);
 
   const handleHomeDesktop = useCallback(() => {
+    closePluginPanel();
     router.push(buildOpenProjectRoute());
-  }, []);
+  }, [closePluginPanel]);
 
   const handleViewMoreNavigate = useCallback(() => {
+    closePluginPanel();
     router.push(buildSessionsRoute());
-  }, []);
+  }, [closePluginPanel]);
 
   const handleViewSchedulesNavigate = useCallback(() => {
+    closePluginPanel();
     router.push(buildSchedulesRoute());
-  }, []);
+  }, [closePluginPanel]);
+
+  const handleViewWorkflowsNavigate = useCallback(() => {
+    closePluginPanel();
+    router.push(buildWorkflowsRoute() as never);
+  }, [closePluginPanel]);
+
+  const handleWorkspaceNavigate = useCallback(() => {
+    closePluginPanel();
+  }, [closePluginPanel]);
 
   const newWorkspaceKeys = useShortcutKeys("new-workspace");
   const labels = useMemo(
@@ -242,6 +276,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
       searchHosts: t("sidebar.host.searchPlaceholder"),
       sessions: t("sidebar.sections.sessions"),
       schedules: t("sidebar.sections.schedules"),
+      workflows: t("workflows.title"),
       closeSidebar: t("sidebar.actions.closeSidebar"),
     }),
     [t],
@@ -264,6 +299,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
     handleRefresh,
+    handleWorkspaceNavigate,
     labels,
     newWorkspaceKeys,
   };
@@ -283,6 +319,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
           handleOpenHostSettings={handleOpenHostSettingsMobile}
           handleViewMoreNavigate={handleViewMoreNavigate}
           handleViewSchedulesNavigate={handleViewSchedulesNavigate}
+          handleViewWorkflowsNavigate={handleViewWorkflowsNavigate}
         />
       </RetainedPanelActivity>
     );
@@ -301,6 +338,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
         handleOpenHostSettings={handleOpenHostSettingsDesktop}
         handleViewMore={handleViewMoreNavigate}
         handleViewSchedules={handleViewSchedulesNavigate}
+        handleViewWorkflows={handleViewWorkflowsNavigate}
       />
     </RetainedPanelActivity>
   );
@@ -620,6 +658,7 @@ function MobileSidebar({
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
   handleRefresh,
+  handleWorkspaceNavigate,
   newWorkspaceKeys,
   handleOpenProject,
   handleHome,
@@ -632,11 +671,13 @@ function MobileSidebar({
   closeSidebar,
   handleViewMoreNavigate,
   handleViewSchedulesNavigate,
+  handleViewWorkflowsNavigate,
 }: MobileSidebarProps) {
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isWorkflowsActive = pathname.includes("/workflows");
   const { gesture: closeGesture, gestureRef: closeGestureRef } = useCloseAgentListGesture();
   const dragGestureHostPresented = useIsMobilePanelPresented("agent-list");
 
@@ -650,9 +691,15 @@ function MobileSidebar({
     handleViewSchedulesNavigate();
   }, [closeSidebar, handleViewSchedulesNavigate]);
 
-  const handleWorkspacePress = useCallback(() => {
+  const handleViewWorkflows = useCallback(() => {
     closeSidebar();
-  }, [closeSidebar]);
+    handleViewWorkflowsNavigate();
+  }, [closeSidebar, handleViewWorkflowsNavigate]);
+
+  const handleWorkspacePress = useCallback(() => {
+    handleWorkspaceNavigate();
+    closeSidebar();
+  }, [closeSidebar, handleWorkspaceNavigate]);
 
   const mobileSidebarInsetStyle = useMemo(
     () => ({
@@ -661,6 +708,10 @@ function MobileSidebar({
       backgroundColor: theme.colors.surfaceSidebar,
     }),
     [insetsTop, insetsBottom, theme.colors.surfaceSidebar],
+  );
+  const installedPluginSection = useMemo(
+    () => <InstalledPluginSidebarSection onPluginOpened={closeSidebar} />,
+    [closeSidebar],
   );
 
   return (
@@ -693,6 +744,14 @@ function MobileSidebar({
             onPress={handleViewSchedules}
             isActive={isSchedulesActive}
             testID="sidebar-schedules"
+            variant="compact"
+          />
+          <SidebarHeaderRow
+            icon={Workflow}
+            label={labels.workflows}
+            onPress={handleViewWorkflows}
+            isActive={isWorkflowsActive}
+            testID="sidebar-workflows"
             variant="compact"
           />
           <PluginSidebarItems onBeforeNavigate={closeSidebar} />
@@ -738,6 +797,7 @@ function MobileSidebar({
             onAddProject={handleOpenProject}
             parentGestureRef={closeGestureRef}
             dragGestureHostPresented={dragGestureHostPresented}
+            listFooterComponent={installedPluginSection}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
@@ -773,6 +833,7 @@ function DesktopSidebar({
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
   handleRefresh,
+  handleWorkspaceNavigate,
   newWorkspaceKeys,
   handleOpenProject,
   handleHome,
@@ -784,12 +845,14 @@ function DesktopSidebar({
   active,
   handleViewMore,
   handleViewSchedules,
+  handleViewWorkflows,
 }: DesktopSidebarProps) {
   const ownsTopLeft = useOwnsWindowChromeCorner("top-left");
   const pathname = usePathname();
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const isSessionsActive = pathname.includes("/sessions");
   const isSchedulesActive = pathname.includes("/schedules");
+  const isWorkflowsActive = pathname.includes("/workflows");
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
   const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
   const { width: viewportWidth } = useWindowDimensions();
@@ -920,6 +983,14 @@ function DesktopSidebar({
               testID="sidebar-schedules"
               variant="compact"
             />
+            <SidebarHeaderRow
+              icon={Workflow}
+              label={labels.workflows}
+              onPress={handleViewWorkflows}
+              isActive={isWorkflowsActive}
+              testID="sidebar-workflows"
+              variant="compact"
+            />
             <PluginSidebarItems />
           </View>
         </View>
@@ -941,10 +1012,13 @@ function DesktopSidebar({
             workspaceEntriesByKey={workspaceEntriesByKey}
             isRefreshing={isManualRefresh && isRevalidating}
             onRefresh={handleRefresh}
+            onWorkspacePress={handleWorkspaceNavigate}
             onAddProject={handleOpenProject}
             listHeaderComponent={workspacesSectionHeaderElement}
           />
         )}
+
+        <InstalledPluginSidebarSection />
 
         <SidebarCalloutSlot />
 
@@ -971,6 +1045,7 @@ function DesktopSidebar({
 
 function WorkspacesSectionHeader() {
   const { theme } = useUnistyles();
+  const { t } = useTranslation();
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const commandCenterKeys = useShortcutKeys("toggle-command-center");
   const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
@@ -984,7 +1059,7 @@ function WorkspacesSectionHeader() {
 
   return (
     <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
+      <Text style={styles.workspacesSectionTitle}>{t("shell.commandCenter.workspaces")}</Text>
       <View style={styles.workspacesSectionActions}>
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>

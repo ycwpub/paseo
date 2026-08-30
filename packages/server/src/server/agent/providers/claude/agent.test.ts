@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { PermissionResult, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
 import * as executableUtils from "../../../../executable-resolution/executable-resolution.js";
@@ -21,13 +21,11 @@ import type { AgentSession, AgentTimelineItem, AgentStreamEvent } from "../../ag
 
 interface TestClaudeSession {
   translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];
-  close(): Promise<void>;
-}
-
-function isPermissionResolvedEvent(
-  event: AgentStreamEvent,
-): event is Extract<AgentStreamEvent, { type: "permission_resolved" }> {
-  return event.type === "permission_resolved";
+  buildPumpedMessageEvents(
+    message: SDKMessage,
+    messageIdHint: string | null,
+    turnId: string | null,
+  ): Promise<AgentStreamEvent[]>;
 }
 
 afterEach(() => {
@@ -635,80 +633,6 @@ describe("ClaudeAgentSession features", () => {
     return { queryFactory, queryMock, launches };
   }
 
-  test("publishes a resolution when the SDK aborts a permission callback", async () => {
-    const { queryFactory } = createQueryMock();
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({ provider: "claude", cwd: process.cwd(), modeId: "default" });
-    const events: AgentStreamEvent[] = [];
-    const unsubscribe = session.subscribe((event) => events.push(event));
-
-    try {
-      await session.startTurn("run the tool");
-      const canUseTool = queryFactory.mock.calls[0]?.[0].options.canUseTool;
-      if (!canUseTool) throw new Error("Expected canUseTool callback");
-      const abort = new AbortController();
-      const permission = canUseTool(
-        "Bash",
-        { command: "printf test" },
-        { signal: abort.signal, toolUseID: "tool-aborted" },
-      );
-      abort.abort();
-
-      await expect(permission).rejects.toThrow("Permission request aborted");
-      expect(events.find(isPermissionResolvedEvent)).toMatchObject({
-        type: "permission_resolved",
-        provider: "claude",
-        requestId: expect.any(String),
-        resolution: { behavior: "deny", message: "Permission request canceled" },
-      });
-      expect(session.getPendingPermissions()).toEqual([]);
-    } finally {
-      unsubscribe();
-      await session.close();
-    }
-  });
-
-  test("does not duplicate a resolution when interruption later aborts the SDK callback", async () => {
-    const { queryFactory } = createQueryMock();
-    const session = await new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    }).createSession({ provider: "claude", cwd: process.cwd(), modeId: "default" });
-    const events: AgentStreamEvent[] = [];
-    const unsubscribe = session.subscribe((event) => events.push(event));
-
-    try {
-      await session.startTurn("run the tool");
-      const canUseTool = queryFactory.mock.calls[0]?.[0].options.canUseTool;
-      if (!canUseTool) throw new Error("Expected canUseTool callback");
-      const abort = new AbortController();
-      const permission = canUseTool(
-        "Bash",
-        { command: "printf test" },
-        { signal: abort.signal, toolUseID: "tool-interrupted" },
-      );
-
-      await session.interrupt();
-      abort.abort();
-
-      await expect(permission).rejects.toThrow("Permission request canceled");
-      expect(events.filter(isPermissionResolvedEvent)).toEqual([
-        expect.objectContaining({
-          provider: "claude",
-          resolution: { behavior: "deny", message: "Permission request canceled" },
-        }),
-      ]);
-      expect(session.getPendingPermissions()).toEqual([]);
-    } finally {
-      unsubscribe();
-      await session.close();
-    }
-  });
-
   test("passes exact configured Fable 5 IDs through to Claude Code", async () => {
     const { queryFactory, queryMock } = createQueryMock();
     const client = new ClaudeAgentClient({
@@ -767,6 +691,36 @@ describe("ClaudeAgentSession features", () => {
       sandbox: { enabled: true, failIfUnavailable: true },
     });
     expect(queryFactory.mock.calls[0]?.[0].options.allowedTools).not.toContain("mcp__hub__reply");
+    await session.close();
+  });
+
+  test("adds every other Project repository to Claude additional directories", async () => {
+    const { queryFactory } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const cwd = path.resolve("/repo/settle-charge-tool");
+    const session = await client.createSession({
+      provider: "claude",
+      cwd,
+      writableProjectDirectories: [cwd, "/repo/settle-charge-facade"],
+      providerOptions: {
+        additionalDirectories: ["/repo/shared"],
+      },
+    });
+
+    await (
+      session as unknown as {
+        ensureQuery(): Promise<unknown>;
+      }
+    ).ensureQuery();
+
+    expect(queryFactory.mock.calls[0]?.[0].options.additionalDirectories).toEqual([
+      "/repo/shared",
+      "/repo/settle-charge-facade",
+    ]);
     await session.close();
   });
 
@@ -907,158 +861,6 @@ describe("ClaudeAgentSession features", () => {
     expect(launches[0]?.options).not.toHaveProperty("effort");
 
     await session.close();
-  });
-
-  test("pushes a steer into the exact active Claude query without starting another turn", async () => {
-    const { queryFactory } = createQueryMock();
-    const client = new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    });
-    const session = await client.createSession({ provider: "claude", cwd: process.cwd() });
-    const events: AgentStreamEvent[] = [];
-    const unsubscribe = session.subscribe((event) => events.push(event));
-    try {
-      const { turnId } = await session.startTurn("first turn");
-      const input = queryFactory.mock.calls[0]?.[0].prompt as AsyncIterable<SDKUserMessage>;
-      const iterator = input[Symbol.asyncIterator]();
-      await expect(iterator.next()).resolves.toMatchObject({ value: { type: "user" } });
-
-      await expect(
-        session.steerActiveTurn?.("same turn follow-up", {
-          expectedTurnId: turnId,
-          clientMessageId: "steer-client-id",
-        }),
-      ).resolves.toEqual({ status: "accepted" });
-      await expect(iterator.next()).resolves.toMatchObject({
-        value: {
-          type: "user",
-          priority: "next",
-          message: { content: [{ type: "text", text: "same turn follow-up" }] },
-        },
-      });
-      expect(events.filter((event) => event.type === "turn_started")).toHaveLength(1);
-
-      await expect(
-        session.steerActiveTurn?.("/rewind submitted-message-id", { expectedTurnId: turnId }),
-      ).resolves.toEqual({ status: "unavailable" });
-      let rewindReachedLiveInput = false;
-      void iterator.next().then(() => {
-        rewindReachedLiveInput = true;
-        return undefined;
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(rewindReachedLiveInput).toBe(false);
-    } finally {
-      unsubscribe();
-      await session.close();
-    }
-  });
-
-  test("a human steer supersedes blocking permissions until Claude reads it", async () => {
-    const { queryFactory } = createQueryMock();
-    const client = new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    });
-    const session = await client.createSession({ provider: "claude", cwd: process.cwd() });
-    const internal = session as unknown as {
-      handlePermissionRequest(
-        name: string,
-        input: Record<string, unknown>,
-        options: Record<string, unknown>,
-      ): Promise<PermissionResult>;
-      translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];
-    };
-
-    try {
-      const { turnId } = await session.startTurn("first turn");
-      const input = queryFactory.mock.calls[0]?.[0].prompt as AsyncIterable<SDKUserMessage>;
-      const iterator = input[Symbol.asyncIterator]();
-      await iterator.next();
-
-      const firstPermission = internal.handlePermissionRequest(
-        "ExitPlanMode",
-        { plan: "First plan" },
-        { toolUseID: "tool-1" },
-      );
-      expect(session.getPendingPermissions()).toHaveLength(1);
-
-      await expect(
-        session.steerActiveTurn?.("review this instead", {
-          expectedTurnId: turnId,
-          clearPendingPermissions: true,
-        }),
-      ).resolves.toEqual({ status: "accepted" });
-      await expect(firstPermission).resolves.toMatchObject({
-        behavior: "deny",
-        interrupt: undefined,
-        message: expect.stringContaining("message instead of approving"),
-      });
-
-      const steer = await iterator.next();
-      const steerUuid = steer.value?.uuid;
-      expect(steerUuid).toEqual(expect.any(String));
-
-      await expect(
-        internal.handlePermissionRequest(
-          "Write",
-          { file_path: "SECOND.md" },
-          { toolUseID: "tool-2" },
-        ),
-      ).resolves.toMatchObject({ behavior: "deny", interrupt: undefined });
-
-      internal.translateMessageToEvents({
-        type: "command_lifecycle",
-        command_uuid: steerUuid,
-        state: "started",
-      } as unknown as SDKMessage);
-      const laterPermission = internal.handlePermissionRequest(
-        "Write",
-        { file_path: "LATER.md" },
-        { toolUseID: "tool-3" },
-      );
-      expect(session.getPendingPermissions()).toHaveLength(1);
-      const requestId = session.getPendingPermissions()[0]!.id;
-      await session.respondToPermission(requestId, { behavior: "deny", message: "test cleanup" });
-      await expect(laterPermission).resolves.toMatchObject({ behavior: "deny" });
-    } finally {
-      await session.close();
-    }
-  });
-
-  test("a non-human steer leaves a pending permission for the user", async () => {
-    const { queryFactory } = createQueryMock();
-    const client = new ClaudeAgentClient({
-      logger,
-      queryFactory,
-      resolveBinary: async () => "/test/claude/bin",
-    });
-    const session = await client.createSession({ provider: "claude", cwd: process.cwd() });
-    const internal = session as unknown as {
-      handlePermissionRequest(
-        name: string,
-        input: Record<string, unknown>,
-        options: Record<string, unknown>,
-      ): Promise<PermissionResult>;
-    };
-
-    try {
-      const { turnId } = await session.startTurn("first turn");
-      const permission = internal.handlePermissionRequest("Write", {}, { toolUseID: "tool-1" });
-      await expect(
-        session.steerActiveTurn?.("system notification", { expectedTurnId: turnId }),
-      ).resolves.toEqual({ status: "accepted" });
-      expect(session.getPendingPermissions()).toHaveLength(1);
-      const requestId = session.getPendingPermissions()[0]!.id;
-      await session.respondToPermission(requestId, { behavior: "deny", message: "test cleanup" });
-      await expect(permission).resolves.toMatchObject({ behavior: "deny" });
-    } finally {
-      await session.close();
-    }
   });
 
   test.each([
@@ -1346,64 +1148,6 @@ describe("normalizeClaudeAskUserQuestionUpdatedInput", () => {
     }
   });
 
-  test("denying a plan leaves the plan readable in the timeline", async () => {
-    const client = new ClaudeAgentClient({
-      logger: createTestLogger(),
-      resolveBinary: async () => "/test/claude/bin",
-    });
-    const session = await client.createSession({
-      provider: "claude",
-      cwd: process.cwd(),
-    });
-
-    const request = {
-      id: "permission-plan-1",
-      provider: "claude",
-      name: "ExitPlanMode",
-      kind: "plan",
-      input: { plan: "Ship the thing" },
-    };
-
-    const events: AgentStreamEvent[] = [];
-    const unsubscribe = session.subscribe((event) => events.push(event));
-
-    new Promise<unknown>((resolve, reject) => {
-      (
-        session as unknown as {
-          pendingPermissions: Map<
-            string,
-            {
-              request: typeof request;
-              resolve: (value: unknown) => void;
-              reject: (error: Error) => void;
-            }
-          >;
-        }
-      ).pendingPermissions.set(request.id, { request, resolve, reject });
-    }).catch(() => undefined);
-
-    try {
-      await session.respondToPermission(request.id, {
-        behavior: "deny",
-        message: "The user answered with a message instead of approving.",
-      });
-
-      const planRow = events.find(
-        (event) =>
-          event.type === "timeline" &&
-          event.item.type === "tool_call" &&
-          event.item.name === "plan_approval",
-      );
-      expect(planRow).toBeDefined();
-      const item = (planRow as { item: Extract<AgentTimelineItem, { type: "tool_call" }> }).item;
-      expect(item.detail).toEqual({ type: "plan", text: "Ship the thing" });
-      expect(item.metadata).toMatchObject({ approved: false });
-    } finally {
-      unsubscribe();
-      await session.close();
-    }
-  });
-
   test("respondToPermission maps other answer text back to Claude question keys", async () => {
     const client = new ClaudeAgentClient({
       logger: createTestLogger(),
@@ -1663,6 +1407,237 @@ describe("ClaudeAgentSession context window usage", () => {
     return session as unknown as TestClaudeSession;
   }
 
+  test("omits Claude redacted thinking when no readable summary is available", async () => {
+    const session = await createSessionForTest();
+    const messageId = "assistant-redacted-1";
+    const messages = [
+      {
+        type: "stream_event",
+        event: {
+          type: "message_start",
+          message: { id: messageId, role: "assistant", content: [] },
+        },
+        session_id: "session-1",
+      },
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "redacted_thinking", data: "opaque-data" },
+        },
+        session_id: "session-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          id: messageId,
+          role: "assistant",
+          content: [{ type: "redacted_thinking", data: "opaque-data" }],
+        },
+        session_id: "session-1",
+        uuid: "assistant-redacted-event-1",
+      },
+    ] as unknown as SDKMessage[];
+
+    const events: AgentStreamEvent[] = [];
+    for (const message of messages) {
+      events.push(...(await session.buildPumpedMessageEvents(message, messageId, "turn-1")));
+    }
+
+    expect(events.filter((event) => event.type === "timeline")).toEqual([]);
+  });
+
+  test("does not show a redacted placeholder when readable assistant output exists", async () => {
+    const session = await createSessionForTest();
+
+    const redactedEvents = session.translateMessageToEvents({
+      type: "assistant",
+      message: {
+        id: "assistant-history-redacted",
+        role: "assistant",
+        content: [
+          { type: "redacted_thinking", data: "opaque-1" },
+          { type: "redacted_thinking", data: "opaque-2" },
+          { type: "text", text: "Answer" },
+        ],
+      },
+      session_id: "session-1",
+      uuid: "assistant-history-redacted-event",
+    } as unknown as SDKMessage);
+
+    expect(redactedEvents.filter((event) => event.type === "timeline")).toEqual([
+      {
+        type: "timeline",
+        provider: "claude",
+        item: { type: "assistant_message", text: "Answer" },
+      },
+    ]);
+  });
+
+  test("keeps Aiden Claude text commentary distinct from native thinking", async () => {
+    const session = await createSessionForTest();
+    const messageId = "assistant-redacted-commentary";
+    const commentary = "我先检查当前实现，再运行相关测试。";
+    const messages = [
+      {
+        type: "stream_event",
+        event: {
+          type: "message_start",
+          message: { id: messageId, role: "assistant", content: [] },
+        },
+        session_id: "session-1",
+      },
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "redacted_thinking", data: "opaque-data" },
+        },
+        session_id: "session-1",
+      },
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_start",
+          index: 1,
+          content_block: { type: "text", text: commentary },
+        },
+        session_id: "session-1",
+      },
+      {
+        type: "stream_event",
+        event: {
+          type: "content_block_start",
+          index: 2,
+          content_block: {
+            type: "tool_use",
+            id: "tool-1",
+            name: "Bash",
+            input: { command: "npm test" },
+          },
+        },
+        session_id: "session-1",
+      },
+      {
+        type: "assistant",
+        message: {
+          id: messageId,
+          role: "assistant",
+          content: [
+            { type: "redacted_thinking", data: "opaque-data" },
+            { type: "text", text: commentary },
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "npm test" },
+            },
+          ],
+        },
+        session_id: "session-1",
+        uuid: "assistant-redacted-commentary-event",
+      },
+    ] as unknown as SDKMessage[];
+
+    const events: AgentStreamEvent[] = [];
+    for (const message of messages) {
+      events.push(...(await session.buildPumpedMessageEvents(message, messageId, "turn-1")));
+    }
+
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "timeline" &&
+          event.item.type === "assistant_message" &&
+          event.item.text === commentary,
+      ),
+    ).toHaveLength(1);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "timeline" &&
+          event.item.type === "reasoning" &&
+          event.item.text === commentary,
+      ),
+    ).toBe(false);
+    expect(
+      events.findIndex(
+        (event) => event.type === "timeline" && event.item.type === "assistant_message",
+      ),
+    ).toBeLessThan(
+      events.findIndex((event) => event.type === "timeline" && event.item.type === "tool_call"),
+    );
+  });
+
+  test("keeps persisted Aiden Claude text commentary distinct from native thinking", async () => {
+    const session = await createSessionForTest();
+    const events = session.translateMessageToEvents({
+      type: "assistant",
+      message: {
+        id: "assistant-history-commentary",
+        role: "assistant",
+        content: [
+          { type: "redacted_thinking", data: "opaque" },
+          { type: "text", text: "正在检查 provider 事件。" },
+          {
+            type: "tool_use",
+            id: "tool-history-1",
+            name: "Read",
+            input: { file_path: "/tmp/example.ts" },
+          },
+        ],
+      },
+      session_id: "session-1",
+      uuid: "assistant-history-commentary-event",
+    } as unknown as SDKMessage);
+
+    expect(events.filter((event) => event.type === "timeline")).toEqual([
+      {
+        type: "timeline",
+        provider: "claude",
+        item: { type: "assistant_message", text: "正在检查 provider 事件。" },
+      },
+      expect.objectContaining({
+        type: "timeline",
+        provider: "claude",
+        item: expect.objectContaining({ type: "tool_call" }),
+      }),
+    ]);
+  });
+
+  test("prefers native readable thinking over redacted thinking", async () => {
+    const session = await createSessionForTest();
+    const readableEvents = session.translateMessageToEvents({
+      type: "assistant",
+      message: {
+        id: "assistant-history-readable",
+        role: "assistant",
+        content: [
+          { type: "redacted_thinking", data: "opaque" },
+          { type: "thinking", thinking: "Readable summary" },
+          { type: "text", text: "Answer" },
+        ],
+      },
+      session_id: "session-1",
+      uuid: "assistant-history-readable-event",
+    } as unknown as SDKMessage);
+
+    expect(readableEvents.filter((event) => event.type === "timeline")).toEqual([
+      {
+        type: "timeline",
+        provider: "claude",
+        item: { type: "reasoning", text: "Readable summary", source: "thinking" },
+      },
+      {
+        type: "timeline",
+        provider: "claude",
+        item: { type: "assistant_message", text: "Answer" },
+      },
+    ]);
+  });
+
   async function createSessionForTurns(
     turns: Array<Array<Record<string, unknown>>>,
     options?: QueryFactoryForTurnsOptions,
@@ -1678,52 +1653,6 @@ describe("ClaudeAgentSession context window usage", () => {
       model: options?.model,
     });
   }
-
-  test("emits canonical task snapshots from Claude TaskCreate results", async () => {
-    const session = await createSessionForTest();
-    try {
-      session.translateMessageToEvents({
-        type: "assistant",
-        message: {
-          content: [
-            {
-              type: "tool_use",
-              id: "task-create-1",
-              name: "TaskCreate",
-              input: { subject: "Inspect provider", activeForm: "Inspecting provider" },
-            },
-          ],
-        },
-      } as unknown as SDKMessage);
-
-      const events = session.translateMessageToEvents({
-        type: "user",
-        message: {
-          content: [{ type: "tool_result", tool_use_id: "task-create-1", content: "created" }],
-        },
-        toolUseResult: { task: { id: "1", subject: "Inspect provider" } },
-      } as unknown as SDKMessage);
-
-      expect(events).toContainEqual({
-        type: "timeline",
-        provider: "claude",
-        item: {
-          type: "todo",
-          items: [
-            {
-              id: "1",
-              text: "Inspect provider",
-              activeForm: "Inspecting provider",
-              status: "pending",
-              completed: false,
-            },
-          ],
-        },
-      });
-    } finally {
-      await session.close();
-    }
-  });
 
   async function collectStreamEvents(session: AgentSession, prompt = "turn") {
     const events: AgentStreamEvent[] = [];

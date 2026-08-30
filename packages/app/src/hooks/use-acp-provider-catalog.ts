@@ -14,10 +14,10 @@ export function buildAcpProviderConfigPatch(
   return {
     providers: {
       [entry.id]: {
-        extends: "acp",
+        extends: entry.extends,
         label: entry.title,
         description: entry.description,
-        command: [...entry.command],
+        ...(entry.command ? { command: [...entry.command] } : {}),
         env: entry.env ? { ...entry.env } : {},
         ...(entry.params ? { params: { ...entry.params } } : {}),
       },

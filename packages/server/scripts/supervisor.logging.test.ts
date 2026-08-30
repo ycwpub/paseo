@@ -14,6 +14,9 @@ async function runSupervisorFixture(options: {
   workerSource: string;
   restartOnCrash?: boolean;
   timeoutMs?: number;
+  workerHeartbeat?: {
+    intervalMs?: number;
+  };
 }): Promise<{
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -41,6 +44,7 @@ async function runSupervisorFixture(options: {
         workerEnv: process.env,
         workerExecArgv: [],
         restartOnCrash: ${JSON.stringify(options.restartOnCrash ?? false)},
+        workerHeartbeat: ${JSON.stringify(options.workerHeartbeat)},
         logFile: {
           path: ${JSON.stringify(logPath)},
           rotate: { maxSize: "1m", maxFiles: 2 },
@@ -191,7 +195,10 @@ describe("supervisor durable logging", () => {
 
   test("does not restart a worker based on heartbeat absence", async () => {
     const result = await runSupervisorFixture({
-      timeoutMs: 20_000,
+      timeoutMs: 10_000,
+      workerHeartbeat: {
+        intervalMs: 250,
+      },
       workerSource: `
         import { existsSync, writeFileSync } from "node:fs";
 
@@ -200,7 +207,7 @@ describe("supervisor durable logging", () => {
           writeFileSync(marker, "started");
           setTimeout(() => {
             process.send?.({ type: "paseo:shutdown", reason: "silent_worker_test_complete" });
-          }, 16_000);
+          }, 2_000);
           setInterval(() => {}, 1_000);
         } else {
           process.send?.({ type: "paseo:shutdown", reason: "unexpected_silent_worker_restart" });
@@ -214,7 +221,7 @@ describe("supervisor durable logging", () => {
     expect(result.log).toContain('"reason":"silent_worker_test_complete"');
     expect(result.log).not.toContain('"reason":"unexpected_silent_worker_restart"');
     expect(result.log).not.toContain('"msg":"Worker heartbeat timed out; restarting worker"');
-  }, 25_000);
+  }, 10_000);
 
   test.skipIf(isPlatform("win32"))(
     "forces shutdown when a worker ignores SIGTERM",

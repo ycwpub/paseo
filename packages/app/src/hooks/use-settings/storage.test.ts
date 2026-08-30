@@ -155,18 +155,18 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
-    expect(DEFAULT_CLIENT_SETTINGS.language).toBe("system");
+    expect(DEFAULT_CLIENT_SETTINGS.language).toBe("zh-CN");
     expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual(
       DEFAULT_CLIENT_SETTINGS,
     );
   });
 
-  it("defaults language to system when storage is empty", async () => {
+  it("defaults language to Simplified Chinese when storage is empty", async () => {
     const deps = makeDeps();
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.language).toBe("system");
+    expect(result.language).toBe("zh-CN");
   });
 
   it("defaults workspace title source to title when storage is empty", async () => {
@@ -367,7 +367,7 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.language).toBe("zh-CN");
   });
 
-  it("drops an unknown persisted language back to system", async () => {
+  it("drops an unknown persisted language back to Simplified Chinese", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
         [APP_SETTINGS_KEY]: JSON.stringify({ language: "klingon" }),
@@ -376,7 +376,7 @@ describe("loadAppSettingsFromStorage", () => {
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.language).toBe("system");
+    expect(result.language).toBe("zh-CN");
   });
 });
 
@@ -433,8 +433,10 @@ describe("loadSettingsFromStorage", () => {
       isElectron: true,
       settings: {
         releaseChannel: "beta",
-        notifications: { playSound: true },
+        notifications: { enabled: true, playSound: true },
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
+        attention: { soundVolume: 0.5 },
+        island: { enabled: true, showWhenFocused: true },
       },
     });
     const deps = makeDeps({

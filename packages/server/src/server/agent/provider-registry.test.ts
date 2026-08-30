@@ -26,6 +26,7 @@ const mockState = vi.hoisted(() => {
     runtimeSettings?: unknown;
     providerParams?: unknown;
     commandsRpcType?: unknown;
+    customProvider?: unknown;
   }
 
   return {
@@ -96,10 +97,11 @@ vi.mock("./providers/claude/agent.js", async () => {
       readonly provider = "claude";
       readonly runtimeSettings?: unknown;
 
-      constructor(options: { runtimeSettings?: unknown }) {
+      constructor(options: { runtimeSettings?: unknown; customProvider?: unknown }) {
         this.runtimeSettings = options.runtimeSettings;
         mockState.constructorArgs.claude.push({
           runtimeSettings: options.runtimeSettings,
+          ...(options.customProvider ? { customProvider: options.customProvider } : {}),
         });
       }
 
@@ -649,6 +651,54 @@ test("new provider extending claude appears in registry", () => {
   expect(registry.zai.label).toBe("ZAI");
   expect(registry.zai.description).toBe("Claude with ZAI defaults");
   expect(registry.zai.createClient(logger).provider).toBe("zai");
+  expect(mockState.constructorArgs.claude).toContainEqual({
+    runtimeSettings: undefined,
+    customProvider: {
+      id: "zai",
+      label: "ZAI",
+      extends: "claude",
+    },
+  });
+});
+
+test("legacy Aiden provider definitions receive their built-in launcher commands", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      "aiden-claude": {
+        extends: "claude",
+        label: "Aiden Claude",
+      },
+      "aiden-codex": {
+        extends: "codex",
+        label: "Aiden Codex",
+      },
+    },
+  });
+
+  registry["aiden-claude"].createClient(logger);
+  registry["aiden-codex"].createClient(logger);
+
+  expect(mockState.constructorArgs.claude).toContainEqual({
+    runtimeSettings: {
+      command: {
+        mode: "replace",
+        argv: ["aiden", "x", "claude"],
+      },
+    },
+    customProvider: {
+      id: "aiden-claude",
+      label: "Aiden Claude",
+      extends: "claude",
+    },
+  });
+  expect(mockState.constructorArgs.codex).toContainEqual({
+    runtimeSettings: {
+      command: {
+        mode: "replace",
+        argv: ["aiden", "x", "codex"],
+      },
+    },
+  });
 });
 
 test("built-in OMP override keeps the real OMP adapter enabled and launchable", async () => {
@@ -906,6 +956,12 @@ test("traecli provider extending acp uses TraeACPAgentClient", () => {
   });
 
   expect(registry.traecli.createClient(logger).provider).toBe("traecli");
+  expect(registry.traecli.defaultModeId).toBe("default");
+  expect(registry.traecli.modes).toEqual([
+    expect.objectContaining({ id: "default" }),
+    expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
+    expect.objectContaining({ id: "plan" }),
+  ]);
   expect(mockState.constructorArgs.trae).toEqual([
     {
       command: ["traecli", "acp", "serve"],

@@ -324,6 +324,30 @@ describe("WorkspaceFilesSession", () => {
     expect(message.payload.directory).not.toBeNull();
   });
 
+  test("marks a missing directory without exposing a raw filesystem error code", async () => {
+    const cwd = makeDir("workspace-files-missing-");
+    const { subsystem, emitted } = makeSubsystem();
+
+    await subsystem.handleFileExplorerRequest({
+      type: "file_explorer_request",
+      cwd,
+      path: "missing",
+      mode: "list",
+      requestId: "req-missing",
+    });
+
+    expect(emitted).toHaveLength(1);
+    const message = emitted[0];
+    if (message.type !== "file_explorer_response") {
+      throw new Error(`expected file_explorer_response, got ${message.type}`);
+    }
+    expect(message.payload).toMatchObject({
+      directory: null,
+      errorCode: "not_found",
+      requestId: "req-missing",
+    });
+  });
+
   test("reads file content inline when the client has no binary channel", async () => {
     const cwd = makeDir("workspace-files-read-");
     writeFileSync(join(cwd, "notes.txt"), "hello world");

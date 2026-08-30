@@ -1,6 +1,15 @@
 // @ts-nocheck
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 import React from "react";
+import { i18n } from "@/i18n/i18next";
+
+// Production defaults to Chinese, while the existing unit suite was authored
+// against English labels. Keep tests deterministic without changing the app's
+// user-facing default; language-specific tests can still switch explicitly.
+await i18n.changeLanguage("en");
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
 
 const globalWithTestShims = globalThis as typeof globalThis & Record<string, unknown>;
 

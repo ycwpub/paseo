@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { FileExplorerRequestError } from "@getpaseo/client";
 import {
   useSessionStore,
   type AgentFileExplorerState,
@@ -12,6 +13,7 @@ function createExplorerState(): AgentFileExplorerState {
   return {
     directories: new Map(),
     files: new Map(),
+    rootStatus: "idle",
     isLoading: false,
     lastError: null,
     pendingRequest: null,
@@ -54,6 +56,10 @@ export function buildWorkspaceExplorerStateKey(scope: FileExplorerWorkspaceScope
     return null;
   }
   return `root:${normalizedWorkspaceRoot}`;
+}
+
+export function isMissingFileExplorerRootError(path: string, error: unknown): boolean {
+  return path === "." && error instanceof FileExplorerRequestError && error.code === "not_found";
 }
 
 export function useFileExplorerActions(params: { serverId: string } & FileExplorerWorkspaceScope) {
@@ -142,6 +148,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => {
           const nextState: AgentFileExplorerState = {
             ...state,
+            rootStatus: "available",
             isLoading: false,
             lastError: null,
             pendingRequest: null,
@@ -157,13 +164,16 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         });
         return directory;
       } catch (error) {
+        const isMissingRoot = isMissingFileExplorerRootError(normalizedPath, error);
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : t("workspace.fileExplorer.errors.failedToListDirectory");
         updateExplorerState((state) => ({
           ...state,
+          rootStatus: isMissingRoot ? "missing" : state.rootStatus,
           isLoading: false,
-          lastError:
-            error instanceof Error
-              ? error.message
-              : t("workspace.fileExplorer.errors.failedToListDirectory"),
+          lastError: isMissingRoot ? null : errorMessage,
           pendingRequest: null,
         }));
         return null;

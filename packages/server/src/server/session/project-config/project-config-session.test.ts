@@ -1,13 +1,12 @@
 import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test } from "vitest";
 import pino from "pino";
 import { ProjectConfigSession, type ProjectConfigSessionHost } from "./project-config-session.js";
-import { statPaseoConfigPath } from "../../../utils/paseo-config-file.js";
 import type { PersistedProjectRecord } from "../../workspace-registry.js";
 import type { SessionOutboundMessage } from "../../messages.js";
+import { resolveManagedProjectStorageRoot } from "../../project/project-storage-paths.js";
 
 const tempDirs: string[] = [];
 
@@ -38,51 +37,34 @@ function projectRecord(rootPath: string, archivedAt: string | null = null): Pers
 function makeSubsystem(records: PersistedProjectRecord[]) {
   const emitted: SessionOutboundMessage[] = [];
   const host: ProjectConfigSessionHost = { emit: (msg) => emitted.push(msg) };
+  const recordsById = new Map(records.map((record) => [record.projectId, record]));
+  const paseoHome = makeRoot();
   const subsystem = new ProjectConfigSession({
     host,
-    projectRegistry: { list: async () => records },
+    projectRegistry: {
+      list: async () => [...recordsById.values()],
+      get: async (projectId) => recordsById.get(projectId) ?? null,
+      update: async (projectId, updater) => {
+        const current = recordsById.get(projectId);
+        if (!current) return null;
+        const updated = updater(current);
+        recordsById.set(projectId, updated);
+        return updated;
+      },
+    },
+    paseoHome,
     logger: pino({ level: "silent" }),
   });
-  return { subsystem, emitted };
+  return { subsystem, emitted, paseoHome, recordsById };
 }
 
 describe("ProjectConfigSession", () => {
-  test("read reports when the saved worktree setup differs from HEAD", async () => {
-    const repoRoot = makeRoot();
-    execFileSync("git", ["init", "-b", "main"], { cwd: repoRoot });
-    execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoRoot });
-    execFileSync("git", ["config", "user.name", "Test"], { cwd: repoRoot });
-    writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
-    execFileSync("git", ["add", "paseo.json"], { cwd: repoRoot });
-    execFileSync("git", ["commit", "-m", "add config"], { cwd: repoRoot });
-    writeFileSync(
-      join(repoRoot, "paseo.json"),
-      JSON.stringify({ worktree: { setup: "npm install" } }),
-    );
-    const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
-
-    await subsystem.handleReadProjectConfigRequest({
-      type: "read_project_config_request",
-      requestId: "read-uncommitted-setup",
-      repoRoot,
-    });
-
-    expect(emitted).toEqual([
-      {
-        type: "read_project_config_response",
-        payload: expect.objectContaining({
-          requestId: "read-uncommitted-setup",
-          ok: true,
-          hasUncommittedWorktreeSetupChanges: true,
-        }),
-      },
-    ]);
-  });
-
   test("read resolves a known root despite a trailing slash and returns the raw config + revision", async () => {
     const repoRoot = makeRoot();
     writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
-    const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+    const project = projectRecord(repoRoot);
+    const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
     await subsystem.handleReadProjectConfigRequest({
       type: "read_project_config_request",
@@ -95,7 +77,7 @@ describe("ProjectConfigSession", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-1",
-          repoRoot,
+          repoRoot: projectPath,
           ok: true,
           config: { worktree: { setup: "npm ci" } },
           revision: expect.objectContaining({
@@ -118,7 +100,9 @@ describe("ProjectConfigSession", () => {
       );
       const linkRoot = join(makeRoot(), "link");
       symlinkSync(repoRoot, linkRoot, "dir");
-      const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+      const project = projectRecord(repoRoot);
+      const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+      const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
       await subsystem.handleReadProjectConfigRequest({
         type: "read_project_config_request",
@@ -131,7 +115,7 @@ describe("ProjectConfigSession", () => {
           type: "read_project_config_response",
           payload: {
             requestId: "read-symlink-1",
-            repoRoot,
+            repoRoot: projectPath,
             ok: true,
             config: { worktree: { setup: "npm ci" } },
             revision: expect.objectContaining({
@@ -186,7 +170,9 @@ describe("ProjectConfigSession", () => {
 
   test("write round-trips a config to a known root and echoes the new revision", async () => {
     const repoRoot = makeRoot();
-    const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+    const project = projectRecord(repoRoot);
+    const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",
@@ -201,7 +187,7 @@ describe("ProjectConfigSession", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "write-1",
-          repoRoot,
+          repoRoot: projectPath,
           ok: true,
           config: { worktree: { setup: "npm ci" } },
           revision: expect.objectContaining({
@@ -213,41 +199,141 @@ describe("ProjectConfigSession", () => {
     ]);
   });
 
-  test("write recomputes the worktree setup commit status", async () => {
-    const repoRoot = makeRoot();
-    execFileSync("git", ["init", "-b", "main"], { cwd: repoRoot });
-    execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoRoot });
-    execFileSync("git", ["config", "user.name", "Test"], { cwd: repoRoot });
-    writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
-    execFileSync("git", ["add", "paseo.json"], { cwd: repoRoot });
-    execFileSync("git", ["commit", "-m", "add config"], { cwd: repoRoot });
-    const { subsystem, emitted } = makeSubsystem([projectRecord(repoRoot)]);
+  test("reads and writes a directoryless Project by projectId", async () => {
+    const project = projectRecord("");
+    project.projectId = "prj_directoryless";
+    project.rootPath = null;
+    const { subsystem, emitted, recordsById, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
+    await subsystem.handleReadProjectConfigRequest({
+      type: "read_project_config_request",
+      requestId: "read-directoryless",
+      repoRoot: "",
+      projectId: project.projectId,
+    });
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",
-      requestId: "write-uncommitted-setup",
-      repoRoot,
-      config: { worktree: { setup: "npm install" } },
-      expectedRevision: statPaseoConfigPath(repoRoot),
+      requestId: "write-directoryless",
+      repoRoot: "",
+      projectId: project.projectId,
+      config: {
+        project: {
+          directoryMode: "multiple",
+          directories: { project: ["/repo/one", "/repo/two"] },
+        },
+      },
+      expectedRevision: null,
     });
 
     expect(emitted).toEqual([
       {
-        type: "write_project_config_response",
-        payload: expect.objectContaining({
-          requestId: "write-uncommitted-setup",
+        type: "read_project_config_response",
+        payload: {
+          requestId: "read-directoryless",
+          repoRoot: projectPath,
           ok: true,
-          hasUncommittedWorktreeSetupChanges: true,
-        }),
+          config: {
+            project: {
+              directoryMode: "multiple",
+              directories: { project: [] },
+            },
+          },
+          revision: null,
+        },
+      },
+      {
+        type: "write_project_config_response",
+        payload: {
+          requestId: "write-directoryless",
+          repoRoot: projectPath,
+          ok: true,
+          config: {
+            project: {
+              directoryMode: "multiple",
+              directories: { project: ["/repo/one", "/repo/two"] },
+            },
+          },
+          revision: expect.objectContaining({
+            mtimeMs: expect.any(Number),
+            size: expect.any(Number),
+          }),
+        },
       },
     ]);
+    expect(recordsById.get(project.projectId)?.updatedAt).not.toBe(project.updatedAt);
+  });
+
+  test("updates the registered root when a multiple-directory Project becomes single", async () => {
+    const repoRoot = makeRoot();
+    const selectedRoot = makeRoot();
+    const project = projectRecord(repoRoot);
+    const { subsystem, emitted, recordsById, paseoHome } = makeSubsystem([project]);
+
+    await subsystem.handleWriteProjectConfigRequest({
+      type: "write_project_config_request",
+      requestId: "write-multiple",
+      repoRoot,
+      projectId: project.projectId,
+      config: {
+        project: {
+          directoryMode: "multiple",
+          directories: { project: [repoRoot, selectedRoot] },
+        },
+      },
+      expectedRevision: null,
+    });
+    const firstResponse = emitted[0];
+    if (firstResponse?.type !== "write_project_config_response" || !firstResponse.payload.ok) {
+      throw new Error("Expected the multiple-directory write to succeed");
+    }
+    expect(firstResponse.payload.repoRoot).toBe(
+      resolveManagedProjectStorageRoot(paseoHome, project.projectId),
+    );
+    expect(recordsById.get(project.projectId)?.rootPath).toBeNull();
+
+    await subsystem.handleWriteProjectConfigRequest({
+      type: "write_project_config_request",
+      requestId: "write-single",
+      repoRoot,
+      projectId: project.projectId,
+      config: {
+        project: {
+          directoryMode: "single",
+          directories: { project: [selectedRoot] },
+        },
+      },
+      expectedRevision: firstResponse.payload.revision,
+    });
+
+    expect(recordsById.get(project.projectId)?.rootPath).toBe(selectedRoot);
+    expect(emitted[1]).toEqual({
+      type: "write_project_config_response",
+      payload: {
+        requestId: "write-single",
+        repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
+        ok: true,
+        config: {
+          project: {
+            directoryMode: "single",
+            directories: { project: [selectedRoot] },
+          },
+        },
+        revision: expect.objectContaining({
+          mtimeMs: expect.any(Number),
+          size: expect.any(Number),
+        }),
+      },
+    });
   });
 
   test("write rejects a stale revision and an unknown root with their inline domain failures", async () => {
     const staleRoot = makeRoot();
     writeFileSync(join(staleRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));
     const unknownRoot = makeRoot();
-    const { subsystem, emitted } = makeSubsystem([projectRecord(staleRoot)]);
+    const project = projectRecord(staleRoot);
+    const { subsystem, emitted, paseoHome } = makeSubsystem([project]);
+    const projectPath = resolveManagedProjectStorageRoot(paseoHome, project.projectId);
 
     await subsystem.handleWriteProjectConfigRequest({
       type: "write_project_config_request",
@@ -269,7 +355,7 @@ describe("ProjectConfigSession", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "stale-1",
-          repoRoot: staleRoot,
+          repoRoot: projectPath,
           ok: false,
           error: {
             code: "stale_project_config",

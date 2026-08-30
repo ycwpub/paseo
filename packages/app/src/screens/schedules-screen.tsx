@@ -15,6 +15,7 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
+import { ScheduleRunHistorySheet } from "@/components/schedules/schedule-run-history-sheet";
 import { SchedulesTable, type ScheduleRowView } from "@/components/schedules/schedules-table";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -45,9 +46,13 @@ type FormState =
   | { mode: "create" }
   | { mode: "edit"; serverId: string; schedule: ScheduleSummary };
 
+type HistoryState =
+  | { mode: "closed" }
+  | { mode: "open"; serverId: string; schedule: AggregatedSchedule };
+
 const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
-  { value: "runnable", label: "Active", testID: "schedules-filter-active" },
-  { value: "ended", label: "Ended", testID: "schedules-filter-ended" },
+  { value: "runnable", label: "进行中", testID: "schedules-filter-active" },
+  { value: "ended", label: "已结束", testID: "schedules-filter-ended" },
 ];
 
 const EMPTY_SCHEDULES: AggregatedSchedule[] = [];
@@ -92,6 +97,7 @@ function SchedulesScreenContent(): ReactElement {
   }, [hosts, runtime, runtimeVersion]);
 
   const [form, setForm] = useState<FormState>({ mode: "closed" });
+  const [history, setHistory] = useState<HistoryState>({ mode: "closed" });
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
   const [statusFilter, setStatusFilter] = useState<ScheduleBucket>("runnable");
 
@@ -109,6 +115,10 @@ function SchedulesScreenContent(): ReactElement {
     setForm({ mode: "edit", serverId: schedule.serverId, schedule });
   }, []);
   const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
+  const openHistory = useCallback((schedule: AggregatedSchedule) => {
+    setHistory({ mode: "open", serverId: schedule.serverId, schedule });
+  }, []);
+  const closeHistory = useCallback(() => setHistory({ mode: "closed" }), []);
 
   const agentsByKey = useMemo(() => {
     const map = new Map<string, ScheduleTargetAgent>();
@@ -165,7 +175,7 @@ function SchedulesScreenContent(): ReactElement {
 
   return (
     <View style={styles.container}>
-      <MenuHeader title="Schedules" />
+      <MenuHeader title="定时任务" />
       <SchedulesScreenBody
         rows={visibleRows}
         loadState={loadState}
@@ -180,6 +190,7 @@ function SchedulesScreenContent(): ReactElement {
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={openEdit}
+        onViewHistory={openHistory}
       />
       <ScheduleFormSheet
         serverId={form.mode === "edit" ? form.serverId : undefined}
@@ -187,6 +198,12 @@ function SchedulesScreenContent(): ReactElement {
         onClose={closeForm}
         mode={form.mode === "edit" ? "edit" : "create"}
         schedule={form.mode === "edit" ? form.schedule : undefined}
+      />
+      <ScheduleRunHistorySheet
+        visible={history.mode === "open"}
+        serverId={history.mode === "open" ? history.serverId : null}
+        schedule={history.mode === "open" ? history.schedule : null}
+        onClose={closeHistory}
       />
     </View>
   );
@@ -206,6 +223,7 @@ function SchedulesScreenBody({
   onRetry,
   onCreate,
   onEdit,
+  onViewHistory,
 }: {
   rows: ScheduleRowView[];
   loadState: AggregateLoadState<AggregatedSchedule>;
@@ -220,6 +238,7 @@ function SchedulesScreenBody({
   onRetry: () => void;
   onCreate: () => void;
   onEdit: (schedule: AggregatedSchedule) => void;
+  onViewHistory: (schedule: AggregatedSchedule) => void;
 }): ReactElement {
   const bodyState = resolveSchedulesScreenBodyState({ loadState, showLoadError });
 
@@ -234,9 +253,9 @@ function SchedulesScreenBody({
   if (bodyState.kind === "load-error") {
     return (
       <View style={styles.centered}>
-        <Text style={styles.message}>Unable to load schedules</Text>
+        <Text style={styles.message}>无法加载定时任务</Text>
         <Button variant="ghost" onPress={onRetry} testID="schedules-retry">
-          Try again
+          重试
         </Button>
       </View>
     );
@@ -253,7 +272,9 @@ function SchedulesScreenBody({
 
   let schedulesContent: ReactElement;
   if (rows.length > 0) {
-    schedulesContent = <SchedulesTable rows={rows} onEditSchedule={onEdit} />;
+    schedulesContent = (
+      <SchedulesTable rows={rows} onEditSchedule={onEdit} onViewHistory={onViewHistory} />
+    );
   } else if (statusFilter === "ended") {
     schedulesContent = <SchedulesEndedEmptyState />;
   } else {
@@ -291,7 +312,7 @@ function SchedulesScreenBody({
           size="sm"
           testID="schedules-new"
         >
-          New schedule
+          新建定时任务
         </Button>
       </View>
       <ScrollView
@@ -319,12 +340,12 @@ function SchedulesEmptyState({
     <View style={styles.emptyState} testID={testID}>
       <CalendarClock size={styles.emptyIcon.width} color={styles.emptyIcon.color} />
       <View style={styles.emptyTextStack}>
-        <Text style={styles.emptyTitle}>No active schedules</Text>
-        <Text style={styles.emptyDescription}>Schedules run agents on a cadence.</Text>
-        <ExternalLink href="https://paseo.sh/docs/schedules" label="See docs" />
+        <Text style={styles.emptyTitle}>暂无进行中的定时任务</Text>
+        <Text style={styles.emptyDescription}>定时任务会按设定频率运行 Agent。</Text>
+        <ExternalLink href="https://paseo.sh/docs/schedules" label="查看文档" />
       </View>
       <Button variant="outline" leftIcon={Plus} onPress={onCreate} testID="schedules-empty-new">
-        New schedule
+        新建定时任务
       </Button>
     </View>
   );
@@ -335,7 +356,7 @@ function SchedulesEndedEmptyState(): ReactElement {
     <View style={styles.filterEmpty}>
       <View style={styles.endedEmptyState}>
         <CalendarClock size={styles.emptyIcon.width} color={styles.emptyIcon.color} />
-        <Text style={styles.emptyTitle}>No ended schedules</Text>
+        <Text style={styles.emptyTitle}>暂无已结束的定时任务</Text>
       </View>
     </View>
   );
@@ -347,7 +368,7 @@ function ScheduleHostErrorsBanner({ errors }: { errors: ScheduleHostError[] }): 
       <View style={styles.errorsBanner} testID="schedules-host-errors">
         {errors.map((error) => (
           <Text key={error.serverId} style={styles.errorsBannerText}>
-            {`${error.serverName}: Could not load schedules`}
+            {`${error.serverName}: 无法加载定时任务`}
           </Text>
         ))}
       </View>

@@ -79,7 +79,7 @@ import {
   approvalPendingClient,
   pruneSupersededLoopbackConnections,
   shouldDeferQueuedMessage,
-} from "./feature-paseo-host-runtime-integration";
+} from "./host-runtime-extension-policy";
 import {
   INITIAL_WORKSPACE_DIRECTORY_STATUS,
   type HostRuntimeWorkspaceDirectoryStatus,

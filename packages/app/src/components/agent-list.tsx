@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -20,6 +21,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { Archive, ChevronRight } from "lucide-react-native";
 import { getProviderIcon } from "@/components/provider-icons";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
+import { storeFetchedAgentDetail } from "@/utils/store-fetched-agent-detail";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { HighlightedText } from "@/components/ui/highlighted-text";
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
@@ -398,7 +400,7 @@ export function AgentList({
   const isActionDaemonUnavailable = Boolean(actionAgent?.serverId && !actionClient);
 
   const handleAgentPress = useCallback(
-    (agent: AggregatedAgent) => {
+    async (agent: AggregatedAgent) => {
       if (isActionSheetVisible) {
         return;
       }
@@ -407,11 +409,31 @@ export function AgentList({
       const agentId = agent.id;
 
       onAgentSelect?.();
+      if (agent.archivedAt) {
+        const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
+        if (client) {
+          try {
+            const result = await client.fetchAgent({ agentId });
+            if (result) {
+              const fetched = storeFetchedAgentDetail({ serverId, result });
+              navigateToAgent({
+                serverId,
+                agentId,
+                workspaceId: fetched.workspaceId,
+                pin: true,
+              });
+              return;
+            }
+          } catch {
+            // Fall through to the archived history entry's workspace metadata.
+          }
+        }
+      }
       navigateToAgent({
         serverId,
         agentId,
         workspaceId: agent.workspaceId,
-        pin: true,
+        pin: Boolean(agent.archivedAt),
       });
     },
     [isActionSheetVisible, onAgentSelect],

@@ -78,11 +78,13 @@ export async function preparePairingHost(
   await openSettingsHost(page, daemon.serverId);
   await expect(page.getByTestId("host-page-pair-device-row")).toHaveCount(0);
   await openSettingsHostSection(page, daemon.serverId, "pair-device");
-  await expect(page.getByTestId("host-page-pair-device-row")).toBeVisible();
+  await expect(page.getByTestId("host-page-pair-device-card")).toBeVisible();
 }
 
 export async function openPairDeviceModal(page: Page): Promise<void> {
-  await page.getByRole("button", { name: /Pair a device/ }).click();
+  if ((await page.getByTestId("host-page-pair-device-card").count()) === 0) {
+    await page.getByTestId("settings-host-section-pair-device").click();
+  }
   await expect(page.getByTestId("host-page-pair-device-card")).toBeVisible();
 }
 
@@ -123,10 +125,7 @@ export async function expectPairingOffer(page: Page): Promise<void> {
 }
 
 export async function closePairDeviceModal(page: Page): Promise<void> {
-  await page
-    .getByTestId("host-page-pair-device-card")
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
+  await page.getByTestId("settings-host-section-connections").click();
   await expect(page.getByTestId("host-page-pair-device-card")).toHaveCount(0);
 }
 
@@ -203,7 +202,7 @@ export async function expectPairingDisconnected(page: Page): Promise<void> {
 export async function switchPairDeviceToHost(page: Page, serverId: string): Promise<void> {
   await selectSettingsHost(page, serverId);
   await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, "pair-device"));
-  await expect(page.getByTestId("host-page-pair-device-row")).toBeVisible();
+  await expect(page.getByTestId("host-page-pair-device-card")).toBeVisible();
 }
 
 export async function openRelaySecurityDocs(page: Page): Promise<void> {

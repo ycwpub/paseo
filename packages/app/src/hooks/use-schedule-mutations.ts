@@ -83,6 +83,33 @@ function updateSchedulesData(
   );
 }
 
+export function mergeReturnedSchedule(
+  schedules: AggregatedSchedule[],
+  serverId: string,
+  schedule: ScheduleSummary,
+): AggregatedSchedule[] {
+  return schedules.map((entry) =>
+    entry.serverId === serverId && entry.id === schedule.id
+      ? {
+          ...entry,
+          ...schedule,
+          serverId: entry.serverId,
+          serverName: entry.serverName,
+        }
+      : entry,
+  );
+}
+
+function applyReturnedSchedule(
+  queryClient: QueryClient,
+  serverId: string,
+  schedule: ScheduleSummary,
+): void {
+  updateSchedulesData(queryClient, (schedules) =>
+    mergeReturnedSchedule(schedules, serverId, schedule),
+  );
+}
+
 function optimisticallySetStatus(
   queryClient: QueryClient,
   serverId: string,
@@ -96,6 +123,31 @@ function optimisticallySetStatus(
         ? { ...schedule, status, pausedAt }
         : schedule,
     ),
+  );
+}
+
+function optimisticallyResumeSchedule(
+  queryClient: QueryClient,
+  serverId: string,
+  id: string,
+): void {
+  const now = Date.now();
+  updateSchedulesData(queryClient, (schedules) =>
+    schedules.map((schedule) => {
+      if (schedule.serverId !== serverId || schedule.id !== id) {
+        return schedule;
+      }
+      const expiresAt = schedule.expiresAt ? Date.parse(schedule.expiresAt) : null;
+      return {
+        ...schedule,
+        status: "active" as const,
+        pausedAt: null,
+        expiresAt:
+          expiresAt !== null && Number.isFinite(expiresAt) && expiresAt <= now
+            ? null
+            : schedule.expiresAt,
+      };
+    }),
   );
 }
 
@@ -140,12 +192,16 @@ export function useScheduleMutations({
   });
 
   const pauseMutation = useMutation({
-    mutationFn: async (id: string): Promise<void> => {
+    mutationFn: async (id: string): Promise<ScheduleSummary> => {
       const client = requireClient(serverId, t("common.errors.daemonClientUnavailable"));
       const payload = await client.schedulePause({ id });
       if (payload.error) {
         throw new Error(payload.error);
       }
+      if (!payload.schedule) {
+        throw new Error("Schedule pause response did not include a schedule");
+      }
+      return payload.schedule;
     },
     onMutate: async (id): Promise<ScheduleListSnapshot> => {
       await queryClient.cancelQueries({ queryKey: schedulesQueryBaseKey });
@@ -158,27 +214,37 @@ export function useScheduleMutations({
         restoreSchedules(queryClient, context);
       }
     },
+    onSuccess: (schedule) => {
+      applyReturnedSchedule(queryClient, serverId, schedule);
+    },
     onSettled: invalidate,
   });
 
   const resumeMutation = useMutation({
-    mutationFn: async (id: string): Promise<void> => {
+    mutationFn: async (id: string): Promise<ScheduleSummary> => {
       const client = requireClient(serverId, t("common.errors.daemonClientUnavailable"));
       const payload = await client.scheduleResume({ id });
       if (payload.error) {
         throw new Error(payload.error);
       }
+      if (!payload.schedule) {
+        throw new Error("Schedule resume response did not include a schedule");
+      }
+      return payload.schedule;
     },
     onMutate: async (id): Promise<ScheduleListSnapshot> => {
       await queryClient.cancelQueries({ queryKey: schedulesQueryBaseKey });
       const snapshot = snapshotSchedules(queryClient);
-      optimisticallySetStatus(queryClient, serverId, id, "active");
+      optimisticallyResumeSchedule(queryClient, serverId, id);
       return snapshot;
     },
     onError: (_error, _id, context) => {
       if (context) {
         restoreSchedules(queryClient, context);
       }
+    },
+    onSuccess: (schedule) => {
+      applyReturnedSchedule(queryClient, serverId, schedule);
     },
     onSettled: invalidate,
   });

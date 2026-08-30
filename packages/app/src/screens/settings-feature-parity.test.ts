@@ -1,30 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
 function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }
 
-const featureOverrideManifest = source("../../feature-paseo-source-overrides.txt");
-
 function runtimeSource(relativePath: string): string {
-  const baseUrl = new URL(relativePath, import.meta.url);
-  const extensionMatch = baseUrl.pathname.match(/(\.[^.]+)$/);
-  if (!extensionMatch) {
-    return readFileSync(baseUrl, "utf8");
-  }
-
-  const featureUrl = new URL(
-    baseUrl.href.replace(extensionMatch[0], `.feature-paseo${extensionMatch[0]}`),
-  );
-  const featurePath = fileURLToPath(featureUrl);
-  const marker = featureUrl.pathname.split("/packages/app/")[1];
-  const isRuntimeOverride =
-    marker != null &&
-    featureOverrideManifest.includes(` -> packages/app/${decodeURIComponent(marker)}`);
-
-  return readFileSync(isRuntimeOverride && existsSync(featurePath) ? featureUrl : baseUrl, "utf8");
+  return source(relativePath);
 }
 
 describe("feature_paseo integration parity", () => {

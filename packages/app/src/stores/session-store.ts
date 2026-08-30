@@ -2,12 +2,13 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
+import type { ViewedTimelineSync } from "@/timeline/viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   appendSubmittedUserMessage,
   handoffCreatedAgentUserMessageToStream,
   removeSubmittedUserMessage,
+  settleInactiveAgentStream,
   type StreamItem,
   type TodoEntry,
   type UserMessageItem,
@@ -40,6 +41,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceProjectDescriptorPayload,
 } from "@getpaseo/protocol/messages";
+import type { RelayDeviceType } from "@getpaseo/protocol/daemon-endpoints";
 import {
   normalizeWorkspaceOpaqueId,
   normalizeWorkspacePath,
@@ -171,12 +173,15 @@ export function normalizeWorkspaceDescriptor(
 
 export interface ProjectDescriptor {
   projectId: string;
+  parentProjectId?: string | null;
   projectKey?: string | null;
   projectDisplayName: string;
   projectCustomName: string | null;
   projectCustomIconRevision?: string | null;
   projectIconRevision?: string;
   projectRootPath: string;
+  projectSourceDirectory?: string;
+  projectDirectoryless?: boolean;
   projectKind: WorkspaceDescriptorPayload["projectKind"];
 }
 
@@ -185,12 +190,15 @@ export function normalizeProjectDescriptor(
 ): ProjectDescriptor {
   return {
     projectId: payload.projectId,
+    parentProjectId: payload.parentProjectId ?? null,
     projectKey: payload.projectKey ?? null,
     projectDisplayName: payload.projectDisplayName,
     projectCustomName: payload.projectCustomName ?? null,
     projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
     projectIconRevision: payload.projectIconRevision,
     projectRootPath: payload.projectRootPath,
+    projectSourceDirectory: payload.projectSourceDirectory ?? payload.projectRootPath,
+    projectDirectoryless: payload.projectDirectoryless === true,
     projectKind: payload.projectKind,
   };
 }
@@ -269,6 +277,7 @@ interface ExplorerRequestState {
 export interface AgentFileExplorerState {
   directories: Map<string, ExplorerDirectory>;
   files: Map<string, ExplorerFile>;
+  rootStatus: "idle" | "available" | "missing";
   isLoading: boolean;
   lastError: string | null;
   pendingRequest: ExplorerRequestState | null;
@@ -283,6 +292,7 @@ export interface DaemonServerInfo {
   hostname: string | null;
   version: string | null;
   desktopManaged?: boolean;
+  relayDeviceType?: RelayDeviceType;
   capabilities?: ServerCapabilities;
   features?: ServerInfoStatusPayload["features"];
 }
@@ -366,7 +376,7 @@ export interface SessionState {
   // Daemon client (immutable reference)
   client: DaemonClient | null;
   clientGeneration: number;
-  viewedTimelineSync: ViewedTimelineUiBridge | null;
+  viewedTimelineSync: ViewedTimelineSync | null;
 
   // Server metadata (from server_info handshake)
   serverInfo: DaemonServerInfo | null;
@@ -420,7 +430,7 @@ export interface SessionState {
   // Queued messages
   queuedMessages: Map<
     string,
-    Array<{ id: string; text: string; attachments: ComposerAttachment[] }>
+    Array<{ id: string; text: string; attachments: ComposerAttachment[]; isEditing?: boolean }>
   >;
 }
 
@@ -443,7 +453,7 @@ interface SessionStoreActions {
   clearSession: (serverId: string) => void;
   getSession: (serverId: string) => SessionState | undefined;
   updateSessionClient: (serverId: string, client: DaemonClient, clientGeneration?: number) => void;
-  setViewedTimelineSync: (serverId: string, sync: ViewedTimelineUiBridge | null) => void;
+  setViewedTimelineSync: (serverId: string, sync: ViewedTimelineSync | null) => void;
   updateSessionServerInfo: (serverId: string, info: DaemonServerInfo) => void;
 
   // Audio state
@@ -685,6 +695,7 @@ function isSessionServerInfoUnchanged(input: {
   nextHostname: string | null;
   nextVersion: string | null;
   nextDesktopManaged: boolean | undefined;
+  nextRelayDeviceType: RelayDeviceType | undefined;
   nextCapabilities: ServerCapabilities | undefined;
   nextFeatures: ServerInfoStatusPayload["features"] | undefined;
   nextServerId: string;
@@ -694,6 +705,7 @@ function isSessionServerInfoUnchanged(input: {
     nextHostname,
     nextVersion,
     nextDesktopManaged,
+    nextRelayDeviceType,
     nextCapabilities,
     nextFeatures,
   } = input;
@@ -704,6 +716,7 @@ function isSessionServerInfoUnchanged(input: {
     prevHostname === nextHostname &&
     prevVersion === nextVersion &&
     currentServerInfo?.desktopManaged === nextDesktopManaged &&
+    currentServerInfo?.relayDeviceType === nextRelayDeviceType &&
     areServerCapabilitiesEqual(currentServerInfo?.capabilities, nextCapabilities) &&
     areServerInfoFeaturesEqual(currentServerInfo?.features, nextFeatures)
   );
@@ -842,6 +855,7 @@ export const useSessionStore = create<SessionStore>()(
           const nextHostname = info.hostname?.trim() || null;
           const nextVersion = info.version?.trim() || null;
           const nextDesktopManaged = info.desktopManaged;
+          const nextRelayDeviceType = info.relayDeviceType;
           const nextCapabilities = info.capabilities;
           const nextFeatures = info.features;
 
@@ -851,6 +865,7 @@ export const useSessionStore = create<SessionStore>()(
               nextHostname,
               nextVersion,
               nextDesktopManaged,
+              nextRelayDeviceType,
               nextCapabilities,
               nextFeatures,
               nextServerId: info.serverId,
@@ -872,6 +887,7 @@ export const useSessionStore = create<SessionStore>()(
                   ...(nextDesktopManaged !== undefined
                     ? { desktopManaged: nextDesktopManaged }
                     : {}),
+                  ...(nextRelayDeviceType ? { relayDeviceType: nextRelayDeviceType } : {}),
                   ...(nextCapabilities ? { capabilities: nextCapabilities } : {}),
                   ...(nextFeatures ? { features: nextFeatures } : {}),
                 },
@@ -1535,7 +1551,38 @@ export const useSessionStore = create<SessionStore>()(
             return prev;
           }
           const nextAgents = typeof agents === "function" ? agents(session.agents) : agents;
-          if (session.agents === nextAgents) {
+          let nextStreamTail = session.agentStreamTail;
+          let nextStreamHead = session.agentStreamHead;
+          let streamChanged = false;
+
+          for (const [agentId, agent] of nextAgents) {
+            if (agent.status === "running") {
+              continue;
+            }
+            const previousStatus = session.agents.get(agentId)?.status;
+            const currentHead = session.agentStreamHead.get(agentId) ?? [];
+            if (previousStatus !== "running" && currentHead.length === 0) {
+              continue;
+            }
+            const currentTail = session.agentStreamTail.get(agentId) ?? [];
+            const settled = settleInactiveAgentStream(currentTail, currentHead);
+            if (settled.changedTail) {
+              if (nextStreamTail === session.agentStreamTail) {
+                nextStreamTail = new Map(session.agentStreamTail);
+              }
+              nextStreamTail.set(agentId, settled.tail);
+              streamChanged = true;
+            }
+            if (settled.changedHead) {
+              if (nextStreamHead === session.agentStreamHead) {
+                nextStreamHead = new Map(session.agentStreamHead);
+              }
+              nextStreamHead.delete(agentId);
+              streamChanged = true;
+            }
+          }
+
+          if (session.agents === nextAgents && !streamChanged) {
             return prev;
           }
           return {
@@ -1545,6 +1592,8 @@ export const useSessionStore = create<SessionStore>()(
               [serverId]: {
                 ...session,
                 agents: nextAgents,
+                agentStreamTail: nextStreamTail,
+                agentStreamHead: nextStreamHead,
                 workspaceAgentActivity: buildWorkspaceAgentActivityIndex(
                   nextAgents,
                   session.workspaceAgentActivity,

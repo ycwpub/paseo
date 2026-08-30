@@ -6,12 +6,15 @@ import {
   ScrollView,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type PressableStateCallbackType,
 } from "react-native";
 import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -36,6 +39,10 @@ import {
   SquareTerminal,
   Code2,
   Smartphone,
+  MessageCircle,
+  Wrench,
+  Brain,
+  BookOpen,
   Sparkles,
   Blocks,
   PanelsTopLeft,
@@ -76,6 +83,7 @@ import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
 import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
+import { PairDeviceSection } from "@/components/pair-device-section";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
 import { EditorSection } from "@/screens/settings/editor-section";
 import { Button } from "@/components/ui/button";
@@ -104,18 +112,36 @@ import {
 } from "@/i18n/locales";
 import {
   HostConnectionsPage,
-  HostPairDevicePage,
+  HostLocalRelayPage,
   HostAgentsPage,
   HostSettingsPage,
   HostProvidersPage,
+  HostAssistantsPage,
+  HostMemoryPage,
+  HostMcpPage,
+  HostSkillsPage,
+  HostChannelsPage,
+  HostPluginsPage,
   HostUsagePage,
   HostWorkspacesPage,
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
-import { HostPluginsPage } from "@/screens/settings/plugins-page";
 import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
-import ProjectSettingsScreen from "@/screens/project-settings-screen";
+import { MEMORY_SETTINGS_PAGE_TITLES } from "@/screens/settings/memory/memory-settings-page-titles";
+import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowledge-management-section";
+import {
+  getResourceDetailHeader,
+  renderNestedSettingsContent,
+  type SettingsDetailHeader,
+} from "@/screens/settings/settings-feature-routes";
+import { SettingsDetailNavigationHeader } from "@/screens/settings/settings-detail-navigation-header";
+import type { LarkChannelDetailNavigation } from "@/screens/settings/channels/lark-channel-section";
+import {
+  getHostSectionAfterHostSwitch,
+  getSettingsViewServerId,
+} from "@/screens/settings/settings-feature-route-model";
+import { ClientIdentitySettingsRows } from "@/screens/settings/client-identity-settings-rows";
 import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
@@ -153,8 +179,18 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     icon: PanelsTopLeft,
     desktopOnly: true,
   },
-  { id: "editor", labelKey: "settings.sections.editor", icon: Code2, webOnly: true },
-  { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
+  {
+    id: "editor",
+    labelKey: "settings.sections.editor",
+    icon: Code2,
+    webOnly: true,
+  },
+  {
+    id: "shortcuts",
+    labelKey: "settings.sections.shortcuts",
+    icon: Keyboard,
+    desktopOnly: true,
+  },
   {
     id: "integrations",
     labelKey: "settings.sections.integrations",
@@ -173,7 +209,11 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     icon: Shield,
     desktopOnly: true,
   },
-  { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
+  {
+    id: "diagnostics",
+    labelKey: "settings.sections.diagnostics",
+    icon: Stethoscope,
+  },
   { id: "about", labelKey: "settings.sections.about", icon: Info },
 ];
 
@@ -185,37 +225,92 @@ interface HostSectionItem {
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "host", labelKey: "settings.hostSections.host", icon: Server },
-  { id: "projects", labelKey: "settings.hostSections.projects", icon: FolderGit2 },
-  { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
-  { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
+  {
+    id: "projects",
+    labelKey: "settings.hostSections.projects",
+    icon: FolderGit2,
+  },
+  {
+    id: "connections",
+    labelKey: "settings.hostSections.connections",
+    icon: Network,
+  },
+  {
+    id: "pair-device",
+    labelKey: "openProject.tiles.pairDevice.title",
+    icon: Smartphone,
+  },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
-  { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
-  { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
+  {
+    id: "metadata",
+    labelKey: "settings.hostSections.metadata",
+    icon: Sparkles,
+  },
+  { id: "assistants", labelKey: "settings.hostSections.assistants", icon: Bot },
+  { id: "memory", labelKey: "settings.hostSections.memory", icon: Brain },
+  { id: "knowledge", labelKey: "settings.hostSections.knowledge", icon: BookOpen },
+  { id: "mcp", labelKey: "settings.hostSections.mcp", icon: Wrench },
+  { id: "skills", labelKey: "settings.hostSections.skills", icon: Sparkles },
+  {
+    id: "workspaces",
+    labelKey: "settings.hostSections.workspaces",
+    icon: FolderGit2,
+  },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
+  {
+    id: "channels",
+    labelKey: "settings.hostSections.channels",
+    icon: MessageCircle,
+  },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
-  { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
+  {
+    id: "terminals",
+    labelKey: "settings.hostSections.terminals",
+    icon: SquareTerminal,
+  },
   { id: "plugins", labelKey: "settings.hostSections.plugins", icon: Blocks },
 ];
 
 function renderHostSettingsContent(
   view: Extract<SettingsView, { kind: "host" }>,
   onHostRemoved: () => void,
+  onOpenLocalRelay: () => void,
+  onChannelDetailNavigationChange: (navigation: LarkChannelDetailNavigation | null) => void,
 ): ReactNode {
   switch (view.section) {
     case "projects":
       return <ProjectsScreen serverId={view.serverId} />;
     case "connections":
-      return <HostConnectionsPage serverId={view.serverId} />;
+      return <HostConnectionsPage serverId={view.serverId} onOpenLocalRelay={onOpenLocalRelay} />;
     case "pair-device":
-      return <HostPairDevicePage serverId={view.serverId} />;
+      return <PairDeviceSection serverId={view.serverId} />;
+    case "relay":
+      return <HostLocalRelayPage serverId={view.serverId} />;
     case "agents":
       return <HostAgentsPage serverId={view.serverId} />;
     case "metadata":
       return <MetadataGenerationPage serverId={view.serverId} />;
+    case "assistants":
+      return <HostAssistantsPage serverId={view.serverId} />;
+    case "memory":
+      return <HostMemoryPage serverId={view.serverId} />;
+    case "knowledge":
+      return <KnowledgeManagementSection serverId={view.serverId} />;
+    case "mcp":
+      return <HostMcpPage serverId={view.serverId} />;
+    case "skills":
+      return <HostSkillsPage serverId={view.serverId} />;
     case "workspaces":
       return <HostWorkspacesPage serverId={view.serverId} />;
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
+    case "channels":
+      return (
+        <HostChannelsPage
+          serverId={view.serverId}
+          onDetailNavigationChange={onChannelDetailNavigationChange}
+        />
+      );
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
     case "terminals":
@@ -249,9 +344,18 @@ function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { ho
 
 function getSendBehaviorOptions(t: TFunction) {
   return [
-    { value: "interrupt" as const, label: t("settings.general.defaultSend.options.interrupt") },
-    { value: "steer" as const, label: t("settings.general.defaultSend.options.steer") },
-    { value: "queue" as const, label: t("settings.general.defaultSend.options.queue") },
+    {
+      value: "interrupt" as const,
+      label: t("settings.general.defaultSend.options.interrupt"),
+    },
+    {
+      value: "steer" as const,
+      label: t("settings.general.defaultSend.options.steer"),
+    },
+    {
+      value: "queue" as const,
+      label: t("settings.general.defaultSend.options.queue"),
+    },
   ];
 }
 
@@ -402,7 +506,8 @@ function GeneralSection({
   return (
     <SettingsSection title={t("settings.general.title")}>
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
+        <ClientIdentitySettingsRows />
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>{t("settings.general.defaultSend.label")}</Text>
             <Text style={settingsStyles.rowHint}>{t(sendBehaviorDescriptionKey)}</Text>
@@ -410,7 +515,9 @@ function GeneralSection({
           <DropdownMenu>
             <DropdownTrigger
               accessibilityRole="button"
-              accessibilityLabel={`${t("settings.general.defaultSend.label")}: ${selectedSendBehaviorLabel}`}
+              accessibilityLabel={`${t(
+                "settings.general.defaultSend.label",
+              )}: ${selectedSendBehaviorLabel}`}
               style={themeTriggerStyle}
             >
               <Text style={styles.themeTriggerText}>{selectedSendBehaviorLabel}</Text>
@@ -750,8 +857,14 @@ function DesktopAppUpdateRow() {
   );
   const releaseChannelOptions = useMemo(
     () => [
-      { value: "stable" as const, label: t("settings.about.releaseChannel.stable") },
-      { value: "beta" as const, label: t("settings.about.releaseChannel.beta") },
+      {
+        value: "stable" as const,
+        label: t("settings.about.releaseChannel.stable"),
+      },
+      {
+        value: "beta" as const,
+        label: t("settings.about.releaseChannel.beta"),
+      },
     ],
     [t],
   );
@@ -1031,6 +1144,8 @@ interface SettingsSidebarProps {
   layout: "desktop" | "mobile";
 }
 
+let desktopSettingsSidebarScrollY = 0;
+
 function SettingsSidebar({
   view,
   onSelectSection,
@@ -1063,9 +1178,65 @@ function SettingsSidebar({
     [insets.top, isDesktop],
   );
   const selectedSectionId = view.kind === "section" ? view.section : null;
-  let selectedHostSection: HostSectionSlug | null = null;
-  if (view.kind === "host") selectedHostSection = view.section;
-  if (view.kind === "project") selectedHostSection = "projects";
+  const selectedHostSection = getHostSectionAfterHostSwitch(view);
+  const desktopScrollRef = useRef<ScrollView>(null);
+  const desktopScrollRestoreYRef = useRef(isDesktop ? desktopSettingsSidebarScrollY : 0);
+  const desktopScrollRestorePendingRef = useRef(desktopScrollRestoreYRef.current > 0);
+  const desktopScrollRestoreFrameRef = useRef<number | null>(null);
+  const handleDesktopScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const nextOffset = event.nativeEvent.contentOffset.y;
+    if (!Number.isFinite(nextOffset) || desktopScrollRestorePendingRef.current) {
+      return;
+    }
+
+    desktopSettingsSidebarScrollY = Math.max(0, nextOffset);
+  }, []);
+
+  const restoreDesktopScrollPosition = useCallback(() => {
+    if (!isDesktop || !desktopScrollRestorePendingRef.current) {
+      return;
+    }
+
+    const restoreY = desktopScrollRestoreYRef.current;
+    if (restoreY <= 0) {
+      desktopScrollRestorePendingRef.current = false;
+      return;
+    }
+
+    if (desktopScrollRestoreFrameRef.current !== null) {
+      cancelAnimationFrame(desktopScrollRestoreFrameRef.current);
+    }
+
+    // The settings sidebar is remounted for every route. Waiting for its
+    // content layout (and two animation frames) prevents an early scrollTo
+    // from being clamped to zero before the long host menu is measurable.
+    desktopScrollRestoreFrameRef.current = requestAnimationFrame(() => {
+      desktopScrollRef.current?.scrollTo({ y: restoreY, animated: false });
+      desktopScrollRestoreFrameRef.current = requestAnimationFrame(() => {
+        desktopScrollRef.current?.scrollTo({ y: restoreY, animated: false });
+        desktopScrollRestoreFrameRef.current = null;
+        desktopScrollRestorePendingRef.current = false;
+      });
+    });
+  }, [isDesktop]);
+
+  useEffect(() => {
+    if (!isDesktop) {
+      desktopScrollRestorePendingRef.current = false;
+      return;
+    }
+
+    desktopScrollRestoreYRef.current = desktopSettingsSidebarScrollY;
+    desktopScrollRestorePendingRef.current = desktopSettingsSidebarScrollY > 0;
+    restoreDesktopScrollPosition();
+
+    return () => {
+      if (desktopScrollRestoreFrameRef.current !== null) {
+        cancelAnimationFrame(desktopScrollRestoreFrameRef.current);
+        desktopScrollRestoreFrameRef.current = null;
+      }
+    };
+  }, [isDesktop, restoreDesktopScrollPosition]);
 
   const sidebarBody = (
     <>
@@ -1157,8 +1328,12 @@ function SettingsSidebar({
             />
           </View>
           <ScrollView
+            ref={desktopScrollRef}
             style={sidebarStyles.scrollBody}
             showsVerticalScrollIndicator={false}
+            onScroll={handleDesktopScroll}
+            onContentSizeChange={restoreDesktopScrollPosition}
+            scrollEventThrottle={16}
             testID="settings-sidebar-scroll-body"
           >
             {sidebarBody}
@@ -1179,6 +1354,131 @@ export interface SettingsScreenProps {
   view: SettingsView;
   openAddHostIntent?: string | null;
 }
+
+interface SettingsDetailHeaderCallbacks {
+  closeLocalRelay: () => void;
+  backFromDetail: () => void;
+}
+
+function resolveSettingsDetailHeader(input: {
+  view: SettingsView;
+  channelDetailNavigation: LarkChannelDetailNavigation | null;
+  callbacks: SettingsDetailHeaderCallbacks;
+  t: TFunction;
+}): SettingsDetailHeader | null {
+  const { view, channelDetailNavigation, callbacks, t } = input;
+  if (view.kind === "host") {
+    if (view.section === "channels" && channelDetailNavigation) {
+      return {
+        title: channelDetailNavigation.title,
+        Icon: MessageCircle,
+        onBack: channelDetailNavigation.onBack,
+      };
+    }
+    if (view.section === "relay") {
+      return {
+        title: t("settings.host.relay.lan.title"),
+        Icon: Network,
+        onBack: callbacks.closeLocalRelay,
+      };
+    }
+    const item = HOST_SECTION_ITEMS.find((section) => section.id === view.section);
+    return item ? { title: t(item.labelKey), Icon: item.icon } : null;
+  }
+  if (view.kind === "section") {
+    const item = SIDEBAR_SECTION_ITEMS.find((section) => section.id === view.section);
+    return item ? { title: t(item.labelKey), Icon: item.icon } : null;
+  }
+  if (view.kind === "project") {
+    return { title: "项目设置", Icon: FolderGit2, onBack: callbacks.backFromDetail };
+  }
+  if (view.kind === "memory") {
+    return {
+      title: view.memoryId
+        ? t("memoryPolicies.contentManager.detailTitle")
+        : t("memoryPolicies.contentManager.pageTitle"),
+      Icon: Brain,
+      onBack: callbacks.backFromDetail,
+    };
+  }
+  if (view.kind === "memory-page") {
+    return {
+      title: MEMORY_SETTINGS_PAGE_TITLES[view.page],
+      Icon: Brain,
+      onBack: callbacks.backFromDetail,
+    };
+  }
+  return getResourceDetailHeader(view, callbacks.backFromDetail);
+}
+
+function navigateBackWithHistory(input: {
+  canGoBack: () => boolean;
+  back: () => void;
+  fallback: () => void;
+}): void {
+  if (input.canGoBack()) {
+    input.back();
+    return;
+  }
+  input.fallback();
+}
+
+function renderDesktopSettingsDetailHeader(input: {
+  detailHeader: SettingsDetailHeader | null;
+  iconSize: number;
+  iconColor: string;
+}): ReactNode {
+  if (!input.detailHeader) {
+    return null;
+  }
+  if (input.detailHeader.onBack) {
+    return (
+      <SettingsDetailNavigationHeader
+        title={input.detailHeader.title}
+        Icon={input.detailHeader.Icon}
+        iconColor={input.iconColor}
+        titleAccessory={input.detailHeader.titleAccessory}
+        onBack={input.detailHeader.onBack}
+      />
+    );
+  }
+  const DetailIcon = input.detailHeader.Icon;
+  return (
+    <>
+      <HeaderIconBadge>
+        <DetailIcon size={input.iconSize} color={input.iconColor} />
+      </HeaderIconBadge>
+      <ScreenTitle testID="settings-detail-header-title">{input.detailHeader.title}</ScreenTitle>
+      {input.detailHeader.titleAccessory}
+    </>
+  );
+}
+
+/* oxlint-disable react-perf/jsx-no-jsx-as-prop -- ScreenHeader intentionally exposes its left slot as a ReactNode prop. */
+function SettingsMobileDetailHeader({
+  detailHeader,
+  fallbackBack,
+  iconColor,
+}: {
+  detailHeader: SettingsDetailHeader | null;
+  fallbackBack: () => void;
+  iconColor: string;
+}) {
+  if (!detailHeader) {
+    return <BackHeader onBack={fallbackBack} />;
+  }
+  const headerLeft = (
+    <SettingsDetailNavigationHeader
+      title={detailHeader.title}
+      Icon={detailHeader.Icon}
+      iconColor={iconColor}
+      titleAccessory={detailHeader.titleAccessory}
+      onBack={detailHeader.onBack ?? fallbackBack}
+    />
+  );
+  return <ScreenHeader left={headerLeft} />;
+}
+/* oxlint-enable react-perf/jsx-no-jsx-as-prop */
 
 export default function SettingsScreen({ view, openAddHostIntent = null }: SettingsScreenProps) {
   const router = useRouter();
@@ -1203,11 +1503,12 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
   const lastWorkspaceSelection = useLastWorkspaceSelection();
-  const routedSettingsHostServerId =
-    view.kind === "host" || view.kind === "project" ? view.serverId : null;
+  const routedSettingsHostServerId = getSettingsViewServerId(view);
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
     routedSettingsHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
   );
+  const [channelDetailNavigation, setChannelDetailNavigation] =
+    useState<LarkChannelDetailNavigation | null>(null);
   useFocusEffect(
     useCallback(() => {
       setSelectedSettingsHostServerId(
@@ -1219,25 +1520,25 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   // The host the four sections scope to: the host on the active view, otherwise
   // the picker choice, otherwise the connected local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
-    if (view.kind === "host" || view.kind === "project") return view.serverId;
+    if (routedSettingsHostServerId) return routedSettingsHostServerId;
     return resolveActiveHostServerId({
       selectedServerId: selectedSettingsHostServerId,
       localServerId,
       hosts,
       orderedHosts: sortedHosts,
     });
-  }, [view, selectedSettingsHostServerId, localServerId, hosts, sortedHosts]);
-
-  const handleSendBehaviorChange = useCallback(
-    (behavior: SendBehavior) => {
-      void updateSettings({ sendBehavior: behavior });
-    },
-    [updateSettings],
-  );
+  }, [routedSettingsHostServerId, selectedSettingsHostServerId, localServerId, hosts, sortedHosts]);
 
   const handleServiceUrlBehaviorChange = useCallback(
     (behavior: ServiceUrlBehavior) => {
       void updateSettings({ serviceUrlBehavior: behavior });
+    },
+    [updateSettings],
+  );
+
+  const handleSendBehaviorChange = useCallback(
+    (behavior: SendBehavior) => {
+      void updateSettings({ sendBehavior: behavior });
     },
     [updateSettings],
   );
@@ -1362,19 +1663,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   const handleSelectHost = useCallback(
     (serverId: string) => {
       setSelectedSettingsHostServerId(serverId);
-      if (view.kind === "project") {
-        const target = buildSettingsHostSectionRoute(serverId, "projects");
-        if (isCompactLayout) {
-          router.push(target);
-        } else {
-          router.replace(target);
-        }
-        return;
-      }
-      if (view.kind !== "host") {
-        return;
-      }
-      const target = buildSettingsHostSectionRoute(serverId, view.section);
+      const section = getHostSectionAfterHostSwitch(view);
+      if (!section) return;
+      const target = buildSettingsHostSectionRoute(serverId, section);
       if (isCompactLayout) {
         router.push(target);
       } else {
@@ -1417,34 +1708,48 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
   }, [isCompactLayout, router]);
 
+  const handleOpenLocalRelay = useCallback(() => {
+    if (!activeHostServerId) return;
+    const target = buildSettingsHostSectionRoute(activeHostServerId, "relay");
+    if (isCompactLayout) {
+      router.push(target);
+    } else {
+      router.replace(target);
+    }
+  }, [activeHostServerId, isCompactLayout, router]);
+
+  const handleCloseLocalRelay = useCallback(() => {
+    const serverId = view.kind === "host" ? view.serverId : activeHostServerId;
+    if (!serverId) return;
+    const target = buildSettingsHostSectionRoute(serverId, "connections");
+    if (isCompactLayout) {
+      router.replace(target);
+    } else {
+      router.replace(target);
+    }
+  }, [activeHostServerId, isCompactLayout, router, view]);
+
   const handleBackFromDetail = useCallback(() => {
-    returnFromSettings(view);
-  }, [view]);
+    navigateBackWithHistory({
+      canGoBack: () => router.canGoBack(),
+      back: () => router.back(),
+      fallback: () => returnFromSettings(view),
+    });
+  }, [router, view]);
 
   const handleBackToWorkspace = useCallback(() => {
     returnFromSettings({ kind: "root" });
   }, []);
 
-  const detailHeader = ((): {
-    title: string;
-    Icon: ComponentType<{ size: number; color: string }>;
-    titleAccessory?: ReactNode;
-  } | null => {
-    if (view.kind === "host") {
-      const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
-      if (!item) return null;
-      return { title: t(item.labelKey), Icon: item.icon };
-    }
-    if (view.kind === "section") {
-      const item = SIDEBAR_SECTION_ITEMS.find((s) => s.id === view.section);
-      if (!item) return null;
-      return { title: t(item.labelKey), Icon: item.icon };
-    }
-    if (view.kind === "project") {
-      return { title: t("settings.projects"), Icon: FolderGit2 };
-    }
-    return null;
-  })();
+  const detailHeader = resolveSettingsDetailHeader({
+    view,
+    channelDetailNavigation,
+    callbacks: {
+      closeLocalRelay: handleCloseLocalRelay,
+      backFromDetail: handleBackFromDetail,
+    },
+    t,
+  });
 
   let content: ReactNode;
   if (view.kind === "section" && view.section === "layout") {
@@ -1452,18 +1757,15 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
   } else {
     content = (() => {
       if (view.kind === "host") {
-        return renderHostSettingsContent(view, handleHostRemoved);
-      }
-      if (view.kind === "project") {
-        return (
-          <ProjectSettingsScreen
-            serverId={view.serverId}
-            projectId={view.projectId}
-            onBackToProjects={handleBackFromDetail}
-            showBackToProjects={!isCompactLayout}
-          />
+        return renderHostSettingsContent(
+          view,
+          handleHostRemoved,
+          handleOpenLocalRelay,
+          setChannelDetailNavigation,
         );
       }
+      const nestedContent = renderNestedSettingsContent(view, handleBackFromDetail);
+      if (nestedContent !== undefined) return nestedContent;
       if (view.kind === "section") {
         switch (view.section) {
           case "general":
@@ -1525,15 +1827,11 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     );
   }
 
-  const desktopDetailHeaderLeft = detailHeader ? (
-    <>
-      <HeaderIconBadge>
-        <detailHeader.Icon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-      </HeaderIconBadge>
-      <ScreenTitle testID="settings-detail-header-title">{detailHeader.title}</ScreenTitle>
-      {detailHeader.titleAccessory}
-    </>
-  ) : null;
+  const desktopDetailHeaderLeft = renderDesktopSettingsDetailHeader({
+    detailHeader,
+    iconSize: theme.iconSize.md,
+    iconColor: theme.colors.foregroundMuted,
+  });
 
   const addHostModals = (
     <>
@@ -1588,13 +1886,14 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     );
   }
 
+  // Mobile detail: full-screen content with a back header.
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
-        <BackHeader
-          title={detailHeader?.title}
-          titleAccessory={detailHeader?.titleAccessory}
-          onBack={handleBackFromDetail}
+        <SettingsMobileDetailHeader
+          detailHeader={detailHeader}
+          fallbackBack={handleBackFromDetail}
+          iconColor={theme.colors.foregroundMuted}
         />
         <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
           <View style={styles.content}>{content}</View>
@@ -1606,7 +1905,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
 
   // Desktop split view — mirrors AppContainer: sidebar owns the titlebar drag
   // region + traffic-light padding; detail pane renders whatever header the
-  // selected section provides.
   return (
     <View style={styles.container}>
       <View style={desktopStyles.row}>
@@ -1630,7 +1928,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               leftStyle={desktopStyles.detailLeft}
             />
             <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
-              <View style={styles.content}>{content}</View>
+              <View style={[styles.content, view.kind === "memory" && styles.wideContent]}>
+                {content}
+              </View>
             </ScrollView>
           </View>
         </WindowChromeRegion>
@@ -1668,6 +1968,9 @@ const styles = StyleSheet.create((theme) => ({
     width: "100%",
     maxWidth: 720,
     alignSelf: "center",
+  },
+  wideContent: {
+    maxWidth: 920,
   },
   aboutValue: {
     color: theme.colors.foregroundMuted,

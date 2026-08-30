@@ -4,6 +4,7 @@ import {
   mergePersistedCollapsedProjects,
   serializeCollapsedProjects,
   setProjectCollapsed,
+  setWorkspaceGroupsCollapsed,
   togglePinnedCollapsed,
   toggleProjectCollapsed,
   toggleWorkspaceGroupCollapsed,
@@ -13,6 +14,7 @@ function emptyState(): CollapsedProjectsState {
   return {
     collapsedProjectKeys: new Set(),
     collapsedWorkspaceGroupKeys: new Set(),
+    collapsedStatusGroupKeys: new Set(),
     collapsedPinned: false,
   };
 }
@@ -34,6 +36,7 @@ describe("sidebar collapsed projects transitions", () => {
     const state: CollapsedProjectsState = {
       collapsedProjectKeys: new Set(["project-a", "project-b"]),
       collapsedWorkspaceGroupKeys: new Set(["running"]),
+      collapsedStatusGroupKeys: new Set(["running"]),
       collapsedPinned: true,
     };
 
@@ -42,6 +45,26 @@ describe("sidebar collapsed projects transitions", () => {
       collapsedWorkspaceGroupKeys: ["running"],
       collapsedPinned: true,
     });
+  });
+
+  it("collapses and expands workspace groups in one transition", () => {
+    const collapsed = setWorkspaceGroupsCollapsed(
+      emptyState(),
+      ["project-a", "project-b"],
+      ["running"],
+      true,
+    );
+    expect(Array.from(collapsed.collapsedProjectKeys)).toEqual(["project-a", "project-b"]);
+    expect(Array.from(collapsed.collapsedStatusGroupKeys)).toEqual(["running"]);
+
+    const expanded = setWorkspaceGroupsCollapsed(
+      collapsed,
+      ["project-a", "project-b"],
+      ["running"],
+      false,
+    );
+    expect(Array.from(expanded.collapsedProjectKeys)).toEqual([]);
+    expect(Array.from(expanded.collapsedStatusGroupKeys)).toEqual([]);
   });
 
   it("toggles and restores the pinned section collapse flag", () => {

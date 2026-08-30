@@ -81,10 +81,17 @@ describe("desktop-settings", () => {
 
     expect(settings).toEqual({
       releaseChannel: "stable",
-      notifications: { playSound: true },
+      notifications: { enabled: true, playSound: true },
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
+      },
+      attention: {
+        soundVolume: 0.5,
+      },
+      island: {
+        enabled: true,
+        showWhenFocused: true,
       },
     });
   });
@@ -98,15 +105,23 @@ describe("desktop-settings", () => {
     const next = await store.patch({
       releaseChannel: "beta",
       daemon: { keepRunningAfterQuit: false },
+      attention: { soundVolume: 0.75 },
     });
     const files = await readdir(userDataPath);
 
     expect(next).toEqual({
       releaseChannel: "beta",
-      notifications: { playSound: true },
+      notifications: { enabled: true, playSound: true },
       daemon: {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
+      },
+      attention: {
+        soundVolume: 0.75,
+      },
+      island: {
+        enabled: true,
+        showWhenFocused: true,
       },
     });
     expect(files).toEqual(["desktop-settings.json"]);
@@ -135,20 +150,36 @@ describe("desktop-settings", () => {
 
     const settings = await createDesktopSettingsStore({ userDataPath }).get();
 
+    expect(settings.notifications.enabled).toBe(true);
     expect(settings.notifications.playSound).toBe(true);
   });
 
-  it("keeps an explicit notification sound choice across restarts", async () => {
+  it("keeps explicit notification choices across restarts", async () => {
     const userDataPath = await createTempUserDataDir();
     directories.add(userDataPath);
 
     await createDesktopSettingsStore({ userDataPath }).patch({
-      notifications: { playSound: false },
+      notifications: { enabled: false, playSound: false },
     });
 
     const settings = await createDesktopSettingsStore({ userDataPath }).get();
 
+    expect(settings.notifications.enabled).toBe(false);
     expect(settings.notifications.playSound).toBe(false);
+  });
+
+  it("patches notification fields independently", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    await store.patch({ notifications: { playSound: false } });
+    const settings = await store.patch({ notifications: { enabled: false } });
+
+    expect(settings.notifications).toEqual({
+      enabled: false,
+      playSound: false,
+    });
   });
 
   it("does not let stale legacy renderer settings override an explicit desktop patch", async () => {
@@ -270,13 +301,44 @@ describe("desktop-settings", () => {
 
     expect(migrated).toEqual({
       releaseChannel: "beta",
-      notifications: { playSound: true },
+      notifications: { enabled: true, playSound: true },
       daemon: {
         manageBuiltInDaemon: false,
         keepRunningAfterQuit: false,
       },
+      attention: {
+        soundVolume: 0.5,
+      },
+      island: {
+        enabled: true,
+        showWhenFocused: true,
+      },
     });
     expect(ignoredSecondMigration).toEqual(migrated);
+  });
+
+  it("clamps attention sound volume to the supported range", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    expect((await store.patch({ attention: { soundVolume: 2 } })).attention.soundVolume).toBe(1);
+    expect((await store.patch({ attention: { soundVolume: -1 } })).attention.soundVolume).toBe(0);
+  });
+
+  it("persists Dynamic Island reminder preferences", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    const settings = await store.patch({
+      island: { enabled: false, showWhenFocused: false },
+    });
+
+    expect(settings.island).toEqual({
+      enabled: false,
+      showWhenFocused: false,
+    });
   });
 
   it("keeps keys written by another build across a patch", async () => {
@@ -290,7 +352,10 @@ describe("desktop-settings", () => {
         settings: {
           releaseChannel: "beta",
           tray: { enabled: true },
+          notifications: { enabled: true, playSound: true, futureFlag: "notification" },
           daemon: { manageBuiltInDaemon: true, keepRunningAfterQuit: false, futureFlag: 7 },
+          attention: { soundVolume: 0.5, futureFlag: "attention" },
+          island: { enabled: true, showWhenFocused: true, futureFlag: "island" },
         },
         migrations: {
           legacyRendererSettingsImported: true,
@@ -304,20 +369,23 @@ describe("desktop-settings", () => {
     const next = await store.patch({ notifications: { playSound: false } });
     const persisted = JSON.parse(await readFile(settingsFilePath(userDataPath), "utf8")) as {
       futureDocumentKey: string;
-      settings: { releaseChannel: string; tray: unknown; daemon: Record<string, unknown> };
-      migrations: Record<string, boolean>;
+      settings: Record<string, unknown> & {
+        notifications: Record<string, unknown>;
+        daemon: Record<string, unknown>;
+        attention: Record<string, unknown>;
+        island: Record<string, unknown>;
+      };
+      migrations: Record<string, unknown>;
     };
 
-    expect(persisted.settings.tray).toEqual({ enabled: true });
-    expect(persisted.settings.daemon.futureFlag).toBe(7);
-    expect(persisted.migrations.futureMigrationApplied).toBe(true);
     expect(persisted.futureDocumentKey).toBe("kept");
-    expect(persisted.settings.releaseChannel).toBe("beta");
-    expect(next).toEqual({
-      releaseChannel: "beta",
-      notifications: { playSound: false },
-      daemon: { manageBuiltInDaemon: true, keepRunningAfterQuit: false },
-    });
+    expect(persisted.settings.tray).toEqual({ enabled: true });
+    expect(persisted.settings.notifications.futureFlag).toBe("notification");
+    expect(persisted.settings.daemon.futureFlag).toBe(7);
+    expect(persisted.settings.attention.futureFlag).toBe("attention");
+    expect(persisted.settings.island.futureFlag).toBe("island");
+    expect(persisted.migrations.futureMigrationApplied).toBe(true);
+    expect(next.notifications.playSound).toBe(false);
   });
 
   it("keeps keys written by another build across the legacy renderer migration", async () => {
@@ -328,7 +396,10 @@ describe("desktop-settings", () => {
       JSON.stringify({
         version: 1,
         settings: { tray: { enabled: true } },
-        migrations: { legacyRendererSettingsImported: false, daemonStopOnQuitDefaultApplied: true },
+        migrations: {
+          legacyRendererSettingsImported: false,
+          daemonStopOnQuitDefaultApplied: true,
+        },
       }),
     );
     const store = createDesktopSettingsStore({ userDataPath });
@@ -342,7 +413,7 @@ describe("desktop-settings", () => {
     expect(persisted.settings.releaseChannel).toBe("beta");
   });
 
-  it("replaces an unusable modelled value on the write path", async () => {
+  it("replaces an unusable modelled value without dropping unknown keys", async () => {
     const userDataPath = await createTempUserDataDir();
     directories.add(userDataPath);
     await writeFile(
@@ -350,7 +421,10 @@ describe("desktop-settings", () => {
       JSON.stringify({
         version: 1,
         settings: { releaseChannel: "nightly", tray: { enabled: true } },
-        migrations: { legacyRendererSettingsImported: true, daemonStopOnQuitDefaultApplied: true },
+        migrations: {
+          legacyRendererSettingsImported: true,
+          daemonStopOnQuitDefaultApplied: true,
+        },
       }),
     );
     const store = createDesktopSettingsStore({ userDataPath });

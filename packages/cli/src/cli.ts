@@ -1,11 +1,11 @@
 import { Command, Option } from "commander";
 import { createAgentCommand } from "./commands/agent/index.js";
-import { createDaemonCommand } from "./commands/feature-paseo-daemon/index.js";
+import { createDaemonCommand } from "./commands/daemon-management/index.js";
 import { createPermitCommand } from "./commands/permit/index.js";
 import { createProviderCommand } from "./commands/provider/index.js";
-import { createPluginCommand } from "./commands/feature-paseo-plugin/index.js";
+import { createPluginCommand } from "./commands/plugin-management/index.js";
 import { createProjectCommand } from "./commands/project/index.js";
-import { createScheduleCommand } from "./commands/feature-paseo-schedule/index.js";
+import { createScheduleCommand } from "./commands/schedule-management/index.js";
 import { createWorkflowCommand } from "./commands/workflow/index.js";
 import { createSpeechCommand } from "./commands/speech/index.js";
 import { createScriptCommand } from "./commands/script/index.js";
@@ -15,11 +15,11 @@ import { createWorkspaceCommand } from "./commands/workspace/index.js";
 import { createHeartbeatCommand } from "./commands/heartbeat/index.js";
 import { createHubCommand } from "./commands/hub/index.js";
 import { createHooksCommand } from "./commands/hooks.js";
-import { startCommand as daemonStartCommand } from "./commands/feature-paseo-daemon/start.js";
-import { runStatusCommand as runDaemonStatusCommand } from "./commands/feature-paseo-daemon/status.js";
-import { runRestartCommand as runDaemonRestartCommand } from "./commands/feature-paseo-daemon/restart.js";
-import { runDaemonReloadCommand } from "./commands/feature-paseo-daemon/reload.js";
-import { createRelayCommand } from "./commands/feature-paseo-daemon/relay.js";
+import { startCommand as daemonStartCommand } from "./commands/daemon-management/start.js";
+import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon-management/status.js";
+import { runRestartCommand as runDaemonRestartCommand } from "./commands/daemon-management/restart.js";
+import { runDaemonReloadCommand } from "./commands/daemon-management/reload.js";
+import { createRelayCommand } from "./commands/daemon-management/relay.js";
 import { addLsOptions, runLsCommand } from "./commands/agent/ls.js";
 import { addRunOptions, runRunCommand } from "./commands/agent/run.js";
 import { addLogsOptions, runLogsCommand } from "./commands/agent/logs.js";
@@ -33,7 +33,7 @@ import { addAttachOptions, runAttachCommand } from "./commands/agent/attach.js";
 import { addImportOptions, runImportCommand } from "./commands/agent/import.js";
 import { withOutput } from "./output/index.js";
 import { runCloneCommand } from "./commands/clone.js";
-import { onboardCommand } from "./commands/onboard.feature-paseo.js";
+import { onboardCommand } from "./commands/onboard.js";
 import {
   addDaemonHostOption,
   addJsonAndDaemonHostOptions,

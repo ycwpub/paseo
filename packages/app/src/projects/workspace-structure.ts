@@ -5,6 +5,7 @@ export interface WorkspaceStructureHostPlacement {
   serverId: string;
   projectId: string;
   iconWorkingDir: string;
+  sourceDirectory?: string;
   worktreeSupport: "supported" | "unsupported" | "unknown";
   customIconRevision?: string | null;
   iconRevision?: string;
@@ -18,6 +19,7 @@ export interface WorkspaceStructureProject {
   iconWorkingDir: string;
   hosts: WorkspaceStructureHostPlacement[];
   workspaceKeys: string[];
+  parentViewKey?: string | null;
 }
 
 export interface WorkspaceStructure {
@@ -39,6 +41,7 @@ interface ProjectDraft {
   iconWorkingDir: string;
   hosts: Map<string, WorkspaceStructureHostPlacement>;
   workspaces: Array<{ workspaceId: string; workspaceName: string; workspaceKey: string }>;
+  parentProjectIdsByServerId: Map<string, string>;
 }
 
 /** The single app boundary that turns host-local projects into grouped display projects. */
@@ -77,6 +80,9 @@ export function buildWorkspaceStructureProjects(input: {
       project.projectId,
       viewKey,
     );
+    if (project.parentProjectId) {
+      byProject.get(viewKey)?.parentProjectIdsByServerId.set(serverId, project.parentProjectId);
+    }
   }
 
   for (const session of input.sessions) {
@@ -102,6 +108,10 @@ export function buildWorkspaceStructureProjects(input: {
       workspaceKeys: draft.workspaces
         .sort(compareWorkspaceStructureItems)
         .map((workspace) => workspace.workspaceKey),
+      parentViewKey:
+        Array.from(draft.parentProjectIdsByServerId, ([serverId, parentProjectId]) =>
+          viewKeyByServerProjectId.get(serverId)?.get(parentProjectId),
+        ).find((value): value is string => Boolean(value)) ?? null,
     }))
     .sort(
       (left, right) =>
@@ -159,6 +169,7 @@ function addProjectToView(input: {
     serverId,
     projectId: project.projectId,
     iconWorkingDir: project.projectRootPath,
+    sourceDirectory: project.projectSourceDirectory,
     worktreeSupport: project.projectKind === "git" ? "supported" : "unsupported",
     customIconRevision: project.projectCustomIconRevision,
     iconRevision: project.projectIconRevision,
@@ -177,6 +188,7 @@ function addProjectToView(input: {
       iconWorkingDir: project.projectRootPath,
       hosts: new Map([[serverId, placement]]),
       workspaces: [],
+      parentProjectIdsByServerId: new Map(),
     });
   } else {
     if (project.projectCustomName && !draft.hasCustomName) {

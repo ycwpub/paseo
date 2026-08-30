@@ -36,6 +36,7 @@ export interface SidebarStatusWorkspacePlacement extends SidebarWorkspacePlaceme
 }
 
 export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
+  projectId: string;
   workspaceDirectory: string;
   workspaceDirectoryLabel: string;
   // Raw user-set title (null when the name is derived from branch/directory).
@@ -52,6 +53,7 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
   archiveUnpushedCommitCount: number | null;
   scripts: WorkspaceDescriptor["scripts"];
   hasRunningScripts: boolean;
+  activityAt?: Date | null;
 }
 
 export interface SidebarProjectEntry {
@@ -61,6 +63,8 @@ export interface SidebarProjectEntry {
   iconWorkingDir: string;
   hosts: WorkspaceStructureHostPlacement[];
   workspaces: SidebarWorkspacePlacement[];
+  parentViewKey?: string | null;
+  hierarchyDepth?: number;
 }
 
 export interface SidebarWorkspacePlacementModel {
@@ -152,10 +156,12 @@ export function createSidebarWorkspaceEntry(input: {
 }): SidebarWorkspaceEntry {
   const projectViewKey = input.projectViewKey ?? input.workspace.projectId;
   const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
+  const rootAgentActivity = input.workspaceAgentActivity?.get(input.workspace.id);
   return {
     workspaceKey: `${input.serverId}:${input.workspace.id}`,
     serverId: input.serverId,
     workspaceId: input.workspace.id,
+    projectId: input.workspace.projectId,
     projectViewKey,
     projectName: projectNameForWorkspace(input.workspace),
     projectRootPath: input.workspace.projectRootPath,
@@ -181,6 +187,7 @@ export function createSidebarWorkspaceEntry(input: {
     archiveUnpushedCommitCount: input.workspace.gitRuntime?.aheadOfOrigin ?? null,
     scripts: input.workspace.scripts,
     hasRunningScripts: input.workspace.scripts.some((script) => script.lifecycle === "running"),
+    activityAt: rootAgentActivity?.activityAt ?? input.workspace.statusEnteredAt,
   };
 }
 
@@ -298,6 +305,40 @@ export function buildSidebarWorkspacePlacementModel(input: {
   };
 }
 
+export function sortSidebarProjectsByActivity(input: {
+  projects: readonly SidebarProjectEntry[];
+  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
+}): SidebarProjectEntry[] {
+  const activityTime = (workspaceKey: string): number =>
+    input.workspaceEntriesByKey.get(workspaceKey)?.activityAt?.getTime() ??
+    Number.NEGATIVE_INFINITY;
+  const projectActivityTime = (project: SidebarProjectEntry): number =>
+    project.workspaces.reduce(
+      (latest, workspace) => Math.max(latest, activityTime(workspace.workspaceKey)),
+      Number.NEGATIVE_INFINITY,
+    );
+
+  return input.projects
+    .map((project) => ({
+      ...project,
+      workspaces: project.workspaces
+        .map((workspace, index) => ({ workspace, index }))
+        .sort(
+          (left, right) =>
+            activityTime(right.workspace.workspaceKey) -
+              activityTime(left.workspace.workspaceKey) || left.index - right.index,
+        )
+        .map(({ workspace }) => workspace),
+    }))
+    .map((project, index) => ({ project, index }))
+    .sort(
+      (left, right) =>
+        projectActivityTime(right.project) - projectActivityTime(left.project) ||
+        left.index - right.index,
+    )
+    .map(({ project }) => project);
+}
+
 function createStructuralWorkspaceEntry(input: {
   project: HostProjectListItem;
   workspaceKey: string;
@@ -306,7 +347,6 @@ function createStructuralWorkspaceEntry(input: {
     project: input.project,
     workspaceKey: input.workspaceKey,
   });
-
   return {
     workspaceKey: identity.workspaceKey,
     serverId: identity.serverId,
@@ -440,6 +480,7 @@ export function buildSidebarProjectsFromStructure(input: {
       iconWorkingDir: project.iconWorkingDir,
       hosts: project.hosts,
       workspaceKeys: project.workspaceKeys,
+      parentViewKey: project.parentViewKey,
     })),
   });
 }
@@ -457,6 +498,7 @@ export function buildSidebarProjectsFromHostProjects(input: {
     projectKind: project.projectKind,
     iconWorkingDir: project.iconWorkingDir,
     hosts: project.hosts,
+    parentViewKey: project.parentViewKey,
     workspaces: project.workspaceKeys.map((workspaceKey) =>
       createStructuralWorkspaceEntry({
         project,

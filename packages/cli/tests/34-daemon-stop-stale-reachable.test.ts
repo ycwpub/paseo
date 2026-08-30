@@ -140,7 +140,9 @@ try {
         PASEO_RELAY_ENABLED: "false",
         CI: "true",
       },
-      stdio: ["ignore", "pipe", "pipe"],
+      // The fixture does not inspect worker output. Ignoring it prevents an
+      // unread pipe from applying backpressure during graceful shutdown.
+      stdio: "ignore",
     },
   );
 

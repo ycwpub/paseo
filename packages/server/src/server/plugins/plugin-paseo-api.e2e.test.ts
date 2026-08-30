@@ -16,9 +16,20 @@ test("plugin handlers create workspaces and agents through their Paseo API", asy
   const pluginDirectory = await mkdtemp(path.join(tmpdir(), "paseo-api-plugin-"));
   const workspaceDirectory = await mkdtemp(path.join(tmpdir(), "paseo-api-workspace-"));
   roots.push(pluginDirectory, workspaceDirectory);
+  await mkdir(path.join(pluginDirectory, "skills", "review"), { recursive: true });
   await writeFile(
     path.join(pluginDirectory, "paseo-plugin.json"),
-    JSON.stringify({ id: "paseo-api" }),
+    JSON.stringify({
+      id: "paseo-api",
+      name: "paseo-api",
+      version: "1.0.0",
+      description: "Unified runtime and resource plugin",
+      resources: { skills: "./skills/" },
+    }),
+  );
+  await writeFile(
+    path.join(pluginDirectory, "skills", "review", "SKILL.md"),
+    "---\nname: review\ndescription: Review changes\n---\n\nReview the code.\n",
   );
   await writeFile(
     path.join(pluginDirectory, "index.tsx"),
@@ -71,6 +82,14 @@ export default function contribute(plugin: PluginContext) {
     await expect(client.installDirectoryPlugin(pluginDirectory)).resolves.toMatchObject({
       id: "paseo-api",
       status: "running",
+    });
+    const catalog = await client.listUnifiedPlugins({ refresh: true });
+    const installed = catalog.plugins.filter(({ pluginId }) => pluginId === "paseo-api");
+    expect(installed).toHaveLength(1);
+    expect(installed[0]).toMatchObject({
+      pluginId: "paseo-api",
+      skills: ["review"],
+      runtime: { status: "running" },
     });
 
     const created = await client.invokePluginRpc("paseo-api", "create", {
@@ -150,9 +169,11 @@ test("daemon config reload enables and disables configured plugins without resta
 
   try {
     await client.connect();
-    await expect(client.listPlugins()).resolves.toEqual([
-      expect.objectContaining({ id: "reloadable-plugin", status: "disabled" }),
-    ]);
+    const initial = await client.listUnifiedPlugins();
+    expect(initial.plugins.find(({ pluginId }) => pluginId === "reloadable-plugin")).toMatchObject({
+      pluginId: "reloadable-plugin",
+      runtime: { status: "disabled" },
+    });
 
     await setPluginsEnabled(true);
     await expect(client.reloadDaemonConfig()).resolves.toMatchObject({
@@ -162,8 +183,12 @@ test("daemon config reload enables and disables configured plugins without resta
       overrideControlledPaths: [],
     });
     await expect
-      .poll(async () => (await client.listPlugins()).find(({ id }) => id === "reloadable-plugin"))
-      .toMatchObject({ enabled: true, status: "running" });
+      .poll(async () =>
+        (await client.listUnifiedPlugins()).plugins.find(
+          ({ pluginId }) => pluginId === "reloadable-plugin",
+        ),
+      )
+      .toMatchObject({ enabled: true, runtime: { status: "running" } });
 
     await setPluginsEnabled(false);
     await expect(client.reloadDaemonConfig()).resolves.toEqual({
@@ -173,8 +198,12 @@ test("daemon config reload enables and disables configured plugins without resta
       overrideControlledPaths: [],
     });
     await expect
-      .poll(async () => (await client.listPlugins()).find(({ id }) => id === "reloadable-plugin"))
-      .toMatchObject({ enabled: true, status: "disabled" });
+      .poll(async () =>
+        (await client.listUnifiedPlugins()).plugins.find(
+          ({ pluginId }) => pluginId === "reloadable-plugin",
+        ),
+      )
+      .toMatchObject({ enabled: true, runtime: { status: "disabled" } });
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();

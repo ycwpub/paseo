@@ -1,7 +1,9 @@
 import { en, type TranslationResources } from "./en";
+import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
+import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-export const ru: TranslationResources = {
+const ruBase = {
   common: {
     back: "Назад",
     loading: "Загрузка...",
@@ -203,6 +205,7 @@ export const ru: TranslationResources = {
     empty: "Начните общаться с этим агентом...",
     scrollToBottom: "Прокрутить вниз",
     historyLoadFailed: "Не удалось загрузить историю агента",
+    changes: en.agentStream.changes,
     permission: {
       plan: "План",
       required: "Требуется разрешение",
@@ -214,6 +217,7 @@ export const ru: TranslationResources = {
     },
   },
   agentPanel: {
+    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Агент не найден",
       failedToLoad: "Не удалось загрузить агента",
@@ -352,6 +356,8 @@ export const ru: TranslationResources = {
     },
     compaction: {
       loading: "Сжатие контекста...",
+      loadingAuto: "Автоматическое сжатие контекста...",
+      loadingManual: "Ручное сжатие контекста...",
       auto: "Контекст сжат автоматически",
       manual: "Контекст сжат вручную",
       withTokens: "Контекст сжат ({{tokens}} тыс. токенов)",
@@ -1005,7 +1011,10 @@ export const ru: TranslationResources = {
     creating: "Создание…",
     name: "Название метки",
     updateHostUse: "Обновите этот хост, чтобы использовать метки.",
-    errors: { update: "Не удалось обновить метку", load: "Не удалось загрузить метки" },
+    errors: {
+      update: "Не удалось обновить метку",
+      load: "Не удалось загрузить метки",
+    },
     colors: {
       violet: "Фиолетовый",
       sky: "Голубой",
@@ -1250,6 +1259,147 @@ export const ru: TranslationResources = {
         "Введите команду или оставьте поле пустым, чтобы открыть терминал без запуска команды",
     },
   },
+  memoryPolicies: {
+    ...en.memoryPolicies,
+    globalDisabledTitle: "Глобальная память отключена",
+    globalDisabledDescription:
+      "Политика сохранится, но Paseo начнёт использовать её только после включения памяти в настройках хоста.",
+    scopeManager: {
+      ...en.memoryPolicies.scopeManager,
+      title: "Правила памяти",
+      description:
+        "Управляйте долговременными сведениями, которые может сохранять каждая область памяти.",
+      scopeType: "Область памяти",
+      target: "Объект",
+      selectTarget: "Выберите объект",
+      instructionsTitle: "Что сохранять",
+      save: "Сохранить правила",
+      saved: "Сохранено",
+    },
+    contentManager: {
+      ...en.memoryPolicies.contentManager,
+      pageTitle: "Управление памятью",
+      detailTitle: "Сведения о памяти",
+      manage: "Управлять содержимым памяти",
+      manageDescription:
+        "Доступно записей: {{count}}. Откройте отдельную страницу для просмотра, редактирования или удаления.",
+      openManager: "Открыть",
+      backToList: "Вернуться к списку памяти",
+      loading: "Загрузка памяти…",
+      notFound: "Эта запись памяти не существует или была удалена.",
+      errorTitle: "Не удалось управлять памятью",
+      scopeEditHint: "Изменение области перемещает запись памяти в выбранную область.",
+      pagination: {
+        pageSize: "Записей на странице",
+        noPageSizes: "Нет доступных размеров страницы",
+        page: "Страница {{page}} из {{totalPages}}",
+        range: "Показано {{start}}–{{end}} из {{total}}",
+        previous: "Назад",
+        next: "Далее",
+      },
+    },
+  },
+  workflows: {
+    ...en.workflows,
+    graph: {
+      ...en.workflows.graph,
+      fullView: "Полный план",
+      fullViewTitle: "Полный граф рабочего процесса",
+      fullViewHint:
+        "Просматривайте граф зависимостей и путь выполнения, масштабируйте его или открывайте узлы.",
+      zoomIn: "Увеличить граф рабочего процесса",
+      zoomOut: "Уменьшить граф рабочего процесса",
+      resetZoom: "Сбросить масштаб графа",
+      nodeName: "Имя узла",
+      nodeId: "ID узла",
+      nodeType: "Тип узла",
+      configuration: "Полная конфигурация узла",
+    },
+    nodes: {
+      ...en.workflows.nodes,
+      agent: {
+        ...en.workflows.nodes.agent,
+        lifecycle: "Жизненный цикл агента",
+        lifecycleHint:
+          "Определяет, как долго этот узел повторно использует одного агента. Повторные вызовы выполняются последовательно.",
+        selectLifecycle: "Выберите жизненный цикл агента",
+        lifecycleOptions: {
+          workflow: "Весь Workflow",
+          workflowDescription:
+            "Создать при первом запуске, повторно использовать и освободить после завершения Workflow.",
+          for: "Текущий цикл For",
+          forDescription:
+            "Создать на первой итерации, повторно использовать в текущем цикле For и освободить при выходе.",
+          single: "Один запуск",
+          singleDescription:
+            "Создавать нового агента для каждого запуска без повторного использования.",
+        },
+        subsequentPromptMode: "Промпт после первого вызова",
+        subsequentPromptModeHint:
+          "Выберите, что отправлять при повторном вызове уже созданного агента.",
+        selectSubsequentPromptMode: "Выберите режим последующего промпта",
+        subsequentPromptModes: {
+          reuseInitial: "Повторять начальный промпт",
+          reuseInitialDescription:
+            "Повторно формировать начальный промпт из текущих входных данных узла.",
+          custom: "Свой промпт",
+          customDescription: "Использовать отдельный промпт для каждого вызова после первого.",
+        },
+        subsequentPrompt: "Свой последующий промпт",
+        subsequentPromptHint:
+          "Поддерживает те же входные данные и переменные шаблона, что и начальный промпт.",
+        archiveAtLifecycleEnd:
+          "Автоматически архивировать после завершения жизненного цикла агента",
+      },
+      common: {
+        ...en.workflows.nodes.common,
+        environment: "Переменные окружения узла (JSON)",
+        environmentHint:
+          "Необязательные строки переопределяют окружение команд Workflow для этого узла.",
+        environmentStringValues: "Значения переменных окружения должны быть строками.",
+      },
+      python: {
+        ...en.workflows.nodes.python,
+        module: "Модуль Python",
+        moduleHint: "Необязательный путь модуля; задаётся вместе с функцией.",
+        function: "Функция Python",
+        functionHint:
+          "Получает полный вход узла и возвращает результат; поддерживает асинхронные функции.",
+      },
+      for: {
+        ...en.workflows.nodes.for,
+        breakWhen: "Условие остановки",
+        breakWhenHint: "Выражение должно вернуть boolean; true завершает цикл.",
+        continueWhen: "Условие продолжения",
+        continueWhenHint:
+          "Выражение должно вернуть boolean; true пропускает оставшиеся узлы текущей итерации.",
+      },
+      contract: {
+        title: "Контракт данных узла",
+        description: "Передавайте только нужные поля и проверяйте вход и выход.",
+        inputs: "Сопоставление входа (JSON)",
+        inputsHint:
+          "Полное выражение, например {{nodes.scan.outputs.items}}, сохраняет исходный тип.",
+        inputSchema: "Схема входа",
+        outputSchema: "Схема выхода",
+        schemaHint: "Необязательно. Paseo проверит объект перед продолжением.",
+        invalidJson: "Введите корректный JSON.",
+        objectRequired: "Значение должно быть JSON-объектом.",
+      },
+      openDetails: "Открыть сведения об узле {{name}}",
+      downstream: {
+        label: "Следующий узел",
+        hint: "Выберите узел того же уровня, который запустится после завершения текущего.",
+        sequential: "Следовать порядку списка",
+        sequentialDescription: "Запустить следующий узел в списке.",
+        end: "Завершить последовательность",
+        endDescription: "Завершить последовательность после текущего узла.",
+        missing: "Узел отсутствует: {{id}}",
+        placeholder: "Выберите следующий узел",
+        empty: "Нет доступных следующих узлов",
+      },
+    },
+  },
   desktop: {
     windowControls: {
       minimize: "Свернуть окно",
@@ -1414,6 +1564,11 @@ export const ru: TranslationResources = {
         installFailed: "Не удалось установить Paseo CLI.",
       },
     },
+  },
+  communityLinks: {
+    star: "Добавить звезду",
+    sponsor: "Поддержать",
+    community: "Сообщество",
   },
   rootError: {
     title: "В Paseo возникла проблема.",
@@ -1694,6 +1849,8 @@ export const ru: TranslationResources = {
     },
     device: {
       loadingOffer: "Загрузка данных для сопряжения...",
+      relayListTitle: "Relay list",
+      hintMultiple: "Use any available Relay pairing address to connect this device.",
       failedToLoadOffer: "Не удалось загрузить данные для сопряжения.",
       relayDisabled:
         "Ретранслятор не включён. Включите его, чтобы выполнить сопряжение устройства.",
@@ -1717,6 +1874,38 @@ export const ru: TranslationResources = {
       retry: "Повторить попытку",
       copy: "Копировать",
       copied: "Скопировано",
+      access: {
+        title: "Client management",
+        requireApproval: "Require client approval",
+        requireApprovalHint:
+          "When enabled, new clients must be approved here before they can connect.",
+        empty: "No client connection requests.",
+        pending: "Pending",
+        allowed: "Allowed",
+        approved: "Approved",
+        paused: "Paused",
+        connected: "Connected",
+        disconnected: "Disconnected",
+        hostname: "Hostname",
+        identityId: "Identity ID",
+        endpoint: "IP / port",
+        endpointUnavailable: "Unavailable",
+        lastConnectedAt: "Last connected",
+        neverConnected: "No record",
+        unknownName: "Unknown client",
+        approve: "Approve",
+        approving: "Approving...",
+        pause: "Pause",
+        pausing: "Pausing...",
+        resume: "Resume",
+        resuming: "Resuming...",
+        delete: "Delete",
+        deleting: "Deleting...",
+        macClient: "Mac",
+        androidClient: "Android",
+        cliClient: "CLI",
+        browserClient: "Browser",
+      },
     },
   },
   realtimeVoice: {
@@ -1914,6 +2103,7 @@ export const ru: TranslationResources = {
     projects: "Проекты",
     projectList: {
       hostLoadFailed: "Не удалось загрузить проекты с хоста {{hostName}}: {{message}}",
+      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "Изменить {{projectName}}",
     },
     groupInfo: "О разделе «{{title}}»",
@@ -1941,6 +2131,19 @@ export const ru: TranslationResources = {
       refreshAccessibility: "Обновить разрешение на уведомления",
       playSound: "Воспроизводить звук",
       playSoundHint: "Воспроизводит звук при получении уведомления на компьютере",
+      island: "Dynamic Island",
+      islandHint: "Show Paseo unread messages and task status at the top of the Mac screen.",
+      islandShowWhenFocused: "Show while Paseo is focused",
+      islandShowWhenFocusedHint:
+        "Keep the Dynamic Island visible while Paseo is in the foreground.",
+      islandTest: "Test Dynamic Island",
+      islandTestHint: "Send a test message to verify that the Dynamic Island is working.",
+      islandTestTitle: "Paseo Dynamic Island test",
+      islandTestBody: "If you can see this message, the Dynamic Island is working.",
+      islandTestSuccess: "Test message sent",
+      islandTestSuccessHint: "Check the Paseo Dynamic Island at the top of the Mac screen.",
+      islandTestFailed: "Unable to send test message",
+      islandTestFailedHint: "Check your settings and try the Dynamic Island test again.",
       test: "Проверить уведомление",
       testHint: "Отправляет уведомление с текущими настройками",
       permissionRequired: "Разрешите доступ к уведомлениям перед проверкой",
@@ -1955,8 +2158,13 @@ export const ru: TranslationResources = {
       connections: "Подключения",
       agents: "Агенты",
       metadata: "Метаданные",
+      assistants: "Ассистенты",
+      memory: "Память",
+      mcp: "MCP",
+      skills: "Навыки",
       workspaces: "Рабочие пространства",
       providers: "Провайдеры",
+      channels: "Каналы",
       usage: "Использование",
       terminals: "Терминалы",
       plugins: "Плагины",
@@ -2682,3 +2890,8 @@ export const ru: TranslationResources = {
     },
   },
 };
+
+export const ru: TranslationResources = completeTranslationResource(
+  en,
+  mergeTranslationResources(ruBase, featureTranslationAdditions.ru),
+);

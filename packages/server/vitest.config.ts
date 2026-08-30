@@ -1,5 +1,6 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
+import { featurePaseoTestOverrides } from "./feature-paseo-test-overrides";
 
 export default defineConfig({
   resolve: {
@@ -22,6 +23,12 @@ export default defineConfig({
     // Windows runners intermittently starve subprocess-heavy Git tests at the
     // default worker count, leaving child processes alive past their deadlines.
     maxWorkers: process.platform === "win32" ? 2 : undefined,
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**", "**/.dev/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.claude/**",
+      "**/.dev/**",
+      ...featurePaseoTestOverrides,
+    ],
   },
 });

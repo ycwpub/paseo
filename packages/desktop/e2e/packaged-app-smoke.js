@@ -41,7 +41,7 @@ function assertExecutable(filePath, label) {
 
 function getExecutablePath(appPath) {
   if (process.platform === "darwin") {
-    return getMacMainExecutablePath(appPath);
+    return path.join(appPath, "Contents", "MacOS", EXECUTABLE_NAME);
   }
 
   if (process.platform === "win32") {
@@ -63,31 +63,8 @@ function getCliShimPath(appPath) {
   return path.join(appPath, "resources", "bin", "paseo");
 }
 
-function findExecutableInDirectory(directoryPath, preferredName) {
-  const preferredPath = path.join(directoryPath, preferredName);
-  if (fs.existsSync(preferredPath)) {
-    return preferredPath;
-  }
-
-  if (!fs.existsSync(directoryPath)) {
-    return preferredPath;
-  }
-
-  for (const entry of fs.readdirSync(directoryPath)) {
-    const candidate = path.join(directoryPath, entry);
-    try {
-      const stat = fs.statSync(candidate);
-      if (stat.isFile() && (stat.mode & 0o111) !== 0) {
-        return candidate;
-      }
-    } catch {}
-  }
-
-  return preferredPath;
-}
-
 function getMacMainExecutablePath(appPath) {
-  return findExecutableInDirectory(path.join(appPath, "Contents", "MacOS"), EXECUTABLE_NAME);
+  return path.join(appPath, "Contents", "MacOS", EXECUTABLE_NAME);
 }
 
 function ensureLinuxSandboxPermissions(appPath) {

@@ -1,9 +1,7 @@
 import { en, type TranslationResources } from "./en";
-import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
-import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-const esBase = {
+export const es: TranslationResources = {
   common: {
     back: "Atrás",
     loading: "Cargando...",
@@ -92,11 +90,11 @@ const esBase = {
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",
       mobile: "Mensaje,@files,/commands",
       fallback: "Mensaje...",
-      terminal: "Indicación",
+      terminal: "Prompt",
     },
     input: {
       accessibilityLabel: "Agente de mensajes...",
-      terminalAccessibilityLabel: "Entrada del terminal",
+      terminalAccessibilityLabel: "Terminal prompt",
       focusHint: "{{shortcut}}para enfocar",
       addAttachment: "Agregar archivo adjunto",
       interruptAgent: "agente de interrupción",
@@ -205,7 +203,6 @@ const esBase = {
     empty: "Comience a chatear con este agente...",
     scrollToBottom: "Desplazarse hacia abajo",
     historyLoadFailed: "No se pudo cargar el historial del agente",
-    changes: en.agentStream.changes,
     permission: {
       plan: "Plan",
       required: "Permiso requerido",
@@ -217,7 +214,6 @@ const esBase = {
     },
   },
   agentPanel: {
-    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agentno encontrado",
       failedToLoad: "No se pudo cargar el agente",
@@ -357,8 +353,6 @@ const esBase = {
     },
     compaction: {
       loading: "Compactando...",
-      loadingAuto: "Compactando el contexto automáticamente...",
-      loadingManual: "Compactando el contexto manualmente...",
       auto: "Contexto compactado automáticamente",
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado (tokens{{tokens}}K)",
@@ -1273,145 +1267,6 @@ const esBase = {
       commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
-  memoryPolicies: {
-    ...en.memoryPolicies,
-    globalDisabledTitle: "La memoria global está desactivada",
-    globalDisabledDescription:
-      "La política se guardará, pero Paseo no la usará hasta que actives Memoria en la configuración del host.",
-    scopeManager: {
-      ...en.memoryPolicies.scopeManager,
-      title: "Reglas de memoria",
-      description: "Gestiona la información duradera que puede guardar cada ámbito de memoria.",
-      scopeType: "Ámbito de memoria",
-      target: "Destino",
-      selectTarget: "Selecciona un destino",
-      instructionsTitle: "Qué se debe guardar",
-      save: "Guardar reglas",
-      saved: "Guardado",
-    },
-    contentManager: {
-      ...en.memoryPolicies.contentManager,
-      pageTitle: "Gestión de memoria",
-      detailTitle: "Detalles de memoria",
-      manage: "Gestionar contenido de memoria",
-      manageDescription:
-        "Hay {{count}} recuerdos. Abre la página dedicada para verlos, editarlos o eliminarlos.",
-      openManager: "Abrir",
-      backToList: "Volver a la lista de memoria",
-      loading: "Cargando memoria…",
-      notFound: "Este recuerdo no existe o se ha eliminado.",
-      errorTitle: "No se puede gestionar la memoria",
-      scopeEditHint: "Cambiar el ámbito mueve este recuerdo al ámbito seleccionado.",
-      pagination: {
-        pageSize: "Elementos por página",
-        noPageSizes: "No hay tamaños de página disponibles",
-        page: "Página {{page}} de {{totalPages}}",
-        range: "Mostrando {{start}}–{{end}} de {{total}}",
-        previous: "Anterior",
-        next: "Siguiente",
-      },
-    },
-  },
-  workflows: {
-    ...en.workflows,
-    graph: {
-      ...en.workflows.graph,
-      fullView: "Plan completo",
-      fullViewTitle: "Grafo completo del flujo de trabajo",
-      fullViewHint:
-        "Inspecciona el grafo de dependencias y la ruta de ejecución, amplíalo o abre un nodo.",
-      zoomIn: "Ampliar el grafo del flujo de trabajo",
-      zoomOut: "Reducir el grafo del flujo de trabajo",
-      resetZoom: "Restablecer el zoom del grafo",
-      nodeName: "Nombre del nodo",
-      nodeId: "ID del nodo",
-      nodeType: "Tipo de nodo",
-      configuration: "Configuración completa del nodo",
-    },
-    nodes: {
-      ...en.workflows.nodes,
-      agent: {
-        ...en.workflows.nodes.agent,
-        lifecycle: "Ciclo de vida del agente",
-        lifecycleHint:
-          "Controla cuánto tiempo este nodo reutiliza el mismo agente. Las llamadas reutilizadas se ejecutan en orden.",
-        selectLifecycle: "Seleccionar ciclo de vida del agente",
-        lifecycleOptions: {
-          workflow: "Workflow completo",
-          workflowDescription:
-            "Se crea en la primera ejecución, se reutiliza y se libera cuando termina el Workflow.",
-          for: "Bucle For actual",
-          forDescription:
-            "Se crea en la primera iteración, se reutiliza dentro del bucle For actual y se libera al salir.",
-          single: "Ejecución única",
-          singleDescription: "Crear un agente nuevo para cada ejecución, sin reutilizarlo.",
-        },
-        subsequentPromptMode: "Prompt posterior al primero",
-        subsequentPromptModeHint:
-          "Elige qué enviar cuando este nodo invoque un agente ya inicializado.",
-        selectSubsequentPromptMode: "Seleccionar comportamiento del prompt posterior",
-        subsequentPromptModes: {
-          reuseInitial: "Reutilizar prompt inicial",
-          reuseInitialDescription:
-            "Volver a renderizar el prompt inicial con la entrada actual del nodo.",
-          custom: "Prompt personalizado",
-          customDescription:
-            "Usar un prompt independiente en cada invocación posterior a la primera.",
-        },
-        subsequentPrompt: "Prompt posterior personalizado",
-        subsequentPromptHint:
-          "Admite los mismos datos de entrada y variables de plantilla que el prompt inicial.",
-        archiveAtLifecycleEnd: "Archivar automáticamente al finalizar el ciclo de vida del agente",
-      },
-      common: {
-        ...en.workflows.nodes.common,
-        environment: "Variables de entorno del nodo (JSON)",
-        environmentHint:
-          "Los valores de texto opcionales reemplazan el entorno de comandos del Workflow para este nodo.",
-        environmentStringValues: "Los valores de las variables de entorno deben ser texto.",
-      },
-      python: {
-        ...en.workflows.nodes.python,
-        module: "Módulo de Python",
-        moduleHint: "Ruta de módulo opcional; configúrala junto con una función.",
-        function: "Función de Python",
-        functionHint:
-          "Recibe la entrada completa del nodo y devuelve el resultado; admite funciones asíncronas.",
-      },
-      for: {
-        ...en.workflows.nodes.for,
-        breakWhen: "Condición de finalización",
-        breakWhenHint: "La expresión debe devolver un booleano; true termina el bucle.",
-        continueWhen: "Condición de continuación",
-        continueWhenHint:
-          "La expresión debe devolver un booleano; true omite los nodos restantes de esta iteración.",
-      },
-      contract: {
-        title: "Contrato de datos del nodo",
-        description: "Mapea solo los campos necesarios y valida entrada y salida con JSON Schema.",
-        inputs: "Mapeo de entrada (JSON)",
-        inputsHint:
-          "Las expresiones completas como {{nodes.scan.outputs.items}} conservan el tipo original.",
-        inputSchema: "Esquema de entrada",
-        outputSchema: "Esquema de salida",
-        schemaHint: "Opcional. Paseo valida el objeto antes de continuar.",
-        invalidJson: "Introduce JSON válido.",
-        objectRequired: "El valor debe ser un objeto JSON.",
-      },
-      openDetails: "Abrir los detalles del nodo {{name}}",
-      downstream: {
-        label: "Nodo siguiente",
-        hint: "Elige el nodo del mismo nivel que se ejecutará al terminar este nodo.",
-        sequential: "Seguir el orden de la lista",
-        sequentialDescription: "Ejecutar el siguiente nodo de la lista.",
-        end: "Finalizar la secuencia",
-        endDescription: "Finalizar esta secuencia al completar el nodo actual.",
-        missing: "Falta el nodo: {{id}}",
-        placeholder: "Seleccionar nodo siguiente",
-        empty: "No hay nodos siguientes disponibles",
-      },
-    },
-  },
   desktop: {
     windowControls: {
       minimize: "Minimizar ventana",
@@ -1577,11 +1432,6 @@ const esBase = {
         installFailed: "No se puede instalar elPaseoCLI.",
       },
     },
-  },
-  communityLinks: {
-    star: "Dar estrella",
-    sponsor: "Patrocinar",
-    community: "Comunidad",
   },
   rootError: {
     title: "Paseo tuvo un problema.",
@@ -1861,8 +1711,6 @@ const esBase = {
     },
     device: {
       loadingOffer: "Cargando oferta de maridaje...",
-      relayListTitle: "Relay list",
-      hintMultiple: "Use any available Relay pairing address to connect this device.",
       failedToLoadOffer: "No se pudo cargar la oferta de emparejamiento.",
       relayDisabled: "El relé no está habilitado. Habilite el relé para emparejar un dispositivo.",
       enableTitle: "¿Habilitar el relé?",
@@ -1885,38 +1733,6 @@ const esBase = {
       retry: "Rever",
       copy: "Copiar",
       copied: "Copiado",
-      access: {
-        title: "Client management",
-        requireApproval: "Require client approval",
-        requireApprovalHint:
-          "When enabled, new clients must be approved here before they can connect.",
-        empty: "No client connection requests.",
-        pending: "Pending",
-        allowed: "Allowed",
-        approved: "Approved",
-        paused: "Paused",
-        connected: "Connected",
-        disconnected: "Disconnected",
-        hostname: "Hostname",
-        identityId: "Identity ID",
-        endpoint: "IP / port",
-        endpointUnavailable: "Unavailable",
-        lastConnectedAt: "Last connected",
-        neverConnected: "No record",
-        unknownName: "Unknown client",
-        approve: "Approve",
-        approving: "Approving...",
-        pause: "Pause",
-        pausing: "Pausing...",
-        resume: "Resume",
-        resuming: "Resuming...",
-        delete: "Delete",
-        deleting: "Deleting...",
-        macClient: "Mac",
-        androidClient: "Android",
-        cliClient: "CLI",
-        browserClient: "Browser",
-      },
     },
   },
   realtimeVoice: {
@@ -2113,7 +1929,6 @@ const esBase = {
     projects: "Proyectos",
     projectList: {
       hostLoadFailed: "No se pudieron cargar proyectos desde el host{{hostName}}:{{message}}",
-      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "Editar{{projectName}}",
     },
     groupInfo: "Acerca de{{title}}",
@@ -2141,19 +1956,6 @@ const esBase = {
       refreshAccessibility: "Actualizar permiso de notificaciones",
       playSound: "Reproducir sonido",
       playSoundHint: "Reproduce un sonido cuando llega una notificación de escritorio",
-      island: "Dynamic Island",
-      islandHint: "Show Paseo unread messages and task status at the top of the Mac screen.",
-      islandShowWhenFocused: "Show while Paseo is focused",
-      islandShowWhenFocusedHint:
-        "Keep the Dynamic Island visible while Paseo is in the foreground.",
-      islandTest: "Test Dynamic Island",
-      islandTestHint: "Send a test message to verify that the Dynamic Island is working.",
-      islandTestTitle: "Paseo Dynamic Island test",
-      islandTestBody: "If you can see this message, the Dynamic Island is working.",
-      islandTestSuccess: "Test message sent",
-      islandTestSuccessHint: "Check the Paseo Dynamic Island at the top of the Mac screen.",
-      islandTestFailed: "Unable to send test message",
-      islandTestFailedHint: "Check your settings and try the Dynamic Island test again.",
       test: "Probar notificación",
       testHint: "Envía una notificación con esta configuración",
       permissionRequired: "Permite el acceso a las notificaciones antes de probar",
@@ -2168,13 +1970,8 @@ const esBase = {
       connections: "Conexiones",
       agents: "Agents",
       metadata: "Metadatos",
-      assistants: "Assistants",
-      memory: "Memory",
-      mcp: "MCP",
-      skills: "Skills",
       workspaces: "Workspaces",
       providers: "Proveedores",
-      channels: "Channels",
       usage: "Uso",
       terminals: "Terminals",
       plugins: "Plugins",
@@ -2520,100 +2317,6 @@ const esBase = {
         relay: "Relé",
         local: "Local",
         remoteSsh: "SSH remoto",
-        direct: "Direct to server",
-        viaRelay: "Via Relay",
-      },
-      relay: {
-        title: "Relay",
-        serviceColumn: "WS / WSS address",
-        pairingColumn: "HTTP / HTTPS connection address",
-        serviceListHint:
-          "Configure one or more Relay service addresses used by Paseo. Default public Relay: {{addresses}}.",
-        pairingListHint:
-          "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
-        servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://app.paseo.sh",
-        addressPairHintTitle: "How to fill in the Relay list above",
-        addressPairHint:
-          "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
-        incompleteRow: "Each Relay requires both a service address and a connection address",
-        duplicateRow: "Relay service addresses must be unique",
-        duplicatePairingUrl: "HTTP / HTTPS connection addresses must be unique",
-        addRow: "Add Relay",
-        addPairingUrl: "Add connection address",
-        removeRow: "Remove Relay",
-        removePairingUrl: "Remove connection address",
-        save: "Save",
-        saving: "Saving...",
-        lan: {
-          title: "Use this Paseo as a LAN Relay",
-          hint: "Devices on the same local network can connect through this Host.",
-          listenLabel: "LAN Relay listen address",
-          listenHint:
-            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
-          pairingUrlLabel: "LAN Relay HTTP connection address",
-          pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
-          pairingUrlHint: "Leave empty to generate it automatically.",
-          webApp: {
-            title: "Host the Paseo pairing web app",
-            hint: "Serve a web page on this Relay that parses pairing offers and connects to Paseo.",
-            pathLabel: "Pairing web app path",
-            pathHint: "For example /app. Links use http://local-ip:port/app/#offer=....",
-          },
-        },
-        management: {
-          title: "Relay connections",
-          count: "{{count}} connections",
-          empty: "No clients or servers are connected to this Relay.",
-          loading: "Loading Relay connections...",
-          unavailable: "Relay runtime information is unavailable.",
-          unknownPeer: "Unknown peer",
-          pairingAddress: "Pairing page address",
-          relayAddress: "Relay WebSocket address",
-          deviceType: "Device type",
-          deviceTypes: {
-            mac: "Mac app",
-            windows: "Windows app",
-            linux: "Linux app",
-            android: "Android app",
-            ios: "iOS app",
-            web: "Web app",
-            cli: "CLI",
-            mcp: "MCP",
-            unknown: "Unknown",
-          },
-          hostname: "Server hostname",
-          clientHostname: "Client hostname",
-          clientId: "Client identity ID",
-          serverId: "Server identity ID",
-          connectionId: "Connection ID",
-          peerEndpoint: "IP / port",
-          clients: "Clients",
-          servers: "Servers",
-          noClients: "No clients are connected to this Relay.",
-          noServers: "No servers are connected to this Relay.",
-          clientHistory: "Client connection history",
-          serverHistory: "Server connection history",
-          noClientHistory: "No historical client connections.",
-          noServerHistory: "No historical server connections.",
-          connectionHistory: "Connection history",
-          connectionCount: "{{count}} connections",
-          expandHistory: "Show all {{count}} connections",
-          collapseHistory: "Collapse connection history",
-          connectedAt: "Connected at",
-          disconnectedAt: "Disconnected at",
-          stillConnected: "Still connected",
-          historyRetention:
-            "History is automatically retained for {{days}} days and can be deleted manually.",
-          delete: "Delete",
-          deleting: "Deleting...",
-          roles: {
-            client: "Client",
-            server: "Server",
-            server_control: "Server control connection",
-            server_data: "Server data connection",
-          },
-        },
       },
       connections: {
         title: "Conexiones",
@@ -2987,8 +2690,3 @@ const esBase = {
     },
   },
 };
-
-export const es: TranslationResources = completeTranslationResource(
-  en,
-  mergeTranslationResources(esBase, featureTranslationAdditions.es),
-);

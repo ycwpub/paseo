@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
+import { buildAcpProviderConfigPatch, getAcpProviderCatalog } from "./use-acp-provider-catalog";
+
+function findProvider(id: string) {
+  const entry = getAcpProviderCatalog().find((provider) => provider.id === id);
+  if (!entry) {
+    throw new Error(`Missing ACP provider catalog entry: ${id}`);
+  }
+  return entry;
+}
+
+describe("ACP provider catalog", () => {
+  it("vendors provider entries with unique ids and valid launch configuration", () => {
+    const ids = new Set<string>();
+
+    for (const entry of ACP_PROVIDER_CATALOG) {
+      expect(ids.has(entry.id)).toBe(false);
+      ids.add(entry.id);
+      expect(entry.title).not.toBe("");
+      expect(entry.description).not.toBe("");
+      if (entry.installLink) {
+        expect(entry.installLink).toMatch(/^https:\/\//);
+      }
+      if (entry.extends === "acp" || entry.id.startsWith("aiden-")) {
+        expect(entry.command?.length).toBeGreaterThan(0);
+        expect(entry.command?.[0]).not.toBe("");
+      } else {
+        expect(entry.command).toBeUndefined();
+      }
+    }
+  });
+
+  it("bundles SVG icons for catalog entries that declare an icon", () => {
+    const entriesWithIcons = ACP_PROVIDER_CATALOG.filter((entry) => entry.iconSvg !== null);
+
+    expect(entriesWithIcons.length).toBeGreaterThan(0);
+    for (const entry of entriesWithIcons) {
+      expect(entry.iconSvg).toContain("<svg");
+    }
+  });
+
+  it("does not offer Pi's unsupported ACP adapter", () => {
+    expect(ACP_PROVIDER_CATALOG.some((entry) => entry.id === "pi-acp")).toBe(false);
+  });
+
+  it("uses PATH commands for entries that were binary distributions upstream", () => {
+    expect(findProvider("amp-acp").command).toEqual(["amp-acp"]);
+    expect(findProvider("cursor").command).toEqual(["cursor-agent", "acp"]);
+    expect(findProvider("codewhale").command).toEqual(["codewhale", "serve", "--acp"]);
+    expect(findProvider("devin").command).toEqual(["devin", "acp"]);
+    expect(findProvider("goose").command).toEqual(["goose", "acp"]);
+    expect(findProvider("junie").command).toEqual(["junie", "--acp", "true"]);
+    expect(findProvider("kiro").command).toEqual(["kiro-cli", "acp"]);
+    expect(findProvider("poolside").command).toEqual(["pool", "acp"]);
+    expect(findProvider("traecli").command).toEqual(["traecli", "acp", "serve"]);
+  });
+
+  it("offers MiniMax Code through its pinned public ACP package", () => {
+    expect(findProvider("minimax-code")).toMatchObject({
+      title: "MiniMax Code",
+      version: "0.1.2",
+      command: ["npx", "-y", "@minimax-ai/code@0.1.2", "acp"],
+    });
+    expect(findProvider("minimax-code").iconSvg).toContain("<svg");
+  });
+
+  it("maps a catalog entry to the daemon provider config patch", () => {
+    expect(buildAcpProviderConfigPatch(findProvider("amp-acp"))).toEqual({
+      providers: {
+        "amp-acp": {
+          extends: "acp",
+          label: "Amp",
+          description: "ACP wrapper for Amp - the frontier coding agent",
+          command: ["amp-acp"],
+          env: {},
+        },
+      },
+    });
+  });
+
+  it("maps Aiden providers to derived built-in provider config patches", () => {
+    expect(buildAcpProviderConfigPatch(findProvider("aiden-codex"))).toEqual({
+      providers: {
+        "aiden-codex": {
+          extends: "codex",
+          label: "Aiden Codex",
+          description: "Codex provided through Aiden.",
+          command: ["aiden", "x", "codex"],
+          env: {},
+        },
+      },
+    });
+    expect(buildAcpProviderConfigPatch(findProvider("aiden-claude"))).toEqual({
+      providers: {
+        "aiden-claude": {
+          extends: "claude",
+          label: "Aiden Claude",
+          description: "Claude provided through Aiden.",
+          command: ["aiden", "x", "claude"],
+          env: {},
+        },
+      },
+    });
+  });
+
+  it("preserves provider env in the daemon config patch", () => {
+    const patch = buildAcpProviderConfigPatch(findProvider("auggie"));
+
+    expect(patch.providers?.auggie?.env).toEqual({
+      AUGMENT_DISABLE_AUTO_UPDATE: "1",
+    });
+  });
+
+  it("preserves provider params in the daemon config patch", () => {
+    const droidPatch = buildAcpProviderConfigPatch(findProvider("factory-droid"));
+
+    expect(droidPatch.providers?.["factory-droid"]?.params).toEqual({
+      supportsMcpServers: false,
+    });
+  });
+});

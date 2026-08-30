@@ -312,7 +312,6 @@ function getFallbackTabOptionLabel(
     agent: string;
     changes: string;
     files: string;
-    taskSummary: string;
     pullRequest: string;
   },
 ): string {
@@ -340,9 +339,6 @@ function getFallbackTabOptionLabel(
   if (tab.target.kind === "files") {
     return labels.files;
   }
-  if (tab.target.kind === "task_summary") {
-    return labels.taskSummary;
-  }
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;
   }
@@ -363,7 +359,6 @@ function getFallbackTabOptionDescription(
     browser: string;
     changes: string;
     files: string;
-    taskSummary: string;
     pullRequest: string;
   },
 ): string {
@@ -396,9 +391,6 @@ function getFallbackTabOptionDescription(
   }
   if (tab.target.kind === "files") {
     return labels.files;
-  }
-  if (tab.target.kind === "task_summary") {
-    return labels.taskSummary;
   }
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;
@@ -604,7 +596,6 @@ function MobileWorkspaceTabOption({
       agent: t("workspace.tabs.fallback.agent"),
       changes: t("panels.diff.changesLabel"),
       files: t("panels.files.label"),
-      taskSummary: t("agentPanel.taskSummary.title"),
       pullRequest: t("panels.pullRequest.label"),
     }),
     [t],
@@ -2351,7 +2342,6 @@ function WorkspaceScreenContent({
       agent: t("workspace.tabs.fallback.agent"),
       changes: t("panels.diff.changesLabel"),
       files: t("panels.files.label"),
-      taskSummary: t("agentPanel.taskSummary.title"),
       pullRequest: t("panels.pullRequest.label"),
     }),
     [t],

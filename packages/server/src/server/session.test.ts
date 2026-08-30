@@ -1,13 +1,5 @@
 import { execSync } from "child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
@@ -32,10 +24,9 @@ import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { WorkspaceLabelError, type WorkspaceLabelService } from "./workspace-labels/index.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
-import { resolveGlobalProjectConfigPath } from "./project/project-config-storage.js";
-import { resolveManagedProjectSourceDirectory } from "./project/project-source-directory.js";
-import { resolveManagedProjectStorageRoot } from "./project/project-storage-paths.js";
+import { deriveProjectKey } from "./project-key.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
 import {
@@ -330,6 +321,9 @@ interface SessionForTestOptions {
   messages?: unknown[];
   targetedMessages?: Array<{ source: object; message: SessionOutboundMessage }>;
   binaryMessages?: Uint8Array[];
+  pluginRuntime?: SessionOptions["pluginRuntime"];
+  orchestrationSkills?: SessionOptions["orchestrationSkills"];
+  workspaceLabelService?: WorkspaceLabelService;
 }
 
 function createSessionForTest(options: SessionForTestOptions = {}): Session {
@@ -404,6 +398,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       get: vi.fn(),
       list: vi.fn().mockResolvedValue([]),
     },
+    workspaceLabelService: options.workspaceLabelService,
     scheduleService: asScheduleService(),
     checkoutDiffManager: asCheckoutDiffManager(checkoutDiffManager),
     github: asGitHubService(github),
@@ -415,6 +410,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
       })),
       onChange: vi.fn(() => () => {}),
     }),
+    pluginRuntime: options.pluginRuntime,
+    orchestrationSkills: options.orchestrationSkills,
     stt: options.stt ?? null,
     tts: null,
     terminalManager: options.terminalManager ?? null,
@@ -433,6 +430,296 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   };
   return new Session(sessionOptions);
 }
+
+test("routes host-scoped agent skills requests through the daemon owner", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const status = {
+    state: "up-to-date" as const,
+    ops: [],
+    available: ["paseo"],
+    installed: ["paseo"],
+    selection: { mode: "all" as const },
+  };
+  const orchestrationSkills: NonNullable<SessionOptions["orchestrationSkills"]> = {
+    getStatus: vi.fn(async () => status),
+    reconcile: vi.fn(async () => status),
+    uninstall: vi.fn(async () => status),
+    saveSelection: vi.fn(async () => ({ ...status, confirmationRequired: null })),
+    importLegacySelectionIfUnset: vi.fn(async (selection) => ({
+      imported: true,
+      selection,
+    })),
+    autoUpdate: vi.fn(async () => status),
+  };
+  const session = createSessionForTest({ messages, orchestrationSkills });
+
+  await session.handleMessage({
+    type: "agent.skills.save_selection.request",
+    requestId: "save-skills",
+    selection: { mode: "custom", skills: ["paseo"] },
+    confirmedRemovals: ["paseo-loop"],
+  });
+
+  expect(orchestrationSkills.saveSelection).toHaveBeenCalledWith(
+    { mode: "custom", skills: ["paseo"] },
+    ["paseo-loop"],
+  );
+  expect(messages).toContainEqual({
+    type: "agent.skills.save_selection.response",
+    payload: { requestId: "save-skills", ...status, confirmationRequired: null },
+  });
+});
+
+test("routes plugin requests and releases its owned catalog subscription on cleanup", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const listeners = new Set<(pluginId: string) => void>();
+  const releasePluginSubscription = vi.fn((listener: (pluginId: string) => void) => {
+    listeners.delete(listener);
+  });
+  const plugin = {
+    id: "example",
+    path: "/plugins/example",
+    enabled: true,
+    status: "running" as const,
+  };
+  const pluginRuntime: NonNullable<SessionOptions["pluginRuntime"]> = {
+    listPlugins: () => [plugin],
+    getLogs: () => [
+      {
+        sequence: 1,
+        timestamp: "2026-08-16T12:00:00.000Z",
+        stream: "stdout",
+        message: "ready",
+      },
+    ],
+    installDirectory: async () => plugin,
+    inspectDirectory: async () => ({ id: "example" }),
+    reloadPlugin: async () => plugin,
+    enablePlugin: async () => plugin,
+    disablePlugin: async () => ({ ...plugin, enabled: false, status: "disabled" }),
+    removePlugin: async () => undefined,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => releasePluginSubscription(listener);
+    },
+    catalog: () => [{ id: "example", clientBundle: "bundle" }],
+    invokePluginRpc: async () => ({ ok: true }),
+  };
+  const session = createSessionForTest({ messages, pluginRuntime });
+
+  await session.handleMessage({ type: "plugin.list.request", requestId: "list" });
+  await session.handleMessage({
+    type: "plugin.logs.get.request",
+    requestId: "logs",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.directory.install.request",
+    requestId: "install",
+    path: "/plugins/example",
+  });
+  await session.handleMessage({
+    type: "plugin.reload.request",
+    requestId: "reload",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.disable.request",
+    requestId: "disable",
+    pluginId: "example",
+  });
+  await session.handleMessage({
+    type: "plugin.remove.request",
+    requestId: "remove",
+    pluginId: "example",
+  });
+  for (const listener of listeners) listener("example");
+
+  expect(messages.map((message) => message.type)).toEqual([
+    "plugin.list.response",
+    "plugin.logs.get.response",
+    "plugin.directory.install.response",
+    "plugin.reload.response",
+    "plugin.disable.response",
+    "plugin.remove.response",
+    "status",
+  ]);
+  expect(messages.at(-1)).toEqual({
+    type: "status",
+    payload: { status: "plugin_catalog_changed", pluginId: "example" },
+  });
+  await session.cleanup();
+  expect(listeners.size).toBe(0);
+  expect(releasePluginSubscription).toHaveBeenCalledOnce();
+});
+
+describe("workspace label subscriptions", () => {
+  type LabelSubscription = Awaited<ReturnType<WorkspaceLabelService["subscribe"]>>;
+  type LabelChange = Parameters<Parameters<WorkspaceLabelService["subscribe"]>[0]["onChange"]>[0];
+
+  function labelSubscription(requestId: string): LabelSubscription {
+    return {
+      snapshot: {
+        labels: [],
+        sync: {
+          mode: "snapshot",
+          generation: `generation-${requestId}`,
+          headSeq: 0,
+          removals: [],
+        },
+      },
+      unsubscribe: vi.fn(),
+    };
+  }
+
+  function labelListRequest(requestId: string) {
+    return {
+      type: "workspace.label.list.request" as const,
+      requestId,
+      subscribe: { subscriptionId: `subscription-${requestId}` },
+    };
+  }
+
+  test("an overlapping request cannot reactivate its superseded subscription", async () => {
+    const first = deferred<LabelSubscription>();
+    const callbacks: Array<(change: LabelChange) => void> = [];
+    const service = {
+      subscribe: async (input: Parameters<WorkspaceLabelService["subscribe"]>[0]) => {
+        callbacks.push(input.onChange);
+        return callbacks.length === 1 ? first.promise : labelSubscription("b");
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    const requestA = session.handleMessage(labelListRequest("a"));
+    await Promise.resolve();
+    await session.handleMessage(labelListRequest("b"));
+    const firstSubscription = labelSubscription("a");
+    first.resolve(firstSubscription);
+    await requestA;
+
+    expect(firstSubscription.unsubscribe).toHaveBeenCalledOnce();
+    callbacks[0]?.({
+      kind: "remove",
+      name: "Old",
+      generation: "generation-a",
+      seq: 1,
+    });
+    callbacks[1]?.({
+      kind: "remove",
+      name: "Current",
+      generation: "generation-b",
+      seq: 1,
+    });
+    expect(messages.filter((message) => message.type === "workspace.label.update")).toEqual([
+      expect.objectContaining({ payload: expect.objectContaining({ name: "Current" }) }),
+    ]);
+  });
+
+  test("a superseded failure cannot clear the current subscription or survive cleanup", async () => {
+    const first = deferred<LabelSubscription>();
+    const callbacks: Array<(change: LabelChange) => void> = [];
+    const current = labelSubscription("b");
+    const service = {
+      subscribe: async (input: Parameters<WorkspaceLabelService["subscribe"]>[0]) => {
+        callbacks.push(input.onChange);
+        return callbacks.length === 1 ? first.promise : current;
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    const requestA = session.handleMessage(labelListRequest("a"));
+    await Promise.resolve();
+    await session.handleMessage(labelListRequest("b"));
+    first.reject(new Error("old request failed"));
+    await requestA;
+
+    callbacks[1]?.({
+      kind: "remove",
+      name: "Current",
+      generation: "generation-b",
+      seq: 1,
+    });
+    expect(messages.filter((message) => message.type === "workspace.label.update")).toHaveLength(1);
+    await session.cleanup();
+    expect(current.unsubscribe).toHaveBeenCalledOnce();
+    callbacks[1]?.({
+      kind: "remove",
+      name: "After cleanup",
+      generation: "generation-b",
+      seq: 2,
+    });
+    expect(messages.filter((message) => message.type === "workspace.label.update")).toHaveLength(1);
+  });
+});
+
+describe("workspace label editing", () => {
+  test("answers one edit with the label it produced and the assignments it rewrote", async () => {
+    const calls: unknown[] = [];
+    const service = {
+      update: async (input: unknown) => {
+        calls.push(input);
+        return { label: { name: "Priority", color: "sky" }, affectedWorkspaceCount: 3 };
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    await session.handleMessage({
+      type: "workspace.label.update.request",
+      requestId: "request-edit",
+      name: "Urgent",
+      newName: "Priority",
+      color: "sky",
+    });
+
+    expect(calls).toEqual([
+      expect.objectContaining({ name: "Urgent", newName: "Priority", color: "sky" }),
+    ]);
+    expect(messages).toEqual([
+      {
+        type: "workspace.label.update.response",
+        payload: {
+          requestId: "request-edit",
+          label: { name: "Priority", color: "sky" },
+          affectedWorkspaceCount: 3,
+        },
+      },
+    ]);
+  });
+
+  test("reports a name collision as a coded error and emits no response", async () => {
+    const service = {
+      update: async () => {
+        throw new WorkspaceLabelError("label_name_taken", "A label with that name already exists");
+      },
+    } as unknown as WorkspaceLabelService;
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ messages, workspaceLabelService: service });
+
+    await session.handleMessage({
+      type: "workspace.label.update.request",
+      requestId: "request-collision",
+      name: "Urgent",
+      newName: "Waiting",
+      color: "teal",
+    });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "request-collision",
+          requestType: "workspace.label.update.request",
+          code: "label_name_taken",
+          error: "A label with that name already exists",
+        },
+      },
+    ]);
+  });
+});
 
 describe("session authorization scopes", () => {
   test("routes named-agent validation through the session source", async () => {
@@ -659,7 +946,6 @@ describe("project command-center RPCs", () => {
   test("creates a directory and returns its normalized Project descriptor", async () => {
     const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
     const directoryPath = join(parentDirectory, "new-project");
-    const paseoHome = join(parentDirectory, "paseo-home");
     const messages: SessionOutboundMessage[] = [];
     const projectAllocation = vi.fn(async (input) =>
       createPersistedProjectRecord({
@@ -673,7 +959,6 @@ describe("project command-center RPCs", () => {
     );
     const session = createSessionForTest({
       messages,
-      paseoHome,
       projectRegistry: {
         getOrCreateActiveByRoot: projectAllocation,
       },
@@ -703,6 +988,12 @@ describe("project command-center RPCs", () => {
         rootPath: directoryPath,
         kind: "non_git",
         displayName: "new-project",
+        projectKey: deriveProjectKey({
+          rootPath: directoryPath,
+          remoteUrl: null,
+          worktreeRoot: null,
+          mainRepoRoot: null,
+        }),
         timestamp: expect.any(String),
       });
       expect(messages).toEqual([
@@ -717,8 +1008,7 @@ describe("project command-center RPCs", () => {
               projectCustomName: null,
               projectCustomIconRevision: null,
               projectIconRevision: "automatic:none:v1",
-              projectRootPath: join(paseoHome, "projects", "prj_created_directory"),
-              projectSourceDirectory: directoryPath,
+              projectRootPath: directoryPath,
               projectKind: "non_git",
             },
             error: null,
@@ -776,71 +1066,6 @@ describe("project command-center RPCs", () => {
       ]);
     } finally {
       rmSync(parentDirectory, { recursive: true, force: true });
-    }
-  });
-
-  test("creates a Project without creating or requiring a directory", async () => {
-    const paseoHome = realpathSync(mkdtempSync(join(tmpdir(), "paseo-directoryless-session-")));
-    const messages: SessionOutboundMessage[] = [];
-    const project = createPersistedProjectRecord({
-      projectId: "prj_directoryless",
-      rootPath: null,
-      kind: "non_git",
-      displayName: "Planning",
-      createdAt: "2026-08-19T00:00:00.000Z",
-      updatedAt: "2026-08-19T00:00:00.000Z",
-    });
-    const createDirectoryless = vi.fn().mockResolvedValue(project);
-    const session = createSessionForTest({
-      messages,
-      paseoHome,
-      projectRegistry: { createDirectoryless },
-    });
-
-    try {
-      await session.handleMessage({
-        type: "project.create_directoryless.request",
-        name: "Planning",
-        requestId: "req-directoryless",
-      });
-
-      expect(createDirectoryless).toHaveBeenCalledWith({
-        displayName: "Planning",
-        timestamp: expect.any(String),
-      });
-      expect(messages).toEqual([
-        {
-          type: "project.create_directoryless.response",
-          payload: {
-            requestId: "req-directoryless",
-            project: {
-              projectId: "prj_directoryless",
-              projectDisplayName: "Planning",
-              projectCustomName: null,
-              projectCustomIconRevision: null,
-              projectIconRevision: "automatic:none:v1",
-              projectRootPath: resolveManagedProjectSourceDirectory(paseoHome, project.projectId),
-              projectSourceDirectory: resolveManagedProjectSourceDirectory(
-                paseoHome,
-                project.projectId,
-              ),
-              projectDirectoryless: true,
-              projectKind: "non_git",
-            },
-            error: null,
-          },
-        },
-      ]);
-      expect(
-        readFileSync(resolveGlobalProjectConfigPath(paseoHome, project.projectId), "utf8"),
-      ).toBe(
-        '{\n  "project": {\n    "directoryMode": "multiple",\n    "directories": {\n      "project": []\n    }\n  }\n}\n',
-      );
-      expect(existsSync(resolveManagedProjectSourceDirectory(paseoHome, project.projectId))).toBe(
-        true,
-      );
-    } finally {
-      rmSync(paseoHome, { recursive: true, force: true });
     }
   });
 });
@@ -1303,14 +1528,11 @@ describe("project config RPC authorization", () => {
 
   test("read_project_config_request accepts the same root with a trailing slash", async () => {
     const repoRoot = makeRoot();
-    const paseoHome = makeRoot();
-    const project = createProjectRecord(repoRoot);
     writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      paseoHome,
-      projectRegistry: { list: vi.fn().mockResolvedValue([project]) },
+      projectRegistry: { list: vi.fn().mockResolvedValue([createProjectRecord(repoRoot)]) },
     });
 
     await session.handleMessage({
@@ -1324,7 +1546,7 @@ describe("project config RPC authorization", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-trailing-slash-1",
-          repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
+          repoRoot,
           ok: true,
           config: { worktree: { setup: "npm ci" } },
           revision: expect.objectContaining({
@@ -1341,8 +1563,6 @@ describe("project config RPC authorization", () => {
     "read_project_config_request accepts a symlink to an active project root",
     async () => {
       const repoRoot = makeRoot();
-      const paseoHome = makeRoot();
-      const project = createProjectRecord(repoRoot);
       writeFileSync(
         join(repoRoot, "paseo.json"),
         JSON.stringify({ worktree: { setup: "npm ci" } }),
@@ -1352,8 +1572,7 @@ describe("project config RPC authorization", () => {
       const messages: unknown[] = [];
       const session = createSessionForTest({
         messages,
-        paseoHome,
-        projectRegistry: { list: vi.fn().mockResolvedValue([project]) },
+        projectRegistry: { list: vi.fn().mockResolvedValue([createProjectRecord(repoRoot)]) },
       });
 
       await session.handleMessage({
@@ -1367,7 +1586,7 @@ describe("project config RPC authorization", () => {
           type: "read_project_config_response",
           payload: {
             requestId: "read-symlink-1",
-            repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
+            repoRoot,
             ok: true,
             config: { worktree: { setup: "npm ci" } },
             revision: expect.objectContaining({
@@ -1428,8 +1647,6 @@ describe("project config RPC authorization", () => {
 
   test("read_project_config_request emits raw lifecycle forms for a known project root", async () => {
     const repoRoot = makeRoot();
-    const paseoHome = makeRoot();
-    const project = createProjectRecord(repoRoot);
     writeFileSync(
       join(repoRoot, "paseo.json"),
       JSON.stringify({ worktree: { setup: "npm install", teardown: ["npm run clean"] } }),
@@ -1437,8 +1654,7 @@ describe("project config RPC authorization", () => {
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      paseoHome,
-      projectRegistry: { list: vi.fn().mockResolvedValue([project]) },
+      projectRegistry: { list: vi.fn().mockResolvedValue([createProjectRecord(repoRoot)]) },
     });
 
     await session.handleMessage({
@@ -1452,7 +1668,7 @@ describe("project config RPC authorization", () => {
         type: "read_project_config_response",
         payload: {
           requestId: "read-1",
-          repoRoot: resolveManagedProjectStorageRoot(paseoHome, project.projectId),
+          repoRoot,
           ok: true,
           config: { worktree: { setup: "npm install", teardown: ["npm run clean"] } },
           revision: expect.objectContaining({
@@ -1464,20 +1680,21 @@ describe("project config RPC authorization", () => {
     ]);
   });
 
-  test("write_project_config_request reports stale edits and writes independently of the source directory", async () => {
+  test("write_project_config_request emits stale and write-failed inline domain failures", async () => {
     const staleRoot = makeRoot();
-    const paseoHome = makeRoot();
     writeFileSync(join(staleRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));
     const writeFailedRoot = join(makeRoot(), "not-a-directory");
     writeFileSync(writeFailedRoot, "file");
-    const staleProject = createProjectRecord(staleRoot);
-    const sourceUnavailableProject = createProjectRecord(writeFailedRoot);
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      paseoHome,
       projectRegistry: {
-        list: vi.fn().mockResolvedValue([staleProject, sourceUnavailableProject]),
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            createProjectRecord(staleRoot),
+            createProjectRecord(writeFailedRoot),
+          ]),
       },
     });
 
@@ -1501,7 +1718,7 @@ describe("project config RPC authorization", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "stale-1",
-          repoRoot: resolveManagedProjectStorageRoot(paseoHome, staleProject.projectId),
+          repoRoot: staleRoot,
           ok: false,
           error: {
             code: "stale_project_config",
@@ -1516,13 +1733,9 @@ describe("project config RPC authorization", () => {
         type: "write_project_config_response",
         payload: {
           requestId: "write-failed-1",
-          repoRoot: resolveManagedProjectStorageRoot(paseoHome, sourceUnavailableProject.projectId),
-          ok: true,
-          config: { worktree: { setup: "new" } },
-          revision: expect.objectContaining({
-            mtimeMs: expect.any(Number),
-            size: expect.any(Number),
-          }),
+          repoRoot: writeFailedRoot,
+          ok: false,
+          error: { code: "write_failed" },
         },
       },
     ]);
@@ -1693,7 +1906,7 @@ describe("daemon status + pairing RPC", () => {
           pid: process.pid,
           nodePath: process.execPath,
           startedAt: null,
-          listen: "127.0.0.1:6767",
+          listen: null,
           relay: null,
           providers: [],
         },
@@ -1710,8 +1923,6 @@ describe("daemon status + pairing RPC", () => {
         listen: "127.0.0.1:6767",
         getRelayConfig: () => ({
           enabled: false,
-          endpoints: [],
-          local: { enabled: false, listen: "0.0.0.0:6769" },
           endpoint: "relay.paseo.sh:443",
           publicEndpoint: "relay.paseo.sh:443",
           useTls: true,
@@ -1733,7 +1944,6 @@ describe("daemon status + pairing RPC", () => {
           url: "",
           qr: null,
           relayEnabled: false,
-          offers: [],
         },
       },
     ]);
@@ -5090,7 +5300,6 @@ test("sends project updates only to capable sockets in a retained session", asyn
 
 test("project.list returns every active project descriptor", async () => {
   const messages: SessionOutboundMessage[] = [];
-  const paseoHome = "/tmp/paseo-home";
   const active = createPersistedProjectRecord({
     projectId: "project-active",
     projectKey: "remote:github.com/acme/app",
@@ -5111,7 +5320,6 @@ test("project.list returns every active project descriptor", async () => {
   });
   const session = createSessionForTest({
     messages,
-    paseoHome,
     projectRegistry: { list: vi.fn().mockResolvedValue([active, archived]) },
   });
 
@@ -5130,8 +5338,7 @@ test("project.list returns every active project descriptor", async () => {
             projectCustomName: null,
             projectCustomIconRevision: null,
             projectIconRevision: "automatic:none:v1",
-            projectRootPath: resolveManagedProjectStorageRoot(paseoHome, active.projectId),
-            projectSourceDirectory: "/tmp/project-active",
+            projectRootPath: "/tmp/project-active",
             projectKind: "git",
           },
         ],

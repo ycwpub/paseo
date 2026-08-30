@@ -1,9 +1,7 @@
 import { en, type TranslationResources } from "./en";
-import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
-import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-const ptBRBase = {
+export const ptBR: TranslationResources = {
   common: {
     back: "Voltar",
     loading: "Carregando...",
@@ -205,7 +203,6 @@ const ptBRBase = {
     empty: "Comece a conversar com este agente...",
     scrollToBottom: "Rolar para o fim",
     historyLoadFailed: "Não foi possível carregar o histórico do agente",
-    changes: en.agentStream.changes,
     permission: {
       plan: "Plano",
       required: "Permissão necessária",
@@ -217,7 +214,6 @@ const ptBRBase = {
     },
   },
   agentPanel: {
-    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "Agente não encontrado",
       failedToLoad: "Falha ao carregar agente",
@@ -357,8 +353,6 @@ const ptBRBase = {
     },
     compaction: {
       loading: "Compactando...",
-      loadingAuto: "Compactando o contexto automaticamente...",
-      loadingManual: "Compactando o contexto manualmente...",
       auto: "Contexto compactado automaticamente",
       manual: "Contexto compactado manualmente",
       withTokens: "Contexto compactado ({{tokens}}K tokens)",
@@ -1264,144 +1258,6 @@ const ptBRBase = {
       commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
-  memoryPolicies: {
-    ...en.memoryPolicies,
-    globalDisabledTitle: "A memória global está desativada",
-    globalDisabledDescription:
-      "A política será salva, mas o Paseo só a usará depois que a Memória for ativada nas configurações do host.",
-    scopeManager: {
-      ...en.memoryPolicies.scopeManager,
-      title: "Regras de memória",
-      description: "Gerencie as informações duráveis que cada escopo de memória pode salvar.",
-      scopeType: "Escopo da memória",
-      target: "Destino",
-      selectTarget: "Selecione um destino",
-      instructionsTitle: "O que deve ser salvo",
-      save: "Salvar regras",
-      saved: "Salvo",
-    },
-    contentManager: {
-      ...en.memoryPolicies.contentManager,
-      pageTitle: "Gerenciamento de memória",
-      detailTitle: "Detalhes da memória",
-      manage: "Gerenciar conteúdo da memória",
-      manageDescription:
-        "Há {{count}} memórias. Abra a página dedicada para visualizar, editar ou excluir.",
-      openManager: "Abrir",
-      backToList: "Voltar à lista de memórias",
-      loading: "Carregando memória…",
-      notFound: "Esta memória não existe ou foi excluída.",
-      errorTitle: "Não foi possível gerenciar a memória",
-      scopeEditHint: "Alterar o escopo move esta memória para o escopo selecionado.",
-      pagination: {
-        pageSize: "Itens por página",
-        noPageSizes: "Nenhum tamanho de página disponível",
-        page: "Página {{page}} de {{totalPages}}",
-        range: "Mostrando {{start}}–{{end}} de {{total}}",
-        previous: "Anterior",
-        next: "Próxima",
-      },
-    },
-  },
-  workflows: {
-    ...en.workflows,
-    graph: {
-      ...en.workflows.graph,
-      fullView: "Plano completo",
-      fullViewTitle: "Grafo completo do workflow",
-      fullViewHint:
-        "Inspecione o grafo de dependências e o caminho de execução, aplique zoom ou abra um nó.",
-      zoomIn: "Ampliar o grafo do workflow",
-      zoomOut: "Reduzir o grafo do workflow",
-      resetZoom: "Redefinir o zoom do grafo",
-      nodeName: "Nome do nó",
-      nodeId: "ID do nó",
-      nodeType: "Tipo do nó",
-      configuration: "Configuração completa do nó",
-    },
-    nodes: {
-      ...en.workflows.nodes,
-      agent: {
-        ...en.workflows.nodes.agent,
-        lifecycle: "Ciclo de vida do agente",
-        lifecycleHint:
-          "Controla por quanto tempo este nó reutiliza o mesmo agente. As chamadas reutilizadas são executadas em ordem.",
-        selectLifecycle: "Selecionar ciclo de vida do agente",
-        lifecycleOptions: {
-          workflow: "Workflow inteiro",
-          workflowDescription:
-            "Cria na primeira execução, reutiliza e libera quando o Workflow termina.",
-          for: "Loop For atual",
-          forDescription:
-            "Cria na primeira iteração, reutiliza no loop For atual e libera ao sair do loop.",
-          single: "Execução única",
-          singleDescription: "Criar um novo agente a cada execução, sem reutilização.",
-        },
-        subsequentPromptMode: "Prompt após a primeira chamada",
-        subsequentPromptModeHint:
-          "Escolha o que enviar quando este nó chamar um agente já inicializado.",
-        selectSubsequentPromptMode: "Selecionar comportamento do prompt seguinte",
-        subsequentPromptModes: {
-          reuseInitial: "Reutilizar prompt inicial",
-          reuseInitialDescription:
-            "Renderizar novamente o prompt inicial com a entrada atual do nó.",
-          custom: "Prompt personalizado",
-          customDescription: "Usar um prompt separado em cada chamada após a primeira.",
-        },
-        subsequentPrompt: "Prompt seguinte personalizado",
-        subsequentPromptHint:
-          "Aceita os mesmos dados de entrada e variáveis de modelo do prompt inicial.",
-        archiveAtLifecycleEnd: "Arquivar automaticamente ao fim do ciclo de vida do agente",
-      },
-      common: {
-        ...en.workflows.nodes.common,
-        environment: "Variáveis de ambiente do nó (JSON)",
-        environmentHint:
-          "Valores de texto opcionais substituem o ambiente de comandos do Workflow neste nó.",
-        environmentStringValues: "Os valores das variáveis de ambiente devem ser textos.",
-      },
-      python: {
-        ...en.workflows.nodes.python,
-        module: "Módulo Python",
-        moduleHint: "Caminho de módulo opcional; configure-o junto com uma função.",
-        function: "Função Python",
-        functionHint:
-          "Recebe toda a entrada do nó e retorna o resultado; aceita funções assíncronas.",
-      },
-      for: {
-        ...en.workflows.nodes.for,
-        breakWhen: "Condição de parada",
-        breakWhenHint: "A expressão deve retornar um booleano; true encerra o loop.",
-        continueWhen: "Condição de continuação",
-        continueWhenHint:
-          "A expressão deve retornar um booleano; true ignora os nós restantes desta iteração.",
-      },
-      contract: {
-        title: "Contrato de dados do nó",
-        description: "Mapeie apenas os campos necessários e valide entrada e saída.",
-        inputs: "Mapeamento de entrada (JSON)",
-        inputsHint:
-          "Expressões completas como {{nodes.scan.outputs.items}} preservam o tipo nativo.",
-        inputSchema: "Esquema de entrada",
-        outputSchema: "Esquema de saída",
-        schemaHint: "Opcional. O Paseo valida antes de continuar.",
-        invalidJson: "Digite um JSON válido.",
-        objectRequired: "O valor deve ser um objeto JSON.",
-      },
-      openDetails: "Abrir detalhes do nó {{name}}",
-      downstream: {
-        label: "Próximo nó",
-        hint: "Escolha o nó do mesmo nível que será executado após este nó.",
-        sequential: "Seguir a ordem da lista",
-        sequentialDescription: "Executar o próximo nó da lista.",
-        end: "Encerrar sequência",
-        endDescription: "Encerrar esta sequência após a conclusão do nó atual.",
-        missing: "Nó ausente: {{id}}",
-        placeholder: "Selecionar próximo nó",
-        empty: "Nenhum próximo nó disponível",
-      },
-    },
-  },
   desktop: {
     windowControls: {
       minimize: "Minimizar janela",
@@ -1562,11 +1418,6 @@ const ptBRBase = {
         installFailed: "Não foi possível instalar a CLI do Paseo.",
       },
     },
-  },
-  communityLinks: {
-    star: "Dar estrela",
-    sponsor: "Patrocinar",
-    community: "Comunidade",
   },
   rootError: {
     title: "O Paseo encontrou um problema.",
@@ -1846,8 +1697,6 @@ const ptBRBase = {
     },
     device: {
       loadingOffer: "Carregando oferta de pareamento...",
-      relayListTitle: "Relay list",
-      hintMultiple: "Use any available Relay pairing address to connect this device.",
       failedToLoadOffer: "Falha ao carregar oferta de pareamento.",
       relayDisabled: "Relay não está ativado. Ative o relay para parear um dispositivo.",
       enableTitle: "Ativar o relay?",
@@ -1870,38 +1719,6 @@ const ptBRBase = {
       retry: "Tentar novamente",
       copy: "Copiar",
       copied: "Copiado",
-      access: {
-        title: "Client management",
-        requireApproval: "Require client approval",
-        requireApprovalHint:
-          "When enabled, new clients must be approved here before they can connect.",
-        empty: "No client connection requests.",
-        pending: "Pending",
-        allowed: "Allowed",
-        approved: "Approved",
-        paused: "Paused",
-        connected: "Connected",
-        disconnected: "Disconnected",
-        hostname: "Hostname",
-        identityId: "Identity ID",
-        endpoint: "IP / port",
-        endpointUnavailable: "Unavailable",
-        lastConnectedAt: "Last connected",
-        neverConnected: "No record",
-        unknownName: "Unknown client",
-        approve: "Approve",
-        approving: "Approving...",
-        pause: "Pause",
-        pausing: "Pausing...",
-        resume: "Resume",
-        resuming: "Resuming...",
-        delete: "Delete",
-        deleting: "Deleting...",
-        macClient: "Mac",
-        androidClient: "Android",
-        cliClient: "CLI",
-        browserClient: "Browser",
-      },
     },
   },
   realtimeVoice: {
@@ -2098,7 +1915,6 @@ const ptBRBase = {
     projects: "Projetos",
     projectList: {
       hostLoadFailed: "Não foi possível carregar projetos do host {{hostName}}: {{message}}",
-      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "Editar {{projectName}}",
     },
     groupInfo: "Sobre {{title}}",
@@ -2126,19 +1942,6 @@ const ptBRBase = {
       refreshAccessibility: "Atualizar permissão de notificações",
       playSound: "Reproduzir som",
       playSoundHint: "Reproduz um som quando chega uma notificação da área de trabalho",
-      island: "Dynamic Island",
-      islandHint: "Show Paseo unread messages and task status at the top of the Mac screen.",
-      islandShowWhenFocused: "Show while Paseo is focused",
-      islandShowWhenFocusedHint:
-        "Keep the Dynamic Island visible while Paseo is in the foreground.",
-      islandTest: "Test Dynamic Island",
-      islandTestHint: "Send a test message to verify that the Dynamic Island is working.",
-      islandTestTitle: "Paseo Dynamic Island test",
-      islandTestBody: "If you can see this message, the Dynamic Island is working.",
-      islandTestSuccess: "Test message sent",
-      islandTestSuccessHint: "Check the Paseo Dynamic Island at the top of the Mac screen.",
-      islandTestFailed: "Unable to send test message",
-      islandTestFailedHint: "Check your settings and try the Dynamic Island test again.",
       test: "Testar notificação",
       testHint: "Envia uma notificação usando estas configurações",
       permissionRequired: "Permita o acesso às notificações antes de testar",
@@ -2153,13 +1956,8 @@ const ptBRBase = {
       connections: "Conexões",
       agents: "Agentes",
       metadata: "Metadados",
-      assistants: "Assistentes",
-      memory: "Memória",
-      mcp: "MCP",
-      skills: "Skills",
       workspaces: "Workspaces",
       providers: "Provedores",
-      channels: "Canais",
       usage: "Uso",
       terminals: "Terminais",
       plugins: "Plugins",
@@ -2503,100 +2301,6 @@ const ptBRBase = {
         relay: "Relay",
         local: "Local",
         remoteSsh: "SSH remoto",
-        direct: "Direct to server",
-        viaRelay: "Via Relay",
-      },
-      relay: {
-        title: "Relay",
-        serviceColumn: "WS / WSS address",
-        pairingColumn: "HTTP / HTTPS connection address",
-        serviceListHint:
-          "Configure one or more Relay service addresses used by Paseo. Default public Relay: {{addresses}}.",
-        pairingListHint:
-          "Configure pairing frontends, including paths such as /app. Default HTTP/HTTPS address: {{addresses}}. Every Relay gets a pairing link for every address in this list.",
-        servicePlaceholder: "wss://relay.paseo.sh:443",
-        pairingPlaceholder: "https://app.paseo.sh",
-        addressPairHintTitle: "How to fill in the Relay list above",
-        addressPairHint:
-          "Relay service addresses and pairing frontend addresses are configured independently. With multiple HTTP/HTTPS addresses, every Relay generates multiple pairing links.",
-        incompleteRow: "Each Relay requires both a service address and a connection address",
-        duplicateRow: "Relay service addresses must be unique",
-        duplicatePairingUrl: "HTTP / HTTPS connection addresses must be unique",
-        addRow: "Add Relay",
-        addPairingUrl: "Add connection address",
-        removeRow: "Remove Relay",
-        removePairingUrl: "Remove connection address",
-        save: "Save",
-        saving: "Saving...",
-        lan: {
-          title: "Use this Paseo as a LAN Relay",
-          hint: "Devices on the same local network can connect through this Host.",
-          listenLabel: "LAN Relay listen address",
-          listenHint:
-            "Use 0.0.0.0 to listen on every interface. A specific IP must be assigned to this machine.",
-          pairingUrlLabel: "LAN Relay HTTP connection address",
-          pairingUrlPlaceholder: "For example http://10.71.95.148:6769",
-          pairingUrlHint: "Leave empty to generate it automatically.",
-          webApp: {
-            title: "Host the Paseo pairing web app",
-            hint: "Serve a web page on this Relay that parses pairing offers and connects to Paseo.",
-            pathLabel: "Pairing web app path",
-            pathHint: "For example /app. Links use http://local-ip:port/app/#offer=....",
-          },
-        },
-        management: {
-          title: "Relay connections",
-          count: "{{count}} connections",
-          empty: "No clients or servers are connected to this Relay.",
-          loading: "Loading Relay connections...",
-          unavailable: "Relay runtime information is unavailable.",
-          unknownPeer: "Unknown peer",
-          pairingAddress: "Pairing page address",
-          relayAddress: "Relay WebSocket address",
-          deviceType: "Device type",
-          deviceTypes: {
-            mac: "Mac app",
-            windows: "Windows app",
-            linux: "Linux app",
-            android: "Android app",
-            ios: "iOS app",
-            web: "Web app",
-            cli: "CLI",
-            mcp: "MCP",
-            unknown: "Unknown",
-          },
-          hostname: "Server hostname",
-          clientHostname: "Client hostname",
-          clientId: "Client identity ID",
-          serverId: "Server identity ID",
-          connectionId: "Connection ID",
-          peerEndpoint: "IP / port",
-          clients: "Clients",
-          servers: "Servers",
-          noClients: "No clients are connected to this Relay.",
-          noServers: "No servers are connected to this Relay.",
-          clientHistory: "Client connection history",
-          serverHistory: "Server connection history",
-          noClientHistory: "No historical client connections.",
-          noServerHistory: "No historical server connections.",
-          connectionHistory: "Connection history",
-          connectionCount: "{{count}} connections",
-          expandHistory: "Show all {{count}} connections",
-          collapseHistory: "Collapse connection history",
-          connectedAt: "Connected at",
-          disconnectedAt: "Disconnected at",
-          stillConnected: "Still connected",
-          historyRetention:
-            "History is automatically retained for {{days}} days and can be deleted manually.",
-          delete: "Delete",
-          deleting: "Deleting...",
-          roles: {
-            client: "Client",
-            server: "Server",
-            server_control: "Server control connection",
-            server_data: "Server data connection",
-          },
-        },
       },
       connections: {
         title: "Conexões",
@@ -2970,8 +2674,3 @@ const ptBRBase = {
     },
   },
 };
-
-export const ptBR: TranslationResources = completeTranslationResource(
-  en,
-  mergeTranslationResources(ptBRBase, featureTranslationAdditions["pt-BR"]),
-);

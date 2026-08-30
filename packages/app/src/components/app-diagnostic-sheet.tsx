@@ -270,7 +270,7 @@ async function collectHostDiagnosticSections(
   if (snapshot?.connectionStatus !== "online" || !client) {
     sections.push(
       formatDiagnosticSection(`Host diagnostics: ${host.label}`, [
-        { label: "状态", value: "主机未连接" },
+        { label: "Status", value: "host is not connected" },
       ]),
     );
     return { sections, status: "done" };
@@ -283,7 +283,7 @@ async function collectHostDiagnosticSections(
     const rttMs = await client.measureLatency({ timeoutMs: 5000 });
     sections.push(
       formatDiagnosticSection(`Host latency: ${host.label}`, [
-        { label: "当前 RTT", value: `${Math.round(rttMs)}ms` },
+        { label: "Active RTT", value: `${Math.round(rttMs)}ms` },
       ]),
     );
 
@@ -293,7 +293,7 @@ async function collectHostDiagnosticSections(
     } else {
       sections.push(
         formatDiagnosticSection(`Daemon diagnostics: ${host.label}`, [
-          { label: "状态", value: "当前 Daemon 不支持" },
+          { label: "Status", value: "unsupported by this daemon" },
         ]),
       );
     }
@@ -302,7 +302,7 @@ async function collectHostDiagnosticSections(
   } catch (error) {
     sections.push(
       formatDiagnosticSection(`Host diagnostics: ${host.label}`, [
-        { label: "错误", value: toMessage(error) },
+        { label: "Error", value: toMessage(error) },
       ]),
     );
     return { sections, status: "failed" };

@@ -58,7 +58,6 @@ export interface ScheduleFormProviderSnapshot {
 
 export interface ScheduleDisclosureState {
   showProjectField: boolean;
-  showAssistantField: boolean;
   showModelField: boolean;
   showThinkingField: boolean;
   showModeField: boolean;
@@ -78,7 +77,7 @@ export interface ScheduleFormProjectOption {
   testID: string;
 }
 
-export type ScheduleFormTargetKind = "agent" | "new-agent" | "bash";
+export type ScheduleFormTargetKind = "agent" | "new-agent";
 type CronCadence = Extract<ScheduleCadence, { type: "cron" }>;
 type ProviderResolutionStatus = "idle" | "pending" | "complete";
 
@@ -97,7 +96,6 @@ export interface ScheduleFormState {
   selectedModel: string;
   selectedMode: string;
   selectedThinkingOptionId: string;
-  selectedAssistantId: string | null;
   workingDir: string;
   projectDisplay: ScheduleFormDisplay | null;
   selectedProjectOptionId: string;
@@ -128,11 +126,9 @@ export interface ScheduleFormModel {
   applyProjectTargets: (targets: readonly ScheduleProjectTarget[]) => void;
   applyPreferences: (preferences: FormPreferences | undefined) => void;
   applyProviderSnapshot: (serverId: string, snapshot: ScheduleFormProviderSnapshot) => void;
-  setTargetKind: (value: ScheduleFormTargetKind) => void;
   setHost: (serverId: string | null) => void;
   setProject: (optionId: string, display: ScheduleFormDisplay) => void;
   setModel: (provider: AgentProvider, modelId: string) => void;
-  setAssistant: (assistantId: string | null) => void;
   setThinking: (thinkingOptionId: string) => void;
   setSessionMode: (modeId: string) => void;
   setName: (value: string) => void;
@@ -151,13 +147,6 @@ type ThinkingOption = NonNullable<AgentModelDefinition["thinkingOptions"]>[numbe
 
 function newAgentConfig(schedule: ScheduleFormSnapshot["schedule"]) {
   if (schedule?.target.type === "new-agent") {
-    return schedule.target.config;
-  }
-  return null;
-}
-
-function bashConfig(schedule: ScheduleFormSnapshot["schedule"]) {
-  if (schedule?.target.type === "bash") {
     return schedule.target.config;
   }
   return null;
@@ -388,13 +377,8 @@ function makeProviderResolutionRecord(
 }
 
 function resolveTargetKind(snapshot: ScheduleFormSnapshot): ScheduleFormTargetKind {
-  if (snapshot.mode === "edit") {
-    if (snapshot.schedule?.target.type === "agent") {
-      return "agent";
-    }
-    if (snapshot.schedule?.target.type === "bash") {
-      return "bash";
-    }
+  if (snapshot.mode === "edit" && snapshot.schedule?.target.type === "agent") {
+    return "agent";
   }
   return "new-agent";
 }
@@ -411,7 +395,7 @@ function buildProviderSnapshotRequest(input: {
 }
 
 function buildInitialProjectDisplay(input: {
-  config: ReturnType<typeof newAgentConfig> | ReturnType<typeof bashConfig>;
+  config: ReturnType<typeof newAgentConfig>;
   targets: readonly ScheduleProjectTarget[];
   selectedServerId: string | null;
 }): ScheduleFormDisplay | null {
@@ -444,10 +428,6 @@ function buildInitialThinkingDisplay(thinkingOptionId: string): ScheduleFormDisp
     return null;
   }
   return { label: formatThinkingOptionLabel({ id: thinkingOptionId }) };
-}
-
-function resolveInitialAssistantId(config: ReturnType<typeof newAgentConfig>): string | null {
-  return config?.assistantId ?? null;
 }
 
 function formatInitialMaxRuns(schedule: ScheduleFormSnapshot["schedule"]): string {
@@ -536,7 +516,6 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
   if (state.targetKind === "agent") {
     return {
       showProjectField: false,
-      showAssistantField: false,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,
@@ -546,25 +525,12 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
   }
 
   const hasProject = state.workingDir.trim().length > 0;
-  if (state.targetKind === "bash") {
-    return {
-      showProjectField: state.mode === "edit" || Boolean(state.selectedServerId),
-      showAssistantField: false,
-      showModelField: false,
-      showThinkingField: false,
-      showModeField: false,
-      showIsolationField: false,
-      showArchiveOnFinishField: false,
-    };
-  }
-
   const hasSelectedProvider = Boolean(state.selectedProvider);
   const hasSelectedModel = Boolean(state.selectedProvider && state.selectedModel.trim());
   const showProjectField = state.mode === "edit" || Boolean(state.selectedServerId);
   const showModelField = hasProject;
   return {
     showProjectField,
-    showAssistantField: Boolean(state.selectedServerId),
     showModelField,
     showThinkingField:
       showModelField && hasSelectedModel && state.availableThinkingOptions.length > 0,
@@ -593,9 +559,6 @@ function resolveCanSubmit(state: ScheduleFormState): boolean {
   }
   if (!hasWorkingDir) {
     return false;
-  }
-  if (state.targetKind === "bash") {
-    return true;
   }
   return isSelectedModelValidForProviders({
     providers: state.modelSelectorProviders,
@@ -669,22 +632,11 @@ function updateDerivedState(input: {
   return { ...nextState, disclosure, canSubmit: resolveCanSubmit({ ...nextState, disclosure }) };
 }
 
-function resolveInitialTargetContext(input: {
-  snapshot: ScheduleFormSnapshot;
-  selectedServerId: string | null;
-}): {
-  config: ReturnType<typeof newAgentConfig>;
-  bash: ReturnType<typeof bashConfig>;
-  targetKind: ScheduleFormTargetKind;
-  workingDir: string;
-  selectedProjectTarget: ScheduleProjectTarget | null;
-  providerSnapshotRequest: ScheduleProviderSnapshotRequest | null;
-} {
-  const { snapshot, selectedServerId } = input;
+function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
+  const selectedServerId = resolveInitialServerId(snapshot);
   const config = newAgentConfig(snapshot.schedule);
-  const bash = bashConfig(snapshot.schedule);
   const targetKind = resolveTargetKind(snapshot);
-  const workingDir = config?.cwd ?? bash?.cwd ?? "";
+  const workingDir = config?.cwd ?? "";
   const selectedProjectTarget = resolveProjectTarget({
     targets: snapshot.defaults.projectTargets,
     serverId: selectedServerId,
@@ -695,20 +647,6 @@ function resolveInitialTargetContext(input: {
     selectedServerId,
     workingDir,
   });
-  return {
-    config,
-    bash,
-    targetKind,
-    workingDir,
-    selectedProjectTarget,
-    providerSnapshotRequest,
-  };
-}
-
-function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
-  const selectedServerId = resolveInitialServerId(snapshot);
-  const { config, bash, targetKind, workingDir, selectedProjectTarget, providerSnapshotRequest } =
-    resolveInitialTargetContext({ snapshot, selectedServerId });
   const initialCadence = normalizeScheduleFormCadence(
     snapshot.schedule?.cadence ?? DEFAULT_CADENCE,
     snapshot.defaults.timezone ?? DEFAULT_TIMEZONE,
@@ -716,7 +654,6 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
   const initialModel = config?.model ?? "";
   const initialMode = config?.modeId ?? "";
   const initialThinking = config?.thinkingOptionId ?? "";
-  const initialAssistantId = resolveInitialAssistantId(config);
   const state: ScheduleFormState = {
     mode: snapshot.mode,
     targetKind,
@@ -732,10 +669,9 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     selectedModel: initialModel,
     selectedMode: initialMode,
     selectedThinkingOptionId: initialThinking,
-    selectedAssistantId: initialAssistantId,
     workingDir,
     projectDisplay: buildInitialProjectDisplay({
-      config: config ?? bash,
+      config,
       targets: snapshot.defaults.projectTargets,
       selectedServerId,
     }),
@@ -756,7 +692,6 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     providerSnapshotRequest,
     disclosure: {
       showProjectField: false,
-      showAssistantField: false,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,
@@ -793,7 +728,6 @@ function applyResolvedFormState(state: ScheduleFormState, form: FormState): Sche
     selectedMode: form.modeId,
     selectedModel: form.model,
     selectedThinkingOptionId: form.thinkingOptionId,
-    selectedAssistantId: state.selectedAssistantId,
     workingDir: form.workingDir,
   };
 }
@@ -978,7 +912,6 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       selectedModel: "",
       selectedMode: "",
       selectedThinkingOptionId: "",
-      selectedAssistantId: null,
       modelSelectorProviders: [],
       modeOptions: [],
       availableThinkingOptions: [],
@@ -1080,19 +1013,6 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         providerSnapshotRequest: isPendingResolution ? null : state.providerSnapshotRequest,
       });
     },
-    setTargetKind(value) {
-      if (closed || state.mode === "edit" || state.targetKind === value || value === "agent") {
-        return;
-      }
-      const nextState =
-        value === "bash"
-          ? clearProviderSelection({ ...state, targetKind: value })
-          : { ...state, targetKind: value };
-      publish(resolvePreferences(nextState));
-      if (value === "new-agent" && state.selectedServerId && state.workingDir.trim()) {
-        requestProviderSnapshot(state.selectedServerId, state.workingDir);
-      }
-    },
     setHost(serverId) {
       if (closed || state.selectedServerId === serverId) {
         return;
@@ -1109,7 +1029,6 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
           workingDir: "",
           projectDisplay: null,
           selectedProjectOptionId: "",
-          selectedAssistantId: null,
           providerResolutionByServerId: {},
         }),
       );
@@ -1134,16 +1053,12 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         workingDir: target.cwd,
         projectDisplay: display,
         selectedProjectOptionId: target.optionId,
-        selectedAssistantId:
-          state.selectedServerId === target.serverId ? state.selectedAssistantId : null,
       };
       publish(providerScopeChanged ? clearProviderSelection(nextState) : nextState);
       if (!providerScopeChanged) {
         return;
       }
-      if (state.targetKind === "new-agent") {
-        requestProviderSnapshot(target.serverId, target.cwd);
-      }
+      requestProviderSnapshot(target.serverId, target.cwd);
     },
     setModel(provider, modelId) {
       if (closed) {
@@ -1179,12 +1094,6 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         }),
         selectedThinkingOptionId,
       });
-    },
-    setAssistant(assistantId) {
-      if (closed) {
-        return;
-      }
-      publish({ ...state, selectedAssistantId: assistantId });
     },
     setThinking(thinkingOptionId) {
       if (closed) {

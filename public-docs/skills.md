@@ -16,20 +16,19 @@ Start with [Orchestration](/docs/orchestration) if you want the mental model, or
 
 Two ways to install:
 
-- **Desktop app:** Settings → Integrations → Install
+- **Paseo app:** Connect to the host, then open Settings → Host → Agents → Orchestration skills. The selected host installs the skills on its own machine.
 - **Manual:** `npx skills add getpaseo/paseo`, this installs to `~/.agents/skills/` and sets up symlinks for each agent.
 
-When the desktop app finds installed Paseo skills, it keeps the bundled skills up to date on startup. If automatic update fails, use Settings → Integrations → Update or the manual command above.
+When a daemon finds installed Paseo skills, it keeps the selected bundled skills up to date on startup without removing deselected directories. Use the host's Orchestration skills card to install, update, choose, or uninstall skills. Removal always asks for confirmation.
 
 ## `/paseo`, Paseo Reference
 
-The foundational skill. Paseo reference for discovering and running installed Workflows, managing agents and workspaces, and operating schedules. Load it when an agent should check for a reusable automation, create agents, send prompts, or manage workspace isolation.
+The foundational skill. Paseo reference for managing projects, workspaces, and agents. Load it when an agent needs to register a project, create agents, send them prompts, or manage workspace isolation.
 
 Not typically invoked directly by users, it's a reference that other skills depend on.
 
 ```
 /paseo show me the Paseo CLI surface for creating an agent in a worktree-isolated workspace
-/paseo discover whether an installed Workflow can process these alert groups
 ```
 
 ## `/paseo-handoff`, Task Handoff

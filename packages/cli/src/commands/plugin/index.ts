@@ -1,22 +1,20 @@
 import { Command } from "commander";
+import path from "node:path";
 import type {
+  PluginListItem,
   PluginLogEntry,
   PluginSourceStatusItem,
   PluginSourceUpdateItem,
-  PluginSummary,
 } from "@getpaseo/protocol/messages";
 import type { CommandOptions, ListResult, OutputSchema, SingleResult } from "../../output/index.js";
 import { withOutput } from "../../output/index.js";
 import { addJsonAndDaemonHostOptions, addJsonOption } from "../../utils/command-options.js";
 import { scaffoldPluginDirectory, type PluginScaffold } from "./scaffold.js";
-import { withPluginLogsClient, withPluginSourceClient } from "./shared.js";
 import {
-  actOnUnifiedPlugin,
-  installUnifiedPlugin,
-  listUnifiedPlugins,
-  removeUnifiedPlugin,
-  unifiedPluginSchema,
-} from "./unified-catalog.js";
+  withPluginLogsClient,
+  withPluginManagementClient,
+  withPluginSourceClient,
+} from "./shared.js";
 
 interface PluginOptions extends CommandOptions {
   host?: string;
@@ -25,6 +23,17 @@ interface PluginOptions extends CommandOptions {
   path?: string;
   all?: boolean;
 }
+
+const pluginSchema: OutputSchema<PluginListItem> = {
+  idField: "id",
+  columns: [
+    { header: "PLUGIN", field: "id", width: 20 },
+    { header: "STATUS", field: "status", width: 10 },
+    { header: "ENABLED", field: (plugin) => (plugin.enabled ? "yes" : "no"), width: 8 },
+    { header: "DIRECTORY", field: "path", width: 40 },
+    { header: "ERROR", field: (plugin) => plugin.error ?? "", width: 40 },
+  ],
+};
 
 const scaffoldSchema: OutputSchema<PluginScaffold> = {
   idField: "id",
@@ -85,12 +94,9 @@ export async function runPluginInitCommand(
 export async function runPluginListCommand(
   options: PluginOptions,
   _command: Command,
-): Promise<ListResult<PluginSummary>> {
-  return {
-    type: "list",
-    data: await listUnifiedPlugins(options.host),
-    schema: unifiedPluginSchema,
-  };
+): Promise<ListResult<PluginListItem>> {
+  const data = await withPluginManagementClient(options.host, (client) => client.listPlugins());
+  return { type: "list", data, schema: pluginSchema };
 }
 
 export async function runPluginLogsCommand(
@@ -106,12 +112,29 @@ async function install(
   source: string,
   options: PluginOptions,
   _command: Command,
-): Promise<SingleResult<PluginSummary>> {
-  return {
-    type: "single",
-    data: await installUnifiedPlugin(source, options),
-    schema: unifiedPluginSchema,
-  };
+): Promise<SingleResult<PluginListItem>> {
+  const isExplicitPath =
+    path.isAbsolute(source) ||
+    source === "." ||
+    source === ".." ||
+    source.startsWith("./") ||
+    source.startsWith("../") ||
+    source.startsWith(".\\") ||
+    source.startsWith("..\\");
+  const canUseLegacyDirectoryInstall = isExplicitPath && !options.ref && !options.path;
+  const data = canUseLegacyDirectoryInstall
+    ? await withPluginManagementClient(options.host, (client) =>
+        client.installDirectoryPlugin(source, options.id),
+      )
+    : await withPluginSourceClient(options.host, (client) =>
+        client.installPluginSource({
+          source,
+          ...(options.id ? { id: options.id } : {}),
+          ...(options.ref ? { ref: options.ref } : {}),
+          ...(options.path ? { pluginPath: options.path } : {}),
+        }),
+      );
+  return { type: "single", data, schema: pluginSchema };
 }
 
 async function status(
@@ -143,24 +166,25 @@ async function act(
   action: "reload" | "enable" | "disable",
   pluginId: string,
   options: PluginOptions,
-): Promise<SingleResult<PluginSummary>> {
-  return {
-    type: "single",
-    data: await actOnUnifiedPlugin(action, pluginId, options.host),
-    schema: unifiedPluginSchema,
-  };
+): Promise<SingleResult<PluginListItem>> {
+  const data = await withPluginManagementClient(options.host, (client) =>
+    client[`${action}Plugin`](pluginId),
+  );
+  return { type: "single", data, schema: pluginSchema };
 }
 
 async function remove(
   pluginId: string,
   options: PluginOptions,
   _command: Command,
-): Promise<SingleResult<PluginSummary>> {
-  return {
-    type: "single",
-    data: await removeUnifiedPlugin(pluginId, options.host),
-    schema: unifiedPluginSchema,
-  };
+): Promise<SingleResult<PluginListItem>> {
+  const data = await withPluginManagementClient(options.host, async (client) => {
+    const current = (await client.listPlugins()).find((plugin) => plugin.id === pluginId);
+    if (!current) throw new Error(`Plugin is not configured: ${pluginId}`);
+    await client.removePlugin(pluginId);
+    return { ...current, enabled: false, status: "disabled" as const };
+  });
+  return { type: "single", data, schema: pluginSchema };
 }
 
 export function createPluginCommand(): Command {

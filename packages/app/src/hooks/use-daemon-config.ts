@@ -3,8 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
 import { useReplicaQuery } from "@/data/query";
-import { daemonConfigQueryKey, normalizeMutableDaemonConfig } from "@/data/daemon-config";
-import { daemonPairingQueryKey } from "@/data/daemon-pairing";
+import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
 interface UseDaemonConfigResult {
@@ -29,32 +28,24 @@ export function useDaemonConfig(serverId: string | null): UseDaemonConfigResult 
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }
       const result = await client.getDaemonConfig();
-      return normalizeMutableDaemonConfig(result.config);
+      return result.config;
     },
   });
 
   const patchConfig = useCallback(
     async (patch: MutableDaemonConfigPatch) => {
       if (!client) {
-        throw new Error(t("workspace.terminal.hostDisconnected"));
+        return undefined;
       }
       const result = await client.patchDaemonConfig(patch);
-      const config = normalizeMutableDaemonConfig(result.config);
-      queryClient.setQueryData(queryKey, config);
-      if (patch.relay !== undefined) {
-        void queryClient.invalidateQueries({ queryKey: daemonPairingQueryKey(serverId) });
-      }
-      return config;
+      queryClient.setQueryData(queryKey, result.config);
+      return result.config;
     },
-    [client, queryClient, queryKey, serverId, t],
-  );
-  const config = useMemo(
-    () => (configQuery.data ? normalizeMutableDaemonConfig(configQuery.data) : null),
-    [configQuery.data],
+    [client, queryClient, queryKey],
   );
 
   return {
-    config,
+    config: configQuery.data ?? null,
     isLoading: configQuery.isLoading,
     patchConfig,
   };

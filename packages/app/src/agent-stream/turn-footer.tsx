@@ -20,9 +20,6 @@ import type { TurnFooterHost } from "./layout";
 import { AssistantForkMenu } from "@/components/assistant-fork-menu";
 import { SyncedLoader } from "@/components/synced-loader";
 import { useRetainedPanelActive } from "@/components/retained-panel";
-import { collectAssistantTurnItems } from "./turn-items";
-import { TurnChanges } from "./turn-changes";
-import type { ToastApi } from "@/components/toast-host";
 
 const ThemedSyncedLoader = withUnistyles(SyncedLoader);
 const workingIndicatorColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -45,14 +42,6 @@ export type AssistantTurnForkHandler = (input: {
  */
 export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<void> | void;
 
-export interface TurnChangesContext {
-  serverId: string;
-  cwd: string;
-  readOnly: boolean;
-  toast: ToastApi | null;
-  onReview: (cwd: string, path?: string) => void;
-}
-
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
@@ -61,8 +50,6 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onForkInFlightTurn,
-  changes,
-  changeItems,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -71,8 +58,6 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
-  changes?: TurnChangesContext;
-  changeItems?: StreamItem[];
 }) {
   if (isRunning) {
     return (
@@ -95,8 +80,6 @@ export const TurnFooter = memo(function TurnFooter({
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
-      changes={changes}
-      changeItems={changeItems}
     />
   );
 });
@@ -108,8 +91,6 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
-  changes,
-  changeItems,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -117,18 +98,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
-  changes?: TurnChangesContext;
-  changeItems?: StreamItem[];
 }) {
-  const turnItems = useMemo(
-    () =>
-      collectAssistantTurnItems({
-        strategy,
-        items,
-        assistantIndex: startIndex,
-      }),
-    [items, startIndex, strategy],
-  );
   return (
     <TurnFooterRow>
       <CompletedTurnFooter
@@ -139,7 +109,6 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
       />
-      {changes ? <TurnChanges {...changes} items={changeItems ?? turnItems} /> : null}
     </TurnFooterRow>
   );
 });

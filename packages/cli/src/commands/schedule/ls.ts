@@ -22,9 +22,7 @@ export async function runLsCommand(
     return {
       type: "list",
       data: payload.schedules
-        .filter(
-          (schedule) => schedule.target.type === "new-agent" || schedule.target.type === "bash",
-        )
+        .filter((schedule) => schedule.target.type === "new-agent")
         .map(toScheduleRow),
       schema: scheduleSchema,
     };

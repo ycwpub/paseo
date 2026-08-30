@@ -51,7 +51,6 @@ describe("GenericACPAgentClient", () => {
           },
         },
         defaultCommand: ["hermes", "acp"],
-        defaultModes: undefined,
         capabilities: {
           supportsStreaming: true,
           supportsSessionPersistence: true,
@@ -81,20 +80,6 @@ describe("GenericACPAgentClient", () => {
       capabilities: {
         supportsMcpServers: false,
       },
-    });
-  });
-
-  test("passes static fallback modes to the ACP client", () => {
-    const modes = [{ id: "default", label: "Default" }];
-    const _client = new GenericACPAgentClient({
-      logger: createTestLogger(),
-      command: ["agent", "acp"],
-      defaultModes: modes,
-    });
-    void _client;
-
-    expect(mockState.superConstructorOptions.at(-1)).toMatchObject({
-      defaultModes: modes,
     });
   });
 });

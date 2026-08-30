@@ -91,7 +91,7 @@ export function useHostChooser() {
       }
 
       open({
-        title: input.title ?? "选择主机",
+        title: input.title ?? "Choose host",
         serverIds: availableHosts.map((host) => host.serverId),
         onChooseHost: input.onChooseHost,
       });
@@ -252,7 +252,7 @@ export function HostChooserModal() {
               ref={inputRef}
               initialValue={query}
               onChangeText={handleQueryChange}
-              placeholder="搜索主机..."
+              placeholder="Search hosts..."
               placeholderTextColor={theme.colors.foregroundMuted}
               style={styles.input}
               autoCapitalize="none"
@@ -266,7 +266,7 @@ export function HostChooserModal() {
             keyboardShouldPersistTaps="always"
             showsVerticalScrollIndicator={false}
           >
-            {options.length === 0 ? <Text style={styles.emptyText}>没有匹配的主机</Text> : null}
+            {options.length === 0 ? <Text style={styles.emptyText}>No matching hosts</Text> : null}
             {options.map((host, index) => (
               <HostChooserRow
                 key={host.serverId}

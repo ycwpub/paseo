@@ -85,34 +85,6 @@ async function flushMicrotasks(): Promise<void> {
   }
 }
 
-function createPollCompletionSignal(): {
-  onPollCompleted: () => void;
-  waitForNextPoll: () => Promise<void>;
-} {
-  let completedPolls = 0;
-  const waiters: Array<() => void> = [];
-
-  return {
-    onPollCompleted: () => {
-      const waiter = waiters.shift();
-      if (waiter) {
-        waiter();
-        return;
-      }
-      completedPolls += 1;
-    },
-    waitForNextPoll: () => {
-      if (completedPolls > 0) {
-        completedPolls -= 1;
-        return Promise.resolve();
-      }
-      return new Promise((resolve) => {
-        waiters.push(resolve);
-      });
-    },
-  };
-}
-
 function createDeferredRunner(): TestRunner {
   const calls: RunnerCall[] = [];
   let resolveNext: ((stdout: string) => void) | null = null;
@@ -876,20 +848,15 @@ describe("ForgeService", () => {
       now: () => now,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
-    const pollCompletion = createPollCompletionSignal();
 
     const subscription = service.retainCurrentPullRequestStatusPoll?.({
       cwd: "/repo",
       headRef: "feature/fork",
-      onStatus: pollCompletion.onPollCompleted,
-      onError: pollCompletion.onPollCompleted,
     });
     await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
 
     now = EXPECTED_GITHUB_FAST_POLL_MS;
-    const nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
-    await nextPoll;
 
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(2);
     expect(reads.map((read) => read.reason)).toEqual([undefined, "self-heal-github"]);
@@ -909,21 +876,15 @@ describe("ForgeService", () => {
       ttlMs: 0,
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
-      resolveRepoHost: async () => null,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
-    const pollCompletion = createPollCompletionSignal();
 
     const subscription = service.retainCurrentPullRequestStatusPoll?.({
       cwd: "/repo",
       headRef: "open-button-targets-active-file",
       headRepositoryOwner: "fork-owner",
-      onStatus: pollCompletion.onPollCompleted,
-      onError: pollCompletion.onPollCompleted,
     });
-    const nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(0);
-    await nextPoll;
 
     expect(reads).toEqual([
       expect.objectContaining({
@@ -957,13 +918,10 @@ describe("ForgeService", () => {
       now: () => now,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
-    const pollCompletion = createPollCompletionSignal();
 
     const subscription = service.retainCurrentPullRequestStatusPoll?.({
       cwd: "/repo",
       headRef: "feature/fork",
-      onStatus: pollCompletion.onPollCompleted,
-      onError: pollCompletion.onPollCompleted,
     });
     await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
 
@@ -972,9 +930,8 @@ describe("ForgeService", () => {
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
 
     now = EXPECTED_GITHUB_SLOW_POLL_MS;
-    const nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS - EXPECTED_GITHUB_FAST_POLL_MS);
-    await nextPoll;
+    await vi.advanceTimersByTimeAsync(0);
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(2);
     expect(reads.map((read) => read.reason)).toEqual([undefined, "self-heal-github"]);
 
@@ -1007,32 +964,21 @@ describe("ForgeService", () => {
       now: () => now,
     });
     const reads = recordCurrentPullRequestStatusReads(service);
-    const pollCompletion = createPollCompletionSignal();
 
     const subscription = service.retainCurrentPullRequestStatusPoll?.({
       cwd: "/repo",
       headRef: "feature/fork",
-      onStatus: pollCompletion.onPollCompleted,
-      onError: pollCompletion.onPollCompleted,
     });
     await service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
 
     now = EXPECTED_GITHUB_FAST_POLL_MS;
-    let nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
-    await nextPoll;
     now += EXPECTED_GITHUB_FAST_POLL_MS;
-    nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS);
-    await nextPoll;
     now += EXPECTED_GITHUB_FAST_POLL_MS * 2;
-    nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_FAST_POLL_MS * 2);
-    await nextPoll;
     now += EXPECTED_GITHUB_SLOW_POLL_MS;
-    nextPoll = pollCompletion.waitForNextPoll();
     await vi.advanceTimersByTimeAsync(EXPECTED_GITHUB_SLOW_POLL_MS);
-    await nextPoll;
 
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(5);
     expect(reads.map((read) => read.reason)).toEqual([

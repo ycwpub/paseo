@@ -7,7 +7,6 @@ import {
   generateWorkspaceId,
   generateProjectId,
   initialWorkspacePlacement,
-  isGeneratedProjectId,
   reconcileWorkspacePlacement,
 } from "./workspace-registry-model.js";
 import { createPersistedWorkspaceRecord } from "./workspace-registry.js";
@@ -15,8 +14,6 @@ import { createPersistedWorkspaceRecord } from "./workspace-registry.js";
 describe("opaque registry ids", () => {
   test("generates opaque project ids", () => {
     expect(generateProjectId()).toMatch(/^prj_[0-9a-f]{16}$/);
-    expect(isGeneratedProjectId("prj_0123456789abcdef")).toBe(true);
-    expect(isGeneratedProjectId("remote:github.com/acme/repo")).toBe(false);
   });
 
   test("generates opaque workspace ids that are not filesystem paths", () => {

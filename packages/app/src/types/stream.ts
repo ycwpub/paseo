@@ -8,7 +8,6 @@ import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
 import type { InstalledPluginTimelineItem, TimelineItemTransform } from "@/plugins/timeline";
-import { getTurnInterruptionMessage } from "@/agent-stream/turn-interruption";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -101,18 +100,7 @@ export interface UserMessageItem {
   timestamp: Date;
   images?: UserMessageImageAttachment[];
   attachments?: AgentAttachment[];
-  optimistic?: boolean;
 }
-
-export interface OptimisticUserMessageInput {
-  id: string;
-  text: string;
-  timestamp: Date;
-  images?: UserMessageImageAttachment[];
-  attachments?: AgentAttachment[];
-}
-
-export type OptimisticUserMessagePlacement = "active-head" | "tail";
 
 export interface UserMessageInput {
   id?: string;
@@ -717,11 +705,8 @@ export interface ThoughtItem {
   id: string;
   timelineCursor?: TimelinePosition;
   turnId?: string;
-  source?: "thinking" | "text";
   text: string;
   timestamp: Date;
-  startedAt?: Date;
-  completedAt?: Date;
   status: ThoughtStatus;
 }
 
@@ -757,8 +742,6 @@ export interface ToolCallItem {
   timelineCursor?: TimelinePosition;
   turnId?: string;
   timestamp: Date;
-  startedAt?: Date;
-  completedAt?: Date;
   payload: ToolCallPayload;
 }
 
@@ -854,54 +837,13 @@ function normalizeChunk(text: string): { chunk: string; hasContent: boolean } {
   return { chunk, hasContent: /\S/.test(chunk) };
 }
 
-function markThoughtReady(item: ThoughtItem, completedAt: Date = item.timestamp): ThoughtItem {
+function markThoughtReady(item: ThoughtItem): ThoughtItem {
   if (item.status === "ready") {
     return item;
   }
   return {
     ...item,
-    completedAt,
     status: "ready",
-  };
-}
-
-export function buildOptimisticUserMessage(input: OptimisticUserMessageInput): UserMessageItem {
-  return {
-    kind: "user_message",
-    id: input.id,
-    text: input.text,
-    timestamp: input.timestamp,
-    optimistic: true,
-    ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
-    ...(input.attachments && input.attachments.length > 0
-      ? { attachments: input.attachments }
-      : {}),
-  };
-}
-
-export function appendOptimisticUserMessageToStream(params: {
-  tail: StreamItem[];
-  head: StreamItem[];
-  message: UserMessageItem;
-  placement: OptimisticUserMessagePlacement;
-}): ApplyStreamEventResult {
-  const { tail, head, message, placement } = params;
-  if (tail.some((item) => item.id === message.id) || head.some((item) => item.id === message.id)) {
-    return { tail, head, changedTail: false, changedHead: false };
-  }
-  if (placement === "active-head" && head.length > 0) {
-    return {
-      tail: [...flushHeadToTail(tail, head), message],
-      head: [],
-      changedTail: true,
-      changedHead: true,
-    };
-  }
-  return {
-    tail: [...tail, message],
-    head,
-    changedTail: true,
-    changedHead: false,
   };
 }
 
@@ -1015,7 +957,6 @@ function appendThought(
   text: string,
   timestamp: Date,
   timelineCursor?: TimelinePosition,
-  source?: "thinking" | "text",
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -1023,13 +964,12 @@ function appendThought(
   }
 
   const last = state[state.length - 1];
-  if (last && last.kind === "thought" && last.source === source) {
+  if (last && last.kind === "thought") {
     const updated: ThoughtItem = {
       ...last,
       ...(timelineCursor ? { timelineCursor } : {}),
       text: `${last.text}${chunk}`,
       timestamp,
-      startedAt: last.startedAt ?? last.timestamp,
       status: "loading",
     };
     return [...state.slice(0, -1), updated];
@@ -1044,21 +984,19 @@ function appendThought(
     kind: "thought",
     id: createUniqueTimelineId(state, "thought", idSeed, timestamp),
     ...(timelineCursor ? { timelineCursor } : {}),
-    ...(source ? { source } : {}),
     text: chunk,
     timestamp,
-    startedAt: timestamp,
     status: "loading",
   };
   return [...state, item];
 }
 
-function finalizeActiveThoughts(state: StreamItem[], completedAt?: Date): StreamItem[] {
+function finalizeActiveThoughts(state: StreamItem[]): StreamItem[] {
   let mutated = false;
   const nextState = state.map((entry) => {
     if (entry.kind === "thought" && entry.status !== "ready") {
       mutated = true;
-      return markThoughtReady(entry, completedAt);
+      return markThoughtReady(entry);
     }
     return entry;
   });
@@ -1195,8 +1133,6 @@ export function mergeAgentToolCallItem(
     ...existing,
     ...(timelineCursor ? { timelineCursor } : {}),
     timestamp,
-    startedAt: existing.startedAt ?? existing.timestamp,
-    completedAt: mergedStatus === "running" ? undefined : timestamp,
     payload: {
       source: "agent",
       data: {
@@ -1249,8 +1185,6 @@ function appendAgentToolCall(
     id: `agent_tool_${data.callId}`,
     ...(timelineCursor ? { timelineCursor } : {}),
     timestamp,
-    startedAt: timestamp,
-    completedAt: data.status === "running" ? undefined : timestamp,
     payload: {
       source: "agent",
       data: {
@@ -1523,7 +1457,7 @@ function reduceTimelineEvent(
       };
       projected.push(streamItem);
     }
-    return finalizeActiveThoughts(projected, timestamp);
+    return finalizeActiveThoughts(projected);
   }
   switch (item.type) {
     case "user_message":
@@ -1538,7 +1472,6 @@ function reduceTimelineEvent(
           timelineCursor,
           event.turnId,
         ),
-        timestamp,
       );
     case "assistant_message":
       return finalizeActiveThoughts(
@@ -1551,14 +1484,12 @@ function reduceTimelineEvent(
           reservedItemIds,
           timelineCursor,
         ),
-        timestamp,
       );
     case "reasoning":
-      return appendThought(state, item.text, timestamp, timelineCursor, item.source);
+      return appendThought(state, item.text, timestamp, timelineCursor);
     case "tool_call":
       return finalizeActiveThoughts(
         reduceTimelineToolCall(state, event, item, timestamp, timelineCursor),
-        timestamp,
       );
     case "todo": {
       const items: TodoEntry[] = (item.items ?? []).map((todo) => ({
@@ -1570,7 +1501,6 @@ function reduceTimelineEvent(
       }));
       return finalizeActiveThoughts(
         appendTodoList(state, event.provider, items, timestamp, timelineCursor),
-        timestamp,
       );
     }
     case "error": {
@@ -1582,12 +1512,11 @@ function reduceTimelineEvent(
         activityType: "error",
         message: item.message ?? "Unknown error",
       };
-      return finalizeActiveThoughts(appendActivityLog(state, activity), timestamp);
+      return finalizeActiveThoughts(appendActivityLog(state, activity));
     }
     case "compaction":
       return finalizeActiveThoughts(
         reduceTimelineCompaction(state, item, timestamp, timelineCursor),
-        timestamp,
       );
     default:
       return state;
@@ -1623,23 +1552,11 @@ export function reduceStreamUpdate(
     case "turn_started":
     case "turn_completed":
     case "turn_failed":
+    case "turn_canceled":
     case "permission_requested":
     case "permission_resolved":
     case "attention_required":
-      return finalizeActiveThoughts(state, timestamp);
-    case "turn_canceled": {
-      const message = getTurnInterruptionMessage(event);
-      const activity: ActivityLogItem = {
-        kind: "activity_log",
-        id: createTimelineId("turn-canceled", `${event.turnId ?? ""}:${event.reason}`, timestamp),
-        ...(event.turnId ? { turnId: event.turnId } : {}),
-        timestamp,
-        activityType: "error",
-        message,
-        metadata: { reason: event.reason },
-      };
-      return finalizeActiveThoughts(appendActivityLog(state, activity), timestamp);
-    }
+      return finalizeActiveThoughts(state);
     default:
       return state;
   }
@@ -1904,27 +1821,6 @@ export function flushHeadToTail(tail: StreamItem[], head: StreamItem[]): StreamI
     return tail;
   }
   return [...tail, ...newItems];
-}
-
-export interface SettledAgentStream {
-  tail: StreamItem[];
-  head: StreamItem[];
-  changedTail: boolean;
-  changedHead: boolean;
-}
-
-export function settleInactiveAgentStream(
-  tail: StreamItem[],
-  head: StreamItem[],
-): SettledAgentStream {
-  const flushedTail = flushHeadToTail(tail, head);
-  const finalizedTail = finalizeActiveThoughts(flushedTail);
-  return {
-    tail: finalizedTail,
-    head: [],
-    changedTail: finalizedTail !== tail,
-    changedHead: head.length > 0,
-  };
 }
 
 /**

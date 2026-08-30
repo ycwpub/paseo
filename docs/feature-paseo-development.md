@@ -6,19 +6,60 @@ the branch's feature inventory and for development or rebasing work performed on
 The detailed pre-rebase inventory and the latest item-by-item restoration audit are maintained in
 [`feature-paseo-pre-rebase-inventory.md`](./feature-paseo-pre-rebase-inventory.md).
 
+Branch-specific architecture and product documentation lives under [`docs/feature-paseo/`](./feature-paseo/README.md); keep upstream-owned documents unchanged unless integration cannot be expressed in a feature-owned document.
+
 ## Non-negotiable rules
 
 1. Preserve every feature in the inventory below. A rebase, merge, refactor, conflict resolution, or
    upstream adaptation must not silently remove, hide, disconnect, or regress any inventory item.
 2. Update the inventory in the same commit whenever a feature is added, removed, renamed, split,
    merged, or changes its entry points.
-3. Put new UI, state, hooks, services, types, and tests in feature-owned files whenever practical.
-4. Limit shared-file changes to the smallest wiring, registration, export, routing, capability, or
-   integration changes required. Extract substantial logic into a feature-owned module first.
-5. Do not duplicate existing abstractions or weaken the architecture solely to avoid a shared-file
+3. Move most branch-specific business implementation, including UI, state, hooks, services, types,
+   tests, and documentation, into new feature-owned files.
+4. Shared upstream-owned files may contain only the stable, auditable minimum wiring required for
+   imports, exports, routing, registration, capability exposure, or integration. Extract business
+   logic into a feature-owned module before adding that wiring.
+5. The complete `feature_paseo` branch may differ from its fixed upstream baseline in at most 100
+   files that already existed at that baseline. Added feature-owned files do not consume this
+   budget. The limit is branch-wide, not per commit or per change set, and is a ceiling rather than
+   a target.
+6. Do not duplicate existing abstractions or weaken the architecture solely to avoid a shared-file
    change.
-6. Never treat a clean Git index, a successful rebase, typecheck, or lint result as proof that branch
+7. Never treat a clean Git index, a successful rebase, typecheck, or lint result as proof that branch
    features were preserved. Feature preservation requires the inventory audit described below.
+
+## Upstream-owned file budget
+
+The branch keeps rebase conflicts bounded by limiting its complete accumulated diff to 100 paths
+that already existed at the fixed upstream baseline
+`463415ae846cbcfef0df691e413a1a73a9213757`.
+
+- Put most business implementation, state, tests, and documentation for a branch feature in new
+  feature-owned files.
+- Keep upstream-owned files as stable, auditable thin imports, exports, route entries,
+  registrations, or adapters. They must not become a second home for branch business logic.
+- Move an existing block into a new module before extending it when the block belongs to a
+  `feature_paseo` capability.
+- Do not split behavior into several commits to bypass the limit: all commits and uncommitted
+  changes are measured together against the fixed upstream tree.
+- Do not copy an upstream subsystem into a parallel implementation. Use the main-owned foundations
+  and extension boundaries documented below.
+
+The pre-commit hook compares the staged branch result with the fixed upstream tree. Run the
+worktree-wide check directly while developing:
+
+```bash
+node scripts/check-feature-paseo-file-budget.mjs
+```
+
+When the branch is deliberately rebased onto a newer upstream, update the fixed SHA in
+`scripts/feature-paseo-file-budget.mjs` and this document in the same audited change. A temporary
+baseline can also be supplied explicitly:
+
+```bash
+node scripts/check-feature-paseo-file-budget.mjs \
+  --upstream <upstream-sha>
+```
 
 ## Feature inventory
 
@@ -139,10 +180,12 @@ Before completing any feature change:
 2. Review this inventory and identify the affected feature rows.
 3. Prefer new feature-owned files. If a shared file must change, keep the change to minimal wiring and
    record the integration point in the inventory.
-4. Add or update a targeted regression test that fails if the feature implementation remains present
+4. Run `node scripts/check-feature-paseo-file-budget.mjs`. If the change exceeds 100 upstream-owned
+   files, extract feature modules before continuing.
+5. Add or update a targeted regression test that fails if the feature implementation remains present
    but its route, menu, export, registration, or capability wiring disappears.
-5. Update this inventory in the same commit.
-6. Run targeted tests, typecheck, lint, and formatting required by `CLAUDE.md`.
+6. Update this inventory in the same commit.
+7. Run targeted tests, typecheck, lint, and formatting required by `CLAUDE.md`.
 
 ## Mandatory rebase procedure
 

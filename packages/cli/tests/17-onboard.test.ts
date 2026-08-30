@@ -13,18 +13,9 @@ console.log("=== Onboarding Command ===\n");
 
 const paseoHome = await mkdtemp(join(tmpdir(), "paseo-onboard-home-"));
 const port = await getAvailablePort();
-const lanRelayPort = await getAvailablePort();
 
 try {
-  const relayConfig =
-    await $`PASEO_HOME=${paseoHome} npx paseo relay set --endpoint wss://relay.example.com:443 --pairing-url https://connect.example.com --endpoint wss://192.168.1.20:6769 --pairing-url https://192.168.1.20:6769 --enable-lan-relay --lan-listen 127.0.0.1:${lanRelayPort}`.nothrow();
-  assert.strictEqual(
-    relayConfig.exitCode,
-    0,
-    `relay configuration should succeed: ${relayConfig.stderr}`,
-  );
-
-  console.log("Test 1: `paseo` runs blocking onboarding and prints pairing info");
+  console.log("Test 1: `paseo` runs blocking onboarding without implicit relay pairing");
   const onboard =
     await $`PASEO_HOME=${paseoHome} PASEO_LISTEN=127.0.0.1:${port} PASEO_PAIRING_QR=0 npx paseo`.nothrow();
 
@@ -33,44 +24,11 @@ try {
     0,
     `onboard should succeed:\nstdout:\n${onboard.stdout}\nstderr:\n${onboard.stderr}`,
   );
+  assert(!onboard.stdout.includes("Scan to pair"), "onboard output should not include scan header");
+  assert(!onboard.stdout.includes("#offer="), "onboard output should not include a pairing offer");
   assert(
-    onboard.stdout.includes("Relay 1: wss://relay.example.com:443"),
-    "onboard output should include the first Relay",
-  );
-  assert(
-    onboard.stdout.includes("Relay 3: wss://192.168.1.20:6769"),
-    "onboard output should include the second Relay",
-  );
-  assert(
-    onboard.stdout.includes(`Relay 5: ws://127.0.0.1:${lanRelayPort}`),
-    "onboard output should include the local LAN Relay",
-  );
-  assert(
-    onboard.stdout.includes("https://connect.example.com/#offer=") &&
-      onboard.stdout.includes("https://192.168.1.20:6769/#offer="),
-    "onboard output should use every configured pairing frontend",
-  );
-  assert(
-    onboard.stdout.includes("Pairing link 1") &&
-      onboard.stdout.includes("Pairing link 2") &&
-      onboard.stdout.includes("Pairing link 3") &&
-      onboard.stdout.includes("Pairing link 4") &&
-      onboard.stdout.includes("Pairing link 5") &&
-      onboard.stdout.includes("Pairing link 6"),
-    "onboard output should include every Relay and pairing frontend combination",
-  );
-  assert.strictEqual(
-    onboard.stdout.match(/#offer=/g)?.length,
-    6,
-    "onboard output should include every Relay and pairing frontend combination",
-  );
-  const pairingLinkLines = onboard.stdout
-    .split(/\r?\n/u)
-    .filter((line) => line.includes("/#offer="));
-  assert.strictEqual(pairingLinkLines.length, 6, "each pairing link should be printed on one line");
-  assert(
-    pairingLinkLines.every((line) => !line.includes("│")),
-    "pairing link lines must not contain terminal box borders",
+    onboard.stdout.includes("Daemon is running with relay off"),
+    "onboard output should explain the direct connection path",
   );
   assert(
     onboard.stdout.includes("CLI quick reference"),

@@ -14,7 +14,6 @@ import {
 } from "./shared.js";
 
 export interface ScheduleUpdateOptions extends ScheduleCommandOptions {
-  type?: string;
   every?: string;
   cron?: string;
   timezone?: string;
@@ -24,9 +23,6 @@ export interface ScheduleUpdateOptions extends ScheduleCommandOptions {
   model?: string;
   mode?: string;
   cwd?: string;
-  shell?: string;
-  timeout?: string;
-  clearTimeout?: boolean;
   maxRuns?: string;
   noMaxRuns?: boolean;
   expiresIn?: string;
@@ -40,7 +36,6 @@ export async function runUpdateCommand(
 ): Promise<ListResult<ScheduleInspectRow>> {
   const input = parseScheduleUpdateInput({
     id,
-    type: options.type,
     every: options.every,
     cron: options.cron,
     timezone: options.timezone,
@@ -50,9 +45,6 @@ export async function runUpdateCommand(
     model: options.model,
     mode: options.mode,
     cwd: options.cwd,
-    shell: options.shell,
-    timeout: options.timeout,
-    clearTimeout: options.clearTimeout,
     maxRuns: options.maxRuns,
     expiresIn: options.expiresIn,
     clearMaxRuns: options.noMaxRuns,

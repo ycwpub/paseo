@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import invariant from "tiny-invariant";
@@ -19,10 +19,7 @@ import { useTranslation } from "react-i18next";
 import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
-import {
-  TIMELINE_FETCH_PAGE_SIZE,
-  TIMELINE_OLDEST_FETCH_PAGE_SIZE,
-} from "@/timeline/timeline-fetch-policy";
+import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 import type { TurnPresentation } from "@/timeline/turn-liveness";
 
 const EMPTY_PERMISSIONS = new Map<string, PendingPermission>();
@@ -92,8 +89,6 @@ function ProviderSubagentPanel() {
   // COMPAT(providerSubagents): added in v0.2.11, remove after 2027-01-12.
   const supported = serverInfo?.features?.providerSubagents === true;
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
-  const [isLoadingOldest, setIsLoadingOldest] = useState(false);
-  const loadingOldestRef = useRef(false);
 
   useEffect(() => {
     if (!client || !supported) return;
@@ -114,15 +109,8 @@ function ProviderSubagentPanel() {
       .catch(() => undefined);
   }, [client, serverId, supported, target.parentAgentId, target.subagentId]);
 
-  const loadOlder = useCallback(() => {
-    if (
-      !client ||
-      !supported ||
-      isLoadingOlder ||
-      loadingOldestRef.current ||
-      !timeline?.hasOlder ||
-      !timeline.epoch
-    ) {
+  const loadOlder = useCallback((): boolean => {
+    if (!client || !supported || isLoadingOlder || !timeline?.hasOlder || !timeline.epoch) {
       return false;
     }
     const firstSeq = timeline.rows.size ? Math.min(...timeline.rows.keys()) : null;
@@ -155,46 +143,6 @@ function ProviderSubagentPanel() {
     timeline?.epoch && firstTimelineSeq !== null ? `${timeline.epoch}:${firstTimelineSeq}` : null;
   const subtitle = descriptor?.subtitle?.trim();
 
-  const loadUntilOldest = useCallback(async (): Promise<boolean> => {
-    if (loadingOldestRef.current) return false;
-    if (!client || !supported) return false;
-
-    loadingOldestRef.current = true;
-    setIsLoadingOldest(true);
-    setIsLoadingOlder(true);
-    try {
-      while (true) {
-        const currentTimeline = useProviderSubagentStore.getState().timelines.get(key);
-        if (!currentTimeline?.hasOlder) return true;
-        if (!currentTimeline.epoch || currentTimeline.rows.size === 0) return false;
-        const firstSeq = Math.min(...currentTimeline.rows.keys());
-        const payload = await client.fetchProviderSubagentTimeline(
-          target.parentAgentId,
-          target.subagentId,
-          {
-            direction: "before",
-            cursor: { epoch: currentTimeline.epoch, seq: firstSeq },
-            limit: TIMELINE_OLDEST_FETCH_PAGE_SIZE,
-          },
-        );
-        useProviderSubagentStore.getState().replaceTimeline(serverId, payload);
-        const nextTimeline = useProviderSubagentStore.getState().timelines.get(key);
-        const nextFirstSeq =
-          nextTimeline && nextTimeline.rows.size > 0
-            ? Math.min(...nextTimeline.rows.keys())
-            : firstSeq;
-        if (nextTimeline?.hasOlder && nextFirstSeq >= firstSeq) return false;
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      }
-    } catch {
-      return false;
-    } finally {
-      loadingOldestRef.current = false;
-      setIsLoadingOldest(false);
-      setIsLoadingOlder(false);
-    }
-  }, [client, key, serverId, supported, target.parentAgentId, target.subagentId]);
-
   const streamContext = useMemo<AgentScreenAgent>(
     () => ({
       serverId,
@@ -213,10 +161,8 @@ function ProviderSubagentPanel() {
       isLoadingOlder,
       progressKey,
       onLoadOlder: loadOlder,
-      isLoadingOldest,
-      onLoadUntilOldest: loadUntilOldest,
     }),
-    [isLoadingOlder, isLoadingOldest, loadOlder, loadUntilOldest, progressKey, timeline?.hasOlder],
+    [isLoadingOlder, loadOlder, progressKey, timeline?.hasOlder],
   );
   const turnPresentation = useMemo<TurnPresentation>(
     () => ({

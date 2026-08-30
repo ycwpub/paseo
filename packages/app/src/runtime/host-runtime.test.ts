@@ -12,7 +12,6 @@ import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { defaultHostAppearance } from "@/hosts/appearance";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
-import { DaemonConnectionApprovalRequiredError } from "@/utils/test-daemon-connection";
 import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import {
@@ -712,50 +711,6 @@ describe("HostRuntimeController", () => {
     expect(snapshot.client).toBe(clients[0] as unknown as DaemonClient);
     expect(clients[0]?.connectCalls).toBe(1);
     expect(clients[1]?.isDisposed()).toBe(true);
-  });
-
-  it("keeps a pending approval probe active until the server approves it", async () => {
-    const relay = makeHost().connections.find((connection) => connection.type === "relay")!;
-    const host = makeHost({ connections: [relay], preferredConnectionId: relay.id });
-    const pendingClient = new FakeDaemonClient();
-    pendingClient.setConnectionState({
-      status: "awaiting_approval",
-      message: "无权限，联系服务端通过连接申请",
-    });
-    const controller = new HostRuntimeController({
-      host,
-      deps: {
-        createClient: () => {
-          throw new Error("should adopt the pending approval client");
-        },
-        connectToDaemon: async () => {
-          throw new DaemonConnectionApprovalRequiredError(
-            "无权限，联系服务端通过连接申请",
-            {
-              reason: "无权限，联系服务端通过连接申请",
-              lastError: "无权限，联系服务端通过连接申请",
-            },
-            pendingClient as unknown as DaemonClient,
-          );
-        },
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
-
-    await controller.runProbeCycleNow();
-
-    expect(controller.getSnapshot().activeConnectionId).toBe(relay.id);
-    expect(controller.getSnapshot().connectionStatus).toBe("connecting");
-    expect(controller.getSnapshot().client).toBe(pendingClient);
-    expect(controller.getSnapshot().probeByConnectionId.get(relay.id)).toEqual({
-      status: "pending",
-      latencyMs: null,
-    });
-    expect(pendingClient.isDisposed()).toBe(false);
-
-    pendingClient.setConnectionState({ status: "connected" });
-    expect(controller.getSnapshot().connectionStatus).toBe("online");
-    expect(controller.getSnapshot().lastError).toBeNull();
   });
 
   it("activates the first successful probe without waiting for slower probes", async () => {
@@ -2747,48 +2702,6 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
-  it("keeps later queued messages blocked while the first message is being edited", async () => {
-    const host = makeHost({ serverId: "srv_editing_queue" });
-    const fakeClient = new FakeDaemonClient();
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => fakeClient as unknown as DaemonClient,
-        connectToDaemon: async () => ({
-          client: fakeClient as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: null,
-        }),
-        getClientId: async () => "cid_editing_queue",
-      },
-    });
-    const sessionStore = useSessionStore.getState();
-    sessionStore.initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
-    sessionStore.setQueuedMessages(
-      host.serverId,
-      new Map([
-        [
-          "agent",
-          [
-            { id: "editing", text: "editing", attachments: [], isEditing: true },
-            { id: "later", text: "later", attachments: [] },
-          ],
-        ],
-      ]),
-    );
-
-    store.drainQueuedAgentMessage(host.serverId, "agent");
-    await Promise.resolve();
-
-    expect(fakeClient.sentAgentMessages).toEqual([]);
-    expect(useSessionStore.getState().sessions[host.serverId]?.queuedMessages.get("agent")).toEqual(
-      [
-        { id: "editing", text: "editing", attachments: [], isEditing: true },
-        { id: "later", text: "later", attachments: [] },
-      ],
-    );
-    useSessionStore.getState().clearSession(host.serverId);
-  });
-
   it("serializes queued-message drains for the same agent", async () => {
     const host = makeHost({ serverId: "srv_serialized_queue_drain" });
     const fakeClient = new FakeDaemonClient();
@@ -2823,73 +2736,6 @@ describe("HostRuntimeStore", () => {
         useSessionStore.getState().sessions[host.serverId]?.queuedMessages.get("agent"),
       ).toEqual([]);
     });
-    useSessionStore.getState().clearSession(host.serverId);
-  });
-
-  it("keeps queued messages blocked until context compaction completes", async () => {
-    const host = makeHost({ serverId: "srv_compaction_queue_drain" });
-    const fakeClient = new FakeDaemonClient();
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => fakeClient as unknown as DaemonClient,
-        connectToDaemon: async () => ({
-          client: fakeClient as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: null,
-        }),
-        getClientId: async () => "cid_compaction_queue_drain",
-      },
-    });
-    const sessionStore = useSessionStore.getState();
-    sessionStore.initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
-    sessionStore.setQueuedMessages(
-      host.serverId,
-      new Map([["agent", [{ id: "after-compaction", text: "continue", attachments: [] }]]]),
-    );
-    sessionStore.setAgentStreamTail(
-      host.serverId,
-      new Map([
-        [
-          "agent",
-          [
-            {
-              kind: "compaction",
-              id: "compaction",
-              timestamp: new Date(0),
-              status: "loading",
-              trigger: "auto",
-            },
-          ],
-        ],
-      ]),
-    );
-
-    store.drainQueuedAgentMessage(host.serverId, "agent");
-    expect(fakeClient.sentAgentMessages).toEqual([]);
-
-    sessionStore.setAgentStreamTail(
-      host.serverId,
-      new Map([
-        [
-          "agent",
-          [
-            {
-              kind: "compaction",
-              id: "compaction",
-              timestamp: new Date(0),
-              status: "completed",
-              trigger: "auto",
-            },
-          ],
-        ],
-      ]),
-    );
-    store.drainQueuedAgentMessage(host.serverId, "agent");
-    await fakeClient.waitForSentMessages(1);
-
-    expect(fakeClient.sentAgentMessages.map(([agentId, text]) => [agentId, text])).toEqual([
-      ["agent", "continue"],
-    ]);
     useSessionStore.getState().clearSession(host.serverId);
   });
 
@@ -3329,46 +3175,6 @@ describe("HostRuntimeStore", () => {
       });
 
       expect(store.getHosts().find((h) => h.serverId === "srv_desktop")?.label).toBe("mac-dev");
-    } finally {
-      store.syncHosts([]);
-    }
-  });
-
-  it("replaces a stale loopback desktop connection with the daemon's current endpoint", async () => {
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
-        connectToDaemon: async ({ host }) => ({
-          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: host.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-      storage: createMemoryHostRuntimeStorage(),
-    });
-
-    try {
-      await store.upsertConnectionFromListen({
-        listenAddress: "127.0.0.1:6769",
-        serverId: "srv_desktop",
-        hostname: "desktop",
-      });
-      await store.upsertConnectionFromListen({
-        listenAddress: "127.0.0.1:6767",
-        serverId: "srv_desktop",
-        hostname: "desktop",
-      });
-
-      const host = store.getHosts().find((candidate) => candidate.serverId === "srv_desktop");
-      expect(host?.connections).toEqual([
-        {
-          id: "direct:localhost:6767",
-          type: "directTcp",
-          endpoint: "localhost:6767",
-        },
-      ]);
-      expect(host?.preferredConnectionId).toBe("direct:localhost:6767");
     } finally {
       store.syncHosts([]);
     }

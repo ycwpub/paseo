@@ -61,7 +61,7 @@ export function BrowserToolsOptInCard({ serverId }: { serverId: string }) {
           value={state.isEnabled}
           onValueChange={handleValueChange}
           disabled={mutationView.isSwitchDisabled}
-          accessibilityLabel="启用浏览器工具"
+          accessibilityLabel="Enable browser tools"
           testID="host-page-browser-tools-switch"
         />
       </View>

@@ -177,7 +177,7 @@ function KeyboardToggleButton({
   iconColor,
   onToggle,
 }: KeyboardToggleButtonProps) {
-  const label = isKeyboardVisible ? "隐藏键盘" : "显示键盘";
+  const label = isKeyboardVisible ? "Hide keyboard" : "Show keyboard";
   const Icon = isKeyboardVisible ? KeyboardOffIcon : KeyboardIcon;
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [

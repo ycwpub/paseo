@@ -33,7 +33,7 @@ function getPullRequestContextSubtitle(attachment: WorkspaceComposerAttachment):
     attachment.kind === "forge.change_request_check" ||
     attachment.kind === "github.pull_request_check"
   ) {
-    return "检查日志";
+    return "Check logs";
   }
   if (
     attachment.kind === "forge.change_request_comment" ||
@@ -49,7 +49,7 @@ function getTextAttachmentSubtitle(
   t: TFunction,
 ): string {
   if (attachment.contextKind === "chat_history") {
-    return "历史对话";
+    return "Previous conversation";
   }
   return t("message.attachments.text");
 }

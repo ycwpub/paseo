@@ -3,7 +3,6 @@ import type { ActivePromptSource, ChatOutlinePrompt } from "./model";
 export interface ChatOutlineRailProps {
   prompts: ChatOutlinePrompt[];
   activePrompt: ActivePromptSource;
-  model: string | null;
   onJumpToPrompt: (seq: number) => void;
 }
 

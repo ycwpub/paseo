@@ -21,7 +21,6 @@ import {
   GitBranch,
   GitPullRequest,
   Globe,
-  ListOrdered,
   Server,
   Settings2,
   Tag,
@@ -50,7 +49,6 @@ import {
   hasActiveSidebarLabelFilter,
   SIDEBAR_UNLABELLED_LABEL_KEY,
   type SidebarGroupMode,
-  type SidebarSortMode,
 } from "@/stores/sidebar-view-store";
 import { workspaceLabelKey, type WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
 import type { WorkspaceTitleSource } from "@/hooks/use-settings";
@@ -93,12 +91,6 @@ const GROUPING_ICONS: Record<SidebarGroupMode, OptionIcon> = {
   status: withUnistyles(CircleDashed),
 };
 
-const SORTING_ICONS: Record<SidebarSortMode, OptionIcon> = {
-  activity: withUnistyles(Clock),
-  name: withUnistyles(Type),
-  manual: withUnistyles(ListOrdered),
-};
-
 const TITLE_SOURCE_ICONS: Record<WorkspaceTitleSource, OptionIcon> = {
   title: withUnistyles(Type),
   branch: withUnistyles(GitBranch),
@@ -129,19 +121,12 @@ const TRAILING_ICONS: Record<SidebarTrailingChoice, OptionIcon> = {
 };
 
 const GROUPING_MODES: readonly SidebarGroupMode[] = ["project", "status"];
-const SORTING_MODES: readonly SidebarSortMode[] = ["activity", "name", "manual"];
 const TITLE_SOURCES: readonly WorkspaceTitleSource[] = ["title", "branch"];
 const TRAILING_CHOICES: readonly SidebarTrailingChoice[] = ["diff", "timestamp"];
 
 const GROUPING_LABEL_KEYS: Record<SidebarGroupMode, string> = {
   project: "sidebar.display.grouping.project",
   status: "sidebar.display.grouping.status",
-};
-
-const SORTING_LABEL_KEYS: Record<SidebarSortMode, string> = {
-  activity: "sidebar.display.sorting.activity",
-  name: "sidebar.display.sorting.name",
-  manual: "sidebar.display.sorting.manual",
 };
 
 const TITLE_SOURCE_LABEL_KEYS: Record<WorkspaceTitleSource, string> = {
@@ -217,20 +202,6 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
             selectedValue={preferences.grouping}
             onSelect={preferences.setGrouping}
             testIDPrefix="sidebar-grouping"
-          />
-        ),
-      },
-      {
-        id: "sorting",
-        title: t("sidebar.display.sorting.label"),
-        content: (
-          <OptionList
-            values={SORTING_MODES}
-            icons={SORTING_ICONS}
-            labelKeys={SORTING_LABEL_KEYS}
-            selectedValue={preferences.sorting}
-            onSelect={preferences.setSorting}
-            testIDPrefix="sidebar-sorting"
           />
         ),
       },
@@ -336,13 +307,6 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
             testID="sidebar-display-grouping"
           >
             {t("sidebar.display.grouping.label")}
-          </MenuSubTrigger>
-          <MenuSubTrigger
-            id="sorting"
-            value={t(SORTING_LABEL_KEYS[preferences.sorting])}
-            testID="sidebar-display-sorting"
-          >
-            {t("sidebar.display.sorting.label")}
           </MenuSubTrigger>
           <MenuSubTrigger
             id="titleSource"

@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { TextInput } from "react-native";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import PasteInput, {
@@ -24,16 +24,14 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
     const isInsideBottomSheet = useIsInsideBottomSheet();
     const {
       initialValue = "",
-      value,
       onChangeText,
-      textInputStyle,
       onPasteImages,
       onPasteError,
       variant = isInsideBottomSheet ? "bottom-sheet" : "default",
+      value: _,
       defaultValue: __,
-      style,
       ...props
-    } = allProps as EditingTextInputProps & { defaultValue?: unknown };
+    } = allProps as EditingTextInputProps & { value?: unknown; defaultValue?: unknown };
     const inputRef = useRef<NativeInput | null>(null);
     const initialTextRef = useRef(initialValue);
     const textRef = useRef(initialTextRef.current);
@@ -62,12 +60,6 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
       getNativeRef: () => inputRef.current?.getNativeRef?.() ?? inputRef.current,
     }));
 
-    useEffect(() => {
-      if (value === undefined || value === textRef.current) return;
-      textRef.current = value;
-      inputRef.current?.setNativeProps?.({ text: value });
-    }, [value]);
-
     const handleChangeText = useCallback(
       (nextText: string) => {
         textRef.current = nextText;
@@ -91,8 +83,7 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
         <PasteInput
           {...props}
           ref={inputRef as React.Ref<PasteTextInputInstance>}
-          defaultValue={value ?? initialTextRef.current}
-          style={[style, textInputStyle]}
+          defaultValue={initialTextRef.current}
           onChangeText={handleChangeText}
           onPaste={handlePaste}
         />
@@ -103,8 +94,7 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
         <BottomSheetTextInput
           {...props}
           ref={inputRef as unknown as React.Ref<never>}
-          defaultValue={value ?? initialTextRef.current}
-          style={[style, textInputStyle]}
+          defaultValue={initialTextRef.current}
           onChangeText={handleChangeText}
         />
       );
@@ -113,8 +103,7 @@ export const EditingTextInput = forwardRef<EditingTextInputHandle, EditingTextIn
       <TextInput
         {...props}
         ref={inputRef as React.Ref<TextInput>}
-        defaultValue={value ?? initialTextRef.current}
-        style={[style, textInputStyle]}
+        defaultValue={initialTextRef.current}
         onChangeText={handleChangeText}
       />
     );

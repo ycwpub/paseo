@@ -14,21 +14,19 @@ import {
 import type { TFunction } from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { useRouter } from "expo-router";
+import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
-import type { DaemonConnectionTransport } from "@getpaseo/client/internal/daemon-client";
 import type { TerminalProfile } from "@getpaseo/protocol/messages";
 import {
   getTerminalProfileIcon,
   DEFAULT_TERMINAL_PROFILES,
 } from "@getpaseo/protocol/terminal-profiles";
 import { AgentProfilesSection } from "@/agent-profiles";
+import { AgentSkillsSection } from "@/agent-skills";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { Alert as InlineAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { FormTextInput } from "@/components/ui/form-field";
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -45,6 +43,7 @@ import {
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
+import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
@@ -61,21 +60,12 @@ import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section"
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
 import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
 import { SettingsSection } from "@/screens/settings/settings-section";
-import { HostResourceSyncEntrySection } from "@/screens/settings/shared/host-resource-sync-entry-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import {
-  DEFAULT_PUBLIC_RELAY_ENDPOINTS,
-  DEFAULT_RELAY_PAIRING_BASE_URL,
-  formatRelayEndpointInput,
-  normalizeRelayPairingBaseUrl,
-  parseRelayEndpointInput,
-} from "@/utils/daemon-endpoints";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
-import { buildInstructionTemplatesSettingsRoute } from "@/utils/host-routes";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
 import { formatLatency } from "@/utils/latency";
 import { ICON_SIZE } from "@/styles/theme";
@@ -84,24 +74,6 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
-import { LocalRelayConfigurationSection } from "./host-local-relay-section";
-import { InstructionTemplatesEntrySection } from "./agents/instruction-templates-section";
-export {
-  HostAssistantEditorPage,
-  HostAssistantMemoryEditorPage,
-  HostAssistantsPage,
-  HostChannelsPage,
-  HostInstructionTemplateEditorPage,
-  HostInstructionTemplatesPage,
-  HostMemoryPage,
-  HostMemorySettingsPage,
-  HostMcpEditorPage,
-  HostMcpPage,
-  HostPluginsPage,
-  HostSkillEditorPage,
-  HostSkillsPage,
-  HostTeamEditorPage,
-} from "./host-resource-pages";
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -123,12 +95,8 @@ function DynamicProviderIcon({ iconKey, size, color = "" }: DynamicProviderIconP
 
 const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
-const mutedColorMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-});
-const destructiveColorMapping = (theme: Theme) => ({
-  color: theme.colors.destructive,
-});
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
 const moveUpIcon = <ThemedArrowUp size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
 const moveDownIcon = <ThemedArrowDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
@@ -151,22 +119,9 @@ function formatHostConnectionLabel(connection: HostConnection, t: TFunction): st
 
 function formatActiveConnectionBadge(
   activeConnection: { type: HostConnection["type"]; display: string } | null,
-  transport: DaemonConnectionTransport | null,
   theme: ReturnType<typeof useUnistyles>["theme"],
   t: TFunction,
 ): { icon: React.ReactNode; text: string } | null {
-  if (transport?.type === "relay") {
-    return {
-      icon: <Globe size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
-      text: `${t("settings.host.badges.viaRelay")} · ${transport.endpoint}`,
-    };
-  }
-  if (transport?.type === "direct") {
-    return {
-      icon: <Monitor size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />,
-      text: t("settings.host.badges.direct"),
-    };
-  }
   if (!activeConnection) return null;
   if (activeConnection.type === "relay") {
     return {
@@ -224,7 +179,6 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
 
   const connectionStatus = snapshot?.connectionStatus ?? "connecting";
   const activeConnection = snapshot?.activeConnection ?? null;
-  const transport = snapshot?.transport ?? null;
   const statusLabel = formatConnectionStatus(connectionStatus);
   const statusTone = getConnectionStatusTone(connectionStatus);
   let statusVariant: StatusBadgeVariant = "muted";
@@ -239,7 +193,7 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
     statusVariant = "error";
     statusDotColor = theme.colors.statusDotDanger;
   }
-  const connectionBadge = formatActiveConnectionBadge(activeConnection, transport, theme, t);
+  const connectionBadge = formatActiveConnectionBadge(activeConnection, theme, t);
   const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
   const statusDotStyle = useMemo(
     () => [styles.statusDot, { backgroundColor: statusDotColor }],
@@ -278,13 +232,7 @@ function HostConnectionError({ serverId }: { serverId: string }) {
   return <Text style={styles.errorText}>{connectionError}</Text>;
 }
 
-export function HostConnectionsPage({
-  serverId,
-  onOpenLocalRelay,
-}: {
-  serverId: string;
-  onOpenLocalRelay: () => void;
-}) {
+export function HostConnectionsPage({ serverId }: { serverId: string }) {
   const host = useHostProfile(serverId);
 
   if (!host) {
@@ -294,372 +242,30 @@ export function HostConnectionsPage({
   return (
     <View>
       <HostConnectionError serverId={serverId} />
-      <HostResourceSyncEntrySection serverId={serverId} />
-      <RelayConfigurationSection serverId={serverId} onOpenLocalRelay={onOpenLocalRelay} />
       <ConnectionsSection host={host} />
     </View>
   );
 }
 
-interface RelayConfigDraft {
-  id: number;
-  value: string;
-}
-
-let relayConfigDraftId = 0;
-
-function createRelayConfigDraft(value = ""): RelayConfigDraft {
-  relayConfigDraftId += 1;
-  return { id: relayConfigDraftId, value };
-}
-
-function RelayConfigurationRow({
-  row,
-  index,
-  onUpdate,
-  onRemove,
-  placeholder,
-  accessibilityLabel,
-  inputTestId,
-  removeTestId,
-  removeLabel,
-}: {
-  row: RelayConfigDraft;
-  index: number;
-  onUpdate: (id: number, value: string) => void;
-  onRemove: (id: number) => void;
-  placeholder: string;
-  accessibilityLabel: string;
-  inputTestId: string;
-  removeTestId: string;
-  removeLabel: string;
-}) {
-  const handleChange = useCallback((value: string) => onUpdate(row.id, value), [onUpdate, row.id]);
-  const handleRemove = useCallback(() => onRemove(row.id), [onRemove, row.id]);
-
-  return (
-    <View style={[styles.relayTableRow, index > 0 ? settingsStyles.rowBorder : null]}>
-      <View style={styles.relayServiceColumn}>
-        <FormTextInput
-          size="sm"
-          initialValue={row.value}
-          resetKey={`relay-address-${row.id}`}
-          onChangeText={handleChange}
-          placeholder={placeholder}
-          accessibilityLabel={`${accessibilityLabel} ${index + 1}`}
-          testID={`${inputTestId}-${index}`}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </View>
-      <Button
-        variant="ghost"
-        size="sm"
-        leftIcon={Trash2}
-        style={styles.relayRemoveButton}
-        onPress={handleRemove}
-        accessibilityLabel={removeLabel}
-        testID={`${removeTestId}-${index}`}
-      />
-    </View>
-  );
-}
-
-function RelayConfigurationSection({
-  serverId,
-  onOpenLocalRelay,
-}: {
-  serverId: string;
-  onOpenLocalRelay: () => void;
-}) {
+export function HostPairDevicePage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
-  const { config, isLoading, patchConfig } = useDaemonConfig(serverId);
-  const [relayRows, setRelayRows] = useState<RelayConfigDraft[]>(() => [createRelayConfigDraft()]);
-  const [pairingRows, setPairingRows] = useState<RelayConfigDraft[]>(() => [
-    createRelayConfigDraft(),
-  ]);
-  const [relayRowsDirty, setRelayRowsDirty] = useState(false);
-  const [lanRelayEnabled, setLanRelayEnabled] = useState(false);
-  const [isUpdatingLanRelay, setIsUpdatingLanRelay] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!config) return;
-    const relayEndpoints = Array.isArray(config.relay?.endpoints) ? config.relay.endpoints : [];
-    const pairingBaseUrls = Array.isArray(config.relay?.pairingBaseUrls)
-      ? config.relay.pairingBaseUrls
-      : [];
-    if (!relayRowsDirty) {
-      setRelayRows(
-        relayEndpoints.length > 0
-          ? relayEndpoints.map((relay) => createRelayConfigDraft(formatRelayEndpointInput(relay)))
-          : [createRelayConfigDraft()],
-      );
-      setPairingRows(
-        pairingBaseUrls.length > 0
-          ? pairingBaseUrls.map((url) => createRelayConfigDraft(url))
-          : [createRelayConfigDraft()],
-      );
-    }
-    setLanRelayEnabled(config.relay?.local?.enabled ?? false);
-  }, [config, relayRowsDirty]);
-
-  const updateRelayRow = useCallback((id: number, value: string) => {
-    setRelayRowsDirty(true);
-    setRelayRows((current) => current.map((row) => (row.id === id ? { ...row, value } : row)));
-  }, []);
-
-  const updatePairingRow = useCallback((id: number, value: string) => {
-    setRelayRowsDirty(true);
-    setPairingRows((current) => current.map((row) => (row.id === id ? { ...row, value } : row)));
-  }, []);
-
-  const addRelayRow = useCallback(() => {
-    setRelayRowsDirty(true);
-    setRelayRows((current) => [...current, createRelayConfigDraft()]);
-  }, []);
-
-  const addPairingRow = useCallback(() => {
-    setRelayRowsDirty(true);
-    setPairingRows((current) => [...current, createRelayConfigDraft()]);
-  }, []);
-
-  const removeRelayRow = useCallback((id: number) => {
-    setRelayRowsDirty(true);
-    setRelayRows((current) => {
-      const next = current.filter((row) => row.id !== id);
-      return next.length > 0 ? next : [createRelayConfigDraft()];
-    });
-  }, []);
-
-  const removePairingRow = useCallback((id: number) => {
-    setRelayRowsDirty(true);
-    setPairingRows((current) => {
-      const next = current.filter((row) => row.id !== id);
-      return next.length > 0 ? next : [createRelayConfigDraft()];
-    });
-  }, []);
-
-  const handleSave = useCallback(() => {
-    let endpoints;
-    let pairingBaseUrls;
-    try {
-      endpoints = relayRows
-        .map((row) => row.value.trim())
-        .filter(Boolean)
-        .map(parseRelayEndpointInput);
-      const endpointKeys = new Set<string>();
-      for (const endpoint of endpoints) {
-        const key = formatRelayEndpointInput(endpoint);
-        if (endpointKeys.has(key)) {
-          throw new Error(t("settings.host.relay.duplicateRow"));
-        }
-        endpointKeys.add(key);
-      }
-      pairingBaseUrls = pairingRows
-        .map((row) => row.value.trim())
-        .filter(Boolean)
-        .map(normalizeRelayPairingBaseUrl);
-      if (new Set(pairingBaseUrls).size !== pairingBaseUrls.length) {
-        throw new Error(t("settings.host.relay.duplicatePairingUrl"));
-      }
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError));
-      return;
-    }
-
-    setIsSaving(true);
-    setError(null);
-    void patchConfig({
-      relay: {
-        endpoints,
-        pairingBaseUrls,
-      },
-    })
-      .then(() => setRelayRowsDirty(false))
-      .catch((saveError) => {
-        setError(saveError instanceof Error ? saveError.message : String(saveError));
-      })
-      .finally(() => setIsSaving(false));
-  }, [pairingRows, patchConfig, relayRows, t]);
-
-  const handleLanRelayEnabledChange = useCallback(
-    (enabled: boolean) => {
-      if (isUpdatingLanRelay) return;
-      const previous = lanRelayEnabled;
-      setLanRelayEnabled(enabled);
-      setIsUpdatingLanRelay(true);
-      setError(null);
-      void patchConfig({ relay: { local: { enabled } } })
-        .catch((updateError) => {
-          setLanRelayEnabled(previous);
-          setError(updateError instanceof Error ? updateError.message : String(updateError));
-        })
-        .finally(() => setIsUpdatingLanRelay(false));
-    },
-    [isUpdatingLanRelay, lanRelayEnabled, patchConfig],
-  );
-  const lanRelayRowStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      settingsStyles.row,
-      lanRelayEnabled && hovered ? styles.relayDetailsRowHovered : null,
-      lanRelayEnabled && pressed ? styles.relayDetailsRowPressed : null,
-    ],
-    [lanRelayEnabled],
-  );
-
-  const defaultPublicRelayAddresses = DEFAULT_PUBLIC_RELAY_ENDPOINTS.map((endpoint) =>
-    formatRelayEndpointInput({ endpoint, useTls: true }),
-  ).join(", ");
-
-  return (
-    <SettingsSection title={t("settings.host.relay.title")}>
-      <View style={[settingsStyles.card, styles.relayAddCard]}>
-        <View style={styles.relayAddSectionDescription}>
-          <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.addRow")}</Text>
-          <Text style={settingsStyles.rowHint}>{t("settings.host.relay.addressPairHint")}</Text>
-        </View>
-        <View style={settingsStyles.card}>
-          <View style={styles.relayTableHeader}>
-            <View style={styles.relayServiceColumn}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.serviceColumn")}</Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.host.relay.serviceListHint", {
-                  addresses: defaultPublicRelayAddresses,
-                })}
-              </Text>
-            </View>
-            <View style={styles.relayRemoveColumn} />
-          </View>
-          {relayRows.map((row, index) => (
-            <RelayConfigurationRow
-              key={row.id}
-              row={row}
-              index={index}
-              onUpdate={updateRelayRow}
-              onRemove={removeRelayRow}
-              placeholder={t("settings.host.relay.servicePlaceholder")}
-              accessibilityLabel={t("settings.host.relay.serviceColumn")}
-              inputTestId="relay-service-input"
-              removeTestId="relay-remove-row"
-              removeLabel={t("settings.host.relay.removeRow")}
-            />
-          ))}
-          <View style={styles.relayTableFooter}>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={Plus}
-              onPress={addRelayRow}
-              testID="relay-add-row"
-            >
-              {t("settings.host.relay.addRow")}
-            </Button>
-          </View>
-        </View>
-        <View style={settingsStyles.card}>
-          <View style={styles.relayTableHeader}>
-            <View style={styles.relayServiceColumn}>
-              <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.pairingColumn")}</Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.host.relay.pairingListHint", {
-                  addresses: DEFAULT_RELAY_PAIRING_BASE_URL,
-                })}
-              </Text>
-            </View>
-            <View style={styles.relayRemoveColumn} />
-          </View>
-          {pairingRows.map((row, index) => (
-            <RelayConfigurationRow
-              key={row.id}
-              row={row}
-              index={index}
-              onUpdate={updatePairingRow}
-              onRemove={removePairingRow}
-              placeholder={t("settings.host.relay.pairingPlaceholder")}
-              accessibilityLabel={t("settings.host.relay.pairingColumn")}
-              inputTestId="relay-pairing-input"
-              removeTestId="relay-remove-pairing-row"
-              removeLabel={t("settings.host.relay.removePairingUrl")}
-            />
-          ))}
-          <View style={styles.relayTableFooter}>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={Plus}
-              onPress={addPairingRow}
-              testID="relay-add-pairing-row"
-            >
-              {t("settings.host.relay.addPairingUrl")}
-            </Button>
-          </View>
-        </View>
-      </View>
-
-      <View style={settingsStyles.card}>
-        <Pressable
-          onPress={lanRelayEnabled ? onOpenLocalRelay : undefined}
-          style={lanRelayRowStyle}
-          accessibilityRole={lanRelayEnabled ? "button" : undefined}
-          accessibilityLabel={lanRelayEnabled ? t("settings.host.relay.lan.title") : undefined}
-          testID={lanRelayEnabled ? "lan-relay-details-button" : undefined}
-        >
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.lan.title")}</Text>
-            <Text style={settingsStyles.rowHint}>{t("settings.host.relay.lan.hint")}</Text>
-          </View>
-          <Switch
-            value={lanRelayEnabled}
-            onValueChange={handleLanRelayEnabledChange}
-            disabled={isLoading || !config || isUpdatingLanRelay}
-            accessibilityLabel={t("settings.host.relay.lan.title")}
-            testID="lan-relay-switch"
-          />
-          {lanRelayEnabled ? (
-            <View style={styles.relayDetailsButton}>
-              <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
-
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <View style={styles.relayActions}>
-        <Button
-          variant="default"
-          size="sm"
-          onPress={handleSave}
-          disabled={isLoading || !config || isSaving}
-          testID="relay-config-save"
-        >
-          {isSaving ? t("settings.host.relay.saving") : t("settings.host.relay.save")}
-        </Button>
-      </View>
-    </SettingsSection>
-  );
-}
-
-export function HostLocalRelayPage({ serverId }: { serverId: string }) {
   const host = useHostProfile(serverId);
 
   if (!host) {
     return <HostNotFound />;
   }
 
-  return <LocalRelayConfigurationSection serverId={serverId} />;
+  return (
+    <SettingsSection title={t("settings.host.pairDevices.title")}>
+      <PairDeviceRow serverId={serverId} />
+    </SettingsSection>
+  );
 }
 
 export function HostAgentsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
-  const router = useRouter();
   const host = useHostProfile(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  const openInstructionTemplates = useCallback(() => {
-    router.push(buildInstructionTemplatesSettingsRoute(serverId));
-  }, [router, serverId]);
 
   if (!host) {
     return <HostNotFound />;
@@ -668,19 +274,17 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <>
-          <SettingsSection title={t("settings.hostSections.agents")}>
-            <InjectPaseoToolsCard serverId={serverId} />
-            <BrowserToolsOptInCard serverId={serverId} />
-            <AppendSystemPromptCard serverId={serverId} />
-          </SettingsSection>
-          <InstructionTemplatesEntrySection serverId={serverId} onOpen={openInstructionTemplates} />
-        </>
+        <SettingsSection title={t("settings.hostSections.agents")}>
+          <InjectPaseoToolsCard serverId={serverId} />
+          <BrowserToolsOptInCard serverId={serverId} />
+          <AppendSystemPromptCard serverId={serverId} />
+        </SettingsSection>
       ) : (
         <View style={[settingsStyles.card, styles.emptyCard]}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
         </View>
       )}
+      <AgentSkillsSection serverId={serverId} />
       <AgentProfilesSection serverId={serverId} />
     </View>
   );
@@ -749,11 +353,8 @@ export function HostSettingsPage({
   serverId: string;
   onHostRemoved?: () => void;
 }) {
-  const { t } = useTranslation();
   const host = useHostProfile(serverId);
   const isLocalDaemon = useIsLocalDaemon(serverId);
-  const daemonClient = useHostRuntimeClient(serverId);
-  const clientId = daemonClient?.getClientId() ?? null;
 
   if (!host) {
     return <HostNotFound />;
@@ -770,37 +371,6 @@ export function HostSettingsPage({
       <HostStatusBadges serverId={serverId} />
 
       <HostAppearanceSection host={host} />
-
-      <SettingsSection title={t("settings.host.daemon.identity.title")}>
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
-                {t("settings.host.daemon.identity.serverId")}
-              </Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.host.daemon.identity.serverIdDescription")}
-              </Text>
-            </View>
-            <Text style={styles.identityId} selectable>
-              {serverId}
-            </Text>
-          </View>
-          <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-            <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>
-                {t("settings.general.clientIdentity.identityId")}
-              </Text>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.general.clientIdentity.identityIdDescription")}
-              </Text>
-            </View>
-            <Text style={styles.identityId} selectable>
-              {clientId ?? t("settings.general.clientIdentity.unavailable")}
-            </Text>
-          </View>
-        </View>
-      </SettingsSection>
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 
@@ -1064,9 +634,7 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
         if (!reconnected) {
           Alert.alert(
             t("settings.host.daemon.restart.unableToReconnectTitle"),
-            t("settings.host.daemon.restart.unableToReconnectMessage", {
-              name: host.label,
-            }),
+            t("settings.host.daemon.restart.unableToReconnectMessage", { name: host.label }),
           );
         }
       }
@@ -1091,9 +659,7 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
     }
 
     void confirmDialog({
-      title: t("settings.host.daemon.restart.confirmTitle", {
-        name: host.label,
-      }),
+      title: t("settings.host.daemon.restart.confirmTitle", { name: host.label }),
       message: t("settings.host.daemon.restart.confirmMessage"),
       confirmLabel: t("settings.host.daemon.restart.confirm"),
       cancelLabel: t("common.actions.cancel"),
@@ -1165,9 +731,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
   const daemonClient = useHostRuntimeClient(host.serverId);
   const isConnected = useHostRuntimeIsConnected(host.serverId);
   const runtime = getHostRuntimeStore();
-  const [updateState, setUpdateState] = useState<DaemonUpdateState>({
-    status: "idle",
-  });
+  const [updateState, setUpdateState] = useState<DaemonUpdateState>({ status: "idle" });
   const isMountedRef = useRef(true);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -1263,9 +827,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
     }
 
     void confirmDialog({
-      title: t("settings.host.daemon.update.confirmTitle", {
-        name: host.label,
-      }),
+      title: t("settings.host.daemon.update.confirmTitle", { name: host.label }),
       message: t("settings.host.daemon.update.confirmMessage"),
       confirmLabel: t("settings.host.daemon.update.confirm"),
       cancelLabel: t("common.actions.cancel"),
@@ -1324,7 +886,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
                 status: "failed",
                 title: t("settings.host.daemon.update.requestFailedTitle"),
                 message: t("settings.host.daemon.update.requestFailedMessage", {
-                  error: response.error ?? "未知错误",
+                  error: response.error ?? "Unknown error",
                 }),
               });
               return undefined;
@@ -1342,7 +904,7 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
               status: "failed",
               title: t("settings.host.daemon.update.requestFailedTitle"),
               message: t("settings.host.daemon.update.requestFailedMessage", {
-                error: error instanceof Error ? error.message : "未知错误",
+                error: error instanceof Error ? error.message : "Unknown error",
               }),
             });
           });
@@ -1455,7 +1017,10 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
     (next: boolean) => {
       void patchConfig({ autoArchiveAfterMerge: next }).catch((error) => {
         console.error("[HostPage] Failed to update auto-archive after merge", error);
-        Alert.alert("无法更新 Workspace", error instanceof Error ? error.message : String(error));
+        Alert.alert(
+          "Unable to update workspaces",
+          error instanceof Error ? error.message : String(error),
+        );
       });
     },
     [patchConfig],
@@ -1467,7 +1032,7 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-auto-archive-merged-workspaces-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>归档已合并 PR 的 Workspace</Text>
+          <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
           <Text style={settingsStyles.rowHint}>
             Automatically archive clean Paseo workspaces after their pull request is merged
           </Text>
@@ -1475,7 +1040,7 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
         <Switch
           value={config?.autoArchiveAfterMerge === true}
           onValueChange={handleValueChange}
-          accessibilityLabel="归档已合并 PR 的 Workspace"
+          accessibilityLabel="Archive merged PR workspaces"
           testID="host-page-auto-archive-merged-workspaces-switch"
         />
       </View>
@@ -1492,7 +1057,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
       void patchConfig({ enableTerminalAgentHooks: next }).catch((error) => {
         console.error("[HostPage] Failed to update terminal agent hooks", error);
         Alert.alert(
-          "无法更新终端 Agent 钩子",
+          "Unable to update terminal agent hooks",
           error instanceof Error ? error.message : String(error),
         );
       });
@@ -1506,7 +1071,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-terminal-agent-hooks-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle}>启用终端 Agent 钩子</Text>
+          <Text style={settingsStyles.rowTitle}>Enable terminal agent hooks</Text>
           <Text style={settingsStyles.rowHint}>
             Get notifications and status from terminal agents. This installs hooks in your agent
             config files.
@@ -1515,7 +1080,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
         <Switch
           value={config?.enableTerminalAgentHooks === true}
           onValueChange={handleValueChange}
-          accessibilityLabel="启用终端 Agent 钩子"
+          accessibilityLabel="Enable terminal agent hooks"
           testID="host-page-terminal-agent-hooks-switch"
         />
       </View>
@@ -1635,6 +1200,39 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
         </AdaptiveModalSheet>
       ) : null}
     </>
+  );
+}
+
+function PairDeviceRow({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const { theme } = useUnistyles();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleOpen = useCallback(() => setIsModalOpen(true), []);
+  const handleClose = useCallback(() => setIsModalOpen(false), []);
+
+  return (
+    <View style={settingsStyles.card}>
+      <Pressable
+        style={settingsStyles.row}
+        onPress={handleOpen}
+        accessibilityRole="button"
+        testID="host-page-pair-device-row"
+      >
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.pairDevices.rowTitle")}</Text>
+          <Text style={settingsStyles.rowHint}>{t("settings.host.pairDevices.rowHint")}</Text>
+        </View>
+        <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      </Pressable>
+
+      <PairDeviceModal
+        serverId={serverId}
+        visible={isModalOpen}
+        onClose={handleClose}
+        testID="host-page-pair-device-card"
+      />
+    </View>
   );
 }
 
@@ -1790,9 +1388,7 @@ function RemoveHostSection({
           <Text style={styles.confirmText}>
             {isLocalDaemon
               ? t("settings.host.daemon.remove.localConfirmMessage")
-              : t("settings.host.daemon.remove.confirmMessage", {
-                  name: host.label,
-                })}
+              : t("settings.host.daemon.remove.confirmMessage", { name: host.label })}
           </Text>
           <View style={styles.confirmActions}>
             <Button
@@ -2178,7 +1774,7 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
 
   return (
     <View>
-      <SettingsSection title="终端 Agent">
+      <SettingsSection title="Terminal agents">
         <EnableTerminalAgentHooksCard serverId={serverId} />
       </SettingsSection>
       <TerminalProfilesSection serverId={serverId} />
@@ -2228,13 +1824,6 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
-  },
-  identityId: {
-    maxWidth: "55%",
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontFamily: theme.fontFamily.mono,
-    textAlign: "right",
   },
   identityBadges: {
     flexDirection: "row",
@@ -2289,67 +1878,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: theme.spacing[2],
-  },
-  relayAddCard: {
-    padding: theme.spacing[4],
-    gap: theme.spacing[3],
-  },
-  relayAddSectionDescription: {
-    gap: theme.spacing[1],
-  },
-  relayTableHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    paddingTop: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
-    backgroundColor: theme.colors.surface2,
-  },
-  relayColumnHeader: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-  },
-  relayTableRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
-  },
-  relayServiceColumn: {
-    flex: 1,
-    minWidth: 0,
-  },
-  relayRemoveColumn: {
-    width: 40,
-  },
-  relayRemoveButton: {
-    width: 40,
-    paddingHorizontal: 0,
-  },
-  relayTableFooter: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
-  },
-  relayDetailsButton: {
-    padding: theme.spacing[2],
-    borderRadius: theme.borderRadius.lg,
-  },
-  relayDetailsRowHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
-  relayDetailsRowPressed: {
-    backgroundColor: theme.colors.surface3,
-  },
-  relayActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
   },
   emptyCard: {
     padding: theme.spacing[4],

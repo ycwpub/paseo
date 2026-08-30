@@ -12,3 +12,5 @@ pre-commit:
       run: npm run lint -- {staged_files}
     - name: typecheck
       run: npm run typecheck
+    - name: feature-paseo-file-budget
+      run: node scripts/check-feature-paseo-file-budget.mjs --cached

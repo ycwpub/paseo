@@ -47,8 +47,6 @@ interface TooltipContextValue {
   triggerRef: React.RefObject<View | null>;
   enabled: boolean;
   openOnPress: boolean;
-  openOnHover: boolean;
-  dismissOnTriggerPressOnly: boolean;
   delayDuration: number;
 }
 
@@ -233,9 +231,6 @@ export function Tooltip({
   delayDuration = 0,
   enabledOnDesktop = true,
   enabledOnMobile = false,
-  openOnPress,
-  openOnHover = true,
-  dismissOnTriggerPressOnly = false,
   children,
 }: PropsWithChildren<{
   open?: boolean;
@@ -244,9 +239,6 @@ export function Tooltip({
   delayDuration?: number;
   enabledOnDesktop?: boolean;
   enabledOnMobile?: boolean;
-  openOnPress?: boolean;
-  openOnHover?: boolean;
-  dismissOnTriggerPressOnly?: boolean;
 }>): ReactElement {
   const triggerRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useControllableOpenState({
@@ -264,21 +256,10 @@ export function Tooltip({
       setOpen: setIsOpen,
       triggerRef,
       enabled,
-      openOnPress: openOnPress ?? isCompact,
-      openOnHover,
-      dismissOnTriggerPressOnly,
+      openOnPress: isCompact,
       delayDuration,
     }),
-    [
-      isOpen,
-      setIsOpen,
-      enabled,
-      isCompact,
-      openOnHover,
-      openOnPress,
-      dismissOnTriggerPressOnly,
-      delayDuration,
-    ],
+    [isOpen, setIsOpen, enabled, isCompact, delayDuration],
   );
 
   return <TooltipContext.Provider value={value}>{children}</TooltipContext.Provider>;
@@ -310,7 +291,7 @@ export function TooltipTrigger({
   }, []);
 
   const scheduleOpen = useCallback(() => {
-    if (!ctx.enabled || disabled || !ctx.openOnHover) return;
+    if (!ctx.enabled || disabled) return;
     clearOpenTimer();
     if (ctx.delayDuration <= 0) {
       ctx.setOpen(true);
@@ -344,18 +325,15 @@ export function TooltipTrigger({
   const handleHoverOut = useCallback(
     (e?: unknown) => {
       if (isCallable(onHoverOut)) onHoverOut(e);
-      if (!ctx.dismissOnTriggerPressOnly) {
-        close();
-      }
+      close();
     },
-    [close, ctx.dismissOnTriggerPressOnly, onHoverOut],
+    [onHoverOut, close],
   );
 
   const handleFocus = useCallback(
     (e: unknown) => {
       if (isCallable(onFocus)) onFocus(e);
       if (!ctx.enabled || disabled) return;
-      if (ctx.dismissOnTriggerPressOnly) return;
       if (!shouldOpenOnFocus()) return;
       clearOpenTimer();
       ctx.setOpen(true);
@@ -366,11 +344,9 @@ export function TooltipTrigger({
   const handleBlur = useCallback(
     (e: unknown) => {
       if (isCallable(onBlur)) onBlur(e);
-      if (!ctx.dismissOnTriggerPressOnly) {
-        close();
-      }
+      close();
     },
-    [close, ctx.dismissOnTriggerPressOnly, onBlur],
+    [close, onBlur],
   );
 
   const handlePress = useCallback(
@@ -381,7 +357,7 @@ export function TooltipTrigger({
       }
       if (ctx.openOnPress) {
         clearOpenTimer();
-        ctx.setOpen(!ctx.open);
+        ctx.setOpen(true);
         return;
       }
       close();
@@ -461,7 +437,6 @@ export function TooltipContent({
   style,
   testID,
   maxWidth = 280,
-  interactive = false,
 }: PropsWithChildren<{
   side?: Side;
   align?: Align;
@@ -469,8 +444,6 @@ export function TooltipContent({
   style?: StyleProp<ViewStyle>;
   testID?: string;
   maxWidth?: number;
-  /** Allow controls and scrolling inside the floating surface. */
-  interactive?: boolean;
 }>): ReactElement | null {
   const ctx = useTooltipContext("TooltipContent");
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
@@ -541,11 +514,11 @@ export function TooltipContent({
   // On web, avoid React Native's <Modal/> implementation (it uses <dialog> and can
   // steal focus / disrupt hover). Rendering via Portal + position:fixed keeps the
   // exact same positioning math as DropdownMenu, without hover feedback loops.
-  if (isWeb || ctx.dismissOnTriggerPressOnly) {
+  if (isWeb) {
     return createPortal(
-      <View pointerEvents={interactive ? "box-none" : "none"} style={styles.portalOverlay}>
+      <View pointerEvents="none" style={styles.portalOverlay}>
         <FloatingSurface
-          pointerEvents={interactive ? "auto" : "none"}
+          pointerEvents="none"
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}
@@ -571,7 +544,7 @@ export function TooltipContent({
     >
       <Pressable style={styles.overlay} onPress={handleDismiss}>
         <FloatingSurface
-          pointerEvents={interactive ? "auto" : "none"}
+          pointerEvents="none"
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}

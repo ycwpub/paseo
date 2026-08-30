@@ -17,7 +17,6 @@ function workspace(projectKey: string, workspaceId: string): SidebarWorkspaceEnt
     workspaceKey: `srv:${workspaceId}`,
     serverId: "srv",
     workspaceId,
-    projectId: projectKey,
     projectViewKey: projectKey,
     projectName: projectKey,
     projectRootPath: `/repo/${projectKey}`,

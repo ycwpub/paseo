@@ -171,7 +171,7 @@ export function WorkspaceTabIcon({
         <View
           style={styles.statusRing}
           accessibilityRole="progressbar"
-          accessibilityLabel="Agent 正在运行"
+          accessibilityLabel="Agent running"
         >
           <StatusRing backdrop={backdrop} />
         </View>

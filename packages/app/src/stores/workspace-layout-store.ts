@@ -111,8 +111,6 @@ interface WorkspaceLayoutStore {
   explorerSidebarPaneIdByWorkspace: Record<string, string | null>;
   sidePaneIdByWorkspace: Record<string, string | null>;
   openTab: (input: OpenWorkspaceTabInput) => string | null;
-  /** Compatibility convenience for callers that always reveal a target in the focused pane. */
-  openTabFocused: (workspaceKey: string, target: WorkspaceTabTarget) => string | null;
   /** Reveals the Explorer sidebar without selecting a view. Returns its pane id. */
   showExplorerSidebar: (workspaceKey: string) => string | null;
   hideExplorerSidebar: (workspaceKey: string) => void;
@@ -202,7 +200,6 @@ const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("browser"), browserId: z.string() }),
   z.strictObject({ kind: z.literal("changes_tree") }),
   z.strictObject({ kind: z.literal("files") }),
-  z.strictObject({ kind: z.literal("task_summary") }),
   z.strictObject({ kind: z.literal("pull_request") }),
   z.strictObject({
     kind: z.literal("file"),
@@ -330,62 +327,6 @@ function createExplorerSidebarNode(): SplitNode {
   return { kind: "pane", pane };
 }
 
-const REQUIRED_EXPLORER_TARGETS = [
-  { kind: "files" },
-  { kind: "changes_tree" },
-  { kind: "task_summary" },
-  { kind: "pull_request" },
-] as const satisfies readonly WorkspaceTabTarget[];
-
-function ensureExplorerSidebarDefaultTabs(
-  layout: WorkspaceLayout,
-  paneId: string,
-): WorkspaceLayout {
-  const pane = findPaneById(layout.root, paneId);
-  if (!pane) {
-    return layout;
-  }
-
-  const originalFocusedPaneId = layout.focusedPaneId;
-  const wasHidden = pane.hidden === true;
-  let nextLayout =
-    (wasHidden ? setPaneHiddenInLayout({ layout, paneId, hidden: false }) : null) ?? layout;
-
-  for (const target of REQUIRED_EXPLORER_TARGETS) {
-    const explorerPane = findPaneById(nextLayout.root, paneId);
-    const allTabs = collectAllTabs(nextLayout.root);
-    const existingTab = allTabs.find((tab) => tab.target.kind === target.kind);
-    if (existingTab && explorerPane?.tabIds.includes(existingTab.tabId)) {
-      continue;
-    }
-
-    if (existingTab) {
-      nextLayout =
-        moveTabToPaneInLayout({
-          layout: nextLayout,
-          tabId: existingTab.tabId,
-          toPaneId: paneId,
-          explorerSidebarPaneId: paneId,
-        }) ?? nextLayout;
-      continue;
-    }
-
-    nextLayout =
-      openTabInLayoutBackground({
-        layout: nextLayout,
-        target,
-        now: Date.now(),
-        placement: { mode: "pane", paneId },
-        explorerSidebarPaneId: paneId,
-      })?.layout ?? nextLayout;
-  }
-
-  if (wasHidden) {
-    nextLayout = setPaneHiddenInLayout({ layout: nextLayout, paneId, hidden: true }) ?? nextLayout;
-  }
-  return keepWorkspaceFocusOutOfExplorerSidebar(nextLayout, paneId, originalFocusedPaneId);
-}
-
 function preserveVersionOneSideTabs(input: {
   layout: WorkspaceLayout;
   legacyExplorerPane: SplitPane;
@@ -465,9 +406,7 @@ function migrateVersionOneWorkspaceLayout(input: {
     (tab) =>
       legacyExplorerPane.tabIds.includes(tab.tabId) &&
       tab.target.kind !== "files" &&
-      tab.target.kind !== "changes_tree" &&
-      tab.target.kind !== "task_summary" &&
-      tab.target.kind !== "pull_request",
+      tab.target.kind !== "changes_tree",
   );
   const preservedSide = preserveVersionOneSideTabs({
     layout: strippedLayout,
@@ -665,10 +604,9 @@ function ensurePersistedExplorerSidebarPane(input: {
 }): { layout: WorkspaceLayout; paneId: string } | null {
   const existingPaneId = resolveExplorerSidebarPaneId(input.layout, input.registeredPaneId);
   if (existingPaneId) {
-    const layout = ensureExplorerSidebarDefaultTabs(input.layout, existingPaneId);
     return {
       layout: keepWorkspaceFocusOutOfExplorerSidebar(
-        layout,
+        input.layout,
         existingPaneId,
         input.layout.focusedPaneId,
       ),
@@ -896,13 +834,6 @@ export function createWorkspaceLayoutStore(
           }));
           return result.tabId;
         },
-        openTabFocused: (workspaceKey, target) =>
-          get().openTab({
-            workspaceKey,
-            target,
-            intent: "reveal",
-            placement: FOCUSED_PANE_PLACEMENT,
-          }),
         showExplorerSidebar: (workspaceKey) => {
           const normalizedWorkspaceKey = trimNonEmpty(workspaceKey);
           if (!normalizedWorkspaceKey) {

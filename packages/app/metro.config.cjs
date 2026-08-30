@@ -2,6 +2,7 @@ const { getDefaultConfig } = require("expo/metro-config");
 const { resolve } = require("metro-resolver");
 const fs = require("fs");
 const path = require("path");
+const { applyFeaturePaseoOverlay } = require("./feature-paseo-overlay.cjs");
 
 const projectRoot = __dirname;
 const appNodeModulesRoot = path.resolve(projectRoot, "node_modules");
@@ -67,13 +68,16 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
     };
 
     try {
-      return defaultResolveRequest(overlayContext, moduleName, null);
+      return applyFeaturePaseoOverlay(
+        defaultResolveRequest(overlayContext, moduleName, null),
+        appSrcRoot,
+      );
     } catch {
       // Ignore overlay misses and continue with normal web resolution.
     }
   }
 
-  return defaultResolveRequest(context, moduleName, platform);
+  return applyFeaturePaseoOverlay(defaultResolveRequest(context, moduleName, platform), appSrcRoot);
 }
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {

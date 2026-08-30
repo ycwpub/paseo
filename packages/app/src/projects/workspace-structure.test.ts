@@ -7,11 +7,9 @@ function project(input: {
   key: string | null;
   root: string;
   name?: string;
-  parentProjectId?: string;
 }): ProjectDescriptor {
   return {
     projectId: input.id,
-    parentProjectId: input.parentProjectId ?? null,
     projectKey: input.key,
     projectDisplayName: input.name ?? "acme/app",
     projectCustomName: null,
@@ -174,29 +172,5 @@ describe("buildWorkspaceStructureProjects", () => {
     expect(result.find((item) => item.projectKey === placementShapedKey)?.viewKey).toBe(
       placementShapedKey,
     );
-  });
-
-  test("maps a host-local parent Project id to the parent's display view key", () => {
-    const result = buildWorkspaceStructureProjects({
-      sessions: [
-        {
-          serverId: "host-a",
-          projects: [
-            project({ id: "prj_parent", key: null, root: "/repos/parent" }),
-            project({
-              id: "prj_child",
-              key: null,
-              root: "/repos/child",
-              parentProjectId: "prj_parent",
-            }),
-          ],
-          workspaces: [],
-        },
-      ],
-    });
-
-    const parent = result.find((item) => item.hosts[0]?.projectId === "prj_parent");
-    const child = result.find((item) => item.hosts[0]?.projectId === "prj_child");
-    expect(child?.parentViewKey).toBe(parent?.viewKey);
   });
 });

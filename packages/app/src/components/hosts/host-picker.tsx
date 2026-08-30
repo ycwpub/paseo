@@ -1,5 +1,4 @@
 import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import { Pressable, View } from "react-native";
 import type { GestureResponderEvent } from "react-native";
 import { Plus, Server, Settings } from "lucide-react-native";
@@ -74,19 +73,12 @@ export function HostPickerOption({
   onOpenHostSettings,
   testID,
 }: HostPickerOptionProps): ReactElement {
-  const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const snapshot = useHostRuntimeSnapshot(serverId);
-  const activeConnection = snapshot?.activeConnection ?? null;
-  const transport = snapshot?.transport ?? null;
-  let connectionLabel: string | undefined;
-  if (showActiveConnection && transport?.type === "relay") {
-    connectionLabel = `${t("settings.host.badges.viaRelay")} · ${transport.endpoint}`;
-  } else if (showActiveConnection && transport?.type === "direct") {
-    connectionLabel = t("settings.host.badges.direct");
-  } else if (showActiveConnection && activeConnection) {
-    connectionLabel = formatActiveConnectionLabel(activeConnection);
-  }
+  const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
+  const connectionLabel =
+    showActiveConnection && activeConnection
+      ? formatActiveConnectionLabel(activeConnection)
+      : undefined;
   const leadingSlot = useMemo(() => <HostStatusDotSlot serverId={serverId} />, [serverId]);
   const handleSettingsPress = useCallback(
     (event: GestureResponderEvent) => {
@@ -130,8 +122,8 @@ export function HostPickerOption({
 }
 
 const SYSTEM_HOST_PICKER_OPTION_LABELS: Record<"add" | "all" | "enableBuiltInDaemon", string> = {
-  add: "添加主机",
-  all: "所有主机",
+  add: "Add host",
+  all: "All hosts",
   enableBuiltInDaemon: "Enable built-in daemon",
 };
 
@@ -220,16 +212,13 @@ export function HostPicker({
   );
 
   const options = useMemo(() => {
-    const hostOptions = orderedHosts.map((host) => ({
-      id: host.serverId,
-      label: host.label,
-    }));
-    if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "所有主机" });
-    if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "添加主机" });
+    const hostOptions = orderedHosts.map((host) => ({ id: host.serverId, label: host.label }));
+    if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "All hosts" });
+    if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host" });
     if (includeEnableBuiltInDaemon)
       hostOptions.push({
         id: ENABLE_BUILT_IN_DAEMON_OPTION_ID,
-        label: "启用内置 Daemon",
+        label: "Enable built-in daemon",
       });
     return hostOptions;
   }, [orderedHosts, includeAllHost, includeAddHost, includeEnableBuiltInDaemon]);
@@ -317,7 +306,7 @@ export function HostPicker({
         onSelect={handleSelect}
         renderOption={renderOption}
         searchable={isSearchable}
-        searchPlaceholder="搜索主机"
+        searchPlaceholder="Search hosts"
         title={title ?? "Host"}
         open={open}
         onOpenChange={onOpenChange}

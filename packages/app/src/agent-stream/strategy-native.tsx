@@ -101,7 +101,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     onNearHistoryStart,
     isLoadingOlderHistory,
     hasOlderHistory,
-    olderHistoryProgressKey = null,
+    olderHistoryProgressKey,
     scrollEnabled,
     listStyle,
     baseListContentContainerStyle,
@@ -375,10 +375,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
           agentId,
           reason,
         });
-      },
-      scrollToOldest: () => {
-        programmaticScrollEventBudgetRef.current = 3;
-        flatListRef.current?.scrollToEnd({ animated: false });
       },
       prepareForViewportChange: () => {
         bottomAnchorController.prepareForStickyViewportChange();

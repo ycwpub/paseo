@@ -18,14 +18,11 @@ export interface WorkspaceSummary {
 export interface ProjectHostEntry {
   serverId: string;
   projectId: string;
-  parentProjectId: string | null;
   projectName: string;
   projectCustomName: string | null;
   serverName: string;
   isOnline: boolean;
-  projectPath: string;
   repoRoot: string;
-  isDirectoryless: boolean;
   workspaceCount: number;
   workspaces: WorkspaceSummary[];
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
@@ -88,7 +85,6 @@ export function getProjectHostEntry(
 interface HostGroup {
   serverId: string;
   projectId: string;
-  parentProjectId: string | null;
   projectName: string;
   projectCustomName: string | null;
   serverName: string;
@@ -96,9 +92,9 @@ interface HostGroup {
   workspaces: WorkspaceDescriptor[];
   customIconRevision?: string | null;
   iconRevision?: string;
-  projectPath: string;
-  fallbackRepoRoot: string;
-  isDirectoryless: boolean;
+  // The project record exists before its first workspace. Keep its editable
+  // root at the project boundary instead of deriving it from child rows.
+  projectRoot: string;
 }
 
 interface ProjectGroup {
@@ -111,13 +107,12 @@ interface ProjectGroup {
 function findProjectMetadata(
   host: ProjectHost,
   projectId: string,
-): { customName: string | null; displayName: string; parentProjectId: string | null } | null {
+): { customName: string | null; displayName: string } | null {
   for (const project of host.projects) {
     if (project.projectId === projectId) {
       return {
         customName: project.projectCustomName ?? null,
         displayName: project.projectDisplayName,
-        parentProjectId: project.parentProjectId ?? null,
       };
     }
   }
@@ -134,8 +129,11 @@ function buildHostProjectEntries(hosts: ProjectHost[]): HostProjectListItem[] {
   });
 }
 
-function resolveHostRepoRoot(group: HostGroup): string {
-  return group.projectPath || group.workspaces[0]?.projectRootPath || group.fallbackRepoRoot;
+function resolveHostRepoRoot(input: {
+  projectRoot: string;
+  workspaces: readonly WorkspaceDescriptor[];
+}): string {
+  return input.workspaces[0]?.projectRootPath || input.projectRoot;
 }
 
 /**
@@ -174,14 +172,11 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
   return {
     serverId: group.serverId,
     projectId: group.projectId,
-    parentProjectId: group.parentProjectId,
     projectName: group.projectName,
     projectCustomName: group.projectCustomName,
     serverName: group.serverName,
     isOnline: group.isOnline,
-    projectPath: group.projectPath,
     repoRoot,
-    isDirectoryless: group.isDirectoryless,
     workspaceCount: group.workspaces.length,
     workspaces: group.workspaces.map(toWorkspaceSummary),
     gitRuntime: canonical?.gitRuntime,
@@ -222,11 +217,6 @@ function addHostProjects(
   const repoRootByProjectId = new Map(
     host.projects.map((project) => [project.projectId, project.projectRootPath]),
   );
-  const directorylessProjectIds = new Set(
-    host.projects
-      .filter((project) => project.projectDirectoryless)
-      .map((project) => project.projectId),
-  );
 
   for (const hostProject of hostProjects) {
     const placement = hostProject.hosts.find((entry) => entry.serverId === host.serverId);
@@ -251,7 +241,6 @@ function addHostProjects(
       group.hostsByServerId.set(host.serverId, {
         serverId: host.serverId,
         projectId,
-        parentProjectId: customName?.parentProjectId ?? null,
         projectName: customName?.displayName ?? hostProject.projectName,
         projectCustomName: customName?.customName ?? null,
         serverName: host.serverName,
@@ -259,9 +248,7 @@ function addHostProjects(
         workspaces: [],
         customIconRevision: placement.customIconRevision,
         iconRevision: placement.iconRevision,
-        projectPath: repoRootByProjectId.get(projectId) ?? "",
-        fallbackRepoRoot: repoRootByProjectId.get(projectId) ?? "",
-        isDirectoryless: directorylessProjectIds.has(projectId),
+        projectRoot: repoRootByProjectId.get(projectId) ?? "",
       });
     }
   }

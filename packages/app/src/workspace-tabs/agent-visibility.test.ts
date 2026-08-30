@@ -335,7 +335,6 @@ describe("workspace agent visibility", () => {
         standaloneTerminalIds: ["terminal-1"],
         hasActivePendingTerminalCreate: false,
         hasActivePendingDraftCreate: false,
-        replaceableDraftTabId: "draft-1",
       }),
     ).toEqual({
       agentsHydrated: true,
@@ -347,7 +346,6 @@ describe("workspace agent visibility", () => {
       standaloneTerminalIds: ["terminal-1"],
       hasActivePendingTerminalCreate: false,
       hasActivePendingDraftCreate: false,
-      replaceableDraftTabId: "draft-1",
     });
   });
 

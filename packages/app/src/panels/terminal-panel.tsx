@@ -96,7 +96,7 @@ function TerminalPanel() {
   if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
-        <Text>未找到 Workspace 目录。</Text>
+        <Text>Workspace directory not found.</Text>
       </View>
     );
   }

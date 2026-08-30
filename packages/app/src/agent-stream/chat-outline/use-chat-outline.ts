@@ -7,9 +7,7 @@ import { planTimelinePromptJump } from "@/timeline/timeline-sync-plan";
 import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
 import {
-  buildLoadedChatOutlinePrompts,
   createActivePromptPublisher,
-  mergeChatOutlinePrompts,
   resolveActivePromptSeq,
   shouldAcceptPromptIndexEpoch,
   type ActivePromptSource,
@@ -33,7 +31,6 @@ export interface UseChatOutlineInput {
   tail: StreamItem[];
   head: StreamItem[] | undefined;
   enabled: boolean;
-  supportsPromptIndex?: boolean;
   viewportRef: RefObject<StreamViewportHandle | null>;
   onJumpError: () => void;
   visibleItemIds?: ReadonlySet<string>;
@@ -54,7 +51,6 @@ export function useChatOutline({
   tail,
   head,
   enabled,
-  supportsPromptIndex = true,
   viewportRef,
   onJumpError,
   visibleItemIds,
@@ -67,18 +63,10 @@ export function useChatOutline({
   const nextJumpRequestIdRef = useRef(0);
   const nextIndexRequestIdRef = useRef(0);
   const loadedItems = useMemo(() => [...tail, ...(head ?? NO_STREAM_ITEMS)], [head, tail]);
-  const loadedPrompts = useMemo(
-    () => buildLoadedChatOutlinePrompts(loadedItems, timelineEpoch),
-    [loadedItems, timelineEpoch],
-  );
-  const prompts = useMemo(
-    () =>
-      enabled ? mergeChatOutlinePrompts(index?.prompts ?? NO_PROMPTS, loadedPrompts) : NO_PROMPTS,
-    [enabled, index?.prompts, loadedPrompts],
-  );
+  const prompts = enabled ? (index?.prompts ?? NO_PROMPTS) : NO_PROMPTS;
 
   useEffect(() => {
-    if (!isWeb || !enabled || !supportsPromptIndex) {
+    if (!isWeb || !enabled) {
       setIndex(null);
       return;
     }
@@ -117,7 +105,7 @@ export function useChatOutline({
       active = false;
       unsubscribe();
     };
-  }, [agentId, enabled, serverId, supportsPromptIndex, timelineEpoch]);
+  }, [agentId, enabled, serverId, timelineEpoch]);
 
   // The transcript names the row it is showing; the outline turns that into a prompt using the
   // complete index, so unloaded rows never have to exist in the DOM to be marked.

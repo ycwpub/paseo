@@ -82,7 +82,6 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
-import { AssistantSelector } from "@/composer/assistant-selector/assistant-selector";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import {
   useHostRuntimeAgentDirectoryStatus,
@@ -300,8 +299,6 @@ function resolveContextWindowPlacement(
   return reserveSlot ? <View style={styles.contextWindowMeterSlot}>{meter}</View> : null;
 }
 
-const noopAssistantSelect = (_id: string | null) => {};
-
 interface RenderLeftContentArgs {
   agentControls: DraftAgentControlsProps | undefined;
   agentId: string;
@@ -309,42 +306,21 @@ interface RenderLeftContentArgs {
   focusInput: () => void;
   isCompactLayout: boolean;
   showAgentControls: boolean;
-  assistantId: string | null | undefined;
-  onAssistantSelect: ((id: string | null) => void) | undefined;
-  teamId: string | null | undefined;
-  onTeamSelect: ((teamId: string | null, leaderAssistantId: string | null) => void) | undefined;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
   const { agentControls, agentId, serverId, focusInput, isCompactLayout } = args;
   if (!args.showAgentControls) return null;
-  const controls =
-    resolveAgentControlsMode(agentControls) === "draft" && agentControls ? (
-      <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />
-    ) : (
-      <AgentControls
-        agentId={agentId}
-        serverId={serverId}
-        onDropdownClose={focusInput}
-        isCompactLayout={isCompactLayout}
-      />
-    );
-  const assistantSelector = (
-    <AssistantSelector
-      serverId={serverId}
-      selectedAssistantId={args.assistantId ?? null}
-      selectedTeamId={args.teamId ?? null}
-      onSelect={args.onAssistantSelect ?? noopAssistantSelect}
-      onSelectTeam={args.onTeamSelect}
-      fullWidth={isCompactLayout}
-    />
-  );
-
+  if (resolveAgentControlsMode(agentControls) === "draft" && agentControls) {
+    return <DraftAgentControls {...agentControls} isCompactLayout={isCompactLayout} />;
+  }
   return (
-    <View style={[styles.leftContentRow, isCompactLayout && styles.compactLeftContent]}>
-      <View style={isCompactLayout ? styles.compactAgentControlsRow : undefined}>{controls}</View>
-      {assistantSelector}
-    </View>
+    <AgentControls
+      agentId={agentId}
+      serverId={serverId}
+      onDropdownClose={focusInput}
+      isCompactLayout={isCompactLayout}
+    />
   );
 }
 
@@ -997,14 +973,6 @@ interface ComposerProps {
   submitLabel?: string;
   /** Overrides the mode's default placeholder, for text only the caller can build. */
   placeholder?: string;
-  /** Selected assistant ID for the current draft, if any. */
-  assistantId?: string | null;
-  /** Called when the user selects or clears an assistant. */
-  onAssistantSelect?: (id: string | null) => void;
-  /** Selected assistant team for a new conversation. */
-  teamId?: string | null;
-  /** Called when the user selects or clears a team. */
-  onTeamSelect?: (teamId: string | null, leaderAssistantId: string | null) => void;
 }
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -1210,10 +1178,6 @@ function ComposerContentImpl({
   readOnly = false,
   submitLabel,
   placeholder,
-  assistantId,
-  onAssistantSelect,
-  teamId,
-  onTeamSelect,
 }: ComposerContentProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -2145,23 +2109,8 @@ function ComposerContentImpl({
         focusInput,
         isCompactLayout,
         showAgentControls: mode.showAgentControls,
-        assistantId,
-        onAssistantSelect,
-        teamId,
-        onTeamSelect,
       }),
-    [
-      agentControls,
-      agentId,
-      assistantId,
-      focusInput,
-      isCompactLayout,
-      mode.showAgentControls,
-      onAssistantSelect,
-      onTeamSelect,
-      serverId,
-      teamId,
-    ],
+    [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {
@@ -2420,23 +2369,6 @@ const animatedStaticStyles = RNStyleSheet.create({
 });
 
 const styles = StyleSheet.create((theme: Theme) => ({
-  leftContentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flexShrink: 1,
-  },
-  compactLeftContent: {
-    width: "100%",
-    minWidth: 0,
-    flexDirection: "column",
-    alignItems: "stretch",
-    gap: theme.spacing[1],
-  },
-  compactAgentControlsRow: {
-    width: "100%",
-    minWidth: 0,
-  },
   borderSeparator: {
     height: theme.borderWidth[1],
     backgroundColor: theme.colors.border,

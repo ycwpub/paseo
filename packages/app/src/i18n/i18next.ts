@@ -16,8 +16,8 @@ const i18n = createInstance();
 observeI18nInit(
   i18n.use(initReactI18next).init({
     compatibilityJSON: "v4",
-    fallbackLng: "zh-CN",
-    lng: "zh-CN",
+    fallbackLng: "en",
+    lng: "en",
     resources: {
       ar: { translation: ar },
       en: { translation: en },

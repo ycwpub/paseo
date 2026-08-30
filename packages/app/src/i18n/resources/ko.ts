@@ -1,9 +1,7 @@
 import { en, type TranslationResources } from "./en";
-import { completeTranslationResource, mergeTranslationResources } from "./complete-resource";
-import { featureTranslationAdditions } from "./feature-additions";
 import { pluginSettings } from "./plugin-settings";
 
-const koBase = {
+export const ko: TranslationResources = {
   common: {
     back: "뒤로",
     loading: "불러오는 중...",
@@ -205,7 +203,6 @@ const koBase = {
     empty: "이 에이전트와 대화를 시작하세요...",
     scrollToBottom: "맨 아래로 스크롤",
     historyLoadFailed: "에이전트 기록을 로드할 수 없습니다.",
-    changes: en.agentStream.changes,
     permission: {
       plan: "계획",
       required: "권한 필요",
@@ -217,7 +214,6 @@ const koBase = {
     },
   },
   agentPanel: {
-    taskSummary: en.agentPanel.taskSummary,
     states: {
       notFound: "에이전트를 찾을 수 없습니다",
       failedToLoad: "에이전트를 불러오지 못했습니다",
@@ -355,8 +351,6 @@ const koBase = {
     },
     compaction: {
       loading: "압축하는 중...",
-      loadingAuto: "컨텍스트를 자동으로 압축하는 중...",
-      loadingManual: "컨텍스트를 수동으로 압축하는 중...",
       auto: "컨텍스트가 자동으로 압축되었습니다",
       manual: "컨텍스트가 수동으로 압축되었습니다",
       withTokens: "컨텍스트가 압축되었습니다 ({{tokens}}K 토큰)",
@@ -1246,100 +1240,6 @@ const koBase = {
       commandPlaceholder: "Run a command, or leave empty for a blank terminal",
     },
   },
-  memoryPolicies: {
-    globalDisabledTitle: "전역 메모리가 꺼져 있습니다",
-    globalDisabledDescription:
-      "정책은 저장되지만 호스트 설정에서 메모리를 켜기 전까지 Paseo가 사용하지 않습니다.",
-    scopeManager: {
-      ...en.memoryPolicies.scopeManager,
-      title: "메모리 규칙",
-      description: "각 메모리 범위에 저장할 영구 정보를 관리합니다.",
-      scopeType: "메모리 범위",
-      target: "대상",
-      selectTarget: "대상 선택",
-      instructionsTitle: "저장할 정보",
-      save: "규칙 저장",
-      saved: "저장됨",
-    },
-    contentManager: {
-      ...en.memoryPolicies.contentManager,
-      pageTitle: "메모리 관리",
-      detailTitle: "메모리 상세",
-      manage: "메모리 내용 관리",
-      manageDescription:
-        "{{count}}개의 메모리가 있습니다. 전용 페이지에서 조회, 편집 또는 삭제할 수 있습니다.",
-      openManager: "열기",
-      backToList: "메모리 목록으로 돌아가기",
-      loading: "메모리 불러오는 중…",
-      notFound: "이 메모리는 없거나 삭제되었습니다.",
-      errorTitle: "메모리를 관리할 수 없습니다",
-      scopeEditHint: "범위를 변경하면 이 메모리가 선택한 범위로 이동합니다.",
-      pagination: {
-        pageSize: "페이지당 항목",
-        noPageSizes: "사용 가능한 페이지 크기가 없습니다",
-        page: "{{page}} / {{totalPages}} 페이지",
-        range: "전체 {{total}}개 중 {{start}}–{{end}}개 표시",
-        previous: "이전",
-        next: "다음",
-      },
-    },
-  },
-  workflows: {
-    graph: {
-      fullView: "전체 계획",
-      fullViewTitle: "전체 워크플로 그래프",
-      fullViewHint: "전체 종속성 그래프와 실행 경로를 확인하고 확대하거나 노드를 열 수 있습니다.",
-      zoomIn: "워크플로 그래프 확대",
-      zoomOut: "워크플로 그래프 축소",
-      resetZoom: "워크플로 그래프 확대/축소 초기화",
-      nodeName: "노드 이름",
-      nodeId: "노드 ID",
-      nodeType: "노드 유형",
-      configuration: "전체 노드 구성",
-    },
-    nodes: {
-      agent: {
-        lifecycle: "에이전트 수명 주기",
-        lifecycleHint:
-          "이 에이전트 노드가 동일한 에이전트를 재사용하는 기간을 정합니다. 재사용되는 에이전트 호출은 순서대로 실행됩니다.",
-        selectLifecycle: "에이전트 수명 주기 선택",
-        lifecycleOptions: {
-          workflow: "전체 Workflow",
-          workflowDescription: "첫 실행 시 생성하여 재사용하고 Workflow가 끝나면 해제합니다.",
-          for: "현재 For 루프",
-          forDescription:
-            "첫 반복에서 생성하여 현재 For 루프 안에서 재사용하고 루프를 벗어나면 해제합니다.",
-          single: "단일 실행",
-          singleDescription: "실행할 때마다 새 에이전트를 생성하며 재사용하지 않습니다.",
-        },
-        subsequentPromptMode: "첫 실행 이후 프롬프트",
-        subsequentPromptModeHint:
-          "이미 초기화된 에이전트를 다시 호출할 때 보낼 프롬프트를 선택합니다.",
-        selectSubsequentPromptMode: "후속 프롬프트 방식 선택",
-        subsequentPromptModes: {
-          reuseInitial: "초기 프롬프트 재사용",
-          reuseInitialDescription: "현재 노드 입력으로 초기 프롬프트를 다시 렌더링합니다.",
-          custom: "사용자 지정 프롬프트",
-          customDescription: "첫 호출 이후에는 별도로 설정한 프롬프트를 사용합니다.",
-        },
-        subsequentPrompt: "사용자 지정 후속 프롬프트",
-        subsequentPromptHint: "초기 프롬프트와 동일한 입력 데이터 및 템플릿 변수를 지원합니다.",
-        archiveAtLifecycleEnd: "에이전트 수명 주기가 끝나면 자동 보관",
-      },
-      openDetails: "{{name}} 노드 세부 정보 열기",
-      downstream: {
-        label: "다음 노드",
-        hint: "이 노드가 완료된 후 실행할 같은 수준의 노드를 선택하세요.",
-        sequential: "목록 순서 따르기",
-        sequentialDescription: "목록의 다음 노드를 실행합니다.",
-        end: "시퀀스 종료",
-        endDescription: "현재 노드가 완료되면 이 시퀀스를 종료합니다.",
-        missing: "노드 없음: {{id}}",
-        placeholder: "다음 노드 선택",
-        empty: "선택할 수 있는 다음 노드가 없습니다",
-      },
-    },
-  },
   desktop: {
     windowControls: {
       minimize: "창 최소화",
@@ -1498,11 +1398,6 @@ const koBase = {
         installFailed: "Paseo CLI를 설치할 수 없습니다.",
       },
     },
-  },
-  communityLinks: {
-    star: "스타",
-    sponsor: "후원",
-    community: "커뮤니티",
   },
   rootError: {
     title: "Paseo에 문제가 발생했습니다.",
@@ -1998,7 +1893,6 @@ const koBase = {
     projects: "프로젝트",
     projectList: {
       hostLoadFailed: "{{hostName}} 호스트에서 프로젝트를 불러올 수 없습니다: {{message}}",
-      hostLoadTimedOut: en.settings.projectList.hostLoadTimedOut,
       editProject: "{{projectName}} 편집",
     },
     groupInfo: "{{title}} 정보",
@@ -2753,8 +2647,3 @@ const koBase = {
     },
   },
 };
-
-export const ko: TranslationResources = completeTranslationResource(
-  en,
-  mergeTranslationResources(koBase, featureTranslationAdditions.ko),
-);

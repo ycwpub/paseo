@@ -5,6 +5,12 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
 const relayDeploymentSpec = "**/relay-deployment-reconnect.real.spec.ts";
+const featurePaseoOverriddenSpecs = [
+  "**/chat-outline.spec.ts",
+  "**/empty-project-persists.spec.ts",
+  "**/settings-host-page.spec.ts",
+  "**/settings-navigation.spec.ts",
+];
 
 function videoMode(): "on" | "on-first-retry" | "retain-on-failure" {
   if (process.env.E2E_RECORD_VIDEO === "1") return "on";
@@ -34,18 +40,19 @@ export default defineConfig({
   projects: [
     {
       name: "browser",
-      testIgnore: ["**/*.real.spec.ts"],
+      testIgnore: ["**/*.real.spec.ts", ...featurePaseoOverriddenSpecs],
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "real-provider",
       testMatch: ["**/*.real.spec.ts"],
-      testIgnore: [relayDeploymentSpec],
+      testIgnore: [relayDeploymentSpec, ...featurePaseoOverriddenSpecs],
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "relay-deployment",
       testMatch: [relayDeploymentSpec],
+      testIgnore: featurePaseoOverriddenSpecs,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

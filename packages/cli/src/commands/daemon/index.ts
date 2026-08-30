@@ -6,8 +6,6 @@ import { runRestartCommand } from "./restart.js";
 import { runSetPasswordCommand } from "./set-password.js";
 import { pairCommand } from "./pair.js";
 import { runDaemonReloadCommand } from "./reload.js";
-import { createRelayCommand } from "./relay.js";
-import { createClientAccessCommand } from "./client-access.js";
 import { withOutput } from "../../output/index.js";
 import { addJsonAndDaemonHostOptions, addJsonOption } from "../../utils/command-options.js";
 
@@ -22,8 +20,6 @@ export function createDaemonCommand(): Command {
 
   daemon.addCommand(startCommand());
   daemon.addCommand(pairCommand());
-  daemon.addCommand(createRelayCommand());
-  daemon.addCommand(createClientAccessCommand());
 
   addJsonAndDaemonHostOptions(
     daemon.command("reload").description("Reload config.json without restarting the daemon"),

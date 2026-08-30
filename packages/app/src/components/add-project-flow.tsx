@@ -7,7 +7,6 @@ import {
   FolderPlus,
   Github,
   HardDrive,
-  LayoutGrid,
   Plus,
   Search,
   Server,
@@ -42,14 +41,12 @@ import {
   moveAddProjectSelection,
   openAddProjectFlow,
   openDirectorySearchPage,
-  openDirectorylessProjectNamePage,
   openGithubLocationPage,
   openGithubSearchPage,
   openNewDirectoryNamePage,
   openNewDirectoryParentPage,
   setAddProjectActiveIndex,
   setAddProjectPageInput,
-  setDirectorylessProjectName,
   setNewDirectoryName,
   updateCurrentAddProjectPage,
   type AddProjectFlowState,
@@ -164,7 +161,6 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
 }
 
 function methodIcon(method: AddProjectMethodId): FlowRowOption["icon"] {
-  if (method === "directoryless-project") return LayoutGrid;
   if (method === "github") return Github;
   if (method === "browse") return FolderOpen;
   if (method === "new-directory") return FolderPlus;
@@ -226,8 +222,6 @@ function pageTitle(page: AddProjectPage): string {
       return "Choose parent directory";
     case "new-directory-name":
       return "Name directory";
-    case "directoryless-project-name":
-      return "Name multi-directory project";
   }
 }
 
@@ -246,15 +240,11 @@ function pagePlaceholder(page: AddProjectInputPage): string {
       return "Search parent directories or enter a path...";
     case "new-directory-name":
       return "Directory name";
-    case "directoryless-project-name":
-      return "Multi-directory project name";
   }
 }
 
 function pageInput(page: AddProjectInputPage): string {
-  return page.kind === "new-directory-name" || page.kind === "directoryless-project-name"
-    ? page.name
-    : page.query;
+  return page.kind === "new-directory-name" ? page.name : page.query;
 }
 
 function pathTestId(path: string): string {
@@ -337,7 +327,6 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const githubSearchByHost = useHostFeatureMap(hostIds, "workspaceGithubRepositorySearch");
   // COMPAT(projectCreateDirectory): added in v0.1.108, remove gate after 2027-01-15.
   const createDirectoryByHost = useHostFeatureMap(hostIds, "projectCreateDirectory");
-  const createDirectorylessProjectByHost = useHostFeatureMap(hostIds, "projectCreateDirectoryless");
   const localServerId = useLocalDaemonServerId();
   const availableHosts = useMemo<AddProjectHost[]>(
     () =>
@@ -355,15 +344,12 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             canCloneGithubRepositories: githubCloneByHost.get(host.serverId) === true,
             canSearchGithubRepositories: githubSearchByHost.get(host.serverId) === true,
             canCreateDirectory: createDirectoryByHost.get(host.serverId) === true,
-            canCreateDirectorylessProject:
-              createDirectorylessProjectByHost.get(host.serverId) === true,
           },
         ];
       }),
     [
       connectionStatuses,
       createDirectoryByHost,
-      createDirectorylessProjectByHost,
       githubCloneByHost,
       githubSearchByHost,
       hosts,
@@ -376,9 +362,6 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
     openAddProjectFlow({
       hosts: availableHosts,
       ...(request.preferredHostId ? { preferredHostId: request.preferredHostId } : {}),
-      ...(request.initialDirectorylessProjectName
-        ? { initialDirectorylessProjectName: request.initialDirectorylessProjectName }
-        : {}),
     }),
   );
   const page = currentAddProjectPage(state);
@@ -394,26 +377,16 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const inputRef = useRef<EditingTextInputHandle>(null);
   const submissionInFlightRef = useRef(false);
   const browseInFlightRef = useRef(false);
-  const query =
-    page.kind === "new-directory-name" ||
-    page.kind === "directoryless-project-name" ||
-    page.kind === "method"
-      ? ""
-      : page.query;
+  const query = page.kind === "new-directory-name" || page.kind === "method" ? "" : page.query;
   const pageInputValueRef = useRef(page.kind === "method" ? "" : pageInput(page));
   pageInputValueRef.current = page.kind === "method" ? "" : pageInput(page);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
     setState((current) =>
-      applyAvailableAddProjectHosts(
-        current,
-        availableHosts,
-        request.preferredHostId,
-        request.initialDirectorylessProjectName,
-      ),
+      applyAvailableAddProjectHosts(current, availableHosts, request.preferredHostId),
     );
-  }, [availableHosts, request.initialDirectorylessProjectName, request.preferredHostId]);
+  }, [availableHosts, request.preferredHostId]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -542,8 +515,6 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       if (!hostId) return;
       if (method === "directory-search") {
         setState((current) => openDirectorySearchPage(current, hostId));
-      } else if (method === "directoryless-project") {
-        setState((current) => openDirectorylessProjectNamePage(current, hostId));
       } else if (method === "browse") {
         void browse();
       } else if (method === "github") {
@@ -735,57 +706,6 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   ]);
 
   const activeIndex = rows.length === 0 ? 0 : Math.min(page.activeIndex, rows.length - 1);
-  const createDirectorylessProject = useCallback(async () => {
-    if (page.kind !== "directoryless-project-name" || !client) return;
-    const name = page.name.trim();
-    if (!name) {
-      setState((current) =>
-        setPageStatus(current, "directoryless-project-name", { error: "Enter a project name" }),
-      );
-      return;
-    }
-    if (submissionInFlightRef.current) return;
-    submissionInFlightRef.current = true;
-    setState((current) =>
-      setPageStatus(current, "directoryless-project-name", {
-        isSubmitting: true,
-        error: null,
-      }),
-    );
-    try {
-      const payload = await client.createDirectorylessProject({
-        name,
-        ...(request.parentProjectId ? { parentProjectId: request.parentProjectId } : {}),
-      });
-      if (payload.error || !payload.project) {
-        setState((current) =>
-          setPageStatus(current, "directoryless-project-name", {
-            isSubmitting: false,
-            error: payload.error ?? "Unable to create project",
-          }),
-        );
-        return;
-      }
-      registerProjectDescriptor({
-        serverId: page.hostId,
-        project: payload.project,
-        upsertProject,
-        setHasHydratedWorkspaces,
-      });
-      request.onProjectCreated?.({ serverId: page.hostId, project: payload.project });
-      onClose();
-    } catch {
-      setState((current) =>
-        setPageStatus(current, "directoryless-project-name", {
-          isSubmitting: false,
-          error: "Unable to create project",
-        }),
-      );
-    } finally {
-      submissionInFlightRef.current = false;
-    }
-  }, [client, onClose, page, request, setHasHydratedWorkspaces, upsertProject]);
-
   const createDirectory = useCallback(async () => {
     if (page.kind !== "new-directory-name" || !client) return;
     const name = page.name.trim();
@@ -834,17 +754,13 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   }, [client, openNewWorkspaceForProject, page, setHasHydratedWorkspaces, upsertProject]);
 
   const submitActive = useCallback(() => {
-    if (page.kind === "directoryless-project-name") {
-      void createDirectorylessProject();
-      return;
-    }
     if (page.kind === "new-directory-name") {
       void createDirectory();
       return;
     }
     const option = rows[activeIndex];
     if (option && !option.disabled) option.select();
-  }, [activeIndex, createDirectory, createDirectorylessProject, page.kind, rows]);
+  }, [activeIndex, createDirectory, page.kind, rows]);
 
   const handleKey = useCallback(
     (key: string): boolean => {
@@ -893,16 +809,11 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   );
 
   const handleInputChange = useCallback((value: string) => {
-    setState((current) => {
-      const currentPage = currentAddProjectPage(current);
-      if (currentPage.kind === "new-directory-name") {
-        return setNewDirectoryName(current, value);
-      }
-      if (currentPage.kind === "directoryless-project-name") {
-        return setDirectorylessProjectName(current, value);
-      }
-      return setAddProjectPageInput(current, value);
-    });
+    setState((current) =>
+      currentAddProjectPage(current).kind === "new-directory-name"
+        ? setNewDirectoryName(current, value)
+        : setAddProjectPageInput(current, value),
+    );
   }, []);
   const isSubmitting = "isSubmitting" in page && page.isSubmitting;
   const currentGithubSearch =
@@ -1027,8 +938,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             !loading &&
             !queryError &&
             rows.length === 0 &&
-            page.kind !== "new-directory-name" &&
-            page.kind !== "directoryless-project-name" ? (
+            page.kind !== "new-directory-name" ? (
               <Text style={styles.stateText} testID="add-project-flow-empty">
                 {emptyText(page, host ?? null)}
               </Text>

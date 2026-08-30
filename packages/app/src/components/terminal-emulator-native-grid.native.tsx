@@ -1002,13 +1002,13 @@ function NativeTerminalEmulator({
       </View>
       {isScrolled ? (
         <Pressable
-          accessibilityLabel="滚动到底部"
+          accessibilityLabel="Bottom"
           accessibilityRole="button"
           onPress={returnToBottom}
           style={styles.followButton}
           testID="terminal-follow-bottom"
         >
-          <Text style={styles.followButtonText}>底部</Text>
+          <Text style={styles.followButtonText}>Bottom</Text>
         </Pressable>
       ) : null}
     </View>

@@ -28,7 +28,6 @@ interface SchedulesTableProps {
    * upward rather than mounting a second sheet here.
    */
   onEditSchedule: (schedule: AggregatedSchedule) => void;
-  onViewHistory: (schedule: AggregatedSchedule) => void;
 }
 
 /**
@@ -37,11 +36,7 @@ interface SchedulesTableProps {
  * their host-scoped mutations (pause/resume/run/delete via the mutations hook +
  * a destructive confirm) and delegate editing upward.
  */
-export function SchedulesTable({
-  rows,
-  onEditSchedule,
-  onViewHistory,
-}: SchedulesTableProps): ReactElement {
+export function SchedulesTable({ rows, onEditSchedule }: SchedulesTableProps): ReactElement {
   return (
     <View style={styles.listContent} testID="schedules-table">
       <View style={settingsStyles.card}>
@@ -51,7 +46,6 @@ export function SchedulesTable({
             row={row}
             isFirst={index === 0}
             onEditSchedule={onEditSchedule}
-            onViewHistory={onViewHistory}
           />
         ))}
       </View>
@@ -72,12 +66,10 @@ function SchedulesTableRow({
   row,
   isFirst,
   onEditSchedule,
-  onViewHistory,
 }: {
   row: ScheduleRowView;
   isFirst: boolean;
   onEditSchedule: (schedule: AggregatedSchedule) => void;
-  onViewHistory: (schedule: AggregatedSchedule) => void;
 }): ReactElement {
   const { schedule } = row;
   const { id, serverId } = schedule;
@@ -107,10 +99,6 @@ function SchedulesTableRow({
     onEditSchedule(schedule);
   }, [onEditSchedule, schedule]);
 
-  const handleViewHistory = useCallback(() => {
-    onViewHistory(schedule);
-  }, [onViewHistory, schedule]);
-
   const handlePause = useCallback(() => {
     void runAction("pause", () => mutations.pauseSchedule(id));
   }, [runAction, mutations, id]);
@@ -129,7 +117,7 @@ function SchedulesTableRow({
       const confirmed = await confirmDialog({
         title: `Delete ${productName.toLowerCase()}`,
         message: `Delete "${resolveScheduleTitle(schedule)}"? This cannot be undone.`,
-        confirmLabel: "删除",
+        confirmLabel: "Delete",
         destructive: true,
       });
       if (!confirmed) {
@@ -154,7 +142,6 @@ function SchedulesTableRow({
       onResume={handleResume}
       onRunNow={handleRunNow}
       onDelete={handleDelete}
-      onViewHistory={handleViewHistory}
     />
   );
 }

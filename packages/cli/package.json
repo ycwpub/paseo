@@ -16,14 +16,14 @@
   },
   "scripts": {
     "clean": "node scripts/stage-bundled-workspaces.mjs --clean && node ../../scripts/clean-package-dist.mjs",
-    "build": "tsc -p tsconfig.json --incremental false",
+    "build": "tsc -p tsconfig.feature-paseo.json --incremental false",
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm --prefix ../.. run build:server:clean && node scripts/stage-bundled-workspaces.mjs",
     "postpack": "node scripts/stage-bundled-workspaces.mjs --clean",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsgo -p tsconfig.feature-paseo.json --noEmit",
     "test": "npm run test:unit && npm run test:local",
     "test:unit": "vitest run src",
-    "test:local": "tsx tests/run-all.ts",
+    "test:local": "tsx tests/run-all.feature-paseo.ts",
     "test:e2e": "npm run test:local",
     "test:e2e:lifecycle": "npx tsx tests/e2e/agent-lifecycle.test.ts"
   },

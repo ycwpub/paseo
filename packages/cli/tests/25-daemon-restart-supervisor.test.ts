@@ -7,7 +7,7 @@
 
 import assert from "node:assert";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "zx";
@@ -45,9 +45,7 @@ function readWorkerPid(supervisorPid: number): number | null {
     return null;
   }
 
-  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], {
-    encoding: "utf8",
-  });
+  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], { encoding: "utf8" });
   if (result.status !== 0 || result.error) {
     return null;
   }
@@ -84,10 +82,7 @@ async function readDaemonStatus(paseoHome: string): Promise<DaemonStatus> {
   }
 
   try {
-    const parsed = JSON.parse(result.stdout) as {
-      localDaemon?: unknown;
-      pid?: unknown;
-    };
+    const parsed = JSON.parse(result.stdout) as { localDaemon?: unknown; pid?: unknown };
     const localDaemon = typeof parsed.localDaemon === "string" ? parsed.localDaemon : null;
     const pid =
       typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0
@@ -97,6 +92,11 @@ async function readDaemonStatus(paseoHome: string): Promise<DaemonStatus> {
   } catch {
     return { localDaemon: null, pid: null };
   }
+}
+
+async function readCapturedSupervisorLogs(paseoHome: string, recentLogs: string): Promise<string> {
+  const durableLogs = await readFile(join(paseoHome, "daemon.log"), "utf8").catch(() => "");
+  return `${recentLogs}\n${durableLogs}`;
 }
 
 async function waitFor(
@@ -126,11 +126,6 @@ const host = `127.0.0.1:${port}`;
 let supervisorProcess: ChildProcess | null = null;
 let recentSupervisorLogs = "";
 
-function captureSupervisorLogs(chunk: Buffer | string): void {
-  const text = chunk.toString();
-  recentSupervisorLogs = (recentSupervisorLogs + text).slice(-8000);
-}
-
 try {
   console.log("Test 1: start supervisor-entrypoint in dev mode with isolated PASEO_HOME");
 
@@ -152,10 +147,10 @@ try {
   );
 
   supervisorProcess.stdout?.on("data", (chunk) => {
-    captureSupervisorLogs(chunk);
+    recentSupervisorLogs = (recentSupervisorLogs + chunk.toString()).slice(-8000);
   });
   supervisorProcess.stderr?.on("data", (chunk) => {
-    captureSupervisorLogs(chunk);
+    recentSupervisorLogs = (recentSupervisorLogs + chunk.toString()).slice(-8000);
   });
 
   await waitFor(
@@ -221,15 +216,7 @@ try {
     "worker pid should change after restart",
   );
 
-  let statusAfterRestart = await readDaemonStatus(paseoHome);
-  await waitFor(
-    async () => {
-      statusAfterRestart = await readDaemonStatus(paseoHome);
-      return statusAfterRestart.localDaemon === "running";
-    },
-    20000,
-    "daemon did not become reachable after worker restart",
-  );
+  const statusAfterRestart = await readDaemonStatus(paseoHome);
   assert.strictEqual(
     statusAfterRestart.localDaemon,
     "running",
@@ -239,6 +226,17 @@ try {
     statusAfterRestart.pid,
     supervisorPid,
     "supervisor pid should remain stable across restart",
+  );
+  const capturedSupervisorLogs = await readCapturedSupervisorLogs(paseoHome, recentSupervisorLogs);
+  assert(
+    capturedSupervisorLogs.includes('"msg":"Worker requested restart"') &&
+      capturedSupervisorLogs.includes('"reason":"settings_update"'),
+    `restart should log lifecycle restart reason from daemon worker, logs:\n${capturedSupervisorLogs}`,
+  );
+  assert(
+    capturedSupervisorLogs.includes('"msg":"Supervisor sending signal to worker"') &&
+      capturedSupervisorLogs.includes('"signal":"SIGTERM"'),
+    `restart should log supervisor signal dispatch, logs:\n${capturedSupervisorLogs}`,
   );
   console.log("✓ app-style restart keeps daemon healthy and restarts worker\n");
 } finally {

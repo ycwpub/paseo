@@ -25,8 +25,6 @@ interface CreateAttempt {
   timestamp: Date;
   images?: UserMessageImageAttachment[];
   attachments?: AgentAttachment[];
-  selectedMcpServerIds?: string[];
-  selectedSkillIds?: string[];
 }
 
 type DraftAgentMachineState =
@@ -76,8 +74,6 @@ interface SubmitContext {
   text: string;
   attachments: ComposerAttachment[];
   cwd: string;
-  selectedMcpServerIds?: string[];
-  selectedSkillIds?: string[];
 }
 
 interface CreateRequestContext {
@@ -86,31 +82,6 @@ interface CreateRequestContext {
   images?: UserMessageImageAttachment[];
   attachments?: AgentAttachment[];
   cwd: string;
-  selectedMcpServerIds?: string[];
-  selectedSkillIds?: string[];
-}
-
-function buildCreateAttemptResourceSelection(input: {
-  selectedMcpServerIds?: string[];
-  selectedSkillIds?: string[];
-}): Pick<CreateAttempt, "selectedMcpServerIds" | "selectedSkillIds"> {
-  return {
-    ...(input.selectedMcpServerIds !== undefined
-      ? { selectedMcpServerIds: input.selectedMcpServerIds }
-      : {}),
-    ...(input.selectedSkillIds !== undefined ? { selectedSkillIds: input.selectedSkillIds } : {}),
-  };
-}
-
-function buildPendingResourceSelection(
-  input: CreateAttempt,
-): Pick<CreateAttempt, "selectedMcpServerIds" | "selectedSkillIds"> {
-  return {
-    ...(input.selectedMcpServerIds !== undefined
-      ? { selectedMcpServerIds: input.selectedMcpServerIds }
-      : {}),
-    ...(input.selectedSkillIds !== undefined ? { selectedSkillIds: input.selectedSkillIds } : {}),
-  };
 }
 
 interface UseDraftAgentCreateFlowOptions<TDraftAgent, TCreateResult> {
@@ -214,8 +185,6 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         images: attempt.images,
         attachments: attempt.attachments,
         cwd,
-        selectedMcpServerIds: attempt.selectedMcpServerIds,
-        selectedSkillIds: attempt.selectedSkillIds,
       });
 
       try {
@@ -225,8 +194,6 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
           images: attempt.images,
           attachments: attempt.attachments,
           cwd,
-          selectedMcpServerIds: attempt.selectedMcpServerIds,
-          selectedSkillIds: attempt.selectedSkillIds,
         });
 
         if (createResult.agentId) {
@@ -271,7 +238,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
   );
 
   const handleCreateFromInput = useCallback(
-    async ({ text, attachments, cwd, selectedMcpServerIds, selectedSkillIds }: SubmitContext) => {
+    async ({ text, attachments, cwd }: SubmitContext) => {
       if (isSubmitting) {
         throw new Error(t("composer.errors.alreadyLoading"));
       }
@@ -318,7 +285,6 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         timestamp: new Date(),
         ...(images && images.length > 0 ? { images } : {}),
         ...(wirePayload.attachments.length > 0 ? { attachments: wirePayload.attachments } : {}),
-        ...buildCreateAttemptResourceSelection({ selectedMcpServerIds, selectedSkillIds }),
       };
 
       setPendingCreateAttempt({
@@ -332,7 +298,6 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         ...(attempt.attachments && attempt.attachments.length > 0
           ? { attachments: attempt.attachments }
           : {}),
-        ...buildPendingResourceSelection(attempt),
       });
 
       dispatch({ type: "SUBMIT", attempt });

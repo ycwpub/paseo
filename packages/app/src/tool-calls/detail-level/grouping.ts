@@ -83,12 +83,7 @@ function createHost(run: ToolCallRun): ToolCallItem {
   if (run.calls.length === 1) {
     return run.latest;
   }
-  const first = run.calls[0];
-  return {
-    ...run.latest,
-    id: run.id,
-    startedAt: first?.startedAt ?? first?.timestamp ?? run.latest.timestamp,
-  };
+  return { ...run.latest, id: run.id };
 }
 
 function isRunning(call: ToolCallItem): boolean {

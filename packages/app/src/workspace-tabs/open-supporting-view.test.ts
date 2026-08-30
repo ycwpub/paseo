@@ -157,9 +157,7 @@ describe("openWorkspacePullRequest", () => {
     const layout = state.layoutByWorkspace[WORKSPACE_KEY];
     const mainPane = layout ? findPaneById(layout.root, layout.focusedPaneId) : null;
     const pullRequestTab = layout
-      ? collectAllTabs(layout.root).find(
-          (tab) => mainPane?.tabIds.includes(tab.tabId) && tab.target.kind === "pull_request",
-        )
+      ? collectAllTabs(layout.root).find((tab) => tab.target.kind === "pull_request")
       : null;
 
     expect(mainPane?.tabIds).toContain(pullRequestTab?.tabId);
@@ -174,9 +172,7 @@ describe("openWorkspacePullRequest", () => {
     const sidePaneId = state.sidePaneIdByWorkspace[WORKSPACE_KEY];
     const sidePane = layout && sidePaneId ? findPaneById(layout.root, sidePaneId) : null;
     const pullRequestTab = layout
-      ? collectAllTabs(layout.root).find(
-          (tab) => sidePane?.tabIds.includes(tab.tabId) && tab.target.kind === "pull_request",
-        )
+      ? collectAllTabs(layout.root).find((tab) => tab.target.kind === "pull_request")
       : null;
 
     expect(sidePane?.tabIds).toContain(pullRequestTab?.tabId);

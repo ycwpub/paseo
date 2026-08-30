@@ -350,10 +350,10 @@ async function resolveDaemonNodeLabel(
 
 interface RelayStatusConfig {
   enabled: boolean;
-  endpoint?: string | null;
-  publicEndpoint?: string | null;
-  useTls?: boolean;
-  publicUseTls?: boolean;
+  endpoint: string;
+  publicEndpoint: string;
+  useTls: boolean;
+  publicUseTls: boolean;
 }
 
 function relayConfigFromLocalState(
@@ -374,10 +374,8 @@ export function selectRelayStatus(input: {
 }): string {
   const relay = input.live ?? input.persisted;
   if (!relay.enabled) return "disabled";
-  const publicEndpoint = relay.publicEndpoint ?? relay.endpoint;
-  if (!publicEndpoint) return "LAN Relay enabled";
   const scheme = relay.publicUseTls ? "wss" : "ws";
-  return `${scheme}://${publicEndpoint}`;
+  return `${scheme}://${relay.publicEndpoint}`;
 }
 
 export type StatusResult = ListResult<StatusRow>;

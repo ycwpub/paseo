@@ -77,7 +77,6 @@ export interface AgentHistoryHost {
   serverId: string;
   serverLabel: string;
   client: AgentHistoryClient;
-  projectKeys?: string[];
 }
 
 interface AgentHistoryBatchPage {
@@ -100,12 +99,8 @@ export async function fetchAgentHistoryPage(input: {
   serverId: string;
   cursor: string | null;
   search?: string;
-  projectKeys?: readonly string[];
 }): Promise<AgentHistoryPage> {
   const payload = await input.client.fetchAgentHistory({
-    ...(input.projectKeys && input.projectKeys.length > 0
-      ? { filter: { projectKeys: [...input.projectKeys] } }
-      : {}),
     ...(input.search ? { search: input.search } : {}),
     sort: AGENT_HISTORY_SORT,
     page: input.cursor
@@ -240,7 +235,6 @@ export async function fetchAgentHistoryBatch(input: {
         serverId: host.serverId,
         cursor: cursorByServerId[host.serverId] ?? null,
         ...(input.search ? { search: input.search } : {}),
-        ...(host.projectKeys ? { projectKeys: host.projectKeys } : {}),
       });
       return { host, page };
     }),
@@ -301,7 +295,6 @@ export function useAgentHistory(options: {
   serverId?: string | null;
   enabled?: boolean;
   search?: string;
-  projectKeysByServerId?: Readonly<Record<string, readonly string[]>>;
 }): AgentHistoryResult {
   const { t } = useTranslation();
   const daemons = useHosts();
@@ -316,19 +309,6 @@ export function useAgentHistory(options: {
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options.serverId]);
   const enabled = options.enabled ?? true;
-  const projectKeysByServerId = useMemo(() => {
-    const entries = Object.entries(options.projectKeysByServerId ?? {})
-      .map(
-        ([targetServerId, projectKeys]) =>
-          [
-            targetServerId,
-            [...new Set(projectKeys.map((key) => key.trim()).filter(Boolean))].sort(),
-          ] as const,
-      )
-      .filter(([, projectKeys]) => projectKeys.length > 0)
-      .sort(([left], [right]) => left.localeCompare(right));
-    return entries.length > 0 ? Object.fromEntries(entries) : null;
-  }, [options.projectKeysByServerId]);
   // A host the user asked about splits two ways: one this fetch can reach, and
   // one whose sessions will be missing from the answer. Both come out of here,
   // because dropping the unreachable ones silently is what lets the list — and
@@ -341,10 +321,6 @@ export function useAgentHistory(options: {
     const unreachable: AgentHistoryHostError[] = [];
 
     for (const targetServerId of serverIds) {
-      const projectKeys = projectKeysByServerId?.[targetServerId];
-      if (projectKeysByServerId && !projectKeys) {
-        continue;
-      }
       const snapshot = runtime.getSnapshot(targetServerId);
       const client = runtime.getClient(targetServerId);
       const serverName = serverLabelById.get(targetServerId) ?? targetServerId;
@@ -352,16 +328,11 @@ export function useAgentHistory(options: {
         unreachable.push({ serverId: targetServerId, serverName });
         continue;
       }
-      hosts.push({
-        serverId: targetServerId,
-        serverLabel: serverName,
-        client,
-        ...(projectKeys ? { projectKeys } : {}),
-      });
+      hosts.push({ serverId: targetServerId, serverLabel: serverName, client });
     }
 
     return { targetHosts: hosts, unreachableHosts: unreachable };
-  }, [daemons, projectKeysByServerId, runtime, runtimeVersion, serverId]);
+  }, [daemons, runtime, runtimeVersion, serverId]);
   const targetServerIds = useMemo(() => targetHosts.map((host) => host.serverId), [targetHosts]);
   // One gate, checked before the field is offered: a fleet where any host
   // predates search has no search, rather than a list that silently omits that
@@ -384,9 +355,8 @@ export function useAgentHistory(options: {
     () => [
       ...(serverId ? agentHistoryQueryKey(serverId) : allAgentHistoryQueryKey(targetServerIds)),
       search,
-      projectKeysByServerId,
     ],
-    [projectKeysByServerId, search, serverId, targetServerIds],
+    [search, serverId, targetServerIds],
   );
   const serverLabelById = useMemo(
     () => new Map(daemons.map((daemon) => [daemon.serverId, daemon.label])),

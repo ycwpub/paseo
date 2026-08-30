@@ -26,14 +26,13 @@ export interface LocalDaemonPidInfo {
   uid?: number;
   listen?: string;
   desktopManaged?: boolean;
-  desktopBuildId?: string;
 }
 
 export interface LocalDaemonState {
   home: string;
   listen: string;
   relayEnabled: boolean;
-  relayEndpoint: string | null;
+  relayEndpoint: string;
   relayUseTls: boolean;
   relayPublicUseTls: boolean;
   logPath: string;
@@ -260,7 +259,6 @@ function readPidFile(pidPath: string): LocalDaemonPidInfo | null {
       uid: typeof parsed.uid === "number" ? parsed.uid : undefined,
       listen: resolveListenField(parsed.listen, parsed.sockPath),
       desktopManaged: parsed.desktopManaged === true ? true : undefined,
-      desktopBuildId: typeof parsed.desktopBuildId === "string" ? parsed.desktopBuildId : undefined,
     };
   } catch {
     return null;
@@ -546,16 +544,9 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
     PASEO_ALLOWED_HOSTS: undefined,
     PASEO_RELAY_ENABLED: undefined,
     PASEO_RELAY_ENDPOINT: undefined,
-    PASEO_RELAY_ENDPOINTS: undefined,
     PASEO_RELAY_PUBLIC_ENDPOINT: undefined,
     PASEO_RELAY_USE_TLS: undefined,
     PASEO_RELAY_PUBLIC_USE_TLS: undefined,
-    PASEO_RELAY_PAIRING_BASE_URL: undefined,
-    PASEO_RELAY_PAIRING_BASE_URLS: undefined,
-    PASEO_LAN_RELAY_ENABLED: undefined,
-    PASEO_LAN_RELAY_LISTEN: undefined,
-    PASEO_LAN_RELAY_PUBLIC_ENDPOINT: undefined,
-    PASEO_LAN_RELAY_PAIRING_BASE_URL: undefined,
   };
   const home = resolvePaseoHome(env);
   const config = loadConfig(home, { env });
@@ -568,8 +559,8 @@ export function resolveLocalDaemonState(options: { home?: string } = {}): LocalD
   return {
     home,
     listen,
-    relayEnabled: config.relayEnabled ?? false,
-    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? null,
+    relayEnabled: config.relayEnabled ?? true,
+    relayEndpoint: config.relayPublicEndpoint ?? config.relayEndpoint ?? "relay.paseo.sh:443",
     relayUseTls: config.relayUseTls ?? false,
     relayPublicUseTls: config.relayPublicUseTls ?? config.relayUseTls ?? false,
     logPath,

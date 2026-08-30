@@ -171,7 +171,7 @@ export function PluginSurfaceScreen() {
       identity ? getPluginSurfaceContributionServerIds(installations, pluginId, identity) : [],
     [identity, installations, pluginId],
   );
-  const title = sidebarItem?.title ?? surface?.id ?? (pluginId || "插件");
+  const title = sidebarItem?.title ?? surface?.id ?? (pluginId || "Plugin");
   const Icon = sidebarItem ? resolvePluginIcon(sidebarItem.icon) : null;
   const close = useCallback(() => {
     if (router.canGoBack()) router.back();
@@ -239,7 +239,7 @@ export function PluginSurfaceScreen() {
           </SurfaceErrorBoundary>
         ) : (
           <Text style={styles.errorText}>
-            {plugin && surface ? "插件主机已离线。" : "此插件页面不可用。"}
+            {plugin && surface ? "Plugin host is offline." : "This plugin surface is unavailable."}
           </Text>
         )}
       </View>

@@ -39,11 +39,6 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { TaskSummaryPane } from "@/task-summary/panel";
-import {
-  useWorkspaceTaskSummaryAgent,
-  type WorkspaceTaskSummaryAgent,
-} from "@/task-summary/use-workspace-task-summary-agent";
 
 function logExplorerSidebar(_event: string, _details: Record<string, unknown>): void {}
 
@@ -289,63 +284,8 @@ function ExplorerTabButton({
   return (
     <Pressable testID={testID} style={tabStyle} onPress={handlePress}>
       {children}
-      {label !== undefined ? (
-        <Text numberOfLines={1} style={tabTextStyle}>
-          {label}
-        </Text>
-      ) : null}
+      {label !== undefined ? <Text style={tabTextStyle}>{label}</Text> : null}
     </Pressable>
-  );
-}
-
-function resolveExplorerSidebarTab(input: {
-  activeTab: ExplorerTab;
-  isGit: boolean;
-  showPrTab: boolean;
-}): ExplorerTab {
-  if (!input.isGit && (input.activeTab === "changes" || input.activeTab === "pr")) {
-    return "files";
-  }
-  if (input.activeTab === "pr" && !input.showPrTab) {
-    return input.isGit ? "changes" : "files";
-  }
-  return input.activeTab;
-}
-
-function TaskSummaryExplorerPane({
-  active,
-  agent,
-  serverId,
-  workspaceRoot,
-  onOpenFile,
-}: {
-  active: boolean;
-  agent: WorkspaceTaskSummaryAgent | null;
-  serverId: string;
-  workspaceRoot: string;
-  onOpenFile?: (filePath: string) => void;
-}) {
-  const { t } = useTranslation();
-  if (!active) {
-    return null;
-  }
-  if (!agent) {
-    return (
-      <View style={styles.taskSummaryEmpty} testID="task-summary-empty">
-        <Text style={styles.taskSummaryEmptyTitle}>{t("agentPanel.taskSummary.emptyTitle")}</Text>
-        <Text style={styles.taskSummaryEmptyDescription}>
-          {t("agentPanel.taskSummary.emptyDescription")}
-        </Text>
-      </View>
-    );
-  }
-  return (
-    <TaskSummaryPane
-      serverId={serverId}
-      agentId={agent.agentId}
-      cwd={agent.cwd ?? workspaceRoot}
-      onOpenFile={onOpenFile}
-    />
   );
 }
 
@@ -382,13 +322,12 @@ function ExplorerSidebarContent({
     enabled: isOpen,
     timelineEnabled: activeTab === "pr",
   });
-  const taskSummaryAgent = useWorkspaceTaskSummaryAgent(serverId, workspaceId);
-  const resolvedTab = resolveExplorerSidebarTab({ activeTab, isGit, showPrTab });
+  const requestedTab: ExplorerTab =
+    !isGit && (activeTab === "changes" || activeTab === "pr") ? "files" : activeTab;
+  const resolvedTab: ExplorerTab = requestedTab === "pr" && !showPrTab ? "changes" : requestedTab;
   const prTabLabel = formatPrTabLabel(prPane.prNumber);
   const availableTabs = useMemo<ExplorerTab[]>(() => {
-    const tabs: ExplorerTab[] = isGit
-      ? ["changes", "files", "task-summary"]
-      : ["files", "task-summary"];
+    const tabs: ExplorerTab[] = isGit ? ["changes", "files"] : ["files"];
     if (isGit && showPrTab) tabs.push("pr");
     return tabs;
   }, [isGit, showPrTab]);
@@ -424,13 +363,6 @@ function ExplorerSidebarContent({
             label={t("workspace.tabs.explorerSidebar.files")}
             onTabPress={onTabPress}
             testID="explorer-tab-files"
-          />
-          <ExplorerTabButton
-            tab="task-summary"
-            active={resolvedTab === "task-summary"}
-            label={t("agentPanel.taskSummary.title")}
-            onTabPress={onTabPress}
-            testID="explorer-tab-task-summary"
           />
           {isGit && showPrTab && (
             <ExplorerTabButton
@@ -489,17 +421,6 @@ function ExplorerSidebarContent({
             <FilesPane
               serverId={serverId}
               workspaceId={workspaceId}
-              workspaceRoot={workspaceRoot}
-              onOpenFile={onOpenFile}
-            />
-          </RetainedPanel>
-        ) : null}
-        {mountedTabIds.has("task-summary") ? (
-          <RetainedPanel active={resolvedTab === "task-summary"}>
-            <TaskSummaryExplorerPane
-              active={resolvedTab === "task-summary"}
-              agent={taskSummaryAgent}
-              serverId={serverId}
               workspaceRoot={workspaceRoot}
               onOpenFile={onOpenFile}
             />
@@ -600,14 +521,10 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomColor: theme.colors.border,
   },
   tabsContainer: {
-    flex: 1,
-    minWidth: 0,
     flexDirection: "row",
     gap: theme.spacing[1],
   },
   tab: {
-    minWidth: 0,
-    flexShrink: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[2],
@@ -641,25 +558,5 @@ const styles = StyleSheet.create((theme) => ({
   contentArea: {
     flex: 1,
     minHeight: 0,
-  },
-  taskSummaryEmpty: {
-    flex: 1,
-    minHeight: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[6],
-  },
-  taskSummaryEmptyTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    textAlign: "center",
-  },
-  taskSummaryEmptyDescription: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: 20,
-    textAlign: "center",
   },
 }));

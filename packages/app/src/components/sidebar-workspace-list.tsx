@@ -50,7 +50,6 @@ import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sec
 import { useHostFeatureMap } from "@/runtime/host-features";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useProjectIcons } from "@/projects/icons";
-import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 import {
   buildNewWorkspaceRoute,
   buildProjectSettingsRoute,
@@ -91,7 +90,6 @@ import { hasVisibleOrderChanged, mergeWithRemainder } from "@/utils/sidebar-reor
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { SidebarStatusWorkspaceList } from "@/components/sidebar/sidebar-status-list";
-import { SidebarProjectChildAction } from "@/components/sidebar/sidebar-project-child-action";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import {
   SidebarWorkspaceContextMenu,
@@ -429,12 +427,6 @@ function ProjectRowTrailingActions({
   const actionsVisible = isHovered || platformIsNative || isMobileBreakpoint;
   return (
     <View style={styles.projectTrailingActions}>
-      <SidebarProjectChildAction
-        target={settingsTarget}
-        displayName={displayName}
-        visible={actionsVisible}
-        projectViewKey={projectViewKey}
-      />
       {worktreeTarget ? (
         <NewWorktreeButton
           displayName={displayName}
@@ -1609,11 +1601,6 @@ function ProjectBlock({
     project,
     enabled: selectionEnabled,
   });
-  const hierarchyStyle = useMemo(
-    () =>
-      project.hierarchyDepth ? { marginLeft: Math.min(project.hierarchyDepth, 4) * 18 } : undefined,
-    [project.hierarchyDepth],
-  );
 
   const renderWorkspaceRow = useCallback(
     (
@@ -1786,7 +1773,7 @@ function ProjectBlock({
     <View
       role="group"
       accessibilityLabel={displayName}
-      style={[projectChildren ? styles.projectBlockExpanded : undefined, hierarchyStyle]}
+      style={projectChildren ? styles.projectBlockExpanded : undefined}
     >
       <ProjectHeaderRow
         project={project}
@@ -2126,7 +2113,6 @@ function ProjectModeList({
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder);
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder);
-  const setSortMode = useSidebarViewStore((state) => state.setSortMode);
 
   const isWorkspaceRoute = useMemo(
     () => Boolean(pathname && parseHostWorkspaceRouteFromPathname(pathname)),
@@ -2135,10 +2121,6 @@ function ProjectModeList({
   const selectionEnabled = isWorkspaceRoute;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const { pinnedChats, unpinnedProjects } = pinnedGroups;
-  const hierarchicalProjects = useMemo(
-    () => flattenVisibleProjectHierarchy(unpinnedProjects, collapsedProjectKeys),
-    [collapsedProjectKeys, unpinnedProjects],
-  );
   const {
     visibleItems: visiblePinnedChats,
     expanded: pinnedChatsExpanded,
@@ -2224,9 +2206,8 @@ function ProjectModeList({
           reorderedVisibleKeys: reorderedProjectKeys,
         }),
       );
-      setSortMode("manual");
     },
-    [getProjectOrder, setProjectOrder, setSortMode],
+    [getProjectOrder, setProjectOrder],
   );
 
   const handleWorkspaceReorder = useCallback(
@@ -2249,9 +2230,8 @@ function ProjectModeList({
           reorderedVisibleKeys: reorderedWorkspaceKeys,
         }),
       );
-      setSortMode("manual");
     },
-    [getWorkspaceOrder, setSortMode, setWorkspaceOrder],
+    [getWorkspaceOrder, setWorkspaceOrder],
   );
 
   const handleWorktreeCreated = useCallback((workspaceId: string) => {
@@ -2399,7 +2379,7 @@ function ProjectModeList({
     ) : (
       <DraggableList
         testID="sidebar-project-list"
-        data={hierarchicalProjects}
+        data={unpinnedProjects}
         keyExtractor={projectViewKeyExtractor}
         renderItem={renderProject}
         onDragEnd={handleProjectDragEnd}

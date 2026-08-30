@@ -17,7 +17,6 @@ import { probeExecutable } from "./executable-resolution.js";
 
 const timeoutMs = 1000;
 const timeoutSlackMs = 500;
-const pidFileWaitMs = 500;
 const tempDirs: string[] = [];
 
 interface ProbeFixture {
@@ -94,18 +93,11 @@ function missingAbsolutePath(): string {
   return process.platform === "win32" ? "C:\\no\\such\\path.exe" : "/no/such/path";
 }
 
-async function readStartedProcessId(filePath: string): Promise<number | null> {
-  const deadline = performance.now() + pidFileWaitMs;
+async function waitForFile(filePath: string): Promise<void> {
+  const deadline = performance.now() + timeoutSlackMs;
   while (!existsSync(filePath) && performance.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  if (!existsSync(filePath)) {
-    // Under a saturated full-suite run the timeout can kill the spawned shell
-    // before it receives enough CPU to execute the fixture. In that case no
-    // fixture process started, so there is no process ID to verify.
-    return null;
-  }
-  return Number(readFileSync(filePath, "utf8"));
 }
 
 const fixtures: ProbeFixture[] = [
@@ -163,10 +155,9 @@ describe("probeExecutable", () => {
       expect(result).toBe(expected);
       expect(performance.now() - startedAt).toBeLessThanOrEqual(timeoutMs + timeoutSlackMs);
       if (pidFile) {
-        const pid = await readStartedProcessId(pidFile);
-        if (pid !== null) {
-          expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
-        }
+        await waitForFile(pidFile);
+        const pid = Number(readFileSync(pidFile, "utf8"));
+        expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
       }
     },
   );
@@ -182,10 +173,9 @@ describe("probeExecutable", () => {
       expect(result).toBe(expected);
       expect(performance.now() - startedAt).toBeLessThanOrEqual(timeoutMs + timeoutSlackMs);
       if (pidFile) {
-        const pid = await readStartedProcessId(pidFile);
-        if (pid !== null) {
-          expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
-        }
+        await waitForFile(pidFile);
+        const pid = Number(readFileSync(pidFile, "utf8"));
+        expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
       }
     },
   );

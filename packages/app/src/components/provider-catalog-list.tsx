@@ -62,9 +62,7 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
   }, [entry, onInstall]);
 
   const handleOpenInstallLink = useCallback(() => {
-    if (entry.installLink) {
-      void openExternalUrl(entry.installLink);
-    }
+    void openExternalUrl(entry.installLink);
   }, [entry.installLink]);
 
   return (
@@ -93,21 +91,19 @@ function CatalogRow({ entry, installing, onInstall }: CatalogRowProps) {
         <Text style={styles.description} numberOfLines={1}>
           {entry.description || entry.id}
         </Text>
-        {entry.installLink ? (
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={t("providerCatalog.actions.installInstructionsFor", {
-              provider: entry.title,
-            })}
-            onPress={handleOpenInstallLink}
-            style={styles.installLink}
-          >
-            <Text style={styles.installLinkText} numberOfLines={1}>
-              {t("providerCatalog.actions.installInstructions")}
-            </Text>
-            <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
-          </Pressable>
-        ) : null}
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={t("providerCatalog.actions.installInstructionsFor", {
+            provider: entry.title,
+          })}
+          onPress={handleOpenInstallLink}
+          style={styles.installLink}
+        >
+          <Text style={styles.installLinkText} numberOfLines={1}>
+            {t("providerCatalog.actions.installInstructions")}
+          </Text>
+          <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
+        </Pressable>
       </View>
       <Button
         size="sm"

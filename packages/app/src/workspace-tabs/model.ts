@@ -9,13 +9,10 @@ export interface WorkspaceDraftTabSetup {
   model: string | null;
   thinkingOptionId: string | null;
   featureValues: Record<string, unknown>;
-  assistantId?: string | null;
-  teamId?: string | null;
 }
 
 export interface WorkspaceWorkingDiffTabTarget {
   kind: "working_diff";
-  cwd?: string;
   focusPath?: string;
   focusRequestId?: number;
 }
@@ -44,7 +41,6 @@ export type WorkspaceTabTarget =
   | { kind: "browser"; browserId: string }
   | { kind: "changes_tree" }
   | { kind: "files" }
-  | { kind: "task_summary" }
   | { kind: "pull_request" }
   | WorkspaceFileTabTarget
   | WorkspaceWorkingDiffTabTarget

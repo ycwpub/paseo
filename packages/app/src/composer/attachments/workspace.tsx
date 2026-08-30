@@ -59,10 +59,10 @@ function getOpenAccessibilityLabel(
     return t("composer.attachments.openBrowserElement");
   }
   if (isPullRequestContextAttachment(attachment)) {
-    return "打开上下文附件";
+    return "Open context attachment";
   }
   if (attachment.kind === "chat_history") {
-    return "打开聊天记录附件";
+    return "Open chat history attachment";
   }
   return t("composer.attachments.openReview");
 }
@@ -75,10 +75,10 @@ function getRemoveAccessibilityLabel(
     return t("composer.attachments.removeBrowserElement");
   }
   if (isPullRequestContextAttachment(attachment)) {
-    return "移除上下文附件";
+    return "Remove context attachment";
   }
   if (attachment.kind === "chat_history") {
-    return "移除聊天记录附件";
+    return "Remove chat history attachment";
   }
   return t("composer.attachments.removeReview");
 }
@@ -209,8 +209,10 @@ function useWorkspaceAttachmentBinding({
 
   const completeSubmit = useCallback(
     ({ result, outgoingAttachments }: CompleteSubmitInput) => {
-      if (result === "queued" || result === "submitted") {
+      if (result === "submitted") {
         clearSentAttachments(outgoingAttachments);
+      }
+      if (result === "queued" || result === "submitted" || result === "failed") {
         resetSuppression();
       }
     },

@@ -2,14 +2,7 @@ import { cancel, confirm, intro, isCancel, log, note, outro, spinner } from "@cl
 import { Command, Option } from "commander";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import {
-  generateLocalPairingOffer,
-  loadConfig,
-  loadPersistedConfig,
-  type CliConfigOverrides,
-  type LocalPairingOffer,
-  type PersistedConfig,
-} from "@getpaseo/server";
+import { loadPersistedConfig, type PersistedConfig } from "@getpaseo/server";
 import {
   resolveLocalPaseoHome,
   resolveLocalDaemonState,
@@ -18,8 +11,13 @@ import {
   tailDaemonLog,
   type DaemonStartOptions,
 } from "./daemon/local-daemon.js";
-import { getCompleteDaemonPairingOffer } from "./daemon/pair.js";
 import { tryConnectToDaemon } from "../utils/client.js";
+import { formatPairingInstructions } from "../output/pairing.js";
+import {
+  confirmRelayPairing,
+  printDirectConnectionGuidance,
+  resolveLocalPairingOffer,
+} from "./daemon/pair.js";
 
 interface OnboardOptions extends DaemonStartOptions {
   timeout?: string;
@@ -41,34 +39,15 @@ type OnboardPersistedConfig = PersistedConfig & {
   };
 };
 
-type LegacyLocalPairingOffer = Omit<LocalPairingOffer, "offers"> & {
-  offers?: LocalPairingOffer["offers"] | null;
-};
-
 const DEFAULT_READY_TIMEOUT_MS = 10 * 60 * 1000;
 const READY_PROBE_TIMEOUT_MS = 1200;
-const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
 
 class OnboardCancelledError extends Error {}
 
 const plainNoteFormat = (line: string): string => line;
 
-export function normalizeOnboardPairingOffer(pairing: LegacyLocalPairingOffer): LocalPairingOffer {
-  return {
-    ...pairing,
-    offers: Array.isArray(pairing.offers) ? pairing.offers : [],
-  };
-}
-
 function renderNote(message: string, title: string): void {
   note(message, title, { format: plainNoteFormat });
-}
-
-function printPairingLink(url: string, title: string): void {
-  // Pairing links must remain one continuous raw line. Rendering them inside a
-  // Clack note adds box-drawing borders when the terminal wraps a long URL,
-  // which can be copied as part of the offer payload.
-  process.stdout.write(`\n${title}:\n${url}\n`);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -88,33 +67,6 @@ function parseTimeoutMs(raw: string | undefined): number {
   }
 
   return Math.ceil(seconds * 1000);
-}
-
-function toCliOverrides(options: OnboardOptions): CliConfigOverrides {
-  const cliOverrides: CliConfigOverrides = {};
-
-  if (options.listen) {
-    cliOverrides.listen = options.listen;
-  } else if (options.port) {
-    cliOverrides.listen = `127.0.0.1:${options.port}`;
-  }
-  if (options.relay === false) {
-    cliOverrides.relayEnabled = false;
-  }
-  if (options.hostnames) {
-    const raw = options.hostnames.trim();
-    cliOverrides.hostnames =
-      raw.toLowerCase() === "true"
-        ? true
-        : raw
-            .split(",")
-            .map((host) => host.trim())
-            .filter(Boolean);
-  }
-  if (options.mcp === false) {
-    cliOverrides.mcpEnabled = false;
-  }
-  return cliOverrides;
 }
 
 function savePersistedConfig(paseoHome: string, config: OnboardPersistedConfig): void {
@@ -348,14 +300,6 @@ function printNextSteps(pairingUrl: string | null, paseoHome: string, richUi: bo
   renderNote(quickReferenceLines.join("\n"), "CLI quick reference");
 }
 
-function finishOnboardWithoutPairing(message: string, paseoHome: string, richUi: boolean): void {
-  log.warn(message);
-  printNextSteps(null, paseoHome, richUi);
-  if (richUi) {
-    outro("Paseo daemon is running.");
-  }
-}
-
 export function onboardCommand(): Command {
   return new Command("onboard")
     .description("Run first-time setup, start daemon, and print pairing instructions")
@@ -476,56 +420,6 @@ async function waitForDaemonReadyWithUi(args: {
   }
 }
 
-async function getOnboardPairingOffer(args: {
-  paseoHome: string;
-  daemonListen: string;
-  config: ReturnType<typeof loadConfig>;
-}): Promise<LocalPairingOffer> {
-  const client = await tryConnectToDaemon({
-    host: args.daemonListen,
-    timeout: PAIRING_DAEMON_RPC_TIMEOUT_MS,
-  });
-  if (client) {
-    try {
-      if (client.getLastServerInfoMessage()?.features?.daemonStatusRpc === true) {
-        const offer = await getCompleteDaemonPairingOffer(client, PAIRING_DAEMON_RPC_TIMEOUT_MS);
-        const relayOffers = Array.isArray(offer.offers) ? offer.offers : [];
-        return normalizeOnboardPairingOffer({
-          relayEnabled: offer.relayEnabled,
-          url: offer.url || null,
-          qr: offer.qr ?? null,
-          offers: relayOffers.map((relayOffer) => ({
-            endpoint: relayOffer.endpoint,
-            useTls: relayOffer.useTls,
-            pairingBaseUrl: relayOffer.pairingBaseUrl ?? new URL(relayOffer.url).origin,
-            url: relayOffer.url,
-            qr: relayOffer.qr ?? null,
-          })),
-        });
-      }
-    } catch {
-      // COMPAT(daemon-rpc-rollout): fall back to local generation for an older daemon.
-    } finally {
-      await client.close().catch(() => undefined);
-    }
-  }
-
-  return normalizeOnboardPairingOffer(
-    await generateLocalPairingOffer({
-      paseoHome: args.paseoHome,
-      relayEnabled: args.config.relayEnabled,
-      relayEndpoints: args.config.relayEndpoints,
-      relayPairingBaseUrls: args.config.relayPairingBaseUrls,
-      relayEndpoint: args.config.relayEndpoint,
-      relayPublicEndpoint: args.config.relayPublicEndpoint,
-      relayUseTls: args.config.relayUseTls,
-      relayPublicUseTls: args.config.relayPublicUseTls,
-      appBaseUrl: args.config.appBaseUrl,
-      includeQr: true,
-    }),
-  );
-}
-
 export async function runOnboard(options: OnboardOptions): Promise<void> {
   const richUi = process.stdin.isTTY && process.stdout.isTTY;
   if (richUi) {
@@ -552,7 +446,6 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   }
 
   const voiceEnabled = await resolveAndPersistVoice(paseoHome, options);
-  const config = loadConfig(paseoHome, { cli: toCliOverrides(options) });
   log.message(
     voiceEnabled
       ? "Voice features enabled. Local speech models will be downloaded automatically if missing."
@@ -560,63 +453,52 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   );
 
   await ensureDaemonStarted(options, richUi);
-  const readyState = await waitForDaemonReadyWithUi({
+  await waitForDaemonReadyWithUi({
     home: options.home ?? paseoHome,
     timeoutMs,
     richUi,
   });
 
   if (options.relay === false) {
-    finishOnboardWithoutPairing(
-      "Relay pairing was skipped because --no-relay was specified.",
-      paseoHome,
-      richUi,
-    );
+    log.message("Relay pairing skipped because --no-relay was provided.");
+    printNextSteps(null, paseoHome, richUi);
+    if (richUi) outro("Paseo daemon is running.");
     return;
   }
 
-  const pairing = normalizeOnboardPairingOffer(
-    await getOnboardPairingOffer({
-      paseoHome,
-      daemonListen: readyState.listen,
-      config,
-    }),
-  );
+  let pairing = await resolveLocalPairingOffer({
+    paseoHome,
+    enableRelay: options.relay === true,
+  });
 
   if (!pairing.relayEnabled) {
-    finishOnboardWithoutPairing(
-      "Relay is disabled; pairing offer is unavailable for this daemon.",
-      paseoHome,
-      richUi,
-    );
-    return;
+    const shouldEnable = richUi ? await confirmRelayPairing() : false;
+    if (!shouldEnable) {
+      printDirectConnectionGuidance();
+      printNextSteps(null, paseoHome, richUi);
+      if (richUi) outro("Paseo daemon is running.");
+      return;
+    }
+    pairing = await resolveLocalPairingOffer({ paseoHome, enableRelay: true });
+    log.success("Relay enabled");
   }
 
   if (!pairing.url) {
-    finishOnboardWithoutPairing(
-      "Relay pairing URL is unavailable for this daemon configuration.",
-      paseoHome,
-      richUi,
-    );
+    log.warn("Relay pairing URL is unavailable for this daemon configuration.");
+    printNextSteps(null, paseoHome, richUi);
+    if (richUi) {
+      outro("Paseo daemon is running.");
+    }
     return;
   }
 
-  if (pairing.offers.length > 0) {
-    for (const [index, offer] of pairing.offers.entries()) {
-      const relayLabel = `${offer.useTls ? "wss" : "ws"}://${offer.endpoint}`;
-      renderNote(
-        offer.qr ?? "QR is unavailable in this terminal. Use the pairing link below.",
-        `Relay ${index + 1}: ${relayLabel}`,
-      );
-      printPairingLink(offer.url, `Pairing link ${index + 1}`);
-    }
-  } else {
-    renderNote(
-      pairing.qr ?? "QR is unavailable in this terminal. Use the pairing link below.",
-      "Scan to pair",
-    );
-    printPairingLink(pairing.url, "Pairing link");
-  }
+  process.stdout.write(
+    formatPairingInstructions({
+      url: pairing.url,
+      qr: pairing.qr,
+      columns: process.stdout.columns,
+    }),
+  );
   printNextSteps(pairing.url, paseoHome, richUi);
   if (richUi) {
     outro("Paseo is ready!");

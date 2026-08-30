@@ -18,7 +18,7 @@ import {
 } from "@/constants/layout";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { PairDeviceModal } from "@/components/pair-device-modal";
+import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -55,7 +55,7 @@ export function OpenProjectScreen() {
 
   const handleOpenImportSession = useCallback(() => {
     chooseHost({
-      title: "从主机导入",
+      title: "Import from host",
       onChooseHost: (serverId) => {
         setImportServerId(serverId);
         setIsImportSheetOpen(true);
@@ -79,7 +79,7 @@ export function OpenProjectScreen() {
 
   const handleOpenProviders = useCallback(() => {
     chooseHost({
-      title: "选择主机",
+      title: "Choose host",
       onChooseHost: (serverId) => {
         router.push(buildSettingsHostSectionRoute(serverId, "providers"));
       },
@@ -131,14 +131,12 @@ export function OpenProjectScreen() {
       <View style={styles.communityRow}>
         <CommunityLinks />
       </View>
-      {localServerId ? (
-        <PairDeviceModal
-          serverId={localServerId}
-          visible={isPairDeviceOpen}
-          onClose={handleClosePairDevice}
-          testID="open-project-pair-device-modal"
-        />
-      ) : null}
+      <PairDeviceModal
+        serverId={localServerId ?? ""}
+        visible={isPairDeviceOpen}
+        onClose={handleClosePairDevice}
+        testID="open-project-pair-device-modal"
+      />
       <ImportSessionSheet
         visible={isImportSheetOpen}
         client={importClient}

@@ -79,10 +79,8 @@ import {
   TURN_FOOTER_BOTTOM_SPACING,
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
-  type TurnChangesContext,
   type TurnContentStrategy,
 } from "./turn-footer";
-import { indexTurnChangeItemsByAssistantId } from "./turn-change-items";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem } from "./layout";
 import {
@@ -110,11 +108,6 @@ import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView } from "@/plugins/timeline";
-import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-
-function resolveChatOutlineModel(context: AgentScreenAgent): string | null {
-  return context.runtimeInfo?.model ?? context.model ?? context.provider ?? null;
-}
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -166,8 +159,6 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
-  changes?: TurnChangesContext;
-  changeItemsByAssistantId: ReadonlyMap<string, StreamItem[]>;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -182,8 +173,6 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
-      changes={input.changes}
-      changeItems={input.changeItemsByAssistantId.get(footerHost.itemId)}
     />
   ) : null;
   const content = (
@@ -524,14 +513,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
-    const changeItemsByAssistantId = useMemo(
-      () =>
-        indexTurnChangeItemsByAssistantId({
-          tail: effectiveStreamItems,
-          head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
-        }),
-      [effectiveStreamHead, effectiveStreamItems],
-    );
     // Keep retained history outside the 48ms live-head flush path.
     const preparedToolCallHistory = useMemo(
       () => prepareToolCallHistory(toolCallDetailLevel, effectiveStreamItems),
@@ -619,8 +600,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       timelineEpoch,
       tail: effectiveStreamItems,
       head: effectiveStreamHead,
-      enabled: chatOutlineEnabled,
-      supportsPromptIndex: supportsChatOutline,
+      enabled: supportsChatOutline && chatOutlineEnabled,
       viewportRef,
       onJumpError: handleTimelineHistoryLoadError,
       visibleItemIds: visibleHistoryItemIds,
@@ -904,48 +884,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const bottomTurnFooterHost = streamLayout.auxiliaryTurnFooter;
 
-    const handleReviewTurnChange = useStableEvent((cwd: string, path?: string) => {
-      const persistenceKey = buildWorkspaceTabPersistenceKey({
-        serverId: resolvedServerId,
-        workspaceId: context.workspaceId ?? workspaceRoot,
-      });
-      if (!isMobile && persistenceKey) {
-        const store = useWorkspaceLayoutStore.getState();
-        const paneId = store.ensureSidePane(persistenceKey);
-        store.openTab({
-          workspaceKey: persistenceKey,
-          target: {
-            kind: "working_diff",
-            cwd,
-            ...(path ? { focusPath: path, focusRequestId: Date.now() } : {}),
-          },
-          intent: "reveal",
-          placement: paneId ? { mode: "pane", paneId } : { mode: "focused" },
-        });
-        return;
-      }
-      openExplorerSidebarView({
-        isCompact: true,
-        workspaceKey: persistenceKey,
-        checkout: {
-          serverId: resolvedServerId,
-          cwd,
-          isGit: true,
-        },
-        view: "changes",
-      });
-    });
-    const turnChangesContext = useMemo<TurnChangesContext>(
-      () => ({
-        serverId: resolvedServerId,
-        cwd: workspaceRoot,
-        readOnly,
-        toast: toast ?? null,
-        onReview: handleReviewTurnChange,
-      }),
-      [handleReviewTurnChange, readOnly, resolvedServerId, toast, workspaceRoot],
-    );
-
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
@@ -955,18 +893,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
-          changes: turnChangesContext,
-          changeItemsByAssistantId,
         });
       },
       [
-        changeItemsByAssistantId,
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
-        turnChangesContext,
       ],
     );
 
@@ -994,12 +928,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
-            changes={turnChangesContext}
-            changeItems={
-              bottomTurnFooterHost
-                ? changeItemsByAssistantId.get(bottomTurnFooterHost.itemId)
-                : undefined
-            }
           />
         ) : null,
       [
@@ -1009,10 +937,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,
         bottomTurnFooterHost,
-        changeItemsByAssistantId,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
-        turnChangesContext,
       ],
     );
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
@@ -1162,7 +1088,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           <ChatOutlineRail
             prompts={chatOutline.prompts}
             activePrompt={chatOutline.activePrompt}
-            model={resolveChatOutlineModel(context)}
             onJumpToPrompt={chatOutline.jumpToPrompt}
           />
           {(!isNearBottom || isTimelineDetached) && (

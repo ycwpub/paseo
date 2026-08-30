@@ -24,7 +24,6 @@ function makeWorkspace(
   };
   const entry: SidebarWorkspaceEntry = {
     ...placement,
-    projectId: "project",
     workspaceDirectory: "",
     workspaceDirectoryLabel: "",
     title: null,
@@ -84,7 +83,6 @@ function projectionInput(options?: {
     projectNamesByViewKey: new Map([["project", "Project"]]),
     groupMode: options?.groupMode ?? ("project" as const),
     pinnedCollapsed: options?.pinnedCollapsed ?? false,
-    hiddenProjectKeys: new Set<string>(),
     collapsedProjectKeys: new Set<string>(),
     collapsedWorkspaceGroupKeys: new Set<string>(),
   };
@@ -174,52 +172,5 @@ describe("buildSidebarProjection", () => {
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "unpinned" },
     ]);
-  });
-
-  it("omits child Project workspaces from shortcuts while the parent is collapsed", () => {
-    const childWorkspace = makeWorkspace("child");
-    const parent: SidebarProjectEntry = {
-      ...makeProject([]),
-      viewKey: "parent",
-      projectName: "Parent",
-    };
-    const child: SidebarProjectEntry = {
-      ...makeProject([
-        {
-          ...childWorkspace.placement,
-          projectViewKey: "child",
-          projectName: "Child",
-        },
-      ]),
-      viewKey: "child",
-      projectName: "Child",
-      parentViewKey: "parent",
-    };
-
-    const result = buildSidebarProjection({
-      ...projectionInput(),
-      projects: [parent, child],
-      workspaceEntriesByKey: new Map(),
-      projectNamesByViewKey: new Map([
-        ["parent", "Parent"],
-        ["child", "Child"],
-      ]),
-      collapsedProjectKeys: new Set(["parent"]),
-    });
-
-    expect(result.shortcutModel.shortcutTargets).toEqual([]);
-  });
-
-  it("moves hidden projects out of normal groups and shortcut targets", () => {
-    const input = projectionInput({ groupMode: "status" });
-    input.hiddenProjectKeys = new Set(["project"]);
-
-    const projection = buildSidebarProjection(input);
-
-    expect(projection.pinnedGroups.pinnedChats).toEqual([]);
-    expect(projection.pinnedGroups.unpinnedProjects).toEqual([]);
-    expect(projection.hiddenProjects.map((project) => project.viewKey)).toEqual(["project"]);
-    expect(projection.statusGroups).toEqual([]);
-    expect(projection.shortcutModel.shortcutTargets).toEqual([]);
   });
 });

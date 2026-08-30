@@ -22,9 +22,6 @@ export interface QueuedComposerMessage {
   id: string;
   text: string;
   attachments: ComposerAttachment[];
-  selectedMcpServerIds?: string[];
-  selectedSkillIds?: string[];
-  isEditing?: boolean;
 }
 
 export interface AttachmentPersister {

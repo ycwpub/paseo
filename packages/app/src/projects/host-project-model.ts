@@ -27,8 +27,8 @@ export function canCreateWorktreeForProjectKind(
 
 export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjectListItem | null {
   const projectId = route.projectId?.trim() || undefined;
-  const iconWorkingDir = trimOptional(route.sourceDirectory) ?? "";
-  if (!projectId) {
+  const iconWorkingDir = trimOptional(route.sourceDirectory);
+  if (!projectId || !iconWorkingDir) {
     return null;
   }
   return {
@@ -42,12 +42,10 @@ export function hostProjectFromRoute(route: HostProjectRouteContext): HostProjec
         serverId: route.serverId,
         projectId,
         iconWorkingDir,
-        sourceDirectory: iconWorkingDir,
         worktreeSupport: "unknown",
       },
     ],
     workspaceKeys: [],
-    parentViewKey: null,
   };
 }
 
@@ -87,7 +85,6 @@ export function hostProjectFromWorkspace(input: {
       },
     ],
     workspaceKeys: [`${input.serverId}:${input.workspace.id}`],
-    parentViewKey: null,
   };
 }
 
@@ -116,8 +113,7 @@ export function getHostProjectSourceDirectory(
   project: HostProjectListItem,
   serverId: string,
 ): string | null {
-  const placement = getHostProjectPlacement(project, serverId);
-  return trimOptional(placement?.sourceDirectory ?? placement?.iconWorkingDir) ?? null;
+  return getHostProjectPlacement(project, serverId)?.iconWorkingDir ?? null;
 }
 
 export function getHostProjectId(project: HostProjectListItem, serverId: string): string | null {

@@ -18,7 +18,7 @@ function resolveBalance(balance: ProviderUsageBalance): ResolvedBalance {
     return { amountText: `${usedText} / ${formatAmount(limit, unit)}`, usedPct };
   }
   if (remaining != null) {
-    return { amountText: `剩余 ${formatAmount(remaining, unit)}`, usedPct: null };
+    return { amountText: `${formatAmount(remaining, unit)} left`, usedPct: null };
   }
   if (used != null) {
     return { amountText: formatAmount(used, unit), usedPct: null };

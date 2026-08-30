@@ -20,24 +20,23 @@ function writeExecutable(filePath: string, contents: string): void {
   chmodSync(filePath, 0o755);
 }
 
-function createFakeMacBundle(options: { includeHelper: boolean; appName?: string }): {
+function createFakeMacBundle(options: { includeHelper: boolean }): {
   root: string;
   shimPath: string;
 } {
   const root = mkdtempSync(join(tmpdir(), "paseo-cli-shim-test-"));
-  const appName = options.appName ?? "Paseo";
-  const appPath = join(root, `${appName}.app`);
+  const appPath = join(root, "Paseo.app");
   const contentsPath = join(appPath, "Contents");
   const resourcesPath = join(contentsPath, "Resources");
   const shimPath = join(resourcesPath, "bin", "paseo");
-  const mainPath = join(contentsPath, "MacOS", appName);
+  const mainPath = join(contentsPath, "MacOS", "Paseo");
   const helperPath = join(
     contentsPath,
     "Frameworks",
-    `${appName} Helper.app`,
+    "Paseo Helper.app",
     "Contents",
     "MacOS",
-    `${appName} Helper`,
+    "Paseo Helper",
   );
 
   mkdirSync(dirname(shimPath), { recursive: true });
@@ -139,23 +138,6 @@ describe("desktop packaging", () => {
       expect(result.stdout).toContain(`helper env=1/production cli=${bundle.shimPath}`);
       expect(result.stdout).toContain("node-entrypoint-runner.js");
       expect(result.stdout).toContain("node-script");
-      expect(result.stdout).toContain("@getpaseo/cli/dist/index.js");
-      expect(result.stdout).toContain("--version");
-      expect(result.stdout).not.toContain("main-executable");
-    } finally {
-      rmSync(bundle.root, { recursive: true, force: true });
-    }
-  });
-
-  it("launches the packaged macOS CLI through a product-name-specific Helper", () => {
-    if (process.platform === "win32") return;
-
-    const bundle = createFakeMacBundle({ includeHelper: true, appName: "Paseo-Feishu-Test" });
-    try {
-      const result = spawnSync(bundle.shimPath, ["--version"], { encoding: "utf8" });
-
-      expect(result.status).toBe(0);
-      expect(result.stdout).toContain("helper env=1/production");
       expect(result.stdout).toContain("@getpaseo/cli/dist/index.js");
       expect(result.stdout).toContain("--version");
       expect(result.stdout).not.toContain("main-executable");

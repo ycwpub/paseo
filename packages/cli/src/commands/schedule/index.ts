@@ -18,8 +18,7 @@ export function createScheduleCommand(): Command {
     schedule
       .command("create")
       .description("Create a schedule")
-      .argument("<prompt>", "Prompt or bash command to run on the schedule")
-      .option("--type <type>", "Schedule type: new-agent or bash")
+      .argument("<prompt>", "Prompt to run on the schedule")
       .option("--every <duration>", "Cron-compatible cadence preset (for example: 5m, 1h)")
       .option("--cron <expr>", "Cron cadence expression")
       .option("--timezone <iana>", "IANA time zone for cron cadence (default: UTC)")
@@ -34,10 +33,7 @@ export function createScheduleCommand(): Command {
         "Provider-specific mode (e.g. claude bypassPermissions, opencode build)",
       )
       .option("--thinking <id>", "Thinking option ID for new-agent runs")
-      .option("--assistant <id>", "Assistant ID for new-agent schedules")
       .option("--cwd <path>", "Working directory (default: current; required with --host)")
-      .option("--shell <path>", "Shell for bash schedules (default: /bin/bash)")
-      .option("--timeout <duration>", "Timeout for bash schedules (default: 30m)")
       .option("--run-now", "Fire one immediate run on creation")
       .option("--max-runs <n>", "Maximum number of runs")
       .option("--expires-in <duration>", "Time to live for the schedule"),
@@ -65,7 +61,7 @@ export function createScheduleCommand(): Command {
   addJsonAndDaemonHostOptions(
     schedule
       .command("resume")
-      .description("Resume a paused or ended schedule")
+      .description("Resume a paused schedule")
       .argument("<id>", "Schedule ID"),
   ).action(withOutput(runResumeCommand));
 
@@ -85,7 +81,6 @@ export function createScheduleCommand(): Command {
       .command("update")
       .description("Update an existing schedule in place")
       .argument("<id>", "Schedule ID")
-      .option("--type <type>", "Schedule type for type-specific fields: new-agent or bash")
       .option("--every <duration>", "Cron-compatible cadence preset (for example: 5m, 1h)")
       .option("--cron <expr>", "Switch to cron cadence expression")
       .option("--timezone <iana>", "IANA time zone for cron cadence (requires --cron)")
@@ -97,12 +92,7 @@ export function createScheduleCommand(): Command {
       )
       .option("--model <model>", "New agent model (only for new-agent target)")
       .option("--mode <mode>", "New agent provider mode (only for new-agent target)")
-      .option("--assistant <id>", "Assistant ID for new-agent schedules")
-      .option("--no-assistant", "Clear the assistant for a new-agent schedule")
-      .option("--cwd <path>", "New working directory (for new-agent or --type bash)")
-      .option("--shell <path>", "New shell (only with --type bash)")
-      .option("--timeout <duration>", "New timeout (only with --type bash)")
-      .option("--clear-timeout", "Clear the bash timeout (only with --type bash)")
+      .option("--cwd <path>", "New working directory (only for new-agent target)")
       .option("--max-runs <n>", "Set or change maximum number of runs")
       .option("--no-max-runs", "Clear the max-runs limit")
       .option("--expires-in <duration>", "Set or change time to live for the schedule")

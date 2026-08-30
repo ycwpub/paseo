@@ -261,74 +261,6 @@ describe("useAgentInputDraft live contract", () => {
     expect(getLatest().attachments).toEqual([{ kind: "image", metadata: image }]);
   });
 
-  it("applies assistant labels that hydrate after render and resets them between drafts", async () => {
-    let latest: ReturnType<typeof useAgentInputDraft> | null = null;
-
-    function getLatest(): ReturnType<typeof useAgentInputDraft> {
-      if (!latest) {
-        throw new Error("Expected hook result");
-      }
-      return latest;
-    }
-
-    function Probe({
-      draftKey,
-      initialAssistantId,
-    }: {
-      draftKey: string;
-      initialAssistantId: string | null;
-    }) {
-      latest = useAgentInputDraft({ draftKey, initialAssistantId });
-      return null;
-    }
-
-    const queryClient = new QueryClient();
-    const container = document.getElementById("root");
-    if (!container) {
-      throw new Error("Missing root container");
-    }
-
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <Probe draftKey="agent:one" initialAssistantId={null} />
-        </QueryClientProvider>,
-      );
-    });
-    expect(getLatest().assistantId).toBeNull();
-
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <Probe draftKey="agent:one" initialAssistantId="assistant-1" />
-        </QueryClientProvider>,
-      );
-    });
-    expect(getLatest().assistantId).toBe("assistant-1");
-
-    await act(async () => {
-      getLatest().setAssistantId("manual-assistant");
-    });
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <Probe draftKey="agent:one" initialAssistantId="assistant-2" />
-        </QueryClientProvider>,
-      );
-    });
-    expect(getLatest().assistantId).toBe("manual-assistant");
-
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <Probe draftKey="agent:two" initialAssistantId="assistant-2" />
-        </QueryClientProvider>,
-      );
-    });
-    expect(getLatest().assistantId).toBe("assistant-2");
-  });
-
   it("migrates legacy image drafts to image attachments on hydration", async () => {
     let latest: ReturnType<typeof useAgentInputDraft> | null = null;
     const image: AttachmentMetadata = {
@@ -596,61 +528,6 @@ describe("useAgentInputDraft live contract", () => {
     expect(useDraftStore.getState().drafts["draft:clear"]?.input).toEqual({
       text: "",
       attachments: [],
-    });
-  });
-
-  it("clears a remounted composer when another instance finalizes its submitted draft", async () => {
-    let latest: ReturnType<typeof useAgentInputDraft> | null = null;
-
-    function getLatest(): ReturnType<typeof useAgentInputDraft> {
-      if (!latest) {
-        throw new Error("Expected hook result");
-      }
-      return latest;
-    }
-
-    useDraftStore.getState().saveDraftInput({
-      draftKey: "agent:submitted",
-      draft: {
-        text: "任务完成了吗",
-        attachments: [],
-      },
-    });
-
-    function Probe() {
-      latest = useAgentInputDraft({ draftKey: "agent:submitted" });
-      return null;
-    }
-
-    const queryClient = new QueryClient();
-    const container = document.getElementById("root");
-    if (!container) {
-      throw new Error("Missing root container");
-    }
-
-    const root = createRoot(container);
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={queryClient}>
-          <Probe />
-        </QueryClientProvider>,
-      );
-    });
-
-    expect(getLatest().text).toBe("任务完成了吗");
-
-    await act(async () => {
-      useDraftStore.getState().clearDraftInput({
-        draftKey: "agent:submitted",
-        lifecycle: "sent",
-      });
-    });
-
-    expect(getLatest().text).toBe("");
-    expect(getLatest().attachments).toEqual([]);
-    expect(useDraftStore.getState().drafts["agent:submitted"]).toMatchObject({
-      lifecycle: "sent",
-      input: { text: "", attachments: [] },
     });
   });
 

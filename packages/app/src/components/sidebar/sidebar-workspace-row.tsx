@@ -129,7 +129,7 @@ export function SidebarWorkspaceRow({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
+      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
     });
   }, [clearAttention, toast]);
 

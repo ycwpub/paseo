@@ -1,6 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { PaseoMemoryState, PaseoMemoryUpdateInput } from "@getpaseo/protocol/messages";
+import type {
+  PaseoMemoryState,
+  PaseoMemoryTransferSelection,
+  PaseoMemoryUpdateInput,
+} from "@getpaseo/protocol/messages";
 import { memoryQueryKey } from "@/data/memory";
 import { useReplicaQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
@@ -54,12 +58,26 @@ export function useMemory(serverId: string, options: { enabled?: boolean } = {})
     });
   }, [client, mutation]);
 
+  const exportMemory = useCallback(
+    async (selection: PaseoMemoryTransferSelection) => {
+      if (selection.type === "all") return query.data?.exportJson ?? "";
+      if (!client) throw new Error("Host is disconnected");
+      const result = await client.getMemorySyncSnapshot({ selection });
+      if (result.error || !result.snapshot) {
+        throw new Error(result.error ?? "Memory export failed");
+      }
+      return JSON.stringify(result.snapshot, null, 2);
+    },
+    [client, query.data?.exportJson],
+  );
+
   return {
     memory: query.data ?? null,
     isLoading: query.isLoading,
     error: query.error,
     isConnected,
     updateMemory,
+    exportMemory,
     clearMemory,
     isMutating: mutation.isPending,
     mutationError: mutation.error,

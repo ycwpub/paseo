@@ -117,21 +117,39 @@ import { PluginTimelineItemView } from "@/plugins/timeline";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { ReasoningItem } from "./reasoning-item";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
+import { deriveStreamTurnTiming } from "@/timeline/turn-time";
+import { projectProcessVisibility } from "./process-visibility";
+import { ProcessingDisclosure } from "./processing-disclosure";
+import {
+  createProcessExpansionState,
+  isProcessTurnExpanded,
+  toggleProcessTurn,
+  type ProcessExpansionState,
+} from "./process-expansion-state";
 
 function resolveChatOutlineModel(context: AgentScreenAgent): string | null {
   return context.runtimeInfo?.model ?? context.model ?? context.provider ?? null;
 }
 
 function renderLiveAuxiliaryNode(input: {
+  processVisibilityControl: ReactNode;
   pendingPermissions: ReactNode;
   turnFooter: ReactNode;
   bottomOverlayInset: number;
 }): ReactNode {
-  if (!input.pendingPermissions && !input.turnFooter && input.bottomOverlayInset === 0) {
+  if (
+    !input.processVisibilityControl &&
+    !input.pendingPermissions &&
+    !input.turnFooter &&
+    input.bottomOverlayInset === 0
+  ) {
     return null;
   }
   return (
     <>
+      {input.processVisibilityControl ? (
+        <View style={stylesheet.contentWrapper}>{input.processVisibilityControl}</View>
+      ) : null}
       {input.turnFooter}
       {input.pendingPermissions ? (
         <View style={stylesheet.contentWrapper}>
@@ -368,6 +386,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const [expandedToolCallGroupIds, setExpandedToolCallGroupIds] = useState<Set<string>>(
       new Set(),
     );
+    const [processExpansion, setProcessExpansion] = useState<ProcessExpansionState>(
+      createProcessExpansionState,
+    );
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
@@ -431,7 +452,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       setIsNearBottom(true);
       setExpandedInlineToolCallIds(new Set());
       setExpandedToolCallGroupIds(new Set());
+      setProcessExpansion(createProcessExpansionState());
     }, [agentId]);
+
+    const isTurnProcessExpanded = useCallback(
+      (turnId: string, isActiveTurn: boolean) =>
+        isProcessTurnExpanded(processExpansion, turnId, isActiveTurn),
+      [processExpansion],
+    );
+    const toggleProcessVisibility = useCallback((turnId: string, isActiveTurn: boolean) => {
+      viewportRef.current?.prepareForViewportChange(turnId);
+      setProcessExpansion((state) => toggleProcessTurn(state, { turnId, isActive: isActiveTurn }));
+    }, []);
 
     const handleInlinePathPress = useStableEvent(
       (target: InlinePathTarget, disposition: OpenFileDisposition) => {
@@ -561,6 +593,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         toolCallDetailLevel,
       ],
     );
+    const processVisibility = useMemo(
+      () =>
+        projectProcessVisibility({
+          isTurnActive,
+          isTurnExpanded: isTurnProcessExpanded,
+          tail: projectedToolCalls.tail,
+          head: projectedToolCalls.head,
+        }),
+      [isTurnActive, isTurnProcessExpanded, projectedToolCalls.head, projectedToolCalls.tail],
+    );
     const {
       start: historyWindowStart,
       hasLocalHistory,
@@ -576,21 +618,32 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const progressKey = `${remoteProgressKey ?? "local"}:${historyWindowStart}`;
 
     const baseRenderModel = useMemo(() => {
-      return buildAgentStreamRenderModel({
+      const visibleRenderModel = buildAgentStreamRenderModel({
         isTurnActive,
         activeTurnStartedAt: effectiveTurnPresentation.startedAt,
-        tail: projectedToolCalls.tail,
-        head: projectedToolCalls.head,
+        tail: processVisibility.tail,
+        head: processVisibility.head,
         platform: isWeb ? "web" : "native",
         isMobileBreakpoint: isMobile,
         historyStart: historyWindowStart,
       });
+      return {
+        ...visibleRenderModel,
+        turnTiming: deriveStreamTurnTiming({
+          isTurnActive,
+          activeTurnStartedAt: effectiveTurnPresentation.startedAt,
+          tail: projectedToolCalls.tail,
+          head: projectedToolCalls.head,
+        }),
+      };
     }, [
+      effectiveTurnPresentation.startedAt,
       isMobile,
       isTurnActive,
+      processVisibility.head,
+      processVisibility.tail,
       projectedToolCalls.head,
       projectedToolCalls.tail,
-      effectiveTurnPresentation.startedAt,
       historyWindowStart,
     ]);
     const streamLayout = useMemo(
@@ -975,8 +1028,27 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderStreamItem = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const content = renderStreamItemContent(layoutItem);
+        const disclosure = processVisibility.disclosureByHostId.get(layoutItem.item.id);
+        const contentWithDisclosure = disclosure ? (
+          <>
+            <ProcessingDisclosure
+              expanded={disclosure.expanded}
+              turnId={disclosure.turnId}
+              isActive={disclosure.isActive}
+              durationMs={
+                disclosure.assistantId
+                  ? baseRenderModel.turnTiming.byAssistantId.get(disclosure.assistantId)?.durationMs
+                  : undefined
+              }
+              onToggle={toggleProcessVisibility}
+            />
+            {content}
+          </>
+        ) : (
+          content
+        );
         return renderStreamItemWithTurnFooter({
-          content,
+          content: contentWithDisclosure,
           layoutItem,
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
@@ -990,6 +1062,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         handleForkAssistantTurn,
         readOnly,
         renderStreamItemContent,
+        processVisibility.disclosureByHostId,
+        baseRenderModel.turnTiming.byAssistantId,
+        toggleProcessVisibility,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
         turnChangesContext,
@@ -1041,6 +1116,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         turnChangesContext,
       ],
     );
+    const auxiliaryProcessVisibilityControl = useMemo(() => {
+      const disclosure = processVisibility.auxiliaryDisclosure;
+      if (!disclosure) return null;
+      return (
+        <ProcessingDisclosure
+          expanded={disclosure.expanded}
+          turnId={disclosure.turnId}
+          isActive={disclosure.isActive}
+          onToggle={toggleProcessVisibility}
+        />
+      );
+    }, [processVisibility.auxiliaryDisclosure, toggleProcessVisibility]);
     const renderModel = useMemo<AgentStreamRenderModel>(() => {
       return {
         ...baseRenderModel,
@@ -1125,11 +1212,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         existingTailSpacing,
       });
       return renderLiveAuxiliaryNode({
+        processVisibilityControl: auxiliaryProcessVisibilityControl,
         pendingPermissions: auxiliary.pendingPermissions,
         turnFooter: auxiliary.turnFooter,
         bottomOverlayInset,
       });
-    }, [auxiliary.pendingPermissions, auxiliary.turnFooter, bottomOverlayTailClearance]);
+    }, [
+      auxiliary.pendingPermissions,
+      auxiliary.turnFooter,
+      auxiliaryProcessVisibilityControl,
+      bottomOverlayTailClearance,
+    ]);
 
     const renderers = useMemo<StreamSegmentRenderers>(
       () => ({
@@ -1153,9 +1246,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       () => ({
         contentById: projectedToolCalls.historyGroupUpdatesByHostId,
         displayStateById: expandedToolCallGroupIds,
-        globalDisplayState: isMobile,
+        globalDisplayState: isMobile !== processExpansion.revision,
       }),
-      [expandedToolCallGroupIds, isMobile, projectedToolCalls.historyGroupUpdatesByHostId],
+      [
+        expandedToolCallGroupIds,
+        isMobile,
+        processExpansion.revision,
+        projectedToolCalls.historyGroupUpdatesByHostId,
+      ],
+    );
+    const liveHeadRowRevision = useMemo(
+      () => ({
+        expandedToolCallGroupIds,
+        processExpansionRevision: processExpansion.revision,
+      }),
+      [expandedToolCallGroupIds, processExpansion.revision],
     );
 
     return (
@@ -1167,7 +1272,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 agentId,
                 segments: renderModel.segments,
                 historyRowRevision,
-                liveHeadRowRevision: expandedToolCallGroupIds,
+                liveHeadRowRevision,
                 boundary,
                 renderers,
                 listEmptyComponent,

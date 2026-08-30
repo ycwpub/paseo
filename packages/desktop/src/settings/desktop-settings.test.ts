@@ -79,14 +79,7 @@ describe("desktop-settings", () => {
 
     const settings = await store.get();
 
-    expect(settings).toEqual({
-      releaseChannel: "stable",
-      notifications: { playSound: true },
-      daemon: {
-        manageBuiltInDaemon: true,
-        keepRunningAfterQuit: false,
-      },
-    });
+    expect(settings).toEqual(DEFAULT_DESKTOP_SETTINGS);
   });
 
   it("patches nested settings and leaves no temp files behind", async () => {
@@ -101,14 +94,7 @@ describe("desktop-settings", () => {
     });
     const files = await readdir(userDataPath);
 
-    expect(next).toEqual({
-      releaseChannel: "beta",
-      notifications: { playSound: true },
-      daemon: {
-        manageBuiltInDaemon: true,
-        keepRunningAfterQuit: false,
-      },
-    });
+    expect(next).toEqual({ ...DEFAULT_DESKTOP_SETTINGS, releaseChannel: "beta" });
     expect(files).toEqual(["desktop-settings.json"]);
   });
 
@@ -269,11 +255,11 @@ describe("desktop-settings", () => {
     });
 
     expect(migrated).toEqual({
+      ...DEFAULT_DESKTOP_SETTINGS,
       releaseChannel: "beta",
-      notifications: { playSound: true },
       daemon: {
+        ...DEFAULT_DESKTOP_SETTINGS.daemon,
         manageBuiltInDaemon: false,
-        keepRunningAfterQuit: false,
       },
     });
     expect(ignoredSecondMigration).toEqual(migrated);
@@ -314,9 +300,12 @@ describe("desktop-settings", () => {
     expect(persisted.futureDocumentKey).toBe("kept");
     expect(persisted.settings.releaseChannel).toBe("beta");
     expect(next).toEqual({
+      ...DEFAULT_DESKTOP_SETTINGS,
       releaseChannel: "beta",
-      notifications: { playSound: false },
-      daemon: { manageBuiltInDaemon: true, keepRunningAfterQuit: false },
+      notifications: {
+        ...DEFAULT_DESKTOP_SETTINGS.notifications,
+        playSound: false,
+      },
     });
   });
 

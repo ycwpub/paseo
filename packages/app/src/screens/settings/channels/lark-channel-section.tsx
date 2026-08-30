@@ -128,13 +128,7 @@ interface BotListCardProps {
   onAdd: () => void;
 }
 
-type LarkChannelPage =
-  | "overview"
-  | "bot"
-  | "substitute"
-  | "reminders"
-  | "reminder-create"
-  | "reminder-edit";
+type LarkChannelPage = "overview" | "bot" | "substitute" | "reminder-create" | "reminder-edit";
 
 export interface LarkChannelDetailNavigation {
   title: string;
@@ -144,14 +138,9 @@ export interface LarkChannelDetailNavigation {
 const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, string> = {
   bot: "编辑飞书机器人",
   substitute: "替身模式",
-  reminders: "飞书定时提醒",
   "reminder-create": "创建定时任务",
   "reminder-edit": "编辑定时任务",
 };
-
-function getLarkChannelParentPage(page: LarkChannelPage): LarkChannelPage {
-  return page === "reminder-create" || page === "reminder-edit" ? "reminders" : "overview";
-}
 
 function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
   const application = channel.application ?? null;
@@ -914,29 +903,6 @@ function SecondaryPageIntro({ title, description }: { title: string; description
   );
 }
 
-function ReminderEntryCard({ onOpen }: { onOpen: () => void }) {
-  return (
-    <SettingsSection title="提醒">
-      <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>飞书定时提醒</Text>
-            <Text style={settingsStyles.rowHint}>管理提醒对象、提醒频率、发送身份和历史任务。</Text>
-          </View>
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={onOpen}
-            testID="host-page-lark-open-reminders"
-          >
-            管理
-          </Button>
-        </View>
-      </View>
-    </SettingsSection>
-  );
-}
-
 function ReminderEditPage({
   serverId,
   bots,
@@ -1546,10 +1512,6 @@ function LarkChannelLoadedContent({
     clearFormForNewBot();
     setPage("bot");
   }, [clearFormForNewBot]);
-  const handleOpenReminders = useCallback(() => {
-    setEditingReminder(null);
-    setPage("reminders");
-  }, []);
   const handleCreateReminder = useCallback(() => {
     setEditingReminder(null);
     setPage("reminder-create");
@@ -1560,13 +1522,13 @@ function LarkChannelLoadedContent({
   }, []);
   const handleReminderSaved = useCallback(() => {
     setEditingReminder(null);
-    setPage("reminders");
+    setPage("overview");
   }, []);
   const handleDetailBack = useCallback(() => {
     setEditingReminder(null);
     setSaveError(null);
-    setPage(getLarkChannelParentPage(page));
-  }, [page]);
+    setPage("overview");
+  }, []);
 
   useEffect(() => {
     if (!onDetailNavigationChange) return;
@@ -1808,7 +1770,18 @@ function LarkChannelLoadedContent({
           onOpenSubstitute={handleOpenSubstitute}
           onAdd={handleAddBot}
         />
-        <ReminderEntryCard onOpen={handleOpenReminders} />
+        <View testID="host-page-lark-reminders-section">
+          <LarkReminderSection
+            serverId={serverId}
+            bots={botStatuses}
+            directory={directory}
+            directorySupported={supportsLarkDirectory}
+            resolveDirectoryUsers={channel.resolveDirectoryUsers}
+            resolveDirectoryChats={channel.resolveDirectoryChats}
+            onCreate={handleCreateReminder}
+            onEdit={handleEditReminder}
+          />
+        </View>
       </View>
     ),
     bot: (
@@ -1861,21 +1834,6 @@ function LarkChannelLoadedContent({
           resolveDirectoryUsers={channel.resolveDirectoryUsers}
           onSubstituteNameChange={setSubstituteName}
           onSave={handleSave}
-        />
-      </View>
-    ),
-    reminders: (
-      <View testID="host-page-channels-reminders">
-        <SecondaryPageIntro title="飞书定时提醒" description="创建和管理飞书群定时提醒任务。" />
-        <LarkReminderSection
-          serverId={serverId}
-          bots={botStatuses}
-          directory={directory}
-          directorySupported={supportsLarkDirectory}
-          resolveDirectoryUsers={channel.resolveDirectoryUsers}
-          resolveDirectoryChats={channel.resolveDirectoryChats}
-          onCreate={handleCreateReminder}
-          onEdit={handleEditReminder}
         />
       </View>
     ),

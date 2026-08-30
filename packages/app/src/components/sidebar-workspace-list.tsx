@@ -613,6 +613,7 @@ function ProjectMenuItems({
 
 function WorkspaceRowRightGroup({
   workspace,
+  selected,
   backdrop,
   isHovered,
   isTouchPlatform,
@@ -632,6 +633,7 @@ function WorkspaceRowRightGroup({
   onTogglePin,
 }: {
   workspace: SidebarWorkspaceEntry;
+  selected: boolean;
   backdrop: SidebarSurfaceBackdrop;
   isHovered: boolean;
   isTouchPlatform: boolean;
@@ -690,6 +692,9 @@ function WorkspaceRowRightGroup({
                 workspaceKey={workspace.workspaceKey}
                 serverId={workspace.serverId}
                 workspaceId={workspace.workspaceId}
+                projectId={workspace.projectId}
+                workspaceName={workspace.name}
+                selected={selected}
                 workspaceLabels={workspace.labels}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}
@@ -1143,6 +1148,7 @@ function WorkspaceRowInner({
               contextMenuOpen={contextMenuOpen}
               onContextMenuOpenChange={onContextMenuOpenChange}
               workspace={workspace}
+              selected={selected}
               leadingProjectName={leadingProjectName}
               hostBadgeLabel={hostBadge?.label}
               workspaceKey={workspace.workspaceKey}
@@ -1185,6 +1191,7 @@ function WorkspaceRowInner({
               >
                 <WorkspaceRowRightGroup
                   workspace={workspace}
+                  selected={selected}
                   backdrop={backdrop}
                   isHovered={isHovered}
                   isTouchPlatform={isTouchPlatform}

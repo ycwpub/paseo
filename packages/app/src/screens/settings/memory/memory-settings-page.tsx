@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
+import type { PaseoMemoryTransferSelection } from "@getpaseo/protocol/messages";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
+import { useAssistants } from "@/hooks/use-assistants";
 import { useMemory } from "@/hooks/use-memory";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
@@ -13,6 +15,7 @@ import type { HostMemorySettingsPage } from "@/utils/host-feature-routes";
 import { MemoryHostSyncCard } from "./memory-host-sync-card";
 import { MemoryScopePoliciesSection } from "./memory-scope-policies-section";
 import { MemoryTransferCard } from "./memory-transfer-card";
+import { memoryTransferSelectionLabel } from "./memory-transfer-selection";
 
 function MemorySummaryPage({
   summary,
@@ -68,12 +71,12 @@ export function MemorySettingsPage({
 }) {
   const supported = useHostFeature(serverId, "memory");
   const syncSupported = useHostFeature(serverId, "memorySync");
-  const { memory, isLoading, error, updateMemory, isMutating, mutationError } = useMemory(
-    serverId,
-    {
+  const assistantsSupported = useHostFeature(serverId, "assistants");
+  const { assistants } = useAssistants(serverId, { enabled: supported && assistantsSupported });
+  const { memory, isLoading, error, updateMemory, exportMemory, isMutating, mutationError } =
+    useMemory(serverId, {
       enabled: supported,
-    },
-  );
+    });
   const saveSummary = useCallback(
     async (summary: string) => {
       await updateMemory({ summary });
@@ -81,19 +84,27 @@ export function MemorySettingsPage({
     [updateMemory],
   );
   const importMemory = useCallback(
-    async (json: string, replace: boolean) => {
+    async (json: string, replace: boolean, selection: PaseoMemoryTransferSelection) => {
       if (replace) {
+        const selectionLabel = memoryTransferSelectionLabel(selection, assistants);
         const confirmed = await confirmDialog({
-          title: "替换全部 Paseo 记忆？",
-          message: "应用导入内容前会删除当前记忆。",
+          title: `替换${selectionLabel}？`,
+          message:
+            selection.type === "all"
+              ? "应用导入内容前会删除当前全部记忆。"
+              : `应用导入内容前只会删除${selectionLabel}，其他范围的记忆会保留。`,
           confirmLabel: "替换",
           destructive: true,
         });
         if (!confirmed) return;
       }
-      await updateMemory({ importJson: json, replaceOnImport: replace });
+      await updateMemory({
+        importJson: json,
+        replaceOnImport: replace,
+        importSelection: selection,
+      });
     },
-    [updateMemory],
+    [assistants, updateMemory],
   );
 
   if (!supported) {
@@ -148,8 +159,10 @@ export function MemorySettingsPage({
       content = (
         <SettingsSection title="导入与导出">
           <MemoryTransferCard
-            exportJson={memory.exportJson ?? ""}
+            memory={memory}
+            assistants={assistants}
             disabled={isMutating}
+            onExport={exportMemory}
             onImport={importMemory}
           />
         </SettingsSection>

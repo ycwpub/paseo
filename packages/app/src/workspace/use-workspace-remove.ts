@@ -42,7 +42,7 @@ export function useWorkspaceRemove(options: UseWorkspaceRemoveOptions): {
           workspaceId: options.workspaceId,
         }),
         confirmLabel: t("sidebar.workspace.confirmations.removeConfirm"),
-        cancelLabel: t("sidebar.workspace.confirmations.cancel"),
+        cancelLabel: t("common.cancel"),
         destructive: true,
       });
       if (!confirmed) {

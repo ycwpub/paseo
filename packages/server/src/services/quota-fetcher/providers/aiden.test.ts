@@ -132,7 +132,7 @@ describe("Aiden provider usage", () => {
     });
   });
 
-  it("treats an empty remote model list as temporarily unavailable instead of exposing CLI errors", async () => {
+  it("treats missing quota data as neutral instead of claiming that Aiden has no models", async () => {
     const runCommand: UsageCommandRunner = vi.fn(async () => {
       const error = new Error("command failed") as Error & { stderr: string };
       error.stderr =
@@ -149,14 +149,7 @@ describe("Aiden provider usage", () => {
       status: "unavailable",
       sourceLabel: "Aiden X",
       error: null,
-      details: [
-        {
-          id: "aiden-empty-models",
-          label: "状态",
-          value: "Aiden 当前未返回可用模型，暂无用量数据，请稍后重试。",
-          tone: "warning",
-        },
-      ],
+      details: [],
     });
   });
 
@@ -207,7 +200,7 @@ describe("Aiden provider usage", () => {
     });
   });
 
-  it("handles a successful response with no models as temporarily unavailable", async () => {
+  it("handles a successful response with no models as unavailable quota data", async () => {
     const provider = new AidenCodexQuotaProvider({
       logger: createTestLogger(),
       runCommand: commandReturning({ models: [] }),
@@ -216,11 +209,33 @@ describe("Aiden provider usage", () => {
     await expect(provider.fetchUsage()).resolves.toMatchObject({
       status: "unavailable",
       error: null,
-      details: [
-        {
-          id: "aiden-empty-models",
-        },
-      ],
+      details: [],
+    });
+  });
+
+  it("does not report a usable model without quota fields as a provider failure", async () => {
+    const provider = new AidenCodexQuotaProvider({
+      logger: createTestLogger(),
+      runCommand: commandReturning({
+        fetched_at: "2026-08-30T01:00:00.000Z",
+        models: [
+          {
+            id: "[custom]gpt-5.5",
+            quota: null,
+            ptu: null,
+            capacity: null,
+          },
+        ],
+      }),
+    });
+
+    await expect(provider.fetchUsage()).resolves.toMatchObject({
+      providerId: "aiden-codex",
+      status: "unavailable",
+      sourceLabel: "Aiden X",
+      fetchedAt: "2026-08-30T01:00:00.000Z",
+      error: null,
+      details: [],
     });
   });
 
@@ -311,7 +326,7 @@ describe("Aiden provider usage", () => {
       await expect(claudeProvider.fetchUsage()).resolves.toMatchObject({
         providerId: "aiden-claude",
         status: "unavailable",
-        details: [{ id: "aiden-empty-models" }],
+        details: [],
       });
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

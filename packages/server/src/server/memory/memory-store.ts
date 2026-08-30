@@ -23,6 +23,7 @@ import {
   type PaseoMemorySyncDetail,
   type PaseoMemorySyncSelection,
   type PaseoMemorySyncSnapshot,
+  type PaseoMemoryTransferSelection,
   type PaseoMemoryUpdateInput,
   type PaseoMemoryUser,
   type PaseoMemoryUserOperation,
@@ -59,6 +60,11 @@ import {
 import { relativeMemoryDocumentPath, summarizeMemoryContent } from "./memory-total-document.js";
 import { planMemoryOrganization, type MemoryOrganizationPlan } from "./memory-organization.js";
 import { resolveMemoryScopePaths } from "./memory-scope-paths.js";
+import {
+  parseMemoryTransferJson,
+  projectMemorySyncSnapshotForTransfer,
+  type ParsedMemoryExport,
+} from "./memory-transfer.js";
 
 const MEMORY_STORE_VERSION = 4;
 const SUMMARY_INDEX_MARKER = "<!-- paseo:memory-detail-index -->";
@@ -99,20 +105,6 @@ const MemoryCatalogV3Schema = MemoryCatalogV2Schema.omit({ version: true }).exte
 
 const MemoryCatalogSchema = MemoryCatalogV3Schema.omit({ version: true }).extend({
   version: z.literal(MEMORY_STORE_VERSION),
-});
-
-const MemoryExportSchema = z.object({
-  version: z.literal(2),
-  exportedAt: z.string(),
-  settings: PaseoMemorySettingsSchema,
-  summary: z.string(),
-  details: z.array(
-    PaseoMemoryDetailSchema.omit({
-      path: true,
-      charCount: true,
-      scopeDocuments: true,
-    }),
-  ),
 });
 
 type ParsedMemoryCatalog = z.infer<typeof MemoryCatalogSchema>;
@@ -617,6 +609,13 @@ export class PaseoMemoryStore {
   mergeSyncSnapshot(snapshot: PaseoMemorySyncSnapshot): PaseoMemoryState {
     this.ensureLoaded();
     const imported = PaseoMemorySyncSnapshotSchema.parse(snapshot);
+    this.applySyncSnapshot(imported);
+    this.persistCatalog();
+    this.refreshSummaryIndexes();
+    return this.getState();
+  }
+
+  private applySyncSnapshot(imported: PaseoMemorySyncSnapshot): void {
     const { users, incomingUserIdMap } = mergeMemorySyncUsers(this.catalog.users, imported.users);
     this.catalog.users = users;
     for (const user of users) {
@@ -637,9 +636,6 @@ export class PaseoMemoryStore {
       imported.scopePolicies,
       incomingUserIdMap,
     );
-    this.persistCatalog();
-    this.refreshSummaryIndexes();
-    return this.getState();
   }
 
   getDetailsForScopes(scopes: readonly PaseoMemoryScope[]): PaseoMemoryDetail[] {
@@ -657,7 +653,11 @@ export class PaseoMemoryStore {
     const parsed = PaseoMemoryUpdateInputSchema.parse(input);
     if (parsed.userOperation) this.applyUserOperation(parsed.userOperation);
     if (parsed.importJson !== undefined) {
-      this.importJson(parsed.importJson, parsed.replaceOnImport ?? false);
+      this.importJson(
+        parsed.importJson,
+        parsed.replaceOnImport ?? false,
+        parsed.importSelection ?? { type: "all" },
+      );
     }
     if (parsed.settings) this.applySettings(parsed.settings);
     if (parsed.policyUpdates) {
@@ -1396,26 +1396,66 @@ export class PaseoMemoryStore {
       .filter((usage) => usage.memoryIds.length > 0);
   }
 
-  private importJson(value: string, replace: boolean): void {
-    const imported = MemoryExportSchema.parse(JSON.parse(value));
-    if (replace) {
-      for (const detail of this.catalog.details.map(normalizedCatalogDetail)) {
-        this.removeDetailDocuments(detail);
+  private importJson(
+    value: string,
+    replace: boolean,
+    selection: PaseoMemoryTransferSelection,
+  ): void {
+    const imported = parseMemoryTransferJson(value);
+    if (selection.type === "all") {
+      if (imported.type === "snapshot") {
+        if (replace) this.resetAllMemory();
+        this.applySyncSnapshot(imported.value);
+        return;
       }
-      rmSync(this.legacyDetailsPath, { recursive: true, force: true });
-      this.catalog = {
-        ...createDefaultCatalog(),
-        settings: normalizeMemorySettings(imported.settings),
-        policies: this.catalog.policies,
-        scopePolicies: this.catalog.scopePolicies,
-        users: this.catalog.users,
-        activeUserId: this.catalog.activeUserId,
-      };
+      this.importMemoryExport(imported.value, replace);
+      return;
+    }
+
+    const targetScope = this.resolveSyncSelection(selection);
+    if (replace) this.removeMemoryScope(targetScope);
+    if (imported.type === "snapshot") {
+      const targetUser =
+        this.catalog.users.find((user) => user.id === this.catalog.activeUserId) ??
+        createDefaultMemoryUser();
+      this.applySyncSnapshot(
+        projectMemorySyncSnapshotForTransfer({
+          snapshot: imported.value,
+          selection,
+          targetScope,
+          targetUser,
+        }),
+      );
+      return;
+    }
+    this.importMemoryExport(imported.value, false, targetScope);
+    if (replace && targetScope.type === "global") {
+      this.writeSummary(imported.value.summary, targetScope.id ?? this.catalog.activeUserId);
+    }
+  }
+
+  private importMemoryExport(
+    imported: ParsedMemoryExport,
+    replace: boolean,
+    selectedScope?: PaseoMemoryScope,
+  ): void {
+    if (replace) {
+      this.resetAllMemory(imported.settings);
       this.writeSummary(imported.summary, this.catalog.activeUserId);
     }
     const reservedIds = new Set(this.catalog.details.map((entry) => entry.id));
     const importedIdMap = new Map<string, string>();
-    for (const detail of imported.details) {
+    const details = imported.details.flatMap((detail) => {
+      const resolvedScopes = this.resolveScopes(detail);
+      if (!selectedScope) return [{ detail, scopes: resolvedScopes }];
+      const includesSelectedScope = resolvedScopes.some((scope) =>
+        selectedScope.type === "global"
+          ? scope.type === "global"
+          : memoryScopeKey(scope) === memoryScopeKey(selectedScope),
+      );
+      return includesSelectedScope ? [{ detail, scopes: [selectedScope] }] : [];
+    });
+    for (const { detail } of details) {
       let id = detail.id;
       while (reservedIds.has(id)) {
         id = `${sanitizeFileSegment(detail.title)}-${randomUUID().slice(0, 8)}`;
@@ -1423,13 +1463,14 @@ export class PaseoMemoryStore {
       reservedIds.add(id);
       importedIdMap.set(detail.id, id);
     }
-    for (const detail of imported.details) {
+    for (const { detail, scopes } of details) {
       const id = importedIdMap.get(detail.id)!;
       const importedEntry = normalizedCatalogDetail(
         CatalogDetailSchema.parse({
           ...detail,
           id,
-          scopes: this.resolveScopes(detail),
+          scope: scopes[0],
+          scopes,
           supersedes: (detail.supersedes ?? []).map(
             (supersededId) => importedIdMap.get(supersededId) ?? supersededId,
           ),
@@ -1439,6 +1480,64 @@ export class PaseoMemoryStore {
       );
       this.writeDetailContentForEntry(importedEntry, detail.content.replace(/\r\n?/g, "\n").trim());
       this.catalog.details.push(importedEntry);
+    }
+  }
+
+  private resetAllMemory(settings = this.catalog.settings): void {
+    for (const detail of this.catalog.details.map(normalizedCatalogDetail)) {
+      this.removeDetailDocuments(detail);
+    }
+    rmSync(this.legacyDetailsPath, { recursive: true, force: true });
+    this.catalog = {
+      ...createDefaultCatalog(),
+      settings: normalizeMemorySettings(settings),
+      policies: this.catalog.policies,
+      scopePolicies: this.catalog.scopePolicies,
+      users: this.catalog.users,
+      activeUserId: this.catalog.activeUserId,
+    };
+    for (const user of this.catalog.users) this.writeSummary(defaultSummary(), user.id);
+  }
+
+  private removeMemoryScope(scope: PaseoMemoryScope): void {
+    const scopeKey = memoryScopeKey(scope);
+    const removedIds = new Set<string>();
+    this.catalog.details = this.catalog.details.flatMap((rawEntry) => {
+      const entry = normalizedCatalogDetail(rawEntry);
+      if (!entry.scopes.some((candidate) => memoryScopeKey(candidate) === scopeKey)) {
+        return [rawEntry];
+      }
+      this.removeScopeDetailDocument(entry, scope);
+      const scopes = entry.scopes.filter((candidate) => memoryScopeKey(candidate) !== scopeKey);
+      if (scopes.length === 0) {
+        rmSync(this.legacyDetailPath(entry.id, entry.title), { force: true });
+        removedIds.add(entry.id);
+        return [];
+      }
+      return [
+        CatalogDetailSchema.parse({
+          ...entry,
+          scope: scopes[0],
+          scopes,
+        }),
+      ];
+    });
+    if (removedIds.size > 0) {
+      this.catalog.recentUsages = this.catalog.recentUsages
+        .map((usage) => ({
+          ...usage,
+          memoryIds: usage.memoryIds.filter((id) => !removedIds.has(id)),
+        }))
+        .filter((usage) => usage.memoryIds.length > 0);
+    }
+    this.catalog.scopePolicies = this.catalog.scopePolicies.filter(
+      (policy) => memoryScopeKey(policy.scope) !== scopeKey,
+    );
+    if (scope.type === "global" && scope.id) {
+      this.writeSummary(defaultSummary(), scope.id);
+    } else {
+      const summaryPath = this.scopePaths(scope, this.allCatalogScopes()).summaryPath;
+      this.writeScopeSummary(summaryPath, defaultScopeSummary(scope));
     }
   }
 

@@ -7,6 +7,7 @@ import type { Theme } from "@/styles/theme";
 import { ProviderUsageBalanceBar } from "./balance-bar";
 import { formatProviderUsageError, isProviderUsageTemporarilyUnavailable } from "./copy";
 import { formatAgo } from "./format";
+import { presentProviderUsage } from "./presentation";
 import type { ProviderUsage } from "./types";
 import { ProviderUsageWindowBar } from "./window-bar";
 
@@ -57,7 +58,8 @@ export function ProviderUsageCard({
   const status = statusText(usage);
   const footer = footerText(usage);
   const balances = usage.balances ?? [];
-  const details = usage.details ?? [];
+  const presentation = presentProviderUsage(usage);
+  const details = presentation.details;
 
   const containerStyle = useMemo(
     () => [styles.container, compact ? styles.containerCompact : styles.containerPadded],
@@ -89,9 +91,9 @@ export function ProviderUsageCard({
         ) : null}
       </View>
 
-      {usage.error ? (
+      {presentation.error ? (
         <Text style={styles.error} numberOfLines={3}>
-          {formatProviderUsageError(usage.error)}
+          {formatProviderUsageError(presentation.error)}
         </Text>
       ) : null}
 

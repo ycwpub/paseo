@@ -1,4 +1,10 @@
 import type { StreamItem } from "@/types/stream";
+import {
+  extractShellReferencePaths,
+  inferTaskTodos,
+  inferUserMessageReferences,
+  selectCurrentTaskItems,
+} from "./context-inference";
 
 export interface TaskSummaryTodo {
   id: string;
@@ -28,10 +34,8 @@ export interface TaskSummary {
 
 interface BuildTaskSummaryOptions {
   cwd?: string | null;
+  isRunning?: boolean;
 }
-
-const REFERENCE_DOCUMENT_PATTERN =
-  /(?:^|\/)(?:AGENTS|SKILL|README)\.md$|\.(?:md|mdx|pdf|doc|docx|txt)$/i;
 
 function normalizePath(path: string): string {
   return path.trim().replaceAll("\\", "/").replace(/\/+/g, "/");
@@ -152,6 +156,13 @@ function collectAgentToolCall(
   }
 
   if (detail.type === "search") {
+    for (const filePath of detail.filePaths ?? []) {
+      addReference(references, referenceKeys, {
+        kind: "document",
+        label: displayPath(filePath, cwd),
+        target: filePath,
+      });
+    }
     for (const result of detail.webResults ?? []) {
       addReference(references, referenceKeys, {
         kind: "link",
@@ -161,12 +172,22 @@ function collectAgentToolCall(
     }
   }
 
-  if (detail.type === "read" && REFERENCE_DOCUMENT_PATTERN.test(normalizePath(detail.filePath))) {
+  if (detail.type === "read") {
     addReference(references, referenceKeys, {
       kind: "document",
       label: displayPath(detail.filePath, cwd),
       target: detail.filePath,
     });
+  }
+
+  if (detail.type === "shell") {
+    for (const filePath of extractShellReferencePaths(detail.command)) {
+      addReference(references, referenceKeys, {
+        kind: "document",
+        label: displayPath(filePath, detail.cwd ?? cwd),
+        target: filePath,
+      });
+    }
   }
 }
 
@@ -200,13 +221,14 @@ export function buildTaskSummary(
   options: BuildTaskSummaryOptions = {},
 ): TaskSummary {
   const cwd = options.cwd?.trim() || null;
+  const taskItems = selectCurrentTaskItems(items);
   let todos: TaskSummaryTodo[] = [];
   const outputs: TaskSummaryOutput[] = [];
   const references: TaskSummaryReference[] = [];
   const outputKeys = new Set<string>();
   const referenceKeys = new Set<string>();
 
-  for (const item of items) {
+  for (const item of taskItems) {
     if (item.kind === "todo_list") {
       const todoOccurrences = new Map<string, number>();
       todos = item.items.map((todo) => {
@@ -220,11 +242,21 @@ export function buildTaskSummary(
       });
       continue;
     }
+    if (item.kind === "user_message") {
+      for (const reference of inferUserMessageReferences(item)) {
+        addReference(references, referenceKeys, reference);
+      }
+      continue;
+    }
     if (item.kind !== "tool_call") {
       continue;
     }
     collectAgentToolCall(item, cwd, outputs, outputKeys, references, referenceKeys);
     collectOrchestratorToolCall(item, references, referenceKeys);
+  }
+
+  if (todos.length === 0) {
+    todos = inferTaskTodos(taskItems, { isRunning: options.isRunning });
   }
 
   return { todos, outputs, references };

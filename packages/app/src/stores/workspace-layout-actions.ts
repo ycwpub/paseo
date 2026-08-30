@@ -1202,6 +1202,7 @@ function createDefaultExplorerSidebarTabs(): WorkspaceTab[] {
   const targets = [
     { kind: "files" },
     { kind: "changes_tree" },
+    { kind: "working_diff" },
     { kind: "task_summary" },
     { kind: "pull_request" },
   ] as const;

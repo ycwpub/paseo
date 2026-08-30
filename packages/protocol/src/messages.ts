@@ -6830,6 +6830,14 @@ export type WorkspaceProjectDescriptorPayload = z.infer<
 >;
 export type ProjectListResponseMessage = z.infer<typeof ProjectListResponseMessageSchema>;
 export type FileVersion = z.infer<typeof FileVersionSchema>;
+export type FileSubscribeResponse = z.infer<typeof FileSubscribeResponseSchema>;
+export type FileUnsubscribeResponse = z.infer<typeof FileUnsubscribeResponseSchema>;
+export type FileWriteResponse = z.infer<typeof FileWriteResponseSchema>;
+export type FileEntryCreateResponse = z.infer<typeof FileEntryCreateResponseSchema>;
+export type FileEntryRenameResponse = z.infer<typeof FileEntryRenameResponseSchema>;
+export type FileEntryDuplicateResponse = z.infer<typeof FileEntryDuplicateResponseSchema>;
+export type FileEntryDeleteResponse = z.infer<typeof FileEntryDeleteResponseSchema>;
+export type FileUpdate = z.infer<typeof FileUpdateSchema>;
 export type FileWriteResult = z.infer<typeof FileWriteResultSchema>;
 export type WorkspaceScriptLifecycle = z.infer<typeof WorkspaceScriptLifecycleSchema>;
 export type WorkspaceScriptHealth = z.infer<typeof WorkspaceScriptHealthSchema>;

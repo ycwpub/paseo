@@ -239,7 +239,7 @@ describe("DaemonSession", () => {
           pid: process.pid,
           nodePath: process.execPath,
           startedAt: null,
-          listen: null,
+          listen: "127.0.0.1:6767",
           relay: null,
           providers: [],
         },
@@ -269,7 +269,7 @@ describe("DaemonSession", () => {
     expect(emitted).toEqual([
       {
         type: "daemon.get_pairing_offer.response",
-        payload: { requestId: "p-1", url: "", qr: null, relayEnabled: false },
+        payload: { requestId: "p-1", url: "", qr: null, relayEnabled: false, offers: [] },
       },
     ]);
   });

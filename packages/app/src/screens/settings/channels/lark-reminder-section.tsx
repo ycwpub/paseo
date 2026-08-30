@@ -272,7 +272,7 @@ export function LarkReminderSection({
   if (!supported) return <UpgradeRequiredCard />;
 
   return (
-    <SettingsSection title={`定时任务（${reminders.reminders.length}）`}>
+    <SettingsSection title={`飞书定时提醒（${reminders.reminders.length}）`}>
       <View style={styles.listHeader}>
         <Text style={settingsStyles.rowHint}>
           任一被提醒人在群内回复后，任务会自动停止；也可以随时编辑、停止或删除。

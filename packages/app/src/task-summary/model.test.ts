@@ -33,6 +33,15 @@ function tool(id: string, name: string, detail: ToolCallDetail): StreamItem {
   };
 }
 
+function user(id: string, text: string): StreamItem {
+  return {
+    kind: "user_message",
+    id,
+    text,
+    timestamp: new Date(1),
+  };
+}
+
 describe("buildTaskSummary", () => {
   it("uses the latest todo snapshot", () => {
     const summary = buildTaskSummary([
@@ -126,6 +135,83 @@ describe("buildTaskSummary", () => {
         label: "docs/design.md",
         kind: "document",
         target: "/repo/docs/design.md",
+      },
+      {
+        id: "document:/repo/src/app.ts",
+        label: "src/app.ts",
+        kind: "document",
+        target: "/repo/src/app.ts",
+      },
+    ]);
+  });
+
+  it("uses the current user request as a running fallback todo", () => {
+    const summary = buildTaskSummary(
+      [
+        user("request-1", "旧任务"),
+        todo("todo-1", [{ text: "旧待办", completed: true }]),
+        user("request-2", "修复任务摘要为空的问题"),
+        tool("edit-1", "apply_patch", { type: "edit", filePath: "/repo/src/app.ts" }),
+      ],
+      { cwd: "/repo", isRunning: true },
+    );
+
+    expect(summary.todos).toEqual([
+      {
+        id: "inferred-todo:request-2:0",
+        text: "修复任务摘要为空的问题",
+        completed: false,
+      },
+    ]);
+  });
+
+  it("splits list-shaped user requests into inferred todos", () => {
+    const summary = buildTaskSummary([user("request-1", "1. 修复待办\n2. 补充参考信息")], {
+      isRunning: false,
+    });
+
+    expect(summary.todos).toEqual([
+      { id: "inferred-todo:request-1:0", text: "修复待办", completed: true },
+      { id: "inferred-todo:request-1:1", text: "补充参考信息", completed: true },
+    ]);
+  });
+
+  it("collects links from the request and files consulted by search and shell tools", () => {
+    const summary = buildTaskSummary(
+      [
+        user("request-1", "参考 https://example.com/design，完成实现"),
+        tool("search-1", "Grep", {
+          type: "search",
+          query: "task summary",
+          filePaths: ["/repo/src/model.ts"],
+        }),
+        tool("shell-1", "Shell", {
+          type: "shell",
+          command: "cd /repo && sed -n '1,90p' docs/design.md",
+          cwd: "/repo",
+        }),
+      ],
+      { cwd: "/repo", isRunning: true },
+    );
+
+    expect(summary.references).toEqual([
+      {
+        id: "link:https://example.com/design",
+        label: "https://example.com/design",
+        kind: "link",
+        target: "https://example.com/design",
+      },
+      {
+        id: "document:/repo/src/model.ts",
+        label: "src/model.ts",
+        kind: "document",
+        target: "/repo/src/model.ts",
+      },
+      {
+        id: "document:docs/design.md",
+        label: "docs/design.md",
+        kind: "document",
+        target: "docs/design.md",
       },
     ]);
   });

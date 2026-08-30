@@ -67,6 +67,21 @@ describe("memory user protocol", () => {
     ]);
   });
 
+  test("accepts all, Global, and Assistant transfer selections", () => {
+    for (const importSelection of [
+      { type: "all" },
+      { type: "global" },
+      { type: "assistant", id: "assistant-1" },
+    ] as const) {
+      expect(
+        PaseoMemoryUpdateInputSchema.parse({
+          importJson: "{}",
+          importSelection,
+        }).importSelection,
+      ).toEqual(importSelection);
+    }
+  });
+
   test("accepts a portable multi-host memory snapshot", () => {
     const snapshot = PaseoMemorySyncSnapshotSchema.parse({
       version: 1,

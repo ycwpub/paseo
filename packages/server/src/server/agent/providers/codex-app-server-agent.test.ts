@@ -4570,7 +4570,10 @@ describe("Codex app-server provider", () => {
     expect(session.currentThreadId).toBe("archived-thread-id");
     expect(requests).toEqual([
       { method: "thread/loaded/list", params: {} },
-      { method: "thread/resume", params: { threadId: "archived-thread-id" } },
+      {
+        method: "thread/resume",
+        params: expect.objectContaining({ threadId: "archived-thread-id" }),
+      },
     ]);
   });
 

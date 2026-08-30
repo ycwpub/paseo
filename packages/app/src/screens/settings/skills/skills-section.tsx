@@ -11,6 +11,11 @@ import { settingsStyles } from "@/styles/settings";
 import { useSkills } from "@/hooks/use-skills";
 import { useHostFeature } from "@/runtime/host-features";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import {
+  DEFAULT_SETTINGS_LIST_PAGE_SIZE,
+  paginateSettingsList,
+} from "@/screens/settings/shared/settings-list-pagination";
+import { SettingsListPaginationControls } from "@/screens/settings/shared/settings-list-pagination-controls";
 
 interface SkillsSectionProps {
   serverId: string;
@@ -137,6 +142,8 @@ export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps
   const supportsSkills = useHostFeature(serverId, "skills");
   const skills = useSkills(serverId, { enabled: supportsSkills });
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_SETTINGS_LIST_PAGE_SIZE);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   const filteredSkills = useMemo(() => {
@@ -155,6 +162,24 @@ export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps
       return haystack.includes(query);
     });
   }, [searchQuery, skills.skills]);
+  const pagination = useMemo(
+    () => paginateSettingsList(filteredSkills, page, pageSize),
+    [filteredSkills, page, pageSize],
+  );
+
+  useEffect(() => {
+    if (page !== pagination.page) setPage(pagination.page);
+  }, [page, pagination.page]);
+
+  const handleSearchQueryChange = useCallback((query: string) => {
+    setSearchQuery(query);
+    setPage(1);
+  }, []);
+
+  const handlePageSizeChange = useCallback((nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
+  }, []);
 
   const handleToggleEnabled = useCallback(
     (skill: Skill, nextEnabled: boolean) => {
@@ -199,8 +224,8 @@ export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps
       );
     }
 
-    if (filteredSkills.length > 0) {
-      return filteredSkills.map((skill, index) => (
+    if (pagination.items.length > 0) {
+      return pagination.items.map((skill, index) => (
         <SkillRow
           key={skill.id}
           skill={skill}
@@ -220,10 +245,10 @@ export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps
       </View>
     );
   }, [
-    filteredSkills,
     handleDelete,
     handleToggleEnabled,
     onEdit,
+    pagination.items,
     skills.isLoading,
     skills.skills.length,
   ]);
@@ -263,12 +288,19 @@ export function SkillsSection({ serverId, onCreate, onEdit }: SkillsSectionProps
           <Field label="搜索">
             <FormTextInput
               initialValue={searchQuery}
-              onChangeText={setSearchQuery}
+              onChangeText={handleSearchQueryChange}
               placeholder="搜索技能"
             />
           </Field>
         </View>
         <View style={settingsStyles.card}>{skillListContent}</View>
+        {filteredSkills.length > 0 ? (
+          <SettingsListPaginationControls
+            pagination={pagination}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        ) : null}
         {refreshMessage ? <Text style={styles.sectionMessage}>{refreshMessage}</Text> : null}
         {skills.error ? <Text style={settingsStyles.rowError}>{skills.error.message}</Text> : null}
         {skills.mutationError ? (

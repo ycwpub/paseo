@@ -1,7 +1,6 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-new-object-as-prop -- Handler mode switches and the modal editor bind to the current handler draft. */
 import { useCallback, useMemo, useState } from "react";
-import { Text, View } from "react-native";
-import { Settings2 } from "lucide-react-native";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import type {
@@ -12,7 +11,6 @@ import type {
 } from "@getpaseo/protocol/messages";
 import type { WorkflowScriptSummary, WorkflowStep } from "@getpaseo/protocol/workflow/types";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { Button } from "@/components/ui/button";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { WorkflowStepEditorFields } from "@/components/workflows/workflow-step-editor";
 import {
@@ -160,36 +158,31 @@ export function HttpServiceHandlerFields({
         />
       ) : (
         <>
-          <View style={styles.customHeader}>
-            <View style={styles.typeField}>
-              <SelectField
-                label="节点类型"
-                value={handler.step.type}
-                selectedDisplay={{
-                  label: STEP_LABELS[handler.step.type],
-                  description: handler.step.name || handler.step.id,
-                }}
-                options={stepOptions}
-                onChange={handleStepTypeChange}
-                placeholder="选择节点类型"
-                emptyText="没有可用的节点类型"
-              />
-            </View>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={Settings2}
-              onPress={() => setEditorVisible(true)}
-            >
-              编辑处理节点
-            </Button>
+          <View style={styles.typeField}>
+            <SelectField
+              label="节点类型"
+              value={handler.step.type}
+              selectedDisplay={{
+                label: STEP_LABELS[handler.step.type],
+                description: handler.step.name || handler.step.id,
+              }}
+              options={stepOptions}
+              onChange={handleStepTypeChange}
+              placeholder="选择节点类型"
+              emptyText="没有可用的节点类型"
+            />
           </View>
-          <View style={styles.summary}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`编辑处理节点 ${handler.step.name || handler.step.id}`}
+            onPress={() => setEditorVisible(true)}
+            style={styles.summary}
+          >
             <Text style={styles.summaryTitle}>{handler.step.name || handler.step.id}</Text>
             <Text style={styles.summaryText}>
               节点 ID：{handler.step.id} · 类型：{STEP_LABELS[handler.step.type]}
             </Text>
-          </View>
+          </Pressable>
           <AdaptiveModalSheet
             visible={editorVisible}
             header={editorHeader}
@@ -225,14 +218,7 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     gap: theme.spacing[3],
   },
-  customHeader: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    flexWrap: "wrap",
-    gap: theme.spacing[3],
-  },
   typeField: {
-    flex: 1,
     minWidth: 240,
   },
   summary: {

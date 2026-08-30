@@ -759,7 +759,7 @@ describe("LarkChannelSection", () => {
     );
   });
 
-  test("opens reminders on a dedicated secondary page", () => {
+  test("shows reminder tasks directly on the channel overview", () => {
     channelState.current.status = makeStatus([makeBot()]);
     const onDetailNavigationChange = vi.fn();
 
@@ -770,21 +770,14 @@ describe("LarkChannelSection", () => {
       />,
     );
 
-    expect(screen.queryByTestId("host-page-channels-reminders")).toBeNull();
-    fireEvent.click(screen.getByTestId("host-page-lark-open-reminders"));
-    expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
-    expect(screen.getByText("飞书定时提醒")).toBeTruthy();
-    expect(screen.queryByText("返回飞书设置")).toBeNull();
-
-    const detailNavigation = onDetailNavigationChange.mock.calls
-      .map(([navigation]) => navigation)
-      .find((navigation) => navigation?.title === "飞书定时提醒");
-    expect(detailNavigation).toBeTruthy();
-    act(() => detailNavigation?.onBack());
     expect(screen.getByTestId("host-page-channels")).toBeTruthy();
+    expect(screen.getByTestId("host-page-lark-reminders-section")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "创建定时任务" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "编辑定时任务" })).toBeTruthy();
+    expect(onDetailNavigationChange).toHaveBeenCalledWith(null);
   });
 
-  test("opens create and edit reminder forms as nested detail pages", () => {
+  test("opens create and edit reminder forms as dedicated secondary pages", () => {
     channelState.current.status = makeStatus([makeBot()]);
     const onDetailNavigationChange = vi.fn();
 
@@ -795,7 +788,6 @@ describe("LarkChannelSection", () => {
       />,
     );
 
-    fireEvent.click(screen.getByTestId("host-page-lark-open-reminders"));
     fireEvent.click(screen.getByRole("button", { name: "创建定时任务" }));
     expect(screen.getByTestId("host-page-channels-reminder-create")).toBeTruthy();
     expect(screen.getByText("正在创建定时任务")).toBeTruthy();
@@ -805,7 +797,8 @@ describe("LarkChannelSection", () => {
       .find((navigation) => navigation?.title === "创建定时任务");
     expect(createNavigation).toBeTruthy();
     act(() => createNavigation?.onBack());
-    expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
+    expect(screen.getByTestId("host-page-channels")).toBeTruthy();
+    expect(screen.getByTestId("host-page-lark-reminders-section")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "编辑定时任务" }));
     expect(screen.getByTestId("host-page-channels-reminder-edit")).toBeTruthy();
@@ -816,6 +809,7 @@ describe("LarkChannelSection", () => {
       .find((navigation) => navigation?.title === "编辑定时任务");
     expect(editNavigation).toBeTruthy();
     act(() => editNavigation?.onBack());
-    expect(screen.getByTestId("host-page-channels-reminders")).toBeTruthy();
+    expect(screen.getByTestId("host-page-channels")).toBeTruthy();
+    expect(screen.getByTestId("host-page-lark-reminders-section")).toBeTruthy();
   });
 });

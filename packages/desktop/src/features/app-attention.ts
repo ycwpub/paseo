@@ -7,6 +7,7 @@ import log from "electron-log/main";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
 
 const MAC_ATTENTION_SOUND_PATH = "/System/Library/Sounds/Glass.aiff";
+const DOCK_ATTENTION_TEST_DURATION_MS = 10_000;
 
 export type DesktopAttentionReason = "finished" | "intervention";
 
@@ -143,22 +144,51 @@ export function registerAppAttentionHandlers(): void {
     },
     playSound: playMacAttentionSound,
   });
+  let testClearTimer: ReturnType<typeof setTimeout> | null = null;
+  const cancelTestClear = () => {
+    if (!testClearTimer) {
+      return;
+    }
+    clearTimeout(testClearTimer);
+    testClearTimer = null;
+  };
 
   ipcMain.handle("paseo:attention:signal", async (_event, input?: unknown) => {
     if (process.platform !== "darwin" || !readAttentionReason(input)) {
       return false;
     }
+    cancelTestClear();
     const settings = await getDesktopSettingsStore().get();
     return controller.signal(settings.attention.soundVolume, {
       allowWhenFocused: readAllowWhenFocused(input),
     });
   });
 
+  ipcMain.handle("paseo:attention:test", async () => {
+    if (process.platform !== "darwin") {
+      return false;
+    }
+    cancelTestClear();
+    const settings = await getDesktopSettingsStore().get();
+    const shown = controller.signal(settings.attention.soundVolume, {
+      allowWhenFocused: true,
+    });
+    if (shown) {
+      testClearTimer = setTimeout(() => {
+        testClearTimer = null;
+        controller.clear();
+      }, DOCK_ATTENTION_TEST_DURATION_MS);
+    }
+    return shown;
+  });
+
   ipcMain.handle("paseo:attention:clear", () => {
+    cancelTestClear();
     controller.clear();
   });
 
   app.on("browser-window-focus", () => {
+    cancelTestClear();
     controller.clear();
   });
 }

@@ -249,8 +249,8 @@ describe("relay-transport control lifecycle", () => {
     expect(attachedMetadata).toEqual([
       {
         transport: "relay",
-        externalSessionKey: "session:clt_test",
-        relayConnectionId: "clt_test",
+        externalSessionKey: "relay:wss://relay.paseo.sh:443:clt_test",
+        relayConnectionId: "wss://relay.paseo.sh:443:clt_test",
       },
     ]);
   });

@@ -178,7 +178,16 @@ const AgentTaskSummaryBody = memo(function AgentTaskSummaryBody({
   const head =
     useSessionStore((state) => state.sessions[serverId]?.agentStreamHead.get(agentId)) ??
     EMPTY_ITEMS;
-  const summary = useMemo(() => buildTaskSummary([...tail, ...head], { cwd }), [cwd, head, tail]);
+  const isRunning = useSessionStore((state) => {
+    const status =
+      state.sessions[serverId]?.agents.get(agentId)?.status ??
+      state.sessions[serverId]?.agentDetails.get(agentId)?.status;
+    return status === "running" || status === "initializing";
+  });
+  const summary = useMemo(
+    () => buildTaskSummary([...tail, ...head], { cwd, isRunning }),
+    [cwd, head, isRunning, tail],
+  );
 
   return (
     <View style={styles.body}>

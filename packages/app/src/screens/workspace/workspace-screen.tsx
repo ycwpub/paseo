@@ -4142,7 +4142,12 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
   },
   headerTitleContainer: {
-    flex: 1,
+    // Keep compact headers flexible, but do not cover the desktop titlebar's
+    // empty drag surface with this content layer.
+    flexGrow: {
+      xs: 1,
+      md: 0,
+    },
     flexShrink: 1,
     minWidth: 0,
     flexDirection: "row",

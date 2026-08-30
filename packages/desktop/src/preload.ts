@@ -99,6 +99,7 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
   attention: {
     signal: (reason: "finished" | "intervention", options?: { allowWhenFocused?: boolean }) =>
       ipcRenderer.invoke("paseo:attention:signal", { reason, ...options }),
+    test: () => ipcRenderer.invoke("paseo:attention:test"),
     clear: () => ipcRenderer.invoke("paseo:attention:clear"),
   },
   island: {

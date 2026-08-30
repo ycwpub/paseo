@@ -334,9 +334,33 @@ function createExplorerSidebarNode(): SplitNode {
 const REQUIRED_EXPLORER_TARGETS = [
   { kind: "files" },
   { kind: "changes_tree" },
+  { kind: "working_diff" },
   { kind: "task_summary" },
   { kind: "pull_request" },
 ] as const satisfies readonly WorkspaceTabTarget[];
+
+function isDefaultWorkingDiffTab(tab: WorkspaceTab): boolean {
+  return (
+    tab.target.kind === "working_diff" &&
+    !tab.target.cwd &&
+    !tab.target.focusPath &&
+    !tab.target.focusRequestId &&
+    tab.state === undefined
+  );
+}
+
+function removeDefaultWorkingDiffTabs(
+  layout: WorkspaceLayout,
+  matchingTabs: readonly WorkspaceTab[],
+): WorkspaceLayout {
+  let root = layout.root;
+  for (const tab of matchingTabs) {
+    if (isDefaultWorkingDiffTab(tab)) {
+      root = removeTabFromTree(root, tab.tabId);
+    }
+  }
+  return root === layout.root ? layout : { ...layout, root };
+}
 
 function ensureExplorerSidebarDefaultTabs(
   layout: WorkspaceLayout,
@@ -355,7 +379,24 @@ function ensureExplorerSidebarDefaultTabs(
   for (const target of REQUIRED_EXPLORER_TARGETS) {
     const explorerPane = findPaneById(nextLayout.root, paneId);
     const allTabs = collectAllTabs(nextLayout.root);
-    const existingTab = allTabs.find((tab) => tab.target.kind === target.kind);
+    const matchingTabs = allTabs.filter((tab) => tab.target.kind === target.kind);
+    let existingTab = matchingTabs[0];
+    if (target.kind === "working_diff") {
+      const configuredTabs = matchingTabs.filter(
+        (tab) =>
+          tab.target.kind === "working_diff" &&
+          Boolean(
+            tab.target.cwd ||
+            tab.target.focusPath ||
+            tab.target.focusRequestId ||
+            tab.state !== undefined,
+          ),
+      );
+      existingTab = configuredTabs[0] ?? matchingTabs[0];
+      if (configuredTabs.length > 0) {
+        nextLayout = removeDefaultWorkingDiffTabs(nextLayout, matchingTabs);
+      }
+    }
     if (existingTab && explorerPane?.tabIds.includes(existingTab.tabId)) {
       continue;
     }
@@ -381,10 +422,48 @@ function ensureExplorerSidebarDefaultTabs(
       })?.layout ?? nextLayout;
   }
 
+  nextLayout = reorderExplorerSidebarDefaultTabs(nextLayout, paneId);
+
   if (wasHidden) {
     nextLayout = setPaneHiddenInLayout({ layout: nextLayout, paneId, hidden: true }) ?? nextLayout;
   }
   return keepWorkspaceFocusOutOfExplorerSidebar(nextLayout, paneId, originalFocusedPaneId);
+}
+
+function reorderExplorerSidebarDefaultTabs(
+  layout: WorkspaceLayout,
+  paneId: string,
+): WorkspaceLayout {
+  const explorerPane = findPaneById(layout.root, paneId);
+  if (explorerPane) {
+    const allTabs = collectAllTabs(layout.root);
+    const requiredKinds = new Set<string>(REQUIRED_EXPLORER_TARGETS.map((target) => target.kind));
+    const requiredTabIds = REQUIRED_EXPLORER_TARGETS.flatMap((target) => {
+      const tab = explorerPane.tabIds
+        .map((tabId) => allTabs.find((candidate) => candidate.tabId === tabId))
+        .find((candidate) => candidate?.target.kind === target.kind);
+      return tab ? [tab.tabId] : [];
+    });
+    const firstRequiredIndex = explorerPane.tabIds.findIndex((tabId) => {
+      const tab = allTabs.find((candidate) => candidate.tabId === tabId);
+      return tab ? requiredKinds.has(tab.target.kind) : false;
+    });
+    const insertionIndex = firstRequiredIndex < 0 ? explorerPane.tabIds.length : firstRequiredIndex;
+    const otherTabIds = explorerPane.tabIds.filter((tabId) => !requiredTabIds.includes(tabId));
+    const orderedTabIds = [
+      ...otherTabIds.slice(0, insertionIndex),
+      ...requiredTabIds,
+      ...otherTabIds.slice(insertionIndex),
+    ];
+    return (
+      reorderPaneTabsInLayout({
+        layout,
+        paneId,
+        tabIds: orderedTabIds,
+      }) ?? layout
+    );
+  }
+  return layout;
 }
 
 function preserveVersionOneSideTabs(input: {
@@ -467,6 +546,7 @@ function migrateVersionOneWorkspaceLayout(input: {
       legacyExplorerPane.tabIds.includes(tab.tabId) &&
       tab.target.kind !== "files" &&
       tab.target.kind !== "changes_tree" &&
+      tab.target.kind !== "working_diff" &&
       tab.target.kind !== "task_summary" &&
       tab.target.kind !== "pull_request",
   );
@@ -868,6 +948,29 @@ export function createWorkspaceLayoutStore(
           }
           if (!result) {
             return null;
+          }
+          if (normalizedTarget.kind === "working_diff" && placement.explorerSidebarPaneId) {
+            const explorerPane = findPaneById(result.layout.root, placement.explorerSidebarPaneId);
+            const allTabs = collectAllTabs(result.layout.root);
+            const explorerHasDiff = explorerPane?.tabIds.some(
+              (tabId) => allTabs.find((tab) => tab.tabId === tabId)?.target.kind === "working_diff",
+            );
+            if (explorerPane && !explorerHasDiff) {
+              const replacement = createTabInLayout({
+                layout: result.layout,
+                target: { kind: "working_diff" },
+                now: Date.now(),
+                placement: { mode: "pane", paneId: explorerPane.id },
+                explorerSidebarPaneId: explorerPane.id,
+                createTabId: createWorkspaceTabInstanceId,
+              });
+              if (replacement) {
+                result = {
+                  ...result,
+                  layout: reorderExplorerSidebarDefaultTabs(replacement.layout, explorerPane.id),
+                };
+              }
+            }
           }
           const nextLayout = keepWorkspaceFocusOutOfExplorerSidebar(
             result.layout,

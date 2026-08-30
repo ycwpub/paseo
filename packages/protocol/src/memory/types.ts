@@ -182,6 +182,21 @@ export const PaseoMemorySyncSelectionSchema = z.discriminatedUnion("type", [
 ]);
 export type PaseoMemorySyncSelection = z.infer<typeof PaseoMemorySyncSelectionSchema>;
 
+export const PaseoMemoryTransferSelectionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("all"),
+  }),
+  z.object({
+    type: z.literal("global"),
+    id: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("assistant"),
+    id: z.string().min(1),
+  }),
+]);
+export type PaseoMemoryTransferSelection = z.infer<typeof PaseoMemoryTransferSelectionSchema>;
+
 export const PaseoMemorySyncSnapshotSchema = z.object({
   version: z.literal(1),
   sourceHostId: z.string().min(1),
@@ -309,6 +324,8 @@ export const PaseoMemoryUpdateInputSchema = z.object({
   consolidate: z.boolean().optional(),
   importJson: z.string().optional(),
   replaceOnImport: z.boolean().optional(),
+  // COMPAT(memoryScopedTransfer): omitted by old clients to import all memory.
+  importSelection: PaseoMemoryTransferSelectionSchema.optional(),
   // COMPAT(memoryPolicies): added in v0.3.2, remove optional after 2027-02-18.
   policyUpdates: z.array(PaseoMemoryPolicySchema).optional(),
   // COMPAT(memoryScopePolicies): added in v0.3.2, remove optional after 2027-02-18.

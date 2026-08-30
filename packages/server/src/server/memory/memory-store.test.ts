@@ -625,6 +625,112 @@ describe("PaseoMemoryStore", () => {
     expect(globalSnapshot.details[0]?.scopes).toEqual([{ type: "global", id: "default" }]);
   });
 
+  test("replaces only the selected Assistant memory during scoped import", () => {
+    store.upsertExtractedMemory({
+      title: "Global only",
+      category: "preference",
+      content: "Keep the global memory.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "global" },
+    });
+    store.upsertExtractedMemory({
+      title: "Assistant one only",
+      category: "procedure",
+      content: "Restore assistant one.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "assistant", id: "assistant-1" },
+    });
+    store.upsertExtractedMemory({
+      title: "Assistant two only",
+      category: "fact",
+      content: "Keep assistant two.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-2",
+      scope: { type: "assistant", id: "assistant-2" },
+    });
+    store.upsertExtractedMemory({
+      title: "Shared global and assistant",
+      category: "decision",
+      content: "Keep both selected scopes.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scopes: [{ type: "global" }, { type: "assistant", id: "assistant-1" }],
+    });
+    const assistantExport = JSON.stringify(
+      store.getSyncSnapshot({ type: "assistant", id: "assistant-1" }),
+    );
+
+    store.update({
+      importJson: assistantExport,
+      importSelection: { type: "assistant", id: "assistant-1" },
+      replaceOnImport: true,
+    });
+
+    const state = store.getState();
+    expect(state.details.map((detail) => detail.title).toSorted()).toEqual([
+      "Assistant one only",
+      "Assistant two only",
+      "Global only",
+      "Shared global and assistant",
+    ]);
+    expect(
+      state.details.find((detail) => detail.title === "Shared global and assistant")?.scopes,
+    ).toEqual([
+      { type: "global", id: "default" },
+      { type: "assistant", id: "assistant-1" },
+    ]);
+    expect(state.details.find((detail) => detail.title === "Assistant two only")?.scopes).toEqual([
+      { type: "assistant", id: "assistant-2" },
+    ]);
+  });
+
+  test("imports a selected Global memory export without deleting Assistant memory", () => {
+    store.upsertExtractedMemory({
+      title: "Existing assistant memory",
+      category: "procedure",
+      content: "Keep this assistant memory.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-1",
+      scope: { type: "assistant", id: "assistant-1" },
+    });
+    const source = new PaseoMemoryStore({
+      paseoHome: path.join(paseoHome, "source"),
+      logger: pino({ level: "silent" }),
+      serverId: "source-host",
+    });
+    source.upsertExtractedMemory({
+      title: "Imported global memory",
+      category: "preference",
+      content: "Use concise Chinese.",
+      keywords: [],
+      confidence: 1,
+      sourceAgentId: "agent-source",
+      scope: { type: "global" },
+    });
+
+    store.update({
+      importJson: JSON.stringify(source.getSyncSnapshot({ type: "global" })),
+      importSelection: { type: "global" },
+      replaceOnImport: true,
+    });
+
+    const state = store.getState();
+    expect(state.details.map((detail) => detail.title).toSorted()).toEqual([
+      "Existing assistant memory",
+      "Imported global memory",
+    ]);
+    expect(
+      state.details.find((detail) => detail.title === "Imported global memory")?.scopes,
+    ).toEqual([{ type: "global", id: "default" }]);
+  });
+
   test("merges host snapshots idempotently across users and scopes", () => {
     const source = new PaseoMemoryStore({
       paseoHome,

@@ -6,6 +6,7 @@ import { RotateCw } from "lucide-react-native";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { DesktopDockAttentionTestRow } from "@/desktop/components/desktop-dock-attention-test-row";
 import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
@@ -259,6 +260,7 @@ export function DesktopNotificationsSection() {
               : t("settings.notifications.send")}
           </Button>
         </View>
+        <DesktopDockAttentionTestRow />
       </View>
       {testNotificationState.status === "success" ? (
         <Alert

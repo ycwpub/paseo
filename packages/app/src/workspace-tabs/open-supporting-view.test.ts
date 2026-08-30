@@ -61,7 +61,7 @@ describe("openComposerChanges", () => {
     preferences: DEFAULT_APP_SETTINGS.openInSidePane,
   };
 
-  it("opens the desktop Explorer on Changes when it is closed", () => {
+  it("opens the desktop Explorer with Changes and Diff when it is closed", () => {
     openComposerChanges(input);
 
     const state = useWorkspaceLayoutStore.getState();
@@ -77,12 +77,10 @@ describe("openComposerChanges", () => {
 
     expect(explorerPane?.hidden).not.toBe(true);
     expect(explorerTabKinds).toContain("changes_tree");
-    expect(layout && collectAllTabs(layout.root).map((tab) => tab.target.kind)).not.toContain(
-      "working_diff",
-    );
+    expect(explorerTabKinds).toContain("working_diff");
   });
 
-  it("opens the diff through Changes link routing when the desktop Explorer is open", () => {
+  it("keeps the diff beside Changes when the desktop Explorer is open", () => {
     openComposerChanges(input);
     openComposerChanges({
       ...input,
@@ -91,15 +89,17 @@ describe("openComposerChanges", () => {
 
     const state = useWorkspaceLayoutStore.getState();
     const layout = state.layoutByWorkspace[WORKSPACE_KEY];
-    const sidePaneId = state.sidePaneIdByWorkspace[WORKSPACE_KEY];
-    const sidePane = layout && sidePaneId ? findPaneById(layout.root, sidePaneId) : null;
-    const sideTabKinds = layout
+    const explorerPaneId = state.explorerSidebarPaneIdByWorkspace[WORKSPACE_KEY];
+    const explorerPane =
+      layout && explorerPaneId ? findPaneById(layout.root, explorerPaneId) : null;
+    const explorerTabKinds = layout
       ? collectAllTabs(layout.root)
-          .filter((tab) => sidePane?.tabIds.includes(tab.tabId))
+          .filter((tab) => explorerPane?.tabIds.includes(tab.tabId))
           .map((tab) => tab.target.kind)
       : [];
 
-    expect(sideTabKinds).toContain("working_diff");
+    expect(explorerTabKinds).toContain("working_diff");
+    expect(state.sidePaneIdByWorkspace[WORKSPACE_KEY]).toBeUndefined();
   });
 
   it("keeps opening the compact Explorer on Changes", () => {

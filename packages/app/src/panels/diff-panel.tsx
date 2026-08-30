@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { FileDiff, GitCommitHorizontal } from "lucide-react-native";
@@ -9,7 +9,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
 import { isWeb } from "@/constants/platform";
 import { DiffDocument } from "@/git/diff-document";
-import { ChangesSurface, DiffLayoutToggle, resolveDiffLayout } from "@/git/diff-pane";
+import { DiffLayoutToggle, resolveDiffLayout } from "@/git/diff-pane";
 import { useCommitDiffFiles } from "@/git/use-diff-files";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -21,11 +21,8 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { defaultChangesState, changesStateSchema } from "@/panels/changes/state";
 import { usePanelState } from "@/panels/use-panel-state";
 import { RenderProfile } from "@/utils/render-profiler";
-import {
-  createWorkingDiffTarget,
-  resolveWorkingDiffFilePath,
-  resolveWorkingDiffRepositoryRoot,
-} from "@/git/working-diff-repository";
+import { createWorkingDiffTarget } from "@/git/working-diff-repository";
+import { MultiRepositoryChangesSurface } from "@/git/multi-repository-changes-surface";
 
 const ThemedFileDiff = withUnistyles(FileDiff);
 const ThemedGitCommitHorizontal = withUnistyles(GitCommitHorizontal);
@@ -90,7 +87,6 @@ function resolveChangesPresentation(
 }
 
 function ChangesPanel() {
-  const { t } = useTranslation();
   const { serverId, workspaceId, tabId, target, openPreferredTarget, openTargetToSide } =
     usePaneContext();
   const [changesState, setChangesState] = usePanelState(changesStateSchema, defaultChangesState);
@@ -98,66 +94,42 @@ function ChangesPanel() {
   const workspaceRoot = useWorkspaceDirectory(serverId, workspaceId);
   const isActive = useRetainedPanelActive();
   const { addFile, canAddToChat } = useAddFileToChat({ serverId, workspaceId });
+  const [selectedRepositoryRoot, setSelectedRepositoryRoot] = useState<string | null>(null);
   invariant(
     target.kind === "working_diff" || target.kind === "changes_tree",
     "ChangesPanel requires working_diff or changes_tree target",
   );
   const isTree = target.kind === "changes_tree";
-  const cwd =
-    resolveWorkingDiffRepositoryRoot({
-      target,
-      workspaceRoot,
-    }) ?? "";
-  const resolveFilePath = useCallback(
-    (path: string) =>
-      resolveWorkingDiffFilePath({
-        repositoryRoot: cwd,
-        workspaceRoot,
-        path,
-      }),
-    [cwd, workspaceRoot],
-  );
 
   const handleOpenFile = useCallback(
-    (path: string) =>
-      openPreferredTarget(
-        { kind: "file", path: resolveFilePath(path) },
-        isTree ? "diffs" : "diffFiles",
-      ),
-    [isTree, openPreferredTarget, resolveFilePath],
+    (path: string) => openPreferredTarget({ kind: "file", path }, isTree ? "diffs" : "diffFiles"),
+    [isTree, openPreferredTarget],
   );
 
   const handleSelectDiffFile = useCallback(
-    (path: string) =>
+    (repositoryRoot: string, path: string) =>
       openPreferredTarget(
         createWorkingDiffTarget({
-          repositoryRoot: cwd,
+          repositoryRoot,
           path,
           focusRequestId: Date.now(),
         }),
         "diffs",
       ),
-    [cwd, openPreferredTarget],
+    [openPreferredTarget],
   );
   const handleOpenDiffToSide = useCallback(
-    (path: string) =>
+    (repositoryRoot: string, path: string) =>
       openTargetToSide?.(
         createWorkingDiffTarget({
-          repositoryRoot: cwd,
+          repositoryRoot,
           path,
           focusRequestId: Date.now(),
         }),
       ),
-    [cwd, openTargetToSide],
+    [openTargetToSide],
   );
-  const handleAddToChat = useCallback(
-    (path: string) => addFile(resolveFilePath(path)),
-    [addFile, resolveFilePath],
-  );
-
-  if (!cwd) {
-    return <PanelState message={t("panels.diff.directoryMissing")} />;
-  }
+  const handleAddToChat = useCallback((path: string) => addFile(path), [addFile]);
 
   const presentation = resolveChangesPresentation(isTree, preferences.inlineDiff);
   const testID = isTree ? "changes-tree-panel" : "working-diff-panel";
@@ -166,15 +138,16 @@ function ChangesPanel() {
   return (
     <View style={styles.container} testID={testID}>
       <RenderProfile id={profileId}>
-        <ChangesSurface
+        <MultiRepositoryChangesSurface
           serverId={serverId}
           workspaceId={workspaceId}
-          cwd={cwd}
+          workspaceRoot={workspaceRoot}
+          target={target}
           enabled={isActive}
           presentation={presentation}
           modeScope={tabId}
-          focusPath={target.kind === "working_diff" ? target.focusPath : undefined}
-          focusRequestId={target.kind === "working_diff" ? target.focusRequestId : undefined}
+          selectedRoot={selectedRepositoryRoot}
+          onSelectedRootChange={setSelectedRepositoryRoot}
           onSelectDiffFile={isTree ? handleSelectDiffFile : undefined}
           onOpenFile={handleOpenFile}
           onOpenToSide={isTree && openTargetToSide ? handleOpenDiffToSide : undefined}

@@ -12,6 +12,11 @@ import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useHostFeature } from "@/runtime/host-features";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
+  DEFAULT_SETTINGS_LIST_PAGE_SIZE,
+  paginateSettingsList,
+} from "@/screens/settings/shared/settings-list-pagination";
+import { SettingsListPaginationControls } from "@/screens/settings/shared/settings-list-pagination-controls";
+import {
   buildMcpOriginalJson,
   getMcpJsonImportErrorMessage,
   normalizeStdioTransport,
@@ -169,6 +174,8 @@ export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
   const supportsMcpServers = useHostFeature(serverId, "mcpServers");
   const mcp = useMcpServers(serverId, { enabled: supportsMcpServers });
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_SETTINGS_LIST_PAGE_SIZE);
   const [testingServerIds, setTestingServerIds] = useState<string[]>([]);
   const [testMessage, setTestMessage] = useState<string | null>(null);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
@@ -188,6 +195,24 @@ export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
       return haystack.includes(query);
     });
   }, [mcp.servers, searchQuery]);
+  const pagination = useMemo(
+    () => paginateSettingsList(filteredServers, page, pageSize),
+    [filteredServers, page, pageSize],
+  );
+
+  useEffect(() => {
+    if (page !== pagination.page) setPage(pagination.page);
+  }, [page, pagination.page]);
+
+  const handleSearchQueryChange = useCallback((query: string) => {
+    setSearchQuery(query);
+    setPage(1);
+  }, []);
+
+  const handlePageSizeChange = useCallback((nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setPage(1);
+  }, []);
 
   const handleToggleEnabled = useCallback(
     (server: McpServer, enabled: boolean) => {
@@ -254,8 +279,8 @@ export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
       );
     }
 
-    if (filteredServers.length > 0) {
-      return filteredServers.map((server, index) => (
+    if (pagination.items.length > 0) {
+      return pagination.items.map((server, index) => (
         <McpServerRow
           key={server.id}
           server={server}
@@ -277,13 +302,13 @@ export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
       </View>
     );
   }, [
-    filteredServers,
     handleDelete,
     handleTest,
     handleToggleEnabled,
     mcp.isLoading,
     mcp.servers.length,
     onEdit,
+    pagination.items,
     testingServerIds,
   ]);
 
@@ -322,12 +347,19 @@ export function McpSection({ serverId, onCreate, onEdit }: McpSectionProps) {
           <Field label="搜索">
             <FormTextInput
               initialValue={searchQuery}
-              onChangeText={setSearchQuery}
+              onChangeText={handleSearchQueryChange}
               placeholder="搜索服务和工具"
             />
           </Field>
         </View>
         <View style={settingsStyles.card}>{serverListContent}</View>
+        {filteredServers.length > 0 ? (
+          <SettingsListPaginationControls
+            pagination={pagination}
+            onPageChange={setPage}
+            onPageSizeChange={handlePageSizeChange}
+          />
+        ) : null}
         {refreshMessage ? <Text style={styles.sectionMessage}>{refreshMessage}</Text> : null}
         {testMessage ? <Text style={styles.sectionMessage}>{testMessage}</Text> : null}
         {mcp.error ? <Text style={settingsStyles.rowError}>{mcp.error.message}</Text> : null}

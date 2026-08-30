@@ -201,6 +201,13 @@ export const featureTranslationAdditions = {
     settings: {
       notifications: {
         islandWorking: "Working on the task...",
+        dockTest: "Test Dock alert",
+        dockTestHint:
+          "Bounce the Dock icon, show the attention badge, and play the configured alert sound.",
+        dockTestSuccess: "Dock alert triggered",
+        dockTestSuccessHint: "Check the Paseo icon in the macOS Dock.",
+        dockTestFailed: "Unable to test Dock alert",
+        dockTestFailedHint: "Dock alerts are available in the Paseo app on macOS.",
       },
       general: {
         clientIdentity: {

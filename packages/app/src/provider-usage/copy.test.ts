@@ -15,9 +15,7 @@ describe("provider usage copy", () => {
     const raw =
       "Command failed: aiden x models --json --claude --no-cache --timeout 15000 - Aiden aiproxy models API returned an empty model list for claudecode.";
 
-    expect(formatProviderUsageError(raw)).toBe(
-      "Aiden 当前未返回可用模型，暂无用量数据，请稍后重试。",
-    );
+    expect(formatProviderUsageError(raw)).toBe("Aiden 暂无可展示的用量数据，不影响模型正常使用。");
     expect(formatProviderUsageError(raw)).not.toContain("aiden x models");
     expect(isProviderUsageTemporarilyUnavailable(raw)).toBe(true);
   });

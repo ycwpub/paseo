@@ -286,6 +286,7 @@ function WorkspaceRowBody({
               contextMenuOpen={contextMenuOpen}
               onContextMenuOpenChange={onContextMenuOpenChange}
               workspace={workspace}
+              selected={selected}
               hostBadgeLabel={hostBadge?.label}
               serviceSummary={serviceSummary}
               workspaceKey={workspace.workspaceKey}
@@ -324,6 +325,7 @@ function WorkspaceRowBody({
               >
                 <WorkspaceRowTrailingActions
                   workspace={workspace}
+                  selected={selected}
                   backdrop={backdrop}
                   trailing={trailing}
                   isHovered={isHovered}
@@ -352,6 +354,7 @@ function WorkspaceRowBody({
 
 function WorkspaceRowTrailingActions({
   workspace,
+  selected,
   backdrop,
   trailing,
   isHovered,
@@ -370,6 +373,7 @@ function WorkspaceRowTrailingActions({
   onRename,
 }: {
   workspace: SidebarWorkspaceEntry;
+  selected: boolean;
   backdrop: SidebarSurfaceBackdrop;
   trailing: SidebarWorkspaceTrailing;
   isHovered: boolean;
@@ -425,6 +429,9 @@ function WorkspaceRowTrailingActions({
                 workspaceKey={workspace.workspaceKey}
                 serverId={workspace.serverId}
                 workspaceId={workspace.workspaceId}
+                projectId={workspace.projectId}
+                workspaceName={workspace.name}
+                selected={selected}
                 workspaceLabels={workspace.labels}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}

@@ -7,8 +7,6 @@ import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
 import { renderPairingQr } from "./pairing-qr.js";
 import { getOrCreateServerId } from "./server-id.js";
 
-const DEFAULT_APP_BASE_URL = "https://app.paseo.sh";
-
 export interface LocalPairingOffer {
   relayEnabled: boolean;
   url: string | null;
@@ -76,11 +74,7 @@ export async function generateLocalPairingOffer(args: {
   // local Relay URLs stay scoped to their own endpoint.
   const sharedPairingBaseUrls = dedupePairingBaseUrls(args.relayPairingBaseUrls ?? []);
   const legacyAppBaseUrl = args.appBaseUrl?.trim().replace(/\/+$/, "");
-  if (
-    sharedPairingBaseUrls.length === 0 &&
-    legacyAppBaseUrl &&
-    legacyAppBaseUrl !== DEFAULT_APP_BASE_URL
-  ) {
+  if (sharedPairingBaseUrls.length === 0 && legacyAppBaseUrl) {
     sharedPairingBaseUrls.push(legacyAppBaseUrl);
   }
   const primaryPairingBaseUrl =

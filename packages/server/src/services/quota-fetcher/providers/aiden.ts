@@ -1,22 +1,17 @@
 import { readFile } from "node:fs/promises";
 import type { Logger } from "pino";
 import { z } from "zod";
-import {
-  ProviderUsageSchema,
-  type ProviderUsage,
-  type ProviderUsageBalance,
-  type ProviderUsageDetail,
-  type ProviderUsageWindow,
-} from "../../../server/messages.js";
+import { ProviderUsageSchema, type ProviderUsage } from "../../../server/messages.js";
 import { writeJsonFileAtomic } from "../../../server/atomic-file.js";
 import { runUsageCommand, usageCommandError, type UsageCommandRunner } from "../command.js";
 import type { ProviderUsageFetcher } from "../provider.js";
-import { ApiNumberSchema, unavailableUsage, windowFromUsedPct } from "../usage.js";
+import { ApiNumberSchema, unavailableUsage } from "../usage.js";
+import { collectAidenUsageMetrics } from "./aiden-usage-metrics.js";
 
 const AIDEN_COMMAND_TIMEOUT_MS = 20_000;
 const AIDEN_COMMAND_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const AIDEN_SOURCE_LABEL = "Aiden X";
-const AIDEN_EMPTY_MODELS_MESSAGE = "Aiden 当前未返回可用模型，暂无用量数据，请稍后重试。";
+const AIDEN_USAGE_UNAVAILABLE_MESSAGE = "Aiden 暂无可展示的用量数据。";
 const AIDEN_LOGIN_MESSAGE = "Aiden 登录状态不可用，请先在终端完成 Aiden 登录后重试。";
 const AIDEN_NOT_INSTALLED_MESSAGE = "未检测到 Aiden CLI，请先安装 Aiden 或配置 AIDEN_BIN。";
 const AIDEN_GENERIC_ERROR_MESSAGE = "暂时无法获取 Aiden 用量，请稍后重试。";
@@ -78,26 +73,6 @@ interface AidenQuotaProviderIdentity {
   cliFlag: "--codex" | "--claude";
 }
 
-function clampPercent(value: number): number {
-  return Math.min(100, Math.max(0, value));
-}
-
-function resetTime(quota: z.infer<typeof AidenQuotaSchema>): string | null {
-  if (quota?.reset_time) {
-    const parsed = new Date(quota.reset_time);
-    if (Number.isFinite(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-  if (quota?.reset_time_ms !== undefined) {
-    const parsed = new Date(quota.reset_time_ms);
-    if (Number.isFinite(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-  return null;
-}
-
 class AidenQuotaProvider implements ProviderUsageFetcher {
   readonly providerId: AidenQuotaProviderIdentity["providerId"];
   readonly displayName: AidenQuotaProviderIdentity["displayName"];
@@ -148,53 +123,13 @@ class AidenQuotaProvider implements ProviderUsageFetcher {
     }
 
     if (response.models.length === 0) {
-      return this.fallbackUsage(AIDEN_EMPTY_MODELS_MESSAGE);
+      return this.fallbackUsage(AIDEN_USAGE_UNAVAILABLE_MESSAGE, response.fetched_at ?? null);
     }
 
-    const windows: ProviderUsageWindow[] = [];
-    const balances: ProviderUsageBalance[] = [];
-    const details: ProviderUsageDetail[] = [];
+    const { windows, balances, details } = collectAidenUsageMetrics(response.models);
 
-    for (const model of response.models) {
-      if (model.quota?.available_percent !== undefined) {
-        windows.push(
-          windowFromUsedPct({
-            id: `quota:${model.id}`,
-            label: model.id,
-            utilizationPct: clampPercent(100 - model.quota.available_percent),
-            resetsAt: resetTime(model.quota),
-            tone: model.quota.available_percent < 20 ? "warning" : "ok",
-          }),
-        );
-      }
-      if (model.quota?.available_tokens !== undefined) {
-        balances.push({
-          id: `tokens:${model.id}`,
-          label: `${model.id} 可用`,
-          remaining: model.quota.available_tokens,
-          unit: "tokens",
-          resetsAt: resetTime(model.quota),
-          tone: model.quota.available_tokens <= 0 ? "danger" : "ok",
-        });
-      }
-      if (model.ptu?.available_percent !== undefined) {
-        windows.push(
-          windowFromUsedPct({
-            id: `ptu:${model.id}`,
-            label: `${model.id} · PTU`,
-            utilizationPct: clampPercent(100 - model.ptu.available_percent),
-            tone: model.ptu.available_percent < 20 ? "warning" : "ok",
-          }),
-        );
-      }
-      if (model.capacity?.occupancy_percent !== undefined) {
-        details.push({
-          id: `capacity:${model.id}`,
-          label: `${model.id} 负载`,
-          value: `${model.capacity.occupancy_percent}%`,
-          tone: model.capacity.occupancy_percent >= 80 ? "warning" : "default",
-        });
-      }
+    if (windows.length === 0 && balances.length === 0 && details.length === 0) {
+      return this.fallbackUsage(AIDEN_USAGE_UNAVAILABLE_MESSAGE, response.fetched_at ?? null);
     }
 
     const usage: ProviderUsage = {
@@ -214,7 +149,7 @@ class AidenQuotaProvider implements ProviderUsageFetcher {
     return usage;
   }
 
-  private fallbackUsage(rawMessage: string): ProviderUsage {
+  private fallbackUsage(rawMessage: string, fetchedAt: string | null = null): ProviderUsage {
     if (this.lastSuccessfulUsage) {
       return {
         ...this.lastSuccessfulUsage,
@@ -235,8 +170,15 @@ class AidenQuotaProvider implements ProviderUsageFetcher {
     }
 
     const message = friendlyAidenUsageError(rawMessage);
-    if (message === AIDEN_EMPTY_MODELS_MESSAGE) {
-      return this.unavailableWithDetail("aiden-empty-models", message);
+    if (message === AIDEN_USAGE_UNAVAILABLE_MESSAGE) {
+      return {
+        ...unavailableUsage({
+          providerId: this.providerId,
+          displayName: this.displayName,
+        }),
+        sourceLabel: AIDEN_SOURCE_LABEL,
+        fetchedAt,
+      };
     }
     if (message === AIDEN_LOGIN_MESSAGE) {
       return this.unavailableWithDetail("aiden-login-required", message);
@@ -301,13 +243,16 @@ class AidenQuotaProvider implements ProviderUsageFetcher {
 }
 
 function friendlyAidenUsageError(message: string): string {
+  if (message === AIDEN_USAGE_UNAVAILABLE_MESSAGE) {
+    return message;
+  }
   const normalized = message.toLowerCase();
   if (
     normalized.includes("empty model list") ||
     normalized.includes("未返回可用模型") ||
     normalized.includes("no models")
   ) {
-    return AIDEN_EMPTY_MODELS_MESSAGE;
+    return AIDEN_USAGE_UNAVAILABLE_MESSAGE;
   }
   if (
     normalized.includes("login") ||

@@ -20,6 +20,7 @@ export interface DesktopAttentionBridge {
     reason: "finished" | "intervention",
     options?: { allowWhenFocused?: boolean },
   ) => Promise<boolean>;
+  test?: () => Promise<boolean>;
   clear?: () => Promise<void>;
 }
 

@@ -24,7 +24,7 @@ export function formatProviderUsageError(error: string): string {
     normalized.includes("未返回可用模型") ||
     normalized.includes("no models")
   ) {
-    return "Aiden 当前未返回可用模型，暂无用量数据，请稍后重试。";
+    return "Aiden 暂无可展示的用量数据，不影响模型正常使用。";
   }
   if (
     normalized.includes("login") ||

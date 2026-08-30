@@ -12,6 +12,7 @@ import {
   buildHostMemoryRoute,
   buildHostResourceSyncRoute,
   buildInstructionTemplatesSettingsRoute,
+  buildProjectLarkGroupSettingsRoute,
   buildProjectKnowledgeSettingsRoute,
   buildProjectMemoryRoute,
   buildProjectLarkGroupsSettingsRoute,
@@ -28,6 +29,7 @@ export type SettingsView =
   | { kind: "project"; serverId: string; projectId: string }
   | { kind: "project-knowledge"; serverId: string; projectId: string }
   | { kind: "project-lark-groups"; serverId: string; projectId: string }
+  | { kind: "project-lark-group"; serverId: string; projectId: string; groupId?: string }
   | { kind: "assistant"; serverId: string; assistantId?: string }
   | { kind: "assistant-memory"; serverId: string; assistantId: string }
   | { kind: "team"; serverId: string; teamId?: string }
@@ -56,6 +58,14 @@ export function openProjectLarkGroupsSettings(serverId: string, projectId: strin
   router.push(buildProjectLarkGroupsSettingsRoute(serverId, projectId));
 }
 
+export function openProjectLarkGroupSettings(
+  serverId: string,
+  projectId: string,
+  groupId?: string,
+): void {
+  router.push(buildProjectLarkGroupSettingsRoute(serverId, projectId, groupId));
+}
+
 export function openProjectKnowledgeSettings(serverId: string, projectId: string): void {
   router.push(buildProjectKnowledgeSettingsRoute(serverId, projectId));
 }
@@ -72,6 +82,19 @@ function returnFromSettingsRoot(view: SettingsView): boolean {
   return true;
 }
 
+function isProjectResourceView(
+  view: SettingsView,
+): view is Extract<
+  SettingsView,
+  { kind: "project-lark-groups" | "project-lark-group" | "project-knowledge" }
+> {
+  return (
+    view.kind === "project-lark-groups" ||
+    view.kind === "project-lark-group" ||
+    view.kind === "project-knowledge"
+  );
+}
+
 export function returnFromSettings(view: SettingsView): void {
   if (returnFromSettingsRoot(view)) return;
 
@@ -82,7 +105,7 @@ export function returnFromSettings(view: SettingsView): void {
       : buildHostMemoryRoute(view.serverId);
   } else if (view.kind === "assistant-memory") {
     parent = buildAssistantSettingsRoute(view.serverId, view.assistantId);
-  } else if (view.kind === "project-lark-groups" || view.kind === "project-knowledge") {
+  } else if (isProjectResourceView(view)) {
     parent = buildProjectSettingsRoute(view.serverId, view.projectId);
   } else if (view.kind === "project" || (view.kind === "memory" && view.projectId)) {
     parent = buildProjectsSettingsRoute(view.serverId);

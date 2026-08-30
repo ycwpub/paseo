@@ -15,6 +15,7 @@ import { LarkDirectoryService } from "./lark-directory-service.js";
 import { LarkDirectoryStore } from "./lark-directory-store.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
+import type { LarkUserOAuthStatus } from "@getpaseo/protocol/messages";
 
 function makeAgent(
   id: string,
@@ -62,7 +63,9 @@ describe("LarkChannelService", () => {
     await rm(paseoHome, { recursive: true, force: true });
   });
 
-  function createHarness(options: { withDirectory?: boolean } = {}) {
+  function createHarness(
+    options: { withDirectory?: boolean; userOAuthStatus?: LarkUserOAuthStatus } = {},
+  ) {
     const logger = pino({ level: "silent" });
     const store = new LarkChannelStore({ paseoHome, logger });
     const bot = store.configure({
@@ -133,6 +136,11 @@ describe("LarkChannelService", () => {
           getValidUserAccessToken: vi.fn(async () => "u-token"),
         } as unknown as LarkUserOAuthService)
       : null;
+    const userOAuthService = options.userOAuthStatus
+      ? ({
+          getStatus: vi.fn(() => options.userOAuthStatus),
+        } as unknown as LarkUserOAuthService)
+      : null;
     const createAgent = vi.fn(async () => {
       const snapshot = makeAgent("agent-created", "idle");
       agents.set(snapshot.id, snapshot);
@@ -161,6 +169,7 @@ describe("LarkChannelService", () => {
       logger,
       host: { emitStatusChanged: vi.fn() },
       directoryService,
+      userOAuthService,
     });
     const emitAgentState = (agentId: string, lifecycle: ManagedAgent["lifecycle"]) =>
       (
@@ -802,6 +811,91 @@ describe("LarkChannelService", () => {
     expect(harness.directoryStore.findUser("cli_test", "ou_substitute")).toMatchObject({
       email: "substitute@example.com",
       openId: "ou_substitute",
+    });
+  });
+
+  test("combines OAuth identity fields with the cached directory identity", async () => {
+    const harness = createHarness({
+      withDirectory: true,
+      userOAuthStatus: {
+        appId: "cli_test",
+        authorized: true,
+        needsAuthorization: false,
+        expiresAt: "2026-08-30T10:00:00.000Z",
+        refreshTokenExpiresAt: "2026-09-30T10:00:00.000Z",
+        openId: "ou_1",
+        email: null,
+        displayName: "张三",
+        scope:
+          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+      },
+    });
+    harness.directoryStore.observeUser(
+      "cli_test",
+      {
+        openId: "ou_1",
+        email: "alice@example.com",
+        displayName: "Lark user",
+      },
+      "2026-08-30T00:00:00.000Z",
+    );
+
+    await expect(harness.service.getUserOAuthStatus("cli_test")).resolves.toMatchObject({
+      openId: "ou_1",
+      email: "alice@example.com",
+      displayName: "张三",
+    });
+    expect(harness.directoryStore.findUser("cli_test", "ou_1")).toMatchObject({
+      email: "alice@example.com",
+      displayName: "张三",
+    });
+  });
+
+  test("shares a known user identity across bot App IDs through union ID", async () => {
+    const harness = createHarness({ withDirectory: true });
+    const sourcePairing = harness.store.upsertPendingPairing(harness.botId, {
+      openId: "ou_source",
+      unionId: "on_shared",
+      chatId: "oc_source",
+      displayName: "Lark user",
+      createdAt: "2026-08-30T00:00:00.000Z",
+      expiresAt: "2026-08-30T00:15:00.000Z",
+    });
+    harness.store.approvePairing(harness.botId, sourcePairing.code, "2026-08-30T00:01:00.000Z");
+    const targetBot = harness.store.configure({
+      createNew: true,
+      appId: "cli_target",
+      appSecret: "target-secret",
+      substitute: {
+        enabled: true,
+        openId: "ou_target",
+        name: "Lark user",
+      },
+    });
+    const targetPairing = harness.store.upsertPendingPairing(targetBot.id, {
+      openId: "ou_target",
+      unionId: "on_shared",
+      chatId: "oc_target",
+      displayName: "Lark user",
+      createdAt: "2026-08-30T00:00:00.000Z",
+      expiresAt: "2026-08-30T00:15:00.000Z",
+    });
+    harness.store.approvePairing(targetBot.id, targetPairing.code, "2026-08-30T00:01:00.000Z");
+    harness.directoryStore.observeUser(
+      "cli_test",
+      {
+        openId: "ou_source",
+        email: "alice@example.com",
+        displayName: "张三",
+      },
+      "2026-08-30T00:00:00.000Z",
+    );
+
+    await harness.service.start();
+
+    expect(harness.directoryStore.findUser("cli_target", "ou_target")).toMatchObject({
+      email: "alice@example.com",
+      displayName: "张三",
     });
   });
 

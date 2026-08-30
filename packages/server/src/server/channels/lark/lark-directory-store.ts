@@ -11,6 +11,11 @@ import {
   type LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
+import {
+  inferLarkGroupId,
+  normalizeLarkDirectoryEmail,
+  pickLarkDirectoryDisplayName,
+} from "./lark-directory-identity.js";
 
 const LARK_DIRECTORY_STORE_VERSION = 1;
 
@@ -21,10 +26,6 @@ const LarkDirectoryStorePayloadSchema = z.object({
 });
 
 type LarkDirectoryStorePayload = z.infer<typeof LarkDirectoryStorePayloadSchema>;
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLocaleLowerCase();
-}
 
 function cloneDirectory(payload: LarkDirectoryStorePayload): LarkDirectory {
   return LarkDirectorySchema.parse(JSON.parse(JSON.stringify(payload)));
@@ -73,7 +74,8 @@ export class LarkDirectoryStore {
     const next = structuredClone(this.payload);
     const result: LarkDirectoryUser[] = [];
     for (const user of users) {
-      const email = normalizeEmail(user.email);
+      const email = normalizeLarkDirectoryEmail(user.email);
+      if (!email) continue;
       const existing = next.users.find(
         (entry) => entry.appId === appId && (entry.openId === user.openId || entry.email === email),
       );
@@ -81,7 +83,7 @@ export class LarkDirectoryStore {
         appId,
         email,
         openId: user.openId,
-        displayName: user.displayName?.trim() || existing?.displayName || null,
+        displayName: pickLarkDirectoryDisplayName(user.displayName, existing?.displayName),
         updatedAt: now,
       });
       next.users = next.users.filter(
@@ -96,16 +98,16 @@ export class LarkDirectoryStore {
 
   observeUser(
     appId: string,
-    input: { openId: string; displayName?: string | null },
+    input: { openId: string; email?: string | null; displayName?: string | null },
     now: string,
   ): LarkDirectoryUser {
     this.ensureLoaded();
     const existing = this.findUser(appId, input.openId);
     const record = LarkDirectoryUserSchema.parse({
       appId,
-      email: existing?.email ?? null,
+      email: normalizeLarkDirectoryEmail(input.email) ?? existing?.email ?? null,
       openId: input.openId,
-      displayName: input.displayName?.trim() || existing?.displayName || null,
+      displayName: pickLarkDirectoryDisplayName(input.displayName, existing?.displayName),
       updatedAt: now,
     });
     this.persist({
@@ -134,7 +136,11 @@ export class LarkDirectoryStore {
       );
       const record = LarkDirectoryChatSchema.parse({
         appId,
-        groupId: chat.groupId.trim() || existing?.groupId || chat.chatId,
+        groupId: inferLarkGroupId({
+          groupId: chat.groupId.trim() || existing?.groupId,
+          chatId: chat.chatId,
+          name: chat.name,
+        }),
         chatId: chat.chatId,
         name: chat.name.trim() || existing?.name || chat.chatId,
         updatedAt: now,

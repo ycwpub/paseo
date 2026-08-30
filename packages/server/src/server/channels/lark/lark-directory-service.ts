@@ -5,6 +5,7 @@ import type {
 } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
+import { hasCompleteLarkDirectoryUser } from "./lark-directory-identity.js";
 import type { LarkDirectoryStore } from "./lark-directory-store.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
@@ -43,7 +44,26 @@ export class LarkDirectoryService {
     if (missing.length > 0) {
       throw new Error(`No visible Lark user found for: ${missing.join(", ")}`);
     }
-    return this.store.upsertResolvedUsers(appId, resolved, new Date().toISOString());
+    const enriched = this.adapter.resolveUserByOpenId
+      ? await Promise.all(
+          resolved.map(async (user) => {
+            if (hasCompleteLarkDirectoryUser(user)) return user;
+            try {
+              const details = await this.adapter.resolveUserByOpenId!(config, user.openId);
+              return details
+                ? {
+                    email: details.email || user.email,
+                    openId: details.openId || user.openId,
+                    displayName: details.displayName ?? user.displayName,
+                  }
+                : user;
+            } catch {
+              return user;
+            }
+          }),
+        )
+      : resolved;
+    return this.store.upsertResolvedUsers(appId, enriched, new Date().toISOString());
   }
 
   async refreshUserByOpenId(appId: string, openId: string): Promise<LarkDirectoryUser | null> {
@@ -52,7 +72,7 @@ export class LarkDirectoryService {
       return null;
     }
     const existing = this.store.findUser(appId, normalizedOpenId);
-    if (existing?.email) {
+    if (existing && hasCompleteLarkDirectoryUser(existing)) {
       return existing;
     }
     const config = this.requireConfig(appId);
@@ -118,8 +138,13 @@ export class LarkDirectoryService {
     return this.store.upsertChats(appId, [chat], new Date().toISOString())[0] ?? existing;
   }
 
-  observeUser(appId: string, openId: string, displayName?: string | null): void {
-    this.store.observeUser(appId, { openId, displayName }, new Date().toISOString());
+  observeUser(
+    appId: string,
+    openId: string,
+    displayName?: string | null,
+    email?: string | null,
+  ): LarkDirectoryUser {
+    return this.store.observeUser(appId, { openId, displayName, email }, new Date().toISOString());
   }
 
   private requireConfig(appId: string): StoredLarkChannelConfig {

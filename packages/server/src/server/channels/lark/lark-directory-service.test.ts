@@ -48,18 +48,28 @@ describe("LarkDirectoryService", () => {
     const resolveUsersByEmails = vi.fn(async () => [
       { email: "alice@example.com", openId: "ou_alice" },
     ]);
+    const resolveUserByOpenId = vi.fn(async () => ({
+      email: "alice@example.com",
+      openId: "ou_alice",
+      displayName: "张三",
+    }));
     const service = createService({
       resolveUsersByEmails,
+      resolveUserByOpenId,
     });
 
     await expect(service.resolveUsers("cli_test", [" Alice@Example.com "])).resolves.toMatchObject([
-      { email: "alice@example.com", openId: "ou_alice" },
+      { email: "alice@example.com", openId: "ou_alice", displayName: "张三" },
     ]);
     expect(resolveUsersByEmails).toHaveBeenCalledWith(
       expect.objectContaining({ appId: "cli_test", appSecret: "secret" }),
       ["alice@example.com"],
     );
     expect(service.getState().users).toHaveLength(1);
+    expect(resolveUserByOpenId).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test", appSecret: "secret" }),
+      "ou_alice",
+    );
   });
 
   test("reports emails that the bot cannot resolve", async () => {
@@ -103,7 +113,7 @@ describe("LarkDirectoryService", () => {
   test("does not query Lark again when the email is already known", async () => {
     directoryStore.upsertResolvedUsers(
       "cli_test",
-      [{ email: "alice@example.com", openId: "ou_alice" }],
+      [{ email: "alice@example.com", openId: "ou_alice", displayName: "张三" }],
       "2026-08-19T00:00:00.000Z",
     );
     const resolveUserByOpenId = vi.fn();
@@ -115,6 +125,27 @@ describe("LarkDirectoryService", () => {
       email: "alice@example.com",
     });
     expect(resolveUserByOpenId).not.toHaveBeenCalled();
+  });
+
+  test("refreshes a generic display name even when the email is already known", async () => {
+    directoryStore.upsertResolvedUsers(
+      "cli_test",
+      [{ email: "alice@example.com", openId: "ou_alice", displayName: "Lark user" }],
+      "2026-08-19T00:00:00.000Z",
+    );
+    const resolveUserByOpenId = vi.fn(async () => ({
+      email: "alice@example.com",
+      openId: "ou_alice",
+      displayName: "张三",
+    }));
+    const service = createService({ resolveUserByOpenId });
+
+    await expect(service.refreshUserByOpenId("cli_test", "ou_alice")).resolves.toMatchObject({
+      email: "alice@example.com",
+      openId: "ou_alice",
+      displayName: "张三",
+    });
+    expect(resolveUserByOpenId).toHaveBeenCalledTimes(1);
   });
 
   test("returns all matching groups so the UI can disambiguate them", async () => {

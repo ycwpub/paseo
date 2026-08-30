@@ -1,4 +1,5 @@
 import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
+import { normalizeWorkingDiffRepositoryRoot } from "@/git/working-diff-repository";
 import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 export function normalizeWorkspaceTabTarget(
@@ -278,7 +279,7 @@ function normalizeFileTabTarget(
 function normalizeWorkingDiffTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
 ): WorkspaceTabTarget | null {
-  const cwd = trimNonEmpty(value.cwd)?.replace(/\\/g, "/") ?? null;
+  const cwd = normalizeWorkingDiffRepositoryRoot(value.cwd);
   const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
   const focusRequestId = normalizePositiveInteger(value.focusRequestId);
   return {

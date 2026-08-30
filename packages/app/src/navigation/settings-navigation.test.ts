@@ -98,6 +98,17 @@ describe("returnFromSettings", () => {
     expect(mocks.dismissTo).toHaveBeenCalledWith("/settings/hosts/host-1/projects/project-1");
   });
 
+  test("returns Project 飞书群 create and edit pages to Project settings", () => {
+    returnFromSettings({
+      kind: "project-lark-group",
+      serverId: "host-1",
+      projectId: "project-1",
+      groupId: "group-1",
+    });
+
+    expect(mocks.dismissTo).toHaveBeenCalledWith("/settings/hosts/host-1/projects/project-1");
+  });
+
   test("returns the Project 知识 page to Project settings", () => {
     returnFromSettings({
       kind: "project-knowledge",

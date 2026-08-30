@@ -45,7 +45,7 @@ describe("Lark directory labels", () => {
         email: null,
         displayName: "Lark user",
       }),
-    ).toBe("Lark user（ou_alice）");
+    ).toBe("ou_alice");
     expect(
       formatLarkUserLabel({
         ...user,
@@ -78,6 +78,13 @@ describe("Lark directory labels", () => {
         groupId: "oc_settlement",
       }),
     ).toBe("结算群（oc_settlement）");
+    expect(
+      formatLarkChatLabel({
+        ...chat,
+        groupId: "oc_settlement",
+        name: "结算群（7160881741501267996）",
+      }),
+    ).toBe("结算群（7160881741501267996，oc_settlement）");
   });
 
   test("scopes relation lookup by bot App ID", () => {

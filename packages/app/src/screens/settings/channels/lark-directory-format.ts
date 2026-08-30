@@ -6,6 +6,8 @@ interface LarkUserIdentity {
   openId?: string | null;
 }
 
+const GENERIC_LARK_DISPLAY_NAMES = new Set(["lark user", "feishu user", "飞书用户"]);
+
 function compactIdentityParts(parts: readonly (string | null | undefined)[]): string[] {
   return Array.from(new Set(parts.map((part) => part?.trim() ?? "").filter(Boolean)));
 }
@@ -17,7 +19,11 @@ function formatIdentityParts(parts: readonly (string | null | undefined)[]): str
 }
 
 export function formatLarkUserIdentity(user: LarkUserIdentity): string {
-  return formatIdentityParts([user.displayName, user.email, user.openId]);
+  const displayName = user.displayName?.trim() ?? "";
+  const friendlyDisplayName = GENERIC_LARK_DISPLAY_NAMES.has(displayName.toLocaleLowerCase())
+    ? null
+    : displayName;
+  return formatIdentityParts([friendlyDisplayName, user.email, user.openId]);
 }
 
 export function formatLarkUserLabel(user: LarkDirectoryUser): string {
@@ -25,7 +31,19 @@ export function formatLarkUserLabel(user: LarkDirectoryUser): string {
 }
 
 export function formatLarkChatLabel(chat: LarkDirectoryChat): string {
-  return formatIdentityParts([chat.name, chat.groupId, chat.chatId]);
+  const explicitGroupId =
+    chat.groupId !== chat.chatId
+      ? chat.groupId
+      : (chat.name.match(/(?:群\s*ID|group\s*id|id)\s*[=:：]?\s*(\d{10,})/iu)?.[1] ??
+        chat.name.match(/[（(](\d{10,})[）)]/u)?.[1] ??
+        chat.groupId);
+  const cleanedName =
+    explicitGroupId !== chat.groupId
+      ? chat.name
+          .replace(/[（(](?:(?:群\s*ID|group\s*id|id)\s*[=:：]?\s*)?\d{10,}[）)]/iu, "")
+          .trim()
+      : chat.name;
+  return formatIdentityParts([cleanedName, explicitGroupId, chat.chatId]);
 }
 
 export function findLarkDirectoryUser(

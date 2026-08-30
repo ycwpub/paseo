@@ -105,7 +105,7 @@ describe("feature_paseo integration parity", () => {
     expect(projectSettings).toContain("<ProjectKnowledgeCard");
     expect(projectSettings).toContain("<ProjectMemoryCard");
     expect(projectSettings).not.toContain("<ProjectKnowledgeEditor");
-    expect(projectSettings).toContain("<ProjectLarkGroupsEntry");
+    expect(projectSettings).toContain("<ProjectLarkGroupsList");
     expect(projectSettings).toContain("配置知识");
     expect(projectMemory).toContain("配置记忆");
     expect(projectSettings).toContain("<ProjectLinkedPluginProjects");

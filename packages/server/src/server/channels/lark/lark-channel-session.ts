@@ -355,7 +355,7 @@ export class LarkChannelSession {
           type: "channel.lark.user_oauth.get_status.response",
           payload: {
             requestId: message.requestId,
-            status: this.service.getUserOAuthStatus(message.appId),
+            status: await this.service.getUserOAuthStatus(message.appId),
             error: null,
           },
         });

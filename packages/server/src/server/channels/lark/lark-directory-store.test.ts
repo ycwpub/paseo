@@ -97,4 +97,43 @@ describe("LarkDirectoryStore", () => {
       displayName: "Alice Zhang",
     });
   });
+
+  test("observed generic names do not overwrite a real user name", () => {
+    store.upsertResolvedUsers(
+      "cli_test",
+      [{ email: "alice@example.com", openId: "ou_alice", displayName: "张三" }],
+      "2026-08-19T03:00:00.000Z",
+    );
+
+    store.observeUser(
+      "cli_test",
+      { openId: "ou_alice", displayName: "Lark user" },
+      "2026-08-19T03:01:00.000Z",
+    );
+
+    expect(store.findUser("cli_test", "ou_alice")).toMatchObject({
+      email: "alice@example.com",
+      displayName: "张三",
+    });
+  });
+
+  test("extracts a numeric group ID from a group name when Lark only returns chat_id", () => {
+    store.upsertChats(
+      "cli_test",
+      [
+        {
+          groupId: "oc_settlement",
+          chatId: "oc_settlement",
+          name: "结算电话报警群(7160881741501267996)",
+        },
+      ],
+      "2026-08-19T03:00:00.000Z",
+    );
+
+    expect(store.findChat("cli_test", "oc_settlement")).toMatchObject({
+      groupId: "7160881741501267996",
+      chatId: "oc_settlement",
+      name: "结算电话报警群(7160881741501267996)",
+    });
+  });
 });

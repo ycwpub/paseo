@@ -10,6 +10,7 @@ import {
 } from "lucide-react-native";
 import type { SettingsView } from "@/navigation/settings-navigation";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
+import ProjectLarkGroupScreen from "@/screens/project-lark-group-screen";
 import ProjectLarkGroupsScreen from "@/screens/project-lark-groups-screen";
 import { KnowledgeManagementSection } from "@/screens/settings/knowledge/knowledge-management-section";
 import { MemoryManagementScreen } from "@/screens/settings/memory/memory-management-screen";
@@ -49,6 +50,15 @@ export function renderNestedSettingsContent(
       );
     case "project-lark-groups":
       return <ProjectLarkGroupsScreen serverId={view.serverId} projectId={view.projectId} />;
+    case "project-lark-group":
+      return (
+        <ProjectLarkGroupScreen
+          serverId={view.serverId}
+          projectId={view.projectId}
+          groupId={view.groupId}
+          onDone={onDone}
+        />
+      );
     case "project-knowledge":
       return (
         <KnowledgeManagementSection
@@ -140,6 +150,12 @@ export function getResourceDetailHeader(
       return { title: view.skillId ? "编辑技能" : "创建技能", Icon: Sparkles, onBack };
     case "project-lark-groups":
       return { title: "飞书群上下文", Icon: MessageCircle, onBack };
+    case "project-lark-group":
+      return {
+        title: view.groupId ? "编辑飞书群" : "创建飞书群",
+        Icon: MessageCircle,
+        onBack,
+      };
     case "project-knowledge":
       return { title: "Project 知识", Icon: BookOpen, onBack };
     case "resource-sync":

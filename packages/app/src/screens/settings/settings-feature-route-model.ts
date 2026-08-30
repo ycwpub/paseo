@@ -7,6 +7,7 @@ export function getSettingsViewServerId(view: SettingsView): string | null {
     case "project":
     case "project-knowledge":
     case "project-lark-groups":
+    case "project-lark-group":
     case "memory":
     case "memory-page":
     case "resource-sync":
@@ -30,7 +31,8 @@ export function getHostSectionAfterHostSwitch(view: SettingsView): HostSectionSl
   if (
     view.kind === "project" ||
     view.kind === "project-knowledge" ||
-    view.kind === "project-lark-groups"
+    view.kind === "project-lark-groups" ||
+    view.kind === "project-lark-group"
   ) {
     return "projects";
   }

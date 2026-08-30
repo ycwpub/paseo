@@ -52,6 +52,11 @@ import {
 } from "./lark-message-format.js";
 import type { LarkReminderService } from "./lark-reminder-service.js";
 import type { LarkDirectoryService } from "./lark-directory-service.js";
+import {
+  normalizeLarkDirectoryEmail,
+  pickLarkDirectoryDisplayName,
+} from "./lark-directory-identity.js";
+import { buildLarkDirectoryUserSeeds } from "./lark-directory-user-seeds.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
@@ -400,9 +405,9 @@ export class LarkChannelService {
     return chats;
   }
 
-  getUserOAuthStatus(appId: string) {
+  async getUserOAuthStatus(appId: string) {
     if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
-    return this.userOAuthService.getStatus(appId);
+    return this.hydrateUserOAuthStatus(appId);
   }
 
   startUserOAuth(appId: string, redirectUri: string) {
@@ -410,9 +415,10 @@ export class LarkChannelService {
     return this.userOAuthService.startAuthorization(appId, redirectUri);
   }
 
-  completeUserOAuth(appId: string, codeOrCallbackUrl: string, state: string) {
+  async completeUserOAuth(appId: string, codeOrCallbackUrl: string, state: string) {
     if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
-    return this.userOAuthService.completeAuthorization(appId, codeOrCallbackUrl, state);
+    await this.userOAuthService.completeAuthorization(appId, codeOrCallbackUrl, state);
+    return this.hydrateUserOAuthStatus(appId);
   }
 
   disconnectUserOAuth(appId: string) {
@@ -553,12 +559,16 @@ export class LarkChannelService {
 
   createReminder(input: LarkReminderCreateInput): LarkReminder {
     if (!this.reminderService) throw new Error("Lark reminders are unavailable");
-    return this.reminderService.create(input);
+    const reminder = this.reminderService.create(input);
+    void this.refreshReminderDirectory(reminder);
+    return reminder;
   }
 
   updateReminder(reminderId: string, input: LarkReminderUpdateInput): LarkReminder {
     if (!this.reminderService) throw new Error("Lark reminders are unavailable");
-    return this.reminderService.update(reminderId, input);
+    const reminder = this.reminderService.update(reminderId, input);
+    void this.refreshReminderDirectory(reminder);
+    return reminder;
   }
 
   setReminderEnabled(reminderId: string, enabled: boolean): LarkReminder {
@@ -1578,6 +1588,7 @@ export class LarkChannelService {
 
   private async refreshDirectoryUsers(bots: readonly StoredLarkChannelBot[]): Promise<void> {
     if (!this.directoryService) return;
+    this.seedKnownDirectoryUsers(bots);
     const directory = this.directoryService.getState();
     const candidates = new Map<string, { appId: string; openId: string }>();
     for (const bot of bots) {
@@ -1586,6 +1597,7 @@ export class LarkChannelService {
       const openIds = [
         bot.config.substitute.openId,
         ...bot.authorizedUsers.map((user) => user.openId),
+        ...bot.pendingPairings.map((user) => user.openId),
         ...directory.users
           .filter((user) => user.appId === appId && !user.email)
           .map((user) => user.openId),
@@ -1605,14 +1617,23 @@ export class LarkChannelService {
   private async refreshDirectoryChats(bots: readonly StoredLarkChannelBot[]): Promise<void> {
     if (!this.directoryService) return;
     const candidates = new Map<string, { appId: string; chatId: string }>();
+    const botsById = new Map(bots.map((bot) => [bot.id, bot] as const));
     for (const bot of bots) {
       const appId = bot.config.appId?.trim();
       if (!appId) continue;
-      for (const user of bot.authorizedUsers) {
+      for (const user of [...bot.authorizedUsers, ...bot.pendingPairings]) {
         const chatId = user.chatId.trim();
         if (chatId) {
           candidates.set(`${appId}:${chatId}`, { appId, chatId });
         }
+      }
+    }
+    for (const reminder of this.reminderService?.list() ?? []) {
+      const bot = botsById.get(reminder.botId);
+      const appId = bot?.config.appId?.trim();
+      const chatId = reminder.chatId.trim();
+      if (appId && chatId) {
+        candidates.set(`${appId}:${chatId}`, { appId, chatId });
       }
     }
     await Promise.all(
@@ -1650,6 +1671,52 @@ export class LarkChannelService {
         "Failed to refresh Lark group directory entry",
       );
     }
+  }
+
+  private seedKnownDirectoryUsers(bots: readonly StoredLarkChannelBot[]): void {
+    if (!this.directoryService) return;
+    const directory = this.directoryService.getState();
+    const seeds = buildLarkDirectoryUserSeeds(
+      bots,
+      directory,
+      (appId) => this.userOAuthService?.getStatus(appId) ?? null,
+    );
+    for (const source of seeds) {
+      this.directoryService.observeUser(
+        source.appId,
+        source.openId,
+        source.displayName,
+        source.email,
+      );
+    }
+  }
+
+  private async hydrateUserOAuthStatus(appId: string) {
+    if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
+    const status = this.userOAuthService.getStatus(appId);
+    if (!this.directoryService || !status.openId) return status;
+    this.directoryService.observeUser(
+      status.appId,
+      status.openId,
+      status.displayName,
+      status.email,
+    );
+    const user = await this.directoryService.refreshUserByOpenId(status.appId, status.openId);
+    return {
+      ...status,
+      email: normalizeLarkDirectoryEmail(status.email) ?? user?.email ?? null,
+      displayName: pickLarkDirectoryDisplayName(status.displayName, user?.displayName),
+    };
+  }
+
+  private async refreshReminderDirectory(reminder: LarkReminder): Promise<void> {
+    const bot = this.store.getBot(reminder.botId);
+    const appId = bot?.config.appId?.trim();
+    if (!appId) return;
+    await Promise.all([
+      this.refreshDirectoryChat(appId, reminder.chatId, true),
+      ...reminder.targetOpenIds.map((openId) => this.refreshDirectoryUser(appId, openId)),
+    ]);
   }
 
   private async relayLocalSubstituteMention(input: {

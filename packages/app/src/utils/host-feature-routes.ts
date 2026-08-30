@@ -158,6 +158,16 @@ export function buildProjectLarkGroupsSettingsRoute(serverId: string, projectId:
   return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/lark-groups` as const;
 }
 
+export function buildProjectLarkGroupSettingsRoute(
+  serverId: string,
+  projectId: string,
+  groupId?: string,
+) {
+  assertProjectRouteIds(serverId, projectId, "buildProjectLarkGroupSettingsRoute");
+  const target = trimNonEmpty(groupId) ?? "new";
+  return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/lark-groups/${encodeSegment(target)}` as const;
+}
+
 export function buildProjectKnowledgeSettingsRoute(serverId: string, projectId: string) {
   assertProjectRouteIds(serverId, projectId, "buildProjectKnowledgeSettingsRoute");
   return `/settings/hosts/${encodeSegment(serverId)}/projects/${encodeSegment(projectId)}/knowledge` as const;

@@ -27,6 +27,32 @@ function formatBotLabel(bot: LarkChannelBotStatus): string {
   return bot.appId ? `${name}（${bot.appId}）` : name;
 }
 
+function useProjectLarkEditorDirectory(serverId: string) {
+  const lark = useLarkChannel(serverId);
+  const bots = useMemo(
+    () => (lark.status?.bots ?? []).filter((bot) => bot.appId && bot.hasAppSecret),
+    [lark.status?.bots],
+  );
+  const botOptions = useMemo<SelectFieldOption<string>[]>(
+    () =>
+      bots.map((bot) => ({
+        id: bot.id,
+        value: bot.id,
+        label: formatBotLabel(bot),
+        description: bot.enabled ? "已启用" : "未启用；只能定时同步，不能实时接收消息",
+      })),
+    [bots],
+  );
+  return {
+    bots,
+    botOptions,
+    chats: lark.status?.directory?.chats ?? [],
+    isLoading: lark.isLoading,
+    resolveChats: lark.resolveDirectoryChats,
+    error: lark.error,
+  };
+}
+
 interface ProjectLarkContextEditorProps {
   serverId: string;
   value: ProjectLarkGroupDraft[];
@@ -49,6 +75,8 @@ interface ProjectLarkBindingEditorProps {
     updater: (group: ProjectLarkGroupDraft) => ProjectLarkGroupDraft,
   ) => void;
   removeGroup: (rowId: string) => void;
+  allowRemove?: boolean;
+  title?: string;
 }
 
 function ProjectLarkBindingEditor({
@@ -63,6 +91,8 @@ function ProjectLarkBindingEditor({
   resolveChats,
   updateGroup,
   removeGroup,
+  allowRemove = true,
+  title,
 }: ProjectLarkBindingEditorProps) {
   const selectedBot = useMemo(
     () => bots.find((bot) => bot.id === group.botId) ?? null,
@@ -107,8 +137,9 @@ function ProjectLarkBindingEditor({
       })),
     [group.rowId, updateGroup],
   );
-  const trailing = useMemo(
-    () => (
+  const trailing = useMemo(() => {
+    if (!allowRemove) return undefined;
+    return (
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`删除飞书群绑定 ${index + 1}`}
@@ -118,13 +149,12 @@ function ProjectLarkBindingEditor({
       >
         <Trash2 size={14} color={styles.dangerIcon.color} />
       </Pressable>
-    ),
-    [handleRemove, index],
-  );
+    );
+  }, [allowRemove, handleRemove, index]);
 
   return (
     <SettingsSection
-      title={`飞书群绑定 ${index + 1}`}
+      title={title ?? `飞书群绑定 ${index + 1}`}
       trailing={trailing}
       flush={isLast}
       testID={`project-lark-context-binding-${index}`}
@@ -189,22 +219,7 @@ export function ProjectLarkContextEditor({
   error,
   onChange,
 }: ProjectLarkContextEditorProps) {
-  const lark = useLarkChannel(serverId);
-  const bots = useMemo(
-    () => (lark.status?.bots ?? []).filter((bot) => bot.appId && bot.hasAppSecret),
-    [lark.status?.bots],
-  );
-  const botOptions = useMemo<SelectFieldOption<string>[]>(
-    () =>
-      bots.map((bot) => ({
-        id: bot.id,
-        value: bot.id,
-        label: formatBotLabel(bot),
-        description: bot.enabled ? "已启用" : "未启用；只能定时同步，不能实时接收消息",
-      })),
-    [bots],
-  );
-  const chats = lark.status?.directory?.chats ?? [];
+  const directory = useProjectLarkEditorDirectory(serverId);
 
   const handleAdd = useCallback(
     () => onChange([...value, createProjectLarkGroupDraft()]),
@@ -260,17 +275,68 @@ export function ProjectLarkContextEditor({
             group={group}
             index={index}
             isLast={index === value.length - 1}
-            bots={bots}
-            botOptions={botOptions}
-            chats={chats}
-            isLoading={lark.isLoading}
-            resolveChats={lark.resolveDirectoryChats}
+            bots={directory.bots}
+            botOptions={directory.botOptions}
+            chats={directory.chats}
+            isLoading={directory.isLoading}
+            resolveChats={directory.resolveChats}
             updateGroup={updateGroup}
             removeGroup={removeGroup}
           />
         ))
       )}
-      {lark.error ? <Text style={settingsStyles.rowError}>{lark.error.message}</Text> : null}
+      {directory.error ? (
+        <Text style={settingsStyles.rowError}>{directory.error.message}</Text>
+      ) : null}
+      {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
+    </SettingsGroup>
+  );
+}
+
+export function ProjectLarkGroupEditor({
+  serverId,
+  value,
+  error,
+  onChange,
+}: {
+  serverId: string;
+  value: ProjectLarkGroupDraft;
+  error: string | null;
+  onChange: (value: ProjectLarkGroupDraft) => void;
+}) {
+  const directory = useProjectLarkEditorDirectory(serverId);
+  const updateGroup = useCallback(
+    (_rowId: string, updater: (group: ProjectLarkGroupDraft) => ProjectLarkGroupDraft) => {
+      onChange(updater(value));
+    },
+    [onChange, value],
+  );
+  const ignoreRemove = useCallback(() => undefined, []);
+
+  return (
+    <SettingsGroup
+      title="飞书群配置"
+      info="选择飞书机器人和群聊后，Paseo 会邀请机器人入群，并把最近群消息作为当前项目的参考上下文。"
+      testID="project-lark-group-editor"
+    >
+      <ProjectLarkBindingEditor
+        serverId={serverId}
+        group={value}
+        index={0}
+        isLast
+        bots={directory.bots}
+        botOptions={directory.botOptions}
+        chats={directory.chats}
+        isLoading={directory.isLoading}
+        resolveChats={directory.resolveChats}
+        updateGroup={updateGroup}
+        removeGroup={ignoreRemove}
+        allowRemove={false}
+        title="群配置"
+      />
+      {directory.error ? (
+        <Text style={settingsStyles.rowError}>{directory.error.message}</Text>
+      ) : null}
       {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
     </SettingsGroup>
   );

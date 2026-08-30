@@ -1463,7 +1463,9 @@ function reduceTimelineCompaction(
   timelineCursor?: TimelinePosition,
 ): StreamItem[] {
   if (item.status === "completed") {
-    const loadingIdx = state.findIndex((s) => s.kind === "compaction" && s.status === "loading");
+    const loadingIdx = state.findLastIndex(
+      (entry) => entry.kind === "compaction" && entry.status === "loading",
+    );
     const existing = loadingIdx >= 0 ? state[loadingIdx] : undefined;
     if (loadingIdx >= 0 && existing && existing.kind === "compaction") {
       const updated: CompactionItem = {
@@ -1477,6 +1479,17 @@ function reduceTimelineCompaction(
     }
     if (loadingIdx >= 0) {
       return state;
+    }
+    const previous = state.at(-1);
+    if (previous?.kind === "compaction" && previous.status === "completed") {
+      const updated: CompactionItem = {
+        ...previous,
+        ...(timelineCursor ? { timelineCursor } : {}),
+        timestamp,
+        trigger: item.trigger ?? previous.trigger,
+        preTokens: item.preTokens ?? previous.preTokens,
+      };
+      return [...state.slice(0, -1), updated];
     }
   }
   const compaction: CompactionItem = {

@@ -51,7 +51,6 @@ import type {
 } from "@getpaseo/protocol/agent-types";
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useSessionStore } from "@/stores/session-store";
-import { useRevealedText } from "@/hooks/use-revealed-text";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import { useSettings } from "@/hooks/use-settings";
@@ -71,6 +70,11 @@ import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
 import { ChatOutlineRail } from "@/agent-stream/chat-outline/rail";
 import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
+import {
+  CHAT_OUTLINE_CONTENT_INSET,
+  CHAT_OUTLINE_MIN_PANEL_WIDTH,
+  shouldReserveChatOutlineContentInset,
+} from "@/agent-stream/chat-outline/layout";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
@@ -111,6 +115,8 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView } from "@/plugins/timeline";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { ReasoningItem } from "./reasoning-item";
+import { useContainerWidthBelow } from "@/hooks/use-container-width";
 
 function resolveChatOutlineModel(context: AgentScreenAgent): string | null {
   return context.runtimeInfo?.model ?? context.model ?? context.provider ?? null;
@@ -337,10 +343,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     ref,
   ) {
     const { t } = useTranslation();
-    const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
     const viewportRef = useRef<StreamViewportHandle | null>(null);
+    const { onLayout: onChatOutlineSurfaceLayout, isBelow: isChatOutlinePanelNarrow } =
+      useContainerWidthBelow(CHAT_OUTLINE_MIN_PANEL_WIDTH);
     const pendingClientMessageIds = useMemo(
       () => new Set(pendingMessageSubmissions.map((submission) => submission.clientMessageId)),
       [pendingMessageSubmissions],
@@ -626,6 +633,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       visibleItemIds: visibleHistoryItemIds,
       revealLoadedItem: revealLoadedHistory,
     });
+    const reserveChatOutlineContentInset = shouldReserveChatOutlineContentInset({
+      enabled: chatOutlineEnabled,
+      hasPrompts: chatOutline.prompts.length > 0,
+      isPanelNarrow: isChatOutlinePanelNarrow,
+      isWeb,
+    });
 
     useImperativeHandle(
       ref,
@@ -739,17 +752,30 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const renderThoughtItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "thought" }>) => {
         return (
-          <ThoughtSlot
-            itemId={item.id}
+          <ReasoningItem
+            agentId={agentId}
+            client={client}
+            serverId={resolvedServerId}
+            provider={context.provider}
+            item={item}
+            layoutItem={layoutItem}
+            workspaceRoot={workspaceRoot}
+            onInlinePathPress={handleInlinePathPress}
             onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
-            text={item.text}
-            status={item.status}
-            isLastInSequence={layoutItem.isLastInToolSequence}
-            defaultExpanded={autoExpandReasoning}
+            toast={toast}
           />
         );
       },
-      [autoExpandReasoning, setInlineDetailsExpanded],
+      [
+        agentId,
+        client,
+        context.provider,
+        handleInlinePathPress,
+        resolvedServerId,
+        setInlineDetailsExpanded,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     const renderSingleToolCallItem = useCallback(
@@ -1135,51 +1161,56 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     return (
       <ToolCallSheetProvider>
         <AssistantSelectionCopySurface style={stylesheet.container}>
-          <MessageOuterSpacingProvider disableOuterSpacing>
-            {streamRenderStrategy.render({
-              agentId,
-              segments: renderModel.segments,
-              historyRowRevision,
-              liveHeadRowRevision: expandedToolCallGroupIds,
-              boundary,
-              renderers,
-              listEmptyComponent,
-              viewportRef,
-              routeBottomAnchorRequest,
-              isAuthoritativeHistoryReady,
-              onNearBottomChange: setIsNearBottom,
-              onReadingPositionChange: chatOutline.reportReadingPosition,
-              onNearHistoryStart: loadOlder,
-              isLoadingOlderHistory: isLoadingOlder,
-              hasOlderHistory: hasOlder,
-              olderHistoryProgressKey: progressKey,
-              scrollEnabled: streamScrollEnabled,
-              listStyle: stylesheet.list,
-              baseListContentContainerStyle: stylesheet.listContentContainer,
-              forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
-            })}
-          </MessageOuterSpacingProvider>
-          <ChatOutlineRail
-            prompts={chatOutline.prompts}
-            activePrompt={chatOutline.activePrompt}
-            model={resolveChatOutlineModel(context)}
-            onJumpToPrompt={chatOutline.jumpToPrompt}
-          />
-          {(!isNearBottom || isTimelineDetached) && (
-            <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
-              <Animated.View entering={scrollIndicatorFadeIn} exiting={scrollIndicatorFadeOut}>
-                <Pressable
-                  style={stylesheet.scrollToBottomButton}
-                  onPress={scrollToBottom}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("agentStream.scrollToBottom")}
-                  testID="scroll-to-bottom-button"
-                >
-                  <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
-                </Pressable>
-              </Animated.View>
-            </View>
-          )}
+          <View style={stylesheet.streamSurface} onLayout={onChatOutlineSurfaceLayout}>
+            <MessageOuterSpacingProvider disableOuterSpacing>
+              {streamRenderStrategy.render({
+                agentId,
+                segments: renderModel.segments,
+                historyRowRevision,
+                liveHeadRowRevision: expandedToolCallGroupIds,
+                boundary,
+                renderers,
+                listEmptyComponent,
+                viewportRef,
+                routeBottomAnchorRequest,
+                isAuthoritativeHistoryReady,
+                onNearBottomChange: setIsNearBottom,
+                onReadingPositionChange: chatOutline.reportReadingPosition,
+                onNearHistoryStart: loadOlder,
+                isLoadingOlderHistory: isLoadingOlder,
+                hasOlderHistory: hasOlder,
+                olderHistoryProgressKey: progressKey,
+                scrollEnabled: streamScrollEnabled,
+                listStyle: stylesheet.list,
+                baseListContentContainerStyle: [
+                  stylesheet.listContentContainer,
+                  reserveChatOutlineContentInset && stylesheet.listContentContainerWithChatOutline,
+                ],
+                forwardListContentContainerStyle: stylesheet.forwardListContentContainer,
+              })}
+            </MessageOuterSpacingProvider>
+            <ChatOutlineRail
+              prompts={chatOutline.prompts}
+              activePrompt={chatOutline.activePrompt}
+              model={resolveChatOutlineModel(context)}
+              onJumpToPrompt={chatOutline.jumpToPrompt}
+            />
+            {(!isNearBottom || isTimelineDetached) && (
+              <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
+                <Animated.View entering={scrollIndicatorFadeIn} exiting={scrollIndicatorFadeOut}>
+                  <Pressable
+                    style={stylesheet.scrollToBottomButton}
+                    onPress={scrollToBottom}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("agentStream.scrollToBottom")}
+                    testID="scroll-to-bottom-button"
+                  >
+                    <ChevronDown size={24} color={stylesheet.scrollToBottomIcon.color} />
+                  </Pressable>
+                </Animated.View>
+              </View>
+            )}
+          </View>
         </AssistantSelectionCopySurface>
       </ToolCallSheetProvider>
     );
@@ -1315,39 +1346,6 @@ interface ToolCallSlotProps extends Omit<
 > {
   itemId: string;
   onInlineDetailsExpandedChangeByItemId: (itemId: string, expanded: boolean) => void;
-}
-
-interface ThoughtSlotProps {
-  itemId: string;
-  onInlineDetailsExpandedChangeByItemId: (itemId: string, expanded: boolean) => void;
-  text: string;
-  status: Extract<StreamItem, { kind: "thought" }>["status"];
-  isLastInSequence: boolean;
-  defaultExpanded: boolean;
-}
-
-// Reasoning text is paced the same way assistant text is; see @/hooks/use-revealed-text.
-function ThoughtSlot({
-  itemId,
-  onInlineDetailsExpandedChangeByItemId,
-  text,
-  status,
-  isLastInSequence,
-  defaultExpanded,
-}: ThoughtSlotProps) {
-  const revealedText = useRevealedText(text, status === "ready" ? "complete" : "streaming");
-  return (
-    <ToolCallSlot
-      itemId={itemId}
-      onInlineDetailsExpandedChangeByItemId={onInlineDetailsExpandedChangeByItemId}
-      toolName="thinking"
-      args={revealedText}
-      status={status === "ready" ? "completed" : "executing"}
-      isLastInSequence={isLastInSequence}
-      defaultExpanded={defaultExpanded}
-      forceInline={defaultExpanded}
-    />
-  );
 }
 
 function ToolCallSlot({
@@ -1647,6 +1645,9 @@ const stylesheet = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
+  streamSurface: {
+    flex: 1,
+  },
   contentWrapper: {
     width: "100%",
     maxWidth: MAX_CONTENT_WIDTH,
@@ -1660,6 +1661,9 @@ const stylesheet = StyleSheet.create((theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[4],
     },
+  },
+  listContentContainerWithChatOutline: {
+    paddingLeft: CHAT_OUTLINE_CONTENT_INSET,
   },
   forwardListContentContainer: {
     paddingTop: theme.spacing[4],

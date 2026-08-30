@@ -6,17 +6,17 @@ import { useReducedMotion } from "react-native-reanimated";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { createChatOutlineHoverIntent } from "./hover-intent";
+import {
+  CHAT_OUTLINE_MIN_PANEL_WIDTH,
+  CHAT_OUTLINE_RAIL_LEFT,
+  CHAT_OUTLINE_RAIL_WIDTH,
+} from "./layout";
 import { promptTickMagnification } from "./model";
 import type { ChatOutlineRailProps } from "./rail";
 
 // Hover tracking lives on the rail and the slots, never on the Pressable inside them:
 // magnifying a slot must not move the box the pointer is resting on. See docs/hover.md.
-const RAIL_WIDTH = 36;
 const SLOT_HEIGHT = 8;
-// Keep the rail available in ordinary desktop windows and moderately sized split panes.
-// The preview is transient and overlays the transcript, so reserving almost 1,000 px before
-// showing navigation made the feature disappear in the layouts where it is most useful.
-const MIN_PANEL_WIDTH = 640;
 const RESTING_PILL_HEIGHT = 2;
 const MAGNIFIED_PILL_HEIGHT = 4;
 const RESTING_PILL_WIDTH = 10;
@@ -37,7 +37,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const activeSeq = useSyncExternalStore(activePrompt.subscribe, activePrompt.getActiveSeq);
   const prefersReducedMotion = useReducedMotion();
-  const { onLayout, isBelow: isPanelNarrow } = useContainerWidthBelow(MIN_PANEL_WIDTH);
+  const { onLayout, isBelow: isPanelNarrow } = useContainerWidthBelow(CHAT_OUTLINE_MIN_PANEL_WIDTH);
 
   const hoverIntent = useMemo(
     () =>
@@ -272,10 +272,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   rail: {
     position: "absolute",
-    left: theme.spacing[2],
+    left: CHAT_OUTLINE_RAIL_LEFT,
     top: "8%",
     bottom: "8%",
-    width: RAIL_WIDTH,
+    width: CHAT_OUTLINE_RAIL_WIDTH,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 20,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create((theme) => ({
   // Slots tile the rail with no gaps, so every pixel of the column belongs to a prompt even
   // when a long conversation squeezes them well below their resting height.
   slot: {
-    width: RAIL_WIDTH,
+    width: CHAT_OUTLINE_RAIL_WIDTH,
     flexBasis: SLOT_HEIGHT,
     flexShrink: 1,
     alignItems: "center",
@@ -319,7 +319,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   preview: {
     position: "absolute",
-    left: RAIL_WIDTH + PREVIEW_GAP,
+    left: CHAT_OUTLINE_RAIL_WIDTH + PREVIEW_GAP,
     top: "50%",
     marginTop: -PREVIEW_HEIGHT / 2,
     width: PREVIEW_WIDTH,

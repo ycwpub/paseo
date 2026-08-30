@@ -30,9 +30,9 @@ import {
   type ReplicaRowKind,
   type ReplicaRowStore,
 } from "./row-store";
+import { MAX_PERSISTED_TIMELINE_ITEMS, selectTimelineCacheWindow } from "./timeline-cache-policy";
 
 const PERSIST_DELAY_MS = 5_000;
-const MAX_TIMELINE_ITEMS = 50;
 const MAX_CACHE_BYTES = 32 * 1024 * 1024;
 const IsoDateSchema = z.iso.datetime();
 const TimelinePositionSchema = z.strictObject({
@@ -56,6 +56,8 @@ const TimelineItemBaseShape = {
   // COMPAT(active-turn-membership): absent on caches written before turn membership.
   turnId: z.string().optional(),
   timestamp: IsoDateSchema,
+  startedAt: IsoDateSchema.optional(),
+  completedAt: IsoDateSchema.optional(),
 };
 
 const TodoEntrySchema = z.strictObject({
@@ -93,6 +95,7 @@ const StoredTimelineItemSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...TimelineItemBaseShape,
     kind: z.literal("thought"),
+    source: z.enum(["thinking", "text"]).optional(),
     text: z.string(),
     status: z.enum(["loading", "ready"]),
   }),
@@ -366,11 +369,26 @@ function deserializeTimeline(stored: StoredTimeline | null): CachedTimeline | nu
 }
 
 function timelineBase(item: StreamItem) {
+  const startedAt = "startedAt" in item ? item.startedAt : undefined;
+  const completedAt = "completedAt" in item ? item.completedAt : undefined;
   return {
     id: item.id,
     ...(item.timelineCursor ? { timelineCursor: item.timelineCursor } : {}),
     ...(item.turnId ? { turnId: item.turnId } : {}),
     timestamp: item.timestamp.toISOString(),
+    ...(startedAt ? { startedAt: startedAt.toISOString() } : {}),
+    ...(completedAt ? { completedAt: completedAt.toISOString() } : {}),
+  };
+}
+
+function deserializeTimelineBase(item: StoredTimelineItem) {
+  return {
+    id: item.id,
+    ...(item.timelineCursor ? { timelineCursor: item.timelineCursor } : {}),
+    ...(item.turnId ? { turnId: item.turnId } : {}),
+    timestamp: new Date(item.timestamp),
+    ...(item.startedAt ? { startedAt: new Date(item.startedAt) } : {}),
+    ...(item.completedAt ? { completedAt: new Date(item.completedAt) } : {}),
   };
 }
 
@@ -413,7 +431,13 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
         ...(item.blockIndex !== undefined ? { blockIndex: item.blockIndex } : {}),
       };
     case "thought":
-      return { ...base, kind: item.kind, text: item.text, status: item.status };
+      return {
+        ...base,
+        kind: item.kind,
+        ...(item.source ? { source: item.source } : {}),
+        text: item.text,
+        status: item.status,
+      };
     case "todo_list":
       return {
         ...base,
@@ -458,12 +482,7 @@ function serializeTimelineItem(item: StreamItem): StoredTimelineItem | null {
 }
 
 function deserializeTimelineItem(item: StoredTimelineItem): StreamItem {
-  const base = {
-    id: item.id,
-    ...(item.timelineCursor ? { timelineCursor: item.timelineCursor } : {}),
-    ...(item.turnId ? { turnId: item.turnId } : {}),
-    timestamp: new Date(item.timestamp),
-  };
+  const base = deserializeTimelineBase(item);
   switch (item.kind) {
     case "user_message":
       return {
@@ -483,7 +502,13 @@ function deserializeTimelineItem(item: StoredTimelineItem): StreamItem {
         ...(item.blockIndex !== undefined ? { blockIndex: item.blockIndex } : {}),
       };
     case "thought":
-      return { ...base, kind: item.kind, text: item.text, status: item.status };
+      return {
+        ...base,
+        kind: item.kind,
+        ...(item.source ? { source: item.source } : {}),
+        text: item.text,
+        status: item.status,
+      };
     case "todo_list":
       return {
         ...base,
@@ -682,28 +707,42 @@ function serializeTimeline(timeline: CachedTimeline): StoredTimeline | null {
   const canonicalItems = timeline.items.filter(
     (item) => item.kind !== "user_message" || !isUnreconciledLocalUserMessage(item),
   );
-  const items = canonicalItems.map(serializeTimelineItem).filter((item) => item !== null);
+  const selected = selectTimelineCacheWindow(canonicalItems, MAX_PERSISTED_TIMELINE_ITEMS);
+  const items = selected.items.map(serializeTimelineItem).filter((item) => item !== null);
   const range = timeline.range;
+  const firstSelectedItem = selected.items[0];
+  const firstSelectedCursor = firstSelectedItem?.timelineCursor;
+  let persistedStartSeq = selected.startIndex === 0 ? range?.startSeq : undefined;
+  if (
+    selected.startIndex > 0 &&
+    selected.startsAtTurnBoundary &&
+    firstSelectedCursor &&
+    firstSelectedCursor.epoch === range?.epoch
+  ) {
+    persistedStartSeq = firstSelectedCursor.seq;
+  }
   const canPersistCoverage =
     range !== null &&
     range.retainedRanges === undefined &&
-    canonicalItems.length <= MAX_TIMELINE_ITEMS &&
-    items.length === canonicalItems.length &&
-    canonicalItems.every(
+    persistedStartSeq !== undefined &&
+    items.length === selected.items.length &&
+    selected.items.every(
       (item) =>
         isTimelineItemStoredLosslessly(item) &&
         item.timelineCursor?.epoch === range.epoch &&
-        item.timelineCursor.seq >= range.startSeq &&
+        item.timelineCursor.seq >= persistedStartSeq &&
         item.timelineCursor.seq <= range.endSeq,
     ) &&
-    canonicalItems.some((item) => item.timelineCursor?.seq === range.endSeq);
+    selected.items.some((item) => item.timelineCursor?.seq === range.endSeq);
+  const persistedRange =
+    canPersistCoverage && persistedStartSeq !== undefined
+      ? { epoch: range.epoch, startSeq: persistedStartSeq, endSeq: range.endSeq }
+      : null;
   return {
     agentId: timeline.agentId,
-    items: items.slice(-MAX_TIMELINE_ITEMS),
-    range: canPersistCoverage
-      ? { epoch: range.epoch, startSeq: range.startSeq, endSeq: range.endSeq }
-      : null,
-    hasOlder: canPersistCoverage ? timeline.hasOlder : false,
+    items,
+    range: persistedRange,
+    hasOlder: canPersistCoverage ? timeline.hasOlder || selected.startIndex > 0 : false,
   };
 }
 

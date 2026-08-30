@@ -55,4 +55,14 @@ describe("resolveReasoningPresentation", () => {
       }),
     ).toEqual({ kind: "collapsible", defaultExpanded: true });
   });
+
+  it("keeps Aiden Codex reasoning visible when automatic expansion is disabled", () => {
+    expect(
+      resolveReasoningPresentation({
+        provider: "aiden-codex",
+        source: "thinking",
+        autoExpandReasoning: false,
+      }),
+    ).toEqual({ kind: "message" });
+  });
 });

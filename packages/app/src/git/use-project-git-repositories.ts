@@ -6,6 +6,7 @@ import {
   resolveProjectGitRepositoryCandidates,
   type ProjectGitRepositoryCandidate,
 } from "@/git/project-git-repositories";
+import { CHECKOUT_STATUS_STALE_TIME } from "@/git/use-status-query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useWorkspace } from "@/stores/session-store-hooks";
 
@@ -68,7 +69,7 @@ export function useProjectGitRepositories(input: {
       refetchOnReconnect: false,
       refetchOnWindowFocus: false,
       dataShape: "value" as const,
-      staleTimeMs: Infinity,
+      staleTimeMs: CHECKOUT_STATUS_STALE_TIME,
     })),
   );
   const repositories = useMemo(

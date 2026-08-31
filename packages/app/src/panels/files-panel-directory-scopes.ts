@@ -1,6 +1,9 @@
 import type { PaseoProjectConfig } from "@getpaseo/protocol/paseo-config-schema";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { resolveProjectResourceDirectories } from "@/utils/project-resource-directories";
+import {
+  resolveConfiguredProjectDirectories,
+  resolveProjectResourceDirectories,
+} from "@/utils/project-resource-directories";
 
 export const FILES_PANEL_DIRECTORY_SCOPE_IDS = [
   "project",
@@ -86,6 +89,17 @@ export function resolveFilesPanelDirectoryScopes(input: {
       workspaceDirectory,
     },
   });
+  const configuredProjectDirectories = resolveConfiguredProjectDirectories({
+    projectConfig: input.projectConfig,
+    context: {
+      projectId: workspace.projectId,
+      projectName: workspace.projectDisplayName,
+      projectRoot,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      workspaceDirectory,
+    },
+  });
 
   const automaticAgentKnowledge = resourceDirectories.knowledge.filter(isAgentKnowledgeDirectory);
   const configuredProjectKnowledge = resourceDirectories.knowledge.filter(
@@ -112,7 +126,7 @@ export function resolveFilesPanelDirectoryScopes(input: {
   const rootsByScope: Record<FilesPanelDirectoryScopeId, string[]> = {
     project: uniquePaths([projectRoot]),
     workspace: workspaceRoots,
-    projectDirectories: uniquePaths(resourceDirectories.project),
+    projectDirectories: uniquePaths(configuredProjectDirectories),
     projectKnowledge: projectKnowledgeRoots,
     agentKnowledge: agentKnowledgeRoots,
   };

@@ -1,5 +1,9 @@
 import type { PaseoConfigRaw, PaseoInstructionTemplate } from "@getpaseo/protocol/messages";
-import { resolvePaseoProjectDirectoryEntries } from "@getpaseo/protocol/paseo-config-schema";
+import { inferGitRepositoryDirectoryName } from "@getpaseo/protocol/project-git-resource";
+import {
+  resolvePaseoProjectDirectoryEntries,
+  type PaseoProjectDirectoryEntry,
+} from "@getpaseo/protocol/paseo-config-schema";
 import {
   applyDraftToConfig as applyBaseDraftToConfig,
   configToDraft as configToBaseDraft,
@@ -28,7 +32,11 @@ export type ProjectDirectoryKey = (typeof PROJECT_DIRECTORY_KEYS)[number];
 
 export interface ProjectDirectoryDraft {
   id: string;
+  type?: "local-directory" | "git-repository";
   path: string;
+  repository?: string;
+  branch?: string;
+  directory?: string;
   enabled: boolean;
 }
 
@@ -57,6 +65,50 @@ export interface ProjectConfigDraft extends BaseProjectConfigDraft {
   instructionTemplates: ProjectInstructionTemplateDraft[];
   projectLarkGroups: ProjectLarkGroupDraft[];
   projectConfigBase: Record<string, unknown> | undefined;
+}
+
+export function projectDirectoryDraftError(
+  draft: ProjectConfigDraft,
+  singleDirectoryRequiredMessage: string,
+): string | null {
+  const enabled = draft.projectDirectories.project.filter((entry) => entry.enabled);
+  const configured = enabled.filter((entry) =>
+    entry.type === "git-repository"
+      ? (entry.repository ?? "").trim().length > 0
+      : entry.path.trim().length > 0,
+  );
+  if (draft.projectDirectoryMode === "single" && configured.length !== 1) {
+    return singleDirectoryRequiredMessage;
+  }
+  const invalidGitDirectory = enabled.find(
+    (entry) =>
+      entry.type === "git-repository" &&
+      (!(entry.repository ?? "").trim() ||
+        (entry.branch ?? "").trim().startsWith("-") ||
+        ((entry.directory ?? "").trim().length > 0 &&
+          !/^[A-Za-z0-9._-]+$/u.test((entry.directory ?? "").trim()))),
+  );
+  if (invalidGitDirectory) {
+    return "Git 项目目录必须填写仓库地址；分支不能以“-”开头；repos 目录名只能包含字母、数字、点、下划线和短横线。";
+  }
+  const destinations = new Map<string, ProjectDirectoryDraft>();
+  for (const entry of enabled) {
+    if (entry.type !== "git-repository") continue;
+    const directory =
+      (entry.directory ?? "").trim() ||
+      inferGitRepositoryDirectoryName((entry.repository ?? "").trim());
+    if (!directory) continue;
+    const existing = destinations.get(directory);
+    if (
+      existing &&
+      ((existing.repository ?? "").trim() !== (entry.repository ?? "").trim() ||
+        (existing.branch ?? "").trim() !== (entry.branch ?? "").trim())
+    ) {
+      return `多个 Git 项目目录会下载到 repos/${directory}，请设置不同的目录名。`;
+    }
+    destinations.set(directory, entry);
+  }
+  return null;
 }
 
 export function projectDirectoryPathForDisplay(path: string, absoluteDirectory: string): string {
@@ -123,7 +175,11 @@ function projectDirectoriesToDraft(
       key,
       directoryEntries[key].map((entry) => ({
         id: nextProjectDraftId(`project-directory-${key}`),
+        type: entry.type,
         path: entry.path,
+        repository: entry.type === "git-repository" ? entry.repository : "",
+        branch: entry.type === "git-repository" ? (entry.branch ?? "") : "",
+        directory: entry.type === "git-repository" ? (entry.directory ?? "") : "",
         enabled: entry.enabled,
       })),
     ]),
@@ -140,11 +196,33 @@ function projectVariablesToDraft(
   }));
 }
 
-function projectIndexUpdateIntervalToDraft(
-  config: PaseoConfigRaw | null | undefined,
-): string {
+function projectIndexUpdateIntervalToDraft(config: PaseoConfigRaw | null | undefined): string {
   const updateIntervalMinutes = config?.project?.indexSkill?.updateIntervalMinutes;
   return updateIntervalMinutes == null ? "" : String(updateIntervalMinutes);
+}
+
+function projectDirectoryDraftsToConfig(
+  entries: readonly ProjectDirectoryDraft[],
+): PaseoProjectDirectoryEntry[] {
+  return entries.flatMap((entry): PaseoProjectDirectoryEntry[] => {
+    if (entry.type === "git-repository") {
+      const repository = (entry.repository ?? "").trim();
+      if (!repository) return [];
+      const branch = (entry.branch ?? "").trim();
+      const directory = (entry.directory ?? "").trim();
+      return [
+        {
+          type: "git-repository",
+          repository,
+          ...(branch ? { branch } : {}),
+          ...(directory ? { directory } : {}),
+          enabled: entry.enabled,
+        },
+      ];
+    }
+    const path = entry.path.trim();
+    return path ? [{ path, enabled: entry.enabled }] : [];
+  });
 }
 
 export function configToDraft(config: PaseoConfigRaw | null | undefined): ProjectConfigDraft {
@@ -179,10 +257,7 @@ export function applyDraftToConfig(input: {
   delete nextDirectories.reference;
   delete nextDirectories.knowledge;
   for (const key of PROJECT_DIRECTORY_KEYS) {
-    const entries = input.draft.projectDirectories[key]
-      .map((entry) => ({ path: entry.path.trim(), enabled: entry.enabled }))
-      .filter((entry) => entry.path.length > 0);
-    nextDirectories[key] = entries;
+    nextDirectories[key] = projectDirectoryDraftsToConfig(input.draft.projectDirectories[key]);
   }
   if (Object.keys(nextDirectories).length === 0) {
     delete nextProject.directories;

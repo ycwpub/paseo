@@ -140,6 +140,13 @@ export const en = {
       openReview: "Open review attachment",
       removeReview: "Remove review attachment",
     },
+    queue: {
+      edit: "Edit queued message",
+      editing: "Editing queued message",
+      cancelEdit: "Cancel queued message editing",
+      remove: "Delete queued message",
+      steer: "Steer now",
+    },
     errors: {
       failedToSend: "Failed to send message",
       failedToCreateAgent: "Failed to create agent",

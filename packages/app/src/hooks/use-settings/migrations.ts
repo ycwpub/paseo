@@ -12,6 +12,7 @@ const AppliedMigrationsSchema = z.strictObject({ applied: z.array(z.string()) })
  * "interrupt" afterwards sticks.
  */
 const STEER_DEFAULT_MIGRATION = "steer-default";
+const QUEUE_DEFAULT_MIGRATION = "queue-default";
 
 /**
  * Brings stored settings up to date, returning what the caller should use. Owns both writes so
@@ -30,12 +31,24 @@ export async function migrateAppSettings(
     AppliedMigrationsSchema,
   );
   const applied = new Set(migrationMarker?.applied ?? []);
-  if (applied.has(STEER_DEFAULT_MIGRATION)) {
-    return settings;
+  let migrated = settings;
+
+  if (!applied.has(STEER_DEFAULT_MIGRATION)) {
+    migrated =
+      migrated.sendBehavior === "interrupt" ? { ...migrated, sendBehavior: "steer" } : migrated;
+    applied.add(STEER_DEFAULT_MIGRATION);
   }
 
-  const migrated: AppSettings =
-    settings.sendBehavior === "interrupt" ? { ...settings, sendBehavior: "steer" } : settings;
+  // The branch previously defaulted active-turn submissions to steering. Restore
+  // the product behavior where new input queues behind the running turn. As with
+  // the earlier default migration, a choice made after this marker is written is
+  // preserved.
+  if (!applied.has(QUEUE_DEFAULT_MIGRATION)) {
+    migrated =
+      migrated.sendBehavior === "steer" ? { ...migrated, sendBehavior: "queue" } : migrated;
+    applied.add(QUEUE_DEFAULT_MIGRATION);
+  }
+
   if (migrated !== settings) {
     const storedSidebarRowItems = stored?.sidebarRowItems ?? {};
     await storage.setItem(
@@ -48,7 +61,6 @@ export async function migrateAppSettings(
     );
   }
 
-  applied.add(STEER_DEFAULT_MIGRATION);
   await storage.setItem(SETTINGS_MIGRATIONS_KEY, JSON.stringify({ applied: [...applied] }));
   return migrated;
 }

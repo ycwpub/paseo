@@ -1,8 +1,10 @@
 import {
+  resolvePaseoProjectDirectoryEntries,
   resolvePaseoProjectDirectoryValues,
   type PaseoProjectConfig,
   type PaseoProjectDirectoryKey,
 } from "@getpaseo/protocol/paseo-config-schema";
+import { resolveGitRepositoryManagedPath } from "@getpaseo/protocol/project-git-resource";
 import { isAbsolutePath } from "./path";
 
 export const PROJECT_RESOURCE_DIRECTORY_KEYS = [
@@ -69,6 +71,40 @@ function resolveHostPath(projectRoot: string, value: string): string | null {
   return normalizeHostPath(`${projectRoot.replace(/[\\/]+$/u, "")}/${trimmed}`);
 }
 
+function resolveProjectResourceDirectoryList(
+  input: {
+    projectConfig: PaseoProjectConfig | null | undefined;
+    context: ProjectResourceDirectoryContext;
+  },
+  values: readonly string[],
+): string[] {
+  const variables = {
+    ...input.projectConfig?.variables,
+    ...input.context,
+  };
+  return Array.from(
+    new Set(
+      values.flatMap((entry) => {
+        const path = resolveHostPath(input.context.projectRoot, replaceVariables(entry, variables));
+        return path ? [path] : [];
+      }),
+    ),
+  );
+}
+
+export function resolveConfiguredProjectDirectories(input: {
+  projectConfig: PaseoProjectConfig | null | undefined;
+  context: ProjectResourceDirectoryContext;
+}): string[] {
+  const configuredEntries = input.projectConfig?.directories?.project ?? [];
+  const configuredPaths = resolvePaseoProjectDirectoryEntries({
+    project: configuredEntries,
+  })
+    .project.filter((entry) => entry.enabled)
+    .map((entry) => entry.path);
+  return resolveProjectResourceDirectoryList(input, configuredPaths);
+}
+
 export function resolveProjectResourceDirectories(input: {
   projectConfig: PaseoProjectConfig | null | undefined;
   context: ProjectResourceDirectoryContext;
@@ -79,23 +115,24 @@ export function resolveProjectResourceDirectories(input: {
     ...input.context,
   };
   const resolveList = (values: readonly string[]) =>
-    Array.from(
-      new Set(
-        values.flatMap((entry) => {
-          const path = resolveHostPath(
-            input.context.projectRoot,
-            replaceVariables(entry, variables),
-          );
-          return path ? [path] : [];
-        }),
-      ),
-    );
+    resolveProjectResourceDirectoryList(input, values);
   const project = resolveList(configured.project);
   const configuredKnowledge = resolveList(configured.knowledge);
   const configuredGeneralKnowledge = resolveList(
     (input.projectConfig?.knowledge?.general ?? [])
-      .filter((resource) => resource.enabled !== false && resource.type === "local-directory")
-      .map((resource) => resource.source),
+      .filter(
+        (resource) =>
+          resource.enabled !== false &&
+          (resource.type === "local-directory" || resource.type === "git-repository"),
+      )
+      .map((resource) =>
+        resource.type === "git-repository"
+          ? resolveGitRepositoryManagedPath({
+              repository: resource.source,
+              ...(resource.directory ? { directory: resource.directory } : {}),
+            })
+          : resource.source,
+      ),
   );
   const automaticKnowledge =
     (input.projectConfig?.directoryMode ?? "single") === "single" && project[0]

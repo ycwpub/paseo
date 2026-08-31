@@ -24,6 +24,7 @@ import type { DaemonConfigStore } from "../daemon-config-store.js";
 import type { PersistedProjectRecord, ProjectRegistry } from "../workspace-registry.js";
 import { resolveProjectDirectories } from "./project-context.js";
 import { readProjectConfigForProject } from "./project-config-storage.js";
+import { resolveManagedProjectStorageRoot } from "./project-storage-paths.js";
 
 const INDEX_FILE_NAME = "SKILL.md";
 const BRANCH_INDEX_DIRECTORY = "branches";
@@ -242,13 +243,21 @@ function loadProjectConfig(
 }
 
 function resolveIndexProjectRoot(
+  paseoHome: string,
   project: PersistedProjectRecord,
   projectConfig: PaseoProjectConfig | undefined,
 ): string | null {
   if (project.rootPath) return project.rootPath;
   const configuredRoot = resolvePaseoProjectDirectoryEntries(projectConfig?.directories)
     .project.filter((entry) => entry.enabled)
-    .map((entry) => entry.path.trim())
+    .map((entry) =>
+      entry.path
+        .trim()
+        .replace(
+          /\{\{\s*projectRoot\s*\}\}/gu,
+          resolveManagedProjectStorageRoot(paseoHome, project.projectId),
+        ),
+    )
     .find(Boolean);
   if (!configuredRoot) return null;
   if (configuredRoot === "~") return homedir();
@@ -318,7 +327,7 @@ export class ProjectIndexService {
   private async refreshProject(project: PersistedProjectRecord): Promise<void> {
     const projectConfig = loadProjectConfig(this.paseoHome, project);
     if (projectConfig?.indexSkill?.autoGenerate !== true) return;
-    const projectRoot = resolveIndexProjectRoot(project, projectConfig);
+    const projectRoot = resolveIndexProjectRoot(this.paseoHome, project, projectConfig);
     if (!projectRoot) return;
     const variables = {
       ...projectConfig.variables,

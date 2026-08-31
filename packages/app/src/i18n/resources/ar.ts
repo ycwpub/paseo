@@ -143,6 +143,13 @@ export const ar: TranslationResources = {
       openReview: "فتح مرفق المراجعة",
       removeReview: "إزالة مرفق المراجعة",
     },
+    queue: {
+      edit: "تحرير الرسالة في قائمة الانتظار",
+      editing: "جارٍ تحرير الرسالة في قائمة الانتظار",
+      cancelEdit: "إلغاء تحرير الرسالة في قائمة الانتظار",
+      remove: "حذف الرسالة من قائمة الانتظار",
+      steer: "توجيه الآن",
+    },
     errors: {
       failedToSend: "فشل في إرسال الرسالة",
       failedToCreateAgent: "فشل في إنشاء الوكيل",

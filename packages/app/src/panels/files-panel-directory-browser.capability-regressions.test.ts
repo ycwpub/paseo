@@ -20,4 +20,11 @@ describe("files panel directory root selector", () => {
     expect(source).toContain('width: "100%"');
     expect(source).not.toContain("<Text numberOfLines={1} style={styles.rootOptionText}");
   });
+
+  it("wraps the five directory type tabs instead of clipping or horizontally scrolling them", () => {
+    expect(source).toContain('testID="files-panel-directory-scopes"');
+    expect(source).toContain('flexDirection: "row"');
+    expect(source).toContain('flexWrap: "wrap"');
+    expect(source).not.toContain("<ScrollView");
+  });
 });

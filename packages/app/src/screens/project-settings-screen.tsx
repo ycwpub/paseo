@@ -51,7 +51,7 @@ import {
   applyDraftToConfig,
   configToDraft,
   METADATA_PROMPT_KEYS,
-  projectDirectoryPathForDisplay,
+  projectDirectoryDraftError,
   type LifecycleOriginalKind,
   type MetadataPromptKey,
   type ProjectConfigDraft,
@@ -60,6 +60,7 @@ import {
   type ProjectScriptDraft,
   type ProjectVariableDraft,
 } from "@/projects/config/project-config-editor-model";
+import { ProjectDirectoryListSection } from "@/projects/config/project-directory-list-section";
 import {
   getProjectHostEntry,
   getProjectSummaryForHostProject,
@@ -1007,13 +1008,10 @@ function validateProjectConfiguration(
   draft: ProjectConfigDraft,
   t: TFunction,
 ): ProjectConfigurationValidation {
-  const enabledProjectDirectories = draft.projectDirectories.project.filter(
-    (entry) => entry.enabled && entry.path.trim().length > 0,
+  const projectDirectoryError = projectDirectoryDraftError(
+    draft,
+    t("settings.project.resources.project.validation.singleRequired"),
   );
-  const projectDirectoryError =
-    draft.projectDirectoryMode === "single" && enabledProjectDirectories.length !== 1
-      ? t("settings.project.resources.project.validation.singleRequired")
-      : null;
   const interval = draft.projectIndexUpdateIntervalText.trim();
   const parsedInterval = Number(interval);
   const indexIntervalError =
@@ -1109,7 +1107,7 @@ function ProjectResourcesEditor({
         info={t("settings.project.resources.info")}
         testID="project-resources-group"
       >
-        <DirectoryListSection
+        <ProjectDirectoryListSection
           title={t("settings.project.resources.project.title")}
           hint={t("settings.project.resources.project.hint")}
           directoryKey="project"
@@ -1120,14 +1118,14 @@ function ProjectResourcesEditor({
           onModeChange={onDirectoryModeChange}
           onChange={onDirectoryChange}
         />
-        <DirectoryListSection
+        <ProjectDirectoryListSection
           title={t("settings.project.resources.indexSkill.title")}
           hint={t("settings.project.resources.indexSkill.hint")}
           directoryKey="indexSkill"
           values={draft.projectDirectories.indexSkill}
           onChange={onDirectoryChange}
         />
-        <DirectoryListSection
+        <ProjectDirectoryListSection
           title={t("settings.project.resources.workspaceData.title")}
           hint={t("settings.project.resources.workspaceData.hint")}
           directoryKey="workspaceData"
@@ -1217,136 +1215,6 @@ function ProjectResourcesEditor({
 }
 
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop, react-perf/jsx-no-jsx-as-prop -- Dynamic form rows bind edits to their current row values. */
-function DirectoryListSection({
-  title,
-  hint,
-  directoryKey,
-  values,
-  mode,
-  projectDirectoryPath,
-  error,
-  onModeChange,
-  onChange,
-  flush,
-}: {
-  title: string;
-  hint: string;
-  directoryKey: ProjectDirectoryKey;
-  values: ProjectDirectoryDraft[];
-  mode?: "single" | "multiple";
-  projectDirectoryPath?: string;
-  error?: string | null;
-  onModeChange?: (value: "single" | "multiple") => void;
-  onChange: (key: ProjectDirectoryKey, values: ProjectDirectoryDraft[]) => void;
-  flush?: boolean;
-}) {
-  const { t } = useTranslation();
-  const add = useCallback(
-    () =>
-      onChange(directoryKey, [
-        ...values,
-        {
-          id: `project-directory-${directoryKey}-${Date.now()}`,
-          path: "",
-          enabled: true,
-        },
-      ]),
-    [directoryKey, onChange, values],
-  );
-  const canAdd = mode !== "single" || values.length === 0;
-  return (
-    <SettingsSection
-      title={title}
-      flush={flush}
-      trailing={
-        <Pressable
-          onPress={add}
-          disabled={!canAdd}
-          hitSlop={8}
-          style={[settingsStyles.sectionHeaderLink, !canAdd && styles.disabledControl]}
-        >
-          <Plus size={ICON_SIZE} color={styles.iconColor.color} />
-        </Pressable>
-      }
-    >
-      <Text style={styles.sectionHint}>{hint}</Text>
-      {mode && onModeChange ? (
-        <View style={styles.directoryModeRow}>
-          <Button
-            variant={mode === "single" ? "default" : "outline"}
-            size="sm"
-            onPress={() => onModeChange("single")}
-            testID="project-directory-mode-single"
-          >
-            {t("settings.project.resources.project.single")}
-          </Button>
-          <Button
-            variant={mode === "multiple" ? "default" : "outline"}
-            size="sm"
-            onPress={() => onModeChange("multiple")}
-            testID="project-directory-mode-multiple"
-          >
-            {t("settings.project.resources.project.multiple")}
-          </Button>
-        </View>
-      ) : null}
-      <View style={styles.listEditor}>
-        {values.length === 0 ? (
-          <Text style={styles.emptyScripts}>
-            {t("settings.project.resources.emptyDirectories")}
-          </Text>
-        ) : (
-          values.map((value) => (
-            <View key={value.id} style={styles.listEditorRow}>
-              <Switch
-                value={value.enabled}
-                onValueChange={(enabled) =>
-                  onChange(
-                    directoryKey,
-                    values.map((entry) => (entry.id === value.id ? { ...entry, enabled } : entry)),
-                  )
-                }
-                testID={`project-directory-enabled-${value.id}`}
-              />
-              <TextInput
-                value={
-                  projectDirectoryPath
-                    ? projectDirectoryPathForDisplay(value.path, projectDirectoryPath)
-                    : value.path
-                }
-                onChangeText={(next) =>
-                  onChange(
-                    directoryKey,
-                    values.map((entry) =>
-                      entry.id === value.id ? { ...entry, path: next } : entry,
-                    ),
-                  )
-                }
-                placeholder="./path"
-                placeholderTextColor={styles.placeholderColor.color}
-                style={styles.flexInput}
-              />
-              <Pressable
-                accessibilityLabel={t("settings.project.resources.removeDirectory", { title })}
-                onPress={() =>
-                  onChange(
-                    directoryKey,
-                    values.filter((entry) => entry.id !== value.id),
-                  )
-                }
-                style={styles.removeIconButton}
-              >
-                <X size={ICON_SIZE} color={styles.iconColor.color} />
-              </Pressable>
-            </View>
-          ))
-        )}
-        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
-      </View>
-    </SettingsSection>
-  );
-}
-
 function ProjectVariablesEditor({
   values,
   error,
@@ -1763,27 +1631,6 @@ const styles = StyleSheet.create((theme) => ({
   emptyScripts: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
-  },
-  sectionHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    marginBottom: theme.spacing[2],
-  },
-  directoryModeRow: {
-    flexDirection: "row",
-    gap: theme.spacing[2],
-    marginBottom: theme.spacing[3],
-  },
-  disabledControl: {
-    opacity: 0.35,
-  },
-  listEditor: {
-    gap: theme.spacing[2],
-  },
-  listEditorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
   },
   variableRow: {
     flexDirection: {

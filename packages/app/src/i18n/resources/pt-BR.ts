@@ -143,6 +143,13 @@ export const ptBR: TranslationResources = {
       openReview: "Abrir anexo de revisão",
       removeReview: "Remover anexo de revisão",
     },
+    queue: {
+      edit: "Editar mensagem na fila",
+      editing: "Editando mensagem na fila",
+      cancelEdit: "Cancelar edição da mensagem",
+      remove: "Excluir mensagem da fila",
+      steer: "Orientar agora",
+    },
     errors: {
       failedToSend: "Falha ao enviar mensagem",
       failedToCreateAgent: "Falha ao criar agente",

@@ -143,6 +143,13 @@ export const ja: TranslationResources = {
       openReview: "レビュー添付ファイルを開く",
       removeReview: "レビュー添付ファイルを削除",
     },
+    queue: {
+      edit: "キューに入れたメッセージを編集",
+      editing: "キューのメッセージを編集中",
+      cancelEdit: "キューのメッセージ編集をキャンセル",
+      remove: "キューのメッセージを削除",
+      steer: "今すぐ指示",
+    },
     errors: {
       failedToSend: "メッセージの送信に失敗しました",
       failedToCreateAgent: "エージェントの作成に失敗しました",

@@ -143,6 +143,13 @@ export const ko: TranslationResources = {
       openReview: "리뷰 첨부 열기",
       removeReview: "리뷰 첨부 제거",
     },
+    queue: {
+      edit: "대기 중인 메시지 편집",
+      editing: "대기 중인 메시지 편집 중",
+      cancelEdit: "대기 메시지 편집 취소",
+      remove: "대기 중인 메시지 삭제",
+      steer: "지금 지시",
+    },
     errors: {
       failedToSend: "메시지를 보내지 못했습니다",
       failedToCreateAgent: "에이전트를 생성하지 못했습니다",

@@ -160,4 +160,61 @@ describe("useQueuedMessageEdit", () => {
     expect(result.current.text).toBe("current draft");
     expect(resumeQueue).toHaveBeenCalledOnce();
   });
+
+  it("preserves queued resource selections when the composer does not manage them", () => {
+    const queue = createQueue([
+      {
+        ...message("queued", "queued text"),
+        selectedMcpServerIds: ["queued-mcp"],
+        selectedSkillIds: ["queued-skill"],
+      },
+    ]);
+    const suppressWorkspaceAttachments = vi.fn();
+    const resetWorkspaceAttachmentSuppression = vi.fn();
+    const focusInput = vi.fn();
+    const clearError = vi.fn();
+    const resumeQueue = vi.fn();
+
+    const { result } = renderHook(() => {
+      const [text, setText] = useState("current draft");
+      const [attachments, setAttachments] = useState<UserComposerAttachment[]>([]);
+      const editor = useQueuedMessageEdit({
+        serverId: "server",
+        agentId: "agent",
+        queue,
+        queuedMessages: queue.state.get("agent") ?? [],
+        text,
+        attachments,
+        currentDraftAttachments: attachments,
+        setText,
+        setAttachments,
+        suppressCurrentWorkspaceAttachments: suppressWorkspaceAttachments,
+        resetWorkspaceAttachmentSuppression,
+        focusInput,
+        clearError,
+        resumeQueue,
+      });
+      return { editor, text, setText };
+    });
+
+    act(() => {
+      result.current.editor.begin("queued");
+    });
+    act(() => {
+      result.current.setText("edited");
+    });
+    act(() => {
+      result.current.editor.submit({ text: "edited" });
+    });
+
+    expect(queue.state.get("agent")).toEqual([
+      {
+        id: "queued",
+        text: "edited",
+        attachments: [],
+        selectedMcpServerIds: ["queued-mcp"],
+        selectedSkillIds: ["queued-skill"],
+      },
+    ]);
+  });
 });

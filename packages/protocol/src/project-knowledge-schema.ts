@@ -1,12 +1,25 @@
 import { z } from "zod";
 
-export const PaseoProjectGeneralKnowledgeResourceSchema = z
+const PaseoGeneralKnowledgeResourceSchema = z
   .object({
     type: z.enum(["local-directory", "local-document", "cloud-document"]),
     source: z.string(),
     enabled: z.boolean().optional(),
   })
   .passthrough();
+
+export const PaseoProjectGeneralKnowledgeResourceSchema = z.union([
+  PaseoGeneralKnowledgeResourceSchema,
+  z
+    .object({
+      type: z.literal("git-repository"),
+      source: z.string().trim().min(1),
+      branch: z.string().trim().min(1).optional(),
+      directory: z.string().trim().min(1).optional(),
+      enabled: z.boolean().optional(),
+    })
+    .passthrough(),
+]);
 
 export const PaseoProjectDocumentKnowledgeResourceSchema = z
   .object({

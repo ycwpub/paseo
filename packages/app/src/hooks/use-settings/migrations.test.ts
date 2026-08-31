@@ -33,23 +33,48 @@ function createFailingWriteStorage(failingKey: string): Storage {
 }
 
 describe("migrateAppSettings", () => {
-  it("flips a stored interrupt to steer and marks itself applied", async () => {
+  it("migrates the historical interrupt default through steer to queue", async () => {
     const storage = createInMemoryKeyValueStorage();
 
     const result = await migrateAppSettings(settingsWith("interrupt"), storage);
 
-    expect(result.sendBehavior).toBe("steer");
-    expect(storedSendBehavior(storage)).toBe("steer");
-    expect(appliedIds(storage)).toEqual(["steer-default"]);
+    expect(result.sendBehavior).toBe("queue");
+    expect(storedSendBehavior(storage)).toBe("queue");
+    expect(appliedIds(storage)).toEqual(["steer-default", "queue-default"]);
   });
 
-  it("leaves interrupt alone once the migration has run", async () => {
+  it("leaves interrupt alone once both default migrations have run", async () => {
     const storage = createInMemoryKeyValueStorage();
     await migrateAppSettings(settingsWith("interrupt"), storage);
 
     const result = await migrateAppSettings(settingsWith("interrupt"), storage);
 
     expect(result.sendBehavior).toBe("interrupt");
+  });
+
+  it("migrates the historical steer default to queue", async () => {
+    const storage = createInMemoryKeyValueStorage({
+      [SETTINGS_MIGRATIONS_KEY]: JSON.stringify({ applied: ["steer-default"] }),
+    });
+
+    const result = await migrateAppSettings(settingsWith("steer"), storage);
+
+    expect(result.sendBehavior).toBe("queue");
+    expect(storedSendBehavior(storage)).toBe("queue");
+    expect(appliedIds(storage)).toEqual(["steer-default", "queue-default"]);
+  });
+
+  it("leaves steer alone once the queue migration has run", async () => {
+    const storage = createInMemoryKeyValueStorage({
+      [SETTINGS_MIGRATIONS_KEY]: JSON.stringify({
+        applied: ["steer-default", "queue-default"],
+      }),
+    });
+
+    const result = await migrateAppSettings(settingsWith("steer"), storage);
+
+    expect(result.sendBehavior).toBe("steer");
+    expect(storage.entries.has(APP_SETTINGS_KEY)).toBe(false);
   });
 
   it("leaves queue alone", async () => {
@@ -59,16 +84,16 @@ describe("migrateAppSettings", () => {
 
     expect(result.sendBehavior).toBe("queue");
     expect(storage.entries.has(APP_SETTINGS_KEY)).toBe(false);
-    expect(appliedIds(storage)).toEqual(["steer-default"]);
+    expect(appliedIds(storage)).toEqual(["steer-default", "queue-default"]);
   });
 
   it("marks itself applied on a fresh install without rewriting settings", async () => {
     const storage = createInMemoryKeyValueStorage();
 
-    await migrateAppSettings(settingsWith("steer"), storage);
+    await migrateAppSettings(settingsWith("queue"), storage);
 
     expect(storage.entries.has(APP_SETTINGS_KEY)).toBe(false);
-    expect(appliedIds(storage)).toEqual(["steer-default"]);
+    expect(appliedIds(storage)).toEqual(["steer-default", "queue-default"]);
   });
 
   it("keeps unknown migration ids written by a newer client", async () => {
@@ -78,7 +103,7 @@ describe("migrateAppSettings", () => {
 
     await migrateAppSettings(settingsWith("interrupt"), storage);
 
-    expect(appliedIds(storage)).toEqual(["some-later-migration", "steer-default"]);
+    expect(appliedIds(storage)).toEqual(["some-later-migration", "steer-default", "queue-default"]);
   });
 
   it("stays unmarked when the settings write fails, so a later launch retries", async () => {
@@ -92,12 +117,12 @@ describe("migrateAppSettings", () => {
   it("re-runs harmlessly when the marker write fails after settings landed", async () => {
     const failing = createFailingWriteStorage(SETTINGS_MIGRATIONS_KEY);
     await expect(migrateAppSettings(settingsWith("interrupt"), failing)).rejects.toThrow();
-    expect(storedSendBehavior(failing)).toBe("steer");
+    expect(storedSendBehavior(failing)).toBe("queue");
 
     const recovered = createInMemoryKeyValueStorage(Object.fromEntries(failing.entries));
-    const result = await migrateAppSettings(settingsWith("steer"), recovered);
+    const result = await migrateAppSettings(settingsWith("queue"), recovered);
 
-    expect(result.sendBehavior).toBe("steer");
-    expect(appliedIds(recovered)).toEqual(["steer-default"]);
+    expect(result.sendBehavior).toBe("queue");
+    expect(appliedIds(recovered)).toEqual(["steer-default", "queue-default"]);
   });
 });

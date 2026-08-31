@@ -1,6 +1,9 @@
 import type { PaseoProjectConfig } from "@getpaseo/protocol/paseo-config-schema";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
-import { resolveProjectResourceDirectories } from "@/utils/project-resource-directories";
+import {
+  resolveConfiguredProjectDirectories,
+  resolveProjectResourceDirectories,
+} from "@/utils/project-resource-directories";
 import { normalizeWorkingDiffRepositoryRoot } from "@/git/working-diff-repository";
 
 export interface ProjectGitRepositoryCandidate {
@@ -28,6 +31,12 @@ function basename(path: string): string {
   return segments.at(-1) ?? normalized;
 }
 
+function isManagedProjectRepository(input: { projectRoot: string; path: string }): boolean {
+  if (!input.projectRoot) return false;
+  const repositoriesRoot = `${input.projectRoot}/repos`;
+  return input.path.startsWith(`${repositoriesRoot}/`);
+}
+
 export function resolveProjectGitRepositoryCandidates(input: {
   workspace: WorkspaceDescriptor;
   projectConfig: PaseoProjectConfig | null | undefined;
@@ -47,9 +56,24 @@ export function resolveProjectGitRepositoryCandidates(input: {
       workspaceDirectory,
     },
   });
+  const configuredProjectDirectories = resolveConfiguredProjectDirectories({
+    projectConfig: input.projectConfig,
+    context: {
+      projectId: workspace.projectId,
+      projectName: workspace.projectDisplayName,
+      projectRoot,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      workspaceDirectory,
+    },
+  });
+  const managedKnowledgeRepositories = resourceDirectories.knowledge.filter((path) =>
+    isManagedProjectRepository({ projectRoot, path }),
+  );
   const roots = uniquePaths([
     ...(input.additionalRoots ?? []),
-    ...resourceDirectories.project,
+    ...configuredProjectDirectories,
+    ...managedKnowledgeRepositories,
     workspaceDirectory,
   ]);
   const labelCounts = new Map<string, number>();

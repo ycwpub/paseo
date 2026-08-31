@@ -143,6 +143,13 @@ export const ru: TranslationResources = {
       openReview: "Открыть вложение проверки",
       removeReview: "Удалить вложение проверки",
     },
+    queue: {
+      edit: "Изменить сообщение из очереди",
+      editing: "Редактирование сообщения из очереди",
+      cancelEdit: "Отменить редактирование сообщения",
+      remove: "Удалить сообщение из очереди",
+      steer: "Направить сейчас",
+    },
     errors: {
       failedToSend: "Не удалось отправить сообщение",
       failedToCreateAgent: "Не удалось создать агента.",

@@ -145,6 +145,13 @@ export const fr: TranslationResources = {
       openReview: "Ouvrir la pièce jointe de l'avis",
       removeReview: "Supprimer la pièce jointe de l'avis",
     },
+    queue: {
+      edit: "Modifier le message en file d'attente",
+      editing: "Modification du message en file d'attente",
+      cancelEdit: "Annuler la modification du message",
+      remove: "Supprimer le message en file d'attente",
+      steer: "Guider maintenant",
+    },
     errors: {
       failedToSend: "Échec de l'envoi du message",
       failedToCreateAgent: "Échec de la création de l'agent",

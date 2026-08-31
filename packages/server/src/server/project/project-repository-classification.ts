@@ -2,10 +2,9 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { Logger } from "pino";
-import type {
-  PaseoConfigRaw,
-  PaseoProjectDirectoryEntry,
-} from "@getpaseo/protocol/paseo-config-schema";
+import type { PaseoConfigRaw } from "@getpaseo/protocol/paseo-config-schema";
+import { resolvePaseoProjectDirectoryEntries } from "@getpaseo/protocol/paseo-config-schema";
+import { resolveGitRepositoryManagedPath } from "@getpaseo/protocol/project-git-resource";
 import type { PaseoProjectGeneralKnowledgeResource } from "@getpaseo/protocol/project-knowledge-schema";
 import type { PersistedProjectRecord } from "../workspace-registry.js";
 import {
@@ -61,14 +60,13 @@ function resolveConfiguredPath(
 }
 
 function resolveDirectoryEntry(
-  entry: PaseoProjectDirectoryEntry,
+  entry: { path: string; enabled: boolean },
   resourceRoot: string,
   variables: Record<string, string>,
 ): ConfiguredPath {
-  const value = typeof entry === "string" ? entry : entry.path;
   return {
-    enabled: typeof entry === "string" || entry.enabled !== false,
-    resolvedPath: resolveConfiguredPath(value, resourceRoot, variables),
+    enabled: entry.enabled,
+    resolvedPath: resolveConfiguredPath(entry.path, resourceRoot, variables),
   };
 }
 
@@ -83,6 +81,25 @@ function containsPath(parent: string, candidate: string): boolean {
 function repositoryConfigPath(projectRoot: string, repository: string): string {
   const relative = path.relative(projectRoot, repository).split(path.sep).join("/");
   return `{{projectRoot}}/${relative}`;
+}
+
+function resolveGeneralKnowledgePath(
+  resource: PaseoProjectGeneralKnowledgeResource,
+  projectDirectory: string,
+  variables: Record<string, string>,
+): string | null {
+  if (resource.type === "local-directory") {
+    return resolveConfiguredPath(resource.source, projectDirectory, variables);
+  }
+  if (resource.type !== "git-repository") return null;
+  return resolveConfiguredPath(
+    resolveGitRepositoryManagedPath({
+      repository: resource.source,
+      ...(resource.directory ? { directory: resource.directory } : {}),
+    }),
+    projectDirectory,
+    variables,
+  );
 }
 
 export function listManagedProjectRepositories(projectRoot: string): string[] {
@@ -110,16 +127,13 @@ export function classifyManagedProjectRepositories(
     projectRoot: input.projectRoot,
     projectDirectory,
   };
-  const projectEntries = (input.config.project?.directories?.project ?? []).map((entry) =>
-    resolveDirectoryEntry(entry, projectDirectory, variables),
-  );
+  const projectEntries = resolvePaseoProjectDirectoryEntries(
+    input.config.project?.directories,
+  ).project.map((entry) => resolveDirectoryEntry(entry, projectDirectory, variables));
   const generalKnowledge = input.config.project?.knowledge?.general ?? [];
   const resolvedGeneralKnowledge = generalKnowledge.map((resource) => ({
     resource,
-    resolvedPath:
-      resource.type === "local-directory"
-        ? resolveConfiguredPath(resource.source, projectDirectory, variables)
-        : null,
+    resolvedPath: resolveGeneralKnowledgePath(resource, projectDirectory, variables),
   }));
   const removedKnowledgeIndexes = new Set<number>();
   const additions: PaseoProjectGeneralKnowledgeResource[] = [];

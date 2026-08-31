@@ -346,6 +346,71 @@ describe("createWebStreamStrategy", () => {
     act(() => scrollStreamViewportToOldest(viewportRef.current));
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
   });
+  it("clears the history spinner when a fast request skips the rendered loading flag", async () => {
+    const strategy = createWebStreamStrategy({ isMobileBreakpoint: true });
+    const viewportRef = React.createRef<StreamViewportHandle>();
+    const onNearHistoryStart = vi.fn().mockResolvedValue(true);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(
+        strategy.render({
+          agentId: "agent",
+          segments: {
+            historyVirtualized: [],
+            historyMounted: [userMessage(1), userMessage(2)],
+            liveHead: [],
+          },
+          boundary: {
+            hasVirtualizedHistory: false,
+            hasMountedHistory: true,
+            hasLiveHead: false,
+          },
+          renderers: createRenderers(vi.fn()),
+          listEmptyComponent: null,
+          viewportRef,
+          routeBottomAnchorRequest: null,
+          isAuthoritativeHistoryReady: true,
+          onNearBottomChange: vi.fn(),
+          onNearHistoryStart,
+          isLoadingOlderHistory: false,
+          hasOlderHistory: true,
+          olderHistoryProgressKey: "epoch-1:20",
+          scrollEnabled: true,
+          listStyle: null,
+          baseListContentContainerStyle: null,
+          forwardListContentContainerStyle: null,
+        }),
+      );
+    });
+    const scrollContainer = container.querySelector('[data-testid="agent-chat-scroll"]');
+    if (!(scrollContainer instanceof HTMLElement)) {
+      throw new Error("Expected agent chat scroll container");
+    }
+    Object.defineProperties(scrollContainer, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1200 },
+      scrollTop: { configurable: true, writable: true, value: 64 },
+    });
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+
+    act(() => {
+      scrollContainer.dispatchEvent(new WheelEvent("wheel", { deltaY: -120 }));
+      scrollContainer.dispatchEvent(new Event("scroll"));
+    });
+    expect(onNearHistoryStart).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-testid="load-older-history-spinner"]')).not.toBeNull();
+
+    await act(async () => {
+      await Promise.resolve();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    expect(container.querySelector('[data-testid="load-older-history-spinner"]')).toBeNull();
+  });
   it("preserves the visible history position after older rows are prepended", async () => {
     const scrollTo = vi.fn(function (
       this: HTMLElement,

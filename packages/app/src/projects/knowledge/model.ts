@@ -11,12 +11,18 @@ import {
 export const PROJECT_KNOWLEDGE_SECTIONS = ["general", "standards", "projectSpecific"] as const;
 export type ProjectKnowledgeSection = (typeof PROJECT_KNOWLEDGE_SECTIONS)[number];
 
-export type ProjectKnowledgeResourceType = "local-directory" | "local-document" | "cloud-document";
+export type ProjectKnowledgeResourceType =
+  | "local-directory"
+  | "local-document"
+  | "cloud-document"
+  | "git-repository";
 
 export interface ProjectKnowledgeResourceDraft {
   id: string;
   type: ProjectKnowledgeResourceType;
   source: string;
+  branch: string;
+  directory: string;
   enabled: boolean;
   rawEntry:
     | PaseoProjectGeneralKnowledgeResource
@@ -35,6 +41,8 @@ export function createProjectKnowledgeResourceDraft(input?: {
   section?: ProjectKnowledgeSection;
   type?: ProjectKnowledgeResourceType;
   source?: string;
+  branch?: string;
+  directory?: string;
   enabled?: boolean;
   rawEntry?:
     | PaseoProjectGeneralKnowledgeResource
@@ -46,13 +54,22 @@ export function createProjectKnowledgeResourceDraft(input?: {
     id: `project-knowledge-${knowledgeDraftId}`,
     type: input?.type ?? (input?.section === "general" ? "local-directory" : "local-document"),
     source: input?.source ?? "",
+    branch: input?.branch ?? "",
+    directory: input?.directory ?? "",
     enabled: input?.enabled ?? true,
     rawEntry: input?.rawEntry,
   };
 }
 
-function resourceKey(resource: Pick<ProjectKnowledgeResourceDraft, "type" | "source">): string {
-  return `${resource.type}\0${resource.source.trim()}`;
+function resourceKey(
+  resource: Pick<ProjectKnowledgeResourceDraft, "type" | "source" | "branch" | "directory">,
+): string {
+  return [
+    resource.type,
+    resource.source.trim(),
+    resource.branch.trim(),
+    resource.directory.trim(),
+  ].join("\0");
 }
 
 function mergeResources(
@@ -83,6 +100,8 @@ function draftResources(
     createProjectKnowledgeResourceDraft({
       type: resource.type,
       source: resource.source,
+      branch: resource.type === "git-repository" ? (resource.branch ?? "") : "",
+      directory: resource.type === "git-repository" ? (resource.directory ?? "") : "",
       enabled: resource.enabled !== false,
       rawEntry: resource,
     }),
@@ -93,12 +112,22 @@ export function projectKnowledgeToDraft(
   project: PaseoProjectConfig | null | undefined,
 ): ProjectKnowledgeDraft {
   const legacyDirectories = resolvePaseoProjectDirectoryEntries(project?.directories).knowledge.map(
-    (entry) =>
-      createProjectKnowledgeResourceDraft({
+    (entry) => {
+      if (entry.type === "git-repository") {
+        return createProjectKnowledgeResourceDraft({
+          type: "git-repository",
+          source: entry.repository,
+          branch: entry.branch,
+          directory: entry.directory,
+          enabled: entry.enabled,
+        });
+      }
+      return createProjectKnowledgeResourceDraft({
         type: "local-directory",
         source: entry.path,
         enabled: entry.enabled,
-      }),
+      });
+    },
   );
   const legacyCloudDocuments = (project?.larkDocumentLinks ?? []).map((source) =>
     createProjectKnowledgeResourceDraft({
@@ -121,7 +150,7 @@ function isAllowedType(
   section: ProjectKnowledgeSection,
   type: ProjectKnowledgeResourceType,
 ): boolean {
-  return section === "general" || type !== "local-directory";
+  return section === "general" || type === "local-document" || type === "cloud-document";
 }
 
 function resourcesToConfig(
@@ -136,6 +165,12 @@ function resourcesToConfig(
         ...resource.rawEntry,
         type: resource.type,
         source,
+        ...(resource.type === "git-repository" && resource.branch.trim()
+          ? { branch: resource.branch.trim() }
+          : {}),
+        ...(resource.type === "git-repository" && resource.directory.trim()
+          ? { directory: resource.directory.trim() }
+          : {}),
         enabled: resource.enabled,
       },
     ];
@@ -191,6 +226,16 @@ export function projectKnowledgeDraftError(draft: ProjectKnowledgeDraft): string
       }
       if (resource.type === "cloud-document" && !isCloudDocumentSourceValid(resource.source)) {
         return `${prefix}不是有效的 HTTP/HTTPS 云文档链接`;
+      }
+      if (resource.type === "git-repository" && resource.branch.trim().startsWith("-")) {
+        return `${prefix}的分支名称不能以“-”开头`;
+      }
+      if (
+        resource.type === "git-repository" &&
+        resource.directory.trim() &&
+        !/^[A-Za-z0-9._-]+$/u.test(resource.directory.trim())
+      ) {
+        return `${prefix}的仓库目录名只能包含字母、数字、点、下划线和短横线`;
       }
     }
   }

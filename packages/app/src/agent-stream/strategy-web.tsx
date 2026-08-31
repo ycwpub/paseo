@@ -23,7 +23,7 @@ import type { StreamRenderInput, StreamStrategy } from "./strategy";
 import type { ExtendedStreamViewportHandle } from "./viewport-handle-extensions";
 import { createStreamStrategy } from "./strategy";
 import {
-  abandonHistoryStartPaginationRequest,
+  completeHistoryStartPaginationRequest,
   createHistoryStartPaginationState,
   evaluateHistoryStartPagination,
   isHistoryStartLoadingOperation,
@@ -445,16 +445,26 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       const requestedProgressKey = olderHistoryProgressKey;
       void (async () => {
         const started = await onNearHistoryStart();
-        if (started === true) {
+        if (started !== true) {
+          applyHistoryStartPaginationTransition(
+            completeHistoryStartPaginationRequest(
+              historyStartPaginationStateRef.current,
+              requestedProgressKey,
+              getHistoryStartPaginationInput(),
+              false,
+            ),
+          );
           return;
         }
-        applyHistoryStartPaginationTransition({
-          state: abandonHistoryStartPaginationRequest(
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        applyHistoryStartPaginationTransition(
+          completeHistoryStartPaginationRequest(
             historyStartPaginationStateRef.current,
             requestedProgressKey,
+            getHistoryStartPaginationInput(),
+            true,
           ),
-          shouldLoad: false,
-        });
+        );
       })();
     },
   );

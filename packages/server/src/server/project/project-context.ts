@@ -8,6 +8,7 @@ import {
   resolvePaseoProjectDirectoryValues,
   type PaseoProjectConfig,
 } from "@getpaseo/protocol/paseo-config-schema";
+import { resolveGitRepositoryManagedPath } from "@getpaseo/protocol/project-git-resource";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import { normalizeWritableProjectDirectories } from "../agent/project-directory-access.js";
 import type { ProjectAwareAgentSessionConfig } from "../agent/project-directory-agent-config.js";
@@ -44,6 +45,7 @@ import {
   buildProjectRepositoryClassificationPrompt,
   reconcileManagedProjectRepositories,
 } from "./project-repository-classification.js";
+import { syncProjectGitResources } from "./project-git-resource-sync.js";
 
 export interface ResolvedProjectDirectories {
   project: string[];
@@ -117,8 +119,19 @@ export function resolveProjectDirectories(input: {
   const configuredGeneralKnowledge = resolvePathList(
     resourceRoot,
     input.projectConfig?.knowledge?.general
-      ?.filter((resource) => resource.enabled !== false && resource.type === "local-directory")
-      .map((resource) => resource.source),
+      ?.filter(
+        (resource) =>
+          resource.enabled !== false &&
+          (resource.type === "local-directory" || resource.type === "git-repository"),
+      )
+      .map((resource) =>
+        resource.type === "git-repository"
+          ? resolveGitRepositoryManagedPath({
+              repository: resource.source,
+              ...(resource.directory ? { directory: resource.directory } : {}),
+            })
+          : resource.source,
+      ),
     variables,
   );
   let automaticKnowledge: string[] = [];
@@ -284,13 +297,21 @@ export async function loadProjectAgentContext(input: {
   const projectDirectory = project.rootPath ? path.resolve(project.rootPath) : projectRoot;
   if (input.paseoHome) {
     ensureManagedProjectStorageRoot(input.paseoHome, project.projectId);
+  }
+  let projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
+  if (input.paseoHome) {
+    await syncProjectGitResources({
+      projectRoot,
+      projectConfig,
+      logger: input.logger,
+    });
     reconcileManagedProjectRepositories({
       paseoHome: input.paseoHome,
       project,
       logger: input.logger,
     });
+    projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   }
-  const projectConfig = readProjectConfig(project, projectRoot, input.paseoHome, input.logger);
   const variables = {
     ...projectConfig?.variables,
     projectId: project.projectId,
@@ -325,6 +346,14 @@ export async function loadProjectAgentContext(input: {
         input.paseoHome,
         input.logger,
       );
+      if (input.paseoHome) {
+        await syncProjectGitResources({
+          projectRoot: ancestorRoot,
+          projectConfig: ancestorConfig,
+          logger: input.logger,
+          includeProjectDirectories: false,
+        });
+      }
       const ancestorVariables = {
         ...ancestorConfig?.variables,
         projectId: ancestor.projectId,

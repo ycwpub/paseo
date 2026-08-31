@@ -32,7 +32,7 @@ import {
   resolveBottomAnchorTransportBehavior,
 } from "./strategy";
 import {
-  abandonHistoryStartPaginationRequest,
+  completeHistoryStartPaginationRequest,
   createHistoryStartPaginationState,
   evaluateHistoryStartPagination,
   isHistoryStartLoadingOperation,
@@ -186,16 +186,26 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         }
         void (async () => {
           const started = await onNearHistoryStart();
-          if (started === true) {
+          if (started !== true) {
+            applyHistoryStartPaginationTransition(
+              completeHistoryStartPaginationRequest(
+                historyStartPaginationStateRef.current,
+                requestedProgressKey,
+                getHistoryStartPaginationInput(),
+                false,
+              ),
+            );
             return;
           }
-          applyHistoryStartPaginationTransition({
-            state: abandonHistoryStartPaginationRequest(
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          applyHistoryStartPaginationTransition(
+            completeHistoryStartPaginationRequest(
               historyStartPaginationStateRef.current,
               requestedProgressKey,
+              getHistoryStartPaginationInput(),
+              true,
             ),
-            shouldLoad: false,
-          });
+          );
         })();
       }
     },

@@ -779,6 +779,7 @@ function filterKnowledgeLocalResources(
     const next = (entries ?? []).filter(
       (entry) =>
         entry.type === "cloud-document" ||
+        entry.type === "git-repository" ||
         allowed.has(
           localKnowledgeKey(
             section,

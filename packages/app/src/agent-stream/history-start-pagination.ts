@@ -48,6 +48,33 @@ export function abandonHistoryStartPaginationRequest(
   return { status: "latched" };
 }
 
+export function completeHistoryStartPaginationRequest(
+  state: HistoryStartPaginationState,
+  requestedProgressKey: string,
+  input: HistoryStartPaginationInput | null,
+  started: boolean,
+): HistoryStartPaginationTransition {
+  if (state.status !== "loading" || state.requestedProgressKey !== requestedProgressKey) {
+    return { state, shouldLoad: false };
+  }
+  if (!started || input === null) {
+    return { state: { status: "latched" }, shouldLoad: false };
+  }
+  if (input.progressKey !== null && input.progressKey !== requestedProgressKey) {
+    return {
+      state: { status: "settling", loadedProgressKey: input.progressKey },
+      shouldLoad: false,
+    };
+  }
+  if (input.isLoadingOlderHistory) {
+    return {
+      state: state.requestObserved ? state : { ...state, requestObserved: true },
+      shouldLoad: false,
+    };
+  }
+  return { state: { status: "latched" }, shouldLoad: false };
+}
+
 export function evaluateHistoryStartPagination(
   state: HistoryStartPaginationState,
   input: HistoryStartPaginationInput,

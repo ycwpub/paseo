@@ -239,7 +239,7 @@ export function writeProjectConfigForProject(input: {
     parsed.data.project?.directoryMode ?? (input.project.rootPath === null ? "multiple" : "single");
   const projectRoot =
     mode === "single"
-      ? resolveSingleProjectDirectory(input.project, parsed.data)
+      ? resolveSingleProjectDirectory(input.paseoHome, input.project, parsed.data)
       : input.project.rootPath;
   if (mode === "single" && projectRoot === null) {
     return { ok: false, error: { code: "invalid_project_config" } };
@@ -299,6 +299,7 @@ function replaceProjectConfigVariables(value: string, variables: Record<string, 
 }
 
 function resolveSingleProjectDirectory(
+  paseoHome: string,
   project: ProjectConfigStorageProject,
   config: PaseoConfigRaw,
 ): string | null {
@@ -308,10 +309,17 @@ function resolveSingleProjectDirectory(
   ) {
     return project.rootPath;
   }
+  const projectStorageRoot = resolveProjectPath({ paseoHome, project });
   const configured = resolvePaseoProjectDirectoryEntries(config.project?.directories)
     .project.filter((entry) => entry.enabled)
-    .map((entry) => entry.path.trim())
-    .filter(Boolean);
+    .map((entry) =>
+      replaceProjectConfigVariables(entry.path.trim(), {
+        ...config.project?.variables,
+        projectId: project.projectId,
+        projectRoot: projectStorageRoot,
+      }),
+    )
+    .filter((entry) => entry.length > 0 && !entry.includes("{{"));
   if (configured.length > 1) return null;
   const candidate = configured[0];
   if (!candidate) return project.rootPath;

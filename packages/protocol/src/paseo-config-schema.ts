@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { PaseoProjectKnowledgeSchema } from "./project-knowledge-schema.js";
+import {
+  PaseoGitRepositoryResourceSchema,
+  resolveGitRepositoryManagedPath,
+} from "./project-git-resource.js";
 
 const TCP_PORT_RANGE_PATTERN = /^(\d{1,5})-(\d{1,5})$/;
 
@@ -41,6 +45,7 @@ export type PaseoProjectDirectoryMode = "single" | "multiple";
 
 export const PaseoProjectDirectoryEntrySchema = z.union([
   z.string(),
+  PaseoGitRepositoryResourceSchema,
   z
     .object({
       path: z.string(),
@@ -51,15 +56,59 @@ export const PaseoProjectDirectoryEntrySchema = z.union([
 
 export type PaseoProjectDirectoryEntry = z.infer<typeof PaseoProjectDirectoryEntrySchema>;
 
+export type ResolvedPaseoProjectDirectoryEntry =
+  | {
+      type: "local-directory";
+      path: string;
+      enabled: boolean;
+    }
+  | {
+      type: "git-repository";
+      path: string;
+      repository: string;
+      branch?: string;
+      directory?: string;
+      enabled: boolean;
+    };
+
 export function resolvePaseoProjectDirectoryEntries(
   directories: PaseoProjectDirectories | null | undefined,
-): Record<PaseoProjectDirectoryKey, Array<{ path: string; enabled: boolean }>> {
-  const resolve = (entries: readonly PaseoProjectDirectoryEntry[]) =>
-    entries.map((entry) =>
-      typeof entry === "string"
-        ? { path: entry, enabled: true }
-        : { path: entry.path, enabled: entry.enabled !== false },
-    );
+): Record<PaseoProjectDirectoryKey, ResolvedPaseoProjectDirectoryEntry[]> {
+  const resolve = (
+    entries: readonly PaseoProjectDirectoryEntry[],
+  ): ResolvedPaseoProjectDirectoryEntry[] =>
+    entries.map((entry) => {
+      if (typeof entry === "string") {
+        return { type: "local-directory", path: entry, enabled: true };
+      }
+      if (
+        entry.type === "git-repository" &&
+        "repository" in entry &&
+        typeof entry.repository === "string"
+      ) {
+        const branch =
+          "branch" in entry && typeof entry.branch === "string" ? entry.branch : undefined;
+        const directory =
+          "directory" in entry && typeof entry.directory === "string" ? entry.directory : undefined;
+        return {
+          type: "git-repository",
+          path: resolveGitRepositoryManagedPath({
+            repository: entry.repository,
+            ...(directory ? { directory } : {}),
+          }),
+          repository: entry.repository,
+          ...(branch ? { branch } : {}),
+          ...(directory ? { directory } : {}),
+          enabled: entry.enabled !== false,
+        };
+      }
+      const entryPath = "path" in entry && typeof entry.path === "string" ? entry.path : "";
+      return {
+        type: "local-directory",
+        path: entryPath,
+        enabled: entry.enabled !== false,
+      };
+    });
   const knowledgeEntries = resolve([
     ...(directories?.knowledge ?? DEFAULT_PASEO_PROJECT_DIRECTORIES.knowledge),
     // COMPAT(projectReferenceDirectories): reference directories were merged into
@@ -74,11 +123,11 @@ export function resolvePaseoProjectDirectoryEntries(
         if (!key) return entries;
         const current = entries.get(key);
         entries.set(key, {
-          path: current?.path ?? entry.path,
+          ...(current ?? entry),
           enabled: (current?.enabled ?? false) || entry.enabled,
         });
         return entries;
-      }, new Map<string, { path: string; enabled: boolean }>())
+      }, new Map<string, ResolvedPaseoProjectDirectoryEntry>())
       .values(),
   );
   const workspaceData = resolve(

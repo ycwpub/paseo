@@ -143,6 +143,13 @@ export const es: TranslationResources = {
       openReview: "Abrir archivo adjunto de reseña",
       removeReview: "Eliminar archivo adjunto de reseña",
     },
+    queue: {
+      edit: "Editar mensaje en cola",
+      editing: "Editando mensaje en cola",
+      cancelEdit: "Cancelar edición del mensaje en cola",
+      remove: "Eliminar mensaje en cola",
+      steer: "Dirigir ahora",
+    },
     errors: {
       failedToSend: "No se pudo enviar el mensaje",
       failedToCreateAgent: "No se pudo crear el agente",

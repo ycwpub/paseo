@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { ChevronDown, Plus, X } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
+import { resolveGitRepositoryManagedPath } from "@getpaseo/protocol/project-git-resource";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,10 +54,32 @@ const TYPE_LABELS: Record<ProjectKnowledgeResourceType, string> = {
   "local-directory": "本地目录",
   "local-document": "本地文档",
   "cloud-document": "云文档",
+  "git-repository": "Git 仓库",
 };
 
-const GENERAL_TYPES = ["local-directory", "local-document", "cloud-document"] as const;
+const BASE_GENERAL_TYPES = ["local-directory", "local-document", "cloud-document"] as const;
+const PROJECT_GENERAL_TYPES = [...BASE_GENERAL_TYPES, "git-repository"] as const;
 const DOCUMENT_TYPES = ["local-document", "cloud-document"] as const;
+
+function knowledgeTypeOptions(
+  section: ProjectKnowledgeSection,
+  allowGitRepositories: boolean,
+): readonly ProjectKnowledgeResourceType[] {
+  if (section !== "general") return DOCUMENT_TYPES;
+  return allowGitRepositories ? PROJECT_GENERAL_TYPES : BASE_GENERAL_TYPES;
+}
+
+function knowledgePathLabel(type: ProjectKnowledgeResourceType): string {
+  if (type === "cloud-document") return "云文档地址";
+  if (type === "git-repository") return "下载路径";
+  return "存储路径";
+}
+
+function knowledgeSourcePlaceholder(type: ProjectKnowledgeResourceType): string {
+  if (type === "cloud-document") return "https://example.com/document";
+  if (type === "git-repository") return "Git 仓库地址，例如 git@host:team/repo.git";
+  return "./path/to/resource";
+}
 
 function ProjectKnowledgeTypeOption({
   option,
@@ -79,12 +102,14 @@ function ProjectKnowledgeTypeSelector({
   section,
   value,
   onChange,
+  allowGitRepositories,
 }: {
   section: ProjectKnowledgeSection;
   value: ProjectKnowledgeResourceType;
   onChange: (value: ProjectKnowledgeResourceType) => void;
+  allowGitRepositories: boolean;
 }) {
-  const options = section === "general" ? GENERAL_TYPES : DOCUMENT_TYPES;
+  const options = knowledgeTypeOptions(section, allowGitRepositories);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -118,13 +143,20 @@ function KnowledgeResourceStoragePath({
   if (resource.type === "cloud-document" && cloudCacheTarget) {
     return <CloudKnowledgeCacheControl target={cloudCacheTarget} source={resource.source} />;
   }
+  const gitPath =
+    resource.type === "git-repository" &&
+    cloudCacheTarget?.scope === "project" &&
+    resource.source.trim()
+      ? `~/.paseo/projects/${cloudCacheTarget.projectId}/${resolveGitRepositoryManagedPath({
+          repository: resource.source,
+          ...(resource.directory.trim() ? { directory: resource.directory } : {}),
+        }).replace("{{projectRoot}}/", "")}`
+      : null;
   return (
     <View style={styles.pathContainer}>
-      <Text style={styles.pathLabel}>
-        {resource.type === "cloud-document" ? "云文档地址" : "存储路径"}
-      </Text>
+      <Text style={styles.pathLabel}>{knowledgePathLabel(resource.type)}</Text>
       <Text selectable style={styles.pathText}>
-        {resource.source.trim() || "尚未填写"}
+        {gitPath || resource.source.trim() || "尚未填写"}
       </Text>
     </View>
   );
@@ -136,12 +168,14 @@ function ProjectKnowledgeRow({
   onChange,
   onRemove,
   cloudCacheTarget,
+  allowGitRepositories,
 }: {
   section: ProjectKnowledgeSection;
   resource: ProjectKnowledgeResourceDraft;
   onChange: (resource: ProjectKnowledgeResourceDraft) => void;
   onRemove: () => void;
   cloudCacheTarget?: CloudKnowledgeCacheTarget;
+  allowGitRepositories: boolean;
 }) {
   const handleTypeChange = useCallback(
     (type: ProjectKnowledgeResourceType) => onChange({ ...resource, type }),
@@ -151,12 +185,19 @@ function ProjectKnowledgeRow({
     (source: string) => onChange({ ...resource, source }),
     [onChange, resource],
   );
+  const handleBranchChange = useCallback(
+    (branch: string) => onChange({ ...resource, branch }),
+    [onChange, resource],
+  );
+  const handleDirectoryChange = useCallback(
+    (directory: string) => onChange({ ...resource, directory }),
+    [onChange, resource],
+  );
   const handleEnabledChange = useCallback(
     (enabled: boolean) => onChange({ ...resource, enabled }),
     [onChange, resource],
   );
-  const placeholder =
-    resource.type === "cloud-document" ? "https://example.com/document" : "./path/to/resource";
+  const placeholder = knowledgeSourcePlaceholder(resource.type);
   return (
     <View style={styles.row}>
       <Switch value={resource.enabled} onValueChange={handleEnabledChange} />
@@ -164,6 +205,7 @@ function ProjectKnowledgeRow({
         section={section}
         value={resource.type}
         onChange={handleTypeChange}
+        allowGitRepositories={allowGitRepositories}
       />
       <TextInput
         autoCapitalize="none"
@@ -181,6 +223,28 @@ function ProjectKnowledgeRow({
       >
         <X size={ICON_SIZE} color={styles.iconColor.color} />
       </Pressable>
+      {resource.type === "git-repository" ? (
+        <View style={styles.gitFields}>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={resource.branch}
+            onChangeText={handleBranchChange}
+            placeholder="分支（留空使用默认分支）"
+            placeholderTextColor={styles.placeholderColor.color}
+            style={styles.gitInput}
+          />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={resource.directory}
+            onChangeText={handleDirectoryChange}
+            placeholder="repos 下的目录名（可选）"
+            placeholderTextColor={styles.placeholderColor.color}
+            style={styles.gitInput}
+          />
+        </View>
+      ) : null}
       <KnowledgeResourceStoragePath resource={resource} cloudCacheTarget={cloudCacheTarget} />
     </View>
   );
@@ -192,12 +256,14 @@ function ProjectKnowledgeBoundRow({
   values,
   onChange,
   cloudCacheTarget,
+  allowGitRepositories,
 }: {
   section: ProjectKnowledgeSection;
   resource: ProjectKnowledgeResourceDraft;
   values: ProjectKnowledgeResourceDraft[];
   onChange: (values: ProjectKnowledgeResourceDraft[]) => void;
   cloudCacheTarget?: CloudKnowledgeCacheTarget;
+  allowGitRepositories: boolean;
 }) {
   const update = useCallback(
     (next: ProjectKnowledgeResourceDraft) => {
@@ -215,6 +281,7 @@ function ProjectKnowledgeBoundRow({
       onChange={update}
       onRemove={remove}
       cloudCacheTarget={cloudCacheTarget}
+      allowGitRepositories={allowGitRepositories}
     />
   );
 }
@@ -225,12 +292,14 @@ function ProjectKnowledgeSectionEditor({
   onChange,
   flush,
   cloudCacheTarget,
+  allowGitRepositories,
 }: {
   section: ProjectKnowledgeSection;
   values: ProjectKnowledgeResourceDraft[];
   onChange: (values: ProjectKnowledgeResourceDraft[]) => void;
   flush?: boolean;
   cloudCacheTarget?: CloudKnowledgeCacheTarget;
+  allowGitRepositories: boolean;
 }) {
   const meta = SECTION_META[section];
   const add = useCallback(
@@ -252,7 +321,11 @@ function ProjectKnowledgeSectionEditor({
   );
   return (
     <SettingsSection title={meta.title} flush={flush} trailing={trailing}>
-      <Text style={styles.description}>{meta.description}</Text>
+      <Text style={styles.description}>
+        {section === "general" && allowGitRepositories
+          ? `${meta.description.replace("。", "")}，也支持在任务执行前同步指定分支的 Git 仓库。`
+          : meta.description}
+      </Text>
       <View style={styles.list}>
         {values.length === 0 ? (
           <Text style={styles.emptyText}>{meta.empty}</Text>
@@ -265,6 +338,7 @@ function ProjectKnowledgeSectionEditor({
               values={values}
               onChange={onChange}
               cloudCacheTarget={cloudCacheTarget}
+              allowGitRepositories={allowGitRepositories}
             />
           ))
         )}
@@ -282,6 +356,7 @@ export function ProjectKnowledgeEditor({
   info = "按加载方式和约束强度管理智能体使用的项目资料",
   testID = "project-knowledge-group",
   cloudCacheTarget,
+  allowGitRepositories = false,
 }: {
   value: ProjectKnowledgeDraft;
   error: string | null;
@@ -291,6 +366,7 @@ export function ProjectKnowledgeEditor({
   info?: string;
   testID?: string;
   cloudCacheTarget?: CloudKnowledgeCacheTarget;
+  allowGitRepositories?: boolean;
 }) {
   const updateSection = useCallback(
     (section: ProjectKnowledgeSection, values: ProjectKnowledgeResourceDraft[]) => {
@@ -319,6 +395,7 @@ export function ProjectKnowledgeEditor({
           onChange={updateGeneral}
           flush={sections.at(-1) === "general"}
           cloudCacheTarget={cloudCacheTarget}
+          allowGitRepositories={allowGitRepositories}
         />
       ) : null}
       {sections.includes("standards") ? (
@@ -328,6 +405,7 @@ export function ProjectKnowledgeEditor({
           onChange={updateStandards}
           flush={sections.at(-1) === "standards"}
           cloudCacheTarget={cloudCacheTarget}
+          allowGitRepositories={allowGitRepositories}
         />
       ) : null}
       {sections.includes("projectSpecific") ? (
@@ -337,6 +415,7 @@ export function ProjectKnowledgeEditor({
           onChange={updateProjectSpecific}
           flush={sections.at(-1) === "projectSpecific"}
           cloudCacheTarget={cloudCacheTarget}
+          allowGitRepositories={allowGitRepositories}
         />
       ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -378,6 +457,28 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   sourceInput: {
+    flex: 1,
+    minWidth: 180,
+    minHeight: 36,
+    color: theme.colors.foreground,
+    backgroundColor: theme.colors.surface1,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing[3],
+    paddingVertical: theme.spacing[2],
+    fontSize: theme.fontSize.sm,
+  },
+  gitFields: {
+    width: "100%",
+    flexDirection: {
+      xs: "column",
+      md: "row",
+    },
+    gap: theme.spacing[2],
+    paddingLeft: 152,
+  },
+  gitInput: {
     flex: 1,
     minWidth: 180,
     minHeight: 36,

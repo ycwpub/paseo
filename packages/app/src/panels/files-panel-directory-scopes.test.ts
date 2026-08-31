@@ -102,6 +102,46 @@ describe("resolveFilesPanelDirectoryScopes", () => {
       "/Users/test/.paseo/projects/prj_test/workspaces/wks_test",
     ]);
   });
+
+  it("does not use the managed Project path when no project directory is configured", () => {
+    const scopes = resolveFilesPanelDirectoryScopes({
+      workspace: workspace(),
+      projectConfig: {
+        directoryMode: "multiple",
+        directories: {
+          project: [],
+        },
+      },
+    });
+
+    expect(scopes.find((scope) => scope.id === "project")?.roots).toEqual([
+      "/Users/test/.paseo/projects/prj_test",
+    ]);
+    expect(scopes.find((scope) => scope.id === "projectDirectories")?.roots).toEqual([]);
+  });
+
+  it("resolves configured Git project directories under the managed repos directory", () => {
+    const scopes = resolveFilesPanelDirectoryScopes({
+      workspace: workspace(),
+      projectConfig: {
+        directoryMode: "multiple",
+        directories: {
+          project: [
+            {
+              type: "git-repository",
+              repository: "git@example.com:team/service.git",
+              branch: "main",
+              directory: "service-main",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(scopes.find((scope) => scope.id === "projectDirectories")?.roots).toEqual([
+      "/Users/test/.paseo/projects/prj_test/repos/service-main",
+    ]);
+  });
 });
 
 describe("resolveFilesPanelPath", () => {

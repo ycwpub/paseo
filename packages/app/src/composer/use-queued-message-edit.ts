@@ -43,7 +43,7 @@ interface ActiveEdit {
   workspaceAttachments: WorkspaceComposerAttachment[];
 }
 
-interface UseQueuedMessageEditInput extends ResourceSelection {
+interface UseQueuedMessageEditInput {
   serverId: string;
   agentId: string;
   queue: QueueWriter;
@@ -51,14 +51,16 @@ interface UseQueuedMessageEditInput extends ResourceSelection {
   text: string;
   attachments: UserComposerAttachment[];
   currentDraftAttachments: ComposerAttachment[];
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
   setText: (text: string) => void;
   setAttachments: (
     value:
       | UserComposerAttachment[]
       | ((current: UserComposerAttachment[]) => UserComposerAttachment[]),
   ) => void;
-  setSelectedMcpServerIds: Dispatch<SetStateAction<string[]>>;
-  setSelectedSkillIds: Dispatch<SetStateAction<string[]>>;
+  setSelectedMcpServerIds?: Dispatch<SetStateAction<string[]>>;
+  setSelectedSkillIds?: Dispatch<SetStateAction<string[]>>;
   suppressCurrentWorkspaceAttachments: (attachments: readonly ComposerAttachment[]) => void;
   resetWorkspaceAttachmentSuppression: () => void;
   focusInput: () => void;
@@ -123,8 +125,8 @@ export function useQueuedMessageEdit(input: UseQueuedMessageEditInput): UseQueue
       updateEdit(null);
       setText(currentEdit.previousDraft.text);
       setAttachments(currentEdit.previousDraft.attachments);
-      setSelectedMcpServerIds(currentEdit.previousDraft.selectedMcpServerIds);
-      setSelectedSkillIds(currentEdit.previousDraft.selectedSkillIds);
+      setSelectedMcpServerIds?.(currentEdit.previousDraft.selectedMcpServerIds);
+      setSelectedSkillIds?.(currentEdit.previousDraft.selectedSkillIds);
       resetWorkspaceAttachmentSuppression();
       focusInput();
     },
@@ -155,8 +157,8 @@ export function useQueuedMessageEdit(input: UseQueuedMessageEditInput): UseQueue
         previousDraft: {
           text: draftText,
           attachments: [...attachments],
-          selectedMcpServerIds: [...selectedMcpServerIds],
-          selectedSkillIds: [...selectedSkillIds],
+          selectedMcpServerIds: [...(selectedMcpServerIds ?? [])],
+          selectedSkillIds: [...(selectedSkillIds ?? [])],
         },
         workspaceAttachments: queueSession.message.attachments.filter(isWorkspaceAttachment),
       };
@@ -164,8 +166,10 @@ export function useQueuedMessageEdit(input: UseQueuedMessageEditInput): UseQueue
       updateEdit(nextEdit);
       setText(queueSession.message.text);
       setAttachments(userAttachmentsOnly(queueSession.message.attachments));
-      setSelectedMcpServerIds(queueSession.message.selectedMcpServerIds ?? selectedMcpServerIds);
-      setSelectedSkillIds(queueSession.message.selectedSkillIds ?? selectedSkillIds);
+      setSelectedMcpServerIds?.(
+        queueSession.message.selectedMcpServerIds ?? selectedMcpServerIds ?? [],
+      );
+      setSelectedSkillIds?.(queueSession.message.selectedSkillIds ?? selectedSkillIds ?? []);
       clearError();
       focusInput();
     },
@@ -208,8 +212,10 @@ export function useQueuedMessageEdit(input: UseQueuedMessageEditInput): UseQueue
         session: currentEdit.queueSession,
         text: nextText,
         attachments: selectedAttachments,
-        selectedMcpServerIds,
-        selectedSkillIds,
+        selectedMcpServerIds:
+          selectedMcpServerIds ?? currentEdit.queueSession.message.selectedMcpServerIds ?? [],
+        selectedSkillIds:
+          selectedSkillIds ?? currentEdit.queueSession.message.selectedSkillIds ?? [],
         queue,
       });
       if (!finished) return true;

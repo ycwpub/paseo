@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Files } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FileExplorerPane } from "@/components/file-explorer-pane";
@@ -154,13 +154,7 @@ export function FilesPanelDirectoryBrowser({
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.scopeScroll}
-        contentContainerStyle={styles.scopeTabs}
-        testID="files-panel-directory-scopes"
-      >
+      <View style={styles.scopeTabs} testID="files-panel-directory-scopes">
         {scopes.map((scope) => (
           <DirectoryScopeTab
             key={scope.id}
@@ -170,7 +164,7 @@ export function FilesPanelDirectoryBrowser({
             onSelect={selectScope}
           />
         ))}
-      </ScrollView>
+      </View>
 
       {activeRoot ? (
         <View style={styles.rootPicker} testID="files-panel-directory-root-picker">
@@ -307,17 +301,18 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     backgroundColor: theme.colors.surfaceSidebar,
   },
-  scopeScroll: {
+  scopeTabs: {
     flexGrow: 0,
     flexShrink: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  scopeTabs: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: theme.spacing[1],
+    columnGap: theme.spacing[1],
+    rowGap: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
   scopeTab: {
     minHeight: 28,

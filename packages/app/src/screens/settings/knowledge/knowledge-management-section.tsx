@@ -621,6 +621,7 @@ function ProjectKnowledgeForm({
         title={`${target.label} · Project 知识`}
         info="仅在当前 Project 中生效。通用知识按需加载，规范知识必须遵守，项目专有知识会完整提供给智能体并按需采纳。"
         cloudCacheTarget={actualCloudCacheTarget}
+        allowGitRepositories
       />
       <View style={styles.footer}>
         <Button

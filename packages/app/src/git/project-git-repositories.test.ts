@@ -60,6 +60,41 @@ describe("Project Git repositories", () => {
     ]);
   });
 
+  it("includes Git repositories managed under the Project repos directory", () => {
+    expect(
+      resolveProjectGitRepositoryCandidates({
+        workspace: workspace(),
+        projectConfig: {
+          directoryMode: "multiple",
+          directories: {
+            project: [],
+          },
+          knowledge: {
+            general: [
+              {
+                type: "local-directory",
+                source: "{{projectRoot}}/repos/ledger_platform",
+              },
+              {
+                type: "git-repository",
+                source: "git@example.com:team/settle_fee.git",
+                branch: "main",
+              },
+              {
+                type: "local-directory",
+                source: "/Users/test/reference-docs",
+              },
+            ],
+          },
+        },
+      }).map((repository) => repository.root),
+    ).toEqual([
+      "/Users/test/.paseo/projects/project-1/repos/ledger_platform",
+      "/Users/test/.paseo/projects/project-1/repos/settle_fee",
+      "/Users/test/.paseo/projects/project-1/workspaces/workspace-1",
+    ]);
+  });
+
   it("selects the requested repository, then the repository containing an absolute focus path", () => {
     const repositoryRoots = ["/repo/service-a", "/repo/service-b"];
     expect(

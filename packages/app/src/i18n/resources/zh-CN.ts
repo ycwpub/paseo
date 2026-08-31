@@ -143,6 +143,13 @@ export const zhCN: TranslationResources = {
       openReview: "打开 review 附件",
       removeReview: "移除 review 附件",
     },
+    queue: {
+      edit: "编辑排队消息",
+      editing: "正在编辑排队消息",
+      cancelEdit: "取消编辑排队消息",
+      remove: "删除排队消息",
+      steer: "立即引导",
+    },
     errors: {
       failedToSend: "发送消息失败",
       failedToCreateAgent: "创建 Agent 失败",

@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { GitPullRequest } from "lucide-react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useTranslation } from "react-i18next";
 import { RepositorySwitcher } from "@/git/repository-switcher";
 import { useProjectGitRepositories } from "@/git/use-project-git-repositories";
+import { usePaneContext } from "@/panels/pane-context";
+import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
 import { PullRequestContent, usePullRequestData } from "@/panels/pull-request";
+
+const ThemedGitPullRequest = withUnistyles(GitPullRequest);
+const multiRepositoryPullRequestPresentation = {
+  label: (t) => t("panels.pullRequest.label"),
+  subtitle: (t) => t("panels.pullRequest.subtitle"),
+  tooltip: (t) => t("panels.pullRequest.label"),
+  icon: ThemedGitPullRequest,
+} satisfies PanelPresentation;
 
 export function MultiRepositoryPullRequestPanel({
   serverId,
@@ -68,6 +80,33 @@ function RepositoryPullRequestContent({
     <PullRequestContent serverId={serverId} workspaceId={workspaceId} cwd={cwd} prPane={prPane} />
   );
 }
+
+function useMultiRepositoryPullRequestDescriptor() {
+  const { t } = useTranslation();
+  const label = multiRepositoryPullRequestPresentation.label(t);
+  return {
+    label,
+    subtitle: multiRepositoryPullRequestPresentation.subtitle(t),
+    tooltip: label,
+    titleState: "ready" as const,
+    icon: multiRepositoryPullRequestPresentation.icon,
+    statusBucket: null,
+  };
+}
+
+function MultiRepositoryPullRequestPane() {
+  const { serverId, workspaceId, target } = usePaneContext();
+  if (target.kind !== "pull_request") {
+    throw new Error("MultiRepositoryPullRequestPane requires pull_request target");
+  }
+  return <MultiRepositoryPullRequestPanel serverId={serverId} workspaceId={workspaceId} />;
+}
+
+export const multiRepositoryPullRequestPanelRegistration = definePanel("pull_request", {
+  component: MultiRepositoryPullRequestPane,
+  presentation: multiRepositoryPullRequestPresentation,
+  useDescriptor: useMultiRepositoryPullRequestDescriptor,
+});
 
 const styles = StyleSheet.create((theme) => ({
   container: {

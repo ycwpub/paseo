@@ -93,6 +93,8 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { DesktopNotificationsSection } from "@/desktop/components/desktop-notifications-section";
+import { DesktopAttentionSettingsSection } from "@/desktop/components/desktop-attention-settings-section";
+import { DesktopNotificationPreferencesSection } from "@/desktop/components/desktop-notification-preferences-section";
 import { BrowserDataSection } from "@/desktop/browser/settings/browser-data-section";
 import { IntegrationsSection } from "@/desktop/components/integrations-section";
 import { isElectronRuntime } from "@/desktop/host";
@@ -148,16 +150,10 @@ import {
   type EnableBuiltInDaemonOption,
   useEnableBuiltInDaemonOption,
 } from "@/desktop/hooks/use-enable-built-in-daemon-option";
-import {
-  buildSettingsSectionRoute,
-  type SettingsSectionSlug,
-} from "@/utils/host-routes";
-import {
-  buildSettingsHostSectionRoute,
-  type HostSectionSlug,
-} from "@/utils/host-feature-routes";
+import { buildSettingsSectionRoute, type SettingsSectionSlug } from "@/utils/host-routes";
+import { buildSettingsHostSectionRoute, type HostSectionSlug } from "@/utils/host-feature-routes";
 import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
+import { returnFromSettings, type SettingsView } from "@/navigation/settings-feature-navigation";
 import { isNative, isWeb } from "@/constants/platform";
 
 // ---------------------------------------------------------------------------
@@ -1793,9 +1789,19 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           case "integrations":
             return isDesktopApp ? <IntegrationsSection /> : null;
           case "notifications":
-            return isDesktopApp ? <DesktopNotificationsSection /> : null;
+            return isDesktopApp ? (
+              <>
+                <DesktopNotificationsSection />
+                <DesktopNotificationPreferencesSection />
+              </>
+            ) : null;
           case "permissions":
-            return isDesktopApp ? <DesktopPermissionsSection /> : null;
+            return isDesktopApp ? (
+              <>
+                <DesktopPermissionsSection />
+                <DesktopAttentionSettingsSection />
+              </>
+            ) : null;
           case "diagnostics":
             return (
               <DiagnosticsSection

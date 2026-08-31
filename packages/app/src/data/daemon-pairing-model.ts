@@ -1,5 +1,5 @@
 export function daemonPairingQueryKey(serverId: string | null) {
-  return ["daemon-pairing", serverId] as const;
+  return ["daemon-pairing-offer", serverId] as const;
 }
 
 export interface RelayPairingOfferView {

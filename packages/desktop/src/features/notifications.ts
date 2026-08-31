@@ -1,7 +1,7 @@
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { app, BrowserWindow, Notification, ipcMain, nativeImage } from "electron";
-import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
+import { getExtendedDesktopSettingsStore } from "../settings/desktop-settings-extensions-electron.js";
 
 interface NotificationInput {
   title?: unknown;
@@ -96,7 +96,7 @@ export function registerNotificationHandlers(): void {
     const body = toTrimmedString(rawInput?.body) ?? undefined;
     const data = toRecord(rawInput?.data);
     const icon = getNotificationIcon();
-    const settings = await getDesktopSettingsStore().get();
+    const settings = await getExtendedDesktopSettingsStore().get();
     if (!settings.notifications.enabled) {
       return false;
     }

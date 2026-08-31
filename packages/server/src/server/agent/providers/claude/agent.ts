@@ -131,6 +131,13 @@ import {
   type ProviderRefreshContext,
   type ResolveAgentDefaultModeInput,
 } from "../../agent-sdk-types.js";
+import {
+  readProjectDirectoryAgentConfig,
+  type ProjectAwareAgentSessionConfig,
+  type ProjectAwareAgentSessionConfigOverrides,
+  type ProjectDirectoryAgentConfig,
+} from "../../project-directory-agent-config.js";
+import { createSourcedReasoningTimelineItem } from "@getpaseo/protocol/reasoning-timeline-source";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
 import { runProviderRefreshActivity } from "../../provider-refresh-deadline.js";
 import {
@@ -387,10 +394,11 @@ function classifyClaudeSlashCommand(commandName: string): AgentSlashCommand["kin
   return CLAUDE_ROOT_ONLY_COMMANDS.has(commandName) ? "command" : "skill";
 }
 
-type ClaudeAgentConfig = Omit<AgentSessionConfig, "providerOptions"> & {
-  provider: "claude";
-  providerOptions: ClaudeProviderOptions;
-};
+type ClaudeAgentConfig = Omit<AgentSessionConfig, "providerOptions"> &
+  ProjectDirectoryAgentConfig & {
+    provider: "claude";
+    providerOptions: ClaudeProviderOptions;
+  };
 
 export interface ClaudeContentChunk {
   type: string;
@@ -961,12 +969,14 @@ function claudeModeCatalog(env: NodeJS.ProcessEnv): {
   return { modes: DEFAULT_MODES, defaultModeId: "auto" };
 }
 
-function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<AgentSessionConfig> {
+function coerceSessionMetadata(
+  metadata: AgentMetadata | undefined,
+): ProjectAwareAgentSessionConfigOverrides {
   if (!isMetadata(metadata)) {
     return {};
   }
 
-  const result: Partial<AgentSessionConfig> = {};
+  const result: ProjectAwareAgentSessionConfigOverrides = {};
   if (metadata.provider === "claude" || metadata.provider === "codex") {
     result.provider = metadata.provider;
   }
@@ -1327,7 +1337,7 @@ class TimelineAssembler {
     const nextReasoningText = state.reasoningText.slice(state.emittedReasoningLength);
     if (nextReasoningText.length > 0) {
       state.emittedReasoningLength = state.reasoningText.length;
-      items.push({ type: "reasoning", text: nextReasoningText, source: "thinking" });
+      items.push(createSourcedReasoningTimelineItem(nextReasoningText, "thinking"));
     }
     return items;
   }
@@ -1569,11 +1579,11 @@ export class ClaudeAgentClient implements AgentClient {
     launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
     const metadata = coerceSessionMetadata(handle.metadata);
-    const merged: Partial<AgentSessionConfig> = { ...metadata, ...overrides };
+    const merged: ProjectAwareAgentSessionConfigOverrides = { ...metadata, ...overrides };
     if (!merged.cwd) {
       throw new Error("Claude resume requires the original working directory in metadata");
     }
-    const mergedConfig: AgentSessionConfig = {
+    const mergedConfig: ProjectAwareAgentSessionConfig = {
       ...merged,
       provider: "claude",
       cwd: merged.cwd,
@@ -1724,8 +1734,10 @@ export class ClaudeAgentClient implements AgentClient {
     }
     const model = config.model?.trim();
     const providerOptions = ClaudeProviderOptionsSchema.parse(config.providerOptions ?? {});
+    const projectDirectories = readProjectDirectoryAgentConfig(config);
     return {
       ...config,
+      ...projectDirectories,
       provider: "claude",
       model: model || undefined,
       providerOptions,
@@ -5226,7 +5238,7 @@ class ClaudeAgentSession implements AgentSession {
       case "thinking":
       case "thinking_delta":
         if (typeof block.thinking === "string" && block.thinking && !context.suppressReasoning) {
-          context.items.push({ type: "reasoning", text: block.thinking, source: "thinking" });
+          context.items.push(createSourcedReasoningTimelineItem(block.thinking, "thinking"));
         }
         break;
       case "redacted_thinking":

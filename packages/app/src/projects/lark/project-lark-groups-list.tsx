@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { Pencil, Plus } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
-import { openProjectLarkGroupSettings } from "@/navigation/settings-navigation";
+import { openProjectLarkGroupSettings } from "@/navigation/settings-feature-navigation";
 import { useLarkChannel } from "@/screens/settings/channels/use-lark-channel";
 import { formatLarkChatId } from "@/screens/settings/channels/lark-directory-format";
 import { SettingsGroup } from "@/screens/settings/settings-group";

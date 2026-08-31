@@ -18,7 +18,7 @@ import {
   tailDaemonLog,
   type DaemonStartOptions,
 } from "./daemon/local-daemon.js";
-import { getCompleteDaemonPairingOffer } from "./daemon-management/pair.js";
+import { getCompleteDaemonPairingOffer } from "./daemon/pairing-offer-reconcile.js";
 import { normalizeOnboardPairingOffer } from "./onboard-pairing-offer.js";
 import { tryConnectToDaemon } from "../utils/client.js";
 

@@ -51,7 +51,7 @@ function isLocalModuleImport(moduleName) {
   );
 }
 
-function resolveWithCustomWebPlatform(context, moduleName, platform) {
+function resolveWithCustomWebOverlay(context, moduleName, platform) {
   const shouldResolveCustomWebVariant =
     platform === "web" &&
     customWebPlatform.length > 0 &&
@@ -69,7 +69,7 @@ function resolveWithCustomWebPlatform(context, moduleName, platform) {
     try {
       return defaultResolveRequest(overlayContext, moduleName, null);
     } catch {
-      // Ignore custom-platform misses and continue with normal web resolution.
+      // Ignore overlay misses and continue with normal web resolution.
     }
   }
 
@@ -78,7 +78,7 @@ function resolveWithCustomWebPlatform(context, moduleName, platform) {
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (isFdroidBuild && platform === "android" && fdroidModuleOverrides[moduleName]) {
-    return resolveWithCustomWebPlatform(context, fdroidModuleOverrides[moduleName], platform);
+    return resolveWithCustomWebOverlay(context, fdroidModuleOverrides[moduleName], platform);
   }
 
   const origin = context.originModulePath;
@@ -86,11 +86,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     const tsModuleName = moduleName.replace(/\.js$/, ".ts");
     const candidatePath = path.resolve(path.dirname(origin), tsModuleName);
     if (fs.existsSync(candidatePath)) {
-      return resolveWithCustomWebPlatform(context, tsModuleName, platform);
+      return resolveWithCustomWebOverlay(context, tsModuleName, platform);
     }
   }
 
-  return resolveWithCustomWebPlatform(context, moduleName, platform);
+  return resolveWithCustomWebOverlay(context, moduleName, platform);
 };
 
 if (process.env.PASEO_SERVE_SIM_PREVIEW === "1") {

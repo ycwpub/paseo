@@ -1,6 +1,6 @@
 import type { ProjectDescriptor, WorkspaceDescriptor } from "@/stores/session-store";
 import type { HostProjectListItem } from "@/projects/host-project-model";
-import { buildWorkspaceStructureProjects } from "@/projects/workspace-structure";
+import { buildFeatureWorkspaceStructureProjects } from "@/projects/feature-workspace-structure";
 import { selectPrHintFromStatus } from "@/git/pr-hint";
 
 export interface WorkspaceSummary {
@@ -18,14 +18,17 @@ export interface WorkspaceSummary {
 export interface ProjectHostEntry {
   serverId: string;
   projectId: string;
-  parentProjectId: string | null;
+  /** Missing on legacy summaries; equivalent to no parent. */
+  parentProjectId?: string | null;
   projectName: string;
   projectCustomName: string | null;
   serverName: string;
   isOnline: boolean;
-  projectPath: string;
+  /** Missing on legacy summaries; callers fall back to repoRoot. */
+  projectPath?: string;
   repoRoot: string;
-  isDirectoryless: boolean;
+  /** Missing on legacy summaries; equivalent to a directory-backed Project. */
+  isDirectoryless?: boolean;
   workspaceCount: number;
   workspaces: WorkspaceSummary[];
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
@@ -125,7 +128,7 @@ function findProjectMetadata(
 }
 
 function buildHostProjectEntries(hosts: ProjectHost[]): HostProjectListItem[] {
-  return buildWorkspaceStructureProjects({
+  return buildFeatureWorkspaceStructureProjects({
     sessions: hosts.map((host) => ({
       serverId: host.serverId,
       projects: host.projects,

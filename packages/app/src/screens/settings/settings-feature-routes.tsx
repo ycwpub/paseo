@@ -8,7 +8,7 @@ import {
   Sparkles,
   Wrench,
 } from "lucide-react-native";
-import type { SettingsView } from "@/navigation/settings-navigation";
+import type { SettingsView } from "@/navigation/settings-feature-navigation";
 import ProjectSettingsScreen from "@/screens/project-settings-screen";
 import ProjectLarkGroupScreen from "@/screens/project-lark-group-screen";
 import ProjectLarkGroupsScreen from "@/screens/project-lark-groups-screen";

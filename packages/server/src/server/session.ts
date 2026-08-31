@@ -34,11 +34,8 @@ import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
 import { describeAgentHistoryMatches, rankAgentHistoryCandidates } from "./agent-history-search.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
-import {
-  buildConfigOverrides,
-  isStoredAgentProviderAvailable,
-  toAgentPersistenceHandle,
-} from "./persistence-hooks.js";
+import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "./persistence-hooks.js";
+import { buildProjectAwareConfigOverrides } from "./agent/project-aware-persistence-config.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent/agent-loading.js";
 import {
   sendPromptToAgent,
@@ -113,7 +110,7 @@ function isLarkReminderInboundMessage(
 }
 
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
-import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
+import { buildTimelinePromptNavigationIndex } from "./agent/timeline-prompt-navigation-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import type {
   AgentManagerEvent,
@@ -200,10 +197,15 @@ import {
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
+import { BashScheduleUpdateSession } from "./session/schedule/bash-schedule-update-session.js";
 import { WorkflowSession } from "./session/workflow/workflow-session.js";
 import { LoopSession } from "./session/loop/loop-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
+import {
+  createWorkspaceFilesSessionLogger,
+  extendWorkspaceFilesSessionHost,
+} from "./session/files/workspace-files-session-extensions.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { initializeDirectorylessProjectConfig } from "./project/project-config-storage.js";
@@ -334,7 +336,7 @@ import {
 } from "./project/project-storage-paths.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
-import { resolveWorktreeSourceCwd } from "./workspace-source.js";
+import { resolveProjectWorktreeSourceCwd } from "./project/project-worktree-source.js";
 
 type ProviderSubagentManagerEvent = Extract<
   AgentManagerEvent,
@@ -833,6 +835,7 @@ export class Session {
   private readonly voiceSession: VoiceSession;
   private readonly checkoutSession: CheckoutSession;
   private readonly scheduleSession: ScheduleSession;
+  private readonly bashScheduleUpdateSession: BashScheduleUpdateSession;
   private readonly workflowSession: WorkflowSession;
   private readonly loopSession: LoopSession | null;
   private readonly providerCatalogSession: ProviderCatalogSession;
@@ -952,14 +955,14 @@ export class Session {
       sessionId: this.sessionId,
     });
     this.workspaceFilesSession = new WorkspaceFilesSession({
-      host: {
+      host: extendWorkspaceFilesSessionHost({
         emit: (msg, source) => this.emitForSource(msg, source),
         emitBinary: (frame, source) => this.emitBinaryForFileTransfer(frame, source),
         hasBinaryChannel: () => this.onBinaryMessage !== null,
-      },
+      }),
       downloadTokenStore,
       paseoHome,
-      logger: this.sessionLogger,
+      logger: createWorkspaceFilesSessionLogger(this.sessionLogger),
     });
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
@@ -1031,6 +1034,11 @@ export class Session {
     });
     this.scheduleSession = new ScheduleSession({
       host: { emit: (msg) => this.emit(msg) },
+      scheduleService,
+      logger: this.sessionLogger,
+    });
+    this.bashScheduleUpdateSession = new BashScheduleUpdateSession({
+      emit: (msg) => this.emit(msg),
       scheduleService,
       logger: this.sessionLogger,
     });
@@ -2866,7 +2874,7 @@ export class Session {
       case "schedule/run-once":
         return this.scheduleSession.handleScheduleRunOnceRequest(msg);
       case "schedule/update":
-        return this.scheduleSession.handleScheduleUpdateRequest(msg);
+        return this.bashScheduleUpdateSession.handle(msg);
       default:
         return undefined;
     }
@@ -4275,7 +4283,7 @@ export class Session {
     try {
       const matched = await this.unarchiveAgentByHandle(handle);
       const effectiveOverrides = matched
-        ? { ...buildConfigOverrides(matched.record), ...overrides }
+        ? { ...buildProjectAwareConfigOverrides(matched.record), ...overrides }
         : overrides;
       let snapshot: ManagedAgent;
       try {
@@ -6722,7 +6730,7 @@ export class Session {
       return;
     }
 
-    const sourceCwd = await resolveWorktreeSourceCwd(source, this.projectRegistry);
+    const sourceCwd = await resolveProjectWorktreeSourceCwd(source, this.projectRegistry);
 
     const result = await this.createPaseoWorktreeWorkflow(
       {
@@ -7853,7 +7861,7 @@ export class Session {
         direction: "tail",
         limit: 1,
       });
-      const index = buildTimelinePromptIndex(timeline.epoch, rows);
+      const index = buildTimelinePromptNavigationIndex(timeline.epoch, rows);
       this.emitForSource(
         {
           type: "agent.timeline.list_prompts.response",
@@ -8075,19 +8083,18 @@ export class Session {
       );
       let dispatchResult: { disposition: "out_of_band" | "steered" | "turn_started" };
       try {
+        if (msg.selectedMcpServerIds || msg.selectedSkillIds) {
+          await this.agentManager.applySessionResourceSelection(agentId, {
+            selectedMcpServerIds: msg.selectedMcpServerIds,
+            selectedSkillIds: msg.selectedSkillIds,
+          });
+        }
         dispatchResult = await sendPromptToAgent({
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
           agentId,
           prompt,
           messageId: msg.messageId,
-          sessionResourceSelection:
-            msg.selectedMcpServerIds || msg.selectedSkillIds
-              ? {
-                  selectedMcpServerIds: msg.selectedMcpServerIds,
-                  selectedSkillIds: msg.selectedSkillIds,
-                }
-              : undefined,
           activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
           clearPendingPermissions: true,
           logger: this.sessionLogger,

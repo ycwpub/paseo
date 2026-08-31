@@ -14,6 +14,12 @@ const removeState = vi.hoisted(() => ({
   action: vi.fn(),
 }));
 const redirect = vi.hoisted(() => vi.fn());
+const activeWorkspaceSelection = vi.hoisted(() => ({
+  value: {
+    serverId: "server-1",
+    workspaceId: "workspace-1",
+  } as { serverId: string; workspaceId: string } | null,
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -31,6 +37,46 @@ vi.mock("@/workspace/use-workspace-remove", () => ({
       status: "idle",
     };
   },
+}));
+
+vi.mock("@/stores/navigation-active-workspace-store", () => ({
+  useActiveWorkspaceSelection: () => activeWorkspaceSelection.value,
+}));
+
+vi.mock("@/stores/session-store", () => ({
+  useSessionStore: (
+    selector: (state: {
+      sessions: Record<
+        string,
+        {
+          workspaces: Map<
+            string,
+            {
+              id: string;
+              projectId: string;
+              name: string;
+            }
+          >;
+        }
+      >;
+    }) => unknown,
+  ) =>
+    selector({
+      sessions: {
+        "server-1": {
+          workspaces: new Map([
+            [
+              "workspace-1",
+              {
+                id: "workspace-1",
+                projectId: "project-1",
+                name: "技术方案",
+              },
+            ],
+          ]),
+        },
+      },
+    }),
 }));
 
 vi.mock("@/utils/sidebar-workspace-archive-redirect", () => ({
@@ -97,6 +143,10 @@ describe("Sidebar Workspace remove action", () => {
     removeState.supported = true;
     removeState.action.mockReset();
     redirect.mockReset();
+    activeWorkspaceSelection.value = {
+      serverId: "server-1",
+      workspaceId: "workspace-1",
+    };
     removeState.action.mockImplementation(() => removeState.options?.onRemoveStarted?.());
   });
 
@@ -107,10 +157,7 @@ describe("Sidebar Workspace remove action", () => {
       <SidebarWorkspaceMenu
         workspaceKey="server-1:workspace-1"
         serverId="server-1"
-        projectId="project-1"
         workspaceId="workspace-1"
-        workspaceName="技术方案"
-        selected
         onArchive={vi.fn()}
       />,
     );
@@ -136,15 +183,13 @@ describe("Sidebar Workspace remove action", () => {
 
   it("hides the delete action when the connected Host does not support removal", () => {
     removeState.supported = false;
+    activeWorkspaceSelection.value = null;
 
     render(
       <SidebarWorkspaceMenu
         workspaceKey="server-1:workspace-1"
         serverId="server-1"
-        projectId="project-1"
         workspaceId="workspace-1"
-        workspaceName="技术方案"
-        selected={false}
         onArchive={vi.fn()}
       />,
     );

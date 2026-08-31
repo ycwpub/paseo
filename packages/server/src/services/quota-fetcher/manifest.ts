@@ -1,10 +1,8 @@
-import { join } from "node:path";
 import type {
   ProviderUsageFetcher,
   ProviderUsageFetcherFactoryOptions,
   ProviderUsageFetcherManifestEntry,
 } from "./provider.js";
-import { AidenClaudeQuotaProvider, AidenCodexQuotaProvider } from "./providers/aiden.js";
 import { ClaudeQuotaProvider } from "./providers/claude.js";
 import { CodexQuotaProvider } from "./providers/codex.js";
 import { CopilotQuotaProvider } from "./providers/copilot.js";
@@ -12,43 +10,9 @@ import { CursorQuotaProvider } from "./providers/cursor.js";
 import { GrokQuotaProvider } from "./providers/grok.js";
 import { KimiQuotaProvider } from "./providers/kimi.js";
 import { MiniMaxQuotaProvider } from "./providers/minimax.js";
-import { TraeCliQuotaProvider } from "./providers/traecli.js";
 import { ZaiQuotaProvider } from "./providers/zai.js";
 
 export const PROVIDER_USAGE_FETCHERS: readonly ProviderUsageFetcherManifestEntry[] = [
-  {
-    providerId: "aiden-claude",
-    create: (options) =>
-      new AidenClaudeQuotaProvider({
-        logger: options.logger,
-        ...(options.paseoHome
-          ? {
-              cacheFilePath: join(
-                options.paseoHome,
-                "cache",
-                "provider-usage",
-                "aiden-claude.json",
-              ),
-            }
-          : {}),
-      }),
-  },
-  {
-    providerId: "aiden-codex",
-    create: (options) =>
-      new AidenCodexQuotaProvider({
-        logger: options.logger,
-        ...(options.paseoHome
-          ? {
-              cacheFilePath: join(options.paseoHome, "cache", "provider-usage", "aiden-codex.json"),
-            }
-          : {}),
-      }),
-  },
-  {
-    providerId: "traecli",
-    create: (options) => new TraeCliQuotaProvider({ logger: options.logger }),
-  },
   {
     providerId: "claude",
     create: (options) =>

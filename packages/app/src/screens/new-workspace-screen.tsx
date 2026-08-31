@@ -30,6 +30,7 @@ import { ScreenHeader } from "@/components/headers/screen-header";
 import { HEADER_INNER_HEIGHT, MAX_CONTENT_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
+import { useAssistantTeamSelection } from "@/composer/assistant-selector/use-assistant-team-selection";
 import { useForgeSearchQuery } from "@/git/use-forge-search-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { ensureCheckoutStatus } from "@/git/checkout-status-cache";
@@ -847,6 +848,10 @@ async function createMultiplicityWorkspace(input: {
 interface CreateChatAgentInput {
   payload: MessagePayload;
   composerState: ReturnType<typeof useAgentInputDraft>["composerState"];
+  assistantSelection: {
+    assistantId: string | null;
+    teamId: string | null;
+  };
   forkDraftSetup?: PendingWorkspaceDraftSetup | null;
   ensureWorkspace: (input: {
     cwd: string;
@@ -868,6 +873,10 @@ function buildWorkspaceDraftSetupFromComposer(input: {
   cwd: string;
   provider: AgentProvider;
   composerState: NewWorkspaceComposerState;
+  assistantSelection: {
+    assistantId: string | null;
+    teamId: string | null;
+  };
 }): WorkspaceDraftTabSetup {
   return {
     provider: input.provider,
@@ -876,6 +885,8 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     model: input.composerState.effectiveModelId || null,
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     featureValues: input.composerState.featureValues ?? {},
+    assistantId: input.assistantSelection.assistantId,
+    teamId: input.assistantSelection.teamId,
   };
 }
 
@@ -884,18 +895,22 @@ function buildWorkspaceDraftSetupForCreatedWorkspace(input: {
   workspaceDirectory: string;
   provider: AgentProvider;
   composerState: NewWorkspaceComposerState;
-}): WorkspaceDraftTabSetup | undefined {
-  if (!input.forkDraftSetup) {
-    return undefined;
-  }
+  assistantSelection: {
+    assistantId: string | null;
+    teamId: string | null;
+  };
+}): WorkspaceDraftTabSetup {
   return buildWorkspaceDraftSetupFromComposer({
-    cwd: remapDraftCwdToWorkspace({
-      cwd: input.forkDraftSetup.setup.cwd,
-      sourceDirectory: input.forkDraftSetup.sourceDirectory,
-      workspaceDirectory: input.workspaceDirectory,
-    }),
+    cwd: input.forkDraftSetup
+      ? remapDraftCwdToWorkspace({
+          cwd: input.forkDraftSetup.setup.cwd,
+          sourceDirectory: input.forkDraftSetup.sourceDirectory,
+          workspaceDirectory: input.workspaceDirectory,
+        })
+      : input.workspaceDirectory,
     provider: input.provider,
     composerState: input.composerState,
+    assistantSelection: input.assistantSelection,
   });
 }
 
@@ -919,7 +934,8 @@ function buildComposerInitialValues(input: {
 }
 
 async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
-  const { payload, composerState, ensureWorkspace, serverId, clearDraft } = input;
+  const { payload, composerState, assistantSelection, ensureWorkspace, serverId, clearDraft } =
+    input;
   const { text, attachments, cwd } = payload;
   if (!composerState) {
     throw new Error(input.labels.composerStateRequired);
@@ -946,6 +962,7 @@ async function runCreateChatAgent(input: CreateChatAgentInput): Promise<void> {
     workspaceDirectory: ensuredWorkspace.workspaceDirectory,
     provider,
     composerState,
+    assistantSelection,
   });
   submitWorkspaceDraft({
     serverId,
@@ -1538,6 +1555,7 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
   );
 }
 
+// oxlint-disable-next-line complexity -- Coordinates the project, host, isolation, checkout, assistant, and launch form state.
 export function NewWorkspaceScreen({
   serverId,
   sourceDirectory: sourceDirectoryProp,
@@ -1660,6 +1678,11 @@ export function NewWorkspaceScreen({
   });
   const draftKey = buildNewWorkspaceDraftKey(draftId);
   const forkDraftSetup = usePendingWorkspaceDraftSetup(draftId);
+  const assistantSelection = useAssistantTeamSelection({
+    selectionKey: draftKey,
+    initialAssistantId: forkDraftSetup?.setup.assistantId,
+    initialTeamId: forkDraftSetup?.setup.teamId,
+  });
   const draftContextScopeKey = useDraftWorkspaceAttachmentScopeKey(draftId);
   const visibleDraftContextScopeKeys = useMemo(
     () => resolveVisibleDraftContextScopeKeys({ isDraftHandoffActive, draftContextScopeKey }),
@@ -2055,6 +2078,7 @@ export function NewWorkspaceScreen({
         await runCreateChatAgent({
           payload,
           composerState,
+          assistantSelection,
           forkDraftSetup,
           ensureWorkspace,
           serverId: selectedServerId,
@@ -2075,6 +2099,7 @@ export function NewWorkspaceScreen({
     },
     [
       composerState,
+      assistantSelection,
       draftId,
       chatDraft.clear,
       ensureWorkspace,
@@ -2335,10 +2360,10 @@ export function NewWorkspaceScreen({
               autoFocusKey={launchFocusKey}
               commandDraftConfig={composerState?.commandDraftConfig}
               agentControls={agentControlsWithDisabled}
-              assistantId={chatDraft.assistantId}
-              onAssistantSelect={chatDraft.setAssistantId}
-              teamId={chatDraft.teamId}
-              onTeamSelect={chatDraft.setTeamId}
+              assistantId={assistantSelection.assistantId}
+              onAssistantSelect={assistantSelection.setAssistantId}
+              teamId={assistantSelection.teamId}
+              onTeamSelect={assistantSelection.setTeamId}
             />
           )}
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

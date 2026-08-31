@@ -747,7 +747,6 @@ interface AssistantMessageProps {
   client?: DaemonClient | null;
   spacing?: "default" | "compactTop" | "compactBottom" | "compactBoth";
   phase: MarkdownPhase;
-  variant?: "answer" | "reasoning";
 }
 
 export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
@@ -760,10 +759,6 @@ export const assistantMessageStylesheet = StyleSheet.create((theme) => ({
   },
   containerCompactBottom: {
     paddingBottom: 0,
-  },
-  reasoningContainer: {
-    paddingVertical: theme.spacing[2],
-    opacity: 0.9,
   },
   imageFrame: {
     width: "100%",
@@ -1464,7 +1459,6 @@ export const AssistantMessage = memo(function AssistantMessage({
   client,
   spacing = "default",
   phase,
-  variant = "answer",
 }: AssistantMessageProps) {
   const markdownParser = useMemo(createAssistantMarkdownParser, []);
   // Paint a paced prefix while the turn is streaming so text arrives at a steady
@@ -1921,9 +1915,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         assistantMessageStylesheet.containerCompactTop,
       (spacing === "compactBottom" || spacing === "compactBoth") &&
         assistantMessageStylesheet.containerCompactBottom,
-      variant === "reasoning" && assistantMessageStylesheet.reasoningContainer,
     ],
-    [spacing, variant],
+    [spacing],
   );
   const revealDataSet = useMemo(
     () =>
@@ -1934,11 +1927,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
 
   return (
-    <View
-      testID={variant === "reasoning" ? "reasoning-summary" : "assistant-message"}
-      dataSet={revealDataSet}
-      style={assistantContainerStyle}
-    >
+    <View testID="assistant-message" dataSet={revealDataSet} style={assistantContainerStyle}>
       {keyedBlocks.map(({ key, block }, index) => (
         <AssistantMessageBlockContainer
           key={key}

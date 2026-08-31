@@ -2,9 +2,9 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { useAppSettings } from "@/hooks/use-settings";
 import { settingsStyles } from "@/styles/settings";
 import { Switch } from "@/components/ui/switch";
+import { useAidenClaudeReasoningSettings } from "@/agent-stream/aiden-claude-reasoning-settings";
 
 const AIDEN_CLAUDE_PROVIDER_ID = "aiden-claude";
 
@@ -14,12 +14,12 @@ interface AidenClaudeProviderSettingsProps {
 
 export function AidenClaudeProviderSettings({ provider }: AidenClaudeProviderSettingsProps) {
   const { t } = useTranslation();
-  const { settings, updateSettings } = useAppSettings();
+  const { translateToChinese, setTranslateToChinese } = useAidenClaudeReasoningSettings();
   const handleTranslationChange = useCallback(
-    (aidenClaudeTranslateReasoningToChinese: boolean) => {
-      void updateSettings({ aidenClaudeTranslateReasoningToChinese });
+    (enabled: boolean) => {
+      void setTranslateToChinese(enabled);
     },
-    [updateSettings],
+    [setTranslateToChinese],
   );
 
   if (provider !== AIDEN_CLAUDE_PROVIDER_ID) {
@@ -39,7 +39,7 @@ export function AidenClaudeProviderSettings({ provider }: AidenClaudeProviderSet
             </Text>
           </View>
           <Switch
-            value={settings.aidenClaudeTranslateReasoningToChinese}
+            value={translateToChinese}
             onValueChange={handleTranslationChange}
             accessibilityLabel={label}
             testID="aiden-claude-reasoning-translation-switch"

@@ -12,13 +12,13 @@ import {
 } from "@/hooks/use-agent-initialization";
 import type { StreamItem } from "@/types/stream";
 import { deriveAgentStreamTurnLiveness } from "@/timeline/session-stream-reducers";
-import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
-import { requestTimelineReplacement } from "@/timeline/timeline-replacement";
+import { planTimelineTailFetch } from "@/timeline/resume-sync-plan";
+import { requestResumeTimelineReplacement } from "@/timeline/resume-timeline-replacement";
 import {
   type TimelineDeliveryMode,
   type TimelineResponsePayload,
-  type ViewedTimelineOwner,
 } from "@/timeline/viewed-timeline-sync";
+import type { ResumableViewedTimelineOwner } from "@/timeline/resumable-viewed-timeline-sync";
 import type { AgentAttachment, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { parseServerInfoStatusPayload } from "@getpaseo/protocol/messages";
 import {
@@ -267,7 +267,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const attentionNotifiedRef = useRef<Map<string, number>>(new Map());
   const appStateRef = useRef(AppState.currentState);
   const forcedTimelineTailReplacements = useRef(new Set<string>());
-  const viewedTimelineSyncRef = useRef<ViewedTimelineOwner | null>(null);
+  const viewedTimelineSyncRef = useRef<ResumableViewedTimelineOwner | null>(null);
   const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(new Map());
   const activeAudioGroupsRef = useRef<Set<string>>(new Set());
   const isAppVisible = useAppVisible();
@@ -600,7 +600,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubTimelineReplacement = client.on("agent.timeline.replacement", (message) => {
       if (message.type !== "agent.timeline.replacement") return;
-      void requestTimelineReplacement(
+      void requestResumeTimelineReplacement(
         {
           fetchAgentTimeline: (agentId, request) =>
             getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, request),

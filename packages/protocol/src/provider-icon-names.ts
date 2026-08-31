@@ -10,8 +10,6 @@ export const BUILTIN_PROVIDER_ICON_NAMES = [
 ];
 
 export const ACP_PROVIDER_ICON_NAMES = [
-  "aiden-claude",
-  "aiden-codex",
   "agoragentic-acp",
   "amp-acp",
   "auggie",

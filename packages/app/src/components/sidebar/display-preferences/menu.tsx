@@ -50,12 +50,13 @@ import {
   hasActiveSidebarLabelFilter,
   SIDEBAR_UNLABELLED_LABEL_KEY,
   type SidebarGroupMode,
-  type SidebarSortMode,
 } from "@/stores/sidebar-view-store";
+import type { SidebarSortMode } from "@/stores/sidebar-sort-store";
 import { workspaceLabelKey, type WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
 import type { WorkspaceTitleSource } from "@/hooks/use-settings";
 import { SIDEBAR_CHECKS_DISPLAYS, type SidebarChecksDisplay } from "./checks-display";
-import { useSidebarDisplayPreferences, type SidebarTrailingChoice } from "./model";
+import type { SidebarTrailingChoice } from "./model";
+import { useSortableSidebarDisplayPreferences } from "./sortable-model";
 import { SIDEBAR_ROW_ITEMS, type SidebarRowItem } from "./row-items";
 import { useWorkspaceLabelProjection } from "@/workspace-labels";
 import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
@@ -178,7 +179,7 @@ const TRAILING_LABEL_KEYS: Record<SidebarTrailingChoice, string> = {
  */
 export function SidebarDisplayPreferencesMenu(): ReactElement {
   const { t } = useTranslation();
-  const preferences = useSidebarDisplayPreferences();
+  const preferences = useSortableSidebarDisplayPreferences();
   const hosts = useHosts();
   // `allProjects`, never `projects`: the model's `projects` is already filtered, so a picker fed
   // from it would lose the row that undoes the filter as soon as the filter narrowed to one.
@@ -507,7 +508,7 @@ function LabelFilterItem({
   );
 }
 
-type Preferences = ReturnType<typeof useSidebarDisplayPreferences>;
+type Preferences = ReturnType<typeof useSortableSidebarDisplayPreferences>;
 
 /** One option row: its mark on the left, its label, and a check when it is the chosen one. */
 function OptionItem<Value extends string>({

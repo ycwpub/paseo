@@ -20,6 +20,11 @@
 import { createCutoverProxy } from "./cutover-proxy.js";
 import type { ConnectionRole, RelaySessionAttachment } from "./types.js";
 
+type RelaySessionAttachmentWithPeer = RelaySessionAttachment & {
+  remoteAddress: string | null;
+  remotePort: number | null;
+};
+
 type RelayProtocolVersion = "1" | "2";
 
 const LEGACY_RELAY_VERSION: RelayProtocolVersion = "1";
@@ -406,7 +411,7 @@ export class RelayDurableObject {
 
     this.state.acceptWebSocket(server, tags);
 
-    const attachment: RelaySessionAttachment = {
+    const attachment: RelaySessionAttachmentWithPeer = {
       serverId,
       role,
       version: CURRENT_RELAY_VERSION,

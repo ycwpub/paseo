@@ -2,6 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { findSemanticSourceOverlayErrors } from "./source-overlay-policy.mjs";
 
 const SAME_BASENAME_OVERLAY_PATTERN = /\.feature-paseo\./u;
 const BRANCH_NAME_PATH_PATTERN = /(?:^|\/)[^/]*(?:feature-paseo|feature_paseo)[^/]*(?:\/|$)/u;
@@ -107,6 +108,8 @@ function main() {
       }
     }
   }
+
+  errors.push(...findSemanticSourceOverlayErrors(currentPaths, (path) => readPath(path, cached)));
 
   if (errors.length === 0) {
     console.log("feature_paseo overlays: 0");

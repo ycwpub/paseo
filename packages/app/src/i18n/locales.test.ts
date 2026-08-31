@@ -122,7 +122,7 @@ describe("resolveSupportedLocale", () => {
     expect(resolveSupportedLocale("system", ["ko-KP"])).toBe("ko");
   });
 
-  it("falls back to Simplified Chinese for unsupported Portuguese locales", () => {
+  it("does not map non-Brazilian Portuguese system locales to Brazilian Portuguese", () => {
     expect(resolveSupportedLocale("system", ["pt-PT"])).toBe("zh-CN");
     expect(resolveSupportedLocale("system", ["pt-AO"])).toBe("zh-CN");
   });
@@ -137,13 +137,13 @@ describe("resolveSupportedLocale", () => {
     expect(resolveSupportedLocale("system", ["zh-Hans-US"])).toBe("zh-CN");
   });
 
-  it("falls back to Simplified Chinese for unsupported Traditional Chinese locales", () => {
+  it("does not map Traditional Chinese system locales to Simplified Chinese", () => {
     expect(resolveSupportedLocale("system", ["zh-TW"])).toBe("zh-CN");
     expect(resolveSupportedLocale("system", ["zh-Hant"])).toBe("zh-CN");
     expect(resolveSupportedLocale("system", ["zh-HK"])).toBe("zh-CN");
   });
 
-  it("maps unsupported or missing system locales to Simplified Chinese", () => {
+  it("maps unsupported or missing system locales to the Chinese product default", () => {
     expect(resolveSupportedLocale("system", ["de-DE"])).toBe("zh-CN");
     expect(resolveSupportedLocale("system", [])).toBe("zh-CN");
   });

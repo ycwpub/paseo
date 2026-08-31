@@ -45,12 +45,12 @@ import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
 import { OmpAgentClient } from "./providers/omp/agent.js";
 import type { OmpRuntime } from "./providers/omp/runtime.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
-import { TraeACPAgentClient } from "./providers/trae-acp-agent.js";
 import { TRAE_DEFAULT_MODE_ID, TRAE_MODES } from "./providers/trae-acp-modes.js";
+import { TraeACPModeFallbackAgentClient } from "./providers/trae-acp-mode-fallback-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
 import { ClaudeProviderOptionsSchema } from "./providers/claude/options.js";
-import { CodexProviderOptionsSchema } from "./providers/codex/options.js";
+import { CodexRuntimeOptionsSchema } from "./providers/codex/runtime-options.js";
 import { OpenCodeProviderOptionsSchema } from "./providers/opencode/options.js";
 import { ToolPolicyUnsupportedError, validateProviderOptions } from "./provider-options.js";
 import {
@@ -152,7 +152,7 @@ const EmptyProviderOptionsSchema: z.ZodType<ProviderOptions> = z.object({}).stri
 
 const PROVIDER_CONTRACTS: Record<string, ProviderContract> = {
   claude: { optionsSchema: ClaudeProviderOptionsSchema, supportsExactMcpPreapproval: true },
-  codex: { optionsSchema: CodexProviderOptionsSchema, supportsExactMcpPreapproval: true },
+  codex: { optionsSchema: CodexRuntimeOptionsSchema, supportsExactMcpPreapproval: true },
   opencode: { optionsSchema: OpenCodeProviderOptionsSchema, supportsExactMcpPreapproval: true },
 };
 
@@ -835,7 +835,7 @@ function addDerivedProviders(
             return new KiroACPAgentClient(acpOptions);
           }
           if (providerId === "traecli") {
-            return new TraeACPAgentClient(acpOptions);
+            return new TraeACPModeFallbackAgentClient(acpOptions);
           }
           return new GenericACPAgentClient(acpOptions);
         },

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, ipcMain, screen, type WebContents } from "electron";
 import log from "electron-log/main";
 
-import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
+import { getExtendedDesktopSettingsStore } from "../settings/desktop-settings-extensions-electron.js";
 import { resolveIslandBounds } from "./island-bounds.js";
 import {
   ISLAND_COMPACT_HEIGHT,
@@ -45,7 +45,7 @@ class IslandController {
   #displayId: number | null = null;
 
   async show(source: WebContents, rawInput?: IslandNotificationInput): Promise<boolean> {
-    const settings = await getDesktopSettingsStore().get();
+    const settings = await getExtendedDesktopSettingsStore().get();
     if (!settings.island.enabled) {
       log.info("[island] show skipped because the feature is disabled");
       return false;

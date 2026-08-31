@@ -79,7 +79,7 @@ vi.mock("@/styles/settings", () => ({
   },
 }));
 
-vi.mock("@/navigation/settings-navigation", () => ({
+vi.mock("@/navigation/settings-feature-navigation", () => ({
   openProjectLarkGroupSettings: (...args: unknown[]) => openProjectLarkGroupSettings(...args),
 }));
 

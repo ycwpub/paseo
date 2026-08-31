@@ -1,4 +1,3 @@
-import { TIMELINE_RESUME_FETCH_PAGE_SIZE } from "@/timeline/history-fetch-policy";
 import { TIMELINE_FETCH_PAGE_SIZE } from "@/timeline/timeline-fetch-policy";
 
 export interface TimelineSyncCursor {
@@ -39,7 +38,7 @@ export function planTimelineCatchUpAfter(cursor: TimelineSyncCursor) {
   return {
     direction: "after",
     cursor,
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: TIMELINE_FETCH_PAGE_SIZE,
     projection: "projected",
   } as const;
 }
@@ -47,7 +46,7 @@ export function planTimelineCatchUpAfter(cursor: TimelineSyncCursor) {
 export function planTimelineTailFetch() {
   return {
     direction: "tail",
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: TIMELINE_FETCH_PAGE_SIZE,
     projection: "projected",
   } as const;
 }

@@ -4,7 +4,7 @@ import path from "node:path";
 import { app, BrowserWindow, ipcMain, nativeImage } from "electron";
 import log from "electron-log/main";
 
-import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
+import { getExtendedDesktopSettingsStore } from "../settings/desktop-settings-extensions-electron.js";
 
 const MAC_ATTENTION_SOUND_PATH = "/System/Library/Sounds/Glass.aiff";
 const DOCK_ATTENTION_TEST_DURATION_MS = 10_000;
@@ -158,7 +158,7 @@ export function registerAppAttentionHandlers(): void {
       return false;
     }
     cancelTestClear();
-    const settings = await getDesktopSettingsStore().get();
+    const settings = await getExtendedDesktopSettingsStore().get();
     return controller.signal(settings.attention.soundVolume, {
       allowWhenFocused: readAllowWhenFocused(input),
     });
@@ -169,7 +169,7 @@ export function registerAppAttentionHandlers(): void {
       return false;
     }
     cancelTestClear();
-    const settings = await getDesktopSettingsStore().get();
+    const settings = await getExtendedDesktopSettingsStore().get();
     const shown = controller.signal(settings.attention.soundVolume, {
       allowWhenFocused: true,
     });

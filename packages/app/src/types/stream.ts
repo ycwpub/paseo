@@ -3,6 +3,7 @@ import type {
   AgentTimelineItem,
   ToolCallDetail,
 } from "@getpaseo/protocol/agent-types";
+import { getReasoningTimelineSource } from "@getpaseo/protocol/reasoning-timeline-source";
 import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
@@ -1567,7 +1568,13 @@ function reduceTimelineEvent(
         timestamp,
       );
     case "reasoning":
-      return appendThought(state, item.text, timestamp, timelineCursor, item.source);
+      return appendThought(
+        state,
+        item.text,
+        timestamp,
+        timelineCursor,
+        getReasoningTimelineSource(item),
+      );
     case "tool_call":
       return finalizeActiveThoughts(
         reduceTimelineToolCall(state, event, item, timestamp, timelineCursor),

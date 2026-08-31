@@ -1,11 +1,11 @@
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import type {
-  WorkspaceStructureHostPlacement,
-  WorkspaceStructureProject,
-} from "@/projects/workspace-structure";
+  FeatureWorkspaceStructureHostPlacement,
+  FeatureWorkspaceStructureProject,
+} from "@/projects/feature-workspace-structure";
 import { createProjectViewKey } from "@/projects/workspace-structure";
 
-export type HostProjectListItem = WorkspaceStructureProject;
+export type HostProjectListItem = FeatureWorkspaceStructureProject;
 
 export interface HostProjectRouteContext {
   serverId: string;
@@ -98,7 +98,7 @@ function projectCanCreateWorktree(project: HostProjectListItem): boolean {
 function getHostProjectPlacement(
   project: HostProjectListItem,
   serverId: string,
-): WorkspaceStructureHostPlacement | null {
+): FeatureWorkspaceStructureHostPlacement | null {
   for (const host of project.hosts) {
     if (host.serverId === serverId) return host;
   }
@@ -108,7 +108,7 @@ function getHostProjectPlacement(
 export function getWorktreeSupportForHostProject(input: {
   project: HostProjectListItem;
   serverId: string;
-}): WorkspaceStructureHostPlacement["worktreeSupport"] {
+}): FeatureWorkspaceStructureHostPlacement["worktreeSupport"] {
   return getHostProjectPlacement(input.project, input.serverId)?.worktreeSupport ?? "unknown";
 }
 

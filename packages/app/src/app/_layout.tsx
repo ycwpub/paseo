@@ -88,7 +88,6 @@ import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-ac
 import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useClearDesktopAttentionWhenRead } from "@/desktop/attention/use-clear-attention-when-read";
-import { ensureFeaturePanelsRegistered } from "@/panels/register-feature-panels";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { resolveExplorerSidebarPresentation } from "@/workspace-tabs/explorer-sidebar";
 import { KeyboardShiftProvider } from "@/hooks/use-keyboard-shift-style";
@@ -115,13 +114,14 @@ import {
   useHostRuntimeIsConnected,
   useHosts,
 } from "@/runtime/host-runtime";
-import { getDaemonStartService } from "@/runtime/daemon-start-service";
+import { getRefreshingDaemonStartService } from "@/runtime/desktop-daemon-connection-refresh";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
 import { DesktopPluginContentHost } from "@/plugins/sidebar-panel/desktop-content-host";
 import { PluginAppPanelHost } from "@/plugins/sidebar-panel/panel-host";
+import { ensureApplicationPanelsRegistered } from "@/panels/register-application-panels";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -146,6 +146,7 @@ import {
 
 polyfillNavigator();
 polyfillCrypto();
+ensureApplicationPanelsRegistered();
 
 export interface HostRuntimeBootstrapState {
   splashError: string | null;
@@ -345,7 +346,7 @@ export function useEarliestOnlineHostServerId(): string | null {
 }
 
 function useDaemonStartLastError(): string | null {
-  const service = getDaemonStartService({ store: getHostRuntimeStore() });
+  const service = getRefreshingDaemonStartService({ store: getHostRuntimeStore() });
   return useSyncExternalStore(
     (listener) => service.subscribe(listener),
     () => service.getLastError(),
@@ -354,7 +355,7 @@ function useDaemonStartLastError(): string | null {
 }
 
 function useDaemonStartIsRunning(): boolean {
-  const service = getDaemonStartService({ store: getHostRuntimeStore() });
+  const service = getRefreshingDaemonStartService({ store: getHostRuntimeStore() });
   return useSyncExternalStore(
     (listener) => service.subscribe(listener),
     () => service.isRunning(),
@@ -378,7 +379,7 @@ async function shouldStartBuiltInDaemon(): Promise<boolean> {
 function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const store = getHostRuntimeStore();
-    const daemonStartService = getDaemonStartService({ store });
+    const daemonStartService = getRefreshingDaemonStartService({ store });
     startHostRuntimeBootstrap({
       store,
       daemonStartService,
@@ -420,7 +421,7 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
   }, [shouldRunGiveUpTimer]);
 
   const retry = useCallback(() => {
-    const daemonStartService = getDaemonStartService({ store: getHostRuntimeStore() });
+    const daemonStartService = getRefreshingDaemonStartService({ store: getHostRuntimeStore() });
     void daemonStartService.startIfEnabled({ shouldStart: shouldStartBuiltInDaemon });
   }, []);
 
@@ -994,7 +995,6 @@ function RootProviders({ children }: { children: ReactNode }) {
 }
 
 function RootAppTree() {
-  ensureFeaturePanelsRegistered();
   return (
     <GestureHandlerRootView style={flexStyle}>
       <View style={layoutStyles.surfaceFill}>

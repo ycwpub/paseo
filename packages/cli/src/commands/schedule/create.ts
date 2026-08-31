@@ -11,6 +11,7 @@ import {
 } from "./shared.js";
 
 export interface ScheduleCreateOptions extends ScheduleCommandOptions {
+  type?: string;
   every?: string;
   cron?: string;
   timezone?: string;
@@ -20,6 +21,8 @@ export interface ScheduleCreateOptions extends ScheduleCommandOptions {
   mode?: string;
   thinking?: string;
   cwd?: string;
+  shell?: string;
+  timeout?: string;
   maxRuns?: string;
   expiresIn?: string;
   runNow?: boolean;
@@ -34,6 +37,7 @@ export async function runCreateCommand(
   const runNow = runNowSource === "cli" ? Boolean(options.runNow) : undefined;
   const input = parseScheduleCreateInput({
     prompt,
+    type: options.type,
     every: options.every,
     cron: options.cron,
     timezone: options.timezone,
@@ -43,6 +47,8 @@ export async function runCreateCommand(
     mode: options.mode,
     thinking: options.thinking,
     cwd: options.cwd,
+    shell: options.shell,
+    timeout: options.timeout,
     host: options.host,
     maxRuns: options.maxRuns,
     expiresIn: options.expiresIn,

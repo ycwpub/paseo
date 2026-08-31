@@ -41,12 +41,7 @@ describe("Add Project navigation", () => {
       preferredHostId: HOST.serverId,
       initialDirectorylessProjectName: "支付优化",
     });
-    const connected = applyAvailableAddProjectHosts(
-      initial,
-      [HOST],
-      HOST.serverId,
-      "支付优化"
-    );
+    const connected = applyAvailableAddProjectHosts(initial, [HOST], HOST.serverId, "支付优化");
     expect(currentAddProjectPage(connected)).toMatchObject({
       kind: "directoryless-project-name",
       hostId: HOST.serverId,
@@ -75,7 +70,7 @@ describe("Add Project options", () => {
         canSearchGithubRepositories: false,
         canCreateDirectory: false,
         canCreateDirectorylessProject: false,
-      })
+      }),
     ).toEqual([
       {
         id: "directory-search",

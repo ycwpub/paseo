@@ -14,6 +14,7 @@ import { COMPOSER_PILL_CLEARANCE } from "@/composer/pill-styles";
 import { AgentStreamView } from "@/agent-stream/view";
 import { composerWorkspaceAttachment } from "@/composer/attachments/workspace";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
+import { useAssistantTeamSelection } from "@/composer/assistant-selector/use-assistant-team-selection";
 import type { CreateAgentInitialValues } from "@/hooks/use-agent-form-state";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "@/composer/draft/create-flow";
 import { resolveTurnPresentation, TURN_LIVENESS_IDLE } from "@/timeline/turn-liveness";
@@ -21,6 +22,7 @@ import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-
 import { buildWorkspaceDraftAgentConfig } from "@/screens/workspace/workspace-draft-agent-config";
 import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
+import type { ResourceAwarePendingCreateAttempt } from "@/composer/resource-selection";
 import type { Agent } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { useWorkspaceDraftSubmissionStore } from "@/stores/workspace-draft-submission-store";
@@ -417,6 +419,9 @@ export function WorkspaceDraftAgentTab({
       onlineServerIds,
       lockedWorkingDir: draftWorkingDirectory ?? undefined,
     },
+  });
+  const assistantSelection = useAssistantTeamSelection({
+    selectionKey: draftStoreKey,
     initialAssistantId: draftAssistantSelection.assistantId,
     initialTeamId: draftAssistantSelection.teamId,
   });
@@ -446,7 +451,7 @@ export function WorkspaceDraftAgentTab({
   const pendingCreateAttempt = useCreateFlowStore((state) => {
     const pending = state.pendingByDraftId[draftId] ?? null;
     return pending?.serverId === serverId && pending.lifecycle === "active" ? pending : null;
-  });
+  }) as ResourceAwarePendingCreateAttempt | undefined;
   const consumePendingAutoSubmit = useWorkspaceDraftSubmissionStore(
     (state) => state.consumePending,
   );
@@ -576,7 +581,11 @@ export function WorkspaceDraftAgentTab({
         workspaceDirectory: draftWorkingDirectory,
         workspaceId: workspaceFields?.id ?? null,
         autoSubmitConfig,
-        composerState,
+        composerState: {
+          ...composerState,
+          assistantId: assistantSelection.assistantId,
+          teamId: assistantSelection.teamId,
+        },
         hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
       }),
@@ -768,10 +777,10 @@ export function WorkspaceDraftAgentTab({
           commandDraftConfig={composerState.commandDraftConfig}
           agentControls={composerAgentControls}
           isCompactLayout={isCompactComposerLayout}
-          assistantId={draftInput.assistantId}
-          onAssistantSelect={draftInput.setAssistantId}
-          teamId={draftInput.teamId}
-          onTeamSelect={draftInput.setTeamId}
+          assistantId={assistantSelection.assistantId}
+          onAssistantSelect={assistantSelection.setAssistantId}
+          teamId={assistantSelection.teamId}
+          onTeamSelect={assistantSelection.setTeamId}
         />
       </ReanimatedAnimated.View>
     </FileDropZone>

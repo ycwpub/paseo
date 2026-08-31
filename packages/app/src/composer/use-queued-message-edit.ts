@@ -17,6 +17,7 @@ import {
   userAttachmentsOnly,
 } from "@/attachments/workspace-attachment-utils";
 import type { QueueWriter, QueuedComposerMessage } from "@/composer/actions";
+import type { ResourceAwareQueuedComposerMessage } from "@/composer/resource-selection";
 import {
   beginQueuedMessageEdit,
   cancelQueuedMessageEdit,
@@ -72,7 +73,7 @@ interface SubmitQueuedMessageEditInput {
 interface UseQueuedMessageEditResult {
   isActive: boolean;
   selectedAttachments: ComposerAttachment[];
-  visibleMessages: QueuedComposerMessage[];
+  visibleMessages: ResourceAwareQueuedComposerMessage[];
   begin: (messageId: string) => void;
   cancel: () => void;
   submit: (input: SubmitQueuedMessageEditInput) => boolean;

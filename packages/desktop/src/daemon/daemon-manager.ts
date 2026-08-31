@@ -29,6 +29,7 @@ import {
   closeLocalTransportSession,
 } from "./local-transport.js";
 import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
+import { readDesktopDaemonBuildId, writeDesktopDaemonBuildId } from "./desktop-build-marker.js";
 import { runExternalCliJsonCommand, runExternalCliTextCommand } from "./cli/external.js";
 import {
   createDesktopSettingsCommandHandlers,
@@ -36,6 +37,7 @@ import {
 } from "../settings/desktop-settings-commands.js";
 import type { DesktopSettings } from "../settings/desktop-settings.js";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
+import { getExtendedDesktopSettingsStore } from "../settings/desktop-settings-extensions-electron.js";
 import { isRunningUnderARM64Translation } from "../system/arm64-translation.js";
 import { getDesktopAppLogs } from "../diagnostics/app-logs.js";
 import {
@@ -286,15 +288,7 @@ function resolveDesktopBuildId(): string | null {
 }
 
 function readDesktopBuildIdFromPidLock(): string | null {
-  try {
-    const raw = readFileSync(path.join(getPaseoHome(), "paseo.pid"), "utf-8");
-    const lock = JSON.parse(raw) as { desktopBuildId?: unknown };
-    return typeof lock.desktopBuildId === "string" && lock.desktopBuildId.trim().length > 0
-      ? lock.desktopBuildId
-      : null;
-  } catch {
-    return null;
-  }
+  return readDesktopDaemonBuildId(getPaseoHome());
 }
 
 function isTestDesktopBuild(): boolean {
@@ -374,7 +368,11 @@ function shouldRestartForDesktopBuild(current: DesktopDaemonStatus): boolean {
   if (!current.desktopManaged && !isTestDesktopBuild()) return false;
   const appBuildId = resolveDesktopBuildId();
   if (!appBuildId) return false;
-  return readDesktopBuildIdFromPidLock() !== appBuildId;
+  const daemonBuildId = readDesktopBuildIdFromPidLock();
+  if (!daemonBuildId) {
+    return isTestDesktopBuild();
+  }
+  return daemonBuildId !== appBuildId;
 }
 
 function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
@@ -497,7 +495,6 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     env: invocation.env,
     envOverlay: {
       PASEO_DESKTOP_MANAGED: "1",
-      ...(desktopBuildId ? { PASEO_DESKTOP_BUILD_ID: desktopBuildId } : {}),
       PASEO_CLI: getBundledCliShimPath(),
       PASEO_WEB_UI_ENABLED: "false",
     },
@@ -552,7 +549,11 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     throw buildStartupFailureError(result);
   }
 
-  return pollForRunningDaemon();
+  const running = await pollForRunningDaemon();
+  if (desktopBuildId) {
+    writeDesktopDaemonBuildId(getPaseoHome(), desktopBuildId);
+  }
+  return running;
 }
 
 export async function stopDesktopDaemon(
@@ -656,7 +657,7 @@ async function resolveRequestedReleaseChannel(
 
 export function createDaemonCommandHandlers(): Record<string, DesktopCommandHandler> {
   return {
-    ...createDesktopSettingsCommandHandlers({ settingsStore: getDesktopSettingsStore() }),
+    ...createDesktopSettingsCommandHandlers({ settingsStore: getExtendedDesktopSettingsStore() }),
     desktop_get_runtime_info: () => ({
       appVersion: resolveDesktopAppVersion(),
       runningUnderARM64Translation: isRunningUnderARM64Translation(),

@@ -13,7 +13,6 @@ function emptyState(): CollapsedProjectsState {
   return {
     collapsedProjectKeys: new Set(),
     collapsedWorkspaceGroupKeys: new Set(),
-    collapsedStatusGroupKeys: new Set(),
     collapsedPinned: false,
   };
 }
@@ -35,7 +34,6 @@ describe("sidebar collapsed projects transitions", () => {
     const state: CollapsedProjectsState = {
       collapsedProjectKeys: new Set(["project-a", "project-b"]),
       collapsedWorkspaceGroupKeys: new Set(["running"]),
-      collapsedStatusGroupKeys: new Set(["running"]),
       collapsedPinned: true,
     };
 

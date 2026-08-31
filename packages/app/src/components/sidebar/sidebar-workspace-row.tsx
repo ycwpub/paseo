@@ -129,7 +129,7 @@ export function SidebarWorkspaceRow({
   });
   const handleMarkAsRead = useCallback(() => {
     void clearAttention().catch((error) => {
-      toast.error(error instanceof Error ? error.message : "无法将 Workspace 标记为已读");
+      toast.error(error instanceof Error ? error.message : "Failed to mark workspace as read");
     });
   }, [clearAttention, toast]);
 
@@ -286,7 +286,6 @@ function WorkspaceRowBody({
               contextMenuOpen={contextMenuOpen}
               onContextMenuOpenChange={onContextMenuOpenChange}
               workspace={workspace}
-              selected={selected}
               hostBadgeLabel={hostBadge?.label}
               serviceSummary={serviceSummary}
               workspaceKey={workspace.workspaceKey}
@@ -325,7 +324,6 @@ function WorkspaceRowBody({
               >
                 <WorkspaceRowTrailingActions
                   workspace={workspace}
-                  selected={selected}
                   backdrop={backdrop}
                   trailing={trailing}
                   isHovered={isHovered}
@@ -354,7 +352,6 @@ function WorkspaceRowBody({
 
 function WorkspaceRowTrailingActions({
   workspace,
-  selected,
   backdrop,
   trailing,
   isHovered,
@@ -373,7 +370,6 @@ function WorkspaceRowTrailingActions({
   onRename,
 }: {
   workspace: SidebarWorkspaceEntry;
-  selected: boolean;
   backdrop: SidebarSurfaceBackdrop;
   trailing: SidebarWorkspaceTrailing;
   isHovered: boolean;
@@ -429,9 +425,6 @@ function WorkspaceRowTrailingActions({
                 workspaceKey={workspace.workspaceKey}
                 serverId={workspace.serverId}
                 workspaceId={workspace.workspaceId}
-                projectId={workspace.projectId}
-                workspaceName={workspace.name}
-                selected={selected}
                 workspaceLabels={workspace.labels}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}

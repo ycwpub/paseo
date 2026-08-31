@@ -45,9 +45,7 @@ function readWorkerPid(supervisorPid: number): number | null {
     return null;
   }
 
-  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], {
-    encoding: "utf8",
-  });
+  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], { encoding: "utf8" });
   if (result.status !== 0 || result.error) {
     return null;
   }
@@ -84,10 +82,7 @@ async function readDaemonStatus(paseoHome: string): Promise<DaemonStatus> {
   }
 
   try {
-    const parsed = JSON.parse(result.stdout) as {
-      localDaemon?: unknown;
-      pid?: unknown;
-    };
+    const parsed = JSON.parse(result.stdout) as { localDaemon?: unknown; pid?: unknown };
     const localDaemon = typeof parsed.localDaemon === "string" ? parsed.localDaemon : null;
     const pid =
       typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0

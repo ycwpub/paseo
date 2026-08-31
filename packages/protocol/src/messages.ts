@@ -47,7 +47,7 @@ import {
   ScheduleDeleteResponseSchema,
   ScheduleRunOnceResponseSchema,
   ScheduleUpdateResponseSchema,
-} from "./schedule/rpc-schemas.js";
+} from "./schedule/extended-rpc-schemas.js";
 import {
   LoopRunRequestSchema,
   LoopListRequestSchema,

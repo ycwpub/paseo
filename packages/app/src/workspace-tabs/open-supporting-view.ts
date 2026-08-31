@@ -6,14 +6,8 @@ import {
   usesCompactExplorerSidebar,
   type ExplorerSidebarView,
 } from "@/workspace-tabs/explorer-sidebar";
-import {
-  collectAllTabs,
-  DEFAULT_PANE_ID,
-  findPaneById,
-  selectExplorerSidebarPaneId,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
 import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
+import { openProjectPullRequest } from "@/workspace-tabs/pull-request-navigation";
 
 interface WorkspaceViewInput {
   isCompact: boolean;
@@ -60,44 +54,5 @@ export function openComposerChanges(input: OpenWorkspaceChangesInput): string | 
 
 /** Opens the workspace pull request at its semantic destination. */
 export function openWorkspacePullRequest(input: OpenWorkspacePullRequestInput): string | null {
-  if (usesCompactExplorerSidebar(input) || input.destination === "explorer") {
-    openExplorerView(input, "pr");
-    return null;
-  }
-  if (!input.workspaceKey) {
-    return null;
-  }
-
-  const store = useWorkspaceLayoutStore.getState();
-  const initialLayout = store.layoutByWorkspace[input.workspaceKey];
-  const explorerPaneId = initialLayout
-    ? selectExplorerSidebarPaneId(store, input.workspaceKey)
-    : null;
-  const paneId =
-    input.destination === "side"
-      ? store.ensureSidePane(input.workspaceKey)
-      : ((initialLayout?.focusedPaneId === explorerPaneId
-          ? DEFAULT_PANE_ID
-          : initialLayout?.focusedPaneId) ?? DEFAULT_PANE_ID);
-  if (!paneId) {
-    return null;
-  }
-  const layout = store.layoutByWorkspace[input.workspaceKey];
-  const pane = layout ? findPaneById(layout.root, paneId) : null;
-  const existingTab = layout
-    ? collectAllTabs(layout.root).find(
-        (tab) => pane?.tabIds.includes(tab.tabId) && tab.target.kind === "pull_request",
-      )
-    : null;
-  if (existingTab) {
-    store.focusTab(input.workspaceKey, existingTab.tabId);
-    return existingTab.tabId;
-  }
-
-  return store.openTab({
-    workspaceKey: input.workspaceKey,
-    target: { kind: "pull_request" },
-    intent: "new",
-    placement: { mode: "pane", paneId },
-  });
+  return openProjectPullRequest(input);
 }

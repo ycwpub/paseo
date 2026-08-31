@@ -40,7 +40,7 @@ import { ProjectParentLink } from "@/projects/project-parent-link";
 import { resolveProjectSettingsTarget } from "@/projects/project-settings-target";
 import { ProjectLarkGroupsList } from "@/projects/lark/project-lark-groups-list";
 import { ProjectLinkedPluginProjects } from "@/plugins/project/project-linked-plugin-projects";
-import { openProjectKnowledgeSettings } from "@/navigation/settings-navigation";
+import { openProjectKnowledgeSettings } from "@/navigation/settings-feature-navigation";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -309,10 +309,10 @@ function ProjectSettingsBody({
         </Text>
         <ProjectParentLink
           serverId={selectedHost.serverId}
-          parentProjectId={selectedHost.parentProjectId}
+          parentProjectId={selectedHost.parentProjectId ?? null}
         />
         <Text style={styles.projectPath} selectable>
-          {t("settings.project.projectPath")}: {selectedHost.projectPath}
+          {t("settings.project.projectPath")}: {selectedHost.projectPath ?? selectedHost.repoRoot}
         </Text>
       </View>
 

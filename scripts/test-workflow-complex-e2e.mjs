@@ -266,10 +266,6 @@ function createComplexWorkflow(paths) {
           "Analyze {{inputFilePath}} as {{role}}.",
           "The file is {{inputFileName}} and the current control is {{control}}.",
           "Prepared payload: {{inputFileContent}}",
-          `MOCK_WORKFLOW_RESULT: ${JSON.stringify({
-            filePath: paths.agentOutput,
-            control: '["red","green","blue"]',
-          })}`,
         ].join("\n"),
         promptVariables: {
           role: "complex workflow verifier",
@@ -280,6 +276,12 @@ function createComplexWorkflow(paths) {
           modeId: "load-test",
           cwd: paths.workspace,
           archiveOnFinish: true,
+          featureValues: {
+            mockAssistantResponse: JSON.stringify({
+              filePath: paths.agentOutput,
+              control: '["red","green","blue"]',
+            }),
+          },
         },
       },
       {

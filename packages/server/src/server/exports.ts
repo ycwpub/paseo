@@ -10,18 +10,14 @@ export {
   type PersistedConfig,
 } from "./persisted-config.js";
 export { hashDaemonPassword, isBearerTokenValid } from "./auth.js";
-export {
-  generateLocalPairingOffer,
-  type LocalPairingOffer,
-  type LocalRelayPairingOffer,
-} from "./pairing-offer.js";
+export { generateLocalPairingOffer, type LocalPairingOffer } from "./pairing-offer.js";
 export {
   ConnectionOfferSchema,
   decodeOfferFragmentPayload,
   parseConnectionOfferFromUrl,
   type ConnectionOffer,
 } from "@getpaseo/protocol/connection-offer";
-export { buildRelayWebSocketUrl } from "@getpaseo/protocol/relay-endpoint-config";
+export { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 export {
   buildDaemonWebSocketUrl,
   deriveLabelFromEndpoint,
@@ -59,7 +55,6 @@ export {
 } from "./agent/provider-launch-config.js";
 export { findExecutable } from "../executable-resolution/executable-resolution.js";
 export { execCommand, spawnProcess } from "../utils/spawn.js";
-export { WorkflowService, type WorkflowServiceOptions } from "./workflow/service.js";
 
 // Provider manifest (source of truth for provider definitions)
 export {

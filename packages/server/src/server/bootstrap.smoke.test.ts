@@ -579,11 +579,7 @@ describe("paseo daemon bootstrap", () => {
         appVersion: "0.1.82",
       });
       await client.connect();
-      await client.patchDaemonConfig({
-        relay: {
-          endpoints: [{ endpoint: "127.0.0.1:9", useTls: false }],
-        },
-      });
+      await client.patchDaemonConfig({ relay: { enabled: true } });
       releaseEnrollment();
       await starting;
 

@@ -24,7 +24,5 @@ export interface RelaySessionAttachment {
    * independent socket + E2EE channel per connected connection.
    */
   connectionId?: string | null;
-  remoteAddress?: string | null;
-  remotePort?: number | null;
   createdAt: number;
 }

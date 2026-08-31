@@ -12,6 +12,7 @@ import {
   MutableDaemonConfigPatchSchema,
 } from "@getpaseo/protocol/messages";
 import type { AgentSkillSelection } from "@getpaseo/protocol/messages";
+import { normalizeMutableRelayPatch } from "./daemon-relay-config-patch.js";
 
 export type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
 
@@ -392,6 +393,14 @@ export class DaemonConfigStore {
 
   public patch(partial: MutableDaemonConfigPatch): MutableDaemonConfig {
     const parsedPatch = pickSupportedPatchFields(MutableDaemonConfigPatchSchema.parse(partial));
+    if (parsedPatch.relay?.enabled !== undefined && !this.relayEnabledMutable) {
+      throw new Error(
+        "Relay is controlled by a daemon launch override. Remove PASEO_RELAY_ENABLED or the relay CLI flag before changing it here.",
+      );
+    }
+    if (parsedPatch.relay !== undefined) {
+      parsedPatch.relay = normalizeMutableRelayPatch(this.current.relay, parsedPatch.relay);
+    }
     return this.applySupportedPatch(parsedPatch);
   }
 
@@ -400,11 +409,6 @@ export class DaemonConfigStore {
   }
 
   private applySupportedPatch(parsedPatch: SupportedMutableConfigPatch): MutableDaemonConfig {
-    if (parsedPatch.relay?.enabled !== undefined && !this.relayEnabledMutable) {
-      throw new Error(
-        "Relay is controlled by a daemon launch override. Remove PASEO_RELAY_ENABLED or the relay CLI flag before changing it here.",
-      );
-    }
     const { removeProviders = [], ...configPatch } = parsedPatch;
     const removedProviders = Array.from(new Set(removeProviders));
     const merged = deepMerge(this.current, configPatch);

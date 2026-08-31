@@ -33,12 +33,15 @@ import {
   resolveWindowBounds,
   setupWindowResizeEvents,
   setupWindowStatePersistence,
-  setupWindowTitleManagement,
   setupDefaultContextMenu,
   setupDragDropPrevention,
   buildStandardContextMenuItems,
-  resetCustomWindowName,
 } from "./window/window-manager.js";
+import {
+  registerCustomWindowManagement,
+  resetCustomWindowName,
+  setupWindowTitleManagement,
+} from "./window/custom-window-management.js";
 import { resolveDesktopWindowChromeMode, windowChromeModeArgument } from "./window/chrome.js";
 import { setupDarwinCompositorWatchdog } from "./window/compositor-watchdog/index.js";
 import { registerDialogHandlers } from "./features/dialogs.js";
@@ -1021,6 +1024,7 @@ async function bootstrap(): Promise<void> {
   ensureNotificationCenterRegistration();
   registerDaemonManager();
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
+  registerCustomWindowManagement({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();
   registerNotificationHandlers();
   registerAppAttentionHandlers();

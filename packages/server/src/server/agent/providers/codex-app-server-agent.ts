@@ -40,6 +40,10 @@ import {
   type ResolveAgentCreateConfigInput,
   type ResolveAgentCreateConfigResult,
 } from "../agent-sdk-types.js";
+import {
+  readProjectDirectoryAgentConfig,
+  type ProjectAwareAgentSessionConfig,
+} from "../project-directory-agent-config.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
 import { runProviderRefreshActivity } from "../provider-refresh-deadline.js";
 import type { Logger } from "pino";
@@ -108,11 +112,8 @@ import {
   THINKING_APPLIES_NEXT_TURN_NOTICE,
 } from "../provider-notices.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
-import {
-  applyCodexToolPolicy,
-  CodexProviderOptionsSchema,
-  type CodexProviderOptions,
-} from "./codex/options.js";
+import { applyCodexToolPolicy } from "./codex/options.js";
+import { CodexRuntimeOptionsSchema, type CodexRuntimeOptions } from "./codex/runtime-options.js";
 import { resolveCodexSessionHome } from "./codex/session-home.js";
 import {
   applyAidenLauncherModel,
@@ -2112,7 +2113,7 @@ export async function rollbackCodexThread(
 
 function toSandboxPolicy(
   type: string,
-  workspaceWrite?: CodexProviderOptions["sandbox_workspace_write"],
+  workspaceWrite?: CodexRuntimeOptions["sandbox_workspace_write"],
 ): Record<string, unknown> {
   switch (type) {
     case "read-only":
@@ -2134,10 +2135,10 @@ function toSandboxPolicy(
 
 function readSandboxWorkspaceWrite(
   value: unknown,
-): NonNullable<CodexProviderOptions["sandbox_workspace_write"]> | null {
+): NonNullable<CodexRuntimeOptions["sandbox_workspace_write"]> | null {
   const record = toObjectRecord(value);
   if (!record) return null;
-  const workspaceWrite: NonNullable<CodexProviderOptions["sandbox_workspace_write"]> = {};
+  const workspaceWrite: NonNullable<CodexRuntimeOptions["sandbox_workspace_write"]> = {};
   const writableRoots = record.writable_roots ?? record.writableRoots;
   if (Array.isArray(writableRoots)) {
     workspaceWrite.writable_roots = writableRoots.filter(
@@ -2158,8 +2159,8 @@ function readSandboxWorkspaceWrite(
 function mergeProjectDirectoryWorkspaceWrite(
   cwd: string,
   projectDirectories: readonly string[] | undefined,
-  workspaceWrite: CodexProviderOptions["sandbox_workspace_write"] | null | undefined,
-): CodexProviderOptions["sandbox_workspace_write"] | undefined {
+  workspaceWrite: CodexRuntimeOptions["sandbox_workspace_write"] | null | undefined,
+): CodexRuntimeOptions["sandbox_workspace_write"] | undefined {
   const writableRoots = resolveAdditionalWritableDirectories({
     cwd,
     projectDirectories,
@@ -3390,12 +3391,12 @@ export class CodexAppServerAgentSession implements AgentSession {
   readonly capabilities = CODEX_APP_SERVER_CAPABILITIES;
 
   private readonly logger: Logger;
-  private readonly config: AgentSessionConfig;
+  private readonly config: ProjectAwareAgentSessionConfig;
   private currentMode: string;
   private hasWorkflowModeOverride: boolean;
-  private readonly providerOptions: CodexProviderOptions;
+  private readonly providerOptions: CodexRuntimeOptions;
   private resolvedWorkspaceWrite: NonNullable<
-    CodexProviderOptions["sandbox_workspace_write"]
+    CodexRuntimeOptions["sandbox_workspace_write"]
   > | null = null;
   private resolvedSandboxPolicy: Record<string, unknown> | null = null;
   private currentThreadId: string | null = null;
@@ -3507,8 +3508,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
     this.hasWorkflowModeOverride = config.modeId !== undefined;
     this.currentMode = config.modeId ?? DEFAULT_CODEX_MODE_ID;
-    this.providerOptions = CodexProviderOptionsSchema.parse(config.providerOptions ?? {});
-    this.config = config;
+    this.providerOptions = CodexRuntimeOptionsSchema.parse(config.providerOptions ?? {});
+    this.config = {
+      ...config,
+      ...readProjectDirectoryAgentConfig(config),
+    };
     this.config.thinkingOptionId = normalizeCodexThinkingOptionId(this.config.thinkingOptionId);
     if (this.config.featureValues?.fast_mode && codexModelSupportsFastMode(this.config.model)) {
       this.serviceTier = "fast";

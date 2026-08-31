@@ -43,8 +43,8 @@ vi.mock("electron", () => ({
   },
 }));
 
-vi.mock("../settings/desktop-settings-electron.js", () => ({
-  getDesktopSettingsStore: () => ({
+vi.mock("../settings/desktop-settings-extensions-electron.js", () => ({
+  getExtendedDesktopSettingsStore: () => ({
     get: settingsGet,
   }),
 }));

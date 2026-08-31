@@ -4,13 +4,13 @@ import { type HostProjectListItem } from "@/projects/host-project-model";
 import type { PendingCreateAttempt } from "@/stores/create-flow-store";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import type {
-  WorkspaceStructureHostPlacement,
-  WorkspaceStructureProject,
-} from "@/projects/workspace-structure";
+  FeatureWorkspaceStructureHostPlacement,
+  FeatureWorkspaceStructureProject,
+} from "@/projects/feature-workspace-structure";
 import { projectDisplayNameFromProjectId } from "@/utils/project-display-name";
 import { aggregateSidebarStateBuckets } from "@/utils/sidebar-agent-state";
 import { shortenPath } from "@/utils/shorten-path";
-import type { WorkspaceAgentActivity } from "@/utils/workspace-agent-activity";
+import type { WorkspaceAgentTimelineActivity } from "@/utils/workspace-agent-activity-timeline";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 
 const EMPTY_PROJECTS: SidebarProjectEntry[] = [];
@@ -25,7 +25,7 @@ export interface SidebarWorkspacePlacement {
   projectName: string;
   projectRootPath?: string;
   workspaceDirectory?: string;
-  projectKind: WorkspaceStructureProject["projectKind"];
+  projectKind: FeatureWorkspaceStructureProject["projectKind"];
   workspaceKind: WorkspaceDescriptor["workspaceKind"];
   name: string;
 }
@@ -36,7 +36,8 @@ export interface SidebarStatusWorkspacePlacement extends SidebarWorkspacePlaceme
 }
 
 export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
-  projectId: string;
+  /** Missing only on legacy sidebar snapshots. */
+  projectId?: string;
   workspaceDirectory: string;
   workspaceDirectoryLabel: string;
   // Raw user-set title (null when the name is derived from branch/directory).
@@ -59,9 +60,9 @@ export interface SidebarWorkspaceEntry extends SidebarStatusWorkspacePlacement {
 export interface SidebarProjectEntry {
   viewKey: string;
   projectName: string;
-  projectKind: WorkspaceStructureProject["projectKind"];
+  projectKind: FeatureWorkspaceStructureProject["projectKind"];
   iconWorkingDir: string;
-  hosts: WorkspaceStructureHostPlacement[];
+  hosts: FeatureWorkspaceStructureHostPlacement[];
   workspaces: SidebarWorkspacePlacement[];
   parentViewKey?: string | null;
   hierarchyDepth?: number;
@@ -76,12 +77,12 @@ export interface SidebarWorkspacePlacementModel {
 export interface SidebarWorkspaceSession {
   serverId: string;
   workspaces: Map<string, WorkspaceDescriptor>;
-  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  workspaceAgentActivity: Map<string, WorkspaceAgentTimelineActivity>;
 }
 
 interface SidebarWorkspaceSessionSource {
   workspaces: Map<string, WorkspaceDescriptor>;
-  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  workspaceAgentActivity: Map<string, WorkspaceAgentTimelineActivity>;
 }
 
 export function selectSidebarWorkspaceSessions(
@@ -152,7 +153,7 @@ export function createSidebarWorkspaceEntry(input: {
   workspace: WorkspaceDescriptor;
   projectViewKey?: string;
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
-  workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
+  workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentTimelineActivity>;
 }): SidebarWorkspaceEntry {
   const projectViewKey = input.projectViewKey ?? input.workspace.projectId;
   const effectiveStatus = deriveEffectiveWorkspaceStatus(input);
@@ -197,7 +198,7 @@ function deriveEffectiveWorkspaceStatus(input: {
   serverId: string;
   workspace: WorkspaceDescriptor;
   pendingCreateAttempts?: Record<string, PendingCreateAttempt>;
-  workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentActivity>;
+  workspaceAgentActivity?: ReadonlyMap<string, WorkspaceAgentTimelineActivity>;
 }): EffectiveWorkspaceStatus {
   if (input.workspace.status !== "done") {
     return { status: input.workspace.status, enteredAt: input.workspace.statusEnteredAt };
@@ -240,7 +241,7 @@ function getPendingInitialAgentCreateStartedAt(input: {
 
 export interface ProjectStatusSession {
   workspaces: Map<string, WorkspaceDescriptor>;
-  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  workspaceAgentActivity: Map<string, WorkspaceAgentTimelineActivity>;
 }
 
 /**
@@ -469,7 +470,7 @@ function areSidebarWorkspaceEntriesEqual(
 }
 
 export function buildSidebarProjectsFromStructure(input: {
-  projects: WorkspaceStructureProject[];
+  projects: FeatureWorkspaceStructureProject[];
 }): SidebarProjectEntry[] {
   return buildSidebarProjectsFromHostProjects({
     projects: input.projects.map((project) => ({

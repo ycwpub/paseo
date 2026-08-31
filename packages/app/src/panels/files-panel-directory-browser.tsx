@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { Files } from "lucide-react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FileExplorerPane } from "@/components/file-explorer-pane";
 import { useFetchQuery } from "@/data/query";
+import { usePaneContext } from "@/panels/pane-context";
+import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
+import { useAddFileToChat } from "@/panels/use-add-file-to-chat";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
@@ -13,6 +17,14 @@ import {
   resolveFilesPanelPath,
   type FilesPanelDirectoryScopeId,
 } from "./files-panel-directory-scopes";
+
+const ThemedFiles = withUnistyles(Files);
+const projectFilesPanelPresentation = {
+  label: (t) => t("panels.files.label"),
+  subtitle: (t) => t("panels.files.subtitle"),
+  tooltip: (t) => t("panels.files.tooltip"),
+  icon: ThemedFiles,
+} satisfies PanelPresentation;
 
 interface FilesPanelDirectoryBrowserProps {
   serverId: string;
@@ -179,6 +191,36 @@ export function FilesPanelDirectoryBrowser({
     </View>
   );
 }
+
+function ProjectFilesPanel() {
+  const { serverId, workspaceId, target, openPreferredTarget, openTargetToSide } = usePaneContext();
+  const { addFile, canAddToChat } = useAddFileToChat({ serverId, workspaceId });
+  if (target.kind !== "files") {
+    throw new Error("ProjectFilesPanel requires files target");
+  }
+  const onOpenFile = useCallback(
+    (path: string) => openPreferredTarget({ kind: "file", path }, "explorerFiles"),
+    [openPreferredTarget],
+  );
+  const onOpenFileToSide = useCallback(
+    (path: string) => openTargetToSide?.({ kind: "file", path }),
+    [openTargetToSide],
+  );
+  return (
+    <FilesPanelDirectoryBrowser
+      serverId={serverId}
+      workspaceId={workspaceId}
+      onOpenFile={onOpenFile}
+      onOpenFileToSide={openTargetToSide ? onOpenFileToSide : undefined}
+      onAddToChat={canAddToChat ? addFile : undefined}
+    />
+  );
+}
+
+export const projectFilesPanelRegistration = definePanel("files", {
+  component: ProjectFilesPanel,
+  presentation: projectFilesPanelPresentation,
+});
 
 function DirectoryScopeTab({
   id,

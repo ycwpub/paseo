@@ -2,7 +2,7 @@ import equal from "fast-deep-equal";
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import type { ViewedTimelineSync } from "@/timeline/viewed-timeline-sync";
+import type { ResumableViewedTimelineSync } from "@/timeline/resumable-viewed-timeline-sync";
 import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import {
   appendSubmittedUserMessage,
@@ -52,9 +52,9 @@ import {
   type AgentLastActivityCommitter,
 } from "@/runtime/activity";
 import {
-  buildWorkspaceAgentActivityIndex,
-  type WorkspaceAgentActivity,
-} from "@/utils/workspace-agent-activity";
+  buildWorkspaceAgentActivityTimelineIndex,
+  type WorkspaceAgentTimelineActivity,
+} from "@/utils/workspace-agent-activity-timeline";
 import {
   applyTurnLivenessTransition,
   resolveTurnPresentation,
@@ -190,15 +190,19 @@ export function normalizeProjectDescriptor(
 ): ProjectDescriptor {
   return {
     projectId: payload.projectId,
-    parentProjectId: payload.parentProjectId ?? null,
+    ...(payload.parentProjectId !== undefined ? { parentProjectId: payload.parentProjectId } : {}),
     projectKey: payload.projectKey ?? null,
     projectDisplayName: payload.projectDisplayName,
     projectCustomName: payload.projectCustomName ?? null,
     projectCustomIconRevision: payload.projectCustomIconRevision ?? null,
     projectIconRevision: payload.projectIconRevision,
     projectRootPath: payload.projectRootPath,
-    projectSourceDirectory: payload.projectSourceDirectory ?? payload.projectRootPath,
-    projectDirectoryless: payload.projectDirectoryless === true,
+    ...(payload.projectSourceDirectory !== undefined
+      ? { projectSourceDirectory: payload.projectSourceDirectory }
+      : {}),
+    ...(payload.projectDirectoryless !== undefined
+      ? { projectDirectoryless: payload.projectDirectoryless }
+      : {}),
     projectKind: payload.projectKind,
   };
 }
@@ -376,7 +380,7 @@ export interface SessionState {
   // Daemon client (immutable reference)
   client: DaemonClient | null;
   clientGeneration: number;
-  viewedTimelineSync: ViewedTimelineSync | null;
+  viewedTimelineSync: ResumableViewedTimelineSync | null;
 
   // Server metadata (from server_info handshake)
   serverInfo: DaemonServerInfo | null;
@@ -412,7 +416,7 @@ export interface SessionState {
 
   // Agents
   agents: Map<string, Agent>;
-  workspaceAgentActivity: Map<string, WorkspaceAgentActivity>;
+  workspaceAgentActivity: Map<string, WorkspaceAgentTimelineActivity>;
   agentDetails: Map<string, Agent>;
   workspaces: Map<string, WorkspaceDescriptor>;
   // All active project descriptors, keyed by host-local projectId.
@@ -453,7 +457,7 @@ interface SessionStoreActions {
   clearSession: (serverId: string) => void;
   getSession: (serverId: string) => SessionState | undefined;
   updateSessionClient: (serverId: string, client: DaemonClient, clientGeneration?: number) => void;
-  setViewedTimelineSync: (serverId: string, sync: ViewedTimelineSync | null) => void;
+  setViewedTimelineSync: (serverId: string, sync: ResumableViewedTimelineSync | null) => void;
   updateSessionServerInfo: (serverId: string, info: DaemonServerInfo) => void;
 
   // Audio state
@@ -1594,7 +1598,7 @@ export const useSessionStore = create<SessionStore>()(
                 agents: nextAgents,
                 agentStreamTail: nextStreamTail,
                 agentStreamHead: nextStreamHead,
-                workspaceAgentActivity: buildWorkspaceAgentActivityIndex(
+                workspaceAgentActivity: buildWorkspaceAgentActivityTimelineIndex(
                   nextAgents,
                   session.workspaceAgentActivity,
                 ),

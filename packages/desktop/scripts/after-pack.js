@@ -2,7 +2,6 @@ const fs = require("fs");
 const path = require("path");
 
 const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
-const { buildIslandHost } = require("./build-island-host.js");
 
 const EXECUTABLE_NAME = "Paseo";
 
@@ -74,10 +73,10 @@ function pruneSharpLibvips(nodeModules, platform, arch) {
   }
 }
 
-function pruneNativeModules(appOutDir, platform, arch, executableName = EXECUTABLE_NAME) {
+function pruneNativeModules(appOutDir, platform, arch) {
   const resourcesDir =
     platform === "darwin"
-      ? path.join(appOutDir, `${executableName}.app`, "Contents", "Resources")
+      ? path.join(appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
       : path.join(appOutDir, "resources");
 
   const nodeModules = path.join(resourcesDir, "app.asar.unpacked", "node_modules");
@@ -113,10 +112,8 @@ function fmtMB(bytes) {
 exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const arch = ARCH_MAP[context.arch] || process.arch;
-  const executableName = context.packager?.appInfo?.productFilename || EXECUTABLE_NAME;
 
-  pruneNativeModules(context.appOutDir, platform, arch, executableName);
-  buildIslandHost(context, arch);
+  pruneNativeModules(context.appOutDir, platform, arch);
 
   if (platform === "linux" || platform === "win32") {
     if (arch !== process.arch) {

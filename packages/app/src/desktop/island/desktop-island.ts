@@ -1,4 +1,5 @@
-import { getDesktopHost, type DesktopIslandPayload } from "@/desktop/host";
+import { getDesktopHost } from "@/desktop/host";
+import type { DesktopIslandPayload } from "@/desktop/host-extensions";
 
 export async function requestDesktopIsland(payload: DesktopIslandPayload): Promise<boolean> {
   const show = getDesktopHost()?.island?.show;

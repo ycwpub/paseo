@@ -58,7 +58,6 @@ export interface ScheduleFormProviderSnapshot {
 
 export interface ScheduleDisclosureState {
   showProjectField: boolean;
-  showAssistantField: boolean;
   showModelField: boolean;
   showThinkingField: boolean;
   showModeField: boolean;
@@ -536,7 +535,6 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
   if (state.targetKind === "agent") {
     return {
       showProjectField: false,
-      showAssistantField: false,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,
@@ -549,7 +547,6 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
   if (state.targetKind === "bash") {
     return {
       showProjectField: state.mode === "edit" || Boolean(state.selectedServerId),
-      showAssistantField: false,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,
@@ -564,7 +561,6 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
   const showModelField = hasProject;
   return {
     showProjectField,
-    showAssistantField: Boolean(state.selectedServerId),
     showModelField,
     showThinkingField:
       showModelField && hasSelectedModel && state.availableThinkingOptions.length > 0,
@@ -756,7 +752,6 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     providerSnapshotRequest,
     disclosure: {
       showProjectField: false,
-      showAssistantField: false,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,

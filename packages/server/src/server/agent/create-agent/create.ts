@@ -510,20 +510,18 @@ async function sendInitialPrompt(
   snapshot: ManagedAgent,
 ): Promise<{ started: boolean; liveSnapshot: ManagedAgent; error?: unknown }> {
   try {
+    if (resolved.sessionResourceSelection) {
+      await dependencies.agentManager.applySessionResourceSelection(
+        snapshot.id,
+        resolved.sessionResourceSelection,
+      );
+    }
     const prompt = resolved.prompt;
     if (prompt === undefined) {
-      if (!resolved.sessionResourceSelection) {
-        return { started: false, liveSnapshot: snapshot };
-      }
-      const liveSnapshot = await startCreatedAgentInitialPrompt({
-        agentManager: dependencies.agentManager,
-        agentId: snapshot.id,
-        snapshot,
-        prompt: null,
-        sessionResourceSelection: resolved.sessionResourceSelection,
-        logger: resolved.promptLogger ?? dependencies.logger,
-      });
-      return { started: false, liveSnapshot };
+      return {
+        started: false,
+        liveSnapshot: dependencies.agentManager.getAgent(snapshot.id) ?? snapshot,
+      };
     }
     const liveSnapshot = await startCreatedAgentInitialPrompt({
       agentManager: dependencies.agentManager,
@@ -531,7 +529,6 @@ async function sendInitialPrompt(
       snapshot,
       prompt,
       runOptions: resolved.runOptions,
-      sessionResourceSelection: resolved.sessionResourceSelection,
       logger: resolved.promptLogger ?? dependencies.logger,
     });
     return { started: true, liveSnapshot };

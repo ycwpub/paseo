@@ -1,4 +1,6 @@
 import { useCallback } from "react";
+import { View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { AssistantMessage, ToolCall, type InlinePathTarget } from "@/components/message";
 import type { ToastApi } from "@/components/toast-host";
@@ -15,6 +17,7 @@ import {
   shouldTranslateAidenClaudeReasoning,
 } from "./aiden-claude-reasoning-translation";
 import { resolveReasoningPresentation } from "./reasoning-presentation";
+import { useAidenClaudeReasoningSettings } from "./aiden-claude-reasoning-settings";
 
 export interface ReasoningItemProps {
   agentId: string;
@@ -42,9 +45,7 @@ export function ReasoningItem({
   workspaceRoot,
 }: ReasoningItemProps) {
   const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
-  const translateAidenClaudeReasoning = useSettings(
-    (settings) => settings.aidenClaudeTranslateReasoningToChinese,
-  );
+  const { translateToChinese: translateAidenClaudeReasoning } = useAidenClaudeReasoningSettings();
   const supportsReasoningTranslation = useHostFeature(serverId, "reasoningTranslation");
   const revealedText = useRevealedText(
     item.text,
@@ -86,20 +87,21 @@ export function ReasoningItem({
               onOpenWorkspaceFile={onInlinePathPress}
               toast={toast}
             >
-              <AssistantMessage
-                occurrenceKey={createAssistantImageOccurrenceKey({
-                  agentId,
-                  itemId: item.id,
-                })}
-                message={displayText}
-                timestamp={item.timestamp.getTime()}
-                workspaceRoot={workspaceRoot}
-                serverId={serverId}
-                client={client}
-                spacing={layoutItem.assistantSpacing}
-                phase={layoutItem.phase}
-                variant="reasoning"
-              />
+              <View testID="reasoning-summary" style={styles.message}>
+                <AssistantMessage
+                  occurrenceKey={createAssistantImageOccurrenceKey({
+                    agentId,
+                    itemId: item.id,
+                  })}
+                  message={displayText}
+                  timestamp={item.timestamp.getTime()}
+                  workspaceRoot={workspaceRoot}
+                  serverId={serverId}
+                  client={client}
+                  spacing={layoutItem.assistantSpacing}
+                  phase={layoutItem.phase}
+                />
+              </View>
             </AssistantFileLinkResolverProvider>
           );
         }
@@ -118,3 +120,10 @@ export function ReasoningItem({
     </AidenClaudeReasoningTranslation>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  message: {
+    paddingVertical: theme.spacing[2],
+    opacity: 0.9,
+  },
+}));

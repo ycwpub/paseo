@@ -56,7 +56,7 @@ import {
   openPreferredWorkspaceTarget,
   openWorkspaceTargetBeside,
 } from "@/workspace-tabs/open-beside";
-import { openWorkspacePullRequest } from "@/workspace-tabs/open-supporting-view";
+import { openProjectPullRequest } from "@/workspace-tabs/pull-request-navigation";
 import { type ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import { traceInstant } from "@/performance/native-trace";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
@@ -3010,7 +3010,7 @@ function WorkspaceScreenContent({
           return true;
         }
         if (action.target === "pull-request") {
-          openWorkspacePullRequest({
+          openProjectPullRequest({
             isCompact: isMobile,
             workspaceKey: persistenceKey,
             checkout: activeExplorerCheckout,

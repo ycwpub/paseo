@@ -25,12 +25,7 @@ describe("buildTimelinePromptIndex", () => {
     expect(buildTimelinePromptIndex("epoch-1", rows)).toEqual({
       epoch: "epoch-1",
       prompts: [
-        {
-          seq: 3,
-          timestamp: "2026-01-01T00:00:00.000Z",
-          preview: "First prompt",
-          answerPreview: "response",
-        },
+        { seq: 3, timestamp: "2026-01-01T00:00:00.000Z", preview: "First prompt" },
         { seq: 8, timestamp: "2026-01-01T00:00:02.000Z", preview: "Second prompt" },
       ],
     });

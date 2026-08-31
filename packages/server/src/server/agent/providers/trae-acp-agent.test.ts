@@ -7,32 +7,36 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock("./generic-acp-agent.js", () => ({
-  GenericACPAgentClient: function GenericACPAgentClient(options: unknown) {
-    mockState.constructorOptions.push(options);
+  GenericACPAgentClient: class GenericACPAgentClient {
+    protected readonly defaultModes: unknown[] = [];
+
+    constructor(options: unknown) {
+      mockState.constructorOptions.push(options);
+    }
   },
 }));
 
-import { TraeACPAgentClient } from "./trae-acp-agent.js";
+import { TraeACPModeFallbackAgentClient } from "./trae-acp-mode-fallback-agent.js";
 
-describe("TraeACPAgentClient", () => {
+describe("TraeACPModeFallbackAgentClient", () => {
   test("provides Trae permission modes when ACP discovery omits them", () => {
-    const _client = new TraeACPAgentClient({
+    const client = new TraeACPModeFallbackAgentClient({
       logger: createTestLogger(),
       command: ["traecli", "acp", "serve"],
       providerId: "traecli",
       label: "TRAE CLI",
     });
-    void _client;
 
     expect(mockState.constructorOptions).toEqual([
       expect.objectContaining({
-        defaultModes: [
-          expect.objectContaining({ id: "default" }),
-          expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
-          expect.objectContaining({ id: "plan" }),
-        ],
         waitForInitialCommands: true,
       }),
+    ]);
+    expect(mockState.constructorOptions[0]).not.toHaveProperty("defaultModes");
+    expect((client as unknown as { defaultModes: unknown[] }).defaultModes).toEqual([
+      expect.objectContaining({ id: "default" }),
+      expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
+      expect.objectContaining({ id: "plan" }),
     ]);
   });
 });

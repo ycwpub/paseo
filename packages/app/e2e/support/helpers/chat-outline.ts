@@ -49,7 +49,7 @@ export async function disableChatOutlineFromAppearance(page: Page): Promise<void
   const timelineUrl = page.url();
   await openSettings(page);
   await openSettingsSection(page, "appearance");
-  await page.getByRole("switch", { name: "Prompt history navigation" }).click();
+  await page.getByRole("switch", { name: "Chat outline" }).click();
   await page.goto(timelineUrl);
 }
 
@@ -69,7 +69,7 @@ export async function pressEnterOnFocusedPrompt(page: Page): Promise<void> {
 }
 
 export async function expectChatOutlinePreview(page: Page, preview: string): Promise<void> {
-  await expect(page.getByTestId("chat-outline-preview")).toContainText(preview);
+  await expect(page.getByTestId("chat-outline-preview")).toHaveText(preview);
 }
 
 export async function expectNoChatOutlinePreview(page: Page): Promise<void> {
@@ -136,7 +136,7 @@ export async function expectOneActiveChatOutlinePrompt(page: Page): Promise<void
 
 export async function expectActiveChatOutlinePrompt(page: Page, position: number): Promise<void> {
   await expect(chatOutlineRail(page).getByRole("tab", { selected: true })).toHaveAccessibleName(
-    new RegExp(`^${position}/`),
+    new RegExp(`^${position} of `),
   );
 }
 
@@ -146,7 +146,7 @@ export async function expectActiveChatOutlinePromptMovedFrom(
 ): Promise<void> {
   const activePrompt = chatOutlineRail(page).getByRole("tab", { selected: true });
   await expect(activePrompt).toHaveCount(1);
-  await expect(activePrompt).not.toHaveAccessibleName(new RegExp(`^${position}/`));
+  await expect(activePrompt).not.toHaveAccessibleName(new RegExp(`^${position} of `));
 }
 
 export async function expectLiveTurnPromptAboveFoldAndActive(
@@ -169,7 +169,7 @@ export async function expectLiveTurnPromptAboveFoldAndActive(
           timelineBox &&
           promptBox &&
           promptBox.y + promptBox.height < timelineBox.y &&
-          activeLabel?.startsWith(`${position}/`),
+          activeLabel?.startsWith(`${position} of `),
         );
       },
       { timeout: 15_000 },

@@ -7,7 +7,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { ProjectIconSource } from "@getpaseo/protocol/messages";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import { ProjectEditNameField } from "@/components/project-edit-name-field";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { Button } from "@/components/ui/button";
 import type { FieldControlSize } from "@/components/ui/control-geometry";
@@ -132,16 +131,22 @@ export function ProjectEditSheet({
       sizeContentToCurrentSnapPoint
       testID="project-edit-sheet"
     >
-      <ProjectEditNameField
-        initialName={snapshot.projectCustomName ?? ""}
-        placeholder={snapshot.projectName}
+      <Field
         label={t("settings.project.edit.name")}
-        accessibilityLabel={t("settings.project.edit.nameLabel")}
         error={state.error?.scope === "name" ? state.error.message : null}
-        size={size}
-        disabled={isSaving}
-        onChangeText={form.setName}
-      />
+      >
+        <FormTextInput
+          size={size}
+          testID="project-edit-name"
+          accessibilityLabel={t("settings.project.edit.nameLabel")}
+          initialValue={state.name}
+          onChangeText={form.setName}
+          placeholder={snapshot.projectName}
+          editable={!isSaving}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+      </Field>
 
       {supportsCustomIcon ? (
         <Field

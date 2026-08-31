@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore }
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PointerEvent as RNPointerEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { useReducedMotion } from "react-native-reanimated";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { createChatOutlineHoverIntent } from "./hover-intent";
@@ -11,17 +10,12 @@ import {
   CHAT_OUTLINE_RAIL_LEFT,
   CHAT_OUTLINE_RAIL_WIDTH,
 } from "./layout";
-import { promptTickMagnification } from "./model";
+import { readChatOutlinePromptPresentation } from "./loaded-prompt-model";
 import type { ChatOutlineRailProps } from "./rail";
+import { resolveChatOutlineTickDimensions } from "./tick-layout";
 
-// Hover tracking lives on the rail and the slots, never on the Pressable inside them:
-// magnifying a slot must not move the box the pointer is resting on. See docs/hover.md.
+// Hover tracking lives on the rail and the slots, never on the Pressable inside them.
 const SLOT_HEIGHT = 8;
-const RESTING_PILL_HEIGHT = 2;
-const MAGNIFIED_PILL_HEIGHT = 4;
-const RESTING_PILL_WIDTH = 10;
-const ACTIVE_PILL_WIDTH = 22;
-const MAGNIFIED_PILL_WIDTH = 30;
 const PREVIEW_WIDTH = 380;
 const PREVIEW_HEIGHT = 188;
 const PREVIEW_GAP = 6;
@@ -29,14 +23,12 @@ const PREVIEW_GAP = 6;
 export const ChatOutlineRail = memo(function ChatOutlineRail({
   prompts,
   activePrompt,
-  model,
   onJumpToPrompt,
 }: ChatOutlineRailProps) {
   const { t, i18n } = useTranslation();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const activeSeq = useSyncExternalStore(activePrompt.subscribe, activePrompt.getActiveSeq);
-  const prefersReducedMotion = useReducedMotion();
   const { onLayout, isBelow: isPanelNarrow } = useContainerWidthBelow(CHAT_OUTLINE_MIN_PANEL_WIDTH);
 
   const hoverIntent = useMemo(
@@ -93,36 +85,34 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
           onPointerMove={handlePointerMoveRail}
           onPointerLeave={handlePointerLeaveRail}
         >
-          {prompts.map((prompt, index) => (
-            <ChatOutlineTick
-              key={prompt.seq}
-              index={index}
-              promptCount={prompts.length}
-              seq={prompt.seq}
-              preview={prompt.preview}
-              answerPreview={prompt.answerPreview}
-              model={model}
-              timestamp={prompt.timestamp}
-              locale={i18n.resolvedLanguage ?? i18n.language}
-              label={`${index + 1}/${prompts.length}: ${prompt.preview}`}
-              questionLabel={t("agentStream.chatOutline.question")}
-              answerLabel={t("agentStream.chatOutline.answer")}
-              modelLabel={t("agentStream.chatOutline.model")}
-              timeLabel={t("agentStream.chatOutline.time")}
-              pendingAnswerLabel={t("agentStream.chatOutline.pendingAnswer")}
-              unknownModelLabel={t("agentStream.chatOutline.unknownModel")}
-              isActive={prompt.seq === activeSeq}
-              hasAttention={index === attentionIndex}
-              magnification={
-                prefersReducedMotion || attentionIndex === null
-                  ? 0
-                  : promptTickMagnification(index - attentionIndex)
-              }
-              onHover={handlePointerEnterTick}
-              onFocusChange={handleFocusChange}
-              onJumpToPrompt={onJumpToPrompt}
-            />
-          ))}
+          {prompts.map((prompt, index) => {
+            const presentation = readChatOutlinePromptPresentation(prompt);
+            return (
+              <ChatOutlineTick
+                key={prompt.seq}
+                index={index}
+                promptCount={prompts.length}
+                seq={prompt.seq}
+                preview={prompt.preview}
+                answerPreview={presentation.answerPreview}
+                model={presentation.model ?? null}
+                timestamp={prompt.timestamp}
+                locale={i18n.resolvedLanguage ?? i18n.language}
+                label={`${index + 1}/${prompts.length}: ${prompt.preview}`}
+                questionLabel={t("agentStream.chatOutline.question")}
+                answerLabel={t("agentStream.chatOutline.answer")}
+                modelLabel={t("agentStream.chatOutline.model")}
+                timeLabel={t("agentStream.chatOutline.time")}
+                pendingAnswerLabel={t("agentStream.chatOutline.pendingAnswer")}
+                unknownModelLabel={t("agentStream.chatOutline.unknownModel")}
+                isActive={prompt.seq === activeSeq}
+                hasAttention={index === attentionIndex}
+                onHover={handlePointerEnterTick}
+                onFocusChange={handleFocusChange}
+                onJumpToPrompt={onJumpToPrompt}
+              />
+            );
+          })}
         </View>
       )}
     </View>
@@ -147,7 +137,6 @@ interface ChatOutlineTickProps {
   unknownModelLabel: string;
   isActive: boolean;
   hasAttention: boolean;
-  magnification: number;
   onHover: (index: number) => void;
   onFocusChange: (index: number, focused: boolean) => void;
   onJumpToPrompt: (seq: number) => void;
@@ -171,7 +160,6 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   unknownModelLabel,
   isActive,
   hasAttention,
-  magnification,
   onHover,
   onFocusChange,
   onJumpToPrompt,
@@ -188,12 +176,9 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   const handleFocus = useCallback(() => onFocusChange(index, true), [index, onFocusChange]);
   const handleBlur = useCallback(() => onFocusChange(index, false), [index, onFocusChange]);
 
-  // The pill grows inside a slot that never moves, so magnification can never pull the hit
-  // target out from under the pointer.
-  const restingWidth = isActive ? ACTIVE_PILL_WIDTH : RESTING_PILL_WIDTH;
-  const pillWidth = restingWidth + magnification * (MAGNIFIED_PILL_WIDTH - restingWidth);
-  const pillHeight =
-    RESTING_PILL_HEIGHT + magnification * (MAGNIFIED_PILL_HEIGHT - RESTING_PILL_HEIGHT);
+  // Attention changes only the color and preview. Keeping the geometry fixed prevents the
+  // outline from expanding into the transcript or the adjacent review surface.
+  const pillDimensions = resolveChatOutlineTickDimensions({ isActive, hasAttention });
 
   return (
     <View style={styles.slot} onPointerEnter={handlePointerEnter}>
@@ -212,7 +197,7 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
             styles.pill,
             isActive && styles.pillActive,
             hasAttention && styles.pillAttention,
-            inlineUnistylesStyle({ width: pillWidth, height: pillHeight }),
+            inlineUnistylesStyle(pillDimensions),
           ]}
         />
       </Pressable>
@@ -289,8 +274,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
   },
-  // Pills share one left rail and grow rightward, so magnification reads as a bulge moving
-  // with the pointer instead of every tick breathing about its own centre.
+  // Pills share one left rail and keep fixed geometry across hover and focus transitions.
   target: {
     width: "100%",
     height: "100%",
@@ -305,7 +289,7 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.borderAccent,
     opacity: 0.72,
-    transitionProperty: "width, height, background-color",
+    transitionProperty: "background-color",
     transitionDuration: "140ms",
     transitionTimingFunction: "ease-out",
   },

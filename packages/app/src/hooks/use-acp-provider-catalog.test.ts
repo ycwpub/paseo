@@ -11,7 +11,7 @@ function findProvider(id: string) {
 }
 
 describe("ACP provider catalog", () => {
-  it("vendors provider entries with unique ids and valid launch configuration", () => {
+  it("vendors provider entries with unique ids and concrete commands", () => {
     const ids = new Set<string>();
 
     for (const entry of ACP_PROVIDER_CATALOG) {
@@ -19,15 +19,9 @@ describe("ACP provider catalog", () => {
       ids.add(entry.id);
       expect(entry.title).not.toBe("");
       expect(entry.description).not.toBe("");
-      if (entry.installLink) {
-        expect(entry.installLink).toMatch(/^https:\/\//);
-      }
-      if (entry.extends === "acp" || entry.id.startsWith("aiden-")) {
-        expect(entry.command?.length).toBeGreaterThan(0);
-        expect(entry.command?.[0]).not.toBe("");
-      } else {
-        expect(entry.command).toBeUndefined();
-      }
+      expect(entry.installLink).toMatch(/^https:\/\//);
+      expect(entry.command.length).toBeGreaterThan(0);
+      expect(entry.command[0]).not.toBe("");
     }
   });
 
@@ -73,31 +67,6 @@ describe("ACP provider catalog", () => {
           label: "Amp",
           description: "ACP wrapper for Amp - the frontier coding agent",
           command: ["amp-acp"],
-          env: {},
-        },
-      },
-    });
-  });
-
-  it("maps Aiden providers to derived built-in provider config patches", () => {
-    expect(buildAcpProviderConfigPatch(findProvider("aiden-codex"))).toEqual({
-      providers: {
-        "aiden-codex": {
-          extends: "codex",
-          label: "Aiden Codex",
-          description: "Codex provided through Aiden.",
-          command: ["aiden", "x", "codex"],
-          env: {},
-        },
-      },
-    });
-    expect(buildAcpProviderConfigPatch(findProvider("aiden-claude"))).toEqual({
-      providers: {
-        "aiden-claude": {
-          extends: "claude",
-          label: "Aiden Claude",
-          description: "Claude provided through Aiden.",
-          command: ["aiden", "x", "claude"],
           env: {},
         },
       },

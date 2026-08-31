@@ -190,11 +190,6 @@ export interface SendPromptToAgentParams {
   messageId?: string;
   activeTurnBehavior?: ActiveTurnBehavior;
   runOptions?: AgentRunOptions;
-  /** Optional MCP/skill selection to apply to this conversation before the run starts. */
-  sessionResourceSelection?: {
-    selectedMcpServerIds?: readonly string[];
-    selectedSkillIds?: readonly string[];
-  };
   /** Optional mode to set on the agent before the run starts. */
   sessionMode?: string;
   /**
@@ -214,10 +209,6 @@ export interface StartCreatedAgentInitialPromptParams {
   snapshot?: ManagedAgent;
   prompt: AgentPromptInput | null;
   runOptions?: AgentRunOptions;
-  sessionResourceSelection?: {
-    selectedMcpServerIds?: readonly string[];
-    selectedSkillIds?: readonly string[];
-  };
   logger: Logger;
 }
 
@@ -288,13 +279,6 @@ export async function sendPromptToAgent(
     logger: params.logger,
   });
 
-  if (params.sessionResourceSelection) {
-    await params.agentManager.applySessionResourceSelection(
-      params.agentId,
-      params.sessionResourceSelection,
-    );
-  }
-
   if (params.sessionMode) {
     await params.agentManager.setAgentMode(params.agentId, params.sessionMode);
   }
@@ -317,13 +301,6 @@ export async function startCreatedAgentInitialPrompt(
   const currentSnapshot = params.agentManager.getAgent(params.agentId) ?? params.snapshot ?? null;
   if (!currentSnapshot) {
     throw new Error(`Agent ${params.agentId} not found`);
-  }
-
-  if (params.sessionResourceSelection) {
-    await params.agentManager.applySessionResourceSelection(
-      params.agentId,
-      params.sessionResourceSelection,
-    );
   }
 
   if (params.prompt === null) {

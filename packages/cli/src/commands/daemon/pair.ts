@@ -10,7 +10,13 @@ import {
 import { tryConnectToDaemon } from "../../utils/client.js";
 import { resolveLocalDaemonState } from "./local-daemon.js";
 import { addJsonOption } from "../../utils/command-options.js";
-import { formatPairingInstructions } from "../../output/pairing.js";
+import {
+  formatPairingOfferJson,
+  formatPairingOfferText,
+  type PairingOffer,
+} from "./pairing-offer-output.js";
+
+export type { PairingOffer } from "./pairing-offer-output.js";
 
 interface PairOptions {
   home?: string;
@@ -34,13 +40,7 @@ export interface PairCommandOutput {
   success(message: string): void;
 }
 
-export interface PairingOffer {
-  relayEnabled: boolean;
-  url: string | null;
-  qr: string | null;
-}
-
-const PAIRING_DAEMON_RPC_TIMEOUT_MS = 1500;
+const PAIRING_DAEMON_RPC_TIMEOUT_MS = 10_000;
 const RELAY_DOCS_URL = "https://paseo.sh/docs/security";
 
 function createProcessOutput(): PairCommandOutput {
@@ -93,6 +93,8 @@ export async function resolveLocalPairingOffer(options: {
   return generateLocalPairingOffer({
     paseoHome: options.paseoHome,
     relayEnabled: config.relayEnabled,
+    relayEndpoints: config.relayEndpoints,
+    relayPairingBaseUrls: config.relayPairingBaseUrls,
     relayEndpoint: config.relayEndpoint,
     relayPublicEndpoint: config.relayPublicEndpoint,
     relayUseTls: config.relayUseTls,
@@ -140,6 +142,7 @@ async function resolveDaemonPairingOffer(
       relayEnabled: offer.relayEnabled,
       url: offer.url || null,
       qr: offer.qr ?? null,
+      offers: offer.offers,
     };
   } finally {
     await client.close().catch(() => undefined);
@@ -223,21 +226,9 @@ function outputPairingResult(
   }
 
   if (options.json) {
-    output.writeStdout(
-      `${JSON.stringify(
-        { relayEnabled: pairing.relayEnabled, url: pairing.url, qr: pairing.qr },
-        null,
-        2,
-      )}\n`,
-    );
+    output.writeStdout(`${formatPairingOfferJson(pairing)}\n`);
     return;
   }
 
-  output.writeStdout(
-    formatPairingInstructions({
-      url: pairing.url,
-      qr: pairing.qr,
-      columns: output.columns,
-    }),
-  );
+  output.writeStdout(formatPairingOfferText(pairing));
 }

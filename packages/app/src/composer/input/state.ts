@@ -47,7 +47,7 @@ interface StopRealtimeVoiceContext {
 }
 
 interface SendActionContext {
-  defaultSendBehavior?: SendBehavior;
+  defaultSendBehavior: SendBehavior;
   isAgentRunning: boolean;
   onQueue: ((payload: MessagePayload) => void) | undefined;
   handleSendMessage: () => void;
@@ -78,7 +78,7 @@ export function applyDictationTranscript(text: string, ctx: DictationTranscriptC
 
   ctx.replaceText(nextValue);
 
-  if ((ctx.defaultSendBehavior ?? "queue") === "queue" && ctx.isAgentRunning && ctx.onQueue) {
+  if (ctx.defaultSendBehavior === "queue" && ctx.isAgentRunning && ctx.onQueue) {
     ctx.onQueue({ text: nextValue, attachments: ctx.attachments, cwd: ctx.cwd });
     ctx.replaceText("");
     return;

@@ -1,4 +1,4 @@
-import type { SettingsView } from "@/navigation/settings-navigation";
+import type { SettingsView } from "@/navigation/settings-feature-navigation";
 import type { HostSectionSlug } from "@/utils/host-feature-routes";
 
 export function getSettingsViewServerId(view: SettingsView): string | null {

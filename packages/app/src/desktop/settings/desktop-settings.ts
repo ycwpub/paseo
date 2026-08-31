@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getIsElectron } from "@/constants/platform";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
@@ -15,19 +14,11 @@ const DESKTOP_SETTINGS_QUERY_KEY = ["desktop-settings"] as const;
 export interface DesktopSettings {
   releaseChannel: ReleaseChannel;
   notifications: {
-    enabled: boolean;
     playSound: boolean;
   };
   daemon: {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
-  };
-  attention: {
-    soundVolume: number;
-  };
-  island: {
-    enabled: boolean;
-    showWhenFocused: boolean;
   };
 }
 
@@ -35,26 +26,16 @@ export interface DesktopSettingsPatch {
   releaseChannel?: ReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
-  attention?: Partial<DesktopSettings["attention"]>;
-  island?: Partial<DesktopSettings["island"]>;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   releaseChannel: "stable",
   notifications: {
-    enabled: true,
     playSound: true,
   },
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
-  },
-  attention: {
-    soundVolume: 0.5,
-  },
-  island: {
-    enabled: true,
-    showWhenFocused: true,
   },
 };
 
@@ -172,16 +153,10 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
   const record = isRecord(raw) ? raw : {};
   const notifications = isRecord(record.notifications) ? record.notifications : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
-  const attention = isRecord(record.attention) ? record.attention : {};
-  const island = isRecord(record.island) ? record.island : {};
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
     notifications: {
-      enabled:
-        typeof notifications.enabled === "boolean"
-          ? notifications.enabled
-          : DEFAULT_DESKTOP_SETTINGS.notifications.enabled,
       playSound:
         typeof notifications.playSound === "boolean"
           ? notifications.playSound
@@ -196,22 +171,6 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
         typeof daemon.keepRunningAfterQuit === "boolean"
           ? daemon.keepRunningAfterQuit
           : DEFAULT_DESKTOP_SETTINGS.daemon.keepRunningAfterQuit,
-    },
-    attention: {
-      soundVolume:
-        typeof attention.soundVolume === "number" && Number.isFinite(attention.soundVolume)
-          ? Math.min(1, Math.max(0, attention.soundVolume))
-          : DEFAULT_DESKTOP_SETTINGS.attention.soundVolume,
-    },
-    island: {
-      enabled:
-        typeof island.enabled === "boolean"
-          ? island.enabled
-          : DEFAULT_DESKTOP_SETTINGS.island.enabled,
-      showWhenFocused:
-        typeof island.showWhenFocused === "boolean"
-          ? island.showWhenFocused
-          : DEFAULT_DESKTOP_SETTINGS.island.showWhenFocused,
     },
   };
 }
@@ -230,14 +189,6 @@ function mergeDesktopSettings(
       ...current.daemon,
       ...updates.daemon,
     },
-    attention: {
-      ...current.attention,
-      ...updates.attention,
-    },
-    island: {
-      ...current.island,
-      ...updates.island,
-    },
   };
 }
 
@@ -246,8 +197,6 @@ function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> 
     ...(updates.releaseChannel ? { releaseChannel: updates.releaseChannel } : {}),
     ...(updates.notifications ? { notifications: updates.notifications } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
-    ...(updates.attention ? { attention: updates.attention } : {}),
-    ...(updates.island ? { island: updates.island } : {}),
   };
 }
 

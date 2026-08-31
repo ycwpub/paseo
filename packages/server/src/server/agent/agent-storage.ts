@@ -5,10 +5,11 @@ import type { Logger } from "pino";
 
 import { writeJsonFileAtomic } from "../atomic-file.js";
 import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
-import { toStoredAgentRecord } from "./agent-projections.js";
+import { toPersistedAgentRecord } from "./persisted-agent-projection.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
 import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./agent-owner.js";
+import type { ProjectDirectoryAgentConfig } from "./project-directory-agent-config.js";
 
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
@@ -85,13 +86,12 @@ export type SerializableAgentConfig = Pick<
   | "model"
   | "thinkingOptionId"
   | "featureValues"
-  | "writableProjectDirectories"
-  | "readOnlyProjectDirectories"
   | "providerOptions"
   | "toolPolicy"
   | "systemPrompt"
   | "mcpServers"
->;
+> &
+  ProjectDirectoryAgentConfig;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;
 export function parseStoredAgentRecord(value: unknown): StoredAgentRecord {
@@ -251,7 +251,7 @@ export class AgentStorage {
     const hasInternalOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "internal");
     await this.queueRecordMutation(agent.id, (existing) => {
-      const record = toStoredAgentRecord(agent, {
+      const record = toPersistedAgentRecord(agent, {
         title: hasTitleOverride ? (options?.title ?? null) : (existing?.title ?? null),
         createdAt: existing?.createdAt,
         internal: hasInternalOverride ? options?.internal : (agent.internal ?? existing?.internal),

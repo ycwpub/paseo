@@ -4572,7 +4572,10 @@ describe("Codex app-server provider", () => {
       { method: "thread/loaded/list", params: {} },
       {
         method: "thread/resume",
-        params: expect.objectContaining({ threadId: "archived-thread-id" }),
+        params: {
+          threadId: "archived-thread-id",
+          developerInstructions: expect.stringContaining("<paseo_progress_updates>"),
+        },
       },
     ]);
   });

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { TIMELINE_RESUME_FETCH_PAGE_SIZE } from "./history-fetch-policy";
 import { requestTimelineReplacement } from "./timeline-replacement";
 
 describe("requestTimelineReplacement", () => {
@@ -16,14 +15,7 @@ describe("requestTimelineReplacement", () => {
     await expect(requestTimelineReplacement(client, "agent-1")).rejects.toThrow("fetch complete");
 
     expect(requests).toEqual([
-      [
-        "agent-1",
-        {
-          direction: "tail",
-          projection: "projected",
-          limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
-        },
-      ],
+      ["agent-1", { direction: "tail", projection: "projected", limit: 40 }],
     ]);
   });
 });

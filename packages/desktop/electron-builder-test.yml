@@ -2,7 +2,7 @@ npmRebuild: false
 appId: sh.paseo.desktop.feishu.test
 productName: Paseo-Feishu-Test
 executableName: Paseo-Feishu-Test
-afterPack: ./scripts/after-pack.js
+afterPack: ./scripts/packaged-runtime-after-pack.js
 directories:
   output: release-test
 files:

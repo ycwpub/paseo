@@ -10,7 +10,7 @@ import { AidenClaudeProviderSettings } from "./aiden-claude-provider-settings";
 
 const settingsState = vi.hoisted(() => ({
   translateReasoning: false,
-  updateSettings: vi.fn(async () => undefined),
+  setTranslateToChinese: vi.fn(async () => undefined),
 }));
 
 vi.mock("react-native", () => ({
@@ -37,12 +37,10 @@ vi.mock("@/styles/settings", () => ({
   },
 }));
 
-vi.mock("@/hooks/use-settings", () => ({
-  useAppSettings: () => ({
-    settings: {
-      aidenClaudeTranslateReasoningToChinese: settingsState.translateReasoning,
-    },
-    updateSettings: settingsState.updateSettings,
+vi.mock("@/agent-stream/aiden-claude-reasoning-settings", () => ({
+  useAidenClaudeReasoningSettings: () => ({
+    translateToChinese: settingsState.translateReasoning,
+    setTranslateToChinese: settingsState.setTranslateToChinese,
   }),
 }));
 
@@ -85,7 +83,7 @@ vi.mock("@/components/ui/switch", () => ({
 describe("AidenClaudeProviderSettings", () => {
   beforeEach(() => {
     settingsState.translateReasoning = false;
-    settingsState.updateSettings.mockClear();
+    settingsState.setTranslateToChinese.mockClear();
   });
 
   afterEach(cleanup);
@@ -105,8 +103,6 @@ describe("AidenClaudeProviderSettings", () => {
 
     fireEvent.click(screen.getByTestId("aiden-claude-reasoning-translation-switch"));
 
-    expect(settingsState.updateSettings).toHaveBeenCalledWith({
-      aidenClaudeTranslateReasoningToChinese: true,
-    });
+    expect(settingsState.setTranslateToChinese).toHaveBeenCalledWith(true);
   });
 });

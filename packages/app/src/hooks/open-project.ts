@@ -44,7 +44,6 @@ export interface OpenProjectDirectlyInput {
   isConnected: boolean;
   canAddProject: boolean;
   client: Pick<DaemonClient, "addProject"> | null;
-  parentProjectId?: string;
   upsertProject: (serverId: string, project: ProjectDescriptor) => void;
   setHasHydratedWorkspaces: (serverId: string, hydrated: boolean) => void;
 }
@@ -75,7 +74,6 @@ export interface CloneGithubProjectDirectlyInput extends ProjectRegistrationCall
   repo: string;
   targetDirectory: string;
   cloneProtocol?: ProjectGithubCloneProtocol;
-  parentProjectId?: string;
   client: Pick<DaemonClient, "cloneGithubProject"> | null;
 }
 
@@ -96,7 +94,7 @@ export async function openProjectDirectly(
     };
   }
 
-  const payload = await input.client.addProject(trimmedPath, undefined, input.parentProjectId);
+  const payload = await input.client.addProject(trimmedPath);
   if (payload.error || !payload.project) {
     return {
       ok: false,
@@ -136,7 +134,6 @@ export async function cloneGithubProjectDirectly(
     repo: trimmedRepo,
     targetDirectory: trimmedTargetDirectory,
     ...(input.cloneProtocol ? { cloneProtocol: input.cloneProtocol } : {}),
-    ...(input.parentProjectId ? { parentProjectId: input.parentProjectId } : {}),
   });
   if (payload.error || !payload.project) {
     return { ok: false, errorCode: null, error: payload.error };

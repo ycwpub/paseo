@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable } from "react-native";
-// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
 import { FolderOpen, Inbox, Plug, Smartphone } from "lucide-react-native";
@@ -19,7 +19,7 @@ import {
 } from "@/constants/layout";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { PairDeviceModal } from "@/components/pair-device-modal";
+import { ClientAccessModal } from "@/components/client-access-modal";
 import { buildHostAgentDetailRoute, buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
@@ -133,7 +133,7 @@ export function OpenProjectScreen() {
         <CommunityLinks />
       </View>
       {localServerId ? (
-        <PairDeviceModal
+        <ClientAccessModal
           serverId={localServerId}
           visible={isPairDeviceOpen}
           onClose={handleClosePairDevice}

@@ -152,16 +152,16 @@ describe("feature_paseo integration parity", () => {
       'import { AssistantSelector } from "@/composer/assistant-selector/assistant-selector"',
     );
     expect(identityControls).toContain("<AssistantSelector");
-    expect(identityControls).toContain("selectedTeamId={teamId ?? null}");
-    expect(identityControls).toContain("onSelectTeam={onTeamSelect}");
+    expect(identityControls).toContain("selectedTeamId={effectiveTeamId}");
+    expect(identityControls).toContain("onSelectTeam={handleTeamSelect}");
 
-    for (const chatSurface of [agentPanel, workspaceDraft, newWorkspace]) {
+    expect(agentPanel).toContain("<Composer");
+    for (const chatSurface of [workspaceDraft, newWorkspace]) {
       expect(chatSurface).toContain("assistantId=");
       expect(chatSurface).toContain("onAssistantSelect=");
       expect(chatSurface).toContain("teamId=");
+      expect(chatSurface).toContain("onTeamSelect=");
     }
-    expect(workspaceDraft).toContain("onTeamSelect=");
-    expect(newWorkspace).toContain("onTeamSelect=");
   });
 
   test("keeps Dock attention connected to completed tasks and permission requests", () => {

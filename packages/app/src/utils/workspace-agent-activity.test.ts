@@ -7,7 +7,6 @@ function agent(input: {
   workspaceId?: string;
   status?: Agent["status"];
   updatedAt: string;
-  lastActivityAt?: string;
   attentionTimestamp?: string | null;
   requiresAttention?: boolean;
   attentionReason?: Agent["attentionReason"];
@@ -24,7 +23,7 @@ function agent(input: {
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date(input.updatedAt),
     lastUserMessageAt: null,
-    lastActivityAt: new Date(input.lastActivityAt ?? input.updatedAt),
+    lastActivityAt: new Date(input.updatedAt),
     capabilities: {
       supportsStreaming: true,
       supportsSessionPersistence: true,
@@ -100,7 +99,6 @@ describe("workspace agent activity index", () => {
             agentId: "permission",
             status: "needs_input",
             enteredAt: new Date("2026-06-01T10:01:00.000Z"),
-            activityAt: new Date("2026-06-01T10:01:00.000Z"),
           },
         ],
         [
@@ -109,7 +107,6 @@ describe("workspace agent activity index", () => {
             agentId: "attention",
             status: "attention",
             enteredAt: new Date("2026-06-01T10:02:00.000Z"),
-            activityAt: new Date("2026-06-01T10:02:00.000Z"),
           },
         ],
       ]),
@@ -156,7 +153,6 @@ describe("workspace agent activity index", () => {
       agentId: "root",
       status: "running",
       enteredAt: new Date("2026-06-01T10:00:00.000Z"),
-      activityAt: new Date("2026-06-01T10:00:00.000Z"),
     });
   });
 
@@ -192,7 +188,6 @@ describe("workspace agent activity index", () => {
             agentId: "parent",
             status: "done",
             enteredAt: new Date("2026-06-01T10:00:00.000Z"),
-            activityAt: new Date("2026-06-01T10:00:00.000Z"),
           },
         ],
         [
@@ -201,14 +196,13 @@ describe("workspace agent activity index", () => {
             agentId: "child",
             status: "running",
             enteredAt: new Date("2026-06-01T10:03:00.000Z"),
-            activityAt: new Date("2026-06-01T10:03:00.000Z"),
           },
         ],
       ]),
     );
   });
 
-  it("preserves the activity index when status and last activity are unchanged", () => {
+  it("preserves the activity index while the same agent remains in the same status", () => {
     const previous = buildWorkspaceAgentActivityIndex(
       new Map([
         [
@@ -232,7 +226,6 @@ describe("workspace agent activity index", () => {
             workspaceId: "workspace-a",
             status: "running",
             updatedAt: "2026-06-01T10:05:00.000Z",
-            lastActivityAt: "2026-06-01T10:00:00.000Z",
           }),
         ],
       ]),
@@ -279,7 +272,6 @@ describe("workspace agent activity index", () => {
       agentId: "root",
       status: "needs_input",
       enteredAt: new Date("2026-06-01T10:05:00.000Z"),
-      activityAt: new Date("2026-06-01T10:05:00.000Z"),
     });
   });
 });

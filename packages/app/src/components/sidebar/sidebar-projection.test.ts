@@ -24,7 +24,6 @@ function makeWorkspace(
   };
   const entry: SidebarWorkspaceEntry = {
     ...placement,
-    projectId: "project",
     workspaceDirectory: "",
     workspaceDirectoryLabel: "",
     title: null,
@@ -84,7 +83,6 @@ function projectionInput(options?: {
     projectNamesByViewKey: new Map([["project", "Project"]]),
     groupMode: options?.groupMode ?? ("project" as const),
     pinnedCollapsed: options?.pinnedCollapsed ?? false,
-    hiddenProjectKeys: new Set<string>(),
     collapsedProjectKeys: new Set<string>(),
     collapsedWorkspaceGroupKeys: new Set<string>(),
   };

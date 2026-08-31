@@ -44,8 +44,7 @@ import {
   WORKSPACE_LABEL_PAGE_ID,
   type WorkspaceLabelTarget,
 } from "@/workspace-labels/picker";
-import { useWorkspaceRemove } from "@/workspace/use-workspace-remove";
-import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
+import { useSidebarWorkspaceRemove } from "@/components/sidebar/use-sidebar-workspace-remove";
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
@@ -85,9 +84,6 @@ export interface SidebarWorkspaceMenuProps {
   workspaceKey: string;
   serverId?: string;
   workspaceId?: string;
-  projectId: string;
-  workspaceName: string;
-  selected: boolean;
   workspaceLabels?: readonly string[];
   onCopyPath?: () => void;
   onCopyBranchName?: () => void;
@@ -136,9 +132,6 @@ function SidebarWorkspaceMenuItems({
   workspaceKey,
   serverId,
   workspaceId,
-  projectId,
-  workspaceName,
-  selected,
   onCopyPath,
   onCopyBranchName,
   onRename,
@@ -153,24 +146,10 @@ function SidebarWorkspaceMenuItems({
   openInFileManagerPath,
 }: SidebarWorkspaceMenuItemsProps & { surface: MenuSurface }): ReactNode {
   const { t } = useTranslation();
-  const handleRemoveStarted = useMemo(
-    () => () => {
-      if (!serverId || !workspaceId) return;
-      redirectIfArchivingActiveWorkspace({
-        serverId,
-        workspaceId,
-        activeWorkspaceSelection: selected ? { serverId, workspaceId } : null,
-      });
-    },
-    [selected, serverId, workspaceId],
-  );
-  const removeController = useWorkspaceRemove({
-    serverId: serverId ?? "",
-    projectId,
-    workspaceId: workspaceId ?? "",
-    workspaceName,
-    disabled: !serverId || !workspaceId || archiveStatus === "pending",
-    onRemoveStarted: handleRemoveStarted,
+  const removeController = useSidebarWorkspaceRemove({
+    serverId,
+    workspaceId,
+    archivePending: archiveStatus === "pending",
   });
   const archiveTrailing = useMemo(
     () => (archiveShortcutKeys ? <Shortcut chord={archiveShortcutKeys} /> : null),
@@ -282,9 +261,6 @@ export function SidebarWorkspaceMenu({
   workspaceKey,
   serverId,
   workspaceId,
-  projectId,
-  workspaceName,
-  selected,
   workspaceLabels,
   onCopyPath,
   onCopyBranchName,
@@ -330,9 +306,6 @@ export function SidebarWorkspaceMenu({
           workspaceKey={workspaceKey}
           serverId={serverId}
           workspaceId={workspaceId}
-          projectId={projectId}
-          workspaceName={workspaceName}
-          selected={selected}
           workspaceLabels={workspaceLabels}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
@@ -362,7 +335,6 @@ export function SidebarWorkspaceContextMenu({
   contextMenuOpen,
   onContextMenuOpenChange,
   workspace,
-  selected,
   leadingProjectName,
   hostBadgeLabel,
   serviceSummary,
@@ -383,7 +355,7 @@ export function SidebarWorkspaceContextMenu({
   highlightStyle,
   ...triggerProps
 }: PropsWithChildren<
-  Omit<SidebarWorkspaceMenuItemsProps, "projectId" | "workspaceName"> &
+  SidebarWorkspaceMenuItemsProps &
     ContextTriggerProps & {
       contextMenuOpen: boolean;
       onContextMenuOpenChange: (open: boolean) => void;
@@ -445,9 +417,6 @@ export function SidebarWorkspaceContextMenu({
           workspaceKey={workspaceKey}
           serverId={workspaceTarget.serverId}
           workspaceId={workspaceTarget.workspaceId}
-          projectId={workspace.projectId}
-          workspaceName={workspace.name}
-          selected={selected}
           workspaceLabels={workspaceTarget.labels}
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}

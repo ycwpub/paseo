@@ -351,7 +351,6 @@ describe("schedule form model", () => {
 
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
-      showAssistantField: true,
       showModelField: false,
       showThinkingField: false,
       showModeField: false,
@@ -363,7 +362,6 @@ describe("schedule form model", () => {
 
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
-      showAssistantField: true,
       showModelField: true,
       showThinkingField: false,
       showModeField: false,
@@ -376,7 +374,6 @@ describe("schedule form model", () => {
 
     expect(form.getState().disclosure).toEqual({
       showProjectField: true,
-      showAssistantField: true,
       showModelField: true,
       showThinkingField: true,
       showModeField: true,

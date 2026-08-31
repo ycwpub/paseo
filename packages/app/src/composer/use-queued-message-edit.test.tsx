@@ -3,7 +3,8 @@ import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { UserComposerAttachment } from "@/attachments/types";
-import type { QueueWriter, QueuedComposerMessage } from "@/composer/actions";
+import type { QueueWriter } from "@/composer/actions";
+import type { ResourceAwareQueuedComposerMessage as QueuedComposerMessage } from "@/composer/resource-selection";
 import { useQueuedMessageEdit } from "@/composer/use-queued-message-edit";
 
 function createQueue(messages: QueuedComposerMessage[]): QueueWriter & {

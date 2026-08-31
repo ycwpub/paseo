@@ -15,7 +15,7 @@ describe("Agent Stream process visibility wiring", () => {
     expect(viewSource).toContain("turnTiming: deriveStreamTurnTiming({");
     expect(viewSource).toContain("tail: projectedToolCalls.tail");
     expect(viewSource).toContain("head: projectedToolCalls.head");
-    expect(viewSource).toContain("prepareForViewportChange(turnId)");
+    expect(viewSource).toContain("prepareStreamViewportChange(viewportRef.current, turnId)");
   });
 
   it("invalidates both history and live rows when expansion changes", () => {

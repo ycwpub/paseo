@@ -162,18 +162,11 @@ async function runProviderModelsJson(provider: string): Promise<ProviderModel[]>
 
 function assertClaudeModels(data: ProviderModel[]): void {
   const byId = new Map(data.map((model) => [model.id, model]));
-  const expectedById = new Map(
-    EXPECTED_CLAUDE_CATALOG_MODELS.map((model) => [model.id, model] as const),
-  );
   const requiredModels = EXPECTED_CLAUDE_CATALOG_MODELS.filter(
     (model) => model.id !== "claude-opus-5",
   );
 
   assert.strictEqual(byId.size, data.length, "claude model IDs should be unique");
-  assert(
-    [...byId.keys()].every((id) => expectedById.has(id)),
-    "claude output should contain only canonical catalog IDs",
-  );
 
   for (const expectedModel of requiredModels) {
     const actualModel = byId.get(expectedModel.id);

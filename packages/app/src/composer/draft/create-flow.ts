@@ -16,6 +16,7 @@ import {
 } from "@/types/stream";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { PendingMessageSubmission } from "@/composer/submission/model";
+import type { ResourceAwarePendingCreateAttempt } from "@/composer/resource-selection";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 
@@ -103,7 +104,7 @@ function buildCreateAttemptResourceSelection(input: {
 }
 
 function buildPendingResourceSelection(
-  input: CreateAttempt,
+  input: CreateAttempt | ResourceAwarePendingCreateAttempt,
 ): Pick<CreateAttempt, "selectedMcpServerIds" | "selectedSkillIds"> {
   return {
     ...(input.selectedMcpServerIds !== undefined
@@ -321,7 +322,7 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
         ...buildCreateAttemptResourceSelection({ selectedMcpServerIds, selectedSkillIds }),
       };
 
-      setPendingCreateAttempt({
+      const pendingAttempt: Omit<ResourceAwarePendingCreateAttempt, "lifecycle"> = {
         draftId,
         serverId: pendingServerId,
         agentId: null,
@@ -333,7 +334,8 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
           ? { attachments: attempt.attachments }
           : {}),
         ...buildPendingResourceSelection(attempt),
-      });
+      };
+      setPendingCreateAttempt(pendingAttempt);
 
       dispatch({ type: "SUBMIT", attempt });
       onCreateStart?.();

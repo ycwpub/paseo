@@ -54,14 +54,14 @@ export async function getClaudeModelsWithSettings(
   claudeCodeVersion?: string,
 ): Promise<AgentModelDefinition[]> {
   const hardcodedModels = getClaudeModels(claudeCodeVersion);
-  const discoveredModels = await readClaudeSettingsModels(logger, configDir);
-  if (discoveredModels.length === 0) {
+  const settingsModels = await readClaudeSettingsModels(logger, configDir);
+  if (settingsModels.length === 0) {
     return hardcodedModels;
   }
 
   const models = [...hardcodedModels];
 
-  for (const model of discoveredModels) {
+  for (const model of settingsModels) {
     const existingIndex = models.findIndex((candidate) => candidate.id === model.id);
     if (existingIndex !== -1) {
       const existing = models[existingIndex];
@@ -81,8 +81,18 @@ async function readClaudeSettingsModels(
   configDir?: string,
 ): Promise<AgentModelDefinition[]> {
   const settingsPath = path.join(resolveClaudeConfigDir(configDir), "settings.json");
-  const parsed = await readJsonObject(logger, settingsPath, "Claude");
-  if (!parsed) {
+
+  let parsed: unknown;
+  try {
+    const rawSettings = await fs.readFile(settingsPath, "utf8");
+    parsed = JSON.parse(rawSettings);
+  } catch (error) {
+    logger.debug({ err: error, settingsPath }, "Failed to read Claude settings models");
+    return [];
+  }
+
+  if (!isRecord(parsed)) {
+    logger.debug({ settingsPath }, "Claude settings.json is not an object");
     return [];
   }
 
@@ -103,27 +113,6 @@ async function readClaudeSettingsModels(
   }
 
   return models;
-}
-
-async function readJsonObject(
-  logger: Logger,
-  settingsPath: string,
-  source: "Claude",
-): Promise<Record<string, unknown> | null> {
-  let parsed: unknown;
-  try {
-    const rawSettings = await fs.readFile(settingsPath, "utf8");
-    parsed = JSON.parse(rawSettings);
-  } catch (error) {
-    logger.debug({ err: error, settingsPath }, `Failed to read ${source} settings models`);
-    return null;
-  }
-
-  if (!isRecord(parsed)) {
-    logger.debug({ settingsPath }, `${source} settings.json is not an object`);
-    return null;
-  }
-  return parsed;
 }
 
 function resolveClaudeConfigDir(configDir?: string): string {

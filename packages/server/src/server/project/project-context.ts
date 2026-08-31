@@ -10,6 +10,7 @@ import {
 } from "@getpaseo/protocol/paseo-config-schema";
 import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
 import { normalizeWritableProjectDirectories } from "../agent/project-directory-access.js";
+import type { ProjectAwareAgentSessionConfig } from "../agent/project-directory-agent-config.js";
 import { composeSystemPromptParts } from "../agent/system-prompt.js";
 import type {
   PersistedProjectRecord,
@@ -436,7 +437,7 @@ export async function withProjectAgentContext(input: {
   readPluginProjectContext?: (projectId: string) => string | null;
   onAuthIssues?: (issues: readonly CloudDocumentAuthenticationIssue[]) => void;
   logger?: Pick<Logger, "warn">;
-}): Promise<AgentSessionConfig> {
+}): Promise<ProjectAwareAgentSessionConfig> {
   const context = await loadProjectAgentContext(input);
   if (!context) return input.config;
   input.onAuthIssues?.(context.authIssues);

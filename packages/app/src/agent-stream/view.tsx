@@ -35,7 +35,6 @@ import {
   ActivityLog,
   ToolCall,
   TodoListCard,
-  CompactionMarker,
   MessageOuterSpacingProvider,
   type InlinePathTarget,
 } from "@/components/message";
@@ -52,7 +51,7 @@ import type {
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useSessionStore } from "@/stores/session-store";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
-import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
+import { useAgentHistoryPagination } from "@/hooks/use-agent-history-pagination";
 import { useSettings } from "@/hooks/use-settings";
 import type { ToastApi } from "@/components/toast-host";
 import { returnToTimelineTail } from "./timeline-tail-navigation";
@@ -70,13 +69,14 @@ import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
 import { ChatOutlineRail } from "@/agent-stream/chat-outline/rail";
 import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
+import { presentChatOutlinePrompts } from "@/agent-stream/chat-outline/loaded-prompt-model";
 import {
   CHAT_OUTLINE_CONTENT_INSET,
   CHAT_OUTLINE_MIN_PANEL_WIDTH,
   shouldReserveChatOutlineContentInset,
 } from "@/agent-stream/chat-outline/layout";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
-import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
+import { planTimelineTailFetch } from "@/timeline/resume-sync-plan";
 import {
   CompletedTurnFooterRow,
   TurnFooter,
@@ -120,12 +120,14 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { deriveStreamTurnTiming } from "@/timeline/turn-time";
 import { projectProcessVisibility } from "./process-visibility";
 import { ProcessingDisclosure } from "./processing-disclosure";
+import { StreamCompactionMarker } from "./compaction-marker";
 import {
   createProcessExpansionState,
   isProcessTurnExpanded,
   toggleProcessTurn,
   type ProcessExpansionState,
 } from "./process-expansion-state";
+import { prepareStreamViewportChange } from "./viewport-handle-extensions";
 
 function resolveChatOutlineModel(context: AgentScreenAgent): string | null {
   return context.runtimeInfo?.model ?? context.model ?? context.provider ?? null;
@@ -420,7 +422,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       workspaceId: context.workspaceId,
       workspaceRoot,
     });
-    const agentHistoryPagination = useLoadOlderAgentHistory({
+    const agentHistoryPagination = useAgentHistoryPagination({
       serverId: resolvedServerId,
       agentId,
       toast,
@@ -461,7 +463,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [processExpansion],
     );
     const toggleProcessVisibility = useCallback((turnId: string, isActiveTurn: boolean) => {
-      viewportRef.current?.prepareForViewportChange(turnId);
+      prepareStreamViewportChange(viewportRef.current, turnId);
       setProcessExpansion((state) => toggleProcessTurn(state, { turnId, isActive: isActiveTurn }));
     }, []);
 
@@ -692,6 +694,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       isPanelNarrow: isChatOutlinePanelNarrow,
       isWeb,
     });
+    const presentedChatOutlinePrompts = useMemo(
+      () => presentChatOutlinePrompts(chatOutline.prompts, resolveChatOutlineModel(context)),
+      [chatOutline.prompts, context],
+    );
 
     useImperativeHandle(
       ref,
@@ -955,7 +961,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
           case "compaction":
             return (
-              <CompactionMarker
+              <StreamCompactionMarker
                 status={item.status}
                 trigger={item.trigger}
                 preTokens={item.preTokens}
@@ -1295,9 +1301,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               })}
             </MessageOuterSpacingProvider>
             <ChatOutlineRail
-              prompts={chatOutline.prompts}
+              prompts={presentedChatOutlinePrompts}
               activePrompt={chatOutline.activePrompt}
-              model={resolveChatOutlineModel(context)}
               onJumpToPrompt={chatOutline.jumpToPrompt}
             />
             {(!isNearBottom || isTimelineDetached) && (

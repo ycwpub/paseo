@@ -3,8 +3,6 @@ import { z } from "zod";
 export interface CollapsedProjectsState {
   collapsedProjectKeys: Set<string>;
   collapsedWorkspaceGroupKeys: Set<string>;
-  /** Compatibility alias for status grouping consumers. */
-  collapsedStatusGroupKeys: Set<string>;
   collapsedPinned: boolean;
 }
 
@@ -51,11 +49,7 @@ export function toggleWorkspaceGroupCollapsed(
   } else {
     next.add(workspaceGroupKey);
   }
-  return {
-    ...state,
-    collapsedWorkspaceGroupKeys: next,
-    collapsedStatusGroupKeys: next,
-  };
+  return { ...state, collapsedWorkspaceGroupKeys: next };
 }
 
 export function setProjectCollapsed(
@@ -70,38 +64,6 @@ export function setProjectCollapsed(
     next.delete(projectKey);
   }
   return { ...state, collapsedProjectKeys: next };
-}
-
-export function setWorkspaceGroupsCollapsed(
-  state: CollapsedProjectsState,
-  projectKeys: readonly string[],
-  statusGroupKeys: readonly string[],
-  collapsed: boolean,
-): CollapsedProjectsState {
-  const collapsedProjectKeys = new Set(state.collapsedProjectKeys);
-  const collapsedStatusGroupKeys = new Set(
-    state.collapsedStatusGroupKeys ?? state.collapsedWorkspaceGroupKeys,
-  );
-  for (const key of projectKeys) {
-    if (collapsed) {
-      collapsedProjectKeys.add(key);
-    } else {
-      collapsedProjectKeys.delete(key);
-    }
-  }
-  for (const key of statusGroupKeys) {
-    if (collapsed) {
-      collapsedStatusGroupKeys.add(key);
-    } else {
-      collapsedStatusGroupKeys.delete(key);
-    }
-  }
-  return {
-    ...state,
-    collapsedProjectKeys,
-    collapsedWorkspaceGroupKeys: collapsedStatusGroupKeys,
-    collapsedStatusGroupKeys,
-  };
 }
 
 export function serializeCollapsedProjects(state: CollapsedProjectsState): {
@@ -145,7 +107,6 @@ export function mergePersistedCollapsedProjects<S extends CollapsedProjectsState
     ...current,
     collapsedProjectKeys: restoredProjects,
     collapsedWorkspaceGroupKeys: restoredWorkspaceGroups,
-    collapsedStatusGroupKeys: restoredWorkspaceGroups,
     collapsedPinned: restoredPinned,
   };
 }

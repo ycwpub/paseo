@@ -9,19 +9,11 @@ import type { AppReleaseChannel } from "../features/auto-updater.js";
 export interface DesktopSettings {
   releaseChannel: AppReleaseChannel;
   notifications: {
-    enabled: boolean;
     playSound: boolean;
   };
   daemon: {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
-  };
-  attention: {
-    soundVolume: number;
-  };
-  island: {
-    enabled: boolean;
-    showWhenFocused: boolean;
   };
 }
 
@@ -29,8 +21,6 @@ interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
-  attention?: Partial<DesktopSettings["attention"]>;
-  island?: Partial<DesktopSettings["island"]>;
 }
 
 export interface DesktopSettingsStore {
@@ -42,19 +32,11 @@ export interface DesktopSettingsStore {
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   releaseChannel: "stable",
   notifications: {
-    enabled: true,
     playSound: true,
   },
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
-  },
-  attention: {
-    soundVolume: 0.5,
-  },
-  island: {
-    enabled: true,
-    showWhenFocused: true,
   },
 };
 
@@ -64,7 +46,6 @@ const ReleaseChannelSchema = z.enum(["stable", "beta"]);
 
 const NotificationsSchema = z
   .looseObject({
-    enabled: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.notifications.enabled),
     playSound: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.notifications.playSound),
   })
   .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.notifications }));
@@ -76,40 +57,17 @@ const DaemonSchema = z
   })
   .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.daemon }));
 
-const AttentionSchema = z
-  .looseObject({
-    soundVolume: z
-      .number()
-      .finite()
-      .transform((value) => Math.min(1, Math.max(0, value)))
-      .catch(DEFAULT_DESKTOP_SETTINGS.attention.soundVolume),
-  })
-  .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.attention }));
-
-const IslandSchema = z
-  .looseObject({
-    enabled: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.island.enabled),
-    showWhenFocused: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.island.showWhenFocused),
-  })
-  .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.island }));
-
 const DesktopSettingsSchema = z
   .looseObject({
     releaseChannel: ReleaseChannelSchema.catch(DEFAULT_DESKTOP_SETTINGS.releaseChannel),
     notifications: NotificationsSchema,
     daemon: DaemonSchema,
-    attention: AttentionSchema,
-    island: IslandSchema,
   })
   .catch(() => buildDefaultSettings());
 
 const MigrationsSchema = z
   .looseObject({
     legacyRendererSettingsImported: z.boolean().catch(false),
-    // Installs created before the stop-on-quit default persisted the old
-    // `keepRunningAfterQuit: true` default to disk, so the new default alone
-    // would only reach fresh installs. Reset it once; a later explicit toggle
-    // persists this flag and is never overridden again.
     daemonStopOnQuitDefaultApplied: z.boolean().catch(false),
   })
   .catch(() => ({
@@ -141,13 +99,6 @@ function coerceBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
 
-function coerceVolume(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return null;
-  }
-  return Math.min(1, Math.max(0, value));
-}
-
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error;
 }
@@ -157,8 +108,6 @@ function buildDefaultSettings(): StoredDesktopSettings {
     releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
     notifications: { ...DEFAULT_DESKTOP_SETTINGS.notifications },
     daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
-    attention: { ...DEFAULT_DESKTOP_SETTINGS.attention },
-    island: { ...DEFAULT_DESKTOP_SETTINGS.island },
   };
 }
 
@@ -176,20 +125,10 @@ function buildDefaultDocument(): PersistedDesktopSettingsDocument {
 function toDesktopSettings(stored: StoredDesktopSettings): DesktopSettings {
   return {
     releaseChannel: stored.releaseChannel,
-    notifications: {
-      enabled: stored.notifications.enabled,
-      playSound: stored.notifications.playSound,
-    },
+    notifications: { playSound: stored.notifications.playSound },
     daemon: {
       manageBuiltInDaemon: stored.daemon.manageBuiltInDaemon,
       keepRunningAfterQuit: stored.daemon.keepRunningAfterQuit,
-    },
-    attention: {
-      soundVolume: stored.attention.soundVolume,
-    },
-    island: {
-      enabled: stored.island.enabled,
-      showWhenFocused: stored.island.showWhenFocused,
     },
   };
 }
@@ -200,24 +139,15 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
   }
 
   const patch: DesktopSettingsPatch = {};
-
   const releaseChannel = coerceReleaseChannel(input.releaseChannel);
   if (releaseChannel) {
     patch.releaseChannel = releaseChannel;
   }
 
   if (isRecord(input.notifications)) {
-    const notificationsPatch: Partial<DesktopSettings["notifications"]> = {};
-    const enabled = coerceBoolean(input.notifications.enabled);
-    if (enabled !== null) {
-      notificationsPatch.enabled = enabled;
-    }
     const playSound = coerceBoolean(input.notifications.playSound);
     if (playSound !== null) {
-      notificationsPatch.playSound = playSound;
-    }
-    if (Object.keys(notificationsPatch).length > 0) {
-      patch.notifications = notificationsPatch;
+      patch.notifications = { playSound };
     }
   }
 
@@ -233,32 +163,6 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
     if (Object.keys(daemonPatch).length > 0) {
       patch.daemon = daemonPatch;
-    }
-  }
-
-  if (isRecord(input.attention)) {
-    const attentionPatch: Partial<DesktopSettings["attention"]> = {};
-    const soundVolume = coerceVolume(input.attention.soundVolume);
-    if (soundVolume !== null) {
-      attentionPatch.soundVolume = soundVolume;
-    }
-    if (Object.keys(attentionPatch).length > 0) {
-      patch.attention = attentionPatch;
-    }
-  }
-
-  if (isRecord(input.island)) {
-    const islandPatch: Partial<DesktopSettings["island"]> = {};
-    const enabled = coerceBoolean(input.island.enabled);
-    if (enabled !== null) {
-      islandPatch.enabled = enabled;
-    }
-    const showWhenFocused = coerceBoolean(input.island.showWhenFocused);
-    if (showWhenFocused !== null) {
-      islandPatch.showWhenFocused = showWhenFocused;
-    }
-    if (Object.keys(islandPatch).length > 0) {
-      patch.island = islandPatch;
     }
   }
 
@@ -295,8 +199,6 @@ function mergeDesktopSettings(
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
-    attention: { ...current.attention, ...patch.attention },
-    island: { ...current.island, ...patch.island },
   };
 }
 

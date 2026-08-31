@@ -19,7 +19,8 @@ import {
   estimateStreamItemHeight,
   shouldAdjustScrollForVirtualRowResize,
 } from "./web-virtualization";
-import type { StreamRenderInput, StreamStrategy, StreamViewportHandle } from "./strategy";
+import type { StreamRenderInput, StreamStrategy } from "./strategy";
+import type { ExtendedStreamViewportHandle } from "./viewport-handle-extensions";
 import { createStreamStrategy } from "./strategy";
 import {
   abandonHistoryStartPaginationRequest,
@@ -1148,7 +1149,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   ]);
 
   useEffect(() => {
-    const handle: StreamViewportHandle = {
+    const handle: ExtendedStreamViewportHandle = {
       scrollToBottom: () => {
         setFollowOutput(true);
         cancelPendingStickToBottom();

@@ -276,6 +276,7 @@ vi.mock("@/utils/confirm-dialog", () => ({
 }));
 
 import { ProvidersSection } from "./providers-section";
+import { createMutableDaemonConfig } from "@/test-utils/mutable-daemon-config";
 
 const claudeEntry: ProviderSnapshotEntry = {
   provider: "claude",
@@ -303,22 +304,9 @@ const disabledCodexEntry: ProviderSnapshotEntry = {
 };
 
 function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDaemonConfig {
-  return {
-    mcp: { injectIntoAgents: false },
-    browserTools: { enabled: false },
-    clientAccess: { requireApproval: true },
-    projectIndexing: { updateIntervalMinutes: 1440 },
-    relay: {
-      endpoints: [],
-      pairingBaseUrls: [],
-      local: { enabled: false, listen: "0.0.0.0:6769" },
-    },
+  return createMutableDaemonConfig({
     providers,
-    metadataGeneration: { providers: [] },
-    autoArchiveAfterMerge: false,
-    enableTerminalAgentHooks: false,
-    appendSystemPrompt: "",
-  };
+  });
 }
 
 function descendants(el: HTMLElement): HTMLElement[] {

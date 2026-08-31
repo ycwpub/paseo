@@ -1,14 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-
 function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }
-
 describe("extension server integration regressions", () => {
   test("advertises the extension protocol capabilities", () => {
     const websocketServer = source("./websocket-server.ts");
-
     for (const capability of [
       "projectCreateDirectoryless",
       "projectHierarchy",
@@ -54,10 +51,8 @@ describe("extension server integration regressions", () => {
       expect(websocketServer).toContain(`${capability}:`);
     }
   });
-
   test("boots workflow, memory, plugin, and Lark services", () => {
     const bootstrap = source("./bootstrap.ts");
-
     expect(bootstrap).toContain("new WorkflowService");
     expect(bootstrap).toContain("new PaseoMemoryService");
     expect(bootstrap).toContain("new UnifiedPluginService");
@@ -66,11 +61,9 @@ describe("extension server integration regressions", () => {
     expect(bootstrap).toContain("createWorkspaceLabelService({");
     expect(bootstrap).toContain("await workspaceLabelService.initialize()");
   });
-
   test("keeps main startup ordering and shared session services", () => {
     const bootstrap = source("./bootstrap.ts");
     const websocketServer = source("./websocket-server.ts");
-
     expect(bootstrap).toContain("startPaused: true");
     expect(bootstrap).toMatch(
       /await pluginService\.start\(\);\s+wsServer\.beginAcceptingConnections\(\);/,
@@ -87,10 +80,8 @@ describe("extension server integration regressions", () => {
     expect(websocketServer).toContain("directorySync: true");
     expect(websocketServer).toContain("{ workspaceLabels: true }");
   });
-
   test("routes workflow, memory, plugin, Lark, and reasoning requests", () => {
     const session = source("./session.ts");
-
     expect(session).toContain("this.workflowSession.handleListRequest");
     expect(session).toContain("this.workflowSession.handleRunRequest");
     expect(session).toContain("this.memorySession?.handleRequest");
@@ -98,11 +89,9 @@ describe("extension server integration regressions", () => {
     expect(session).toContain("this.larkChannelSession?.handleRequest");
     expect(session).toContain("this.reasoningTranslationSession.handleRequest");
   });
-
   test("executes HTTP routes through workflow or custom-node handlers", () => {
     const manager = source("./plugin/plugin-http-service-manager.ts");
     const customWorkflow = source("./plugin/plugin-http-custom-workflow.ts");
-
     expect(manager).toContain('handler.mode === "workflow"');
     expect(manager).toContain("materializePluginHttpCustomWorkflow");
     expect(customWorkflow).toContain("buildPluginHttpCustomWorkflow");

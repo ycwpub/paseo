@@ -6,7 +6,7 @@ protocols:
   - name: Paseo agent link
     schemes:
       - paseo
-afterPack: ./scripts/after-pack.js
+afterPack: ./scripts/packaged-runtime-after-pack.js
 afterSign: ./scripts/after-sign.js
 directories:
   output: release
@@ -47,8 +47,8 @@ mac:
   icon: assets/icon.icns
   hardenedRuntime: true
   notarize: true
-  entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.inherit.plist
+  entitlements: assets/entitlements.mac.runtime.plist
+  entitlementsInherit: assets/entitlements.mac.runtime.plist
   extraResources:
     - from: bin/paseo
       to: bin/paseo

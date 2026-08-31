@@ -5,7 +5,7 @@ import { getCompactionMarkerLabel } from "./message-compaction-label";
 
 describe("getCompactionMarkerLabel", () => {
   it("renders loading, automatic, manual, tokenized, and fallback labels", () => {
-    expect(getCompactionMarkerLabel({ status: "loading" })).toBe("Compacting context");
+    expect(getCompactionMarkerLabel({ status: "loading" })).toBe("Compacting...");
     expect(getCompactionMarkerLabel({ status: "completed", trigger: "auto" })).toBe(
       "Context automatically compacted",
     );

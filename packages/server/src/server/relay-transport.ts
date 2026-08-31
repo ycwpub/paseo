@@ -22,6 +22,7 @@ export interface RelayTransportOptions {
   daemonKeyPair?: KeyPair;
   onPairingBaseUrl?: (pairingBaseUrl: string) => void;
   createWebSocket?: RelayWebSocketFactory;
+  namespaceConnectionIds?: boolean;
 }
 
 export interface RelayTransportController {
@@ -164,6 +165,7 @@ export function startRelayTransport({
   daemonKeyPair,
   onPairingBaseUrl,
   createWebSocket = createDefaultRelayWebSocket,
+  namespaceConnectionIds = false,
 }: RelayTransportOptions): RelayTransportController {
   const relayLogger = logger.child({ module: "relay-transport" });
 
@@ -434,10 +436,14 @@ export function startRelayTransport({
       relayLogger.info({ connectionId }, "relay_data_connected");
       if (attached) return;
       attached = true;
-      const relayConnectionKey = `${relayUseTls ? "wss" : "ws"}://${relayEndpoint}:${connectionId}`;
+      const relayConnectionKey = namespaceConnectionIds
+        ? `${relayUseTls ? "wss" : "ws"}://${relayEndpoint}:${connectionId}`
+        : connectionId;
       const externalMetadata: ExternalSocketMetadata = {
         transport: "relay",
-        externalSessionKey: `relay:${relayConnectionKey}`,
+        externalSessionKey: namespaceConnectionIds
+          ? `relay:${relayConnectionKey}`
+          : `session:${connectionId}`,
         relayConnectionId: relayConnectionKey,
         ...(peer?.remoteAddress ? { remoteAddress: peer.remoteAddress } : {}),
         ...(peer?.remotePort !== null && peer?.remotePort !== undefined

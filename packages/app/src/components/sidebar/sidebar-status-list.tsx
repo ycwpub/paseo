@@ -852,7 +852,6 @@ function StatusWorkspaceRowInnerContent({
               contextMenuOpen={contextMenuOpen}
               onContextMenuOpenChange={onContextMenuOpenChange}
               workspace={workspace}
-              selected={selected}
               leadingProjectName={projectName}
               hostBadgeLabel={hostBadge?.label}
               serviceSummary={serviceSummary}
@@ -896,7 +895,6 @@ function StatusWorkspaceRowInnerContent({
                 {renderSlot ? (
                   <StatusWorkspaceActionSlot
                     workspace={workspace}
-                    selected={selected}
                     backdrop={backdrop}
                     trailing={trailing}
                     showBase={showTrailing}
@@ -927,7 +925,6 @@ function StatusWorkspaceRowInnerContent({
 
 function StatusWorkspaceActionSlot({
   workspace,
-  selected,
   backdrop,
   trailing,
   showBase,
@@ -947,7 +944,6 @@ function StatusWorkspaceActionSlot({
   archiveShortcutKeys,
 }: {
   workspace: SidebarWorkspaceEntry;
-  selected: boolean;
   backdrop: SidebarSurfaceBackdrop;
   trailing: SidebarWorkspaceTrailing;
   showBase: boolean;
@@ -982,9 +978,6 @@ function StatusWorkspaceActionSlot({
             workspaceKey={workspace.workspaceKey}
             serverId={workspace.serverId}
             workspaceId={workspace.workspaceId}
-            projectId={workspace.projectId}
-            workspaceName={workspace.name}
-            selected={selected}
             workspaceLabels={workspace.labels}
             onCopyPath={onCopyPath}
             onCopyBranchName={onCopyBranchName}

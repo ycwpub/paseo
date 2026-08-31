@@ -1,5 +1,4 @@
 import { expect, test, vi } from "vitest";
-import { TIMELINE_RESUME_FETCH_PAGE_SIZE } from "./history-fetch-policy";
 import type { ProjectedTimelineForwardFetchPlan } from "./timeline-sync-plan";
 import { createViewedTimelineSync } from "./viewed-timeline-sync";
 
@@ -77,7 +76,7 @@ class TimelineWorld {
     fetchLatestTail: (agentId) =>
       this.fetchTimeline(agentId, {
         direction: "tail",
-        limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+        limit: 40,
         projection: "projected",
       }),
     reportError: (error) => {
@@ -213,11 +212,7 @@ test("uses a tail fetch when an agent becomes visible", async () => {
   membership.succeed();
 
   const fetch = await world.nextFetch("agent-a");
-  expect(fetch.request).toEqual({
-    direction: "tail",
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
-    projection: "projected",
-  });
+  expect(fetch.request).toEqual({ direction: "tail", limit: 40, projection: "projected" });
   fetch.respond({ hasNewer: false });
 });
 
@@ -240,7 +235,7 @@ test("loads the cache before choosing the authoritative network request", async 
   expect(fetch.request).toEqual({
     direction: "after",
     cursor: { epoch: "cached-epoch", seq: 17 },
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: 40,
     projection: "projected",
   });
   fetch.respond({ hasNewer: false });
@@ -258,7 +253,7 @@ test("catches up after the restored cursor when an agent becomes visible", async
   expect(fetch.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 42 },
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: 40,
     projection: "projected",
   });
   fetch.respond({ hasNewer: false });
@@ -277,11 +272,7 @@ test("falls back to the latest tail when a restored cursor has more than one cat
   probe.respond({ hasNewer: true, seq: 82 });
 
   const fallback = await world.nextFetch("agent-a");
-  expect(fallback.request).toEqual({
-    direction: "tail",
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
-    projection: "projected",
-  });
+  expect(fallback.request).toEqual({ direction: "tail", limit: 40, projection: "projected" });
   fallback.respond({ hasNewer: false });
 });
 
@@ -302,7 +293,7 @@ test("a gap absorbed by a running tail is recovered after the tail completes", a
   expect(recovery.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 9 },
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: 40,
     projection: "projected",
   });
   recovery.respond({ hasNewer: false });
@@ -331,7 +322,7 @@ test("unchanged visible-set publication does not cancel paged catch-up", async (
   expect(secondPage.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 5 },
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: 40,
     projection: "projected",
   });
   world.expectNoPendingMembership();
@@ -532,7 +523,7 @@ test("plugin catalog changes reproject visible timelines from the latest tail", 
 
   expect(reprojection.request).toEqual({
     direction: "tail",
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: 40,
     projection: "projected",
   });
   reprojection.respond({ hasNewer: false });
@@ -595,13 +586,13 @@ test("gap recovery supersedes completed catch-up and pages through the current t
     {
       direction: "after",
       cursor: { epoch: "epoch-agent-a", seq: 10 },
-      limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+      limit: 40,
       projection: "projected",
     },
     {
       direction: "after",
       cursor: { epoch: "epoch-agent-a", seq: 15 },
-      limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+      limit: 40,
       projection: "projected",
     },
   ]);
@@ -890,7 +881,7 @@ test("legacy delivery skips subscription RPCs while retaining visibility catch-u
   expect(recovery.request).toEqual({
     direction: "after",
     cursor: { epoch: "epoch-agent-a", seq: 10 },
-    limit: TIMELINE_RESUME_FETCH_PAGE_SIZE,
+    limit: 40,
     projection: "projected",
   });
 });

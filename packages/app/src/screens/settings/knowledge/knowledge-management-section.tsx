@@ -110,7 +110,7 @@ function buildKnowledgeSyncTarget(input: {
     ? {
         scope: "project",
         projectId: targetHost.projectId,
-        repoRoot: targetHost.repoRoot.trim() || targetHost.projectPath,
+        repoRoot: targetHost.repoRoot.trim() || targetHost.projectPath || "",
       }
     : null;
 }
@@ -467,7 +467,8 @@ function ProjectKnowledgeManager({
   const supportsProjectConfigById = useHostFeature(serverId, "projectConfigById");
   const targetSupportsEditing =
     target.isOnline &&
-    (target.repoRoot.trim().length > 0 || (target.isDirectoryless && supportsProjectConfigById));
+    (target.repoRoot.trim().length > 0 ||
+      (target.isDirectoryless === true && supportsProjectConfigById));
   const queryKey = useMemo(
     () => ["project-config", serverId, target.projectId] as const,
     [serverId, target.projectId],

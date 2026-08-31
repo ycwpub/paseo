@@ -88,7 +88,7 @@ import type {
   ProjectRegistry,
   WorkspaceRegistry,
 } from "../../workspace-registry.js";
-import { resolveWorktreeSourceCwd } from "../../workspace-source.js";
+import { resolveProjectWorktreeSourceCwd } from "../../project/project-worktree-source.js";
 import type { WorkspaceScriptsService } from "../../session/workspace-scripts/workspace-scripts-service.js";
 import {
   type ArchiveCommandDependencies,
@@ -1461,7 +1461,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
           if (!options.projectRegistry) {
             throw new Error("Project registry is not configured");
           }
-          cwd = await resolveWorktreeSourceCwd({ projectId }, options.projectRegistry);
+          cwd = await resolveProjectWorktreeSourceCwd({ projectId }, options.projectRegistry);
         }
         const worktreeTarget = resolveWorkspaceWorktreeTarget({
           mode,

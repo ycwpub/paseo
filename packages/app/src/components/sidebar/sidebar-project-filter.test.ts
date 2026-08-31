@@ -7,7 +7,6 @@ function workspace(workspaceId: string, projectViewKey: string): SidebarWorkspac
     workspaceKey: `host:${workspaceId}`,
     serverId: "host",
     workspaceId,
-    projectId: projectViewKey,
     projectViewKey,
     projectName: projectViewKey,
     projectRootPath: `/repo/${projectViewKey}`,

@@ -4,6 +4,7 @@
 import React, { type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PresentedChatOutlinePrompt } from "./loaded-prompt-model";
 import { createActivePromptPublisher } from "./model";
 import { ChatOutlineRail } from "./rail.web";
 
@@ -96,18 +97,19 @@ describe("ChatOutlineRail", () => {
   afterEach(cleanup);
 
   it("shows the question, answer, model, and time in the focused prompt card", () => {
+    const prompts: PresentedChatOutlinePrompt[] = [
+      {
+        seq: 7,
+        timestamp: "saved-time",
+        preview: "如何修复连接超时？",
+        answerPreview: "已增加重连退避并修复连接状态。",
+        model: "gpt-5.6",
+      },
+    ];
     render(
       <ChatOutlineRail
-        prompts={[
-          {
-            seq: 7,
-            timestamp: "saved-time",
-            preview: "如何修复连接超时？",
-            answerPreview: "已增加重连退避并修复连接状态。",
-          },
-        ]}
+        prompts={prompts}
         activePrompt={createActivePromptPublisher()}
-        model="gpt-5.6"
         onJumpToPrompt={vi.fn()}
       />,
     );

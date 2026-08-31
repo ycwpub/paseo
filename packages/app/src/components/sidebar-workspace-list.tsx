@@ -69,6 +69,7 @@ import {
   useSidebarViewStore,
   type SidebarGroupMode,
 } from "@/stores/sidebar-view-store";
+import { useSidebarSortStore } from "@/stores/sidebar-sort-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import {
   ContextMenu,
@@ -129,11 +130,11 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useClearWorkspaceAttention } from "@/hooks/use-clear-workspace-attention";
 import type { PrHint } from "@/git/use-pr-status-query";
 import {
-  buildSidebarProjectRowModel,
   resolveSidebarProjectLocalPath,
   type SidebarProjectHostTarget,
   type SidebarProjectIconTarget,
 } from "@/utils/sidebar-project-row-model";
+import { buildFeatureSidebarProjectRowModel } from "@/utils/feature-sidebar-project-row-model";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
@@ -613,7 +614,6 @@ function ProjectMenuItems({
 
 function WorkspaceRowRightGroup({
   workspace,
-  selected,
   backdrop,
   isHovered,
   isTouchPlatform,
@@ -633,7 +633,6 @@ function WorkspaceRowRightGroup({
   onTogglePin,
 }: {
   workspace: SidebarWorkspaceEntry;
-  selected: boolean;
   backdrop: SidebarSurfaceBackdrop;
   isHovered: boolean;
   isTouchPlatform: boolean;
@@ -692,9 +691,6 @@ function WorkspaceRowRightGroup({
                 workspaceKey={workspace.workspaceKey}
                 serverId={workspace.serverId}
                 workspaceId={workspace.workspaceId}
-                projectId={workspace.projectId}
-                workspaceName={workspace.name}
-                selected={selected}
                 workspaceLabels={workspace.labels}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}
@@ -1148,7 +1144,6 @@ function WorkspaceRowInner({
               contextMenuOpen={contextMenuOpen}
               onContextMenuOpenChange={onContextMenuOpenChange}
               workspace={workspace}
-              selected={selected}
               leadingProjectName={leadingProjectName}
               hostBadgeLabel={hostBadge?.label}
               workspaceKey={workspace.workspaceKey}
@@ -1191,7 +1186,6 @@ function WorkspaceRowInner({
               >
                 <WorkspaceRowRightGroup
                   workspace={workspace}
-                  selected={selected}
                   backdrop={backdrop}
                   isHovered={isHovered}
                   isTouchPlatform={isTouchPlatform}
@@ -1603,7 +1597,7 @@ function ProjectBlock({
   } = useLimitedSidebarGroup(project.workspaces);
   const rowModel = useMemo(
     () =>
-      buildSidebarProjectRowModel({
+      buildFeatureSidebarProjectRowModel({
         project,
         collapsed,
         supportsMultiplicityByServerId,
@@ -2140,7 +2134,7 @@ function ProjectModeList({
   const setProjectOrder = useSidebarOrderStore((state) => state.setProjectOrder);
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder);
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder);
-  const setSortMode = useSidebarViewStore((state) => state.setSortMode);
+  const setSortMode = useSidebarSortStore((state) => state.setSortMode);
 
   const isWorkspaceRoute = useMemo(
     () => Boolean(pathname && parseHostWorkspaceRouteFromPathname(pathname)),

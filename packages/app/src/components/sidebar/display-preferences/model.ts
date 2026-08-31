@@ -8,7 +8,6 @@ import {
   useSidebarViewStore,
   type SidebarGroupMode,
   type SidebarLabelFilter,
-  type SidebarSortMode,
 } from "@/stores/sidebar-view-store";
 import { DEFAULT_SIDEBAR_CHECKS_DISPLAY, type SidebarChecksDisplay } from "./checks-display";
 import { DEFAULT_SIDEBAR_ROW_ITEMS, type SidebarRowItem, type SidebarRowItems } from "./row-items";
@@ -19,8 +18,6 @@ export type SidebarTrailingChoice = Exclude<SidebarWorkspaceTrailing, "none">;
 export interface SidebarDisplayPreferences {
   grouping: SidebarGroupMode;
   setGrouping: (mode: SidebarGroupMode) => void;
-  sorting: SidebarSortMode;
-  setSorting: (mode: SidebarSortMode) => void;
   titleSource: WorkspaceTitleSource;
   setTitleSource: (source: WorkspaceTitleSource) => void;
   rowItems: SidebarRowItems;
@@ -53,8 +50,6 @@ export interface SidebarDisplayPreferences {
 export function useSidebarDisplayPreferences(): SidebarDisplayPreferences {
   const grouping = useSidebarViewStore((state) => state.groupMode);
   const setGrouping = useSidebarViewStore((state) => state.setGroupMode);
-  const sorting = useSidebarViewStore((state) => state.sortMode);
-  const setSorting = useSidebarViewStore((state) => state.setSortMode);
   const hostFilters = useSidebarViewStore((state) => state.hostFilters);
   const toggleHostFilter = useSidebarViewStore((state) => state.toggleHostFilter);
   const clearHostFilters = useSidebarViewStore((state) => state.clearHostFilters);
@@ -111,8 +106,6 @@ export function useSidebarDisplayPreferences(): SidebarDisplayPreferences {
     () => ({
       grouping,
       setGrouping,
-      sorting,
-      setSorting,
       titleSource: workspaceTitleSource,
       setTitleSource,
       rowItems: sidebarRowItems,
@@ -134,8 +127,6 @@ export function useSidebarDisplayPreferences(): SidebarDisplayPreferences {
     [
       grouping,
       setGrouping,
-      sorting,
-      setSorting,
       workspaceTitleSource,
       setTitleSource,
       sidebarRowItems,

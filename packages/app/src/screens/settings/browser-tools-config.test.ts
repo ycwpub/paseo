@@ -6,24 +6,12 @@ import {
   getBrowserToolsCardState,
   getBrowserToolsMutationViewState,
 } from "./browser-tools-config";
+import { createMutableDaemonConfig } from "@/test-utils/mutable-daemon-config";
 
 function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
-  return {
-    mcp: { injectIntoAgents: false },
+  return createMutableDaemonConfig({
     browserTools: { enabled: browserToolsEnabled },
-    clientAccess: { requireApproval: true },
-    projectIndexing: { updateIntervalMinutes: 1440 },
-    relay: {
-      endpoints: [],
-      pairingBaseUrls: [],
-      local: { enabled: false, listen: "0.0.0.0:6769" },
-    },
-    providers: {},
-    metadataGeneration: { providers: [] },
-    autoArchiveAfterMerge: false,
-    enableTerminalAgentHooks: false,
-    appendSystemPrompt: "",
-  };
+  });
 }
 
 describe("browser tools opt-in config", () => {
@@ -53,12 +41,8 @@ describe("browser tools opt-in config", () => {
   });
 
   it("writes daemon.browserTools.enabled when toggled", () => {
-    expect(createBrowserToolsPatch(true)).toEqual({
-      browserTools: { enabled: true },
-    });
-    expect(createBrowserToolsPatch(false)).toEqual({
-      browserTools: { enabled: false },
-    });
+    expect(createBrowserToolsPatch(true)).toEqual({ browserTools: { enabled: true } });
+    expect(createBrowserToolsPatch(false)).toEqual({ browserTools: { enabled: false } });
   });
 
   it("shows loading and disables the toggle while browser tool settings save", () => {
@@ -71,10 +55,7 @@ describe("browser tools opt-in config", () => {
 
   it("shows the save error when browser tool settings fail", () => {
     expect(
-      getBrowserToolsMutationViewState({
-        isPending: false,
-        error: new Error("Disk full"),
-      }),
+      getBrowserToolsMutationViewState({ isPending: false, error: new Error("Disk full") }),
     ).toEqual({
       isSwitchDisabled: false,
       loadingText: null,

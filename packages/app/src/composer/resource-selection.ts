@@ -1,9 +1,27 @@
 import type { Assistant, AssistantResourceSelection } from "@getpaseo/protocol/messages";
+import type { QueuedComposerMessage } from "@/composer/actions";
+import type { MessagePayload } from "@/composer/types";
+import type { PendingCreateAttempt } from "@/stores/create-flow-store";
 
 export interface ResolvedSessionResourceSelection {
   selectedMcpServerIds: string[];
   selectedSkillIds: string[];
 }
+
+export interface OptionalComposerResourceSelection {
+  selectedMcpServerIds?: string[];
+  selectedSkillIds?: string[];
+}
+
+export type ResourceAwareMessagePayload = MessagePayload & OptionalComposerResourceSelection;
+
+export type ResourceAwareQueuedComposerMessage = QueuedComposerMessage &
+  OptionalComposerResourceSelection & {
+    isEditing?: boolean;
+  };
+
+export type ResourceAwarePendingCreateAttempt = PendingCreateAttempt &
+  OptionalComposerResourceSelection;
 
 export function resolveSessionResourceSelectionFromAssistant(input: {
   assistant: Pick<Assistant, "resourceSelection"> | null;

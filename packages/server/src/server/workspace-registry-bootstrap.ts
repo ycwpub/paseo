@@ -8,10 +8,9 @@ import type { AgentStorage } from "./agent/agent-storage.js";
 import { classifyDirectoryForProjectMembership } from "./workspace-registry-bootstrap-legacy.js";
 import { generateWorkspaceId } from "./workspace-registry-model.js";
 import { backfillWorkspaceIdForLegacyAgents } from "./migrations/backfill-workspace-id.migration.js";
-import { migrateManagedProjectStorage } from "./migrations/migrate-managed-project-storage.migration.js";
-import { migrateLegacyProjectIds } from "./migrations/migrate-project-ids.migration.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import {
+  createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
   type ProjectRegistry,
   type WorkspaceRegistry,
@@ -46,7 +45,6 @@ function resolveAgentUpdatedAt(record: StoredAgentRecord): string {
   return record.lastActivityAt || record.updatedAt || record.createdAt || new Date(0).toISOString();
 }
 
-// oxlint-disable-next-line complexity -- Bootstrap intentionally coordinates migration, recovery, and materialization in one ordered transaction.
 export async function bootstrapWorkspaceRegistries(options: {
   serverId?: string;
   paseoHome: string;
@@ -62,8 +60,6 @@ export async function bootstrapWorkspaceRegistries(options: {
   ]);
 
   await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()]);
-  await migrateLegacyProjectIds(options);
-  await migrateManagedProjectStorage(options);
 
   // COMPAT(worktree-branch-identity): added in v0.4.0 on 2026-08-15; remove after
   // 2027-02-15. Older worktrees did not pin branch-off/check-out branch identity.
@@ -174,49 +170,34 @@ export async function bootstrapWorkspaceRegistries(options: {
     });
   }
 
-  const projectIdsByLegacyKey = new Map<string, string>();
-  for (const [legacyProjectKey, projectRange] of projectRanges) {
-    const membership = workspaceUpsertInputs.find(
-      (input) => input.membership.projectKey === legacyProjectKey,
-    )?.membership;
-    if (!membership) {
-      continue;
-    }
-    const createdAt = projectRange.createdAt ?? new Date().toISOString();
-    const updatedAt = projectRange.updatedAt ?? createdAt;
-    const project = await options.projectRegistry.getOrCreateActiveByRoot({
-      rootPath: membership.projectRootPath,
-      kind: membership.projectKind,
-      displayName: membership.projectName,
-      timestamp: createdAt,
-    });
-    await options.projectRegistry.upsert({
-      ...project,
-      kind: membership.projectKind,
-      displayName: membership.projectName,
-      createdAt: minIsoDate(project.createdAt, createdAt) ?? createdAt,
-      updatedAt: maxIsoDate(project.updatedAt, updatedAt) ?? updatedAt,
-    });
-    projectIdsByLegacyKey.set(legacyProjectKey, project.projectId);
-  }
-
   await Promise.all(
     workspaceUpsertInputs.flatMap(
       ({ workspaceId, membership, workspaceCwd, createdAt, updatedAt }) => {
-        const projectId = projectIdsByLegacyKey.get(membership.projectKey);
-        if (!projectId) {
-          throw new Error(`Missing opaque project ID for ${membership.projectKey}`);
-        }
+        const projectRange = projectRanges.get(membership.projectKey) ?? {
+          createdAt: null,
+          updatedAt: null,
+        };
         return [
           options.workspaceRegistry.upsert(
             createPersistedWorkspaceRecord({
               workspaceId,
-              projectId,
+              projectId: membership.projectId,
               cwd: workspaceCwd,
               kind: membership.workspaceKind,
               displayName: membership.workspaceDisplayName,
               createdAt,
               updatedAt,
+            }),
+          ),
+          options.projectRegistry.upsert(
+            createPersistedProjectRecord({
+              projectId: membership.projectId,
+              rootPath: membership.projectRootPath,
+              kind: membership.projectKind,
+              displayName: membership.projectName,
+              projectKey: membership.projectKey,
+              createdAt: projectRange.createdAt ?? createdAt,
+              updatedAt: projectRange.updatedAt ?? updatedAt,
             }),
           ),
         ];

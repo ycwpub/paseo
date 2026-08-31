@@ -45,6 +45,7 @@ import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
 import { useProjects } from "@/hooks/use-projects";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
+import { shouldShowScheduleAssistantField } from "@/schedules/schedule-assistant-field";
 import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
 import { useScheduleFormModel } from "@/schedules/use-schedule-form-model";
 import { useScheduleFormProviderSnapshot } from "@/schedules/use-schedule-form-provider-snapshot";
@@ -887,7 +888,7 @@ function ScheduleTargetFields({
         />
       ) : null}
 
-      {state.disclosure.showAssistantField && state.selectedServerId ? (
+      {shouldShowScheduleAssistantField(state) && state.selectedServerId ? (
         <Field label="助手">
           <View style={styles.assistantField}>
             <AssistantSelector

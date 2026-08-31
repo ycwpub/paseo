@@ -31,9 +31,9 @@ export function buildKnowledgeProjectTargets(
       targets.set(host.projectId, {
         projectId: host.projectId,
         label: host.projectCustomName?.trim() || host.projectName,
-        description: host.repoRoot.trim() || host.projectPath,
+        description: host.repoRoot.trim() || host.projectPath || "",
         repoRoot: host.repoRoot,
-        isDirectoryless: host.isDirectoryless,
+        isDirectoryless: host.isDirectoryless === true,
         isOnline: host.isOnline,
       });
     }

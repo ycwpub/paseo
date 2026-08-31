@@ -1,5 +1,4 @@
-import { buildStatusGroups, type StatusGroup } from "@/hooks/sidebar-status-view-model";
-import { splitHiddenSidebarProjects } from "@/hooks/sidebar-hidden-projects";
+import { buildStatusGroups } from "@/hooks/sidebar-status-view-model";
 import {
   splitPinnedSidebarGroups,
   type PinnedSidebarGroups,
@@ -20,13 +19,10 @@ import {
   type SidebarShortcutSection,
 } from "@/utils/sidebar-shortcuts";
 import { statusWorkspaceGroups, type SidebarWorkspaceGroup } from "./sidebar-labels";
-import { flattenVisibleProjectHierarchy } from "@/projects/project-hierarchy";
 
 export interface SidebarProjection {
   pinnedGroups: PinnedSidebarGroups;
   workspaceGroups: SidebarWorkspaceGroup[];
-  statusGroups: StatusGroup[];
-  hiddenProjects: SidebarProjectEntry[];
   /**
    * The project icons this projection needs fetched, keyed by `projectViewKey` — one per project,
    * whatever the mode groups by. It sits here rather than beside `useProjectIcons` in the list
@@ -49,34 +45,22 @@ export interface SidebarProjectionInput {
   pinnedCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
-  hiddenProjectKeys?: ReadonlySet<string>;
 }
 
 export function buildSidebarProjection(input: SidebarProjectionInput): SidebarProjection {
-  const { visibleProjects, hiddenProjects } = splitHiddenSidebarProjects(
-    input.projects,
-    input.hiddenProjectKeys ?? new Set(),
-  );
   const pinnedGroups = splitPinnedSidebarGroups({
-    projects: visibleProjects,
+    projects: input.projects,
     keys: input.pinnedKeys,
     pinnedWorkspaceOrder: input.pinnedWorkspaceOrder,
   });
   const pinnedWorkspaceKeys = new Set(input.pinnedKeys.pinnedWorkspaceKeys);
-  const hiddenProjectViewKeys = new Set(hiddenProjects.map((project) => project.viewKey));
   const unpinnedWorkspaces = Array.from(input.workspaceEntriesByKey.values()).filter(
-    (workspace) =>
-      !pinnedWorkspaceKeys.has(workspace.workspaceKey) &&
-      !hiddenProjectViewKeys.has(workspace.projectViewKey),
+    (workspace) => !pinnedWorkspaceKeys.has(workspace.workspaceKey),
   );
   // One switch decides both what the list groups by and what the keyboard shortcuts walk, so the
   // two cannot disagree and a new grouping mode is a compile error here rather than a silent
   // fall-through to the project rows.
   const workspaceGroups = buildWorkspaceGroups(input, unpinnedWorkspaces);
-  const statusGroups =
-    input.groupMode === "status"
-      ? buildStatusGroups(unpinnedWorkspaces, input.projectNamesByViewKey)
-      : [];
 
   const sections: SidebarShortcutSection[] = [];
   if (!input.pinnedCollapsed) {
@@ -84,10 +68,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   }
   if (input.groupMode === "project") {
     sections.push(
-      ...flattenVisibleProjectHierarchy(
-        pinnedGroups.unpinnedProjects,
-        input.collapsedProjectKeys,
-      ).map((project) => ({
+      ...pinnedGroups.unpinnedProjects.map((project) => ({
         workspaces: project.workspaces,
         collapsed: input.collapsedProjectKeys.has(project.viewKey),
       })),
@@ -104,9 +85,7 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   return {
     pinnedGroups,
     workspaceGroups,
-    statusGroups,
-    hiddenProjects,
-    projectIconTargets: resolveSidebarProjectIconTargets(visibleProjects),
+    projectIconTargets: resolveSidebarProjectIconTargets(input.projects),
     shortcutModel: buildSidebarShortcutSections({ sections }),
   };
 }

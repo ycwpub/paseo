@@ -15,11 +15,8 @@ import {
   findPaneById,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
-import {
-  openComposerChanges,
-  openWorkspaceChanges,
-  openWorkspacePullRequest,
-} from "@/workspace-tabs/open-supporting-view";
+import { openComposerChanges, openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
+import { openProjectPullRequest } from "@/workspace-tabs/pull-request-navigation";
 
 const WORKSPACE_KEY = "server-1:workspace-1";
 const CHECKOUT = { serverId: "server-1", cwd: "/tmp/repo", isGit: true };
@@ -112,7 +109,7 @@ describe("openComposerChanges", () => {
   });
 });
 
-describe("openWorkspacePullRequest", () => {
+describe("openProjectPullRequest", () => {
   const input = {
     isCompact: false,
     supportsPaneSplits: true,
@@ -123,7 +120,7 @@ describe("openWorkspacePullRequest", () => {
   it.each(["main", "side", "explorer"] as const)(
     "opens the compact PR view in Explorer when the desktop preference is %s",
     (destination) => {
-      openWorkspacePullRequest({ ...input, isCompact: true, destination });
+      openProjectPullRequest({ ...input, isCompact: true, destination });
 
       expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
       expect(usePanelStore.getState().explorerTab).toBe("pr");
@@ -132,7 +129,7 @@ describe("openWorkspacePullRequest", () => {
   );
 
   it("opens PRs in Explorer by default", () => {
-    openWorkspacePullRequest({
+    openProjectPullRequest({
       ...input,
       destination: DEFAULT_APP_SETTINGS.pullRequestOpenLocation,
     });
@@ -153,7 +150,7 @@ describe("openWorkspacePullRequest", () => {
   });
 
   it("opens PRs in the main panel when configured", () => {
-    openWorkspacePullRequest({ ...input, destination: "main" });
+    openProjectPullRequest({ ...input, destination: "main" });
 
     const state = useWorkspaceLayoutStore.getState();
     const layout = state.layoutByWorkspace[WORKSPACE_KEY];
@@ -169,7 +166,7 @@ describe("openWorkspacePullRequest", () => {
   });
 
   it("opens PRs in the side panel when configured", () => {
-    openWorkspacePullRequest({ ...input, destination: "side" });
+    openProjectPullRequest({ ...input, destination: "side" });
 
     const state = useWorkspaceLayoutStore.getState();
     const layout = state.layoutByWorkspace[WORKSPACE_KEY];

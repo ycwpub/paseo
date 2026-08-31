@@ -88,7 +88,8 @@ import {
   type WebSocketRuntimeCounters,
   type WebSocketRuntimeDiagnosticSnapshot,
 } from "./websocket/runtime-metrics.js";
-import { ProviderUsageService } from "../services/quota-fetcher/service.js";
+import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
+import { createCachedProviderUsageService } from "../services/quota-fetcher/cached-service.js";
 import { getProcessMemoryDiagnostics, getProcessUptimeSeconds } from "./process-diagnostics.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
@@ -824,7 +825,7 @@ export class VoiceAssistantWebSocketServer {
       });
     });
 
-    this.providerUsageService = new ProviderUsageService({
+    this.providerUsageService = createCachedProviderUsageService({
       logger: this.logger,
       paseoHome: this.paseoHome,
     });

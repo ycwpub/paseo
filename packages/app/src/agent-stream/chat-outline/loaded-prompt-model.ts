@@ -5,6 +5,10 @@ export type LoadedChatOutlinePrompt = AgentTimelinePromptIndexPayload["prompts"]
   answerPreview?: string;
 };
 
+export type PresentedChatOutlinePrompt = LoadedChatOutlinePrompt & {
+  model?: string | null;
+};
+
 const PROMPT_PREVIEW_MAX_LENGTH = 120;
 const ANSWER_PREVIEW_MAX_LENGTH = 240;
 
@@ -96,4 +100,21 @@ export function mergeChatOutlinePrompts(
     );
   }
   return [...prompts.values()].sort((left, right) => left.seq - right.seq);
+}
+
+export function presentChatOutlinePrompts(
+  prompts: readonly LoadedChatOutlinePrompt[],
+  model: string | null,
+): PresentedChatOutlinePrompt[] {
+  return prompts.map((prompt) => ({ ...prompt, model }));
+}
+
+export function readChatOutlinePromptPresentation(
+  prompt: AgentTimelinePromptIndexPayload["prompts"][number],
+): Pick<PresentedChatOutlinePrompt, "answerPreview" | "model"> {
+  const presented = prompt as PresentedChatOutlinePrompt;
+  return {
+    answerPreview: presented.answerPreview,
+    model: presented.model,
+  };
 }

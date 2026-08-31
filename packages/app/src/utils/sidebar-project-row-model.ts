@@ -42,24 +42,6 @@ function hostTarget(input: {
   };
 }
 
-function workspaceTarget(input: {
-  serverId: string;
-  projectId: string;
-  iconWorkingDir: string;
-  sourceDirectory?: string;
-  customIconRevision?: string | null;
-}): SidebarProjectHostTarget | null {
-  if (!input.serverId.trim() || !input.projectId.trim()) {
-    return null;
-  }
-  return {
-    serverId: input.serverId,
-    projectId: input.projectId,
-    iconWorkingDir: input.sourceDirectory?.trim() || input.iconWorkingDir.trim(),
-    customIconRevision: input.customIconRevision,
-  };
-}
-
 export function resolveSidebarProjectIconTarget(
   project: SidebarProjectEntry,
 ): SidebarProjectHostTarget | null {
@@ -105,15 +87,13 @@ function resolveNewWorkspaceTarget(
   supportsMultiplicityByServerId: ReadonlyMap<string, boolean>,
 ): SidebarProjectHostTarget | null {
   for (const host of project.hosts) {
-    const supportsMultiplicity = supportsMultiplicityByServerId.get(host.serverId) === true;
-    if (host.worktreeSupport === "unsupported" && !supportsMultiplicity) {
+    if (
+      host.worktreeSupport === "unsupported" &&
+      !supportsMultiplicityByServerId.get(host.serverId)
+    ) {
       continue;
     }
-    const sourceDirectory = host.sourceDirectory?.trim() || host.iconWorkingDir.trim();
-    if (!sourceDirectory && !supportsMultiplicity) {
-      continue;
-    }
-    const target = workspaceTarget(host);
+    const target = hostTarget(host);
     if (target) return target;
   }
   return null;

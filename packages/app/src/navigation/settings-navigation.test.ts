@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { returnFromSettings } from "./settings-navigation";
+import { returnFromSettings } from "./settings-feature-navigation";
 
 const mocks = vi.hoisted(() => ({
   dismissTo: vi.fn(),

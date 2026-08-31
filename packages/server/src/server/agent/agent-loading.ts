@@ -4,12 +4,14 @@ import type { AgentProvider } from "./agent-sdk-types.js";
 import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 import {
-  buildConfigOverrides,
-  buildSessionConfig,
   extractTimestamps,
   isStoredAgentProviderAvailable,
   toAgentPersistenceHandle,
 } from "../persistence-hooks.js";
+import {
+  buildProjectAwareConfigOverrides,
+  buildProjectAwareSessionConfig,
+} from "./project-aware-persistence-config.js";
 
 interface PendingAgentInitialization {
   promise: Promise<ManagedAgent>;
@@ -107,14 +109,14 @@ export async function ensureAgentLoaded(
     if (handle) {
       snapshot = await deps.agentManager.resumeAgentFromPersistence(
         handle,
-        buildConfigOverrides(record),
+        buildProjectAwareConfigOverrides(record),
         agentId,
         extractTimestamps(record),
         record.archivedAt ? { purpose: "history" } : undefined,
       );
       deps.logger.info({ agentId, provider: record.provider }, "Agent resumed from persistence");
     } else {
-      const config = buildSessionConfig(record, {
+      const config = buildProjectAwareSessionConfig(record, {
         validProviders,
       });
       if (!config) {

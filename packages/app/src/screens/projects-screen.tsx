@@ -11,7 +11,7 @@ import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
 import { isProjectDirectoryTimeout } from "@/projects/load-error";
 import { settingsStyles } from "@/styles/settings";
-import { openProjectSettings } from "@/navigation/settings-navigation";
+import { openProjectSettings } from "@/navigation/settings-feature-navigation";
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
 
 interface ProjectsScreenProps {

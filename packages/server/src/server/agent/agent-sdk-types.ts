@@ -393,7 +393,7 @@ export interface CompactionTimelineItem {
 export type AgentTimelineItem =
   | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
-  | { type: "reasoning"; text: string; source?: "thinking" | "text" }
+  | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
   | { type: "error"; message: string }
@@ -576,16 +576,6 @@ export interface ImportedProviderSession {
 export interface AgentSessionConfig {
   provider: AgentProvider;
   cwd: string;
-  /**
-   * Project-level repository roots that belong to the same logical Project.
-   * Providers adapt roots other than cwd to their native multi-directory access controls.
-   */
-  writableProjectDirectories?: string[];
-  /**
-   * Project-level reference roots that agents may inspect but must never modify.
-   * Providers adapt these roots to native read-only filesystem controls.
-   */
-  readOnlyProjectDirectories?: string[];
   /**
    * Provider-agnostic system/developer instruction string.
    * Mapped by each provider to its native instruction field.

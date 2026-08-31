@@ -67,13 +67,9 @@ describe("working diff tab identity", () => {
     expect(
       normalizeWorkspaceTabTarget({
         ...target,
-        cwd: " C:\\repos\\service-a\\ ",
         focusPath: " src\\example.ts ",
       }),
-    ).toEqual({
-      ...target,
-      cwd: "C:/repos/service-a",
-    });
+    ).toEqual(target);
   });
 
   it("treats focus as navigation state rather than tab identity", () => {

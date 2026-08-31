@@ -16,15 +16,17 @@ import { sortSidebarProjectsByActivity } from "@/hooks/sidebar-workspaces-view-m
 import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entries";
 import { usePinnedSidebarKeys, type PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
+import { setWorkspaceGroupsCollapsed } from "@/stores/sidebar-collapsed-sections-store/feature-state";
 import {
   hasActiveSidebarLabelFilter,
   useSidebarViewStore,
   type SidebarGroupMode,
 } from "@/stores/sidebar-view-store";
+import { useSidebarSortStore } from "@/stores/sidebar-sort-store";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import { useSidebarHiddenProjectsStore } from "@/stores/sidebar-hidden-projects-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
-import { buildSidebarProjection } from "./sidebar-projection";
+import { buildFeatureSidebarProjection } from "./feature-sidebar-projection";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
 import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
@@ -68,7 +70,7 @@ export function SidebarModelProvider({
 }) {
   const list = useSidebarWorkspacesList({ enabled: active });
   const groupMode = useSidebarViewStore((state) => state.groupMode);
-  const sortMode = useSidebarViewStore((state) => state.sortMode);
+  const sortMode = useSidebarSortStore((state) => state.sortMode);
   const labelFilter = useSidebarViewStore((state) => state.labelFilter);
   const projectFilters = useSidebarViewStore((state) => state.projectFilters);
   const reconcileLabelFilter = useSidebarViewStore((state) => state.reconcileLabelFilter);
@@ -83,9 +85,6 @@ export function SidebarModelProvider({
   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
   const toggleProjectCollapsed = useSidebarCollapsedSectionsStore(
     (state) => state.toggleProjectCollapsed,
-  );
-  const setWorkspaceGroupsCollapsed = useSidebarCollapsedSectionsStore(
-    (state) => state.setWorkspaceGroupsCollapsed,
   );
   const hiddenProjectKeys = useSidebarHiddenProjectsStore((state) => state.hiddenProjectKeys);
   const availableLabelNames = useMemo(
@@ -196,7 +195,10 @@ export function SidebarModelProvider({
       filteredWorkspaceEntriesByKey,
     ],
   );
-  const projection = useMemo(() => buildSidebarProjection(projectionInput), [projectionInput]);
+  const projection = useMemo(
+    () => buildFeatureSidebarProjection(projectionInput),
+    [projectionInput],
+  );
   const projectGroupKeys = useMemo(
     () => projection.pinnedGroups.unpinnedProjects.map((project) => project.viewKey),
     [projection.pinnedGroups.unpinnedProjects],
@@ -213,13 +215,16 @@ export function SidebarModelProvider({
     );
   const setAllWorkspaceGroupsCollapsed = useCallback(
     (collapsed: boolean) => {
-      setWorkspaceGroupsCollapsed(
-        groupMode === "project" ? projectGroupKeys : [],
-        groupMode === "status" ? statusGroupKeys : [],
-        collapsed,
+      useSidebarCollapsedSectionsStore.setState((state) =>
+        setWorkspaceGroupsCollapsed(
+          state,
+          groupMode === "project" ? projectGroupKeys : [],
+          groupMode === "status" ? statusGroupKeys : [],
+          collapsed,
+        ),
       );
     },
-    [groupMode, projectGroupKeys, setWorkspaceGroupsCollapsed, statusGroupKeys],
+    [groupMode, projectGroupKeys, statusGroupKeys],
   );
   const value = useMemo(
     () => ({

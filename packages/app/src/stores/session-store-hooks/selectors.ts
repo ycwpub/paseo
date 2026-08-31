@@ -1,9 +1,9 @@
 import equal from "fast-deep-equal";
 import {
-  buildWorkspaceStructureProjects,
   type WorkspaceStructure,
   type WorkspaceStructureProject,
 } from "@/projects/workspace-structure";
+import { buildFeatureWorkspaceStructureProjects } from "@/projects/feature-workspace-structure";
 import type { DesktopBadgeWorkspaceStatus } from "@/utils/desktop-badge-state";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import type { ProjectDescriptor, WorkspaceDescriptor } from "../session-store";
@@ -179,7 +179,7 @@ export function selectWorkspaceStructureProjects(
     return EMPTY_WORKSPACE_STRUCTURE.projects;
   }
 
-  return buildWorkspaceStructureProjects({ sessions });
+  return buildFeatureWorkspaceStructureProjects({ sessions });
 }
 
 export function createWorkspaceStructureProjectsSelector(

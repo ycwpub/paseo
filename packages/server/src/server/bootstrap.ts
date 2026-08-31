@@ -138,7 +138,8 @@ import {
 } from "./agent/tools/paseo-tools.js";
 import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
-import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
+import { bootstrapProjectWorkspaceRegistries } from "./project/project-workspace-registry-bootstrap.js";
+import { resolveEnabledRelayEndpoints } from "./daemon-relay-config-patch.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
 import {
   FileBackedProjectRegistry,
@@ -594,9 +595,6 @@ function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | stri
 function resolveInitialRelayEndpoints(
   config: PaseoDaemonConfig,
 ): MutableDaemonConfig["relay"]["endpoints"] {
-  if (config.relayEnabled === false) {
-    return [];
-  }
   if (config.relayEndpoints !== undefined) {
     return config.relayEndpoints;
   }
@@ -916,6 +914,7 @@ export async function createPaseoDaemon(
 
   const scheduleRelayReconcile = (relayConfig: MutableDaemonConfig["relay"]): void => {
     if (relayReconcileStopped) return;
+    const enabledRelayEndpoints = resolveEnabledRelayEndpoints(relayConfig);
 
     // Make status and newly generated pairing offers reflect edited public Relay
     // addresses immediately. The transport swap itself runs on the serialized
@@ -924,7 +923,7 @@ export async function createPaseoDaemon(
     updateRuntimeRelayConfig(
       relayConfig,
       dedupeEffectiveRelayEndpoints([
-        ...relayConfig.endpoints,
+        ...enabledRelayEndpoints,
         ...(localRelayServer && currentLocalSignature === appliedLocalRelaySignature
           ? [
               {
@@ -969,7 +968,7 @@ export async function createPaseoDaemon(
         if (relayReconcileStopped || generation !== relayReconcileGeneration) return undefined;
 
         const effectiveEndpoints = dedupeEffectiveRelayEndpoints([
-          ...relayConfig.endpoints,
+          ...enabledRelayEndpoints,
           ...(localRelayServer
             ? [
                 {
@@ -1008,6 +1007,7 @@ export async function createPaseoDaemon(
               serverHostname: getHostname(),
               serverDeviceType: resolveRelayServerDeviceType(config.desktopManaged),
               daemonKeyPair: daemonKeyPair.keyPair,
+              namespaceConnectionIds: true,
               onPairingBaseUrl: (pairingBaseUrl) => {
                 discoveredRelayPairingBaseUrls.set(key, pairingBaseUrl);
                 const runtimeRelay = daemonRuntimeConfig.relay;
@@ -1355,7 +1355,7 @@ export async function createPaseoDaemon(
   );
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
-  await bootstrapWorkspaceRegistries({
+  await bootstrapProjectWorkspaceRegistries({
     serverId,
     paseoHome: config.paseoHome,
     agentStorage,

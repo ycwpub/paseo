@@ -1,9 +1,10 @@
 import type { ComposerAttachment } from "@/attachments/types";
 import type { QueueWriter, QueuedComposerMessage } from "@/composer/actions";
+import type { ResourceAwareQueuedComposerMessage } from "@/composer/resource-selection";
 
 export interface QueuedMessageEditSession {
   agentId: string;
-  message: QueuedComposerMessage;
+  message: ResourceAwareQueuedComposerMessage;
   originalIndex: number;
   previousMessageId: string | null;
   nextMessageId: string | null;
@@ -29,16 +30,18 @@ interface CancelQueuedMessageEditInput {
   queue: QueueWriter;
 }
 
-function withoutEditingMarker(message: QueuedComposerMessage): QueuedComposerMessage {
+function withoutEditingMarker(
+  message: ResourceAwareQueuedComposerMessage,
+): ResourceAwareQueuedComposerMessage {
   const { isEditing: _isEditing, ...rest } = message;
   return rest;
 }
 
 function insertAtReservedPosition(
-  messages: QueuedComposerMessage[],
+  messages: ResourceAwareQueuedComposerMessage[],
   session: QueuedMessageEditSession,
-  message: QueuedComposerMessage,
-): QueuedComposerMessage[] {
+  message: ResourceAwareQueuedComposerMessage,
+): ResourceAwareQueuedComposerMessage[] {
   const next = messages.filter((item) => item.id !== message.id);
   const nextIndex = session.nextMessageId
     ? next.findIndex((item) => item.id === session.nextMessageId)
@@ -65,7 +68,9 @@ export function beginQueuedMessageEdit(
 ): QueuedMessageEditSession | null {
   let session: QueuedMessageEditSession | null = null;
   input.queue.write((previousQueues) => {
-    const messages = [...(previousQueues.get(input.agentId) ?? [])];
+    const messages = [
+      ...((previousQueues.get(input.agentId) ?? []) as ResourceAwareQueuedComposerMessage[]),
+    ];
     if (messages.some((message) => message.isEditing)) {
       return previousQueues;
     }
@@ -95,7 +100,7 @@ export function finishQueuedMessageEdit(input: FinishQueuedMessageEditInput): bo
     return false;
   }
 
-  const message: QueuedComposerMessage = {
+  const message: ResourceAwareQueuedComposerMessage = {
     ...input.session.message,
     text,
     attachments: input.attachments,
@@ -103,7 +108,10 @@ export function finishQueuedMessageEdit(input: FinishQueuedMessageEditInput): bo
     selectedSkillIds: input.selectedSkillIds,
   };
   input.queue.write((previousQueues) => {
-    const messages = [...(previousQueues.get(input.session.agentId) ?? [])];
+    const messages = [
+      ...((previousQueues.get(input.session.agentId) ??
+        []) as ResourceAwareQueuedComposerMessage[]),
+    ];
     const index = messages.findIndex((item) => item.id === input.session.message.id);
     if (index >= 0) {
       messages[index] = message;
@@ -123,7 +131,10 @@ export function finishQueuedMessageEdit(input: FinishQueuedMessageEditInput): bo
 export function cancelQueuedMessageEdit(input: CancelQueuedMessageEditInput): void {
   const original = withoutEditingMarker(input.session.message);
   input.queue.write((previousQueues) => {
-    const messages = [...(previousQueues.get(input.session.agentId) ?? [])];
+    const messages = [
+      ...((previousQueues.get(input.session.agentId) ??
+        []) as ResourceAwareQueuedComposerMessage[]),
+    ];
     const index = messages.findIndex((item) => item.id === original.id);
     if (index >= 0) {
       messages[index] = original;
@@ -141,13 +152,15 @@ export function cancelQueuedMessageEdit(input: CancelQueuedMessageEditInput): vo
 
 export function getVisibleQueuedMessages(
   messages: readonly QueuedComposerMessage[],
-): QueuedComposerMessage[] {
-  return messages.filter((message) => !message.isEditing);
+): ResourceAwareQueuedComposerMessage[] {
+  return (messages as readonly ResourceAwareQueuedComposerMessage[]).filter(
+    (message) => !message.isEditing,
+  );
 }
 
 export function getNextQueuedMessage(
   messages: readonly QueuedComposerMessage[],
-): QueuedComposerMessage | null {
-  const first = messages[0];
+): ResourceAwareQueuedComposerMessage | null {
+  const first = (messages as readonly ResourceAwareQueuedComposerMessage[])[0];
   return first && !first.isEditing ? first : null;
 }

@@ -54,6 +54,10 @@ import {
   invalidateServerDataQueriesAfterReconnect,
   mountServerDataPushRouter,
 } from "@/data/push-router";
+import {
+  invalidateFeatureServerDataQueriesAfterReconnect,
+  mountFeatureServerDataPushRouter,
+} from "@/data/feature-push-router";
 import { mountBrowserAutomationDaemonClientHandler } from "@/desktop/browser/automation/handler";
 import { schedulesQueryBaseKey } from "@/schedules/aggregated-schedules";
 import { dispatchComposerAgentMessage, sendQueuedComposerMessageNow } from "@/composer/actions";
@@ -66,11 +70,13 @@ import type { ReplicaRowStore } from "@/runtime/replica-cache/row-store";
 import { createReplicaRowStore } from "@/runtime/replica-cache/row-store-factory";
 import {
   createTimelineReplica,
-  createViewedTimelineOwner,
   type TimelineReplica,
-  type ViewedTimelineOwner,
   type ViewedTimelineOwnerPorts,
 } from "@/timeline/viewed-timeline-sync";
+import {
+  createResumableViewedTimelineOwner,
+  type ResumableViewedTimelineOwner,
+} from "@/timeline/resumable-viewed-timeline-sync";
 import { projectIconCache } from "@/projects/icon-cache";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 import { revokePushNotifications } from "@/push-notifications";
@@ -114,9 +120,10 @@ export interface HostRuntimeSnapshot {
   agentDirectoryStatus: HostRuntimeAgentDirectoryStatus;
   agentDirectoryError: string | null;
   hasEverLoadedAgentDirectory: boolean;
-  workspaceDirectoryStatus: HostRuntimeWorkspaceDirectoryStatus;
-  workspaceDirectoryError: string | null;
-  hasEverLoadedWorkspaceDirectory: boolean;
+  /** Optional only on snapshots created before workspace-directory state existed. */
+  workspaceDirectoryStatus?: HostRuntimeWorkspaceDirectoryStatus;
+  workspaceDirectoryError?: string | null;
+  hasEverLoadedWorkspaceDirectory?: boolean;
   probeByConnectionId: Map<string, ConnectionProbeState>;
   clientGeneration: number;
   connectionEpoch: number;
@@ -590,14 +597,23 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         queryClient,
         serverId: host.serverId,
       });
+      const unmountFeatureServerData = mountFeatureServerDataPushRouter({
+        client,
+        queryClient,
+        serverId: host.serverId,
+      });
       if (!browserAutomationCapabilities) {
-        return unmountServerData;
+        return () => {
+          unmountFeatureServerData();
+          unmountServerData();
+        };
       }
       const unmountBrowserAutomation = mountBrowserAutomationDaemonClientHandler(client, {
         serverId: host.serverId,
       });
       return () => {
         unmountBrowserAutomation();
+        unmountFeatureServerData();
         unmountServerData();
       };
     },
@@ -2216,6 +2232,7 @@ export class HostRuntimeStore {
       // queries refetch now and evicted ones on their next mount.
       void invalidateCheckoutGitQueriesForServer(queryClient, serverId);
       invalidateServerDataQueriesAfterReconnect({ queryClient, serverId });
+      invalidateFeatureServerDataQueriesAfterReconnect({ queryClient, serverId });
       void queryClient.invalidateQueries({ queryKey: schedulesQueryBaseKey });
     }
   }
@@ -2401,12 +2418,12 @@ export class HostRuntimeStore {
   createViewedTimelineOwner(
     serverId: string,
     ports: ViewedTimelineOwnerPorts,
-  ): ViewedTimelineOwner {
+  ): ResumableViewedTimelineOwner {
     const directory = this.directorySyncByServer.get(serverId);
     if (!directory) throw new Error(`Unknown host runtime for serverId ${serverId}`);
     const replica = this.timelineReplicaByServer.get(serverId);
     if (!replica) throw new Error(`Unknown host runtime for serverId ${serverId}`);
-    return createViewedTimelineOwner({
+    return createResumableViewedTimelineOwner({
       serverId,
       replica,
       replaceDemandedAgentIds: (agentIds) => directory.setAgentRouteDemand(agentIds),

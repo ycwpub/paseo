@@ -21,7 +21,6 @@ import {
   createDefaultLayout,
   DEFAULT_PANE_ID,
   AMBIENT_PLACEMENT,
-  createWorkspaceLayoutWithExplorerSidebar,
   FOCUSED_PANE_PLACEMENT,
   EXPLORER_SIDEBAR_PANE_ID,
   findPaneById,
@@ -36,8 +35,6 @@ import {
   openTabInLayoutBackground,
   replaceTabTargetInLayout,
   revealTargetInLayout,
-  restoreEmptyPanesInLayout,
-  reconcileWorkspaceTabs,
   removePaneFromTree,
   removeTabFromTree,
   reorderFocusedPaneTabsInLayout,
@@ -54,9 +51,17 @@ import {
   type SplitPane,
   type WorkspaceTabPlacement,
   type WorkspaceTabReconcileState,
-  type WorkspaceTabSnapshot,
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-actions";
+import {
+  createExtendedWorkspaceLayoutWithExplorerSidebar,
+  ensureExplorerSidebarDefaultTabs,
+  keepWorkspaceFocusOutOfExplorerSidebar,
+  reconcileExtendedWorkspaceTabs,
+  reorderExplorerSidebarDefaultTabs,
+  restoreExtendedEmptyPanesInLayout,
+  type ExtendedWorkspaceTabSnapshot,
+} from "@/stores/workspace-layout-explorer-policy";
 import { normalizeWorkspaceTabTarget } from "@/workspace-tabs/identity";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import { panelTargetSupportsHostForWorkspaceKey } from "@/plugins/workspace-panels/locations";
@@ -68,7 +73,6 @@ export {
   collectAllTabs,
   createDefaultLayout,
   DEFAULT_PANE_ID,
-  createWorkspaceLayoutWithExplorerSidebar,
   FOCUSED_PANE_PLACEMENT,
   findPaneById,
   findPaneContainingTab,
@@ -87,8 +91,11 @@ export type {
   WorkspaceLayout,
   WorkspaceTabPlacement,
   WorkspaceTabReconcileState,
-  WorkspaceTabSnapshot,
 };
+export type WorkspaceTabSnapshot = ExtendedWorkspaceTabSnapshot;
+
+export const createWorkspaceLayoutWithExplorerSidebar =
+  createExtendedWorkspaceLayoutWithExplorerSidebar;
 
 export type WorkspaceTabOpenIntent = "new" | "reveal" | "background";
 export interface OpenWorkspaceTabInput {
@@ -331,141 +338,6 @@ function createExplorerSidebarNode(): SplitNode {
   return { kind: "pane", pane };
 }
 
-const REQUIRED_EXPLORER_TARGETS = [
-  { kind: "files" },
-  { kind: "changes_tree" },
-  { kind: "working_diff" },
-  { kind: "task_summary" },
-  { kind: "pull_request" },
-] as const satisfies readonly WorkspaceTabTarget[];
-
-function isDefaultWorkingDiffTab(tab: WorkspaceTab): boolean {
-  return (
-    tab.target.kind === "working_diff" &&
-    !tab.target.cwd &&
-    !tab.target.focusPath &&
-    !tab.target.focusRequestId &&
-    tab.state === undefined
-  );
-}
-
-function removeDefaultWorkingDiffTabs(
-  layout: WorkspaceLayout,
-  matchingTabs: readonly WorkspaceTab[],
-): WorkspaceLayout {
-  let root = layout.root;
-  for (const tab of matchingTabs) {
-    if (isDefaultWorkingDiffTab(tab)) {
-      root = removeTabFromTree(root, tab.tabId);
-    }
-  }
-  return root === layout.root ? layout : { ...layout, root };
-}
-
-function ensureExplorerSidebarDefaultTabs(
-  layout: WorkspaceLayout,
-  paneId: string,
-): WorkspaceLayout {
-  const pane = findPaneById(layout.root, paneId);
-  if (!pane) {
-    return layout;
-  }
-
-  const originalFocusedPaneId = layout.focusedPaneId;
-  const wasHidden = pane.hidden === true;
-  let nextLayout =
-    (wasHidden ? setPaneHiddenInLayout({ layout, paneId, hidden: false }) : null) ?? layout;
-
-  for (const target of REQUIRED_EXPLORER_TARGETS) {
-    const explorerPane = findPaneById(nextLayout.root, paneId);
-    const allTabs = collectAllTabs(nextLayout.root);
-    const matchingTabs = allTabs.filter((tab) => tab.target.kind === target.kind);
-    let existingTab = matchingTabs[0];
-    if (target.kind === "working_diff") {
-      const configuredTabs = matchingTabs.filter(
-        (tab) =>
-          tab.target.kind === "working_diff" &&
-          Boolean(
-            tab.target.cwd ||
-            tab.target.focusPath ||
-            tab.target.focusRequestId ||
-            tab.state !== undefined,
-          ),
-      );
-      existingTab = configuredTabs[0] ?? matchingTabs[0];
-      if (configuredTabs.length > 0) {
-        nextLayout = removeDefaultWorkingDiffTabs(nextLayout, matchingTabs);
-      }
-    }
-    if (existingTab && explorerPane?.tabIds.includes(existingTab.tabId)) {
-      continue;
-    }
-
-    if (existingTab) {
-      nextLayout =
-        moveTabToPaneInLayout({
-          layout: nextLayout,
-          tabId: existingTab.tabId,
-          toPaneId: paneId,
-          explorerSidebarPaneId: paneId,
-        }) ?? nextLayout;
-      continue;
-    }
-
-    nextLayout =
-      openTabInLayoutBackground({
-        layout: nextLayout,
-        target,
-        now: Date.now(),
-        placement: { mode: "pane", paneId },
-        explorerSidebarPaneId: paneId,
-      })?.layout ?? nextLayout;
-  }
-
-  nextLayout = reorderExplorerSidebarDefaultTabs(nextLayout, paneId);
-
-  if (wasHidden) {
-    nextLayout = setPaneHiddenInLayout({ layout: nextLayout, paneId, hidden: true }) ?? nextLayout;
-  }
-  return keepWorkspaceFocusOutOfExplorerSidebar(nextLayout, paneId, originalFocusedPaneId);
-}
-
-function reorderExplorerSidebarDefaultTabs(
-  layout: WorkspaceLayout,
-  paneId: string,
-): WorkspaceLayout {
-  const explorerPane = findPaneById(layout.root, paneId);
-  if (explorerPane) {
-    const allTabs = collectAllTabs(layout.root);
-    const requiredKinds = new Set<string>(REQUIRED_EXPLORER_TARGETS.map((target) => target.kind));
-    const requiredTabIds = REQUIRED_EXPLORER_TARGETS.flatMap((target) => {
-      const tab = explorerPane.tabIds
-        .map((tabId) => allTabs.find((candidate) => candidate.tabId === tabId))
-        .find((candidate) => candidate?.target.kind === target.kind);
-      return tab ? [tab.tabId] : [];
-    });
-    const firstRequiredIndex = explorerPane.tabIds.findIndex((tabId) => {
-      const tab = allTabs.find((candidate) => candidate.tabId === tabId);
-      return tab ? requiredKinds.has(tab.target.kind) : false;
-    });
-    const insertionIndex = firstRequiredIndex < 0 ? explorerPane.tabIds.length : firstRequiredIndex;
-    const otherTabIds = explorerPane.tabIds.filter((tabId) => !requiredTabIds.includes(tabId));
-    const orderedTabIds = [
-      ...otherTabIds.slice(0, insertionIndex),
-      ...requiredTabIds,
-      ...otherTabIds.slice(insertionIndex),
-    ];
-    return (
-      reorderPaneTabsInLayout({
-        layout,
-        paneId,
-        tabIds: orderedTabIds,
-      }) ?? layout
-    );
-  }
-  return layout;
-}
-
 function preserveVersionOneSideTabs(input: {
   layout: WorkspaceLayout;
   legacyExplorerPane: SplitPane;
@@ -679,25 +551,6 @@ function getWorkspaceLayout(
   return normalizeLayout(state[workspaceKey] ?? createWorkspaceLayoutWithExplorerSidebar());
 }
 
-function keepWorkspaceFocusOutOfExplorerSidebar(
-  layout: WorkspaceLayout,
-  explorerSidebarPaneId: string | null,
-  preferredMainPaneId?: string | null,
-): WorkspaceLayout {
-  if (!explorerSidebarPaneId || layout.focusedPaneId !== explorerSidebarPaneId) {
-    return layout;
-  }
-  const panes = collectAllPanes(layout.root);
-  const preferredPane = panes.find(
-    (pane) => pane.id === preferredMainPaneId && pane.id !== explorerSidebarPaneId,
-  );
-  const mainPane =
-    preferredPane ??
-    panes.find((pane) => pane.id === DEFAULT_PANE_ID && pane.id !== explorerSidebarPaneId) ??
-    panes.find((pane) => pane.id !== explorerSidebarPaneId);
-  return { ...layout, focusedPaneId: mainPane?.id ?? null };
-}
-
 type ExplorerSidebarState = Pick<
   WorkspaceLayoutStore,
   "layoutByWorkspace" | "explorerSidebarPaneIdByWorkspace"
@@ -777,7 +630,7 @@ function ensurePersistedExplorerSidebarPane(input: {
     paneId: split.paneId,
     hidden: true,
   });
-  const seededLayout = restoreEmptyPanesInLayout(
+  const seededLayout = restoreExtendedEmptyPanesInLayout(
     stripEphemeralTabsFromLayout(hiddenLayout ?? split.layout),
     split.paneId,
   );
@@ -1365,7 +1218,7 @@ export function createWorkspaceLayoutStore(
               explorerSidebarPaneId,
               rawLayout.focusedPaneId,
             );
-            const nextState = reconcileWorkspaceTabs(
+            const nextState = reconcileExtendedWorkspaceTabs(
               {
                 layout: currentLayout,
                 pinnedAgentIds: state.pinnedAgentIdsByWorkspace[normalizedWorkspaceKey] ?? null,
@@ -1572,7 +1425,7 @@ export function createWorkspaceLayoutStore(
             }
             const restoredLayout =
               normalizedToPaneId === explorerSidebarPaneId
-                ? restoreEmptyPanesInLayout(nextLayout, explorerSidebarPaneId)
+                ? restoreExtendedEmptyPanesInLayout(nextLayout, explorerSidebarPaneId)
                 : nextLayout;
             const normalizedNextLayout = keepWorkspaceFocusOutOfExplorerSidebar(
               restoredLayout,
@@ -2040,10 +1893,10 @@ export function createWorkspaceLayoutStore(
               ids,
             });
             if (!explorerSidebar) {
-              layoutByWorkspace[workspaceKey] = restoreEmptyPanesInLayout(strippedLayout);
+              layoutByWorkspace[workspaceKey] = restoreExtendedEmptyPanesInLayout(strippedLayout);
               continue;
             }
-            layoutByWorkspace[workspaceKey] = restoreEmptyPanesInLayout(
+            layoutByWorkspace[workspaceKey] = restoreExtendedEmptyPanesInLayout(
               explorerSidebar.layout,
               explorerSidebar.paneId,
             );

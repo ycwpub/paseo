@@ -28,6 +28,9 @@ export type ConnectionOfferV2 = z.infer<typeof ConnectionOfferV2Schema>;
 
 export const ConnectionOfferSchema = ConnectionOfferV2Schema;
 export type ConnectionOffer = ConnectionOfferV2;
+export type ParsedConnectionOffer = ConnectionOffer & {
+  relay: NonNullable<ConnectionOffer["relay"]>;
+};
 
 export function getConnectionOfferRelays(
   offer: ConnectionOffer,
@@ -101,9 +104,14 @@ function extractOfferFragmentEncoded(input: string): string | null {
  * Returns `null` if the input has no `#offer=` fragment. Throws if the fragment
  * exists but the payload is malformed or fails schema validation.
  */
-export function parseConnectionOfferFromUrl(input: string): ConnectionOffer | null {
+export function parseConnectionOfferFromUrl(input: string): ParsedConnectionOffer | null {
   const encoded = extractOfferFragmentEncoded(input);
   if (!encoded) return null;
   const payload = decodeOfferFragmentPayload(encoded);
-  return ConnectionOfferSchema.parse(payload);
+  const offer = ConnectionOfferSchema.parse(payload);
+  const relay = offer.relay ?? offer.relays?.[0];
+  if (!relay) {
+    throw new Error("Pairing offer does not contain a relay endpoint");
+  }
+  return { ...offer, relay };
 }

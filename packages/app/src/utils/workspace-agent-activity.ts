@@ -6,7 +6,6 @@ export interface WorkspaceAgentActivity {
   agentId: string;
   status: WorkspaceDescriptor["status"];
   enteredAt: Date | null;
-  activityAt: Date;
 }
 
 export function buildWorkspaceAgentActivityIndex(
@@ -23,15 +22,11 @@ export function buildWorkspaceAgentActivityIndex(
     }
 
     const enteredAt = agent.attentionTimestamp ?? agent.updatedAt;
-    const activityAt =
-      agent.attentionTimestamp && agent.attentionTimestamp > agent.lastActivityAt
-        ? agent.attentionTimestamp
-        : agent.lastActivityAt;
     const latestActivityAt = latestActivityAtByWorkspaceId.get(agent.workspaceId);
-    if (latestActivityAt && activityAt <= latestActivityAt) {
+    if (latestActivityAt && enteredAt <= latestActivityAt) {
       continue;
     }
-    latestActivityAtByWorkspaceId.set(agent.workspaceId, activityAt);
+    latestActivityAtByWorkspaceId.set(agent.workspaceId, enteredAt);
 
     const status = deriveSidebarStateBucket({
       status: agent.status,
@@ -43,7 +38,6 @@ export function buildWorkspaceAgentActivityIndex(
       agentId: agent.id,
       status,
       enteredAt,
-      activityAt,
     });
   }
 
@@ -53,14 +47,7 @@ export function buildWorkspaceAgentActivityIndex(
       previousActivity?.agentId === activity.agentId &&
       previousActivity.status === activity.status
     ) {
-      if (previousActivity.activityAt.getTime() === activity.activityAt.getTime()) {
-        activityByWorkspaceId.set(workspaceId, previousActivity);
-      } else {
-        activityByWorkspaceId.set(workspaceId, {
-          ...activity,
-          enteredAt: previousActivity.enteredAt,
-        });
-      }
+      activityByWorkspaceId.set(workspaceId, previousActivity);
     }
   }
 

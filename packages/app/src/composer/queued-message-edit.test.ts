@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { QueueWriter, QueuedComposerMessage } from "@/composer/actions";
+import type { QueueWriter } from "@/composer/actions";
+import type { ResourceAwareQueuedComposerMessage as QueuedComposerMessage } from "@/composer/resource-selection";
 import {
   beginQueuedMessageEdit,
   cancelQueuedMessageEdit,

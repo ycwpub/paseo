@@ -5,9 +5,10 @@ import { defineConfig, devices } from "@playwright/test";
 const baseURL =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_METRO_PORT ?? "8081"}`;
 const relayDeploymentSpec = "**/relay-deployment-reconnect.real.spec.ts";
-const featurePaseoOverriddenSpecs = [
+const replacementSpecs = [
   "**/chat-outline.spec.ts",
   "**/empty-project-persists.spec.ts",
+  "**/pair-device-relay.spec.ts",
   "**/settings-host-page.spec.ts",
   "**/settings-navigation.spec.ts",
 ];
@@ -40,19 +41,19 @@ export default defineConfig({
   projects: [
     {
       name: "browser",
-      testIgnore: ["**/*.real.spec.ts", ...featurePaseoOverriddenSpecs],
+      testIgnore: ["**/*.real.spec.ts", ...replacementSpecs],
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "real-provider",
       testMatch: ["**/*.real.spec.ts"],
-      testIgnore: [relayDeploymentSpec, ...featurePaseoOverriddenSpecs],
+      testIgnore: [relayDeploymentSpec, ...replacementSpecs],
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "relay-deployment",
       testMatch: [relayDeploymentSpec],
-      testIgnore: featurePaseoOverriddenSpecs,
+      testIgnore: replacementSpecs,
       use: { ...devices["Desktop Chrome"] },
     },
   ],

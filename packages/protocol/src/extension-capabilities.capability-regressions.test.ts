@@ -10,11 +10,9 @@ import type {
   FileUpdate,
   FileWriteResponse,
 } from "./messages.js";
-
 function source(relativePath: string): string {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }
-
 type PublicFileResponseTypes = [
   FileSubscribeResponse,
   FileUnsubscribeResponse,
@@ -25,7 +23,6 @@ type PublicFileResponseTypes = [
   FileEntryDeleteResponse,
   FileUpdate,
 ];
-
 describe("extension protocol capability regressions", () => {
   test("keeps public file response and update types exported", () => {
     const publicTypesRemainImportable = true satisfies PublicFileResponseTypes extends readonly [
@@ -40,10 +37,8 @@ describe("extension protocol capability regressions", () => {
     ]
       ? true
       : false;
-
     expect(publicTypesRemainImportable).toBe(true);
   });
-
   test("keeps extension capabilities in the server status contract", () => {
     const messages = source("./messages.ts");
     for (const capability of [
@@ -91,11 +86,9 @@ describe("extension protocol capability regressions", () => {
       expect(messages).toContain(`${capability}: z.`);
     }
   });
-
   test("exports HTTP handlers and supports workflow and custom-node modes", () => {
     const exportsSource = source("./extension-resource-exports.ts");
     const httpManagement = source("./plugin/http-management.ts");
-
     expect(exportsSource).toContain("PluginHttpHandlerSchema");
     expect(exportsSource).toContain("type PluginHttpHandler");
     expect(httpManagement).toContain('mode: z.literal("workflow")');

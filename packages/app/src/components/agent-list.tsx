@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation in the branch overlay.
+// oxlint-disable-next-line no-restricted-imports -- Preserves the upstream grandfathered implementation.
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";

@@ -52,6 +52,10 @@ import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agen
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import { inferWritableProjectDirectoriesFromSystemPrompt } from "./project-directory-access.js";
 import { inferReadOnlyProjectDirectoriesFromSystemPrompt } from "./project-reference-directory-access.js";
+import {
+  toProjectAwareAgentSessionConfig,
+  type ProjectAwareAgentSessionConfig,
+} from "./project-directory-agent-config.js";
 import type { AgentOwner } from "./agent-owner.js";
 import {
   InMemoryAgentTimelineStore,
@@ -162,8 +166,8 @@ function formatProviderList(providers: readonly string[]): string {
   return providers.length > 0 ? providers.join(", ") : "none";
 }
 
-function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
-  const config: AgentSessionConfig = {
+function buildStoredAgentConfig(record: StoredAgentRecord): ProjectAwareAgentSessionConfig {
+  const config: ProjectAwareAgentSessionConfig = {
     provider: record.provider,
     cwd: record.cwd,
   };
@@ -198,7 +202,7 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     config.systemPrompt = record.config.systemPrompt;
   }
   if (record.config.mcpServers != null) config.mcpServers = record.config.mcpServers;
-  return stripInternalPaseoMcpServer(config);
+  return toProjectAwareAgentSessionConfig(stripInternalPaseoMcpServer(config));
 }
 
 export { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus };

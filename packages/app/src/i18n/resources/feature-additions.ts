@@ -126,8 +126,8 @@ export const featureTranslationAdditions = {
         },
       },
       actions: {
-        collapseAllWorkspaces: "Collapse all workspaces",
-        expandAllWorkspaces: "Expand all workspaces",
+        collapseAllWorkspaces: "Collapse all Projects",
+        expandAllWorkspaces: "Expand all Projects",
       },
       project: {
         actions: {
@@ -3756,8 +3756,8 @@ export const featureTranslationAdditions = {
         },
       },
       actions: {
-        collapseAllWorkspaces: "一键折叠所有工作区",
-        expandAllWorkspaces: "一键展开所有工作区",
+        collapseAllWorkspaces: "一键折叠全部 Project",
+        expandAllWorkspaces: "一键展开全部 Project",
       },
       project: {
         actions: {

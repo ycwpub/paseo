@@ -11,7 +11,7 @@ interface OpenWorkingDiffInExplorerInput {
   workspaceKey: string;
   target: WorkspaceTabTarget;
   source: keyof OpenInSidePanePreferences;
-  explorerSidebarPaneId: string | null;
+  explorerSidebarPaneId?: string | null;
   parentTabId?: string | null;
 }
 
@@ -25,18 +25,15 @@ interface OpenWorkingDiffInExplorerInput {
 export function openWorkingDiffInExplorer(
   input: OpenWorkingDiffInExplorerInput,
 ): string | null | undefined {
-  if (
-    input.isCompact ||
-    input.source !== "diffs" ||
-    input.target.kind !== "working_diff" ||
-    !input.explorerSidebarPaneId
-  ) {
+  if (input.isCompact || input.source !== "diffs" || input.target.kind !== "working_diff") {
     return undefined;
   }
 
   const store = useWorkspaceLayoutStore.getState();
-  const layout = store.layoutByWorkspace[input.workspaceKey];
-  const explorerPane = layout ? findPaneById(layout.root, input.explorerSidebarPaneId) : null;
+  const explorerSidebarPaneId =
+    store.showExplorerSidebar(input.workspaceKey) ?? input.explorerSidebarPaneId ?? null;
+  const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[input.workspaceKey];
+  const explorerPane = layout ? findPaneById(layout.root, explorerSidebarPaneId) : null;
   if (!layout || !explorerPane) {
     return undefined;
   }

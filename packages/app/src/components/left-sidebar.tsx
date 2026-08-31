@@ -6,7 +6,6 @@ import {
   History,
   Home,
   Plus,
-  Search,
   Server,
   Settings,
   Workflow,
@@ -36,9 +35,9 @@ import {
 } from "@/components/sidebar-resize-handle-layout";
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
+import { WorkspacesSectionHeader } from "@/components/sidebar/sidebar-workspaces-section-header";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
@@ -56,7 +55,6 @@ import { RetainedPanelActivity } from "@/components/retained-panel";
 import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
-import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useWorkspace } from "@/stores/session-store-hooks";
@@ -92,6 +90,7 @@ interface SidebarSharedProps {
   workspaceGroups: SidebarWorkspaceGroup[];
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
+  hiddenProjects: SidebarProjectEntry[];
   projects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
   hasActiveProjectFilter: boolean;
@@ -101,8 +100,11 @@ interface SidebarSharedProps {
   isManualRefresh: boolean;
   groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
+  hiddenProjectsCollapsed: boolean;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
+  toggleHiddenProjectsCollapsed: () => void;
+  setProjectHidden: (projectViewKey: string, hidden: boolean) => void;
   handleRefresh: () => void;
   handleWorkspaceNavigate: () => void;
   handleOpenProject: () => void;
@@ -163,8 +165,12 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     workspaceGroups,
     projectIconTargets,
     pinnedGroups,
+    hiddenProjects,
+    hiddenProjectsCollapsed,
     collapsedProjectKeys,
     toggleProjectCollapsed,
+    toggleHiddenProjectsCollapsed,
+    setProjectHidden,
     groupMode,
     shortcutModel,
   } = useSidebarModel();
@@ -287,6 +293,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     workspaceGroups,
     projectIconTargets,
     pinnedGroups,
+    hiddenProjects,
     projects,
     hasProjectsBeforeFilter,
     hasActiveProjectFilter: resolvedProjectFilters.length > 0,
@@ -296,8 +303,11 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isManualRefresh,
     groupMode,
     collapsedProjectKeys,
+    hiddenProjectsCollapsed,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
+    toggleHiddenProjectsCollapsed,
+    setProjectHidden,
     handleRefresh,
     handleWorkspaceNavigate,
     labels,
@@ -646,6 +656,7 @@ function MobileSidebar({
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
+  hiddenProjects,
   projects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
@@ -655,8 +666,11 @@ function MobileSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  hiddenProjectsCollapsed,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleHiddenProjectsCollapsed,
+  setProjectHidden,
   handleRefresh,
   handleWorkspaceNavigate,
   newWorkspaceKeys,
@@ -781,12 +795,16 @@ function MobileSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            hiddenProjectsCollapsed={hiddenProjectsCollapsed}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleHiddenProjectsCollapsed={toggleHiddenProjectsCollapsed}
+            onSetProjectHidden={setProjectHidden}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
+            hiddenProjects={hiddenProjects}
             projects={projects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
@@ -821,6 +839,7 @@ function DesktopSidebar({
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
+  hiddenProjects,
   projects,
   hasProjectsBeforeFilter,
   hasActiveProjectFilter,
@@ -830,8 +849,11 @@ function DesktopSidebar({
   isManualRefresh,
   groupMode,
   collapsedProjectKeys,
+  hiddenProjectsCollapsed,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
+  toggleHiddenProjectsCollapsed,
+  setProjectHidden,
   handleRefresh,
   handleWorkspaceNavigate,
   newWorkspaceKeys,
@@ -1000,12 +1022,16 @@ function DesktopSidebar({
         ) : (
           <SidebarWorkspaceList
             collapsedProjectKeys={collapsedProjectKeys}
+            hiddenProjectsCollapsed={hiddenProjectsCollapsed}
             onToggleProjectCollapsed={toggleProjectCollapsed}
+            onToggleHiddenProjectsCollapsed={toggleHiddenProjectsCollapsed}
+            onSetProjectHidden={setProjectHidden}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
             groupMode={groupMode}
             workspaceGroups={workspaceGroups}
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
+            hiddenProjects={hiddenProjects}
             projects={projects}
             hasProjectsBeforeFilter={hasProjectsBeforeFilter}
             hasActiveProjectFilter={hasActiveProjectFilter}
@@ -1043,62 +1069,6 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
-  const { theme } = useUnistyles();
-  const { t } = useTranslation();
-  const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
-  const commandCenterKeys = useShortcutKeys("toggle-command-center");
-  const handleSearchPress = useCallback(() => setCommandCenterOpen(true), [setCommandCenterOpen]);
-  const searchButtonStyle = useCallback(
-    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.workspacesHeaderIconButton,
-      (hovered || pressed) && styles.workspacesHeaderIconButtonHovered,
-    ],
-    [],
-  );
-
-  return (
-    <View style={styles.workspacesSectionHeader}>
-      <Text style={styles.workspacesSectionTitle}>{t("shell.commandCenter.workspaces")}</Text>
-      <View style={styles.workspacesSectionActions}>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open command center"
-              testID="sidebar-command-center-search"
-              style={searchButtonStyle}
-              onPress={handleSearchPress}
-            >
-              {({ hovered, pressed }) => (
-                <Search
-                  size={14}
-                  color={
-                    hovered || pressed ? theme.colors.foreground : theme.colors.foregroundMuted
-                  }
-                />
-              )}
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <IconTooltipContent label="Search" shortcutKeys={commandCenterKeys} />
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <View>
-              <SidebarDisplayPreferencesMenu />
-            </View>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" align="center" offset={8}>
-            <IconTooltipContent label="Display preferences" />
-          </TooltipContent>
-        </Tooltip>
-      </View>
-    </View>
-  );
-}
-
 // Stable element so the sidebar list's listHeaderComponent prop keeps identity across
 // renders (WorkspacesSectionHeader takes no props).
 const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
@@ -1125,39 +1095,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   sidebarHeaderGroupBelowChrome: {
     paddingTop: 0,
-  },
-  workspacesSectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
-    // Rendered inside the scroll's listContent (paddingHorizontal spacing[2]). The title
-    // lands at spacing[2] left to align with project icons. Settings2's painted path stops
-    // inside its 14px SVG, so 4px aligns the ink rather than the SVG box to the row rail.
-    paddingLeft: theme.spacing[2],
-    paddingRight: 4,
-    paddingTop: theme.spacing[1],
-    paddingBottom: theme.spacing[1],
-  },
-  workspacesSectionTitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
-  },
-  workspacesSectionActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  workspacesHeaderIconButton: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: theme.borderRadius.md,
-  },
-  workspacesHeaderIconButtonHovered: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   sidebarContent: {
     flex: 1,

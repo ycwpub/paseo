@@ -85,6 +85,13 @@ function canReplacePreview(input: {
 export function openPreferredWorkspaceTarget(
   input: OpenPreferredWorkspaceTargetInput,
 ): string | null {
+  if (input.workspaceKey) {
+    const explorerDiffTabId = openWorkingDiffInExplorer({
+      ...input,
+      workspaceKey: input.workspaceKey,
+    });
+    if (explorerDiffTabId !== undefined) return explorerDiffTabId;
+  }
   return openWorkspaceTargetAtLocation({
     isCompact: input.isCompact,
     workspaceKey: input.workspaceKey,

@@ -114,7 +114,7 @@ import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView } from "@/plugins/timeline";
-import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { openWorkingDiffInExplorer } from "@/workspace-tabs/open-working-diff-in-explorer";
 import { ReasoningItem } from "./reasoning-item";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { deriveStreamTurnTiming } from "@/timeline/turn-time";
@@ -995,17 +995,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         workspaceId: context.workspaceId ?? workspaceRoot,
       });
       if (!isMobile && persistenceKey) {
-        const store = useWorkspaceLayoutStore.getState();
-        const paneId = store.ensureSidePane(persistenceKey);
-        store.openTab({
+        openWorkingDiffInExplorer({
+          isCompact: false,
           workspaceKey: persistenceKey,
           target: {
             kind: "working_diff",
             cwd,
             ...(path ? { focusPath: path, focusRequestId: Date.now() } : {}),
           },
-          intent: "reveal",
-          placement: paneId ? { mode: "pane", paneId } : { mode: "focused" },
+          source: "diffs",
         });
         return;
       }

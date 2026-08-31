@@ -14,7 +14,10 @@ import {
   findPaneById,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
-import { openPreferredWorkspacePreview } from "@/workspace-tabs/open-beside";
+import {
+  openPreferredWorkspacePreview,
+  openPreferredWorkspaceTarget,
+} from "@/workspace-tabs/open-beside";
 import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
 
 const SERVER_ID = "server-1";
@@ -32,6 +35,43 @@ beforeEach(() => {
 });
 
 describe("workspace Diff preview placement", () => {
+  it("routes the review action to the right Explorer Diff tab", () => {
+    openPreferredWorkspaceTarget({
+      isCompact: false,
+      workspaceKey: WORKSPACE_KEY,
+      target: {
+        kind: "working_diff",
+        cwd: "/project/repository",
+        focusPath: "src/index.ts",
+        focusRequestId: 1,
+      },
+      source: "diffs",
+      preferences: {
+        ...DEFAULT_APP_SETTINGS.openInSidePane,
+        diffs: true,
+      },
+    });
+
+    const state = useWorkspaceLayoutStore.getState();
+    const layout = state.layoutByWorkspace[WORKSPACE_KEY];
+    const explorerSidebarPaneId = state.explorerSidebarPaneIdByWorkspace[WORKSPACE_KEY];
+    const explorerPane =
+      layout && explorerSidebarPaneId ? findPaneById(layout.root, explorerSidebarPaneId) : null;
+    const workingDiffTabs = layout
+      ? collectAllTabs(layout.root).filter((tab) => tab.target.kind === "working_diff")
+      : [];
+
+    expect(workingDiffTabs).toHaveLength(1);
+    expect(explorerPane?.hidden).not.toBe(true);
+    expect(explorerPane?.tabIds).toContain(workingDiffTabs[0]?.tabId);
+    expect(workingDiffTabs[0]?.target).toMatchObject({
+      kind: "working_diff",
+      cwd: "/project/repository",
+      focusPath: "src/index.ts",
+    });
+    expect(state.sidePaneIdByWorkspace[WORKSPACE_KEY]).toBeUndefined();
+  });
+
   it("reuses the right Explorer Diff tab instead of creating a middle pane", () => {
     openComposerChanges({
       isCompact: false,

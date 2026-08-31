@@ -3,6 +3,11 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { Files } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { FileExplorerPane } from "@/components/file-explorer-pane";
+import {
+  SelectField,
+  type SelectFieldOption,
+  type SelectFieldRenderOptionInput,
+} from "@/components/ui/select-field";
 import { useFetchQuery } from "@/data/query";
 import { usePaneContext } from "@/panels/pane-context";
 import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
@@ -19,6 +24,7 @@ import {
 } from "./files-panel-directory-scopes";
 
 const ThemedFiles = withUnistyles(Files);
+const EMPTY_ROOTS: string[] = [];
 const projectFilesPanelPresentation = {
   label: (t) => t("panels.files.label"),
   subtitle: (t) => t("panels.files.subtitle"),
@@ -81,8 +87,23 @@ export function FilesPanelDirectoryBrowser({
   const selectedScope =
     scopes.find((scope) => scope.id === selectedScopeId) ??
     scopes.find((scope) => scope.id === FILES_PANEL_DIRECTORY_SCOPE_IDS[0]);
-  const roots = selectedScope?.roots ?? [];
+  const roots = selectedScope?.roots ?? EMPTY_ROOTS;
   const activeRoot = roots[selectedRootIndex] ?? "";
+  const activeRootDisplayPath = formatProjectResourceDirectoryPath(activeRoot);
+  const activeRootDisplay = useMemo(
+    () => (activeRoot ? { label: activeRootDisplayPath } : null),
+    [activeRoot, activeRootDisplayPath],
+  );
+  const rootOptions = useMemo<SelectFieldOption<number>[]>(
+    () =>
+      roots.map((root, index) => ({
+        id: `directory-root-${index}`,
+        value: index,
+        label: root,
+        testID: `files-panel-directory-root-option-${index}`,
+      })),
+    [roots],
+  );
   const workspaceDirectory = workspace?.workspaceDirectory.trim() ?? "";
 
   useEffect(() => {
@@ -151,24 +172,30 @@ export function FilesPanelDirectoryBrowser({
         ))}
       </ScrollView>
 
-      {roots.length > 1 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.rootScroll}
-          contentContainerStyle={styles.rootTabs}
-          testID="files-panel-directory-roots"
-        >
-          {roots.map((root, index) => (
-            <DirectoryRootTab
-              key={root}
-              root={root}
-              index={index}
-              selected={index === selectedRootIndex}
-              onSelect={setSelectedRootIndex}
+      {activeRoot ? (
+        <View style={styles.rootPicker} testID="files-panel-directory-root-picker">
+          {roots.length > 1 ? (
+            <SelectField<number>
+              label="选择目录"
+              value={selectedRootIndex}
+              selectedDisplay={activeRootDisplay}
+              options={rootOptions}
+              onChange={setSelectedRootIndex}
+              placeholder="请选择目录"
+              emptyText="没有可选目录"
+              searchable
+              searchPlaceholder="搜索目录路径"
+              title="选择目录"
+              field={false}
+              renderOption={renderDirectoryRootOption}
+              testID="files-panel-directory-root-select"
+              triggerTestID="files-panel-directory-root-select-trigger"
             />
-          ))}
-        </ScrollView>
+          ) : null}
+          <Text selectable style={styles.rootPathText} testID="files-panel-directory-root-path">
+            {activeRootDisplayPath}
+          </Text>
+        </View>
       ) : null}
 
       {activeRoot ? (
@@ -249,29 +276,23 @@ function DirectoryScopeTab({
   );
 }
 
-function DirectoryRootTab({
-  root,
-  index,
+function renderDirectoryRootOption({
+  option,
   selected,
-  onSelect,
-}: {
-  root: string;
-  index: number;
-  selected: boolean;
-  onSelect: (index: number) => void;
-}) {
-  const handlePress = useCallback(() => onSelect(index), [index, onSelect]);
+  active,
+  onPress,
+}: SelectFieldRenderOptionInput<number>) {
   return (
     <Pressable
-      accessibilityRole="tab"
-      accessibilityLabel={root}
+      accessibilityRole="button"
+      accessibilityLabel={option.label}
       accessibilityState={selected ? SELECTED_TAB_STATE : UNSELECTED_TAB_STATE}
-      onPress={handlePress}
-      style={[styles.rootTab, selected && styles.rootTabSelected]}
-      testID={`files-panel-directory-root-${index}`}
+      onPress={onPress}
+      style={[styles.rootOption, (selected || active) && styles.rootOptionActive]}
+      testID={option.testID}
     >
-      <Text numberOfLines={1} style={[styles.rootLabel, selected && styles.rootLabelSelected]}>
-        {formatProjectResourceDirectoryPath(root)}
+      <Text style={[styles.rootOptionText, selected && styles.rootOptionTextSelected]}>
+        {formatProjectResourceDirectoryPath(option.label)}
       </Text>
     </Pressable>
   );
@@ -317,34 +338,40 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.semibold,
   },
-  rootScroll: {
-    flexGrow: 0,
+  rootPicker: {
     flexShrink: 0,
+    gap: theme.spacing[1],
+    width: "100%",
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  rootTabs: {
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-  },
-  rootTab: {
-    maxWidth: 240,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.surface2,
-  },
-  rootTabSelected: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
-  },
-  rootLabel: {
+  rootPathText: {
+    flexShrink: 1,
+    width: "100%",
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
+    lineHeight: 18,
   },
-  rootLabelSelected: {
+  rootOption: {
+    width: "100%",
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  rootOptionActive: {
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  rootOptionText: {
+    flexShrink: 1,
+    width: "100%",
     color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 18,
+  },
+  rootOptionTextSelected: {
+    fontWeight: theme.fontWeight.semibold,
   },
   explorer: {
     flex: 1,

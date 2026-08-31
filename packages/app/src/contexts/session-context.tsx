@@ -15,6 +15,10 @@ import { deriveAgentStreamTurnLiveness } from "@/timeline/session-stream-reducer
 import { planTimelineTailFetch } from "@/timeline/resume-sync-plan";
 import { requestResumeTimelineReplacement } from "@/timeline/resume-timeline-replacement";
 import {
+  createTimelineTailReplacementRequestId,
+  createTimelineTailReplacementTracker,
+} from "@/timeline/timeline-tail-replacement-tracker";
+import {
   type TimelineDeliveryMode,
   type TimelineResponsePayload,
 } from "@/timeline/viewed-timeline-sync";
@@ -63,15 +67,6 @@ import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
 import { useProviderSubagentStore } from "@/subagents/provider-store";
 import { revalidateSessionAfterResume } from "@/contexts/session-resume-revalidation";
-
-function consumeForcedTimelineTailReplacement(
-  payload: TimelineResponsePayload,
-  replacements: Set<string>,
-): TimelineResponsePayload {
-  if (payload.direction !== "tail") return payload;
-  if (!replacements.delete(payload.agentId)) return payload;
-  return { ...payload, reset: true };
-}
 
 // Re-export types from session-store and draft-store for backward compatibility
 export type { DraftInput } from "@/stores/draft-store";
@@ -266,7 +261,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const _sessionStateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attentionNotifiedRef = useRef<Map<string, number>>(new Map());
   const appStateRef = useRef(AppState.currentState);
-  const forcedTimelineTailReplacements = useRef(new Set<string>());
+  const timelineTailReplacementTracker = useRef(createTimelineTailReplacementTracker());
   const viewedTimelineSyncRef = useRef<ResumableViewedTimelineOwner | null>(null);
   const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(new Map());
   const activeAudioGroupsRef = useRef<Set<string>>(new Set());
@@ -442,10 +437,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   );
 
   const applyTimelineResponse = useCallback((receivedPayload: TimelineResponsePayload) => {
-    const payload = consumeForcedTimelineTailReplacement(
-      receivedPayload,
-      forcedTimelineTailReplacements.current,
-    );
+    const payload = timelineTailReplacementTracker.current.apply(receivedPayload);
     const owner = viewedTimelineSyncRef.current;
     if (!owner) throw new Error("Viewed timeline owner is unavailable");
     owner.applyTimelineResponse(payload);
@@ -487,7 +479,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         try {
           const page = await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, request);
           if (shouldInitialize && getInitDeferred(initKey)) {
-            refreshAgentInitializationTimeout({ key: initKey, agentId, setAgentInitializing });
+            refreshAgentInitializationTimeout({
+              key: initKey,
+              agentId,
+              setAgentInitializing,
+            });
           }
           return page;
         } catch (error) {
@@ -499,19 +495,22 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         }
       },
       fetchLatestTail: async (agentId) => {
-        forcedTimelineTailReplacements.current.add(agentId);
+        const requestId = createTimelineTailReplacementRequestId();
+        timelineTailReplacementTracker.current.track(requestId);
         try {
-          return await getHostRuntimeStore().fetchAgentTimeline(
-            serverId,
-            agentId,
-            planTimelineTailFetch(),
-          );
+          return await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, {
+            ...planTimelineTailFetch(),
+            requestId,
+          });
         } finally {
-          forcedTimelineTailReplacements.current.delete(agentId);
+          timelineTailReplacementTracker.current.clear(requestId);
         }
       },
       reportError: (error) => {
-        console.warn("[Session] viewed timeline synchronization failed", { serverId, error });
+        console.warn("[Session] viewed timeline synchronization failed", {
+          serverId,
+          error,
+        });
       },
       schedule: (task, delayMs) => {
         const timeout = setTimeout(task, delayMs);
@@ -607,7 +606,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         },
         message.payload.agentId,
       ).catch((error: unknown) => {
-        console.warn("[Session] timeline replacement refresh failed", { serverId, error });
+        console.warn("[Session] timeline replacement refresh failed", {
+          serverId,
+          error,
+        });
       });
     });
 

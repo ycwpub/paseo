@@ -88,6 +88,7 @@ import type {
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { normalizeWorkspaceTabTarget, workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { useVisibleAgentIds } from "./visible-agent-ids";
+import { usePreloadOpenAgentTimelines } from "./open-agent-timeline-preload";
 import {
   getHostRuntimeStore,
   useHostRuntimeClient,
@@ -1833,6 +1834,11 @@ function WorkspaceScreenContent({
     tabs: uiTabs,
     enabled: hasHydratedWorkspaceLayoutStore,
   });
+  usePreloadOpenAgentTimelines({
+    serverId: normalizedServerId,
+    tabs: uiTabs,
+    enabled: hasHydratedWorkspaceLayoutStore,
+  });
   useSyncWorkspaceActiveBrowser({
     workspaceLayout,
     isRouteFocused,
@@ -1922,13 +1928,6 @@ function WorkspaceScreenContent({
     routeFocused: isRouteFocused,
     focusedPaneOnly: syncFocusedPaneOnly,
   });
-  useEffect(() => {
-    for (const agentId of visibleAgentIds) {
-      void getHostRuntimeStore()
-        .prepareAgentTimeline(normalizedServerId, agentId)
-        .catch(() => undefined);
-    }
-  }, [normalizedServerId, visibleAgentIds]);
   useLayoutEffect(() => {
     if (!persistenceKey || !viewedTimelineSync) {
       return;

@@ -115,6 +115,33 @@ describe("viewed timeline persistence", () => {
     owner.dispose();
   });
 
+  it("paints cached history before slow agent route preparation finishes", async () => {
+    useSessionStore.getState().initializeSession(SERVER_ID, null);
+    let finishAgentPreparation!: () => void;
+    const agentPreparation = new Promise<void>((resolve) => {
+      finishAgentPreparation = resolve;
+    });
+    const replica = createTimelineReplica({
+      serverId: SERVER_ID,
+      storage: {
+        readTimeline: async () => cachedTimeline(),
+        commitTimeline: () => undefined,
+      },
+      prepareAgent: () => agentPreparation,
+    });
+
+    const preparation = replica.prepare(AGENT_ID);
+
+    await expect
+      .poll(() =>
+        selectAgentTimelineState(useSessionStore.getState().sessions[SERVER_ID], AGENT_ID),
+      )
+      .toEqual({ status: "painted", items: cachedTimeline().items });
+
+    finishAgentPreparation();
+    await preparation;
+  });
+
   it("does not let a late cache read overwrite newer network state", async () => {
     useSessionStore.getState().initializeSession(SERVER_ID, null);
     let release!: (value: CachedTimeline) => void;
@@ -136,6 +163,35 @@ describe("viewed timeline persistence", () => {
       )
       .toMatchObject({ status: "synced", range: { endSeq: 8 } });
     owner.dispose();
+  });
+
+  it("keeps live rows that arrive while cached history is being restored", async () => {
+    useSessionStore.getState().initializeSession(SERVER_ID, null);
+    let release!: (value: CachedTimeline) => void;
+    const read = new Promise<CachedTimeline>((resolve) => {
+      release = resolve;
+    });
+    const replica = createTimelineReplica({
+      serverId: SERVER_ID,
+      storage: {
+        readTimeline: () => read,
+        commitTimeline: () => undefined,
+      },
+      prepareAgent: async () => undefined,
+    });
+
+    const preparation = replica.prepare(AGENT_ID);
+    useSessionStore.getState().setAgentStreamState(SERVER_ID, AGENT_ID, {
+      head: [item("live", "live", 5)],
+    });
+    release(cachedTimeline());
+    await preparation;
+
+    const session = useSessionStore.getState().sessions[SERVER_ID];
+    expect([
+      ...(session?.agentStreamTail.get(AGENT_ID) ?? []),
+      ...(session?.agentStreamHead.get(AGENT_ID) ?? []),
+    ]).toEqual([item("cached", "cached", 4), item("live", "live", 5)]);
   });
 
   it("persists accepted live stream commits through the owner", () => {

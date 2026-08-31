@@ -27,46 +27,13 @@ import {
 } from "./session-stream-reducers";
 import { isTimelineResumeSnapshotAuthoritative } from "./timeline-sync-plan";
 import { createInstalledTimelineTransform, type TimelineItemTransform } from "@/plugins/timeline";
+import { restoreCachedTimelineFirst } from "./cache-first-timeline-restore";
 
 const PLUGIN_TIMELINE_REPROJECTION_DELAY_MS = 50;
 
 export interface TimelineReplicaStorage {
   readTimeline(serverId: string, agentId: string): Promise<CachedTimeline | undefined>;
   commitTimeline(serverId: string, agentId: string, timeline: CachedTimeline): void;
-}
-
-async function prepareCachedTimeline(input: {
-  serverId: string;
-  agentId: string;
-  storage: TimelineReplicaStorage;
-  prepareAgent: (agentId: string) => Promise<void>;
-}): Promise<CachedTimeline | undefined> {
-  const before = useSessionStore.getState().sessions[input.serverId];
-  const beforeTimeline = selectAgentTimelineState(before, input.agentId);
-  if (beforeTimeline.status === "synced") return undefined;
-  const beforeHead = before?.agentStreamHead.get(input.agentId);
-  await input.prepareAgent(input.agentId);
-  const stored = await input.storage.readTimeline(input.serverId, input.agentId);
-  if (!stored) return undefined;
-  const session = useSessionStore.getState().sessions[input.serverId];
-  const currentTimeline = selectAgentTimelineState(session, input.agentId);
-  if (session?.agentStreamHead.get(input.agentId) !== beforeHead) return undefined;
-  if (beforeTimeline.status === "painted") {
-    return currentTimeline.status === "painted" && currentTimeline.items === beforeTimeline.items
-      ? stored
-      : undefined;
-  }
-  if (currentTimeline.status !== "cold") return undefined;
-  useSessionStore.getState().applyAgentTimelineResponseState(input.serverId, input.agentId, {
-    items: stored.items,
-    head: [],
-    range: stored.range,
-    older: stored.hasOlder ? "available" : "none",
-    newer: false,
-    synchronized: false,
-    acknowledgedClientMessageIds: [],
-  });
-  return stored;
 }
 
 export interface TimelineReplica {
@@ -98,7 +65,7 @@ class TimelineReplicaOwner implements TimelineReplica {
   }
 
   private async load(agentId: string): Promise<void> {
-    const stored = await prepareCachedTimeline({
+    const stored = await restoreCachedTimelineFirst({
       serverId: this.serverId,
       agentId,
       storage: this.storage,

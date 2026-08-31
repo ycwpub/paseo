@@ -10,6 +10,7 @@ import {
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { openWorkingDiffInExplorer } from "@/workspace-tabs/open-working-diff-in-explorer";
 
 export type OpenInSidePaneSource = keyof OpenInSidePanePreferences;
 export type WorkspaceTargetOpenLocation = "main" | "side";
@@ -127,6 +128,11 @@ export function openPreferredWorkspacePreview(
   const store = useWorkspaceLayoutStore.getState();
   const layout = store.layoutByWorkspace[input.workspaceKey];
   if (!layout) return null;
+  const explorerDiffTabId = openWorkingDiffInExplorer({
+    ...input,
+    workspaceKey: input.workspaceKey,
+  });
+  if (explorerDiffTabId !== undefined) return explorerDiffTabId;
   const existing = collectAllTabs(layout.root).some((tab) =>
     workspaceTabTargetsEqual(tab.target, input.target),
   );

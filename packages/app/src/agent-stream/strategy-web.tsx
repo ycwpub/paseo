@@ -38,6 +38,10 @@ import {
 } from "./history-start-settle-scheduler";
 import { useScrollToMessage } from "./use-scroll-to-message.web";
 import { useWebViewportChangeAnchor } from "./use-web-viewport-change-anchor";
+import {
+  createWebRouteBottomAnchorDriver,
+  type WebRouteBottomAnchorDriver,
+} from "./web-route-bottom-anchor";
 
 interface CreateWebStreamStrategyInput {
   isMobileBreakpoint: boolean;
@@ -53,7 +57,6 @@ interface HistoryStartPrependAnchor {
 
 type ScrollBehaviorLike = "auto" | "smooth";
 
-const WEB_BOTTOM_SETTLE_TIMEOUT_MS = 200;
 const USER_SCROLL_DELTA_EPSILON = 1;
 const BOTTOM_OVERSCROLL_TOLERANCE_PX = 2;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 64;
@@ -332,8 +335,10 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const upwardInputEvidenceUntilRef = useRef(0);
   const lastTouchClientYRef = useRef<number | null>(null);
   const pendingAutoScrollFrameRef = useRef<number | null>(null);
-  const pendingAutoScrollTimeoutRef = useRef<number | null>(null);
   const pendingVirtualRowMeasureFramesRef = useRef(new Map<Element, number>());
+  const routeBottomAnchorDriverRef = useRef<WebRouteBottomAnchorDriver | null>(null);
+  const routeBottomAnchorSettledRef = useRef(false);
+  const routeBottomAnchorLifecycleKeyRef = useRef<string | null>(null);
   const historyStartReadyRef = useRef(false);
   const [historyStartPaginationState, setHistoryStartPaginationState] = useState(
     createHistoryStartPaginationState,
@@ -361,6 +366,13 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const hasRouteBottomAnchorRequest = routeBottomAnchorRequest !== null;
   const activationKey = routeBottomAnchorRequest?.requestKey ?? props.agentId;
   const isActivationReady = !hasRouteBottomAnchorRequest || isAuthoritativeHistoryReady;
+  const routeBottomAnchorLifecycleKey = `${activationKey}:${
+    shouldUseVirtualizer ? "virtualized" : "mounted"
+  }`;
+  if (routeBottomAnchorLifecycleKeyRef.current !== routeBottomAnchorLifecycleKey) {
+    routeBottomAnchorLifecycleKeyRef.current = routeBottomAnchorLifecycleKey;
+    routeBottomAnchorSettledRef.current = false;
+  }
 
   const rowVirtualizer = useVirtualizer({
     count: segments.historyVirtualized.length,
@@ -401,7 +413,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       return null;
     }
     const bottomAnchorSettled =
-      !followOutputRef.current || isScrollContainerNearBottom(scrollContainer);
+      routeBottomAnchorSettledRef.current &&
+      (!followOutputRef.current || isScrollContainerNearBottom(scrollContainer));
     return {
       distanceFromHistoryStart: scrollContainer.scrollTop,
       hasOlderHistory,
@@ -588,6 +601,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         pendingFrames.delete(node);
         if (isActiveRef.current && node.isConnected) {
           rowVirtualizer.measureElement(node);
+          routeBottomAnchorDriverRef.current?.notifyStateChanged();
         }
       });
       pendingFrames.set(node, frame);
@@ -610,11 +624,6 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     if (pendingFrame !== null) {
       pendingAutoScrollFrameRef.current = null;
       window.cancelAnimationFrame(pendingFrame);
-    }
-    const pendingTimeout = pendingAutoScrollTimeoutRef.current;
-    if (pendingTimeout !== null) {
-      pendingAutoScrollTimeoutRef.current = null;
-      window.clearTimeout(pendingTimeout);
     }
   }, []);
 
@@ -698,6 +707,39 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scheduleStickToBottom();
   }, [cancelPendingStickToBottom, scheduleStickToBottom, scrollMessagesToBottom]);
 
+  const activationReadyRef = useRef(isActivationReady);
+  const forceStickToBottomRef = useRef(forceStickToBottom);
+  activationReadyRef.current = isActivationReady;
+  forceStickToBottomRef.current = forceStickToBottom;
+  if (!routeBottomAnchorDriverRef.current) {
+    routeBottomAnchorDriverRef.current = createWebRouteBottomAnchorDriver({
+      getIsActive: () => isActiveRef.current,
+      getIsReady: () => activationReadyRef.current,
+      getShouldFollowOutput: () => followOutputRef.current,
+      getHasPendingMeasurements: () => pendingVirtualRowMeasureFramesRef.current.size > 0,
+      getGeometry: () => {
+        const scrollContainer = scrollContainerRef.current;
+        if (!scrollContainer) {
+          return null;
+        }
+        return {
+          clientHeight: scrollContainer.clientHeight,
+          scrollHeight: scrollContainer.scrollHeight,
+          scrollTop: scrollContainer.scrollTop,
+        };
+      },
+      stickToBottom: () => forceStickToBottomRef.current(),
+      onSettledChange: (settled) => {
+        routeBottomAnchorSettledRef.current = settled;
+        if (settled) {
+          evaluateHistoryStart();
+        }
+      },
+      requestFrame: (callback) => window.requestAnimationFrame(callback),
+      cancelFrame: (frame) => window.cancelAnimationFrame(frame),
+    });
+  }
+
   // Rows are laid out in DOM order, virtualized block first, so the first row whose bottom
   // clears the reading line is the one the reader is looking at.
   const reportReadingPosition = useStableEvent(() => {
@@ -770,6 +812,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
 
   const stopFollowingOutputFromUserIntent = useStableEvent(() => {
     cancelPendingStickToBottom();
+    routeBottomAnchorDriverRef.current?.cancelByUser();
     if (followOutputRef.current) {
       setFollowOutput(false);
     }
@@ -828,37 +871,17 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [evaluateHistoryStart, props.agentId]);
 
   useLayoutEffect(() => {
-    if (!isActiveRef.current || !isActivationReady) {
-      return;
-    }
-    if (hasRouteBottomAnchorRequest && !followOutputRef.current) {
+    if (!followOutputRef.current) {
+      routeBottomAnchorDriverRef.current?.cancelByUser();
       return;
     }
     setFollowOutput(true);
-    forceStickToBottom();
-    const timeout = window.setTimeout(() => {
-      if (!followOutputRef.current) {
-        return;
-      }
-      const scrollContainer = scrollContainerRef.current;
-      if (!scrollContainer) {
-        return;
-      }
-      if (isScrollContainerNearBottom(scrollContainer)) {
-        return;
-      }
-      scheduleStickToBottom();
-    }, WEB_BOTTOM_SETTLE_TIMEOUT_MS);
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [
-    activationKey,
-    forceStickToBottom,
-    hasRouteBottomAnchorRequest,
-    isActivationReady,
-    scheduleStickToBottom,
-  ]);
+    routeBottomAnchorDriverRef.current?.applyRequest({
+      requestKey: activationKey,
+      isVirtualized: shouldUseVirtualizer,
+    });
+    routeBottomAnchorDriverRef.current?.notifyStateChanged();
+  }, [activationKey, isActivationReady, isActive, shouldUseVirtualizer]);
 
   // Following output is a layout invariant: rows, footer, and bottom offset must
   // reach the browser in the same paint.
@@ -982,6 +1005,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       if (historyStartPaginationStateRef.current.status === "settling") {
         scheduleHistoryStartPrependSettle();
       }
+      routeBottomAnchorDriverRef.current?.notifyStateChanged();
       updateScrollMetrics();
       evaluateHistoryStart();
       if (!followOutputRef.current) {
@@ -1195,6 +1219,14 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     viewportChangeAnchor,
     viewportRef,
   ]);
+
+  useEffect(
+    () => () => {
+      routeBottomAnchorDriverRef.current?.destroy();
+      routeBottomAnchorDriverRef.current = null;
+    },
+    [],
+  );
 
   const contentContainerStyle = useMemo((): CSSProperties => {
     return {

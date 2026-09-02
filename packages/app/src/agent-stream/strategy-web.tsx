@@ -339,6 +339,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   const routeBottomAnchorDriverRef = useRef<WebRouteBottomAnchorDriver | null>(null);
   const routeBottomAnchorSettledRef = useRef(false);
   const routeBottomAnchorLifecycleKeyRef = useRef<string | null>(null);
+  const appliedRouteBottomAnchorRequestKeyRef = useRef<string | null>(null);
   const historyStartReadyRef = useRef(false);
   const [historyStartPaginationState, setHistoryStartPaginationState] = useState(
     createHistoryStartPaginationState,
@@ -871,17 +872,29 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [evaluateHistoryStart, props.agentId]);
 
   useLayoutEffect(() => {
-    if (!followOutputRef.current) {
+    const nextRouteRequestKey = routeBottomAnchorRequest?.requestKey ?? null;
+    const isNewRouteActivation =
+      nextRouteRequestKey !== null &&
+      appliedRouteBottomAnchorRequestKeyRef.current !== nextRouteRequestKey;
+    if (isNewRouteActivation) {
+      appliedRouteBottomAnchorRequestKeyRef.current = nextRouteRequestKey;
+      setFollowOutput(true);
+    } else if (!followOutputRef.current) {
       routeBottomAnchorDriverRef.current?.cancelByUser();
       return;
     }
-    setFollowOutput(true);
     routeBottomAnchorDriverRef.current?.applyRequest({
       requestKey: activationKey,
       isVirtualized: shouldUseVirtualizer,
     });
     routeBottomAnchorDriverRef.current?.notifyStateChanged();
-  }, [activationKey, isActivationReady, isActive, shouldUseVirtualizer]);
+  }, [
+    activationKey,
+    isActivationReady,
+    isActive,
+    routeBottomAnchorRequest?.requestKey,
+    shouldUseVirtualizer,
+  ]);
 
   // Following output is a layout invariant: rows, footer, and bottom offset must
   // reach the browser in the same paint.

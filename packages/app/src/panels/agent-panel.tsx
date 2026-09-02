@@ -79,9 +79,10 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import {
-  deriveRouteBottomAnchorIntent,
-  deriveRouteBottomAnchorRequest,
-} from "@/screens/agent/agent-ready-screen-bottom-anchor";
+  deriveAgentRouteBottomAnchorRequest,
+  reconcileAgentRouteBottomAnchorLifecycle,
+  type AgentRouteBottomAnchorLifecycleState,
+} from "@/screens/agent/agent-route-bottom-anchor-lifecycle";
 import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { AgentTracks, hasAgentTracks } from "@/panels/agent-tracks";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
@@ -486,7 +487,7 @@ const EMPTY_MESSAGE_SUBMISSIONS = [] as const;
 const EMPTY_PENDING_PERMISSIONS = new Map<string, PendingPermission>();
 const EMPTY_PENDING_PERMISSION_LIST: PendingPermission[] = [];
 
-type RouteBottomAnchorRequest = ReturnType<typeof deriveRouteBottomAnchorRequest>;
+type RouteBottomAnchorRequest = ReturnType<typeof deriveAgentRouteBottomAnchorRequest>;
 
 function findActiveCreateHandoff(input: {
   pendingByDraftId: ReturnType<typeof useCreateFlowStore.getState>["pendingByDraftId"];
@@ -800,10 +801,7 @@ function ChatAgentContent({
   const wasPaneFocusedRef = useRef(isPaneFocused);
   const reconnectToastPresentedRef = useRef(false);
   const initAttemptTokenRef = useRef(0);
-  const routeBottomAnchorRequestRef = useRef<{
-    routeKey: string;
-    reason: "initial-entry" | "resume";
-  } | null>(null);
+  const routeBottomAnchorLifecycleRef = useRef<AgentRouteBottomAnchorLifecycleState | null>(null);
   const agentState = useSessionStore(
     useShallow((state) => selectChatAgentState(state, serverId, agentId)),
   );
@@ -1026,19 +1024,16 @@ function ChatAgentContent({
 
   const effectiveAgent = viewState.tag === "ready" ? viewState.agent : null;
   const routeEntryKey = agentId ? `${serverId}:${agentId}` : null;
-  routeBottomAnchorRequestRef.current = deriveRouteBottomAnchorIntent({
-    cachedIntent: routeBottomAnchorRequestRef.current,
+  routeBottomAnchorLifecycleRef.current = reconcileAgentRouteBottomAnchorLifecycle({
+    current: routeBottomAnchorLifecycleRef.current,
     routeKey: routeEntryKey,
-    hasAppliedAuthoritativeHistoryAtEntry: hasAppliedAuthoritativeHistory,
+    isVisible: isPaneVisible,
+    hasAppliedAuthoritativeHistory,
   });
-  const routeBottomAnchorRequest = useMemo(
-    () =>
-      deriveRouteBottomAnchorRequest({
-        intent: routeBottomAnchorRequestRef.current,
-        effectiveAgentId: effectiveAgent?.id ?? null,
-      }),
-    [effectiveAgent?.id],
-  );
+  const routeBottomAnchorRequest = deriveAgentRouteBottomAnchorRequest({
+    lifecycle: routeBottomAnchorLifecycleRef.current,
+    effectiveAgentId: effectiveAgent?.id ?? null,
+  });
 
   const handleComposerHeightChange = useCallback(
     (_height: number) => {

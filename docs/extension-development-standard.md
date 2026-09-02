@@ -310,3 +310,12 @@ If even one feature is missing or cannot be verified:
 
 Conflict count is not the success criterion. Preserving every branch feature is the success
 criterion.
+
+## Conversation route activation
+
+Retained conversation panels must treat every hidden-to-visible route activation as a new entry
+request. A conversation that was previously detached from the live tail must return to the newest
+message when the user explicitly enters it again. The activation request key must change for each
+entry, restore follow-output before anchoring, remain active while virtualized rows are measured,
+and block older-history pagination until the bottom anchor settles. Do not implement this behavior
+with fixed timeouts.

@@ -19,6 +19,11 @@ import {
   createTimelineTailReplacementTracker,
 } from "@/timeline/timeline-tail-replacement-tracker";
 import {
+  createTimelineResponseDelivery,
+  fetchAndDeliverTimelineResponse,
+  type TimelineResponseDelivery,
+} from "@/timeline/timeline-response-delivery";
+import {
   type TimelineDeliveryMode,
   type TimelineResponsePayload,
 } from "@/timeline/viewed-timeline-sync";
@@ -263,6 +268,7 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const appStateRef = useRef(AppState.currentState);
   const timelineTailReplacementTracker = useRef(createTimelineTailReplacementTracker());
   const viewedTimelineSyncRef = useRef<ResumableViewedTimelineOwner | null>(null);
+  const timelineResponseDeliveryRef = useRef<TimelineResponseDelivery | null>(null);
   const audioOutputBuffersRef = useRef<Map<string, BufferedAudioChunk[]>>(new Map());
   const activeAudioGroupsRef = useRef<Set<string>>(new Set());
   const isAppVisible = useAppVisible();
@@ -438,9 +444,9 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
   const applyTimelineResponse = useCallback((receivedPayload: TimelineResponsePayload) => {
     const payload = timelineTailReplacementTracker.current.apply(receivedPayload);
-    const owner = viewedTimelineSyncRef.current;
-    if (!owner) throw new Error("Viewed timeline owner is unavailable");
-    owner.applyTimelineResponse(payload);
+    const delivery = timelineResponseDeliveryRef.current;
+    if (!delivery) throw new Error("Timeline response delivery is unavailable");
+    delivery.deliver(payload);
   }, []);
 
   useEffect(() => {
@@ -477,7 +483,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
           setAgentInitializing(agentId, true);
         }
         try {
-          const page = await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, request);
+          const page = await fetchAndDeliverTimelineResponse(
+            () => getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, request),
+            applyTimelineResponse,
+          );
           if (shouldInitialize && getInitDeferred(initKey)) {
             refreshAgentInitializationTimeout({
               key: initKey,
@@ -498,10 +507,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         const requestId = createTimelineTailReplacementRequestId();
         timelineTailReplacementTracker.current.track(requestId);
         try {
-          return await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, {
-            ...planTimelineTailFetch(),
-            requestId,
-          });
+          return await fetchAndDeliverTimelineResponse(
+            () =>
+              getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, {
+                ...planTimelineTailFetch(),
+                requestId,
+              }),
+            applyTimelineResponse,
+          );
         } finally {
           timelineTailReplacementTracker.current.clear(requestId);
         }
@@ -518,6 +531,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       },
     });
     viewedTimelineSyncRef.current = sync;
+    timelineResponseDeliveryRef.current = createTimelineResponseDelivery((payload) => {
+      sync.flushStreamAgent(payload.agentId);
+      sync.applyTimelineResponse(payload);
+    });
     setViewedTimelineSync(serverId, sync);
     sync.setActive(getIsAppVisible(appStateRef.current));
 
@@ -525,10 +542,11 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       if (viewedTimelineSyncRef.current === sync) {
         viewedTimelineSyncRef.current = null;
       }
+      timelineResponseDeliveryRef.current = null;
       setViewedTimelineSync(serverId, null);
       sync.dispose();
     };
-  }, [client, serverId, setInitializingAgents, setViewedTimelineSync]);
+  }, [applyTimelineResponse, client, serverId, setInitializingAgents, setViewedTimelineSync]);
 
   useEffect(() => {
     viewedTimelineSyncRef.current?.setConnected(isConnected);
@@ -593,8 +611,16 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
 
     const unsubAgentTimeline = client.on("fetch_agent_timeline_response", (message) => {
       if (message.type !== "fetch_agent_timeline_response") return;
-      owner.flushStreamAgent(message.payload.agentId);
-      applyTimelineResponse(message.payload);
+      try {
+        applyTimelineResponse(message.payload);
+      } catch (error) {
+        console.warn("[Session] failed to apply timeline response event", {
+          serverId,
+          agentId: message.payload.agentId,
+          requestId: message.payload.requestId,
+          error,
+        });
+      }
     });
 
     const unsubTimelineReplacement = client.on("agent.timeline.replacement", (message) => {

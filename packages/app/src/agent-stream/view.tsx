@@ -612,7 +612,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       loadOlder,
     } = useStreamHistoryWindow({
       agentId,
-      items: projectedToolCalls.tail,
+      items: processVisibility.tail,
       loadRemoteOlder,
     });
     const isLoadingOlder = remoteIsLoadingOlder;

@@ -56,7 +56,6 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { renderPromptAttachmentAsText } from "../prompt-attachments.js";
-import { composeSystemPromptParts } from "../system-prompt.js";
 import { curateAgentActivity } from "../activity-curator.js";
 import {
   mapCodexToolCallEnvelope,
@@ -113,6 +112,7 @@ import {
 } from "../provider-notices.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import { applyCodexToolPolicy } from "./codex/options.js";
+import { composeCodexDeveloperInstructions } from "./codex/current-request-instructions.js";
 import { CodexRuntimeOptionsSchema, type CodexRuntimeOptions } from "./codex/runtime-options.js";
 import { resolveCodexSessionHome } from "./codex/session-home.js";
 import {
@@ -165,13 +165,6 @@ const CODEX_NON_ORIGINATING_APP_SERVER_CLIENT_INFO = {
   version: "0.0.0",
 } as const;
 const ASSISTANT_MESSAGE_BOUNDARY_MARKDOWN = "\n\n---\n\n";
-const PASEO_CODEX_PROGRESS_UPDATE_INSTRUCTIONS = `<paseo_progress_updates>
-For tasks that require multiple tool calls, keep the user informed with brief progress updates sent as commentary messages.
-- Send an update before the first tool call explaining the immediate next step.
-- After a meaningful batch of actions, summarize concrete findings and what you will do next.
-- Do not narrate every command or repeat the plan.
-- Never expose hidden chain-of-thought. Share only concise, outcome-oriented progress summaries.
-</paseo_progress_updates>`;
 const MAX_PENDING_SUB_AGENT_THREADS = 32;
 const MAX_PENDING_SUB_AGENT_NOTIFICATIONS_PER_THREAD = 128;
 // COMPAT(codexLegacyCollabAgentToolCall): Codex <0.143 emits this shape. Added in
@@ -187,12 +180,6 @@ const CODEX_TOOL_THREAD_ITEM_TYPES = new Set([
 const CODEX_CONTEXT_COMPACTION_TYPE = "contextCompaction";
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX =
   "The user approved the plan. Implement it now. Do not restate or revise the plan unless blocked.";
-
-function composeCodexDeveloperInstructions(
-  ...parts: Array<string | null | undefined>
-): string | undefined {
-  return composeSystemPromptParts(...parts, PASEO_CODEX_PROGRESS_UPDATE_INSTRUCTIONS);
-}
 
 // Codex's experimental `goals` feature ships in 0.128.0+. Older binaries reject
 // `--enable goals` at launch, so we gate by version and silently skip the flag
@@ -5253,7 +5240,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       sandbox = preset.sandbox;
     }
     const innerConfig = this.buildCodexInnerConfig();
-    const developerInstructions = composeSystemPromptParts(
+    const developerInstructions = composeCodexDeveloperInstructions(
       this.config.systemPrompt,
       this.config.daemonAppendSystemPrompt,
     );

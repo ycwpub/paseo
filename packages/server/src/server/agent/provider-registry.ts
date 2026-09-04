@@ -49,6 +49,7 @@ import { TRAE_DEFAULT_MODE_ID, TRAE_MODES } from "./providers/trae-acp-modes.js"
 import { TraeACPModeFallbackAgentClient } from "./providers/trae-acp-mode-fallback-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
+import { normalizeAidenProviderRuntimeSettings } from "./providers/aiden/provider-command-compat.js";
 import { ClaudeProviderOptionsSchema } from "./providers/claude/options.js";
 import { CodexRuntimeOptionsSchema } from "./providers/codex/runtime-options.js";
 import { OpenCodeProviderOptionsSchema } from "./providers/opencode/options.js";
@@ -298,25 +299,7 @@ function applyDerivedProviderRuntimeDefaults(
   providerId: string,
   runtimeSettings: ProviderRuntimeSettings | undefined,
 ): ProviderRuntimeSettings | undefined {
-  if (runtimeSettings?.command) {
-    return runtimeSettings;
-  }
-  let command: string[] | null = null;
-  if (providerId === "aiden-codex") {
-    command = ["aiden", "x", "codex"];
-  } else if (providerId === "aiden-claude") {
-    command = ["aiden", "x", "claude"];
-  }
-  if (!command) {
-    return runtimeSettings;
-  }
-  return {
-    ...runtimeSettings,
-    command: {
-      mode: "replace",
-      argv: command,
-    },
-  };
+  return normalizeAidenProviderRuntimeSettings(providerId, runtimeSettings);
 }
 
 function applyOverrideToDefinition(

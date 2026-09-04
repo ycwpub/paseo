@@ -543,6 +543,33 @@ test("legacy Aiden provider definitions receive their built-in launcher commands
     },
   });
 });
+test("legacy Aiden Claude wrapper configurations use the direct Aiden launcher", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      "aiden-claude": {
+        extends: "claude",
+        label: "Aiden Claude",
+        command: ["/home/user/paseo/bin/aiden-x-claude-paseo"],
+      },
+    },
+  });
+
+  registry["aiden-claude"].createClient(logger);
+
+  expect(mockState.constructorArgs.claude).toContainEqual({
+    runtimeSettings: {
+      command: {
+        mode: "replace",
+        argv: ["aiden", "x", "claude"],
+      },
+    },
+    customProvider: {
+      id: "aiden-claude",
+      label: "Aiden Claude",
+      extends: "claude",
+    },
+  });
+});
 test("traecli provider extending acp uses TraeACPAgentClient", () => {
   const registry = buildProviderRegistry(logger, {
     providerOverrides: {

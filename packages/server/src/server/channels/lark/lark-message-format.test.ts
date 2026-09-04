@@ -8,6 +8,7 @@ import {
   formatLarkUserPromptWithTopicHistory,
   getLarkEventDedupeKey,
   isLarkBotMentionEvent,
+  normalizeLarkApiMessage,
   normalizeLarkMessageEvent,
   resolveLarkAddressedBots,
   resolveLarkSubstituteTrigger,
@@ -354,6 +355,64 @@ describe("lark-message-format", () => {
     });
 
     expect(event?.topicName).toBe("Short question");
+  });
+
+  test("normalizes interactive Bamboo alert cards for background observers", () => {
+    const event = normalizeLarkMessageEvent({
+      event_id: "evt_bamboo",
+      sender: { sender_name: "Bamboo", sender_id: {} },
+      message: {
+        message_id: "om_bamboo",
+        chat_id: "oc_alerts",
+        chat_type: "group",
+        message_type: "interactive",
+        content: JSON.stringify({
+          header: { title: { content: "Bamboo 对账报警" } },
+          elements: [
+            { tag: "markdown", content: "result_id: 12345" },
+            { tag: "div", text: { content: "离线数据质量告警" } },
+          ],
+        }),
+      },
+    });
+
+    expect(event).toMatchObject({
+      messageId: "om_bamboo",
+      chatId: "oc_alerts",
+      messageType: "interactive",
+    });
+    expect(event?.text).toContain("Bamboo 对账报警");
+    expect(event?.text).toContain("result_id: 12345");
+  });
+
+  test("normalizes historical interactive Argos cards returned by the message list API", () => {
+    const event = normalizeLarkApiMessage(
+      {
+        message_id: "om_argos",
+        msg_type: "interactive",
+        create_time: "1788505200000",
+        sender_name: "Argos",
+        sender: { sender_type: "app", sender_id: { open_id: "ou_argos" } },
+        body: {
+          content: JSON.stringify({
+            header: { title: { content: "Argos 服务告警" } },
+            elements: [{ tag: "markdown", content: "event_id: 12345" }],
+          }),
+        },
+      },
+      "oc_alerts",
+    );
+
+    expect(event).toMatchObject({
+      messageId: "om_argos",
+      chatId: "oc_alerts",
+      messageType: "interactive",
+      senderType: "app",
+      displayName: "Argos",
+      createTime: 1788505200000,
+    });
+    expect(event?.text).toContain("Argos 服务告警");
+    expect(event?.text).toContain("event_id: 12345");
   });
 
   test("normalizes mention identities from both event and REST API shapes", () => {

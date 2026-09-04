@@ -31,7 +31,7 @@ function createHarness(gatewayOverrides: Partial<LarkUserOAuthGateway> = {}) {
       expiresIn: 7200,
       refreshTokenExpiresIn: 2_592_000,
       scope:
-        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message im:message.send_as_user",
     })),
     refreshAccessToken: vi.fn(async () => ({
       accessToken: "u-token-refreshed",
@@ -86,7 +86,13 @@ describe("LarkUserOAuthService", () => {
     expect(url.searchParams.get("client_id")).toBe("cli_test");
     expect(url.searchParams.get("response_type")).toBe("code");
     expect(url.searchParams.get("scope")?.split(" ")).toEqual(
-      expect.arrayContaining(["offline_access", "im:chat:read", "im:chat.members:write_only"]),
+      expect.arrayContaining([
+        "offline_access",
+        "im:chat:read",
+        "im:chat.members:write_only",
+        "im:message",
+        "im:message.send_as_user",
+      ]),
     );
 
     await expect(
@@ -134,7 +140,7 @@ describe("LarkUserOAuthService", () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       scope:
-        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message im:message.send_as_user",
       openId: "ou_test",
       email: null,
       displayName: null,
@@ -168,7 +174,7 @@ describe("LarkUserOAuthService", () => {
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       scope:
-        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message im:message.send_as_user",
       openId: null,
       email: null,
       displayName: null,
@@ -180,7 +186,7 @@ describe("LarkUserOAuthService", () => {
     expect(store.get("cli_test")?.refreshToken).toBe("r-token-old");
   });
 
-  it("requires reauthorization when the stored grant lacks user message permission", async () => {
+  it("requires reauthorization when a legacy grant lacks the current send-as-user scope", async () => {
     const { service, store } = createHarness();
     store.set({
       appId: "cli_test",
@@ -188,7 +194,8 @@ describe("LarkUserOAuthService", () => {
       refreshToken: "r-token-old",
       expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      scope: "offline_access im:chat:read im:chat.members:write_only",
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message im:message:send_as_user",
       openId: "ou_test",
       email: "test@example.com",
       displayName: "张三",
@@ -218,7 +225,7 @@ describe("LarkUserOAuthService", () => {
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       scope:
-        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message im:message.send_as_user",
       openId: null,
       email: null,
       displayName: null,

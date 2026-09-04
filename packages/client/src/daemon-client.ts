@@ -39,6 +39,8 @@ import {
   SkillUpdateInput,
   type LarkReminderCreateInput,
   type LarkReminderUpdateInput,
+  type LarkSubstituteModeCreateInput,
+  type LarkSubstituteModeUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import { DaemonResourceRpcClient } from "./daemon-resource-rpc-client.js";
@@ -719,6 +721,26 @@ type LarkReminderDeletePayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.reminder.delete.response" }
 >["payload"];
+type LarkSubstituteModeListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute.list.response" }
+>["payload"];
+type LarkSubstituteModeCreatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute.create.response" }
+>["payload"];
+type LarkSubstituteModeUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute.update.response" }
+>["payload"];
+type LarkSubstituteModeSetEnabledPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute.set_enabled.response" }
+>["payload"];
+type LarkSubstituteModeDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute.delete.response" }
+>["payload"];
 type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
 type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
 type LoopInspectPayload = Extract<
@@ -1096,6 +1118,23 @@ export interface SetLarkReminderEnabledOptions {
 }
 export interface DeleteLarkReminderOptions {
   reminderId: string;
+  requestId?: string;
+}
+export interface CreateLarkSubstituteModeOptions extends LarkSubstituteModeCreateInput {
+  requestId?: string;
+}
+export interface UpdateLarkSubstituteModeOptions {
+  modeId: string;
+  mode: LarkSubstituteModeUpdateInput;
+  requestId?: string;
+}
+export interface SetLarkSubstituteModeEnabledOptions {
+  modeId: string;
+  enabled: boolean;
+  requestId?: string;
+}
+export interface DeleteLarkSubstituteModeOptions {
+  modeId: string;
   requestId?: string;
 }
 export interface RunLoopOptions {
@@ -6503,6 +6542,7 @@ export class DaemonClient {
     appId: string;
     projectId: string;
     defaultAgent: PluginAppDefaultAgent;
+    data?: Record<string, unknown>;
   }): Promise<{ app: PluginAppState | null; error: string | null }> {
     return this.resourceRpc.configurePluginApp(input);
   }
@@ -6746,6 +6786,34 @@ export class DaemonClient {
 
   async deleteLarkReminder(options: DeleteLarkReminderOptions): Promise<LarkReminderDeletePayload> {
     return this.resourceRpc.deleteLarkReminder(options);
+  }
+
+  async listLarkSubstituteModes(requestId?: string): Promise<LarkSubstituteModeListPayload> {
+    return this.resourceRpc.listLarkSubstituteModes(requestId);
+  }
+
+  async createLarkSubstituteMode(
+    options: CreateLarkSubstituteModeOptions,
+  ): Promise<LarkSubstituteModeCreatePayload> {
+    return this.resourceRpc.createLarkSubstituteMode(options);
+  }
+
+  async updateLarkSubstituteMode(
+    options: UpdateLarkSubstituteModeOptions,
+  ): Promise<LarkSubstituteModeUpdatePayload> {
+    return this.resourceRpc.updateLarkSubstituteMode(options);
+  }
+
+  async setLarkSubstituteModeEnabled(
+    options: SetLarkSubstituteModeEnabledOptions,
+  ): Promise<LarkSubstituteModeSetEnabledPayload> {
+    return this.resourceRpc.setLarkSubstituteModeEnabled(options);
+  }
+
+  async deleteLarkSubstituteMode(
+    options: DeleteLarkSubstituteModeOptions,
+  ): Promise<LarkSubstituteModeDeletePayload> {
+    return this.resourceRpc.deleteLarkSubstituteMode(options);
   }
 
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {

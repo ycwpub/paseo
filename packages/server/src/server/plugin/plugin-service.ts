@@ -487,6 +487,7 @@ export class PluginService {
     appId: string,
     projectId: string,
     defaultAgent: PluginAppState["defaultAgent"],
+    data?: Record<string, unknown>,
   ): PluginAppState {
     if (!defaultAgent) throw new Error("Default Agent provider and model are required");
     this.assertProjectBindingAvailable(projectId, {
@@ -495,7 +496,13 @@ export class PluginService {
       appId,
       pluginProjectId: this.appPluginProjectId(pluginId, appId, projectId),
     });
-    const app = this.requireAppRuntime().configure({ pluginId, appId, projectId, defaultAgent });
+    const app = this.requireAppRuntime().configure({
+      pluginId,
+      appId,
+      projectId,
+      defaultAgent,
+      ...(data ? { data } : {}),
+    });
     this.claimAppProject(app);
     return app;
   }

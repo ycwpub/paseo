@@ -1,0 +1,31 @@
+{
+  "name": "argos-alert-troubleshooter",
+  "version": "0.1.0",
+  "description": "Monitor Lark groups and autonomously troubleshoot Argos alerts.",
+  "author": {
+    "name": "Paseo"
+  },
+  "keywords": ["bytedance", "argos", "alert", "troubleshooting", "lark"],
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "Argos 报警自动排查",
+    "shortDescription": "监听飞书群中的 Argos 报警并自主排查",
+    "longDescription": "以 Project 为核心配置飞书群、排查 SOP、归因记录文档和 Agent，实时处理 Argos 报警，并通过定时补偿扫描防止消息遗漏。",
+    "developerName": "Paseo",
+    "category": "Operations",
+    "capabilities": [
+      "Argos 报警卡片监听",
+      "飞书群补偿扫描",
+      "自主根因排查",
+      "排查 SOP",
+      "归因记录",
+      "助手与团队"
+    ],
+    "defaultPrompt": [
+      "查看当前 Argos 报警自动排查项目的运行配置。",
+      "检查最近的 Argos 告警排查结果和失败原因。",
+      "根据历史归因记录优化项目的排查 SOP。"
+    ]
+  }
+}

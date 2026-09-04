@@ -48,6 +48,7 @@ export const PluginAppConfigureRequestSchema = z.object({
   appId: z.string().min(1),
   projectId: z.string().min(1),
   defaultAgent: PluginAppDefaultAgentSchema,
+  data: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const PluginAppConfigureResponseSchema = z.object({

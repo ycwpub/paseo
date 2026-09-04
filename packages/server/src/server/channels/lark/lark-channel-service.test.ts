@@ -1446,6 +1446,84 @@ describe("LarkChannelService", () => {
     );
   });
 
+  test("uses an independent substitute mode target and question policies", async () => {
+    const harness = createHarness();
+    harness.service.createSubstituteMode({
+      name: "研发替身",
+      enabled: true,
+      botId: harness.botId,
+      substituteUser: {
+        openId: "ou_substitute",
+        name: "张三",
+        email: "zhangsan@example.com",
+      },
+      privateReplyIdentity: "user",
+      groupReplyIdentity: "bot",
+      disclosure: { enabled: true, prompt: "【AI 协助回答】" },
+      customPrompt: "回答前先核对发布规范",
+      delaySeconds: 0,
+      activeTimeRanges: [],
+      allowlist: [
+        {
+          id: "allow-question",
+          type: "question_type",
+          description: "研发和代码问题",
+        },
+      ],
+      denylist: [
+        {
+          id: "deny-question",
+          type: "question_type",
+          description: "人事和薪酬问题",
+        },
+      ],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/replacement-project",
+        workspaceId: null,
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_independent_substitute",
+      messageId: "om_independent_substitute",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_substitute",
+      rootMessageId: "om_root",
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "发布问题",
+      text: "@张三 如何发布？",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "张三",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+
+    expect(harness.createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "aiden_codex",
+        cwd: "/replacement-project",
+        config: expect.objectContaining({ model: "gpt-5.5" }),
+      }),
+    );
+    const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
+    expect(prompt).toContain("Additional substitute instruction: 回答前先核对发布规范");
+    expect(prompt).toContain("<allow>研发和代码问题</allow>");
+    expect(prompt).toContain("<deny>人事和薪酬问题</deny>");
+  });
+
   test("handles a substitute-mode group message that mentions the current bot", async () => {
     const harness = createHarness();
     harness.store.configure({

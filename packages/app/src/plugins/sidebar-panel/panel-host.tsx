@@ -9,6 +9,14 @@ import { usePlugins } from "@/hooks/use-plugins";
 import { ByteDevelopmentPanel } from "@/plugins/byte-development/development-panel";
 import { DEVELOPMENT_PLUGIN_ID } from "@/plugins/byte-development/flow-model";
 import {
+  BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
+  BambooTroubleshooterPanel,
+} from "@/plugins/bamboo-troubleshooter/bamboo-troubleshooter-panel";
+import {
+  ARGOS_TROUBLESHOOTER_PLUGIN_ID,
+  ArgosTroubleshooterPanel,
+} from "@/plugins/argos-troubleshooter/argos-troubleshooter-panel";
+import {
   HTTP_SERVICE_PLUGIN_ID,
   HttpServicePanel,
 } from "@/plugins/workflow-http-service/http-service-panel";
@@ -90,6 +98,28 @@ export function PluginAppPanelHost({ compact }: { compact: boolean }) {
     } else if (plugin.pluginId === HTTP_SERVICE_PLUGIN_ID) {
       content = (
         <HttpServicePanel
+          key={contentKey}
+          active
+          serverId={selection.serverId}
+          plugin={plugin}
+          appDefinition={appDefinition}
+          initialProjectId={selection.projectId}
+        />
+      );
+    } else if (plugin.pluginId === BAMBOO_TROUBLESHOOTER_PLUGIN_ID) {
+      content = (
+        <BambooTroubleshooterPanel
+          key={contentKey}
+          active
+          serverId={selection.serverId}
+          plugin={plugin}
+          appDefinition={appDefinition}
+          initialProjectId={selection.projectId}
+        />
+      );
+    } else if (plugin.pluginId === ARGOS_TROUBLESHOOTER_PLUGIN_ID) {
+      content = (
+        <ArgosTroubleshooterPanel
           key={contentKey}
           active
           serverId={selection.serverId}

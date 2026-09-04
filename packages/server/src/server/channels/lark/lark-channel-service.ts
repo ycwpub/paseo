@@ -1,3 +1,4 @@
+import path from "node:path";
 import type pino from "pino";
 import type {
   LarkChannelAuthorizedUser,
@@ -5,6 +6,9 @@ import type {
   LarkReminder,
   LarkReminderCreateInput,
   LarkReminderUpdateInput,
+  LarkSubstituteMode,
+  LarkSubstituteModeCreateInput,
+  LarkSubstituteModeUpdateInput,
   SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
 import type { AgentManager, AgentManagerEvent } from "../../agent/agent-manager.js";
@@ -41,6 +45,7 @@ import {
   formatLarkUserPromptWithTopicHistory,
   getLarkEventDedupeKey,
   isLarkBotMentionEvent,
+  normalizeLarkApiMessage,
   resolveLarkAddressedBots,
   resolveLarkSubstituteTrigger,
   routeLarkReplyBotMentions,
@@ -58,6 +63,13 @@ import {
 } from "./lark-directory-identity.js";
 import { buildLarkDirectoryUserSeeds } from "./lark-directory-user-seeds.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
+import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
+import { LarkSubstituteDebouncer } from "./lark-substitute-debounce.js";
+import {
+  matchLarkSubstituteMode,
+  type MatchedLarkSubstituteMode,
+} from "./lark-substitute-rule-matcher.js";
+import { LarkSubstituteReplySender } from "./lark-substitute-reply-sender.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -129,6 +141,7 @@ export type LarkChannelRequest = Extract<
 
 export interface LarkChannelServiceHost {
   emitStatusChanged: (status: LarkChannelStatus) => void;
+  emitSubstituteModesChanged?: (modes: LarkSubstituteMode[]) => void;
 }
 
 interface PendingRelay {
@@ -318,6 +331,57 @@ function extractLarkMentionOpenIds(text: string): string[] {
   return openIds;
 }
 
+function createModeSubstituteTrigger(
+  matched: MatchedLarkSubstituteMode,
+  event: NormalizedLarkMessageEvent,
+): LarkSubstituteTrigger {
+  const observedMention = (event.mentions ?? []).find(
+    (mention) => mention.openId === matched.mode.substituteUser.openId,
+  ) ?? {
+    key: null,
+    name: matched.mode.substituteUser.name,
+    openId: matched.mode.substituteUser.openId,
+    userId: null,
+    appId: null,
+    idType: "open_id",
+  };
+  return {
+    source: event.chatType?.toLowerCase() === "p2p" ? "private_message" : "configured_target",
+    configuredTarget: {
+      openId: matched.mode.substituteUser.openId,
+      name: matched.mode.substituteUser.name,
+    },
+    observedMention,
+    modeId: matched.mode.id,
+    replyIdentity:
+      event.chatType?.toLowerCase() === "p2p" ? "user" : matched.mode.groupReplyIdentity,
+    disclosure: matched.mode.disclosure,
+    customPrompt: matched.mode.customPrompt,
+    questionAllowRules: matched.questionAllowRules,
+    questionDenyRules: matched.questionDenyRules,
+  };
+}
+
+function withSubstituteModeTarget(
+  config: StoredLarkChannelConfig,
+  mode: LarkSubstituteMode,
+): StoredLarkChannelConfig {
+  return {
+    ...config,
+    target: mode.target,
+    substitute: {
+      enabled: true,
+      openId: mode.substituteUser.openId,
+      name: mode.substituteUser.name,
+    },
+  };
+}
+
+function getCompletedAgentText(message: string | null, previousMessage: string | null): string {
+  if (!message || message === previousMessage) return "Agent finished.";
+  return message;
+}
+
 export class LarkChannelService {
   private readonly paseoHome: string | undefined;
   private readonly store: LarkChannelStore;
@@ -332,6 +396,9 @@ export class LarkChannelService {
   private readonly reminderService: LarkReminderService | null;
   private readonly directoryService: LarkDirectoryService | null;
   private readonly userOAuthService: LarkUserOAuthService | null;
+  private readonly substituteModeStore: LarkSubstituteModeStore;
+  private readonly substituteDebouncer = new LarkSubstituteDebouncer();
+  private readonly substituteReplySender: LarkSubstituteReplySender;
   private readonly incomingMessageObserver:
     | ((botId: string, event: NormalizedLarkMessageEvent) => Promise<void> | void)
     | null;
@@ -375,6 +442,10 @@ export class LarkChannelService {
     this.reminderService = options.reminderService ?? null;
     this.directoryService = options.directoryService ?? null;
     this.userOAuthService = options.userOAuthService ?? null;
+    this.substituteModeStore = new LarkSubstituteModeStore(
+      options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
+    );
+    this.substituteReplySender = new LarkSubstituteReplySender(this.adapter, this.userOAuthService);
     this.incomingMessageObserver = options.incomingMessageObserver ?? null;
     this.unsubscribeAgentEvents = this.agentManager.subscribe((event) => {
       void this.handleAgentManagerEvent(event);
@@ -405,6 +476,29 @@ export class LarkChannelService {
     return chats;
   }
 
+  async listChatMessages(
+    botId: string,
+    chatId: string,
+    window: { start: Date; end: Date },
+  ): Promise<NormalizedLarkMessageEvent[]> {
+    const bot = this.store.getBot(botId);
+    if (!bot) throw new Error(`飞书机器人 ${botId} 不存在`);
+    if (!this.adapter.listChatMessages) throw new Error("当前飞书连接不支持读取群历史消息");
+    const messages = await this.adapter.listChatMessages(bot.config, chatId, {
+      startTime: Math.floor(window.start.getTime() / 1000),
+      pageSize: 0,
+    });
+    return messages
+      .map((message) => normalizeLarkApiMessage(message, chatId))
+      .filter((message): message is NormalizedLarkMessageEvent => {
+        if (!message) return false;
+        const rawTime = message.createTime;
+        if (rawTime === null) return true;
+        const timestamp = rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime;
+        return timestamp >= window.start.getTime() && timestamp <= window.end.getTime();
+      });
+  }
+
   async getUserOAuthStatus(appId: string) {
     if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
     return this.hydrateUserOAuthStatus(appId);
@@ -430,6 +524,7 @@ export class LarkChannelService {
     this.reminderService?.start();
     this.reconnectEventCutoff ??= Date.now() - RECONNECT_EVENT_GRACE_MS;
     const bots = this.store.getBots();
+    this.substituteModeStore.migrateLegacyBots(bots, new Date().toISOString());
     if (bots.length === 0) {
       this.emitStatusChanged();
       return;
@@ -439,10 +534,14 @@ export class LarkChannelService {
     }
     await this.refreshDirectoryUsers(bots);
     await this.refreshDirectoryChats(bots);
+    await Promise.all(
+      this.substituteModeStore.list().map((mode) => this.refreshSubstituteModeDirectory(mode)),
+    );
   }
 
   async stop(): Promise<void> {
     this.reminderService?.stop();
+    this.substituteDebouncer.clear();
     for (const subscription of this.subscriptions.values()) {
       subscription.close();
     }
@@ -480,6 +579,8 @@ export class LarkChannelService {
       throw new Error("Lark bot not found");
     }
     this.reminderService?.handleBotDeleted(botId);
+    this.substituteModeStore.deleteByBotId(botId);
+    this.emitSubstituteModesChanged();
     this.emitStatusChanged();
     return this.getStatus();
   }
@@ -581,37 +682,81 @@ export class LarkChannelService {
     return this.reminderService.delete(reminderId);
   }
 
-  async handleIncomingEvent(botId: string, event: NormalizedLarkMessageEvent): Promise<void> {
+  listSubstituteModes(): LarkSubstituteMode[] {
+    this.substituteModeStore.migrateLegacyBots(this.store.getBots(), new Date().toISOString());
+    return this.substituteModeStore.list();
+  }
+
+  createSubstituteMode(input: LarkSubstituteModeCreateInput): LarkSubstituteMode {
+    this.requireStoredBot(input.botId);
+    const mode = this.substituteModeStore.create(input, new Date().toISOString());
+    void this.refreshSubstituteModeDirectory(mode);
+    this.emitSubstituteModesChanged();
+    return mode;
+  }
+
+  updateSubstituteMode(modeId: string, input: LarkSubstituteModeUpdateInput): LarkSubstituteMode {
+    this.requireStoredBot(input.botId);
+    const mode = this.substituteModeStore.update(modeId, input, new Date().toISOString());
+    if (!mode) throw new Error("替身模式不存在");
+    void this.refreshSubstituteModeDirectory(mode);
+    this.substituteDebouncer.cancelMode(modeId);
+    this.emitSubstituteModesChanged();
+    return mode;
+  }
+
+  setSubstituteModeEnabled(modeId: string, enabled: boolean): LarkSubstituteMode {
+    const mode = this.substituteModeStore.setEnabled(modeId, enabled, new Date().toISOString());
+    if (!mode) throw new Error("替身模式不存在");
+    if (!enabled) this.substituteDebouncer.cancelMode(modeId);
+    this.emitSubstituteModesChanged();
+    return mode;
+  }
+
+  deleteSubstituteMode(modeId: string): boolean {
+    this.substituteDebouncer.cancelMode(modeId);
+    const deleted = this.substituteModeStore.delete(modeId);
+    if (deleted) this.emitSubstituteModesChanged();
+    return deleted;
+  }
+
+  async handleIncomingEvent(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+    internal: { bypassSubstituteDelay?: boolean; modeId?: string } = {},
+  ): Promise<void> {
     const now = Date.now();
     const storedBot = this.store.getBot(botId);
     if (!storedBot) {
       return;
     }
-    this.reminderService?.handleIncomingEvent(botId, event);
+    if (!internal.bypassSubstituteDelay) {
+      this.reminderService?.handleIncomingEvent(botId, event);
+    }
     const config = storedBot.config;
     if (!config.enabled) {
       return;
     }
     const enrichedEvent = await this.enrichIncomingEvent(config, event);
     this.observeDirectoryParticipants(config, enrichedEvent);
-    if (this.incomingMessageObserver) {
-      void Promise.resolve(this.incomingMessageObserver(botId, enrichedEvent)).catch((error) => {
-        this.logger.warn(
-          { err: error, botId, chatId: enrichedEvent.chatId },
-          "Failed to observe Lark message for Project context",
-        );
-      });
+    this.observeIncomingMessageContext(botId, enrichedEvent, internal.bypassSubstituteDelay);
+    const botIdentity = await this.resolveBotIdentityForEvent(botId, config, enrichedEvent);
+    const matchedMode = this.resolveMatchedSubstituteMode({
+      modeId: internal.modeId,
+      botId,
+      appId: config.appId,
+      event: enrichedEvent,
+    });
+    if (this.scheduleSubstituteModeReply(botId, enrichedEvent, matchedMode, internal)) {
+      return;
     }
-    const botIdentity =
-      enrichedEvent.chatType?.toLowerCase() === "p2p"
-        ? null
-        : await this.ensureBotIdentity(botId, config);
+    const effectiveConfig = matchedMode
+      ? withSubstituteModeTarget(config, matchedMode.mode)
+      : config;
     const botMentioned = isLarkBotMentionEvent(enrichedEvent, botIdentity);
-    const substituteTrigger = resolveLarkSubstituteTrigger(
-      enrichedEvent,
-      config.substitute,
-      botIdentity,
-    );
+    const substituteTrigger = matchedMode
+      ? createModeSubstituteTrigger(matchedMode, enrichedEvent)
+      : resolveLarkSubstituteTrigger(enrichedEvent, config.substitute, botIdentity);
     this.logLarkRouting({
       botId,
       storedBot,
@@ -623,7 +768,7 @@ export class LarkChannelService {
     if (
       this.shouldIgnoreLarkRouting({
         botId,
-        config,
+        config: effectiveConfig,
         event: enrichedEvent,
         botIdentity,
         botMentioned,
@@ -664,7 +809,7 @@ export class LarkChannelService {
     });
     const participants = await this.resolveMessageParticipants({
       botId,
-      config,
+      config: effectiveConfig,
       event: enrichedEvent,
       botIdentity,
       authorizedUser: user,
@@ -684,22 +829,27 @@ export class LarkChannelService {
       this.emitStatusChanged();
       await this.sendTextSafe(
         botId,
-        config,
+        effectiveConfig,
         enrichedEvent.chatId,
         `Pairing requested. Open Paseo Settings > Channels and approve code ${pairing.code}.`,
       );
       return;
     }
 
-    const thread = await this.resolveThread(botId, config, enrichedEvent);
+    const thread = await this.resolveThread(
+      botId,
+      effectiveConfig,
+      enrichedEvent,
+      substituteTrigger,
+    );
     if (!thread) {
       return;
     }
     const { threadId, replyMessageId } = thread;
-    if (!this.isTargetConfigured(config)) {
+    if (!this.isTargetConfigured(effectiveConfig)) {
       await this.sendThreadTextSafe(
         botId,
-        config,
+        effectiveConfig,
         replyMessageId,
         "Lark is connected, but provider and workspace are not configured. Open Paseo Settings > Channels to choose a provider, model, and workspace.",
         { mention: { openId: participants.mentionUserOpenId } },
@@ -713,7 +863,7 @@ export class LarkChannelService {
       if (existing) {
         await this.relayToExistingAgent({
           botId,
-          config,
+          config: effectiveConfig,
           event: enrichedEvent,
           participants,
           threadId,
@@ -726,13 +876,14 @@ export class LarkChannelService {
       }
 
       const firstTopicThread = await this.acknowledgeFirstTopicMention({
-        config,
+        config: effectiveConfig,
         event: enrichedEvent,
         thread,
+        substituteTrigger,
       });
       await this.createTopicAgent({
         botId,
-        config,
+        config: effectiveConfig,
         event: enrichedEvent,
         participants,
         threadId: firstTopicThread.threadId,
@@ -757,6 +908,72 @@ export class LarkChannelService {
         { mention: { openId: participants.mentionUserOpenId } },
       );
     }
+  }
+
+  private observeIncomingMessageContext(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+    bypassSubstituteDelay: boolean | undefined,
+  ): void {
+    if (!this.incomingMessageObserver || bypassSubstituteDelay) return;
+    void Promise.resolve(this.incomingMessageObserver(botId, event)).catch((error) => {
+      this.logger.warn(
+        { err: error, botId, chatId: event.chatId },
+        "Failed to observe Lark message for Project context",
+      );
+    });
+  }
+
+  private async resolveBotIdentityForEvent(
+    botId: string,
+    config: StoredLarkChannelConfig,
+    event: NormalizedLarkMessageEvent,
+  ): Promise<LarkChannelBotInfo | null> {
+    if (event.chatType?.toLowerCase() === "p2p") return null;
+    return this.ensureBotIdentity(botId, config);
+  }
+
+  private resolveMatchedSubstituteMode(input: {
+    modeId?: string;
+    botId: string;
+    appId: string | null;
+    event: NormalizedLarkMessageEvent;
+  }): MatchedLarkSubstituteMode | null {
+    if (!input.modeId) {
+      return matchLarkSubstituteMode({
+        modes: this.listSubstituteModes(),
+        botId: input.botId,
+        appId: input.appId,
+        event: input.event,
+        directory: this.directoryService?.getState() ?? null,
+      });
+    }
+    const mode = this.substituteModeStore.get(input.modeId);
+    if (!mode) return null;
+    return {
+      mode,
+      questionAllowRules: mode.allowlist.flatMap((rule) =>
+        rule.type === "question_type" ? [rule.description] : [],
+      ),
+      questionDenyRules: mode.denylist.flatMap((rule) =>
+        rule.type === "question_type" ? [rule.description] : [],
+      ),
+    };
+  }
+
+  private scheduleSubstituteModeReply(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+    matchedMode: MatchedLarkSubstituteMode | null,
+    internal: { bypassSubstituteDelay?: boolean; modeId?: string },
+  ): boolean {
+    if (!matchedMode || internal.bypassSubstituteDelay) return false;
+    return this.substituteDebouncer.schedule(matchedMode.mode, event, (latestEvent) =>
+      this.handleIncomingEvent(botId, latestEvent, {
+        bypassSubstituteDelay: true,
+        modeId: matchedMode.mode.id,
+      }),
+    );
   }
 
   private logLarkRouting(input: LarkRoutingDiagnosticInput): void {
@@ -1265,6 +1482,7 @@ export class LarkChannelService {
     config: StoredLarkChannelConfig;
     event: NormalizedLarkMessageEvent;
     thread: ResolvedLarkThread;
+    substituteTrigger: LarkSubstituteTrigger | null;
   }): Promise<ResolvedLarkThread> {
     // When resolveThread had to create a thread, it already sent this ACK and
     // returned the ACK message as the reply anchor. If Lark provided/resolved a
@@ -1274,10 +1492,11 @@ export class LarkChannelService {
       return input.thread;
     }
     try {
-      const ack = await this.adapter.replyToMessageInThread(
+      const ack = await this.replyToMessageInThreadByIdentity(
         input.config,
         input.event.messageId,
         THREAD_ACK_TEXT,
+        input.substituteTrigger,
       );
       if (ack.threadId && ack.threadId !== input.thread.threadId) {
         this.logger.warn(
@@ -1429,6 +1648,7 @@ export class LarkChannelService {
     botId: string,
     config: StoredLarkChannelConfig,
     event: NormalizedLarkMessageEvent,
+    substituteTrigger: LarkSubstituteTrigger | null = null,
   ): Promise<ResolvedLarkThread | null> {
     if (event.threadId) {
       return {
@@ -1437,10 +1657,11 @@ export class LarkChannelService {
       };
     }
     try {
-      const reply = await this.adapter.replyToMessageInThread(
+      const reply = await this.replyToMessageInThreadByIdentity(
         config,
         event.messageId,
         THREAD_ACK_TEXT,
+        substituteTrigger,
       );
       if (reply.threadId) {
         return {
@@ -1498,7 +1719,17 @@ export class LarkChannelService {
     }
     this.pendingRelays.delete(event.agent.id);
     const message = await this.agentManager.getLastAssistantMessage(event.agent.id);
-    const text = message && message !== relay.lastAssistantMessage ? message : "Agent finished.";
+    const text = getCompletedAgentText(message, relay.lastAssistantMessage);
+    if (text.trim() === "<paseo-no-substitute-answer />") {
+      this.store.markConversationOutbound(
+        relay.botId,
+        event.agent.id,
+        relay.chatId,
+        relay.threadId,
+        new Date().toISOString(),
+      );
+      return;
+    }
     const userDirective = extractLarkUserMentionDirective(text);
     const routedReply = routeLarkReplyBotMentions(
       userDirective.text,
@@ -1521,6 +1752,7 @@ export class LarkChannelService {
       substituteReply,
       {
         mention: { openId: mentionUserOpenId },
+        substituteTrigger: relay.substituteTrigger,
       },
     );
     if (sent && !relay.substituteTrigger) {
@@ -1719,6 +1951,30 @@ export class LarkChannelService {
     ]);
   }
 
+  private async refreshSubstituteModeDirectory(mode: LarkSubstituteMode): Promise<void> {
+    const bot = this.store.getBot(mode.botId);
+    const appId = bot?.config.appId?.trim();
+    if (!appId) return;
+    const userOpenIds = [
+      mode.substituteUser.openId,
+      ...mode.allowlist.flatMap((rule) =>
+        rule.type === "user" && rule.openId ? [rule.openId] : [],
+      ),
+      ...mode.denylist.flatMap((rule) =>
+        rule.type === "user" && rule.openId ? [rule.openId] : [],
+      ),
+    ];
+    const chatIds = [...mode.allowlist, ...mode.denylist].flatMap((rule) =>
+      rule.type === "group" ? [rule.chatId] : [],
+    );
+    await Promise.all([
+      ...Array.from(new Set(userOpenIds)).map((openId) => this.refreshDirectoryUser(appId, openId)),
+      ...Array.from(new Set(chatIds)).map((chatId) =>
+        this.refreshDirectoryChat(appId, chatId, true),
+      ),
+    ]);
+  }
+
   private async relayLocalSubstituteMention(input: {
     sourceBotId: string;
     chatId: string;
@@ -1820,16 +2076,20 @@ export class LarkChannelService {
     config: StoredLarkChannelConfig,
     replyMessageId: string,
     text: string,
-    options: { mention?: LarkReplyMentionOptions | null } = {},
+    options: {
+      mention?: LarkReplyMentionOptions | null;
+      substituteTrigger?: LarkSubstituteTrigger | null;
+    } = {},
   ): Promise<SentLarkThreadMessage | null> {
     const chunks = splitLarkText(text);
     let firstMessage: SentLarkThreadMessage | null = null;
     for (const [index, chunk] of chunks.entries()) {
       try {
-        const sent = await this.adapter.replyInThread(
+        const sent = await this.replyInThreadByIdentity(
           config,
           replyMessageId,
           index === 0 ? prefixLarkReplyMention(chunk, options.mention ?? null) : chunk,
+          options.substituteTrigger ?? null,
         );
         if (index === 0) {
           firstMessage = sent;
@@ -1849,6 +2109,24 @@ export class LarkChannelService {
       }
     }
     return firstMessage;
+  }
+
+  private async replyToMessageInThreadByIdentity(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    trigger: LarkSubstituteTrigger | null,
+  ): Promise<SentLarkThreadMessage> {
+    return this.substituteReplySender.replyToMessageInThread(config, messageId, text, trigger);
+  }
+
+  private async replyInThreadByIdentity(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    trigger: LarkSubstituteTrigger | null,
+  ): Promise<SentLarkThreadMessage> {
+    return this.substituteReplySender.replyInThread(config, messageId, text, trigger);
   }
 
   private hasCredentials(config: StoredLarkChannelConfig): boolean {
@@ -1983,5 +2261,9 @@ export class LarkChannelService {
 
   private emitStatusChanged(): void {
     this.host.emitStatusChanged(this.getStatus());
+  }
+
+  private emitSubstituteModesChanged(): void {
+    this.host.emitSubstituteModesChanged?.(this.substituteModeStore.list());
   }
 }

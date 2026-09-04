@@ -1,5 +1,4 @@
 import path from "node:path";
-import { statSync } from "node:fs";
 
 import type { Logger } from "pino";
 
@@ -15,6 +14,11 @@ import {
   type ProjectRegistry,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
+import {
+  collectRecoverableWorkspaceAgents,
+  resolveRecoveredWorkspaceId,
+  shouldRecoverEmptyWorkspaceRegistries,
+} from "./workspace-registry-recovery.js";
 import { pinPaseoWorktreeBranchIdentityIfMissing } from "../utils/worktree-metadata.js";
 
 function minIsoDate(left: string | null, right: string | null): string | null {
@@ -60,11 +64,17 @@ export async function bootstrapWorkspaceRegistries(options: {
   ]);
 
   await Promise.all([options.projectRegistry.initialize(), options.workspaceRegistry.initialize()]);
+  const [existingProjects, existingWorkspaces, records] = await Promise.all([
+    options.projectRegistry.list(),
+    options.workspaceRegistry.list(),
+    options.agentStorage.list(),
+  ]);
+  const activeRecords = collectRecoverableWorkspaceAgents(records);
 
   // COMPAT(worktree-branch-identity): added in v0.4.0 on 2026-08-15; remove after
   // 2027-02-15. Older worktrees did not pin branch-off/check-out branch identity.
   // Seed it from the registry value clients already display, never from live Git.
-  for (const workspace of await options.workspaceRegistry.list()) {
+  for (const workspace of existingWorkspaces) {
     if (
       workspace.archivedAt ||
       !workspace.isPaseoOwnedWorktree ||
@@ -83,29 +93,28 @@ export async function bootstrapWorkspaceRegistries(options: {
     }
   }
 
-  if (projectsExists && workspacesExists) {
+  if (
+    !shouldRecoverEmptyWorkspaceRegistries({
+      projectsFileExists: projectsExists,
+      workspacesFileExists: workspacesExists,
+      projectCount: existingProjects.length,
+      workspaceCount: existingWorkspaces.length,
+      recoverableAgentCount: activeRecords.length,
+    })
+  ) {
     await backfillWorkspaceIdForLegacyAgents(options);
     return;
   }
 
   const existingWorkspaceIdsByCwd = new Map(
-    (await options.workspaceRegistry.list()).map((workspace) => [
-      path.resolve(workspace.cwd),
-      workspace.workspaceId,
-    ]),
+    existingWorkspaces.map((workspace) => [path.resolve(workspace.cwd), workspace.workspaceId]),
   );
-  const records = await options.agentStorage.list();
-  // A legacy agent can outlive its working directory. Reconciliation treats a
-  // missing directory as absent rather than asking Git about it; bootstrap must
-  // do the same before materializing its first workspace record.
-  const activeRecords = records.filter((record) => {
-    if (record.archivedAt) return false;
-    try {
-      return statSync(record.cwd).isDirectory();
-    } catch {
-      return false;
-    }
-  });
+  if (projectsExists && workspacesExists) {
+    options.logger.warn(
+      { recoverableAgents: activeRecords.length },
+      "Empty Project and Workspace registries detected; rebuilding them from active Agent records",
+    );
+  }
   const recordsByDirectoryKey = new Map<
     string,
     {
@@ -162,7 +171,11 @@ export async function bootstrapWorkspaceRegistries(options: {
     projectRanges.set(membership.projectKey, existingProjectRange);
 
     workspaceUpsertInputs.push({
-      workspaceId: existingWorkspaceIdsByCwd.get(workspaceCwd) ?? generateWorkspaceId(),
+      workspaceId: resolveRecoveredWorkspaceId(
+        workspaceRecords,
+        existingWorkspaceIdsByCwd.get(workspaceCwd),
+        generateWorkspaceId,
+      ),
       membership,
       workspaceCwd,
       createdAt,

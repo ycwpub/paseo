@@ -65,10 +65,22 @@ export interface LarkChannelClientAdapter {
     messageId: string,
     text: string,
   ): Promise<LarkThreadReplyResult>;
+  replyToMessageInThreadAsUser?(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    userAccessToken: string,
+  ): Promise<LarkThreadReplyResult>;
   replyInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
     text: string,
+  ): Promise<LarkThreadReplyResult>;
+  replyInThreadAsUser?(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    userAccessToken: string,
   ): Promise<LarkThreadReplyResult>;
   listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]>;
   addBotToChat?(
@@ -362,6 +374,15 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     };
   }
 
+  async replyToMessageInThreadAsUser(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    userAccessToken: string,
+  ): Promise<LarkThreadReplyResult> {
+    return this.replyAsUser(config, messageId, text, userAccessToken);
+  }
+
   async replyInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -378,6 +399,42 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
         reply_in_thread: true,
       },
     });
+    assertSuccess(result);
+    return {
+      threadId: result.data?.thread_id ?? null,
+      messageId: result.data?.message_id ?? null,
+    };
+  }
+
+  async replyInThreadAsUser(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    userAccessToken: string,
+  ): Promise<LarkThreadReplyResult> {
+    return this.replyAsUser(config, messageId, text, userAccessToken);
+  }
+
+  private async replyAsUser(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    text: string,
+    userAccessToken: string,
+  ): Promise<LarkThreadReplyResult> {
+    const client = createClient(config);
+    const result = await client.im.v1.message.reply(
+      {
+        path: {
+          message_id: messageId,
+        },
+        data: {
+          msg_type: "text",
+          content: JSON.stringify({ text }),
+          reply_in_thread: true,
+        },
+      },
+      lark.withUserAccessToken(userAccessToken),
+    );
     assertSuccess(result);
     return {
       threadId: result.data?.thread_id ?? null,

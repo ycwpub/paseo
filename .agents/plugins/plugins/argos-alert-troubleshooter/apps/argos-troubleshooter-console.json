@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "title": "Argos 报警自动排查",
+  "description": "监听飞书群 Argos 报警卡片，由配置的 Agent 根据 SOP 和 Project 知识自主排查；定时补偿扫描用于防止实时消息遗漏。",
+  "components": [
+    {
+      "id": "notice",
+      "type": "text",
+      "text": "请在专用配置页面中设置飞书机器人、监听群、排查 SOP、归因记录文档、助手或团队以及扫描时间窗口。"
+    }
+  ]
+}

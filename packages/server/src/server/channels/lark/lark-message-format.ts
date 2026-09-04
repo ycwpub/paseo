@@ -3,6 +3,7 @@ export interface NormalizedLarkMessageEvent {
   messageId: string;
   chatId: string;
   chatType?: string | null;
+  messageType?: string | null;
   threadId: string | null;
   rootMessageId: string | null;
   quotedMessageId?: string | null;
@@ -43,12 +44,21 @@ export interface LarkSubstituteConfig {
 }
 
 export interface LarkSubstituteTrigger {
-  source: "configured_target" | "current_bot";
+  source: "configured_target" | "current_bot" | "private_message";
   configuredTarget: {
     openId: string;
     name: string | null;
   };
   observedMention: NormalizedLarkMention;
+  modeId?: string;
+  replyIdentity?: "user" | "bot";
+  disclosure?: {
+    enabled: boolean;
+    prompt: string;
+  };
+  customPrompt?: string;
+  questionAllowRules?: string[];
+  questionDenyRules?: string[];
 }
 
 export interface LarkChatBot {
@@ -276,11 +286,15 @@ export function normalizeLarkMessageEvent(event: unknown): NormalizedLarkMessage
     return null;
   }
   const messageType = getStringByKeys(message, ["message_type", "messageType"]);
-  if (messageType && messageType !== "text") {
+  if (messageType && messageType !== "text" && messageType !== "interactive") {
     return null;
   }
   const identity = getMessageIdentity(message);
-  const text = parseContentText(getString(message, "content"));
+  const rawContent = getString(message, "content");
+  const text =
+    messageType === "interactive"
+      ? parseInteractiveCardText(rawContent)
+      : parseContentText(rawContent);
   if (!identity.chatId || !identity.messageId || !text) {
     return null;
   }
@@ -290,6 +304,7 @@ export function normalizeLarkMessageEvent(event: unknown): NormalizedLarkMessage
     messageId: identity.messageId,
     chatId: identity.chatId,
     chatType: identity.chatType,
+    messageType: messageType ?? "text",
     threadId: identity.threadId,
     rootMessageId: identity.rootMessageId,
     quotedMessageId: identity.quotedMessageId,
@@ -394,10 +409,19 @@ export function formatLarkSubstitutePrompt(
   const observedName = trigger.observedMention.name
     ? ` name="${xmlEscape(trigger.observedMention.name)}"`
     : "";
-  const triggerDescription =
-    trigger.source === "configured_target"
-      ? "This group message triggered substitute mode because it mentioned the configured substitute target."
-      : "This group message triggered substitute mode because it mentioned the current bot while substitute mode is enabled.";
+  const triggerDescription = getSubstituteTriggerDescription(trigger.source);
+  const questionRules =
+    (trigger.questionAllowRules?.length ?? 0) > 0 || (trigger.questionDenyRules?.length ?? 0) > 0
+      ? [
+          "  <question_type_policy>",
+          ...(trigger.questionAllowRules ?? []).map(
+            (rule) => `    <allow>${xmlEscape(rule)}</allow>`,
+          ),
+          ...(trigger.questionDenyRules ?? []).map((rule) => `    <deny>${xmlEscape(rule)}</deny>`),
+          "    Classify the current question semantically. If it matches any deny rule, or allow rules exist and it matches none of them, reply with exactly <paseo-no-substitute-answer /> and nothing else.",
+          "  </question_type_policy>",
+        ]
+      : [];
   return [
     prompt,
     "",
@@ -410,9 +434,24 @@ export function formatLarkSubstitutePrompt(
     "    Reply on behalf of that person, but do not pretend to actually be that person.",
     "    Paseo adds the visible substitute disclosure label after generation. Do not write another '代某人回复', '代表某人回复', or similar disclosure in your answer.",
     "    The configured name is only a human-readable note. Identity matching is based only on the configured open_id.",
+    ...(trigger.customPrompt?.trim()
+      ? [`    Additional substitute instruction: ${xmlEscape(trigger.customPrompt.trim())}`]
+      : []),
     "  </instruction>",
+    ...questionRules,
     "</lark_substitute_trigger>",
   ].join("\n");
+}
+
+function getSubstituteTriggerDescription(source: LarkSubstituteTrigger["source"]): string {
+  switch (source) {
+    case "configured_target":
+      return "This group message triggered substitute mode because it mentioned the configured substitute target.";
+    case "current_bot":
+      return "This group message triggered substitute mode because it mentioned the current bot while substitute mode is enabled.";
+    case "private_message":
+      return "This private message triggered substitute mode and must be answered using the authorized user's identity.";
+  }
 }
 
 function normalizeLarkSubstituteName(name: string | null): string | null {
@@ -451,8 +490,12 @@ export function formatLarkSubstituteReply(
   if (!trigger) {
     return text;
   }
+  if (trigger.disclosure?.enabled === false) {
+    return stripLeadingLarkSubstituteDisclosure(text, trigger.configuredTarget.name);
+  }
   const name = normalizeLarkSubstituteName(trigger.configuredTarget.name);
-  const disclosure = name ? `【代${name}回复】` : "【替身回复】";
+  const disclosure =
+    trigger.disclosure?.prompt.trim() || (name ? `【代${name}回复】` : "【替身回复】");
   return `${disclosure}${stripLeadingLarkSubstituteDisclosure(text, name)}`;
 }
 
@@ -854,6 +897,37 @@ function parseApiMessageText(message: Record<string, unknown>): string {
     return text;
   }
   return `[${msgType}]`;
+}
+
+export function normalizeLarkApiMessage(
+  value: unknown,
+  fallbackChatId: string,
+): NormalizedLarkMessageEvent | null {
+  const message = apiMessageRecord(value);
+  if (!message) return null;
+  const identity = getMessageIdentity(message);
+  const messageId = identity.messageId ?? messageIdOf(message);
+  const text = parseApiMessageText(message);
+  if (!messageId || !text) return null;
+  const sender = getRecord(message, "sender") ?? {};
+  const senderId = getRecord(sender, "sender_id") ?? getRecord(sender, "senderId") ?? {};
+  return {
+    eventId: `history:${messageId}`,
+    messageId,
+    chatId: identity.chatId ?? fallbackChatId,
+    chatType: identity.chatType ?? "group",
+    messageType: getStringByKeys(message, ["msg_type", "message_type", "messageType"]) ?? "text",
+    threadId: identity.threadId,
+    rootMessageId: identity.rootMessageId,
+    quotedMessageId: identity.quotedMessageId,
+    openId: getStringByKeys(senderId, ["open_id", "openId"]),
+    unionId: getStringByKeys(senderId, ["union_id", "unionId"]),
+    senderType: senderTypeOf(message),
+    displayName: getApiSenderDisplayName(message),
+    topicName: getTopicName(message, text),
+    text,
+    createTime: createTimeOf(message),
+  };
 }
 
 function getCardText(value: unknown): string | null {

@@ -17,6 +17,8 @@ describe("bundled plugin packages", () => {
       "agent-web-app",
       "byte-development",
       "byte-reconciliation",
+      "bamboo-reconciliation-troubleshooter",
+      "argos-alert-troubleshooter",
     ]);
 
     const httpEntry = entries.get("workflow-http-service");
@@ -43,6 +45,26 @@ describe("bundled plugin packages", () => {
       expect.objectContaining({
         id: "web-app-builder",
         category: "Productivity",
+      }),
+    ]);
+
+    const bambooEntry = entries.get("bamboo-reconciliation-troubleshooter");
+    expect(bambooEntry?.sourcePath).toBeDefined();
+    const bambooPlugin = loadPluginPackage(bambooEntry!.sourcePath!);
+    expect(bambooPlugin.apps).toEqual([
+      expect.objectContaining({
+        id: "bamboo-troubleshooter-console",
+        category: "Finance",
+      }),
+    ]);
+
+    const argosEntry = entries.get("argos-alert-troubleshooter");
+    expect(argosEntry?.sourcePath).toBeDefined();
+    const argosPlugin = loadPluginPackage(argosEntry!.sourcePath!);
+    expect(argosPlugin.apps).toEqual([
+      expect.objectContaining({
+        id: "argos-troubleshooter-console",
+        category: "Operations",
       }),
     ]);
   });

@@ -232,6 +232,7 @@ export class PluginAppService implements PluginAppRuntime {
     return this.store.save({
       ...current,
       defaultAgent: input.defaultAgent,
+      ...(input.data ? { data: { ...current.data, ...input.data } } : {}),
       updatedAt: timestamp,
     });
   }

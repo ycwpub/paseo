@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "title": "Bamboo 对账自动排查",
+  "description": "监听飞书群 Bamboo 报警卡片，并使用 life-settle-ai-assistant 已沉淀的 Bamboo skill 自动排查；定时补偿扫描用于防止实时消息遗漏。",
+  "components": [
+    {
+      "id": "notice",
+      "type": "text",
+      "text": "请在专用配置页面中设置飞书机器人、监听群、排查 SOP、归因记录目录、助手或团队以及扫描时间窗口。"
+    }
+  ]
+}

@@ -56,13 +56,17 @@ describe("LarkBotApplicationService", () => {
           scopes: {
             tenant: [
               "im:message.group_msg",
+              "im:message.p2p_msg",
               "im:message.group_at_msg.include_bot:readonly",
+              "im:message:send_as_bot",
               "im:chat.members:read",
               "im:chat:read",
               "contact:user.id:readonly",
             ],
             user: [
               "im:message.group_msg:get_as_user",
+              "im:message",
+              "im:message.send_as_user",
               "im:chat:read",
               "im:chat.members:write_only",
               "offline_access",

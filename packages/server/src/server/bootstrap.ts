@@ -261,10 +261,13 @@ import { SkillStore } from "./skill/skill-store.js";
 import { UnifiedPluginService } from "./plugins/unified-plugin-service.js";
 import { PluginHttpServiceManager } from "./plugin/plugin-http-service-manager.js";
 import { PluginAppService } from "./plugin/plugin-app-service.js";
+import { BambooTroubleshooterManager } from "./plugin/bamboo-troubleshooter-manager.js";
+import { ArgosTroubleshooterManager } from "./plugin/argos-troubleshooter-manager.js";
 import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
 import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
 import { ProjectIndexService } from "./project/project-index-service.js";
 import { ProjectLarkContextService } from "./project/project-lark-context-service.js";
+import { resolveProjectSourceDirectory } from "./project/project-source-directory.js";
 
 const MAX_MCP_DEBUG_BATCH_ITEMS = 10;
 const REDACTED_LOG_VALUE = "[redacted]";
@@ -826,6 +829,8 @@ export async function createPaseoDaemon(
   };
   let larkChannelService: LarkChannelService;
   let projectLarkContextService: ProjectLarkContextService;
+  let bambooTroubleshooterManager: BambooTroubleshooterManager | null = null;
+  let argosTroubleshooterManager: ArgosTroubleshooterManager | null = null;
   let assistantStore: AssistantStore;
   let serviceProxyListenTarget: ListenTarget | null = null;
 
@@ -1764,14 +1769,27 @@ export async function createPaseoDaemon(
     reminderService: larkReminderService,
     directoryService: larkDirectoryService,
     userOAuthService: larkUserOAuthService,
-    incomingMessageObserver: (botId, event) =>
-      projectLarkContextService.observeIncomingMessage(botId, event),
+    incomingMessageObserver: async (botId, event) => {
+      await Promise.all([
+        projectLarkContextService.observeIncomingMessage(botId, event),
+        bambooTroubleshooterManager?.observeIncomingMessage(botId, event),
+        argosTroubleshooterManager?.observeIncomingMessage(botId, event),
+      ]);
+    },
     host: {
       emitStatusChanged: (status) => {
         wsServer?.broadcast(
           wrapSessionMessage({
             type: "channel.lark.status_changed",
             payload: { status },
+          }),
+        );
+      },
+      emitSubstituteModesChanged: (modes) => {
+        wsServer?.broadcast(
+          wrapSessionMessage({
+            type: "channel.lark.substitute.changed",
+            payload: { modes },
           }),
         );
       },
@@ -1883,6 +1901,46 @@ export async function createPaseoDaemon(
     listHttpTargets: () => pluginService.listEnabledHttpTargets(),
   });
   pluginService.attachAppRuntime(pluginAppService);
+  bambooTroubleshooterManager = new BambooTroubleshooterManager({
+    paseoHome: config.paseoHome,
+    pluginService,
+    projectRegistry,
+    assistantStore,
+    teamStore,
+    createAgent,
+    createProjectWorkspace: async (project, title) => {
+      const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
+      const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
+        source.path,
+        title,
+        project.projectId,
+      );
+      await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
+      return workspace;
+    },
+    logger,
+  });
+  argosTroubleshooterManager = new ArgosTroubleshooterManager({
+    paseoHome: config.paseoHome,
+    pluginService,
+    projectRegistry,
+    assistantStore,
+    teamStore,
+    createAgent,
+    createProjectWorkspace: async (project, title) => {
+      const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
+      const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
+        source.path,
+        title,
+        project.projectId,
+      );
+      await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
+      return workspace;
+    },
+    listChatMessages: (botId, chatId, window) =>
+      larkChannelService.listChatMessages(botId, chatId, window),
+    logger,
+  });
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,
     logger,
@@ -2327,7 +2385,11 @@ export async function createPaseoDaemon(
       scriptHealthMonitor.start();
       await larkChannelService.start();
       await projectLarkContextService.start();
+      bambooTroubleshooterManager.start();
+      argosTroubleshooterManager.start();
     } catch (error) {
+      await argosTroubleshooterManager?.stop().catch(() => undefined);
+      await bambooTroubleshooterManager?.stop().catch(() => undefined);
       await projectLarkContextService.stop().catch(() => undefined);
       await pluginService.stopAllPlugins().catch(() => undefined);
       await pluginHttpServiceManager.stop().catch(() => undefined);
@@ -2346,6 +2408,8 @@ export async function createPaseoDaemon(
     await hubRelationships.stop();
     projectIndexService.stop();
     workspaceReconciliation.dispose();
+    await argosTroubleshooterManager?.stop().catch(() => undefined);
+    await bambooTroubleshooterManager?.stop().catch(() => undefined);
     await projectLarkContextService.stop().catch(() => undefined);
     await larkChannelService.stop().catch(() => undefined);
     scriptHealthMonitor.stop();

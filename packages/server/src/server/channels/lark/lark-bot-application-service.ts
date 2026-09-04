@@ -7,13 +7,17 @@ import type { LarkChannelService } from "./lark-channel-service.js";
 const APPLICATION_TTL_MS = 30 * 60 * 1000;
 const REQUIRED_TENANT_SCOPES = [
   "im:message.group_msg",
+  "im:message.p2p_msg",
   "im:message.group_at_msg.include_bot:readonly",
+  "im:message:send_as_bot",
   "im:chat.members:read",
   "im:chat:read",
   "contact:user.id:readonly",
 ] as const;
 const REQUIRED_USER_SCOPES = [
   "im:message.group_msg:get_as_user",
+  "im:message",
+  "im:message.send_as_user",
   "im:chat:read",
   "im:chat.members:write_only",
   "offline_access",

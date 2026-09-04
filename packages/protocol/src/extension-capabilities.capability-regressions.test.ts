@@ -54,6 +54,7 @@ describe("extension protocol capability regressions", () => {
       "workflowProtocolRevision",
       "larkChannel",
       "larkReminders",
+      "larkSubstituteModes",
       "larkDirectory",
       "larkUserOAuth",
       "assistants",

@@ -51,6 +51,30 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Finance"
+    },
+    {
+      "name": "bamboo-reconciliation-troubleshooter",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/plugins/bamboo-reconciliation-troubleshooter"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Finance"
+    },
+    {
+      "name": "argos-alert-troubleshooter",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/plugins/argos-alert-troubleshooter"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Operations"
     }
   ]
 }

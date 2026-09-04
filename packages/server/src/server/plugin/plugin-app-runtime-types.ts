@@ -10,6 +10,7 @@ export interface PluginAppConfigureInput {
   appId: string;
   projectId: string;
   defaultAgent: PluginAppDefaultAgent;
+  data?: Record<string, unknown>;
 }
 
 export interface PluginAppProjectCopyInput {

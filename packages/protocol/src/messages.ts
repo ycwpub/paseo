@@ -3649,6 +3649,8 @@ export const ServerInfoStatusPayloadSchema = z
         // COMPAT(larkReminders): added on 2026-08-18. Older daemons do not
         // understand the reminder RPCs, so clients must gate the management UI.
         larkReminders: z.boolean().optional(),
+        // COMPAT(larkSubstituteModes): added in v0.7.0, remove gate after 2027-09-04.
+        larkSubstituteModes: z.boolean().optional(),
         // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
         larkDirectory: z.boolean().optional(),
         // COMPAT(larkUserOAuth): added in v0.3.2, remove gate after 2027-02-28.

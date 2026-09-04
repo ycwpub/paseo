@@ -1,0 +1,17 @@
+{
+  "apps": {
+    "bamboo-troubleshooter-console": {
+      "id": "bamboo-troubleshooter-console",
+      "category": "Finance",
+      "project": {
+        "idField": "projectId",
+        "nameField": "projectName",
+        "selectorLabel": "排查 Project",
+        "selectorDescription": "监听配置、排查会话、SOP、归因记录和项目知识都归属于所选 Project。",
+        "createNameLabel": "新排查 Project 名称",
+        "createNamePlaceholder": "例如：结算 Bamboo 报警自动排查"
+      },
+      "document": "./apps/bamboo-troubleshooter-console.json"
+    }
+  }
+}

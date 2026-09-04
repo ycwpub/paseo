@@ -12,6 +12,7 @@ import type {
   LarkChannelStatus,
   LarkDirectory,
   LarkReminder,
+  LarkSubstituteMode,
   Team,
 } from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
@@ -35,15 +36,17 @@ import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
-import { LarkUserDirectoryField } from "./lark-directory-fields";
 import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
 import { LarkReminderEditor, LarkReminderSection } from "./lark-reminder-section";
+import {
+  LarkSubstituteModeEditor,
+  LarkSubstituteModeSection,
+} from "./lark-substitute-mode-section";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
 const EMPTY_PAIRINGS: LarkChannelPendingPairing[] = [];
 const EMPTY_AUTHORIZED_USERS: LarkChannelAuthorizedUser[] = [];
-const EMPTY_DIRECTORY_USERS: LarkDirectory["users"] = [];
 const ASSISTANT_TARGET_PREFIX = "assistant:";
 const TEAM_TARGET_PREFIX = "team:";
 
@@ -124,11 +127,16 @@ interface BotListCardProps {
   selectedBotId: string | null;
   creating: boolean;
   onEdit: (botId: string) => void;
-  onOpenSubstitute: (botId: string) => void;
   onAdd: () => void;
 }
 
-type LarkChannelPage = "overview" | "bot" | "substitute" | "reminder-create" | "reminder-edit";
+type LarkChannelPage =
+  | "overview"
+  | "bot"
+  | "substitute-create"
+  | "substitute-edit"
+  | "reminder-create"
+  | "reminder-edit";
 
 export interface LarkChannelDetailNavigation {
   title: string;
@@ -137,7 +145,8 @@ export interface LarkChannelDetailNavigation {
 
 const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, string> = {
   bot: "编辑飞书机器人",
-  substitute: "替身模式",
+  "substitute-create": "创建替身模式",
+  "substitute-edit": "编辑替身模式",
   "reminder-create": "创建定时任务",
   "reminder-edit": "编辑定时任务",
 };
@@ -244,11 +253,6 @@ interface CredentialsCardProps {
   appSecret: string;
   encryptKey: string;
   verificationToken: string;
-  substituteEnabled: boolean;
-  substituteOpenId: string;
-  substituteName: string;
-  directory: LarkDirectory | null;
-  directorySupported: boolean;
   targetValue: string | null;
   provider: string | null;
   model: string | null;
@@ -278,10 +282,6 @@ interface CredentialsCardProps {
   onAppSecretChange: (value: string) => void;
   onEncryptKeyChange: (value: string) => void;
   onVerificationTokenChange: (value: string) => void;
-  onSubstituteEnabledChange: (value: boolean) => void;
-  onSubstituteOpenIdChange: (value: string) => void;
-  resolveDirectoryUsers: UseLarkChannelResult["resolveDirectoryUsers"];
-  onSubstituteNameChange: (value: string) => void;
   onTargetChange: (value: string) => void;
   onProviderChange: (value: string) => void;
   onModelChange: (value: string) => void;
@@ -344,6 +344,16 @@ function getStatusDotStyle(status: LarkChannelBotStatus | LarkChannelStatus | nu
   if (tone === "warning") return [styles.statusDot, styles.statusDotWarning];
   if (tone === "danger") return [styles.statusDot, styles.statusDotDanger];
   return [styles.statusDot, styles.statusDotMuted];
+}
+
+function getLarkChannelPageTitle(page: LarkChannelPage, creatingBot: boolean): string {
+  if (page === "overview") return "渠道";
+  if (page === "bot" && creatingBot) return "添加飞书机器人";
+  return LARK_CHANNEL_PAGE_TITLES[page];
+}
+
+function getActiveBotId(status: LarkChannelStatus | null): string | null {
+  return status?.activeBotId ?? null;
 }
 
 function addTrimmedField<T extends string>(
@@ -565,19 +575,13 @@ function BotListRow({
   selected,
   isFirst,
   onEdit,
-  onOpenSubstitute,
 }: {
   bot: LarkChannelBotStatus;
   selected: boolean;
   isFirst: boolean;
   onEdit: (botId: string) => void;
-  onOpenSubstitute: (botId: string) => void;
 }) {
   const handleEdit = useCallback(() => onEdit(bot.id), [bot.id, onEdit]);
-  const handleOpenSubstitute = useCallback(
-    () => onOpenSubstitute(bot.id),
-    [bot.id, onOpenSubstitute],
-  );
 
   return (
     <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
@@ -594,27 +598,12 @@ function BotListRow({
         >
           编辑
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onPress={handleOpenSubstitute}
-          testID={`host-page-lark-bot-substitute-${bot.id}`}
-        >
-          替身模式
-        </Button>
       </View>
     </View>
   );
 }
 
-function BotListCard({
-  bots,
-  selectedBotId,
-  creating,
-  onEdit,
-  onOpenSubstitute,
-  onAdd,
-}: BotListCardProps) {
+function BotListCard({ bots, selectedBotId, creating, onEdit, onAdd }: BotListCardProps) {
   return (
     <SettingsSection title={`飞书机器人列表（${bots.length}）`}>
       <View style={settingsStyles.card}>
@@ -626,7 +615,6 @@ function BotListCard({
               selected={!creating && bot.id === selectedBotId}
               isFirst={index === 0}
               onEdit={onEdit}
-              onOpenSubstitute={onOpenSubstitute}
             />
           ))
         ) : (
@@ -819,79 +807,6 @@ function CredentialsCard(props: CredentialsCardProps) {
   );
 }
 
-type SubstituteSettingsCardProps = Pick<
-  CredentialsCardProps,
-  | "status"
-  | "formRevision"
-  | "appId"
-  | "substituteEnabled"
-  | "substituteOpenId"
-  | "substituteName"
-  | "directory"
-  | "directorySupported"
-  | "saveError"
-  | "saving"
-  | "connected"
-  | "onSubstituteEnabledChange"
-  | "onSubstituteOpenIdChange"
-  | "resolveDirectoryUsers"
-  | "onSubstituteNameChange"
-  | "onSave"
->;
-
-function SubstituteSettingsCard(props: SubstituteSettingsCardProps) {
-  const selectedBotName = props.status ? getBotDisplayName(props.status) : "未选择机器人";
-  return (
-    <SettingsSection title="替身模式">
-      <View style={styles.formCard}>
-        <View style={styles.substituteHeader}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>{selectedBotName}</Text>
-            <Text style={settingsStyles.rowHint}>
-              群聊中有人 @ 当前机器人或被附身用户时，由当前机器人代其回复。
-            </Text>
-          </View>
-          <Switch
-            value={props.substituteEnabled}
-            onValueChange={props.onSubstituteEnabledChange}
-            accessibilityLabel="启用替身模式"
-            testID="host-page-lark-substitute-enabled"
-          />
-        </View>
-        {props.directorySupported ? (
-          <SubstituteDirectoryField {...props} />
-        ) : (
-          <LegacySubstituteOpenIdField {...props} />
-        )}
-        <Field
-          label="回复称呼（可选）"
-          hint="仅用于回复上下文；留空时使用飞书中的用户名称，不参与身份匹配。"
-          testID="host-page-lark-substitute-name"
-        >
-          <FormTextInput
-            initialValue={props.substituteName}
-            resetKey={`substitute-name:${props.formRevision}`}
-            onChangeText={props.onSubstituteNameChange}
-            placeholder="例如：张三"
-            editable={props.substituteEnabled}
-          />
-        </Field>
-        {props.saveError ? <Text style={settingsStyles.rowError}>{props.saveError}</Text> : null}
-        <View style={styles.actionsRow}>
-          <Button
-            variant="default"
-            onPress={props.onSave}
-            loading={props.saving}
-            disabled={!props.connected || !props.status}
-          >
-            保存替身模式
-          </Button>
-        </View>
-      </View>
-    </SettingsSection>
-  );
-}
-
 function SecondaryPageIntro({ title, description }: { title: string; description: string }) {
   return (
     <View style={styles.secondaryPageHeader}>
@@ -947,64 +862,6 @@ function ReminderEditPage({
         </SettingsSection>
       )}
     </View>
-  );
-}
-
-function LegacySubstituteOpenIdField(
-  props: Pick<
-    CredentialsCardProps,
-    "formRevision" | "substituteEnabled" | "substituteOpenId" | "onSubstituteOpenIdChange"
-  >,
-) {
-  return (
-    <Field
-      label="被附身用户 Open ID"
-      hint="更新 Paseo daemon 后可通过用户邮箱查询 Open ID。"
-      testID="host-page-lark-substitute-open-id"
-    >
-      <FormTextInput
-        initialValue={props.substituteOpenId}
-        resetKey={`substitute-open-id:${props.formRevision}`}
-        onChangeText={props.onSubstituteOpenIdChange}
-        placeholder="ou_xxxxxxxxxx"
-        editable={props.substituteEnabled}
-      />
-    </Field>
-  );
-}
-
-function SubstituteDirectoryField(
-  props: Pick<
-    CredentialsCardProps,
-    | "appId"
-    | "directory"
-    | "resolveDirectoryUsers"
-    | "substituteEnabled"
-    | "substituteOpenId"
-    | "onSubstituteOpenIdChange"
-  >,
-) {
-  const { onSubstituteOpenIdChange } = props;
-  const openIds = useMemo(
-    () => (props.substituteOpenId ? [props.substituteOpenId] : []),
-    [props.substituteOpenId],
-  );
-  const handleChange = useCallback(
-    (nextOpenIds: string[]) => onSubstituteOpenIdChange(nextOpenIds[0] ?? ""),
-    [onSubstituteOpenIdChange],
-  );
-  return (
-    <LarkUserDirectoryField
-      label="被附身用户"
-      hint="输入用户邮箱查询 Open ID；配置保存和运行时仍只使用 Open ID。@ 当前机器人也会触发替身回复。"
-      appId={props.appId}
-      openIds={openIds}
-      users={props.directory?.users ?? EMPTY_DIRECTORY_USERS}
-      resolveUsers={props.resolveDirectoryUsers}
-      onChange={handleChange}
-      disabled={!props.substituteEnabled}
-      testID="host-page-lark-substitute-open-id"
-    />
   );
 }
 
@@ -1354,7 +1211,11 @@ function LarkChannelLoadedContent({
   const [formRevision, setFormRevision] = useState(0);
   const [page, setPage] = useState<LarkChannelPage>("overview");
   const [editingReminder, setEditingReminder] = useState<LarkReminder | null>(null);
+  const [editingSubstituteMode, setEditingSubstituteMode] = useState<LarkSubstituteMode | null>(
+    null,
+  );
   const status = channel.status;
+  const activeBotId = getActiveBotId(status);
   const directory = getStatusDirectory(status);
   const botStatuses = useMemo(() => buildBotStatuses(status), [status]);
   const selectedBotStatus = useMemo(
@@ -1363,9 +1224,9 @@ function LarkChannelLoadedContent({
         botStatuses,
         creatingBot,
         selectedBotId,
-        activeBotId: status?.activeBotId,
+        activeBotId,
       }),
-    [botStatuses, creatingBot, selectedBotId, status?.activeBotId],
+    [activeBotId, botStatuses, creatingBot, selectedBotId],
   );
   const selectedBotAppId = getBotAppId(selectedBotStatus);
 
@@ -1374,13 +1235,13 @@ function LarkChannelLoadedContent({
     let nextBotId = botStatuses[0]?.id ?? null;
     if (selectedBotId && botStatuses.some((bot) => bot.id === selectedBotId)) {
       nextBotId = selectedBotId;
-    } else if (status.activeBotId && botStatuses.some((bot) => bot.id === status.activeBotId)) {
-      nextBotId = status.activeBotId;
+    } else if (activeBotId && botStatuses.some((bot) => bot.id === activeBotId)) {
+      nextBotId = activeBotId;
     }
     if (nextBotId !== selectedBotId) {
       setSelectedBotId(nextBotId);
     }
-  }, [botStatuses, creatingBot, selectedBotId, status]);
+  }, [activeBotId, botStatuses, creatingBot, selectedBotId, status]);
 
   useEffect(() => {
     if (creatingBot) return;
@@ -1499,13 +1360,6 @@ function LarkChannelLoadedContent({
     },
     [handleSelectBot],
   );
-  const handleOpenSubstitute = useCallback(
-    (botId: string) => {
-      handleSelectBot(botId);
-      setPage("substitute");
-    },
-    [handleSelectBot],
-  );
   const handleAddBot = useCallback(() => {
     setCreatingBot(true);
     setSelectedBotId(null);
@@ -1516,12 +1370,25 @@ function LarkChannelLoadedContent({
     setEditingReminder(null);
     setPage("reminder-create");
   }, []);
+  const handleCreateSubstituteMode = useCallback(() => {
+    setEditingSubstituteMode(null);
+    setPage("substitute-create");
+  }, []);
+  const handleEditSubstituteMode = useCallback((mode: LarkSubstituteMode) => {
+    setEditingSubstituteMode(mode);
+    setPage("substitute-edit");
+  }, []);
+  const handleSubstituteModeSaved = useCallback(() => {
+    setEditingSubstituteMode(null);
+    setPage("overview");
+  }, []);
   const handleEditReminder = useCallback((reminder: LarkReminder) => {
     setEditingReminder(reminder);
     setPage("reminder-edit");
   }, []);
   const handleReminderSaved = useCallback(() => {
     setEditingReminder(null);
+    setEditingSubstituteMode(null);
     setPage("overview");
   }, []);
   const handleDetailBack = useCallback(() => {
@@ -1537,7 +1404,7 @@ function LarkChannelLoadedContent({
       return;
     }
     onDetailNavigationChange({
-      title: page === "bot" && creatingBot ? "添加飞书机器人" : LARK_CHANNEL_PAGE_TITLES[page],
+      title: getLarkChannelPageTitle(page, creatingBot),
       onBack: handleDetailBack,
     });
     return () => onDetailNavigationChange(null);
@@ -1580,9 +1447,6 @@ function LarkChannelLoadedContent({
   const save = useCallback(async () => {
     try {
       setSaveError(null);
-      if (substituteEnabled && substituteOpenId.trim().length === 0) {
-        throw new Error("启用替身模式时必须填写被附身用户 Open ID");
-      }
       const nextStatus = await channel.configure(
         buildConfigureInput({
           botId: selectedBotStatus?.id ?? selectedBotId,
@@ -1706,11 +1570,6 @@ function LarkChannelLoadedContent({
       appSecret={appSecret}
       encryptKey={encryptKey}
       verificationToken={verificationToken}
-      substituteEnabled={substituteEnabled}
-      substituteOpenId={substituteOpenId}
-      substituteName={substituteName}
-      directory={directory}
-      directorySupported={supportsLarkDirectory}
       targetValue={targetValue}
       provider={provider}
       model={model}
@@ -1740,10 +1599,6 @@ function LarkChannelLoadedContent({
       onAppSecretChange={setAppSecret}
       onEncryptKeyChange={setEncryptKey}
       onVerificationTokenChange={setVerificationToken}
-      onSubstituteEnabledChange={setSubstituteEnabled}
-      onSubstituteOpenIdChange={setSubstituteOpenId}
-      resolveDirectoryUsers={channel.resolveDirectoryUsers}
-      onSubstituteNameChange={setSubstituteName}
       onTargetChange={handleTargetChange}
       onProviderChange={handleProviderChange}
       onModelChange={handleModelChange}
@@ -1767,8 +1622,14 @@ function LarkChannelLoadedContent({
           selectedBotId={selectedBotStatus?.id ?? selectedBotId}
           creating={creatingBot}
           onEdit={handleEditBot}
-          onOpenSubstitute={handleOpenSubstitute}
           onAdd={handleAddBot}
+        />
+        <LarkSubstituteModeSection
+          serverId={serverId}
+          bots={botStatuses}
+          directory={directory}
+          onCreate={handleCreateSubstituteMode}
+          onEdit={handleEditSubstituteMode}
         />
         <View testID="host-page-lark-reminders-section">
           <LarkReminderSection
@@ -1811,29 +1672,36 @@ function LarkChannelLoadedContent({
         />
       </View>
     ),
-    substitute: (
-      <View testID="host-page-channels-substitute">
+    "substitute-create": (
+      <View testID="host-page-channels-substitute-create">
         <SecondaryPageIntro
-          title="替身模式"
-          description={`配置 ${selectedBotStatus ? getBotDisplayName(selectedBotStatus) : "当前机器人"} 的替身回复规则。`}
+          title="创建替身模式"
+          description="配置被替身用户、回答身份、规则、时间段和默认 Agent。"
         />
-        <SubstituteSettingsCard
-          status={selectedBotStatus}
-          formRevision={formRevision}
-          appId={appId}
-          substituteEnabled={substituteEnabled}
-          substituteOpenId={substituteOpenId}
-          substituteName={substituteName}
+        <LarkSubstituteModeEditor
+          key="create-substitute"
+          serverId={serverId}
+          bots={botStatuses}
           directory={directory}
-          directorySupported={supportsLarkDirectory}
-          saveError={saveError}
-          saving={channel.isMutating}
-          connected={channel.isConnected}
-          onSubstituteEnabledChange={setSubstituteEnabled}
-          onSubstituteOpenIdChange={setSubstituteOpenId}
           resolveDirectoryUsers={channel.resolveDirectoryUsers}
-          onSubstituteNameChange={setSubstituteName}
-          onSave={handleSave}
+          onSaved={handleSubstituteModeSaved}
+        />
+      </View>
+    ),
+    "substitute-edit": (
+      <View testID="host-page-channels-substitute-edit">
+        <SecondaryPageIntro
+          title="编辑替身模式"
+          description="修改当前替身模式的触发规则和回答方式。"
+        />
+        <LarkSubstituteModeEditor
+          key={editingSubstituteMode?.id ?? "missing-substitute"}
+          serverId={serverId}
+          bots={botStatuses}
+          directory={directory}
+          resolveDirectoryUsers={channel.resolveDirectoryUsers}
+          mode={editingSubstituteMode}
+          onSaved={handleSubstituteModeSaved}
         />
       </View>
     ),
@@ -1931,11 +1799,6 @@ const styles = StyleSheet.create((theme) => ({
   },
   formCard: {
     gap: theme.spacing[4],
-  },
-  substituteHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: theme.spacing[3],
   },
   actionsRow: {
     flexDirection: "row",

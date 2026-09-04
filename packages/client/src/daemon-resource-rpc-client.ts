@@ -34,10 +34,12 @@ import type {
   AssistantRequestOptions,
   ConfigureLarkChannelOptions,
   CreateLarkReminderOptions,
+  CreateLarkSubstituteModeOptions,
   CreateAssistantOptions,
   DeleteAssistantOptions,
   DeleteLarkBotOptions,
   DeleteLarkReminderOptions,
+  DeleteLarkSubstituteModeOptions,
   GetLarkBotApplicationOptions,
   LarkChannelRequestOptions,
   LarkUserOAuthCompleteOptions,
@@ -50,8 +52,10 @@ import type {
   RevokeLarkUserOptions,
   SetLarkChannelEnabledOptions,
   SetLarkReminderEnabledOptions,
+  SetLarkSubstituteModeEnabledOptions,
   UpdateAssistantOptions,
   UpdateLarkReminderOptions,
+  UpdateLarkSubstituteModeOptions,
 } from "./daemon-client.js";
 import type { CloudKnowledgeScope } from "@getpaseo/protocol/knowledge/cloud-cache-rpc-schemas";
 
@@ -476,6 +480,7 @@ export class DaemonResourceRpcClient {
     appId: string;
     projectId: string;
     defaultAgent: PluginAppDefaultAgent;
+    data?: Record<string, unknown>;
   }): Promise<{ app: PluginAppState | null; error: string | null }> {
     const result = await this.request({
       message: { type: "plugin.app.configure.request", ...input },
@@ -898,6 +903,58 @@ export class DaemonResourceRpcClient {
         reminderId: options.reminderId,
       },
       responseType: "channel.lark.reminder.delete.response",
+    });
+  }
+
+  listLarkSubstituteModes(requestId?: string) {
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.substitute.list.request" },
+      responseType: "channel.lark.substitute.list.response",
+    });
+  }
+
+  createLarkSubstituteMode(options: CreateLarkSubstituteModeOptions) {
+    const { requestId, ...mode } = options;
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.substitute.create.request", mode },
+      responseType: "channel.lark.substitute.create.response",
+    });
+  }
+
+  updateLarkSubstituteMode(options: UpdateLarkSubstituteModeOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute.update.request",
+        modeId: options.modeId,
+        mode: options.mode,
+      },
+      responseType: "channel.lark.substitute.update.response",
+    });
+  }
+
+  setLarkSubstituteModeEnabled(options: SetLarkSubstituteModeEnabledOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute.set_enabled.request",
+        modeId: options.modeId,
+        enabled: options.enabled,
+      },
+      responseType: "channel.lark.substitute.set_enabled.response",
+    });
+  }
+
+  deleteLarkSubstituteMode(options: DeleteLarkSubstituteModeOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute.delete.request",
+        modeId: options.modeId,
+      },
+      responseType: "channel.lark.substitute.delete.response",
     });
   }
 }

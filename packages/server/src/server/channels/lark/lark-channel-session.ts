@@ -2,6 +2,11 @@ import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/pr
 import type pino from "pino";
 import { LarkChannelService } from "./lark-channel-service.js";
 import { LarkBotApplicationService } from "./lark-bot-application-service.js";
+import {
+  emitLarkSubstituteSessionError,
+  handleLarkSubstituteSessionRequest,
+  isLarkSubstituteSessionRequest,
+} from "./lark-substitute-session-handler.js";
 
 export type LarkChannelSessionRequest = Extract<
   SessionInboundMessage,
@@ -27,7 +32,12 @@ export type LarkChannelSessionRequest = Extract<
       | "channel.lark.reminder.create.request"
       | "channel.lark.reminder.update.request"
       | "channel.lark.reminder.set_enabled.request"
-      | "channel.lark.reminder.delete.request";
+      | "channel.lark.reminder.delete.request"
+      | "channel.lark.substitute.list.request"
+      | "channel.lark.substitute.create.request"
+      | "channel.lark.substitute.update.request"
+      | "channel.lark.substitute.set_enabled.request"
+      | "channel.lark.substitute.delete.request";
   }
 >;
 
@@ -55,7 +65,12 @@ type LarkChannelResponse = Extract<
       | "channel.lark.reminder.create.response"
       | "channel.lark.reminder.update.response"
       | "channel.lark.reminder.set_enabled.response"
-      | "channel.lark.reminder.delete.response";
+      | "channel.lark.reminder.delete.response"
+      | "channel.lark.substitute.list.response"
+      | "channel.lark.substitute.create.response"
+      | "channel.lark.substitute.update.response"
+      | "channel.lark.substitute.set_enabled.response"
+      | "channel.lark.substitute.delete.response";
   }
 >;
 
@@ -91,6 +106,14 @@ function isUserOAuthRequest(message: LarkChannelSessionRequest): message is Lark
   return message.type.startsWith("channel.lark.user_oauth.");
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getReminderDeleteError(ok: boolean): string | null {
+  return ok ? null : "Lark reminder not found";
+}
+
 export interface LarkChannelSessionHost {
   emit(message: SessionOutboundMessage): void;
 }
@@ -119,6 +142,12 @@ export class LarkChannelSession {
     try {
       if (isDirectoryOrOAuthRequest(message)) {
         await this.handleDirectoryOrOAuthRequest(message);
+        return;
+      }
+      if (isLarkSubstituteSessionRequest(message)) {
+        handleLarkSubstituteSessionRequest(message, this.service, (response) =>
+          this.emitResponse(response),
+        );
         return;
       }
       switch (message.type) {
@@ -310,7 +339,7 @@ export class LarkChannelSession {
               reminderId: message.reminderId,
               ok,
               reminders: this.service.listReminders(),
-              error: ok ? null : "Lark reminder not found",
+              error: getReminderDeleteError(ok),
             },
           });
           return;
@@ -318,7 +347,7 @@ export class LarkChannelSession {
       }
     } catch (error) {
       this.logger.warn({ err: error, requestType: message.type }, "Lark channel RPC failed");
-      this.emitErrorResponse(message, error instanceof Error ? error.message : String(error));
+      this.emitErrorResponse(message, getErrorMessage(error));
     }
   }
 
@@ -407,6 +436,15 @@ export class LarkChannelSession {
   private emitErrorResponse(message: LarkChannelSessionRequest, error: string): void {
     if (isUserOAuthRequest(message)) {
       this.emitUserOAuthErrorResponse(message, error);
+      return;
+    }
+    if (isLarkSubstituteSessionRequest(message)) {
+      emitLarkSubstituteSessionError(
+        message,
+        this.service,
+        (response) => this.emitResponse(response),
+        error,
+      );
       return;
     }
     const payload = {

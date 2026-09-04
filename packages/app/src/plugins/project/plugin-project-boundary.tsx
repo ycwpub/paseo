@@ -74,6 +74,7 @@ export interface PluginProjectContext {
   projectName: string;
   sourceDirectory: string | null;
   defaultAgent: PluginAppDefaultAgent;
+  data: Record<string, unknown>;
   fixedFormValues: Record<string, unknown>;
   hiddenFieldIds: string[];
 }
@@ -623,6 +624,7 @@ export function PluginProjectBoundary({
       projectName: selectedProject.projectName,
       sourceDirectory: selectedProject.sourceDirectory,
       defaultAgent: selectedProject.state.defaultAgent,
+      data: selectedProject.state.data,
       fixedFormValues: {
         ...buildPluginProjectFormValues(projectBinding, option),
         defaultAgentProvider: selectedProject.state.defaultAgent.provider,

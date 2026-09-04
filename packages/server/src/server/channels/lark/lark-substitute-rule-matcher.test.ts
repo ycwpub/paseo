@@ -1,0 +1,208 @@
+import { describe, expect, test } from "vitest";
+import type { LarkSubstituteMode } from "@getpaseo/protocol/messages";
+import { matchLarkSubstituteMode } from "./lark-substitute-rule-matcher.js";
+
+function mode(overrides: Partial<LarkSubstituteMode> = {}): LarkSubstituteMode {
+  return {
+    id: "mode-1",
+    name: "研发替身",
+    enabled: true,
+    botId: "bot-1",
+    substituteUser: { openId: "ou_target", name: "张三", email: "target@example.com" },
+    privateReplyIdentity: "user",
+    groupReplyIdentity: "bot",
+    disclosure: { enabled: true, prompt: "【机器人代答】" },
+    customPrompt: "",
+    delaySeconds: 0,
+    activeTimeRanges: [],
+    allowlist: [],
+    denylist: [],
+    target: {
+      kind: "workspace",
+      provider: "aiden_codex",
+      model: "gpt-5.5",
+      cwd: "/repo",
+      workspaceId: null,
+    },
+    createdAt: "2026-09-04T00:00:00.000Z",
+    updatedAt: "2026-09-04T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+const groupEvent = {
+  eventId: "event-1",
+  messageId: "message-1",
+  chatId: "oc_group",
+  chatType: "group",
+  threadId: null,
+  rootMessageId: null,
+  openId: "ou_sender",
+  unionId: null,
+  displayName: "李四",
+  topicName: "问题",
+  text: "@张三 如何发布？",
+  createTime: Date.parse("2026-09-04T02:00:00.000Z"),
+  mentions: [
+    {
+      key: "@_user_1",
+      name: "张三",
+      openId: "ou_target",
+      userId: null,
+      appId: null,
+      idType: "open_id",
+    },
+  ],
+};
+
+const directory = {
+  users: [
+    {
+      appId: "cli_test",
+      openId: "ou_sender",
+      displayName: "李四",
+      email: "lisi@example.com",
+      updatedAt: "2026-09-04T00:00:00.000Z",
+    },
+  ],
+  chats: [
+    {
+      appId: "cli_test",
+      chatId: "oc_group",
+      groupId: "group-1",
+      name: "研发一群",
+      updatedAt: "2026-09-04T00:00:00.000Z",
+    },
+  ],
+};
+
+describe("matchLarkSubstituteMode", () => {
+  test("requires a group message to mention the configured substitute user", () => {
+    expect(
+      matchLarkSubstituteMode({
+        modes: [mode()],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, mentions: [] },
+        directory,
+      }),
+    ).toBeNull();
+  });
+
+  test("applies deny rules before allow rules and returns question-type policies", () => {
+    const configured = mode({
+      allowlist: [
+        {
+          id: "allow-group",
+          type: "group_name_regex",
+          pattern: "^研发",
+        },
+        {
+          id: "allow-question",
+          type: "question_type",
+          description: "研发和代码问题",
+        },
+      ],
+      denylist: [
+        {
+          id: "deny-question",
+          type: "question_type",
+          description: "人事和薪酬问题",
+        },
+      ],
+    });
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toMatchObject({
+      mode: { id: "mode-1" },
+      questionAllowRules: ["研发和代码问题"],
+      questionDenyRules: ["人事和薪酬问题"],
+    });
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [
+          mode({
+            denylist: [
+              {
+                id: "deny-user",
+                type: "user",
+                openId: null,
+                name: null,
+                email: "lisi@example.com",
+              },
+            ],
+          }),
+        ],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toBeNull();
+  });
+
+  test("supports configured time ranges and private-message triggering", () => {
+    const configured = mode({
+      activeTimeRanges: [
+        {
+          id: "workday",
+          weekdays: [1, 2, 3, 4, 5],
+          startTime: "09:00",
+          endTime: "18:00",
+          timezone: "Asia/Shanghai",
+        },
+      ],
+    });
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, chatType: "p2p", mentions: [] },
+        directory,
+        now: new Date("2026-09-04T02:00:00.000Z"),
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+        now: new Date("2026-09-04T12:00:00.000Z"),
+      }),
+    ).toBeNull();
+  });
+
+  test("prefers stable user identifiers over duplicate display names", () => {
+    expect(
+      matchLarkSubstituteMode({
+        modes: [
+          mode({
+            allowlist: [
+              {
+                id: "allow-user",
+                type: "user",
+                openId: "ou_someone_else",
+                name: "李四",
+                email: "someone@example.com",
+              },
+            ],
+          }),
+        ],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toBeNull();
+  });
+});

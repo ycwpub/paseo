@@ -72,8 +72,12 @@ describe("plugin app RPC schemas", () => {
           provider: "codex",
           model: "gpt-5.6",
         },
-      }).defaultAgent,
-    ).toEqual({ provider: "codex", model: "gpt-5.6" });
+        data: { enabled: true },
+      }),
+    ).toMatchObject({
+      defaultAgent: { provider: "codex", model: "gpt-5.6" },
+      data: { enabled: true },
+    });
     expect(() =>
       PluginAppConfigureRequestSchema.parse({
         type: "plugin.app.configure.request",

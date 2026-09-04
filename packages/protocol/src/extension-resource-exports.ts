@@ -20,6 +20,50 @@ export {
   type PluginAppState,
 } from "./plugin/app-types.js";
 export {
+  AlertTroubleshooterChatSchema,
+  AlertTroubleshooterConfigSchema,
+  AlertTroubleshooterRuntimeSchema,
+  AlertTroubleshooterScheduleSchema,
+  AlertTroubleshooterTargetSchema,
+  type AlertTroubleshooterChat,
+  type AlertTroubleshooterConfig,
+  type AlertTroubleshooterRuntime,
+  type AlertTroubleshooterSchedule,
+  type AlertTroubleshooterTarget,
+} from "./plugin/alert-troubleshooter-types.js";
+export {
+  ARGOS_TROUBLESHOOTER_APP_ID,
+  ARGOS_TROUBLESHOOTER_CONFIG_DATA_KEY,
+  ARGOS_TROUBLESHOOTER_PLUGIN_ID,
+  ARGOS_TROUBLESHOOTER_RUNTIME_DATA_KEY,
+  ArgosTroubleshooterChatSchema,
+  ArgosTroubleshooterConfigSchema,
+  ArgosTroubleshooterRuntimeSchema,
+  ArgosTroubleshooterScheduleSchema,
+  ArgosTroubleshooterTargetSchema,
+  type ArgosTroubleshooterChat,
+  type ArgosTroubleshooterConfig,
+  type ArgosTroubleshooterRuntime,
+  type ArgosTroubleshooterSchedule,
+  type ArgosTroubleshooterTarget,
+} from "./plugin/argos-troubleshooter-types.js";
+export {
+  BAMBOO_TROUBLESHOOTER_APP_ID,
+  BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY,
+  BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
+  BAMBOO_TROUBLESHOOTER_RUNTIME_DATA_KEY,
+  BambooTroubleshooterChatSchema,
+  BambooTroubleshooterConfigSchema,
+  BambooTroubleshooterRuntimeSchema,
+  BambooTroubleshooterScheduleSchema,
+  BambooTroubleshooterTargetSchema,
+  type BambooTroubleshooterChat,
+  type BambooTroubleshooterConfig,
+  type BambooTroubleshooterRuntime,
+  type BambooTroubleshooterSchedule,
+  type BambooTroubleshooterTarget,
+} from "./plugin/bamboo-troubleshooter-types.js";
+export {
   PluginHttpConfigGetRequestSchema,
   PluginHttpConfigGetResponseSchema,
   PluginHttpConfigSaveRequestSchema,
@@ -108,6 +152,25 @@ export {
   type LarkReminderUpdateInput,
 } from "./channel/lark/reminder-types.js";
 export * from "./channel/lark/reminder-rpc-schemas.js";
+export {
+  LarkSubstituteDisclosureSchema,
+  LarkSubstituteModeCreateInputSchema,
+  LarkSubstituteModeSchema,
+  LarkSubstituteModeUpdateInputSchema,
+  LarkSubstituteReplyIdentitySchema,
+  LarkSubstituteRuleSchema,
+  LarkSubstituteTimeRangeSchema,
+  LarkSubstituteUserSchema,
+  type LarkSubstituteDisclosure,
+  type LarkSubstituteMode,
+  type LarkSubstituteModeCreateInput,
+  type LarkSubstituteModeUpdateInput,
+  type LarkSubstituteReplyIdentity,
+  type LarkSubstituteRule,
+  type LarkSubstituteTimeRange,
+  type LarkSubstituteUser,
+} from "./channel/lark/substitute-types.js";
+export * from "./channel/lark/substitute-rpc-schemas.js";
 export {
   AssistantCreateInputSchema,
   AssistantMemoryDetailFileSchema,

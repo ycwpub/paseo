@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { prepareAidenCodexHome, type AidenCodexHomeFallback } from "./codex-home.js";
+
+export {
+  ensureAidenCodexHomeConfig,
+  patchAidenCodexConfigToml,
+  resolveAidenCodexHome,
+} from "./codex-home.js";
 
 const AIDEN_MODEL_FALLBACK_PRELOAD_VERSION = 2;
 const AIDEN_MODEL_FALLBACK_PRELOAD_FILE = `paseo-aiden-model-fallback-v${AIDEN_MODEL_FALLBACK_PRELOAD_VERSION}.cjs`;
@@ -12,6 +19,7 @@ export interface AidenRuntimeEnvOptions {
   target: AidenRuntimeTarget;
   baseEnv?: NodeJS.ProcessEnv;
   configDir?: string;
+  onCodexHomeFallback?: (fallback: AidenCodexHomeFallback) => void;
 }
 
 export interface AidenClaudeSpawnArgs {
@@ -288,77 +296,6 @@ export function mergeNodeRequireOption(
   return `${existing} ${requireOption}`;
 }
 
-export function patchAidenCodexConfigToml(source: string): string {
-  const newline = source.includes("\r\n") ? "\r\n" : "\n";
-  const commandAuthPattern =
-    /^[\t ]*\[[\t ]*model_providers\.aiden_aiproxy\.auth[\t ]*\][\t ]*(?:#.*)?$/mu;
-  const hasCommandAuth = commandAuthPattern.test(source);
-  let patchedSource = source;
-  if (hasCommandAuth) {
-    const firstSectionIndex = /^[\t ]*\[/mu.exec(source)?.index ?? source.length;
-    const preamble = source
-      .slice(0, firstSectionIndex)
-      .replace(/^[\t ]*model_providers\.aiden_aiproxy\.env_key[\t ]*=.*(?:\r?\n|$)/gmu, "");
-    patchedSource = `${preamble}${source.slice(firstSectionIndex)}`;
-  }
-  const sectionPattern = /^\[model_providers\.aiden_aiproxy\][^\S\r\n]*(?:\r?\n|$)/mu;
-  const sectionMatch = sectionPattern.exec(patchedSource);
-  if (!sectionMatch) {
-    const providerSection = `[model_providers.aiden_aiproxy]${newline}requires_openai_auth = false${newline}`;
-    const commandAuthMatch = commandAuthPattern.exec(patchedSource);
-    if (commandAuthMatch) {
-      return `${patchedSource.slice(0, commandAuthMatch.index)}${providerSection}${newline}${patchedSource.slice(commandAuthMatch.index)}`;
-    }
-    const separator = patchedSource.length === 0 || patchedSource.endsWith(newline) ? "" : newline;
-    return `${patchedSource}${separator}${patchedSource.length > 0 ? newline : ""}${providerSection}`;
-  }
-
-  const sectionStart = sectionMatch.index;
-  const bodyStart = sectionStart + sectionMatch[0].length;
-  const nextSectionMatch = /^\[/mu.exec(patchedSource.slice(bodyStart));
-  const sectionEnd =
-    nextSectionMatch === null ? patchedSource.length : bodyStart + nextSectionMatch.index;
-  let sectionBody = patchedSource.slice(bodyStart, sectionEnd);
-  if (hasCommandAuth) {
-    sectionBody = sectionBody.replace(/^[\t ]*env_key[\t ]*=.*(?:\r?\n|$)/gmu, "");
-  }
-  const authPattern = /^requires_openai_auth[^\S\r\n]*=.*$/mu;
-  if (authPattern.test(sectionBody)) {
-    const patchedBody = sectionBody.replace(authPattern, "requires_openai_auth = false");
-    return `${patchedSource.slice(0, bodyStart)}${patchedBody}${patchedSource.slice(sectionEnd)}`;
-  }
-
-  return `${patchedSource.slice(0, bodyStart)}requires_openai_auth = false${newline}${sectionBody}${patchedSource.slice(sectionEnd)}`;
-}
-
-export function ensureAidenCodexHomeConfig(codexHome: string): void {
-  fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
-  const configPath = path.join(codexHome, "config.toml");
-  let source = "";
-  try {
-    source = fs.readFileSync(configPath, "utf8");
-  } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
-      throw error;
-    }
-  }
-  const patched = patchAidenCodexConfigToml(source);
-  if (patched !== source) {
-    fs.writeFileSync(configPath, patched, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-  }
-}
-
-export function resolveAidenCodexHome(
-  baseEnv: NodeJS.ProcessEnv | undefined,
-  homeDir = os.homedir(),
-): string {
-  const configuredHome = baseEnv?.CODEX_HOME?.trim();
-  return configuredHome || path.join(homeDir, ".codex", "aiden-app-home");
-}
-
 export function createAidenRuntimeEnvOverlay(
   options: AidenRuntimeEnvOptions,
 ): Record<string, string> {
@@ -366,10 +303,13 @@ export function createAidenRuntimeEnvOverlay(
     return {};
   }
   const preloadPath = materializeAidenModelFallbackPreload();
-  const codexHome = options.target === "codex" ? resolveAidenCodexHome(options.baseEnv) : undefined;
-  if (codexHome) {
-    ensureAidenCodexHomeConfig(codexHome);
-  }
+  const codexHome =
+    options.target === "codex"
+      ? prepareAidenCodexHome({
+          baseEnv: options.baseEnv,
+          onFallback: options.onCodexHomeFallback,
+        })
+      : undefined;
   return {
     NODE_OPTIONS: mergeNodeRequireOption(options.baseEnv?.NODE_OPTIONS, preloadPath),
     PASEO_AIDEN_RUNTIME_TARGET: options.target === "claude" ? "claudecode" : "codex",

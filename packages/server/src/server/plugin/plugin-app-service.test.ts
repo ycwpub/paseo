@@ -85,8 +85,10 @@ describe("PluginAppService", () => {
       appId: "dashboard",
       projectId: "project-1",
       defaultAgent: { provider: "codex", model: "gpt-5.6" },
+      data: { bambooTroubleshooter: { enabled: true } },
     });
     expect(configured.defaultAgent).toEqual({ provider: "codex", model: "gpt-5.6" });
+    expect(configured.data).toEqual({ bambooTroubleshooter: { enabled: true } });
 
     const generated = await service.generate({
       pluginId: "ui-plugin",

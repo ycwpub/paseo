@@ -2126,6 +2126,8 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(larkChannel): added in v0.1.108, remove gate after 2027-01-13.
         larkChannel: true,
         larkReminders: true,
+        // COMPAT(larkSubstituteModes): added in v0.7.0, remove gate after 2027-09-04.
+        larkSubstituteModes: true,
         // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
         larkDirectory: true,
         // COMPAT(larkUserOAuth): added in v0.3.2, remove gate after 2027-02-28.

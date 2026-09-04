@@ -12,6 +12,8 @@ const USER_OAUTH_SCOPE_LIST = [
   "im:chat:read",
   "im:chat.members:write_only",
   "im:message.group_msg:get_as_user",
+  "im:message",
+  "im:message.send_as_user",
 ] as const;
 const USER_OAUTH_SCOPES = USER_OAUTH_SCOPE_LIST.join(" ");
 

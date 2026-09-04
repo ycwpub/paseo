@@ -7282,6 +7282,16 @@ export class CodexAppServerAgentClient implements AgentClient {
       providerId: this.deps.customProvider?.id,
       target: "codex",
       baseEnv: baseProviderEnv,
+      onCodexHomeFallback: ({ configuredHome, resolvedHome, errorCode }) => {
+        this.logger.warn(
+          {
+            configuredHome,
+            resolvedHome,
+            ...(errorCode ? { errorCode } : {}),
+          },
+          "Configured Aiden Codex home is unavailable; using a writable fallback",
+        );
+      },
     });
     this.logger.trace(
       {

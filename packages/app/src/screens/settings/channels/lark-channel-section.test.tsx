@@ -354,6 +354,78 @@ vi.mock("./lark-reminder-section", () => ({
   ),
 }));
 
+vi.mock("./lark-substitute-mode-section", () => ({
+  LarkSubstituteModeSection: ({
+    onCreate,
+    onEdit,
+  }: {
+    onCreate: () => void;
+    onEdit: (mode: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      botId: string;
+      substituteUser: { openId: string; name: string | null; email: string | null };
+      privateReplyIdentity: "user";
+      groupReplyIdentity: "bot";
+      disclosure: { enabled: boolean; prompt: string };
+      customPrompt: string;
+      delaySeconds: number;
+      activeTimeRanges: [];
+      allowlist: [];
+      denylist: [];
+      target: LarkChannelBotStatus["target"];
+      createdAt: string;
+      updatedAt: string;
+    }) => void;
+  }) => {
+    const handleEdit = React.useCallback(() => {
+      onEdit({
+        id: "substitute-1",
+        name: "工作替身",
+        enabled: true,
+        botId: "bot-1",
+        substituteUser: { openId: "ou_alice", name: "Alice", email: "alice@example.com" },
+        privateReplyIdentity: "user",
+        groupReplyIdentity: "bot",
+        disclosure: { enabled: true, prompt: "【机器人代答】" },
+        customPrompt: "",
+        delaySeconds: 10,
+        activeTimeRanges: [],
+        allowlist: [],
+        denylist: [],
+        target: makeBot().target,
+        createdAt: "2026-09-04T00:00:00.000Z",
+        updatedAt: "2026-09-04T00:00:00.000Z",
+      });
+    }, [onEdit]);
+    return (
+      <div>
+        <button type="button" onClick={onCreate}>
+          创建替身模式
+        </button>
+        <button type="button" onClick={handleEdit}>
+          编辑替身模式
+        </button>
+      </div>
+    );
+  },
+  LarkSubstituteModeEditor: ({
+    mode,
+    onSaved,
+  }: {
+    mode?: { name: string } | null;
+    onSaved: () => void;
+  }) => (
+    <div>
+      <span>{mode ? `正在编辑 ${mode.name}` : "正在创建替身模式"}</span>
+      <button type="button" onClick={onSaved}>
+        保存替身模式
+      </button>
+    </div>
+  ),
+}));
+
 function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotStatus {
   return {
     id: "bot-1",
@@ -566,66 +638,16 @@ describe("LarkChannelSection", () => {
     );
   });
 
-  test("configures substitute mode with an Open ID and note name", async () => {
-    const bot = makeBot({
-      substitute: {
-        enabled: true,
-        openId: "ou_old",
-        name: "Old note",
-      },
-    });
-    channelState.current.status = makeStatus([bot]);
-    channelState.current.configure.mockResolvedValue(
-      makeStatus([
-        makeBot({
-          substitute: {
-            enabled: true,
-            openId: "ou_alice",
-            name: "Alice",
-          },
-        }),
-      ]),
-    );
-    channelState.current.resolveDirectoryUsers.mockResolvedValue([
-      {
-        appId: "cli_settle",
-        email: "alice@example.com",
-        openId: "ou_alice",
-        displayName: "Alice",
-        updatedAt: "2026-08-19T00:00:00.000Z",
-      },
-    ]);
-
+  test("opens independent create and edit pages for substitute modes", async () => {
+    channelState.current.status = makeStatus([makeBot()]);
     render(<LarkChannelSection serverId="server-1" />);
 
-    fireEvent.click(screen.getByTestId("host-page-lark-bot-substitute-bot-1"));
-    const emailInput = await waitFor(() => screen.getByPlaceholderText("user@example.com"));
-    fireEvent.change(emailInput, {
-      target: { value: " alice@example.com " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "通过邮箱查询" }));
-    await waitFor(() =>
-      expect(channelState.current.resolveDirectoryUsers).toHaveBeenCalledWith("cli_settle", [
-        "alice@example.com",
-      ]),
-    );
-    expect(await screen.findByText("Alice（alice@example.com，ou_alice）")).toBeTruthy();
-    fireEvent.change(screen.getByPlaceholderText("例如：张三"), {
-      target: { value: " Alice " },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "创建替身模式" }));
+    expect(await screen.findByText("正在创建替身模式")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "保存替身模式" }));
 
-    await waitFor(() =>
-      expect(channelState.current.configure).toHaveBeenCalledWith(
-        expect.objectContaining({
-          substitute: {
-            enabled: true,
-            openId: "ou_alice",
-            name: "Alice",
-          },
-        }),
-      ),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑替身模式" }));
+    expect(await screen.findByText("正在编辑 工作替身")).toBeTruthy();
   });
 
   test("shows authorized users and groups with friendly directory identities", async () => {

@@ -19,7 +19,11 @@ import {
 } from "../services/github-service.js";
 import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
-import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
+import type {
+  LarkSubstituteMode,
+  LarkSubstituteModeCreateInput,
+  WorkspaceDescriptorPayload,
+} from "@getpaseo/protocol/messages";
 import {
   decodeFileTransferFrame,
   encodeFileTransferFrame,
@@ -51,6 +55,7 @@ import {
   asDaemonConfigStore,
   createProviderSnapshotManagerStub,
 } from "./test-utils/session-stubs.js";
+import { createStub } from "./test-utils/class-mocks.js";
 import { isPlatform } from "../test-utils/platform.js";
 import {
   GitHubAuthenticationError,
@@ -327,6 +332,7 @@ interface SessionForTestOptions {
   daemonRuntimeConfig?: SessionOptions["daemonRuntimeConfig"];
   downloadTokenStore?: SessionOptions["downloadTokenStore"];
   pushNotifications?: SessionOptions["pushNotifications"];
+  larkChannelService?: SessionOptions["larkChannelService"];
   messages?: unknown[];
   targetedMessages?: Array<{ source: object; message: SessionOutboundMessage }>;
   binaryMessages?: Uint8Array[];
@@ -429,10 +435,121 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     serverId: options.serverId,
     daemonVersion: options.daemonVersion,
     daemonRuntimeConfig: options.daemonRuntimeConfig,
+    larkChannelService: options.larkChannelService,
     scopes: options.scopes ?? ["*"],
   };
   return new Session(sessionOptions);
 }
+
+describe("Lark substitute mode main Session routing", () => {
+  test("routes list, create, update, enable and delete requests to responses", async () => {
+    const modeInput: LarkSubstituteModeCreateInput = {
+      name: "工作替身",
+      enabled: true,
+      botId: "bot-1",
+      substituteUser: {
+        openId: "ou_target",
+        name: "张三",
+        email: "zhangsan@example.com",
+      },
+      privateReplyIdentity: "user",
+      groupReplyIdentity: "bot",
+      disclosure: { enabled: true, prompt: "【机器人代答】" },
+      customPrompt: "",
+      delaySeconds: 60,
+      activeTimeRanges: [],
+      audienceAllowlist: [],
+      audienceDenylist: [],
+      questionAllowlist: [],
+      questionDenylist: [],
+      allowlist: [],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    };
+    let modes: LarkSubstituteMode[] = [];
+    const larkChannelService = createStub<NonNullable<SessionOptions["larkChannelService"]>>({
+      listSubstituteModes: () => modes,
+      createSubstituteMode: (input: LarkSubstituteModeCreateInput) => {
+        const mode: LarkSubstituteMode = {
+          id: "mode-1",
+          ...input,
+          createdAt: "2026-09-05T00:00:00.000Z",
+          updatedAt: "2026-09-05T00:00:00.000Z",
+        };
+        modes = [mode];
+        return mode;
+      },
+      updateSubstituteMode: (modeId: string, input: LarkSubstituteModeCreateInput) => {
+        const mode: LarkSubstituteMode = {
+          id: modeId,
+          ...input,
+          createdAt: "2026-09-05T00:00:00.000Z",
+          updatedAt: "2026-09-05T01:00:00.000Z",
+        };
+        modes = [mode];
+        return mode;
+      },
+      setSubstituteModeEnabled: (modeId: string, enabled: boolean) => {
+        const mode = { ...modes[0]!, id: modeId, enabled };
+        modes = [mode];
+        return mode;
+      },
+      deleteSubstituteMode: (modeId: string) => {
+        const found = modes.some((mode) => mode.id === modeId);
+        if (found) modes = modes.filter((mode) => mode.id !== modeId);
+        return found;
+      },
+    });
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ larkChannelService, messages });
+
+    await session.handleMessage({
+      type: "channel.lark.substitute.create.request",
+      requestId: "create",
+      mode: modeInput,
+    });
+    await session.handleMessage({
+      type: "channel.lark.substitute.update.request",
+      requestId: "update",
+      modeId: "mode-1",
+      mode: { ...modeInput, name: "更新后的替身" },
+    });
+    await session.handleMessage({
+      type: "channel.lark.substitute.set_enabled.request",
+      requestId: "enable",
+      modeId: "mode-1",
+      enabled: false,
+    });
+    await session.handleMessage({
+      type: "channel.lark.substitute.list.request",
+      requestId: "list",
+    });
+    await session.handleMessage({
+      type: "channel.lark.substitute.delete.request",
+      requestId: "delete",
+      modeId: "mode-1",
+    });
+
+    expect(
+      messages.map((message) => ({
+        type: message.type,
+        requestId: "payload" in message ? message.payload.requestId : null,
+      })),
+    ).toEqual([
+      { type: "channel.lark.substitute.create.response", requestId: "create" },
+      { type: "channel.lark.substitute.update.response", requestId: "update" },
+      { type: "channel.lark.substitute.set_enabled.response", requestId: "enable" },
+      { type: "channel.lark.substitute.list.response", requestId: "list" },
+      { type: "channel.lark.substitute.delete.response", requestId: "delete" },
+    ]);
+  });
+});
 
 describe("session authorization scopes", () => {
   test("routes named-agent validation through the session source", async () => {

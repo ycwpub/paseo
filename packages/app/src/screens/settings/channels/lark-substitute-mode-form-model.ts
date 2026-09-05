@@ -2,11 +2,16 @@ import type {
   LarkChannelBotStatus,
   LarkChannelTarget,
   LarkDirectoryUser,
+  LarkSubstituteAudienceRule,
   LarkSubstituteMode,
   LarkSubstituteModeCreateInput,
-  LarkSubstituteRule,
+  LarkSubstituteQuestionRule,
   LarkSubstituteTimeRange,
 } from "@getpaseo/protocol/messages";
+import {
+  createSubstituteRuleFormLists,
+  validateSubstituteRuleFormLists,
+} from "./lark-substitute-rule-form-model";
 
 export const TARGET_WORKSPACE = "workspace";
 export const TARGET_ASSISTANT_PREFIX = "assistant:";
@@ -22,12 +27,14 @@ export interface LarkSubstituteModeFormState {
   disclosurePrompt: string;
   customPrompt: string;
   delaySeconds: string;
-  weekdays: string;
+  weekdays: number[];
   startTime: string;
   endTime: string;
   timezone: string;
-  allowlist: string;
-  denylist: string;
+  audienceAllowlist: LarkSubstituteAudienceRule[];
+  audienceDenylist: LarkSubstituteAudienceRule[];
+  questionAllowlist: LarkSubstituteQuestionRule[];
+  questionDenylist: LarkSubstituteQuestionRule[];
   targetSelection: string;
   provider: string | null;
   model: string | null;
@@ -46,110 +53,6 @@ export function getTargetSelection(target: LarkChannelTarget): string {
     return `${TARGET_TEAM_PREFIX}${target.teamId}`;
   }
   return TARGET_WORKSPACE;
-}
-
-function formatRule(rule: LarkSubstituteRule): string {
-  switch (rule.type) {
-    case "user":
-      return ["用户", rule.name ?? "", rule.email ?? "", rule.openId ?? ""].join("|");
-    case "group":
-      return ["群", rule.name ?? "", rule.groupId ?? "", rule.chatId].join("|");
-    case "group_name_regex":
-      return `群正则|${rule.pattern}`;
-    case "question_type":
-      return `问题类型|${rule.description}`;
-  }
-}
-
-export function formatSubstituteRules(rules: readonly LarkSubstituteRule[]): string {
-  return rules.map(formatRule).join("\n");
-}
-
-function parseUserRule(id: string, parts: string[], lineNumber: number): LarkSubstituteRule {
-  const [name = "", email = "", openId = ""] = parts;
-  if (!name && !email && !openId) {
-    throw new Error(`第 ${lineNumber} 条用户规则为空`);
-  }
-  return {
-    id,
-    type: "user",
-    name: name || null,
-    email: email || null,
-    openId: openId || null,
-  };
-}
-
-function parseGroupRule(id: string, parts: string[], lineNumber: number): LarkSubstituteRule {
-  const [name = "", groupId = "", chatId = ""] = parts;
-  if (!chatId) {
-    throw new Error(`第 ${lineNumber} 条群规则缺少 oc_xxx`);
-  }
-  return {
-    id,
-    type: "group",
-    name: name || null,
-    groupId: groupId || null,
-    chatId,
-  };
-}
-
-function parseGroupNameRegexRule(
-  id: string,
-  parts: string[],
-  lineNumber: number,
-): LarkSubstituteRule {
-  const pattern = parts.join("|");
-  if (!pattern) {
-    throw new Error(`第 ${lineNumber} 条群正则为空`);
-  }
-  try {
-    RegExp(pattern, "u");
-  } catch {
-    throw new Error(`第 ${lineNumber} 条群名称正则表达式无效`);
-  }
-  return { id, type: "group_name_regex", pattern };
-}
-
-function parseQuestionTypeRule(
-  id: string,
-  parts: string[],
-  lineNumber: number,
-): LarkSubstituteRule {
-  const description = parts.join("|");
-  if (!description) {
-    throw new Error(`第 ${lineNumber} 条问题类型为空`);
-  }
-  return { id, type: "question_type", description };
-}
-
-function parseRule(line: string, index: number, listName: string): LarkSubstituteRule {
-  const [rawType = "", ...parts] = line.split("|").map((part) => part.trim());
-  const id = `${listName}-${index}`;
-  const lineNumber = index + 1;
-  switch (rawType) {
-    case "用户":
-    case "user":
-      return parseUserRule(id, parts, lineNumber);
-    case "群":
-    case "group":
-      return parseGroupRule(id, parts, lineNumber);
-    case "群正则":
-    case "group_regex":
-      return parseGroupNameRegexRule(id, parts, lineNumber);
-    case "问题类型":
-    case "question":
-      return parseQuestionTypeRule(id, parts, lineNumber);
-    default:
-      throw new Error(`第 ${lineNumber} 条规则类型无效，请使用“用户、群、群正则、问题类型”`);
-  }
-}
-
-export function parseSubstituteRules(value: string, listName: string): LarkSubstituteRule[] {
-  return value
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => parseRule(line, index, listName));
 }
 
 function getInitialTarget(
@@ -198,13 +101,12 @@ function createDefaultFormState(
     disclosureEnabled: true,
     disclosurePrompt: "【机器人代答】",
     customPrompt: "",
-    delaySeconds: "10",
-    weekdays: "1,2,3,4,5,6,0",
+    delaySeconds: "60",
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
     startTime: "",
     endTime: "",
     timezone: "Asia/Shanghai",
-    allowlist: "",
-    denylist: "",
+    ...createSubstituteRuleFormLists(null),
     targetSelection: getTargetSelection(initialTarget),
     provider: initialTarget.provider ?? null,
     model: initialTarget.model ?? null,
@@ -233,8 +135,10 @@ function createModeBehaviorFields(
   | "disclosurePrompt"
   | "customPrompt"
   | "delaySeconds"
-  | "allowlist"
-  | "denylist"
+  | "audienceAllowlist"
+  | "audienceDenylist"
+  | "questionAllowlist"
+  | "questionDenylist"
 > {
   return {
     groupReplyIdentity: mode.groupReplyIdentity,
@@ -242,8 +146,7 @@ function createModeBehaviorFields(
     disclosurePrompt: mode.disclosure.prompt,
     customPrompt: mode.customPrompt,
     delaySeconds: String(mode.delaySeconds),
-    allowlist: formatSubstituteRules(mode.allowlist),
-    denylist: formatSubstituteRules(mode.denylist),
+    ...createSubstituteRuleFormLists(mode),
   };
 }
 
@@ -252,14 +155,14 @@ function createTimeFields(
 ): Pick<LarkSubstituteModeFormState, "weekdays" | "startTime" | "endTime" | "timezone"> {
   if (!firstRange) {
     return {
-      weekdays: "1,2,3,4,5,6,0",
+      weekdays: [1, 2, 3, 4, 5, 6, 7],
       startTime: "",
       endTime: "",
       timezone: "Asia/Shanghai",
     };
   }
   return {
-    weekdays: firstRange.weekdays.join(","),
+    weekdays: [...firstRange.weekdays],
     startTime: firstRange.startTime,
     endTime: firstRange.endTime,
     timezone: firstRange.timezone,
@@ -285,20 +188,13 @@ function parseDelaySeconds(value: string): number {
   return parsed;
 }
 
-function parseWeekdays(value: string): number[] {
-  const weekdays = Array.from(
-    new Set(
-      value
-        .split(/[,，\s]+/u)
-        .filter(Boolean)
-        .map(Number),
-    ),
-  );
+function validateWeekdays(value: readonly number[]): number[] {
+  const weekdays = Array.from(new Set(value)).sort((left, right) => left - right);
   if (
     weekdays.length === 0 ||
-    weekdays.some((weekday) => !Number.isInteger(weekday) || weekday < 0 || weekday > 6)
+    weekdays.some((weekday) => !Number.isInteger(weekday) || weekday < 1 || weekday > 7)
   ) {
-    throw new Error("星期必须使用 0 到 6 的数字，0 表示周日");
+    throw new Error("请至少选择一个星期，星期范围为 1 到 7");
   }
   return weekdays;
 }
@@ -316,7 +212,7 @@ function buildActiveTimeRanges(
   return [
     {
       id: mode?.activeTimeRanges[0]?.id ?? "default",
-      weekdays: parseWeekdays(form.weekdays),
+      weekdays: validateWeekdays(form.weekdays),
       startTime: form.startTime.trim(),
       endTime: form.endTime.trim(),
       timezone: form.timezone.trim() || "Asia/Shanghai",
@@ -357,7 +253,6 @@ function validateRequiredFields(
   if (!form.openId.trim()) throw new Error("请选择被替身用户");
   if (!form.provider) throw new Error("请选择模型提供方");
   if (!form.model) throw new Error("请选择模型");
-  if (!form.cwd.trim()) throw new Error("请选择项目");
 }
 
 export function buildSubstituteModeInput(input: {
@@ -371,6 +266,12 @@ export function buildSubstituteModeInput(input: {
   const selectedUser = input.directoryUsers.find(
     (user) => user.appId === selectedBot?.appId && user.openId === form.openId,
   );
+  const ruleLists = validateSubstituteRuleFormLists({
+    audienceAllowlist: form.audienceAllowlist,
+    audienceDenylist: form.audienceDenylist,
+    questionAllowlist: form.questionAllowlist,
+    questionDenylist: form.questionDenylist,
+  });
   return {
     name: form.name.trim(),
     enabled: form.enabled,
@@ -389,8 +290,9 @@ export function buildSubstituteModeInput(input: {
     customPrompt: form.customPrompt.trim(),
     delaySeconds: parseDelaySeconds(form.delaySeconds),
     activeTimeRanges: buildActiveTimeRanges(form, mode),
-    allowlist: parseSubstituteRules(form.allowlist, "allow"),
-    denylist: parseSubstituteRules(form.denylist, "deny"),
+    ...ruleLists,
+    allowlist: [],
+    denylist: [],
     target: buildTarget(form),
   };
 }

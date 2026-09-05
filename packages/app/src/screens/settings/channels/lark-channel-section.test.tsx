@@ -4,6 +4,7 @@
 import React, { type ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type {
+  LarkBotApplication,
   LarkChannelBotStatus,
   LarkChannelStatus,
   LarkReminder,
@@ -53,7 +54,7 @@ const channelState = vi.hoisted(() => ({
     revokeUser: vi.fn(),
     resolveDirectoryUsers: vi.fn(),
     resolveDirectoryChats: vi.fn(),
-    application: null,
+    application: null as LarkBotApplication | null,
     applyBot: vi.fn(),
     refreshApplication: vi.fn(),
     clearApplication: vi.fn(),
@@ -500,9 +501,38 @@ describe("LarkChannelSection", () => {
     });
   });
 
+  test("shows the permissions and callback allowlist submitted with the application", () => {
+    channelState.current.status = makeStatus([]);
+    channelState.current.application = {
+      id: "application-1",
+      status: "waiting_for_scan",
+      qrUrl: null,
+      expiresAt: null,
+      message: "请扫码确认",
+      error: null,
+      botId: null,
+      appId: null,
+      domain: null,
+      requirements: {
+        tenantScopes: ["im:message:readonly", "im:message:send_as_bot"],
+        userScopes: ["offline_access"],
+        events: ["im.message.receive_v1"],
+        callbacks: ["card.action.trigger"],
+      },
+    };
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    expect(screen.getByText(/机器人权限 2 项、用户权限 1 项/)).toBeTruthy();
+    expect(
+      screen.getByText("事件与回调白名单：im.message.receive_v1、card.action.trigger"),
+    ).toBeTruthy();
+  });
+
   afterEach(() => {
     cleanup();
     channelState.current.status = null;
+    channelState.current.application = null;
     channelState.current.configure.mockReset();
     channelState.current.deleteBot.mockReset();
     channelState.current.applyBot.mockReset();

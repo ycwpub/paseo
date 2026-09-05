@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type {
   LarkChannelBotStatus,
   LarkDirectory,
+  LarkDirectoryChat,
   LarkDirectoryUser,
   LarkSubstituteMode,
 } from "@getpaseo/protocol/messages";
@@ -17,12 +18,15 @@ import {
 } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
 import { useAssistants } from "@/hooks/use-assistants";
+import { registerProjectDescriptor } from "@/hooks/open-project";
 import { useProjects } from "@/hooks/use-projects";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { useTeams } from "@/hooks/use-teams";
 import { LarkUserOAuthCard } from "@/projects/lark/lark-user-oauth-card";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import { LarkUserDirectoryField } from "./lark-directory-fields";
 import {
@@ -34,13 +38,35 @@ import {
   TARGET_TEAM_PREFIX,
   TARGET_WORKSPACE,
 } from "./lark-substitute-mode-form-model";
+import {
+  LarkSubstituteAudienceRuleListEditor,
+  LarkSubstituteQuestionRuleListEditor,
+} from "./lark-substitute-rule-list-editor";
+import {
+  resolveSubstituteModeProject,
+  rollbackSubstituteModeProject,
+} from "./lark-substitute-mode-project";
 import { useLarkSubstituteModes } from "./use-lark-substitute-modes";
+import { WeekdayMultiSelectField } from "./weekday-multi-select-field";
 
 const GROUP_REPLY_IDENTITY_OPTIONS: SelectFieldOption<"user" | "bot">[] = [
   { id: "user", value: "user", label: "用户身份" },
   { id: "bot", value: "bot", label: "机器人身份" },
 ];
 const EMPTY_USERS: LarkDirectoryUser[] = [];
+const EMPTY_CHATS: LarkDirectoryChat[] = [];
+
+function getDirectoryUsers(directory: LarkDirectory | null): LarkDirectoryUser[] {
+  return directory ? directory.users : EMPTY_USERS;
+}
+
+function getDirectoryChats(directory: LarkDirectory | null): LarkDirectoryChat[] {
+  return directory ? directory.chats : EMPTY_CHATS;
+}
+
+function getBotAppId(bot: LarkChannelBotStatus | null): string {
+  return bot ? (bot.appId ?? "") : "";
+}
 
 function optionDisplay<T extends string>(
   options: SelectFieldOption<T>[],
@@ -167,18 +193,36 @@ function useSubstituteModeForm(
     (value: string) => updateField("delaySeconds", value),
     [updateField],
   );
-  const setWeekdays = useCallback((value: string) => updateField("weekdays", value), [updateField]);
+  const setWeekdays = useCallback(
+    (value: number[]) => updateField("weekdays", value),
+    [updateField],
+  );
   const setStartTime = useCallback(
     (value: string) => updateField("startTime", value),
     [updateField],
   );
   const setEndTime = useCallback((value: string) => updateField("endTime", value), [updateField]);
   const setTimezone = useCallback((value: string) => updateField("timezone", value), [updateField]);
-  const setAllowlist = useCallback(
-    (value: string) => updateField("allowlist", value),
+  const setAudienceAllowlist = useCallback(
+    (value: LarkSubstituteModeFormState["audienceAllowlist"]) =>
+      updateField("audienceAllowlist", value),
     [updateField],
   );
-  const setDenylist = useCallback((value: string) => updateField("denylist", value), [updateField]);
+  const setAudienceDenylist = useCallback(
+    (value: LarkSubstituteModeFormState["audienceDenylist"]) =>
+      updateField("audienceDenylist", value),
+    [updateField],
+  );
+  const setQuestionAllowlist = useCallback(
+    (value: LarkSubstituteModeFormState["questionAllowlist"]) =>
+      updateField("questionAllowlist", value),
+    [updateField],
+  );
+  const setQuestionDenylist = useCallback(
+    (value: LarkSubstituteModeFormState["questionDenylist"]) =>
+      updateField("questionDenylist", value),
+    [updateField],
+  );
   const setTargetSelection = useCallback(
     (value: string) => updateField("targetSelection", value),
     [updateField],
@@ -203,8 +247,10 @@ function useSubstituteModeForm(
     setStartTime,
     setEndTime,
     setTimezone,
-    setAllowlist,
-    setDenylist,
+    setAudienceAllowlist,
+    setAudienceDenylist,
+    setQuestionAllowlist,
+    setQuestionDenylist,
     setTargetSelection,
     setProvider,
     setModel,
@@ -229,6 +275,7 @@ export function LarkSubstituteModeEditor({
   bots,
   directory,
   resolveDirectoryUsers,
+  resolveDirectoryChats,
   mode,
   onSaved,
 }: {
@@ -236,18 +283,25 @@ export function LarkSubstituteModeEditor({
   bots: LarkChannelBotStatus[];
   directory: LarkDirectory | null;
   resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
   mode?: LarkSubstituteMode | null;
   onSaved: () => void;
 }) {
   const modes = useLarkSubstituteModes(serverId);
+  const client = useHostRuntimeClient(serverId);
   const assistants = useAssistants(serverId);
   const supportsTeams = useHostFeature(serverId, "teams");
+  const supportsDirectorylessProjects = useHostFeature(serverId, "projectCreateDirectoryless");
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const providers = useProvidersSnapshot(serverId);
   const { projects } = useProjects();
   const controller = useSubstituteModeForm(mode, bots);
-  const { form } = controller;
+  const { form, setCwd } = controller;
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const upsertProject = useSessionStore((state) => state.upsertProject);
+  const removeProject = useSessionStore((state) => state.removeProject);
+  const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
   const selectedBot = bots.find((bot) => bot.id === form.botId) ?? null;
   const botOptions = useMemo(() => buildBotOptions(bots), [bots]);
   const targetOptions = useMemo(
@@ -269,23 +323,80 @@ export function LarkSubstituteModeEditor({
     [projects, serverId],
   );
   const selectedOpenIds = useMemo(() => (form.openId ? [form.openId] : []), [form.openId]);
-  const directoryUsers = directory?.users ?? EMPTY_USERS;
+  const directoryUsers = getDirectoryUsers(directory);
+  const directoryChats = getDirectoryChats(directory);
+  const selectedBotAppId = getBotAppId(selectedBot);
+  const ruleEditingDisabled = !selectedBotAppId;
 
   const handleSave = useCallback(async () => {
+    if (isSaving) return;
     setFormError(null);
+    setIsSaving(true);
+    let createdProjectId: string | null = null;
+    let createdProjectCwd: string | null = null;
     try {
-      const input = buildSubstituteModeInput({
+      const baseInput = buildSubstituteModeInput({
         form,
         selectedBot,
         directoryUsers,
         mode,
       });
-      await persistMode(modes, mode, input);
+      const project = await resolveSubstituteModeProject({
+        name: form.name,
+        cwd: form.cwd,
+        supportsDirectorylessProjects,
+        client,
+        registerProject: (created) => {
+          registerProjectDescriptor({
+            serverId,
+            project: created,
+            upsertProject,
+            setHasHydratedWorkspaces,
+          });
+        },
+      });
+      createdProjectId = project.createdProjectId;
+      createdProjectCwd = project.createdProjectId ? project.cwd : null;
+      await persistMode(modes, mode, {
+        ...baseInput,
+        target: {
+          ...baseInput.target,
+          cwd: project.cwd,
+        },
+      });
       onSaved();
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : String(error));
+      const rolledBack = await rollbackSubstituteModeProject({
+        projectId: createdProjectId,
+        client,
+        unregisterProject: (projectId) => removeProject(serverId, projectId),
+      });
+      if (!rolledBack && createdProjectCwd) {
+        setCwd(createdProjectCwd);
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      setFormError(
+        rolledBack ? message : `${message}；自动创建的 Project 回滚失败，已保留并填入项目选项`,
+      );
+    } finally {
+      setIsSaving(false);
     }
-  }, [directoryUsers, form, mode, modes, onSaved, selectedBot]);
+  }, [
+    client,
+    directoryUsers,
+    form,
+    isSaving,
+    mode,
+    modes,
+    onSaved,
+    removeProject,
+    selectedBot,
+    serverId,
+    setCwd,
+    setHasHydratedWorkspaces,
+    supportsDirectorylessProjects,
+    upsertProject,
+  ]);
 
   return (
     <View style={styles.editor}>
@@ -321,12 +432,12 @@ export function LarkSubstituteModeEditor({
           <LarkUserDirectoryField
             label="被替身用户"
             hint="通过邮箱选择用户，保存用户名、邮箱和 ou_xxx。"
-            appId={selectedBot?.appId ?? ""}
+            appId={selectedBotAppId}
             openIds={selectedOpenIds}
             users={directoryUsers}
             resolveUsers={resolveDirectoryUsers}
             onChange={controller.setOpenIds}
-            disabled={!selectedBot?.appId}
+            disabled={ruleEditingDisabled}
           />
           <Field label="私聊回答身份" hint="私聊固定使用当前 OAuth 用户身份。">
             <FormTextInput value="用户身份" editable={false} />
@@ -377,13 +488,7 @@ export function LarkSubstituteModeEditor({
           </Field>
           <Text style={settingsStyles.rowTitle}>生效时间段（留空表示全天）</Text>
           <View style={styles.inlineFields}>
-            <Field label="星期">
-              <FormTextInput
-                value={form.weekdays}
-                onChangeText={controller.setWeekdays}
-                placeholder="1,2,3,4,5；0 表示周日"
-              />
-            </Field>
+            <WeekdayMultiSelectField value={form.weekdays} onChange={controller.setWeekdays} />
             <Field label="开始时间">
               <FormTextInput
                 value={form.startTime}
@@ -402,30 +507,42 @@ export function LarkSubstituteModeEditor({
               <FormTextInput value={form.timezone} onChangeText={controller.setTimezone} />
             </Field>
           </View>
-          <Field
-            label="白名单"
-            hint="每行一条：用户|名称|邮箱|ou_xxx；群|名称|群ID|oc_xxx；群正则|表达式；问题类型|自然语言描述。配置身份规则时必须命中一条。"
-          >
-            <FormTextInput
-              value={form.allowlist}
-              onChangeText={controller.setAllowlist}
-              multiline
-              placeholder={
-                "用户|张三|zhangsan@example.com|ou_xxx\n群正则|^研发.*\n问题类型|研发和代码问题"
-              }
-            />
-          </Field>
-          <Field
-            label="黑名单"
-            hint="格式与白名单相同；黑名单优先。问题类型由 Agent 进行语义匹配。"
-          >
-            <FormTextInput
-              value={form.denylist}
-              onChangeText={controller.setDenylist}
-              multiline
-              placeholder={"群|闲聊群|group_id|oc_xxx\n问题类型|人事和薪酬问题"}
-            />
-          </Field>
+          <LarkSubstituteAudienceRuleListEditor
+            label="用户/群白名单"
+            hint="配置后必须命中至少一条。支持用户、群、群 AI 分类、全部和群名称正则表达式。"
+            rules={form.audienceAllowlist}
+            appId={selectedBotAppId}
+            users={directoryUsers}
+            chats={directoryChats}
+            resolveUsers={resolveDirectoryUsers}
+            resolveChats={resolveDirectoryChats}
+            disabled={ruleEditingDisabled}
+            onChange={controller.setAudienceAllowlist}
+          />
+          <LarkSubstituteAudienceRuleListEditor
+            label="用户/群黑名单"
+            hint="命中任意一条即不回答，优先级高于用户/群白名单。"
+            rules={form.audienceDenylist}
+            appId={selectedBotAppId}
+            users={directoryUsers}
+            chats={directoryChats}
+            resolveUsers={resolveDirectoryUsers}
+            resolveChats={resolveDirectoryChats}
+            disabled={ruleEditingDisabled}
+            onChange={controller.setAudienceDenylist}
+          />
+          <LarkSubstituteQuestionRuleListEditor
+            label="问题白名单"
+            hint="配置后问题必须由 Agent 语义判断命中至少一条。"
+            rules={form.questionAllowlist}
+            onChange={controller.setQuestionAllowlist}
+          />
+          <LarkSubstituteQuestionRuleListEditor
+            label="问题黑名单"
+            hint="Agent 语义判断命中任意一条即不回答，优先级高于问题白名单。"
+            rules={form.questionDenylist}
+            onChange={controller.setQuestionDenylist}
+          />
           <SelectField
             label="模型提供方"
             value={form.provider}
@@ -467,20 +584,21 @@ export function LarkSubstituteModeEditor({
             emptyText="暂无可用项目"
             searchable
           />
+          <Text style={settingsStyles.rowHint}>
+            不选择项目时，将使用替身模式名称自动创建并绑定一个 Project。
+          </Text>
           {formError ? <Text style={settingsStyles.rowError}>{formError}</Text> : null}
           <Button
             variant="default"
             onPress={handleSave}
-            loading={modes.isMutating}
-            disabled={modes.isMutating}
+            loading={isSaving || modes.isMutating}
+            disabled={isSaving || modes.isMutating}
           >
             {mode ? "保存修改" : "创建替身模式"}
           </Button>
         </View>
       </SettingsSection>
-      {selectedBot?.appId ? (
-        <LarkUserOAuthCard serverId={serverId} appId={selectedBot.appId} />
-      ) : null}
+      {selectedBotAppId ? <LarkUserOAuthCard serverId={serverId} appId={selectedBotAppId} /> : null}
     </View>
   );
 }

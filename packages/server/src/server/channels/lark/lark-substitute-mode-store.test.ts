@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -77,7 +77,7 @@ describe("LarkSubstituteModeStore", () => {
       JSON.parse(
         readFileSync(path.join(paseoHome, "channels", "lark-substitute-modes.json"), "utf8"),
       ),
-    ).toMatchObject({ version: 1, migratedLegacyBotIds: ["bot-1"] });
+    ).toMatchObject({ version: 2, migratedLegacyBotIds: ["bot-1"] });
   });
 
   test("creates, updates, toggles and deletes an independent mode", () => {
@@ -111,5 +111,59 @@ describe("LarkSubstituteModeStore", () => {
     expect(disabled?.enabled).toBe(false);
     expect(store.delete(created.id)).toBe(true);
     expect(store.list()).toEqual([]);
+  });
+
+  test("migrates stored Sunday weekday 0 to weekday 7", () => {
+    const paseoHome = createTempDir();
+    const channelsDirectory = path.join(paseoHome, "channels");
+    mkdirSync(channelsDirectory, { recursive: true });
+    writeFileSync(
+      path.join(channelsDirectory, "lark-substitute-modes.json"),
+      JSON.stringify({
+        version: 1,
+        migratedLegacyBotIds: [],
+        modes: [
+          {
+            id: "mode-1",
+            name: "周日替身",
+            enabled: true,
+            botId: "bot-1",
+            substituteUser: { openId: "ou_user", name: "张三", email: null },
+            privateReplyIdentity: "user",
+            groupReplyIdentity: "bot",
+            disclosure: { enabled: true, prompt: "【机器人代答】" },
+            customPrompt: "",
+            delaySeconds: 10,
+            activeTimeRanges: [
+              {
+                id: "sunday",
+                weekdays: [0, 1],
+                startTime: "09:00",
+                endTime: "18:00",
+                timezone: "Asia/Shanghai",
+              },
+            ],
+            allowlist: [],
+            denylist: [],
+            target: {
+              kind: "workspace",
+              provider: "aiden_codex",
+              model: "gpt-5.5",
+              cwd: "/repo",
+              workspaceId: null,
+            },
+            createdAt: "2026-09-04T00:00:00.000Z",
+            updatedAt: "2026-09-04T00:00:00.000Z",
+          },
+        ],
+      }),
+      { mode: 0o600 },
+    );
+
+    const store = new LarkSubstituteModeStore(paseoHome);
+    expect(store.list()[0]?.activeTimeRanges[0]?.weekdays).toEqual([1, 7]);
+    expect(
+      JSON.parse(readFileSync(path.join(channelsDirectory, "lark-substitute-modes.json"), "utf8")),
+    ).toMatchObject({ version: 2 });
   });
 });

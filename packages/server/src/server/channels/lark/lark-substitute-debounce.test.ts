@@ -71,7 +71,13 @@ describe("LarkSubstituteDebouncer", () => {
     await vi.advanceTimersByTimeAsync(1);
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ messageId: "om_2" }));
+    expect(handler).toHaveBeenCalledWith({
+      latestEvent: expect.objectContaining({ messageId: "om_2" }),
+      bufferedEvents: [
+        expect.objectContaining({ messageId: "om_1" }),
+        expect.objectContaining({ messageId: "om_2" }),
+      ],
+    });
   });
 
   test("can cancel a pending mode and bypasses scheduling when delay is zero", async () => {
@@ -88,7 +94,7 @@ describe("LarkSubstituteDebouncer", () => {
     );
   });
 
-  test("does not let another group member replace a pending question", async () => {
+  test("uses the latest group mention for the same substituted user across senders", async () => {
     vi.useFakeTimers();
     const debouncer = new LarkSubstituteDebouncer();
     const handler = vi.fn(async () => undefined);
@@ -97,8 +103,13 @@ describe("LarkSubstituteDebouncer", () => {
     debouncer.schedule(mode(), eventFrom("om_2", "用户二的问题", "ou_user_2"), handler);
     await vi.runAllTimersAsync();
 
-    expect(handler).toHaveBeenCalledTimes(2);
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ messageId: "om_1" }));
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ messageId: "om_2" }));
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith({
+      latestEvent: expect.objectContaining({ messageId: "om_2", openId: "ou_user_2" }),
+      bufferedEvents: [
+        expect.objectContaining({ messageId: "om_1", openId: "ou_user_1" }),
+        expect.objectContaining({ messageId: "om_2", openId: "ou_user_2" }),
+      ],
+    });
   });
 });

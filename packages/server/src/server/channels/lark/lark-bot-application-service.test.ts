@@ -55,24 +55,30 @@ describe("LarkBotApplicationService", () => {
         addons: {
           scopes: {
             tenant: [
-              "im:message.group_msg",
-              "im:message.p2p_msg",
-              "im:message.group_at_msg.include_bot:readonly",
-              "im:message:send_as_bot",
+              "contact:user.base:readonly",
+              "contact:user.email:readonly",
+              "contact:user.id:readonly",
+              "im:chat.members:bot_access",
               "im:chat.members:read",
               "im:chat:read",
-              "contact:user.id:readonly",
+              "im:message.group_at_msg.include_bot:readonly",
+              "im:message.group_msg",
+              "im:message.group_msg.include_bot:read",
+              "im:message.p2p_msg",
+              "im:message:readonly",
+              "im:message:send_as_bot",
             ],
             user: [
-              "im:message.group_msg:get_as_user",
-              "im:message",
-              "im:message.send_as_user",
-              "im:chat:read",
               "im:chat.members:write_only",
+              "im:chat:read",
+              "im:message",
+              "im:message.group_msg:get_as_user",
+              "im:message.send_as_user",
               "offline_access",
             ],
           },
           events: { items: { tenant: ["im.message.receive_v1"] } },
+          callbacks: { items: ["card.action.trigger"] },
         },
         createOnly: true,
       }),
@@ -85,6 +91,10 @@ describe("LarkBotApplicationService", () => {
       domain: "feishu",
     });
     expect(testConnection).not.toHaveBeenCalled();
+    expect(completed.requirements).toMatchObject({
+      events: ["im.message.receive_v1"],
+      callbacks: ["card.action.trigger"],
+    });
   });
 
   test("uses the actual Feishu bot name when no custom name is provided", async () => {

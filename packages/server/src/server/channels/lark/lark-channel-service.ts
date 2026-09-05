@@ -66,9 +66,14 @@ import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
 import { LarkSubstituteDebouncer } from "./lark-substitute-debounce.js";
 import {
+  appendLarkSubstituteMessageContext,
+  collectLarkSubstituteMessageContext,
+} from "./lark-substitute-message-context.js";
+import {
   matchLarkSubstituteMode,
   type MatchedLarkSubstituteMode,
 } from "./lark-substitute-rule-matcher.js";
+import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
 import { LarkSubstituteReplySender } from "./lark-substitute-reply-sender.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
@@ -178,6 +183,19 @@ interface ResolvedLarkTarget {
 
 interface LarkReplyMentionOptions {
   openId: string | null;
+}
+
+interface LarkIncomingEventInternalOptions {
+  bypassSubstituteDelay?: boolean;
+  modeId?: string;
+  matchedSubstituteMode?: MatchedLarkSubstituteMode;
+  supplementalEvents?: NormalizedLarkMessageEvent[];
+}
+
+function getSupplementalEvents(
+  internal: LarkIncomingEventInternalOptions,
+): NormalizedLarkMessageEvent[] {
+  return internal.supplementalEvents ?? [];
 }
 
 interface SentLarkThreadMessage {
@@ -359,6 +377,9 @@ function createModeSubstituteTrigger(
     customPrompt: matched.mode.customPrompt,
     questionAllowRules: matched.questionAllowRules,
     questionDenyRules: matched.questionDenyRules,
+    groupAllowRules: matched.groupAllowRules,
+    groupDenyRules: matched.groupDenyRules,
+    groupContext: matched.groupContext,
   };
 }
 
@@ -723,7 +744,7 @@ export class LarkChannelService {
   async handleIncomingEvent(
     botId: string,
     event: NormalizedLarkMessageEvent,
-    internal: { bypassSubstituteDelay?: boolean; modeId?: string } = {},
+    internal: LarkIncomingEventInternalOptions = {},
   ): Promise<void> {
     const now = Date.now();
     const storedBot = this.store.getBot(botId);
@@ -739,10 +760,12 @@ export class LarkChannelService {
     }
     const enrichedEvent = await this.enrichIncomingEvent(config, event);
     this.observeDirectoryParticipants(config, enrichedEvent);
+    await this.refreshSubstituteGroupIdentity(botId, config.appId, enrichedEvent);
     this.observeIncomingMessageContext(botId, enrichedEvent, internal.bypassSubstituteDelay);
     const botIdentity = await this.resolveBotIdentityForEvent(botId, config, enrichedEvent);
     const matchedMode = this.resolveMatchedSubstituteMode({
       modeId: internal.modeId,
+      matchedMode: internal.matchedSubstituteMode,
       botId,
       appId: config.appId,
       event: enrichedEvent,
@@ -858,6 +881,7 @@ export class LarkChannelService {
     }
 
     const nowIso = new Date(enrichedEvent.createTime ?? now).toISOString();
+    const supplementalEvents = getSupplementalEvents(internal);
     const existing = this.store.findConversationByThread(botId, enrichedEvent.chatId, threadId);
     try {
       if (existing) {
@@ -871,6 +895,7 @@ export class LarkChannelService {
           agentId: existing.agentId,
           previousMentionAt: existing.lastInboundAt,
           nowIso,
+          supplementalEvents,
         });
         return;
       }
@@ -890,6 +915,7 @@ export class LarkChannelService {
         replyMessageId: firstTopicThread.replyMessageId,
         previousMentionAt: null,
         nowIso,
+        supplementalEvents,
       });
     } catch (error) {
       const message = formatLarkProcessingError(error);
@@ -924,6 +950,35 @@ export class LarkChannelService {
     });
   }
 
+  private async refreshSubstituteGroupIdentity(
+    botId: string,
+    appId: string | null,
+    event: NormalizedLarkMessageEvent,
+  ): Promise<void> {
+    if (
+      !this.directoryService ||
+      !appId ||
+      event.chatType?.toLowerCase() === "p2p" ||
+      !this.listSubstituteModes().some((mode) => {
+        if (!mode.enabled || mode.botId !== botId) return false;
+        const rules = getLarkSubstituteRuleLists(mode);
+        return [...rules.audienceAllowlist, ...rules.audienceDenylist].some(
+          (rule) => rule.type === "group_ai_category" || rule.type === "group_name_regex",
+        );
+      })
+    ) {
+      return;
+    }
+    try {
+      await this.directoryService.refreshChatById(appId, event.chatId);
+    } catch (error) {
+      this.logger.warn(
+        { err: error, botId, appId, chatId: event.chatId },
+        "Failed to refresh Lark group identity for substitute-mode matching",
+      );
+    }
+  }
+
   private async resolveBotIdentityForEvent(
     botId: string,
     config: StoredLarkChannelConfig,
@@ -935,10 +990,14 @@ export class LarkChannelService {
 
   private resolveMatchedSubstituteMode(input: {
     modeId?: string;
+    matchedMode?: MatchedLarkSubstituteMode;
     botId: string;
     appId: string | null;
     event: NormalizedLarkMessageEvent;
   }): MatchedLarkSubstituteMode | null {
+    if (input.matchedMode) {
+      return input.matchedMode;
+    }
     if (!input.modeId) {
       return matchLarkSubstituteMode({
         modes: this.listSubstituteModes(),
@@ -950,14 +1009,18 @@ export class LarkChannelService {
     }
     const mode = this.substituteModeStore.get(input.modeId);
     if (!mode) return null;
+    const rules = getLarkSubstituteRuleLists(mode);
     return {
       mode,
-      questionAllowRules: mode.allowlist.flatMap((rule) =>
-        rule.type === "question_type" ? [rule.description] : [],
+      questionAllowRules: rules.questionAllowlist.map((rule) => rule.description),
+      questionDenyRules: rules.questionDenylist.map((rule) => rule.description),
+      groupAllowRules: rules.audienceAllowlist.flatMap((rule) =>
+        rule.type === "group_ai_category" ? [rule.description] : [],
       ),
-      questionDenyRules: mode.denylist.flatMap((rule) =>
-        rule.type === "question_type" ? [rule.description] : [],
+      groupDenyRules: rules.audienceDenylist.flatMap((rule) =>
+        rule.type === "group_ai_category" ? [rule.description] : [],
       ),
+      groupContext: null,
     };
   }
 
@@ -965,15 +1028,40 @@ export class LarkChannelService {
     botId: string,
     event: NormalizedLarkMessageEvent,
     matchedMode: MatchedLarkSubstituteMode | null,
-    internal: { bypassSubstituteDelay?: boolean; modeId?: string },
+    internal: LarkIncomingEventInternalOptions,
   ): boolean {
     if (!matchedMode || internal.bypassSubstituteDelay) return false;
-    return this.substituteDebouncer.schedule(matchedMode.mode, event, (latestEvent) =>
-      this.handleIncomingEvent(botId, latestEvent, {
+    return this.substituteDebouncer.schedule(matchedMode.mode, event, async (message) => {
+      let supplementalEvents = message.bufferedEvents;
+      try {
+        supplementalEvents = await collectLarkSubstituteMessageContext({
+          latestEvent: message.latestEvent,
+          bufferedEvents: message.bufferedEvents,
+          listChatMessages: this.adapter.listChatMessages
+            ? (window) => this.listChatMessages(botId, message.latestEvent.chatId, window)
+            : undefined,
+        });
+      } catch (error) {
+        this.logger.warn(
+          {
+            err: error,
+            botId,
+            chatId: message.latestEvent.chatId,
+            messageId: message.latestEvent.messageId,
+          },
+          "Failed to fetch substitute-mode surrounding messages; using buffered messages",
+        );
+        supplementalEvents = message.bufferedEvents.filter(
+          (candidate) => candidate.messageId !== message.latestEvent.messageId,
+        );
+      }
+      await this.handleIncomingEvent(botId, message.latestEvent, {
         bypassSubstituteDelay: true,
         modeId: matchedMode.mode.id,
-      }),
-    );
+        matchedSubstituteMode: matchedMode,
+        supplementalEvents,
+      });
+    });
   }
 
   private logLarkRouting(input: LarkRoutingDiagnosticInput): void {
@@ -1215,6 +1303,7 @@ export class LarkChannelService {
     agentId: string;
     previousMentionAt: string | null;
     nowIso: string;
+    supplementalEvents: NormalizedLarkMessageEvent[];
   }): Promise<void> {
     const lastAssistantMessage = await this.agentManager.getLastAssistantMessage(input.agentId);
     this.pendingRelays.set(input.agentId, {
@@ -1246,6 +1335,7 @@ export class LarkChannelService {
       threadId: input.threadId,
       previousMentionAt: input.previousMentionAt,
       participants: input.participants,
+      supplementalEvents: input.supplementalEvents,
     });
     await sendPromptToAgent({
       agentManager: this.agentManager,
@@ -1266,6 +1356,7 @@ export class LarkChannelService {
     replyMessageId: string;
     previousMentionAt: string | null;
     nowIso: string;
+    supplementalEvents: NormalizedLarkMessageEvent[];
   }): Promise<void> {
     const prompt = await this.formatEventPromptWithHistory({
       config: input.config,
@@ -1273,6 +1364,7 @@ export class LarkChannelService {
       threadId: input.threadId,
       previousMentionAt: input.previousMentionAt,
       participants: input.participants,
+      supplementalEvents: input.supplementalEvents,
     });
     const baseLabels = {
       channel: "lark",
@@ -1527,15 +1619,25 @@ export class LarkChannelService {
     threadId: string;
     previousMentionAt: string | null;
     participants: LarkMessageParticipants;
+    supplementalEvents: NormalizedLarkMessageEvent[];
   }): Promise<string> {
     if (input.event.localReplyMentionOpenId) {
-      return this.addCollaborationPrompt(
-        [formatLarkUserPrompt(input.event), "", LOCAL_SUBSTITUTE_RELAY_INSTRUCTION].join("\n"),
-        input,
-      );
+      const prompt = appendLarkSubstituteMessageContext({
+        prompt: [formatLarkUserPrompt(input.event), "", LOCAL_SUBSTITUTE_RELAY_INSTRUCTION].join(
+          "\n",
+        ),
+        latestEvent: input.event,
+        supplementalEvents: input.supplementalEvents,
+      });
+      return this.addCollaborationPrompt(prompt, input);
     }
     if (!input.threadId) {
-      return this.addCollaborationPrompt(formatLarkUserPrompt(input.event), input);
+      const prompt = appendLarkSubstituteMessageContext({
+        prompt: formatLarkUserPrompt(input.event),
+        latestEvent: input.event,
+        supplementalEvents: input.supplementalEvents,
+      });
+      return this.addCollaborationPrompt(prompt, input);
     }
     const messages: unknown[] = [];
     const quotedMessages: unknown[] = [];
@@ -1614,15 +1716,19 @@ export class LarkChannelService {
       },
       "Fetched Lark topic history for prompt",
     );
-    const prompt = formatLarkUserPromptWithTopicHistory({
-      event: input.event,
-      threadId: input.threadId,
-      messages: dedupeLarkMessages(messages),
-      // Keep both message.get representations for interactive cards: the
-      // default response can contain server-rendered values while
-      // user_card_content carries the original card structure.
-      quotedMessages,
-      previousMentionAt: input.previousMentionAt,
+    const prompt = appendLarkSubstituteMessageContext({
+      prompt: formatLarkUserPromptWithTopicHistory({
+        event: input.event,
+        threadId: input.threadId,
+        messages: dedupeLarkMessages(messages),
+        // Keep both message.get representations for interactive cards: the
+        // default response can contain server-rendered values while
+        // user_card_content carries the original card structure.
+        quotedMessages,
+        previousMentionAt: input.previousMentionAt,
+      }),
+      latestEvent: input.event,
+      supplementalEvents: input.supplementalEvents,
     });
     return this.addCollaborationPrompt(prompt, input);
   }
@@ -1955,16 +2061,17 @@ export class LarkChannelService {
     const bot = this.store.getBot(mode.botId);
     const appId = bot?.config.appId?.trim();
     if (!appId) return;
+    const rules = getLarkSubstituteRuleLists(mode);
     const userOpenIds = [
       mode.substituteUser.openId,
-      ...mode.allowlist.flatMap((rule) =>
+      ...rules.audienceAllowlist.flatMap((rule) =>
         rule.type === "user" && rule.openId ? [rule.openId] : [],
       ),
-      ...mode.denylist.flatMap((rule) =>
+      ...rules.audienceDenylist.flatMap((rule) =>
         rule.type === "user" && rule.openId ? [rule.openId] : [],
       ),
     ];
-    const chatIds = [...mode.allowlist, ...mode.denylist].flatMap((rule) =>
+    const chatIds = [...rules.audienceAllowlist, ...rules.audienceDenylist].flatMap((rule) =>
       rule.type === "group" ? [rule.chatId] : [],
     );
     await Promise.all([

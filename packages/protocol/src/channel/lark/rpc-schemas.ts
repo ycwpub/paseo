@@ -14,6 +14,15 @@ export const LarkBotApplicationStatusSchema = z.enum([
   "failed",
 ]);
 
+export const LarkBotApplicationRequirementsSchema = z.object({
+  tenantScopes: z.array(z.string()),
+  userScopes: z.array(z.string()),
+  events: z.array(z.string()),
+  callbacks: z.array(z.string()),
+});
+
+export type LarkBotApplicationRequirements = z.infer<typeof LarkBotApplicationRequirementsSchema>;
+
 export const LarkBotApplicationSchema = z.object({
   id: z.string(),
   status: LarkBotApplicationStatusSchema,
@@ -24,6 +33,7 @@ export const LarkBotApplicationSchema = z.object({
   botId: z.string().nullable(),
   appId: z.string().nullable(),
   domain: LarkChannelDomainSchema.nullable(),
+  requirements: LarkBotApplicationRequirementsSchema.optional(),
 });
 
 export type LarkBotApplication = z.infer<typeof LarkBotApplicationSchema>;

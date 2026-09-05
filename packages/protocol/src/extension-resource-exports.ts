@@ -133,8 +133,10 @@ export {
   type LarkChannelTarget,
 } from "./channel/lark/types.js";
 export {
+  LarkBotApplicationRequirementsSchema,
   LarkBotApplicationSchema,
   LarkBotApplicationStatusSchema,
+  type LarkBotApplicationRequirements,
   type LarkBotApplication,
 } from "./channel/lark/rpc-schemas.js";
 export {
@@ -153,18 +155,22 @@ export {
 } from "./channel/lark/reminder-types.js";
 export * from "./channel/lark/reminder-rpc-schemas.js";
 export {
+  LarkSubstituteAudienceRuleSchema,
   LarkSubstituteDisclosureSchema,
   LarkSubstituteModeCreateInputSchema,
   LarkSubstituteModeSchema,
   LarkSubstituteModeUpdateInputSchema,
+  LarkSubstituteQuestionRuleSchema,
   LarkSubstituteReplyIdentitySchema,
   LarkSubstituteRuleSchema,
   LarkSubstituteTimeRangeSchema,
   LarkSubstituteUserSchema,
+  type LarkSubstituteAudienceRule,
   type LarkSubstituteDisclosure,
   type LarkSubstituteMode,
   type LarkSubstituteModeCreateInput,
   type LarkSubstituteModeUpdateInput,
+  type LarkSubstituteQuestionRule,
   type LarkSubstituteReplyIdentity,
   type LarkSubstituteRule,
   type LarkSubstituteTimeRange,

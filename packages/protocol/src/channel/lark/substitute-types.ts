@@ -33,6 +33,17 @@ const LarkSubstituteGroupNameRegexRuleSchema = z.object({
   pattern: z.string().trim().min(1),
 });
 
+const LarkSubstituteGroupAiCategoryRuleSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("group_ai_category"),
+  description: z.string().trim().min(1),
+});
+
+const LarkSubstituteAllRuleSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("all"),
+});
+
 const LarkSubstituteQuestionTypeRuleSchema = z.object({
   id: z.string().min(1),
   type: z.literal("question_type"),
@@ -43,13 +54,30 @@ export const LarkSubstituteRuleSchema = z.discriminatedUnion("type", [
   LarkSubstituteUserRuleSchema,
   LarkSubstituteGroupRuleSchema,
   LarkSubstituteGroupNameRegexRuleSchema,
+  LarkSubstituteGroupAiCategoryRuleSchema,
+  LarkSubstituteAllRuleSchema,
   LarkSubstituteQuestionTypeRuleSchema,
 ]);
 export type LarkSubstituteRule = z.infer<typeof LarkSubstituteRuleSchema>;
 
+export const LarkSubstituteAudienceRuleSchema = z.discriminatedUnion("type", [
+  LarkSubstituteUserRuleSchema,
+  LarkSubstituteGroupRuleSchema,
+  LarkSubstituteGroupNameRegexRuleSchema,
+  LarkSubstituteGroupAiCategoryRuleSchema,
+  LarkSubstituteAllRuleSchema,
+]);
+export type LarkSubstituteAudienceRule = z.infer<typeof LarkSubstituteAudienceRuleSchema>;
+
+export const LarkSubstituteQuestionRuleSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().trim().min(1),
+});
+export type LarkSubstituteQuestionRule = z.infer<typeof LarkSubstituteQuestionRuleSchema>;
+
 export const LarkSubstituteTimeRangeSchema = z.object({
   id: z.string().min(1),
-  weekdays: z.array(z.number().int().min(0).max(6)).min(1),
+  weekdays: z.array(z.number().int().min(1).max(7)).min(1),
   startTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u),
   endTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u),
   timezone: z.string().trim().min(1).default("Asia/Shanghai"),
@@ -72,9 +100,15 @@ export const LarkSubstituteModeSchema = z.object({
   groupReplyIdentity: LarkSubstituteReplyIdentitySchema.default("bot"),
   disclosure: LarkSubstituteDisclosureSchema,
   customPrompt: z.string().max(10_000).default(""),
-  delaySeconds: z.number().int().min(0).max(3_600).default(0),
+  delaySeconds: z.number().int().min(0).max(3_600).default(60),
   activeTimeRanges: z.array(LarkSubstituteTimeRangeSchema).max(32).default([]),
+  audienceAllowlist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
+  audienceDenylist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
+  questionAllowlist: z.array(LarkSubstituteQuestionRuleSchema).max(200).optional(),
+  questionDenylist: z.array(LarkSubstituteQuestionRuleSchema).max(200).optional(),
+  /** @deprecated Compatibility fields for substitute modes created before split rule lists. */
   allowlist: z.array(LarkSubstituteRuleSchema).max(200).default([]),
+  /** @deprecated Compatibility fields for substitute modes created before split rule lists. */
   denylist: z.array(LarkSubstituteRuleSchema).max(200).default([]),
   target: LarkChannelTargetSchema,
   createdAt: z.string(),

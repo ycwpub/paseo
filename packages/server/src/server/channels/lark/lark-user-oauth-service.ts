@@ -2,19 +2,13 @@ import { randomUUID } from "node:crypto";
 import * as lark from "@larksuiteoapi/node-sdk";
 import type { LarkUserOAuthStatus } from "@getpaseo/protocol/messages";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
+import { PASEO_LARK_USER_SCOPES } from "./lark-bot-capability-requirements.js";
 import { LarkUserOAuthStore, type StoredLarkUserOAuthCredential } from "./lark-user-oauth-store.js";
 
 const ACCESS_TOKEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const AUTHORIZATION_STATE_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
-const USER_OAUTH_SCOPE_LIST = [
-  "offline_access",
-  "im:chat:read",
-  "im:chat.members:write_only",
-  "im:message.group_msg:get_as_user",
-  "im:message",
-  "im:message.send_as_user",
-] as const;
+const USER_OAUTH_SCOPE_LIST = PASEO_LARK_USER_SCOPES;
 const USER_OAUTH_SCOPES = USER_OAUTH_SCOPE_LIST.join(" ");
 
 interface PendingAuthorization {

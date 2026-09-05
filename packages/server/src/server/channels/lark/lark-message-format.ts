@@ -59,6 +59,12 @@ export interface LarkSubstituteTrigger {
   customPrompt?: string;
   questionAllowRules?: string[];
   questionDenyRules?: string[];
+  groupAllowRules?: string[];
+  groupDenyRules?: string[];
+  groupContext?: {
+    chatId: string;
+    name: string | null;
+  } | null;
 }
 
 export interface LarkChatBot {
@@ -410,18 +416,8 @@ export function formatLarkSubstitutePrompt(
     ? ` name="${xmlEscape(trigger.observedMention.name)}"`
     : "";
   const triggerDescription = getSubstituteTriggerDescription(trigger.source);
-  const questionRules =
-    (trigger.questionAllowRules?.length ?? 0) > 0 || (trigger.questionDenyRules?.length ?? 0) > 0
-      ? [
-          "  <question_type_policy>",
-          ...(trigger.questionAllowRules ?? []).map(
-            (rule) => `    <allow>${xmlEscape(rule)}</allow>`,
-          ),
-          ...(trigger.questionDenyRules ?? []).map((rule) => `    <deny>${xmlEscape(rule)}</deny>`),
-          "    Classify the current question semantically. If it matches any deny rule, or allow rules exist and it matches none of them, reply with exactly <paseo-no-substitute-answer /> and nothing else.",
-          "  </question_type_policy>",
-        ]
-      : [];
+  const questionRules = formatQuestionTypePolicy(trigger);
+  const groupRules = formatGroupCategoryPolicy(trigger);
   return [
     prompt,
     "",
@@ -439,8 +435,45 @@ export function formatLarkSubstitutePrompt(
       : []),
     "  </instruction>",
     ...questionRules,
+    ...groupRules,
     "</lark_substitute_trigger>",
   ].join("\n");
+}
+
+function formatQuestionTypePolicy(trigger: LarkSubstituteTrigger): string[] {
+  if (
+    (trigger.questionAllowRules?.length ?? 0) === 0 &&
+    (trigger.questionDenyRules?.length ?? 0) === 0
+  ) {
+    return [];
+  }
+  return [
+    "  <question_type_policy>",
+    ...(trigger.questionAllowRules ?? []).map((rule) => `    <allow>${xmlEscape(rule)}</allow>`),
+    ...(trigger.questionDenyRules ?? []).map((rule) => `    <deny>${xmlEscape(rule)}</deny>`),
+    "    Classify the current question semantically. If it matches any deny rule, or allow rules exist and it matches none of them, reply with exactly <paseo-no-substitute-answer /> and nothing else.",
+    "  </question_type_policy>",
+  ];
+}
+
+function formatGroupCategoryPolicy(trigger: LarkSubstituteTrigger): string[] {
+  if ((trigger.groupAllowRules?.length ?? 0) === 0 && (trigger.groupDenyRules?.length ?? 0) === 0) {
+    return [];
+  }
+  const groupName = trigger.groupContext?.name
+    ? ` name="${xmlEscape(trigger.groupContext.name)}"`
+    : "";
+  const groupContext = trigger.groupContext
+    ? [`    <group chat_id="${xmlEscape(trigger.groupContext.chatId)}"${groupName} />`]
+    : [];
+  return [
+    "  <group_category_policy>",
+    ...groupContext,
+    ...(trigger.groupAllowRules ?? []).map((rule) => `    <allow>${xmlEscape(rule)}</allow>`),
+    ...(trigger.groupDenyRules ?? []).map((rule) => `    <deny>${xmlEscape(rule)}</deny>`),
+    "    Classify the current group using its name and conversation context. If it matches any deny rule, or allow rules exist and it matches none of them, reply with exactly <paseo-no-substitute-answer /> and nothing else.",
+    "  </group_category_policy>",
+  ];
 }
 
 function getSubstituteTriggerDescription(source: LarkSubstituteTrigger["source"]): string {

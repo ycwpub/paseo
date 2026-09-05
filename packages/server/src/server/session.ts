@@ -74,41 +74,6 @@ import {
   type WorkspaceLabelService,
 } from "./workspace-labels/index.js";
 
-type LarkUserOAuthInboundMessage = Extract<
-  SessionInboundMessage,
-  {
-    type:
-      | "channel.lark.user_oauth.get_status.request"
-      | "channel.lark.user_oauth.start.request"
-      | "channel.lark.user_oauth.complete.request"
-      | "channel.lark.user_oauth.disconnect.request";
-  }
->;
-
-function isLarkUserOAuthInboundMessage(
-  message: SessionInboundMessage,
-): message is LarkUserOAuthInboundMessage {
-  return message.type.startsWith("channel.lark.user_oauth.");
-}
-
-type LarkReminderInboundMessage = Extract<
-  SessionInboundMessage,
-  {
-    type:
-      | "channel.lark.reminder.list.request"
-      | "channel.lark.reminder.create.request"
-      | "channel.lark.reminder.update.request"
-      | "channel.lark.reminder.set_enabled.request"
-      | "channel.lark.reminder.delete.request";
-  }
->;
-
-function isLarkReminderInboundMessage(
-  message: SessionInboundMessage,
-): message is LarkReminderInboundMessage {
-  return message.type.startsWith("channel.lark.reminder.");
-}
-
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
 import { buildTimelinePromptNavigationIndex } from "./agent/timeline-prompt-navigation-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -215,7 +180,10 @@ import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
 import { HubExecutionController } from "./hub/execution-controller.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
-import { LarkChannelSession } from "./channels/lark/lark-channel-session.js";
+import {
+  isLarkChannelSessionRequest,
+  LarkChannelSession,
+} from "./channels/lark/lark-channel-session.js";
 import type { LarkChannelService } from "./channels/lark/lark-channel-service.js";
 import { AssistantSession } from "./assistants/assistant-session.js";
 import type { AssistantStore } from "./assistants/assistant-store.js";
@@ -2964,26 +2932,10 @@ export class Session {
   }
 
   private dispatchChannelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    if (isLarkUserOAuthInboundMessage(msg) || isLarkReminderInboundMessage(msg)) {
+    if (isLarkChannelSessionRequest(msg)) {
       return this.larkChannelSession?.handleRequest(msg);
     }
-    switch (msg.type) {
-      case "channel.lark.get_status.request":
-      case "channel.lark.apply_bot.request":
-      case "channel.lark.get_bot_application.request":
-      case "channel.lark.configure.request":
-      case "channel.lark.delete_bot.request":
-      case "channel.lark.test_connection.request":
-      case "channel.lark.set_enabled.request":
-      case "channel.lark.approve_pairing.request":
-      case "channel.lark.reject_pairing.request":
-      case "channel.lark.revoke_user.request":
-      case "channel.lark.directory.resolve_users.request":
-      case "channel.lark.directory.resolve_chats.request":
-        return this.larkChannelSession?.handleRequest(msg);
-      default:
-        return undefined;
-    }
+    return undefined;
   }
 
   private dispatchTeamMessage(msg: SessionInboundMessage): Promise<void> | undefined {

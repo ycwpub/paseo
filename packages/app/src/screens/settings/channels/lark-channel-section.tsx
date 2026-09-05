@@ -198,7 +198,8 @@ function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
       <View style={styles.formCard} testID="host-page-lark-apply-card">
         <Text style={settingsStyles.rowTitle}>一键申请并开通群消息监听</Text>
         <Text style={settingsStyles.rowHint}>
-          扫码后，Paseo 会自动创建机器人、保存凭证并启动群消息长连接监听。
+          扫码后，Paseo
+          会自动填充并申请所需权限、事件订阅和回调白名单，保存凭证并启动群消息长连接监听。
         </Text>
         {qrSvg ? (
           <View style={styles.applicationQr}>
@@ -215,6 +216,20 @@ function BotApplicationCard({ channel }: { channel: UseLarkChannelResult }) {
           <Text style={settingsStyles.rowHint} selectable>
             App ID: {application.appId}
           </Text>
+        ) : null}
+        {application?.requirements ? (
+          <>
+            <Text style={settingsStyles.rowHint}>
+              已随申请提交：机器人权限 {application.requirements.tenantScopes.length} 项、用户权限{" "}
+              {application.requirements.userScopes.length} 项
+            </Text>
+            <Text style={settingsStyles.rowHint} selectable>
+              事件与回调白名单：
+              {[...application.requirements.events, ...application.requirements.callbacks].join(
+                "、",
+              )}
+            </Text>
+          </>
         ) : null}
         <View style={styles.actionsRow}>
           <Button
@@ -1684,6 +1699,7 @@ function LarkChannelLoadedContent({
           bots={botStatuses}
           directory={directory}
           resolveDirectoryUsers={channel.resolveDirectoryUsers}
+          resolveDirectoryChats={channel.resolveDirectoryChats}
           onSaved={handleSubstituteModeSaved}
         />
       </View>
@@ -1700,6 +1716,7 @@ function LarkChannelLoadedContent({
           bots={botStatuses}
           directory={directory}
           resolveDirectoryUsers={channel.resolveDirectoryUsers}
+          resolveDirectoryChats={channel.resolveDirectoryChats}
           mode={editingSubstituteMode}
           onSaved={handleSubstituteModeSaved}
         />

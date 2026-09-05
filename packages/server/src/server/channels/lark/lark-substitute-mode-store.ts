@@ -13,17 +13,42 @@ import {
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
 import type { StoredLarkChannelBot } from "./lark-channel-store.js";
 
-const LARK_SUBSTITUTE_MODE_STORE_VERSION = 1;
+const LARK_SUBSTITUTE_MODE_STORE_VERSION = 2;
 const LarkSubstituteModeStorePayloadSchema = z.object({
   version: z.literal(LARK_SUBSTITUTE_MODE_STORE_VERSION),
   migratedLegacyBotIds: z.array(z.string()),
   modes: z.array(LarkSubstituteModeSchema),
+});
+const StoredLarkSubstituteModePayloadSchema = z.object({
+  version: z.number().int(),
+  migratedLegacyBotIds: z.array(z.string()).default([]),
+  modes: z.array(z.unknown()).default([]),
 });
 
 type LarkSubstituteModeStorePayload = z.infer<typeof LarkSubstituteModeStorePayloadSchema>;
 
 function cloneMode(mode: LarkSubstituteMode): LarkSubstituteMode {
   return LarkSubstituteModeSchema.parse(JSON.parse(JSON.stringify(mode)));
+}
+
+function migrateStoredMode(value: unknown): LarkSubstituteMode {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return LarkSubstituteModeSchema.parse(value);
+  }
+  const mode = value as Record<string, unknown>;
+  const activeTimeRanges = Array.isArray(mode.activeTimeRanges)
+    ? mode.activeTimeRanges.map((range) => {
+        if (!range || typeof range !== "object" || Array.isArray(range)) return range;
+        const record = range as Record<string, unknown>;
+        const weekdays = Array.isArray(record.weekdays)
+          ? Array.from(
+              new Set(record.weekdays.map((weekday) => (weekday === 0 ? 7 : weekday))),
+            ).sort((left, right) => Number(left) - Number(right))
+          : record.weekdays;
+        return { ...record, weekdays };
+      })
+    : mode.activeTimeRanges;
+  return LarkSubstituteModeSchema.parse({ ...mode, activeTimeRanges });
 }
 
 function legacyModeName(bot: StoredLarkChannelBot): string {
@@ -165,9 +190,18 @@ export class LarkSubstituteModeStore {
     if (this.loaded) return;
     if (existsSync(this.filePath)) {
       ensurePrivateFile(this.filePath);
-      this.payload = LarkSubstituteModeStorePayloadSchema.parse(
+      const stored = StoredLarkSubstituteModePayloadSchema.parse(
         JSON.parse(readFileSync(this.filePath, "utf8")) as unknown,
       );
+      const migrated = LarkSubstituteModeStorePayloadSchema.parse({
+        version: LARK_SUBSTITUTE_MODE_STORE_VERSION,
+        migratedLegacyBotIds: stored.migratedLegacyBotIds,
+        modes: stored.modes.map(migrateStoredMode),
+      });
+      this.payload = migrated;
+      if (stored.version !== LARK_SUBSTITUTE_MODE_STORE_VERSION) {
+        this.persist(migrated);
+      }
     }
     this.loaded = true;
   }

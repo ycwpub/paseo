@@ -10,36 +10,14 @@ import {
 
 export type LarkChannelSessionRequest = Extract<
   SessionInboundMessage,
-  {
-    type:
-      | "channel.lark.get_status.request"
-      | "channel.lark.apply_bot.request"
-      | "channel.lark.get_bot_application.request"
-      | "channel.lark.configure.request"
-      | "channel.lark.delete_bot.request"
-      | "channel.lark.test_connection.request"
-      | "channel.lark.set_enabled.request"
-      | "channel.lark.approve_pairing.request"
-      | "channel.lark.reject_pairing.request"
-      | "channel.lark.revoke_user.request"
-      | "channel.lark.directory.resolve_users.request"
-      | "channel.lark.directory.resolve_chats.request"
-      | "channel.lark.user_oauth.get_status.request"
-      | "channel.lark.user_oauth.start.request"
-      | "channel.lark.user_oauth.complete.request"
-      | "channel.lark.user_oauth.disconnect.request"
-      | "channel.lark.reminder.list.request"
-      | "channel.lark.reminder.create.request"
-      | "channel.lark.reminder.update.request"
-      | "channel.lark.reminder.set_enabled.request"
-      | "channel.lark.reminder.delete.request"
-      | "channel.lark.substitute.list.request"
-      | "channel.lark.substitute.create.request"
-      | "channel.lark.substitute.update.request"
-      | "channel.lark.substitute.set_enabled.request"
-      | "channel.lark.substitute.delete.request";
-  }
+  { type: `channel.lark.${string}.request` }
 >;
+
+export function isLarkChannelSessionRequest(
+  message: SessionInboundMessage,
+): message is LarkChannelSessionRequest {
+  return message.type.startsWith("channel.lark.") && message.type.endsWith(".request");
+}
 
 type LarkChannelResponse = Extract<
   SessionOutboundMessage,

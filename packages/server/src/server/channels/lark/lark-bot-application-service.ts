@@ -2,27 +2,13 @@ import { randomUUID } from "node:crypto";
 import { registerApp } from "@larksuiteoapi/node-sdk";
 import type { LarkBotApplication } from "@getpaseo/protocol/channel/lark/rpc-schemas";
 import type pino from "pino";
+import {
+  buildLarkBotApplicationAddons,
+  buildLarkBotApplicationRequirements,
+} from "./lark-bot-capability-requirements.js";
 import type { LarkChannelService } from "./lark-channel-service.js";
 
 const APPLICATION_TTL_MS = 30 * 60 * 1000;
-const REQUIRED_TENANT_SCOPES = [
-  "im:message.group_msg",
-  "im:message.p2p_msg",
-  "im:message.group_at_msg.include_bot:readonly",
-  "im:message:send_as_bot",
-  "im:chat.members:read",
-  "im:chat:read",
-  "contact:user.id:readonly",
-] as const;
-const REQUIRED_USER_SCOPES = [
-  "im:message.group_msg:get_as_user",
-  "im:message",
-  "im:message.send_as_user",
-  "im:chat:read",
-  "im:chat.members:write_only",
-  "offline_access",
-] as const;
-const REQUIRED_TENANT_EVENTS = ["im.message.receive_v1"] as const;
 
 interface MutableApplication extends LarkBotApplication {
   createdAtMs: number;
@@ -33,6 +19,7 @@ export interface LarkAppRegistrar {
     addons: {
       scopes: { tenant: string[]; user: string[] };
       events: { items: { tenant: string[] } };
+      callbacks: { items: string[] };
     };
     createOnly: boolean;
     onQRCodeReady: (info: { url: string; expireIn: number }) => void;
@@ -84,6 +71,7 @@ export class LarkBotApplicationService {
   start(name?: string): LarkBotApplication {
     this.cleanup();
     const id = randomUUID();
+    const requirements = buildLarkBotApplicationRequirements();
     const application: MutableApplication = {
       id,
       status: "starting",
@@ -94,6 +82,7 @@ export class LarkBotApplicationService {
       botId: null,
       appId: null,
       domain: null,
+      requirements,
       createdAtMs: Date.now(),
     };
     this.applications.set(id, application);
@@ -109,20 +98,15 @@ export class LarkBotApplicationService {
 
   private async run(application: MutableApplication, name?: string): Promise<void> {
     try {
+      const requirements = application.requirements ?? buildLarkBotApplicationRequirements();
       const result = await this.registrar.register({
-        addons: {
-          scopes: {
-            tenant: [...REQUIRED_TENANT_SCOPES],
-            user: [...REQUIRED_USER_SCOPES],
-          },
-          events: { items: { tenant: [...REQUIRED_TENANT_EVENTS] } },
-        },
+        addons: buildLarkBotApplicationAddons(requirements),
         createOnly: true,
         onQRCodeReady: ({ url, expireIn }) => {
           application.status = "waiting_for_scan";
           application.qrUrl = url;
           application.expiresAt = new Date(Date.now() + expireIn * 1000).toISOString();
-          application.message = "请使用飞书 App 扫码确认申请并开通群消息权限";
+          application.message = "请使用飞书 App 扫码确认权限、事件订阅和回调白名单";
         },
         onStatusChange: ({ status, interval }) => {
           if (status === "domain_switched") {
@@ -173,7 +157,7 @@ export class LarkBotApplicationService {
 
       application.status = "completed";
       application.botId = bot.id;
-      application.message = "机器人申请完成，已自动开启群消息监听";
+      application.message = "机器人申请完成，权限与回调白名单已申请，群消息监听已开启";
       application.error = null;
     } catch (error) {
       const message = safeError(error);

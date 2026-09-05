@@ -1,0 +1,76 @@
+import type { LarkBotApplicationRequirements } from "@getpaseo/protocol/channel/lark/rpc-schemas";
+
+/**
+ * Keep the one-click application request aligned with the OpenAPI calls made by
+ * the Lark channel. The registration page silently ignores unknown names, so
+ * every item here must map to a capability used by Paseo.
+ */
+export const PASEO_LARK_TENANT_SCOPES = [
+  // Resolve users by email/open_id and display their complete identity.
+  "contact:user.base:readonly",
+  "contact:user.email:readonly",
+  "contact:user.id:readonly",
+  // Read chat metadata and discover the bots already present in a group.
+  "im:chat.members:bot_access",
+  "im:chat.members:read",
+  "im:chat:read",
+  // Receive private/group messages, including messages sent by peer bots.
+  "im:message.group_at_msg.include_bot:readonly",
+  "im:message.group_msg",
+  "im:message.group_msg.include_bot:read",
+  "im:message.p2p_msg",
+  // Load message/thread history and reply as the application bot.
+  "im:message:readonly",
+  "im:message:send_as_bot",
+] as const;
+
+export const PASEO_LARK_USER_SCOPES = [
+  // Keep user authorization renewable without asking for an environment token.
+  "offline_access",
+  // Search/read visible chats and add the application bot with the user's identity.
+  "im:chat.members:write_only",
+  "im:chat:read",
+  // Read group context and answer as the authorized user in substitute mode.
+  "im:message",
+  "im:message.group_msg:get_as_user",
+  "im:message.send_as_user",
+] as const;
+
+export const PASEO_LARK_EVENT_SUBSCRIPTIONS = ["im.message.receive_v1"] as const;
+
+/**
+ * Interactive card callbacks share the same WebSocket subscription as message
+ * events. Pre-authorizing the callback prevents a later manual developer-console
+ * step when a Paseo workflow or plugin adds actions to a Lark card.
+ */
+export const PASEO_LARK_CALLBACK_ALLOWLIST = ["card.action.trigger"] as const;
+
+function uniqueSorted(items: readonly string[]): string[] {
+  return [...new Set(items)].sort();
+}
+
+export function buildLarkBotApplicationRequirements(): LarkBotApplicationRequirements {
+  return {
+    tenantScopes: uniqueSorted(PASEO_LARK_TENANT_SCOPES),
+    userScopes: uniqueSorted(PASEO_LARK_USER_SCOPES),
+    events: uniqueSorted(PASEO_LARK_EVENT_SUBSCRIPTIONS),
+    callbacks: uniqueSorted(PASEO_LARK_CALLBACK_ALLOWLIST),
+  };
+}
+
+export function buildLarkBotApplicationAddons(
+  requirements: LarkBotApplicationRequirements = buildLarkBotApplicationRequirements(),
+): {
+  scopes: { tenant: string[]; user: string[] };
+  events: { items: { tenant: string[] } };
+  callbacks: { items: string[] };
+} {
+  return {
+    scopes: {
+      tenant: [...requirements.tenantScopes],
+      user: [...requirements.userScopes],
+    },
+    events: { items: { tenant: [...requirements.events] } },
+    callbacks: { items: [...requirements.callbacks] },
+  };
+}

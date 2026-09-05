@@ -85,6 +85,7 @@ import { getProviderIcon } from "@/components/provider-icons";
 import { BrowserToolsOptInCard } from "./browser-tools-card";
 import { hasDaemonReconnectedAfter, type DaemonConnectionMarker } from "./daemon-reconnect";
 import { restartDaemonFromSettings } from "./daemon-restart";
+import { resolveConnectionProbePresentation } from "./host-connection-presentation";
 import { LocalRelayConfigurationSection } from "./host-local-relay-section";
 import { InstructionTemplatesEntrySection } from "./agents/instruction-templates-section";
 export {
@@ -816,7 +817,6 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
   const { t } = useTranslation();
   const { removeConnection } = useHostMutations();
   const snapshot = useHostRuntimeSnapshot(host.serverId);
-  const probeByConnectionId = snapshot?.probeByConnectionId ?? new Map();
   const [pendingRemoveConnection, setPendingRemoveConnection] = useState<{
     connectionId: string;
     title: string;
@@ -866,15 +866,18 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
     <SettingsSection title={t("settings.host.connections.title")}>
       <View style={settingsStyles.card} testID="host-page-connections-card">
         {host.connections.map((conn, index) => {
-          const probe = probeByConnectionId.get(conn.id);
+          const presentation = resolveConnectionProbePresentation({
+            connectionId: conn.id,
+            snapshot,
+          });
           return (
             <ConnectionRow
               key={conn.id}
               connection={conn}
               showBorder={index > 0}
-              latencyMs={probe?.status === "available" ? probe.latencyMs : undefined}
-              latencyLoading={!probe || probe.status === "pending"}
-              latencyError={probe?.status === "unavailable"}
+              latencyMs={presentation.latencyMs}
+              latencyLoading={presentation.latencyLoading}
+              latencyError={presentation.latencyError}
               onRemove={handleRequestRemove}
             />
           );

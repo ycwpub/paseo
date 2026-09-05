@@ -182,6 +182,30 @@ describe("matchLarkSubstituteMode", () => {
     ).toBeNull();
   });
 
+  test("uses weekday 7 for Sunday", () => {
+    const configured = mode({
+      activeTimeRanges: [
+        {
+          id: "sunday",
+          weekdays: [7],
+          startTime: "09:00",
+          endTime: "18:00",
+          timezone: "Asia/Shanghai",
+        },
+      ],
+    });
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+        now: new Date("2026-09-06T02:00:00.000Z"),
+      }),
+    ).not.toBeNull();
+  });
+
   test("prefers stable user identifiers over duplicate display names", () => {
     expect(
       matchLarkSubstituteMode({
@@ -204,5 +228,51 @@ describe("matchLarkSubstituteMode", () => {
         directory,
       }),
     ).toBeNull();
+  });
+
+  test("supports split lists, all rules, and AI group classification context", () => {
+    expect(
+      matchLarkSubstituteMode({
+        modes: [
+          mode({
+            audienceAllowlist: [
+              { id: "group-ai", type: "group_ai_category", description: "研发协作群" },
+            ],
+            audienceDenylist: [
+              { id: "group-deny", type: "group_ai_category", description: "闲聊群" },
+            ],
+            questionAllowlist: [{ id: "question-allow", description: "研发问题" }],
+            questionDenylist: [{ id: "question-deny", description: "薪酬问题" }],
+          }),
+        ],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toMatchObject({
+      questionAllowRules: ["研发问题"],
+      questionDenyRules: ["薪酬问题"],
+      groupAllowRules: ["研发协作群"],
+      groupDenyRules: ["闲聊群"],
+      groupContext: { chatId: "oc_group", name: "研发一群" },
+    });
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [
+          mode({
+            audienceAllowlist: [{ id: "all", type: "all" }],
+            audienceDenylist: [],
+            questionAllowlist: [],
+            questionDenylist: [],
+          }),
+        ],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).not.toBeNull();
   });
 });

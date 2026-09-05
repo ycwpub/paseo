@@ -1,14 +1,21 @@
 import type {
+  LarkSubstituteAudienceRule,
   LarkDirectory,
   LarkSubstituteMode,
-  LarkSubstituteRule,
 } from "@getpaseo/protocol/messages";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
+import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
 
 export interface MatchedLarkSubstituteMode {
   mode: LarkSubstituteMode;
   questionAllowRules: string[];
   questionDenyRules: string[];
+  groupAllowRules: string[];
+  groupDenyRules: string[];
+  groupContext: {
+    chatId: string;
+    name: string | null;
+  } | null;
 }
 
 function getLocalTimeParts(date: Date, timezone: string) {
@@ -20,7 +27,8 @@ function getLocalTimeParts(date: Date, timezone: string) {
     hourCycle: "h23",
   }).formatToParts(date);
   const weekdayName = parts.find((part) => part.type === "weekday")?.value ?? "Sun";
-  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayName);
+  const weekdayIndex = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekdayName);
+  const weekday = weekdayIndex === 0 ? 7 : Math.max(weekdayIndex, 1);
   const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
   const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
   return { weekday: Math.max(weekday, 0), minutes: hour * 60 + minute };
@@ -43,7 +51,7 @@ export function isLarkSubstituteModeActive(mode: LarkSubstituteMode, now: Date):
         range.weekdays.includes(local.weekday) && local.minutes >= start && local.minutes < end
       );
     }
-    const previousWeekday = (local.weekday + 6) % 7;
+    const previousWeekday = local.weekday === 1 ? 7 : local.weekday - 1;
     return (
       (range.weekdays.includes(local.weekday) && local.minutes >= start) ||
       (range.weekdays.includes(previousWeekday) && local.minutes < end)
@@ -52,7 +60,7 @@ export function isLarkSubstituteModeActive(mode: LarkSubstituteMode, now: Date):
 }
 
 function matchesUserRule(
-  rule: Extract<LarkSubstituteRule, { type: "user" }>,
+  rule: Extract<LarkSubstituteAudienceRule, { type: "user" }>,
   event: NormalizedLarkMessageEvent,
   directory: LarkDirectory | null,
   appId: string | null,
@@ -69,7 +77,7 @@ function matchesUserRule(
 }
 
 function matchesGroupRule(
-  rule: Exclude<LarkSubstituteRule, { type: "user" | "question_type" }>,
+  rule: Extract<LarkSubstituteAudienceRule, { type: "group" | "group_name_regex" }>,
   event: NormalizedLarkMessageEvent,
   directory: LarkDirectory | null,
   appId: string | null,
@@ -91,12 +99,13 @@ function matchesGroupRule(
 }
 
 function matchesIdentityRule(
-  rule: LarkSubstituteRule,
+  rule: LarkSubstituteAudienceRule,
   event: NormalizedLarkMessageEvent,
   directory: LarkDirectory | null,
   appId: string | null,
 ): boolean {
-  if (rule.type === "question_type") return false;
+  if (rule.type === "all") return true;
+  if (rule.type === "group_ai_category") return false;
   if (rule.type === "user") return matchesUserRule(rule, event, directory, appId);
   return matchesGroupRule(rule, event, directory, appId);
 }
@@ -105,26 +114,59 @@ function isGroup(event: NormalizedLarkMessageEvent): boolean {
   return event.chatType?.toLowerCase() !== "p2p";
 }
 
+function getGroupContext(
+  event: NormalizedLarkMessageEvent,
+  directory: LarkDirectory | null,
+  appId: string | null,
+): MatchedLarkSubstituteMode["groupContext"] {
+  if (!isGroup(event)) return null;
+  const chat = directory?.chats.find(
+    (entry) => entry.appId === appId && entry.chatId === event.chatId,
+  );
+  return {
+    chatId: event.chatId,
+    name: chat?.name?.trim() || null,
+  };
+}
+
 function modeIsTriggered(mode: LarkSubstituteMode, event: NormalizedLarkMessageEvent): boolean {
   if (!isGroup(event)) return true;
   return (event.mentions ?? []).some((mention) => mention.openId === mode.substituteUser.openId);
 }
 
-function passesIdentityRules(
-  mode: LarkSubstituteMode,
+function evaluateAudienceRules(
+  rules: ReturnType<typeof getLarkSubstituteRuleLists>,
   event: NormalizedLarkMessageEvent,
   directory: LarkDirectory | null,
   appId: string | null,
-): boolean {
-  const denyIdentityRules = mode.denylist.filter((rule) => rule.type !== "question_type");
-  if (denyIdentityRules.some((rule) => matchesIdentityRule(rule, event, directory, appId))) {
-    return false;
-  }
-  const allowIdentityRules = mode.allowlist.filter((rule) => rule.type !== "question_type");
-  return (
-    allowIdentityRules.length === 0 ||
-    allowIdentityRules.some((rule) => matchesIdentityRule(rule, event, directory, appId))
+): { passes: boolean; groupAllowRules: string[]; groupDenyRules: string[] } {
+  const staticDenyRules = rules.audienceDenylist.filter(
+    (rule) => rule.type !== "group_ai_category",
   );
+  if (staticDenyRules.some((rule) => matchesIdentityRule(rule, event, directory, appId))) {
+    return { passes: false, groupAllowRules: [], groupDenyRules: [] };
+  }
+  const staticAllowRules = rules.audienceAllowlist.filter(
+    (rule) => rule.type !== "group_ai_category",
+  );
+  const hasStaticAllowMatch = staticAllowRules.some((rule) =>
+    matchesIdentityRule(rule, event, directory, appId),
+  );
+  const groupAllowRules = rules.audienceAllowlist.flatMap((rule) =>
+    rule.type === "group_ai_category" ? [rule.description] : [],
+  );
+  const groupDenyRules = rules.audienceDenylist.flatMap((rule) =>
+    rule.type === "group_ai_category" ? [rule.description] : [],
+  );
+  const hasAllowRules = rules.audienceAllowlist.length > 0;
+  if (hasAllowRules && !hasStaticAllowMatch && (!isGroup(event) || groupAllowRules.length === 0)) {
+    return { passes: false, groupAllowRules: [], groupDenyRules: [] };
+  }
+  return {
+    passes: true,
+    groupAllowRules: hasStaticAllowMatch ? [] : groupAllowRules,
+    groupDenyRules: isGroup(event) ? groupDenyRules : [],
+  };
 }
 
 export function matchLarkSubstituteMode(input: {
@@ -137,23 +179,24 @@ export function matchLarkSubstituteMode(input: {
 }): MatchedLarkSubstituteMode | null {
   const now = input.now ?? new Date();
   for (const mode of input.modes) {
+    const ruleLists = getLarkSubstituteRuleLists(mode);
+    const audience = evaluateAudienceRules(ruleLists, input.event, input.directory, input.appId);
     if (
       !mode.enabled ||
       mode.botId !== input.botId ||
       !modeIsTriggered(mode, input.event) ||
       !isLarkSubstituteModeActive(mode, now) ||
-      !passesIdentityRules(mode, input.event, input.directory, input.appId)
+      !audience.passes
     ) {
       continue;
     }
     return {
       mode,
-      questionAllowRules: mode.allowlist.flatMap((rule) =>
-        rule.type === "question_type" ? [rule.description] : [],
-      ),
-      questionDenyRules: mode.denylist.flatMap((rule) =>
-        rule.type === "question_type" ? [rule.description] : [],
-      ),
+      questionAllowRules: ruleLists.questionAllowlist.map((rule) => rule.description),
+      questionDenyRules: ruleLists.questionDenylist.map((rule) => rule.description),
+      groupAllowRules: audience.groupAllowRules,
+      groupDenyRules: audience.groupDenyRules,
+      groupContext: getGroupContext(input.event, input.directory, input.appId),
     };
   }
   return null;

@@ -115,6 +115,7 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import { getRefreshingDaemonStartService } from "@/runtime/desktop-daemon-connection-refresh";
+import { startDesktopManagedDaemonRecovery } from "@/runtime/desktop-managed-daemon-recovery";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference } from "@/styles/theme";
@@ -385,6 +386,13 @@ function HostRuntimeBootstrapProvider({ children }: { children: ReactNode }) {
       daemonStartService,
       shouldStartDaemon: shouldStartBuiltInDaemon,
     });
+    if (shouldUseDesktopDaemon() && !hasConfiguredLocalDaemonOverride()) {
+      return startDesktopManagedDaemonRecovery({
+        store,
+        service: daemonStartService,
+        shouldStartDaemon: shouldStartBuiltInDaemon,
+      });
+    }
   }, []);
 
   const anyOnlineHostServerId = useEarliestOnlineHostServerId();

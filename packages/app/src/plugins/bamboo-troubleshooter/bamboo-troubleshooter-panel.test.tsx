@@ -20,30 +20,32 @@ const testState = vi.hoisted(() => ({
     projectName: "结算项目",
     sourceDirectory: "/tmp/settlement",
     defaultAgent: { provider: "aiden-codex", model: "gpt-5.5" },
-    data: {
-      bambooTroubleshooter: {
-        version: 1,
-        enabled: true,
-        botId: "bot-1",
-        chats: [
-          { chatId: "oc_first", name: "结算报警一群", groupId: "group-1" },
-          { chatId: "oc_second", name: "结算报警二群", groupId: "group-2" },
-        ],
-        target: { kind: "default" },
-        troubleshootingSopDoc: "https://example.com/wiki/sop",
-        attributionRecordRoot: "https://example.com/wiki/records",
-        schedule: {
-          enabled: true,
-          intervalMinutes: 30,
-          lookbackMinutes: 120,
-          excludeRecentMinutes: 30,
-        },
-      },
-    },
+    data: {} as Record<string, unknown>,
     fixedFormValues: {},
     hiddenFieldIds: [],
   },
 }));
+
+function validConfig() {
+  return {
+    version: 1,
+    enabled: true,
+    botId: "bot-1",
+    chats: [
+      { chatId: "oc_first", name: "结算报警一群", groupId: "group-1" },
+      { chatId: "oc_second", name: "结算报警二群", groupId: "group-2" },
+    ],
+    target: { kind: "default" },
+    troubleshootingSopDoc: "https://example.com/wiki/sop",
+    attributionRecordRoot: "https://example.com/wiki/records",
+    schedule: {
+      enabled: true,
+      intervalMinutes: 30,
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 30,
+    },
+  };
+}
 
 vi.mock("react-native", () => ({
   View: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
@@ -183,6 +185,7 @@ describe("BambooTroubleshooterPanel", () => {
   beforeEach(() => {
     testState.configurePluginApp.mockReset();
     testState.configurePluginApp.mockResolvedValue({ app: { id: "configured" }, error: null });
+    testState.project.data = { bambooTroubleshooter: validConfig() };
   });
 
   afterEach(cleanup);
@@ -224,5 +227,54 @@ describe("BambooTroubleshooterPanel", () => {
       ),
     );
     expect(screen.getByText("配置已保存，后台监听将在下一次同步时生效。")).toBeTruthy();
+  });
+
+  it("shows Chinese required-field errors instead of raw Zod JSON", async () => {
+    testState.project.data = {};
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
+
+    expect(await screen.findByText(/请至少添加一个监听飞书群/)).toBeTruthy();
+    expect(screen.getByText(/请输入排查 SOP 飞书文档链接/)).toBeTruthy();
+    expect(screen.getByText(/请输入归因记录飞书文档或目录链接/)).toBeTruthy();
+    expect(screen.queryByText(/invalid_format|"origin"|Too small/)).toBeNull();
+    expect(testState.configurePluginApp).not.toHaveBeenCalled();
+  });
+
+  it("explains how to correct invalid document links", async () => {
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("排查 SOP 飞书文档链接"), {
+      target: { value: "invalid-sop" },
+    });
+    fireEvent.change(screen.getByLabelText("归因记录飞书文档或目录链接"), {
+      target: { value: "invalid-record" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
+
+    expect(
+      await screen.findByText(
+        /排查 SOP 飞书文档链接格式无效，请输入完整的 http:\/\/ 或 https:\/\/ 链接/,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/归因记录链接格式无效，请输入完整的 http:\/\/ 或 https:\/\/ 链接/),
+    ).toBeTruthy();
+    expect(testState.configurePluginApp).not.toHaveBeenCalled();
   });
 });

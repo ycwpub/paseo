@@ -27,6 +27,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { LarkChatDirectoryField } from "@/screens/settings/channels/lark-directory-fields";
 import { useLarkChannel } from "@/screens/settings/channels/use-lark-channel";
+import { validateAlertTroubleshooterConfig } from "./alert-troubleshooter-form-validation";
 
 const DEFAULT_CONFIG: Omit<
   AlertTroubleshooterConfig,
@@ -55,11 +56,6 @@ export interface AlertTroubleshooterPanelSpec {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function numericValue(value: string, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
 }
 
 function targetId(target: AlertTroubleshooterTarget): string | null {
@@ -210,8 +206,7 @@ function AlertTroubleshooterProject({
     setSaved(false);
     setError(null);
     try {
-      const config = spec.configSchema.parse({
-        ...DEFAULT_CONFIG,
+      const validation = validateAlertTroubleshooterConfig(spec.configSchema, {
         enabled,
         botId,
         chats,
@@ -220,17 +215,21 @@ function AlertTroubleshooterProject({
         attributionRecordRoot: recordRoot,
         schedule: {
           enabled: scheduleEnabled,
-          intervalMinutes: numericValue(intervalMinutes, 30),
-          lookbackMinutes: numericValue(lookbackMinutes, 120),
-          excludeRecentMinutes: numericValue(excludeRecentMinutes, 30),
+          intervalMinutes,
+          lookbackMinutes,
+          excludeRecentMinutes,
         },
       });
+      if (!validation.success) {
+        setError(validation.message);
+        return;
+      }
       const response = await client.configurePluginApp({
         pluginId: spec.pluginId,
         appId: spec.appId,
         projectId: project.projectId,
         defaultAgent: project.defaultAgent,
-        data: { [spec.configDataKey]: config },
+        data: { [spec.configDataKey]: validation.config },
       });
       if (response.error || !response.app) throw new Error(response.error ?? "保存配置失败");
       setSaved(true);

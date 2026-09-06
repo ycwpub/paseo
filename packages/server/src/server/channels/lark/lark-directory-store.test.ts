@@ -136,4 +136,35 @@ describe("LarkDirectoryStore", () => {
       name: "结算电话报警群(7160881741501267996)",
     });
   });
+
+  test("does not overwrite a real group ID with chat_id during refresh", () => {
+    store.upsertChats(
+      "cli_test",
+      [
+        {
+          groupId: "7160881741501267996",
+          chatId: "oc_settlement",
+          name: "结算研发群",
+        },
+      ],
+      "2026-09-06T03:00:00.000Z",
+    );
+    store.upsertChats(
+      "cli_test",
+      [
+        {
+          groupId: "oc_settlement",
+          chatId: "oc_settlement",
+          name: "结算研发群",
+        },
+      ],
+      "2026-09-06T03:01:00.000Z",
+    );
+
+    expect(store.findChat("cli_test", "oc_settlement")).toMatchObject({
+      groupId: "7160881741501267996",
+      chatId: "oc_settlement",
+      name: "结算研发群",
+    });
+  });
 });

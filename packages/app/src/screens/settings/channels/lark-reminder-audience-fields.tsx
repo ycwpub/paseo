@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import type {
   LarkChannelBotStatus,
   LarkDirectory,
@@ -6,11 +7,13 @@ import type {
 } from "@getpaseo/protocol/messages";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { LarkChatDirectoryField, LarkUserDirectoryField } from "./lark-directory-fields";
+import { LarkUserOAuthErrorAction } from "./lark-user-oauth-error-action";
 
 const EMPTY_USERS: LarkDirectoryUser[] = [];
 const EMPTY_CHATS: LarkDirectoryChat[] = [];
 
 export function LarkReminderAudienceFields({
+  serverId,
   directorySupported,
   selectedBot,
   directory,
@@ -23,6 +26,7 @@ export function LarkReminderAudienceFields({
   resolveDirectoryUsers,
   resolveDirectoryChats,
 }: {
+  serverId: string;
   directorySupported: boolean;
   selectedBot: LarkChannelBotStatus | null;
   directory: LarkDirectory | null;
@@ -35,6 +39,20 @@ export function LarkReminderAudienceFields({
   resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
   resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
 }) {
+  const selectedAppId = selectedBot?.appId ?? "";
+  const renderOAuthErrorAction = useCallback(
+    (message: string, clearError: () => void) =>
+      selectedAppId ? (
+        <LarkUserOAuthErrorAction
+          serverId={serverId}
+          appId={selectedAppId}
+          errorMessage={message}
+          onAuthorized={clearError}
+        />
+      ) : null,
+    [selectedAppId, serverId],
+  );
+
   if (!directorySupported) {
     return (
       <>
@@ -62,6 +80,7 @@ export function LarkReminderAudienceFields({
         chats={directory?.chats ?? EMPTY_CHATS}
         onChange={onChatIdChange}
         resolveChats={resolveDirectoryChats}
+        renderErrorAction={renderOAuthErrorAction}
         disabled={!selectedBot}
       />
       <LarkUserDirectoryField
@@ -72,6 +91,7 @@ export function LarkReminderAudienceFields({
         users={directory?.users ?? EMPTY_USERS}
         onChange={onTargetOpenIdsChange}
         resolveUsers={resolveDirectoryUsers}
+        renderErrorAction={renderOAuthErrorAction}
         disabled={!selectedBot}
         multiple
       />

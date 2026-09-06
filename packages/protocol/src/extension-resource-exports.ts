@@ -155,6 +155,8 @@ export {
 } from "./channel/lark/reminder-types.js";
 export * from "./channel/lark/reminder-rpc-schemas.js";
 export {
+  DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
   LarkSubstituteAudienceRuleSchema,
   LarkSubstituteDisclosureSchema,
   LarkSubstituteModeCreateInputSchema,

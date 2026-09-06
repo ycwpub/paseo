@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import type { LarkChannelBotStatus } from "@getpaseo/protocol/messages";
+import {
+  DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  type LarkChannelBotStatus,
+} from "@getpaseo/protocol/messages";
 import {
   buildSubstituteModeInput,
   createSubstituteModeFormState,
@@ -8,7 +12,8 @@ import {
 describe("createSubstituteModeFormState", () => {
   test("defaults new substitute modes to a 60 second delay and weekdays 1 through 7", () => {
     const form = createSubstituteModeFormState(null, []);
-    expect(form.delaySeconds).toBe("60");
+    expect(form.delaySeconds).toBe(String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS));
+    expect(form.customPrompt).toBe(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT);
     expect(form.weekdays).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 

@@ -19,7 +19,7 @@ const user = {
 
 const chat = {
   appId: "cli_test",
-  groupId: "group_settlement",
+  groupId: "7160881741501267996",
   chatId: "oc_settlement",
   name: "结算群",
   updatedAt: "2026-08-19T00:00:00.000Z",
@@ -35,7 +35,7 @@ describe("Lark directory labels", () => {
         email: "zhangsan@example.com",
       }),
     ).toBe("张三（zhangsan@example.com，ou_alice）");
-    expect(formatLarkChatLabel(chat)).toBe("结算群（group_settlement，oc_settlement）");
+    expect(formatLarkChatLabel(chat)).toBe("结算群（7160881741501267996，oc_settlement）");
   });
 
   test("falls back to available identity fields without dropping the Open ID", () => {

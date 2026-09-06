@@ -3,24 +3,7 @@ import { Pressable, View, type PressableStateCallbackType } from "react-native";
 import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
 import { Field } from "@/components/ui/form-field";
 import { SelectFieldTrigger } from "@/components/ui/select-field";
-
-const WEEKDAY_OPTIONS: ComboboxOption[] = [
-  { id: "1", label: "1 周一" },
-  { id: "2", label: "2 周二" },
-  { id: "3", label: "3 周三" },
-  { id: "4", label: "4 周四" },
-  { id: "5", label: "5 周五" },
-  { id: "6", label: "6 周六" },
-  { id: "7", label: "7 周日" },
-];
-
-function formatSelectedWeekdays(value: readonly number[]): string {
-  if (value.length === 7) return "每天（1～7）";
-  const selected = new Set(value);
-  return WEEKDAY_OPTIONS.filter((option) => selected.has(Number(option.id)))
-    .map((option) => option.label)
-    .join("、");
-}
+import { formatSelectedWeekdays, WEEKDAY_OPTIONS } from "./weekday-options";
 
 export function WeekdayMultiSelectField({
   value,
@@ -74,7 +57,7 @@ export function WeekdayMultiSelectField({
   );
 
   return (
-    <Field label="星期" hint="使用 1～7 表示周一到周日，可多选。">
+    <Field label="星期" hint="可多选。">
       <View ref={anchorRef} collapsable={false}>
         <Pressable
           onPress={handlePress}

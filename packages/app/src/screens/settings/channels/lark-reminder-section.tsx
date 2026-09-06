@@ -437,6 +437,7 @@ export function LarkReminderEditor({
           emptyText="暂无已启用的机器人"
         />
         <LarkReminderAudienceFields
+          serverId={serverId}
           directorySupported={directorySupported}
           selectedBot={selectedBot}
           directory={directory}

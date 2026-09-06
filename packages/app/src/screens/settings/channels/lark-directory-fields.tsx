@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { LarkDirectoryChat, LarkDirectoryUser } from "@getpaseo/protocol/messages";
@@ -39,6 +39,7 @@ interface LarkUserDirectoryFieldProps {
   testID?: string;
   onChange: (openIds: string[]) => void;
   resolveUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  renderErrorAction?: (message: string, clearError: () => void) => ReactNode;
 }
 
 function LarkUserSelectionRow({
@@ -76,6 +77,7 @@ export function LarkUserDirectoryField({
   testID,
   onChange,
   resolveUsers,
+  renderErrorAction,
 }: LarkUserDirectoryFieldProps) {
   const [emailInput, setEmailInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +171,12 @@ export function LarkUserDirectoryField({
       ) : (
         <Text style={settingsStyles.rowHint}>尚未选择用户。</Text>
       )}
-      {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
+      {error ? (
+        <>
+          <Text style={settingsStyles.rowError}>{error}</Text>
+          {renderErrorAction?.(error, () => setError(null))}
+        </>
+      ) : null}
     </Field>
   );
 }
@@ -184,6 +191,7 @@ interface LarkChatDirectoryFieldProps {
   testID?: string;
   onChange: (chatId: string) => void;
   resolveChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
+  renderErrorAction?: (message: string, clearError: () => void) => ReactNode;
 }
 
 export function LarkChatDirectoryField({
@@ -196,6 +204,7 @@ export function LarkChatDirectoryField({
   testID,
   onChange,
   resolveChats,
+  renderErrorAction,
 }: LarkChatDirectoryFieldProps) {
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<LarkDirectoryChat[]>([]);
@@ -293,7 +302,12 @@ export function LarkChatDirectoryField({
       ) : (
         <Text style={settingsStyles.rowHint}>尚未选择群聊。</Text>
       )}
-      {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
+      {error ? (
+        <>
+          <Text style={settingsStyles.rowError}>{error}</Text>
+          {renderErrorAction?.(error, () => setError(null))}
+        </>
+      ) : null}
     </Field>
   );
 }

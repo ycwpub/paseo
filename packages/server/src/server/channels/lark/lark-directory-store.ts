@@ -134,10 +134,15 @@ export class LarkDirectoryStore {
       const existing = next.chats.find(
         (entry) => entry.appId === appId && entry.chatId === chat.chatId,
       );
+      const incomingGroupId = chat.groupId.trim();
+      const groupIdCandidate =
+        incomingGroupId && incomingGroupId !== chat.chatId
+          ? incomingGroupId
+          : (existing?.groupId ?? incomingGroupId);
       const record = LarkDirectoryChatSchema.parse({
         appId,
         groupId: inferLarkGroupId({
-          groupId: chat.groupId.trim() || existing?.groupId,
+          groupId: groupIdCandidate,
           chatId: chat.chatId,
           name: chat.name,
         }),

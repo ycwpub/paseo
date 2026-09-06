@@ -9,6 +9,10 @@ import type {
   LarkSubstituteTimeRange,
 } from "@getpaseo/protocol/messages";
 import {
+  DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+} from "@getpaseo/protocol/messages";
+import {
   createSubstituteRuleFormLists,
   validateSubstituteRuleFormLists,
 } from "./lark-substitute-rule-form-model";
@@ -100,8 +104,8 @@ function createDefaultFormState(
     groupReplyIdentity: "bot",
     disclosureEnabled: true,
     disclosurePrompt: "【机器人代答】",
-    customPrompt: "",
-    delaySeconds: "60",
+    customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+    delaySeconds: String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),
     weekdays: [1, 2, 3, 4, 5, 6, 7],
     startTime: "",
     endTime: "",

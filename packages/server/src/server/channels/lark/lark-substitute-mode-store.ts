@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import {
+  DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
   LarkSubstituteModeCreateInputSchema,
   LarkSubstituteModeSchema,
   LarkSubstituteModeUpdateInputSchema,
@@ -13,7 +15,7 @@ import {
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
 import type { StoredLarkChannelBot } from "./lark-channel-store.js";
 
-const LARK_SUBSTITUTE_MODE_STORE_VERSION = 2;
+const LARK_SUBSTITUTE_MODE_STORE_VERSION = 3;
 const LarkSubstituteModeStorePayloadSchema = z.object({
   version: z.literal(LARK_SUBSTITUTE_MODE_STORE_VERSION),
   migratedLegacyBotIds: z.array(z.string()),
@@ -31,7 +33,7 @@ function cloneMode(mode: LarkSubstituteMode): LarkSubstituteMode {
   return LarkSubstituteModeSchema.parse(JSON.parse(JSON.stringify(mode)));
 }
 
-function migrateStoredMode(value: unknown): LarkSubstituteMode {
+function migrateStoredMode(value: unknown, storedVersion: number): LarkSubstituteMode {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return LarkSubstituteModeSchema.parse(value);
   }
@@ -48,7 +50,22 @@ function migrateStoredMode(value: unknown): LarkSubstituteMode {
         return { ...record, weekdays };
       })
     : mode.activeTimeRanges;
-  return LarkSubstituteModeSchema.parse({ ...mode, activeTimeRanges });
+  const legacyDefaults =
+    storedVersion < LARK_SUBSTITUTE_MODE_STORE_VERSION &&
+    typeof mode.id === "string" &&
+    mode.id.startsWith("legacy-")
+      ? {
+          customPrompt:
+            typeof mode.customPrompt !== "string" || !mode.customPrompt.trim()
+              ? DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT
+              : mode.customPrompt,
+          delaySeconds:
+            mode.delaySeconds === 0 || mode.delaySeconds === undefined
+              ? DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS
+              : mode.delaySeconds,
+        }
+      : {};
+  return LarkSubstituteModeSchema.parse({ ...mode, ...legacyDefaults, activeTimeRanges });
 }
 
 function legacyModeName(bot: StoredLarkChannelBot): string {
@@ -166,8 +183,8 @@ export class LarkSubstituteModeStore {
             enabled: true,
             prompt: substitute.name ? `【代${substitute.name}回复】` : "【替身回复】",
           },
-          customPrompt: "",
-          delaySeconds: 0,
+          customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+          delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
           activeTimeRanges: [],
           allowlist: [],
           denylist: [],
@@ -196,7 +213,7 @@ export class LarkSubstituteModeStore {
       const migrated = LarkSubstituteModeStorePayloadSchema.parse({
         version: LARK_SUBSTITUTE_MODE_STORE_VERSION,
         migratedLegacyBotIds: stored.migratedLegacyBotIds,
-        modes: stored.modes.map(migrateStoredMode),
+        modes: stored.modes.map((mode) => migrateStoredMode(mode, stored.version)),
       });
       this.payload = migrated;
       if (stored.version !== LARK_SUBSTITUTE_MODE_STORE_VERSION) {

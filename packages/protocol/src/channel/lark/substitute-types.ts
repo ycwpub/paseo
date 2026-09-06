@@ -90,6 +90,9 @@ export const LarkSubstituteDisclosureSchema = z.object({
 });
 export type LarkSubstituteDisclosure = z.infer<typeof LarkSubstituteDisclosureSchema>;
 
+export const DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT = "仅回答工作相关问题，避免代替用户做承诺";
+export const DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS = 60;
+
 export const LarkSubstituteModeSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1).max(100),
@@ -99,8 +102,8 @@ export const LarkSubstituteModeSchema = z.object({
   privateReplyIdentity: z.literal("user").default("user"),
   groupReplyIdentity: LarkSubstituteReplyIdentitySchema.default("bot"),
   disclosure: LarkSubstituteDisclosureSchema,
-  customPrompt: z.string().max(10_000).default(""),
-  delaySeconds: z.number().int().min(0).max(3_600).default(60),
+  customPrompt: z.string().max(10_000).default(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT),
+  delaySeconds: z.number().int().min(0).max(3_600).default(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),
   activeTimeRanges: z.array(LarkSubstituteTimeRangeSchema).max(32).default([]),
   audienceAllowlist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
   audienceDenylist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),

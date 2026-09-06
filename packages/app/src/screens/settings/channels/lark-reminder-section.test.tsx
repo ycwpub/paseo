@@ -80,6 +80,12 @@ vi.mock("@/projects/lark/lark-user-oauth-card", () => ({
   ),
 }));
 
+vi.mock("./lark-user-oauth-error-action", () => ({
+  LarkUserOAuthErrorAction: ({ errorMessage }: { errorMessage: string }) => (
+    <button type="button">立即授权：{errorMessage}</button>
+  ),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
@@ -450,6 +456,24 @@ describe("LarkReminderSection", () => {
         }),
       ),
     );
+  });
+
+  test("shows an authorization link when group lookup requires user OAuth", async () => {
+    directoryState.resolveChats.mockRejectedValue(
+      new Error("飞书用户身份未授权或已失效，请先为 App ID cli_reminder 完成 OAuth 授权"),
+    );
+    renderReminderEditor();
+
+    fireEvent.change(screen.getByPlaceholderText("输入群名称、群 ID 或 oc_xxx"), {
+      target: { value: "结算群" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查询群聊" }));
+
+    expect(
+      await screen.findByRole("button", {
+        name: /立即授权：飞书用户身份未授权或已失效/u,
+      }),
+    ).toBeTruthy();
   });
 
   test("shows complete group and user identities in reminder records", () => {

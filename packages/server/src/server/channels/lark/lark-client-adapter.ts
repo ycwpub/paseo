@@ -6,6 +6,7 @@ import {
   type LarkChatBot,
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
+import { findLarkGroupIdByChatId, mapLarkChatSearchResults } from "./lark-chat-search-results.js";
 
 export interface LarkChannelBotInfo {
   openId: string;
@@ -544,11 +545,29 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
           lark.withUserAccessToken(userAccessToken),
         );
         assertSuccess(result);
+        const name = result.data?.name?.trim() || query;
+        let groupId = query;
+        try {
+          const searchResult = await client.im.v2.chat.search(
+            {
+              data: { query: name },
+              params: { page_size: 100, user_id_type: "open_id" },
+            },
+            lark.withUserAccessToken(userAccessToken),
+          );
+          assertSuccess(searchResult);
+          groupId = findLarkGroupIdByChatId(searchResult.data?.items ?? [], query) ?? query;
+        } catch (error) {
+          this.logger.debug(
+            { err: error, chatId: query },
+            "Unable to enrich Lark chat with its group ID",
+          );
+        }
         return [
           {
-            groupId: query,
+            groupId,
             chatId: query,
-            name: result.data?.name?.trim() || query,
+            name,
           },
         ];
       }
@@ -560,20 +579,7 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
         lark.withUserAccessToken(userAccessToken),
       );
       assertSuccess(result);
-      const chats = (result.data?.items ?? []).flatMap((chat) =>
-        chat.meta_data?.chat_id
-          ? [
-              {
-                groupId: chat.id || chat.meta_data.chat_id,
-                chatId: chat.meta_data.chat_id,
-                name:
-                  chat.meta_data.name?.trim() ||
-                  chat.display_info?.trim() ||
-                  chat.meta_data.chat_id,
-              },
-            ]
-          : [],
-      );
+      const chats = mapLarkChatSearchResults(result.data?.items ?? []);
       const exact = chats.filter((chat) => chat.name.trim() === query);
       return exact.length > 0 ? exact : chats;
     } catch (error) {

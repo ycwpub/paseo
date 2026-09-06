@@ -124,7 +124,6 @@ interface StatusCardProps {
 
 interface BotListCardProps {
   bots: LarkChannelBotStatus[];
-  selectedBotId: string | null;
   creating: boolean;
   onEdit: (botId: string) => void;
   onAdd: () => void;
@@ -587,12 +586,10 @@ function resolveSelectedBotStatus(input: {
 
 function BotListRow({
   bot,
-  selected,
   isFirst,
   onEdit,
 }: {
   bot: LarkChannelBotStatus;
-  selected: boolean;
   isFirst: boolean;
   onEdit: (botId: string) => void;
 }) {
@@ -607,7 +604,7 @@ function BotListRow({
       <View style={styles.inlineActions}>
         <Button
           size="sm"
-          variant={selected ? "default" : "outline"}
+          variant="outline"
           onPress={handleEdit}
           testID={`host-page-lark-bot-edit-${bot.id}`}
         >
@@ -618,19 +615,13 @@ function BotListRow({
   );
 }
 
-function BotListCard({ bots, selectedBotId, creating, onEdit, onAdd }: BotListCardProps) {
+function BotListCard({ bots, creating, onEdit, onAdd }: BotListCardProps) {
   return (
     <SettingsSection title={`飞书机器人列表（${bots.length}）`}>
       <View style={settingsStyles.card}>
         {bots.length > 0 ? (
           bots.map((bot, index) => (
-            <BotListRow
-              key={bot.id}
-              bot={bot}
-              selected={!creating && bot.id === selectedBotId}
-              isFirst={index === 0}
-              onEdit={onEdit}
-            />
+            <BotListRow key={bot.id} bot={bot} isFirst={index === 0} onEdit={onEdit} />
           ))
         ) : (
           <View style={settingsStyles.row}>
@@ -1634,7 +1625,6 @@ function LarkChannelLoadedContent({
         <BotApplicationCard channel={channel} />
         <BotListCard
           bots={botStatuses}
-          selectedBotId={selectedBotStatus?.id ?? selectedBotId}
           creating={creatingBot}
           onEdit={handleEditBot}
           onAdd={handleAddBot}

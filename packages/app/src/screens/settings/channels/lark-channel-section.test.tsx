@@ -185,13 +185,21 @@ vi.mock("@/components/ui/button", () => ({
     onPress,
     disabled,
     testID,
+    variant,
   }: {
     children: ReactNode;
     onPress?: () => void;
     disabled?: boolean;
     testID?: string;
+    variant?: string;
   }) => (
-    <button type="button" disabled={disabled} onClick={onPress} data-testid={testID}>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onPress}
+      data-testid={testID}
+      data-variant={variant}
+    >
       {children}
     </button>
   ),
@@ -568,6 +576,12 @@ describe("LarkChannelSection", () => {
     expect(screen.getAllByText("袁昌旺的paseo_mac").length).toBeGreaterThan(0);
     expect(screen.getByText(/本地备注：Settlement bot/)).toBeTruthy();
     expect(screen.getByText("Ops bot")).toBeTruthy();
+    expect(screen.getByTestId("host-page-lark-bot-edit-bot-1").getAttribute("data-variant")).toBe(
+      "outline",
+    );
+    expect(screen.getByTestId("host-page-lark-bot-edit-bot-2").getAttribute("data-variant")).toBe(
+      "outline",
+    );
 
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect(screen.getByText("编辑飞书机器人")).toBeTruthy();

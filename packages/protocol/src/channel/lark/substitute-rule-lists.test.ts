@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { LarkSubstituteModeCreateInputSchema } from "./substitute-types.js";
+import {
+  DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  LarkSubstituteModeCreateInputSchema,
+} from "./substitute-types.js";
 
 describe("Lark substitute split rule lists", () => {
   test("accepts independent audience and question allowlists and denylists", () => {
@@ -37,5 +41,25 @@ describe("Lark substitute split rule lists", () => {
     expect(mode.questionAllowlist).toEqual([
       { id: "question-allow", description: "研发和代码问题" },
     ]);
+  });
+
+  test("defaults the substitute prompt and automatic answer delay", () => {
+    const mode = LarkSubstituteModeCreateInputSchema.parse({
+      name: "研发替身",
+      enabled: true,
+      botId: "bot-1",
+      substituteUser: { openId: "ou_target", name: "张三", email: "a@example.com" },
+      disclosure: { enabled: true, prompt: "【机器人代答】" },
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.6",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    });
+
+    expect(mode.customPrompt).toBe(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT);
+    expect(mode.delaySeconds).toBe(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS);
   });
 });

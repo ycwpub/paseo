@@ -8,6 +8,7 @@ import type {
   LarkDirectoryUser,
   LarkSubstituteMode,
 } from "@getpaseo/protocol/messages";
+import { DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT } from "@getpaseo/protocol/messages";
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
@@ -475,7 +476,7 @@ export function LarkSubstituteModeEditor({
             <FormTextInput
               value={form.customPrompt}
               onChangeText={controller.setCustomPrompt}
-              placeholder="例如：只回答工作相关问题，避免代替用户做承诺。"
+              placeholder={DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT}
               multiline
             />
           </Field>

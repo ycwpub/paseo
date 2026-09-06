@@ -2,6 +2,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import {
+  DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+} from "@getpaseo/protocol/messages";
 import type { StoredLarkChannelBot } from "./lark-channel-store.js";
 import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
 
@@ -71,13 +75,15 @@ describe("LarkSubstituteModeStore", () => {
         },
         privateReplyIdentity: "user",
         groupReplyIdentity: "bot",
+        customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+        delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
       }),
     ]);
     expect(
       JSON.parse(
         readFileSync(path.join(paseoHome, "channels", "lark-substitute-modes.json"), "utf8"),
       ),
-    ).toMatchObject({ version: 2, migratedLegacyBotIds: ["bot-1"] });
+    ).toMatchObject({ version: 3, migratedLegacyBotIds: ["bot-1"] });
   });
 
   test("creates, updates, toggles and deletes an independent mode", () => {
@@ -164,6 +170,57 @@ describe("LarkSubstituteModeStore", () => {
     expect(store.list()[0]?.activeTimeRanges[0]?.weekdays).toEqual([1, 7]);
     expect(
       JSON.parse(readFileSync(path.join(channelsDirectory, "lark-substitute-modes.json"), "utf8")),
-    ).toMatchObject({ version: 2 });
+    ).toMatchObject({ version: 3 });
+  });
+
+  test("upgrades legacy defaults without changing ordinary saved modes", () => {
+    const paseoHome = createTempDir();
+    const channelsDirectory = path.join(paseoHome, "channels");
+    mkdirSync(channelsDirectory, { recursive: true });
+    const baseMode = {
+      name: "替身",
+      enabled: true,
+      botId: "bot-1",
+      substituteUser: { openId: "ou_user", name: "张三", email: null },
+      privateReplyIdentity: "user",
+      groupReplyIdentity: "bot",
+      disclosure: { enabled: true, prompt: "【机器人代答】" },
+      customPrompt: "",
+      delaySeconds: 0,
+      activeTimeRanges: [],
+      allowlist: [],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+      createdAt: "2026-09-04T00:00:00.000Z",
+      updatedAt: "2026-09-04T00:00:00.000Z",
+    } as const;
+    writeFileSync(
+      path.join(channelsDirectory, "lark-substitute-modes.json"),
+      JSON.stringify({
+        version: 2,
+        migratedLegacyBotIds: ["bot-1"],
+        modes: [
+          { ...baseMode, id: "legacy-bot-1" },
+          { ...baseMode, id: "mode-user-configured" },
+        ],
+      }),
+      { mode: 0o600 },
+    );
+
+    const modes = new LarkSubstituteModeStore(paseoHome).list();
+    expect(modes.find((mode) => mode.id === "legacy-bot-1")).toMatchObject({
+      customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
+      delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+    });
+    expect(modes.find((mode) => mode.id === "mode-user-configured")).toMatchObject({
+      customPrompt: "",
+      delaySeconds: 0,
+    });
   });
 });

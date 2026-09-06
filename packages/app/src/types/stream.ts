@@ -553,9 +553,13 @@ function preserveReplacementHead(
       )
     : currentHead.filter(
         (item) =>
-          item.kind === "user_message" &&
-          item.clientMessageId !== undefined &&
-          sendingClientMessageIds.has(item.clientMessageId),
+          // A bootstrap snapshot can finish after same-epoch live rows have arrived.
+          // Those rows are newer than the snapshot even when general continuity is disabled.
+          (item.timelineCursor !== undefined &&
+            isAfterCanonicalCoverage(item.timelineCursor, canonicalCoverage)) ||
+          (item.kind === "user_message" &&
+            item.clientMessageId !== undefined &&
+            sendingClientMessageIds.has(item.clientMessageId)),
       );
   const { tail: reconciledTail, head: unreconciledHead } = reconcileReplacementHeadAgainstTail(
     tail,
@@ -672,7 +676,6 @@ export function replaceWithCanonicalStream(
     if (preserveLocal) {
       nextTail.push(local);
     } else if (
-      input.preserveContinuity &&
       local.timelineCursor &&
       isAfterCanonicalCoverage(local.timelineCursor, input.canonicalCoverage)
     ) {

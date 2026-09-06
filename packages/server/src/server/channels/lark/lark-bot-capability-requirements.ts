@@ -41,6 +41,13 @@ export const PASEO_LARK_USER_SCOPES = [
   "search:message",
 ] as const;
 
+export const PASEO_LARK_CHAT_LOOKUP_USER_SCOPES = [
+  // Keep the lookup grant renewable without forcing unrelated substitute-mode scopes.
+  "offline_access",
+  // Search and inspect groups visible to the authorized user.
+  "im:chat:read",
+] as const;
+
 export const PASEO_LARK_EVENT_SUBSCRIPTIONS = ["im.message.receive_v1"] as const;
 
 /**

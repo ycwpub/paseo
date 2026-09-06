@@ -213,6 +213,43 @@ describe("LarkUserOAuthService", () => {
     );
   });
 
+  it("refreshes a legacy chat lookup grant without requesting unrelated substitute scopes", async () => {
+    const refreshAccessToken = vi.fn(async () => ({
+      accessToken: "u-token-refreshed",
+      expiresIn: 7200,
+    }));
+    const { service, store } = createHarness({ refreshAccessToken });
+    const chatLookupScopes = ["offline_access", "im:chat:read"] as const;
+    store.set({
+      appId: "cli_test",
+      userAccessToken: "u-token-old",
+      refreshToken: "r-token-old",
+      expiresAt: new Date(Date.now() - 1).toISOString(),
+      refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+      openId: "ou_test",
+      email: null,
+      displayName: "张三",
+      authorizedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await expect(service.getValidUserAccessToken("cli_test", chatLookupScopes)).resolves.toBe(
+      "u-token-refreshed",
+    );
+    expect(refreshAccessToken).toHaveBeenCalledWith({
+      config: expect.objectContaining({ appId: "cli_test" }),
+      refreshToken: "r-token-old",
+      scope:
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user",
+    });
+    expect(service.getStatus("cli_test")).toMatchObject({
+      authorized: false,
+      needsAuthorization: true,
+    });
+  });
+
   it("removes invalid credentials and requires a new authorization when refresh fails", async () => {
     const { service, store } = createHarness({
       refreshAccessToken: vi.fn(async () => {

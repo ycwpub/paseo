@@ -5,6 +5,7 @@ import type {
 } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
+import { PASEO_LARK_CHAT_LOOKUP_USER_SCOPES } from "./lark-bot-capability-requirements.js";
 import { hasCompleteLarkDirectoryUser } from "./lark-directory-identity.js";
 import type { LarkDirectoryStore } from "./lark-directory-store.js";
 import { toLarkDirectoryMessageTime } from "./lark-directory-message.js";
@@ -98,7 +99,10 @@ export class LarkDirectoryService {
     if (!this.adapter.resolveChats) {
       throw new Error("This Paseo daemon does not support Lark group lookup");
     }
-    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(appId);
+    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(
+      appId,
+      PASEO_LARK_CHAT_LOOKUP_USER_SCOPES,
+    );
     const resolved = await this.adapter.resolveChats(config, normalizedQuery, userAccessToken);
     if (resolved.length === 0) {
       throw new Error(`No visible Lark group found for: ${normalizedQuery}`);
@@ -129,7 +133,10 @@ export class LarkDirectoryService {
     if (!this.adapter.resolveChats) {
       return existing;
     }
-    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(appId);
+    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(
+      appId,
+      PASEO_LARK_CHAT_LOOKUP_USER_SCOPES,
+    );
     const resolved = await this.adapter.resolveChats(config, normalizedChatId, userAccessToken);
     const chat =
       resolved.find((entry) => entry.chatId.trim() === normalizedChatId) ?? resolved[0] ?? null;

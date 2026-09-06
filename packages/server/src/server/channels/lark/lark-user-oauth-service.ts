@@ -34,6 +34,7 @@ export interface LarkUserOAuthGateway {
   refreshAccessToken(input: {
     config: StoredLarkChannelConfig;
     refreshToken: string;
+    scope?: string;
   }): Promise<OAuthTokenResult>;
   getUserInfo(input: { config: StoredLarkChannelConfig; accessToken: string }): Promise<{
     openId?: string | null;
@@ -62,10 +63,10 @@ const officialGateway: LarkUserOAuthGateway = {
       scope: USER_OAUTH_SCOPES,
     });
   },
-  async refreshAccessToken({ config, refreshToken }) {
+  async refreshAccessToken({ config, refreshToken, scope }) {
     return createClient(config).accessToken.refresh({
       refreshToken,
-      scope: USER_OAUTH_SCOPES,
+      ...(scope ? { scope } : {}),
     });
   },
   async getUserInfo({ config, accessToken }) {
@@ -90,9 +91,12 @@ function addSeconds(timestamp: number, seconds: number | undefined): string {
   ).toISOString();
 }
 
-function hasRequiredScopes(scope: string | null | undefined): boolean {
+function hasRequiredScopes(
+  scope: string | null | undefined,
+  requiredScopes: readonly string[] = USER_OAUTH_SCOPE_LIST,
+): boolean {
   const grantedScopes = new Set(scope?.split(/\s+/u).filter(Boolean) ?? []);
-  return USER_OAUTH_SCOPE_LIST.every((requiredScope) => grantedScopes.has(requiredScope));
+  return requiredScopes.every((requiredScope) => grantedScopes.has(requiredScope));
 }
 
 function parseCodeAndState(codeOrCallbackUrl: string): {
@@ -253,11 +257,14 @@ export class LarkUserOAuthService {
     return this.getStatus(normalizedAppId);
   }
 
-  async getValidUserAccessToken(appId: string): Promise<string> {
+  async getValidUserAccessToken(
+    appId: string,
+    requiredScopes: readonly string[] = USER_OAUTH_SCOPE_LIST,
+  ): Promise<string> {
     const normalizedAppId = appId.trim();
     const credential = this.store.get(normalizedAppId);
     if (!credential) throw new LarkUserAuthorizationRequiredError(normalizedAppId);
-    if (!hasRequiredScopes(credential.scope)) {
+    if (!hasRequiredScopes(credential.scope, requiredScopes)) {
       throw new LarkUserAuthorizationRequiredError(normalizedAppId);
     }
     if (Date.parse(credential.expiresAt) > Date.now() + ACCESS_TOKEN_REFRESH_WINDOW_MS) {
@@ -265,14 +272,17 @@ export class LarkUserOAuthService {
     }
     const existing = this.refreshes.get(normalizedAppId);
     if (existing) return existing;
-    const refresh = this.refreshCredential(credential).finally(() => {
+    const refresh = this.refreshCredential(credential, requiredScopes).finally(() => {
       this.refreshes.delete(normalizedAppId);
     });
     this.refreshes.set(normalizedAppId, refresh);
     return refresh;
   }
 
-  private async refreshCredential(credential: StoredLarkUserOAuthCredential): Promise<string> {
+  private async refreshCredential(
+    credential: StoredLarkUserOAuthCredential,
+    requiredScopes: readonly string[],
+  ): Promise<string> {
     if (
       credential.refreshTokenExpiresAt &&
       Date.parse(credential.refreshTokenExpiresAt) <= Date.now()
@@ -285,9 +295,14 @@ export class LarkUserOAuthService {
       const token = await this.gateway.refreshAccessToken({
         config: this.requireConfig(credential.appId),
         refreshToken: credential.refreshToken,
+        scope: credential.scope?.trim() || undefined,
       });
       if (!token.accessToken) {
         throw new Error("飞书刷新接口未返回新的 access token");
+      }
+      const refreshedScope = token.scope ?? credential.scope;
+      if (!hasRequiredScopes(refreshedScope, requiredScopes)) {
+        throw new Error("飞书刷新后的用户授权缺少当前操作所需权限");
       }
       this.store.set({
         ...credential,
@@ -297,7 +312,7 @@ export class LarkUserOAuthService {
         refreshTokenExpiresAt: token.refreshTokenExpiresIn
           ? addSeconds(now, token.refreshTokenExpiresIn)
           : credential.refreshTokenExpiresAt,
-        scope: token.scope ?? credential.scope,
+        scope: refreshedScope,
         updatedAt: new Date(now).toISOString(),
       });
       return token.accessToken;

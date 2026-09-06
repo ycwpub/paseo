@@ -5,6 +5,10 @@ import {
   LarkBotApplicationService,
   type LarkAppRegistrar,
 } from "./lark-bot-application-service.js";
+import {
+  buildLarkBotApplicationAddons,
+  buildLarkBotApplicationRequirements,
+} from "./lark-bot-capability-requirements.js";
 
 async function waitForTerminalState(service: LarkBotApplicationService, id: string) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -52,35 +56,7 @@ describe("LarkBotApplicationService", () => {
     expect(JSON.stringify(completed)).not.toContain("very-secret");
     expect(registrar.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        addons: {
-          scopes: {
-            tenant: [
-              "contact:user.base:readonly",
-              "contact:user.email:readonly",
-              "contact:user.id:readonly",
-              "im:chat.members:bot_access",
-              "im:chat.members:read",
-              "im:chat:read",
-              "im:message.group_at_msg.include_bot:readonly",
-              "im:message.group_msg",
-              "im:message.group_msg.include_bot:read",
-              "im:message.p2p_msg",
-              "im:message:readonly",
-              "im:message:send_as_bot",
-            ],
-            user: [
-              "im:chat",
-              "im:chat.members:write_only",
-              "im:chat:read",
-              "im:message.group_msg:get_as_user",
-              "im:message.p2p_msg:get_as_user",
-              "offline_access",
-              "search:message",
-            ],
-          },
-          events: { items: { tenant: ["im.message.receive_v1"] } },
-          callbacks: { items: ["card.action.trigger"] },
-        },
+        addons: buildLarkBotApplicationAddons(),
         createOnly: true,
       }),
     );
@@ -92,10 +68,7 @@ describe("LarkBotApplicationService", () => {
       domain: "feishu",
     });
     expect(testConnection).not.toHaveBeenCalled();
-    expect(completed.requirements).toMatchObject({
-      events: ["im.message.receive_v1"],
-      callbacks: ["card.action.trigger"],
-    });
+    expect(completed.requirements).toEqual(buildLarkBotApplicationRequirements());
   });
 
   test("uses the actual Feishu bot name when no custom name is provided", async () => {

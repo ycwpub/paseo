@@ -13,6 +13,11 @@ export interface LarkChatSearchResult {
   name: string;
 }
 
+export interface LegacyLarkChatSearchItem {
+  chat_id?: string | null;
+  name?: string | null;
+}
+
 export function mapLarkChatSearchResults(
   items: readonly LarkChatSearchItem[],
 ): LarkChatSearchResult[] {
@@ -24,6 +29,22 @@ export function mapLarkChatSearchResults(
         groupId: item.id?.trim() || chatId,
         chatId,
         name: item.meta_data?.name?.trim() || item.display_info?.trim() || chatId,
+      },
+    ];
+  });
+}
+
+export function mapLegacyLarkChatSearchResults(
+  items: readonly LegacyLarkChatSearchItem[],
+): LarkChatSearchResult[] {
+  return items.flatMap((item) => {
+    const chatId = item.chat_id?.trim() ?? "";
+    if (!chatId) return [];
+    return [
+      {
+        groupId: chatId,
+        chatId,
+        name: item.name?.trim() || chatId,
       },
     ];
   });

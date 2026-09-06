@@ -6,7 +6,11 @@ import {
   type LarkChatBot,
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
-import { findLarkGroupIdByChatId, mapLarkChatSearchResults } from "./lark-chat-search-results.js";
+import {
+  findLarkGroupIdByChatId,
+  mapLarkChatSearchResults,
+  mapLegacyLarkChatSearchResults,
+} from "./lark-chat-search-results.js";
 
 export interface LarkChannelBotInfo {
   openId: string;
@@ -603,15 +607,31 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
           },
         ];
       }
-      const result = await client.im.v2.chat.search(
-        {
-          data: { query },
-          params: { page_size: 100, user_id_type: "open_id" },
-        },
-        lark.withUserAccessToken(userAccessToken),
-      );
-      assertSuccess(result);
-      const chats = mapLarkChatSearchResults(result.data?.items ?? []);
+      let chats: LarkResolvedChat[];
+      try {
+        const result = await client.im.v2.chat.search(
+          {
+            data: { query },
+            params: { page_size: 100, user_id_type: "open_id" },
+          },
+          lark.withUserAccessToken(userAccessToken),
+        );
+        assertSuccess(result);
+        chats = mapLarkChatSearchResults(result.data?.items ?? []);
+      } catch (error) {
+        this.logger.debug(
+          { err: error },
+          "Falling back to legacy Lark group search for an existing user grant",
+        );
+        const legacyResult = await client.im.v1.chat.search(
+          {
+            params: { query, page_size: 100, user_id_type: "open_id" },
+          },
+          lark.withUserAccessToken(userAccessToken),
+        );
+        assertSuccess(legacyResult);
+        chats = mapLegacyLarkChatSearchResults(legacyResult.data?.items ?? []);
+      }
       const exact = chats.filter((chat) => chat.name.trim() === query);
       return exact.length > 0 ? exact : chats;
     } catch (error) {

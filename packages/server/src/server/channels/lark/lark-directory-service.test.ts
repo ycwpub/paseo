@@ -168,11 +168,19 @@ describe("LarkDirectoryService", () => {
       { groupId: "group_one", chatId: "oc_one", name: "结算群" },
       { groupId: "group_two", chatId: "oc_two", name: "结算群" },
     ]);
-    const service = createService({
-      resolveChats,
-    });
+    const getValidUserAccessToken = vi.fn(async () => "u-token");
+    const service = new LarkDirectoryService(
+      channelStore,
+      directoryStore,
+      { resolveChats } as unknown as LarkChannelClientAdapter,
+      { getValidUserAccessToken } as unknown as LarkUserOAuthService,
+    );
 
     await expect(service.resolveChats("cli_test", "结算群")).resolves.toHaveLength(2);
+    expect(getValidUserAccessToken).toHaveBeenCalledWith("cli_test", [
+      "offline_access",
+      "im:chat:read",
+    ]);
     expect(resolveChats).toHaveBeenCalledWith(
       expect.objectContaining({ appId: "cli_test" }),
       "结算群",

@@ -158,6 +158,7 @@ describe("plugin package", () => {
           dashboard: {
             id: "dashboard",
             category: "Productivity",
+            icon: "LayoutDashboard",
           },
         },
       }),
@@ -173,6 +174,7 @@ describe("plugin package", () => {
       {
         id: "dashboard",
         category: "Productivity",
+        icon: "LayoutDashboard",
         project: {
           idField: "projectId",
           selectorLabel: "Project",

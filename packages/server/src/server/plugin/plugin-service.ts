@@ -419,6 +419,14 @@ export class PluginService {
   private readonly bundledMarketplacePaths: string[];
   private httpRuntime: PluginHttpServiceRuntime | null = null;
   private appRuntime: PluginAppRuntime | null = null;
+  private alertTroubleshooterRuntime: {
+    enqueueRecord(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      recordId: string;
+    }): Promise<boolean>;
+  } | null = null;
   private marketplaceStates: MarketplaceState[] = [];
   private catalogPlugins: CatalogPlugin[] = [];
 
@@ -476,6 +484,29 @@ export class PluginService {
   attachAppRuntime(runtime: PluginAppRuntime): void {
     this.appRuntime = runtime;
     this.reconcileProjectBindings();
+  }
+
+  attachAlertTroubleshooterRuntime(runtime: {
+    enqueueRecord(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      recordId: string;
+    }): Promise<boolean>;
+  }): void {
+    this.alertTroubleshooterRuntime = runtime;
+  }
+
+  enqueueAlertTroubleshooterRecord(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    recordId: string;
+  }): Promise<boolean> {
+    if (!this.alertTroubleshooterRuntime) {
+      throw new Error("自动排查运行时尚未就绪");
+    }
+    return this.alertTroubleshooterRuntime.enqueueRecord(input);
   }
 
   getApp(pluginId: string, appId: string, projectId: string): PluginAppState {

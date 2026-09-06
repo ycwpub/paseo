@@ -1,7 +1,7 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop -- Dynamic group rows and identity selectors bind to the active Project draft. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { Plus, Save, Trash2 } from "lucide-react-native";
+import { Play, Plus, Save, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { ZodType } from "zod";
 import type {
@@ -23,6 +23,7 @@ import {
   PluginProjectBoundary,
   type PluginProjectContext,
 } from "@/plugins/project/plugin-project-boundary";
+import { PluginProjectDefaultAgentField } from "@/plugins/project/plugin-project-default-agent-field";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { LarkChatDirectoryField } from "@/screens/settings/channels/lark-directory-fields";
@@ -33,14 +34,19 @@ const DEFAULT_CONFIG: Omit<
   AlertTroubleshooterConfig,
   "botId" | "chats" | "troubleshootingSopDoc" | "attributionRecordRoot"
 > = {
-  version: 1,
+  version: 3,
   enabled: true,
-  target: { kind: "default" },
+  listenEnabled: true,
+  troubleshootingEnabled: true,
+  target: { kind: "assistant", assistantId: "" },
+  recordTableUrl: "",
+  promptTemplate: "",
+  queuePollIntervalMinutes: 5,
   schedule: {
     enabled: true,
     intervalMinutes: 30,
     lookbackMinutes: 120,
-    excludeRecentMinutes: 30,
+    excludeRecentMinutes: 0,
   },
 };
 
@@ -83,20 +89,41 @@ function AlertTroubleshooterProject({
   const teams = useTeams(serverId, { enabled: active && supportsTeams });
   const initialConfig = spec.configSchema.safeParse(project.data[spec.configDataKey]);
   const [enabled, setEnabled] = useState(initialConfig.success ? initialConfig.data.enabled : true);
+  const [listenEnabled, setListenEnabled] = useState(
+    initialConfig.success ? initialConfig.data.listenEnabled : true,
+  );
+  const [troubleshootingEnabled, setTroubleshootingEnabled] = useState(
+    initialConfig.success ? initialConfig.data.troubleshootingEnabled : true,
+  );
   const [botId, setBotId] = useState(initialConfig.success ? initialConfig.data.botId : "");
   const [chats, setChats] = useState<AlertTroubleshooterChat[]>(
     initialConfig.success ? initialConfig.data.chats : [],
   );
   const [pendingChatId, setPendingChatId] = useState("");
   const [target, setTarget] = useState<AlertTroubleshooterTarget>(
-    initialConfig.success ? initialConfig.data.target : DEFAULT_CONFIG.target,
+    initialConfig.success && initialConfig.data.target.kind !== "default"
+      ? initialConfig.data.target
+      : DEFAULT_CONFIG.target,
   );
+  const [agent, setAgent] = useState(project.defaultAgent);
   const [sopDoc, setSopDoc] = useState(
     initialConfig.success ? initialConfig.data.troubleshootingSopDoc : "",
   );
   const [recordRoot, setRecordRoot] = useState(
     initialConfig.success ? initialConfig.data.attributionRecordRoot : "",
   );
+  const [recordTableUrl, setRecordTableUrl] = useState(
+    initialConfig.success ? initialConfig.data.recordTableUrl : "",
+  );
+  const [promptTemplate, setPromptTemplate] = useState(
+    initialConfig.success ? initialConfig.data.promptTemplate : "",
+  );
+  const [queuePollIntervalMinutes, setQueuePollIntervalMinutes] = useState(
+    String(initialConfig.success ? initialConfig.data.queuePollIntervalMinutes : 5),
+  );
+  const [debugRecordId, setDebugRecordId] = useState("");
+  const [queueingRecord, setQueueingRecord] = useState(false);
+  const [queuedRecord, setQueuedRecord] = useState<string | null>(null);
   const [scheduleEnabled, setScheduleEnabled] = useState(
     initialConfig.success ? initialConfig.data.schedule.enabled : true,
   );
@@ -107,7 +134,7 @@ function AlertTroubleshooterProject({
     String(initialConfig.success ? initialConfig.data.schedule.lookbackMinutes : 120),
   );
   const [excludeRecentMinutes, setExcludeRecentMinutes] = useState(
-    String(initialConfig.success ? initialConfig.data.schedule.excludeRecentMinutes : 30),
+    String(initialConfig.success ? initialConfig.data.schedule.excludeRecentMinutes : 0),
   );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -154,7 +181,6 @@ function AlertTroubleshooterProject({
   );
   const identityOptions = useMemo(
     () => [
-      { value: "default" as const, label: "默认模型" },
       { value: "assistant" as const, label: "助手" },
       { value: "team" as const, label: "团队", disabled: !supportsTeams },
     ],
@@ -166,6 +192,23 @@ function AlertTroubleshooterProject({
     if (botId || !status?.activeBotId) return;
     setBotId(status.activeBotId);
   }, [botId, status?.activeBotId]);
+
+  useEffect(() => {
+    if (target.kind === "assistant" && !target.assistantId) {
+      const assistantId = assistants.assistants[0]?.id;
+      if (assistantId) {
+        setTarget({ kind: "assistant", assistantId });
+        return;
+      }
+      const teamId = supportsTeams ? teams.teams[0]?.id : undefined;
+      if (teamId) setTarget({ kind: "team", teamId });
+      return;
+    }
+    if (target.kind === "team" && !target.teamId) {
+      const teamId = teams.teams[0]?.id;
+      if (teamId) setTarget({ kind: "team", teamId });
+    }
+  }, [assistants.assistants, supportsTeams, target, teams.teams]);
 
   const addChat = useCallback(() => {
     if (!pendingChatId || chats.some((chat) => chat.chatId === pendingChatId)) return;
@@ -206,13 +249,24 @@ function AlertTroubleshooterProject({
     setSaved(false);
     setError(null);
     try {
+      const provider = agent.provider.trim();
+      const model = agent.model.trim();
+      if (!provider || !model) {
+        setError("请选择排查 Provider 和模型");
+        return;
+      }
       const validation = validateAlertTroubleshooterConfig(spec.configSchema, {
         enabled,
+        listenEnabled,
+        troubleshootingEnabled,
         botId,
         chats,
         target,
         troubleshootingSopDoc: sopDoc,
         attributionRecordRoot: recordRoot,
+        recordTableUrl,
+        promptTemplate,
+        queuePollIntervalMinutes,
         schedule: {
           enabled: scheduleEnabled,
           intervalMinutes,
@@ -228,7 +282,7 @@ function AlertTroubleshooterProject({
         pluginId: spec.pluginId,
         appId: spec.appId,
         projectId: project.projectId,
-        defaultAgent: project.defaultAgent,
+        defaultAgent: { provider, model },
         data: { [spec.configDataKey]: validation.config },
       });
       if (response.error || !response.app) throw new Error(response.error ?? "保存配置失败");
@@ -239,37 +293,67 @@ function AlertTroubleshooterProject({
       setSaving(false);
     }
   }, [
+    agent,
     botId,
     chats,
     client,
     enabled,
     excludeRecentMinutes,
     intervalMinutes,
+    listenEnabled,
     lookbackMinutes,
-    project.defaultAgent,
+    promptTemplate,
     project.projectId,
     recordRoot,
+    recordTableUrl,
+    queuePollIntervalMinutes,
     scheduleEnabled,
     sopDoc,
     spec,
     target,
+    troubleshootingEnabled,
   ]);
+
+  const enqueueDebugRecord = useCallback(async () => {
+    if (!client) return;
+    const recordId = debugRecordId.trim();
+    if (!recordId) {
+      setError("请输入多维表格记录 ID");
+      return;
+    }
+    setQueueingRecord(true);
+    setQueuedRecord(null);
+    setError(null);
+    try {
+      const response = await client.enqueueAlertTroubleshooterRecord({
+        pluginId: spec.pluginId,
+        appId: spec.appId,
+        projectId: project.projectId,
+        recordId,
+      });
+      if (response.error || !response.queued) {
+        throw new Error(response.error ?? "加入处理队列失败");
+      }
+      setQueuedRecord(response.recordId);
+    } catch (queueError) {
+      setError(errorMessage(queueError));
+    } finally {
+      setQueueingRecord(false);
+    }
+  }, [client, debugRecordId, project.projectId, spec.appId, spec.pluginId]);
 
   return (
     <View style={styles.root}>
       <View style={styles.card}>
         <View style={styles.rowBetween}>
           <View style={styles.flex}>
-            <Text style={styles.heading}>自动排查</Text>
+            <Text style={styles.heading}>自动排查项目</Text>
             <Text style={styles.description}>
-              监听 {spec.productName} 报警卡片，并定时补偿扫描遗漏消息。
+              统一控制 {spec.productName} 消息入表、队列和异步排查。
             </Text>
           </View>
           <Switch value={enabled} onValueChange={setEnabled} accessibilityLabel="启用自动排查" />
         </View>
-        <Text style={styles.meta}>
-          排查模型：{project.defaultAgent.provider} · {project.defaultAgent.model}
-        </Text>
         <SelectField
           label="飞书机器人"
           value={botId || null}
@@ -279,6 +363,17 @@ function AlertTroubleshooterProject({
           placeholder="选择机器人"
           emptyText="请先在渠道中配置飞书机器人"
         />
+        <View style={styles.toggleRow}>
+          <View style={styles.flex}>
+            <Text style={styles.label}>群消息监听</Text>
+            <Text style={styles.description}>实时监听报警消息，写入多维表格和本地队列。</Text>
+          </View>
+          <Switch
+            value={listenEnabled}
+            onValueChange={setListenEnabled}
+            accessibilityLabel="启用群消息监听"
+          />
+        </View>
         <LarkChatDirectoryField
           label="添加监听群"
           hint="支持按群名称、群 ID 或 oc_xxx 搜索；一个项目可监听多个群。"
@@ -324,11 +419,33 @@ function AlertTroubleshooterProject({
             placeholder="https://.../wiki/..."
           />
         </Field>
-        <SegmentedControl
-          value={target.kind}
-          onValueChange={changeTargetKind}
-          options={identityOptions}
+        <Field
+          label="消息多维表格链接"
+          hint="监听和扫描发现的消息先写入该表，再进入本地持久队列。支持 Base 或 Wiki 多维表格链接。"
+        >
+          <FormTextInput
+            value={recordTableUrl}
+            onChangeText={setRecordTableUrl}
+            placeholder="https://.../base/...?...table=tbl..."
+          />
+        </Field>
+        <PluginProjectDefaultAgentField
+          active={active}
+          serverId={serverId}
+          cwd={project.sourceDirectory}
+          value={agent}
+          onChange={setAgent}
+          disabled={saving}
+          label="排查 Provider 和模型（必填）"
+          hint="为当前自动排查项目指定实际使用的 Provider 和模型，不再只能沿用已有默认模型。"
         />
+        <Field label="执行主体（必填）" hint="助手和团队只能选择一个。">
+          <SegmentedControl
+            value={target.kind === "team" ? "team" : "assistant"}
+            onValueChange={changeTargetKind}
+            options={identityOptions}
+          />
+        </Field>
         {target.kind === "assistant" ? (
           <SelectField
             label="助手"
@@ -359,7 +476,7 @@ function AlertTroubleshooterProject({
         <View style={styles.rowBetween}>
           <View style={styles.flex}>
             <Text style={styles.heading}>定时补偿扫描</Text>
-            <Text style={styles.description}>默认扫描 2 小时内、排除最近半小时的消息。</Text>
+            <Text style={styles.description}>默认扫描最近 2 小时的全部消息。</Text>
           </View>
           <Switch
             value={scheduleEnabled}
@@ -395,7 +512,73 @@ function AlertTroubleshooterProject({
               ? ` · 最近完成：${runtime.data.lastScanFinishedAt}`
               : ""}
             {runtime.data.lastError ? ` · 错误：${runtime.data.lastError}` : ""}
+            {` · 队列：${runtime.data.queuedCount}`}
+            {runtime.data.activeRecordId ? ` · 当前记录：${runtime.data.activeRecordId}` : ""}
           </Text>
+        ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <View style={styles.rowBetween}>
+          <View style={styles.flex}>
+            <Text style={styles.heading}>异步排查</Text>
+            <Text style={styles.description}>
+              从本地队列逐条处理；队列为空时定时认领多维表格中的未认领记录。
+            </Text>
+          </View>
+          <Switch
+            value={troubleshootingEnabled}
+            onValueChange={setTroubleshootingEnabled}
+            accessibilityLabel="启用异步排查"
+          />
+        </View>
+        <Field label="多维表格轮询间隔（分钟）">
+          <FormTextInput
+            value={queuePollIntervalMinutes}
+            onChangeText={setQueuePollIntervalMinutes}
+            keyboardType="number-pad"
+          />
+        </Field>
+        <Field
+          label="处理任务提示词"
+          hint="留空使用内置提示词。支持下方内置变量和 Project 配置中的自定义变量。"
+        >
+          <FormTextInput
+            multiline
+            value={promptTemplate}
+            onChangeText={setPromptTemplate}
+            placeholder="例如：请处理记录 {{recordId}}，原始消息：{{messageText}}"
+            textInputStyle={styles.promptInput}
+          />
+        </Field>
+        <Text selectable style={styles.variables}>
+          可用变量：{"{{projectId}}"}、{"{{projectName}}"}、{"{{projectDirectory}}"}、
+          {"{{pluginId}}"}、{"{{appId}}"}、{"{{recordId}}"}、{"{{messageId}}"}、{"{{chatId}}"}、
+          {"{{chatName}}"}、{"{{messageText}}"}、{"{{messageTime}}"}、{"{{trigger}}"}、
+          {"{{troubleshootingSopDoc}}"}、{"{{attributionRecordRoot}}"}、{"{{recordTableUrl}}"}
+          ；Project 自定义变量使用 {"{{变量名}}"}。
+        </Text>
+        <Field
+          label="指定多维表格记录 ID"
+          hint="手动加入处理队列，便于调试；即使自动排查开关关闭，也会处理该手动任务。"
+        >
+          <FormTextInput
+            value={debugRecordId}
+            onChangeText={setDebugRecordId}
+            placeholder="recxxxxxxxx"
+          />
+        </Field>
+        <Button
+          variant="outline"
+          leftIcon={Play}
+          loading={queueingRecord}
+          disabled={!debugRecordId.trim()}
+          onPress={enqueueDebugRecord}
+        >
+          加入处理队列
+        </Button>
+        {queuedRecord ? (
+          <Text style={styles.success}>记录 {queuedRecord} 已加入处理队列。</Text>
         ) : null}
       </View>
 
@@ -476,9 +659,21 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     gap: theme.spacing[3],
   },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[3],
+    paddingTop: theme.spacing[2],
+  },
   flex: {
     flex: 1,
     gap: theme.spacing[1],
+  },
+  label: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.medium,
   },
   chatRow: {
     flexDirection: "row",
@@ -501,5 +696,14 @@ const styles = StyleSheet.create((theme) => ({
   success: {
     color: theme.colors.success,
     fontSize: theme.fontSize.sm,
+  },
+  promptInput: {
+    minHeight: 140,
+    textAlignVertical: "top",
+  },
+  variables: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    lineHeight: 18,
   },
 }));

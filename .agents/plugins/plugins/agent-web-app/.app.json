@@ -3,6 +3,7 @@
     "web-app-builder": {
       "id": "web-app-builder",
       "category": "Productivity",
+      "icon": "PanelsTopLeft",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",

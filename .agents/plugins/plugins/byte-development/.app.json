@@ -3,6 +3,7 @@
     "development-console": {
       "id": "development-console",
       "category": "Development",
+      "icon": "Code2",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",

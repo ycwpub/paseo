@@ -1,16 +1,25 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { PluginAppState } from "@getpaseo/protocol/messages";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { ArgosTroubleshooterManager, isArgosAlertMessage } from "./argos-troubleshooter-manager.js";
+import type { AlertTroubleshooterRecordStore } from "./alert-troubleshooter-record-store.js";
 
 const CONFIG = {
-  version: 1 as const,
+  version: 3 as const,
   enabled: true,
+  listenEnabled: true,
+  troubleshootingEnabled: true,
   botId: "bot-1",
   chats: [{ chatId: "oc_alerts", name: "Argos 告警群", groupId: "123" }],
   target: { kind: "default" as const },
   troubleshootingSopDoc: "https://example.com/wiki/sop",
   attributionRecordRoot: "https://example.com/wiki/records",
+  recordTableUrl: "https://example.com/base/alerts?table=tbl_alerts",
+  promptTemplate: "",
+  queuePollIntervalMinutes: 5,
   schedule: {
     enabled: true,
     intervalMinutes: 30,
@@ -58,6 +67,7 @@ describe("ArgosTroubleshooterManager", () => {
   });
 
   it("scans the requested historical window and only starts an agent for Argos alerts", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-argos-test-"));
     let current = state();
     const listChatMessages = vi.fn(async () => [
       {
@@ -100,8 +110,32 @@ describe("ArgosTroubleshooterManager", () => {
       initialPromptStarted: true,
       initialPromptError: null,
     }));
+    const records = new Map<
+      string,
+      Awaited<ReturnType<AlertTroubleshooterRecordStore["getRecord"]>>
+    >();
+    const recordStore: AlertTroubleshooterRecordStore = {
+      upsertMessage: vi.fn(async ({ event, trigger }) => {
+        const record = {
+          recordId: `rec_${event.messageId}`,
+          messageId: event.messageId,
+          chatId: event.chatId,
+          chatName: "Argos 告警群",
+          messageText: event.text,
+          messageTime: new Date(event.createTime ?? 0).toISOString(),
+          trigger,
+        };
+        records.set(record.recordId, record);
+        return record;
+      }),
+      listUnclaimed: vi.fn(async () => []),
+      getRecord: vi.fn(async ({ recordId }) => records.get(recordId) ?? null),
+      markRunning: vi.fn(async () => undefined),
+      markSucceeded: vi.fn(async () => undefined),
+      markFailed: vi.fn(async () => undefined),
+    };
     const manager = new ArgosTroubleshooterManager({
-      paseoHome: "/tmp/paseo",
+      paseoHome,
       pluginService: {
         listAppProjects: () => [current],
         configureApp: (_pluginId, _appId, _projectId, _defaultAgent, data) => {
@@ -112,6 +146,7 @@ describe("ArgosTroubleshooterManager", () => {
       projectRegistry: { get: async () => project() },
       assistantStore: { get: () => null },
       teamStore: { get: () => null },
+      recordStore,
       createAgent: createAgent as never,
       createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
       listChatMessages,
@@ -119,23 +154,27 @@ describe("ArgosTroubleshooterManager", () => {
       now: () => new Date("2026-09-04T08:00:00.000Z"),
     });
 
-    manager.start();
-    await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(1));
+    try {
+      manager.start();
+      await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(1));
 
-    expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_alerts", {
-      start: new Date("2026-09-04T06:00:00.000Z"),
-      end: new Date("2026-09-04T07:30:00.000Z"),
-    });
-    expect(createAgent.mock.calls[0]?.[0]).toMatchObject({
-      provider: "aiden-codex/gpt-5.5",
-      workspaceId: "ws-1",
-      background: true,
-    });
-    const prompt = createAgent.mock.calls[0]?.[0].initialPrompt ?? "";
-    expect(prompt).toContain("Argos 服务告警 event_id=123");
-    expect(prompt).not.toContain("Bamboo 对账报警");
-    expect(prompt).toContain("https://example.com/wiki/sop");
-    expect(prompt).toContain("https://example.com/wiki/records");
-    await manager.stop();
+      expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_alerts", {
+        start: new Date("2026-09-04T06:00:00.000Z"),
+        end: new Date("2026-09-04T07:30:00.000Z"),
+      });
+      expect(createAgent.mock.calls[0]?.[0]).toMatchObject({
+        provider: "aiden-codex/gpt-5.5",
+        workspaceId: "ws-1",
+        background: true,
+      });
+      const prompt = createAgent.mock.calls[0]?.[0].initialPrompt ?? "";
+      expect(prompt).toContain("Argos 服务告警 event_id=123");
+      expect(prompt).not.toContain("Bamboo 对账报警");
+      expect(prompt).toContain("https://example.com/wiki/sop");
+      expect(prompt).toContain("https://example.com/wiki/records");
+    } finally {
+      await manager.stop();
+      rmSync(paseoHome, { recursive: true, force: true });
+    }
   });
 });

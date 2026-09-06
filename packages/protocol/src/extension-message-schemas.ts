@@ -31,6 +31,10 @@ import {
   PluginHttpServiceSubmitResponseSchema,
 } from "./plugin/app-rpc-schemas.js";
 import {
+  AlertTroubleshooterEnqueueRecordRequestSchema,
+  AlertTroubleshooterEnqueueRecordResponseSchema,
+} from "./plugin/alert-troubleshooter-rpc-schemas.js";
+import {
   PluginHttpConfigGetRequestSchema,
   PluginHttpConfigGetResponseSchema,
   PluginHttpConfigSaveRequestSchema,
@@ -327,6 +331,7 @@ export const ExtensionSessionInboundSchemas = [
   PluginAppJobUpdateRequestSchema,
   PluginAppJobStartRequestSchema,
   PluginAppJobDeleteRequestSchema,
+  AlertTroubleshooterEnqueueRecordRequestSchema,
   PluginHttpServiceSubmitRequestSchema,
   PluginHttpConfigGetRequestSchema,
   PluginHttpConfigSaveRequestSchema,
@@ -435,6 +440,7 @@ export const ExtensionSessionOutboundSchemas = [
   PluginAppJobUpdateResponseSchema,
   PluginAppJobStartResponseSchema,
   PluginAppJobDeleteResponseSchema,
+  AlertTroubleshooterEnqueueRecordResponseSchema,
   PluginHttpServiceSubmitResponseSchema,
   PluginHttpConfigGetResponseSchema,
   PluginHttpConfigSaveResponseSchema,

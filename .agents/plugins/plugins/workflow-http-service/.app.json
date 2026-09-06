@@ -3,6 +3,7 @@
     "service-console": {
       "id": "service-console",
       "category": "Infrastructure",
+      "icon": "Webhook",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",

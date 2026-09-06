@@ -7,11 +7,16 @@ import type {
 
 export interface AlertTroubleshooterConfigDraft {
   enabled: boolean;
+  listenEnabled: boolean;
+  troubleshootingEnabled: boolean;
   botId: string;
   chats: AlertTroubleshooterChat[];
   target: AlertTroubleshooterTarget;
   troubleshootingSopDoc: string;
   attributionRecordRoot: string;
+  recordTableUrl: string;
+  promptTemplate: string;
+  queuePollIntervalMinutes: string;
   schedule: {
     enabled: boolean;
     intervalMinutes: string;
@@ -49,8 +54,12 @@ function issueMessage(path: PropertyKey[]): string {
   if (field === "attributionRecordRoot") {
     return "归因记录链接格式无效，请输入完整的 http:// 或 https:// 链接";
   }
+  if (field === "recordTableUrl") {
+    return "消息多维表格链接格式无效，请输入完整的 http:// 或 https:// 链接";
+  }
   if (field === "target.assistantId") return "请选择助手";
   if (field === "target.teamId") return "请选择团队";
+  if (field === "queuePollIntervalMinutes") return "多维表格轮询间隔必须是 1 到 1440 分钟";
   if (field === "schedule.intervalMinutes") return "扫描间隔必须是 5 到 1440 分钟";
   if (field === "schedule.lookbackMinutes") return "回看范围必须是 30 到 10080 分钟";
   if (field === "schedule.excludeRecentMinutes") {
@@ -72,6 +81,7 @@ export function validateAlertTroubleshooterConfig(
   const botId = draft.botId.trim();
   const troubleshootingSopDoc = draft.troubleshootingSopDoc.trim();
   const attributionRecordRoot = draft.attributionRecordRoot.trim();
+  const recordTableUrl = draft.recordTableUrl.trim();
 
   if (!botId) {
     errors.push("请选择飞书机器人");
@@ -95,20 +105,36 @@ export function validateAlertTroubleshooterConfig(
     errors.push("归因记录链接格式无效，请输入完整的 http:// 或 https:// 链接");
     explicitlyValidatedFields.add("attributionRecordRoot");
   }
+  if (!recordTableUrl) {
+    errors.push("请输入消息多维表格链接");
+    explicitlyValidatedFields.add("recordTableUrl");
+  } else if (!isHttpUrl(recordTableUrl)) {
+    errors.push("消息多维表格链接格式无效，请输入完整的 http:// 或 https:// 链接");
+    explicitlyValidatedFields.add("recordTableUrl");
+  }
+  if (draft.target.kind === "default") {
+    errors.push("请选择助手或团队");
+    explicitlyValidatedFields.add("target");
+  }
 
   const parsed = schema.safeParse({
-    version: 1,
+    version: 3,
     enabled: draft.enabled,
+    listenEnabled: draft.listenEnabled,
+    troubleshootingEnabled: draft.troubleshootingEnabled,
     botId,
     chats: draft.chats,
     target: draft.target,
     troubleshootingSopDoc,
     attributionRecordRoot,
+    recordTableUrl,
+    promptTemplate: draft.promptTemplate,
+    queuePollIntervalMinutes: numericValue(draft.queuePollIntervalMinutes, 5),
     schedule: {
       enabled: draft.schedule.enabled,
       intervalMinutes: numericValue(draft.schedule.intervalMinutes, 30),
       lookbackMinutes: numericValue(draft.schedule.lookbackMinutes, 120),
-      excludeRecentMinutes: numericValue(draft.schedule.excludeRecentMinutes, 30),
+      excludeRecentMinutes: numericValue(draft.schedule.excludeRecentMinutes, 0),
     },
   });
 

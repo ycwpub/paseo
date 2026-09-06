@@ -87,6 +87,7 @@ const PluginHttpServiceConfigSchema = z.object({
 const PluginAppConfigSchema = z.object({
   id: z.string().trim().min(1),
   category: z.string().trim().min(1).optional(),
+  icon: z.string().trim().min(1).optional(),
   project: PluginAppProjectBindingSchema.optional(),
   document: z.string().trim().min(1).optional(),
 });
@@ -352,6 +353,7 @@ function discoverApps(pluginRoot: string, configPath: string): PluginAppDefiniti
     return PluginAppDefinitionSchema.parse({
       id: app.id,
       category: app.category,
+      icon: app.icon,
       project: app.project ?? DEFAULT_PLUGIN_APP_PROJECT_BINDING,
       initialDocument,
     });

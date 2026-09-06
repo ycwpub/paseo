@@ -1,5 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import {
   BAMBOO_TROUBLESHOOTER_APP_ID,
   BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY,
@@ -15,8 +13,10 @@ import {
   buildScheduledAlertScanWindow,
   type AlertScanWindow,
 } from "./alert-troubleshooter-manager.js";
-
-const execFileAsync = promisify(execFile);
+import type {
+  AlertTroubleshooterRecord,
+  AlertTroubleshooterRecordStore,
+} from "./alert-troubleshooter-record-store.js";
 
 export type BambooScanWindow = AlertScanWindow;
 export const buildScheduledBambooScanWindow = buildScheduledAlertScanWindow;
@@ -43,12 +43,12 @@ export class BambooTroubleshooterManager {
 
   constructor(
     options: Omit<ManagerOptions, "definition"> & {
-      runScanner?: (input: {
-        chatId: string;
-        scanDirUrl: string;
-        window: AlertScanWindow;
-        cwd: string;
-      }) => Promise<void>;
+      recordStore: AlertTroubleshooterRecordStore;
+      listChatMessages: (
+        botId: string,
+        chatId: string,
+        window: AlertScanWindow,
+      ) => Promise<NormalizedLarkMessageEvent[]>;
     },
   ) {
     this.manager = new ProjectAlertTroubleshooterManager({
@@ -66,23 +66,10 @@ export class BambooTroubleshooterManager {
           return parsed.success ? parsed.data : null;
         },
         matchesAlert: (event) => isBambooAlertMessage(event.text, event.messageType),
-        prepareRun: async ({ config, window, cwd }) => {
-          for (const chat of config.chats) {
-            const input = {
-              chatId: chat.chatId,
-              scanDirUrl: config.attributionRecordRoot,
-              window,
-              cwd,
-            };
-            if (options.runScanner) {
-              await options.runScanner(input);
-              continue;
-            }
-            await runBambooScanner(input);
-          }
-          return {};
-        },
-        buildPrompt: ({ config, trigger, event }) => buildBambooPrompt(config, trigger, event),
+        scanMessages: ({ config, window }) =>
+          collectScheduledBambooAlerts(options.listChatMessages, config, window),
+        buildDefaultPrompt: ({ config, trigger, record }) =>
+          buildBambooPrompt(config, trigger, record),
       },
     });
   }
@@ -98,48 +85,49 @@ export class BambooTroubleshooterManager {
   observeIncomingMessage(botId: string, event: NormalizedLarkMessageEvent): Promise<void> {
     return this.manager.observeIncomingMessage(botId, event);
   }
+
+  enqueueRecord(projectId: string, recordId: string): Promise<boolean> {
+    return this.manager.enqueueRecord(projectId, recordId);
+  }
 }
 
-async function runBambooScanner(input: {
-  chatId: string;
-  scanDirUrl: string;
-  window: AlertScanWindow;
-  cwd: string;
-}): Promise<void> {
-  await execFileAsync(
-    "life-settle-ai-assistant",
-    [
-      "bamboo-alerts-to-excel",
-      "--chat-id",
-      input.chatId,
-      "--scan-dir-url",
-      input.scanDirUrl,
-      "--start",
-      input.window.start.toISOString(),
-      "--end",
-      input.window.end.toISOString(),
-      "--init-status",
-      "init",
-    ],
-    { cwd: input.cwd, timeout: 10 * 60_000, maxBuffer: 10 * 1024 * 1024 },
-  );
+async function collectScheduledBambooAlerts(
+  listChatMessages: (
+    botId: string,
+    chatId: string,
+    window: AlertScanWindow,
+  ) => Promise<NormalizedLarkMessageEvent[]>,
+  config: AlertTroubleshooterConfig,
+  window: AlertScanWindow,
+): Promise<NormalizedLarkMessageEvent[]> {
+  const alerts = new Map<string, NormalizedLarkMessageEvent>();
+  for (const chat of config.chats) {
+    const messages = await listChatMessages(config.botId, chat.chatId, window);
+    for (const message of messages) {
+      if (isBambooAlertMessage(message.text, message.messageType)) {
+        alerts.set(message.messageId, message);
+      }
+    }
+  }
+  return [...alerts.values()];
 }
 
 function buildBambooPrompt(
   config: AlertTroubleshooterConfig,
-  trigger: "message" | "schedule",
-  event?: NormalizedLarkMessageEvent,
+  trigger: "message" | "schedule" | "table" | "manual",
+  record: AlertTroubleshooterRecord,
 ): string {
   return [
-    "执行 Bamboo 对账报警自动排查。",
-    "首先运行 `life-settle-ai-assistant bamboo-alerts-auto-troubleshoot` 并完整遵守输出规范。",
-    "目录中的每条报警必须由 fresh context 子 Agent 按 `life-settle-ai-assistant bamboo-alert-troubleshooter` 排查和审查。",
-    `触发方式：${trigger === "message" ? "飞书实时报警消息" : "定时补偿扫描"}`,
+    "执行单条 Bamboo 对账报警自动排查。",
+    "先读取 `life-settle-ai-assistant bamboo-alert-troubleshooter` 指引，再严格按 runner 状态机处理指定记录。",
+    `多维表格记录 ID：${record.recordId}`,
+    `触发方式：${trigger}`,
     `归因记录目录：${config.attributionRecordRoot}`,
+    `消息记录表：${config.recordTableUrl}`,
     `排查 SOP：${config.troubleshootingSopDoc}`,
     `监听群：${config.chats.map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`).join("、")}`,
-    event ? `触发消息：chat_id=${event.chatId}, message_id=${event.messageId}\n${event.text}` : "",
-    "扫描阶段已经由宿主执行，请直接从归因记录目录执行今天和昨天的自动排查闭环。",
+    `触发消息：chat_id=${record.chatId ?? ""}, message_id=${record.messageId ?? ""}\n${record.messageText}`,
+    "只处理上述指定记录，不要批量认领其他记录。",
     "不要手工解析卡片、手工更新 Base、直接调用飞书 OpenAPI，或绕过 runner 的状态机和审查门禁。",
   ]
     .filter(Boolean)

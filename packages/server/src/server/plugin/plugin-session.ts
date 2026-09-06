@@ -28,6 +28,7 @@ export type PluginSessionRequest = Extract<
       | "plugin.app.job.update.request"
       | "plugin.app.job.start.request"
       | "plugin.app.job.delete.request"
+      | "plugin.alert_troubleshooter.enqueue_record.request"
       | "plugin.http.submit.request"
       | "plugin.http.config.get.request"
       | "plugin.http.config.save.request"
@@ -60,6 +61,7 @@ const PLUGIN_SESSION_REQUEST_TYPES = new Set<SessionInboundMessage["type"]>([
   "plugin.app.job.update.request",
   "plugin.app.job.start.request",
   "plugin.app.job.delete.request",
+  "plugin.alert_troubleshooter.enqueue_record.request",
   "plugin.http.config.get.request",
   "plugin.http.config.save.request",
   "plugin.http.local_addresses.get.request",
@@ -110,6 +112,7 @@ type PluginAppRequest = Extract<
       | "plugin.app.project.delete.request"
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
+      | "plugin.alert_troubleshooter.enqueue_record.request"
       | "plugin.http.submit.request"
       | "plugin.app.job.get.request"
       | "plugin.app.job.list.request";
@@ -161,6 +164,7 @@ function isPluginAppRequest(message: PluginSessionRequest): message is PluginApp
     message.type === "plugin.app.project.delete.request" ||
     message.type === "plugin.app.generate.request" ||
     message.type === "plugin.app.action.submit.request" ||
+    message.type === "plugin.alert_troubleshooter.enqueue_record.request" ||
     message.type === "plugin.http.submit.request" ||
     message.type === "plugin.app.job.get.request" ||
     message.type === "plugin.app.job.list.request"
@@ -353,6 +357,24 @@ export class PluginSession {
               message.defaultAgent,
               message.data,
             ),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.alert_troubleshooter.enqueue_record.request": {
+        const queued = await this.service.enqueueAlertTroubleshooterRecord({
+          pluginId: message.pluginId,
+          appId: message.appId,
+          projectId: message.projectId,
+          recordId: message.recordId,
+        });
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.enqueue_record.response",
+          payload: {
+            requestId: message.requestId,
+            queued,
+            recordId: message.recordId,
             error: null,
           },
         });
@@ -710,6 +732,17 @@ export class PluginSession {
         this.host.emit({
           type: "plugin.app.action.submit.response",
           payload: { requestId: message.requestId, job: null, error },
+        });
+        return;
+      case "plugin.alert_troubleshooter.enqueue_record.request":
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.enqueue_record.response",
+          payload: {
+            requestId: message.requestId,
+            queued: false,
+            recordId: message.recordId,
+            error,
+          },
         });
         return;
       case "plugin.http.submit.request":

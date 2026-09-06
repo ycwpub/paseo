@@ -208,6 +208,7 @@ An app can customize labels and map Project context into workflow-specific field
     "review-console": {
       "id": "review-console",
       "category": "Productivity",
+      "icon": "PanelsTopLeft",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",
@@ -356,7 +357,8 @@ Declare app slots with the standard Codex `.app.json` shape:
   "apps": {
     "review-console": {
       "id": "review-console",
-      "category": "Productivity"
+      "category": "Productivity",
+      "icon": "PanelsTopLeft"
     }
   }
 }
@@ -370,6 +372,7 @@ An app can ship an initial declarative interface instead of starting empty:
     "review-console": {
       "id": "review-console",
       "category": "Productivity",
+      "icon": "PanelsTopLeft",
       "document": "./apps/review-console.json"
     }
   }

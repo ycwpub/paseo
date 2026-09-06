@@ -5,33 +5,30 @@ description: Configure and operate a Project-scoped Bamboo reconciliation alert 
 
 # Bamboo 对账自动排查
 
-本插件以 Paseo Project 为核心，监听指定飞书群的 Bamboo 报警卡片，并通过
-`life-settle-ai-assistant` 已沉淀的能力完成扫描、排查、归因记录和 SOP 更新。
+本插件以 Paseo Project 为核心，监听并补偿扫描指定飞书群的 Bamboo 报警卡片。
+消息先写入配置的多维表格，再进入 Project 本地持久队列，由
+`life-settle-ai-assistant` 已沉淀的单条排查能力异步处理。
 
 ## 强制执行规范
 
-1. 群消息扫描必须调用：
-
-   ```bash
-   life-settle-ai-assistant bamboo-alerts-to-excel
-   ```
-
-2. 自动排查必须先读取：
-
-   ```bash
-   life-settle-ai-assistant bamboo-alerts-auto-troubleshoot
-   ```
-
-3. 单条报警排查必须遵循：
+1. 单条报警排查必须遵循：
 
    ```bash
    life-settle-ai-assistant bamboo-alert-troubleshooter
    ```
 
-4. 不手工解析 Bamboo 卡片，不手工创建或更新日报 Base，不手工回写 Bamboo
+2. 不手工解析 Bamboo 卡片，不手工创建或更新日报 Base，不手工回写 Bamboo
    卡片或原群消息，不直接调用飞书 OpenAPI。
-5. 临时文件放在当前 Project 的 `.tmp/` 目录。
-6. 扫描和排查必须使用插件项目配置中的飞书群、SOP 文档和归因记录目录，不得臆造。
+3. 临时文件放在当前 Project 的 `.tmp/` 目录。
+4. 扫描和排查必须使用插件项目配置中的飞书群、SOP 文档、消息多维表格和归因记录目录，不得臆造。
+
+## 入表和队列
+
+- 实时监听和定时扫描发现的报警都先按消息 ID 幂等写入消息多维表格。
+- 入表成功后写入 `~/.paseo/projects/<projectId>/plugin-data/<pluginId>/alert-queue.json`。
+- 队列串行消费；队列为空时，按配置间隔从多维表格获取未认领记录。
+- 监听、扫描、自动排查可以独立关闭；手动指定的多维表格记录仍可用于调试。
+- 自定义处理提示词支持内置变量和 Project `variables`。
 
 ## 扫描窗口
 
@@ -42,8 +39,8 @@ start = now - lookbackMinutes
 end   = now - excludeRecentMinutes
 ```
 
-默认扫描两小时内、排除最近半小时。实时监听用于覆盖最近消息，CLI 内部通过
-`result_id` 和日报 Base upsert 保证幂等。
+默认扫描最近两小时的全部消息，不排除最近消息。实时监听与定时扫描可能重叠，
+消息多维表格和本地队列按消息/记录 ID 去重。
 
 ## Project 约束
 

@@ -118,6 +118,7 @@ export const DEFAULT_PLUGIN_APP_PROJECT_BINDING: PluginAppProjectBinding = {
 export const PluginAppDefinitionSchema = z.object({
   id: z.string().trim().min(1),
   category: z.string().trim().min(1).optional(),
+  icon: z.string().trim().min(1).optional(),
   // COMPAT(pluginProjectScopedApps): added on 2026-08-20. Older daemons omit it.
   project: PluginAppProjectBindingSchema.optional(),
   initialDocument: PluginAppDocumentSchema.optional(),

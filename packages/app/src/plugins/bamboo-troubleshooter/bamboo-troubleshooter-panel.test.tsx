@@ -15,6 +15,9 @@ import {
 
 const testState = vi.hoisted(() => ({
   configurePluginApp: vi.fn(),
+  enqueueAlertTroubleshooterRecord: vi.fn(),
+  assistants: [{ id: "assistant-1", name: "结算助手", description: "处理结算问题" }],
+  teams: [{ id: "team-1", name: "结算团队" }],
   project: {
     projectId: "project-1",
     projectName: "结算项目",
@@ -28,21 +31,26 @@ const testState = vi.hoisted(() => ({
 
 function validConfig() {
   return {
-    version: 1,
+    version: 3,
     enabled: true,
+    listenEnabled: true,
+    troubleshootingEnabled: true,
     botId: "bot-1",
     chats: [
       { chatId: "oc_first", name: "结算报警一群", groupId: "group-1" },
       { chatId: "oc_second", name: "结算报警二群", groupId: "group-2" },
     ],
-    target: { kind: "default" },
+    target: { kind: "assistant", assistantId: "assistant-1" },
     troubleshootingSopDoc: "https://example.com/wiki/sop",
     attributionRecordRoot: "https://example.com/wiki/records",
+    recordTableUrl: "https://example.com/base/alerts?table=tbl_alerts",
+    promptTemplate: "处理 {{recordId}}：{{messageText}}",
+    queuePollIntervalMinutes: 5,
     schedule: {
       enabled: true,
       intervalMinutes: 30,
       lookbackMinutes: 120,
-      excludeRecentMinutes: 30,
+      excludeRecentMinutes: 0,
     },
   };
 }
@@ -59,6 +67,7 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("lucide-react-native", () => ({
+  Play: () => null,
   Plus: () => null,
   Save: () => null,
   Trash2: () => null,
@@ -97,7 +106,29 @@ vi.mock("@/components/ui/form-field", () => ({
 }));
 
 vi.mock("@/components/ui/segmented-control", () => ({
-  SegmentedControl: () => null,
+  SegmentedControl: ({
+    options,
+    value,
+    onValueChange,
+  }: {
+    options: Array<{ value: string; label: string; disabled?: boolean }>;
+    value: string;
+    onValueChange: (value: string) => void;
+  }) => (
+    <div>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={option.value === value}
+          disabled={option.disabled}
+          onClick={() => onValueChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/ui/select-field", () => ({
@@ -129,11 +160,38 @@ vi.mock("@/components/ui/switch", () => ({
 }));
 
 vi.mock("@/hooks/use-assistants", () => ({
-  useAssistants: () => ({ assistants: [] }),
+  useAssistants: () => ({ assistants: testState.assistants }),
 }));
 
 vi.mock("@/hooks/use-teams", () => ({
-  useTeams: () => ({ teams: [] }),
+  useTeams: () => ({ teams: testState.teams }),
+}));
+
+vi.mock("@/plugins/project/plugin-project-default-agent-field", () => ({
+  PluginProjectDefaultAgentField: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string;
+    value: { provider: string; model: string };
+    onChange: (value: { provider: string; model: string }) => void;
+  }) => (
+    <label>
+      <span>{label}</span>
+      <select
+        aria-label={label}
+        value={`${value.provider}/${value.model}`}
+        onChange={(event) => {
+          const [provider, ...modelParts] = event.target.value.split("/");
+          onChange({ provider: provider ?? "", model: modelParts.join("/") });
+        }}
+      >
+        <option value="aiden-codex/gpt-5.5">aiden-codex / gpt-5.5</option>
+        <option value="claude/claude-opus-4-6">claude / claude-opus-4-6</option>
+      </select>
+    </label>
+  ),
 }));
 
 vi.mock("@/plugins/project/plugin-project-boundary", () => ({
@@ -151,6 +209,7 @@ vi.mock("@/runtime/host-features", () => ({
 vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => ({
     configurePluginApp: testState.configurePluginApp,
+    enqueueAlertTroubleshooterRecord: testState.enqueueAlertTroubleshooterRecord,
   }),
 }));
 
@@ -185,6 +244,12 @@ describe("BambooTroubleshooterPanel", () => {
   beforeEach(() => {
     testState.configurePluginApp.mockReset();
     testState.configurePluginApp.mockResolvedValue({ app: { id: "configured" }, error: null });
+    testState.enqueueAlertTroubleshooterRecord.mockReset();
+    testState.enqueueAlertTroubleshooterRecord.mockResolvedValue({
+      queued: true,
+      recordId: "rec_debug",
+      error: null,
+    });
     testState.project.data = { bambooTroubleshooter: validConfig() };
   });
 
@@ -202,7 +267,15 @@ describe("BambooTroubleshooterPanel", () => {
 
     expect(screen.getByText("结算报警一群 · group-1 · oc_first")).toBeTruthy();
     expect(screen.getByText("结算报警二群 · group-2 · oc_second")).toBeTruthy();
-    expect(screen.getByText("排查模型：aiden-codex · gpt-5.5")).toBeTruthy();
+    expect((screen.getByLabelText("排查 Provider 和模型（必填）") as HTMLSelectElement).value).toBe(
+      "aiden-codex/gpt-5.5",
+    );
+    expect(screen.queryByRole("button", { name: "默认模型" })).toBeNull();
+    const assistantButton = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent === "助手");
+    expect(assistantButton?.getAttribute("aria-pressed")).toBe("true");
+    expect((screen.getByLabelText("排除最近消息（分钟）") as HTMLInputElement).value).toBe("0");
 
     fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]!);
     expect(screen.queryByText("结算报警一群 · group-1 · oc_first")).toBeNull();
@@ -219,14 +292,80 @@ describe("BambooTroubleshooterPanel", () => {
           data: {
             [BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY]: expect.objectContaining({
               chats: [{ chatId: "oc_second", name: "结算报警二群", groupId: "group-2" }],
+              target: { kind: "assistant", assistantId: "assistant-1" },
               troubleshootingSopDoc: "https://example.com/wiki/sop",
               attributionRecordRoot: "https://example.com/wiki/records",
+              recordTableUrl: "https://example.com/base/alerts?table=tbl_alerts",
+              listenEnabled: true,
+              troubleshootingEnabled: true,
+              promptTemplate: "处理 {{recordId}}：{{messageText}}",
+              queuePollIntervalMinutes: 5,
             }),
           },
         }),
       ),
     );
     expect(screen.getByText("配置已保存，后台监听将在下一次同步时生效。")).toBeTruthy();
+  });
+
+  it("saves the selected model and exactly one of assistant or team", async () => {
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("排查 Provider 和模型（必填）"), {
+      target: { value: "claude/claude-opus-4-6" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "团队" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
+
+    await waitFor(() =>
+      expect(testState.configurePluginApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          defaultAgent: { provider: "claude", model: "claude-opus-4-6" },
+          data: {
+            [BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY]: expect.objectContaining({
+              target: { kind: "team", teamId: "team-1" },
+            }),
+          },
+        }),
+      ),
+    );
+  });
+
+  it("persists listening, scanning, and troubleshooting switches independently", async () => {
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("启用群消息监听"));
+    fireEvent.click(screen.getByLabelText("启用定时扫描"));
+    fireEvent.click(screen.getByLabelText("启用异步排查"));
+    fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
+
+    await waitFor(() =>
+      expect(testState.configurePluginApp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: {
+            [BAMBOO_TROUBLESHOOTER_CONFIG_DATA_KEY]: expect.objectContaining({
+              listenEnabled: false,
+              troubleshootingEnabled: false,
+              schedule: expect.objectContaining({ enabled: false }),
+            }),
+          },
+        }),
+      ),
+    );
   });
 
   it("shows Chinese required-field errors instead of raw Zod JSON", async () => {
@@ -245,8 +384,35 @@ describe("BambooTroubleshooterPanel", () => {
     expect(await screen.findByText(/请至少添加一个监听飞书群/)).toBeTruthy();
     expect(screen.getByText(/请输入排查 SOP 飞书文档链接/)).toBeTruthy();
     expect(screen.getByText(/请输入归因记录飞书文档或目录链接/)).toBeTruthy();
+    expect(screen.getByText(/请输入消息多维表格链接/)).toBeTruthy();
     expect(screen.queryByText(/invalid_format|"origin"|Too small/)).toBeNull();
     expect(testState.configurePluginApp).not.toHaveBeenCalled();
+  });
+
+  it("queues a specified Base record for manual troubleshooting", async () => {
+    render(
+      <BambooTroubleshooterPanel
+        active
+        serverId="host-1"
+        plugin={plugin}
+        appDefinition={appDefinition}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("指定多维表格记录 ID"), {
+      target: { value: "rec_debug" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "加入处理队列" }));
+
+    await waitFor(() =>
+      expect(testState.enqueueAlertTroubleshooterRecord).toHaveBeenCalledWith({
+        pluginId: "bamboo-reconciliation-troubleshooter",
+        appId: "bamboo-troubleshooter-console",
+        projectId: "project-1",
+        recordId: "rec_debug",
+      }),
+    );
+    expect(screen.getByText("记录 rec_debug 已加入处理队列。")).toBeTruthy();
   });
 
   it("explains how to correct invalid document links", async () => {

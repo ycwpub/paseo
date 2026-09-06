@@ -35,6 +35,7 @@ describe("bundled plugin packages", () => {
       expect.objectContaining({
         id: "service-console",
         category: "Infrastructure",
+        icon: "Webhook",
       }),
     ]);
 
@@ -45,6 +46,7 @@ describe("bundled plugin packages", () => {
       expect.objectContaining({
         id: "web-app-builder",
         category: "Productivity",
+        icon: "PanelsTopLeft",
       }),
     ]);
 
@@ -55,6 +57,7 @@ describe("bundled plugin packages", () => {
       expect.objectContaining({
         id: "bamboo-troubleshooter-console",
         category: "Finance",
+        icon: "ScanSearch",
       }),
     ]);
 

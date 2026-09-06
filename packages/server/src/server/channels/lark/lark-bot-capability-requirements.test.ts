@@ -13,6 +13,8 @@ describe("Lark bot capability requirements", () => {
       expect(new Set(items).size).toBe(items.length);
     }
     expect(requirements.tenantScopes).toContain("im:message:readonly");
+    expect(requirements.tenantScopes).toContain("bitable:app");
+    expect(requirements.tenantScopes).toContain("wiki:wiki:readonly");
     expect(requirements.userScopes).toContain("offline_access");
     expect(requirements.userScopes).toContain("im:chat");
     expect(requirements.userScopes).toContain("im:message.p2p_msg:get_as_user");

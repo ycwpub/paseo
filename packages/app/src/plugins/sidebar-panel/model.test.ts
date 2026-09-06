@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { PluginSummary } from "@getpaseo/protocol/messages";
 import {
+  installedPluginEntryKey,
   resolveInstalledPluginEntries,
   resolvePluginAppSelection,
 } from "@/plugins/sidebar-panel/model";
@@ -77,6 +78,15 @@ describe("plugin sidebar panel model", () => {
     expect(resolveInstalledPluginEntries([legacyPlugin])).toEqual([
       { plugin: legacyPlugin, app: null },
     ]);
+  });
+
+  it("applies the persisted plugin order and appends newly installed plugins", () => {
+    const entries = resolveInstalledPluginEntries(
+      [plugin("Zulu"), plugin("Alpha"), plugin("Beta")],
+      ["zulu", "alpha"],
+    );
+
+    expect(entries.map(installedPluginEntryKey)).toEqual(["zulu", "alpha", "beta"]);
   });
 
   it("opens, closes, and switches the selected plugin app", () => {

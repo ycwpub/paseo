@@ -3,6 +3,7 @@
     "argos-troubleshooter-console": {
       "id": "argos-troubleshooter-console",
       "category": "Operations",
+      "icon": "Siren",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",

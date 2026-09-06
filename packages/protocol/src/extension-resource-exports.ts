@@ -32,6 +32,10 @@ export {
   type AlertTroubleshooterTarget,
 } from "./plugin/alert-troubleshooter-types.js";
 export {
+  AlertTroubleshooterEnqueueRecordRequestSchema,
+  AlertTroubleshooterEnqueueRecordResponseSchema,
+} from "./plugin/alert-troubleshooter-rpc-schemas.js";
+export {
   ARGOS_TROUBLESHOOTER_APP_ID,
   ARGOS_TROUBLESHOOTER_CONFIG_DATA_KEY,
   ARGOS_TROUBLESHOOTER_PLUGIN_ID,

@@ -6558,6 +6558,15 @@ export class DaemonClient {
     return this.resourceRpc.configurePluginApp(input);
   }
 
+  async enqueueAlertTroubleshooterRecord(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    recordId: string;
+  }): Promise<{ queued: boolean; recordId: string; error: string | null }> {
+    return this.resourceRpc.enqueueAlertTroubleshooterRecord(input);
+  }
+
   async listPluginAppProjects(
     pluginId: string,
     appId: string,

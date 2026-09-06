@@ -18,6 +18,8 @@ export function PluginProjectDefaultAgentField({
   cwd,
   value,
   disabled,
+  label = "默认 Provider 和模型（必填）",
+  hint = "保存后作为该插件项目调用 Agent 时的默认模型；需要 Agent 的提示词、助手和流程参数在项目保存后再配置。",
   onChange,
 }: {
   active: boolean;
@@ -25,6 +27,8 @@ export function PluginProjectDefaultAgentField({
   cwd: string | null;
   value: PluginProjectDefaultAgentValue;
   disabled?: boolean;
+  label?: string;
+  hint?: string;
   onChange: (value: PluginProjectDefaultAgentValue) => void;
 }) {
   const snapshot = useProvidersSnapshot(serverId, { enabled: active, cwd });
@@ -45,10 +49,7 @@ export function PluginProjectDefaultAgentField({
   );
 
   return (
-    <Field
-      label="默认 Provider 和模型（必填）"
-      hint="保存后作为该插件项目调用 Agent 时的默认模型；需要 Agent 的提示词、助手和流程参数在项目保存后再配置。"
-    >
+    <Field label={label} hint={hint}>
       <View style={styles.selector}>
         <CombinedModelSelector
           providers={providers}

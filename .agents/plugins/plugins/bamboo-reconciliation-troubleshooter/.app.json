@@ -3,6 +3,7 @@
     "bamboo-troubleshooter-console": {
       "id": "bamboo-troubleshooter-console",
       "category": "Finance",
+      "icon": "ScanSearch",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",

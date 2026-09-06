@@ -6,6 +6,8 @@ import type { LarkBotApplicationRequirements } from "@getpaseo/protocol/channel/
  * every item here must map to a capability used by Paseo.
  */
 export const PASEO_LARK_TENANT_SCOPES = [
+  // Persist alert messages and processing state in configured Base tables.
+  "bitable:app",
   // Resolve users by email/open_id and display their complete identity.
   "contact:user.base:readonly",
   "contact:user.email:readonly",
@@ -22,6 +24,8 @@ export const PASEO_LARK_TENANT_SCOPES = [
   // Load message/thread history and reply as the application bot.
   "im:message:readonly",
   "im:message:send_as_bot",
+  // Resolve Wiki links that point to Base applications.
+  "wiki:wiki:readonly",
 ] as const;
 
 export const PASEO_LARK_USER_SCOPES = [

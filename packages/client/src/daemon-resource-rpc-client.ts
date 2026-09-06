@@ -490,6 +490,18 @@ export class DaemonResourceRpcClient {
     return { app: result.app, error: result.error };
   }
 
+  async enqueueAlertTroubleshooterRecord(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    recordId: string;
+  }): Promise<{ queued: boolean; recordId: string; error: string | null }> {
+    return this.request({
+      message: { type: "plugin.alert_troubleshooter.enqueue_record.request", ...input },
+      responseType: "plugin.alert_troubleshooter.enqueue_record.response",
+    });
+  }
+
   async listPluginAppProjects(
     pluginId: string,
     appId: string,

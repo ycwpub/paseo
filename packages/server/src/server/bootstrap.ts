@@ -263,6 +263,7 @@ import { PluginHttpServiceManager } from "./plugin/plugin-http-service-manager.j
 import { PluginAppService } from "./plugin/plugin-app-service.js";
 import { BambooTroubleshooterManager } from "./plugin/bamboo-troubleshooter-manager.js";
 import { ArgosTroubleshooterManager } from "./plugin/argos-troubleshooter-manager.js";
+import { LarkAlertTroubleshooterRecordStore } from "./plugin/alert-troubleshooter-record-store.js";
 import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
 import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
 import { ProjectIndexService } from "./project/project-index-service.js";
@@ -1900,32 +1901,22 @@ export async function createPaseoDaemon(
     listHttpTargets: () => pluginService.listEnabledHttpTargets(),
   });
   pluginService.attachAppRuntime(pluginAppService);
+  const alertTroubleshooterRecordStore = new LarkAlertTroubleshooterRecordStore(larkChannelStore);
+  const waitForAlertTroubleshooterAgent = async (agentId: string) => {
+    const result = await agentManager.waitForAgentEvent(agentId, { waitForActive: true });
+    if (result.status === "error") {
+      throw new Error(result.lastMessage ?? `排查 Agent ${agentId} 执行失败`);
+    }
+  };
   bambooTroubleshooterManager = new BambooTroubleshooterManager({
     paseoHome: config.paseoHome,
     pluginService,
     projectRegistry,
     assistantStore,
     teamStore,
+    recordStore: alertTroubleshooterRecordStore,
     createAgent,
-    createProjectWorkspace: async (project, title) => {
-      const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
-      const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
-        source.path,
-        title,
-        project.projectId,
-      );
-      await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
-      return workspace;
-    },
-    logger,
-  });
-  argosTroubleshooterManager = new ArgosTroubleshooterManager({
-    paseoHome: config.paseoHome,
-    pluginService,
-    projectRegistry,
-    assistantStore,
-    teamStore,
-    createAgent,
+    waitForAgentCompletion: waitForAlertTroubleshooterAgent,
     createProjectWorkspace: async (project, title) => {
       const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
       const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
@@ -1939,6 +1930,43 @@ export async function createPaseoDaemon(
     listChatMessages: (botId, chatId, window) =>
       larkChannelService.listChatMessages(botId, chatId, window),
     logger,
+  });
+  argosTroubleshooterManager = new ArgosTroubleshooterManager({
+    paseoHome: config.paseoHome,
+    pluginService,
+    projectRegistry,
+    assistantStore,
+    teamStore,
+    recordStore: alertTroubleshooterRecordStore,
+    createAgent,
+    waitForAgentCompletion: waitForAlertTroubleshooterAgent,
+    createProjectWorkspace: async (project, title) => {
+      const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
+      const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
+        source.path,
+        title,
+        project.projectId,
+      );
+      await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
+      return workspace;
+    },
+    listChatMessages: (botId, chatId, window) =>
+      larkChannelService.listChatMessages(botId, chatId, window),
+    logger,
+  });
+  pluginService.attachAlertTroubleshooterRuntime({
+    enqueueRecord: ({ pluginId, appId, projectId, recordId }) => {
+      if (
+        pluginId === "bamboo-reconciliation-troubleshooter" &&
+        appId === "bamboo-troubleshooter-console"
+      ) {
+        return bambooTroubleshooterManager!.enqueueRecord(projectId, recordId);
+      }
+      if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
+        return argosTroubleshooterManager!.enqueueRecord(projectId, recordId);
+      }
+      throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
+    },
   });
   const scheduleService = new ScheduleService({
     paseoHome: config.paseoHome,

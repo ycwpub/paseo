@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { PluginAppState } from "@getpaseo/protocol/messages";
 import { createTestLogger } from "../../test-utils/test-logger.js";
@@ -7,15 +10,21 @@ import {
   buildScheduledBambooScanWindow,
   isBambooAlertMessage,
 } from "./bamboo-troubleshooter-manager.js";
+import type { AlertTroubleshooterRecordStore } from "./alert-troubleshooter-record-store.js";
 
 const CONFIG = {
-  version: 1 as const,
+  version: 3 as const,
   enabled: true,
+  listenEnabled: true,
+  troubleshootingEnabled: true,
   botId: "bot-1",
   chats: [{ chatId: "oc_alerts", name: "结算报警群", groupId: "123" }],
   target: { kind: "default" as const },
   troubleshootingSopDoc: "https://example.com/wiki/sop",
   attributionRecordRoot: "https://example.com/wiki/records",
+  recordTableUrl: "https://example.com/base/alerts?table=tbl_alerts",
+  promptTemplate: "",
+  queuePollIntervalMinutes: 5,
   schedule: {
     enabled: true,
     intervalMinutes: 30,
@@ -53,9 +62,27 @@ describe("BambooTroubleshooterManager", () => {
     expect(isBambooAlertMessage("普通聊天消息", "text")).toBe(false);
   });
 
-  it("scans a matched group and starts a Project-scoped troubleshooting agent once", async () => {
+  it("ingests both realtime and scanned messages before starting Project-scoped agents", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-bamboo-test-"));
     let current = state();
-    const runScanner = vi.fn(async () => undefined);
+    const listChatMessages = vi.fn(async () => [
+      {
+        eventId: "history:om-2",
+        messageId: "om-2",
+        chatId: "oc_alerts",
+        chatType: "group" as const,
+        messageType: "interactive",
+        threadId: null,
+        rootMessageId: null,
+        openId: null,
+        unionId: null,
+        senderType: "app",
+        displayName: "Bamboo",
+        topicName: "报警",
+        text: "Bamboo 对账报警 result_id=456",
+        createTime: Date.parse("2026-09-04T07:30:00.000Z"),
+      },
+    ]);
     const createAgent = vi.fn(async () => ({
       snapshot: { id: "agent-1" },
       liveSnapshot: { id: "agent-1" },
@@ -63,8 +90,32 @@ describe("BambooTroubleshooterManager", () => {
       initialPromptStarted: true,
       initialPromptError: null,
     }));
+    const records = new Map<
+      string,
+      Awaited<ReturnType<AlertTroubleshooterRecordStore["getRecord"]>>
+    >();
+    const recordStore: AlertTroubleshooterRecordStore = {
+      upsertMessage: vi.fn(async ({ event, trigger }) => {
+        const record = {
+          recordId: `rec_${event.messageId}`,
+          messageId: event.messageId,
+          chatId: event.chatId,
+          chatName: "结算报警群",
+          messageText: event.text,
+          messageTime: new Date(event.createTime ?? 0).toISOString(),
+          trigger,
+        };
+        records.set(record.recordId, record);
+        return record;
+      }),
+      listUnclaimed: vi.fn(async () => []),
+      getRecord: vi.fn(async ({ recordId }) => records.get(recordId) ?? null),
+      markRunning: vi.fn(async () => undefined),
+      markSucceeded: vi.fn(async () => undefined),
+      markFailed: vi.fn(async () => undefined),
+    };
     const manager = new BambooTroubleshooterManager({
-      paseoHome: "/tmp/paseo",
+      paseoHome,
       pluginService: {
         listAppProjects: () => [current],
         configureApp: (_pluginId, _appId, _projectId, _defaultAgent, data) => {
@@ -89,11 +140,12 @@ describe("BambooTroubleshooterManager", () => {
       },
       assistantStore: { get: () => null },
       teamStore: { get: () => null },
+      recordStore,
       createAgent: createAgent as never,
       createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
       logger: createTestLogger(),
       now: () => new Date("2026-09-04T08:00:00.000Z"),
-      runScanner,
+      listChatMessages,
     });
 
     const event = {
@@ -111,26 +163,38 @@ describe("BambooTroubleshooterManager", () => {
       text: "Bamboo 对账报警 result_id=123",
       createTime: Date.parse("2026-09-04T07:59:00.000Z"),
     };
-    await manager.observeIncomingMessage("bot-1", event);
-    await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(1));
-    await manager.observeIncomingMessage("bot-1", event);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await manager.observeIncomingMessage("bot-1", event);
+      await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(1));
+      await manager.observeIncomingMessage("bot-1", event);
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(runScanner).toHaveBeenCalledTimes(1);
-    expect(createAgent).toHaveBeenCalledTimes(1);
-    expect(createAgent.mock.calls[0]?.[0]).toMatchObject({
-      provider: "codex/gpt-5.6",
-      cwd: "/tmp/project",
-      workspaceId: "ws-1",
-      background: true,
-      notifyOnFinish: true,
-    });
-    const realtime = buildRealtimeBambooScanWindow(
-      new Date("2026-09-04T08:00:00.000Z"),
-      event.createTime,
-    );
-    expect(realtime.start.toISOString()).toBe("2026-09-04T07:49:00.000Z");
-    expect(realtime.end.toISOString()).toBe("2026-09-04T08:00:00.000Z");
-    await manager.stop();
+      expect(recordStore.upsertMessage).toHaveBeenCalledTimes(1);
+      expect(createAgent).toHaveBeenCalledTimes(1);
+      expect(createAgent.mock.calls[0]?.[0]).toMatchObject({
+        provider: "codex/gpt-5.6",
+        cwd: "/tmp/project",
+        workspaceId: "ws-1",
+        background: true,
+        notifyOnFinish: true,
+      });
+      const realtime = buildRealtimeBambooScanWindow(
+        new Date("2026-09-04T08:00:00.000Z"),
+        event.createTime,
+      );
+      expect(realtime.start.toISOString()).toBe("2026-09-04T07:49:00.000Z");
+      expect(realtime.end.toISOString()).toBe("2026-09-04T08:00:00.000Z");
+
+      manager.start();
+      await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(2));
+      expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_alerts", {
+        start: new Date("2026-09-04T06:00:00.000Z"),
+        end: new Date("2026-09-04T07:30:00.000Z"),
+      });
+      expect(recordStore.upsertMessage).toHaveBeenCalledTimes(2);
+    } finally {
+      await manager.stop();
+      rmSync(paseoHome, { recursive: true, force: true });
+    }
   });
 });

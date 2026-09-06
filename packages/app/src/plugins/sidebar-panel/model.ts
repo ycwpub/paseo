@@ -13,6 +13,10 @@ export interface InstalledPluginEntry {
   app: PluginAppDefinition | null;
 }
 
+export function installedPluginEntryKey(entry: InstalledPluginEntry): string {
+  return entry.plugin.pluginId ?? entry.plugin.id;
+}
+
 export function isSamePluginAppSelection(
   current: PluginAppPanelSelection | null,
   next: PluginAppPanelSelection,
@@ -28,8 +32,9 @@ export function isSamePluginAppSelection(
 
 export function resolveInstalledPluginEntries(
   plugins: readonly PluginSummary[] | null | undefined,
+  preferredOrder: readonly string[] = [],
 ): InstalledPluginEntry[] {
-  return (plugins ?? [])
+  const entries = (plugins ?? [])
     .flatMap((plugin) => {
       if (!plugin.installed || !plugin.pluginId) return [];
       const apps = plugin.apps ?? [];
@@ -40,6 +45,17 @@ export function resolveInstalledPluginEntries(
         sensitivity: "base",
       }),
     );
+  if (preferredOrder.length === 0) return entries;
+
+  const rank = new Map(preferredOrder.map((pluginId, index) => [pluginId, index]));
+  return entries.sort((left, right) => {
+    const leftRank = rank.get(installedPluginEntryKey(left));
+    const rightRank = rank.get(installedPluginEntryKey(right));
+    if (leftRank === undefined && rightRank === undefined) return 0;
+    if (leftRank === undefined) return 1;
+    if (rightRank === undefined) return -1;
+    return leftRank - rightRank;
+  });
 }
 
 export function resolvePluginAppSelection(

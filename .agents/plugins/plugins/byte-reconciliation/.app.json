@@ -3,6 +3,7 @@
     "reconciliation-console": {
       "id": "reconciliation-console",
       "category": "Finance",
+      "icon": "Scale",
       "project": {
         "idField": "projectId",
         "nameField": "projectName",

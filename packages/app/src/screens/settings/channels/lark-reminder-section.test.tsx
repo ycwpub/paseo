@@ -512,7 +512,7 @@ describe("LarkReminderSection", () => {
 
     expect(
       screen.getByText(
-        /群 结算群（group_settlement，oc_group） · 被提醒人 张三（alice@example.com，ou_alice）/,
+        /群 结算群（group_settlement、oc_group） · 被提醒人 张三（alice@example.com，ou_alice）/,
       ),
     ).toBeTruthy();
     expect(screen.getByText(/张三（alice@example.com，ou_alice） 已于/)).toBeTruthy();

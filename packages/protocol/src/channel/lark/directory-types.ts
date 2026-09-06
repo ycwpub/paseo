@@ -5,6 +5,8 @@ export const LarkDirectoryUserSchema = z.object({
   email: z.string().nullable(),
   openId: z.string(),
   displayName: z.string().nullable(),
+  firstMessageContent: z.string().nullable().optional(),
+  firstMessageAt: z.string().nullable().optional(),
   updatedAt: z.string(),
 });
 export type LarkDirectoryUser = z.infer<typeof LarkDirectoryUserSchema>;

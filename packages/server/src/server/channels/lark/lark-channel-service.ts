@@ -497,6 +497,17 @@ export class LarkChannelService {
     return chats;
   }
 
+  updateDirectoryUser(
+    appId: string,
+    openId: string,
+    input: { displayName: string | null; email: string | null },
+  ) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const user = this.directoryService.updateUser(appId, openId, input);
+    this.emitStatusChanged();
+    return user;
+  }
+
   async listChatMessages(
     botId: string,
     chatId: string,
@@ -1916,7 +1927,10 @@ export class LarkChannelService {
   ): void {
     if (!this.directoryService || !config.appId) return;
     if (event.openId) {
-      this.directoryService.observeUser(config.appId, event.openId, event.displayName);
+      this.directoryService.observeUser(config.appId, event.openId, event.displayName, null, {
+        content: event.text,
+        createTime: event.createTime,
+      });
       void this.refreshDirectoryUser(config.appId, event.openId);
     }
     if (event.chatType?.toLowerCase() !== "p2p") {

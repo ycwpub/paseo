@@ -137,7 +137,7 @@ describe("ProjectLarkGroupsList", () => {
       />,
     );
 
-    expect(screen.getByText("结算研发群（group_settlement，oc_settlement）")).toBeTruthy();
+    expect(screen.getByText("结算研发群（group_settlement、oc_settlement）")).toBeTruthy();
     expect(screen.getByText(/结算助手机器人（cli_test） · 已启用 · 最近 50 条消息/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
@@ -145,7 +145,7 @@ describe("ProjectLarkGroupsList", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: "编辑飞书群 结算研发群（group_settlement，oc_settlement）",
+        name: "编辑飞书群 结算研发群（group_settlement、oc_settlement）",
       }),
     );
     expect(openProjectLarkGroupSettings).toHaveBeenLastCalledWith(

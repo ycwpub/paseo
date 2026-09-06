@@ -60,6 +60,7 @@ describe("LarkChannelService", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await rm(paseoHome, { recursive: true, force: true });
   });
 
@@ -1387,6 +1388,7 @@ describe("LarkChannelService", () => {
   });
 
   test("handles a group message that mentions the configured substitute target", async () => {
+    vi.useFakeTimers();
     const harness = createHarness();
     harness.store.configure({
       botId: harness.botId,
@@ -1421,6 +1423,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
+    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(harness.createAgent).toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
@@ -1561,6 +1564,7 @@ describe("LarkChannelService", () => {
   });
 
   test("lets the configured substitute bot answer a question sent by another bot", async () => {
+    vi.useFakeTimers();
     const harness = createHarness();
     harness.store.configure({
       botId: harness.botId,
@@ -1596,6 +1600,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
+    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(harness.createAgent).toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1] ?? "";
@@ -1638,6 +1643,7 @@ describe("LarkChannelService", () => {
   });
 
   test("relays a local bot question to the bot configured as that user's substitute", async () => {
+    vi.useFakeTimers();
     const harness = createHarness();
     const sourcePairing = harness.store.upsertPendingPairing(harness.botId, {
       openId: "ou_yuan_as_seen_by_source",
@@ -1724,6 +1730,7 @@ describe("LarkChannelService", () => {
     );
     await harness.emitAgentState("agent-local-question", "running");
     await harness.emitAgentState("agent-local-question", "idle");
+    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
       expect.anything(),
@@ -1804,6 +1811,7 @@ describe("LarkChannelService", () => {
   });
 
   test("still requires authorization for substitute-triggered messages", async () => {
+    vi.useFakeTimers();
     const harness = createHarness();
     harness.store.configure({
       botId: harness.botId,
@@ -1838,6 +1846,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
+    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(harness.createAgent).not.toHaveBeenCalled();
     expect(harness.adapter.sendText).toHaveBeenCalledWith(

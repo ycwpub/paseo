@@ -110,6 +110,21 @@ describe("LarkDirectoryService", () => {
     });
   });
 
+  test("records the first message timestamp when observing a contact", () => {
+    const service = createService({});
+    const createTime = 1788656400000;
+
+    service.observeUser("cli_test", "ou_alice", "Alice", null, {
+      content: "请帮忙确认这笔订单",
+      createTime,
+    });
+
+    expect(directoryStore.findUser("cli_test", "ou_alice")).toMatchObject({
+      firstMessageContent: "请帮忙确认这笔订单",
+      firstMessageAt: new Date(createTime).toISOString(),
+    });
+  });
+
   test("does not query Lark again when the email is already known", async () => {
     directoryStore.upsertResolvedUsers(
       "cli_test",

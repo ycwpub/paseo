@@ -11,6 +11,7 @@ import type {
   LarkChannelPendingPairing,
   LarkChannelStatus,
   LarkDirectory,
+  LarkDirectoryUser,
   LarkReminder,
   LarkSubstituteMode,
   Team,
@@ -36,6 +37,13 @@ import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { type UseLarkChannelResult, useLarkChannel } from "./use-lark-channel";
+import { useLarkBotDirectoryChatHydration } from "./use-lark-directory-chat-hydration";
+import {
+  LarkContactDirectoryEntry,
+  LarkContactDirectoryPage,
+  LarkContactEditorPage,
+  type LarkContactDirectoryUpdateInput,
+} from "./lark-contact-directory-section";
 import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
 import { LarkReminderEditor, LarkReminderSection } from "./lark-reminder-section";
 import {
@@ -132,6 +140,8 @@ interface BotListCardProps {
 type LarkChannelPage =
   | "overview"
   | "bot"
+  | "directory"
+  | "contact-edit"
   | "substitute-create"
   | "substitute-edit"
   | "reminder-create"
@@ -144,6 +154,8 @@ export interface LarkChannelDetailNavigation {
 
 const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, string> = {
   bot: "编辑飞书机器人",
+  directory: "通讯录",
+  "contact-edit": "编辑联系人",
   "substitute-create": "创建替身模式",
   "substitute-edit": "编辑替身模式",
   "reminder-create": "创建定时任务",
@@ -364,6 +376,10 @@ function getLarkChannelPageTitle(page: LarkChannelPage, creatingBot: boolean): s
   if (page === "overview") return "渠道";
   if (page === "bot" && creatingBot) return "添加飞书机器人";
   return LARK_CHANNEL_PAGE_TITLES[page];
+}
+
+function getLarkChannelBackPage(page: LarkChannelPage): LarkChannelPage {
+  return page === "contact-edit" ? "directory" : "overview";
 }
 
 function getActiveBotId(status: LarkChannelStatus | null): string | null {
@@ -1217,6 +1233,7 @@ function LarkChannelLoadedContent({
   const [formRevision, setFormRevision] = useState(0);
   const [page, setPage] = useState<LarkChannelPage>("overview");
   const [editingReminder, setEditingReminder] = useState<LarkReminder | null>(null);
+  const [editingContact, setEditingContact] = useState<LarkDirectoryUser | null>(null);
   const [editingSubstituteMode, setEditingSubstituteMode] = useState<LarkSubstituteMode | null>(
     null,
   );
@@ -1235,6 +1252,13 @@ function LarkChannelLoadedContent({
     [activeBotId, botStatuses, creatingBot, selectedBotId],
   );
   const selectedBotAppId = getBotAppId(selectedBotStatus);
+  useLarkBotDirectoryChatHydration({
+    active: page === "bot",
+    supported: supportsLarkDirectory,
+    bot: selectedBotStatus,
+    directory,
+    resolveChats: channel.resolveDirectoryChats,
+  });
 
   useEffect(() => {
     if (!status || creatingBot) return;
@@ -1376,6 +1400,22 @@ function LarkChannelLoadedContent({
     setEditingReminder(null);
     setPage("reminder-create");
   }, []);
+  const handleOpenDirectory = useCallback(() => {
+    setEditingContact(null);
+    setPage("directory");
+  }, []);
+  const handleEditContact = useCallback((user: LarkDirectoryUser) => {
+    setEditingContact(user);
+    setPage("contact-edit");
+  }, []);
+  const handleSaveContact = useCallback(
+    async (input: LarkContactDirectoryUpdateInput) => {
+      await channel.updateDirectoryUser(input);
+      setEditingContact(null);
+      setPage("directory");
+    },
+    [channel],
+  );
   const handleCreateSubstituteMode = useCallback(() => {
     setEditingSubstituteMode(null);
     setPage("substitute-create");
@@ -1399,9 +1439,10 @@ function LarkChannelLoadedContent({
   }, []);
   const handleDetailBack = useCallback(() => {
     setEditingReminder(null);
+    setEditingContact(null);
     setSaveError(null);
-    setPage("overview");
-  }, []);
+    setPage(getLarkChannelBackPage(page));
+  }, [page]);
 
   useEffect(() => {
     if (!onDetailNavigationChange) return;
@@ -1629,6 +1670,11 @@ function LarkChannelLoadedContent({
           onEdit={handleEditBot}
           onAdd={handleAddBot}
         />
+        <LarkContactDirectoryEntry
+          bots={botStatuses}
+          directory={directory}
+          onOpen={handleOpenDirectory}
+        />
         <LarkSubstituteModeSection
           serverId={serverId}
           bots={botStatuses}
@@ -1674,6 +1720,34 @@ function LarkChannelLoadedContent({
           appId={selectedBotAppId}
           directory={directory}
           onRevoke={handleRevokeUser}
+        />
+      </View>
+    ),
+    directory: (
+      <View testID="host-page-channels-directory">
+        <SecondaryPageIntro
+          title="通讯录"
+          description="按飞书机器人查看和搜索联系人，并补充用户名与邮箱。"
+        />
+        <LarkContactDirectoryPage
+          bots={botStatuses}
+          directory={directory}
+          selectedBotId={selectedBotStatus?.id ?? selectedBotId}
+          onSelectBot={handleSelectBot}
+          onEdit={handleEditContact}
+        />
+      </View>
+    ),
+    "contact-edit": (
+      <View testID="host-page-channels-contact-edit">
+        <SecondaryPageIntro
+          title="编辑联系人"
+          description="根据首次消息内容和时间核对联系人身份，并补充用户名或邮箱。"
+        />
+        <LarkContactEditorPage
+          user={editingContact}
+          connected={channel.isConnected}
+          onSave={handleSaveContact}
         />
       </View>
     ),

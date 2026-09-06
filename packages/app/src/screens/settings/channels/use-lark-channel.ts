@@ -25,6 +25,12 @@ export interface UseLarkChannelResult {
   revokeUser: (userId: string, botId?: string | null) => Promise<LarkChannelStatus>;
   resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
   resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
+  updateDirectoryUser: (input: {
+    appId: string;
+    openId: string;
+    displayName: string | null;
+    email: string | null;
+  }) => Promise<LarkDirectoryUser>;
   application: LarkBotApplication | null;
   applyBot: (name?: string) => Promise<LarkBotApplication>;
   refreshApplication: () => Promise<LarkBotApplication | null>;
@@ -219,6 +225,31 @@ export function useLarkChannel(
     [applyStatus, client],
   );
 
+  const updateDirectoryUser = useCallback(
+    async (input: {
+      appId: string;
+      openId: string;
+      displayName: string | null;
+      email: string | null;
+    }) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.updateLarkDirectoryUser(input);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      if (!result.user) {
+        throw new Error("飞书联系人不存在");
+      }
+      return result.user;
+    },
+    [applyStatus, client],
+  );
+
   const applyBot = useCallback(
     async (name?: string) => {
       if (!client) {
@@ -262,6 +293,7 @@ export function useLarkChannel(
     revokeUser,
     resolveDirectoryUsers,
     resolveDirectoryChats,
+    updateDirectoryUser,
     application,
     applyBot,
     refreshApplication,

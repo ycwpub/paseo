@@ -7,6 +7,7 @@ import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
 import { hasCompleteLarkDirectoryUser } from "./lark-directory-identity.js";
 import type { LarkDirectoryStore } from "./lark-directory-store.js";
+import { toLarkDirectoryMessageTime } from "./lark-directory-message.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 function uniqueEmails(emails: readonly string[]): string[] {
@@ -143,8 +144,37 @@ export class LarkDirectoryService {
     openId: string,
     displayName?: string | null,
     email?: string | null,
+    firstMessage?: { content: string; createTime: number | null },
   ): LarkDirectoryUser {
-    return this.store.observeUser(appId, { openId, displayName, email }, new Date().toISOString());
+    const now = new Date().toISOString();
+    return this.store.observeUser(
+      appId,
+      {
+        openId,
+        displayName,
+        email,
+        firstMessageContent: firstMessage?.content ?? null,
+        firstMessageAt: firstMessage
+          ? toLarkDirectoryMessageTime(firstMessage.createTime, now)
+          : null,
+      },
+      now,
+    );
+  }
+
+  updateUser(
+    appId: string,
+    openId: string,
+    input: { displayName: string | null; email: string | null },
+  ): LarkDirectoryUser {
+    if (!this.channelStore.getBots().some((entry) => entry.config.appId === appId)) {
+      throw new Error(`Lark bot App ID is not configured: ${appId}`);
+    }
+    const user = this.store.updateUser(appId, openId, input, new Date().toISOString());
+    if (!user) {
+      throw new Error(`Lark contact not found: ${openId}`);
+    }
+    return user;
   }
 
   private requireConfig(appId: string): StoredLarkChannelConfig {

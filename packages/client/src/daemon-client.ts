@@ -685,6 +685,10 @@ type LarkDirectoryResolveChatsPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.resolve_chats.response" }
 >["payload"];
+type LarkDirectoryUpdateUserPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.update_user.response" }
+>["payload"];
 type LarkUserOAuthGetStatusPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.user_oauth.get_status.response" }
@@ -1067,6 +1071,13 @@ export interface ResolveLarkDirectoryUsersOptions {
 export interface ResolveLarkDirectoryChatsOptions {
   appId: string;
   query: string;
+  requestId?: string;
+}
+export interface UpdateLarkDirectoryUserOptions {
+  appId: string;
+  openId: string;
+  displayName: string | null;
+  email: string | null;
   requestId?: string;
 }
 export interface LarkUserOAuthGetStatusOptions {
@@ -6742,6 +6753,12 @@ export class DaemonClient {
     options: ResolveLarkDirectoryChatsOptions,
   ): Promise<LarkDirectoryResolveChatsPayload> {
     return this.resourceRpc.resolveLarkDirectoryChats(options);
+  }
+
+  async updateLarkDirectoryUser(
+    options: UpdateLarkDirectoryUserOptions,
+  ): Promise<LarkDirectoryUpdateUserPayload> {
+    return this.resourceRpc.updateLarkDirectoryUser(options);
   }
 
   async getLarkUserOAuthStatus(

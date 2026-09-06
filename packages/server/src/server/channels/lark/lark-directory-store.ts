@@ -84,6 +84,8 @@ export class LarkDirectoryStore {
         email,
         openId: user.openId,
         displayName: pickLarkDirectoryDisplayName(user.displayName, existing?.displayName),
+        firstMessageContent: existing?.firstMessageContent ?? null,
+        firstMessageAt: existing?.firstMessageAt ?? null,
         updatedAt: now,
       });
       next.users = next.users.filter(
@@ -98,7 +100,13 @@ export class LarkDirectoryStore {
 
   observeUser(
     appId: string,
-    input: { openId: string; email?: string | null; displayName?: string | null },
+    input: {
+      openId: string;
+      email?: string | null;
+      displayName?: string | null;
+      firstMessageContent?: string | null;
+      firstMessageAt?: string | null;
+    },
     now: string,
   ): LarkDirectoryUser {
     this.ensureLoaded();
@@ -108,6 +116,8 @@ export class LarkDirectoryStore {
       email: normalizeLarkDirectoryEmail(input.email) ?? existing?.email ?? null,
       openId: input.openId,
       displayName: pickLarkDirectoryDisplayName(input.displayName, existing?.displayName),
+      firstMessageContent: existing?.firstMessageContent ?? input.firstMessageContent ?? null,
+      firstMessageAt: existing?.firstMessageAt ?? input.firstMessageAt ?? null,
       updatedAt: now,
     });
     this.persist({
@@ -118,6 +128,30 @@ export class LarkDirectoryStore {
         ),
         record,
       ],
+    });
+    return record;
+  }
+
+  updateUser(
+    appId: string,
+    openId: string,
+    input: { email: string | null; displayName: string | null },
+    now: string,
+  ): LarkDirectoryUser | null {
+    this.ensureLoaded();
+    const existing = this.findUser(appId, openId);
+    if (!existing) return null;
+    const record = LarkDirectoryUserSchema.parse({
+      ...existing,
+      email: normalizeLarkDirectoryEmail(input.email),
+      displayName: input.displayName?.trim() || null,
+      updatedAt: now,
+    });
+    this.persist({
+      ...this.payload,
+      users: this.payload.users.map((entry) =>
+        entry.appId === appId && entry.openId === openId ? record : entry,
+      ),
     });
     return record;
   }

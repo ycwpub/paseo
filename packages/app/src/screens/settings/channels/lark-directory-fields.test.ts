@@ -35,7 +35,7 @@ describe("Lark directory labels", () => {
         email: "zhangsan@example.com",
       }),
     ).toBe("张三（zhangsan@example.com，ou_alice）");
-    expect(formatLarkChatLabel(chat)).toBe("结算群（7160881741501267996，oc_settlement）");
+    expect(formatLarkChatLabel(chat)).toBe("结算群（7160881741501267996、oc_settlement）");
   });
 
   test("falls back to available identity fields without dropping the Open ID", () => {
@@ -84,7 +84,7 @@ describe("Lark directory labels", () => {
         groupId: "oc_settlement",
         name: "结算群（7160881741501267996）",
       }),
-    ).toBe("结算群（7160881741501267996，oc_settlement）");
+    ).toBe("结算群（7160881741501267996、oc_settlement）");
   });
 
   test("scopes relation lookup by bot App ID", () => {

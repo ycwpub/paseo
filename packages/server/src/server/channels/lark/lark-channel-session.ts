@@ -35,6 +35,7 @@ type LarkChannelResponse = Extract<
       | "channel.lark.revoke_user.response"
       | "channel.lark.directory.resolve_users.response"
       | "channel.lark.directory.resolve_chats.response"
+      | "channel.lark.directory.update_user.response"
       | "channel.lark.user_oauth.get_status.response"
       | "channel.lark.user_oauth.start.response"
       | "channel.lark.user_oauth.complete.response"
@@ -58,6 +59,7 @@ type LarkDirectoryOrOAuthRequest = Extract<
     type:
       | "channel.lark.directory.resolve_users.request"
       | "channel.lark.directory.resolve_chats.request"
+      | "channel.lark.directory.update_user.request"
       | "channel.lark.user_oauth.get_status.request"
       | "channel.lark.user_oauth.start.request"
       | "channel.lark.user_oauth.complete.request"
@@ -70,18 +72,28 @@ type LarkUserOAuthRequest = Extract<
   { type: `channel.lark.user_oauth.${string}` }
 >;
 
+type LarkDirectoryRequest = Extract<
+  LarkDirectoryOrOAuthRequest,
+  { type: `channel.lark.directory.${string}` }
+>;
+
 function isDirectoryOrOAuthRequest(
   message: LarkChannelSessionRequest,
 ): message is LarkDirectoryOrOAuthRequest {
   return (
     message.type === "channel.lark.directory.resolve_users.request" ||
     message.type === "channel.lark.directory.resolve_chats.request" ||
+    message.type === "channel.lark.directory.update_user.request" ||
     message.type.startsWith("channel.lark.user_oauth.")
   );
 }
 
 function isUserOAuthRequest(message: LarkChannelSessionRequest): message is LarkUserOAuthRequest {
   return message.type.startsWith("channel.lark.user_oauth.");
+}
+
+function isDirectoryRequest(message: LarkChannelSessionRequest): message is LarkDirectoryRequest {
+  return message.type.startsWith("channel.lark.directory.");
 }
 
 function getErrorMessage(error: unknown): string {
@@ -357,6 +369,22 @@ export class LarkChannelSession {
         });
         return;
       }
+      case "channel.lark.directory.update_user.request": {
+        const user = this.service.updateDirectoryUser(message.appId, message.openId, {
+          displayName: message.displayName,
+          email: message.email,
+        });
+        this.emitResponse({
+          type: "channel.lark.directory.update_user.response",
+          payload: {
+            requestId: message.requestId,
+            user,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
       case "channel.lark.user_oauth.get_status.request":
         this.emitResponse({
           type: "channel.lark.user_oauth.get_status.response",
@@ -416,6 +444,10 @@ export class LarkChannelSession {
       this.emitUserOAuthErrorResponse(message, error);
       return;
     }
+    if (isDirectoryRequest(message)) {
+      this.emitDirectoryErrorResponse(message, error);
+      return;
+    }
     if (isLarkSubstituteSessionRequest(message)) {
       emitLarkSubstituteSessionError(
         message,
@@ -467,28 +499,6 @@ export class LarkChannelSession {
       case "channel.lark.revoke_user.request":
         this.emitResponse({ type: "channel.lark.revoke_user.response", payload });
         return;
-      case "channel.lark.directory.resolve_users.request":
-        this.emitResponse({
-          type: "channel.lark.directory.resolve_users.response",
-          payload: {
-            requestId: message.requestId,
-            users: [],
-            status: this.service.getStatus(),
-            error,
-          },
-        });
-        return;
-      case "channel.lark.directory.resolve_chats.request":
-        this.emitResponse({
-          type: "channel.lark.directory.resolve_chats.response",
-          payload: {
-            requestId: message.requestId,
-            chats: [],
-            status: this.service.getStatus(),
-            error,
-          },
-        });
-        return;
       case "channel.lark.reminder.list.request":
         this.emitResponse({
           type: "channel.lark.reminder.list.response",
@@ -538,6 +548,30 @@ export class LarkChannelSession {
             reminders: this.service.listReminders(),
             error,
           },
+        });
+        return;
+    }
+  }
+
+  private emitDirectoryErrorResponse(message: LarkDirectoryRequest, error: string): void {
+    const status = this.service.getStatus();
+    switch (message.type) {
+      case "channel.lark.directory.resolve_users.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_users.response",
+          payload: { requestId: message.requestId, users: [], status, error },
+        });
+        return;
+      case "channel.lark.directory.resolve_chats.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_chats.response",
+          payload: { requestId: message.requestId, chats: [], status, error },
+        });
+        return;
+      case "channel.lark.directory.update_user.request":
+        this.emitResponse({
+          type: "channel.lark.directory.update_user.response",
+          payload: { requestId: message.requestId, user: null, status, error },
         });
         return;
     }

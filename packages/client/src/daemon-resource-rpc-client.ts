@@ -49,6 +49,7 @@ import type {
   RejectLarkPairingOptions,
   ResolveLarkDirectoryChatsOptions,
   ResolveLarkDirectoryUsersOptions,
+  UpdateLarkDirectoryUserOptions,
   RevokeLarkUserOptions,
   SetLarkChannelEnabledOptions,
   SetLarkReminderEnabledOptions,
@@ -807,6 +808,20 @@ export class DaemonResourceRpcClient {
         query: options.query,
       },
       responseType: "channel.lark.directory.resolve_chats.response",
+    });
+  }
+
+  updateLarkDirectoryUser(options: UpdateLarkDirectoryUserOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.update_user.request",
+        appId: options.appId,
+        openId: options.openId,
+        displayName: options.displayName,
+        email: options.email,
+      },
+      responseType: "channel.lark.directory.update_user.response",
     });
   }
 

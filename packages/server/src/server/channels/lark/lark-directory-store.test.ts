@@ -39,6 +39,8 @@ describe("LarkDirectoryStore", () => {
         email: "alice@example.com",
         openId: "ou_alice",
         displayName: "Alice",
+        firstMessageContent: null,
+        firstMessageAt: null,
         updatedAt: "2026-08-19T01:00:00.000Z",
       },
       {
@@ -46,6 +48,8 @@ describe("LarkDirectoryStore", () => {
         email: "alice@example.com",
         openId: "ou_other",
         displayName: "Other Alice",
+        firstMessageContent: null,
+        firstMessageAt: null,
         updatedAt: "2026-08-19T01:01:00.000Z",
       },
     ]);
@@ -114,6 +118,60 @@ describe("LarkDirectoryStore", () => {
     expect(store.findUser("cli_test", "ou_alice")).toMatchObject({
       email: "alice@example.com",
       displayName: "张三",
+    });
+  });
+
+  test("keeps the first observed message when later messages arrive", () => {
+    store.observeUser(
+      "cli_test",
+      {
+        openId: "ou_alice",
+        displayName: "Alice",
+        firstMessageContent: "第一条消息",
+        firstMessageAt: "2026-09-06T01:00:00.000Z",
+      },
+      "2026-09-06T01:00:01.000Z",
+    );
+    store.observeUser(
+      "cli_test",
+      {
+        openId: "ou_alice",
+        displayName: "Alice",
+        firstMessageContent: "后续消息",
+        firstMessageAt: "2026-09-06T02:00:00.000Z",
+      },
+      "2026-09-06T02:00:01.000Z",
+    );
+
+    expect(store.findUser("cli_test", "ou_alice")).toMatchObject({
+      firstMessageContent: "第一条消息",
+      firstMessageAt: "2026-09-06T01:00:00.000Z",
+    });
+  });
+
+  test("manually updates identity fields without changing the first message", () => {
+    store.observeUser(
+      "cli_test",
+      {
+        openId: "ou_alice",
+        firstMessageContent: "请帮忙确认订单",
+        firstMessageAt: "2026-09-06T01:00:00.000Z",
+      },
+      "2026-09-06T01:00:01.000Z",
+    );
+
+    expect(
+      store.updateUser(
+        "cli_test",
+        "ou_alice",
+        { displayName: "张三", email: "Alice@Example.com" },
+        "2026-09-06T03:00:00.000Z",
+      ),
+    ).toMatchObject({
+      displayName: "张三",
+      email: "alice@example.com",
+      firstMessageContent: "请帮忙确认订单",
+      firstMessageAt: "2026-09-06T01:00:00.000Z",
     });
   });
 

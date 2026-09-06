@@ -209,9 +209,14 @@ function renderProgressLine(progress: DownloadProgress): string {
 
 type ProbeResult = { kind: "ready"; listen: string; host: string | null } | { kind: "pending" };
 
-async function probeDaemonReady(home: string, timeoutMs: number): Promise<ProbeResult> {
+async function probeDaemonReady(
+  home: string,
+  timeoutMs: number,
+  expectedListen?: string,
+): Promise<ProbeResult> {
   const state = resolveLocalDaemonState({ home });
-  const host = resolveTcpHostFromListen(state.listen);
+  const listen = state.pidInfo?.listen ?? expectedListen ?? state.listen;
+  const host = resolveTcpHostFromListen(listen);
   const deadline = Date.now() + timeoutMs;
   const remainingTimeoutMs = () => Math.max(1, deadline - Date.now());
 
@@ -225,7 +230,7 @@ async function probeDaemonReady(home: string, timeoutMs: number): Promise<ProbeR
         await client.fetchAgents({
           timeout: Math.min(remainingTimeoutMs(), READY_PROBE_TIMEOUT_MS),
         });
-        return { kind: "ready", listen: state.listen, host };
+        return { kind: "ready", listen, host };
       } catch {
         // Daemon process is alive but not API-ready yet.
       } finally {
@@ -233,7 +238,7 @@ async function probeDaemonReady(home: string, timeoutMs: number): Promise<ProbeR
       }
     }
   } else if (state.running && !host) {
-    return { kind: "ready", listen: state.listen, host: null };
+    return { kind: "ready", listen, host: null };
   }
 
   return { kind: "pending" };
@@ -267,6 +272,7 @@ function announceProgress(
 async function waitForDaemonReady(args: {
   home: string;
   timeoutMs: number;
+  expectedListen?: string;
   onStatus?: (message: string) => void;
 }): Promise<{ listen: string; host: string | null }> {
   const deadline = Date.now() + args.timeoutMs;
@@ -286,7 +292,11 @@ async function waitForDaemonReady(args: {
     if (Date.now() >= deadline) {
       throw createTimeoutError();
     }
-    const probe = await probeDaemonReady(args.home, Math.max(1, deadline - Date.now()));
+    const probe = await probeDaemonReady(
+      args.home,
+      Math.max(1, deadline - Date.now()),
+      args.expectedListen,
+    );
     if (probe.kind === "ready") {
       return { listen: probe.listen, host: probe.host };
     }
@@ -435,6 +445,7 @@ async function ensureDaemonStarted(options: OnboardOptions, richUi: boolean): Pr
 async function waitForDaemonReadyWithUi(args: {
   home: string;
   timeoutMs: number;
+  expectedListen?: string;
   richUi: boolean;
 }): Promise<{ listen: string; host: string | null }> {
   const readySpinner = args.richUi ? spinner() : null;
@@ -447,6 +458,7 @@ async function waitForDaemonReadyWithUi(args: {
     const readyState = await waitForDaemonReady({
       home: args.home,
       timeoutMs: args.timeoutMs,
+      expectedListen: args.expectedListen,
       onStatus: readySpinner ? (message) => readySpinner.message(message) : undefined,
     });
     if (readySpinner) {
@@ -553,6 +565,7 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
   const readyState = await waitForDaemonReadyWithUi({
     home: options.home ?? paseoHome,
     timeoutMs,
+    expectedListen: config.listen,
     richUi,
   });
 

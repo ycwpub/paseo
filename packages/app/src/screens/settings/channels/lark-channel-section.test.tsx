@@ -54,6 +54,7 @@ const channelState = vi.hoisted(() => ({
     revokeUser: vi.fn(),
     resolveDirectoryUsers: vi.fn(),
     resolveDirectoryChats: vi.fn(),
+    updateDirectoryUser: vi.fn(),
     application: null as LarkBotApplication | null,
     applyBot: vi.fn(),
     refreshApplication: vi.fn(),
@@ -96,6 +97,7 @@ vi.mock("./use-lark-channel", () => ({
     revokeUser: channelState.current.revokeUser,
     resolveDirectoryUsers: channelState.current.resolveDirectoryUsers,
     resolveDirectoryChats: channelState.current.resolveDirectoryChats,
+    updateDirectoryUser: channelState.current.updateDirectoryUser,
     application: channelState.current.application,
     applyBot: channelState.current.applyBot,
     refreshApplication: channelState.current.refreshApplication,
@@ -553,6 +555,7 @@ describe("LarkChannelSection", () => {
     channelState.current.revokeUser.mockReset();
     channelState.current.resolveDirectoryUsers.mockReset();
     channelState.current.resolveDirectoryChats.mockReset();
+    channelState.current.updateDirectoryUser.mockReset();
   });
 
   test("shows multiple configured Lark bots and loads the selected bot", async () => {
@@ -735,7 +738,34 @@ describe("LarkChannelSection", () => {
 
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect(await screen.findByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
-    expect(screen.getByText("结算研发群（group_settlement，oc_settlement）")).toBeTruthy();
+    expect(screen.getByText("结算研发群（group_settlement、oc_settlement）")).toBeTruthy();
+  });
+
+  test("automatically resolves incomplete authorized chat identities", async () => {
+    const bot = makeBot({
+      authorizedUsers: [
+        {
+          id: "authorized-1",
+          openId: "ou_alice",
+          unionId: null,
+          chatId: "oc_settlement",
+          displayName: "Alice",
+          authorizedAt: "2026-08-29T00:00:00.000Z",
+        },
+      ],
+    });
+    channelState.current.status = makeStatus([bot]);
+    channelState.current.resolveDirectoryChats.mockResolvedValue([]);
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
+    await waitFor(() => {
+      expect(channelState.current.resolveDirectoryChats).toHaveBeenCalledWith(
+        "cli_settle",
+        "oc_settlement",
+      );
+    });
   });
 
   test("shows pending pairing users and groups with complete directory identities", async () => {
@@ -781,7 +811,7 @@ describe("LarkChannelSection", () => {
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect(await screen.findByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
     expect(
-      screen.getByText("结算研发群（group_settlement，oc_settlement） · 配对码 pair-123"),
+      screen.getByText("结算研发群（group_settlement、oc_settlement） · 配对码 pair-123"),
     ).toBeTruthy();
   });
 
@@ -841,6 +871,62 @@ describe("LarkChannelSection", () => {
     expect(screen.getByRole("button", { name: "创建定时任务" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "编辑定时任务" })).toBeTruthy();
     expect(onDetailNavigationChange).toHaveBeenCalledWith(null);
+  });
+
+  test("searches contacts and opens a dedicated page to supplement identity fields", async () => {
+    const contact = {
+      appId: "cli_settle",
+      email: null,
+      openId: "ou_alice",
+      displayName: null,
+      firstMessageContent: "请帮忙确认结算订单",
+      firstMessageAt: "2026-09-06T01:00:00.000Z",
+      updatedAt: "2026-09-06T01:00:00.000Z",
+    };
+    channelState.current.status = {
+      ...makeStatus([makeBot()]),
+      directory: { users: [contact], chats: [] },
+    };
+    channelState.current.updateDirectoryUser.mockResolvedValue({
+      ...contact,
+      displayName: "张三",
+      email: "alice@example.com",
+    });
+    const onDetailNavigationChange = vi.fn();
+
+    render(
+      <LarkChannelSection
+        serverId="server-1"
+        onDetailNavigationChange={onDetailNavigationChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("host-page-lark-contacts-open"));
+    expect(screen.getByTestId("host-page-channels-directory")).toBeTruthy();
+    expect(screen.getByText("第一条消息：请帮忙确认结算订单")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("搜索用户名、邮箱、ou_id 或第一条消息"), {
+      target: { value: "结算订单" },
+    });
+    expect(screen.getByText(/ou_alice/)).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-edit-ou_alice"));
+    expect(screen.getByTestId("host-page-channels-contact-edit")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText("输入用户名"), { target: { value: "张三" } });
+    fireEvent.change(screen.getByPlaceholderText("输入用户邮箱"), {
+      target: { value: "alice@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存联系人" }));
+
+    await waitFor(() => {
+      expect(channelState.current.updateDirectoryUser).toHaveBeenCalledWith({
+        appId: "cli_settle",
+        openId: "ou_alice",
+        displayName: "张三",
+        email: "alice@example.com",
+      });
+    });
+    expect(screen.getByTestId("host-page-channels-directory")).toBeTruthy();
   });
 
   test("opens create and edit reminder forms as dedicated secondary pages", () => {

@@ -60,6 +60,8 @@ import {
   LarkDirectoryResolveChatsResponseSchema,
   LarkDirectoryResolveUsersRequestSchema,
   LarkDirectoryResolveUsersResponseSchema,
+  LarkDirectoryUpdateUserRequestSchema,
+  LarkDirectoryUpdateUserResponseSchema,
 } from "./channel/lark/directory-rpc-schemas.js";
 import {
   LarkUserOAuthCompleteRequestSchema,
@@ -261,6 +263,7 @@ export const ExtensionSessionInboundSchemas = [
   LarkChannelRevokeUserRequestSchema,
   LarkDirectoryResolveUsersRequestSchema,
   LarkDirectoryResolveChatsRequestSchema,
+  LarkDirectoryUpdateUserRequestSchema,
   LarkUserOAuthGetStatusRequestSchema,
   LarkUserOAuthStartRequestSchema,
   LarkUserOAuthCompleteRequestSchema,
@@ -362,6 +365,7 @@ export const ExtensionSessionOutboundSchemas = [
   LarkChannelStatusChangedMessageSchema,
   LarkDirectoryResolveUsersResponseSchema,
   LarkDirectoryResolveChatsResponseSchema,
+  LarkDirectoryUpdateUserResponseSchema,
   LarkUserOAuthGetStatusResponseSchema,
   LarkUserOAuthStartResponseSchema,
   LarkUserOAuthCompleteResponseSchema,

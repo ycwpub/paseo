@@ -35,3 +35,22 @@ export const LarkDirectoryResolveChatsResponseSchema = z.object({
     error: z.string().nullable(),
   }),
 });
+
+export const LarkDirectoryUpdateUserRequestSchema = z.object({
+  type: z.literal("channel.lark.directory.update_user.request"),
+  requestId: z.string(),
+  appId: z.string().trim().min(1),
+  openId: z.string().trim().min(1),
+  displayName: z.string().trim().max(200).nullable(),
+  email: z.string().trim().max(320).nullable(),
+});
+
+export const LarkDirectoryUpdateUserResponseSchema = z.object({
+  type: z.literal("channel.lark.directory.update_user.response"),
+  payload: z.object({
+    requestId: z.string(),
+    user: LarkDirectoryUserSchema.nullable(),
+    status: LarkChannelStatusSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});

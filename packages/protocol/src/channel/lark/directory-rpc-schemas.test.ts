@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   LarkDirectoryResolveChatsRequestSchema,
   LarkDirectoryResolveUsersRequestSchema,
+  LarkDirectoryUpdateUserRequestSchema,
 } from "./directory-rpc-schemas.js";
 
 describe("Lark directory RPC schemas", () => {
@@ -28,5 +29,23 @@ describe("Lark directory RPC schemas", () => {
         query: " ",
       }),
     ).toThrow();
+  });
+
+  test("normalizes manually updated contact fields", () => {
+    expect(
+      LarkDirectoryUpdateUserRequestSchema.parse({
+        type: "channel.lark.directory.update_user.request",
+        requestId: "request-2",
+        appId: " cli_test ",
+        openId: " ou_alice ",
+        displayName: " 张三 ",
+        email: " alice@example.com ",
+      }),
+    ).toMatchObject({
+      appId: "cli_test",
+      openId: "ou_alice",
+      displayName: "张三",
+      email: "alice@example.com",
+    });
   });
 });

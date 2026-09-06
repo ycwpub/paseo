@@ -43,7 +43,9 @@ export function formatLarkChatLabel(chat: LarkDirectoryChat): string {
           .replace(/[（(](?:(?:群\s*ID|group\s*id|id)\s*[=:：]?\s*)?\d{10,}[）)]/iu, "")
           .trim()
       : chat.name;
-  return formatIdentityParts([cleanedName, explicitGroupId, chat.chatId]);
+  const [primary, ...details] = compactIdentityParts([cleanedName, explicitGroupId, chat.chatId]);
+  if (!primary) return "";
+  return details.length > 0 ? `${primary}（${details.join("、")}）` : primary;
 }
 
 export function findLarkDirectoryUser(

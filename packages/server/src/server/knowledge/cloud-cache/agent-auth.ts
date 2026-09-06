@@ -1,6 +1,7 @@
 import type { AgentPermissionResponse } from "../../agent/agent-sdk-types.js";
 import type { AgentManager } from "../../agent/agent-manager.js";
 import type { CloudDocumentCacheService } from "./service.js";
+import { completeCloudDocumentAuthentication } from "./source.js";
 import type { CloudDocumentAuthenticationIssue, CloudDocumentCacheTarget } from "./types.js";
 
 export interface CloudKnowledgeAuthorizationRequest {
@@ -22,6 +23,7 @@ async function handlePermissionResponse(input: {
   response: AgentPermissionResponse;
   agentId: string;
   target: CloudDocumentCacheTarget;
+  issue: CloudDocumentAuthenticationIssue;
   service: CloudDocumentCacheService;
   agentManager: AgentManager;
 }): Promise<void> {
@@ -29,6 +31,15 @@ async function handlePermissionResponse(input: {
     await input.agentManager.appendTimelineItem(input.agentId, {
       type: "assistant_message",
       text: `已暂不缓存云文档：${input.target.source}`,
+    });
+    return;
+  }
+  try {
+    await completeCloudDocumentAuthentication(input.issue);
+  } catch (error) {
+    await input.agentManager.appendTimelineItem(input.agentId, {
+      type: "assistant_message",
+      text: `飞书授权确认失败：${error instanceof Error ? error.message : String(error)}`,
     });
     return;
   }
@@ -96,6 +107,7 @@ export async function requestCloudKnowledgeAuthorization(input: {
           response,
           agentId: input.agentId,
           target,
+          issue,
           service: input.service,
           agentManager: input.agentManager,
         }),

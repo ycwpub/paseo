@@ -11,8 +11,11 @@ const INTERNAL_HOST_SUFFIXES = [
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 const HTTP_FETCH_TIMEOUT_MS = 60_000;
 const AUTH_TEXT_PATTERN =
-  /auth(?:entication|orization)?|login|log in|sign in|sso|oauth|unauthorized|forbidden|扫码|登录|授权|无权限/iu;
-const URL_PATTERN = /https?:\/\/[^\s"'<>]+/giu;
+  /auth(?:entication|orization)?|login|log in|sign in|sso|oauth|unauthorized|forbidden|invalid[_ -]?grant|refresh token|token.{0,20}expired|20037|扫码|登录|授权|无权限/iu;
+const AUTHORIZATION_URL_PATH_PATTERN =
+  /(^|\.)(lark_applink_url|verification_uri_complete|authorization_url|authorizationUrl|authorize_url|authorizeUrl|login_url|loginUrl|approval_url|approvalUrl|browser_url|browserUrl)$/u;
+const COMPLETION_TOKEN_PATH_PATTERN = /(^|\.)(complete_token|completeToken)$/u;
+const BYTEDCLI_ENV = { ...process.env, BYTEDCLI_NO_AUTO_UPGRADE: "1" };
 
 export class CloudDocumentAuthenticationError extends Error {
   readonly issue: CloudDocumentAuthenticationIssue;
@@ -88,6 +91,15 @@ function parseJson(raw: string): unknown {
   }
 }
 
+function parseJsonValues(raw: string): unknown[] {
+  const direct = parseJson(raw);
+  if (direct !== null) return [direct];
+  return raw
+    .split(/\r?\n/u)
+    .map((line) => parseJson(line.trim()))
+    .filter((value) => value !== null);
+}
+
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -102,6 +114,42 @@ function findString(
     return valuePattern ? valuePattern.test(entry.value) : true;
   });
   return match?.value ?? null;
+}
+
+function normalizeHttpUrl(value: string | null, source: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (url.toString() === new URL(source).toString()) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function extractAuthorizationFields(
+  source: string,
+  rawParts: readonly string[],
+): {
+  loginUrl: string | null;
+  authCommand: string | null;
+  completionToken: string | null;
+  errorCode: string;
+  message: string | null;
+} {
+  const parsedValues = rawParts.flatMap(parseJsonValues);
+  const strings = parsedValues.flatMap((value) => walkStrings(value));
+  return {
+    loginUrl: normalizeHttpUrl(
+      findString(strings, AUTHORIZATION_URL_PATH_PATTERN, /^https?:\/\//u),
+      source,
+    ),
+    authCommand: findString(strings, /(^|\.)(auth_command|authCommand|login_command)$/u),
+    completionToken: findString(strings, COMPLETION_TOKEN_PATH_PATTERN),
+    errorCode: findString(strings, /(^|\.)(code|error_code|errorCode)$/u) ?? "",
+    message: findString(strings, /(^|\.)(message|hint|error_description)$/u),
+  };
 }
 
 function hasAuthenticationEvidence(input: {
@@ -153,32 +201,91 @@ function extractAuthenticationIssue(
     stringOrNull(candidate?.stderr),
   ].filter((value): value is string => value !== null && value.length > 0);
   const combined = rawParts.join("\n");
-  const parsedValues = rawParts.map(parseJson).filter((value) => value !== null);
-  const strings = parsedValues.flatMap((value) => walkStrings(value));
-  const authCommand = findString(strings, /(^|\.)(auth_command|authCommand|login_command)$/u);
-  const loginUrl =
-    findString(
-      strings,
-      /(^|\.)(login_url|loginUrl|approval_url|approvalUrl|url)$/u,
-      /^https?:\/\//u,
-    ) ??
-    combined.match(URL_PATTERN)?.[0] ??
-    null;
-  const errorCode = findString(strings, /(^|\.)(code|error_code|errorCode)$/u) ?? "";
-  if (!hasAuthenticationEvidence({ combined, errorCode, authCommand, loginUrl })) {
+  const fields = extractAuthorizationFields(source, rawParts);
+  if (
+    !hasAuthenticationEvidence({
+      combined,
+      errorCode: fields.errorCode,
+      authCommand: fields.authCommand,
+      loginUrl: fields.loginUrl,
+    })
+  ) {
     return null;
   }
-  const message =
-    findString(strings, /(^|\.)(message|hint)$/u) ??
-    candidate?.message ??
-    "云文档需要登录或授权后才能读取。";
+  const message = fields.message ?? candidate?.message ?? "云文档需要登录或授权后才能读取。";
   return {
     kind: "authentication_required",
     source,
     message,
-    loginUrl,
-    authCommand: authCommand ?? "bytedcli insearch login",
+    loginUrl: fields.loginUrl,
+    authCommand: fields.authCommand ?? "bytedcli feishu login",
+    completionToken: fields.completionToken,
   };
+}
+
+async function createBytedcliAuthorizationChallenge(
+  source: string,
+  issue: CloudDocumentAuthenticationIssue,
+  runCommand: CloudDocumentCommandRunner,
+): Promise<CloudDocumentAuthenticationIssue> {
+  try {
+    const result = await runCommand(
+      "bytedcli",
+      ["--json", "feishu", "login", "--begin", "--force-oauth", "--no-terminal-qr"],
+      {
+        timeoutMs: 30_000,
+        maxBufferBytes: MAX_DOCUMENT_BYTES,
+        env: BYTEDCLI_ENV,
+      },
+    );
+    const fields = extractAuthorizationFields(source, [result.stdout, result.stderr]);
+    return {
+      ...issue,
+      loginUrl: fields.loginUrl ?? issue.loginUrl,
+      authCommand: fields.authCommand ?? issue.authCommand,
+      completionToken: fields.completionToken ?? issue.completionToken,
+    };
+  } catch (error) {
+    const candidate = error as Error & { stdout?: unknown; stderr?: unknown };
+    const fields = extractAuthorizationFields(
+      source,
+      [stringOrNull(candidate.stdout), stringOrNull(candidate.stderr)].filter(
+        (value): value is string => Boolean(value),
+      ),
+    );
+    return {
+      ...issue,
+      loginUrl: fields.loginUrl ?? issue.loginUrl,
+      authCommand: fields.authCommand ?? issue.authCommand,
+      completionToken: fields.completionToken ?? issue.completionToken,
+    };
+  }
+}
+
+export async function completeCloudDocumentAuthentication(
+  issue: CloudDocumentAuthenticationIssue,
+  runCommand: CloudDocumentCommandRunner = defaultCommandRunner,
+): Promise<void> {
+  if (!issue.completionToken) return;
+  const result = await runCommand(
+    "bytedcli",
+    ["--json", "feishu", "login", "--complete", issue.completionToken],
+    {
+      timeoutMs: 60_000,
+      maxBufferBytes: MAX_DOCUMENT_BYTES,
+      env: BYTEDCLI_ENV,
+    },
+  );
+  const parsed = parseJsonValues(result.stdout).at(-1);
+  const entries = walkStrings(parsed);
+  const resultStatus = findString(entries, /(^|\.)status$/u);
+  const status = findString(entries, /(^|\.)(login_status|loginStatus)$/u);
+  if (resultStatus === "error") {
+    throw new Error("飞书授权确认失败，请重新打开授权链接后重试。");
+  }
+  if (status && status !== "success") {
+    throw new Error(`飞书授权尚未完成（${status}），请完成授权后重试。`);
+  }
 }
 
 async function fetchWithBytedcli(
@@ -189,7 +296,7 @@ async function fetchWithBytedcli(
     const result = await runCommand("bytedcli", ["--json", "insearch", "get", source], {
       timeoutMs: 60_000,
       maxBufferBytes: MAX_DOCUMENT_BYTES,
-      env: { ...process.env, BYTEDCLI_NO_AUTO_UPGRADE: "1" },
+      env: BYTEDCLI_ENV,
     });
     const parsed = parseJson(result.stdout);
     const content = extractDocumentContent(parsed);
@@ -209,7 +316,13 @@ async function fetchWithBytedcli(
   } catch (error) {
     if (error instanceof CloudDocumentAuthenticationError) throw error;
     const issue = extractAuthenticationIssue(source, error);
-    if (issue) throw new CloudDocumentAuthenticationError(issue);
+    if (issue) {
+      throw new CloudDocumentAuthenticationError(
+        issue.loginUrl
+          ? issue
+          : await createBytedcliAuthorizationChallenge(source, issue, runCommand),
+      );
+    }
     throw error;
   }
 }
@@ -250,7 +363,7 @@ async function fetchWithHttp(input: {
       kind: "authentication_required",
       source: input.source,
       message: `云文档需要登录或授权后才能读取（HTTP ${response.status}）。`,
-      loginUrl: response.url && response.url !== input.source ? response.url : input.source,
+      loginUrl: normalizeHttpUrl(response.url, input.source),
       authCommand: null,
     });
   }

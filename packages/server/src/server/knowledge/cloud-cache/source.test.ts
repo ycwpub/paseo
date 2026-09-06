@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CloudDocumentAuthenticationError, DefaultCloudDocumentSourceReader } from "./source.js";
+import {
+  CloudDocumentAuthenticationError,
+  completeCloudDocumentAuthentication,
+  DefaultCloudDocumentSourceReader,
+} from "./source.js";
 
 describe("DefaultCloudDocumentSourceReader", () => {
   afterEach(() => {
@@ -43,7 +47,8 @@ describe("DefaultCloudDocumentSourceReader", () => {
       }),
       stderr: "",
     });
-    const reader = new DefaultCloudDocumentSourceReader(vi.fn(async () => Promise.reject(error)));
+    const runCommand = vi.fn(async () => Promise.reject(error));
+    const reader = new DefaultCloudDocumentSourceReader(runCommand);
 
     await expect(
       reader.fetch({
@@ -58,6 +63,85 @@ describe("DefaultCloudDocumentSourceReader", () => {
         loginUrl: "https://login.example.com/oauth",
       },
     });
+    expect(runCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reuse the cloud document URL as the login link for expired refresh tokens", async () => {
+    const source = "https://bytedance.larkoffice.com/wiki/private";
+    const error = Object.assign(new Error("command failed"), {
+      stdout: JSON.stringify({
+        status: "error",
+        data: null,
+        error: {
+          error: "invalid_grant",
+          error_description: "The refresh token has expired.",
+          code: 20037,
+        },
+      }),
+      stderr: "",
+    });
+    const runCommand = vi
+      .fn()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          status: "success",
+          data: {
+            login_status: "pending",
+            complete_token: "completion-token",
+            verification_uri_complete:
+              "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
+          },
+        }),
+        stderr: "",
+      });
+    const reader = new DefaultCloudDocumentSourceReader(runCommand);
+
+    await expect(reader.fetch({ source })).rejects.toMatchObject({
+      issue: {
+        source,
+        loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=refresh",
+        completionToken: "completion-token",
+      },
+    });
+    expect(runCommand).toHaveBeenNthCalledWith(
+      2,
+      "bytedcli",
+      ["--json", "feishu", "login", "--begin", "--force-oauth", "--no-terminal-qr"],
+      expect.objectContaining({
+        env: expect.objectContaining({ BYTEDCLI_NO_AUTO_UPGRADE: "1" }),
+      }),
+    );
+  });
+
+  it("completes the saved Feishu OAuth challenge before retrying the document", async () => {
+    const runCommand = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        status: "success",
+        data: { login_status: "success" },
+      }),
+      stderr: "",
+    }));
+
+    await completeCloudDocumentAuthentication(
+      {
+        kind: "authentication_required",
+        source: "https://bytedance.larkoffice.com/wiki/private",
+        message: "需要重新授权",
+        loginUrl: "https://accounts.feishu.cn/oauth/v1/device/verify?flow_id=flow",
+        authCommand: "bytedcli feishu login",
+        completionToken: "completion-token",
+      },
+      runCommand,
+    );
+
+    expect(runCommand).toHaveBeenCalledWith(
+      "bytedcli",
+      ["--json", "feishu", "login", "--complete", "completion-token"],
+      expect.objectContaining({
+        env: expect.objectContaining({ BYTEDCLI_NO_AUTO_UPGRADE: "1" }),
+      }),
+    );
   });
 
   it("bounds HTTP cloud document downloads with a timeout signal", async () => {

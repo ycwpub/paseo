@@ -118,6 +118,8 @@ See [docs/development.md](docs/development.md) for full setup, build sync requir
   - If you must run a broad suite, pipe output to a file and read it afterward: `npx vitest run <file> --bail=1 > /tmp/test-output.txt 2>&1` then read the file.
   - Never re-run a test suite that another agent already ran and reported green — trust the result.
   - For full suite verification, push to CI and check GitHub Actions instead.
+  - In a managed or sandboxed runner, stop immediately when output contains `listen EPERM`, `operation not permitted 127.0.0.1`, or `ENOTFOUND registry.npmjs.org`. These are environment failures. Hub, Worktree, bootstrap, CLI, and Expo module tests can otherwise wait for every individual timeout and appear to hang for hours.
+  - Do not make a full-suite run a prerequisite for a local desktop build. Use the bounded test-build workflow in [docs/testing.md](docs/testing.md#bounded-desktop-test-build-workflow).
 - **Always run typecheck and lint after every change.**
 - **Build workspace packages before diagnosing cross-package type errors.** This repo consumes generated declarations across workspaces. If typecheck fails in a package that depends on another workspace, rebuild the owning stack first so `dist` declarations are current:
   - `npm run build:client` — rebuild protocol and client declarations.

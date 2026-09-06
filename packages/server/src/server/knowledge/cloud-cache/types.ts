@@ -13,6 +13,7 @@ export interface CloudDocumentAuthenticationIssue {
   message: string;
   loginUrl: string | null;
   authCommand: string | null;
+  completionToken?: string | null;
 }
 
 export interface CloudDocumentCacheMetadata {

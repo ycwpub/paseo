@@ -3,7 +3,6 @@ import { Text, View } from "react-native";
 import { ArrowLeftToLine, Plus, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import Animated from "react-native-reanimated";
 import { SortableInlineList } from "@/components/sortable-inline-list";
 import type {
   DraggableListDragHandleProps,
@@ -37,10 +36,6 @@ import type { PanelIconProps } from "@/panels/panel-registry";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
 import type { Theme } from "@/styles/theme";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
-import {
-  HorizontalScrollBoundaryShades,
-  useHorizontalScrollBoundary,
-} from "@/components/ui/horizontal-scroll-boundary";
 
 const TAB_GAP = 4;
 const TAB_DROP_INDICATOR_WIDTH = 4;
@@ -265,7 +260,6 @@ export function ExplorerSidebarTabRail({
   onReorderTabs,
   trailingAccessory,
 }: ExplorerSidebarTabRailProps) {
-  const scrollBoundary = useHorizontalScrollBoundary();
   const { t } = useTranslation();
   const groups = useWorkspaceTabLaunchCatalog({
     serverId: normalizedServerId,
@@ -340,33 +334,17 @@ export function ExplorerSidebarTabRail({
         style={[styles.track, titlebarDragSurfaceStyle as never]}
         testID="explorer-sidebar-tab-rail"
       >
-        <View style={styles.scrollContainer}>
-          <Animated.ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-            onLayout={scrollBoundary.onLayout}
-            onContentSizeChange={scrollBoundary.onContentSizeChange}
-            onScroll={scrollBoundary.onScroll}
-            scrollEventThrottle={16}
-          >
-            <SortableInlineList
-              data={tabs}
-              keyExtractor={tabKey}
-              renderItem={renderTab}
-              onDragEnd={handleDragEnd}
-              useDragHandle
-              externalDndContext
-              activeId={activeDragTabId}
-              getItemData={getTabDragData}
-            />
-          </Animated.ScrollView>
-          <HorizontalScrollBoundaryShades
-            visible
-            backdrop="sidebar"
-            testIDPrefix="explorer-sidebar-tabs-scroll-shade"
-            leftStyle={scrollBoundary.leftShadeStyle}
-            rightStyle={scrollBoundary.rightShadeStyle}
+        <View style={styles.tabsWrap} testID="explorer-sidebar-tabs-wrap">
+          <SortableInlineList
+            data={tabs}
+            keyExtractor={tabKey}
+            renderItem={renderTab}
+            onDragEnd={handleDragEnd}
+            useDragHandle
+            externalDndContext
+            activeId={activeDragTabId}
+            getItemData={getTabDragData}
+            layout="wrap"
           />
         </View>
         {trailingAccessory ? (
@@ -395,20 +373,20 @@ export function ExplorerSidebarTabRail({
 const styles = StyleSheet.create((theme) => ({
   track: {
     minWidth: 0,
-    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    minHeight: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     backgroundColor: theme.colors.surfaceSidebar,
     flexDirection: "row",
     alignItems: "center",
   },
-  scrollContainer: {
+  tabsWrap: {
     flex: 1,
     minWidth: 0,
-    alignSelf: "stretch",
-  },
-  scrollContent: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    alignContent: "center",
     alignItems: "center",
     paddingHorizontal: 4,
+    paddingVertical: 5,
   },
   trailingAccessory: {
     marginRight: 4,

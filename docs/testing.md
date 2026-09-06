@@ -194,6 +194,30 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 - Teardown kills the process tree, because a Windows signal reaches only the direct child and leaves forked workers holding the listening port.
 - The `asdf`-backed local Elixir relay stays POSIX-only, so the `relay-deployment` Playwright project is unavailable on Windows.
 
+### Bounded desktop test-build workflow
+
+Do not run `npm run test` before building a local test app. It walks every workspace and includes suites that bind loopback ports, spawn Git worktrees, start daemons, or resolve test dependencies. In a restricted runner, one denied capability can turn into hundreds of per-test timeouts.
+
+Use this sequence:
+
+1. Run `npm run typecheck`.
+2. Run `npm run lint`.
+3. Run only changed and directly related Vitest files with `--bail=1`.
+4. Build with `npm run build:test --workspace=@getpaseo/desktop`.
+5. Install the generated `packages/desktop/release-test/mac-arm64/Paseo-Feishu-Test.app`.
+6. Restart the test app and its desktop-managed daemon.
+7. Run `node packages/desktop/e2e/packaged-app-smoke.js --app /Applications/Paseo-Feishu-Test.app` outside a restricted sandbox. The smoke test must be allowed to launch Electron and listen on loopback ports.
+
+Treat every long-running step as bounded:
+
+- Check output at least once per minute.
+- If a build produces no new output for five minutes, inspect the active child command before waiting longer.
+- Stop a test immediately when it reports `listen EPERM`, `operation not permitted 127.0.0.1`, or `ENOTFOUND registry.npmjs.org`. Do not wait for the remaining test cases to repeat the same timeout.
+- A test failure caused by denied loopback or package-registry access does not justify retrying the same command in the same sandbox. Run the required focused test with the needed permissions, or defer the full suite to CI.
+- Record separately whether typecheck, focused tests, packaging, installation, daemon status, and packaged smoke passed. Do not report a stalled full-suite command as a stalled compilation.
+
+Only run the full workspace suite when the user explicitly requests it. Run it in an environment that permits loopback listeners and dependency access, redirect output to a file, and impose an execution deadline. CI remains the default full-suite verifier.
+
 ## Pull-request test routing
 
 PR checks are routed by the behavior each suite proves, using `.github/ci-paths.yml`. A package does not inherit every test suite of its runtime consumers: app changes do not run CLI or Electron-wrapper tests, and protocol changes do not run every package that imports the protocol. Cross-package static compatibility belongs to `typecheck`; full integration coverage runs after merge on main and in manual CI runs.

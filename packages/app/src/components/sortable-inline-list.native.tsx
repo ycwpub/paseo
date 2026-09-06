@@ -1,6 +1,8 @@
 import type { ReactElement } from "react";
 import type { DraggableRenderItemInfo } from "./draggable-list.types";
 
+export type SortableInlineListLayout = "horizontal" | "wrap";
+
 export function SortableInlineList<T>({
   data,
   keyExtractor,
@@ -15,6 +17,7 @@ export function SortableInlineList<T>({
   externalDndContext?: boolean;
   activeId?: string | null;
   getItemData?: (item: T, index: number) => Record<string, unknown>;
+  layout?: SortableInlineListLayout;
 }): ReactElement {
   return (
     <>

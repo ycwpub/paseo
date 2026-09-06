@@ -128,6 +128,7 @@ import {
   type ProcessExpansionState,
 } from "./process-expansion-state";
 import { prepareStreamViewportChange } from "./viewport-handle-extensions";
+import { CloudKnowledgeAuthorizationLink } from "./cloud-knowledge-authorization-link";
 
 function resolveChatOutlineModel(context: AgentScreenAgent): string | null {
   return context.runtimeInfo?.model ?? context.model ?? context.provider ?? null;
@@ -1729,6 +1730,8 @@ function PermissionRequestCard({
       <Text style={permissionStyles.title}>{title}</Text>
 
       {description ? <Text style={permissionStyles.description}>{description}</Text> : null}
+
+      <CloudKnowledgeAuthorizationLink metadata={request.metadata} />
 
       {planMarkdown ? (
         <PlanCard

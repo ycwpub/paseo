@@ -29,7 +29,6 @@ import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
-import { LarkUserDirectoryField } from "./lark-directory-fields";
 import {
   buildSubstituteModeInput,
   createSubstituteModeFormState,
@@ -50,10 +49,6 @@ import {
 import { useLarkSubstituteModes } from "./use-lark-substitute-modes";
 import { WeekdayMultiSelectField } from "./weekday-multi-select-field";
 
-const GROUP_REPLY_IDENTITY_OPTIONS: SelectFieldOption<"user" | "bot">[] = [
-  { id: "user", value: "user", label: "用户身份" },
-  { id: "bot", value: "bot", label: "机器人身份" },
-];
 const EMPTY_USERS: LarkDirectoryUser[] = [];
 const EMPTY_CHATS: LarkDirectoryChat[] = [];
 
@@ -170,12 +165,20 @@ function useSubstituteModeForm(
   const setName = useCallback((value: string) => updateField("name", value), [updateField]);
   const setEnabled = useCallback((value: boolean) => updateField("enabled", value), [updateField]);
   const setBotId = useCallback((value: string) => updateField("botId", value), [updateField]);
-  const setOpenIds = useCallback(
-    (value: string[]) => updateField("openId", value[0] ?? ""),
+  const setPrivateScanEnabled = useCallback(
+    (value: boolean) => updateField("privateScanEnabled", value),
     [updateField],
   );
-  const setGroupReplyIdentity = useCallback(
-    (value: "user" | "bot") => updateField("groupReplyIdentity", value),
+  const setPrivateScanIntervalMinutes = useCallback(
+    (value: string) => updateField("privateScanIntervalMinutes", value),
+    [updateField],
+  );
+  const setPrivateScanLookbackMinutes = useCallback(
+    (value: string) => updateField("privateScanLookbackMinutes", value),
+    [updateField],
+  );
+  const setPrivateScanExcludeRecentMinutes = useCallback(
+    (value: string) => updateField("privateScanExcludeRecentMinutes", value),
     [updateField],
   );
   const setDisclosureEnabled = useCallback(
@@ -238,8 +241,10 @@ function useSubstituteModeForm(
     setName,
     setEnabled,
     setBotId,
-    setOpenIds,
-    setGroupReplyIdentity,
+    setPrivateScanEnabled,
+    setPrivateScanIntervalMinutes,
+    setPrivateScanLookbackMinutes,
+    setPrivateScanExcludeRecentMinutes,
     setDisclosureEnabled,
     setDisclosurePrompt,
     setCustomPrompt,
@@ -323,7 +328,6 @@ export function LarkSubstituteModeEditor({
     () => buildProjectOptions(projects, serverId),
     [projects, serverId],
   );
-  const selectedOpenIds = useMemo(() => (form.openId ? [form.openId] : []), [form.openId]);
   const directoryUsers = getDirectoryUsers(directory);
   const directoryChats = getDirectoryChats(directory);
   const selectedBotAppId = getBotAppId(selectedBot);
@@ -339,7 +343,6 @@ export function LarkSubstituteModeEditor({
       const baseInput = buildSubstituteModeInput({
         form,
         selectedBot,
-        directoryUsers,
         mode,
       });
       const project = await resolveSubstituteModeProject({
@@ -384,7 +387,6 @@ export function LarkSubstituteModeEditor({
     }
   }, [
     client,
-    directoryUsers,
     form,
     isSaving,
     mode,
@@ -430,28 +432,50 @@ export function LarkSubstituteModeEditor({
             placeholder="选择飞书机器人"
             emptyText="暂无可用飞书机器人"
           />
-          <LarkUserDirectoryField
-            label="被替身用户"
-            hint="通过邮箱选择用户，保存用户名、邮箱和 ou_xxx。"
-            appId={selectedBotAppId}
-            openIds={selectedOpenIds}
-            users={directoryUsers}
-            resolveUsers={resolveDirectoryUsers}
-            onChange={controller.setOpenIds}
-            disabled={ruleEditingDisabled}
-          />
-          <Field label="私聊回答身份" hint="私聊固定使用当前 OAuth 用户身份。">
-            <FormTextInput value="用户身份" editable={false} />
+          <Field
+            label="回答身份"
+            hint="替身用户固定为下方 OAuth 授权用户；群聊和私聊转发群均由机器人在话题中回答。"
+          >
+            <FormTextInput value="机器人身份" editable={false} />
           </Field>
-          <SelectField
-            label="群聊回答身份"
-            value={form.groupReplyIdentity}
-            selectedDisplay={optionDisplay(GROUP_REPLY_IDENTITY_OPTIONS, form.groupReplyIdentity)}
-            options={GROUP_REPLY_IDENTITY_OPTIONS}
-            onChange={controller.setGroupReplyIdentity}
-            placeholder="选择回答身份"
-            emptyText="暂无回答身份"
-          />
+          <View style={styles.switchRow}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>扫描新增私聊消息</Text>
+              <Text style={settingsStyles.rowHint}>
+                授权用户未回复时，自动创建或复用包含授权用户、机器人和私聊用户的群聊。
+              </Text>
+            </View>
+            <Switch
+              value={form.privateScanEnabled}
+              onValueChange={controller.setPrivateScanEnabled}
+              accessibilityLabel="扫描新增私聊消息"
+            />
+          </View>
+          {form.privateScanEnabled ? (
+            <View style={styles.inlineFields}>
+              <Field label="扫描间隔（分钟）">
+                <FormTextInput
+                  value={form.privateScanIntervalMinutes}
+                  onChangeText={controller.setPrivateScanIntervalMinutes}
+                  keyboardType="number-pad"
+                />
+              </Field>
+              <Field label="扫描范围（分钟）">
+                <FormTextInput
+                  value={form.privateScanLookbackMinutes}
+                  onChangeText={controller.setPrivateScanLookbackMinutes}
+                  keyboardType="number-pad"
+                />
+              </Field>
+              <Field label="排除最近（分钟）">
+                <FormTextInput
+                  value={form.privateScanExcludeRecentMinutes}
+                  onChangeText={controller.setPrivateScanExcludeRecentMinutes}
+                  keyboardType="number-pad"
+                />
+              </Field>
+            </View>
+          ) : null}
           <View style={styles.switchRow}>
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>携带机器人回答提示</Text>

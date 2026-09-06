@@ -1713,7 +1713,6 @@ export async function createPaseoDaemon(
     paseoHome: config.paseoHome,
     channelStore: larkChannelStore,
     adapter: larkChannelAdapter,
-    userOAuthService: larkUserOAuthService,
     logger,
     emitChanged: (reminders) => {
       wsServer?.broadcast(

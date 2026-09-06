@@ -1,13 +1,8 @@
 import { z } from "zod";
 
-export const LarkReminderSenderSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("bot"),
-  }),
-  z.object({
-    type: z.literal("user"),
-  }),
-]);
+export const LarkReminderSenderSchema = z.object({
+  type: z.literal("bot"),
+});
 export type LarkReminderSender = z.infer<typeof LarkReminderSenderSchema>;
 
 export const LarkReminderStatusSchema = z.enum(["active", "paused", "completed", "error"]);

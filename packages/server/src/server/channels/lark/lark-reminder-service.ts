@@ -11,10 +11,6 @@ import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 import { LarkReminderStore } from "./lark-reminder-store.js";
-import {
-  LarkUserAuthorizationRequiredError,
-  type LarkUserOAuthService,
-} from "./lark-user-oauth-service.js";
 
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 
@@ -29,7 +25,7 @@ interface ReminderMessage {
 
 interface LarkReminderAdapter extends Pick<
   LarkChannelClientAdapter,
-  "sendText" | "sendTextAsUser" | "listChatMessages"
+  "sendText" | "listChatMessages"
 > {}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -107,7 +103,6 @@ export interface LarkReminderServiceOptions {
   paseoHome: string;
   channelStore: LarkChannelStore;
   adapter: LarkReminderAdapter;
-  userOAuthService: Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">;
   logger: pino.Logger;
   emitChanged: (reminders: LarkReminder[]) => void;
   now?: () => Date;
@@ -117,10 +112,6 @@ export class LarkReminderService {
   private readonly store: LarkReminderStore;
   private readonly channelStore: LarkChannelStore;
   private readonly adapter: LarkReminderAdapter;
-  private readonly userOAuthService: Pick<
-    LarkUserOAuthService,
-    "getStatus" | "getValidUserAccessToken"
-  >;
   private readonly logger: pino.Logger;
   private readonly emitChanged: (reminders: LarkReminder[]) => void;
   private readonly now: () => Date;
@@ -132,7 +123,6 @@ export class LarkReminderService {
     this.store = new LarkReminderStore(options.paseoHome);
     this.channelStore = options.channelStore;
     this.adapter = options.adapter;
-    this.userOAuthService = options.userOAuthService;
     this.logger = options.logger.child({ module: "lark-reminder-service" });
     this.emitChanged = options.emitChanged;
     this.now = options.now ?? (() => new Date());
@@ -158,8 +148,7 @@ export class LarkReminderService {
 
   create(input: LarkReminderCreateInput): LarkReminder {
     const parsed = LarkReminderCreateInputSchema.parse(input);
-    const config = this.requireBotConfig(parsed.botId);
-    this.validateSender(config, parsed.sender);
+    this.requireBotConfig(parsed.botId);
     const reminder = this.store.create(parsed, this.now().toISOString());
     if (reminder.status === "active") this.schedule(reminder);
     this.emit();
@@ -170,8 +159,7 @@ export class LarkReminderService {
     const current = this.store.get(id);
     if (!current) throw new Error("Lark reminder not found");
     const parsed = LarkReminderUpdateInputSchema.parse(input);
-    const config = this.requireBotConfig(parsed.botId);
-    this.validateSender(config, parsed.sender);
+    this.requireBotConfig(parsed.botId);
     this.cancelTimer(id);
     const now = this.now().toISOString();
     const updated = this.store.update(id, (reminder) => ({
@@ -197,8 +185,7 @@ export class LarkReminderService {
     const current = this.store.get(id);
     if (!current) throw new Error("Lark reminder not found");
     if (enabled) {
-      const config = this.requireBotConfig(current.botId);
-      this.validateSender(config, current.sender);
+      this.requireBotConfig(current.botId);
     }
     this.cancelTimer(id);
     const now = this.now().toISOString();
@@ -297,7 +284,6 @@ export class LarkReminderService {
       const activeReminder = this.store.get(id);
       if (!activeReminder || activeReminder.status !== "active") return;
       const config = this.requireBotConfig(activeReminder.botId);
-      this.validateSender(config, activeReminder.sender);
       const now = this.now();
       const nextRunAt = new Date(
         now.getTime() + activeReminder.frequencySeconds * 1000,
@@ -321,10 +307,7 @@ export class LarkReminderService {
       const message = error instanceof Error ? error.message : String(error);
       const now = this.now();
       const updated = this.store.update(id, (current) => {
-        const fatal =
-          message.includes("not found") ||
-          message.includes("disabled") ||
-          error instanceof LarkUserAuthorizationRequiredError;
+        const fatal = message.includes("not found") || message.includes("disabled");
         return {
           ...current,
           status: fatal ? "error" : current.status,
@@ -376,15 +359,7 @@ export class LarkReminderService {
 
   private async send(config: StoredLarkChannelConfig, reminder: LarkReminder): Promise<void> {
     const text = reminderText(reminder);
-    if (reminder.sender.type === "bot") {
-      await this.adapter.sendText(config, reminder.chatId, text);
-      return;
-    }
-    if (!this.adapter.sendTextAsUser) {
-      throw new Error("Lark user identity sending is not supported by this host");
-    }
-    const token = await this.userOAuthService.getValidUserAccessToken(config.appId!);
-    await this.adapter.sendTextAsUser(config, reminder.chatId, text, token);
+    await this.adapter.sendText(config, reminder.chatId, text);
   }
 
   private completeFromReply(reminder: LarkReminder, reply: LarkReminderReply): void {
@@ -410,13 +385,6 @@ export class LarkReminderService {
       throw new Error(`Lark bot credentials are incomplete: ${botId}`);
     }
     return bot.config;
-  }
-
-  private validateSender(config: StoredLarkChannelConfig, sender: LarkReminder["sender"]): void {
-    if (sender.type !== "user") return;
-    if (!this.userOAuthService.getStatus(config.appId!).authorized) {
-      throw new LarkUserAuthorizationRequiredError(config.appId!);
-    }
   }
 
   private isAfterStart(reminder: LarkReminder, timestamp: number): boolean {

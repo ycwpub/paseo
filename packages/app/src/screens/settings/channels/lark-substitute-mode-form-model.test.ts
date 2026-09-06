@@ -21,7 +21,6 @@ describe("createSubstituteModeFormState", () => {
     const form = createSubstituteModeFormState(null, []);
     form.name = "研发替身";
     form.botId = "bot-1";
-    form.openId = "ou_target";
     form.provider = "aiden_codex";
     form.model = "gpt-5.6";
     form.cwd = "/repo";
@@ -37,15 +36,6 @@ describe("createSubstituteModeFormState", () => {
     const input = buildSubstituteModeInput({
       form,
       selectedBot,
-      directoryUsers: [
-        {
-          appId: "cli_test",
-          openId: "ou_target",
-          displayName: "张三",
-          email: "zhangsan@example.com",
-          updatedAt: "2026-09-05T00:00:00.000Z",
-        },
-      ],
     });
 
     expect(input.audienceAllowlist).toEqual([{ id: "all", type: "all" }]);
@@ -62,7 +52,6 @@ describe("createSubstituteModeFormState", () => {
     const form = createSubstituteModeFormState(null, []);
     form.name = "研发替身";
     form.botId = "bot-1";
-    form.openId = "ou_target";
     form.provider = "aiden_codex";
     form.model = "gpt-5.6";
     form.cwd = "";
@@ -70,7 +59,6 @@ describe("createSubstituteModeFormState", () => {
     const input = buildSubstituteModeInput({
       form,
       selectedBot: { id: "bot-1", appId: "cli_test" } as LarkChannelBotStatus,
-      directoryUsers: [],
     });
 
     expect(input.target.cwd).toBe("");

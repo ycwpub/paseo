@@ -376,9 +376,12 @@ vi.mock("./lark-substitute-mode-section", () => ({
       name: string;
       enabled: boolean;
       botId: string;
-      substituteUser: { openId: string; name: string | null; email: string | null };
-      privateReplyIdentity: "user";
-      groupReplyIdentity: "bot";
+      privateScan: {
+        enabled: boolean;
+        intervalMinutes: number;
+        lookbackMinutes: number;
+        excludeRecentMinutes: number;
+      };
       disclosure: { enabled: boolean; prompt: string };
       customPrompt: string;
       delaySeconds: number;
@@ -396,9 +399,12 @@ vi.mock("./lark-substitute-mode-section", () => ({
         name: "工作替身",
         enabled: true,
         botId: "bot-1",
-        substituteUser: { openId: "ou_alice", name: "Alice", email: "alice@example.com" },
-        privateReplyIdentity: "user",
-        groupReplyIdentity: "bot",
+        privateScan: {
+          enabled: true,
+          intervalMinutes: 30,
+          lookbackMinutes: 60,
+          excludeRecentMinutes: 20,
+        },
         disclosure: { enabled: true, prompt: "【机器人代答】" },
         customPrompt: "",
         delaySeconds: 10,
@@ -644,7 +650,12 @@ describe("LarkChannelSection", () => {
 
     await waitFor(() =>
       expect(channelState.current.configure).toHaveBeenCalledWith(
-        expect.objectContaining({ createNew: true, name: "New bot", appId: "cli_new" }),
+        expect.objectContaining({
+          createNew: true,
+          name: "New bot",
+          appId: "cli_new",
+          substitute: { enabled: false, openId: null, name: null },
+        }),
       ),
     );
 

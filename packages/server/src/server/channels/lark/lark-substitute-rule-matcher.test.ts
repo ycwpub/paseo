@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { LarkSubstituteMode } from "@getpaseo/protocol/messages";
-import { matchLarkSubstituteMode } from "./lark-substitute-rule-matcher.js";
+import { matchLarkSubstituteMode as matchMode } from "./lark-substitute-rule-matcher.js";
 
 function mode(overrides: Partial<LarkSubstituteMode> = {}): LarkSubstituteMode {
   return {
@@ -8,9 +8,12 @@ function mode(overrides: Partial<LarkSubstituteMode> = {}): LarkSubstituteMode {
     name: "研发替身",
     enabled: true,
     botId: "bot-1",
-    substituteUser: { openId: "ou_target", name: "张三", email: "target@example.com" },
-    privateReplyIdentity: "user",
-    groupReplyIdentity: "bot",
+    privateScan: {
+      enabled: true,
+      intervalMinutes: 30,
+      lookbackMinutes: 60,
+      excludeRecentMinutes: 20,
+    },
     disclosure: { enabled: true, prompt: "【机器人代答】" },
     customPrompt: "",
     delaySeconds: 0,
@@ -28,6 +31,17 @@ function mode(overrides: Partial<LarkSubstituteMode> = {}): LarkSubstituteMode {
     updatedAt: "2026-09-04T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function matchLarkSubstituteMode(input: Omit<Parameters<typeof matchMode>[0], "authorizedUser">) {
+  return matchMode({
+    ...input,
+    authorizedUser: {
+      openId: "ou_target",
+      name: "张三",
+      email: "target@example.com",
+    },
+  });
 }
 
 const groupEvent = {
@@ -77,7 +91,7 @@ const directory = {
 };
 
 describe("matchLarkSubstituteMode", () => {
-  test("requires a group message to mention the configured substitute user", () => {
+  test("requires a group message to mention the OAuth-authorized substitute user", () => {
     expect(
       matchLarkSubstituteMode({
         modes: [mode()],

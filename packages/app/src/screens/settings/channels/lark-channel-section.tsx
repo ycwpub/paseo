@@ -405,9 +405,6 @@ function buildConfigureInput(input: {
   appSecret: string;
   encryptKey: string;
   verificationToken: string;
-  substituteEnabled: boolean;
-  substituteOpenId: string;
-  substituteName: string;
   assistantId: string | null;
   teamId: string | null;
   provider: string | null;
@@ -429,9 +426,9 @@ function buildConfigureInput(input: {
     ...secrets,
     domain: input.status?.domain ?? "feishu",
     substitute: {
-      enabled: input.substituteEnabled,
-      openId: input.substituteOpenId.trim() || null,
-      name: input.substituteName.trim() || null,
+      enabled: false,
+      openId: null,
+      name: null,
     },
     target: input.teamId
       ? {
@@ -1218,9 +1215,6 @@ function LarkChannelLoadedContent({
   const [appSecret, setAppSecret] = useState("");
   const [encryptKey, setEncryptKey] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
-  const [substituteEnabled, setSubstituteEnabled] = useState(false);
-  const [substituteOpenId, setSubstituteOpenId] = useState("");
-  const [substituteName, setSubstituteName] = useState("");
   const [assistantId, setAssistantId] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
@@ -1281,9 +1275,6 @@ function LarkChannelLoadedContent({
       setAppSecret("");
       setEncryptKey("");
       setVerificationToken("");
-      setSubstituteEnabled(false);
-      setSubstituteOpenId("");
-      setSubstituteName("");
       setAssistantId(null);
       setTeamId(null);
       setProvider(null);
@@ -1299,9 +1290,6 @@ function LarkChannelLoadedContent({
     setAppSecret("");
     setEncryptKey("");
     setVerificationToken("");
-    setSubstituteEnabled(selectedBotStatus.substitute.enabled);
-    setSubstituteOpenId(selectedBotStatus.substitute.openId ?? "");
-    setSubstituteName(selectedBotStatus.substitute.name ?? "");
     setAssistantId(
       selectedBotStatus.target.kind === "assistant" ? selectedBotStatus.target.assistantId : null,
     );
@@ -1365,9 +1353,6 @@ function LarkChannelLoadedContent({
     setAppSecret("");
     setEncryptKey("");
     setVerificationToken("");
-    setSubstituteEnabled(false);
-    setSubstituteOpenId("");
-    setSubstituteName("");
     setAssistantId(null);
     setTeamId(null);
     setProvider(null);
@@ -1503,9 +1488,6 @@ function LarkChannelLoadedContent({
           appSecret,
           encryptKey,
           verificationToken,
-          substituteEnabled,
-          substituteOpenId,
-          substituteName,
           assistantId,
           teamId,
           provider,
@@ -1539,9 +1521,6 @@ function LarkChannelLoadedContent({
     provider,
     selectedBotId,
     selectedBotStatus,
-    substituteEnabled,
-    substituteName,
-    substituteOpenId,
     teamId,
     verificationToken,
   ]);

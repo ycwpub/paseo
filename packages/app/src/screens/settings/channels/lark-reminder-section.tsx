@@ -7,22 +7,18 @@ import type {
   LarkDirectoryChat,
   LarkDirectoryUser,
   LarkReminder,
-  LarkReminderSender,
   LarkReminderUpdateInput,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SelectField, type SelectFieldOption } from "@/components/ui/select-field";
 import { Switch } from "@/components/ui/switch";
-import { LarkUserOAuthCard } from "@/projects/lark/lark-user-oauth-card";
 import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
 import { LarkReminderAudienceFields } from "./lark-reminder-audience-fields";
 import { useLarkReminders } from "./use-lark-reminders";
-
-type SenderType = LarkReminderSender["type"];
 
 interface LarkReminderSharedProps {
   serverId: string;
@@ -86,7 +82,6 @@ function createReminderEditorInitialState(
     rawTargetOpenIds: reminder?.targetOpenIds.join(", ") ?? "",
     message: reminder?.message ?? "",
     frequencyMinutes: reminder ? String(reminder.frequencySeconds / 60) : "30",
-    senderType: reminder?.sender.type ?? ("bot" as SenderType),
   };
 }
 
@@ -98,13 +93,11 @@ interface ReminderEditorValues {
   rawTargetOpenIds: string;
   message: string;
   frequencyMinutes: string;
-  senderType: SenderType;
 }
 
 function buildReminderUpdateInput(
   values: ReminderEditorValues,
   directorySupported: boolean,
-  selectedBot: LarkChannelBotStatus | null,
 ): { input: LarkReminderUpdateInput | null; error: string | null } {
   const parsedFrequency = Number(values.frequencyMinutes);
   const openIds = directorySupported ? values.targetOpenIds : splitOpenIds(values.rawTargetOpenIds);
@@ -115,9 +108,6 @@ function buildReminderUpdateInput(
   if (!Number.isInteger(parsedFrequency) || parsedFrequency < 1) {
     return { input: null, error: "提醒频率必须是大于等于 1 的整数分钟" };
   }
-  if (values.senderType === "user" && !selectedBot?.appId) {
-    return { input: null, error: "用户身份发送需要选择已配置 App ID 的飞书机器人" };
-  }
   return {
     input: {
       name: values.name.trim() || undefined,
@@ -126,8 +116,7 @@ function buildReminderUpdateInput(
       targetOpenIds: openIds,
       message: values.message.trim(),
       frequencySeconds: parsedFrequency * 60,
-      sender:
-        values.senderType === "bot" ? ({ type: "bot" } as const) : ({ type: "user" } as const),
+      sender: { type: "bot" },
     },
     error: null,
   };
@@ -182,7 +171,7 @@ function ReminderRow({
       .join("、")}`,
     `每 ${reminder.frequencySeconds / 60} 分钟`,
     `已发送 ${reminder.sendCount} 次`,
-    reminder.sender.type === "bot" ? "机器人身份" : "用户身份（OAuth 自动维护）",
+    "机器人身份",
   ].join(" · ");
   return (
     <View style={styles.reminderRow}>
@@ -337,7 +326,6 @@ export function LarkReminderEditor({
   const [rawTargetOpenIds, setRawTargetOpenIds] = useState(initialState.rawTargetOpenIds);
   const [message, setMessage] = useState(initialState.message);
   const [frequencyMinutes, setFrequencyMinutes] = useState(initialState.frequencyMinutes);
-  const [senderType, setSenderType] = useState<SenderType>(initialState.senderType);
   const [formError, setFormError] = useState<string | null>(null);
 
   const selectedBot = useMemo(
@@ -348,28 +336,6 @@ export function LarkReminderEditor({
     () => (selectedBot ? { label: botLabel(selectedBot) } : null),
     [selectedBot],
   );
-  const senderOptions = useMemo<SelectFieldOption<SenderType>[]>(
-    () => [
-      {
-        id: "bot",
-        value: "bot",
-        label: "机器人身份",
-        description: "使用所选 Paseo 飞书机器人发送",
-      },
-      {
-        id: "user",
-        value: "user",
-        label: "用户身份",
-        description: "使用当前飞书 OAuth 授权身份发送，Token 由 Paseo 安全保存并自动续期",
-      },
-    ],
-    [],
-  );
-  const selectedSenderDisplay = useMemo(
-    () => ({ label: senderType === "bot" ? "机器人身份" : "用户身份" }),
-    [senderType],
-  );
-
   const handleSave = useCallback(async () => {
     const result = buildReminderUpdateInput(
       {
@@ -380,10 +346,8 @@ export function LarkReminderEditor({
         rawTargetOpenIds,
         message,
         frequencyMinutes,
-        senderType,
       },
       directorySupported,
-      selectedBot,
     );
     if (!result.input) {
       setFormError(result.error);
@@ -411,8 +375,6 @@ export function LarkReminderEditor({
     rawTargetOpenIds,
     reminder,
     reminders,
-    selectedBot,
-    senderType,
     targetOpenIds,
   ]);
 
@@ -467,18 +429,9 @@ export function LarkReminderEditor({
             placeholder="30"
           />
         </Field>
-        <SelectField
-          label="发送身份"
-          value={senderType}
-          selectedDisplay={selectedSenderDisplay}
-          options={senderOptions}
-          onChange={setSenderType}
-          placeholder="选择发送身份"
-          emptyText="无可用发送身份"
-        />
-        {senderType === "user" && selectedBot?.appId ? (
-          <LarkUserOAuthCard serverId={serverId} appId={selectedBot.appId} />
-        ) : null}
+        <Field label="发送身份">
+          <FormTextInput value="机器人身份" editable={false} />
+        </Field>
         {formError || reminders.error ? (
           <Text style={settingsStyles.rowError}>{formError ?? reminders.error?.message}</Text>
         ) : null}

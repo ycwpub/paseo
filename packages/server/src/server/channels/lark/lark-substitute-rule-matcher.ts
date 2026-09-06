@@ -8,6 +8,11 @@ import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
 
 export interface MatchedLarkSubstituteMode {
   mode: LarkSubstituteMode;
+  substituteUser: {
+    openId: string;
+    name: string | null;
+    email: string | null;
+  };
   questionAllowRules: string[];
   questionDenyRules: string[];
   groupAllowRules: string[];
@@ -129,9 +134,9 @@ function getGroupContext(
   };
 }
 
-function modeIsTriggered(mode: LarkSubstituteMode, event: NormalizedLarkMessageEvent): boolean {
+function modeIsTriggered(authorizedUserOpenId: string, event: NormalizedLarkMessageEvent): boolean {
   if (!isGroup(event)) return true;
-  return (event.mentions ?? []).some((mention) => mention.openId === mode.substituteUser.openId);
+  return (event.mentions ?? []).some((mention) => mention.openId === authorizedUserOpenId);
 }
 
 function evaluateAudienceRules(
@@ -175,8 +180,14 @@ export function matchLarkSubstituteMode(input: {
   appId: string | null;
   event: NormalizedLarkMessageEvent;
   directory: LarkDirectory | null;
+  authorizedUser: {
+    openId: string;
+    name: string | null;
+    email: string | null;
+  } | null;
   now?: Date;
 }): MatchedLarkSubstituteMode | null {
+  if (!input.authorizedUser?.openId) return null;
   const now = input.now ?? new Date();
   for (const mode of input.modes) {
     const ruleLists = getLarkSubstituteRuleLists(mode);
@@ -184,7 +195,7 @@ export function matchLarkSubstituteMode(input: {
     if (
       !mode.enabled ||
       mode.botId !== input.botId ||
-      !modeIsTriggered(mode, input.event) ||
+      !modeIsTriggered(input.authorizedUser.openId, input.event) ||
       !isLarkSubstituteModeActive(mode, now) ||
       !audience.passes
     ) {
@@ -192,6 +203,7 @@ export function matchLarkSubstituteMode(input: {
     }
     return {
       mode,
+      substituteUser: input.authorizedUser,
       questionAllowRules: ruleLists.questionAllowlist.map((rule) => rule.description),
       questionDenyRules: ruleLists.questionDenylist.map((rule) => rule.description),
       groupAllowRules: audience.groupAllowRules,

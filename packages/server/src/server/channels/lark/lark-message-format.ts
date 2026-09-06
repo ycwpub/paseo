@@ -51,7 +51,6 @@ export interface LarkSubstituteTrigger {
   };
   observedMention: NormalizedLarkMention;
   modeId?: string;
-  replyIdentity?: "user" | "bot";
   disclosure?: {
     enabled: boolean;
     prompt: string;
@@ -479,11 +478,11 @@ function formatGroupCategoryPolicy(trigger: LarkSubstituteTrigger): string[] {
 function getSubstituteTriggerDescription(source: LarkSubstituteTrigger["source"]): string {
   switch (source) {
     case "configured_target":
-      return "This group message triggered substitute mode because it mentioned the configured substitute target.";
+      return "This group message triggered substitute mode because it mentioned the OAuth-authorized user.";
     case "current_bot":
       return "This group message triggered substitute mode because it mentioned the current bot while substitute mode is enabled.";
     case "private_message":
-      return "This private message triggered substitute mode and must be answered using the authorized user's identity.";
+      return "This unanswered private message was relayed into a three-party group; answer in the topic using the bot identity.";
   }
 }
 
@@ -944,6 +943,10 @@ export function normalizeLarkApiMessage(
   if (!messageId || !text) return null;
   const sender = getRecord(message, "sender") ?? {};
   const senderId = getRecord(sender, "sender_id") ?? getRecord(sender, "senderId") ?? {};
+  const directSenderId =
+    getStringByKeys(sender, ["id"]) && getStringByKeys(sender, ["id_type", "idType"]) === "open_id"
+      ? getStringByKeys(sender, ["id"])
+      : null;
   return {
     eventId: `history:${messageId}`,
     messageId,
@@ -953,7 +956,7 @@ export function normalizeLarkApiMessage(
     threadId: identity.threadId,
     rootMessageId: identity.rootMessageId,
     quotedMessageId: identity.quotedMessageId,
-    openId: getStringByKeys(senderId, ["open_id", "openId"]),
+    openId: getStringByKeys(senderId, ["open_id", "openId"]) ?? directSenderId,
     unionId: getStringByKeys(senderId, ["union_id", "unionId"]),
     senderType: senderTypeOf(message),
     displayName: getApiSenderDisplayName(message),

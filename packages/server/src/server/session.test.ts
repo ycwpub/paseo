@@ -447,13 +447,12 @@ describe("Lark substitute mode main Session routing", () => {
       name: "工作替身",
       enabled: true,
       botId: "bot-1",
-      substituteUser: {
-        openId: "ou_target",
-        name: "张三",
-        email: "zhangsan@example.com",
+      privateScan: {
+        enabled: true,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 20,
       },
-      privateReplyIdentity: "user",
-      groupReplyIdentity: "bot",
       disclosure: { enabled: true, prompt: "【机器人代答】" },
       customPrompt: "",
       delaySeconds: 60,

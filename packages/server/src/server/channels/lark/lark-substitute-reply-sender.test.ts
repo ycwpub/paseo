@@ -19,7 +19,7 @@ const config: StoredLarkChannelConfig = {
   substitute: { enabled: false, openId: null, name: null },
 };
 
-const userTrigger = {
+const substituteTrigger = {
   source: "private_message" as const,
   configuredTarget: { openId: "ou_target", name: "张三" },
   observedMention: {
@@ -30,49 +30,32 @@ const userTrigger = {
     appId: null,
     idType: "open_id",
   },
-  replyIdentity: "user" as const,
 };
 
 describe("LarkSubstituteReplySender", () => {
-  test("uses the refreshed OAuth token for private substitute replies", async () => {
+  test("uses the bot API for private substitute replies", async () => {
     const adapter = {
-      replyToMessageInThread: vi.fn(),
-      replyToMessageInThreadAsUser: vi.fn(async () => ({
+      replyToMessageInThread: vi.fn(async () => ({
         threadId: "omt_1",
         messageId: "om_2",
       })),
       replyInThread: vi.fn(),
-      replyInThreadAsUser: vi.fn(),
     };
-    const oauth = { getValidUserAccessToken: vi.fn(async () => "user-token") };
-    const sender = new LarkSubstituteReplySender(adapter, oauth);
+    const sender = new LarkSubstituteReplySender(adapter);
 
     await expect(
-      sender.replyToMessageInThread(config, "om_1", "收到消息，处理中", userTrigger),
+      sender.replyToMessageInThread(config, "om_1", "收到消息，处理中", substituteTrigger),
     ).resolves.toEqual({ threadId: "omt_1", messageId: "om_2" });
-    expect(oauth.getValidUserAccessToken).toHaveBeenCalledWith("cli_test");
-    expect(adapter.replyToMessageInThreadAsUser).toHaveBeenCalledWith(
-      config,
-      "om_1",
-      "收到消息，处理中",
-      "user-token",
-    );
-    expect(adapter.replyToMessageInThread).not.toHaveBeenCalled();
+    expect(adapter.replyToMessageInThread).toHaveBeenCalledWith(config, "om_1", "收到消息，处理中");
   });
 
   test("keeps robot replies on the bot API", async () => {
     const adapter = {
       replyToMessageInThread: vi.fn(),
-      replyToMessageInThreadAsUser: vi.fn(),
       replyInThread: vi.fn(async () => ({ threadId: "omt_1", messageId: "om_3" })),
-      replyInThreadAsUser: vi.fn(),
     };
-    const sender = new LarkSubstituteReplySender(adapter, null);
-    await sender.replyInThread(config, "om_1", "答案", {
-      ...userTrigger,
-      replyIdentity: "bot",
-    });
+    const sender = new LarkSubstituteReplySender(adapter);
+    await sender.replyInThread(config, "om_1", "答案", substituteTrigger);
     expect(adapter.replyInThread).toHaveBeenCalledWith(config, "om_1", "答案");
-    expect(adapter.replyInThreadAsUser).not.toHaveBeenCalled();
   });
 });

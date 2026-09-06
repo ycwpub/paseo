@@ -68,13 +68,12 @@ describe("LarkSubstituteModeStore", () => {
         name: "研发机器人 的替身模式",
         enabled: true,
         botId: "bot-1",
-        substituteUser: {
-          openId: "ou_user",
-          name: "张三",
-          email: null,
+        privateScan: {
+          enabled: true,
+          intervalMinutes: 30,
+          lookbackMinutes: 60,
+          excludeRecentMinutes: 20,
         },
-        privateReplyIdentity: "user",
-        groupReplyIdentity: "bot",
         customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
         delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
       }),
@@ -83,7 +82,7 @@ describe("LarkSubstituteModeStore", () => {
       JSON.parse(
         readFileSync(path.join(paseoHome, "channels", "lark-substitute-modes.json"), "utf8"),
       ),
-    ).toMatchObject({ version: 3, migratedLegacyBotIds: ["bot-1"] });
+    ).toMatchObject({ version: 4, migratedLegacyBotIds: ["bot-1"] });
   });
 
   test("creates, updates, toggles and deletes an independent mode", () => {
@@ -93,9 +92,12 @@ describe("LarkSubstituteModeStore", () => {
         name: "工作替身",
         enabled: true,
         botId: "bot-1",
-        substituteUser: { openId: "ou_user", name: "张三", email: "a@example.com" },
-        privateReplyIdentity: "user",
-        groupReplyIdentity: "user",
+        privateScan: {
+          enabled: true,
+          intervalMinutes: 30,
+          lookbackMinutes: 60,
+          excludeRecentMinutes: 20,
+        },
         disclosure: { enabled: true, prompt: "【AI 协助回答】" },
         customPrompt: "只回答研发问题",
         delaySeconds: 15,
@@ -134,9 +136,6 @@ describe("LarkSubstituteModeStore", () => {
             name: "周日替身",
             enabled: true,
             botId: "bot-1",
-            substituteUser: { openId: "ou_user", name: "张三", email: null },
-            privateReplyIdentity: "user",
-            groupReplyIdentity: "bot",
             disclosure: { enabled: true, prompt: "【机器人代答】" },
             customPrompt: "",
             delaySeconds: 10,
@@ -170,7 +169,7 @@ describe("LarkSubstituteModeStore", () => {
     expect(store.list()[0]?.activeTimeRanges[0]?.weekdays).toEqual([1, 7]);
     expect(
       JSON.parse(readFileSync(path.join(channelsDirectory, "lark-substitute-modes.json"), "utf8")),
-    ).toMatchObject({ version: 3 });
+    ).toMatchObject({ version: 4 });
   });
 
   test("upgrades legacy defaults without changing ordinary saved modes", () => {
@@ -181,9 +180,6 @@ describe("LarkSubstituteModeStore", () => {
       name: "替身",
       enabled: true,
       botId: "bot-1",
-      substituteUser: { openId: "ou_user", name: "张三", email: null },
-      privateReplyIdentity: "user",
-      groupReplyIdentity: "bot",
       disclosure: { enabled: true, prompt: "【机器人代答】" },
       customPrompt: "",
       delaySeconds: 0,
@@ -222,5 +218,67 @@ describe("LarkSubstituteModeStore", () => {
       customPrompt: "",
       delaySeconds: 0,
     });
+  });
+
+  test("removes legacy identity fields and adds private scan defaults", () => {
+    const paseoHome = createTempDir();
+    const channelsDirectory = path.join(paseoHome, "channels");
+    mkdirSync(channelsDirectory, { recursive: true });
+    writeFileSync(
+      path.join(channelsDirectory, "lark-substitute-modes.json"),
+      JSON.stringify({
+        version: 3,
+        migratedLegacyBotIds: [],
+        modes: [
+          {
+            id: "mode-legacy-identity",
+            name: "旧替身",
+            enabled: true,
+            botId: "bot-1",
+            substituteUser: { openId: "ou_user", name: "张三", email: "a@example.com" },
+            privateReplyIdentity: "user",
+            groupReplyIdentity: "user",
+            disclosure: { enabled: true, prompt: "【机器人代答】" },
+            customPrompt: "只回答工作问题",
+            delaySeconds: 60,
+            activeTimeRanges: [],
+            allowlist: [],
+            denylist: [],
+            target: {
+              kind: "workspace",
+              provider: "aiden_codex",
+              model: "gpt-5.5",
+              cwd: "/repo",
+              workspaceId: null,
+            },
+            createdAt: "2026-09-04T00:00:00.000Z",
+            updatedAt: "2026-09-04T00:00:00.000Z",
+          },
+        ],
+      }),
+      { mode: 0o600 },
+    );
+
+    const [mode] = new LarkSubstituteModeStore(paseoHome).list();
+    expect(mode).toMatchObject({
+      id: "mode-legacy-identity",
+      privateScan: {
+        enabled: true,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 20,
+      },
+    });
+    expect(mode).not.toHaveProperty("substituteUser");
+    expect(mode).not.toHaveProperty("privateReplyIdentity");
+    expect(mode).not.toHaveProperty("groupReplyIdentity");
+
+    const persisted = JSON.parse(
+      readFileSync(path.join(channelsDirectory, "lark-substitute-modes.json"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(persisted).toMatchObject({ version: 4 });
+    expect(JSON.stringify(persisted)).not.toContain("substituteUser");
+    expect(JSON.stringify(persisted)).not.toContain("privateReplyIdentity");
+    expect(JSON.stringify(persisted)).not.toContain("groupReplyIdentity");
   });
 });

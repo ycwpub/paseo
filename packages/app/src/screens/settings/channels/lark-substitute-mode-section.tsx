@@ -18,7 +18,7 @@ export { LarkSubstituteModeEditor } from "./lark-substitute-mode-editor";
 export function LarkSubstituteModeSection({
   serverId,
   bots,
-  directory,
+  directory: _directory,
   onCreate,
   onEdit,
 }: {
@@ -66,7 +66,8 @@ export function LarkSubstituteModeSection({
     <SettingsSection title={`替身模式（${substituteModes.modes.length}）`}>
       <View style={styles.listHeader}>
         <Text style={settingsStyles.rowHint}>
-          私聊固定使用用户身份回复；群聊可为每个替身模式选择用户或机器人身份。
+          当前 OAuth 授权用户即替身用户；群聊自动邀请机器人入群，私聊按计划扫描并转发到三方群，
+          回答均由机器人在话题中发送。
         </Text>
         <Button variant="default" onPress={onCreate} testID="host-page-lark-create-substitute">
           创建替身模式
@@ -82,7 +83,6 @@ export function LarkSubstituteModeSection({
               key={mode.id}
               mode={mode}
               bot={bots.find((entry) => entry.id === mode.botId)}
-              directory={directory}
               bordered={index > 0}
               disabled={substituteModes.isMutating}
               onEdit={onEdit}

@@ -11,9 +11,6 @@ describe("Lark substitute split rule lists", () => {
       name: "研发替身",
       enabled: true,
       botId: "bot-1",
-      substituteUser: { openId: "ou_target", name: "张三", email: "a@example.com" },
-      privateReplyIdentity: "user",
-      groupReplyIdentity: "bot",
       disclosure: { enabled: true, prompt: "【机器人代答】" },
       customPrompt: "",
       delaySeconds: 60,
@@ -48,7 +45,6 @@ describe("Lark substitute split rule lists", () => {
       name: "研发替身",
       enabled: true,
       botId: "bot-1",
-      substituteUser: { openId: "ou_target", name: "张三", email: "a@example.com" },
       disclosure: { enabled: true, prompt: "【机器人代答】" },
       target: {
         kind: "workspace",

@@ -1,7 +1,6 @@
 import type {
   LarkChannelBotStatus,
   LarkChannelTarget,
-  LarkDirectoryUser,
   LarkSubstituteAudienceRule,
   LarkSubstituteMode,
   LarkSubstituteModeCreateInput,
@@ -11,6 +10,9 @@ import type {
 import {
   DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
   DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES,
 } from "@getpaseo/protocol/messages";
 import {
   createSubstituteRuleFormLists,
@@ -25,8 +27,10 @@ export interface LarkSubstituteModeFormState {
   name: string;
   enabled: boolean;
   botId: string | null;
-  openId: string;
-  groupReplyIdentity: "user" | "bot";
+  privateScanEnabled: boolean;
+  privateScanIntervalMinutes: string;
+  privateScanLookbackMinutes: string;
+  privateScanExcludeRecentMinutes: string;
   disclosureEnabled: boolean;
   disclosurePrompt: string;
   customPrompt: string;
@@ -100,8 +104,12 @@ function createDefaultFormState(
     name: "",
     enabled: true,
     botId: initialBot?.id ?? null,
-    openId: "",
-    groupReplyIdentity: "bot",
+    privateScanEnabled: true,
+    privateScanIntervalMinutes: String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES),
+    privateScanLookbackMinutes: String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES),
+    privateScanExcludeRecentMinutes: String(
+      DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
+    ),
     disclosureEnabled: true,
     disclosurePrompt: "【机器人代答】",
     customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
@@ -121,12 +129,11 @@ function createDefaultFormState(
 function createModeIdentityFields(
   mode: LarkSubstituteMode,
   initialBot: LarkChannelBotStatus | null,
-): Pick<LarkSubstituteModeFormState, "name" | "enabled" | "botId" | "openId"> {
+): Pick<LarkSubstituteModeFormState, "name" | "enabled" | "botId"> {
   return {
     name: mode.name,
     enabled: mode.enabled,
     botId: initialBot?.id ?? null,
-    openId: mode.substituteUser.openId,
   };
 }
 
@@ -134,7 +141,10 @@ function createModeBehaviorFields(
   mode: LarkSubstituteMode,
 ): Pick<
   LarkSubstituteModeFormState,
-  | "groupReplyIdentity"
+  | "privateScanEnabled"
+  | "privateScanIntervalMinutes"
+  | "privateScanLookbackMinutes"
+  | "privateScanExcludeRecentMinutes"
   | "disclosureEnabled"
   | "disclosurePrompt"
   | "customPrompt"
@@ -145,7 +155,10 @@ function createModeBehaviorFields(
   | "questionDenylist"
 > {
   return {
-    groupReplyIdentity: mode.groupReplyIdentity,
+    privateScanEnabled: mode.privateScan.enabled,
+    privateScanIntervalMinutes: String(mode.privateScan.intervalMinutes),
+    privateScanLookbackMinutes: String(mode.privateScan.lookbackMinutes),
+    privateScanExcludeRecentMinutes: String(mode.privateScan.excludeRecentMinutes),
     disclosureEnabled: mode.disclosure.enabled,
     disclosurePrompt: mode.disclosure.prompt,
     customPrompt: mode.customPrompt,
@@ -188,6 +201,14 @@ function parseDelaySeconds(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 0 || parsed > 3_600) {
     throw new Error("延迟时间必须是 0 到 3600 的整数秒");
+  }
+  return parsed;
+}
+
+function parsePrivateScanMinutes(value: string, label: string, minimum: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum) {
+    throw new Error(`${label}必须是大于等于 ${minimum} 的整数分钟`);
   }
   return parsed;
 }
@@ -254,7 +275,6 @@ function validateRequiredFields(
 ): void {
   if (!form.name.trim()) throw new Error("请输入替身模式名称");
   if (!form.botId || !selectedBot) throw new Error("请选择飞书机器人");
-  if (!form.openId.trim()) throw new Error("请选择被替身用户");
   if (!form.provider) throw new Error("请选择模型提供方");
   if (!form.model) throw new Error("请选择模型");
 }
@@ -262,31 +282,39 @@ function validateRequiredFields(
 export function buildSubstituteModeInput(input: {
   form: LarkSubstituteModeFormState;
   selectedBot: LarkChannelBotStatus | null;
-  directoryUsers: LarkDirectoryUser[];
   mode?: LarkSubstituteMode | null;
 }): LarkSubstituteModeCreateInput {
   const { form, selectedBot, mode } = input;
   validateRequiredFields(form, selectedBot);
-  const selectedUser = input.directoryUsers.find(
-    (user) => user.appId === selectedBot?.appId && user.openId === form.openId,
-  );
   const ruleLists = validateSubstituteRuleFormLists({
     audienceAllowlist: form.audienceAllowlist,
     audienceDenylist: form.audienceDenylist,
     questionAllowlist: form.questionAllowlist,
     questionDenylist: form.questionDenylist,
   });
+  const privateScanLookbackMinutes = parsePrivateScanMinutes(
+    form.privateScanLookbackMinutes,
+    "私聊扫描范围",
+    1,
+  );
+  const privateScanExcludeRecentMinutes = parsePrivateScanMinutes(
+    form.privateScanExcludeRecentMinutes,
+    "私聊排除最近时间",
+    0,
+  );
+  if (privateScanExcludeRecentMinutes >= privateScanLookbackMinutes) {
+    throw new Error("私聊排除最近时间必须小于扫描范围");
+  }
   return {
     name: form.name.trim(),
     enabled: form.enabled,
     botId: form.botId as string,
-    substituteUser: {
-      openId: form.openId.trim(),
-      name: selectedUser?.displayName ?? mode?.substituteUser.name ?? null,
-      email: selectedUser?.email ?? mode?.substituteUser.email ?? null,
+    privateScan: {
+      enabled: form.privateScanEnabled,
+      intervalMinutes: parsePrivateScanMinutes(form.privateScanIntervalMinutes, "私聊扫描间隔", 1),
+      lookbackMinutes: privateScanLookbackMinutes,
+      excludeRecentMinutes: privateScanExcludeRecentMinutes,
     },
-    privateReplyIdentity: "user",
-    groupReplyIdentity: form.groupReplyIdentity,
     disclosure: {
       enabled: form.disclosureEnabled,
       prompt: form.disclosurePrompt.trim() || "【机器人代答】",

@@ -27,13 +27,14 @@ export const PASEO_LARK_TENANT_SCOPES = [
 export const PASEO_LARK_USER_SCOPES = [
   // Keep user authorization renewable without asking for an environment token.
   "offline_access",
-  // Search/read visible chats and add the application bot with the user's identity.
+  // Create/read relay chats and add the application bot with the user's identity.
+  "im:chat",
   "im:chat.members:write_only",
   "im:chat:read",
-  // Read group context and answer as the authorized user in substitute mode.
-  "im:message",
+  // Read group context and scan the authorized user's private messages.
   "im:message.group_msg:get_as_user",
-  "im:message.send_as_user",
+  "im:message.p2p_msg:get_as_user",
+  "search:message",
 ] as const;
 
 export const PASEO_LARK_EVENT_SUBSCRIPTIONS = ["im.message.receive_v1"] as const;

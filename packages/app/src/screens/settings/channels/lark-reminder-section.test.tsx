@@ -407,8 +407,8 @@ describe("LarkReminderSection", () => {
     );
   });
 
-  test("uses the Paseo-managed OAuth identity without asking for an environment variable", async () => {
-    reminderState.current.create.mockResolvedValue(makeReminder({ sender: { type: "user" } }));
+  test("always creates reminders with the bot identity", async () => {
+    reminderState.current.create.mockResolvedValue(makeReminder());
     directoryState.resolveChats.mockResolvedValue([
       {
         appId: "cli_reminder",
@@ -442,17 +442,14 @@ describe("LarkReminderSection", () => {
     fireEvent.change(screen.getByPlaceholderText("请确认并回复本消息"), {
       target: { value: "请回复" },
     });
-    fireEvent.change(screen.getByLabelText("发送身份"), {
-      target: { value: "user" },
-    });
-    expect(screen.getByTestId("lark-user-oauth-card").textContent).toContain("cli_reminder");
+    expect(screen.getByDisplayValue("机器人身份")).toBeTruthy();
     expect(screen.queryByText("user_access_token 环境变量")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "创建并开启" }));
 
     await waitFor(() =>
       expect(reminderState.current.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          sender: { type: "user" },
+          sender: { type: "bot" },
         }),
       ),
     );

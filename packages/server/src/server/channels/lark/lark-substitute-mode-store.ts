@@ -15,7 +15,7 @@ import {
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
 import type { StoredLarkChannelBot } from "./lark-channel-store.js";
 
-const LARK_SUBSTITUTE_MODE_STORE_VERSION = 3;
+const LARK_SUBSTITUTE_MODE_STORE_VERSION = 4;
 const LarkSubstituteModeStorePayloadSchema = z.object({
   version: z.literal(LARK_SUBSTITUTE_MODE_STORE_VERSION),
   migratedLegacyBotIds: z.array(z.string()),
@@ -172,13 +172,6 @@ export class LarkSubstituteModeStore {
           name: legacyModeName(bot),
           enabled: substitute.enabled,
           botId: bot.id,
-          substituteUser: {
-            openId: substitute.openId,
-            name: substitute.name,
-            email: null,
-          },
-          privateReplyIdentity: "user",
-          groupReplyIdentity: "bot",
           disclosure: {
             enabled: true,
             prompt: substitute.name ? `【代${substitute.name}回复】` : "【替身回复】",

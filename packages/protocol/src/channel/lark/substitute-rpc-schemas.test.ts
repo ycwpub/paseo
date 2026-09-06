@@ -9,13 +9,12 @@ const modeInput = {
   name: "工作时间替身",
   enabled: true,
   botId: "bot-1",
-  substituteUser: {
-    openId: "ou_target",
-    name: "张三",
-    email: "zhangsan@example.com",
+  privateScan: {
+    enabled: true,
+    intervalMinutes: 30,
+    lookbackMinutes: 60,
+    excludeRecentMinutes: 20,
   },
-  privateReplyIdentity: "user" as const,
-  groupReplyIdentity: "bot" as const,
   disclosure: {
     enabled: true,
     prompt: "【机器人代答】",
@@ -64,8 +63,11 @@ describe("Lark substitute mode RPC schemas", () => {
     });
 
     expect(request.mode).toMatchObject({
-      privateReplyIdentity: "user",
-      groupReplyIdentity: "bot",
+      privateScan: {
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 20,
+      },
       delaySeconds: 10,
       target: {
         kind: "assistant",
@@ -76,12 +78,15 @@ describe("Lark substitute mode RPC schemas", () => {
     });
   });
 
-  it("keeps private replies restricted to the user identity", () => {
+  it("requires the private scan exclusion window to be smaller than the lookback", () => {
     expect(() =>
       LarkSubstituteModeCreateRequestSchema.parse({
         type: "channel.lark.substitute.create.request",
         requestId: "request-invalid",
-        mode: { ...modeInput, privateReplyIdentity: "bot" },
+        mode: {
+          ...modeInput,
+          privateScan: { ...modeInput.privateScan, excludeRecentMinutes: 60 },
+        },
       }),
     ).toThrow();
   });
@@ -125,6 +130,6 @@ describe("Lark substitute mode RPC schemas", () => {
       },
     });
 
-    expect(response.payload.modes[0]?.substituteUser.email).toBe("zhangsan@example.com");
+    expect(response.payload.modes[0]?.privateScan.intervalMinutes).toBe(30);
   });
 });

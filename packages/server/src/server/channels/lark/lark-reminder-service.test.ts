@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,33 +11,8 @@ import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 function createAdapter() {
   return {
     sendText: vi.fn(async () => undefined),
-    sendTextAsUser: vi.fn(async () => undefined),
     listChatMessages: vi.fn(async () => []),
-  } satisfies Pick<LarkChannelClientAdapter, "sendText" | "sendTextAsUser" | "listChatMessages">;
-}
-
-function createUserOAuthService(
-  overrides: {
-    authorized?: boolean;
-    token?: string;
-  } = {},
-) {
-  const authorized = overrides.authorized ?? true;
-  const token = overrides.token ?? "oauth-user-token";
-  return {
-    getStatus: vi.fn(() => ({
-      appId: "cli_test",
-      authorized,
-      needsAuthorization: !authorized,
-      expiresAt: null,
-      refreshTokenExpiresAt: null,
-      openId: authorized ? "ou_sender" : null,
-      email: authorized ? "sender@example.com" : null,
-      displayName: authorized ? "发送人" : null,
-      scope: null,
-    })),
-    getValidUserAccessToken: vi.fn(async () => token),
-  };
+  } satisfies Pick<LarkChannelClientAdapter, "sendText" | "listChatMessages">;
 }
 
 function replyEvent(openId: string, createTime: number): NormalizedLarkMessageEvent {
@@ -93,7 +68,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter,
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged,
     });
@@ -136,7 +110,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter,
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });
@@ -156,61 +129,77 @@ describe("LarkReminderService", () => {
     service.stop();
   });
 
-  it("uses the OAuth service managed user access token without persisting it in reminders", async () => {
-    const adapter = createAdapter();
-    const userOAuthService = createUserOAuthService({ token: "uat-secret" });
-    const service = new LarkReminderService({
-      paseoHome: tempRoot,
-      channelStore,
-      adapter,
-      userOAuthService,
-      logger: createTestLogger(),
-      emitChanged: vi.fn(),
-    });
-    service.start();
-    service.create({
-      botId,
-      chatId: "oc_team",
-      targetOpenIds: ["ou_alice"],
-      message: "请回复确认",
-      frequencySeconds: 60,
-      sender: { type: "user" },
-      enabled: true,
-    });
-
-    await vi.runOnlyPendingTimersAsync();
-    expect(userOAuthService.getValidUserAccessToken).toHaveBeenCalledWith("cli_test");
-    expect(adapter.sendTextAsUser).toHaveBeenCalledWith(
-      expect.any(Object),
-      "oc_team",
-      '<at user_id="ou_alice"></at> 请回复确认',
-      "uat-secret",
-    );
-    expect(JSON.stringify(service.list())).not.toContain("uat-secret");
-    service.stop();
-  });
-
-  it("requires OAuth authorization before creating a user-authored reminder", () => {
+  it("rejects reminders that request the unsupported user sending identity", () => {
     const service = new LarkReminderService({
       paseoHome: tempRoot,
       channelStore,
       adapter: createAdapter(),
-      userOAuthService: createUserOAuthService({ authorized: false }),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });
 
-    expect(() =>
+    expect(() => {
       service.create({
         botId,
         chatId: "oc_team",
         targetOpenIds: ["ou_alice"],
         message: "请回复确认",
         frequencySeconds: 60,
+        // Validate backward/invalid callers at the service boundary.
+        // @ts-expect-error User identity sending is intentionally unsupported.
         sender: { type: "user" },
         enabled: true,
+      });
+    }).toThrow();
+  });
+
+  it("migrates old user-authored reminders to bot identity", () => {
+    const channelsDirectory = path.join(tempRoot, "channels");
+    mkdirSync(channelsDirectory, { recursive: true });
+    const reminderFile = path.join(channelsDirectory, "lark-reminders.json");
+    writeFileSync(
+      reminderFile,
+      JSON.stringify({
+        version: 1,
+        reminders: [
+          {
+            id: "reminder-legacy-user",
+            name: "旧提醒",
+            botId,
+            chatId: "oc_team",
+            targetOpenIds: ["ou_alice"],
+            message: "请回复确认",
+            frequencySeconds: 60,
+            sender: { type: "user" },
+            status: "paused",
+            createdAt: "2026-08-18T08:00:00.000Z",
+            updatedAt: "2026-08-18T08:00:00.000Z",
+            startedAt: null,
+            completedAt: null,
+            lastSentAt: null,
+            nextRunAt: null,
+            sendCount: 0,
+            lastError: null,
+            reply: null,
+          },
+        ],
       }),
-    ).toThrow("飞书用户身份未授权或已失效");
+      { mode: 0o600 },
+    );
+
+    const service = new LarkReminderService({
+      paseoHome: tempRoot,
+      channelStore,
+      adapter: createAdapter(),
+      logger: createTestLogger(),
+      emitChanged: vi.fn(),
+    });
+
+    expect(service.list()[0]?.sender).toEqual({ type: "bot" });
+    expect(JSON.parse(readFileSync(reminderFile, "utf8"))).toMatchObject({
+      version: 2,
+      reminders: [{ sender: { type: "bot" } }],
+    });
   });
 
   it("updates a reminder without losing its execution history", async () => {
@@ -219,7 +208,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter,
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });
@@ -274,7 +262,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter: createAdapter(),
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });
@@ -298,7 +285,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter: firstAdapter,
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });
@@ -320,7 +306,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter: secondAdapter,
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });
@@ -345,7 +330,6 @@ describe("LarkReminderService", () => {
       paseoHome: tempRoot,
       channelStore,
       adapter,
-      userOAuthService: createUserOAuthService(),
       logger: createTestLogger(),
       emitChanged: vi.fn(),
     });

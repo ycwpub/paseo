@@ -1,16 +1,6 @@
 import { z } from "zod";
 import { LarkChannelTargetSchema } from "./types.js";
 
-export const LarkSubstituteReplyIdentitySchema = z.enum(["user", "bot"]);
-export type LarkSubstituteReplyIdentity = z.infer<typeof LarkSubstituteReplyIdentitySchema>;
-
-export const LarkSubstituteUserSchema = z.object({
-  openId: z.string().trim().min(1),
-  name: z.string().trim().nullable().default(null),
-  email: z.string().trim().nullable().default(null),
-});
-export type LarkSubstituteUser = z.infer<typeof LarkSubstituteUserSchema>;
-
 const LarkSubstituteUserRuleSchema = z.object({
   id: z.string().min(1),
   type: z.literal("user"),
@@ -92,15 +82,49 @@ export type LarkSubstituteDisclosure = z.infer<typeof LarkSubstituteDisclosureSc
 
 export const DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT = "仅回答工作相关问题，避免代替用户做承诺";
 export const DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS = 60;
+export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES = 30;
+export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES = 60;
+export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES = 20;
+
+export const LarkSubstitutePrivateScanSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    intervalMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(24 * 60)
+      .default(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES),
+    lookbackMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(7 * 24 * 60)
+      .default(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES),
+    excludeRecentMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 60)
+      .default(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES),
+  })
+  .refine((value) => value.excludeRecentMinutes < value.lookbackMinutes, {
+    message: "私聊扫描的排除最近时间必须小于扫描范围",
+    path: ["excludeRecentMinutes"],
+  });
+export type LarkSubstitutePrivateScan = z.infer<typeof LarkSubstitutePrivateScanSchema>;
 
 export const LarkSubstituteModeSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1).max(100),
   enabled: z.boolean(),
   botId: z.string().trim().min(1),
-  substituteUser: LarkSubstituteUserSchema,
-  privateReplyIdentity: z.literal("user").default("user"),
-  groupReplyIdentity: LarkSubstituteReplyIdentitySchema.default("bot"),
+  privateScan: LarkSubstitutePrivateScanSchema.default({
+    enabled: true,
+    intervalMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES,
+    lookbackMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES,
+    excludeRecentMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
+  }),
   disclosure: LarkSubstituteDisclosureSchema,
   customPrompt: z.string().max(10_000).default(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT),
   delaySeconds: z.number().int().min(0).max(3_600).default(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),

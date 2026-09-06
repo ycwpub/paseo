@@ -32,6 +32,11 @@ export interface LarkChatMessageListOptions extends LarkMessageListOptions {
   startTime?: number;
 }
 
+export interface LarkUserMessageSearchOptions {
+  startTime: number;
+  endTime: number;
+}
+
 export interface LarkMessageGetOptions {
   userCardContent?: boolean;
 }
@@ -55,33 +60,20 @@ export interface LarkChannelClientAdapter {
     handler: (event: NormalizedLarkMessageEvent) => Promise<void>,
   ): Promise<LarkChannelEventSubscription>;
   sendText(config: StoredLarkChannelConfig, chatId: string, text: string): Promise<void>;
-  sendTextAsUser?(
+  sendTextWithResult?(
     config: StoredLarkChannelConfig,
     chatId: string,
     text: string,
-    userAccessToken: string,
-  ): Promise<void>;
+  ): Promise<LarkThreadReplyResult>;
   replyToMessageInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
     text: string,
   ): Promise<LarkThreadReplyResult>;
-  replyToMessageInThreadAsUser?(
-    config: StoredLarkChannelConfig,
-    messageId: string,
-    text: string,
-    userAccessToken: string,
-  ): Promise<LarkThreadReplyResult>;
   replyInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
     text: string,
-  ): Promise<LarkThreadReplyResult>;
-  replyInThreadAsUser?(
-    config: StoredLarkChannelConfig,
-    messageId: string,
-    text: string,
-    userAccessToken: string,
   ): Promise<LarkThreadReplyResult>;
   listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]>;
   addBotToChat?(
@@ -90,6 +82,21 @@ export interface LarkChannelClientAdapter {
     appId: string,
     userAccessToken: string,
   ): Promise<void>;
+  createSubstituteRelayChat?(
+    config: StoredLarkChannelConfig,
+    input: {
+      name: string;
+      authorizedUserOpenId: string;
+      peerOpenId: string;
+      botAppId: string;
+    },
+    userAccessToken: string,
+  ): Promise<string>;
+  searchPrivateMessagesAsUser?(
+    config: StoredLarkChannelConfig,
+    options: LarkUserMessageSearchOptions,
+    userAccessToken: string,
+  ): Promise<unknown[]>;
   getMessage(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -315,6 +322,14 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
   }
 
   async sendText(config: StoredLarkChannelConfig, chatId: string, text: string): Promise<void> {
+    await this.sendTextWithResult(config, chatId, text);
+  }
+
+  async sendTextWithResult(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    text: string,
+  ): Promise<LarkThreadReplyResult> {
     const client = createClient(config);
     const result = await client.im.v1.message.create({
       params: {
@@ -327,29 +342,10 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       },
     });
     assertSuccess(result);
-  }
-
-  async sendTextAsUser(
-    config: StoredLarkChannelConfig,
-    chatId: string,
-    text: string,
-    userAccessToken: string,
-  ): Promise<void> {
-    const client = createClient(config);
-    const result = await client.im.v1.message.create(
-      {
-        params: {
-          receive_id_type: "chat_id",
-        },
-        data: {
-          receive_id: chatId,
-          msg_type: "text",
-          content: JSON.stringify({ text }),
-        },
-      },
-      lark.withUserAccessToken(userAccessToken),
-    );
-    assertSuccess(result);
+    return {
+      threadId: result.data?.thread_id ?? null,
+      messageId: result.data?.message_id ?? null,
+    };
   }
 
   async replyToMessageInThread(
@@ -375,15 +371,6 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     };
   }
 
-  async replyToMessageInThreadAsUser(
-    config: StoredLarkChannelConfig,
-    messageId: string,
-    text: string,
-    userAccessToken: string,
-  ): Promise<LarkThreadReplyResult> {
-    return this.replyAsUser(config, messageId, text, userAccessToken);
-  }
-
   async replyInThread(
     config: StoredLarkChannelConfig,
     messageId: string,
@@ -400,42 +387,6 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
         reply_in_thread: true,
       },
     });
-    assertSuccess(result);
-    return {
-      threadId: result.data?.thread_id ?? null,
-      messageId: result.data?.message_id ?? null,
-    };
-  }
-
-  async replyInThreadAsUser(
-    config: StoredLarkChannelConfig,
-    messageId: string,
-    text: string,
-    userAccessToken: string,
-  ): Promise<LarkThreadReplyResult> {
-    return this.replyAsUser(config, messageId, text, userAccessToken);
-  }
-
-  private async replyAsUser(
-    config: StoredLarkChannelConfig,
-    messageId: string,
-    text: string,
-    userAccessToken: string,
-  ): Promise<LarkThreadReplyResult> {
-    const client = createClient(config);
-    const result = await client.im.v1.message.reply(
-      {
-        path: {
-          message_id: messageId,
-        },
-        data: {
-          msg_type: "text",
-          content: JSON.stringify({ text }),
-          reply_in_thread: true,
-        },
-      },
-      lark.withUserAccessToken(userAccessToken),
-    );
     assertSuccess(result);
     return {
       threadId: result.data?.thread_id ?? null,
@@ -484,6 +435,87 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     } catch (error) {
       throw describeLarkError(error);
     }
+  }
+
+  async createSubstituteRelayChat(
+    config: StoredLarkChannelConfig,
+    input: {
+      name: string;
+      authorizedUserOpenId: string;
+      peerOpenId: string;
+      botAppId: string;
+    },
+    userAccessToken: string,
+  ): Promise<string> {
+    const client = createClient(config);
+    try {
+      const result = await client.im.v1.chat.create(
+        {
+          params: {
+            user_id_type: "open_id",
+          },
+          data: {
+            name: input.name,
+            owner_id: input.authorizedUserOpenId,
+            user_id_list: [input.authorizedUserOpenId, input.peerOpenId],
+            bot_id_list: [input.botAppId],
+            group_message_type: "thread",
+          },
+        },
+        lark.withUserAccessToken(userAccessToken),
+      );
+      assertSuccess(result);
+      const chatId = result.data?.chat_id?.trim();
+      if (!chatId) throw new Error("飞书创建替身私聊转发群未返回 chat_id");
+      return chatId;
+    } catch (error) {
+      throw describeLarkError(error);
+    }
+  }
+
+  async searchPrivateMessagesAsUser(
+    config: StoredLarkChannelConfig,
+    options: LarkUserMessageSearchOptions,
+    userAccessToken: string,
+  ): Promise<unknown[]> {
+    const client = createClient(config);
+    const messageIds: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const result = await client.search.message.create(
+        {
+          data: {
+            query: "",
+            chat_type: "p2p_chat",
+            start_time: String(options.startTime),
+            end_time: String(options.endTime),
+          },
+          params: {
+            user_id_type: "open_id",
+            page_size: 50,
+            ...(pageToken ? { page_token: pageToken } : {}),
+          },
+        },
+        lark.withUserAccessToken(userAccessToken),
+      );
+      assertSuccess(result);
+      messageIds.push(...(result.data?.items ?? []));
+      pageToken = result.data?.page_token;
+    } while (pageToken);
+    const messages = await Promise.all(
+      Array.from(new Set(messageIds)).map(async (messageId) => {
+        const result = await client.im.v1.message.get(
+          {
+            path: { message_id: messageId },
+            params: { user_id_type: "open_id", with_sender_name: true },
+          },
+          lark.withUserAccessToken(userAccessToken),
+        );
+        assertSuccess(result);
+        return result.data?.items?.[0] ?? null;
+      }),
+    );
+    return messages.filter((message): message is NonNullable<typeof message> => Boolean(message));
   }
 
   async resolveUsersByEmails(

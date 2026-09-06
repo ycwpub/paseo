@@ -16,7 +16,7 @@ function getPendingKey(mode: LarkSubstituteMode, event: NormalizedLarkMessageEve
   if (event.chatType?.toLowerCase() === "p2p") {
     return `${mode.id}:${event.chatId}:private`;
   }
-  return `${mode.id}:${event.chatId}:${mode.substituteUser.openId}`;
+  return `${mode.id}:${event.chatId}:group`;
 }
 
 export class LarkSubstituteDebouncer {

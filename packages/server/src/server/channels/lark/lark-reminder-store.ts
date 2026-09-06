@@ -10,10 +10,14 @@ import {
 } from "@getpaseo/protocol/messages";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "../../private-files.js";
 
-const LARK_REMINDER_STORE_VERSION = 1;
+const LARK_REMINDER_STORE_VERSION = 2;
 const LarkReminderStorePayloadSchema = z.object({
   version: z.literal(LARK_REMINDER_STORE_VERSION),
   reminders: z.array(LarkReminderSchema),
+});
+const StoredLarkReminderStorePayloadSchema = z.object({
+  version: z.number().int(),
+  reminders: z.array(z.unknown()).default([]),
 });
 
 interface LarkReminderStorePayload {
@@ -112,9 +116,19 @@ export class LarkReminderStore {
       return;
     }
     ensurePrivateFile(this.filePath);
-    this.payload = LarkReminderStorePayloadSchema.parse(
+    const stored = StoredLarkReminderStorePayloadSchema.parse(
       JSON.parse(readFileSync(this.filePath, "utf8")) as unknown,
     );
+    this.payload = LarkReminderStorePayloadSchema.parse({
+      version: LARK_REMINDER_STORE_VERSION,
+      reminders: stored.reminders.map((reminder) => {
+        if (!reminder || typeof reminder !== "object" || Array.isArray(reminder)) return reminder;
+        return { ...reminder, sender: { type: "bot" } };
+      }),
+    });
+    if (stored.version !== LARK_REMINDER_STORE_VERSION) {
+      this.persist(this.payload);
+    }
     this.loaded = true;
   }
 

@@ -127,11 +127,11 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
     <SettingsSection title="飞书用户身份授权">
       <View style={styles.content}>
         <Text style={settingsStyles.rowHint}>
-          群搜索、邀请机器人入群和替身模式用户身份回复使用当前用户授权。Access Token 过期前会通过
-          Refresh Token 自动续期。
+          当前授权用户即替身用户。Paseo 使用该身份搜索消息、读取私聊、创建转发群并邀请机器人入群；
+          回答始终由机器人发送。Access Token 过期前会通过 Refresh Token 自动续期。
         </Text>
         <Text style={settingsStyles.rowHint}>
-          飞书应用需开通用户权限：读取群信息、添加和移除群成员、以用户身份发送消息、离线访问授权数据。
+          飞书应用需开通用户权限：读取群信息、添加群成员、读取私聊消息、搜索消息和离线访问授权数据。
         </Text>
         <Text style={settingsStyles.rowTitle}>{formatAuthorizedIdentity(oauth.status)}</Text>
         <AuthorizationStartFields

@@ -65,7 +65,11 @@ describe("LarkChannelService", () => {
   });
 
   function createHarness(
-    options: { withDirectory?: boolean; userOAuthStatus?: LarkUserOAuthStatus } = {},
+    options: {
+      withDirectory?: boolean;
+      userOAuthStatus?: LarkUserOAuthStatus;
+      userOAuthStatuses?: Record<string, LarkUserOAuthStatus>;
+    } = {},
   ) {
     const logger = pino({ level: "silent" });
     const store = new LarkChannelStore({ paseoHome, logger });
@@ -128,6 +132,7 @@ describe("LarkChannelService", () => {
         { openId: "ou_bot", name: "Paseo" },
         { openId: "ou_reviewer", name: "Reviewer" },
       ]),
+      addBotToChat: vi.fn(async () => undefined),
       getMessage: vi.fn(async () => null),
       listThreadMessages: vi.fn(async () => []),
     };
@@ -137,11 +142,24 @@ describe("LarkChannelService", () => {
           getValidUserAccessToken: vi.fn(async () => "u-token"),
         } as unknown as LarkUserOAuthService)
       : null;
-    const userOAuthService = options.userOAuthStatus
-      ? ({
-          getStatus: vi.fn(() => options.userOAuthStatus),
-        } as unknown as LarkUserOAuthService)
-      : null;
+    const userOAuthStatus =
+      options.userOAuthStatus ??
+      ({
+        appId: "cli_test",
+        authorized: true,
+        needsAuthorization: false,
+        expiresAt: "2026-09-06T12:00:00.000Z",
+        refreshTokenExpiresAt: "2026-10-06T12:00:00.000Z",
+        openId: "ou_substitute",
+        email: "zhangsan@example.com",
+        displayName: "张三",
+        scope:
+          "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+      } satisfies LarkUserOAuthStatus);
+    const userOAuthService = {
+      getStatus: vi.fn((appId: string) => options.userOAuthStatuses?.[appId] ?? userOAuthStatus),
+      getValidUserAccessToken: vi.fn(async () => "u-token"),
+    } as unknown as LarkUserOAuthService;
     const createAgent = vi.fn(async () => {
       const snapshot = makeAgent("agent-created", "idle");
       agents.set(snapshot.id, snapshot);
@@ -788,29 +806,14 @@ describe("LarkChannelService", () => {
     expect(harness.agentManager.streamAgent).not.toHaveBeenCalled();
   });
 
-  test("fills the configured substitute user's email from its Open ID on startup", async () => {
+  test("seeds the authorized OAuth user as the substitute identity on startup", async () => {
     const harness = createHarness({ withDirectory: true });
-    harness.store.configure({
-      botId: harness.botId,
-      substitute: {
-        enabled: true,
-        openId: "ou_substitute",
-        name: null,
-      },
-    });
-    harness.adapter.resolveUserByOpenId = vi.fn(async (_config, openId) => ({
-      email: openId === "ou_substitute" ? "substitute@example.com" : "alice@example.com",
-      openId,
-    }));
 
     await harness.service.start();
 
-    expect(harness.adapter.resolveUserByOpenId).toHaveBeenCalledWith(
-      expect.objectContaining({ appId: "cli_test" }),
-      "ou_substitute",
-    );
     expect(harness.directoryStore.findUser("cli_test", "ou_substitute")).toMatchObject({
-      email: "substitute@example.com",
+      displayName: "张三",
+      email: "zhangsan@example.com",
       openId: "ou_substitute",
     });
   });
@@ -1451,17 +1454,19 @@ describe("LarkChannelService", () => {
 
   test("uses an independent substitute mode target and question policies", async () => {
     const harness = createHarness();
+    vi.mocked(harness.adapter.listChatBots).mockResolvedValue([
+      { openId: "ou_reviewer", name: "Reviewer" },
+    ]);
     harness.service.createSubstituteMode({
       name: "研发替身",
       enabled: true,
       botId: harness.botId,
-      substituteUser: {
-        openId: "ou_substitute",
-        name: "张三",
-        email: "zhangsan@example.com",
+      privateScan: {
+        enabled: true,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 20,
       },
-      privateReplyIdentity: "user",
-      groupReplyIdentity: "bot",
       disclosure: { enabled: true, prompt: "【AI 协助回答】" },
       customPrompt: "回答前先核对发布规范",
       delaySeconds: 0,
@@ -1521,13 +1526,65 @@ describe("LarkChannelService", () => {
         config: expect.objectContaining({ model: "gpt-5.5" }),
       }),
     );
+    expect(harness.adapter.addBotToChat).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test" }),
+      "oc_1",
+      "cli_test",
+      "u-token",
+    );
+    expect(vi.mocked(harness.adapter.addBotToChat).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(harness.adapter.replyToMessageInThread).mock.invocationCallOrder[0]!,
+    );
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
     expect(prompt).toContain("Additional substitute instruction: 回答前先核对发布规范");
     expect(prompt).toContain("<allow>研发和代码问题</allow>");
     expect(prompt).toContain("<deny>人事和薪酬问题</deny>");
   });
 
-  test("handles a substitute-mode group message that mentions the current bot", async () => {
+  test("requires OAuth authorization before an enabled substitute mode can be saved", () => {
+    const harness = createHarness({
+      userOAuthStatus: {
+        appId: "cli_test",
+        authorized: false,
+        needsAuthorization: true,
+        expiresAt: null,
+        refreshTokenExpiresAt: null,
+        openId: null,
+        email: null,
+        displayName: null,
+        scope: null,
+      },
+    });
+
+    expect(() =>
+      harness.service.createSubstituteMode({
+        name: "未授权替身",
+        enabled: true,
+        botId: harness.botId,
+        privateScan: {
+          enabled: true,
+          intervalMinutes: 30,
+          lookbackMinutes: 60,
+          excludeRecentMinutes: 20,
+        },
+        disclosure: { enabled: true, prompt: "【机器人代答】" },
+        customPrompt: "仅回答工作问题",
+        delaySeconds: 60,
+        activeTimeRanges: [],
+        allowlist: [],
+        denylist: [],
+        target: {
+          kind: "workspace",
+          provider: "aiden_codex",
+          model: "gpt-5.5",
+          cwd: "/repo",
+          workspaceId: null,
+        },
+      }),
+    ).toThrow("完成当前用户 OAuth 授权");
+  });
+
+  test("treats a current-bot mention as a normal request instead of substitute mode", async () => {
     const harness = createHarness();
     harness.store.configure({
       botId: harness.botId,
@@ -1556,16 +1613,25 @@ describe("LarkChannelService", () => {
 
     expect(harness.createAgent).toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
-    expect(prompt).toContain("<lark_substitute_trigger>");
-    expect(prompt).toContain("<trigger_source>current_bot</trigger_source>");
-    expect(prompt).toContain('<configured_target open_id="ou_substitute" name="张三" />');
-    expect(prompt).toContain("Paseo adds the visible substitute disclosure label");
-    expect(prompt).toContain("Do not write another");
+    expect(prompt).not.toContain("<lark_substitute_trigger>");
   });
 
-  test("lets the configured substitute bot answer a question sent by another bot", async () => {
+  test("lets the OAuth-authorized substitute user receive a question sent by another bot", async () => {
     vi.useFakeTimers();
-    const harness = createHarness();
+    const harness = createHarness({
+      userOAuthStatus: {
+        appId: "cli_test",
+        authorized: true,
+        needsAuthorization: false,
+        expiresAt: "2026-09-06T12:00:00.000Z",
+        refreshTokenExpiresAt: "2026-10-06T12:00:00.000Z",
+        openId: "ou_yuan_changwang",
+        email: "yuan@example.com",
+        displayName: "袁昌旺",
+        scope:
+          "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+      },
+    });
     harness.store.configure({
       botId: harness.botId,
       substitute: {
@@ -1644,7 +1710,22 @@ describe("LarkChannelService", () => {
 
   test("relays a local bot question to the bot configured as that user's substitute", async () => {
     vi.useFakeTimers();
-    const harness = createHarness();
+    const harness = createHarness({
+      userOAuthStatuses: {
+        cli_substitute: {
+          appId: "cli_substitute",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: "2026-09-06T12:00:00.000Z",
+          refreshTokenExpiresAt: "2026-10-06T12:00:00.000Z",
+          openId: "ou_yuan_as_seen_by_substitute",
+          email: "yuan@example.com",
+          displayName: "袁昌旺",
+          scope:
+            "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+        },
+      },
+    });
     const sourcePairing = harness.store.upsertPendingPairing(harness.botId, {
       openId: "ou_yuan_as_seen_by_source",
       unionId: "on_yuan",
@@ -1761,6 +1842,7 @@ describe("LarkChannelService", () => {
   });
 
   test("preserves substitute disclosure when relaying through an existing topic agent", async () => {
+    vi.useFakeTimers();
     const harness = createHarness();
     harness.store.configure({
       botId: harness.botId,
@@ -1791,10 +1873,20 @@ describe("LarkChannelService", () => {
       unionId: null,
       displayName: "Alice",
       topicName: "Existing substitute topic",
-      text: "@Paseo 1+1等于几",
+      text: "@袁昌旺 1+1等于几",
       createTime: 1767226200000,
-      mentions: botMention(),
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "袁昌旺",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
     } satisfies NormalizedLarkMessageEvent);
+    await vi.advanceTimersByTimeAsync(60_000);
 
     harness.lastMessages.set(
       "agent-existing-substitute",

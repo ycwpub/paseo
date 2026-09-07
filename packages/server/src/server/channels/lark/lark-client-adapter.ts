@@ -10,6 +10,12 @@ import {
   mapLarkChatSearchResults,
   mapLegacyLarkChatSearchResults,
 } from "./lark-chat-search-results.js";
+import {
+  describeLarkApiError,
+  larkApiResultError,
+  mapLarkRequestsWithConcurrency,
+  withLarkRateLimitRetry,
+} from "./lark-api-request.js";
 
 export interface LarkChannelBotInfo {
   openId: string;
@@ -165,43 +171,16 @@ function recordString(
 }
 
 function describeLarkError(error: unknown): Error {
-  const response = asRecord(asRecord(error)?.response);
-  const data = asRecord(response?.data);
-  const code = data?.code;
-  const msg = recordString(data, "msg");
-  const headers = asRecord(response?.headers);
-  const logId =
-    recordString(data, "log_id") ??
-    recordString(data, "logId") ??
-    recordString(headers, "x-tt-logid");
-  if (msg || typeof code === "number") {
-    return new Error(
-      [
-        "Lark API error",
-        msg ? `: ${msg}` : "",
-        typeof code === "number" ? ` (code: ${code})` : "",
-        logId ? ` log_id=${logId}` : "",
-      ].join(""),
-      { cause: error },
-    );
-  }
-  if (error instanceof Error) {
-    return error;
-  }
-  return new Error(String(error));
+  return describeLarkApiError(error);
 }
 
 function assertSuccess(result: { code?: number; msg?: string }): void {
-  if (typeof result.code === "number" && result.code !== 0) {
-    throw new Error(
-      result.msg
-        ? `Lark API error: ${result.msg} (code: ${result.code})`
-        : `Lark API returned code ${result.code}`,
-    );
-  }
+  const error = larkApiResultError(result);
+  if (error) throw error;
 }
 
 const LARK_MESSAGE_LIST_MAX_PAGE_SIZE = 50;
+const LARK_PRIVATE_MESSAGE_DETAIL_CONCURRENCY = 8;
 
 function wantsAllMessages(pageSize: number): boolean {
   return pageSize <= 0 || !Number.isFinite(pageSize);
@@ -482,43 +461,92 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     userAccessToken: string,
   ): Promise<unknown[]> {
     const client = createClient(config);
-    const messageIds: string[] = [];
-    let pageToken: string | undefined;
-    do {
-      const result = await client.search.message.create(
-        {
-          data: {
-            query: "",
-            chat_type: "p2p_chat",
-            start_time: String(options.startTime),
-            end_time: String(options.endTime),
-          },
-          params: {
-            user_id_type: "open_id",
-            page_size: 50,
-            ...(pageToken ? { page_token: pageToken } : {}),
-          },
-        },
-        lark.withUserAccessToken(userAccessToken),
-      );
-      assertSuccess(result);
-      messageIds.push(...(result.data?.items ?? []));
-      pageToken = result.data?.page_token;
-    } while (pageToken);
-    const messages = await Promise.all(
-      Array.from(new Set(messageIds)).map(async (messageId) => {
-        const result = await client.im.v1.message.get(
+    const retryOptions = {
+      onRetry: (
+        error: ReturnType<typeof describeLarkApiError>,
+        delayMs: number,
+        attempt: number,
+      ) => {
+        this.logger.warn(
           {
-            path: { message_id: messageId },
-            params: { user_id_type: "open_id", with_sender_name: true },
+            code: error.code,
+            logId: error.logId,
+            delayMs,
+            attempt,
           },
-          lark.withUserAccessToken(userAccessToken),
+          "Lark API rate limited private-message scan; waiting before retry",
         );
-        assertSuccess(result);
-        return result.data?.items?.[0] ?? null;
-      }),
-    );
-    return messages.filter((message): message is NonNullable<typeof message> => Boolean(message));
+      },
+    };
+    try {
+      const messageIds: string[] = [];
+      let pageToken: string | undefined;
+      do {
+        const result = await withLarkRateLimitRetry(async () => {
+          const response = await client.search.message.create(
+            {
+              data: {
+                query: "",
+                chat_type: "p2p_chat",
+                start_time: String(options.startTime),
+                end_time: String(options.endTime),
+              },
+              params: {
+                user_id_type: "open_id",
+                page_size: 50,
+                ...(pageToken ? { page_token: pageToken } : {}),
+              },
+            },
+            lark.withUserAccessToken(userAccessToken),
+          );
+          assertSuccess(response);
+          return response;
+        }, retryOptions);
+        messageIds.push(...(result.data?.items ?? []));
+        pageToken = result.data?.page_token;
+      } while (pageToken);
+      const uniqueMessageIds = Array.from(new Set(messageIds));
+      const batch = await mapLarkRequestsWithConcurrency(
+        uniqueMessageIds,
+        LARK_PRIVATE_MESSAGE_DETAIL_CONCURRENCY,
+        (messageId) =>
+          withLarkRateLimitRetry(async () => {
+            const result = await client.im.v1.message.get(
+              {
+                path: { message_id: messageId },
+                params: { user_id_type: "open_id", with_sender_name: true },
+              },
+              lark.withUserAccessToken(userAccessToken),
+            );
+            assertSuccess(result);
+            return result.data?.items?.[0] ?? null;
+          }, retryOptions),
+      );
+      if (batch.errors.length > 0) {
+        const messages = batch.values.filter((message): message is NonNullable<typeof message> =>
+          Boolean(message),
+        );
+        this.logger.warn(
+          {
+            failedCount: batch.errors.length,
+            succeededCount: messages.length,
+            errors: batch.errors.slice(0, 3).map((error) => ({
+              code: error.code,
+              logId: error.logId,
+              message: error.message,
+            })),
+          },
+          "Some Lark private-message details could not be loaded",
+        );
+        if (messages.length === 0) throw batch.errors[0];
+        return messages;
+      }
+      return batch.values.filter((message): message is NonNullable<typeof message> =>
+        Boolean(message),
+      );
+    } catch (error) {
+      throw describeLarkError(error);
+    }
   }
 
   async resolveUsersByEmails(
@@ -602,7 +630,7 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
         chats = mapLarkChatSearchResults(result.data?.items ?? []);
       } catch (error) {
         this.logger.debug(
-          { err: error },
+          { error: describeLarkError(error).message },
           "Falling back to legacy Lark group search for an existing user grant",
         );
         const legacyResult = await client.im.v1.chat.search(

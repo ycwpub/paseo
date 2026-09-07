@@ -78,6 +78,17 @@ function relayChatName(mode: LarkSubstituteMode, peerName: string): string {
 function formatPrivateScanFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (
+    message.includes("99991400") ||
+    message.includes("request trigger frequency limit") ||
+    message.includes("HTTP 429")
+  ) {
+    return [
+      "飞书接口请求过于频繁（code=99991400），已按飞书返回的限流时间自动重试，但仍有消息读取失败。",
+      "请稍后点击“立刻执行一次扫描”。",
+      `原始错误：${message}`,
+    ].join(" ");
+  }
+  if (
     message.includes("99991679") ||
     message.includes("im:message:readonly") ||
     message.includes("im:message 权限")

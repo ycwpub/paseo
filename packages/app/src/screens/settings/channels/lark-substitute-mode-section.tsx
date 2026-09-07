@@ -28,7 +28,7 @@ export function LarkSubstituteModeSection({
   directory: LarkDirectory | null;
   onCreate: () => void;
   onEdit: (mode: LarkSubstituteMode) => void;
-  onOpenTasks: () => void;
+  onOpenTasks: (mode: LarkSubstituteMode) => void;
 }) {
   const supported = useHostFeature(serverId, "larkSubstituteModes");
   const tasksSupported = useHostFeature(serverId, "larkSubstituteTasks");
@@ -73,11 +73,6 @@ export function LarkSubstituteModeSection({
           回答均由机器人在话题中发送。
         </Text>
         <View style={styles.headerActions}>
-          {tasksSupported ? (
-            <Button variant="outline" onPress={onOpenTasks}>
-              任务列表
-            </Button>
-          ) : null}
           <Button variant="default" onPress={onCreate} testID="host-page-lark-create-substitute">
             创建替身模式
           </Button>
@@ -95,6 +90,7 @@ export function LarkSubstituteModeSection({
               bot={bots.find((entry) => entry.id === mode.botId)}
               bordered={index > 0}
               disabled={substituteModes.isMutating}
+              onOpenTasks={tasksSupported ? onOpenTasks : undefined}
               onEdit={onEdit}
               onEnabledChange={handleEnabledChange}
               onDelete={handleDelete}

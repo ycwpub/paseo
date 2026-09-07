@@ -13,6 +13,8 @@ import { LarkChannelService } from "./lark-channel-service.js";
 import { LarkChannelStore } from "./lark-channel-store.js";
 import { LarkDirectoryService } from "./lark-directory-service.js";
 import { LarkDirectoryStore } from "./lark-directory-store.js";
+import type { LarkSubstituteGroupPoller } from "./lark-substitute-group-poller.js";
+import type { LarkSubstituteTaskStore } from "./lark-substitute-task-store.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 import {
@@ -1631,6 +1633,105 @@ describe("LarkChannelService", () => {
         error: "监听消息处理失败",
       }),
     ]);
+  });
+
+  test("isolates task listing, scanning, pausing and deletion by substitute mode", async () => {
+    const harness = createHarness();
+    const createMode = (name: string, chatId: string) =>
+      harness.service.createSubstituteMode({
+        name,
+        enabled: true,
+        botId: harness.botId,
+        privateScan: {
+          enabled: false,
+          intervalMinutes: 30,
+          lookbackMinutes: 60,
+          excludeRecentMinutes: 10,
+        },
+        disclosure: { enabled: true, prompt: "【机器人代答】" },
+        customPrompt: "",
+        delaySeconds: 0,
+        activeTimeRanges: [],
+        allowlist: [
+          {
+            id: `group-${chatId}`,
+            type: "group",
+            chatId,
+            groupId: null,
+            name: `${name}群`,
+          },
+        ],
+        denylist: [],
+        target: {
+          kind: "workspace",
+          provider: "aiden_codex",
+          model: "gpt-5.5",
+          cwd: "/repo",
+          workspaceId: null,
+        },
+      });
+    const firstMode = createMode("研发替身", "oc_first");
+    const secondMode = createMode("运营替身", "oc_second");
+    const taskStore = (
+      harness.service as unknown as { substituteTaskStore: LarkSubstituteTaskStore }
+    ).substituteTaskStore;
+    const firstTask = taskStore.enqueue(
+      {
+        modeId: firstMode.id,
+        modeName: firstMode.name,
+        botId: firstMode.botId,
+        source: "group_scan",
+        chatId: "oc_first",
+        chatName: "研发群",
+        messageId: "om_first",
+        senderOpenId: "ou_first",
+        senderName: "研发用户",
+        content: "研发问题",
+        scheduledAt: "2026-09-07T10:01:00.000Z",
+      },
+      "2026-09-07T10:00:00.000Z",
+    );
+    const secondTask = taskStore.enqueue(
+      {
+        modeId: secondMode.id,
+        modeName: secondMode.name,
+        botId: secondMode.botId,
+        source: "group_scan",
+        chatId: "oc_second",
+        chatName: "运营群",
+        messageId: "om_second",
+        senderOpenId: "ou_second",
+        senderName: "运营用户",
+        content: "运营问题",
+        scheduledAt: "2026-09-07T10:01:00.000Z",
+      },
+      "2026-09-07T10:00:01.000Z",
+    );
+
+    expect(harness.service.listSubstituteTasks(firstMode.id).map((task) => task.id)).toEqual([
+      firstTask.id,
+    ]);
+    expect(
+      harness.service.pauseSubstituteTasks([firstTask.id, secondTask.id], firstMode.id),
+    ).toEqual([firstTask.id]);
+    expect(taskStore.get(secondTask.id)?.status).toBe("pending");
+    expect(
+      harness.service.deleteSubstituteTasks([firstTask.id, secondTask.id], firstMode.id),
+    ).toEqual([firstTask.id]);
+    expect(taskStore.get(secondTask.id)).not.toBeNull();
+
+    const groupPoller = (
+      harness.service as unknown as { substituteGroupPoller: LarkSubstituteGroupPoller }
+    ).substituteGroupPoller;
+    const runMode = vi.spyOn(groupPoller, "runMode").mockResolvedValue();
+
+    await expect(harness.service.scanSubstituteTasksNow(firstMode.id)).resolves.toEqual({
+      enabledModeCount: 1,
+      groupScanCount: 1,
+      privateScanCount: 0,
+    });
+    expect(runMode).toHaveBeenCalledTimes(1);
+    expect(runMode).toHaveBeenCalledWith(expect.objectContaining({ id: firstMode.id }));
   });
 
   test("requires OAuth authorization before an enabled substitute mode can be saved", () => {

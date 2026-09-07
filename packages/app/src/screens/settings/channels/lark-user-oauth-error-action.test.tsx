@@ -68,6 +68,16 @@ describe("LarkUserOAuthErrorAction", () => {
         "飞书用户身份未授权或已失效，请先为 App ID cli_test 完成 OAuth 授权",
       ),
     ).toBe(true);
+    expect(
+      isLarkUserOAuthRequiredError(
+        "飞书用户 OAuth 未授权、已过期或缺少 im:message:readonly 等私聊扫描权限，请重新授权。",
+      ),
+    ).toBe(true);
+    expect(
+      isLarkUserOAuthRequiredError(
+        "Lark API error: 缺少用户身份权限 im:message:readonly (code: 99991679)",
+      ),
+    ).toBe(true);
     expect(isLarkUserOAuthRequiredError("查询群聊失败")).toBe(false);
   });
 

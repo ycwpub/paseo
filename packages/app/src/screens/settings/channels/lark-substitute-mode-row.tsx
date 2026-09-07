@@ -12,6 +12,7 @@ export function LarkSubstituteModeRow({
   bot,
   bordered,
   disabled,
+  onOpenTasks,
   onEdit,
   onEnabledChange,
   onDelete,
@@ -20,11 +21,13 @@ export function LarkSubstituteModeRow({
   bot: LarkChannelBotStatus | undefined;
   bordered: boolean;
   disabled: boolean;
+  onOpenTasks?: (mode: LarkSubstituteMode) => void;
   onEdit: (mode: LarkSubstituteMode) => void;
   onEnabledChange: (modeId: string, enabled: boolean) => void;
   onDelete: (modeId: string) => void;
 }) {
   const handleEdit = useCallback(() => onEdit(mode), [mode, onEdit]);
+  const handleOpenTasks = useCallback(() => onOpenTasks?.(mode), [mode, onOpenTasks]);
   const handleEnabledChange = useCallback(
     (nextEnabled: boolean) => onEnabledChange(mode.id, nextEnabled),
     [mode.id, onEnabledChange],
@@ -43,6 +46,11 @@ export function LarkSubstituteModeRow({
         </Text>
       </View>
       <View style={styles.actions}>
+        {onOpenTasks ? (
+          <Button size="sm" variant="outline" onPress={handleOpenTasks}>
+            任务列表
+          </Button>
+        ) : null}
         <Button size="sm" variant="outline" onPress={handleEdit}>
           编辑
         </Button>

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   LarkSubstituteTaskDeleteRequestSchema,
+  LarkSubstituteTaskListRequestSchema,
   LarkSubstituteTaskListResponseSchema,
   LarkSubstituteTaskPauseRequestSchema,
+  LarkSubstituteTaskScanRequestSchema,
   LarkSubstituteTaskScanResponseSchema,
 } from "./substitute-task-rpc-schemas.js";
 
@@ -47,16 +49,35 @@ describe("Lark substitute task RPC schemas", () => {
       LarkSubstituteTaskPauseRequestSchema.parse({
         type: "channel.lark.substitute_task.pause.request",
         requestId: "req_pause",
+        modeId: "mode_1",
         taskIds: ["task_1", "task_2"],
-      }).taskIds,
-    ).toHaveLength(2);
+      }),
+    ).toMatchObject({ modeId: "mode_1", taskIds: ["task_1", "task_2"] });
     expect(
       LarkSubstituteTaskDeleteRequestSchema.parse({
         type: "channel.lark.substitute_task.delete.request",
         requestId: "req_delete",
+        modeId: "mode_1",
         taskIds: ["task_1"],
-      }).taskIds,
-    ).toEqual(["task_1"]);
+      }),
+    ).toMatchObject({ modeId: "mode_1", taskIds: ["task_1"] });
+  });
+
+  it("accepts per-substitute list and scan requests", () => {
+    expect(
+      LarkSubstituteTaskListRequestSchema.parse({
+        type: "channel.lark.substitute_task.list.request",
+        requestId: "req_list",
+        modeId: "mode_1",
+      }).modeId,
+    ).toBe("mode_1");
+    expect(
+      LarkSubstituteTaskScanRequestSchema.parse({
+        type: "channel.lark.substitute_task.scan.request",
+        requestId: "req_scan",
+        modeId: "mode_1",
+      }).modeId,
+    ).toBe("mode_1");
   });
 
   it("parses immediate scan summaries with the refreshed task list", () => {

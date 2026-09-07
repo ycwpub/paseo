@@ -851,16 +851,19 @@ export class LarkChannelService {
     return this.substituteModeStore.list();
   }
 
-  listSubstituteTasks(): LarkSubstituteTask[] {
-    return this.substituteTaskStore.list();
+  listSubstituteTasks(modeId?: string): LarkSubstituteTask[] {
+    const tasks = this.substituteTaskStore.list();
+    return modeId ? tasks.filter((task) => task.modeId === modeId) : tasks;
   }
 
-  async scanSubstituteTasksNow(): Promise<{
+  async scanSubstituteTasksNow(modeId?: string): Promise<{
     enabledModeCount: number;
     groupScanCount: number;
     privateScanCount: number;
   }> {
-    const modes = this.listSubstituteModes().filter((mode) => mode.enabled);
+    const modes = this.listSubstituteModes().filter(
+      (mode) => mode.enabled && (!modeId || mode.id === modeId),
+    );
     const groupModes = modes.filter((mode) =>
       getLarkSubstituteRuleLists(mode).audienceAllowlist.some((rule) => rule.type === "group"),
     );
@@ -878,19 +881,27 @@ export class LarkChannelService {
     };
   }
 
-  pauseSubstituteTasks(taskIds: readonly string[]): string[] {
-    const pausedTaskIds = this.substituteTaskStore.pause(taskIds, new Date().toISOString());
+  pauseSubstituteTasks(taskIds: readonly string[], modeId?: string): string[] {
+    const scopedTaskIds = this.getScopedSubstituteTaskIds(taskIds, modeId);
+    const pausedTaskIds = this.substituteTaskStore.pause(scopedTaskIds, new Date().toISOString());
     for (const taskId of pausedTaskIds) {
       this.substituteDebouncer.cancelTask(taskId);
     }
     return pausedTaskIds;
   }
 
-  deleteSubstituteTasks(taskIds: readonly string[]): string[] {
-    for (const taskId of taskIds) {
+  deleteSubstituteTasks(taskIds: readonly string[], modeId?: string): string[] {
+    const scopedTaskIds = this.getScopedSubstituteTaskIds(taskIds, modeId);
+    for (const taskId of scopedTaskIds) {
       this.substituteDebouncer.cancelTask(taskId);
     }
-    return this.substituteTaskStore.deleteMany(taskIds);
+    return this.substituteTaskStore.deleteMany(scopedTaskIds);
+  }
+
+  private getScopedSubstituteTaskIds(taskIds: readonly string[], modeId?: string): string[] {
+    if (!modeId) return [...taskIds];
+    const modeTaskIds = new Set(this.listSubstituteTasks(modeId).map((task) => task.id));
+    return taskIds.filter((taskId) => modeTaskIds.has(taskId));
   }
 
   createSubstituteMode(input: LarkSubstituteModeCreateInput): LarkSubstituteMode {

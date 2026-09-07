@@ -8,6 +8,7 @@ import type {
   LarkChannelBotStatus,
   LarkChannelStatus,
   LarkReminder,
+  LarkSubstituteMode,
 } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LarkChannelSection } from "./lark-channel-section";
@@ -372,31 +373,11 @@ vi.mock("./lark-substitute-mode-section", () => ({
     onOpenTasks,
   }: {
     onCreate: () => void;
-    onOpenTasks: () => void;
-    onEdit: (mode: {
-      id: string;
-      name: string;
-      enabled: boolean;
-      botId: string;
-      privateScan: {
-        enabled: boolean;
-        intervalMinutes: number;
-        lookbackMinutes: number;
-        excludeRecentMinutes: number;
-      };
-      disclosure: { enabled: boolean; prompt: string };
-      customPrompt: string;
-      delaySeconds: number;
-      activeTimeRanges: [];
-      allowlist: [];
-      denylist: [];
-      target: LarkChannelBotStatus["target"];
-      createdAt: string;
-      updatedAt: string;
-    }) => void;
+    onOpenTasks: (mode: LarkSubstituteMode) => void;
+    onEdit: (mode: LarkSubstituteMode) => void;
   }) => {
-    const handleEdit = React.useCallback(() => {
-      onEdit({
+    const mode = React.useMemo<LarkSubstituteMode>(
+      () => ({
         id: "substitute-1",
         name: "工作替身",
         enabled: true,
@@ -416,8 +397,15 @@ vi.mock("./lark-substitute-mode-section", () => ({
         target: makeBot().target,
         createdAt: "2026-09-04T00:00:00.000Z",
         updatedAt: "2026-09-04T00:00:00.000Z",
-      });
-    }, [onEdit]);
+      }),
+      [],
+    );
+    const handleEdit = React.useCallback(() => {
+      onEdit(mode);
+    }, [mode, onEdit]);
+    const handleOpenTasks = React.useCallback(() => {
+      onOpenTasks(mode);
+    }, [mode, onOpenTasks]);
     return (
       <div>
         <button type="button" onClick={onCreate}>
@@ -426,8 +414,8 @@ vi.mock("./lark-substitute-mode-section", () => ({
         <button type="button" onClick={handleEdit}>
           编辑替身模式
         </button>
-        <button type="button" onClick={onOpenTasks}>
-          替身任务
+        <button type="button" onClick={handleOpenTasks}>
+          工作替身任务
         </button>
       </div>
     );
@@ -449,7 +437,9 @@ vi.mock("./lark-substitute-mode-section", () => ({
 }));
 
 vi.mock("./lark-substitute-task-list-page", () => ({
-  LarkSubstituteTaskListPage: () => <div>替身任务列表页面</div>,
+  LarkSubstituteTaskListPage: ({ mode }: { mode: LarkSubstituteMode | null }) => (
+    <div>{mode ? `${mode.name}任务列表页面` : "未选择替身"}</div>
+  ),
 }));
 
 function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotStatus {
@@ -721,9 +711,10 @@ describe("LarkChannelSection", () => {
     channelState.current.status = makeStatus([makeBot()]);
     render(<LarkChannelSection serverId="server-1" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "替身任务" }));
+    fireEvent.click(screen.getByRole("button", { name: "工作替身任务" }));
 
-    expect(await screen.findByText("替身任务列表页面")).toBeTruthy();
+    expect(await screen.findByText("工作替身任务列表页面")).toBeTruthy();
+    expect(screen.getByText("工作替身 · 任务列表")).toBeTruthy();
   });
 
   test("shows authorized users and groups with friendly directory identities", async () => {

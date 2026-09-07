@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
+  LarkChannelBotStatus,
+  LarkSubstituteMode,
   LarkSubstituteTask,
   LarkSubstituteTaskSource,
   LarkSubstituteTaskStatus,
@@ -13,6 +15,10 @@ import {
   larkSubstituteFailureAdvice,
   larkSubstituteFailureStageLabel,
 } from "./lark-substitute-task-failure-display";
+import {
+  isLarkUserOAuthRequiredError,
+  LarkUserOAuthErrorAction,
+} from "./lark-user-oauth-error-action";
 import { useLarkSubstituteTasks } from "./use-lark-substitute-tasks";
 
 function formatDate(value: string | null): string {
@@ -94,11 +100,15 @@ function TaskSelection({
 }
 
 function TaskRow({
+  serverId,
+  botAppId,
   task,
   selected,
   disabled,
   onToggle,
 }: {
+  serverId: string;
+  botAppId: string | null;
   task: LarkSubstituteTask;
   selected: boolean;
   disabled: boolean;
@@ -143,6 +153,16 @@ function TaskRow({
             <Text style={styles.failureAdvice}>
               处理建议：{larkSubstituteFailureAdvice(task.failureStage, task.error)}
             </Text>
+            {botAppId && isLarkUserOAuthRequiredError(task.error) ? (
+              <View style={styles.authorizationAction}>
+                <Text style={styles.authorizationLabel}>权限链接：</Text>
+                <LarkUserOAuthErrorAction
+                  serverId={serverId}
+                  appId={botAppId}
+                  errorMessage={task.error}
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -150,8 +170,17 @@ function TaskRow({
   );
 }
 
-export function LarkSubstituteTaskListPage({ serverId }: { serverId: string }) {
-  const tasks = useLarkSubstituteTasks(serverId);
+export function LarkSubstituteTaskListPage({
+  serverId,
+  mode,
+  bots = [],
+}: {
+  serverId: string;
+  mode: LarkSubstituteMode;
+  bots?: readonly LarkChannelBotStatus[];
+}) {
+  const tasks = useLarkSubstituteTasks(serverId, mode.id);
+  const botAppIds = useMemo(() => new Map(bots.map((bot) => [bot.id, bot.appId])), [bots]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
@@ -276,6 +305,8 @@ export function LarkSubstituteTaskListPage({ serverId }: { serverId: string }) {
           tasks.tasks.map((task) => (
             <TaskRow
               key={task.id}
+              serverId={serverId}
+              botAppId={botAppIds.get(task.botId) ?? null}
               task={task}
               selected={selectedIds.has(task.id)}
               disabled={isBusy}
@@ -286,8 +317,8 @@ export function LarkSubstituteTaskListPage({ serverId }: { serverId: string }) {
           <View style={settingsStyles.row}>
             <Text style={settingsStyles.rowHint}>
               {tasks.isLoading
-                ? "正在加载替身任务…"
-                : "暂无任务。监听或扫描到命中替身回答规则的消息后，会在这里创建任务。"}
+                ? `正在加载“${mode.name}”的替身任务…`
+                : `“${mode.name}”暂无任务。监听或扫描到命中该替身回答规则的消息后，会在这里创建任务。`}
             </Text>
           </View>
         )}
@@ -392,6 +423,16 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     lineHeight: 20,
+  },
+  authorizationAction: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
+  },
+  authorizationLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
   scanMessage: {
     color: theme.colors.statusSuccess,

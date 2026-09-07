@@ -240,4 +240,23 @@ describe("createRootLogger", () => {
 
     expect(stdout).toContain("pretty logger");
   });
+
+  it("does not serialize token-bearing HTTP error internals", async () => {
+    const paseoHome = await mkdtemp(path.join(tmpdir(), "paseo-logger-error-redaction-"));
+
+    const { stdout } = await runLoggerFixture(`
+      const cause = new Error("request failed");
+      cause.config = { headers: { Authorization: "Bearer secret-user-token" } };
+      const error = new Error("Lark API rate limited Bearer direct-secret-token", { cause });
+      error.code = 99991400;
+      const logger = createRootLogger(undefined, { paseoHome: ${JSON.stringify(paseoHome)} });
+      logger.warn({ err: error }, "safe error");
+      logger.flush();
+    `);
+
+    expect(stdout).toContain("Lark API rate limited");
+    expect(stdout).toContain("99991400");
+    expect(stdout).not.toContain("secret-user-token");
+    expect(stdout).not.toContain("direct-secret-token");
+  });
 });

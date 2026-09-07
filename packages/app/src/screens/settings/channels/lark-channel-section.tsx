@@ -1200,6 +1200,36 @@ function useLarkModelControls(input: {
   };
 }
 
+function LarkSubstituteTasksPage({
+  serverId,
+  mode,
+  bots,
+}: {
+  serverId: string;
+  mode: LarkSubstituteMode | null;
+  bots: readonly LarkChannelBotStatus[];
+}) {
+  if (!mode) {
+    return (
+      <View testID="host-page-channels-substitute-tasks">
+        <SecondaryPageIntro
+          title="替身任务"
+          description="未选择替身模式，请返回后重新打开任务列表。"
+        />
+      </View>
+    );
+  }
+  return (
+    <View testID="host-page-channels-substitute-tasks">
+      <SecondaryPageIntro
+        title={`${mode.name} · 任务列表`}
+        description="仅查看当前替身的群消息监听、群消息扫描和私聊扫描任务，并批量暂停或删除。"
+      />
+      <LarkSubstituteTaskListPage serverId={serverId} mode={mode} bots={bots} />
+    </View>
+  );
+}
+
 function LarkChannelLoadedContent({
   serverId,
   channel,
@@ -1233,6 +1263,9 @@ function LarkChannelLoadedContent({
   const [editingReminder, setEditingReminder] = useState<LarkReminder | null>(null);
   const [editingContact, setEditingContact] = useState<LarkDirectoryUser | null>(null);
   const [editingSubstituteMode, setEditingSubstituteMode] = useState<LarkSubstituteMode | null>(
+    null,
+  );
+  const [taskListSubstituteMode, setTaskListSubstituteMode] = useState<LarkSubstituteMode | null>(
     null,
   );
   const status = channel.status;
@@ -1413,7 +1446,8 @@ function LarkChannelLoadedContent({
     setEditingSubstituteMode(mode);
     setPage("substitute-edit");
   }, []);
-  const handleOpenSubstituteTasks = useCallback(() => {
+  const handleOpenSubstituteTasks = useCallback((mode: LarkSubstituteMode) => {
+    setTaskListSubstituteMode(mode);
     setPage("substitute-tasks");
   }, []);
   const handleSubstituteModeSaved = useCallback(() => {
@@ -1432,6 +1466,7 @@ function LarkChannelLoadedContent({
   const handleDetailBack = useCallback(() => {
     setEditingReminder(null);
     setEditingContact(null);
+    setTaskListSubstituteMode(null);
     setSaveError(null);
     setPage(getLarkChannelBackPage(page));
   }, [page]);
@@ -1778,13 +1813,11 @@ function LarkChannelLoadedContent({
       </View>
     ),
     "substitute-tasks": (
-      <View testID="host-page-channels-substitute-tasks">
-        <SecondaryPageIntro
-          title="替身任务"
-          description="查看群消息监听、群消息扫描和私聊扫描创建的替身回答任务，并批量暂停或删除。"
-        />
-        <LarkSubstituteTaskListPage serverId={serverId} />
-      </View>
+      <LarkSubstituteTasksPage
+        serverId={serverId}
+        mode={taskListSubstituteMode}
+        bots={botStatuses}
+      />
     ),
     "reminder-create": (
       <View testID="host-page-channels-reminder-create">

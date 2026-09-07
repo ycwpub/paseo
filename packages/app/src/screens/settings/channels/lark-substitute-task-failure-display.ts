@@ -24,12 +24,20 @@ export function larkSubstituteFailureAdvice(
   error: string,
 ): string {
   if (
+    error.includes("99991400") ||
+    error.includes("request trigger frequency limit") ||
+    error.includes("请求过于频繁") ||
+    error.includes("HTTP 429")
+  ) {
+    return "飞书接口触发限流，系统已自动限速并重试。请稍后点击“立刻执行一次扫描”，无需重新授权。";
+  }
+  if (
     error.includes("OAuth") ||
     error.includes("权限") ||
     error.includes("99991679") ||
     error.includes("重新授权")
   ) {
-    return "请检查飞书用户 OAuth 权限，并在替身模式编辑页重新授权后再次扫描。";
+    return "请检查飞书用户 OAuth 权限，并点击下方“立即授权”完成授权后再次扫描。";
   }
   switch (stage) {
     case "listener":

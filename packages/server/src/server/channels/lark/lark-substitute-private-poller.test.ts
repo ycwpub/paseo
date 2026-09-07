@@ -297,6 +297,55 @@ describe("LarkSubstitutePrivatePoller", () => {
     });
   });
 
+  test("reports rate limiting as a retryable Feishu API failure instead of a permission error", async () => {
+    const onScanFailure = vi.fn();
+    const poller = new LarkSubstitutePrivatePoller({
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter: {
+        searchPrivateMessagesAsUser: vi.fn(async () => {
+          throw new Error("Lark API error: request trigger frequency limit (code: 99991400)");
+        }),
+        createSubstituteRelayChat: vi.fn(),
+        sendTextWithResult: vi.fn(),
+      },
+      userOAuthService: {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope: "offline_access im:message.p2p_msg:get_as_user im:message:readonly search:message",
+        })),
+        getValidUserAccessToken: vi.fn(async () => "user-token"),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      onRelayMessage: vi.fn(),
+      onScanFailure,
+      now: () => new Date(now),
+    });
+
+    await poller.runMode(mode());
+
+    expect(onScanFailure).toHaveBeenCalledWith({
+      mode: expect.objectContaining({ id: "mode-1" }),
+      error: expect.stringContaining("飞书接口请求过于频繁"),
+    });
+    expect(onScanFailure).not.toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining("重新授权飞书用户") }),
+    );
+  });
+
   test("reports expired or incomplete OAuth grants instead of silently skipping scans", async () => {
     const onScanFailure = vi.fn();
     const searchPrivateMessagesAsUser = vi.fn();

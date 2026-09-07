@@ -1173,11 +1173,21 @@ export interface DeleteLarkSubstituteModeOptions {
   modeId: string;
   requestId?: string;
 }
+export interface ListLarkSubstituteTasksOptions {
+  modeId?: string;
+  requestId?: string;
+}
+export interface ScanLarkSubstituteTasksOptions {
+  modeId?: string;
+  requestId?: string;
+}
 export interface PauseLarkSubstituteTasksOptions {
+  modeId?: string;
   taskIds: string[];
   requestId?: string;
 }
 export interface DeleteLarkSubstituteTasksOptions {
+  modeId?: string;
   taskIds: string[];
   requestId?: string;
 }
@@ -6881,12 +6891,16 @@ export class DaemonClient {
     return this.resourceRpc.deleteLarkSubstituteMode(options);
   }
 
-  async listLarkSubstituteTasks(requestId?: string): Promise<LarkSubstituteTaskListPayload> {
-    return this.resourceRpc.listLarkSubstituteTasks(requestId);
+  async listLarkSubstituteTasks(
+    options?: string | ListLarkSubstituteTasksOptions,
+  ): Promise<LarkSubstituteTaskListPayload> {
+    return this.resourceRpc.listLarkSubstituteTasks(options);
   }
 
-  async scanLarkSubstituteTasks(requestId?: string): Promise<LarkSubstituteTaskScanPayload> {
-    return this.resourceRpc.scanLarkSubstituteTasks(requestId);
+  async scanLarkSubstituteTasks(
+    options?: string | ScanLarkSubstituteTasksOptions,
+  ): Promise<LarkSubstituteTaskScanPayload> {
+    return this.resourceRpc.scanLarkSubstituteTasks(options);
   }
 
   async pauseLarkSubstituteTasks(

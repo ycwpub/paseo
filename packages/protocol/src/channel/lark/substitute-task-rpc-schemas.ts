@@ -10,6 +10,7 @@ const LarkSubstituteTaskListPayloadSchema = z.object({
 export const LarkSubstituteTaskListRequestSchema = z.object({
   type: z.literal("channel.lark.substitute_task.list.request"),
   requestId: z.string(),
+  modeId: z.string().trim().min(1).optional(),
 });
 
 export const LarkSubstituteTaskListResponseSchema = z.object({
@@ -20,6 +21,7 @@ export const LarkSubstituteTaskListResponseSchema = z.object({
 export const LarkSubstituteTaskScanRequestSchema = z.object({
   type: z.literal("channel.lark.substitute_task.scan.request"),
   requestId: z.string(),
+  modeId: z.string().trim().min(1).optional(),
 });
 
 export const LarkSubstituteTaskScanResponseSchema = z.object({
@@ -34,6 +36,7 @@ export const LarkSubstituteTaskScanResponseSchema = z.object({
 export const LarkSubstituteTaskPauseRequestSchema = z.object({
   type: z.literal("channel.lark.substitute_task.pause.request"),
   requestId: z.string(),
+  modeId: z.string().trim().min(1).optional(),
   taskIds: z.array(z.string().min(1)).min(1).max(500),
 });
 
@@ -47,6 +50,7 @@ export const LarkSubstituteTaskPauseResponseSchema = z.object({
 export const LarkSubstituteTaskDeleteRequestSchema = z.object({
   type: z.literal("channel.lark.substitute_task.delete.request"),
   requestId: z.string(),
+  modeId: z.string().trim().min(1).optional(),
   taskIds: z.array(z.string().min(1)).min(1).max(500),
 });
 

@@ -3,7 +3,11 @@
  */
 import React, { type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { LarkSubstituteTask } from "@getpaseo/protocol/messages";
+import type {
+  LarkChannelBotStatus,
+  LarkSubstituteMode,
+  LarkSubstituteTask,
+} from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LarkSubstituteTaskListPage } from "./lark-substitute-task-list-page";
 
@@ -33,6 +37,17 @@ const confirmState = vi.hoisted(() => ({
 
 vi.mock("./use-lark-substitute-tasks", () => ({
   useLarkSubstituteTasks: () => taskState.current,
+}));
+
+vi.mock("./lark-user-oauth-error-action", () => ({
+  isLarkUserOAuthRequiredError: (message: string) =>
+    message.includes("OAuth") && message.includes("权限"),
+  LarkUserOAuthErrorAction: ({ appId, errorMessage }: { appId: string; errorMessage: string }) =>
+    errorMessage.includes("OAuth") ? (
+      <a aria-label="立即授权飞书用户身份" href={`https://example.com/oauth/${appId}`}>
+        立即授权
+      </a>
+    ) : null,
 }));
 
 vi.mock("@/utils/confirm-dialog", () => ({
@@ -84,6 +99,64 @@ function task(
   };
 }
 
+const substituteMode = {
+  id: "mode-1",
+  name: "工作替身",
+  enabled: true,
+  botId: "bot-1",
+  privateScan: {
+    enabled: true,
+    intervalMinutes: 30,
+    lookbackMinutes: 60,
+    excludeRecentMinutes: 10,
+  },
+  disclosure: { enabled: true, prompt: "【机器人代答】" },
+  customPrompt: "",
+  delaySeconds: 600,
+  activeTimeRanges: [],
+  allowlist: [],
+  denylist: [],
+  target: {
+    kind: "workspace",
+    cwd: null,
+    workspaceId: null,
+  },
+  createdAt: "2026-09-07T10:00:00.000Z",
+  updatedAt: "2026-09-07T10:00:00.000Z",
+} satisfies LarkSubstituteMode;
+
+const configuredBot = {
+  id: "bot-1",
+  name: "测试机器人",
+  enabled: true,
+  connectionStatus: "connected",
+  error: null,
+  appId: "cli_test",
+  hasAppSecret: true,
+  hasEncryptKey: false,
+  hasVerificationToken: false,
+  domain: "feishu",
+  target: {
+    kind: "workspace",
+    cwd: null,
+    workspaceId: null,
+  },
+  substitute: {
+    enabled: true,
+    openId: null,
+    name: null,
+  },
+  bot: null,
+  pendingPairings: [],
+  authorizedUsers: [],
+} satisfies LarkChannelBotStatus;
+
+function renderTaskList() {
+  return render(
+    <LarkSubstituteTaskListPage serverId="server-1" mode={substituteMode} bots={[configuredBot]} />,
+  );
+}
+
 afterEach(() => {
   cleanup();
   taskState.current.tasks = [];
@@ -108,7 +181,7 @@ afterEach(() => {
 
 describe("LarkSubstituteTaskListPage", () => {
   test("立即执行一次群消息和私聊扫描", async () => {
-    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+    renderTaskList();
 
     fireEvent.click(screen.getByRole("button", { name: "立刻执行一次扫描" }));
 
@@ -123,7 +196,7 @@ describe("LarkSubstituteTaskListPage", () => {
       task("pending", "pending", "group_listener"),
       task("running", "running", "group_scan"),
     ];
-    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+    renderTaskList();
 
     fireEvent.click(screen.getByLabelText("选择全部替身任务"));
     fireEvent.click(screen.getByRole("button", { name: "暂停任务" }));
@@ -138,7 +211,7 @@ describe("LarkSubstituteTaskListPage", () => {
       task("listener", "pending", "group_listener"),
       task("scanner", "completed", "group_scan"),
     ];
-    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+    renderTaskList();
 
     fireEvent.click(screen.getByLabelText("选择全部替身任务"));
     fireEvent.click(screen.getByRole("button", { name: "删除任务" }));
@@ -160,10 +233,45 @@ describe("LarkSubstituteTaskListPage", () => {
       },
     ];
 
-    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+    renderTaskList();
 
     expect(screen.getByText("失败阶段：私聊扫描")).toBeTruthy();
     expect(screen.getByText("错误详情：飞书用户 OAuth 缺少 im:message:readonly 权限")).toBeTruthy();
     expect(screen.getByText(/请检查飞书用户 OAuth 权限/)).toBeTruthy();
+    expect(screen.getByText("权限链接：")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "立即授权飞书用户身份" }).getAttribute("href")).toBe(
+      "https://example.com/oauth/cli_test",
+    );
+  });
+
+  test("非用户 OAuth 错误不展示授权链接", () => {
+    taskState.current.tasks = [
+      {
+        ...task("failed", "failed", "group_scan"),
+        failureStage: "group_scan",
+        error: "读取群消息失败",
+      },
+    ];
+
+    renderTaskList();
+
+    expect(screen.queryByText("权限链接：")).toBeNull();
+    expect(screen.queryByRole("link", { name: "立即授权飞书用户身份" })).toBeNull();
+  });
+
+  test("飞书限流展示真实原因且不提示重新授权", () => {
+    taskState.current.tasks = [
+      {
+        ...task("failed", "failed", "private_scan"),
+        failureStage: "private_scan",
+        error: "飞书接口请求过于频繁（code=99991400）",
+      },
+    ];
+
+    renderTaskList();
+
+    expect(screen.getByText("错误详情：飞书接口请求过于频繁（code=99991400）")).toBeTruthy();
+    expect(screen.getByText(/系统已自动限速并重试/)).toBeTruthy();
+    expect(screen.queryByText("权限链接：")).toBeNull();
   });
 });

@@ -42,6 +42,7 @@ import type {
   DeleteLarkSubstituteModeOptions,
   DeleteLarkSubstituteTasksOptions,
   GetLarkBotApplicationOptions,
+  ListLarkSubstituteTasksOptions,
   LarkChannelRequestOptions,
   LarkUserOAuthCompleteOptions,
   LarkUserOAuthDisconnectOptions,
@@ -57,6 +58,7 @@ import type {
   SetLarkReminderEnabledOptions,
   SetLarkSubstituteModeEnabledOptions,
   PauseLarkSubstituteTasksOptions,
+  ScanLarkSubstituteTasksOptions,
   UpdateAssistantOptions,
   UpdateLarkReminderOptions,
   UpdateLarkSubstituteModeOptions,
@@ -1000,18 +1002,28 @@ export class DaemonResourceRpcClient {
     });
   }
 
-  listLarkSubstituteTasks(requestId?: string) {
+  listLarkSubstituteTasks(options?: string | ListLarkSubstituteTasksOptions) {
+    const requestId = typeof options === "string" ? options : options?.requestId;
+    const modeId = typeof options === "string" ? undefined : options?.modeId;
     return this.request({
       requestId,
-      message: { type: "channel.lark.substitute_task.list.request" },
+      message: {
+        type: "channel.lark.substitute_task.list.request",
+        ...(modeId ? { modeId } : {}),
+      },
       responseType: "channel.lark.substitute_task.list.response",
     });
   }
 
-  scanLarkSubstituteTasks(requestId?: string) {
+  scanLarkSubstituteTasks(options?: string | ScanLarkSubstituteTasksOptions) {
+    const requestId = typeof options === "string" ? options : options?.requestId;
+    const modeId = typeof options === "string" ? undefined : options?.modeId;
     return this.request({
       requestId,
-      message: { type: "channel.lark.substitute_task.scan.request" },
+      message: {
+        type: "channel.lark.substitute_task.scan.request",
+        ...(modeId ? { modeId } : {}),
+      },
       responseType: "channel.lark.substitute_task.scan.response",
     });
   }
@@ -1021,6 +1033,7 @@ export class DaemonResourceRpcClient {
       requestId: options.requestId,
       message: {
         type: "channel.lark.substitute_task.pause.request",
+        ...(options.modeId ? { modeId: options.modeId } : {}),
         taskIds: options.taskIds,
       },
       responseType: "channel.lark.substitute_task.pause.response",
@@ -1032,6 +1045,7 @@ export class DaemonResourceRpcClient {
       requestId: options.requestId,
       message: {
         type: "channel.lark.substitute_task.delete.request",
+        ...(options.modeId ? { modeId: options.modeId } : {}),
         taskIds: options.taskIds,
       },
       responseType: "channel.lark.substitute_task.delete.response",

@@ -38,45 +38,45 @@ export async function handleLarkSubstituteTaskSessionRequest(
         type: "channel.lark.substitute_task.list.response",
         payload: {
           requestId: message.requestId,
-          tasks: service.listSubstituteTasks(),
+          tasks: service.listSubstituteTasks(message.modeId),
           error: null,
         },
       });
       return;
     case "channel.lark.substitute_task.scan.request": {
-      const summary = await service.scanSubstituteTasksNow();
+      const summary = await service.scanSubstituteTasksNow(message.modeId);
       emitResponse({
         type: "channel.lark.substitute_task.scan.response",
         payload: {
           requestId: message.requestId,
           ...summary,
-          tasks: service.listSubstituteTasks(),
+          tasks: service.listSubstituteTasks(message.modeId),
           error: null,
         },
       });
       return;
     }
     case "channel.lark.substitute_task.pause.request": {
-      const pausedTaskIds = service.pauseSubstituteTasks(message.taskIds);
+      const pausedTaskIds = service.pauseSubstituteTasks(message.taskIds, message.modeId);
       emitResponse({
         type: "channel.lark.substitute_task.pause.response",
         payload: {
           requestId: message.requestId,
           pausedTaskIds,
-          tasks: service.listSubstituteTasks(),
+          tasks: service.listSubstituteTasks(message.modeId),
           error: null,
         },
       });
       return;
     }
     case "channel.lark.substitute_task.delete.request": {
-      const deletedTaskIds = service.deleteSubstituteTasks(message.taskIds);
+      const deletedTaskIds = service.deleteSubstituteTasks(message.taskIds, message.modeId);
       emitResponse({
         type: "channel.lark.substitute_task.delete.response",
         payload: {
           requestId: message.requestId,
           deletedTaskIds,
-          tasks: service.listSubstituteTasks(),
+          tasks: service.listSubstituteTasks(message.modeId),
           error: null,
         },
       });
@@ -91,7 +91,7 @@ export function emitLarkSubstituteTaskSessionError(
   emitResponse: EmitResponse,
   error: string,
 ): void {
-  const tasks = service.listSubstituteTasks();
+  const tasks = service.listSubstituteTasks(message.modeId);
   switch (message.type) {
     case "channel.lark.substitute_task.list.request":
       emitResponse({

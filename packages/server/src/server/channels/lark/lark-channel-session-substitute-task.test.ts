@@ -29,33 +29,74 @@ function task(status: LarkSubstituteTask["status"] = "pending"): LarkSubstituteT
   };
 }
 
+function listTasksForMode(
+  tasks: readonly LarkSubstituteTask[],
+  modeId?: string,
+): LarkSubstituteTask[] {
+  if (!modeId) return [...tasks];
+  return tasks.filter((entry) => entry.modeId === modeId);
+}
+
+function includesTaskForMode(
+  tasks: readonly LarkSubstituteTask[],
+  taskId: string,
+  modeId?: string,
+): boolean {
+  if (!modeId) return true;
+  return tasks.some((entry) => entry.id === taskId && entry.modeId === modeId);
+}
+
+function selectTaskIdsForMode(
+  tasks: readonly LarkSubstituteTask[],
+  taskIds: readonly string[],
+  modeId?: string,
+): string[] {
+  return taskIds.filter((taskId) => includesTaskForMode(tasks, taskId, modeId));
+}
+
 describe("LarkChannelSession substitute task RPC", () => {
-  test("lists, scans, pauses and deletes tasks through the main channel session", async () => {
-    let tasks = [task()];
+  test("lists, scans, pauses and deletes tasks for one substitute mode", async () => {
+    let tasks = [
+      task(),
+      {
+        ...task(),
+        id: "task-2",
+        modeId: "mode-2",
+        modeName: "另一个替身",
+        messageId: "om_2",
+      },
+    ];
     const service = {
-      listSubstituteTasks: vi.fn(() => tasks),
+      listSubstituteTasks: vi.fn((modeId?: string) => listTasksForMode(tasks, modeId)),
       scanSubstituteTasksNow: vi.fn(async () => ({
-        enabledModeCount: 2,
+        enabledModeCount: 1,
         groupScanCount: 1,
-        privateScanCount: 2,
+        privateScanCount: 1,
       })),
-      pauseSubstituteTasks: vi.fn((taskIds: readonly string[]) => {
+      pauseSubstituteTasks: vi.fn((taskIds: readonly string[], modeId?: string) => {
         const updatedTasks: LarkSubstituteTask[] = [];
         for (const entry of tasks) {
           updatedTasks.push(
-            taskIds.includes(entry.id) ? { ...entry, status: "paused" as const } : entry,
+            taskIds.includes(entry.id) && (!modeId || entry.modeId === modeId)
+              ? { ...entry, status: "paused" as const }
+              : entry,
           );
         }
         tasks = updatedTasks;
-        return [...taskIds];
+        return selectTaskIdsForMode(tasks, taskIds, modeId);
       }),
-      deleteSubstituteTasks: vi.fn((taskIds: readonly string[]) => {
+      deleteSubstituteTasks: vi.fn((taskIds: readonly string[], modeId?: string) => {
         const retainedTasks: LarkSubstituteTask[] = [];
+        const deletedTaskIds: string[] = [];
         for (const entry of tasks) {
-          if (!taskIds.includes(entry.id)) retainedTasks.push(entry);
+          if (taskIds.includes(entry.id) && (!modeId || entry.modeId === modeId)) {
+            deletedTaskIds.push(entry.id);
+          } else {
+            retainedTasks.push(entry);
+          }
         }
         tasks = retainedTasks;
-        return [...taskIds];
+        return deletedTaskIds;
       }),
     } as unknown as LarkChannelService;
     const emit = vi.fn();
@@ -68,19 +109,23 @@ describe("LarkChannelSession substitute task RPC", () => {
     await session.handleRequest({
       type: "channel.lark.substitute_task.list.request",
       requestId: "list",
+      modeId: "mode-1",
     });
     await session.handleRequest({
       type: "channel.lark.substitute_task.scan.request",
       requestId: "scan",
+      modeId: "mode-1",
     });
     await session.handleRequest({
       type: "channel.lark.substitute_task.pause.request",
       requestId: "pause",
+      modeId: "mode-1",
       taskIds: ["task-1"],
     });
     await session.handleRequest({
       type: "channel.lark.substitute_task.delete.request",
       requestId: "delete",
+      modeId: "mode-1",
       taskIds: ["task-1"],
     });
 
@@ -92,9 +137,9 @@ describe("LarkChannelSession substitute task RPC", () => {
       type: "channel.lark.substitute_task.scan.response",
       payload: {
         requestId: "scan",
-        enabledModeCount: 2,
+        enabledModeCount: 1,
         groupScanCount: 1,
-        privateScanCount: 2,
+        privateScanCount: 1,
         tasks: [task()],
         error: null,
       },
@@ -117,5 +162,9 @@ describe("LarkChannelSession substitute task RPC", () => {
         error: null,
       },
     });
+    expect(service.listSubstituteTasks).toHaveBeenCalledWith("mode-1");
+    expect(service.scanSubstituteTasksNow).toHaveBeenCalledWith("mode-1");
+    expect(service.pauseSubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
+    expect(service.deleteSubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
   });
 });

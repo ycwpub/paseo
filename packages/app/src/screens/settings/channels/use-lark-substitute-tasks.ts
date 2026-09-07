@@ -4,24 +4,24 @@ import type { LarkSubstituteTask } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
-function queryKey(serverId: string) {
-  return ["lark-substitute-tasks", serverId] as const;
+function queryKey(serverId: string, modeId: string) {
+  return ["lark-substitute-tasks", serverId, modeId] as const;
 }
 
-export function useLarkSubstituteTasks(serverId: string, enabled = true) {
+export function useLarkSubstituteTasks(serverId: string, modeId: string, enabled = true) {
   const client = useHostRuntimeClient(serverId);
   const connected = useHostRuntimeIsConnected(serverId);
   const queryClient = useQueryClient();
-  const key = useMemo(() => queryKey(serverId), [serverId]);
+  const key = useMemo(() => queryKey(serverId, modeId), [modeId, serverId]);
   const query = useFetchQuery({
     queryKey: key,
-    enabled: enabled && connected && Boolean(client),
+    enabled: enabled && connected && Boolean(client) && Boolean(modeId),
     refetchInterval: 3_000,
     dataShape: "list",
     staleTimeMs: 2_000,
     queryFn: async () => {
       if (!client) throw new Error("主机未连接");
-      const result = await client.listLarkSubstituteTasks();
+      const result = await client.listLarkSubstituteTasks({ modeId });
       if (result.error) throw new Error(result.error);
       return result.tasks;
     },
@@ -33,7 +33,7 @@ export function useLarkSubstituteTasks(serverId: string, enabled = true) {
   const scanMutation = useMutation({
     mutationFn: async () => {
       if (!client) throw new Error("主机未连接");
-      const result = await client.scanLarkSubstituteTasks();
+      const result = await client.scanLarkSubstituteTasks({ modeId });
       if (result.error) throw new Error(result.error);
       queryClient.setQueryData(key, result.tasks);
       return {
@@ -48,24 +48,24 @@ export function useLarkSubstituteTasks(serverId: string, enabled = true) {
     async (taskIds: string[]) => {
       if (!client) throw new Error("主机未连接");
       return mutation.mutateAsync(async () => {
-        const result = await client.pauseLarkSubstituteTasks({ taskIds });
+        const result = await client.pauseLarkSubstituteTasks({ modeId, taskIds });
         if (result.error) throw new Error(result.error);
         return result.tasks;
       });
     },
-    [client, mutation],
+    [client, modeId, mutation],
   );
 
   const deleteTasks = useCallback(
     async (taskIds: string[]) => {
       if (!client) throw new Error("主机未连接");
       return mutation.mutateAsync(async () => {
-        const result = await client.deleteLarkSubstituteTasks({ taskIds });
+        const result = await client.deleteLarkSubstituteTasks({ modeId, taskIds });
         if (result.error) throw new Error(result.error);
         return result.tasks;
       });
     },
-    [client, mutation],
+    [client, modeId, mutation],
   );
 
   return {

@@ -53,6 +53,12 @@ const REDACT_PATHS = [
   "headers.Authorization",
   "req.headers.authorization",
   "req.headers.Authorization",
+  "err.config.headers.authorization",
+  "err.config.headers.Authorization",
+  "err.cause.config.headers.authorization",
+  "err.cause.config.headers.Authorization",
+  "error.config.headers.authorization",
+  "error.config.headers.Authorization",
   '["sec-websocket-protocol"]',
   "Sec-WebSocket-Protocol",
   'headers["sec-websocket-protocol"]',
@@ -60,6 +66,39 @@ const REDACT_PATHS = [
   'req.headers["sec-websocket-protocol"]',
   "req.headers.Sec-WebSocket-Protocol",
 ];
+
+function redactSensitiveLogText(value: string): string {
+  return value
+    .replace(/\bBearer\s+[^\s"',}\]]+/giu, "Bearer [redacted]")
+    .replace(
+      /((?:access|refresh|user_access)[_-]?token["']?\s*[:=]\s*["']?)[^\s"',}\]]+/giu,
+      "$1[redacted]",
+    );
+}
+
+function serializeSafeError(error: unknown): Record<string, unknown> {
+  const record =
+    error && typeof error === "object" ? (error as Record<string, unknown>) : undefined;
+  let message = String(error);
+  let type = "Error";
+  if (error instanceof Error) {
+    message = error.message;
+    type = error.name;
+  } else {
+    if (typeof record?.message === "string") message = record.message;
+    if (typeof record?.name === "string") type = record.name;
+  }
+  message = redactSensitiveLogText(message);
+  const serialized: Record<string, unknown> = { type, message };
+  if (error instanceof Error && error.stack) {
+    serialized.stack = redactSensitiveLogText(error.stack);
+  }
+  for (const key of ["code", "logId", "retryAfterMs"]) {
+    const value = record?.[key];
+    if (typeof value === "string" || typeof value === "number") serialized[key] = value;
+  }
+  return serialized;
+}
 
 function resolveFilePath(paseoHome: string, configuredPath: string | undefined): string {
   const fallback = path.join(paseoHome, DEFAULT_DAEMON_LOG_FILENAME);
@@ -185,6 +224,7 @@ export function createRootLogger(
     {
       level: config.file?.level ?? config.console.level,
       redact: { paths: REDACT_PATHS, remove: true },
+      serializers: { err: serializeSafeError },
     },
     stream,
   );

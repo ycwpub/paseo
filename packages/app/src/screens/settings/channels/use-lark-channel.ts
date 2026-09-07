@@ -32,6 +32,7 @@ export interface UseLarkChannelResult {
     lookbackMinutes: number,
   ) => Promise<LarkDirectoryRecentPrivateUser[]>;
   addDirectoryPrivateUser: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
+  clearDirectoryFirstMessages: (appId: string) => Promise<number>;
   updateDirectoryUser: (input: {
     appId: string;
     openId: string;
@@ -317,6 +318,23 @@ export function useLarkChannel(
     [applyStatus, client],
   );
 
+  const clearDirectoryFirstMessages = useCallback(
+    async (appId: string) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.clearLarkDirectoryFirstMessages({ appId });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      return result.clearedCount;
+    },
+    [applyStatus, client],
+  );
+
   const applyBot = useCallback(
     async (name?: string) => {
       if (!client) {
@@ -363,6 +381,7 @@ export function useLarkChannel(
     resolveDirectoryChats,
     scanDirectoryPrivateUsers,
     addDirectoryPrivateUser,
+    clearDirectoryFirstMessages,
     updateDirectoryUser,
     application,
     applyBot,

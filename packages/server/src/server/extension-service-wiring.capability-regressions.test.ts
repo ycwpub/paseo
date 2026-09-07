@@ -22,6 +22,7 @@ describe("extension server integration regressions", () => {
       "larkDirectory",
       "larkDirectoryOpenIdLookup",
       "larkDirectoryPrivateUserScan",
+      "larkDirectoryClearFirstMessages",
       "larkUserOAuth",
       "assistants",
       "memory",

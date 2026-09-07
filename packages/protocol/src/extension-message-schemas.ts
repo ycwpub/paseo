@@ -60,6 +60,8 @@ import {
   AssistantUpdateResponseSchema,
 } from "./assistant/rpc-schemas.js";
 import {
+  LarkDirectoryClearFirstMessagesRequestSchema,
+  LarkDirectoryClearFirstMessagesResponseSchema,
   LarkDirectoryResolveChatsRequestSchema,
   LarkDirectoryResolveChatsResponseSchema,
   LarkDirectoryResolveUserRequestSchema,
@@ -287,6 +289,7 @@ export const ExtensionSessionInboundSchemas = [
   LarkDirectoryResolveUsersRequestSchema,
   LarkDirectoryResolveChatsRequestSchema,
   LarkDirectoryUpdateUserRequestSchema,
+  LarkDirectoryClearFirstMessagesRequestSchema,
   LarkDirectoryScanPrivateUsersRequestSchema,
   LarkDirectoryAddPrivateUserRequestSchema,
   LarkUserOAuthGetStatusRequestSchema,
@@ -397,6 +400,7 @@ export const ExtensionSessionOutboundSchemas = [
   LarkDirectoryResolveUsersResponseSchema,
   LarkDirectoryResolveChatsResponseSchema,
   LarkDirectoryUpdateUserResponseSchema,
+  LarkDirectoryClearFirstMessagesResponseSchema,
   LarkDirectoryScanPrivateUsersResponseSchema,
   LarkDirectoryAddPrivateUserResponseSchema,
   LarkUserOAuthGetStatusResponseSchema,

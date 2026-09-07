@@ -22,6 +22,7 @@ import {
   normalizeLarkContactIdentityQuery,
   normalizeLarkContactOpenId,
 } from "./lark-contact-directory-model";
+import { LarkContactFirstMessageCleanup } from "./lark-contact-first-message-cleanup";
 import { OptionalLarkContactPrivateUserScan } from "./lark-contact-private-user-scan";
 
 export interface LarkContactDirectoryUpdateInput {
@@ -33,6 +34,10 @@ export interface LarkContactDirectoryUpdateInput {
 
 function getBotName(bot: LarkChannelBotStatus): string {
   return bot.bot?.name || bot.name || bot.appId || "未命名飞书机器人";
+}
+
+function getBotAppId(bot: LarkChannelBotStatus | null): string | null {
+  return bot?.appId ?? null;
 }
 
 function normalizeSearchText(value: string): string {
@@ -59,6 +64,10 @@ function contactTitle(user: LarkDirectoryUser): string {
 
 function contactDescription(user: LarkDirectoryUser): string {
   return `${user.email?.trim() || "未补充邮箱"} · ${user.openId}`;
+}
+
+function countContactsWithFirstMessage(users: readonly LarkDirectoryUser[]): number {
+  return users.filter((user) => user.firstMessageContent != null).length;
 }
 
 export function LarkContactDirectoryEntry({
@@ -234,12 +243,14 @@ export function LarkContactDirectoryPage({
   connected,
   supportsOpenIdLookup,
   supportsPrivateUserScan,
+  supportsClearFirstMessages,
   onSelectBot,
   onEdit,
   onResolve,
   onResolveUsers,
   onScanPrivateUsers,
   onAddPrivateUser,
+  onClearFirstMessages,
 }: {
   bots: LarkChannelBotStatus[];
   directory: LarkDirectory | null;
@@ -247,6 +258,7 @@ export function LarkContactDirectoryPage({
   connected: boolean;
   supportsOpenIdLookup: boolean;
   supportsPrivateUserScan: boolean;
+  supportsClearFirstMessages: boolean;
   onSelectBot: (botId: string) => void;
   onEdit: (user: LarkDirectoryUser) => void;
   onResolve: (appId: string, openId: string) => Promise<LarkDirectoryUser>;
@@ -256,6 +268,7 @@ export function LarkContactDirectoryPage({
     lookbackMinutes: number,
   ) => Promise<LarkDirectoryRecentPrivateUser[]>;
   onAddPrivateUser: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
+  onClearFirstMessages: (appId: string) => Promise<number>;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [identityQuery, setIdentityQuery] = useState("");
@@ -270,6 +283,7 @@ export function LarkContactDirectoryPage({
     () => bots.find((bot) => bot.id === selectedBotId) ?? bots[0] ?? null,
     [bots, selectedBotId],
   );
+  const selectedBotAppId = getBotAppId(selectedBot);
   const botOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
       bots.map((bot) => ({
@@ -309,6 +323,10 @@ export function LarkContactDirectoryPage({
           return rightTime - leftTime || contactTitle(left).localeCompare(contactTitle(right));
         }),
     [searchQuery, selectedBotContacts],
+  );
+  const contactsWithFirstMessageCount = useMemo(
+    () => countContactsWithFirstMessage(selectedBotContacts),
+    [selectedBotContacts],
   );
   const visibleIdentityResults = useMemo(() => {
     const appId = selectedBot?.appId;
@@ -485,6 +503,13 @@ export function LarkContactDirectoryPage({
       />
       <SettingsSection title={`联系人（${contacts.length}）`}>
         <View style={settingsStyles.card}>
+          <LarkContactFirstMessageCleanup
+            supported={supportsClearFirstMessages}
+            appId={selectedBotAppId}
+            contactCount={contactsWithFirstMessageCount}
+            connected={connected}
+            onClear={onClearFirstMessages}
+          />
           {contacts.length > 0 ? (
             contacts.map((user, index) => (
               <ContactRow

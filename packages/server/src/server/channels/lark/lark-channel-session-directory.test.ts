@@ -141,6 +141,62 @@ describe("LarkChannelSession directory RPC", () => {
     });
   });
 
+  test("clears all first message content for the selected bot", async () => {
+    const status = {
+      enabled: false,
+      connectionStatus: "disabled",
+      error: null,
+      appId: null,
+      hasAppSecret: false,
+      hasEncryptKey: false,
+      hasVerificationToken: false,
+      domain: "feishu",
+      target: {
+        kind: "workspace",
+        provider: null,
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        cwd: null,
+        workspaceId: null,
+      },
+      substitute: { enabled: false, openId: null, name: null },
+      bot: null,
+      pendingPairings: [],
+      authorizedUsers: [],
+      activeBotId: null,
+      bots: [],
+      directory: { users: [], chats: [] },
+    } as const;
+    const service = {
+      clearDirectoryFirstMessageContents: vi.fn(() => 3),
+      getStatus: vi.fn(() => status),
+    } as unknown as LarkChannelService;
+    const emit = vi.fn();
+    const session = new LarkChannelSession({
+      host: { emit },
+      service,
+      logger: pino({ level: "silent" }),
+    });
+
+    await session.handleRequest({
+      type: "channel.lark.directory.clear_first_messages.request",
+      requestId: "clear-first-messages",
+      appId: "cli_test",
+    });
+
+    expect(service.clearDirectoryFirstMessageContents).toHaveBeenCalledWith("cli_test");
+    expect(emit).toHaveBeenCalledWith({
+      type: "channel.lark.directory.clear_first_messages.response",
+      payload: {
+        requestId: "clear-first-messages",
+        clearedCount: 3,
+        status,
+        error: null,
+      },
+    });
+  });
+
   test("scans recent private users and adds a selected result", async () => {
     const candidate = {
       appId: "cli_test",

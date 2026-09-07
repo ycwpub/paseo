@@ -161,6 +161,26 @@ export class LarkDirectoryStore {
     return record;
   }
 
+  clearFirstMessageContents(appId: string, now: string): number {
+    this.ensureLoaded();
+    let clearedCount = 0;
+    const users = this.payload.users.map((entry) => {
+      if (entry.appId !== appId || entry.firstMessageContent == null) {
+        return entry;
+      }
+      clearedCount += 1;
+      return LarkDirectoryUserSchema.parse({
+        ...entry,
+        firstMessageContent: null,
+        updatedAt: now,
+      });
+    });
+    if (clearedCount > 0) {
+      this.persist({ ...this.payload, users });
+    }
+    return clearedCount;
+  }
+
   upsertChats(
     appId: string,
     chats: readonly { groupId: string; chatId: string; name: string }[],

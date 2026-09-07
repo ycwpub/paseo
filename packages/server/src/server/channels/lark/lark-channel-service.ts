@@ -674,6 +674,13 @@ export class LarkChannelService {
     return user;
   }
 
+  clearDirectoryFirstMessageContents(appId: string): number {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const clearedCount = this.directoryService.clearFirstMessageContents(appId);
+    this.emitStatusChanged();
+    return clearedCount;
+  }
+
   async listChatMessages(
     botId: string,
     chatId: string,
@@ -2728,10 +2735,7 @@ export class LarkChannelService {
         return [];
       }
       const matchesUser = bot.authorizedUsers.some(
-        (user) =>
-          user.chatId === input.chatId &&
-          user.unionId === sourceUser.unionId &&
-          user.openId === targetOpenId,
+        (user) => user.unionId === sourceUser.unionId && user.openId === targetOpenId,
       );
       return matchesUser
         ? [{ bot, targetOpenId, targetName: oauth?.displayName?.trim() || null }]

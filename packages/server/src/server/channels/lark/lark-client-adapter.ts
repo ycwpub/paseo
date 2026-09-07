@@ -17,6 +17,7 @@ import {
   withLarkRateLimitRetry,
 } from "./lark-api-request.js";
 import { resolveLarkDirectoryUserIdentity } from "./lark-directory-user-resolution.js";
+import { collectLarkPrivateMessageIds } from "./lark-private-message-search-windows.js";
 
 export interface LarkChannelBotInfo {
   openId: string;
@@ -511,35 +512,47 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       },
     };
     try {
-      const messageIds: string[] = [];
-      let pageToken: string | undefined;
-      do {
-        const result = await withLarkRateLimitRetry(async () => {
-          const response = await client.search.message.create(
+      const { messageIds, searchWindowCount } = await collectLarkPrivateMessageIds(
+        options,
+        async (searchOptions) => {
+          const result = await withLarkRateLimitRetry(async () => {
+            const response = await client.search.message.create(
+              {
+                data: {
+                  query: "",
+                  chat_type: "p2p_chat",
+                  start_time: String(searchOptions.startTime),
+                  end_time: String(searchOptions.endTime),
+                },
+                params: {
+                  user_id_type: "open_id",
+                  page_size: 50,
+                  ...(searchOptions.pageToken ? { page_token: searchOptions.pageToken } : {}),
+                },
+              },
+              lark.withUserAccessToken(userAccessToken),
+            );
+            assertSuccess(response);
+            return response;
+          }, retryOptions);
+          return {
+            items: result.data?.items,
+            pageToken: result.data?.page_token,
+            hasMore: result.data?.has_more,
+          };
+        },
+        (searchWindow) => {
+          this.logger.warn(
             {
-              data: {
-                query: "",
-                chat_type: "p2p_chat",
-                start_time: String(options.startTime),
-                end_time: String(options.endTime),
-              },
-              params: {
-                user_id_type: "open_id",
-                page_size: 50,
-                ...(pageToken ? { page_token: pageToken } : {}),
-              },
+              startTime: searchWindow.startTime,
+              endTime: searchWindow.endTime,
             },
-            lark.withUserAccessToken(userAccessToken),
+            "Lark private-message search returned a repeated page token",
           );
-          assertSuccess(response);
-          return response;
-        }, retryOptions);
-        messageIds.push(...(result.data?.items ?? []));
-        pageToken = result.data?.page_token;
-      } while (pageToken);
-      const uniqueMessageIds = Array.from(new Set(messageIds));
+        },
+      );
       const batch = await mapLarkRequestsWithConcurrency(
-        uniqueMessageIds,
+        messageIds,
         LARK_PRIVATE_MESSAGE_DETAIL_CONCURRENCY,
         (messageId) =>
           withLarkRateLimitRetry(async () => {
@@ -571,11 +584,28 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
           "Some Lark private-message details could not be loaded",
         );
         if (messages.length === 0) throw batch.errors[0];
+        this.logger.info(
+          {
+            searchWindowCount,
+            messageIdCount: messageIds.length,
+            loadedMessageCount: messages.length,
+          },
+          "Completed Lark private-message scan with partial message details",
+        );
         return messages;
       }
-      return batch.values.filter((message): message is NonNullable<typeof message> =>
+      const messages = batch.values.filter((message): message is NonNullable<typeof message> =>
         Boolean(message),
       );
+      this.logger.info(
+        {
+          searchWindowCount,
+          messageIdCount: messageIds.length,
+          loadedMessageCount: messages.length,
+        },
+        "Completed Lark private-message scan",
+      );
+      return messages;
     } catch (error) {
       throw describeLarkError(error);
     }

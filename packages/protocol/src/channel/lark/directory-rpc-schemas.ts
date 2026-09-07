@@ -71,3 +71,19 @@ export const LarkDirectoryUpdateUserResponseSchema = z.object({
     error: z.string().nullable(),
   }),
 });
+
+export const LarkDirectoryClearFirstMessagesRequestSchema = z.object({
+  type: z.literal("channel.lark.directory.clear_first_messages.request"),
+  requestId: z.string(),
+  appId: z.string().trim().min(1),
+});
+
+export const LarkDirectoryClearFirstMessagesResponseSchema = z.object({
+  type: z.literal("channel.lark.directory.clear_first_messages.response"),
+  payload: z.object({
+    requestId: z.string(),
+    clearedCount: z.number().int().nonnegative(),
+    status: LarkChannelStatusSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});

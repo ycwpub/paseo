@@ -44,6 +44,7 @@ export type {
   DaemonEvent,
   BrowserAutomationExecuteRequestMessage,
   BrowserAutomationExecuteResponseMessage,
+  ClearLarkDirectoryFirstMessagesOptions,
   ConfigureLarkChannelOptions,
   AddLarkDirectoryPrivateUserOptions,
   CreateLarkReminderOptions,

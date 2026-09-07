@@ -109,4 +109,48 @@ describe("collectRecentLarkPrivateUsers", () => {
       }),
     ]);
   });
+
+  test("counts authorized-user replies under the private-chat peer", () => {
+    const firstMessage = privateMessage(
+      "om_1",
+      "ou_alice",
+      "张三",
+      "请帮忙看一下",
+      1_788_768_000_000,
+    );
+    const firstReply = privateMessage(
+      "om_2",
+      "ou_owner",
+      "授权用户",
+      "收到，我来处理",
+      1_788_768_030_000,
+    );
+    const secondReply = privateMessage(
+      "om_3",
+      "ou_owner",
+      "授权用户",
+      "已经处理好了",
+      1_788_768_060_000,
+    );
+    firstReply.chat_id = firstMessage.chat_id;
+    secondReply.chat_id = firstMessage.chat_id;
+    const users = collectRecentLarkPrivateUsers({
+      appId: "cli_test",
+      rawMessages: [firstMessage, firstReply, secondReply],
+      currentUserOpenId: "ou_owner",
+      directory: { users: [], chats: [] },
+      now: "2026-09-07T08:30:00.000Z",
+    });
+
+    expect(users).toEqual([
+      expect.objectContaining({
+        openId: "ou_alice",
+        displayName: "张三",
+        firstMessageContent: "请帮忙看一下",
+        lastMessageContent: "已经处理好了",
+        messageCount: 3,
+      }),
+    ]);
+    expect(users.some((user) => user.openId === "ou_owner")).toBe(false);
+  });
 });

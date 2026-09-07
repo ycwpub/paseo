@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { DaemonConfigStore } from "../daemon-config-store.js";
-import type { PersistedConfig } from "../persisted-config.js";
+import { loadPersistedConfig, type PersistedConfig } from "../persisted-config.js";
 import type {
   AgentClient,
   AgentMode,
@@ -97,6 +97,71 @@ afterEach(() => {
 });
 
 describe("mutable provider config owner", () => {
+  test("enables TraeX and removes legacy TRAE CLI without breaking other custom providers", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
+    tempDirs.push(paseoHome);
+    const providers = {
+      ...CONTROLLED_PROVIDERS,
+      traex: { enabled: false },
+      traecli: {
+        extends: "acp",
+        label: "TRAE CLI",
+        description: "ByteDance TRAE compatibility provider",
+        command: ["traecli", "acp", "serve"],
+      },
+      "aiden-codex": {
+        extends: "codex",
+        label: "Aiden Codex",
+        command: ["aiden-codex"],
+      },
+    } as const;
+    const persisted = {
+      version: 1,
+      agents: { providers },
+    } satisfies PersistedConfig;
+    writeFileSync(
+      path.join(paseoHome, "config.json"),
+      `${JSON.stringify(persisted, null, 2)}\n`,
+      "utf-8",
+    );
+    const store = new DaemonConfigStore(paseoHome, mutableConfig(persisted), undefined, {
+      startupPersisted: persisted,
+    });
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: providers,
+    });
+    let agentManagerState = manager.getAgentManagerProviderState();
+    const unsubscribe = attachMutableProviderConfigOwner({
+      store,
+      providerSnapshotManager: manager,
+      updateProviderRegistry: (state) => {
+        agentManagerState = state;
+      },
+    });
+
+    try {
+      expect(() => store.patch({ providers: { traex: { enabled: true } } })).not.toThrow();
+      expect(manager.hasProvider("traecli")).toBe(true);
+      expect(manager.getProviderLabel("traecli")).toBe("TRAE CLI");
+      expect(agentManagerState.providerDefinitions.traex).toMatchObject({ enabled: true });
+      expect(agentManagerState.providerDefinitions.traecli).toMatchObject({ enabled: true });
+
+      expect(() => store.patch({ removeProviders: ["traecli"] })).not.toThrow();
+      expect(manager.hasProvider("traecli")).toBe(false);
+      expect(manager.hasProvider("aiden-codex")).toBe(true);
+      expect(agentManagerState.providerDefinitions.traecli).toBeUndefined();
+      expect(agentManagerState.providerDefinitions["aiden-codex"]).toMatchObject({ enabled: true });
+
+      const savedProviders = loadPersistedConfig(paseoHome).agents?.providers;
+      expect(savedProviders?.traecli).toBeUndefined();
+      expect(savedProviders?.["aiden-codex"]).toEqual(providers["aiden-codex"]);
+    } finally {
+      unsubscribe();
+      manager.destroy();
+    }
+  });
+
   test("publishes provider changes after commit and emits nothing on rollback", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
     tempDirs.push(paseoHome);

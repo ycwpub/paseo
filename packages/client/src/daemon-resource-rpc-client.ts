@@ -33,6 +33,7 @@ import type {
   AddLarkDirectoryPrivateUserOptions,
   ApproveLarkPairingOptions,
   AssistantRequestOptions,
+  ClearLarkDirectoryFirstMessagesOptions,
   ConfigureLarkChannelOptions,
   CreateLarkReminderOptions,
   CreateLarkSubstituteModeOptions,
@@ -853,6 +854,17 @@ export class DaemonResourceRpcClient {
         email: options.email,
       },
       responseType: "channel.lark.directory.update_user.response",
+    });
+  }
+
+  clearLarkDirectoryFirstMessages(options: ClearLarkDirectoryFirstMessagesOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.clear_first_messages.request",
+        appId: options.appId,
+      },
+      responseType: "channel.lark.directory.clear_first_messages.response",
     });
   }
 

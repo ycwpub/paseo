@@ -213,6 +213,38 @@ describe("LarkDirectoryStore", () => {
     });
   });
 
+  test("clears first message content only for contacts belonging to the selected bot", () => {
+    store.observeUser(
+      "cli_test",
+      {
+        openId: "ou_alice",
+        firstMessageContent: "需要清理",
+        firstMessageAt: "2026-09-06T01:00:00.000Z",
+      },
+      "2026-09-06T01:00:01.000Z",
+    );
+    store.observeUser(
+      "cli_other",
+      {
+        openId: "ou_bob",
+        firstMessageContent: "其他机器人消息",
+        firstMessageAt: "2026-09-06T02:00:00.000Z",
+      },
+      "2026-09-06T02:00:01.000Z",
+    );
+
+    expect(store.clearFirstMessageContents("cli_test", "2026-09-07T00:00:00.000Z")).toBe(1);
+    expect(store.findUser("cli_test", "ou_alice")).toMatchObject({
+      firstMessageContent: null,
+      firstMessageAt: "2026-09-06T01:00:00.000Z",
+      updatedAt: "2026-09-07T00:00:00.000Z",
+    });
+    expect(store.findUser("cli_other", "ou_bob")).toMatchObject({
+      firstMessageContent: "其他机器人消息",
+      firstMessageAt: "2026-09-06T02:00:00.000Z",
+    });
+  });
+
   test("extracts a numeric group ID from a group name when Lark only returns chat_id", () => {
     store.upsertChats(
       "cli_test",

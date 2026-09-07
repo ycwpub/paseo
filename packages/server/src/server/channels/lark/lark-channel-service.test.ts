@@ -2142,7 +2142,7 @@ describe("LarkChannelService", () => {
     const targetPairing = harness.store.upsertPendingPairing(substituteBot.id, {
       openId: "ou_yuan_as_seen_by_substitute",
       unionId: "on_yuan",
-      chatId: "oc_1",
+      chatId: "oc_target_p2p",
       displayName: "袁昌旺",
       createdAt: "2026-01-01T00:02:00.000Z",
       expiresAt: "2026-01-01T00:17:00.000Z",

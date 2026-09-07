@@ -259,6 +259,24 @@ describe("LarkDirectoryService", () => {
     });
   });
 
+  test("clears every stored first message for one configured bot", () => {
+    const service = createService({});
+    service.observeUser("cli_test", "ou_alice", "Alice", null, {
+      content: "第一条消息",
+      createTime: 1788656400000,
+    });
+    service.observeUser("cli_test", "ou_bob", "Bob", null, {
+      content: "另一条消息",
+      createTime: 1788656500000,
+    });
+
+    expect(service.clearFirstMessageContents("cli_test")).toBe(2);
+    expect(service.getState().users).toEqual([
+      expect.objectContaining({ openId: "ou_alice", firstMessageContent: null }),
+      expect.objectContaining({ openId: "ou_bob", firstMessageContent: null }),
+    ]);
+  });
+
   test("does not query Lark again when the email is already known", async () => {
     directoryStore.upsertResolvedUsers(
       "cli_test",

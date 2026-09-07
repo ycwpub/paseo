@@ -41,27 +41,39 @@ export function collectRecentLarkPrivateUsers(input: {
   directory: LarkDirectory;
   now: string;
 }): LarkDirectoryRecentPrivateUser[] {
-  const byOpenId = new Map<string, NormalizedLarkMessageEvent[]>();
-  for (const rawMessage of input.rawMessages) {
-    const event = normalizePrivateSearchMessage(rawMessage);
-    if (
-      !event ||
-      !isHumanPrivateMessage(event) ||
-      !event.openId ||
-      event.openId === input.currentUserOpenId
-    ) {
-      continue;
+  const events = input.rawMessages
+    .map(normalizePrivateSearchMessage)
+    .filter((event): event is NormalizedLarkMessageEvent => Boolean(event))
+    .filter(isHumanPrivateMessage);
+  const peerByChatId = new Map<string, NormalizedLarkMessageEvent>();
+  for (const event of events) {
+    if (event.chatId && event.openId && event.openId !== input.currentUserOpenId) {
+      peerByChatId.set(event.chatId, event);
     }
-    const events = byOpenId.get(event.openId) ?? [];
-    events.push(event);
-    byOpenId.set(event.openId, events);
+  }
+  const byOpenId = new Map<string, NormalizedLarkMessageEvent[]>();
+  for (const event of events) {
+    let peerEvent = event;
+    if (event.openId === input.currentUserOpenId) {
+      const knownPeer = peerByChatId.get(event.chatId);
+      if (!knownPeer) continue;
+      peerEvent = {
+        ...event,
+        openId: knownPeer.openId,
+        displayName: knownPeer.displayName,
+      };
+    }
+    if (!peerEvent.openId) continue;
+    const peerEvents = byOpenId.get(peerEvent.openId) ?? [];
+    peerEvents.push(peerEvent);
+    byOpenId.set(peerEvent.openId, peerEvents);
   }
 
   return [...byOpenId.entries()]
-    .flatMap(([openId, events]) => {
-      events.sort((left, right) => (left.createTime ?? 0) - (right.createTime ?? 0));
-      const first = events[0];
-      const last = events.at(-1);
+    .flatMap(([openId, peerEvents]) => {
+      peerEvents.sort((left, right) => (left.createTime ?? 0) - (right.createTime ?? 0));
+      const first = peerEvents[0];
+      const last = peerEvents.at(-1);
       if (!first || !last) return [];
       const existing = input.directory.users.find(
         (user) => user.appId === input.appId && user.openId === openId,
@@ -75,7 +87,7 @@ export function collectRecentLarkPrivateUsers(input: {
           firstMessageAt: toLarkDirectoryMessageTime(first.createTime, input.now),
           lastMessageContent: last.text,
           lastMessageAt: toLarkDirectoryMessageTime(last.createTime, input.now),
-          messageCount: events.length,
+          messageCount: peerEvents.length,
           inDirectory: Boolean(existing),
         },
       ];

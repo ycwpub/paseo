@@ -282,6 +282,13 @@ export class LarkDirectoryService {
     return user;
   }
 
+  clearFirstMessageContents(appId: string): number {
+    if (!this.channelStore.getBots().some((entry) => entry.config.appId === appId)) {
+      throw new Error(`Lark bot App ID is not configured: ${appId}`);
+    }
+    return this.store.clearFirstMessageContents(appId, new Date().toISOString());
+  }
+
   private requireConfig(appId: string): StoredLarkChannelConfig {
     const bot = this.channelStore.getBots().find((entry) => entry.config.appId === appId);
     if (!bot) {

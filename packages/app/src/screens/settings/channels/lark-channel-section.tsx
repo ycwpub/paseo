@@ -1243,6 +1243,10 @@ function LarkChannelLoadedContent({
     serverId,
     "larkDirectoryPrivateUserScan",
   );
+  const supportsLarkDirectoryClearFirstMessages = useHostFeature(
+    serverId,
+    "larkDirectoryClearFirstMessages",
+  );
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId);
   const { projects } = useProjects();
@@ -1762,12 +1766,14 @@ function LarkChannelLoadedContent({
           connected={channel.isConnected}
           supportsOpenIdLookup={supportsLarkDirectoryOpenIdLookup}
           supportsPrivateUserScan={supportsLarkDirectoryPrivateUserScan}
+          supportsClearFirstMessages={supportsLarkDirectoryClearFirstMessages}
           onSelectBot={handleSelectBot}
           onEdit={handleEditContact}
           onResolve={channel.resolveDirectoryUser}
           onResolveUsers={channel.resolveDirectoryUsers}
           onScanPrivateUsers={channel.scanDirectoryPrivateUsers}
           onAddPrivateUser={channel.addDirectoryPrivateUser}
+          onClearFirstMessages={channel.clearDirectoryFirstMessages}
         />
       </View>
     ),

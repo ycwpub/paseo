@@ -693,6 +693,10 @@ type LarkDirectoryUpdateUserPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.update_user.response" }
 >["payload"];
+type LarkDirectoryClearFirstMessagesPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.clear_first_messages.response" }
+>["payload"];
 type LarkDirectoryScanPrivateUsersPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.scan_private_users.response" }
@@ -1111,6 +1115,10 @@ export interface UpdateLarkDirectoryUserOptions {
   openId: string;
   displayName: string | null;
   email: string | null;
+  requestId?: string;
+}
+export interface ClearLarkDirectoryFirstMessagesOptions {
+  appId: string;
   requestId?: string;
 }
 export interface ScanLarkDirectoryPrivateUsersOptions {
@@ -6838,6 +6846,12 @@ export class DaemonClient {
     options: UpdateLarkDirectoryUserOptions,
   ): Promise<LarkDirectoryUpdateUserPayload> {
     return this.resourceRpc.updateLarkDirectoryUser(options);
+  }
+
+  async clearLarkDirectoryFirstMessages(
+    options: ClearLarkDirectoryFirstMessagesOptions,
+  ): Promise<LarkDirectoryClearFirstMessagesPayload> {
+    return this.resourceRpc.clearLarkDirectoryFirstMessages(options);
   }
 
   async scanLarkDirectoryPrivateUsers(

@@ -138,6 +138,7 @@ import {
 } from "./agent/tools/paseo-tools.js";
 import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { resolveInitialMutableProviderConfig } from "./agent/initial-mutable-provider-config.js";
 import { bootstrapProjectWorkspaceRegistries } from "./project/project-workspace-registry-bootstrap.js";
 import { resolveEnabledRelayEndpoints } from "./daemon-relay-config-patch.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
@@ -617,19 +618,6 @@ function resolveInitialRelayEndpoints(
 
 // oxlint-disable-next-line complexity
 function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
-  const providers: MutableDaemonConfig["providers"] = Object.fromEntries(
-    Object.entries(config.providerOverrides ?? {}).map(([providerId, override]) => {
-      const providerConfig: MutableDaemonConfig["providers"][string] = {};
-      if (override.enabled !== undefined) {
-        providerConfig.enabled = override.enabled;
-      }
-      if (override.additionalModels) {
-        providerConfig.additionalModels = override.additionalModels;
-      }
-      return [providerId, providerConfig];
-    }),
-  );
-
   const initialConfig: MutableDaemonConfig = {
     mcp: {
       enabled: config.mcpEnabled ?? true,
@@ -665,7 +653,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
         },
       },
     },
-    providers,
+    providers: resolveInitialMutableProviderConfig(config.providerOverrides),
     metadataGeneration: {
       providers: config.metadataGeneration?.providers ?? [],
     },

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  LarkDirectoryClearFirstMessagesRequestSchema,
   LarkDirectoryResolveChatsRequestSchema,
   LarkDirectoryResolveUserRequestSchema,
   LarkDirectoryResolveUsersRequestSchema,
@@ -61,6 +62,18 @@ describe("Lark directory RPC schemas", () => {
       openId: "ou_alice",
       displayName: "张三",
       email: "alice@example.com",
+    });
+  });
+
+  test("normalizes the bot whose contact messages should be cleared", () => {
+    expect(
+      LarkDirectoryClearFirstMessagesRequestSchema.parse({
+        type: "channel.lark.directory.clear_first_messages.request",
+        requestId: "request-clear",
+        appId: " cli_test ",
+      }),
+    ).toMatchObject({
+      appId: "cli_test",
     });
   });
 });

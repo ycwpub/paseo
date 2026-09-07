@@ -14,6 +14,12 @@ import { LarkContactDirectoryPage } from "./lark-contact-directory-section";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
+const confirmDialogMock = vi.hoisted(() => vi.fn(async () => true));
+
+vi.mock("@/utils/confirm-dialog", () => ({
+  confirmDialog: confirmDialogMock,
+}));
+
 vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) =>
@@ -151,6 +157,7 @@ function renderDirectory(
       firstMessageAt: user.firstMessageAt,
     }),
   ),
+  onClearFirstMessages = vi.fn(async () => 0),
 ) {
   render(
     <LarkContactDirectoryPage
@@ -160,18 +167,30 @@ function renderDirectory(
       connected={connected}
       supportsOpenIdLookup
       supportsPrivateUserScan
+      supportsClearFirstMessages
       onSelectBot={vi.fn()}
       onEdit={vi.fn()}
       onResolve={onResolve}
       onResolveUsers={onResolveUsers}
       onScanPrivateUsers={onScanPrivateUsers}
       onAddPrivateUser={onAddPrivateUser}
+      onClearFirstMessages={onClearFirstMessages}
     />,
   );
-  return { onResolve, onResolveUsers, onScanPrivateUsers, onAddPrivateUser };
+  return {
+    onResolve,
+    onResolveUsers,
+    onScanPrivateUsers,
+    onAddPrivateUser,
+    onClearFirstMessages,
+  };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  confirmDialogMock.mockClear();
+  confirmDialogMock.mockResolvedValue(true);
+});
 
 describe("Lark contact directory", () => {
   test("resolves an ou_id and adds it to the selected bot directory", async () => {
@@ -357,5 +376,44 @@ describe("Lark contact directory", () => {
       expect(result.onAddPrivateUser).toHaveBeenCalledWith(candidate);
     });
     expect(await screen.findByText("已在通讯录")).toBeTruthy();
+  });
+
+  test("clears first message content for every contact of the selected bot", async () => {
+    const onClearFirstMessages = vi.fn(async () => 2);
+    renderDirectory(
+      {
+        users: [
+          createUser({ openId: "ou_first", firstMessageContent: "第一条" }),
+          createUser({ openId: "ou_second", firstMessageContent: "第二条" }),
+          createUser({
+            appId: "cli_other",
+            openId: "ou_other",
+            firstMessageContent: "其他机器人消息",
+          }),
+        ],
+        chats: [],
+      },
+      vi.fn(async () => createUser()),
+      vi.fn(async () => []),
+      true,
+      vi.fn(async () => []),
+      vi.fn(async (user: LarkDirectoryRecentPrivateUser) => createUser({ openId: user.openId })),
+      onClearFirstMessages,
+    );
+
+    fireEvent.click(screen.getByTestId("host-page-lark-contacts-clear-first-messages"));
+
+    await waitFor(() => {
+      expect(confirmDialogMock).toHaveBeenCalledWith({
+        title: "清空全部首次消息？",
+        message:
+          "将清空当前机器人下所有联系人的首次消息内容，用户名、邮箱、ou_id 和首次消息时间不会删除。此操作无法撤销。",
+        confirmLabel: "清空",
+        cancelLabel: "取消",
+        destructive: true,
+      });
+      expect(onClearFirstMessages).toHaveBeenCalledWith("cli_test");
+    });
+    expect(await screen.findByText("已清空 2 个联系人的首次消息内容。")).toBeTruthy();
   });
 });

@@ -16,6 +16,8 @@ const { theme } = vi.hoisted(() => ({
     spacing: { 1: 4, 2: 8, 3: 12 },
     borderRadius: { lg: 8 },
     colors: { foreground: "#fff", surface1: "#111", border: "#444" },
+    fontSize: { sm: 12 },
+    fontWeight: { medium: "500" },
   },
 }));
 
@@ -112,13 +114,13 @@ vi.mock("./lark-directory-fields", () => ({
 afterEach(cleanup);
 
 describe("Lark substitute rule list editors", () => {
-  test("adds one audience rule row and supports all five rule types", () => {
+  test("adds one audience list with conversation, user, and bot types", () => {
     const onChange = vi.fn();
     const { rerender } = render(
       <LarkSubstituteAudienceRuleListEditor
         label="用户/群白名单"
         hint="必须命中"
-        rules={[]}
+        ruleGroups={[]}
         appId="cli_test"
         users={[]}
         chats={[]}
@@ -128,15 +130,15 @@ describe("Lark substitute rule list editors", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
-    const rules = onChange.mock.calls[0]?.[0];
-    expect(rules).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "添加名单" }));
+    const ruleGroups = onChange.mock.calls[0]?.[0];
+    expect(ruleGroups).toHaveLength(1);
 
     rerender(
       <LarkSubstituteAudienceRuleListEditor
         label="用户/群白名单"
         hint="必须命中"
-        rules={rules}
+        ruleGroups={ruleGroups}
         appId="cli_test"
         users={[]}
         chats={[]}
@@ -145,16 +147,27 @@ describe("Lark substitute rule list editors", () => {
         onChange={onChange}
       />,
     );
-    const typeSelect = screen.getByRole("combobox", { name: "类型" });
-    expect(screen.getByRole("option", { name: "用户" })).toBeTruthy();
+    const conversationType = screen.getByRole("combobox", { name: "会话范围类型" });
     expect(screen.getByRole("option", { name: "群" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "群 AI 分类" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "全部" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "群名称正则表达式" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "私聊" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "机器人" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "全部群" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "全部（群+用户+机器人）" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "全部用户" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "用户名称" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "用户邮箱" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "机器人 app_id" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "全部机器人" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "全部（机器人+用户）" })).toBeTruthy();
 
-    fireEvent.change(typeSelect, { target: { value: "group_ai_category" } });
-    const changedRules = onChange.mock.calls.at(-1)?.[0];
-    expect(changedRules[0]).toMatchObject({ type: "group_ai_category", description: "" });
+    fireEvent.change(conversationType, { target: { value: "group_ai_category" } });
+    const changedGroups = onChange.mock.calls.at(-1)?.[0];
+    expect(changedGroups[0].conversationRules[0]).toMatchObject({
+      type: "group_ai_category",
+      description: "",
+    });
   });
 
   test("adds independent question rows instead of a shared text area", () => {
@@ -177,7 +190,21 @@ describe("Lark substitute rule list editors", () => {
       <LarkSubstituteAudienceRuleListEditor
         label="用户/群白名单"
         hint="必须命中"
-        rules={[{ id: "rule-1", type: "user", openId: null, name: null, email: null }]}
+        ruleGroups={[
+          {
+            id: "list-1",
+            conversationRules: [{ id: "private", type: "private" }],
+            userRules: [
+              {
+                id: "user-1",
+                type: "user_name",
+                name: "",
+                openId: null,
+                email: null,
+              },
+            ],
+          },
+        ]}
         appId="cli_test"
         users={[
           {
@@ -213,11 +240,17 @@ describe("Lark substitute rule list editors", () => {
 
     expect(onChange).toHaveBeenCalledWith([
       {
-        id: "rule-1",
-        type: "user",
-        openId: "ou_alice",
-        name: "张三",
-        email: "alice@example.com",
+        id: "list-1",
+        conversationRules: [{ id: "private", type: "private" }],
+        userRules: [
+          {
+            id: "user-1",
+            type: "user_name",
+            openId: "ou_alice",
+            name: "张三",
+            email: "alice@example.com",
+          },
+        ],
       },
     ]);
   });

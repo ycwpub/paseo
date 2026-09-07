@@ -160,6 +160,14 @@ export {
 } from "./channel/lark/reminder-types.js";
 export * from "./channel/lark/reminder-rpc-schemas.js";
 export {
+  LarkSubstituteAudienceConversationRuleSchema,
+  LarkSubstituteAudienceRuleGroupSchema,
+  LarkSubstituteAudienceUserRuleSchema,
+  type LarkSubstituteAudienceConversationRule,
+  type LarkSubstituteAudienceRuleGroup,
+  type LarkSubstituteAudienceUserRule,
+} from "./channel/lark/substitute-audience-rule-groups.js";
+export {
   DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
   DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
   DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,

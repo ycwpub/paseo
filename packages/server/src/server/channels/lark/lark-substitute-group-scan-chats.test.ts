@@ -94,6 +94,19 @@ describe("selectLarkSubstituteGroupScanChats", () => {
     ).toHaveLength(2);
   });
 
+  test("scans all known groups when the first layer targets bot messages", () => {
+    const configured = mode([]);
+    configured.audienceAllowRuleGroups = [
+      {
+        id: "bots",
+        conversationRules: [{ id: "bot", type: "bot" }],
+        userRules: [{ id: "all-bots", type: "all_bots" }],
+      },
+    ];
+
+    expect(selectLarkSubstituteGroupScanChats(configured, "cli_test", chats)).toHaveLength(2);
+  });
+
   test("does not treat a private-user allow rule as a group allow rule", () => {
     expect(
       selectLarkSubstituteGroupScanChats(
@@ -110,5 +123,38 @@ describe("selectLarkSubstituteGroupScanChats", () => {
         chats,
       ),
     ).toEqual([]);
+  });
+
+  test("discovers groups from the first layer of two-layer allow lists", () => {
+    const configured = mode([]);
+    configured.audienceAllowRuleGroups = [
+      {
+        id: "explicit-or-regex",
+        conversationRules: [
+          {
+            id: "explicit",
+            type: "group",
+            chatId: "oc_explicit",
+            groupId: null,
+            name: "指定群",
+          },
+          { id: "regex", type: "group_name_regex", pattern: "^研发" },
+        ],
+        userRules: [
+          {
+            id: "email",
+            type: "user_email",
+            email: "user@example.com",
+            openId: null,
+            name: null,
+          },
+        ],
+      },
+    ];
+
+    expect(selectLarkSubstituteGroupScanChats(configured, "cli_test", chats)).toEqual([
+      { chatId: "oc_explicit", name: "指定群" },
+      { chatId: "oc_research", name: "研发群" },
+    ]);
   });
 });

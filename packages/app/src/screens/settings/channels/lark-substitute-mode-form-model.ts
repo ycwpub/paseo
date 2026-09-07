@@ -1,7 +1,7 @@
 import type {
   LarkChannelBotStatus,
   LarkChannelTarget,
-  LarkSubstituteAudienceRule,
+  LarkSubstituteAudienceRuleGroup,
   LarkSubstituteMode,
   LarkSubstituteModeCreateInput,
   LarkSubstituteQuestionRule,
@@ -47,8 +47,8 @@ export interface LarkSubstituteModeFormState {
   startTime: string;
   endTime: string;
   timezone: string;
-  audienceAllowlist: LarkSubstituteAudienceRule[];
-  audienceDenylist: LarkSubstituteAudienceRule[];
+  audienceAllowRuleGroups: LarkSubstituteAudienceRuleGroup[];
+  audienceDenyRuleGroups: LarkSubstituteAudienceRuleGroup[];
   questionAllowlist: LarkSubstituteQuestionRule[];
   questionDenylist: LarkSubstituteQuestionRule[];
   targetSelection: string;
@@ -167,8 +167,8 @@ function createModeBehaviorFields(
   | "disclosurePrompt"
   | "customPrompt"
   | "delaySeconds"
-  | "audienceAllowlist"
-  | "audienceDenylist"
+  | "audienceAllowRuleGroups"
+  | "audienceDenyRuleGroups"
   | "questionAllowlist"
   | "questionDenylist"
 > {
@@ -310,8 +310,8 @@ export function buildSubstituteModeInput(input: {
   const { form, selectedBot, mode } = input;
   validateRequiredFields(form, selectedBot);
   const ruleLists = validateSubstituteRuleFormLists({
-    audienceAllowlist: form.audienceAllowlist,
-    audienceDenylist: form.audienceDenylist,
+    audienceAllowRuleGroups: form.audienceAllowRuleGroups,
+    audienceDenyRuleGroups: form.audienceDenyRuleGroups,
     questionAllowlist: form.questionAllowlist,
     questionDenylist: form.questionDenylist,
   });
@@ -365,6 +365,8 @@ export function buildSubstituteModeInput(input: {
     delaySeconds: parseDelaySeconds(form.delaySeconds),
     activeTimeRanges: buildActiveTimeRanges(form, mode),
     ...ruleLists,
+    audienceAllowlist: [],
+    audienceDenylist: [],
     allowlist: [],
     denylist: [],
     target: buildTarget(form),

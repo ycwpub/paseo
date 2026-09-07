@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LarkSubstituteAudienceRuleGroupSchema } from "./substitute-audience-rule-groups.js";
 import { LarkChannelTargetSchema } from "./types.js";
 
 const LarkSubstituteUserRuleSchema = z.object({
@@ -174,6 +175,10 @@ export const LarkSubstituteModeSchema = z.object({
   activeTimeRanges: z.array(LarkSubstituteTimeRangeSchema).max(32).default([]),
   audienceAllowlist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
   audienceDenylist: z.array(LarkSubstituteAudienceRuleSchema).max(200).optional(),
+  // COMPAT(larkSubstituteAudienceRuleGroups): added in v0.7.0, optional for older app/daemon pairs.
+  audienceAllowRuleGroups: z.array(LarkSubstituteAudienceRuleGroupSchema).max(200).optional(),
+  // COMPAT(larkSubstituteAudienceRuleGroups): added in v0.7.0, optional for older app/daemon pairs.
+  audienceDenyRuleGroups: z.array(LarkSubstituteAudienceRuleGroupSchema).max(200).optional(),
   questionAllowlist: z.array(LarkSubstituteQuestionRuleSchema).max(200).optional(),
   questionDenylist: z.array(LarkSubstituteQuestionRuleSchema).max(200).optional(),
   /** @deprecated Compatibility fields for substitute modes created before split rule lists. */

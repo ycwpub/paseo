@@ -336,4 +336,360 @@ describe("matchLarkSubstituteMode", () => {
       }),
     ).not.toBeNull();
   });
+
+  test("matches two-layer audience lists with OR inside layers, AND between layers, and OR between lists", () => {
+    const configured = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "engineering-alice-or-bob",
+          conversationRules: [
+            {
+              id: "engineering",
+              type: "group",
+              chatId: "oc_group",
+              groupId: "group-1",
+              name: "研发一群",
+            },
+            { id: "private", type: "private" },
+          ],
+          userRules: [
+            {
+              id: "alice-name",
+              type: "user_name",
+              name: "张三",
+              openId: null,
+              email: null,
+            },
+            {
+              id: "bob-email",
+              type: "user_email",
+              email: "lisi@example.com",
+              openId: null,
+              name: null,
+            },
+          ],
+        },
+        {
+          id: "all-ops-users",
+          conversationRules: [{ id: "ops", type: "group_name_regex", pattern: "^运维" }],
+          userRules: [{ id: "all-users", type: "all_users" }],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, openId: "ou_unknown", displayName: "王五" },
+        directory,
+      }),
+    ).toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, chatType: "p2p", mentions: [], displayName: "张三" },
+        directory,
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, chatId: "oc_other" },
+        directory: {
+          ...directory,
+          chats: [
+            ...directory.chats,
+            {
+              appId: "cli_test",
+              chatId: "oc_other",
+              groupId: null,
+              name: "运维值班群",
+              updatedAt: "2026-09-04T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    ).not.toBeNull();
+  });
+
+  test("applies a two-layer deny list only when both layers match", () => {
+    const configured = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "all-groups",
+          conversationRules: [{ id: "all-groups", type: "all_groups" }],
+          userRules: [{ id: "all-users", type: "all_users" }],
+        },
+      ],
+      audienceDenyRuleGroups: [
+        {
+          id: "blocked-user-in-engineering",
+          conversationRules: [
+            {
+              id: "engineering",
+              type: "group",
+              chatId: "oc_group",
+              groupId: "group-1",
+              name: "研发一群",
+            },
+          ],
+          userRules: [
+            {
+              id: "blocked-email",
+              type: "user_email",
+              email: "lisi@example.com",
+              openId: null,
+              name: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, chatId: "oc_other" },
+        directory,
+      }),
+    ).not.toBeNull();
+  });
+
+  test("only forwards AI group classifications from lists whose user layer matches", () => {
+    const configured = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "engineering-for-lisi",
+          conversationRules: [
+            { id: "engineering-ai", type: "group_ai_category", description: "研发协作群" },
+          ],
+          userRules: [
+            {
+              id: "lisi-email",
+              type: "user_email",
+              email: "lisi@example.com",
+              openId: null,
+              name: null,
+            },
+          ],
+        },
+        {
+          id: "finance-for-others",
+          conversationRules: [
+            { id: "finance-ai", type: "group_ai_category", description: "财务协作群" },
+          ],
+          userRules: [
+            {
+              id: "other-email",
+              type: "user_email",
+              email: "other@example.com",
+              openId: null,
+              name: null,
+            },
+          ],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toMatchObject({ groupAllowRules: ["研发协作群"] });
+  });
+
+  test("matches bot messages by sender App ID and keeps all-users limited to people", () => {
+    const botEvent = {
+      ...groupEvent,
+      openId: "ou_alert_bot",
+      displayName: "告警机器人",
+      senderType: "app",
+      senderAppId: "cli_alert",
+    };
+    const botMode = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "specific-bot",
+          conversationRules: [{ id: "bot", type: "bot" }],
+          userRules: [{ id: "bot-app", type: "bot_app_id", appId: "cli_alert" }],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [botMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: botEvent,
+        directory,
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [botMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...botEvent, senderAppId: "cli_other" },
+        directory,
+      }),
+    ).toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [
+          mode({
+            audienceAllowRuleGroups: [
+              {
+                id: "people-only",
+                conversationRules: [{ id: "all", type: "all" }],
+                userRules: [{ id: "all-users", type: "all_users" }],
+              },
+            ],
+            audienceDenyRuleGroups: [],
+          }),
+        ],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: botEvent,
+        directory,
+      }),
+    ).toBeNull();
+  });
+
+  test("requires a bot-authored private message to mention the substitute user", () => {
+    const configured = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "private-bot",
+          conversationRules: [{ id: "bot", type: "bot" }],
+          userRules: [{ id: "all-bots", type: "all_bots" }],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+    const botPrivateEvent = {
+      ...groupEvent,
+      chatType: "p2p",
+      senderType: "bot",
+      senderAppId: "cli_alert",
+    };
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...botPrivateEvent, mentions: [] },
+        directory,
+      }),
+    ).toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [configured],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: botPrivateEvent,
+        directory,
+      }),
+    ).not.toBeNull();
+  });
+
+  test("supports all bots and all senders in the second layer", () => {
+    const allBotsMode = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "all-bots",
+          conversationRules: [{ id: "all-conversations", type: "all" }],
+          userRules: [{ id: "all-bots", type: "all_bots" }],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+    const botEvent = {
+      ...groupEvent,
+      senderType: "bot",
+      senderAppId: "cli_any",
+    };
+
+    expect(
+      matchLarkSubstituteMode({
+        modes: [allBotsMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: botEvent,
+        directory,
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [allBotsMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).toBeNull();
+
+    const allSendersMode = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "all-senders",
+          conversationRules: [{ id: "all-conversations", type: "all" }],
+          userRules: [{ id: "all-senders", type: "all" }],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+    expect(
+      matchLarkSubstituteMode({
+        modes: [allSendersMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: botEvent,
+        directory,
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [allSendersMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: groupEvent,
+        directory,
+      }),
+    ).not.toBeNull();
+  });
 });

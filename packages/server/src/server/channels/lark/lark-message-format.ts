@@ -9,6 +9,7 @@ export interface NormalizedLarkMessageEvent {
   quotedMessageId?: string | null;
   openId: string | null;
   unionId: string | null;
+  senderAppId?: string | null;
   senderType?: string | null;
   displayName: string;
   topicName: string;
@@ -315,6 +316,7 @@ export function normalizeLarkMessageEvent(event: unknown): NormalizedLarkMessage
     quotedMessageId: identity.quotedMessageId,
     openId: getStringByKeys(sender.senderId, ["open_id", "openId"]),
     unionId: getStringByKeys(sender.senderId, ["union_id", "unionId"]),
+    senderAppId: getStringByKeys(sender.senderId, ["app_id", "appId"]),
     senderType: sender.senderType,
     displayName: sender.displayName,
     topicName: getTopicName(message, text),
@@ -947,6 +949,10 @@ export function normalizeLarkApiMessage(
     getStringByKeys(sender, ["id"]) && getStringByKeys(sender, ["id_type", "idType"]) === "open_id"
       ? getStringByKeys(sender, ["id"])
       : null;
+  const directSenderAppId =
+    getStringByKeys(sender, ["id"]) && getStringByKeys(sender, ["id_type", "idType"]) === "app_id"
+      ? getStringByKeys(sender, ["id"])
+      : null;
   return {
     eventId: `history:${messageId}`,
     messageId,
@@ -958,6 +964,10 @@ export function normalizeLarkApiMessage(
     quotedMessageId: identity.quotedMessageId,
     openId: getStringByKeys(senderId, ["open_id", "openId"]) ?? directSenderId,
     unionId: getStringByKeys(senderId, ["union_id", "unionId"]),
+    senderAppId:
+      getStringByKeys(senderId, ["app_id", "appId"]) ??
+      getStringByKeys(sender, ["app_id", "appId"]) ??
+      directSenderAppId,
     senderType: senderTypeOf(message),
     displayName: getApiSenderDisplayName(message),
     topicName: getTopicName(message, text),

@@ -21,6 +21,7 @@ import {
   PaseoInstructionTemplateSchema,
   PaseoServicePortAllocationSchema,
 } from "@getpaseo/protocol/paseo-config-schema";
+import { BUILTIN_PROVIDER_IDS } from "@getpaseo/protocol/provider-manifest";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -180,8 +181,6 @@ const AgentMetadataGenerationSchema = z
     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
   })
   .strict();
-
-const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;
 
 function isLegacyProviderEntry(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

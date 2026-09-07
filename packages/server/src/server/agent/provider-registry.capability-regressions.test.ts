@@ -587,7 +587,7 @@ test("traecli provider extending acp uses TraeACPAgentClient", () => {
     expect.objectContaining({ id: "bypass_permissions", isUnattended: true }),
     expect.objectContaining({ id: "plan" }),
   ]);
-  expect(mockState.constructorArgs.trae).toEqual([
+  expect(mockState.constructorArgs.trae.filter((entry) => entry.command[0] === "traecli")).toEqual([
     {
       command: ["traecli", "acp", "serve"],
       env: undefined,

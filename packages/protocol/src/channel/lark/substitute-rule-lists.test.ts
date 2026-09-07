@@ -21,6 +21,31 @@ describe("Lark substitute split rule lists", () => {
         { id: "all", type: "all" },
       ],
       audienceDenylist: [{ id: "regex", type: "group_name_regex", pattern: "^闲聊" }],
+      audienceAllowRuleGroups: [
+        {
+          id: "engineering-users",
+          conversationRules: [
+            { id: "group", type: "group", chatId: "oc_group", groupId: null, name: "研发群" },
+            { id: "private", type: "private" },
+            { id: "bot", type: "bot" },
+            { id: "all", type: "all" },
+          ],
+          userRules: [
+            { id: "all-users", type: "all_users" },
+            { id: "bot-app", type: "bot_app_id", appId: "cli_alert" },
+            { id: "all-bots", type: "all_bots" },
+            { id: "all-senders", type: "all" },
+            {
+              id: "email",
+              type: "user_email",
+              email: "user@example.com",
+              openId: null,
+              name: null,
+            },
+          ],
+        },
+      ],
+      audienceDenyRuleGroups: [],
       questionAllowlist: [{ id: "question-allow", description: "研发和代码问题" }],
       questionDenylist: [{ id: "question-deny", description: "薪酬和人事问题" }],
       allowlist: [],
@@ -35,6 +60,9 @@ describe("Lark substitute split rule lists", () => {
     });
 
     expect(mode.audienceAllowlist).toHaveLength(3);
+    expect(mode.audienceAllowRuleGroups).toHaveLength(1);
+    expect(mode.audienceAllowRuleGroups?.[0]?.conversationRules).toHaveLength(4);
+    expect(mode.audienceAllowRuleGroups?.[0]?.userRules).toHaveLength(5);
     expect(mode.questionAllowlist).toEqual([
       { id: "question-allow", description: "研发和代码问题" },
     ]);

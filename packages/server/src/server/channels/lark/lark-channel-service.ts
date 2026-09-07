@@ -75,7 +75,10 @@ import {
   matchLarkSubstituteMode,
   type MatchedLarkSubstituteMode,
 } from "./lark-substitute-rule-matcher.js";
-import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
+import {
+  getLarkSubstituteConversationRules,
+  getLarkSubstituteRuleLists,
+} from "./lark-substitute-rule-lists.js";
 import { LarkSubstituteReplySender } from "./lark-substitute-reply-sender.js";
 import { LarkSubstitutePrivatePoller } from "./lark-substitute-private-poller.js";
 import { LarkSubstituteGroupPoller } from "./lark-substitute-group-poller.js";
@@ -89,6 +92,11 @@ import {
 } from "./lark-substitute-group-scan-chats.js";
 import { getLarkSubstituteTaskSource } from "./lark-substitute-task-source.js";
 import { LarkSubstituteTaskStore } from "./lark-substitute-task-store.js";
+import {
+  isLarkBotAuthoredMessage,
+  isLarkMessageFromCurrentBot,
+  LarkSubstituteBotLoopGuard,
+} from "./lark-substitute-bot-loop-guard.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -465,6 +473,7 @@ export class LarkChannelService {
   private readonly substituteTaskStore: LarkSubstituteTaskStore;
   private readonly substituteDebouncer = new LarkSubstituteDebouncer();
   private readonly substituteReplySender: LarkSubstituteReplySender;
+  private readonly substituteBotLoopGuard = new LarkSubstituteBotLoopGuard();
   private readonly substitutePrivatePoller: LarkSubstitutePrivatePoller | null;
   private readonly substituteGroupPoller: LarkSubstituteGroupPoller;
   private readonly incomingMessageObserver:
@@ -530,7 +539,8 @@ export class LarkChannelService {
       hasTask: (modeId, messageId) => this.substituteTaskStore.hasMessage(modeId, messageId),
       onMessage: (botId, event) => this.handleIncomingEvent(botId, event),
       onScanFailure: ({ mode, chatId, event, error }) => {
-        const groupRule = getLarkSubstituteRuleLists(mode).audienceAllowlist.find(
+        const groups = getLarkSubstituteRuleLists(mode).audienceAllowRuleGroups;
+        const groupRule = getLarkSubstituteConversationRules(groups).find(
           (rule) => rule.type === "group" && rule.chatId === chatId,
         );
         const directoryChat = this.findSubstituteDirectoryChat(mode, chatId);
@@ -1097,6 +1107,25 @@ export class LarkChannelService {
       this.completeSubstituteTask(substituteTaskId, "skipped");
       return;
     }
+    if (substituteTrigger && isLarkBotAuthoredMessage(enrichedEvent)) {
+      const claim = this.substituteBotLoopGuard.claimBotReply(enrichedEvent, now);
+      if (!claim.allowed) {
+        this.logger.warn(
+          {
+            botId,
+            chatId: enrichedEvent.chatId,
+            threadId: enrichedEvent.threadId,
+            rootMessageId: enrichedEvent.rootMessageId,
+            messageId: enrichedEvent.messageId,
+            botReplyCount: claim.count,
+            maxBotReplies: claim.maxReplies,
+          },
+          "Ignoring Lark substitute bot message because the reply chain reached its limit",
+        );
+        this.completeSubstituteTask(substituteTaskId, "skipped");
+        return;
+      }
+    }
     const user = this.store.findAuthorizedUser(botId, {
       openId: enrichedEvent.openId,
       unionId: enrichedEvent.unionId,
@@ -1243,6 +1272,20 @@ export class LarkChannelService {
     await this.refreshSubstituteGroupIdentity(botId, config.appId, enrichedEvent);
     this.observeIncomingMessageContext(botId, enrichedEvent, internal.bypassSubstituteDelay);
     const botIdentity = await this.resolveBotIdentityForEvent(botId, config, enrichedEvent);
+    if (isLarkMessageFromCurrentBot(enrichedEvent, botIdentity, config.appId)) {
+      this.logger.debug(
+        {
+          botId,
+          appId: config.appId,
+          messageId: enrichedEvent.messageId,
+          senderOpenId: enrichedEvent.openId,
+          senderAppId: enrichedEvent.senderAppId,
+        },
+        "Ignoring message authored by the current Lark bot",
+      );
+      return null;
+    }
+    this.substituteBotLoopGuard.resetForHumanMessage(enrichedEvent);
     const matchedMode = this.resolveMatchedSubstituteMode({
       modeId: internal.modeId,
       matchedMode: internal.matchedSubstituteMode,
@@ -1323,7 +1366,8 @@ export class LarkChannelService {
       !this.listSubstituteModes().some((mode) => {
         if (!mode.enabled || mode.botId !== botId) return false;
         const rules = getLarkSubstituteRuleLists(mode);
-        return [...rules.audienceAllowlist, ...rules.audienceDenylist].some(
+        const groups = [...rules.audienceAllowRuleGroups, ...rules.audienceDenyRuleGroups];
+        return getLarkSubstituteConversationRules(groups).some(
           (rule) => rule.type === "group_ai_category" || rule.type === "group_name_regex",
         );
       })
@@ -1380,24 +1424,14 @@ export class LarkChannelService {
     }
     const mode = this.substituteModeStore.get(input.modeId);
     if (!mode) return null;
-    const rules = getLarkSubstituteRuleLists(mode);
-    return {
-      mode,
-      substituteUser:
-        authorizedUser ??
-        (() => {
-          throw new Error("替身模式需要先授权当前飞书用户");
-        })(),
-      questionAllowRules: rules.questionAllowlist.map((rule) => rule.description),
-      questionDenyRules: rules.questionDenylist.map((rule) => rule.description),
-      groupAllowRules: rules.audienceAllowlist.flatMap((rule) =>
-        rule.type === "group_ai_category" ? [rule.description] : [],
-      ),
-      groupDenyRules: rules.audienceDenylist.flatMap((rule) =>
-        rule.type === "group_ai_category" ? [rule.description] : [],
-      ),
-      groupContext: null,
-    };
+    return matchLarkSubstituteMode({
+      modes: [mode],
+      botId: input.botId,
+      appId: input.appId,
+      event: input.event,
+      directory: this.directoryService?.getState() ?? null,
+      authorizedUser,
+    });
   }
 
   private scheduleSubstituteModeReply(
@@ -2624,16 +2658,18 @@ export class LarkChannelService {
     if (!appId) return;
     const rules = getLarkSubstituteRuleLists(mode);
     const oauthOpenId = this.userOAuthService?.getStatus(appId).openId;
+    const audienceGroups = [...rules.audienceAllowRuleGroups, ...rules.audienceDenyRuleGroups];
     const userOpenIds = [
       ...(oauthOpenId ? [oauthOpenId] : []),
-      ...rules.audienceAllowlist.flatMap((rule) =>
-        rule.type === "user" && rule.openId ? [rule.openId] : [],
-      ),
-      ...rules.audienceDenylist.flatMap((rule) =>
-        rule.type === "user" && rule.openId ? [rule.openId] : [],
+      ...audienceGroups.flatMap((group) =>
+        group.userRules.flatMap((rule) =>
+          (rule.type === "user_name" || rule.type === "user_email") && rule.openId
+            ? [rule.openId]
+            : [],
+        ),
       ),
     ];
-    const chatIds = [...rules.audienceAllowlist, ...rules.audienceDenylist].flatMap((rule) =>
+    const chatIds = getLarkSubstituteConversationRules(audienceGroups).flatMap((rule) =>
       rule.type === "group" ? [rule.chatId] : [],
     );
     await Promise.all([
@@ -2725,6 +2761,7 @@ export class LarkChannelService {
         quotedMessageId: null,
         openId: sourceBotOpenId,
         unionId: null,
+        senderAppId: sourceBot.config.appId,
         senderType: "bot",
         displayName:
           sourceBotIdentity?.name?.trim() ||

@@ -392,7 +392,10 @@ describe("lark-message-format", () => {
         msg_type: "interactive",
         create_time: "1788505200000",
         sender_name: "Argos",
-        sender: { sender_type: "app", sender_id: { open_id: "ou_argos" } },
+        sender: {
+          sender_type: "app",
+          sender_id: { open_id: "ou_argos", app_id: "cli_argos" },
+        },
         body: {
           content: JSON.stringify({
             header: { title: { content: "Argos 服务告警" } },
@@ -408,6 +411,7 @@ describe("lark-message-format", () => {
       chatId: "oc_alerts",
       messageType: "interactive",
       senderType: "app",
+      senderAppId: "cli_argos",
       displayName: "Argos",
       createTime: 1788505200000,
     });

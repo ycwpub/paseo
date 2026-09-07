@@ -223,14 +223,14 @@ function useSubstituteModeForm(
   );
   const setEndTime = useCallback((value: string) => updateField("endTime", value), [updateField]);
   const setTimezone = useCallback((value: string) => updateField("timezone", value), [updateField]);
-  const setAudienceAllowlist = useCallback(
-    (value: LarkSubstituteModeFormState["audienceAllowlist"]) =>
-      updateField("audienceAllowlist", value),
+  const setAudienceAllowRuleGroups = useCallback(
+    (value: LarkSubstituteModeFormState["audienceAllowRuleGroups"]) =>
+      updateField("audienceAllowRuleGroups", value),
     [updateField],
   );
-  const setAudienceDenylist = useCallback(
-    (value: LarkSubstituteModeFormState["audienceDenylist"]) =>
-      updateField("audienceDenylist", value),
+  const setAudienceDenyRuleGroups = useCallback(
+    (value: LarkSubstituteModeFormState["audienceDenyRuleGroups"]) =>
+      updateField("audienceDenyRuleGroups", value),
     [updateField],
   );
   const setQuestionAllowlist = useCallback(
@@ -273,8 +273,8 @@ function useSubstituteModeForm(
     setStartTime,
     setEndTime,
     setTimezone,
-    setAudienceAllowlist,
-    setAudienceDenylist,
+    setAudienceAllowRuleGroups,
+    setAudienceDenyRuleGroups,
     setQuestionAllowlist,
     setQuestionDenylist,
     setTargetSelection,
@@ -604,27 +604,27 @@ export function LarkSubstituteModeEditor({
           </View>
           <LarkSubstituteAudienceRuleListEditor
             label="用户/群白名单"
-            hint="配置后必须命中至少一条。支持用户、群、群 AI 分类、全部和群名称正则表达式。"
-            rules={form.audienceAllowlist}
+            hint="每个名单内：第一层任一会话范围命中，且第二层任一用户命中。多个名单之间任一命中即可。"
+            ruleGroups={form.audienceAllowRuleGroups}
             appId={selectedBotAppId}
             users={directoryUsers}
             chats={directoryChats}
             resolveUsers={resolveDirectoryUsers}
             resolveChats={resolveDirectoryChats}
             disabled={ruleEditingDisabled}
-            onChange={controller.setAudienceAllowlist}
+            onChange={controller.setAudienceAllowRuleGroups}
           />
           <LarkSubstituteAudienceRuleListEditor
             label="用户/群黑名单"
-            hint="命中任意一条即不回答，优先级高于用户/群白名单。"
-            rules={form.audienceDenylist}
+            hint="任一名单同时命中会话范围和用户范围即不回答，优先级高于白名单。"
+            ruleGroups={form.audienceDenyRuleGroups}
             appId={selectedBotAppId}
             users={directoryUsers}
             chats={directoryChats}
             resolveUsers={resolveDirectoryUsers}
             resolveChats={resolveDirectoryChats}
             disabled={ruleEditingDisabled}
-            onChange={controller.setAudienceDenylist}
+            onChange={controller.setAudienceDenyRuleGroups}
           />
           <LarkSubstituteQuestionRuleListEditor
             label="问题白名单"

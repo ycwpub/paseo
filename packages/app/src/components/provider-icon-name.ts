@@ -2,7 +2,7 @@ import {
   BUILTIN_PROVIDER_ICON_NAMES,
   KNOWN_PROVIDER_ICON_NAMES,
 } from "@getpaseo/protocol/provider-icon-names";
-import { resolveAidenProviderIconAlias } from "@/components/aiden-provider-icon-aliases";
+import { resolveProviderIconAlias } from "@/components/provider-icon-aliases";
 
 export type ProviderIconName =
   | { kind: "builtin"; id: string }
@@ -13,9 +13,11 @@ const BUILTIN_PROVIDER_IDS = new Set(BUILTIN_PROVIDER_ICON_NAMES);
 const KNOWN_PROVIDER_IDS = new Set(KNOWN_PROVIDER_ICON_NAMES);
 
 export function resolveProviderIconName(provider: string): ProviderIconName {
-  const aidenIconAlias = resolveAidenProviderIconAlias(provider);
-  if (aidenIconAlias) {
-    return { kind: "builtin", id: aidenIconAlias };
+  const iconAlias = resolveProviderIconAlias(provider);
+  if (iconAlias) {
+    return BUILTIN_PROVIDER_IDS.has(iconAlias)
+      ? { kind: "builtin", id: iconAlias }
+      : { kind: "catalog", id: iconAlias };
   }
   if (BUILTIN_PROVIDER_IDS.has(provider)) {
     return { kind: "builtin", id: provider };

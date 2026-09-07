@@ -1,6 +1,9 @@
 import type { LarkDirectoryChat, LarkSubstituteMode } from "@getpaseo/protocol/messages";
 import { hasGroupSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
-import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
+import {
+  getLarkSubstituteConversationRules,
+  getLarkSubstituteRuleLists,
+} from "./lark-substitute-rule-lists.js";
 
 export interface LarkSubstituteGroupScanChat {
   chatId: string;
@@ -22,7 +25,8 @@ export function selectLarkSubstituteGroupScanChats(
 ): LarkSubstituteGroupScanChat[] {
   if (!hasGroupSubstituteAudienceAllowlist(mode)) return [];
   const selected = new Map<string, LarkSubstituteGroupScanChat>();
-  const rules = getLarkSubstituteRuleLists(mode).audienceAllowlist;
+  const groups = getLarkSubstituteRuleLists(mode).audienceAllowRuleGroups;
+  const rules = getLarkSubstituteConversationRules(groups);
   for (const rule of rules) {
     if (rule.type === "group") {
       selected.set(rule.chatId, { chatId: rule.chatId, name: rule.name });
@@ -31,7 +35,11 @@ export function selectLarkSubstituteGroupScanChats(
   if (!appId) return [...selected.values()];
 
   const includeEveryKnownChat = rules.some(
-    (rule) => rule.type === "all" || rule.type === "group_ai_category",
+    (rule) =>
+      rule.type === "all_groups" ||
+      rule.type === "group_ai_category" ||
+      rule.type === "bot" ||
+      rule.type === "all",
   );
   const regexRules = rules.filter((rule) => rule.type === "group_name_regex");
   for (const chat of directoryChats) {

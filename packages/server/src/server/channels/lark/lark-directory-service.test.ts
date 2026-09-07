@@ -166,7 +166,6 @@ describe("LarkDirectoryService", () => {
       {
         message_id: "om_recent",
         chat_id: "oc_private",
-        chat_type: "p2p",
         create_time: "1788768000000",
         sender: {
           id: "ou_recent",

@@ -142,6 +142,38 @@ const OPENCODE_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
+export const TRAEX_MODES: AgentProviderModeDefinition[] = [
+  {
+    id: "default",
+    label: "默认权限",
+    description: "使用 TraeX 默认的工作区权限和审批流程。",
+    icon: "Shield",
+    colorTier: "moderate",
+  },
+  {
+    id: "auto",
+    label: "自动审核",
+    description: "将符合条件的审批请求交给 TraeX 自动审核。",
+    icon: "ShieldCheck",
+    colorTier: "moderate",
+  },
+  {
+    id: "plan",
+    label: "计划模式",
+    description: "仅分析和规划，不进行修改。",
+    icon: "ShieldEllipsis",
+    colorTier: "planning",
+  },
+  {
+    id: "bypass_permissions",
+    label: "绕过权限",
+    description: "无需审批提示或沙箱限制直接运行工具。",
+    icon: "ShieldOff",
+    colorTier: "dangerous",
+    isUnattended: true,
+  },
+];
+
 export const OMP_MODES: AgentProviderModeDefinition[] = [
   {
     id: "full",
@@ -254,6 +286,14 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     enabledByDefault: false,
     defaultModeId: "full",
     modes: OMP_MODES,
+  },
+  {
+    id: "traex",
+    label: "TraeX",
+    description: "通过 Agent Client Protocol 使用 TraeX 编程助手和动态模型列表",
+    enabledByDefault: false,
+    defaultModeId: "default",
+    modes: TRAEX_MODES,
   },
 ];
 

@@ -1,12 +1,15 @@
 import type {
+  LarkSubstituteAudienceConversationRule,
   LarkSubstituteAudienceRule,
+  LarkSubstituteAudienceRuleGroup,
+  LarkSubstituteAudienceUserRule,
   LarkSubstituteMode,
   LarkSubstituteQuestionRule,
 } from "@getpaseo/protocol/messages";
 
 export interface LarkSubstituteRuleLists {
-  audienceAllowlist: LarkSubstituteAudienceRule[];
-  audienceDenylist: LarkSubstituteAudienceRule[];
+  audienceAllowRuleGroups: LarkSubstituteAudienceRuleGroup[];
+  audienceDenyRuleGroups: LarkSubstituteAudienceRuleGroup[];
   questionAllowlist: LarkSubstituteQuestionRule[];
   questionDenylist: LarkSubstituteQuestionRule[];
 }
@@ -21,11 +24,86 @@ function legacyQuestionRules(rules: LarkSubstituteMode["allowlist"]): LarkSubsti
   );
 }
 
+function createLegacyConversationRules(
+  rule: LarkSubstituteAudienceRule,
+  listKind: "allow" | "deny",
+): LarkSubstituteAudienceConversationRule[] {
+  switch (rule.type) {
+    case "user":
+      return listKind === "allow"
+        ? [{ id: `${rule.id}-private`, type: "private" }]
+        : [
+            { id: `${rule.id}-private`, type: "private" },
+            { id: `${rule.id}-all-groups`, type: "all_groups" },
+          ];
+    case "group":
+      return [{ ...rule }];
+    case "group_name_regex":
+      return [{ ...rule }];
+    case "group_ai_category":
+      return [{ ...rule }];
+    case "all":
+      return [
+        { id: `${rule.id}-private`, type: "private" },
+        { id: `${rule.id}-all-groups`, type: "all_groups" },
+      ];
+  }
+}
+
+function createLegacyUserRules(rule: LarkSubstituteAudienceRule): LarkSubstituteAudienceUserRule[] {
+  if (rule.type !== "user") {
+    return [{ id: `${rule.id}-all-senders`, type: "all" }];
+  }
+  if (rule.email) {
+    return [
+      {
+        id: `${rule.id}-email`,
+        type: "user_email",
+        email: rule.email,
+        openId: rule.openId,
+        name: rule.name,
+      },
+    ];
+  }
+  return [
+    {
+      id: `${rule.id}-name`,
+      type: "user_name",
+      name: rule.name || rule.openId || "未知用户",
+      openId: rule.openId,
+      email: rule.email,
+    },
+  ];
+}
+
+function legacyAudienceRuleGroups(
+  rules: LarkSubstituteAudienceRule[],
+  listKind: "allow" | "deny",
+): LarkSubstituteAudienceRuleGroup[] {
+  return rules.map((rule) => ({
+    id: `legacy-${rule.id}`,
+    conversationRules: createLegacyConversationRules(rule, listKind),
+    userRules: createLegacyUserRules(rule),
+  }));
+}
+
 export function getLarkSubstituteRuleLists(mode: LarkSubstituteMode): LarkSubstituteRuleLists {
+  const audienceAllowlist = mode.audienceAllowlist ?? legacyAudienceRules(mode.allowlist);
+  const audienceDenylist = mode.audienceDenylist ?? legacyAudienceRules(mode.denylist);
   return {
-    audienceAllowlist: mode.audienceAllowlist ?? legacyAudienceRules(mode.allowlist),
-    audienceDenylist: mode.audienceDenylist ?? legacyAudienceRules(mode.denylist),
+    // COMPAT(larkSubstituteAudienceRuleGroups): added in v0.7.0, remove after 2027-03-07.
+    audienceAllowRuleGroups:
+      mode.audienceAllowRuleGroups ?? legacyAudienceRuleGroups(audienceAllowlist, "allow"),
+    // COMPAT(larkSubstituteAudienceRuleGroups): added in v0.7.0, remove after 2027-03-07.
+    audienceDenyRuleGroups:
+      mode.audienceDenyRuleGroups ?? legacyAudienceRuleGroups(audienceDenylist, "deny"),
     questionAllowlist: mode.questionAllowlist ?? legacyQuestionRules(mode.allowlist),
     questionDenylist: mode.questionDenylist ?? legacyQuestionRules(mode.denylist),
   };
+}
+
+export function getLarkSubstituteConversationRules(
+  groups: readonly LarkSubstituteAudienceRuleGroup[],
+): LarkSubstituteAudienceConversationRule[] {
+  return groups.flatMap((group) => group.conversationRules);
 }

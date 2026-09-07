@@ -13,6 +13,27 @@ function isHumanPrivateMessage(event: NormalizedLarkMessageEvent): boolean {
   );
 }
 
+function normalizePrivateSearchMessage(rawMessage: unknown): NormalizedLarkMessageEvent | null {
+  const event = normalizeLarkApiMessage(rawMessage, "");
+  if (!event) return null;
+  const record =
+    rawMessage && typeof rawMessage === "object" && !Array.isArray(rawMessage)
+      ? (rawMessage as Record<string, unknown>)
+      : null;
+  let explicitChatType = "";
+  if (typeof record?.chat_type === "string") {
+    explicitChatType = record.chat_type.trim();
+  } else if (typeof record?.chatType === "string") {
+    explicitChatType = record.chatType.trim();
+  }
+  if (explicitChatType) return event;
+
+  // searchPrivateMessagesAsUser limits the search API to p2p_chat, but the
+  // message-detail API can omit chat_type. Preserve that source semantics
+  // locally instead of changing the global message normalizer's group fallback.
+  return { ...event, chatType: "p2p" };
+}
+
 export function collectRecentLarkPrivateUsers(input: {
   appId: string;
   rawMessages: readonly unknown[];
@@ -22,7 +43,7 @@ export function collectRecentLarkPrivateUsers(input: {
 }): LarkDirectoryRecentPrivateUser[] {
   const byOpenId = new Map<string, NormalizedLarkMessageEvent[]>();
   for (const rawMessage of input.rawMessages) {
-    const event = normalizeLarkApiMessage(rawMessage, "");
+    const event = normalizePrivateSearchMessage(rawMessage);
     if (
       !event ||
       !isHumanPrivateMessage(event) ||

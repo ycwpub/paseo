@@ -906,7 +906,7 @@ test("traecli provider extending acp uses TraeACPAgentClient", () => {
   });
 
   expect(registry.traecli.createClient(logger).provider).toBe("traecli");
-  expect(mockState.constructorArgs.trae).toEqual([
+  expect(mockState.constructorArgs.trae.filter((entry) => entry.command[0] === "traecli")).toEqual([
     {
       command: ["traecli", "acp", "serve"],
       env: undefined,

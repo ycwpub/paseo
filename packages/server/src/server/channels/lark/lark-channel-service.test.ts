@@ -1940,6 +1940,7 @@ describe("LarkChannelService", () => {
       rootMessageId: "om_substitute_from_bot_root",
       openId: "ou_reviewer",
       unionId: null,
+      senderAppId: "cli_reviewer",
       senderType: "bot",
       displayName: "Reviewer",
       topicName: "Question for 袁昌旺",
@@ -1972,6 +1973,98 @@ describe("LarkChannelService", () => {
       "om_ack",
       "【代袁昌旺回复】可以上线。",
     );
+  });
+
+  test("does not trigger a substitute reply from a message sent by the current bot", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_self_substitute",
+      messageId: "om_self_substitute",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: "omt_self_substitute",
+      rootMessageId: "om_self_substitute_root",
+      openId: "ou_bot",
+      unionId: null,
+      senderAppId: "cli_test",
+      senderType: "bot",
+      displayName: "Paseo",
+      topicName: "Self reply",
+      text: "@张三 请继续回答",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "张三",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
+
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
+  });
+
+  test("limits substitute replies between bots to five attempts per message chain", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+
+    for (let index = 1; index <= 6; index += 1) {
+      await harness.service.handleIncomingEvent(harness.botId, {
+        eventId: `evt_bot_chain_${index}`,
+        messageId: `om_bot_chain_${index}`,
+        chatId: "oc_1",
+        chatType: "group",
+        threadId: "omt_bot_chain",
+        rootMessageId: "om_bot_chain_root",
+        openId: "ou_reviewer",
+        unionId: null,
+        senderAppId: "cli_reviewer",
+        senderType: "bot",
+        displayName: "Reviewer",
+        topicName: "Bot reply chain",
+        text: `@张三 第 ${index} 次机器人请求`,
+        createTime: 1767226200000 + index,
+        mentions: [
+          {
+            key: "@_user_1",
+            name: "张三",
+            openId: "ou_substitute",
+            userId: null,
+            appId: null,
+            idType: "open_id",
+          },
+        ],
+      } satisfies NormalizedLarkMessageEvent);
+      await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
+    }
+
+    expect(harness.agentManager.streamAgent).toHaveBeenCalledTimes(5);
+    expect(
+      harness.service.listSubstituteTasks().find((task) => task.messageId === "om_bot_chain_6"),
+    ).toMatchObject({ status: "skipped" });
   });
 
   test("does not answer a bot-authored substitute result that mentions the current bot", async () => {

@@ -47,6 +47,7 @@ import type { OmpRuntime } from "./providers/omp/runtime.js";
 import { PiRpcAgentClient } from "./providers/pi/agent.js";
 import { TRAE_DEFAULT_MODE_ID, TRAE_MODES } from "./providers/trae-acp-modes.js";
 import { TraeACPModeFallbackAgentClient } from "./providers/trae-acp-mode-fallback-agent.js";
+import { TraexACPAgentClient } from "./providers/traex-acp-agent.js";
 import { MockLoadTestAgentClient } from "./providers/mock-load-test-agent.js";
 import { MockSlowProviderClient } from "./providers/mock-slow-provider.js";
 import { normalizeAidenProviderRuntimeSettings } from "./providers/aiden/provider-command-compat.js";
@@ -228,6 +229,12 @@ const PROVIDER_CLIENT_FACTORIES: Record<string, ProviderClientFactory> = {
       runtimeSettings,
       providerParams: options?.providerParams,
       runtime: options?.ompRuntime,
+    }),
+  traex: (logger, runtimeSettings, options) =>
+    new TraexACPAgentClient({
+      logger,
+      runtimeSettings,
+      providerParams: options?.providerParams,
     }),
   mock: (logger) => new MockLoadTestAgentClient(logger),
   "mock-slow": () => new MockSlowProviderClient(),

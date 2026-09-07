@@ -29,15 +29,35 @@ describe("createSubstituteModeFormState", () => {
     expect(form.weekdays).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 
-  test("persists the four independent rule lists and clears legacy mixed lists", () => {
+  test("persists two-layer audience lists and clears legacy flat lists", () => {
     const form = createSubstituteModeFormState(null, []);
     form.name = "研发替身";
     form.botId = "bot-1";
     form.provider = "aiden_codex";
     form.model = "gpt-5.6";
     form.cwd = "/repo";
-    form.audienceAllowlist = [{ id: "all", type: "all" }];
-    form.audienceDenylist = [{ id: "group-ai", type: "group_ai_category", description: "闲聊群" }];
+    form.audienceAllowRuleGroups = [
+      {
+        id: "allow",
+        conversationRules: [{ id: "private", type: "private" }],
+        userRules: [
+          {
+            id: "email",
+            type: "user_email",
+            email: "user@example.com",
+            openId: null,
+            name: null,
+          },
+        ],
+      },
+    ];
+    form.audienceDenyRuleGroups = [
+      {
+        id: "deny",
+        conversationRules: [{ id: "group-ai", type: "group_ai_category", description: "闲聊群" }],
+        userRules: [{ id: "all-users", type: "all_users" }],
+      },
+    ];
     form.questionAllowlist = [{ id: "question-allow", description: "研发问题" }];
     form.questionDenylist = [{ id: "question-deny", description: "人事问题" }];
     const selectedBot = {
@@ -50,10 +70,10 @@ describe("createSubstituteModeFormState", () => {
       selectedBot,
     });
 
-    expect(input.audienceAllowlist).toEqual([{ id: "all", type: "all" }]);
-    expect(input.audienceDenylist).toEqual([
-      { id: "group-ai", type: "group_ai_category", description: "闲聊群" },
-    ]);
+    expect(input.audienceAllowRuleGroups).toEqual(form.audienceAllowRuleGroups);
+    expect(input.audienceDenyRuleGroups).toEqual(form.audienceDenyRuleGroups);
+    expect(input.audienceAllowlist).toEqual([]);
+    expect(input.audienceDenylist).toEqual([]);
     expect(input.questionAllowlist).toEqual([{ id: "question-allow", description: "研发问题" }]);
     expect(input.questionDenylist).toEqual([{ id: "question-deny", description: "人事问题" }]);
     expect(input.groupScan).toEqual({

@@ -24,6 +24,48 @@ function privateMessage(
 }
 
 describe("collectRecentLarkPrivateUsers", () => {
+  test("treats message details without chat_type as private search results", () => {
+    const message = privateMessage(
+      "om_without_chat_type",
+      "ou_alice",
+      "张三",
+      "最近的私聊消息",
+      1_788_768_000_000,
+    );
+    delete (message as { chat_type?: string }).chat_type;
+
+    const users = collectRecentLarkPrivateUsers({
+      appId: "cli_test",
+      rawMessages: [message],
+      currentUserOpenId: "ou_owner",
+      directory: { users: [], chats: [] },
+      now: "2026-09-07T08:30:00.000Z",
+    });
+
+    expect(users).toEqual([
+      expect.objectContaining({
+        openId: "ou_alice",
+        displayName: "张三",
+        lastMessageContent: "最近的私聊消息",
+      }),
+    ]);
+  });
+
+  test("still rejects messages explicitly identified as group messages", () => {
+    const message = privateMessage("om_group", "ou_alice", "张三", "群消息", 1_788_768_000_000);
+    message.chat_type = "group";
+
+    const users = collectRecentLarkPrivateUsers({
+      appId: "cli_test",
+      rawMessages: [message],
+      currentUserOpenId: "ou_owner",
+      directory: { users: [], chats: [] },
+      now: "2026-09-07T08:30:00.000Z",
+    });
+
+    expect(users).toEqual([]);
+  });
+
   test("groups recent private messages by peer and excludes the authorized user", () => {
     const users = collectRecentLarkPrivateUsers({
       appId: "cli_test",

@@ -182,6 +182,33 @@ Local Workflow and Hub Workflow are intentionally distinct:
 
 The app label must say **本地工作流 / Local workflows** wherever the local editor is opened.
 
+## Lark substitute scanning safeguards
+
+- Private-message processing requires at least one private-user or `all` audience allow rule.
+  An empty private-user allowlist disables private scanning and must never create a relay group.
+- Group-message processing requires at least one group, group-name regex, group AI category, or
+  `all` audience allow rule. An empty group allowlist disables listener/scanner processing and
+  must never invite the bot into a group.
+- Every private user observed by an enabled scan is stored in the Lark contact directory with the
+  first message content/time, then asynchronously enriched with the visible username and email.
+- Legacy bot-level substitute configuration is migrated with an explicit `all` rule so preserving
+  its old behavior does not weaken the empty-allowlist default-deny rule for newly managed modes.
+
+## Aiden Codex retry notification contract
+
+Codex app-server `error` notifications describe model-request failures, not Paseo transport
+disconnects. Provider adapters must preserve that distinction:
+
+- `willRetry: true` keeps the current turn and Provider session alive and emits a non-terminal
+  timeline error such as “模型服务负载过高，正在重试”;
+- retry notifications must not restart the Provider, recreate the session, or emit
+  `turn_failed`;
+- `willRetry: false` is not an independent terminal because Codex follows it with
+  `turn/completed`; the adapter waits for that notification so the original 429/529 diagnostic is
+  retained exactly once;
+- upstream Aiden gateways should expose provider overload as standard HTTP 429 with
+  `Retry-After`, rather than converting it into a transport-looking 529 response.
+
 ## Conflict-minimizing extension boundaries
 
 Feature work should use these boundaries before modifying an upstream-owned implementation file:

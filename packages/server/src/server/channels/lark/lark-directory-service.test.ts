@@ -130,13 +130,50 @@ describe("LarkDirectoryService", () => {
     });
   });
 
+  test("adds a visible user when Lark does not expose the email field", async () => {
+    const resolveUserByOpenId = vi.fn(async () => ({
+      email: null,
+      openId: "ou_yuan",
+      displayName: "袁昌旺",
+    }));
+    const service = createService({ resolveUserByOpenId });
+
+    await expect(service.resolveUserByOpenId("cli_test", "ou_yuan")).resolves.toMatchObject({
+      appId: "cli_test",
+      email: null,
+      openId: "ou_yuan",
+      displayName: "袁昌旺",
+    });
+    expect(directoryStore.findUser("cli_test", "ou_yuan")).toMatchObject({
+      email: null,
+      displayName: "袁昌旺",
+    });
+  });
+
+  test("returns an existing complete contact without querying Lark again", async () => {
+    directoryStore.upsertResolvedUsers(
+      "cli_test",
+      [{ email: "yuan@example.com", openId: "ou_yuan", displayName: "袁昌旺" }],
+      "2026-09-07T08:00:00.000Z",
+    );
+    const resolveUserByOpenId = vi.fn();
+    const service = createService({ resolveUserByOpenId });
+
+    await expect(service.resolveUserByOpenId("cli_test", "ou_yuan")).resolves.toMatchObject({
+      email: "yuan@example.com",
+      openId: "ou_yuan",
+      displayName: "袁昌旺",
+    });
+    expect(resolveUserByOpenId).not.toHaveBeenCalled();
+  });
+
   test("reports an Open ID that is not visible to the bot", async () => {
     const service = createService({
       resolveUserByOpenId: vi.fn(async () => null),
     });
 
     await expect(service.resolveUserByOpenId("cli_test", "ou_missing")).rejects.toThrow(
-      "No visible Lark user found for: ou_missing",
+      "飞书未返回用户 ou_missing 的可见资料",
     );
   });
 

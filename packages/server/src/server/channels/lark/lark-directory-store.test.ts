@@ -102,6 +102,44 @@ describe("LarkDirectoryStore", () => {
     });
   });
 
+  test("persists a visible user even when the email field is unavailable", () => {
+    const [user] = store.upsertResolvedUsers(
+      "cli_test",
+      [{ email: null, openId: "ou_visible", displayName: "袁昌旺" }],
+      "2026-09-07T08:00:00.000Z",
+    );
+
+    expect(user).toMatchObject({
+      appId: "cli_test",
+      email: null,
+      openId: "ou_visible",
+      displayName: "袁昌旺",
+    });
+    expect(store.findUser("cli_test", "ou_visible")).toMatchObject({
+      email: null,
+      displayName: "袁昌旺",
+    });
+  });
+
+  test("preserves a previously stored email when a later lookup cannot read it", () => {
+    store.upsertResolvedUsers(
+      "cli_test",
+      [{ email: "yuan@example.com", openId: "ou_yuan", displayName: "旧名称" }],
+      "2026-09-07T08:00:00.000Z",
+    );
+
+    store.upsertResolvedUsers(
+      "cli_test",
+      [{ email: null, openId: "ou_yuan", displayName: "袁昌旺" }],
+      "2026-09-07T08:01:00.000Z",
+    );
+
+    expect(store.findUser("cli_test", "ou_yuan")).toMatchObject({
+      email: "yuan@example.com",
+      displayName: "袁昌旺",
+    });
+  });
+
   test("observed generic names do not overwrite a real user name", () => {
     store.upsertResolvedUsers(
       "cli_test",

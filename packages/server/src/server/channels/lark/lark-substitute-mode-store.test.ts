@@ -77,6 +77,7 @@ describe("LarkSubstituteModeStore", () => {
         },
         customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
         delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+        allowlist: [{ id: "legacy-bot-1-allow-all", type: "all" }],
       }),
     ]);
     expect(

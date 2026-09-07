@@ -1,11 +1,7 @@
 import type pino from "pino";
-import type { LarkSubstituteMode } from "@getpaseo/protocol/messages";
+import { getLarkSubstituteGroupScan, type LarkSubstituteMode } from "@getpaseo/protocol/messages";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
-import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
-
-const GROUP_SCAN_INTERVAL_MS = 30 * 60 * 1_000;
-const GROUP_SCAN_LOOKBACK_MS = 60 * 60 * 1_000;
-const GROUP_SCAN_EXCLUDE_RECENT_MS = 10 * 60 * 1_000;
+import { hasGroupSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
 
 interface LarkSubstituteGroupScanFailure {
   mode: LarkSubstituteMode;
@@ -21,21 +17,12 @@ interface LarkSubstituteGroupPollerOptions {
     chatId: string,
     window: { start: Date; end: Date },
   ) => Promise<NormalizedLarkMessageEvent[]>;
+  listChatIds: (mode: LarkSubstituteMode) => Promise<string[]> | string[];
   getAuthorizedUserOpenId: (botId: string) => string | null;
   hasTask: (modeId: string, messageId: string) => boolean;
   onMessage: (botId: string, event: NormalizedLarkMessageEvent) => Promise<void>;
   onScanFailure?: (input: LarkSubstituteGroupScanFailure) => Promise<void> | void;
   now?: () => Date;
-}
-
-function getExplicitGroupIds(mode: LarkSubstituteMode): string[] {
-  return Array.from(
-    new Set(
-      getLarkSubstituteRuleLists(mode).audienceAllowlist.flatMap((rule) =>
-        rule.type === "group" ? [rule.chatId] : [],
-      ),
-    ),
-  );
 }
 
 function mentionsUser(event: NormalizedLarkMessageEvent, openId: string): boolean {
@@ -58,7 +45,12 @@ export class LarkSubstituteGroupPoller {
   sync(modes: readonly LarkSubstituteMode[]): void {
     const activeModes = new Map(
       modes
-        .filter((mode) => mode.enabled && getExplicitGroupIds(mode).length > 0)
+        .filter(
+          (mode) =>
+            mode.enabled &&
+            getLarkSubstituteGroupScan(mode).enabled &&
+            hasGroupSubstituteAudienceAllowlist(mode),
+        )
         .map((mode) => [mode.id, mode] as const),
     );
     for (const [modeId, scheduled] of this.timers) {
@@ -70,7 +62,8 @@ export class LarkSubstituteGroupPoller {
     }
     for (const mode of activeModes.values()) {
       if (this.timers.has(mode.id)) continue;
-      const timer = setInterval(() => void this.runMode(mode), GROUP_SCAN_INTERVAL_MS);
+      const scan = getLarkSubstituteGroupScan(mode);
+      const timer = setInterval(() => void this.runMode(mode), scan.intervalMinutes * 60 * 1_000);
       this.timers.set(mode.id, { timer, fingerprint: this.fingerprint(mode) });
       void this.runMode(mode);
     }
@@ -93,23 +86,31 @@ export class LarkSubstituteGroupPoller {
   }
 
   async runMode(mode: LarkSubstituteMode): Promise<void> {
-    if (this.running.has(mode.id) || !mode.enabled) return;
-    const authorizedUserOpenId = this.options.getAuthorizedUserOpenId(mode.botId);
-    if (!authorizedUserOpenId) {
-      await this.reportScanFailure({
-        mode,
-        error: "飞书用户 OAuth 未授权或已过期，无法扫描群消息，请重新授权。",
-      });
+    const scan = getLarkSubstituteGroupScan(mode);
+    if (
+      this.running.has(mode.id) ||
+      !mode.enabled ||
+      !scan.enabled ||
+      !hasGroupSubstituteAudienceAllowlist(mode)
+    ) {
       return;
     }
-    const chatIds = getExplicitGroupIds(mode);
-    if (chatIds.length === 0) return;
     this.running.add(mode.id);
     try {
+      const authorizedUserOpenId = this.options.getAuthorizedUserOpenId(mode.botId);
+      if (!authorizedUserOpenId) {
+        await this.reportScanFailure({
+          mode,
+          error: "飞书用户 OAuth 未授权或已过期，无法扫描群消息，请重新授权。",
+        });
+        return;
+      }
+      const chatIds = await this.options.listChatIds(mode);
+      if (chatIds.length === 0) return;
       const now = this.now().getTime();
       const window = {
-        start: new Date(now - GROUP_SCAN_LOOKBACK_MS),
-        end: new Date(now - GROUP_SCAN_EXCLUDE_RECENT_MS),
+        start: new Date(now - scan.lookbackMinutes * 60 * 1_000),
+        end: new Date(now - scan.excludeRecentMinutes * 60 * 1_000),
       };
       for (const chatId of chatIds) {
         await this.scanChat(mode, chatId, window, authorizedUserOpenId);
@@ -193,6 +194,6 @@ export class LarkSubstituteGroupPoller {
   }
 
   private fingerprint(mode: LarkSubstituteMode): string {
-    return JSON.stringify({ botId: mode.botId, chatIds: getExplicitGroupIds(mode) });
+    return JSON.stringify({ botId: mode.botId, scan: getLarkSubstituteGroupScan(mode) });
   }
 }

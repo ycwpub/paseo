@@ -14,6 +14,7 @@ import { LarkChannelStore } from "./lark-channel-store.js";
 import { LarkDirectoryService } from "./lark-directory-service.js";
 import { LarkDirectoryStore } from "./lark-directory-store.js";
 import type { LarkSubstituteGroupPoller } from "./lark-substitute-group-poller.js";
+import type { LarkSubstitutePrivatePoller } from "./lark-substitute-private-poller.js";
 import type { LarkSubstituteTaskStore } from "./lark-substitute-task-store.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
@@ -72,6 +73,7 @@ describe("LarkChannelService", () => {
   function createHarness(
     options: {
       withDirectory?: boolean;
+      withPrivatePoller?: boolean;
       userOAuthStatus?: LarkUserOAuthStatus;
       userOAuthStatuses?: Record<string, LarkUserOAuthStatus>;
     } = {},
@@ -183,6 +185,7 @@ describe("LarkChannelService", () => {
       get: vi.fn(() => null),
     } as unknown as TeamStore;
     const service = new LarkChannelService({
+      ...(options.withPrivatePoller ? { paseoHome } : {}),
       store,
       adapter,
       agentManager,
@@ -820,6 +823,87 @@ describe("LarkChannelService", () => {
       displayName: "张三",
       email: "zhangsan@example.com",
       openId: "ou_substitute",
+    });
+  });
+
+  test("adds private-message scan participants to the contact directory", async () => {
+    const harness = createHarness({ withDirectory: true, withPrivatePoller: true });
+    const createTime = Date.now() - 5 * 60 * 1_000;
+    harness.adapter.searchPrivateMessagesAsUser = vi.fn(async () => [
+      {
+        message_id: "om_scanned_private_contact",
+        chat_id: "oc_scanned_private",
+        create_time: String(createTime),
+        sender: {
+          id: "ou_scanned_peer",
+          id_type: "open_id",
+          sender_type: "user",
+          sender_name: "扫描联系人",
+        },
+        body: { content: JSON.stringify({ text: "请帮忙确认问题" }) },
+      },
+    ]);
+    harness.adapter.resolveUserByOpenId = vi.fn(async () => ({
+      openId: "ou_scanned_peer",
+      displayName: "扫描联系人",
+      email: "scanned@example.com",
+    }));
+    const storedMode = harness.service.createSubstituteMode({
+      name: "通讯录扫描测试",
+      enabled: false,
+      botId: harness.botId,
+      privateScan: {
+        enabled: true,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      groupScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      disclosure: { enabled: true, prompt: "【机器人代答】" },
+      customPrompt: "",
+      delaySeconds: 600,
+      activeTimeRanges: [],
+      audienceAllowlist: [
+        {
+          id: "allow-scanned-peer",
+          type: "user",
+          openId: "ou_scanned_peer",
+          name: "扫描联系人",
+          email: null,
+        },
+      ],
+      audienceDenylist: [],
+      questionAllowlist: [],
+      questionDenylist: [],
+      allowlist: [],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    });
+    const privatePoller = (
+      harness.service as unknown as { substitutePrivatePoller: LarkSubstitutePrivatePoller }
+    ).substitutePrivatePoller;
+
+    await privatePoller.runMode({ ...storedMode, enabled: true });
+
+    await vi.waitFor(() => {
+      expect(harness.directoryStore.findUser("cli_test", "ou_scanned_peer")).toMatchObject({
+        openId: "ou_scanned_peer",
+        displayName: "扫描联系人",
+        email: "scanned@example.com",
+        firstMessageContent: "请帮忙确认问题",
+        firstMessageAt: new Date(createTime).toISOString(),
+      });
     });
   });
 
@@ -1472,11 +1556,24 @@ describe("LarkChannelService", () => {
         lookbackMinutes: 60,
         excludeRecentMinutes: 20,
       },
+      groupScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
       disclosure: { enabled: true, prompt: "【AI 协助回答】" },
       customPrompt: "回答前先核对发布规范",
       delaySeconds: 0,
       activeTimeRanges: [],
       allowlist: [
+        {
+          id: "allow-group",
+          type: "group",
+          chatId: "oc_1",
+          groupId: null,
+          name: "研发群",
+        },
         {
           id: "allow-question",
           type: "question_type",

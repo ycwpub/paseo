@@ -41,7 +41,11 @@ export class LarkDirectoryService {
       throw new Error("This Paseo daemon does not support Lark user lookup");
     }
     const resolved = await this.adapter.resolveUsersByEmails(config, normalizedEmails);
-    const byEmail = new Map(resolved.map((entry) => [entry.email.toLocaleLowerCase(), entry]));
+    const byEmail = new Map(
+      resolved.flatMap((entry) =>
+        entry.email ? [[entry.email.toLocaleLowerCase(), entry] as const] : [],
+      ),
+    );
     const missing = normalizedEmails.filter((email) => !byEmail.has(email));
     if (missing.length > 0) {
       throw new Error(`No visible Lark user found for: ${missing.join(", ")}`);
@@ -74,16 +78,24 @@ export class LarkDirectoryService {
       throw new Error("A Lark user Open ID is required");
     }
     const config = this.requireConfig(appId);
+    const existing = this.store.findUser(appId, normalizedOpenId);
+    if (existing && hasCompleteLarkDirectoryUser(existing)) {
+      return existing;
+    }
     if (!this.adapter.resolveUserByOpenId) {
+      if (existing) return existing;
       throw new Error("This Paseo daemon does not support Lark Open ID lookup");
     }
     const resolved = await this.adapter.resolveUserByOpenId(config, normalizedOpenId);
     if (!resolved) {
-      throw new Error(`No visible Lark user found for: ${normalizedOpenId}`);
+      if (existing) return existing;
+      throw new Error(
+        `飞书未返回用户 ${normalizedOpenId} 的可见资料，请检查应用通讯录权限范围以及 contact:user.base:readonly、contact:user.id:readonly 权限`,
+      );
     }
     const user = this.store.upsertResolvedUsers(appId, [resolved], new Date().toISOString())[0];
     if (!user) {
-      throw new Error(`Lark user has no visible email: ${normalizedOpenId}`);
+      throw new Error(`无法保存飞书联系人：${normalizedOpenId}`);
     }
     return user;
   }
@@ -161,6 +173,13 @@ export class LarkDirectoryService {
       return existing;
     }
     return this.store.upsertChats(appId, [chat], new Date().toISOString())[0] ?? existing;
+  }
+
+  observeChats(
+    appId: string,
+    chats: readonly { groupId: string; chatId: string; name: string }[],
+  ): LarkDirectoryChat[] {
+    return this.store.upsertChats(appId, chats, new Date().toISOString());
   }
 
   observeUser(

@@ -165,6 +165,22 @@ function useSubstituteModeForm(
   const setName = useCallback((value: string) => updateField("name", value), [updateField]);
   const setEnabled = useCallback((value: boolean) => updateField("enabled", value), [updateField]);
   const setBotId = useCallback((value: string) => updateField("botId", value), [updateField]);
+  const setGroupScanEnabled = useCallback(
+    (value: boolean) => updateField("groupScanEnabled", value),
+    [updateField],
+  );
+  const setGroupScanIntervalMinutes = useCallback(
+    (value: string) => updateField("groupScanIntervalMinutes", value),
+    [updateField],
+  );
+  const setGroupScanLookbackMinutes = useCallback(
+    (value: string) => updateField("groupScanLookbackMinutes", value),
+    [updateField],
+  );
+  const setGroupScanExcludeRecentMinutes = useCallback(
+    (value: string) => updateField("groupScanExcludeRecentMinutes", value),
+    [updateField],
+  );
   const setPrivateScanEnabled = useCallback(
     (value: boolean) => updateField("privateScanEnabled", value),
     [updateField],
@@ -241,6 +257,10 @@ function useSubstituteModeForm(
     setName,
     setEnabled,
     setBotId,
+    setGroupScanEnabled,
+    setGroupScanIntervalMinutes,
+    setGroupScanLookbackMinutes,
+    setGroupScanExcludeRecentMinutes,
     setPrivateScanEnabled,
     setPrivateScanIntervalMinutes,
     setPrivateScanLookbackMinutes,
@@ -438,11 +458,60 @@ export function LarkSubstituteModeEditor({
           >
             <FormTextInput value="机器人身份" editable={false} />
           </Field>
+          <View style={settingsStyles.card}>
+            <View style={settingsStyles.row}>
+              <View style={settingsStyles.rowContent}>
+                <Text style={settingsStyles.rowTitle}>主动监听群消息</Text>
+                <Text style={settingsStyles.rowHint}>
+                  机器人在群内时，实时监听并处理 @ 授权替身用户的消息。
+                </Text>
+              </View>
+              <Text style={styles.enabledStatus}>已启用</Text>
+            </View>
+          </View>
           <View style={styles.switchRow}>
             <View style={settingsStyles.rowContent}>
-              <Text style={settingsStyles.rowTitle}>扫描新增私聊消息</Text>
+              <Text style={settingsStyles.rowTitle}>定时扫描群消息</Text>
               <Text style={settingsStyles.rowHint}>
-                授权用户未回复时，自动创建或复用包含授权用户、机器人和私聊用户的群聊。
+                扫描机器人已知或名单指定的群，补偿实时监听期间遗漏的 @ 替身用户消息。
+              </Text>
+            </View>
+            <Switch
+              value={form.groupScanEnabled}
+              onValueChange={controller.setGroupScanEnabled}
+              accessibilityLabel="定时扫描群消息"
+            />
+          </View>
+          {form.groupScanEnabled ? (
+            <View style={styles.inlineFields}>
+              <Field label="群聊扫描间隔（分钟）">
+                <FormTextInput
+                  value={form.groupScanIntervalMinutes}
+                  onChangeText={controller.setGroupScanIntervalMinutes}
+                  keyboardType="number-pad"
+                />
+              </Field>
+              <Field label="群聊扫描范围（分钟）">
+                <FormTextInput
+                  value={form.groupScanLookbackMinutes}
+                  onChangeText={controller.setGroupScanLookbackMinutes}
+                  keyboardType="number-pad"
+                />
+              </Field>
+              <Field label="群聊排除最近（分钟）">
+                <FormTextInput
+                  value={form.groupScanExcludeRecentMinutes}
+                  onChangeText={controller.setGroupScanExcludeRecentMinutes}
+                  keyboardType="number-pad"
+                />
+              </Field>
+            </View>
+          ) : null}
+          <View style={styles.switchRow}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>定时扫描新增私聊消息</Text>
+              <Text style={settingsStyles.rowHint}>
+                授权用户未回复时，补偿扫描遗漏的私聊，并创建或复用包含授权用户、机器人和私聊用户的群聊。
               </Text>
             </View>
             <Switch
@@ -642,5 +711,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   inlineFields: {
     gap: theme.spacing[3],
+  },
+  enabledStatus: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
   },
 }));

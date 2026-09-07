@@ -37,6 +37,9 @@ export function larkSubstituteFailureAdvice(
     error.includes("99991679") ||
     error.includes("重新授权")
   ) {
+    if (error.includes("im:chat:create_by_user") || error.includes("im:chat:create")) {
+      return "请在飞书开发者后台开通用户身份的 im:chat:create_by_user 权限，点击下方“立即授权”重新授权后，再执行扫描。";
+    }
     return "请检查飞书用户 OAuth 权限，并点击下方“立即授权”完成授权后再次扫描。";
   }
   switch (stage) {

@@ -4,12 +4,22 @@ import {
   LarkSubstituteModeListResponseSchema,
   LarkSubstituteModeUpdateRequestSchema,
 } from "./substitute-rpc-schemas.js";
-import { DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES } from "./substitute-types.js";
+import {
+  DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
+  getLarkSubstituteGroupScan,
+} from "./substitute-types.js";
 
 const modeInput = {
   name: "工作时间替身",
   enabled: true,
   botId: "bot-1",
+  groupScan: {
+    enabled: true,
+    intervalMinutes: 15,
+    lookbackMinutes: 120,
+    excludeRecentMinutes: 20,
+  },
   privateScan: {
     enabled: true,
     intervalMinutes: 30,
@@ -72,6 +82,24 @@ describe("Lark substitute mode RPC schemas", () => {
     expect(request.mode.privateScan.excludeRecentMinutes).toBe(10);
   });
 
+  it("keeps legacy modes on the default group scan schedule", () => {
+    const request = LarkSubstituteModeCreateRequestSchema.parse({
+      type: "channel.lark.substitute.create.request",
+      requestId: "request-default-group-scan",
+      mode: {
+        ...modeInput,
+        groupScan: undefined,
+      },
+    });
+
+    expect(getLarkSubstituteGroupScan(request.mode)).toEqual({
+      enabled: true,
+      intervalMinutes: 30,
+      lookbackMinutes: 60,
+      excludeRecentMinutes: DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
+    });
+  });
+
   it("accepts all independent substitute mode settings", () => {
     const request = LarkSubstituteModeCreateRequestSchema.parse({
       type: "channel.lark.substitute.create.request",
@@ -80,6 +108,11 @@ describe("Lark substitute mode RPC schemas", () => {
     });
 
     expect(request.mode).toMatchObject({
+      groupScan: {
+        intervalMinutes: 15,
+        lookbackMinutes: 120,
+        excludeRecentMinutes: 20,
+      },
       privateScan: {
         intervalMinutes: 30,
         lookbackMinutes: 60,
@@ -103,6 +136,19 @@ describe("Lark substitute mode RPC schemas", () => {
         mode: {
           ...modeInput,
           privateScan: { ...modeInput.privateScan, excludeRecentMinutes: 60 },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("requires the group scan exclusion window to be smaller than the lookback", () => {
+    expect(() =>
+      LarkSubstituteModeCreateRequestSchema.parse({
+        type: "channel.lark.substitute.create.request",
+        requestId: "request-invalid-group-scan",
+        mode: {
+          ...modeInput,
+          groupScan: { ...modeInput.groupScan, excludeRecentMinutes: 120 },
         },
       }),
     ).toThrow();

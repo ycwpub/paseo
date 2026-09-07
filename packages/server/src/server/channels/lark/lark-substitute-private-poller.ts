@@ -1,9 +1,11 @@
 import type pino from "pino";
-import type { LarkSubstituteMode } from "@getpaseo/protocol/messages";
+import type { LarkDirectory, LarkSubstituteMode } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
 import { normalizeLarkApiMessage, type NormalizedLarkMessageEvent } from "./lark-message-format.js";
+import { hasPrivateSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
 import { LarkSubstitutePrivateRelayStore } from "./lark-substitute-private-relay-store.js";
+import { matchLarkSubstituteMode } from "./lark-substitute-rule-matcher.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 interface LarkSubstitutePrivatePollerAdapter extends Pick<
@@ -16,7 +18,12 @@ interface LarkSubstitutePrivatePollerOptions {
   channelStore: Pick<LarkChannelStore, "getBot">;
   adapter: LarkSubstitutePrivatePollerAdapter;
   userOAuthService: Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">;
+  getDirectory?: () => LarkDirectory | null;
   logger: pino.Logger;
+  onPrivateMessageObserved?: (
+    config: StoredLarkChannelConfig,
+    event: NormalizedLarkMessageEvent,
+  ) => Promise<void> | void;
   onRelayMessage: (input: {
     botId: string;
     modeId: string;
@@ -88,14 +95,24 @@ function formatPrivateScanFailure(error: unknown): string {
       `原始错误：${message}`,
     ].join(" ");
   }
-  if (
-    message.includes("99991679") ||
-    message.includes("im:message:readonly") ||
-    message.includes("im:message 权限")
-  ) {
+  if (message.includes("im:chat:create_by_user") || message.includes("im:chat:create")) {
+    return [
+      "飞书用户 OAuth 缺少 im:chat:create_by_user 权限，无法创建替身私聊转发群。",
+      "请在飞书开发者后台开通该用户身份权限，并在 Paseo 中点击“立即授权”重新授权。",
+      `原始错误：${message}`,
+    ].join(" ");
+  }
+  if (message.includes("im:message:readonly") || message.includes("im:message 权限")) {
     return [
       "飞书用户 OAuth 缺少 im:message:readonly 权限。",
       "请在飞书开发者后台开通该用户身份权限，并在 Paseo 中重新授权飞书用户。",
+      `原始错误：${message}`,
+    ].join(" ");
+  }
+  if (message.includes("99991679")) {
+    return [
+      "飞书用户 OAuth 缺少当前操作所需的用户身份权限。",
+      "请根据原始错误中的权限名称在飞书开发者后台开通权限，并在 Paseo 中点击“立即授权”重新授权。",
       `原始错误：${message}`,
     ].join(" ");
   }
@@ -119,7 +136,10 @@ export class LarkSubstitutePrivatePoller {
   sync(modes: readonly LarkSubstituteMode[]): void {
     const activeModes = new Map(
       modes
-        .filter((mode) => mode.enabled && mode.privateScan.enabled)
+        .filter(
+          (mode) =>
+            mode.enabled && mode.privateScan.enabled && hasPrivateSubstituteAudienceAllowlist(mode),
+        )
         .map((mode) => [mode.id, mode] as const),
     );
     for (const [modeId, scheduled] of this.timers) {
@@ -154,7 +174,14 @@ export class LarkSubstitutePrivatePoller {
   }
 
   async runMode(mode: LarkSubstituteMode): Promise<void> {
-    if (this.running.has(mode.id) || !mode.enabled || !mode.privateScan.enabled) return;
+    if (
+      this.running.has(mode.id) ||
+      !mode.enabled ||
+      !mode.privateScan.enabled ||
+      !hasPrivateSubstituteAudienceAllowlist(mode)
+    ) {
+      return;
+    }
     this.running.add(mode.id);
     try {
       const bot = this.options.channelStore.getBot(mode.botId);
@@ -163,7 +190,7 @@ export class LarkSubstitutePrivatePoller {
       if (!oauth.authorized || !oauth.openId) {
         await this.reportScanFailure(
           mode,
-          "飞书用户 OAuth 未授权、已过期或缺少 im:message:readonly 等私聊扫描权限，请重新授权。",
+          "飞书用户 OAuth 未授权、已过期或缺少替身私聊扫描、建群所需权限，请点击“立即授权”重新授权。",
         );
         return;
       }
@@ -185,37 +212,18 @@ export class LarkSubstitutePrivatePoller {
         .map((message) => normalizeLarkApiMessage(message, ""))
         .filter((event): event is NormalizedLarkMessageEvent => Boolean(event))
         .map((event) => Object.assign(event, { chatType: "p2p" as const }));
-      for (const candidate of getLatestUnansweredMessages(events, oauth.openId)) {
-        const candidateTime = candidate.latest.createTime ?? 0;
-        const eligibleBefore = now - mode.privateScan.excludeRecentMinutes * 60 * 1_000;
-        if (candidateTime <= 0 || candidateTime > eligibleBefore) continue;
-        if (this.store.hasProcessed(candidate.latest.messageId) || !candidate.latest.openId) {
-          continue;
-        }
-        try {
-          await this.relayPrivateMessage(
-            bot.config,
-            mode,
-            oauth.openId,
-            candidate.latest,
-            candidate.context,
-          );
-          this.store.markProcessed(candidate.latest.messageId);
-        } catch (error) {
-          const failure = formatPrivateScanFailure(error);
-          this.options.logger.warn(
-            {
-              err: error,
-              modeId: mode.id,
-              botId: mode.botId,
-              chatId: candidate.latest.chatId,
-              messageId: candidate.latest.messageId,
-            },
-            "Failed to process scanned Lark private message for substitute mode",
-          );
-          await this.reportScanFailure(mode, failure, candidate.latest);
-        }
-      }
+      await this.observePrivateMessages(bot.config, events, oauth.openId);
+      await this.processPrivateMessageCandidates({
+        config: bot.config,
+        mode,
+        authorizedUser: {
+          openId: oauth.openId,
+          name: oauth.displayName,
+          email: oauth.email,
+        },
+        events,
+        now,
+      });
     } catch (error) {
       const failure = formatPrivateScanFailure(error);
       this.options.logger.warn(
@@ -225,6 +233,68 @@ export class LarkSubstitutePrivatePoller {
       await this.reportScanFailure(mode, failure);
     } finally {
       this.running.delete(mode.id);
+    }
+  }
+
+  private async observePrivateMessages(
+    config: StoredLarkChannelConfig,
+    events: readonly NormalizedLarkMessageEvent[],
+    authorizedUserOpenId: string,
+  ): Promise<void> {
+    for (const event of events) {
+      if (!event.openId || event.openId === authorizedUserOpenId || !isHumanMessage(event)) {
+        continue;
+      }
+      await this.options.onPrivateMessageObserved?.(config, event);
+    }
+  }
+
+  private async processPrivateMessageCandidates(input: {
+    config: StoredLarkChannelConfig;
+    mode: LarkSubstituteMode;
+    authorizedUser: { openId: string; name: string | null; email: string | null };
+    events: NormalizedLarkMessageEvent[];
+    now: number;
+  }): Promise<void> {
+    const { config, mode, authorizedUser, events, now } = input;
+    const eligibleBefore = now - mode.privateScan.excludeRecentMinutes * 60 * 1_000;
+    for (const candidate of getLatestUnansweredMessages(events, authorizedUser.openId)) {
+      const candidateTime = candidate.latest.createTime ?? 0;
+      if (candidateTime <= 0 || candidateTime > eligibleBefore) continue;
+      if (this.store.hasProcessed(candidate.latest.messageId) || !candidate.latest.openId) continue;
+      const matched = matchLarkSubstituteMode({
+        modes: [mode],
+        botId: mode.botId,
+        appId: config.appId,
+        event: candidate.latest,
+        directory: this.options.getDirectory?.() ?? null,
+        authorizedUser,
+        now: this.now(),
+      });
+      if (!matched) continue;
+      try {
+        await this.relayPrivateMessage(
+          config,
+          mode,
+          authorizedUser.openId,
+          candidate.latest,
+          candidate.context,
+        );
+        this.store.markProcessed(candidate.latest.messageId);
+      } catch (error) {
+        const failure = formatPrivateScanFailure(error);
+        this.options.logger.warn(
+          {
+            err: error,
+            modeId: mode.id,
+            botId: mode.botId,
+            chatId: candidate.latest.chatId,
+            messageId: candidate.latest.messageId,
+          },
+          "Failed to process scanned Lark private message for substitute mode",
+        );
+        await this.reportScanFailure(mode, failure, candidate.latest);
+      }
     }
   }
 

@@ -4,6 +4,10 @@ import type {
   LarkSubstituteMode,
 } from "@getpaseo/protocol/messages";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
+import {
+  isGroupSubstituteAudienceRule,
+  isPrivateSubstituteAudienceRule,
+} from "./lark-substitute-audience-policy.js";
 import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
 
 export interface MatchedLarkSubstituteMode {
@@ -151,26 +155,31 @@ function evaluateAudienceRules(
   if (staticDenyRules.some((rule) => matchesIdentityRule(rule, event, directory, appId))) {
     return { passes: false, groupAllowRules: [], groupDenyRules: [] };
   }
+  const group = isGroup(event);
   const staticAllowRules = rules.audienceAllowlist.filter(
-    (rule) => rule.type !== "group_ai_category",
+    (rule) =>
+      rule.type !== "group_ai_category" &&
+      (group ? isGroupSubstituteAudienceRule(rule) : isPrivateSubstituteAudienceRule(rule)),
   );
   const hasStaticAllowMatch = staticAllowRules.some((rule) =>
     matchesIdentityRule(rule, event, directory, appId),
   );
-  const groupAllowRules = rules.audienceAllowlist.flatMap((rule) =>
-    rule.type === "group_ai_category" ? [rule.description] : [],
-  );
+  const groupAllowRules = group
+    ? rules.audienceAllowlist.flatMap((rule) =>
+        rule.type === "group_ai_category" ? [rule.description] : [],
+      )
+    : [];
   const groupDenyRules = rules.audienceDenylist.flatMap((rule) =>
     rule.type === "group_ai_category" ? [rule.description] : [],
   );
-  const hasAllowRules = rules.audienceAllowlist.length > 0;
-  if (hasAllowRules && !hasStaticAllowMatch && (!isGroup(event) || groupAllowRules.length === 0)) {
+  const hasRelevantAllowRules = staticAllowRules.length > 0 || groupAllowRules.length > 0;
+  if (!hasRelevantAllowRules || (!hasStaticAllowMatch && groupAllowRules.length === 0)) {
     return { passes: false, groupAllowRules: [], groupDenyRules: [] };
   }
   return {
     passes: true,
     groupAllowRules: hasStaticAllowMatch ? [] : groupAllowRules,
-    groupDenyRules: isGroup(event) ? groupDenyRules : [],
+    groupDenyRules: group ? groupDenyRules : [],
   };
 }
 

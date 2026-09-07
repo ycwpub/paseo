@@ -9,7 +9,7 @@ import type { LarkChannelStore } from "./lark-channel-store.js";
 import { LarkSubstitutePrivatePoller } from "./lark-substitute-private-poller.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
-function mode(): LarkSubstituteMode {
+function mode(overrides: Partial<LarkSubstituteMode> = {}): LarkSubstituteMode {
   return {
     id: "mode-1",
     name: "工作替身",
@@ -25,7 +25,15 @@ function mode(): LarkSubstituteMode {
     customPrompt: "仅回答工作相关问题",
     delaySeconds: 60,
     activeTimeRanges: [],
-    allowlist: [],
+    allowlist: [
+      {
+        id: "allow-peer",
+        type: "user",
+        openId: "ou_peer",
+        name: "咨询用户",
+        email: null,
+      },
+    ],
     denylist: [],
     target: {
       kind: "workspace",
@@ -36,6 +44,7 @@ function mode(): LarkSubstituteMode {
     },
     createdAt: "2026-09-06T00:00:00.000Z",
     updatedAt: "2026-09-06T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -82,6 +91,7 @@ describe("LarkSubstitutePrivatePoller", () => {
       "searchPrivateMessagesAsUser" | "createSubstituteRelayChat" | "sendTextWithResult"
     >;
     const onRelayMessage = vi.fn(async () => undefined);
+    const onPrivateMessageObserved = vi.fn(async () => undefined);
     const options = {
       paseoHome,
       channelStore: {
@@ -112,6 +122,7 @@ describe("LarkSubstitutePrivatePoller", () => {
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
       onRelayMessage,
+      onPrivateMessageObserved,
       now: () => new Date(now),
     };
     const poller = new LarkSubstitutePrivatePoller(options);
@@ -140,6 +151,15 @@ describe("LarkSubstitutePrivatePoller", () => {
       "user-token",
     );
     expect(onRelayMessage).toHaveBeenCalledTimes(2);
+    expect(onPrivateMessageObserved).toHaveBeenCalledTimes(2);
+    expect(onPrivateMessageObserved).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test" }),
+      expect.objectContaining({
+        openId: "ou_peer",
+        displayName: "咨询用户",
+        text: "消息 om_1",
+      }),
+    );
     expect(onRelayMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
         modeId: "mode-1",
@@ -151,6 +171,41 @@ describe("LarkSubstitutePrivatePoller", () => {
       }),
     );
     restartedPoller.stop();
+  });
+
+  test("does not scan or create a relay group when the private-user allowlist is empty", async () => {
+    const searchPrivateMessagesAsUser = vi.fn();
+    const createSubstituteRelayChat = vi.fn();
+    const onPrivateMessageObserved = vi.fn();
+    const poller = new LarkSubstitutePrivatePoller({
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter: {
+        searchPrivateMessagesAsUser,
+        createSubstituteRelayChat,
+        sendTextWithResult: vi.fn(),
+      },
+      userOAuthService: {
+        getStatus: vi.fn(),
+        getValidUserAccessToken: vi.fn(),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      onRelayMessage: vi.fn(),
+      onPrivateMessageObserved,
+      now: () => new Date(now),
+    });
+
+    await poller.runMode(mode({ allowlist: [], audienceAllowlist: [] }));
+
+    expect(searchPrivateMessagesAsUser).not.toHaveBeenCalled();
+    expect(createSubstituteRelayChat).not.toHaveBeenCalled();
+    expect(onPrivateMessageObserved).not.toHaveBeenCalled();
   });
 
   test("does not relay when the authorized user replied after the private message", async () => {
@@ -297,6 +352,63 @@ describe("LarkSubstitutePrivatePoller", () => {
     });
   });
 
+  test("reports relay-chat creation permission failures without mislabeling them as message-read failures", async () => {
+    const onScanFailure = vi.fn();
+    const poller = new LarkSubstitutePrivatePoller({
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter: {
+        searchPrivateMessagesAsUser: vi.fn(async () => [
+          privateMessage("om_chat_permission", "ou_peer", now - 30 * 60_000),
+        ]),
+        createSubstituteRelayChat: vi.fn(async () => {
+          throw new Error(
+            "Lark API error: required one of these privileges under the user identity: [im:chat, im:chat:create, im:chat:create_by_user] (code: 99991679)",
+          );
+        }),
+        sendTextWithResult: vi.fn(),
+      },
+      userOAuthService: {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope:
+            "offline_access im:chat:create_by_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
+        })),
+        getValidUserAccessToken: vi.fn(async () => "user-token"),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      onRelayMessage: vi.fn(),
+      onScanFailure,
+      now: () => new Date(now),
+    });
+
+    await poller.runMode(mode());
+
+    expect(onScanFailure).toHaveBeenCalledWith({
+      mode: expect.objectContaining({ id: "mode-1", botId: "bot-1" }),
+      event: expect.objectContaining({ messageId: "om_chat_permission" }),
+      error: expect.stringContaining(
+        "飞书用户 OAuth 缺少 im:chat:create_by_user 权限，无法创建替身私聊转发群",
+      ),
+    });
+    expect(onScanFailure).not.toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining("缺少 im:message:readonly 权限") }),
+    );
+  });
+
   test("reports rate limiting as a retryable Feishu API failure instead of a permission error", async () => {
     const onScanFailure = vi.fn();
     const poller = new LarkSubstitutePrivatePoller({
@@ -388,7 +500,8 @@ describe("LarkSubstitutePrivatePoller", () => {
     expect(searchPrivateMessagesAsUser).not.toHaveBeenCalled();
     expect(onScanFailure).toHaveBeenCalledWith({
       mode: expect.objectContaining({ id: "mode-1" }),
-      error: expect.stringContaining("请重新授权"),
+      error: expect.stringContaining("重新授权"),
+      event: undefined,
     });
   });
 });

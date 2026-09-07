@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import React, { type ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
   LarkChannelBotStatus,
@@ -140,13 +140,14 @@ function renderDirectory(
   directory: LarkDirectory,
   onResolve = vi.fn(async () => createUser()),
   onResolveUsers = vi.fn(async () => [createUser()]),
+  connected = true,
 ) {
   render(
     <LarkContactDirectoryPage
       bots={[createBot()]}
       directory={directory}
       selectedBotId="bot-1"
-      connected
+      connected={connected}
       supportsOpenIdLookup
       onSelectBot={vi.fn()}
       onEdit={vi.fn()}
@@ -171,6 +172,29 @@ describe("Lark contact directory", () => {
     await waitFor(() => {
       expect(onResolve).toHaveBeenCalledWith("cli_test", "ou_new");
     });
+  });
+
+  test("keeps a contact and explains when the email field is unavailable", async () => {
+    const onResolve = vi.fn(async () =>
+      createUser({
+        openId: "ou_yuan",
+        displayName: "袁昌旺",
+        email: null,
+      }),
+    );
+    renderDirectory({ users: [], chats: [] }, onResolve);
+
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-add-open-id"), {
+      target: { value: "ou_yuan" },
+    });
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-add"));
+
+    expect(
+      await screen.findByText(
+        "已添加联系人“袁昌旺”（ou_yuan），但当前机器人无法读取邮箱字段。请检查 contact:user.email:readonly 权限和应用通讯录范围。",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No visible Lark user found/)).toBeNull();
   });
 
   test("offers automatic resolution only when contact identity is incomplete", async () => {
@@ -201,7 +225,33 @@ describe("Lark contact directory", () => {
     });
     fireEvent.click(screen.getByTestId("host-page-lark-contact-identity-search"));
 
-    expect(await screen.findByText("alice@example.com · ou_existing")).toBeTruthy();
+    const results = await screen.findByTestId("host-page-lark-contact-identity-results");
+    expect(within(results).getByText("查询结果（1）")).toBeTruthy();
+    expect(within(results).getByText("邮箱：alice@example.com")).toBeTruthy();
+    expect(within(results).getByText("ou_id：ou_existing")).toBeTruthy();
+    expect(onResolveUsers).not.toHaveBeenCalled();
+  });
+
+  test("keeps identity lookup clickable while the host connection is recovering", async () => {
+    const { onResolveUsers } = renderDirectory(
+      {
+        users: [createUser({ displayName: "张三", email: "alice@example.com" })],
+        chats: [],
+      },
+      vi.fn(async () => createUser()),
+      vi.fn(async () => [createUser()]),
+      false,
+    );
+
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-identity-query"), {
+      target: { value: "张三" },
+    });
+    const searchButton = screen.getByTestId("host-page-lark-contact-identity-search");
+    expect((searchButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(searchButton);
+
+    const results = await screen.findByTestId("host-page-lark-contact-identity-results");
+    expect(within(results).getByText("ou_id：ou_existing")).toBeTruthy();
     expect(onResolveUsers).not.toHaveBeenCalled();
   });
 
@@ -226,6 +276,25 @@ describe("Lark contact directory", () => {
     await waitFor(() => {
       expect(onResolveUsers).toHaveBeenCalledWith("cli_test", ["alice@example.com"]);
     });
-    expect(await screen.findByText("alice@example.com · ou_alice")).toBeTruthy();
+    const results = await screen.findByTestId("host-page-lark-contact-identity-results");
+    expect(within(results).getByText("邮箱：alice@example.com")).toBeTruthy();
+    expect(within(results).getByText("ou_id：ou_alice")).toBeTruthy();
+  });
+
+  test("keeps the general contact search independent from identity lookup", async () => {
+    renderDirectory({
+      users: [createUser({ displayName: "张三", email: "alice@example.com" })],
+      chats: [],
+    });
+
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-identity-query"), {
+      target: { value: "alice@example.com" },
+    });
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-identity-search"));
+
+    await screen.findByTestId("host-page-lark-contact-identity-results");
+    expect((screen.getByTestId("host-page-lark-contacts-search") as HTMLInputElement).value).toBe(
+      "",
+    );
   });
 });

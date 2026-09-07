@@ -179,7 +179,7 @@ export class LarkSubstituteModeStore {
           customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
           delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
           activeTimeRanges: [],
-          allowlist: [],
+          allowlist: [{ id: `legacy-${bot.id}-allow-all`, type: "all" }],
           denylist: [],
           target: bot.config.target,
           createdAt: now,

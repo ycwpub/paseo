@@ -126,6 +126,7 @@ import {
   readAidenLocalModelCatalog,
   type AidenModelRecord,
 } from "./aiden/model-catalog.js";
+import { formatCodexProviderRetryMessage } from "./codex-provider-retry-message.js";
 
 function assertChildWithPipes(
   child: ChildProcess,
@@ -2221,6 +2222,21 @@ const TurnCompletedNotificationSchema = z
   })
   .passthrough();
 
+const ErrorNotificationSchema = z
+  .object({
+    error: z
+      .object({
+        message: z.string(),
+        codexErrorInfo: z.unknown().nullable(),
+        additionalDetails: z.string().nullable(),
+      })
+      .passthrough(),
+    willRetry: z.boolean(),
+    threadId: z.string(),
+    turnId: z.string(),
+  })
+  .passthrough();
+
 const TurnPlanUpdatedNotificationSchema = z
   .object({
     threadId: z.string().optional(),
@@ -2488,6 +2504,17 @@ type ParsedCodexNotification =
       threadId: string | null;
     }
   | {
+      kind: "provider_error";
+      error: {
+        message: string;
+        codexErrorInfo: unknown;
+        additionalDetails: string | null;
+      };
+      willRetry: boolean;
+      threadId: string;
+      turnId: string;
+    }
+  | {
       kind: "plan_updated";
       plan: Array<{ step: string | null; status: string | null }>;
       threadId: string | null;
@@ -2639,6 +2666,22 @@ const CodexNotificationSchema = z.union([
       }),
     ),
   z.object({ method: z.literal("turn/completed"), params: z.unknown() }).transform(
+    ({ method, params }): ParsedCodexNotification => ({
+      kind: "invalid_payload",
+      method,
+      params,
+    }),
+  ),
+  z.object({ method: z.literal("error"), params: ErrorNotificationSchema }).transform(
+    ({ params }): ParsedCodexNotification => ({
+      kind: "provider_error",
+      error: params.error,
+      willRetry: params.willRetry,
+      threadId: params.threadId,
+      turnId: params.turnId,
+    }),
+  ),
+  z.object({ method: z.literal("error"), params: z.unknown() }).transform(
     ({ method, params }): ParsedCodexNotification => ({
       kind: "invalid_payload",
       method,
@@ -5427,6 +5470,9 @@ export class CodexAppServerAgentSession implements AgentSession {
       case "turn_completed":
         this.handleTurnCompletedNotification(parsed);
         return;
+      case "provider_error":
+        this.handleProviderErrorNotification(parsed);
+        return;
       case "plan_updated":
         this.handlePlanUpdatedNotification(parsed);
         return;
@@ -6141,6 +6187,25 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.pendingForegroundTurnIdentification = null;
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.resetTurnTrackingState();
+  }
+
+  private handleProviderErrorNotification(
+    parsed: Extract<ParsedCodexNotification, { kind: "provider_error" }>,
+  ): void {
+    if (!parsed.willRetry) {
+      // Codex follows this notification with turn/completed. Waiting for that
+      // terminal preserves the authoritative provider error and avoids
+      // emitting duplicate turn_failed events.
+      return;
+    }
+    this.emitEvent({
+      type: "timeline",
+      provider: CODEX_PROVIDER,
+      item: {
+        type: "error",
+        message: formatCodexProviderRetryMessage(parsed.error),
+      },
+    });
   }
 
   private tryRecoverAfterMaxOutputTokens(): boolean {

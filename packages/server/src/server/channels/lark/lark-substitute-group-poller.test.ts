@@ -16,6 +16,12 @@ function mode(): LarkSubstituteMode {
       lookbackMinutes: 60,
       excludeRecentMinutes: 10,
     },
+    groupScan: {
+      enabled: true,
+      intervalMinutes: 15,
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 20,
+    },
     disclosure: { enabled: true, prompt: "【机器人代答】" },
     customPrompt: "",
     delaySeconds: 600,
@@ -78,6 +84,7 @@ describe("LarkSubstituteGroupPoller", () => {
     const poller = new LarkSubstituteGroupPoller({
       logger: pino({ level: "silent" }),
       listChatMessages,
+      listChatIds: () => ["oc_1"],
       getAuthorizedUserOpenId: () => "ou_authorized",
       hasTask: (_modeId, messageId) => messageId === "om_existing",
       onMessage,
@@ -87,8 +94,8 @@ describe("LarkSubstituteGroupPoller", () => {
     await poller.runMode(mode());
 
     expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_1", {
-      start: new Date("2026-09-07T09:00:00.000Z"),
-      end: new Date("2026-09-07T09:50:00.000Z"),
+      start: new Date("2026-09-07T08:00:00.000Z"),
+      end: new Date("2026-09-07T09:40:00.000Z"),
     });
     expect(onMessage).toHaveBeenCalledTimes(1);
     expect(onMessage).toHaveBeenCalledWith(
@@ -106,6 +113,7 @@ describe("LarkSubstituteGroupPoller", () => {
     const poller = new LarkSubstituteGroupPoller({
       logger: pino({ level: "silent" }),
       listChatMessages: vi.fn(async () => [event("om_existing")]),
+      listChatIds: () => ["oc_1"],
       getAuthorizedUserOpenId: () => "ou_authorized",
       hasTask: () => true,
       onMessage,
@@ -134,6 +142,7 @@ describe("LarkSubstituteGroupPoller", () => {
     const poller = new LarkSubstituteGroupPoller({
       logger: pino({ level: "silent" }),
       listChatMessages,
+      listChatIds: () => ["oc_1", "oc_2"],
       getAuthorizedUserOpenId: () => "ou_authorized",
       hasTask: () => false,
       onMessage,
@@ -163,6 +172,7 @@ describe("LarkSubstituteGroupPoller", () => {
     const poller = new LarkSubstituteGroupPoller({
       logger: pino({ level: "silent" }),
       listChatMessages: vi.fn(async () => [failedEvent, event("om_next")]),
+      listChatIds: () => ["oc_1"],
       getAuthorizedUserOpenId: () => "ou_authorized",
       hasTask: () => false,
       onMessage,
@@ -177,6 +187,55 @@ describe("LarkSubstituteGroupPoller", () => {
       chatId: "oc_1",
       event: failedEvent,
       error: "处理第一条消息失败",
+    });
+  });
+
+  test("does not scan when group scanning is disabled", async () => {
+    const disabledMode = mode();
+    disabledMode.groupScan = {
+      enabled: false,
+      intervalMinutes: 30,
+      lookbackMinutes: 60,
+      excludeRecentMinutes: 10,
+    };
+    const listChatMessages = vi.fn(async () => [event("om_match")]);
+    const poller = new LarkSubstituteGroupPoller({
+      logger: pino({ level: "silent" }),
+      listChatMessages,
+      listChatIds: () => ["oc_1"],
+      getAuthorizedUserOpenId: () => "ou_authorized",
+      hasTask: () => false,
+      onMessage: vi.fn(async () => undefined),
+    });
+
+    await poller.runMode(disabledMode);
+
+    expect(listChatMessages).not.toHaveBeenCalled();
+  });
+
+  test("records group discovery failures and releases the mode for a later retry", async () => {
+    const onScanFailure = vi.fn(async () => undefined);
+    const listChatIds = vi
+      .fn<() => Promise<string[]>>()
+      .mockRejectedValueOnce(new Error("读取机器人群列表失败"))
+      .mockResolvedValueOnce([]);
+    const poller = new LarkSubstituteGroupPoller({
+      logger: pino({ level: "silent" }),
+      listChatMessages: vi.fn(async () => []),
+      listChatIds,
+      getAuthorizedUserOpenId: () => "ou_authorized",
+      hasTask: () => false,
+      onMessage: vi.fn(async () => undefined),
+      onScanFailure,
+    });
+
+    await poller.runMode(mode());
+    await poller.runMode(mode());
+
+    expect(listChatIds).toHaveBeenCalledTimes(2);
+    expect(onScanFailure).toHaveBeenCalledWith({
+      mode: expect.objectContaining({ id: "mode-1" }),
+      error: "读取机器人群列表失败",
     });
   });
 });

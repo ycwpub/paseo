@@ -78,6 +78,11 @@ describe("LarkUserOAuthErrorAction", () => {
         "Lark API error: 缺少用户身份权限 im:message:readonly (code: 99991679)",
       ),
     ).toBe(true);
+    expect(
+      isLarkUserOAuthRequiredError(
+        "飞书用户 OAuth 缺少 im:chat:create_by_user 权限，无法创建替身私聊转发群。",
+      ),
+    ).toBe(true);
     expect(isLarkUserOAuthRequiredError("查询群聊失败")).toBe(false);
   });
 

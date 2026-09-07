@@ -31,6 +31,8 @@ export const PASEO_LARK_TENANT_SCOPES = [
 export const PASEO_LARK_USER_SCOPES = [
   // Keep user authorization renewable without asking for an environment token.
   "offline_access",
+  // Create the three-party relay group used by substitute-mode private-message handling.
+  "im:chat:create_by_user",
   // Read relay chats and add the application bot with the user's identity.
   "im:chat.members:write_only",
   "im:chat:read",

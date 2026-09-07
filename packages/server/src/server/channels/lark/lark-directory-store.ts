@@ -67,29 +67,34 @@ export class LarkDirectoryStore {
 
   upsertResolvedUsers(
     appId: string,
-    users: readonly { email: string; openId: string; displayName?: string | null }[],
+    users: readonly { email?: string | null; openId: string; displayName?: string | null }[],
     now: string,
   ): LarkDirectoryUser[] {
     this.ensureLoaded();
     const next = structuredClone(this.payload);
     const result: LarkDirectoryUser[] = [];
     for (const user of users) {
+      const openId = user.openId.trim();
+      if (!openId) continue;
       const email = normalizeLarkDirectoryEmail(user.email);
-      if (!email) continue;
       const existing = next.users.find(
-        (entry) => entry.appId === appId && (entry.openId === user.openId || entry.email === email),
+        (entry) =>
+          entry.appId === appId &&
+          (entry.openId === openId || (email !== null && entry.email === email)),
       );
       const record = LarkDirectoryUserSchema.parse({
         appId,
-        email,
-        openId: user.openId,
+        email: email ?? existing?.email ?? null,
+        openId,
         displayName: pickLarkDirectoryDisplayName(user.displayName, existing?.displayName),
         firstMessageContent: existing?.firstMessageContent ?? null,
         firstMessageAt: existing?.firstMessageAt ?? null,
         updatedAt: now,
       });
       next.users = next.users.filter(
-        (entry) => entry.appId !== appId || (entry.openId !== user.openId && entry.email !== email),
+        (entry) =>
+          entry.appId !== appId ||
+          (entry.openId !== openId && (email === null || entry.email !== email)),
       );
       next.users.push(record);
       result.push(record);

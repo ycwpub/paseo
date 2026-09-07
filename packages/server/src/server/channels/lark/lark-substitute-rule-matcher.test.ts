@@ -94,7 +94,7 @@ describe("matchLarkSubstituteMode", () => {
   test("requires a group message to mention the OAuth-authorized substitute user", () => {
     expect(
       matchLarkSubstituteMode({
-        modes: [mode()],
+        modes: [mode({ audienceAllowlist: [{ id: "all", type: "all" }] })],
         botId: "bot-1",
         appId: "cli_test",
         event: { ...groupEvent, mentions: [] },
@@ -143,6 +143,7 @@ describe("matchLarkSubstituteMode", () => {
       matchLarkSubstituteMode({
         modes: [
           mode({
+            audienceAllowlist: [{ id: "all", type: "all" }],
             denylist: [
               {
                 id: "deny-user",
@@ -164,6 +165,22 @@ describe("matchLarkSubstituteMode", () => {
 
   test("supports configured time ranges and private-message triggering", () => {
     const configured = mode({
+      audienceAllowlist: [
+        {
+          id: "allow-private-user",
+          type: "user",
+          openId: "ou_sender",
+          name: "李四",
+          email: "lisi@example.com",
+        },
+        {
+          id: "allow-group",
+          type: "group",
+          chatId: "oc_group",
+          groupId: "group-1",
+          name: "研发一群",
+        },
+      ],
       activeTimeRanges: [
         {
           id: "workday",
@@ -198,6 +215,15 @@ describe("matchLarkSubstituteMode", () => {
 
   test("uses weekday 7 for Sunday", () => {
     const configured = mode({
+      audienceAllowlist: [
+        {
+          id: "allow-group",
+          type: "group",
+          chatId: "oc_group",
+          groupId: "group-1",
+          name: "研发一群",
+        },
+      ],
       activeTimeRanges: [
         {
           id: "sunday",
@@ -236,6 +262,27 @@ describe("matchLarkSubstituteMode", () => {
             ],
           }),
         ],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, chatType: "p2p", mentions: [] },
+        directory,
+      }),
+    ).toBeNull();
+  });
+
+  test("rejects private and group messages when the relevant audience allowlist is empty", () => {
+    expect(
+      matchLarkSubstituteMode({
+        modes: [mode({ audienceAllowlist: [] })],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, chatType: "p2p", mentions: [] },
+        directory,
+      }),
+    ).toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [mode({ audienceAllowlist: [] })],
         botId: "bot-1",
         appId: "cli_test",
         event: groupEvent,

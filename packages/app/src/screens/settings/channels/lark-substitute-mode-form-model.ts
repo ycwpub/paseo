@@ -10,9 +10,13 @@ import type {
 import {
   DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
   DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_INTERVAL_MINUTES,
+  DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_LOOKBACK_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES,
   DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES,
+  getLarkSubstituteGroupScan,
 } from "@getpaseo/protocol/messages";
 import {
   createSubstituteRuleFormLists,
@@ -27,6 +31,10 @@ export interface LarkSubstituteModeFormState {
   name: string;
   enabled: boolean;
   botId: string | null;
+  groupScanEnabled: boolean;
+  groupScanIntervalMinutes: string;
+  groupScanLookbackMinutes: string;
+  groupScanExcludeRecentMinutes: string;
   privateScanEnabled: boolean;
   privateScanIntervalMinutes: string;
   privateScanLookbackMinutes: string;
@@ -104,6 +112,12 @@ function createDefaultFormState(
     name: "",
     enabled: true,
     botId: initialBot?.id ?? null,
+    groupScanEnabled: true,
+    groupScanIntervalMinutes: String(DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_INTERVAL_MINUTES),
+    groupScanLookbackMinutes: String(DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_LOOKBACK_MINUTES),
+    groupScanExcludeRecentMinutes: String(
+      DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES,
+    ),
     privateScanEnabled: true,
     privateScanIntervalMinutes: String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES),
     privateScanLookbackMinutes: String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES),
@@ -142,6 +156,10 @@ function createModeBehaviorFields(
 ): Pick<
   LarkSubstituteModeFormState,
   | "privateScanEnabled"
+  | "groupScanEnabled"
+  | "groupScanIntervalMinutes"
+  | "groupScanLookbackMinutes"
+  | "groupScanExcludeRecentMinutes"
   | "privateScanIntervalMinutes"
   | "privateScanLookbackMinutes"
   | "privateScanExcludeRecentMinutes"
@@ -154,7 +172,12 @@ function createModeBehaviorFields(
   | "questionAllowlist"
   | "questionDenylist"
 > {
+  const groupScan = getLarkSubstituteGroupScan(mode);
   return {
+    groupScanEnabled: groupScan.enabled,
+    groupScanIntervalMinutes: String(groupScan.intervalMinutes),
+    groupScanLookbackMinutes: String(groupScan.lookbackMinutes),
+    groupScanExcludeRecentMinutes: String(groupScan.excludeRecentMinutes),
     privateScanEnabled: mode.privateScan.enabled,
     privateScanIntervalMinutes: String(mode.privateScan.intervalMinutes),
     privateScanLookbackMinutes: String(mode.privateScan.lookbackMinutes),
@@ -205,7 +228,7 @@ function parseDelaySeconds(value: string): number {
   return parsed;
 }
 
-function parsePrivateScanMinutes(value: string, label: string, minimum: number): number {
+function parseScanMinutes(value: string, label: string, minimum: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < minimum) {
     throw new Error(`${label}必须是大于等于 ${minimum} 的整数分钟`);
@@ -292,12 +315,12 @@ export function buildSubstituteModeInput(input: {
     questionAllowlist: form.questionAllowlist,
     questionDenylist: form.questionDenylist,
   });
-  const privateScanLookbackMinutes = parsePrivateScanMinutes(
+  const privateScanLookbackMinutes = parseScanMinutes(
     form.privateScanLookbackMinutes,
     "私聊扫描范围",
     1,
   );
-  const privateScanExcludeRecentMinutes = parsePrivateScanMinutes(
+  const privateScanExcludeRecentMinutes = parseScanMinutes(
     form.privateScanExcludeRecentMinutes,
     "私聊排除最近时间",
     0,
@@ -305,13 +328,32 @@ export function buildSubstituteModeInput(input: {
   if (privateScanExcludeRecentMinutes >= privateScanLookbackMinutes) {
     throw new Error("私聊排除最近时间必须小于扫描范围");
   }
+  const groupScanLookbackMinutes = parseScanMinutes(
+    form.groupScanLookbackMinutes,
+    "群聊扫描范围",
+    1,
+  );
+  const groupScanExcludeRecentMinutes = parseScanMinutes(
+    form.groupScanExcludeRecentMinutes,
+    "群聊排除最近时间",
+    0,
+  );
+  if (groupScanExcludeRecentMinutes >= groupScanLookbackMinutes) {
+    throw new Error("群聊排除最近时间必须小于扫描范围");
+  }
   return {
     name: form.name.trim(),
     enabled: form.enabled,
     botId: form.botId as string,
+    groupScan: {
+      enabled: form.groupScanEnabled,
+      intervalMinutes: parseScanMinutes(form.groupScanIntervalMinutes, "群聊扫描间隔", 1),
+      lookbackMinutes: groupScanLookbackMinutes,
+      excludeRecentMinutes: groupScanExcludeRecentMinutes,
+    },
     privateScan: {
       enabled: form.privateScanEnabled,
-      intervalMinutes: parsePrivateScanMinutes(form.privateScanIntervalMinutes, "私聊扫描间隔", 1),
+      intervalMinutes: parseScanMinutes(form.privateScanIntervalMinutes, "私聊扫描间隔", 1),
       lookbackMinutes: privateScanLookbackMinutes,
       excludeRecentMinutes: privateScanExcludeRecentMinutes,
     },

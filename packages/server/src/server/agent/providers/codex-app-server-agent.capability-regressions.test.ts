@@ -921,6 +921,74 @@ describe("Codex app-server provider", () => {
       },
     ]);
   });
+  test("keeps retryable provider errors non-terminal and preserves the final failure", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const internals = asInternals(session);
+    const client = {
+      request: vi.fn(async () => ({})),
+    };
+    internals.client = client;
+    session.subscribe((event) => events.push(event));
+
+    internals.handleNotification("error", {
+      error: {
+        message: "unexpected status 529 <unknown status code>",
+        codexErrorInfo: "serverOverloaded",
+        additionalDetails: "x-aiden-error-code: provider_rate_limited",
+      },
+      willRetry: true,
+      threadId: "test-thread",
+      turnId: "provider-turn-1",
+    });
+
+    expect(events).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        turnId: "test-turn",
+        item: {
+          type: "error",
+          message: "模型服务负载过高，正在重试。",
+        },
+      },
+    ]);
+    expect(events.some((event) => event.type === "turn_failed")).toBe(false);
+    expect(session.connected).toBe(true);
+    expect(session.currentThreadId).toBe("test-thread");
+    expect(session.activeForegroundTurnId).toBe("test-turn");
+    expect(internals.client).toBe(client);
+
+    internals.handleNotification("error", {
+      error: {
+        message: "unexpected status 529 <unknown status code>",
+        codexErrorInfo: "responseTooManyFailedAttempts",
+        additionalDetails: null,
+      },
+      willRetry: false,
+      threadId: "test-thread",
+      turnId: "provider-turn-1",
+    });
+    expect(events).toHaveLength(1);
+
+    internals.handleNotification("turn/completed", {
+      threadId: "test-thread",
+      turn: {
+        id: "provider-turn-1",
+        status: "failed",
+        error: {
+          message:
+            "unexpected status 529 <unknown status code>: 模型厂商负载过高，多次返回HTTP 429错误",
+        },
+      },
+    });
+    expect(events.at(-1)).toEqual({
+      type: "turn_failed",
+      provider: "codex",
+      turnId: "test-turn",
+      error: "unexpected status 529 <unknown status code>: 模型厂商负载过高，多次返回HTTP 429错误",
+    });
+  });
   test("settles compaction when the automatic continuation cannot start", async () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

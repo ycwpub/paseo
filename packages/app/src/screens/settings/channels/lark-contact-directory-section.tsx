@@ -167,6 +167,64 @@ function ContactRow({
   );
 }
 
+function IdentityLookupResultRow({
+  user,
+  isFirst,
+  onEdit,
+}: {
+  user: LarkDirectoryUser;
+  isFirst: boolean;
+  onEdit: (user: LarkDirectoryUser) => void;
+}) {
+  const handleEdit = useCallback(() => onEdit(user), [onEdit, user]);
+
+  return (
+    <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{contactTitle(user)}</Text>
+        <Text style={settingsStyles.rowHint}>邮箱：{user.email?.trim() || "未补充"}</Text>
+        <Text selectable style={settingsStyles.rowHint}>
+          ou_id：{user.openId}
+        </Text>
+      </View>
+      <Button
+        size="sm"
+        variant="outline"
+        onPress={handleEdit}
+        testID={`host-page-lark-contact-identity-edit-${user.openId}`}
+      >
+        编辑
+      </Button>
+    </View>
+  );
+}
+
+function IdentityLookupResults({
+  users,
+  onEdit,
+}: {
+  users: LarkDirectoryUser[];
+  onEdit: (user: LarkDirectoryUser) => void;
+}) {
+  if (users.length === 0) return null;
+
+  return (
+    <View style={styles.identityResults} testID="host-page-lark-contact-identity-results">
+      <Text style={settingsStyles.rowTitle}>查询结果（{users.length}）</Text>
+      <View style={settingsStyles.card}>
+        {users.map((user, index) => (
+          <IdentityLookupResultRow
+            key={`${user.appId}:${user.openId}`}
+            user={user}
+            isFirst={index === 0}
+            onEdit={onEdit}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export function LarkContactDirectoryPage({
   bots,
   directory,
@@ -196,6 +254,7 @@ export function LarkContactDirectoryPage({
   const [openId, setOpenId] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [addNotice, setAddNotice] = useState<string | null>(null);
   const selectedBot = useMemo(
     () => bots.find((bot) => bot.id === selectedBotId) ?? bots[0] ?? null,
     [bots, selectedBotId],
@@ -240,6 +299,16 @@ export function LarkContactDirectoryPage({
         }),
     [searchQuery, selectedBotContacts],
   );
+  const visibleIdentityResults = useMemo(() => {
+    const appId = selectedBot?.appId;
+    if (!appId) return [];
+    return identityResults.filter((user) => user.appId === appId);
+  }, [identityResults, selectedBot?.appId]);
+  const handleIdentityQueryChange = useCallback((value: string) => {
+    setIdentityQuery(value);
+    setIdentityResults([]);
+    setIdentityError(null);
+  }, []);
   const handleSearchIdentity = useCallback(async () => {
     const appId = selectedBot?.appId?.trim();
     let query: string;
@@ -259,7 +328,6 @@ export function LarkContactDirectoryPage({
         .filter((value): value is string => Boolean(value))
         .some((value) => value.toLocaleLowerCase().includes(normalized));
     });
-    setSearchQuery(query);
     if (localMatches.length > 0) {
       setIdentityResults(localMatches);
       setIdentityError(null);
@@ -300,9 +368,15 @@ export function LarkContactDirectoryPage({
     }
     setAdding(true);
     setAddError(null);
+    setAddNotice(null);
     try {
-      await onResolve(appId, normalizedOpenId);
+      const resolved = await onResolve(appId, normalizedOpenId);
       setOpenId("");
+      if (!resolved.email?.trim()) {
+        setAddNotice(
+          `已添加联系人${resolved.displayName ? `“${resolved.displayName}”` : ""}（${resolved.openId}），但当前机器人无法读取邮箱字段。请检查 contact:user.email:readonly 权限和应用通讯录范围。`,
+        );
+      }
     } catch (error) {
       setAddError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -350,6 +424,7 @@ export function LarkContactDirectoryPage({
                   获取并添加
                 </Button>
               </View>
+              {addNotice ? <Text style={settingsStyles.rowHint}>{addNotice}</Text> : null}
             </Field>
           ) : null}
           <Field
@@ -361,7 +436,7 @@ export function LarkContactDirectoryPage({
               <View style={styles.lookupInput}>
                 <FormTextInput
                   value={identityQuery}
-                  onChangeText={setIdentityQuery}
+                  onChangeText={handleIdentityQueryChange}
                   placeholder="输入用户名或邮箱"
                   autoCapitalize="none"
                   onSubmitEditing={handleSearchIdentity}
@@ -372,15 +447,14 @@ export function LarkContactDirectoryPage({
                 variant="outline"
                 onPress={handleSearchIdentity}
                 loading={identitySearching}
-                disabled={
-                  !connected || identitySearching || !selectedBot?.appId || !identityQuery.trim()
-                }
+                disabled={identitySearching || !selectedBot?.appId || !identityQuery.trim()}
                 testID="host-page-lark-contact-identity-search"
               >
                 查询 ou_id
               </Button>
             </View>
           </Field>
+          <IdentityLookupResults users={visibleIdentityResults} onEdit={onEdit} />
           <Field label="搜索">
             <FormTextInput
               initialValue={searchQuery}
@@ -543,6 +617,9 @@ const styles = StyleSheet.create((theme) => ({
   rowActions: {
     flexDirection: "row",
     alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  identityResults: {
     gap: theme.spacing[2],
   },
 }));

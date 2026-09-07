@@ -85,6 +85,9 @@ export const DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS = 10 * 60;
 export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES = 30;
 export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES = 60;
 export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES = 10;
+export const DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_INTERVAL_MINUTES = 30;
+export const DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_LOOKBACK_MINUTES = 60;
+export const DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES = 10;
 
 export const LarkSubstitutePrivateScanSchema = z
   .object({
@@ -114,6 +117,40 @@ export const LarkSubstitutePrivateScanSchema = z
   });
 export type LarkSubstitutePrivateScan = z.infer<typeof LarkSubstitutePrivateScanSchema>;
 
+export const LarkSubstituteGroupScanSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    intervalMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(24 * 60)
+      .default(DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_INTERVAL_MINUTES),
+    lookbackMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(7 * 24 * 60)
+      .default(DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_LOOKBACK_MINUTES),
+    excludeRecentMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 60)
+      .default(DEFAULT_LARK_SUBSTITUTE_GROUP_SCAN_EXCLUDE_RECENT_MINUTES),
+  })
+  .refine((value) => value.excludeRecentMinutes < value.lookbackMinutes, {
+    message: "群聊扫描的排除最近时间必须小于扫描范围",
+    path: ["excludeRecentMinutes"],
+  });
+export type LarkSubstituteGroupScan = z.infer<typeof LarkSubstituteGroupScanSchema>;
+
+export function getLarkSubstituteGroupScan(
+  mode: Pick<LarkSubstituteMode, "groupScan">,
+): LarkSubstituteGroupScan {
+  return LarkSubstituteGroupScanSchema.parse(mode.groupScan ?? {});
+}
+
 export const LarkSubstituteModeSchema = z.object({
   id: z.string().min(1),
   name: z.string().trim().min(1).max(100),
@@ -125,6 +162,12 @@ export const LarkSubstituteModeSchema = z.object({
     lookbackMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES,
     excludeRecentMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
   }),
+  /**
+   * Optional for persisted modes created before configurable group scanning.
+   * Runtime consumers must use getLarkSubstituteGroupScan() so those modes keep
+   * the historical enabled 30/60/10 behavior.
+   */
+  groupScan: LarkSubstituteGroupScanSchema.optional(),
   disclosure: LarkSubstituteDisclosureSchema,
   customPrompt: z.string().max(10_000).default(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT),
   delaySeconds: z.number().int().min(0).max(3_600).default(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS),

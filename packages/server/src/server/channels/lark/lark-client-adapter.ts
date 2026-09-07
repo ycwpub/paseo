@@ -16,6 +16,7 @@ import {
   mapLarkRequestsWithConcurrency,
   withLarkRateLimitRetry,
 } from "./lark-api-request.js";
+import { resolveLarkDirectoryUserIdentity } from "./lark-directory-user-resolution.js";
 
 export interface LarkChannelBotInfo {
   openId: string;
@@ -51,7 +52,7 @@ export interface LarkMessageGetOptions {
 }
 
 export interface LarkResolvedUser {
-  email: string;
+  email: string | null;
   openId: string;
   displayName?: string | null;
 }
@@ -85,6 +86,7 @@ export interface LarkChannelClientAdapter {
     text: string,
   ): Promise<LarkThreadReplyResult>;
   listChatBots(config: StoredLarkChannelConfig, chatId: string): Promise<LarkChatBot[]>;
+  listBotChats?(config: StoredLarkChannelConfig): Promise<LarkResolvedChat[]>;
   addBotToChat?(
     config: StoredLarkChannelConfig,
     chatId: string,
@@ -392,6 +394,36 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     });
   }
 
+  async listBotChats(config: StoredLarkChannelConfig): Promise<LarkResolvedChat[]> {
+    const client = createClient(config);
+    const chats: LarkResolvedChat[] = [];
+    let pageToken: string | undefined;
+    do {
+      const result = await larkGet(client, "/open-apis/im/v1/chats", {
+        page_size: 100,
+        user_id_type: "open_id",
+        ...(pageToken ? { page_token: pageToken } : {}),
+      });
+      assertSuccess(result);
+      chats.push(
+        ...messageListItems(result).flatMap((item) => {
+          const record = asRecord(item);
+          const chatId = recordString(record, "chat_id");
+          if (!chatId) return [];
+          return [
+            {
+              groupId: chatId,
+              chatId,
+              name: recordString(record, "name") ?? chatId,
+            },
+          ];
+        }),
+      );
+      pageToken = result.data?.page_token;
+    } while (pageToken);
+    return chats;
+  }
+
   async addBotToChat(
     config: StoredLarkChannelConfig,
     chatId: string,
@@ -579,17 +611,10 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
         params: { user_id_type: "open_id" },
       });
       assertSuccess(result);
-      const user = result.data?.user;
-      const email = user?.email?.trim() || user?.enterprise_email?.trim();
-      const resolvedOpenId = user?.open_id?.trim() || openId.trim();
-      if (!email || !resolvedOpenId) {
-        return null;
-      }
-      return {
-        email,
-        openId: resolvedOpenId,
-        displayName: user?.name?.trim() || null,
-      };
+      return resolveLarkDirectoryUserIdentity({
+        requestedOpenId: openId,
+        user: result.data?.user,
+      });
     } catch (error) {
       throw describeLarkError(error);
     }

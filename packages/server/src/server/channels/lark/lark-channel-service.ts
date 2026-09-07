@@ -1,17 +1,18 @@
 import path from "node:path";
 import type pino from "pino";
-import type {
-  LarkChannelAuthorizedUser,
-  LarkChannelStatus,
-  LarkReminder,
-  LarkReminderCreateInput,
-  LarkReminderUpdateInput,
-  LarkSubstituteMode,
-  LarkSubstituteModeCreateInput,
-  LarkSubstituteModeUpdateInput,
-  LarkSubstituteTask,
-  LarkSubstituteTaskFailureStage,
-  SessionInboundMessage,
+import {
+  getLarkSubstituteGroupScan,
+  type LarkChannelAuthorizedUser,
+  type LarkChannelStatus,
+  type LarkReminder,
+  type LarkReminderCreateInput,
+  type LarkReminderUpdateInput,
+  type LarkSubstituteMode,
+  type LarkSubstituteModeCreateInput,
+  type LarkSubstituteModeUpdateInput,
+  type LarkSubstituteTask,
+  type LarkSubstituteTaskFailureStage,
+  type SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
 import type { AgentManager, AgentManagerEvent, ManagedAgent } from "../../agent/agent-manager.js";
 import type { AgentStorage } from "../../agent/agent-storage.js";
@@ -78,6 +79,14 @@ import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
 import { LarkSubstituteReplySender } from "./lark-substitute-reply-sender.js";
 import { LarkSubstitutePrivatePoller } from "./lark-substitute-private-poller.js";
 import { LarkSubstituteGroupPoller } from "./lark-substitute-group-poller.js";
+import {
+  hasGroupSubstituteAudienceAllowlist,
+  hasPrivateSubstituteAudienceAllowlist,
+} from "./lark-substitute-audience-policy.js";
+import {
+  selectLarkSubstituteGroupScanChats,
+  type LarkSubstituteGroupScanChat,
+} from "./lark-substitute-group-scan-chats.js";
 import { getLarkSubstituteTaskSource } from "./lark-substitute-task-source.js";
 import { LarkSubstituteTaskStore } from "./lark-substitute-task-store.js";
 
@@ -511,6 +520,7 @@ export class LarkChannelService {
     this.substituteGroupPoller = new LarkSubstituteGroupPoller({
       logger: this.logger,
       listChatMessages: (botId, chatId, window) => this.listChatMessages(botId, chatId, window),
+      listChatIds: (mode) => this.listSubstituteGroupScanChatIds(mode),
       getAuthorizedUserOpenId: (botId) => {
         const appId = this.store.getBot(botId)?.config.appId;
         if (!appId) return null;
@@ -523,6 +533,7 @@ export class LarkChannelService {
         const groupRule = getLarkSubstituteRuleLists(mode).audienceAllowlist.find(
           (rule) => rule.type === "group" && rule.chatId === chatId,
         );
+        const directoryChat = this.findSubstituteDirectoryChat(mode, chatId);
         this.substituteTaskStore.recordOperationalFailure(
           {
             modeId: mode.id,
@@ -531,7 +542,10 @@ export class LarkChannelService {
             source: "group_scan",
             stage: "group_scan",
             chatId,
-            chatName: groupRule?.type === "group" ? groupRule.name : (event?.topicName ?? null),
+            chatName:
+              groupRule?.type === "group"
+                ? groupRule.name
+                : (directoryChat?.name ?? event?.topicName ?? null),
             messageId: event?.messageId,
             senderOpenId: event?.openId,
             senderName: event?.displayName,
@@ -549,7 +563,10 @@ export class LarkChannelService {
             channelStore: this.store,
             adapter: this.adapter,
             userOAuthService: this.userOAuthService,
+            getDirectory: () => this.directoryService?.getState() ?? null,
             logger: this.logger,
+            onPrivateMessageObserved: (config, event) =>
+              this.observeDirectoryParticipants(config, event),
             onRelayMessage: ({ botId, modeId, event, supplementalEvents }) =>
               this.handleIncomingEvent(botId, event, {
                 bypassSubstituteDelay: true,
@@ -650,6 +667,44 @@ export class LarkChannelService {
       });
   }
 
+  private async listSubstituteGroupScanChatIds(mode: LarkSubstituteMode): Promise<string[]> {
+    const bot = this.store.getBot(mode.botId);
+    const appId = bot?.config.appId?.trim();
+    if (bot && appId && this.adapter.listBotChats) {
+      try {
+        const discovered = await this.adapter.listBotChats(bot.config);
+        this.directoryService?.observeChats(appId, discovered);
+      } catch (error) {
+        this.logger.warn(
+          { err: error, modeId: mode.id, botId: mode.botId },
+          "Failed to discover groups joined by the Lark bot; using known groups",
+        );
+      }
+    }
+    return this.listKnownSubstituteGroupScanChats(mode).map((chat) => chat.chatId);
+  }
+
+  private findSubstituteDirectoryChat(
+    mode: LarkSubstituteMode,
+    chatId: string | undefined,
+  ): LarkSubstituteGroupScanChat | null {
+    if (!chatId) return null;
+    return (
+      this.listKnownSubstituteGroupScanChats(mode).find((chat) => chat.chatId === chatId) ?? null
+    );
+  }
+
+  private listKnownSubstituteGroupScanChats(
+    mode: LarkSubstituteMode,
+  ): LarkSubstituteGroupScanChat[] {
+    const appId = this.store.getBot(mode.botId)?.config.appId;
+    return selectLarkSubstituteGroupScanChats(
+      mode,
+      appId,
+      this.directoryService?.getState().chats ?? [],
+    );
+  }
+
   async getUserOAuthStatus(appId: string) {
     if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
     return this.hydrateUserOAuthStatus(appId);
@@ -664,10 +719,18 @@ export class LarkChannelService {
     if (!this.userOAuthService) throw new Error("飞书用户 OAuth 不可用");
     await this.userOAuthService.completeAuthorization(appId, codeOrCallbackUrl, state);
     const status = await this.hydrateUserOAuthStatus(appId);
-    if (status.authorized && this.substitutePrivatePoller) {
+    if (status.authorized) {
       for (const mode of this.substituteModeStore.list()) {
         const bot = this.store.getBot(mode.botId);
-        if (bot?.config.appId === appId && mode.enabled && mode.privateScan.enabled) {
+        if (bot?.config.appId !== appId || !mode.enabled) continue;
+        if (getLarkSubstituteGroupScan(mode).enabled && hasGroupSubstituteAudienceAllowlist(mode)) {
+          void this.substituteGroupPoller.runMode(mode);
+        }
+        if (
+          this.substitutePrivatePoller &&
+          mode.privateScan.enabled &&
+          hasPrivateSubstituteAudienceAllowlist(mode)
+        ) {
           void this.substitutePrivatePoller.runMode(mode);
         }
       }
@@ -864,11 +927,14 @@ export class LarkChannelService {
     const modes = this.listSubstituteModes().filter(
       (mode) => mode.enabled && (!modeId || mode.id === modeId),
     );
-    const groupModes = modes.filter((mode) =>
-      getLarkSubstituteRuleLists(mode).audienceAllowlist.some((rule) => rule.type === "group"),
+    const groupModes = modes.filter(
+      (mode) =>
+        getLarkSubstituteGroupScan(mode).enabled && hasGroupSubstituteAudienceAllowlist(mode),
     );
     const privateModes = this.substitutePrivatePoller
-      ? modes.filter((mode) => mode.privateScan.enabled)
+      ? modes.filter(
+          (mode) => mode.privateScan.enabled && hasPrivateSubstituteAudienceAllowlist(mode),
+        )
       : [];
     await Promise.all([
       ...groupModes.map((mode) => this.substituteGroupPoller.runMode(mode)),

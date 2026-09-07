@@ -84,8 +84,8 @@ export function LarkReminderAudienceFields({
         disabled={!selectedBot}
       />
       <LarkUserDirectoryField
-        label="被提醒人"
-        hint="支持输入多个邮箱；任一人回复即停止。保存和运行时仍只使用 Open ID。"
+        label="用户白名单（被提醒人）"
+        hint="可从通讯录按用户名、邮箱或 ou_xxx 搜索添加；也可输入多个邮箱查询。任一人回复即停止。"
         appId={selectedBot?.appId ?? ""}
         openIds={targetOpenIds}
         users={directory?.users ?? EMPTY_USERS}

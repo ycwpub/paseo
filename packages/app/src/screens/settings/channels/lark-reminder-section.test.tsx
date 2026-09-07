@@ -407,6 +407,43 @@ describe("LarkReminderSection", () => {
     );
   });
 
+  test("adds reminder user whitelist entries by searching the contact directory", () => {
+    renderReminderEditor({
+      directory: {
+        users: [
+          {
+            appId: "cli_reminder",
+            email: "alice@example.com",
+            openId: "ou_alice",
+            displayName: "张三",
+            updatedAt: "2026-09-07T00:00:00.000Z",
+          },
+          {
+            appId: "cli_other",
+            email: "other@example.com",
+            openId: "ou_other",
+            displayName: "其他机器人联系人",
+            updatedAt: "2026-09-07T00:00:00.000Z",
+          },
+        ],
+        chats: [],
+      },
+    });
+
+    expect(screen.getByText("用户白名单（被提醒人）")).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "张三（alice@example.com，ou_alice）" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /其他机器人联系人/u })).toBeNull();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "从通讯录添加" }), {
+      target: { value: "ou_alice" },
+    });
+
+    expect(screen.getByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
+    expect(directoryState.resolveUsers).not.toHaveBeenCalled();
+  });
+
   test("always creates reminders with the bot identity", async () => {
     reminderState.current.create.mockResolvedValue(makeReminder());
     directoryState.resolveChats.mockResolvedValue([

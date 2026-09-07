@@ -68,6 +68,26 @@ export class LarkDirectoryService {
     return this.store.upsertResolvedUsers(appId, enriched, new Date().toISOString());
   }
 
+  async resolveUserByOpenId(appId: string, openId: string): Promise<LarkDirectoryUser> {
+    const normalizedOpenId = openId.trim();
+    if (!normalizedOpenId) {
+      throw new Error("A Lark user Open ID is required");
+    }
+    const config = this.requireConfig(appId);
+    if (!this.adapter.resolveUserByOpenId) {
+      throw new Error("This Paseo daemon does not support Lark Open ID lookup");
+    }
+    const resolved = await this.adapter.resolveUserByOpenId(config, normalizedOpenId);
+    if (!resolved) {
+      throw new Error(`No visible Lark user found for: ${normalizedOpenId}`);
+    }
+    const user = this.store.upsertResolvedUsers(appId, [resolved], new Date().toISOString())[0];
+    if (!user) {
+      throw new Error(`Lark user has no visible email: ${normalizedOpenId}`);
+    }
+    return user;
+  }
+
   async refreshUserByOpenId(appId: string, openId: string): Promise<LarkDirectoryUser | null> {
     const normalizedOpenId = openId.trim();
     if (!normalizedOpenId) {
@@ -77,17 +97,14 @@ export class LarkDirectoryService {
     if (existing && hasCompleteLarkDirectoryUser(existing)) {
       return existing;
     }
-    const config = this.requireConfig(appId);
     if (!this.adapter.resolveUserByOpenId) {
       return existing;
     }
-    const resolved = await this.adapter.resolveUserByOpenId(config, normalizedOpenId);
-    if (!resolved) {
+    try {
+      return await this.resolveUserByOpenId(appId, normalizedOpenId);
+    } catch {
       return existing;
     }
-    return (
-      this.store.upsertResolvedUsers(appId, [resolved], new Date().toISOString())[0] ?? existing
-    );
   }
 
   async resolveChats(appId: string, query: string): Promise<LarkDirectoryChat[]> {

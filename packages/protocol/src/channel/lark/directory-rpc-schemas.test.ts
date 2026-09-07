@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   LarkDirectoryResolveChatsRequestSchema,
+  LarkDirectoryResolveUserRequestSchema,
   LarkDirectoryResolveUsersRequestSchema,
   LarkDirectoryUpdateUserRequestSchema,
 } from "./directory-rpc-schemas.js";
@@ -17,6 +18,20 @@ describe("Lark directory RPC schemas", () => {
     ).toMatchObject({
       appId: "cli_test",
       emails: ["alice@example.com"],
+    });
+  });
+
+  test("normalizes an Open ID lookup", () => {
+    expect(
+      LarkDirectoryResolveUserRequestSchema.parse({
+        type: "channel.lark.directory.resolve_user.request",
+        requestId: "request-open-id",
+        appId: " cli_test ",
+        openId: " ou_alice ",
+      }),
+    ).toMatchObject({
+      appId: "cli_test",
+      openId: "ou_alice",
     });
   });
 

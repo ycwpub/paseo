@@ -16,6 +16,7 @@ import {
   formatLarkChatId,
   formatLarkUserOpenId,
 } from "./lark-directory-format";
+import { LarkUserDirectoryPicker } from "./lark-user-directory-picker";
 
 function splitEmails(value: string): string[] {
   return Array.from(
@@ -86,10 +87,11 @@ export function LarkUserDirectoryField({
   const availableUsers = useMemo(() => {
     const merged = new Map<string, LarkDirectoryUser>();
     for (const user of [...users, ...resolvedUsers]) {
+      if (user.appId !== appId) continue;
       merged.set(`${user.appId}:${user.openId}`, user);
     }
     return [...merged.values()];
-  }, [resolvedUsers, users]);
+  }, [appId, resolvedUsers, users]);
 
   const handleResolve = useCallback(async () => {
     const emails = splitEmails(emailInput);
@@ -134,9 +136,25 @@ export function LarkUserDirectoryField({
     },
     [onChange, openIds],
   );
+  const handleDirectorySelect = useCallback(
+    (user: LarkDirectoryUser) => {
+      const nextOpenIds = multiple ? Array.from(new Set([...openIds, user.openId])) : [user.openId];
+      onChange(nextOpenIds);
+    },
+    [multiple, onChange, openIds],
+  );
 
   return (
     <Field label={label} hint={hint} testID={testID}>
+      <LarkUserDirectoryPicker
+        appId={appId}
+        users={availableUsers}
+        excludedOpenIds={multiple ? openIds : []}
+        selectedOpenId={multiple ? null : (openIds[0] ?? null)}
+        onSelect={handleDirectorySelect}
+        disabled={disabled}
+        field={false}
+      />
       <View style={styles.lookupRow}>
         <FormTextInput
           value={emailInput}

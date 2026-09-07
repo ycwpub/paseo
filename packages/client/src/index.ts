@@ -50,6 +50,7 @@ export type {
   ApplyLarkBotOptions,
   GetLarkBotApplicationOptions,
   ResolveLarkDirectoryChatsOptions,
+  ResolveLarkDirectoryUserOptions,
   ResolveLarkDirectoryUsersOptions,
   DeleteLarkBotOptions,
   DeleteLarkReminderOptions,

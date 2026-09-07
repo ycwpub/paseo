@@ -56,6 +56,7 @@ describe("extension protocol capability regressions", () => {
       "larkReminders",
       "larkSubstituteModes",
       "larkDirectory",
+      "larkDirectoryOpenIdLookup",
       "larkUserOAuth",
       "assistants",
       "memory",

@@ -1205,6 +1205,7 @@ function LarkChannelLoadedContent({
   const assistants = useAssistants(serverId);
   const supportsTeams = useHostFeature(serverId, "teams");
   const supportsLarkDirectory = useHostFeature(serverId, "larkDirectory");
+  const supportsLarkDirectoryOpenIdLookup = useHostFeature(serverId, "larkDirectoryOpenIdLookup");
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId);
   const { projects } = useProjects();
@@ -1712,8 +1713,12 @@ function LarkChannelLoadedContent({
           bots={botStatuses}
           directory={directory}
           selectedBotId={selectedBotStatus?.id ?? selectedBotId}
+          connected={channel.isConnected}
+          supportsOpenIdLookup={supportsLarkDirectoryOpenIdLookup}
           onSelectBot={handleSelectBot}
           onEdit={handleEditContact}
+          onResolve={channel.resolveDirectoryUser}
+          onResolveUsers={channel.resolveDirectoryUsers}
         />
       </View>
     ),

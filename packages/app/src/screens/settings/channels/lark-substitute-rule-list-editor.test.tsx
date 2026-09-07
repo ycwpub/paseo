@@ -170,4 +170,55 @@ describe("Lark substitute rule list editors", () => {
     fireEvent.click(screen.getByRole("button", { name: "添加规则" }));
     expect(onChange.mock.calls[0]?.[0]).toHaveLength(1);
   });
+
+  test("selects a user whitelist entry from the current bot contact directory", () => {
+    const onChange = vi.fn();
+    render(
+      <LarkSubstituteAudienceRuleListEditor
+        label="用户/群白名单"
+        hint="必须命中"
+        rules={[{ id: "rule-1", type: "user", openId: null, name: null, email: null }]}
+        appId="cli_test"
+        users={[
+          {
+            appId: "cli_test",
+            openId: "ou_alice",
+            displayName: "张三",
+            email: "alice@example.com",
+            updatedAt: "2026-09-07T00:00:00.000Z",
+          },
+          {
+            appId: "cli_other",
+            openId: "ou_other",
+            displayName: "其他机器人联系人",
+            email: "other@example.com",
+            updatedAt: "2026-09-07T00:00:00.000Z",
+          },
+        ]}
+        chats={[]}
+        resolveUsers={vi.fn()}
+        resolveChats={vi.fn()}
+        onChange={onChange}
+      />,
+    );
+
+    expect(
+      screen.getByRole("option", { name: "张三（alice@example.com，ou_alice）" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /其他机器人联系人/u })).toBeNull();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "从通讯录选择用户" }), {
+      target: { value: "ou_alice" },
+    });
+
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        id: "rule-1",
+        type: "user",
+        openId: "ou_alice",
+        name: "张三",
+        email: "alice@example.com",
+      },
+    ]);
+  });
 });

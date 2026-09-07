@@ -110,6 +110,36 @@ describe("LarkDirectoryService", () => {
     });
   });
 
+  test("resolves an Open ID and adds the user to the directory", async () => {
+    const resolveUserByOpenId = vi.fn(async () => ({
+      email: "alice@example.com",
+      openId: "ou_alice",
+      displayName: "张三",
+    }));
+    const service = createService({ resolveUserByOpenId });
+
+    await expect(service.resolveUserByOpenId("cli_test", " ou_alice ")).resolves.toMatchObject({
+      appId: "cli_test",
+      email: "alice@example.com",
+      openId: "ou_alice",
+      displayName: "张三",
+    });
+    expect(directoryStore.findUser("cli_test", "ou_alice")).toMatchObject({
+      email: "alice@example.com",
+      displayName: "张三",
+    });
+  });
+
+  test("reports an Open ID that is not visible to the bot", async () => {
+    const service = createService({
+      resolveUserByOpenId: vi.fn(async () => null),
+    });
+
+    await expect(service.resolveUserByOpenId("cli_test", "ou_missing")).rejects.toThrow(
+      "No visible Lark user found for: ou_missing",
+    );
+  });
+
   test("records the first message timestamp when observing a contact", () => {
     const service = createService({});
     const createTime = 1788656400000;

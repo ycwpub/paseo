@@ -681,6 +681,10 @@ type LarkDirectoryResolveUsersPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.resolve_users.response" }
 >["payload"];
+type LarkDirectoryResolveUserPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.resolve_user.response" }
+>["payload"];
 type LarkDirectoryResolveChatsPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.resolve_chats.response" }
@@ -1066,6 +1070,11 @@ export interface RevokeLarkUserOptions {
 export interface ResolveLarkDirectoryUsersOptions {
   appId: string;
   emails: string[];
+  requestId?: string;
+}
+export interface ResolveLarkDirectoryUserOptions {
+  appId: string;
+  openId: string;
   requestId?: string;
 }
 export interface ResolveLarkDirectoryChatsOptions {
@@ -6756,6 +6765,12 @@ export class DaemonClient {
     options: ResolveLarkDirectoryUsersOptions,
   ): Promise<LarkDirectoryResolveUsersPayload> {
     return this.resourceRpc.resolveLarkDirectoryUsers(options);
+  }
+
+  async resolveLarkDirectoryUser(
+    options: ResolveLarkDirectoryUserOptions,
+  ): Promise<LarkDirectoryResolveUserPayload> {
+    return this.resourceRpc.resolveLarkDirectoryUser(options);
   }
 
   async resolveLarkDirectoryChats(

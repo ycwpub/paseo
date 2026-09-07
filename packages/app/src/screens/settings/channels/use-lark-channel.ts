@@ -24,6 +24,7 @@ export interface UseLarkChannelResult {
   rejectPairing: (code: string, botId?: string | null) => Promise<LarkChannelStatus>;
   revokeUser: (userId: string, botId?: string | null) => Promise<LarkChannelStatus>;
   resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  resolveDirectoryUser: (appId: string, openId: string) => Promise<LarkDirectoryUser>;
   resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
   updateDirectoryUser: (input: {
     appId: string;
@@ -208,6 +209,26 @@ export function useLarkChannel(
     [applyStatus, client],
   );
 
+  const resolveDirectoryUser = useCallback(
+    async (appId: string, openId: string) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.resolveLarkDirectoryUser({ appId, openId });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      if (!result.user) {
+        throw new Error("未找到飞书联系人");
+      }
+      return result.user;
+    },
+    [applyStatus, client],
+  );
+
   const resolveDirectoryChats = useCallback(
     async (appId: string, chatQuery: string) => {
       if (!client) {
@@ -291,6 +312,7 @@ export function useLarkChannel(
     approvePairing,
     rejectPairing,
     revokeUser,
+    resolveDirectoryUser,
     resolveDirectoryUsers,
     resolveDirectoryChats,
     updateDirectoryUser,

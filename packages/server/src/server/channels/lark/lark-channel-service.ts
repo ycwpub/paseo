@@ -525,6 +525,13 @@ export class LarkChannelService {
     return users;
   }
 
+  async resolveDirectoryUser(appId: string, openId: string) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const user = await this.directoryService.resolveUserByOpenId(appId, openId);
+    this.emitStatusChanged();
+    return user;
+  }
+
   async resolveDirectoryChats(appId: string, query: string) {
     if (!this.directoryService) throw new Error("Lark directory is unavailable");
     const chats = await this.directoryService.resolveChats(appId, query);

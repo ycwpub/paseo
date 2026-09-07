@@ -33,6 +33,7 @@ type LarkChannelResponse = Extract<
       | "channel.lark.approve_pairing.response"
       | "channel.lark.reject_pairing.response"
       | "channel.lark.revoke_user.response"
+      | "channel.lark.directory.resolve_user.response"
       | "channel.lark.directory.resolve_users.response"
       | "channel.lark.directory.resolve_chats.response"
       | "channel.lark.directory.update_user.response"
@@ -57,6 +58,7 @@ type LarkDirectoryOrOAuthRequest = Extract<
   LarkChannelSessionRequest,
   {
     type:
+      | "channel.lark.directory.resolve_user.request"
       | "channel.lark.directory.resolve_users.request"
       | "channel.lark.directory.resolve_chats.request"
       | "channel.lark.directory.update_user.request"
@@ -81,6 +83,7 @@ function isDirectoryOrOAuthRequest(
   message: LarkChannelSessionRequest,
 ): message is LarkDirectoryOrOAuthRequest {
   return (
+    message.type === "channel.lark.directory.resolve_user.request" ||
     message.type === "channel.lark.directory.resolve_users.request" ||
     message.type === "channel.lark.directory.resolve_chats.request" ||
     message.type === "channel.lark.directory.update_user.request" ||
@@ -343,6 +346,19 @@ export class LarkChannelSession {
 
   private async handleDirectoryOrOAuthRequest(message: LarkDirectoryOrOAuthRequest): Promise<void> {
     switch (message.type) {
+      case "channel.lark.directory.resolve_user.request": {
+        const user = await this.service.resolveDirectoryUser(message.appId, message.openId);
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_user.response",
+          payload: {
+            requestId: message.requestId,
+            user,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
       case "channel.lark.directory.resolve_users.request": {
         const users = await this.service.resolveDirectoryUsers(message.appId, message.emails);
         this.emitResponse({
@@ -556,6 +572,12 @@ export class LarkChannelSession {
   private emitDirectoryErrorResponse(message: LarkDirectoryRequest, error: string): void {
     const status = this.service.getStatus();
     switch (message.type) {
+      case "channel.lark.directory.resolve_user.request":
+        this.emitResponse({
+          type: "channel.lark.directory.resolve_user.response",
+          payload: { requestId: message.requestId, user: null, status, error },
+        });
+        return;
       case "channel.lark.directory.resolve_users.request":
         this.emitResponse({
           type: "channel.lark.directory.resolve_users.response",

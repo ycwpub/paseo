@@ -16,12 +16,8 @@ import {
 } from "@/components/ui/select-field";
 import { settingsStyles } from "@/styles/settings";
 import { LarkChatDirectoryField } from "./lark-directory-fields";
-import {
-  findLarkDirectoryChat,
-  findLarkDirectoryUser,
-  formatLarkUserIdentity,
-  formatLarkUserLabel,
-} from "./lark-directory-format";
+import { findLarkDirectoryChat, formatLarkUserIdentity } from "./lark-directory-format";
+import { LarkUserDirectoryPicker } from "./lark-user-directory-picker";
 import {
   createAudienceRule,
   createQuestionRule,
@@ -88,19 +84,9 @@ function UserRuleFields({
     }
     return [...merged.values()];
   }, [appId, resolvedUsers, users]);
-  const options = useMemo<SelectFieldOption<string>[]>(
-    () =>
-      availableUsers.map((user) => ({
-        id: `${user.appId}:${user.openId}`,
-        value: user.openId,
-        label: formatLarkUserLabel(user),
-        description: user.openId,
-      })),
-    [availableUsers],
-  );
   const selectedDisplay = useMemo<SelectFieldDisplay | null>(() => {
     const selected =
-      findLarkDirectoryUser(availableUsers, appId, rule.openId) ??
+      availableUsers.find((user) => user.openId === rule.openId) ??
       (rule.openId
         ? {
             appId,
@@ -118,16 +104,15 @@ function UserRuleFields({
       : null;
   }, [appId, availableUsers, rule.email, rule.name, rule.openId]);
   const handleSelect = useCallback(
-    (openId: string) => {
-      const user = availableUsers.find((entry) => entry.openId === openId);
+    (user: LarkDirectoryUser) => {
       onChange({
         ...rule,
-        openId,
-        name: user?.displayName ?? null,
-        email: user?.email ?? null,
+        openId: user.openId,
+        name: user.displayName,
+        email: user.email,
       });
     },
-    [availableUsers, onChange, rule],
+    [onChange, rule],
   );
   const handleResolve = useCallback(async () => {
     const query = lookup.trim();
@@ -143,7 +128,7 @@ function UserRuleFields({
     );
     if (localMatches.length > 0) {
       setResolvedUsers((current) => [...current, ...localMatches]);
-      if (localMatches.length === 1) handleSelect(localMatches[0]!.openId);
+      if (localMatches.length === 1) handleSelect(localMatches[0]!);
       setError(null);
       return;
     }
@@ -163,12 +148,7 @@ function UserRuleFields({
       const resolved = await resolveUsers(appId, [query]);
       setResolvedUsers((current) => [...current, ...resolved]);
       if (resolved[0]) {
-        onChange({
-          ...rule,
-          openId: resolved[0].openId,
-          name: resolved[0].displayName,
-          email: resolved[0].email,
-        });
+        handleSelect(resolved[0]);
         setLookup("");
       }
     } catch (lookupError) {
@@ -199,17 +179,16 @@ function UserRuleFields({
           搜索
         </Button>
       </View>
-      <SelectField
-        field={false}
-        label="选择用户"
-        value={rule.openId}
+      <LarkUserDirectoryPicker
+        appId={appId}
+        users={availableUsers}
+        selectedOpenId={rule.openId}
         selectedDisplay={selectedDisplay}
-        options={options}
-        onChange={handleSelect}
-        placeholder="选择匹配的用户"
-        emptyText="暂无匹配用户"
-        searchable
+        onSelect={handleSelect}
+        label="从通讯录选择用户"
+        placeholder="搜索通讯录中的用户名、邮箱或 ou_xxx"
         disabled={disabled}
+        field={false}
       />
       {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
     </View>

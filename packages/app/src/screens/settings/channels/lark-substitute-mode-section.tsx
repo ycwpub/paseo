@@ -21,14 +21,17 @@ export function LarkSubstituteModeSection({
   directory: _directory,
   onCreate,
   onEdit,
+  onOpenTasks,
 }: {
   serverId: string;
   bots: LarkChannelBotStatus[];
   directory: LarkDirectory | null;
   onCreate: () => void;
   onEdit: (mode: LarkSubstituteMode) => void;
+  onOpenTasks: () => void;
 }) {
   const supported = useHostFeature(serverId, "larkSubstituteModes");
+  const tasksSupported = useHostFeature(serverId, "larkSubstituteTasks");
   const substituteModes = useLarkSubstituteModes(serverId, supported);
   const [error, setError] = useState<string | null>(null);
   const handleEnabledChange = useCallback(
@@ -69,9 +72,16 @@ export function LarkSubstituteModeSection({
           当前 OAuth 授权用户即替身用户；群聊自动邀请机器人入群，私聊按计划扫描并转发到三方群，
           回答均由机器人在话题中发送。
         </Text>
-        <Button variant="default" onPress={onCreate} testID="host-page-lark-create-substitute">
-          创建替身模式
-        </Button>
+        <View style={styles.headerActions}>
+          {tasksSupported ? (
+            <Button variant="outline" onPress={onOpenTasks}>
+              任务列表
+            </Button>
+          ) : null}
+          <Button variant="default" onPress={onCreate} testID="host-page-lark-create-substitute">
+            创建替身模式
+          </Button>
+        </View>
       </View>
       {error || substituteModes.error ? (
         <Text style={settingsStyles.rowError}>{error ?? substituteModes.error?.message}</Text>
@@ -110,5 +120,11 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     justifyContent: "space-between",
     marginBottom: theme.spacing[3],
+  },
+  headerActions: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[2],
   },
 }));

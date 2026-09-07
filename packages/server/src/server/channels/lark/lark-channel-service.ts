@@ -9,9 +9,11 @@ import type {
   LarkSubstituteMode,
   LarkSubstituteModeCreateInput,
   LarkSubstituteModeUpdateInput,
+  LarkSubstituteTask,
+  LarkSubstituteTaskFailureStage,
   SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
-import type { AgentManager, AgentManagerEvent } from "../../agent/agent-manager.js";
+import type { AgentManager, AgentManagerEvent, ManagedAgent } from "../../agent/agent-manager.js";
 import type { AgentStorage } from "../../agent/agent-storage.js";
 import { sendPromptToAgent } from "../../agent/agent-prompt.js";
 import type { BoundCreateAgentCommand } from "../../agent/create-agent/create.js";
@@ -75,6 +77,9 @@ import {
 import { getLarkSubstituteRuleLists } from "./lark-substitute-rule-lists.js";
 import { LarkSubstituteReplySender } from "./lark-substitute-reply-sender.js";
 import { LarkSubstitutePrivatePoller } from "./lark-substitute-private-poller.js";
+import { LarkSubstituteGroupPoller } from "./lark-substitute-group-poller.js";
+import { getLarkSubstituteTaskSource } from "./lark-substitute-task-source.js";
+import { LarkSubstituteTaskStore } from "./lark-substitute-task-store.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -162,6 +167,7 @@ interface PendingRelay {
   availableBots: LarkChatBot[];
   addressedBots: LarkAddressedBot[];
   substituteTrigger: LarkSubstituteTrigger | null;
+  substituteTaskId: string | null;
 }
 
 interface ResolvedLarkThread {
@@ -191,6 +197,18 @@ interface LarkIncomingEventInternalOptions {
   matchedSubstituteMode?: MatchedLarkSubstituteMode;
   supplementalEvents?: NormalizedLarkMessageEvent[];
   trustedSubstituteRelay?: boolean;
+  substituteTaskId?: string;
+}
+
+interface PreparedLarkIncomingEvent {
+  receivedAt: number;
+  config: StoredLarkChannelConfig;
+  event: NormalizedLarkMessageEvent;
+  botIdentity: LarkChannelBotInfo | null;
+  substituteTaskId: string | null;
+  effectiveConfig: StoredLarkChannelConfig;
+  botMentioned: boolean;
+  substituteTrigger: LarkSubstituteTrigger | null;
 }
 
 function getSupplementalEvents(
@@ -435,9 +453,11 @@ export class LarkChannelService {
   private readonly directoryService: LarkDirectoryService | null;
   private readonly userOAuthService: LarkUserOAuthService | null;
   private readonly substituteModeStore: LarkSubstituteModeStore;
+  private readonly substituteTaskStore: LarkSubstituteTaskStore;
   private readonly substituteDebouncer = new LarkSubstituteDebouncer();
   private readonly substituteReplySender: LarkSubstituteReplySender;
   private readonly substitutePrivatePoller: LarkSubstitutePrivatePoller | null;
+  private readonly substituteGroupPoller: LarkSubstituteGroupPoller;
   private readonly incomingMessageObserver:
     | ((botId: string, event: NormalizedLarkMessageEvent) => Promise<void> | void)
     | null;
@@ -484,7 +504,44 @@ export class LarkChannelService {
     this.substituteModeStore = new LarkSubstituteModeStore(
       options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
     );
+    this.substituteTaskStore = new LarkSubstituteTaskStore(
+      options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
+    );
     this.substituteReplySender = new LarkSubstituteReplySender(this.adapter);
+    this.substituteGroupPoller = new LarkSubstituteGroupPoller({
+      logger: this.logger,
+      listChatMessages: (botId, chatId, window) => this.listChatMessages(botId, chatId, window),
+      getAuthorizedUserOpenId: (botId) => {
+        const appId = this.store.getBot(botId)?.config.appId;
+        if (!appId) return null;
+        const status = this.userOAuthService?.getStatus(appId);
+        return status?.authorized ? status.openId : null;
+      },
+      hasTask: (modeId, messageId) => this.substituteTaskStore.hasMessage(modeId, messageId),
+      onMessage: (botId, event) => this.handleIncomingEvent(botId, event),
+      onScanFailure: ({ mode, chatId, event, error }) => {
+        const groupRule = getLarkSubstituteRuleLists(mode).audienceAllowlist.find(
+          (rule) => rule.type === "group" && rule.chatId === chatId,
+        );
+        this.substituteTaskStore.recordOperationalFailure(
+          {
+            modeId: mode.id,
+            modeName: mode.name,
+            botId: mode.botId,
+            source: "group_scan",
+            stage: "group_scan",
+            chatId,
+            chatName: groupRule?.type === "group" ? groupRule.name : (event?.topicName ?? null),
+            messageId: event?.messageId,
+            senderOpenId: event?.openId,
+            senderName: event?.displayName,
+            content: event?.text,
+            error,
+          },
+          new Date().toISOString(),
+        );
+      },
+    });
     this.substitutePrivatePoller =
       this.userOAuthService && options.paseoHome
         ? new LarkSubstitutePrivatePoller({
@@ -500,6 +557,26 @@ export class LarkChannelService {
                 supplementalEvents,
                 trustedSubstituteRelay: true,
               }),
+            onScanFailure: ({ mode, event, error }) => {
+              const now = new Date().toISOString();
+              this.substituteTaskStore.recordOperationalFailure(
+                {
+                  modeId: mode.id,
+                  modeName: mode.name,
+                  botId: mode.botId,
+                  source: "private_scan",
+                  stage: "private_scan",
+                  chatId: event?.chatId,
+                  chatName: event ? "授权用户私聊" : "授权用户私聊扫描",
+                  messageId: event?.messageId,
+                  senderOpenId: event?.openId,
+                  senderName: event?.displayName,
+                  content: event?.text,
+                  error,
+                },
+                now,
+              );
+            },
           })
         : null;
     this.incomingMessageObserver = options.incomingMessageObserver ?? null;
@@ -609,6 +686,7 @@ export class LarkChannelService {
     const bots = this.store.getBots();
     this.substituteModeStore.migrateLegacyBots(bots, new Date().toISOString());
     this.substitutePrivatePoller?.sync(this.substituteModeStore.list());
+    this.substituteGroupPoller.sync(this.substituteModeStore.list());
     if (bots.length === 0) {
       this.emitStatusChanged();
       return;
@@ -627,6 +705,7 @@ export class LarkChannelService {
     this.reminderService?.stop();
     this.substituteDebouncer.clear();
     this.substitutePrivatePoller?.stop();
+    this.substituteGroupPoller.stop();
     for (const subscription of this.subscriptions.values()) {
       subscription.close();
     }
@@ -772,6 +851,48 @@ export class LarkChannelService {
     return this.substituteModeStore.list();
   }
 
+  listSubstituteTasks(): LarkSubstituteTask[] {
+    return this.substituteTaskStore.list();
+  }
+
+  async scanSubstituteTasksNow(): Promise<{
+    enabledModeCount: number;
+    groupScanCount: number;
+    privateScanCount: number;
+  }> {
+    const modes = this.listSubstituteModes().filter((mode) => mode.enabled);
+    const groupModes = modes.filter((mode) =>
+      getLarkSubstituteRuleLists(mode).audienceAllowlist.some((rule) => rule.type === "group"),
+    );
+    const privateModes = this.substitutePrivatePoller
+      ? modes.filter((mode) => mode.privateScan.enabled)
+      : [];
+    await Promise.all([
+      ...groupModes.map((mode) => this.substituteGroupPoller.runMode(mode)),
+      ...privateModes.map((mode) => this.substitutePrivatePoller!.runMode(mode)),
+    ]);
+    return {
+      enabledModeCount: modes.length,
+      groupScanCount: groupModes.length,
+      privateScanCount: privateModes.length,
+    };
+  }
+
+  pauseSubstituteTasks(taskIds: readonly string[]): string[] {
+    const pausedTaskIds = this.substituteTaskStore.pause(taskIds, new Date().toISOString());
+    for (const taskId of pausedTaskIds) {
+      this.substituteDebouncer.cancelTask(taskId);
+    }
+    return pausedTaskIds;
+  }
+
+  deleteSubstituteTasks(taskIds: readonly string[]): string[] {
+    for (const taskId of taskIds) {
+      this.substituteDebouncer.cancelTask(taskId);
+    }
+    return this.substituteTaskStore.deleteMany(taskIds);
+  }
+
   createSubstituteMode(input: LarkSubstituteModeCreateInput): LarkSubstituteMode {
     if (input.enabled) {
       this.requireSubstituteAuthorizedUser(input.botId);
@@ -794,6 +915,7 @@ export class LarkChannelService {
     if (!mode) throw new Error("替身模式不存在");
     void this.refreshSubstituteModeDirectory(mode);
     this.substituteDebouncer.cancelMode(modeId);
+    this.substituteTaskStore.pausePendingForMode(modeId, new Date().toISOString());
     this.emitSubstituteModesChanged();
     return mode;
   }
@@ -803,14 +925,19 @@ export class LarkChannelService {
     if (enabled && current) this.requireSubstituteAuthorizedUser(current.botId);
     const mode = this.substituteModeStore.setEnabled(modeId, enabled, new Date().toISOString());
     if (!mode) throw new Error("替身模式不存在");
-    if (!enabled) this.substituteDebouncer.cancelMode(modeId);
+    if (!enabled) {
+      this.substituteDebouncer.cancelMode(modeId);
+      this.substituteTaskStore.pausePendingForMode(modeId, new Date().toISOString());
+    }
     this.emitSubstituteModesChanged();
     return mode;
   }
 
   deleteSubstituteMode(modeId: string): boolean {
     this.substituteDebouncer.cancelMode(modeId);
+    this.substituteTaskStore.pausePendingForMode(modeId, new Date().toISOString());
     this.substitutePrivatePoller?.deleteMode(modeId);
+    this.substituteGroupPoller.deleteMode(modeId);
     const deleted = this.substituteModeStore.delete(modeId);
     if (deleted) this.emitSubstituteModesChanged();
     return deleted;
@@ -821,47 +948,18 @@ export class LarkChannelService {
     event: NormalizedLarkMessageEvent,
     internal: LarkIncomingEventInternalOptions = {},
   ): Promise<void> {
-    const now = Date.now();
-    const storedBot = this.store.getBot(botId);
-    if (!storedBot) {
-      return;
-    }
-    if (!internal.bypassSubstituteDelay) {
-      this.reminderService?.handleIncomingEvent(botId, event);
-    }
-    const config = storedBot.config;
-    if (!config.enabled) {
-      return;
-    }
-    const enrichedEvent = await this.enrichIncomingEvent(config, event);
-    this.observeDirectoryParticipants(config, enrichedEvent);
-    await this.refreshSubstituteGroupIdentity(botId, config.appId, enrichedEvent);
-    this.observeIncomingMessageContext(botId, enrichedEvent, internal.bypassSubstituteDelay);
-    const botIdentity = await this.resolveBotIdentityForEvent(botId, config, enrichedEvent);
-    const matchedMode = this.resolveMatchedSubstituteMode({
-      modeId: internal.modeId,
-      matchedMode: internal.matchedSubstituteMode,
-      botId,
-      appId: config.appId,
-      event: enrichedEvent,
-    });
-    if (this.scheduleSubstituteModeReply(botId, enrichedEvent, matchedMode, internal)) {
-      return;
-    }
-    const effectiveConfig = matchedMode ? withSubstituteModeTarget(config, matchedMode) : config;
-    await this.ensureSubstituteBotInGroupForEvent(config, enrichedEvent, matchedMode);
-    const botMentioned = isLarkBotMentionEvent(enrichedEvent, botIdentity);
-    const substituteTrigger = matchedMode
-      ? createModeSubstituteTrigger(matchedMode, enrichedEvent)
-      : null;
-    this.logLarkRouting({
-      botId,
-      storedBot,
+    const prepared = await this.prepareIncomingEvent(botId, event, internal);
+    if (!prepared) return;
+    const {
+      receivedAt: now,
+      config,
       event: enrichedEvent,
       botIdentity,
+      substituteTaskId,
+      effectiveConfig,
       botMentioned,
       substituteTrigger,
-    });
+    } = prepared;
     if (
       this.shouldIgnoreLarkRouting({
         botId,
@@ -872,6 +970,7 @@ export class LarkChannelService {
         substituteTrigger,
       })
     ) {
+      this.completeSubstituteTask(substituteTaskId, "skipped");
       return;
     }
     const dedupeKey = getLarkEventDedupeKey(enrichedEvent);
@@ -880,6 +979,7 @@ export class LarkChannelService {
         { botId, eventId: enrichedEvent.eventId, messageId: enrichedEvent.messageId },
         "Ignoring duplicate Lark message event",
       );
+      this.completeSubstituteTask(substituteTaskId, "skipped");
       return;
     }
     if (
@@ -897,6 +997,7 @@ export class LarkChannelService {
         },
         "Ignoring stale Lark message replayed after reconnect",
       );
+      this.completeSubstituteTask(substituteTaskId, "skipped");
       return;
     }
     const user = this.store.findAuthorizedUser(botId, {
@@ -931,6 +1032,7 @@ export class LarkChannelService {
         enrichedEvent.chatId,
         `Pairing requested. Open Paseo Settings > Channels and approve code ${pairing.code}.`,
       );
+      this.completeSubstituteTask(substituteTaskId, "skipped");
       return;
     }
 
@@ -941,6 +1043,12 @@ export class LarkChannelService {
       substituteTrigger,
     );
     if (!thread) {
+      this.completeSubstituteTask(
+        substituteTaskId,
+        "failed",
+        "无法创建或获取飞书话题",
+        "processing",
+      );
       return;
     }
     const { threadId, replyMessageId } = thread;
@@ -951,6 +1059,12 @@ export class LarkChannelService {
         replyMessageId,
         "Lark is connected, but provider and workspace are not configured. Open Paseo Settings > Channels to choose a provider, model, and workspace.",
         { mention: { openId: participants.mentionUserOpenId } },
+      );
+      this.completeSubstituteTask(
+        substituteTaskId,
+        "failed",
+        "未配置可用的 Agent 目标",
+        "processing",
       );
       return;
     }
@@ -971,6 +1085,7 @@ export class LarkChannelService {
           previousMentionAt: existing.lastInboundAt,
           nowIso,
           supplementalEvents,
+          substituteTaskId,
         });
         return;
       }
@@ -991,9 +1106,11 @@ export class LarkChannelService {
         previousMentionAt: null,
         nowIso,
         supplementalEvents,
+        substituteTaskId,
       });
     } catch (error) {
       const message = formatLarkProcessingError(error);
+      this.completeSubstituteTask(substituteTaskId, "failed", message, "processing");
       this.logger.error({ err: error, botId, threadId }, "Failed to process Lark message");
       this.setRuntime(botId, {
         connectionStatus: "error",
@@ -1009,6 +1126,78 @@ export class LarkChannelService {
         { mention: { openId: participants.mentionUserOpenId } },
       );
     }
+  }
+
+  private async prepareIncomingEvent(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+    internal: LarkIncomingEventInternalOptions,
+  ): Promise<PreparedLarkIncomingEvent | null> {
+    const receivedAt = Date.now();
+    const storedBot = this.store.getBot(botId);
+    if (!storedBot) return null;
+    if (!internal.bypassSubstituteDelay) {
+      this.reminderService?.handleIncomingEvent(botId, event);
+    }
+    const config = storedBot.config;
+    if (!config.enabled) return null;
+    const enrichedEvent = await this.enrichIncomingEvent(config, event);
+    this.observeDirectoryParticipants(config, enrichedEvent);
+    await this.refreshSubstituteGroupIdentity(botId, config.appId, enrichedEvent);
+    this.observeIncomingMessageContext(botId, enrichedEvent, internal.bypassSubstituteDelay);
+    const botIdentity = await this.resolveBotIdentityForEvent(botId, config, enrichedEvent);
+    const matchedMode = this.resolveMatchedSubstituteMode({
+      modeId: internal.modeId,
+      matchedMode: internal.matchedSubstituteMode,
+      botId,
+      appId: config.appId,
+      event: enrichedEvent,
+    });
+    const substituteTaskId =
+      internal.substituteTaskId ??
+      (matchedMode
+        ? this.enqueueSubstituteTask(botId, enrichedEvent, matchedMode, internal)
+        : null);
+    if (
+      this.scheduleSubstituteModeReply(
+        botId,
+        enrichedEvent,
+        matchedMode,
+        internal,
+        substituteTaskId,
+      )
+    ) {
+      return null;
+    }
+    if (substituteTaskId) {
+      const task = this.substituteTaskStore.get(substituteTaskId);
+      if (!task || task.status === "paused") return null;
+      this.substituteTaskStore.markRunning(substituteTaskId, new Date().toISOString());
+    }
+    const effectiveConfig = matchedMode ? withSubstituteModeTarget(config, matchedMode) : config;
+    await this.ensureSubstituteBotInGroupForEvent(config, enrichedEvent, matchedMode);
+    const botMentioned = isLarkBotMentionEvent(enrichedEvent, botIdentity);
+    const substituteTrigger = matchedMode
+      ? createModeSubstituteTrigger(matchedMode, enrichedEvent)
+      : null;
+    this.logLarkRouting({
+      botId,
+      storedBot,
+      event: enrichedEvent,
+      botIdentity,
+      botMentioned,
+      substituteTrigger,
+    });
+    return {
+      receivedAt,
+      config,
+      event: enrichedEvent,
+      botIdentity,
+      substituteTaskId,
+      effectiveConfig,
+      botMentioned,
+      substituteTrigger,
+    };
   }
 
   private observeIncomingMessageContext(
@@ -1119,39 +1308,112 @@ export class LarkChannelService {
     event: NormalizedLarkMessageEvent,
     matchedMode: MatchedLarkSubstituteMode | null,
     internal: LarkIncomingEventInternalOptions,
+    substituteTaskId: string | null,
   ): boolean {
-    if (!matchedMode || internal.bypassSubstituteDelay) return false;
-    return this.substituteDebouncer.schedule(matchedMode.mode, event, async (message) => {
-      let supplementalEvents = message.bufferedEvents;
-      try {
-        supplementalEvents = await collectLarkSubstituteMessageContext({
-          latestEvent: message.latestEvent,
-          bufferedEvents: message.bufferedEvents,
-          listChatMessages: this.adapter.listChatMessages
-            ? (window) => this.listChatMessages(botId, message.latestEvent.chatId, window)
-            : undefined,
-        });
-      } catch (error) {
-        this.logger.warn(
-          {
-            err: error,
-            botId,
-            chatId: message.latestEvent.chatId,
-            messageId: message.latestEvent.messageId,
-          },
-          "Failed to fetch substitute-mode surrounding messages; using buffered messages",
-        );
-        supplementalEvents = message.bufferedEvents.filter(
-          (candidate) => candidate.messageId !== message.latestEvent.messageId,
-        );
-      }
-      await this.handleIncomingEvent(botId, message.latestEvent, {
-        bypassSubstituteDelay: true,
+    if (
+      !matchedMode ||
+      internal.bypassSubstituteDelay ||
+      matchedMode.mode.delaySeconds <= 0 ||
+      !substituteTaskId
+    ) {
+      return false;
+    }
+    return this.substituteDebouncer.schedule(
+      matchedMode.mode,
+      event,
+      substituteTaskId,
+      async (message) => {
+        const task = this.substituteTaskStore.get(substituteTaskId);
+        if (!task || task.status !== "pending") return;
+        try {
+          let supplementalEvents = message.bufferedEvents;
+          try {
+            supplementalEvents = await collectLarkSubstituteMessageContext({
+              latestEvent: message.latestEvent,
+              bufferedEvents: message.bufferedEvents,
+              listChatMessages: this.adapter.listChatMessages
+                ? (window) => this.listChatMessages(botId, message.latestEvent.chatId, window)
+                : undefined,
+            });
+          } catch (error) {
+            this.logger.warn(
+              {
+                err: error,
+                botId,
+                chatId: message.latestEvent.chatId,
+                messageId: message.latestEvent.messageId,
+              },
+              "Failed to fetch substitute-mode surrounding messages; using buffered messages",
+            );
+            supplementalEvents = message.bufferedEvents.filter(
+              (candidate) => candidate.messageId !== message.latestEvent.messageId,
+            );
+          }
+          await this.handleIncomingEvent(botId, message.latestEvent, {
+            bypassSubstituteDelay: true,
+            modeId: matchedMode.mode.id,
+            matchedSubstituteMode: matchedMode,
+            supplementalEvents,
+            substituteTaskId,
+          });
+        } catch (error) {
+          const failure = formatLarkProcessingError(error);
+          this.completeSubstituteTask(substituteTaskId, "failed", failure, "processing");
+          this.logger.error(
+            {
+              err: error,
+              botId,
+              chatId: message.latestEvent.chatId,
+              messageId: message.latestEvent.messageId,
+            },
+            "Failed to execute delayed substitute-mode task",
+          );
+        }
+      },
+    );
+  }
+
+  private enqueueSubstituteTask(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+    matchedMode: MatchedLarkSubstituteMode,
+    internal: LarkIncomingEventInternalOptions,
+  ): string {
+    const now = new Date();
+    const delayMs = internal.bypassSubstituteDelay ? 0 : matchedMode.mode.delaySeconds * 1_000;
+    const task = this.substituteTaskStore.enqueue(
+      {
         modeId: matchedMode.mode.id,
-        matchedSubstituteMode: matchedMode,
-        supplementalEvents,
-      });
-    });
+        modeName: matchedMode.mode.name,
+        botId,
+        source: getLarkSubstituteTaskSource(event),
+        chatId: event.chatId,
+        chatName: matchedMode.groupContext?.name ?? event.topicName ?? null,
+        messageId: event.messageId,
+        senderOpenId: event.openId,
+        senderName: event.displayName || null,
+        content: event.text,
+        scheduledAt: delayMs > 0 ? new Date(now.getTime() + delayMs).toISOString() : null,
+      },
+      now.toISOString(),
+    );
+    return task.id;
+  }
+
+  private completeSubstituteTask(
+    taskId: string | null,
+    status: "completed" | "skipped" | "failed",
+    error: string | null = null,
+    failureStage: LarkSubstituteTaskFailureStage | null = null,
+  ): void {
+    if (!taskId) return;
+    this.substituteTaskStore.markCompleted(
+      taskId,
+      status,
+      new Date().toISOString(),
+      error,
+      failureStage,
+    );
   }
 
   private logLarkRouting(input: LarkRoutingDiagnosticInput): void {
@@ -1371,7 +1633,7 @@ export class LarkChannelService {
       });
       this.emitStatusChanged();
       const subscription = await this.adapter.startEvents(config, (event) =>
-        this.handleIncomingEvent(botId, event),
+        this.handleObservedIncomingEvent(botId, event),
       );
       this.subscriptions.set(botId, subscription);
       this.setRuntime(botId, {
@@ -1390,6 +1652,63 @@ export class LarkChannelService {
     this.emitStatusChanged();
   }
 
+  private async handleObservedIncomingEvent(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+  ): Promise<void> {
+    try {
+      await this.handleIncomingEvent(botId, event);
+    } catch (error) {
+      const failure = formatLarkProcessingError(error);
+      const mode = this.findObservedSubstituteMode(botId, event);
+      if (mode) {
+        this.substituteTaskStore.recordOperationalFailure(
+          {
+            modeId: mode.mode.id,
+            modeName: mode.mode.name,
+            botId,
+            source: "group_listener",
+            stage: "listener",
+            chatId: event.chatId,
+            chatName: mode.groupContext?.name ?? event.topicName ?? null,
+            messageId: event.messageId,
+            senderOpenId: event.openId,
+            senderName: event.displayName,
+            content: event.text,
+            error: failure,
+          },
+          new Date().toISOString(),
+        );
+      }
+      this.logger.error(
+        {
+          err: error,
+          botId,
+          chatId: event.chatId,
+          messageId: event.messageId,
+          substituteModeId: mode?.mode.id ?? null,
+        },
+        "Failed to handle observed Lark event",
+      );
+    }
+  }
+
+  private findObservedSubstituteMode(
+    botId: string,
+    event: NormalizedLarkMessageEvent,
+  ): MatchedLarkSubstituteMode | null {
+    const appId = this.store.getBot(botId)?.config.appId ?? null;
+    try {
+      return this.resolveMatchedSubstituteMode({ botId, appId, event });
+    } catch (error) {
+      this.logger.warn(
+        { err: error, botId, chatId: event.chatId, messageId: event.messageId },
+        "Failed to identify substitute mode for failed Lark event",
+      );
+      return null;
+    }
+  }
+
   private async relayToExistingAgent(input: {
     botId: string;
     config: StoredLarkChannelConfig;
@@ -1401,6 +1720,7 @@ export class LarkChannelService {
     previousMentionAt: string | null;
     nowIso: string;
     supplementalEvents: NormalizedLarkMessageEvent[];
+    substituteTaskId: string | null;
   }): Promise<void> {
     const lastAssistantMessage = await this.agentManager.getLastAssistantMessage(input.agentId);
     this.pendingRelays.set(input.agentId, {
@@ -1416,7 +1736,15 @@ export class LarkChannelService {
       availableBots: input.participants.availableBots,
       addressedBots: input.participants.addressedBots,
       substituteTrigger: input.participants.substituteTrigger,
+      substituteTaskId: input.substituteTaskId,
     });
+    if (input.substituteTaskId) {
+      this.substituteTaskStore.attachAgent(
+        input.substituteTaskId,
+        input.agentId,
+        new Date().toISOString(),
+      );
+    }
     this.store.recordThreadConversation(input.botId, {
       agentId: input.agentId,
       chatId: input.event.chatId,
@@ -1454,6 +1782,7 @@ export class LarkChannelService {
     previousMentionAt: string | null;
     nowIso: string;
     supplementalEvents: NormalizedLarkMessageEvent[];
+    substituteTaskId: string | null;
   }): Promise<void> {
     const prompt = await this.formatEventPromptWithHistory({
       config: input.config,
@@ -1478,6 +1807,12 @@ export class LarkChannelService {
         input.replyMessageId,
         "Lark is connected, but the selected assistant or workspace target is not available. Open Paseo Settings > Channels to update the bot binding.",
         { mention: { openId: input.participants.mentionUserOpenId } },
+      );
+      this.completeSubstituteTask(
+        input.substituteTaskId,
+        "failed",
+        "Agent 目标不可用",
+        "processing",
       );
       return;
     }
@@ -1523,7 +1858,15 @@ export class LarkChannelService {
       availableBots: input.participants.availableBots,
       addressedBots: input.participants.addressedBots,
       substituteTrigger: input.participants.substituteTrigger,
+      substituteTaskId: input.substituteTaskId,
     });
+    if (input.substituteTaskId) {
+      this.substituteTaskStore.attachAgent(
+        input.substituteTaskId,
+        snapshot.id,
+        new Date().toISOString(),
+      );
+    }
     await sendPromptToAgent({
       agentManager: this.agentManager,
       agentStorage: this.agentStorage,
@@ -1891,42 +2234,41 @@ export class LarkChannelService {
   }
 
   private async handleAgentManagerEvent(event: AgentManagerEvent): Promise<void> {
-    if (event.type !== "agent_state") {
-      return;
-    }
+    if (event.type !== "agent_state") return;
     const relay = this.pendingRelays.get(event.agent.id);
-    if (!relay) {
-      return;
-    }
+    if (!relay) return;
     if (event.agent.lifecycle === "running") {
       relay.hasSeenRunning = true;
       return;
     }
     if (event.agent.lifecycle === "error") {
-      this.pendingRelays.delete(event.agent.id);
-      const storedBot = this.store.getBot(relay.botId);
-      if (!storedBot) {
-        return;
-      }
-      await this.sendThreadTextSafe(
-        relay.botId,
-        storedBot.config,
-        relay.replyMessageId,
-        event.agent.lastError ?? "Paseo agent failed.",
-        { mention: { openId: relay.mentionUserOpenId } },
-      );
+      await this.handleFailedAgentRelay(event.agent, relay);
       return;
     }
-    if (event.agent.lifecycle !== "idle" || !relay.hasSeenRunning) {
-      return;
-    }
-    this.pendingRelays.delete(event.agent.id);
-    const message = await this.agentManager.getLastAssistantMessage(event.agent.id);
+    if (event.agent.lifecycle !== "idle" || !relay.hasSeenRunning) return;
+    await this.handleCompletedAgentRelay(event.agent, relay);
+  }
+
+  private async handleFailedAgentRelay(agent: ManagedAgent, relay: PendingRelay): Promise<void> {
+    this.pendingRelays.delete(agent.id);
+    const error = agent.lastError ?? "Paseo agent failed.";
+    this.completeSubstituteTask(relay.substituteTaskId, "failed", error, "processing");
+    const storedBot = this.store.getBot(relay.botId);
+    if (!storedBot) return;
+    await this.sendThreadTextSafe(relay.botId, storedBot.config, relay.replyMessageId, error, {
+      mention: { openId: relay.mentionUserOpenId },
+    });
+  }
+
+  private async handleCompletedAgentRelay(agent: ManagedAgent, relay: PendingRelay): Promise<void> {
+    this.pendingRelays.delete(agent.id);
+    const message = await this.agentManager.getLastAssistantMessage(agent.id);
     const text = getCompletedAgentText(message, relay.lastAssistantMessage);
     if (text.trim() === "<paseo-no-substitute-answer />") {
+      this.completeSubstituteTask(relay.substituteTaskId, "skipped");
       this.store.markConversationOutbound(
         relay.botId,
-        event.agent.id,
+        agent.id,
         relay.chatId,
         relay.threadId,
         new Date().toISOString(),
@@ -1946,6 +2288,7 @@ export class LarkChannelService {
         : null;
     const storedBot = this.store.getBot(relay.botId);
     if (!storedBot) {
+      this.completeSubstituteTask(relay.substituteTaskId, "failed", "飞书机器人不存在", "reply");
       return;
     }
     const sent = await this.sendThreadTextSafe(
@@ -1978,10 +2321,16 @@ export class LarkChannelService {
     }
     this.store.markConversationOutbound(
       relay.botId,
-      event.agent.id,
+      agent.id,
       relay.chatId,
       relay.threadId,
       new Date().toISOString(),
+    );
+    this.completeSubstituteTask(
+      relay.substituteTaskId,
+      sent ? "completed" : "failed",
+      sent ? null : "发送飞书回复失败",
+      sent ? null : "reply",
     );
   }
 
@@ -2522,6 +2871,7 @@ export class LarkChannelService {
   private emitSubstituteModesChanged(): void {
     const modes = this.substituteModeStore.list();
     this.substitutePrivatePoller?.sync(modes);
+    this.substituteGroupPoller.sync(modes);
     this.host.emitSubstituteModesChanged?.(modes);
   }
 }

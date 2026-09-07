@@ -1,0 +1,169 @@
+/**
+ * @vitest-environment jsdom
+ */
+import React, { type ReactNode } from "react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { LarkSubstituteTask } from "@getpaseo/protocol/messages";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { LarkSubstituteTaskListPage } from "./lark-substitute-task-list-page";
+
+(globalThis as typeof globalThis & { React: typeof React }).React = React;
+
+const taskState = vi.hoisted(() => ({
+  current: {
+    tasks: [] as LarkSubstituteTask[],
+    isLoading: false,
+    isMutating: false,
+    isScanning: false,
+    error: null as Error | null,
+    scanError: null as Error | null,
+    scanNow: vi.fn(async () => ({
+      enabledModeCount: 1,
+      groupScanCount: 1,
+      privateScanCount: 1,
+    })),
+    pauseTasks: vi.fn(async (_taskIds: string[]) => [] as LarkSubstituteTask[]),
+    deleteTasks: vi.fn(async (_taskIds: string[]) => [] as LarkSubstituteTask[]),
+  },
+}));
+
+const confirmState = vi.hoisted(() => ({
+  confirm: vi.fn(async () => true),
+}));
+
+vi.mock("./use-lark-substitute-tasks", () => ({
+  useLarkSubstituteTasks: () => taskState.current,
+}));
+
+vi.mock("@/utils/confirm-dialog", () => ({
+  confirmDialog: confirmState.confirm,
+}));
+
+vi.mock("@/components/ui/button", () => ({
+  Button: ({
+    children,
+    onPress,
+    disabled,
+  }: {
+    children: ReactNode;
+    onPress?: () => void;
+    disabled?: boolean;
+  }) => (
+    <button type="button" disabled={disabled} onClick={onPress}>
+      {children}
+    </button>
+  ),
+}));
+
+function task(
+  id: string,
+  status: LarkSubstituteTask["status"],
+  source: LarkSubstituteTask["source"],
+): LarkSubstituteTask {
+  return {
+    id,
+    modeId: "mode-1",
+    modeName: "工作替身",
+    botId: "bot-1",
+    source,
+    chatId: "oc_group",
+    chatName: "研发群",
+    messageId: `om_${id}`,
+    senderOpenId: "ou_sender",
+    senderName: "张三",
+    content: `问题 ${id}`,
+    status,
+    scheduledAt: status === "pending" ? "2026-09-07T10:10:00.000Z" : null,
+    startedAt: status === "running" ? "2026-09-07T10:01:00.000Z" : null,
+    completedAt: null,
+    agentId: null,
+    error: null,
+    failureStage: null,
+    createdAt: "2026-09-07T10:00:00.000Z",
+    updatedAt: "2026-09-07T10:00:00.000Z",
+  };
+}
+
+afterEach(() => {
+  cleanup();
+  taskState.current.tasks = [];
+  taskState.current.isLoading = false;
+  taskState.current.isMutating = false;
+  taskState.current.isScanning = false;
+  taskState.current.error = null;
+  taskState.current.scanError = null;
+  taskState.current.scanNow.mockReset();
+  taskState.current.scanNow.mockResolvedValue({
+    enabledModeCount: 1,
+    groupScanCount: 1,
+    privateScanCount: 1,
+  });
+  taskState.current.pauseTasks.mockReset();
+  taskState.current.pauseTasks.mockResolvedValue([]);
+  taskState.current.deleteTasks.mockReset();
+  taskState.current.deleteTasks.mockResolvedValue([]);
+  confirmState.confirm.mockReset();
+  confirmState.confirm.mockResolvedValue(true);
+});
+
+describe("LarkSubstituteTaskListPage", () => {
+  test("立即执行一次群消息和私聊扫描", async () => {
+    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "立刻执行一次扫描" }));
+
+    await waitFor(() => {
+      expect(taskState.current.scanNow).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("扫描完成：群消息扫描 1 个，私聊扫描 1 个。")).toBeTruthy();
+    });
+  });
+
+  test("批量暂停时只提交待执行任务", async () => {
+    taskState.current.tasks = [
+      task("pending", "pending", "group_listener"),
+      task("running", "running", "group_scan"),
+    ];
+    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+
+    fireEvent.click(screen.getByLabelText("选择全部替身任务"));
+    fireEvent.click(screen.getByRole("button", { name: "暂停任务" }));
+
+    await waitFor(() => {
+      expect(taskState.current.pauseTasks).toHaveBeenCalledWith(["pending"]);
+    });
+  });
+
+  test("确认后批量删除选中的监听和扫描任务", async () => {
+    taskState.current.tasks = [
+      task("listener", "pending", "group_listener"),
+      task("scanner", "completed", "group_scan"),
+    ];
+    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+
+    fireEvent.click(screen.getByLabelText("选择全部替身任务"));
+    fireEvent.click(screen.getByRole("button", { name: "删除任务" }));
+
+    await waitFor(() => {
+      expect(confirmState.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "删除 2 个替身任务？" }),
+      );
+      expect(taskState.current.deleteTasks).toHaveBeenCalledWith(["listener", "scanner"]);
+    });
+  });
+
+  test("展示失败阶段、错误详情和处理建议", () => {
+    taskState.current.tasks = [
+      {
+        ...task("failed", "failed", "private_scan"),
+        failureStage: "private_scan",
+        error: "飞书用户 OAuth 缺少 im:message:readonly 权限",
+      },
+    ];
+
+    render(<LarkSubstituteTaskListPage serverId="server-1" />);
+
+    expect(screen.getByText("失败阶段：私聊扫描")).toBeTruthy();
+    expect(screen.getByText("错误详情：飞书用户 OAuth 缺少 im:message:readonly 权限")).toBeTruthy();
+    expect(screen.getByText(/请检查飞书用户 OAuth 权限/)).toBeTruthy();
+  });
+});

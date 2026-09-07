@@ -40,6 +40,7 @@ import type {
   DeleteLarkBotOptions,
   DeleteLarkReminderOptions,
   DeleteLarkSubstituteModeOptions,
+  DeleteLarkSubstituteTasksOptions,
   GetLarkBotApplicationOptions,
   LarkChannelRequestOptions,
   LarkUserOAuthCompleteOptions,
@@ -55,6 +56,7 @@ import type {
   SetLarkChannelEnabledOptions,
   SetLarkReminderEnabledOptions,
   SetLarkSubstituteModeEnabledOptions,
+  PauseLarkSubstituteTasksOptions,
   UpdateAssistantOptions,
   UpdateLarkReminderOptions,
   UpdateLarkSubstituteModeOptions,
@@ -995,6 +997,44 @@ export class DaemonResourceRpcClient {
         modeId: options.modeId,
       },
       responseType: "channel.lark.substitute.delete.response",
+    });
+  }
+
+  listLarkSubstituteTasks(requestId?: string) {
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.substitute_task.list.request" },
+      responseType: "channel.lark.substitute_task.list.response",
+    });
+  }
+
+  scanLarkSubstituteTasks(requestId?: string) {
+    return this.request({
+      requestId,
+      message: { type: "channel.lark.substitute_task.scan.request" },
+      responseType: "channel.lark.substitute_task.scan.response",
+    });
+  }
+
+  pauseLarkSubstituteTasks(options: PauseLarkSubstituteTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute_task.pause.request",
+        taskIds: options.taskIds,
+      },
+      responseType: "channel.lark.substitute_task.pause.response",
+    });
+  }
+
+  deleteLarkSubstituteTasks(options: DeleteLarkSubstituteTasksOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.substitute_task.delete.request",
+        taskIds: options.taskIds,
+      },
+      responseType: "channel.lark.substitute_task.delete.response",
     });
   }
 }

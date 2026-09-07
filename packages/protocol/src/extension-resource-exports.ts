@@ -185,6 +185,17 @@ export {
 } from "./channel/lark/substitute-types.js";
 export * from "./channel/lark/substitute-rpc-schemas.js";
 export {
+  LarkSubstituteTaskFailureStageSchema,
+  LarkSubstituteTaskSchema,
+  LarkSubstituteTaskSourceSchema,
+  LarkSubstituteTaskStatusSchema,
+  type LarkSubstituteTaskFailureStage,
+  type LarkSubstituteTask,
+  type LarkSubstituteTaskSource,
+  type LarkSubstituteTaskStatus,
+} from "./channel/lark/substitute-task-types.js";
+export * from "./channel/lark/substitute-task-rpc-schemas.js";
+export {
   AssistantCreateInputSchema,
   AssistantMemoryDetailFileSchema,
   AssistantMemoryFilesSchema,

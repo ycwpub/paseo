@@ -24,9 +24,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
-import {
-  buildProjectSettingsRoute,
-} from "@/utils/host-routes";
+import { buildProjectSettingsRoute } from "@/utils/host-routes";
 import {
   buildHostMemoryDetailRoute,
   buildHostMemoryRoute,

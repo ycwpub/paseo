@@ -17,8 +17,7 @@ export interface DirectorylessProjectNamePage {
 
 export type AddProjectPage = base.AddProjectPage | DirectorylessProjectNamePage;
 
-export interface AddProjectFlowState
-  extends Omit<base.AddProjectFlowState, "hosts" | "pages"> {
+export interface AddProjectFlowState extends Omit<base.AddProjectFlowState, "hosts" | "pages"> {
   hosts: AddProjectHost[];
   pages: AddProjectPage[];
   directorylessProjectNameDrafts: Record<string, string>;
@@ -38,10 +37,7 @@ function asExtendedState(state: base.AddProjectFlowState): AddProjectFlowState {
   return state as unknown as AddProjectFlowState;
 }
 
-function directorylessProjectNamePage(
-  hostId: string,
-  name: string
-): DirectorylessProjectNamePage {
+function directorylessProjectNamePage(hostId: string, name: string): DirectorylessProjectNamePage {
   return {
     kind: "directoryless-project-name",
     hostId,
@@ -59,19 +55,13 @@ function initialHostFor(input: {
   const preferredHost = input.preferredHostId
     ? input.hosts.find((host) => host.serverId === input.preferredHostId)
     : null;
-  return (
-    preferredHost ?? (input.hosts.length === 1 ? input.hosts[0] : null) ?? null
-  );
+  return preferredHost ?? (input.hosts.length === 1 ? input.hosts[0] : null) ?? null;
 }
 
-export function openAddProjectFlow(
-  input: OpenAddProjectFlowInput
-): AddProjectFlowState {
+export function openAddProjectFlow(input: OpenAddProjectFlowInput): AddProjectFlowState {
   const baseState = base.openAddProjectFlow({
     hosts: input.hosts,
-    ...(input.preferredHostId
-      ? { preferredHostId: input.preferredHostId }
-      : {}),
+    ...(input.preferredHostId ? { preferredHostId: input.preferredHostId } : {}),
   });
   const initialHost = initialHostFor(input);
   const initialName = input.initialDirectorylessProjectName;
@@ -84,9 +74,7 @@ export function openAddProjectFlow(
         ? [directorylessProjectNamePage(initialHost.serverId, initialName)]
         : baseState.pages,
     directorylessProjectNameDrafts:
-      initialHost && initialName !== undefined
-        ? { [initialHost.serverId]: initialName }
-        : {},
+      initialHost && initialName !== undefined ? { [initialHost.serverId]: initialName } : {},
   };
 }
 
@@ -94,7 +82,7 @@ export function applyAvailableAddProjectHosts(
   state: AddProjectFlowState,
   hosts: AddProjectHost[],
   preferredHostId?: string,
-  initialDirectorylessProjectName?: string
+  initialDirectorylessProjectName?: string,
 ): AddProjectFlowState {
   const current = currentAddProjectPage(state);
   if (state.pages.length !== 1 || current.kind !== "host") {
@@ -102,11 +90,7 @@ export function applyAvailableAddProjectHosts(
   }
 
   const baseState = asExtendedState(
-    base.applyAvailableAddProjectHosts(
-      asBaseState(state),
-      hosts,
-      preferredHostId
-    )
+    base.applyAvailableAddProjectHosts(asBaseState(state), hosts, preferredHostId),
   );
   const initialHost = initialHostFor({ hosts, preferredHostId });
   if (
@@ -119,12 +103,7 @@ export function applyAvailableAddProjectHosts(
   return {
     ...baseState,
     hosts,
-    pages: [
-      directorylessProjectNamePage(
-        initialHost.serverId,
-        initialDirectorylessProjectName
-      ),
-    ],
+    pages: [directorylessProjectNamePage(initialHost.serverId, initialDirectorylessProjectName)],
     directorylessProjectNameDrafts: {
       ...state.directorylessProjectNameDrafts,
       [initialHost.serverId]: initialDirectorylessProjectName,
@@ -132,9 +111,7 @@ export function applyAvailableAddProjectHosts(
   };
 }
 
-export function currentAddProjectPage(
-  state: AddProjectFlowState
-): AddProjectPage {
+export function currentAddProjectPage(state: AddProjectFlowState): AddProjectPage {
   const page = state.pages[state.pages.length - 1];
   if (!page) {
     throw new Error("Add Project flow must always contain a page");
@@ -144,27 +121,23 @@ export function currentAddProjectPage(
 
 export function updateCurrentAddProjectPage(
   state: AddProjectFlowState,
-  update: (page: AddProjectPage) => AddProjectPage
+  update: (page: AddProjectPage) => AddProjectPage,
 ): AddProjectFlowState {
   const index = state.pages.length - 1;
   return {
     ...state,
-    pages: state.pages.map((page, pageIndex) =>
-      pageIndex === index ? update(page) : page
-    ),
+    pages: state.pages.map((page, pageIndex) => (pageIndex === index ? update(page) : page)),
   };
 }
 
 export function pushAddProjectPage(
   state: AddProjectFlowState,
-  page: AddProjectPage
+  page: AddProjectPage,
 ): AddProjectFlowState {
   return { ...state, pages: [...state.pages, page] };
 }
 
-export function backAddProjectPage(
-  state: AddProjectFlowState
-): AddProjectFlowState | null {
+export function backAddProjectPage(state: AddProjectFlowState): AddProjectFlowState | null {
   if (state.pages.length === 1) {
     return null;
   }
@@ -173,23 +146,21 @@ export function backAddProjectPage(
 
 export function chooseAddProjectHost(
   state: AddProjectFlowState,
-  hostId: string
+  hostId: string,
 ): AddProjectFlowState {
   return asExtendedState(base.chooseAddProjectHost(asBaseState(state), hostId));
 }
 
 export function openDirectorySearchPage(
   state: AddProjectFlowState,
-  hostId: string
+  hostId: string,
 ): AddProjectFlowState {
-  return asExtendedState(
-    base.openDirectorySearchPage(asBaseState(state), hostId)
-  );
+  return asExtendedState(base.openDirectorySearchPage(asBaseState(state), hostId));
 }
 
 export function openGithubSearchPage(
   state: AddProjectFlowState,
-  hostId: string
+  hostId: string,
 ): AddProjectFlowState {
   return asExtendedState(base.openGithubSearchPage(asBaseState(state), hostId));
 }
@@ -197,65 +168,54 @@ export function openGithubSearchPage(
 export function openGithubLocationPage(
   state: AddProjectFlowState,
   hostId: string,
-  repository: GithubRepositoryChoice
+  repository: GithubRepositoryChoice,
 ): AddProjectFlowState {
-  return asExtendedState(
-    base.openGithubLocationPage(asBaseState(state), hostId, repository)
-  );
+  return asExtendedState(base.openGithubLocationPage(asBaseState(state), hostId, repository));
 }
 
 export function openNewDirectoryParentPage(
   state: AddProjectFlowState,
-  hostId: string
+  hostId: string,
 ): AddProjectFlowState {
-  return asExtendedState(
-    base.openNewDirectoryParentPage(asBaseState(state), hostId)
-  );
+  return asExtendedState(base.openNewDirectoryParentPage(asBaseState(state), hostId));
 }
 
 export function openDirectorylessProjectNamePage(
   state: AddProjectFlowState,
-  hostId: string
+  hostId: string,
 ): AddProjectFlowState {
   return pushAddProjectPage(
     state,
-    directorylessProjectNamePage(
-      hostId,
-      state.directorylessProjectNameDrafts[hostId] ?? ""
-    )
+    directorylessProjectNamePage(hostId, state.directorylessProjectNameDrafts[hostId] ?? ""),
   );
 }
 
 export function openNewDirectoryNamePage(
   state: AddProjectFlowState,
   hostId: string,
-  parentPath: string
+  parentPath: string,
 ): AddProjectFlowState {
-  return asExtendedState(
-    base.openNewDirectoryNamePage(asBaseState(state), hostId, parentPath)
-  );
+  return asExtendedState(base.openNewDirectoryNamePage(asBaseState(state), hostId, parentPath));
 }
 
 export function setAddProjectPageInput(
   state: AddProjectFlowState,
-  value: string
+  value: string,
 ): AddProjectFlowState {
   const page = currentAddProjectPage(state);
   if (page.kind === "directoryless-project-name") {
     return updateCurrentAddProjectPage(state, (current) =>
       current.kind === "directoryless-project-name"
         ? { ...current, name: value, activeIndex: 0, error: null }
-        : current
+        : current,
     );
   }
-  return asExtendedState(
-    base.setAddProjectPageInput(asBaseState(state), value)
-  );
+  return asExtendedState(base.setAddProjectPageInput(asBaseState(state), value));
 }
 
 export function setDirectorylessProjectName(
   state: AddProjectFlowState,
-  value: string
+  value: string,
 ): AddProjectFlowState {
   const page = currentAddProjectPage(state);
   if (page.kind !== "directoryless-project-name") return state;
@@ -271,14 +231,14 @@ export function setDirectorylessProjectName(
 
 export function setNewDirectoryName(
   state: AddProjectFlowState,
-  value: string
+  value: string,
 ): AddProjectFlowState {
   return asExtendedState(base.setNewDirectoryName(asBaseState(state), value));
 }
 
 export function setAddProjectActiveIndex(
   state: AddProjectFlowState,
-  activeIndex: number
+  activeIndex: number,
 ): AddProjectFlowState {
   if (currentAddProjectPage(state).kind === "directoryless-project-name") {
     return updateCurrentAddProjectPage(state, (page) => ({
@@ -286,9 +246,7 @@ export function setAddProjectActiveIndex(
       activeIndex,
     }));
   }
-  return asExtendedState(
-    base.setAddProjectActiveIndex(asBaseState(state), activeIndex)
-  );
+  return asExtendedState(base.setAddProjectActiveIndex(asBaseState(state), activeIndex));
 }
 
 export { moveAddProjectActiveIndex, moveAddProjectSelection } from "./model";

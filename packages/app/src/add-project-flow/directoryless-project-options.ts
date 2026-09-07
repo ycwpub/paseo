@@ -11,21 +11,14 @@ import {
 } from "./options";
 import type { AddProjectHost } from "./directoryless-project-model";
 
-export type AddProjectMethodId =
-  | BaseAddProjectMethodOption["id"]
-  | "directoryless-project";
+export type AddProjectMethodId = BaseAddProjectMethodOption["id"] | "directoryless-project";
 
-export interface AddProjectMethodOption
-  extends Omit<BaseAddProjectMethodOption, "id"> {
+export interface AddProjectMethodOption extends Omit<BaseAddProjectMethodOption, "id"> {
   id: AddProjectMethodId;
 }
 
-export function buildAddProjectMethods(
-  host: AddProjectHost
-): AddProjectMethodOption[] {
-  const options: AddProjectMethodOption[] = [
-    ...buildBaseAddProjectMethods(host),
-  ];
+export function buildAddProjectMethods(host: AddProjectHost): AddProjectMethodOption[] {
+  const options: AddProjectMethodOption[] = [...buildBaseAddProjectMethods(host)];
   if (!host.canAddProject) return options;
   options.push({
     id: "directoryless-project",

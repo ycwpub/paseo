@@ -50,6 +50,7 @@ import {
   LarkSubstituteModeEditor,
   LarkSubstituteModeSection,
 } from "./lark-substitute-mode-section";
+import { LarkSubstituteTaskListPage } from "./lark-substitute-task-list-page";
 
 const LARK_DOCS_URL = "https://open.larkoffice.com/document/server-docs/server-side-sdk";
 const LEGACY_LARK_BOT_ID = "__legacy_lark_bot__";
@@ -144,6 +145,7 @@ type LarkChannelPage =
   | "contact-edit"
   | "substitute-create"
   | "substitute-edit"
+  | "substitute-tasks"
   | "reminder-create"
   | "reminder-edit";
 
@@ -158,6 +160,7 @@ const LARK_CHANNEL_PAGE_TITLES: Record<Exclude<LarkChannelPage, "overview">, str
   "contact-edit": "编辑联系人",
   "substitute-create": "创建替身模式",
   "substitute-edit": "编辑替身模式",
+  "substitute-tasks": "替身任务",
   "reminder-create": "创建定时任务",
   "reminder-edit": "编辑定时任务",
 };
@@ -1410,6 +1413,9 @@ function LarkChannelLoadedContent({
     setEditingSubstituteMode(mode);
     setPage("substitute-edit");
   }, []);
+  const handleOpenSubstituteTasks = useCallback(() => {
+    setPage("substitute-tasks");
+  }, []);
   const handleSubstituteModeSaved = useCallback(() => {
     setEditingSubstituteMode(null);
     setPage("overview");
@@ -1661,6 +1667,7 @@ function LarkChannelLoadedContent({
           directory={directory}
           onCreate={handleCreateSubstituteMode}
           onEdit={handleEditSubstituteMode}
+          onOpenTasks={handleOpenSubstituteTasks}
         />
         <View testID="host-page-lark-reminders-section">
           <LarkReminderSection
@@ -1768,6 +1775,15 @@ function LarkChannelLoadedContent({
           mode={editingSubstituteMode}
           onSaved={handleSubstituteModeSaved}
         />
+      </View>
+    ),
+    "substitute-tasks": (
+      <View testID="host-page-channels-substitute-tasks">
+        <SecondaryPageIntro
+          title="替身任务"
+          description="查看群消息监听、群消息扫描和私聊扫描创建的替身回答任务，并批量暂停或删除。"
+        />
+        <LarkSubstituteTaskListPage serverId={serverId} />
       </View>
     ),
     "reminder-create": (

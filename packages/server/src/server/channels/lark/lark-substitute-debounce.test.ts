@@ -66,9 +66,9 @@ describe("LarkSubstituteDebouncer", () => {
     const debouncer = new LarkSubstituteDebouncer();
     const handler = vi.fn(async () => undefined);
 
-    expect(debouncer.schedule(mode(), event("om_1", "第一段"), handler)).toBe(true);
+    expect(debouncer.schedule(mode(), event("om_1", "第一段"), "task-1", handler)).toBe(true);
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(debouncer.schedule(mode(), event("om_2", "完整问题"), handler)).toBe(true);
+    expect(debouncer.schedule(mode(), event("om_2", "完整问题"), "task-1", handler)).toBe(true);
     await vi.advanceTimersByTimeAsync(1_999);
     expect(handler).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
@@ -88,13 +88,13 @@ describe("LarkSubstituteDebouncer", () => {
     const debouncer = new LarkSubstituteDebouncer();
     const handler = vi.fn(async () => undefined);
 
-    debouncer.schedule(mode(), event("om_1", "问题"), handler);
+    debouncer.schedule(mode(), event("om_1", "问题"), "task-1", handler);
     debouncer.cancelMode("mode-1");
     await vi.runAllTimersAsync();
     expect(handler).not.toHaveBeenCalled();
-    expect(debouncer.schedule(mode({ delaySeconds: 0 }), event("om_2", "立即处理"), handler)).toBe(
-      false,
-    );
+    expect(
+      debouncer.schedule(mode({ delaySeconds: 0 }), event("om_2", "立即处理"), "task-2", handler),
+    ).toBe(false);
   });
 
   test("uses the latest group mention for the same substituted user across senders", async () => {
@@ -102,8 +102,8 @@ describe("LarkSubstituteDebouncer", () => {
     const debouncer = new LarkSubstituteDebouncer();
     const handler = vi.fn(async () => undefined);
 
-    debouncer.schedule(mode(), eventFrom("om_1", "用户一的问题", "ou_user_1"), handler);
-    debouncer.schedule(mode(), eventFrom("om_2", "用户二的问题", "ou_user_2"), handler);
+    debouncer.schedule(mode(), eventFrom("om_1", "用户一的问题", "ou_user_1"), "task-1", handler);
+    debouncer.schedule(mode(), eventFrom("om_2", "用户二的问题", "ou_user_2"), "task-1", handler);
     await vi.runAllTimersAsync();
 
     expect(handler).toHaveBeenCalledTimes(1);

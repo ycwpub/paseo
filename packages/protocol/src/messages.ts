@@ -3651,6 +3651,8 @@ export const ServerInfoStatusPayloadSchema = z
         larkReminders: z.boolean().optional(),
         // COMPAT(larkSubstituteModes): added in v0.7.0, remove gate after 2027-09-04.
         larkSubstituteModes: z.boolean().optional(),
+        // COMPAT(larkSubstituteTasks): added in v0.7.0, remove gate after 2027-09-07.
+        larkSubstituteTasks: z.boolean().optional(),
         // COMPAT(larkDirectory): added in v0.3.2, remove gate after 2027-02-19.
         larkDirectory: z.boolean().optional(),
         // COMPAT(larkDirectoryOpenIdLookup): added in v0.7.0, remove gate after 2027-09-07.

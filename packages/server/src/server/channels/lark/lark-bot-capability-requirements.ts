@@ -37,6 +37,9 @@ export const PASEO_LARK_USER_SCOPES = [
   // Read group context and scan the authorized user's private messages.
   "im:message.group_msg:get_as_user",
   "im:message.p2p_msg:get_as_user",
+  // The search API returns message IDs; reading each message body with a user token
+  // additionally requires this user-identity permission.
+  "im:message:readonly",
   "search:message",
 ] as const;
 

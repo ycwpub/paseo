@@ -4,10 +4,7 @@ import { useRouter } from "expo-router";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
-import {
-  buildHostResourceSyncRoute,
-  type HostResourceSyncPage,
-} from "@/utils/host-feature-routes";
+import { buildHostResourceSyncRoute, type HostResourceSyncPage } from "@/utils/host-feature-routes";
 import { HOST_RESOURCE_SYNC_ENTRIES } from "./host-resource-sync-model";
 
 function HostResourceSyncEntryRow({

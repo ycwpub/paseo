@@ -369,8 +369,10 @@ vi.mock("./lark-substitute-mode-section", () => ({
   LarkSubstituteModeSection: ({
     onCreate,
     onEdit,
+    onOpenTasks,
   }: {
     onCreate: () => void;
+    onOpenTasks: () => void;
     onEdit: (mode: {
       id: string;
       name: string;
@@ -424,6 +426,9 @@ vi.mock("./lark-substitute-mode-section", () => ({
         <button type="button" onClick={handleEdit}>
           编辑替身模式
         </button>
+        <button type="button" onClick={onOpenTasks}>
+          替身任务
+        </button>
       </div>
     );
   },
@@ -441,6 +446,10 @@ vi.mock("./lark-substitute-mode-section", () => ({
       </button>
     </div>
   ),
+}));
+
+vi.mock("./lark-substitute-task-list-page", () => ({
+  LarkSubstituteTaskListPage: () => <div>替身任务列表页面</div>,
 }));
 
 function makeBot(overrides: Partial<LarkChannelBotStatus> = {}): LarkChannelBotStatus {
@@ -706,6 +715,15 @@ describe("LarkChannelSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "编辑替身模式" }));
     expect(await screen.findByText("正在编辑 工作替身")).toBeTruthy();
+  });
+
+  test("opens the substitute task list as an independent page", async () => {
+    channelState.current.status = makeStatus([makeBot()]);
+    render(<LarkChannelSection serverId="server-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "替身任务" }));
+
+    expect(await screen.findByText("替身任务列表页面")).toBeTruthy();
   });
 
   test("shows authorized users and groups with friendly directory identities", async () => {

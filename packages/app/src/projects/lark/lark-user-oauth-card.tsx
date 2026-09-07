@@ -131,8 +131,14 @@ export function LarkUserOAuthCard({ serverId, appId }: { serverId: string; appId
           回答始终由机器人发送。Access Token 过期前会通过 Refresh Token 自动续期。
         </Text>
         <Text style={settingsStyles.rowHint}>
-          飞书应用需开通用户权限：读取群信息、添加群成员、读取私聊消息、搜索消息和离线访问授权数据。
+          飞书应用需开通用户权限：读取群信息、添加群成员、读取消息（im:message:readonly）、
+          读取私聊消息、搜索消息和离线访问授权数据。
         </Text>
+        {oauth.status?.needsAuthorization && oauth.status.scope ? (
+          <Text style={settingsStyles.rowError}>
+            当前用户授权缺少最新权限或已失效，请点击下方按钮重新授权。
+          </Text>
+        ) : null}
         <Text style={settingsStyles.rowTitle}>{formatAuthorizedIdentity(oauth.status)}</Text>
         <AuthorizationStartFields
           appId={appId}

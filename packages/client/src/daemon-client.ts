@@ -749,6 +749,22 @@ type LarkSubstituteModeDeletePayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.substitute.delete.response" }
 >["payload"];
+type LarkSubstituteTaskListPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute_task.list.response" }
+>["payload"];
+type LarkSubstituteTaskScanPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute_task.scan.response" }
+>["payload"];
+type LarkSubstituteTaskPausePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute_task.pause.response" }
+>["payload"];
+type LarkSubstituteTaskDeletePayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.substitute_task.delete.response" }
+>["payload"];
 type LoopRunPayload = Extract<SessionOutboundMessage, { type: "loop/run/response" }>["payload"];
 type LoopListPayload = Extract<SessionOutboundMessage, { type: "loop/list/response" }>["payload"];
 type LoopInspectPayload = Extract<
@@ -1155,6 +1171,14 @@ export interface SetLarkSubstituteModeEnabledOptions {
 }
 export interface DeleteLarkSubstituteModeOptions {
   modeId: string;
+  requestId?: string;
+}
+export interface PauseLarkSubstituteTasksOptions {
+  taskIds: string[];
+  requestId?: string;
+}
+export interface DeleteLarkSubstituteTasksOptions {
+  taskIds: string[];
   requestId?: string;
 }
 export interface RunLoopOptions {
@@ -6855,6 +6879,26 @@ export class DaemonClient {
     options: DeleteLarkSubstituteModeOptions,
   ): Promise<LarkSubstituteModeDeletePayload> {
     return this.resourceRpc.deleteLarkSubstituteMode(options);
+  }
+
+  async listLarkSubstituteTasks(requestId?: string): Promise<LarkSubstituteTaskListPayload> {
+    return this.resourceRpc.listLarkSubstituteTasks(requestId);
+  }
+
+  async scanLarkSubstituteTasks(requestId?: string): Promise<LarkSubstituteTaskScanPayload> {
+    return this.resourceRpc.scanLarkSubstituteTasks(requestId);
+  }
+
+  async pauseLarkSubstituteTasks(
+    options: PauseLarkSubstituteTasksOptions,
+  ): Promise<LarkSubstituteTaskPausePayload> {
+    return this.resourceRpc.pauseLarkSubstituteTasks(options);
+  }
+
+  async deleteLarkSubstituteTasks(
+    options: DeleteLarkSubstituteTasksOptions,
+  ): Promise<LarkSubstituteTaskDeletePayload> {
+    return this.resourceRpc.deleteLarkSubstituteTasks(options);
   }
 
   async scheduleCreate(options: CreateScheduleOptions): Promise<ScheduleCreatePayload> {

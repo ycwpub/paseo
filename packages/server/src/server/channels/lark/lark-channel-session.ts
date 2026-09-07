@@ -7,6 +7,11 @@ import {
   handleLarkSubstituteSessionRequest,
   isLarkSubstituteSessionRequest,
 } from "./lark-substitute-session-handler.js";
+import {
+  emitLarkSubstituteTaskSessionError,
+  handleLarkSubstituteTaskSessionRequest,
+  isLarkSubstituteTaskSessionRequest,
+} from "./lark-substitute-task-session-handler.js";
 
 export type LarkChannelSessionRequest = Extract<
   SessionInboundMessage,
@@ -50,7 +55,11 @@ type LarkChannelResponse = Extract<
       | "channel.lark.substitute.create.response"
       | "channel.lark.substitute.update.response"
       | "channel.lark.substitute.set_enabled.response"
-      | "channel.lark.substitute.delete.response";
+      | "channel.lark.substitute.delete.response"
+      | "channel.lark.substitute_task.list.response"
+      | "channel.lark.substitute_task.scan.response"
+      | "channel.lark.substitute_task.pause.response"
+      | "channel.lark.substitute_task.delete.response";
   }
 >;
 
@@ -139,6 +148,12 @@ export class LarkChannelSession {
       }
       if (isLarkSubstituteSessionRequest(message)) {
         handleLarkSubstituteSessionRequest(message, this.service, (response) =>
+          this.emitResponse(response),
+        );
+        return;
+      }
+      if (isLarkSubstituteTaskSessionRequest(message)) {
+        await handleLarkSubstituteTaskSessionRequest(message, this.service, (response) =>
           this.emitResponse(response),
         );
         return;
@@ -466,6 +481,15 @@ export class LarkChannelSession {
     }
     if (isLarkSubstituteSessionRequest(message)) {
       emitLarkSubstituteSessionError(
+        message,
+        this.service,
+        (response) => this.emitResponse(response),
+        error,
+      );
+      return;
+    }
+    if (isLarkSubstituteTaskSessionRequest(message)) {
+      emitLarkSubstituteTaskSessionError(
         message,
         this.service,
         (response) => this.emitResponse(response),

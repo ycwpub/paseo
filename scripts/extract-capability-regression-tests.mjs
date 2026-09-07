@@ -341,11 +341,7 @@ function countIdentifierReferences(sourceFile) {
 function sourceContainsJsx(sourceFile) {
   let found = false;
   const visit = (node) => {
-    if (
-      ts.isJsxElement(node) ||
-      ts.isJsxSelfClosingElement(node) ||
-      ts.isJsxFragment(node)
-    ) {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) {
       found = true;
       return;
     }
@@ -373,7 +369,8 @@ function updateImportStatement(statement, references) {
     return statement;
   }
 
-  const defaultImport = clause.name && hasReference(references, clause.name) ? clause.name : undefined;
+  const defaultImport =
+    clause.name && hasReference(references, clause.name) ? clause.name : undefined;
   let namedBindings;
   if (clause.namedBindings && ts.isNamespaceImport(clause.namedBindings)) {
     namedBindings = hasReference(references, clause.namedBindings.name)
@@ -452,13 +449,7 @@ function pruneUnusedTopLevelDeclarations(source, path, scriptKind) {
   const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
 
   for (let iteration = 0; iteration < 20; iteration += 1) {
-    const sourceFile = ts.createSourceFile(
-      path,
-      current,
-      ts.ScriptTarget.Latest,
-      true,
-      scriptKind,
-    );
+    const sourceFile = ts.createSourceFile(path, current, ts.ScriptTarget.Latest, true, scriptKind);
     const references = countIdentifierReferences(sourceFile);
     if (scriptKind === ts.ScriptKind.TSX && sourceContainsJsx(sourceFile)) {
       references.set("React", [-1, ...(references.get("React") ?? [])]);

@@ -129,6 +129,16 @@ import {
   LarkSubstituteModeUpdateResponseSchema,
 } from "./channel/lark/substitute-rpc-schemas.js";
 import {
+  LarkSubstituteTaskDeleteRequestSchema,
+  LarkSubstituteTaskDeleteResponseSchema,
+  LarkSubstituteTaskListRequestSchema,
+  LarkSubstituteTaskListResponseSchema,
+  LarkSubstituteTaskPauseRequestSchema,
+  LarkSubstituteTaskPauseResponseSchema,
+  LarkSubstituteTaskScanRequestSchema,
+  LarkSubstituteTaskScanResponseSchema,
+} from "./channel/lark/substitute-task-rpc-schemas.js";
+import {
   DaemonClientAccessApproveRequestSchema,
   DaemonClientAccessApproveResponseSchema,
   DaemonClientAccessDeleteRequestSchema,
@@ -285,6 +295,10 @@ export const ExtensionSessionInboundSchemas = [
   LarkSubstituteModeUpdateRequestSchema,
   LarkSubstituteModeSetEnabledRequestSchema,
   LarkSubstituteModeDeleteRequestSchema,
+  LarkSubstituteTaskListRequestSchema,
+  LarkSubstituteTaskScanRequestSchema,
+  LarkSubstituteTaskPauseRequestSchema,
+  LarkSubstituteTaskDeleteRequestSchema,
   DaemonClientAccessListRequestSchema,
   DaemonClientAccessApproveRequestSchema,
   DaemonClientAccessSetPausedRequestSchema,
@@ -391,6 +405,10 @@ export const ExtensionSessionOutboundSchemas = [
   LarkSubstituteModeSetEnabledResponseSchema,
   LarkSubstituteModeDeleteResponseSchema,
   LarkSubstituteModeChangedMessageSchema,
+  LarkSubstituteTaskListResponseSchema,
+  LarkSubstituteTaskScanResponseSchema,
+  LarkSubstituteTaskPauseResponseSchema,
+  LarkSubstituteTaskDeleteResponseSchema,
   DaemonClientAccessListResponseSchema,
   DaemonClientAccessApproveResponseSchema,
   DaemonClientAccessSetPausedResponseSchema,

@@ -6,84 +6,89 @@ import { Pressable, Text } from "react-native";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Tooltip, TooltipTrigger } from "./tooltip";
 vi.mock("@/constants/platform", () => ({
-    isWeb: true,
-    isNative: false,
+  isWeb: true,
+  isNative: false,
 }));
 vi.mock("@/constants/layout", () => ({
-    useIsCompactFormFactor: () => false,
+  useIsCompactFormFactor: () => false,
 }));
 vi.mock("@gorhom/portal", () => ({
-    Portal: ({ children }: {
-        children: React.ReactNode;
-    }) => children,
+  Portal: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock("@gorhom/bottom-sheet", () => ({
-    useBottomSheetModalInternal: () => null,
+  useBottomSheetModalInternal: () => null,
 }));
 vi.mock("react-native-reanimated", () => ({
-    default: {
-        View: "div",
-    },
-    FadeIn: {},
-    FadeOut: {},
+  default: {
+    View: "div",
+  },
+  FadeIn: {},
+  FadeOut: {},
 }));
 vi.mock("react-native-unistyles", () => ({
-    StyleSheet: {
-        create: (styles: unknown) => styles,
-    },
+  StyleSheet: {
+    create: (styles: unknown) => styles,
+  },
 }));
 let root: Root | null = null;
 let container: HTMLElement | null = null;
 beforeEach(() => {
-    const dom = new JSDOM("<!doctype html><html><body></body></html>");
-    vi.stubGlobal("React", React);
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    vi.stubGlobal("window", dom.window);
-    vi.stubGlobal("document", dom.window.document);
-    vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
-    vi.stubGlobal("Node", dom.window.Node);
-    vi.stubGlobal("navigator", dom.window.navigator);
-    container = document.createElement("div");
-    document.body.appendChild(container);
-    root = createRoot(container);
+  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  vi.stubGlobal("React", React);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("window", dom.window);
+  vi.stubGlobal("document", dom.window.document);
+  vi.stubGlobal("HTMLElement", dom.window.HTMLElement);
+  vi.stubGlobal("Node", dom.window.Node);
+  vi.stubGlobal("navigator", dom.window.navigator);
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
 });
 afterEach(() => {
-    if (root) {
-        act(() => {
-            root?.unmount();
-        });
-    }
-    root = null;
-    container = null;
-    vi.unstubAllGlobals();
+  if (root) {
+    act(() => {
+      root?.unmount();
+    });
+  }
+  root = null;
+  container = null;
+  vi.unstubAllGlobals();
 });
 describe("TooltipTrigger", () => {
-    it("keeps a trigger-only tooltip open until the trigger is pressed again", () => {
-        const onOpenChange = vi.fn();
-        act(() => {
-            root?.render(<Tooltip openOnHover={false} openOnPress dismissOnTriggerPressOnly onOpenChange={onOpenChange}>
+  it("keeps a trigger-only tooltip open until the trigger is pressed again", () => {
+    const onOpenChange = vi.fn();
+    act(() => {
+      root?.render(
+        <Tooltip
+          openOnHover={false}
+          openOnPress
+          dismissOnTriggerPressOnly
+          onOpenChange={onOpenChange}
+        >
           <TooltipTrigger asChild>
             <Pressable testID="trigger">
               <Text>Help</Text>
             </Pressable>
           </TooltipTrigger>
-        </Tooltip>);
-        });
-        const trigger = container?.querySelector('[data-testid="trigger"]') as HTMLElement | null;
-        expect(trigger).not.toBeNull();
-        act(() => {
-            trigger?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-        });
-        expect(onOpenChange).toHaveBeenLastCalledWith(true);
-        act(() => {
-            trigger?.dispatchEvent(new window.MouseEvent("mouseout", { bubbles: true }));
-            trigger?.focus();
-            trigger?.blur();
-        });
-        expect(onOpenChange).not.toHaveBeenCalledWith(false);
-        act(() => {
-            trigger?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-        });
-        expect(onOpenChange).toHaveBeenLastCalledWith(false);
+        </Tooltip>,
+      );
     });
+    const trigger = container?.querySelector('[data-testid="trigger"]') as HTMLElement | null;
+    expect(trigger).not.toBeNull();
+    act(() => {
+      trigger?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    act(() => {
+      trigger?.dispatchEvent(new window.MouseEvent("mouseout", { bubbles: true }));
+      trigger?.focus();
+      trigger?.blur();
+    });
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    act(() => {
+      trigger?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
 });

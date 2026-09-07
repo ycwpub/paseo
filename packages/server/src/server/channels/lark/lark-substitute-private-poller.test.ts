@@ -247,4 +247,99 @@ describe("LarkSubstitutePrivatePoller", () => {
     expect(adapter.createSubstituteRelayChat).not.toHaveBeenCalled();
     expect(onRelayMessage).not.toHaveBeenCalled();
   });
+
+  test("reports user OAuth message-read permission failures to the task layer", async () => {
+    const permissionError = new Error(
+      "Lark API error: 缺少用户身份权限 im:message:readonly (code: 99991679)",
+    );
+    const onScanFailure = vi.fn();
+    const poller = new LarkSubstitutePrivatePoller({
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter: {
+        searchPrivateMessagesAsUser: vi.fn(async () => {
+          throw permissionError;
+        }),
+        createSubstituteRelayChat: vi.fn(),
+        sendTextWithResult: vi.fn(),
+      },
+      userOAuthService: {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope: "offline_access im:message.p2p_msg:get_as_user im:message:readonly search:message",
+        })),
+        getValidUserAccessToken: vi.fn(async () => "user-token"),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      onRelayMessage: vi.fn(),
+      onScanFailure,
+      now: () => new Date(now),
+    });
+
+    await poller.runMode(mode());
+
+    expect(onScanFailure).toHaveBeenCalledWith({
+      mode: expect.objectContaining({ id: "mode-1", botId: "bot-1" }),
+      error: expect.stringContaining("请在飞书开发者后台开通该用户身份权限"),
+    });
+  });
+
+  test("reports expired or incomplete OAuth grants instead of silently skipping scans", async () => {
+    const onScanFailure = vi.fn();
+    const searchPrivateMessagesAsUser = vi.fn();
+    const poller = new LarkSubstitutePrivatePoller({
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter: {
+        searchPrivateMessagesAsUser,
+        createSubstituteRelayChat: vi.fn(),
+        sendTextWithResult: vi.fn(),
+      },
+      userOAuthService: {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: false,
+          needsAuthorization: true,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope: "offline_access search:message",
+        })),
+        getValidUserAccessToken: vi.fn(),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      onRelayMessage: vi.fn(),
+      onScanFailure,
+      now: () => new Date(now),
+    });
+
+    await poller.runMode(mode());
+
+    expect(searchPrivateMessagesAsUser).not.toHaveBeenCalled();
+    expect(onScanFailure).toHaveBeenCalledWith({
+      mode: expect.objectContaining({ id: "mode-1" }),
+      error: expect.stringContaining("请重新授权"),
+    });
+  });
 });

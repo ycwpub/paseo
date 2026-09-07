@@ -157,7 +157,7 @@ describe("LarkChannelService", () => {
         email: "zhangsan@example.com",
         displayName: "张三",
         scope:
-          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
       } satisfies LarkUserOAuthStatus);
     const userOAuthService = {
       getStatus: vi.fn((appId: string) => options.userOAuthStatuses?.[appId] ?? userOAuthStatus),
@@ -1542,6 +1542,95 @@ describe("LarkChannelService", () => {
     expect(prompt).toContain("Additional substitute instruction: 回答前先核对发布规范");
     expect(prompt).toContain("<allow>研发和代码问题</allow>");
     expect(prompt).toContain("<deny>人事和薪酬问题</deny>");
+    expect(harness.service.listSubstituteTasks()).toEqual([
+      expect.objectContaining({
+        source: "group_listener",
+        status: "running",
+        messageId: "om_independent_substitute",
+        agentId: "agent-created",
+      }),
+    ]);
+
+    harness.lastMessages.set("agent-created", "发布前已核对。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+    expect(harness.service.listSubstituteTasks()[0]).toEqual(
+      expect.objectContaining({ status: "completed" }),
+    );
+  });
+
+  test("records realtime substitute listener failures in the task list", async () => {
+    const harness = createHarness();
+    harness.service.createSubstituteMode({
+      name: "监听失败替身",
+      enabled: true,
+      botId: harness.botId,
+      privateScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      disclosure: { enabled: true, prompt: "【机器人代答】" },
+      customPrompt: "",
+      delaySeconds: 0,
+      activeTimeRanges: [],
+      allowlist: [{ id: "allow-all", type: "all" }],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    });
+    vi.spyOn(harness.service, "handleIncomingEvent").mockRejectedValueOnce(
+      new Error("监听消息处理失败"),
+    );
+    const event = {
+      eventId: "evt_listener_failure",
+      messageId: "om_listener_failure",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "研发群",
+      text: "@张三 请确认",
+      createTime: Date.now(),
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "张三",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent;
+
+    await (
+      harness.service as unknown as {
+        handleObservedIncomingEvent(
+          botId: string,
+          event: NormalizedLarkMessageEvent,
+        ): Promise<void>;
+      }
+    ).handleObservedIncomingEvent(harness.botId, event);
+
+    expect(harness.service.listSubstituteTasks()).toEqual([
+      expect.objectContaining({
+        source: "group_listener",
+        status: "failed",
+        failureStage: "listener",
+        messageId: "om_listener_failure",
+        error: "监听消息处理失败",
+      }),
+    ]);
   });
 
   test("requires OAuth authorization before an enabled substitute mode can be saved", () => {
@@ -1632,7 +1721,7 @@ describe("LarkChannelService", () => {
         email: "yuan@example.com",
         displayName: "袁昌旺",
         scope:
-          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
       },
     });
     harness.store.configure({
@@ -1725,7 +1814,7 @@ describe("LarkChannelService", () => {
           email: "yuan@example.com",
           displayName: "袁昌旺",
           scope:
-            "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+            "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user im:message:readonly search:message",
         },
       },
     });

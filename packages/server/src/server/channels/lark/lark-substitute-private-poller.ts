@@ -23,6 +23,11 @@ interface LarkSubstitutePrivatePollerOptions {
     event: NormalizedLarkMessageEvent;
     supplementalEvents: NormalizedLarkMessageEvent[];
   }) => Promise<void>;
+  onScanFailure?: (input: {
+    mode: LarkSubstituteMode;
+    event?: NormalizedLarkMessageEvent;
+    error: string;
+  }) => Promise<void> | void;
   now?: () => Date;
 }
 
@@ -68,6 +73,22 @@ function buildRelayMessage(event: NormalizedLarkMessageEvent): string {
 
 function relayChatName(mode: LarkSubstituteMode, peerName: string): string {
   return `${mode.name} · ${peerName || "私聊用户"}`.slice(0, 100);
+}
+
+function formatPrivateScanFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message.includes("99991679") ||
+    message.includes("im:message:readonly") ||
+    message.includes("im:message 权限")
+  ) {
+    return [
+      "飞书用户 OAuth 缺少 im:message:readonly 权限。",
+      "请在飞书开发者后台开通该用户身份权限，并在 Paseo 中重新授权飞书用户。",
+      `原始错误：${message}`,
+    ].join(" ");
+  }
+  return message;
 }
 
 export class LarkSubstitutePrivatePoller {
@@ -128,7 +149,13 @@ export class LarkSubstitutePrivatePoller {
       const bot = this.options.channelStore.getBot(mode.botId);
       if (!bot?.config.enabled || !bot.config.appId) return;
       const oauth = this.options.userOAuthService.getStatus(bot.config.appId);
-      if (!oauth.authorized || !oauth.openId) return;
+      if (!oauth.authorized || !oauth.openId) {
+        await this.reportScanFailure(
+          mode,
+          "飞书用户 OAuth 未授权、已过期或缺少 im:message:readonly 等私聊扫描权限，请重新授权。",
+        );
+        return;
+      }
       const search = this.options.adapter.searchPrivateMessagesAsUser;
       if (!search) throw new Error("当前飞书连接不支持扫描授权用户私聊消息");
       const now = this.now().getTime();
@@ -154,22 +181,54 @@ export class LarkSubstitutePrivatePoller {
         if (this.store.hasProcessed(candidate.latest.messageId) || !candidate.latest.openId) {
           continue;
         }
-        await this.relayPrivateMessage(
-          bot.config,
-          mode,
-          oauth.openId,
-          candidate.latest,
-          candidate.context,
-        );
-        this.store.markProcessed(candidate.latest.messageId);
+        try {
+          await this.relayPrivateMessage(
+            bot.config,
+            mode,
+            oauth.openId,
+            candidate.latest,
+            candidate.context,
+          );
+          this.store.markProcessed(candidate.latest.messageId);
+        } catch (error) {
+          const failure = formatPrivateScanFailure(error);
+          this.options.logger.warn(
+            {
+              err: error,
+              modeId: mode.id,
+              botId: mode.botId,
+              chatId: candidate.latest.chatId,
+              messageId: candidate.latest.messageId,
+            },
+            "Failed to process scanned Lark private message for substitute mode",
+          );
+          await this.reportScanFailure(mode, failure, candidate.latest);
+        }
       }
     } catch (error) {
+      const failure = formatPrivateScanFailure(error);
       this.options.logger.warn(
         { err: error, modeId: mode.id, botId: mode.botId },
         "Failed to scan Lark private messages for substitute mode",
       );
+      await this.reportScanFailure(mode, failure);
     } finally {
       this.running.delete(mode.id);
+    }
+  }
+
+  private async reportScanFailure(
+    mode: LarkSubstituteMode,
+    error: string,
+    event?: NormalizedLarkMessageEvent,
+  ): Promise<void> {
+    try {
+      await this.options.onScanFailure?.({ mode, event, error });
+    } catch (recordError) {
+      this.options.logger.warn(
+        { err: recordError, modeId: mode.id, botId: mode.botId },
+        "Failed to record Lark private-message scan failure",
+      );
     }
   }
 

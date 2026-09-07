@@ -2,6 +2,7 @@ import type { LarkSubstituteMode } from "@getpaseo/protocol/messages";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 
 interface PendingSubstituteMessage {
+  taskId: string;
   timer: ReturnType<typeof setTimeout>;
   latestEvent: NormalizedLarkMessageEvent;
   bufferedEvents: NormalizedLarkMessageEvent[];
@@ -25,6 +26,7 @@ export class LarkSubstituteDebouncer {
   schedule(
     mode: LarkSubstituteMode,
     event: NormalizedLarkMessageEvent,
+    taskId: string,
     handler: (message: DebouncedLarkSubstituteMessage) => Promise<void>,
   ): boolean {
     if (mode.delaySeconds <= 0) return false;
@@ -41,8 +43,16 @@ export class LarkSubstituteDebouncer {
         bufferedEvents: latest.bufferedEvents,
       });
     }, mode.delaySeconds * 1_000);
-    this.pending.set(key, { timer, latestEvent: event, bufferedEvents });
+    this.pending.set(key, { taskId, timer, latestEvent: event, bufferedEvents });
     return true;
+  }
+
+  cancelTask(taskId: string): void {
+    for (const [key, pending] of this.pending) {
+      if (pending.taskId !== taskId) continue;
+      clearTimeout(pending.timer);
+      this.pending.delete(key);
+    }
   }
 
   cancelMode(modeId: string): void {

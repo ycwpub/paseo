@@ -23,7 +23,7 @@ export function collectIncompleteLarkChatIds(input: {
         .filter(Boolean)
         .filter((chatId) => {
           const chat = directoryByChatId.get(chatId);
-          return !chat || chat.groupId === chat.chatId || chat.name === chat.chatId;
+          return !chat || chat.name === chat.chatId;
         }),
     ),
   );

@@ -15,7 +15,10 @@ import { LarkDirectoryService } from "./lark-directory-service.js";
 import { LarkDirectoryStore } from "./lark-directory-store.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
-import type { LarkUserOAuthStatus } from "@getpaseo/protocol/messages";
+import {
+  DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  type LarkUserOAuthStatus,
+} from "@getpaseo/protocol/messages";
 
 function makeAgent(
   id: string,
@@ -154,7 +157,7 @@ describe("LarkChannelService", () => {
         email: "zhangsan@example.com",
         displayName: "张三",
         scope:
-          "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
       } satisfies LarkUserOAuthStatus);
     const userOAuthService = {
       getStatus: vi.fn((appId: string) => options.userOAuthStatuses?.[appId] ?? userOAuthStatus),
@@ -1426,7 +1429,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
 
     expect(harness.createAgent).toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
@@ -1629,7 +1632,7 @@ describe("LarkChannelService", () => {
         email: "yuan@example.com",
         displayName: "袁昌旺",
         scope:
-          "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+          "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
       },
     });
     harness.store.configure({
@@ -1666,7 +1669,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
 
     expect(harness.createAgent).toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1] ?? "";
@@ -1722,7 +1725,7 @@ describe("LarkChannelService", () => {
           email: "yuan@example.com",
           displayName: "袁昌旺",
           scope:
-            "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+            "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
         },
       },
     });
@@ -1811,7 +1814,7 @@ describe("LarkChannelService", () => {
     );
     await harness.emitAgentState("agent-local-question", "running");
     await harness.emitAgentState("agent-local-question", "idle");
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
 
     expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
       expect.anything(),
@@ -1886,7 +1889,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
 
     harness.lastMessages.set(
       "agent-existing-substitute",
@@ -1938,7 +1941,7 @@ describe("LarkChannelService", () => {
         },
       ],
     } satisfies NormalizedLarkMessageEvent);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
 
     expect(harness.createAgent).not.toHaveBeenCalled();
     expect(harness.adapter.sendText).toHaveBeenCalledWith(

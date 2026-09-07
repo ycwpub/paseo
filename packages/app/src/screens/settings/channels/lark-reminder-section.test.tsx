@@ -332,7 +332,7 @@ describe("LarkReminderSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "创建并开启" }));
 
-    expect(await screen.findByText("请输入群 ID")).toBeTruthy();
+    expect(await screen.findByText("请选择提醒群聊")).toBeTruthy();
     expect(reminderState.current.create).not.toHaveBeenCalled();
   });
 
@@ -368,7 +368,7 @@ describe("LarkReminderSection", () => {
     fireEvent.change(screen.getByPlaceholderText("例如：等待方案确认"), {
       target: { value: " 等待确认 " },
     });
-    fireEvent.change(screen.getByPlaceholderText("输入群名称、群 ID 或 oc_xxx"), {
+    fireEvent.change(screen.getByPlaceholderText("输入群名称或 oc_xxx"), {
       target: { value: " 结算群 " },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询群聊" }));
@@ -429,7 +429,7 @@ describe("LarkReminderSection", () => {
     ]);
     renderReminderEditor();
 
-    fireEvent.change(screen.getByPlaceholderText("输入群名称、群 ID 或 oc_xxx"), {
+    fireEvent.change(screen.getByPlaceholderText("输入群名称或 oc_xxx"), {
       target: { value: "oc_group" },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询群聊" }));
@@ -461,7 +461,7 @@ describe("LarkReminderSection", () => {
     );
     renderReminderEditor();
 
-    fireEvent.change(screen.getByPlaceholderText("输入群名称、群 ID 或 oc_xxx"), {
+    fireEvent.change(screen.getByPlaceholderText("输入群名称或 oc_xxx"), {
       target: { value: "结算群" },
     });
     fireEvent.click(screen.getByRole("button", { name: "查询群聊" }));
@@ -508,9 +508,7 @@ describe("LarkReminderSection", () => {
     });
 
     expect(
-      screen.getByText(
-        /群 结算群（group_settlement、oc_group） · 被提醒人 张三（alice@example.com，ou_alice）/,
-      ),
+      screen.getByText(/群 结算群（oc_group） · 被提醒人 张三（alice@example.com，ou_alice）/),
     ).toBeTruthy();
     expect(screen.getByText(/张三（alice@example.com，ou_alice） 已于/)).toBeTruthy();
   });

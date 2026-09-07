@@ -534,6 +534,80 @@ function reconcileReplacementHeadAgainstTail(
   };
 }
 
+function findUnreconciledPromptAnchorIndex(
+  currentHead: StreamItem[],
+  activityIndex: number,
+): number | null {
+  const activity = currentHead[activityIndex];
+  const activityTurnId =
+    activity && "turnId" in activity && typeof activity.turnId === "string"
+      ? activity.turnId
+      : undefined;
+
+  for (let index = activityIndex - 1; index >= 0; index -= 1) {
+    const candidate = currentHead[index];
+    if (candidate?.kind !== "user_message") {
+      continue;
+    }
+    if (!isUnreconciledLocalUserMessage(candidate)) {
+      return null;
+    }
+    if (
+      activityTurnId !== undefined &&
+      candidate.turnId !== undefined &&
+      candidate.turnId !== activityTurnId
+    ) {
+      return null;
+    }
+    return index;
+  }
+
+  return null;
+}
+
+function selectReplacementHead(input: {
+  currentHead: StreamItem[];
+  canonicalTailAssistant: StreamItem | undefined;
+  preserveContinuity: boolean;
+  sendingClientMessageIds: ReadonlySet<string>;
+  canonicalCoverage: CanonicalStreamReplacementInput["canonicalCoverage"];
+}): StreamItem[] {
+  if (input.preserveContinuity) {
+    return input.currentHead.filter(
+      (item) =>
+        !item.timelineCursor ||
+        isAfterCanonicalCoverage(item.timelineCursor, input.canonicalCoverage) ||
+        (item.kind === "assistant_message" &&
+          input.canonicalTailAssistant?.kind === "assistant_message" &&
+          item.text.startsWith(input.canonicalTailAssistant.text)),
+    );
+  }
+
+  const retainedIndexes = new Set<number>();
+  for (const [index, item] of input.currentHead.entries()) {
+    // A bootstrap snapshot can finish after same-epoch live rows have arrived.
+    // Those rows are newer than the snapshot even when general continuity is disabled.
+    const retain =
+      (item.timelineCursor !== undefined &&
+        isAfterCanonicalCoverage(item.timelineCursor, input.canonicalCoverage)) ||
+      (item.kind === "user_message" &&
+        item.clientMessageId !== undefined &&
+        input.sendingClientMessageIds.has(item.clientMessageId));
+    if (!retain) {
+      continue;
+    }
+    retainedIndexes.add(index);
+    if (item.kind === "user_message") {
+      continue;
+    }
+    const promptIndex = findUnreconciledPromptAnchorIndex(input.currentHead, index);
+    if (promptIndex !== null) {
+      retainedIndexes.add(promptIndex);
+    }
+  }
+  return input.currentHead.filter((_, index) => retainedIndexes.has(index));
+}
+
 function preserveReplacementHead(
   tail: StreamItem[],
   currentHead: StreamItem[],
@@ -542,25 +616,13 @@ function preserveReplacementHead(
   canonicalCoverage: CanonicalStreamReplacementInput["canonicalCoverage"],
 ): CanonicalStreamReplacementResult {
   const canonicalTailAssistant = tail.at(-1);
-  const retainedHead = preserveContinuity
-    ? currentHead.filter(
-        (item) =>
-          !item.timelineCursor ||
-          isAfterCanonicalCoverage(item.timelineCursor, canonicalCoverage) ||
-          (item.kind === "assistant_message" &&
-            canonicalTailAssistant?.kind === "assistant_message" &&
-            item.text.startsWith(canonicalTailAssistant.text)),
-      )
-    : currentHead.filter(
-        (item) =>
-          // A bootstrap snapshot can finish after same-epoch live rows have arrived.
-          // Those rows are newer than the snapshot even when general continuity is disabled.
-          (item.timelineCursor !== undefined &&
-            isAfterCanonicalCoverage(item.timelineCursor, canonicalCoverage)) ||
-          (item.kind === "user_message" &&
-            item.clientMessageId !== undefined &&
-            sendingClientMessageIds.has(item.clientMessageId)),
-      );
+  const retainedHead = selectReplacementHead({
+    currentHead,
+    canonicalTailAssistant,
+    preserveContinuity,
+    sendingClientMessageIds,
+    canonicalCoverage,
+  });
   const { tail: reconciledTail, head: unreconciledHead } = reconcileReplacementHeadAgainstTail(
     tail,
     retainedHead,

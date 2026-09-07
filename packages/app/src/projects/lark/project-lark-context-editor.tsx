@@ -175,7 +175,7 @@ function ProjectLarkBindingEditor({
         {appId ? <LarkUserOAuthCard serverId={serverId} appId={appId} /> : null}
         <LarkChatDirectoryField
           label="飞书群"
-          hint="可按群名称、群 ID 或 chatId 查询。保存后机器人会自动加入该群。"
+          hint="可按群名称或 oc_xxx 查询。保存后机器人会自动加入该群。"
           appId={appId}
           chatId={group.chatId}
           chats={chats}

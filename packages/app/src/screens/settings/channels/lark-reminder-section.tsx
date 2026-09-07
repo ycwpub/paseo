@@ -102,7 +102,7 @@ function buildReminderUpdateInput(
   const parsedFrequency = Number(values.frequencyMinutes);
   const openIds = directorySupported ? values.targetOpenIds : splitOpenIds(values.rawTargetOpenIds);
   if (!values.botId) return { input: null, error: "请选择已启用的飞书机器人" };
-  if (!values.chatId.trim()) return { input: null, error: "请输入群 ID" };
+  if (!values.chatId.trim()) return { input: null, error: "请选择提醒群聊" };
   if (openIds.length === 0) return { input: null, error: "至少通过邮箱选择一个被提醒人" };
   if (!values.message.trim()) return { input: null, error: "请输入提醒文案" };
   if (!Number.isInteger(parsedFrequency) || parsedFrequency < 1) {

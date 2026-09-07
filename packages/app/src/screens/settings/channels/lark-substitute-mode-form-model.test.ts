@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
   DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
   type LarkChannelBotStatus,
 } from "@getpaseo/protocol/messages";
 import {
@@ -10,10 +11,15 @@ import {
 } from "./lark-substitute-mode-form-model";
 
 describe("createSubstituteModeFormState", () => {
-  test("defaults new substitute modes to a 60 second delay and weekdays 1 through 7", () => {
+  test("uses the substitute mode defaults for new modes", () => {
     const form = createSubstituteModeFormState(null, []);
     expect(form.delaySeconds).toBe(String(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS));
+    expect(form.delaySeconds).toBe("600");
     expect(form.customPrompt).toBe(DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT);
+    expect(form.privateScanExcludeRecentMinutes).toBe(
+      String(DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES),
+    );
+    expect(form.privateScanExcludeRecentMinutes).toBe("10");
     expect(form.weekdays).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 

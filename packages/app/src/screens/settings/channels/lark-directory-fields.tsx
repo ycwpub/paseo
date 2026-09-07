@@ -235,7 +235,7 @@ export function LarkChatDirectoryField({
       return;
     }
     if (!query.trim()) {
-      setError("请输入群名称、群 ID 或 chatId");
+      setError("请输入群名称或 oc_xxx");
       return;
     }
     setResolving(true);
@@ -262,7 +262,7 @@ export function LarkChatDirectoryField({
         <FormTextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="输入群名称、群 ID 或 oc_xxx"
+          placeholder="输入群名称或 oc_xxx"
           editable={!disabled && !resolving}
           style={styles.lookupInput}
           onSubmitEditing={handleResolve}

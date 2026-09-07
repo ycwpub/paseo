@@ -265,8 +265,8 @@ describe("BambooTroubleshooterPanel", () => {
       />,
     );
 
-    expect(screen.getByText("结算报警一群 · group-1 · oc_first")).toBeTruthy();
-    expect(screen.getByText("结算报警二群 · group-2 · oc_second")).toBeTruthy();
+    expect(screen.getByText("结算报警一群（oc_first）")).toBeTruthy();
+    expect(screen.getByText("结算报警二群（oc_second）")).toBeTruthy();
     expect((screen.getByLabelText("排查 Provider 和模型（必填）") as HTMLSelectElement).value).toBe(
       "aiden-codex/gpt-5.5",
     );
@@ -278,7 +278,7 @@ describe("BambooTroubleshooterPanel", () => {
     expect((screen.getByLabelText("排除最近消息（分钟）") as HTMLInputElement).value).toBe("0");
 
     fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]!);
-    expect(screen.queryByText("结算报警一群 · group-1 · oc_first")).toBeNull();
+    expect(screen.queryByText("结算报警一群（oc_first）")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));
 

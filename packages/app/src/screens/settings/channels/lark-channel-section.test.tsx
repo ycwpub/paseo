@@ -749,7 +749,7 @@ describe("LarkChannelSection", () => {
 
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect(await screen.findByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
-    expect(screen.getByText("结算研发群（group_settlement、oc_settlement）")).toBeTruthy();
+    expect(screen.getByText("结算研发群（oc_settlement）")).toBeTruthy();
   });
 
   test("automatically resolves incomplete authorized chat identities", async () => {
@@ -821,9 +821,7 @@ describe("LarkChannelSection", () => {
 
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     expect(await screen.findByText("张三（alice@example.com，ou_alice）")).toBeTruthy();
-    expect(
-      screen.getByText("结算研发群（group_settlement、oc_settlement） · 配对码 pair-123"),
-    ).toBeTruthy();
+    expect(screen.getByText("结算研发群（oc_settlement） · 配对码 pair-123")).toBeTruthy();
   });
 
   test("selects a team as the Lark bot target", async () => {

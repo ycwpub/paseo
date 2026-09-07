@@ -30,22 +30,19 @@ export function formatLarkUserLabel(user: LarkDirectoryUser): string {
   return formatLarkUserIdentity(user);
 }
 
+export function formatLarkChatIdentity(chat: {
+  name?: string | null;
+  chatId?: string | null;
+}): string {
+  const name = chat.name?.trim() ?? "";
+  const cleanedName = name
+    .replace(/[（(](?:(?:群\s*ID|group\s*id|id)\s*[=:：]?\s*)?\d{10,}[）)]/iu, "")
+    .trim();
+  return formatIdentityParts([cleanedName, chat.chatId]);
+}
+
 export function formatLarkChatLabel(chat: LarkDirectoryChat): string {
-  const explicitGroupId =
-    chat.groupId !== chat.chatId
-      ? chat.groupId
-      : (chat.name.match(/(?:群\s*ID|group\s*id|id)\s*[=:：]?\s*(\d{10,})/iu)?.[1] ??
-        chat.name.match(/[（(](\d{10,})[）)]/u)?.[1] ??
-        chat.groupId);
-  const cleanedName =
-    explicitGroupId !== chat.groupId
-      ? chat.name
-          .replace(/[（(](?:(?:群\s*ID|group\s*id|id)\s*[=:：]?\s*)?\d{10,}[）)]/iu, "")
-          .trim()
-      : chat.name;
-  const [primary, ...details] = compactIdentityParts([cleanedName, explicitGroupId, chat.chatId]);
-  if (!primary) return "";
-  return details.length > 0 ? `${primary}（${details.join("、")}）` : primary;
+  return formatLarkChatIdentity(chat);
 }
 
 export function findLarkDirectoryUser(

@@ -4,6 +4,7 @@ import {
   LarkSubstituteModeListResponseSchema,
   LarkSubstituteModeUpdateRequestSchema,
 } from "./substitute-rpc-schemas.js";
+import { DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES } from "./substitute-types.js";
 
 const modeInput = {
   name: "工作时间替身",
@@ -55,6 +56,22 @@ const modeInput = {
 };
 
 describe("Lark substitute mode RPC schemas", () => {
+  it("defaults the private scan recent exclusion window to 10 minutes", () => {
+    const request = LarkSubstituteModeCreateRequestSchema.parse({
+      type: "channel.lark.substitute.create.request",
+      requestId: "request-default-private-scan",
+      mode: {
+        ...modeInput,
+        privateScan: undefined,
+      },
+    });
+
+    expect(request.mode.privateScan.excludeRecentMinutes).toBe(
+      DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
+    );
+    expect(request.mode.privateScan.excludeRecentMinutes).toBe(10);
+  });
+
   it("accepts all independent substitute mode settings", () => {
     const request = LarkSubstituteModeCreateRequestSchema.parse({
       type: "channel.lark.substitute.create.request",

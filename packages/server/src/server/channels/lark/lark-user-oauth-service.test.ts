@@ -31,7 +31,7 @@ function createHarness(gatewayOverrides: Partial<LarkUserOAuthGateway> = {}) {
       expiresIn: 7200,
       refreshTokenExpiresIn: 2_592_000,
       scope:
-        "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
     })),
     refreshAccessToken: vi.fn(async () => ({
       accessToken: "u-token-refreshed",
@@ -85,16 +85,17 @@ describe("LarkUserOAuthService", () => {
     const url = new URL(authorization.authorizationUrl);
     expect(url.searchParams.get("client_id")).toBe("cli_test");
     expect(url.searchParams.get("response_type")).toBe("code");
-    expect(url.searchParams.get("scope")?.split(" ")).toEqual(
+    const requestedScopes = url.searchParams.get("scope")?.split(" ") ?? [];
+    expect(requestedScopes).toEqual(
       expect.arrayContaining([
         "offline_access",
-        "im:chat",
         "im:chat:read",
         "im:chat.members:write_only",
         "im:message.p2p_msg:get_as_user",
         "search:message",
       ]),
     );
+    expect(requestedScopes).not.toContain("im:chat");
 
     await expect(
       service.completeAuthorization(
@@ -141,7 +142,7 @@ describe("LarkUserOAuthService", () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       scope:
-        "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
       openId: "ou_test",
       email: null,
       displayName: null,
@@ -175,7 +176,7 @@ describe("LarkUserOAuthService", () => {
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       scope:
-        "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
       openId: null,
       email: null,
       displayName: null,
@@ -263,7 +264,7 @@ describe("LarkUserOAuthService", () => {
       expiresAt: new Date(Date.now() - 1).toISOString(),
       refreshTokenExpiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       scope:
-        "offline_access im:chat im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
+        "offline_access im:chat:read im:chat.members:write_only im:message.group_msg:get_as_user im:message.p2p_msg:get_as_user search:message",
       openId: null,
       email: null,
       displayName: null,

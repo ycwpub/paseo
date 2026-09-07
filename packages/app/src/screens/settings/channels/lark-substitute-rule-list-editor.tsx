@@ -30,7 +30,7 @@ import {
 
 const AUDIENCE_TYPE_OPTIONS: SelectFieldOption<LarkSubstituteAudienceRuleType>[] = [
   { id: "user", value: "user", label: "用户", description: "按用户名称、邮箱和 ou_xxx 匹配" },
-  { id: "group", value: "group", label: "群", description: "按群名称、群 ID 和 oc_xxx 匹配" },
+  { id: "group", value: "group", label: "群", description: "按群名称和 oc_xxx 匹配" },
   {
     id: "group_ai_category",
     value: "group_ai_category",
@@ -246,7 +246,7 @@ function GroupRuleFields({
   return (
     <LarkChatDirectoryField
       label="群"
-      hint="通过群名称、群 ID 或 oc_xxx 搜索，并保存唯一 chatId。"
+      hint="通过群名称或 oc_xxx 搜索，并保存唯一 chatId。"
       appId={appId}
       chatId={rule.chatId}
       chats={chats}

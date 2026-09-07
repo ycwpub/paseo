@@ -7,7 +7,6 @@ import {
   type NormalizedLarkMessageEvent,
 } from "./lark-message-format.js";
 import {
-  findLarkGroupIdByChatId,
   mapLarkChatSearchResults,
   mapLegacyLarkChatSearchResults,
 } from "./lark-chat-search-results.js";
@@ -582,26 +581,9 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
         );
         assertSuccess(result);
         const name = result.data?.name?.trim() || query;
-        let groupId = query;
-        try {
-          const searchResult = await client.im.v2.chat.search(
-            {
-              data: { query: name },
-              params: { page_size: 100, user_id_type: "open_id" },
-            },
-            lark.withUserAccessToken(userAccessToken),
-          );
-          assertSuccess(searchResult);
-          groupId = findLarkGroupIdByChatId(searchResult.data?.items ?? [], query) ?? query;
-        } catch (error) {
-          this.logger.debug(
-            { err: error, chatId: query },
-            "Unable to enrich Lark chat with its group ID",
-          );
-        }
         return [
           {
-            groupId,
+            groupId: query,
             chatId: query,
             name,
           },

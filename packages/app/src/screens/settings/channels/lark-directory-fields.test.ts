@@ -26,7 +26,7 @@ const chat = {
 };
 
 describe("Lark directory labels", () => {
-  test("formats user and group labels with every stable identity", () => {
+  test("formats user labels with every stable identity and groups with chat ID only", () => {
     expect(formatLarkUserLabel(user)).toBe("Alice（alice@example.com，ou_alice）");
     expect(
       formatLarkUserLabel({
@@ -35,7 +35,7 @@ describe("Lark directory labels", () => {
         email: "zhangsan@example.com",
       }),
     ).toBe("张三（zhangsan@example.com，ou_alice）");
-    expect(formatLarkChatLabel(chat)).toBe("结算群（7160881741501267996、oc_settlement）");
+    expect(formatLarkChatLabel(chat)).toBe("结算群（oc_settlement）");
   });
 
   test("falls back to available identity fields without dropping the Open ID", () => {
@@ -69,7 +69,7 @@ describe("Lark directory labels", () => {
     ).toBe("张三（zhangsan@example.com，ou_alice）");
   });
 
-  test("falls back to raw IDs and avoids repeating an identical group ID", () => {
+  test("falls back to raw IDs and omits numeric group IDs", () => {
     expect(formatLarkUserOpenId([], "cli_test", "ou_unknown")).toBe("ou_unknown");
     expect(formatLarkChatId([], "cli_test", "oc_unknown")).toBe("oc_unknown");
     expect(
@@ -84,7 +84,7 @@ describe("Lark directory labels", () => {
         groupId: "oc_settlement",
         name: "结算群（7160881741501267996）",
       }),
-    ).toBe("结算群（7160881741501267996、oc_settlement）");
+    ).toBe("结算群（oc_settlement）");
   });
 
   test("scopes relation lookup by bot App ID", () => {

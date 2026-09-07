@@ -27,6 +27,7 @@ import { PluginProjectDefaultAgentField } from "@/plugins/project/plugin-project
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { LarkChatDirectoryField } from "@/screens/settings/channels/lark-directory-fields";
+import { formatLarkChatIdentity } from "@/screens/settings/channels/lark-directory-format";
 import { useLarkChannel } from "@/screens/settings/channels/use-lark-channel";
 import { validateAlertTroubleshooterConfig } from "./alert-troubleshooter-form-validation";
 
@@ -376,7 +377,7 @@ function AlertTroubleshooterProject({
         </View>
         <LarkChatDirectoryField
           label="添加监听群"
-          hint="支持按群名称、群 ID 或 oc_xxx 搜索；一个项目可监听多个群。"
+          hint="支持按群名称或 oc_xxx 搜索；一个项目可监听多个群。"
           appId={selectedBot?.appId ?? ""}
           chatId={pendingChatId}
           chats={directoryChats}
@@ -389,7 +390,7 @@ function AlertTroubleshooterProject({
         {chats.map((chat) => (
           <View key={chat.chatId} style={styles.chatRow}>
             <Text selectable style={styles.chatText}>
-              {chat.name ?? "飞书群"} · {chat.groupId ?? "未获取群 ID"} · {chat.chatId}
+              {formatLarkChatIdentity({ name: chat.name ?? "飞书群", chatId: chat.chatId })}
             </Text>
             <Button
               size="xs"

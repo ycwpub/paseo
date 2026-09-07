@@ -81,10 +81,10 @@ export const LarkSubstituteDisclosureSchema = z.object({
 export type LarkSubstituteDisclosure = z.infer<typeof LarkSubstituteDisclosureSchema>;
 
 export const DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT = "仅回答工作相关问题，避免代替用户做承诺";
-export const DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS = 60;
+export const DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS = 10 * 60;
 export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_INTERVAL_MINUTES = 30;
 export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_LOOKBACK_MINUTES = 60;
-export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES = 20;
+export const DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES = 10;
 
 export const LarkSubstitutePrivateScanSchema = z
   .object({

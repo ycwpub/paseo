@@ -10,7 +10,7 @@ const completeChat = {
 };
 
 describe("collectIncompleteLarkChatIds", () => {
-  test("returns missing and placeholder group identities for the selected bot", () => {
+  test("returns missing chats and chats whose names are still placeholders", () => {
     expect(
       collectIncompleteLarkChatIds({
         appId: "cli_test",
@@ -30,7 +30,7 @@ describe("collectIncompleteLarkChatIds", () => {
           },
         ],
       }),
-    ).toEqual(["oc_missing", "oc_placeholder"]);
+    ).toEqual(["oc_missing"]);
   });
 
   test("returns no IDs without a bot App ID", () => {

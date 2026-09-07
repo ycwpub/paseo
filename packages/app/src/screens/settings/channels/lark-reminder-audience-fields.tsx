@@ -56,7 +56,7 @@ export function LarkReminderAudienceFields({
   if (!directorySupported) {
     return (
       <>
-        <Field label="群 ID" hint="更新 Paseo daemon 后可通过群名称查询 chatId。">
+        <Field label="群标识" hint="填写 oc_xxx；更新 Paseo daemon 后可通过群名称查询。">
           <FormTextInput value={chatId} onChangeText={onChatIdChange} placeholder="oc_xxxxxxxxxx" />
         </Field>
         <Field label="被提醒人 Open ID" hint="更新 Paseo daemon 后可通过用户邮箱查询 Open ID。">
@@ -74,7 +74,7 @@ export function LarkReminderAudienceFields({
     <>
       <LarkChatDirectoryField
         label="提醒群聊"
-        hint="通过群名称、群 ID 或 chatId 查询；机器人或授权用户必须已加入该群。"
+        hint="通过群名称或 oc_xxx 查询；机器人或授权用户必须已加入该群。"
         appId={selectedBot?.appId ?? ""}
         chatId={chatId}
         chats={directory?.chats ?? EMPTY_CHATS}

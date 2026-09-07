@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import {
   DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
   DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
+  DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
 } from "@getpaseo/protocol/messages";
 import type { StoredLarkChannelBot } from "./lark-channel-store.js";
 import { LarkSubstituteModeStore } from "./lark-substitute-mode-store.js";
@@ -72,7 +73,7 @@ describe("LarkSubstituteModeStore", () => {
           enabled: true,
           intervalMinutes: 30,
           lookbackMinutes: 60,
-          excludeRecentMinutes: 20,
+          excludeRecentMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
         },
         customPrompt: DEFAULT_LARK_SUBSTITUTE_CUSTOM_PROMPT,
         delaySeconds: DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS,
@@ -266,7 +267,7 @@ describe("LarkSubstituteModeStore", () => {
         enabled: true,
         intervalMinutes: 30,
         lookbackMinutes: 60,
-        excludeRecentMinutes: 20,
+        excludeRecentMinutes: DEFAULT_LARK_SUBSTITUTE_PRIVATE_SCAN_EXCLUDE_RECENT_MINUTES,
       },
     });
     expect(mode).not.toHaveProperty("substituteUser");

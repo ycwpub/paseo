@@ -213,6 +213,7 @@ function PluginProjectDetailHeader({
   onDelete,
   onOpenConversation,
   onOpenSettings,
+  extraActions,
 }: {
   project: ManagedPluginProject;
   canCopy: boolean;
@@ -221,6 +222,7 @@ function PluginProjectDetailHeader({
   onDelete: () => void;
   onOpenConversation: () => void;
   onOpenSettings: () => void;
+  extraActions?: ReactNode;
 }) {
   return (
     <View style={styles.detailHeader}>
@@ -249,6 +251,7 @@ function PluginProjectDetailHeader({
         <Button size="sm" variant="destructive" leftIcon={Trash2} onPress={onDelete}>
           删除
         </Button>
+        {extraActions}
       </View>
     </View>
   );
@@ -261,6 +264,7 @@ export function PluginProjectBoundary({
   pluginId,
   appDefinition,
   initialProjectId,
+  renderDetailActions,
   children,
 }: {
   active: boolean;
@@ -268,6 +272,7 @@ export function PluginProjectBoundary({
   pluginId: string | null | undefined;
   appDefinition: PluginAppDefinition;
   initialProjectId?: string;
+  renderDetailActions?: (context: PluginProjectContext) => ReactNode;
   children: (context: PluginProjectContext) => ReactNode;
 }) {
   const router = useRouter();
@@ -688,6 +693,7 @@ export function PluginProjectBoundary({
           onDelete={openDeleteSheet}
           onOpenConversation={openConversation}
           onOpenSettings={openProjectSettings}
+          extraActions={renderDetailActions?.(context)}
         />
         {children(context)}
       </>

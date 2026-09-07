@@ -26,8 +26,14 @@ vi.mock("react-native-unistyles", () => ({
       typeof factory === "function"
         ? factory({
             spacing: { 2: 8, 4: 16 },
+            borderRadius: { sm: 4 },
             fontSize: { sm: 12 },
-            colors: { foreground: "#111" },
+            colors: {
+              foreground: "#111",
+              foregroundExtraMuted: "#999",
+              primary: "#00f",
+              primaryForeground: "#fff",
+            },
           })
         : factory,
   },
@@ -158,6 +164,8 @@ function renderDirectory(
     }),
   ),
   onClearFirstMessages = vi.fn(async () => 0),
+  onCreate = vi.fn(async (input) => createUser(input)),
+  onDeleteMany = vi.fn(async (_appId: string, openIds: string[]) => openIds),
 ) {
   render(
     <LarkContactDirectoryPage
@@ -172,6 +180,8 @@ function renderDirectory(
       onEdit={vi.fn()}
       onResolve={onResolve}
       onResolveUsers={onResolveUsers}
+      onCreate={onCreate}
+      onDeleteMany={onDeleteMany}
       onScanPrivateUsers={onScanPrivateUsers}
       onAddPrivateUser={onAddPrivateUser}
       onClearFirstMessages={onClearFirstMessages}
@@ -183,6 +193,8 @@ function renderDirectory(
     onScanPrivateUsers,
     onAddPrivateUser,
     onClearFirstMessages,
+    onCreate,
+    onDeleteMany,
   };
 }
 
@@ -193,6 +205,79 @@ afterEach(() => {
 });
 
 describe("Lark contact directory", () => {
+  test("creates a local contact for the selected bot", async () => {
+    const onCreate = vi.fn(async (input) => createUser(input));
+    renderDirectory(
+      { users: [], chats: [] },
+      vi.fn(async () => createUser()),
+      vi.fn(async () => []),
+      true,
+      vi.fn(async () => []),
+      vi.fn(async (user: LarkDirectoryRecentPrivateUser) => createUser({ openId: user.openId })),
+      vi.fn(async () => 0),
+      onCreate,
+    );
+
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-create-open-id"), {
+      target: { value: " ou_new " },
+    });
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-create-name"), {
+      target: { value: " 张三 " },
+    });
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-create-email"), {
+      target: { value: " Alice@Example.com " },
+    });
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-create"));
+
+    await waitFor(() => {
+      expect(onCreate).toHaveBeenCalledWith({
+        appId: "cli_test",
+        openId: "ou_new",
+        displayName: "张三",
+        email: "Alice@Example.com",
+      });
+    });
+  });
+
+  test("selects visible contacts and batch deletes them after confirmation", async () => {
+    const onDeleteMany = vi.fn(async (_appId: string, openIds: string[]) => openIds);
+    renderDirectory(
+      {
+        users: [
+          createUser({ openId: "ou_alice", displayName: "张三" }),
+          createUser({ openId: "ou_bob", displayName: "李四" }),
+          createUser({ appId: "cli_other", openId: "ou_other", displayName: "其他机器人" }),
+        ],
+        chats: [],
+      },
+      vi.fn(async () => createUser()),
+      vi.fn(async () => []),
+      true,
+      vi.fn(async () => []),
+      vi.fn(async (user: LarkDirectoryRecentPrivateUser) => createUser({ openId: user.openId })),
+      vi.fn(async () => 0),
+      vi.fn(async (input) => createUser(input)),
+      onDeleteMany,
+    );
+
+    fireEvent.change(screen.getByTestId("host-page-lark-contacts-search"), {
+      target: { value: "张三" },
+    });
+    fireEvent.click(screen.getByTestId("host-page-lark-contacts-select-all"));
+    fireEvent.click(screen.getByTestId("host-page-lark-contacts-delete-selected"));
+
+    await waitFor(() => {
+      expect(confirmDialogMock).toHaveBeenCalledWith({
+        title: "删除 1 个联系人？",
+        message: "将从当前飞书机器人的本地通讯录中删除所选联系人。此操作无法撤销。",
+        confirmLabel: "删除",
+        cancelLabel: "取消",
+        destructive: true,
+      });
+      expect(onDeleteMany).toHaveBeenCalledWith("cli_test", ["ou_alice"]);
+    });
+  });
+
   test("resolves an ou_id and adds it to the selected bot directory", async () => {
     const { onResolve } = renderDirectory({ users: [], chats: [] });
 
@@ -366,7 +451,9 @@ describe("Lark contact directory", () => {
     fireEvent.click(screen.getByTestId("host-page-lark-contact-private-scan"));
 
     await waitFor(() => {
-      expect(result.onScanPrivateUsers).toHaveBeenCalledWith("cli_test", 30);
+      expect(result.onScanPrivateUsers).toHaveBeenCalledWith("cli_test", {
+        lookbackMinutes: 30,
+      });
     });
     expect(await screen.findByText("扫描结果（1）")).toBeTruthy();
     expect(screen.getByText("最近消息：现在有结果了吗")).toBeTruthy();
@@ -376,6 +463,25 @@ describe("Lark contact directory", () => {
       expect(result.onAddPrivateUser).toHaveBeenCalledWith(candidate);
     });
     expect(await screen.findByText("已在通讯录")).toBeTruthy();
+  });
+
+  test("scans private users within an explicit message time range", async () => {
+    const result = renderDirectory({ users: [], chats: [] });
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-private-start-time"), {
+      target: { value: "2026-09-06 09:00" },
+    });
+    fireEvent.change(screen.getByTestId("host-page-lark-contact-private-end-time"), {
+      target: { value: "2026-09-06 10:30" },
+    });
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-private-scan"));
+
+    await waitFor(() => {
+      expect(result.onScanPrivateUsers).toHaveBeenCalledWith("cli_test", {
+        lookbackMinutes: 30,
+        startTime: Math.floor(new Date("2026-09-06T09:00").getTime() / 1_000),
+        endTime: Math.floor(new Date("2026-09-06T10:30").getTime() / 1_000),
+      });
+    });
   });
 
   test("clears first message content for every contact of the selected bot", async () => {

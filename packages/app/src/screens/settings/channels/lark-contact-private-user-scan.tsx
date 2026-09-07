@@ -2,6 +2,7 @@ import { type ComponentProps, useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
+  LarkDirectoryPrivateUserScanRange,
   LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
@@ -9,17 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { parseLarkContactPrivateUserScanRange } from "./lark-contact-private-user-scan-range";
 
 const DEFAULT_LOOKBACK_MINUTES = 30;
-const MAX_LOOKBACK_MINUTES = 10_080;
-
-function parseLookbackMinutes(value: string): number {
-  const minutes = Number(value.trim());
-  if (!Number.isInteger(minutes) || minutes < 1 || minutes > MAX_LOOKBACK_MINUTES) {
-    throw new Error("扫描时间范围必须是 1 到 10080 分钟");
-  }
-  return minutes;
-}
 
 function formatMessageTime(value: string): string {
   const date = new Date(value);
@@ -72,10 +65,15 @@ export function LarkContactPrivateUserScan({
 }: {
   appId: string | null;
   connected: boolean;
-  onScan: (appId: string, lookbackMinutes: number) => Promise<LarkDirectoryRecentPrivateUser[]>;
+  onScan: (
+    appId: string,
+    range: LarkDirectoryPrivateUserScanRange,
+  ) => Promise<LarkDirectoryRecentPrivateUser[]>;
   onAdd: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
 }) {
   const [lookbackMinutes, setLookbackMinutes] = useState(String(DEFAULT_LOOKBACK_MINUTES));
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [results, setResults] = useState<LarkDirectoryRecentPrivateUser[] | null>(null);
   const [scanning, setScanning] = useState(false);
   const [addingOpenId, setAddingOpenId] = useState<string | null>(null);
@@ -87,9 +85,13 @@ export function LarkContactPrivateUserScan({
       setError("请先选择已配置 App ID 的飞书机器人");
       return;
     }
-    let minutes: number;
+    let range: LarkDirectoryPrivateUserScanRange;
     try {
-      minutes = parseLookbackMinutes(lookbackMinutes);
+      range = parseLarkContactPrivateUserScanRange({
+        lookbackMinutes,
+        startTime,
+        endTime,
+      });
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : String(scanError));
       return;
@@ -97,14 +99,14 @@ export function LarkContactPrivateUserScan({
     setScanning(true);
     setError(null);
     try {
-      setResults(await onScan(normalizedAppId, minutes));
+      setResults(await onScan(normalizedAppId, range));
     } catch (scanError) {
       setResults(null);
       setError(scanError instanceof Error ? scanError.message : String(scanError));
     } finally {
       setScanning(false);
     }
-  }, [appId, lookbackMinutes, onScan]);
+  }, [appId, endTime, lookbackMinutes, onScan, startTime]);
 
   const handleAdd = useCallback(
     async (candidate: LarkDirectoryRecentPrivateUser) => {
@@ -130,34 +132,52 @@ export function LarkContactPrivateUserScan({
   );
 
   return (
-    <SettingsSection title="扫描最近私聊用户">
+    <SettingsSection title="扫描私聊用户">
       <View style={styles.formCard}>
         <Field
-          label="扫描时间范围（分钟）"
-          hint="扫描授权用户最近的飞书私聊消息，默认最近 30 分钟。"
+          label="最近时间范围（分钟）"
+          hint="未填写下方开始和结束时间时，默认扫描最近 30 分钟。"
           error={error}
         >
-          <View style={styles.scanRow}>
-            <View style={styles.scanInput}>
-              <FormTextInput
-                value={lookbackMinutes}
-                onChangeText={setLookbackMinutes}
-                keyboardType="number-pad"
-                placeholder="30"
-                testID="host-page-lark-contact-private-lookback"
-              />
-            </View>
-            <Button
-              variant="outline"
-              onPress={handleScan}
-              loading={scanning}
-              disabled={!connected || scanning || !appId}
-              testID="host-page-lark-contact-private-scan"
-            >
-              扫描
-            </Button>
-          </View>
+          <FormTextInput
+            value={lookbackMinutes}
+            onChangeText={setLookbackMinutes}
+            keyboardType="number-pad"
+            placeholder="30"
+            testID="host-page-lark-contact-private-lookback"
+          />
         </Field>
+        <View style={styles.rangeRow}>
+          <View style={styles.rangeField}>
+            <Field label="开始时间">
+              <FormTextInput
+                value={startTime}
+                onChangeText={setStartTime}
+                placeholder="YYYY-MM-DD HH:mm"
+                testID="host-page-lark-contact-private-start-time"
+              />
+            </Field>
+          </View>
+          <View style={styles.rangeField}>
+            <Field label="结束时间">
+              <FormTextInput
+                value={endTime}
+                onChangeText={setEndTime}
+                placeholder="YYYY-MM-DD HH:mm"
+                testID="host-page-lark-contact-private-end-time"
+              />
+            </Field>
+          </View>
+        </View>
+        <Button
+          variant="outline"
+          onPress={handleScan}
+          loading={scanning}
+          disabled={!connected || scanning || !appId}
+          testID="host-page-lark-contact-private-scan"
+        >
+          扫描
+        </Button>
         {results ? (
           <View testID="host-page-lark-contact-private-results">
             <Text style={settingsStyles.rowTitle}>扫描结果（{results.length}）</Text>
@@ -197,14 +217,14 @@ const styles = StyleSheet.create((theme) => ({
   formCard: {
     gap: theme.spacing[4],
   },
-  scanRow: {
+  rangeRow: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
     gap: theme.spacing[2],
   },
-  scanInput: {
+  rangeField: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 220,
   },
   messageText: {
     color: theme.colors.foreground,

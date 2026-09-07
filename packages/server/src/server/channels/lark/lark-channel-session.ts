@@ -41,6 +41,8 @@ type LarkChannelResponse = Extract<
       | "channel.lark.directory.resolve_user.response"
       | "channel.lark.directory.resolve_users.response"
       | "channel.lark.directory.resolve_chats.response"
+      | "channel.lark.directory.create_user.response"
+      | "channel.lark.directory.delete_users.response"
       | "channel.lark.directory.update_user.response"
       | "channel.lark.directory.clear_first_messages.response"
       | "channel.lark.directory.scan_private_users.response"
@@ -73,6 +75,8 @@ type LarkDirectoryOrOAuthRequest = Extract<
       | "channel.lark.directory.resolve_user.request"
       | "channel.lark.directory.resolve_users.request"
       | "channel.lark.directory.resolve_chats.request"
+      | "channel.lark.directory.create_user.request"
+      | "channel.lark.directory.delete_users.request"
       | "channel.lark.directory.update_user.request"
       | "channel.lark.directory.clear_first_messages.request"
       | "channel.lark.directory.scan_private_users.request"
@@ -101,6 +105,8 @@ function isDirectoryOrOAuthRequest(
     message.type === "channel.lark.directory.resolve_user.request" ||
     message.type === "channel.lark.directory.resolve_users.request" ||
     message.type === "channel.lark.directory.resolve_chats.request" ||
+    message.type === "channel.lark.directory.create_user.request" ||
+    message.type === "channel.lark.directory.delete_users.request" ||
     message.type === "channel.lark.directory.update_user.request" ||
     message.type === "channel.lark.directory.clear_first_messages.request" ||
     message.type === "channel.lark.directory.scan_private_users.request" ||
@@ -425,6 +431,35 @@ export class LarkChannelSession {
         });
         return;
       }
+      case "channel.lark.directory.create_user.request": {
+        const user = this.service.createDirectoryUser(message.appId, message.openId, {
+          displayName: message.displayName,
+          email: message.email,
+        });
+        this.emitResponse({
+          type: "channel.lark.directory.create_user.response",
+          payload: {
+            requestId: message.requestId,
+            user,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "channel.lark.directory.delete_users.request": {
+        const deletedOpenIds = this.service.deleteDirectoryUsers(message.appId, message.openIds);
+        this.emitResponse({
+          type: "channel.lark.directory.delete_users.response",
+          payload: {
+            requestId: message.requestId,
+            deletedOpenIds,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
       case "channel.lark.directory.clear_first_messages.request": {
         const clearedCount = this.service.clearDirectoryFirstMessageContents(message.appId);
         this.emitResponse({
@@ -439,10 +474,11 @@ export class LarkChannelSession {
         return;
       }
       case "channel.lark.directory.scan_private_users.request": {
-        const users = await this.service.scanRecentDirectoryPrivateUsers(
-          message.appId,
-          message.lookbackMinutes,
-        );
+        const users = await this.service.scanRecentDirectoryPrivateUsers(message.appId, {
+          lookbackMinutes: message.lookbackMinutes,
+          ...(message.startTime == null ? {} : { startTime: message.startTime }),
+          ...(message.endTime == null ? {} : { endTime: message.endTime }),
+        });
         this.emitResponse({
           type: "channel.lark.directory.scan_private_users.response",
           payload: {
@@ -673,6 +709,18 @@ export class LarkChannelSession {
         this.emitResponse({
           type: "channel.lark.directory.update_user.response",
           payload: { requestId: message.requestId, user: null, status, error },
+        });
+        return;
+      case "channel.lark.directory.create_user.request":
+        this.emitResponse({
+          type: "channel.lark.directory.create_user.response",
+          payload: { requestId: message.requestId, user: null, status, error },
+        });
+        return;
+      case "channel.lark.directory.delete_users.request":
+        this.emitResponse({
+          type: "channel.lark.directory.delete_users.response",
+          payload: { requestId: message.requestId, deletedOpenIds: [], status, error },
         });
         return;
       case "channel.lark.directory.clear_first_messages.request":

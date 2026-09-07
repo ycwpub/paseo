@@ -20,21 +20,21 @@ describe("PluginSession alert troubleshooter RPC", () => {
       pluginId: "argos-alert-troubleshooter",
       appId: "argos-troubleshooter-console",
       projectId: "prj_1",
-      recordId: "rec_1",
+      uniqueId: "result_id:1",
     });
 
     expect(enqueueAlertTroubleshooterRecord).toHaveBeenCalledWith({
       pluginId: "argos-alert-troubleshooter",
       appId: "argos-troubleshooter-console",
       projectId: "prj_1",
-      recordId: "rec_1",
+      uniqueId: "result_id:1",
     });
     expect(emit).toHaveBeenCalledWith({
       type: "plugin.alert_troubleshooter.enqueue_record.response",
       payload: {
         requestId: "request-1",
         queued: true,
-        recordId: "rec_1",
+        uniqueId: "result_id:1",
         error: null,
       },
     });
@@ -60,7 +60,7 @@ describe("PluginSession alert troubleshooter RPC", () => {
       pluginId: "argos-alert-troubleshooter",
       appId: "argos-troubleshooter-console",
       projectId: "prj_1",
-      recordId: "rec_missing",
+      uniqueId: "result_id:missing",
     });
 
     expect(emit).toHaveBeenCalledWith({
@@ -68,7 +68,7 @@ describe("PluginSession alert troubleshooter RPC", () => {
       payload: {
         requestId: "request-2",
         queued: false,
-        recordId: "rec_missing",
+        uniqueId: "result_id:missing",
         error: "record not found",
       },
     });

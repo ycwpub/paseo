@@ -161,6 +161,52 @@ export class LarkDirectoryStore {
     return record;
   }
 
+  createUser(
+    appId: string,
+    openId: string,
+    input: { email: string | null; displayName: string | null },
+    now: string,
+  ): LarkDirectoryUser {
+    this.ensureLoaded();
+    const normalizedAppId = appId.trim();
+    const normalizedOpenId = openId.trim();
+    if (!normalizedAppId || !normalizedOpenId) {
+      throw new Error("飞书机器人 App ID 和联系人 ou_id 不能为空");
+    }
+    if (this.findUser(normalizedAppId, normalizedOpenId)) {
+      throw new Error(`联系人已存在：${normalizedOpenId}`);
+    }
+    const record = LarkDirectoryUserSchema.parse({
+      appId: normalizedAppId,
+      openId: normalizedOpenId,
+      email: normalizeLarkDirectoryEmail(input.email),
+      displayName: input.displayName?.trim() || null,
+      firstMessageContent: null,
+      firstMessageAt: null,
+      updatedAt: now,
+    });
+    this.persist({ ...this.payload, users: [...this.payload.users, record] });
+    return record;
+  }
+
+  deleteUsers(appId: string, openIds: readonly string[]): string[] {
+    this.ensureLoaded();
+    const normalizedAppId = appId.trim();
+    const requested = new Set(openIds.map((openId) => openId.trim()).filter(Boolean));
+    if (!normalizedAppId || requested.size === 0) return [];
+    const deletedOpenIds = this.payload.users
+      .filter((entry) => entry.appId === normalizedAppId && requested.has(entry.openId))
+      .map((entry) => entry.openId);
+    if (deletedOpenIds.length === 0) return [];
+    this.persist({
+      ...this.payload,
+      users: this.payload.users.filter(
+        (entry) => entry.appId !== normalizedAppId || !requested.has(entry.openId),
+      ),
+    });
+    return deletedOpenIds;
+  }
+
   clearFirstMessageContents(appId: string, now: string): number {
     this.ensureLoaded();
     let clearedCount = 0;

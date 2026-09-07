@@ -39,13 +39,13 @@ function convertLegacyAudienceRule(
   listKind: "allow" | "deny",
 ): LarkSubstituteAudienceRuleGroup {
   if (rule.type === "user") {
-    const userRule: LarkSubstituteAudienceUserRule = rule.email
+    const userRule: LarkSubstituteAudienceUserRule = rule.openId
       ? {
-          id: `${rule.id}-email`,
-          type: "user_email",
-          email: rule.email,
+          id: `${rule.id}-open-id`,
+          type: "user_open_id",
           openId: rule.openId,
           name: rule.name,
+          email: rule.email,
         }
       : {
           id: `${rule.id}-name`,
@@ -105,16 +105,36 @@ export function createSubstituteRuleFormLists(
   const legacyDenylist = mode.audienceDenylist ?? legacyAudienceRules(mode.denylist);
   return {
     // COMPAT(larkSubstituteAudienceRuleGroups): added in v0.7.0, remove after 2027-03-07.
-    audienceAllowRuleGroups: [
-      ...(mode.audienceAllowRuleGroups ?? convertLegacyAudienceRules(legacyAllowlist, "allow")),
-    ],
+    audienceAllowRuleGroups: migrateAudienceRuleGroups(
+      mode.audienceAllowRuleGroups ?? convertLegacyAudienceRules(legacyAllowlist, "allow"),
+    ),
     // COMPAT(larkSubstituteAudienceRuleGroups): added in v0.7.0, remove after 2027-03-07.
-    audienceDenyRuleGroups: [
-      ...(mode.audienceDenyRuleGroups ?? convertLegacyAudienceRules(legacyDenylist, "deny")),
-    ],
+    audienceDenyRuleGroups: migrateAudienceRuleGroups(
+      mode.audienceDenyRuleGroups ?? convertLegacyAudienceRules(legacyDenylist, "deny"),
+    ),
     questionAllowlist: [...(mode.questionAllowlist ?? legacyQuestionRules(mode.allowlist))],
     questionDenylist: [...(mode.questionDenylist ?? legacyQuestionRules(mode.denylist))],
   };
+}
+
+function migrateAudienceRuleGroups(
+  groups: readonly LarkSubstituteAudienceRuleGroup[],
+): LarkSubstituteAudienceRuleGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    conversationRules: [...group.conversationRules],
+    userRules: group.userRules.map((rule) =>
+      rule.type === "user_email" && rule.openId
+        ? {
+            id: rule.id,
+            type: "user_open_id",
+            openId: rule.openId,
+            name: rule.name,
+            email: rule.email,
+          }
+        : { ...rule },
+    ),
+  }));
 }
 
 export function createConversationRule(
@@ -148,8 +168,12 @@ export function createUserRule(
       return { id, type };
     case "bot_app_id":
       return { id, type, appId: "" };
+    case "bot_name":
+      return { id, type, name: "" };
     case "user_name":
       return { id, type, name: "", openId: null, email: null };
+    case "user_open_id":
+      return { id, type, openId: "", name: null, email: null };
     case "user_email":
       return { id, type, email: "", openId: null, name: null };
   }
@@ -213,39 +237,57 @@ function validateUserRule(
   ruleIndex: number,
 ): LarkSubstituteAudienceUserRule {
   const location = `${listLabel}第 ${groupIndex + 1} 个名单的第二层第 ${ruleIndex + 1} 行`;
-  switch (rule.type) {
-    case "all_users":
-    case "all_bots":
-    case "all":
-      return rule;
-    case "bot_app_id": {
-      const appId = rule.appId.trim();
-      if (!appId) throw new Error(`${location}请输入机器人 app_id`);
-      return { ...rule, appId };
-    }
-    case "user_name": {
-      const name = rule.name.trim();
-      if (!name) throw new Error(`${location}请输入用户名称`);
-      return {
-        ...rule,
-        name,
-        openId: rule.openId?.trim() || null,
-        email: rule.email?.trim() || null,
-      };
-    }
-    case "user_email": {
-      const email = rule.email.trim().toLocaleLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
-        throw new Error(`${location}请输入有效的用户邮箱`);
-      }
-      return {
-        ...rule,
-        email,
-        openId: rule.openId?.trim() || null,
-        name: rule.name?.trim() || null,
-      };
-    }
+  if (rule.type === "all_users" || rule.type === "all_bots" || rule.type === "all") return rule;
+  if (rule.type === "bot_app_id") {
+    const appId = rule.appId.trim();
+    if (!appId) throw new Error(`${location}请输入机器人 app_id`);
+    return { ...rule, appId };
   }
+  if (rule.type === "bot_name") {
+    const name = rule.name.trim();
+    if (!name) throw new Error(`${location}请输入机器人名称`);
+    return { ...rule, name };
+  }
+  return validateUserIdentityRule(rule, location);
+}
+
+function validateUserIdentityRule(
+  rule: Extract<
+    LarkSubstituteAudienceUserRule,
+    { type: "user_name" | "user_email" | "user_open_id" }
+  >,
+  location: string,
+): LarkSubstituteAudienceUserRule {
+  if (rule.type === "user_name") {
+    const name = rule.name.trim();
+    if (!name) throw new Error(`${location}请输入用户名称`);
+    return {
+      ...rule,
+      name,
+      openId: rule.openId?.trim() || null,
+      email: rule.email?.trim() || null,
+    };
+  }
+  if (rule.type === "user_email") {
+    const email = rule.email.trim().toLocaleLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
+      throw new Error(`${location}请输入有效的用户邮箱`);
+    }
+    return {
+      ...rule,
+      email,
+      openId: rule.openId?.trim() || null,
+      name: rule.name?.trim() || null,
+    };
+  }
+  const openId = rule.openId.trim();
+  if (!openId) throw new Error(`${location}请选择用户或输入用户 open_id`);
+  return {
+    ...rule,
+    openId,
+    name: rule.name?.trim() || null,
+    email: rule.email?.trim() || null,
+  };
 }
 
 function validateAudienceRuleGroups(

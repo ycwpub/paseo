@@ -1517,6 +1517,8 @@ describe("LarkChannelService", () => {
     } satisfies NormalizedLarkMessageEvent);
     await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
 
+    expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
+    expect(harness.adapter.replyInThread).not.toHaveBeenCalled();
     expect(harness.createAgent).toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
     expect(prompt).toContain("<lark_substitute_trigger>");
@@ -1536,9 +1538,68 @@ describe("LarkChannelService", () => {
 
     expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
       expect.anything(),
-      "om_ack",
+      "om_root",
       "【代张三回复】1 + 1 = 2。",
     );
+  });
+
+  test("creates the topic with the final substitute answer instead of a processing ACK", async () => {
+    vi.useFakeTimers();
+    const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      substitute: {
+        enabled: true,
+        openId: "ou_substitute",
+        name: "张三",
+      },
+    });
+
+    await harness.service.handleIncomingEvent(harness.botId, {
+      eventId: "evt_new_substitute_topic",
+      messageId: "om_new_substitute_topic",
+      chatId: "oc_1",
+      chatType: "group",
+      threadId: null,
+      rootMessageId: null,
+      openId: "ou_1",
+      unionId: null,
+      displayName: "Alice",
+      topicName: "New substitute topic",
+      text: "@张三 1+1等于几？",
+      createTime: 1767226200000,
+      mentions: [
+        {
+          key: "@_user_1",
+          name: "张三",
+          openId: "ou_substitute",
+          userId: null,
+          appId: null,
+          idType: "open_id",
+        },
+      ],
+    } satisfies NormalizedLarkMessageEvent);
+    await vi.advanceTimersByTimeAsync(DEFAULT_LARK_SUBSTITUTE_DELAY_SECONDS * 1000);
+
+    expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
+    expect(harness.adapter.replyInThread).not.toHaveBeenCalled();
+
+    harness.lastMessages.set("agent-created", "2。");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+
+    expect(harness.adapter.replyToMessageInThread).toHaveBeenCalledTimes(1);
+    expect(harness.adapter.replyToMessageInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_new_substitute_topic",
+      "【代张三回复】2。",
+    );
+    expect(
+      harness.store.findConversationByThread(harness.botId, "oc_1", "omt_created"),
+    ).toMatchObject({
+      agentId: "agent-created",
+      rootMessageId: "om_new_substitute_topic",
+    });
   });
 
   test("uses an independent substitute mode target and question policies", async () => {
@@ -1634,9 +1695,8 @@ describe("LarkChannelService", () => {
       "cli_test",
       "u-token",
     );
-    expect(vi.mocked(harness.adapter.addBotToChat).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(harness.adapter.replyToMessageInThread).mock.invocationCallOrder[0]!,
-    );
+    expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
+    expect(harness.adapter.replyInThread).not.toHaveBeenCalled();
     const prompt = vi.mocked(harness.agentManager.streamAgent).mock.calls.at(-1)?.[1];
     expect(prompt).toContain("Additional substitute instruction: 回答前先核对发布规范");
     expect(prompt).toContain("<allow>研发和代码问题</allow>");
@@ -1653,6 +1713,11 @@ describe("LarkChannelService", () => {
     harness.lastMessages.set("agent-created", "发布前已核对。");
     await harness.emitAgentState("agent-created", "running");
     await harness.emitAgentState("agent-created", "idle");
+    expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
+      expect.anything(),
+      "om_root",
+      "【AI 协助回答】发布前已核对。",
+    );
     expect(harness.service.listSubstituteTasks()[0]).toEqual(
       expect.objectContaining({ status: "completed" }),
     );
@@ -1970,7 +2035,7 @@ describe("LarkChannelService", () => {
 
     expect(harness.adapter.replyInThread).toHaveBeenCalledWith(
       expect.anything(),
-      "om_ack",
+      "om_substitute_from_bot_root",
       "【代袁昌旺回复】可以上线。",
     );
   });
@@ -2219,7 +2284,7 @@ describe("LarkChannelService", () => {
 
     expect(harness.adapter.replyInThread).toHaveBeenLastCalledWith(
       expect.anything(),
-      "om_ack",
+      "om_local_substitute_root",
       '<at user_id="ou_bot"></at> 【代袁昌旺回复】2。',
     );
   });

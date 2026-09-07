@@ -14,7 +14,6 @@ export interface AlertTroubleshooterConfigDraft {
   target: AlertTroubleshooterTarget;
   troubleshootingSopDoc: string;
   attributionRecordRoot: string;
-  recordTableUrl: string;
   promptTemplate: string;
   queuePollIntervalMinutes: string;
   schedule: {
@@ -54,9 +53,6 @@ function issueMessage(path: PropertyKey[]): string {
   if (field === "attributionRecordRoot") {
     return "归因记录链接格式无效，请输入完整的 http:// 或 https:// 链接";
   }
-  if (field === "recordTableUrl") {
-    return "消息多维表格链接格式无效，请输入完整的 http:// 或 https:// 链接";
-  }
   if (field === "target.assistantId") return "请选择助手";
   if (field === "target.teamId") return "请选择团队";
   if (field === "queuePollIntervalMinutes") return "多维表格轮询间隔必须是 1 到 1440 分钟";
@@ -81,7 +77,6 @@ export function validateAlertTroubleshooterConfig(
   const botId = draft.botId.trim();
   const troubleshootingSopDoc = draft.troubleshootingSopDoc.trim();
   const attributionRecordRoot = draft.attributionRecordRoot.trim();
-  const recordTableUrl = draft.recordTableUrl.trim();
 
   if (!botId) {
     errors.push("请选择飞书机器人");
@@ -99,26 +94,14 @@ export function validateAlertTroubleshooterConfig(
     explicitlyValidatedFields.add("troubleshootingSopDoc");
   }
   if (!attributionRecordRoot) {
-    errors.push("请输入归因记录飞书文档或目录链接");
+    errors.push("请输入归因记录根目录");
     explicitlyValidatedFields.add("attributionRecordRoot");
   } else if (!isHttpUrl(attributionRecordRoot)) {
     errors.push("归因记录链接格式无效，请输入完整的 http:// 或 https:// 链接");
     explicitlyValidatedFields.add("attributionRecordRoot");
   }
-  if (!recordTableUrl) {
-    errors.push("请输入消息多维表格链接");
-    explicitlyValidatedFields.add("recordTableUrl");
-  } else if (!isHttpUrl(recordTableUrl)) {
-    errors.push("消息多维表格链接格式无效，请输入完整的 http:// 或 https:// 链接");
-    explicitlyValidatedFields.add("recordTableUrl");
-  }
-  if (draft.target.kind === "default") {
-    errors.push("请选择助手或团队");
-    explicitlyValidatedFields.add("target");
-  }
-
   const parsed = schema.safeParse({
-    version: 3,
+    version: 4,
     enabled: draft.enabled,
     listenEnabled: draft.listenEnabled,
     troubleshootingEnabled: draft.troubleshootingEnabled,
@@ -127,7 +110,6 @@ export function validateAlertTroubleshooterConfig(
     target: draft.target,
     troubleshootingSopDoc,
     attributionRecordRoot,
-    recordTableUrl,
     promptTemplate: draft.promptTemplate,
     queuePollIntervalMinutes: numericValue(draft.queuePollIntervalMinutes, 5),
     schedule: {

@@ -23,6 +23,7 @@ describe("substitute mode Project resolution", () => {
     const result = await resolveSubstituteModeProject({
       name: "研发替身",
       cwd: " /repo/existing ",
+      projectMode: "existing",
       supportsDirectorylessProjects: true,
       client: { createDirectorylessProject } as unknown as SubstituteModeProjectClient,
       registerProject: vi.fn(),
@@ -43,6 +44,7 @@ describe("substitute mode Project resolution", () => {
     const result = await resolveSubstituteModeProject({
       name: " 研发替身 ",
       cwd: "",
+      projectMode: "create",
       supportsDirectorylessProjects: true,
       client: {
         createDirectorylessProject,
@@ -57,6 +59,19 @@ describe("substitute mode Project resolution", () => {
       cwd: "/Users/test/.paseo/projects/prj_substitute",
       createdProjectId: "prj_substitute",
     });
+  });
+
+  test("requires a selected Project in existing mode", async () => {
+    await expect(
+      resolveSubstituteModeProject({
+        name: "研发替身",
+        cwd: "",
+        projectMode: "existing",
+        supportsDirectorylessProjects: true,
+        client: null,
+        registerProject: vi.fn(),
+      }),
+    ).rejects.toThrow("请选择已有项目");
   });
 
   test("rolls back an automatically created Project when mode persistence fails", async () => {

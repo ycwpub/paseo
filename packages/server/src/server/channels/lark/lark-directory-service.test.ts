@@ -93,6 +93,22 @@ describe("LarkDirectoryService", () => {
     ).rejects.toThrow("missing@example.com");
   });
 
+  test("searches visible Lark users by name and persists their Open IDs", async () => {
+    const searchUsers = vi.fn(async () => [
+      { email: "alice@example.com", openId: "ou_alice", displayName: "张三" },
+    ]);
+    const service = createService({ searchUsers });
+
+    await expect(service.resolveUsers("cli_test", ["张三"])).resolves.toMatchObject([
+      { email: "alice@example.com", openId: "ou_alice", displayName: "张三" },
+    ]);
+    expect(searchUsers).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test", appSecret: "secret" }),
+      "张三",
+      "u-token",
+    );
+  });
+
   test("refreshes and persists a real email for an observed Open ID", async () => {
     directoryStore.observeUser(
       "cli_test",
@@ -178,7 +194,9 @@ describe("LarkDirectoryService", () => {
     ]);
     const service = createService({ searchPrivateMessagesAsUser });
 
-    await expect(service.scanRecentPrivateUsers("cli_test", 30)).resolves.toEqual([
+    await expect(
+      service.scanRecentPrivateUsers("cli_test", { lookbackMinutes: 30 }),
+    ).resolves.toEqual([
       expect.objectContaining({
         openId: "ou_recent",
         displayName: "最近联系人",
@@ -193,6 +211,26 @@ describe("LarkDirectoryService", () => {
         startTime: expect.any(Number),
         endTime: expect.any(Number),
       }),
+      "u-token",
+    );
+  });
+
+  test("scans private users within an explicit message time range", async () => {
+    const searchPrivateMessagesAsUser = vi.fn(async () => []);
+    const service = createService({ searchPrivateMessagesAsUser });
+
+    await service.scanRecentPrivateUsers("cli_test", {
+      lookbackMinutes: 30,
+      startTime: 1_788_729_600,
+      endTime: 1_788_733_200,
+    });
+
+    expect(searchPrivateMessagesAsUser).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test" }),
+      {
+        startTime: 1_788_729_600,
+        endTime: 1_788_733_200,
+      },
       "u-token",
     );
   });
@@ -275,6 +313,24 @@ describe("LarkDirectoryService", () => {
       expect.objectContaining({ openId: "ou_alice", firstMessageContent: null }),
       expect.objectContaining({ openId: "ou_bob", firstMessageContent: null }),
     ]);
+  });
+
+  test("creates and deletes local contacts for a configured bot", () => {
+    const service = createService({});
+    expect(
+      service.createUser("cli_test", "ou_alice", {
+        displayName: "张三",
+        email: "alice@example.com",
+      }),
+    ).toMatchObject({
+      appId: "cli_test",
+      openId: "ou_alice",
+      displayName: "张三",
+      email: "alice@example.com",
+    });
+
+    expect(service.deleteUsers("cli_test", ["ou_alice", "ou_missing"])).toEqual(["ou_alice"]);
+    expect(service.getState().users).toEqual([]);
   });
 
   test("does not query Lark again when the email is already known", async () => {

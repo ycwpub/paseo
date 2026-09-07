@@ -39,6 +39,7 @@ import {
   SkillUpdateInput,
   type LarkReminderCreateInput,
   type LarkReminderUpdateInput,
+  type LarkDirectoryPrivateUserScanRange,
   type LarkSubstituteModeCreateInput,
   type LarkSubstituteModeUpdateInput,
 } from "@getpaseo/protocol/messages";
@@ -693,6 +694,14 @@ type LarkDirectoryUpdateUserPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.update_user.response" }
 >["payload"];
+type LarkDirectoryCreateUserPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.create_user.response" }
+>["payload"];
+type LarkDirectoryDeleteUsersPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.delete_users.response" }
+>["payload"];
 type LarkDirectoryClearFirstMessagesPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.clear_first_messages.response" }
@@ -1117,13 +1126,24 @@ export interface UpdateLarkDirectoryUserOptions {
   email: string | null;
   requestId?: string;
 }
+export interface CreateLarkDirectoryUserOptions {
+  appId: string;
+  openId: string;
+  displayName: string | null;
+  email: string | null;
+  requestId?: string;
+}
+export interface DeleteLarkDirectoryUsersOptions {
+  appId: string;
+  openIds: string[];
+  requestId?: string;
+}
 export interface ClearLarkDirectoryFirstMessagesOptions {
   appId: string;
   requestId?: string;
 }
-export interface ScanLarkDirectoryPrivateUsersOptions {
+export interface ScanLarkDirectoryPrivateUsersOptions extends LarkDirectoryPrivateUserScanRange {
   appId: string;
-  lookbackMinutes: number;
   requestId?: string;
 }
 export interface AddLarkDirectoryPrivateUserOptions {
@@ -6634,9 +6654,35 @@ export class DaemonClient {
     pluginId: string;
     appId: string;
     projectId: string;
-    recordId: string;
-  }): Promise<{ queued: boolean; recordId: string; error: string | null }> {
+    uniqueId: string;
+  }): Promise<{ queued: boolean; uniqueId: string; error: string | null }> {
     return this.resourceRpc.enqueueAlertTroubleshooterRecord(input);
+  }
+
+  async listAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }) {
+    return this.resourceRpc.listAlertTroubleshooterTasks(input);
+  }
+
+  async pauseAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    taskIds: string[];
+  }) {
+    return this.resourceRpc.pauseAlertTroubleshooterTasks(input);
+  }
+
+  async deleteAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    taskIds: string[];
+  }) {
+    return this.resourceRpc.deleteAlertTroubleshooterTasks(input);
   }
 
   async listPluginAppProjects(
@@ -6846,6 +6892,18 @@ export class DaemonClient {
     options: UpdateLarkDirectoryUserOptions,
   ): Promise<LarkDirectoryUpdateUserPayload> {
     return this.resourceRpc.updateLarkDirectoryUser(options);
+  }
+
+  async createLarkDirectoryUser(
+    options: CreateLarkDirectoryUserOptions,
+  ): Promise<LarkDirectoryCreateUserPayload> {
+    return this.resourceRpc.createLarkDirectoryUser(options);
+  }
+
+  async deleteLarkDirectoryUsers(
+    options: DeleteLarkDirectoryUsersOptions,
+  ): Promise<LarkDirectoryDeleteUsersPayload> {
+    return this.resourceRpc.deleteLarkDirectoryUsers(options);
   }
 
   async clearLarkDirectoryFirstMessages(

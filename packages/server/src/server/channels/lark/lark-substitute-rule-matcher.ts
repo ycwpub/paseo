@@ -95,8 +95,12 @@ function matchesUserRule(
   if (rule.type === "bot_app_id") {
     return botSender && normalizeIdentity(rule.appId) === normalizeIdentity(event.senderAppId);
   }
+  if (rule.type === "bot_name") {
+    return botSender && normalizeIdentity(rule.name) === normalizeIdentity(event.displayName);
+  }
   if (botSender) return false;
   if (rule.type === "all_users") return true;
+  if (rule.type === "user_open_id") return rule.openId === event.openId;
   if (rule.openId && rule.openId === event.openId) return true;
   const user = findDirectoryUser(event, directory, appId);
   if (rule.type === "user_email") {

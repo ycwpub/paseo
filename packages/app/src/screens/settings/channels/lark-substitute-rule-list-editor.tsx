@@ -78,16 +78,22 @@ const USER_TYPE_OPTIONS: SelectFieldOption<LarkSubstituteUserRuleType>[] = [
     description: "按通讯录名称或消息发送者名称匹配",
   },
   {
-    id: "user_email",
-    value: "user_email",
-    label: "用户邮箱",
-    description: "按通讯录邮箱匹配",
+    id: "user_open_id",
+    value: "user_open_id",
+    label: "用户 open_id",
+    description: "根据用户名、邮箱或 ou_xxx 搜索并保存唯一 open_id",
   },
   {
     id: "bot_app_id",
     value: "bot_app_id",
     label: "机器人 app_id",
     description: "按发送机器人的 app_id 精确匹配",
+  },
+  {
+    id: "bot_name",
+    value: "bot_name",
+    label: "机器人名称",
+    description: "按消息发送机器人的名称匹配",
   },
   {
     id: "all_bots",
@@ -256,7 +262,10 @@ function UserDirectoryFields({
   resolveUsers,
   onChange,
 }: {
-  rule: Extract<LarkSubstituteAudienceUserRule, { type: "user_name" | "user_email" }>;
+  rule: Extract<
+    LarkSubstituteAudienceUserRule,
+    { type: "user_name" | "user_open_id" | "user_email" }
+  >;
   appId: string;
   users: readonly LarkDirectoryUser[];
   disabled: boolean;
@@ -293,17 +302,24 @@ function UserDirectoryFields({
         });
         return;
       }
-      if (!user.email) {
-        setError("该联系人没有可用邮箱");
-        return;
-      }
       setError(null);
-      onChange({
-        ...rule,
-        email: user.email,
-        openId: user.openId,
-        name: user.displayName,
-      });
+      if (rule.type === "user_open_id") {
+        onChange({
+          ...rule,
+          openId: user.openId,
+          name: user.displayName,
+          email: user.email,
+        });
+      } else if (user.email) {
+        onChange({
+          ...rule,
+          email: user.email,
+          openId: user.openId,
+          name: user.displayName,
+        });
+      } else {
+        setError("旧版邮箱规则需要联系人邮箱，请切换为“用户 open_id”");
+      }
     },
     [onChange, rule],
   );
@@ -325,18 +341,18 @@ function UserDirectoryFields({
       setError(null);
       return;
     }
-    if (!query.includes("@")) {
-      setError("本地通讯录未找到该用户；首次查询请使用邮箱");
-      return;
-    }
     setResolving(true);
     setError(null);
     try {
       const resolved = await resolveUsers(appId, [query]);
       setResolvedUsers((current) => [...current, ...resolved]);
-      if (resolved[0]) {
+      if (resolved.length === 1 && resolved[0]) {
         selectUser(resolved[0]);
         setLookup("");
+      } else if (resolved.length > 1) {
+        setError("找到多个用户，请从下方结果中选择");
+      } else {
+        setError(`飞书未找到用户：${query}`);
       }
     } catch (lookupError) {
       setError(lookupError instanceof Error ? lookupError.message : String(lookupError));
@@ -348,20 +364,23 @@ function UserDirectoryFields({
     (value: string) => {
       if (rule.type === "user_name") {
         onChange({ ...rule, name: value, openId: null, email: null });
+      } else if (rule.type === "user_open_id") {
+        onChange({ ...rule, openId: value, name: null, email: null });
       } else {
         onChange({ ...rule, email: value, openId: null, name: null });
       }
     },
     [onChange, rule],
   );
+  const identityField = getUserIdentityField(rule);
 
   return (
     <View style={styles.ruleFields}>
-      <Field label={rule.type === "user_name" ? "用户名称" : "用户邮箱"}>
+      <Field label={identityField.label}>
         <FormTextInput
-          value={rule.type === "user_name" ? rule.name : rule.email}
+          value={identityField.value}
           onChangeText={changeIdentity}
-          placeholder={rule.type === "user_name" ? "输入用户名称" : "输入用户邮箱"}
+          placeholder={identityField.placeholder}
           editable={!disabled}
         />
       </Field>
@@ -369,7 +388,7 @@ function UserDirectoryFields({
         <FormTextInput
           value={lookup}
           onChangeText={setLookup}
-          placeholder="从通讯录搜索用户名、邮箱或 ou_xxx"
+          placeholder="输入用户名、邮箱或 ou_xxx，从飞书搜索"
           editable={!disabled && !resolving}
           style={styles.lookupInput}
           onSubmitEditing={resolveUser}
@@ -381,7 +400,7 @@ function UserDirectoryFields({
           loading={resolving}
           disabled={disabled || resolving || !appId}
         >
-          搜索
+          从飞书搜索
         </Button>
       </View>
       <LarkUserDirectoryPicker
@@ -398,6 +417,25 @@ function UserDirectoryFields({
       {error ? <Text style={settingsStyles.rowError}>{error}</Text> : null}
     </View>
   );
+}
+
+function getUserIdentityField(
+  rule: Extract<
+    LarkSubstituteAudienceUserRule,
+    { type: "user_name" | "user_open_id" | "user_email" }
+  >,
+): { label: string; value: string; placeholder: string } {
+  if (rule.type === "user_name") {
+    return { label: "用户名称", value: rule.name, placeholder: "输入用户名称" };
+  }
+  if (rule.type === "user_open_id") {
+    return {
+      label: "用户 open_id",
+      value: rule.openId,
+      placeholder: "输入 ou_xxx，或在下方搜索",
+    };
+  }
+  return { label: "用户邮箱（旧配置）", value: rule.email, placeholder: "输入用户邮箱" };
 }
 
 function UserRuleRow({
@@ -429,6 +467,12 @@ function UserRuleRow({
     },
     [onChange, rule],
   );
+  const handleBotNameChange = useCallback(
+    (name: string) => {
+      if (rule.type === "bot_name") onChange({ ...rule, name });
+    },
+    [onChange, rule],
+  );
   return (
     <View style={styles.ruleRow}>
       <View style={styles.ruleContent}>
@@ -443,7 +487,7 @@ function UserRuleRow({
           emptyText="暂无用户或机器人范围类型"
           disabled={disabled}
         />
-        {rule.type === "user_name" || rule.type === "user_email" ? (
+        {rule.type === "user_name" || rule.type === "user_open_id" || rule.type === "user_email" ? (
           <UserDirectoryFields
             rule={rule}
             appId={appId}
@@ -459,6 +503,16 @@ function UserRuleRow({
               value={rule.appId}
               onChangeText={handleBotAppIdChange}
               placeholder="例如：cli_xxx"
+              editable={!disabled}
+            />
+          </Field>
+        ) : null}
+        {rule.type === "bot_name" ? (
+          <Field label="机器人名称" hint="按飞书消息中显示的机器人名称精确匹配">
+            <FormTextInput
+              value={rule.name}
+              onChangeText={handleBotNameChange}
+              placeholder="例如：袁昌旺的 paseo_mac"
               editable={!disabled}
             />
           </Field>

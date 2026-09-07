@@ -70,4 +70,25 @@ describe("AlertTroubleshooterQueueStore", () => {
     expect(forced.id).not.toBe(first.id);
     expect(store.claimNext("prj_1", { trigger: "manual" })?.id).toBe(forced.id);
   });
+
+  it("lists, pauses, and deletes execution records", () => {
+    const { store } = createStore();
+    const queued = store.enqueue("prj_1", {
+      recordId: "rec_1",
+      uniqueId: "result_id:1",
+      tableDate: "20260906",
+      trigger: "schedule",
+      matchedCount: 3,
+    });
+
+    expect(store.list("prj_1")[0]).toMatchObject({
+      uniqueId: "result_id:1",
+      matchedCount: 3,
+      status: "queued",
+    });
+    expect(store.pause("prj_1", [queued.id]).map((task) => task.id)).toEqual([queued.id]);
+    expect(store.get("prj_1", queued.id)?.status).toBe("paused");
+    expect(store.deleteMany("prj_1", [queued.id]).map((task) => task.id)).toEqual([queued.id]);
+    expect(store.list("prj_1")).toEqual([]);
+  });
 });

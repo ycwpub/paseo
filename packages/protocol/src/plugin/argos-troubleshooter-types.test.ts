@@ -18,10 +18,9 @@ describe("ArgosTroubleshooterConfigSchema", () => {
       excludeRecentMinutes: 0,
     });
     expect(config).toMatchObject({
-      version: 3,
+      version: 4,
       listenEnabled: true,
       troubleshootingEnabled: true,
-      recordTableUrl: "https://example.com/wiki/records",
       promptTemplate: "",
       queuePollIntervalMinutes: 5,
     });
@@ -43,7 +42,7 @@ describe("ArgosTroubleshooterConfigSchema", () => {
       },
     });
 
-    expect(config.version).toBe(3);
+    expect(config.version).toBe(4);
     expect(config.schedule.excludeRecentMinutes).toBe(0);
   });
 
@@ -63,10 +62,9 @@ describe("ArgosTroubleshooterConfigSchema", () => {
     });
 
     expect(config).toMatchObject({
-      version: 3,
+      version: 4,
       listenEnabled: true,
       troubleshootingEnabled: true,
-      recordTableUrl: "https://example.com/base/records?table=tbl_records",
       promptTemplate: "",
       queuePollIntervalMinutes: 5,
       schedule: {

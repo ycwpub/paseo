@@ -30,10 +30,22 @@ export {
   type AlertTroubleshooterRuntime,
   type AlertTroubleshooterSchedule,
   type AlertTroubleshooterTarget,
+  AlertTroubleshooterTaskSchema,
+  AlertTroubleshooterTaskStatusSchema,
+  AlertTroubleshooterTaskTriggerSchema,
+  type AlertTroubleshooterTask,
+  type AlertTroubleshooterTaskStatus,
+  type AlertTroubleshooterTaskTrigger,
 } from "./plugin/alert-troubleshooter-types.js";
 export {
   AlertTroubleshooterEnqueueRecordRequestSchema,
   AlertTroubleshooterEnqueueRecordResponseSchema,
+  AlertTroubleshooterTaskDeleteRequestSchema,
+  AlertTroubleshooterTaskDeleteResponseSchema,
+  AlertTroubleshooterTaskListRequestSchema,
+  AlertTroubleshooterTaskListResponseSchema,
+  AlertTroubleshooterTaskPauseRequestSchema,
+  AlertTroubleshooterTaskPauseResponseSchema,
 } from "./plugin/alert-troubleshooter-rpc-schemas.js";
 export {
   ARGOS_TROUBLESHOOTER_APP_ID,

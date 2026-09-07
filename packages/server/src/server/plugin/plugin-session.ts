@@ -29,6 +29,9 @@ export type PluginSessionRequest = Extract<
       | "plugin.app.job.start.request"
       | "plugin.app.job.delete.request"
       | "plugin.alert_troubleshooter.enqueue_record.request"
+      | "plugin.alert_troubleshooter.task.list.request"
+      | "plugin.alert_troubleshooter.task.pause.request"
+      | "plugin.alert_troubleshooter.task.delete.request"
       | "plugin.http.submit.request"
       | "plugin.http.config.get.request"
       | "plugin.http.config.save.request"
@@ -62,6 +65,9 @@ const PLUGIN_SESSION_REQUEST_TYPES = new Set<SessionInboundMessage["type"]>([
   "plugin.app.job.start.request",
   "plugin.app.job.delete.request",
   "plugin.alert_troubleshooter.enqueue_record.request",
+  "plugin.alert_troubleshooter.task.list.request",
+  "plugin.alert_troubleshooter.task.pause.request",
+  "plugin.alert_troubleshooter.task.delete.request",
   "plugin.http.config.get.request",
   "plugin.http.config.save.request",
   "plugin.http.local_addresses.get.request",
@@ -113,6 +119,9 @@ type PluginAppRequest = Extract<
       | "plugin.app.generate.request"
       | "plugin.app.action.submit.request"
       | "plugin.alert_troubleshooter.enqueue_record.request"
+      | "plugin.alert_troubleshooter.task.list.request"
+      | "plugin.alert_troubleshooter.task.pause.request"
+      | "plugin.alert_troubleshooter.task.delete.request"
       | "plugin.http.submit.request"
       | "plugin.app.job.get.request"
       | "plugin.app.job.list.request";
@@ -165,6 +174,9 @@ function isPluginAppRequest(message: PluginSessionRequest): message is PluginApp
     message.type === "plugin.app.generate.request" ||
     message.type === "plugin.app.action.submit.request" ||
     message.type === "plugin.alert_troubleshooter.enqueue_record.request" ||
+    message.type === "plugin.alert_troubleshooter.task.list.request" ||
+    message.type === "plugin.alert_troubleshooter.task.pause.request" ||
+    message.type === "plugin.alert_troubleshooter.task.delete.request" ||
     message.type === "plugin.http.submit.request" ||
     message.type === "plugin.app.job.get.request" ||
     message.type === "plugin.app.job.list.request"
@@ -367,14 +379,50 @@ export class PluginSession {
           pluginId: message.pluginId,
           appId: message.appId,
           projectId: message.projectId,
-          recordId: message.recordId,
+          uniqueId: message.uniqueId,
         });
         this.host.emit({
           type: "plugin.alert_troubleshooter.enqueue_record.response",
           payload: {
             requestId: message.requestId,
             queued,
-            recordId: message.recordId,
+            uniqueId: message.uniqueId,
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.alert_troubleshooter.task.list.request":
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.task.list.response",
+          payload: {
+            requestId: message.requestId,
+            tasks: this.service.listAlertTroubleshooterTasks(message),
+            error: null,
+          },
+        });
+        return;
+      case "plugin.alert_troubleshooter.task.pause.request": {
+        const pausedTaskIds = await this.service.pauseAlertTroubleshooterTasks(message);
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.task.pause.response",
+          payload: {
+            requestId: message.requestId,
+            pausedTaskIds,
+            tasks: this.service.listAlertTroubleshooterTasks(message),
+            error: null,
+          },
+        });
+        return;
+      }
+      case "plugin.alert_troubleshooter.task.delete.request": {
+        const deletedTaskIds = await this.service.deleteAlertTroubleshooterTasks(message);
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.task.delete.response",
+          payload: {
+            requestId: message.requestId,
+            deletedTaskIds,
+            tasks: this.service.listAlertTroubleshooterTasks(message),
             error: null,
           },
         });
@@ -740,9 +788,27 @@ export class PluginSession {
           payload: {
             requestId: message.requestId,
             queued: false,
-            recordId: message.recordId,
+            uniqueId: message.uniqueId,
             error,
           },
+        });
+        return;
+      case "plugin.alert_troubleshooter.task.list.request":
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.task.list.response",
+          payload: { requestId: message.requestId, tasks: [], error },
+        });
+        return;
+      case "plugin.alert_troubleshooter.task.pause.request":
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.task.pause.response",
+          payload: { requestId: message.requestId, pausedTaskIds: [], tasks: [], error },
+        });
+        return;
+      case "plugin.alert_troubleshooter.task.delete.request":
+        this.host.emit({
+          type: "plugin.alert_troubleshooter.task.delete.response",
+          payload: { requestId: message.requestId, deletedTaskIds: [], tasks: [], error },
         });
         return;
       case "plugin.http.submit.request":

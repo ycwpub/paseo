@@ -60,10 +60,10 @@ describe("Lark substitute rule form model", () => {
         conversationRules: [{ id: "user-private", type: "private" }],
         userRules: [
           {
-            id: "user-name",
-            type: "user_name",
-            name: "李四",
+            id: "user-open-id",
+            type: "user_open_id",
             openId: "ou_user",
+            name: "李四",
             email: null,
           },
         ],
@@ -98,13 +98,47 @@ describe("Lark substitute rule form model", () => {
     });
     expect(createUserRule("all_users")).toMatchObject({ type: "all_users" });
     expect(createUserRule("user_name")).toMatchObject({ type: "user_name", name: "" });
-    expect(createUserRule("user_email")).toMatchObject({ type: "user_email", email: "" });
+    expect(createUserRule("user_open_id")).toMatchObject({
+      type: "user_open_id",
+      openId: "",
+    });
     expect(createUserRule("bot_app_id")).toMatchObject({ type: "bot_app_id", appId: "" });
+    expect(createUserRule("bot_name")).toMatchObject({ type: "bot_name", name: "" });
     expect(createUserRule("all_bots")).toMatchObject({ type: "all_bots" });
     expect(createUserRule("all")).toMatchObject({ type: "all" });
     expect(createAudienceRuleGroup()).toMatchObject({
       conversationRules: [{ type: "group" }],
       userRules: [{ type: "all_users" }],
+    });
+  });
+
+  test("migrates saved email rules with an open_id to open_id rules", () => {
+    const lists = createSubstituteRuleFormLists(
+      mode({
+        audienceAllowRuleGroups: [
+          {
+            id: "saved",
+            conversationRules: [{ id: "private", type: "private" }],
+            userRules: [
+              {
+                id: "email",
+                type: "user_email",
+                email: "alice@example.com",
+                openId: "ou_alice",
+                name: "张三",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(lists.audienceAllowRuleGroups[0]?.userRules[0]).toEqual({
+      id: "email",
+      type: "user_open_id",
+      openId: "ou_alice",
+      name: "张三",
+      email: "alice@example.com",
     });
   });
 
@@ -176,5 +210,22 @@ describe("Lark substitute rule form model", () => {
         questionDenylist: [],
       }),
     ).toThrow("请输入机器人 app_id");
+
+    expect(() =>
+      validateSubstituteRuleFormLists({
+        audienceAllowRuleGroups: [
+          {
+            id: "invalid-open-id",
+            conversationRules: [{ id: "private", type: "private" }],
+            userRules: [
+              { id: "open-id", type: "user_open_id", openId: " ", name: null, email: null },
+            ],
+          },
+        ],
+        audienceDenyRuleGroups: [],
+        questionAllowlist: [],
+        questionDenylist: [],
+      }),
+    ).toThrow("请选择用户或输入用户 open_id");
   });
 });

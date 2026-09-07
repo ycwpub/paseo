@@ -83,8 +83,20 @@ export class ArgosTroubleshooterManager {
     return this.manager.observeIncomingMessage(botId, event);
   }
 
-  enqueueRecord(projectId: string, recordId: string): Promise<boolean> {
-    return this.manager.enqueueRecord(projectId, recordId);
+  enqueueRecord(projectId: string, uniqueId: string): Promise<boolean> {
+    return this.manager.enqueueRecord(projectId, uniqueId);
+  }
+
+  listTasks(projectId: string) {
+    return this.manager.listTasks(projectId);
+  }
+
+  pauseTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
+    return this.manager.pauseTasks(projectId, taskIds);
+  }
+
+  deleteTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
+    return this.manager.deleteTasks(projectId, taskIds);
   }
 }
 
@@ -120,10 +132,11 @@ function buildArgosPrompt(
     "不得仅复述告警；必须给出证据、根因或明确的待验证假设、影响范围、处置建议和后续行动。",
     "无法访问某项数据时，记录缺失权限或缺失工具并继续使用其余证据，不要卡住。",
     `多维表格记录 ID：${record.recordId}`,
+    `多维表格 unique_id：${record.uniqueId}`,
+    record.resultId ? `result_id：${record.resultId}` : "",
     `触发方式：${trigger}`,
     `排查 SOP：${config.troubleshootingSopDoc}`,
-    `归因记录飞书文档：${config.attributionRecordRoot}`,
-    `消息记录表：${config.recordTableUrl}`,
+    `归因记录根目录：${config.attributionRecordRoot}`,
     `监听群：${config.chats.map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`).join("、")}`,
     `群：${record.chatName ?? record.chatId ?? ""} (${record.chatId ?? ""})`,
     `消息 ID：${record.messageId ?? ""}`,

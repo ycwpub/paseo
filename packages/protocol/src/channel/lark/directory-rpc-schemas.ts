@@ -72,6 +72,42 @@ export const LarkDirectoryUpdateUserResponseSchema = z.object({
   }),
 });
 
+export const LarkDirectoryCreateUserRequestSchema = z.object({
+  type: z.literal("channel.lark.directory.create_user.request"),
+  requestId: z.string(),
+  appId: z.string().trim().min(1),
+  openId: z.string().trim().min(1),
+  displayName: z.string().trim().max(200).nullable(),
+  email: z.string().trim().max(320).nullable(),
+});
+
+export const LarkDirectoryCreateUserResponseSchema = z.object({
+  type: z.literal("channel.lark.directory.create_user.response"),
+  payload: z.object({
+    requestId: z.string(),
+    user: LarkDirectoryUserSchema.nullable(),
+    status: LarkChannelStatusSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const LarkDirectoryDeleteUsersRequestSchema = z.object({
+  type: z.literal("channel.lark.directory.delete_users.request"),
+  requestId: z.string(),
+  appId: z.string().trim().min(1),
+  openIds: z.array(z.string().trim().min(1)).min(1).max(500),
+});
+
+export const LarkDirectoryDeleteUsersResponseSchema = z.object({
+  type: z.literal("channel.lark.directory.delete_users.response"),
+  payload: z.object({
+    requestId: z.string(),
+    deletedOpenIds: z.array(z.string()),
+    status: LarkChannelStatusSchema.nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const LarkDirectoryClearFirstMessagesRequestSchema = z.object({
   type: z.literal("channel.lark.directory.clear_first_messages.request"),
   requestId: z.string(),

@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type {
   LarkChannelBotStatus,
   LarkDirectory,
+  LarkDirectoryPrivateUserScanRange,
   LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
@@ -18,19 +19,19 @@ import { SettingsSection } from "@/screens/settings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 import {
   isLarkContactEmailQuery,
-  needsLarkContactResolution,
   normalizeLarkContactIdentityQuery,
   normalizeLarkContactOpenId,
 } from "./lark-contact-directory-model";
-import { LarkContactFirstMessageCleanup } from "./lark-contact-first-message-cleanup";
+import {
+  formatLarkContactFirstMessageTime,
+  getLarkContactTitle,
+  LarkContactCreateForm,
+  LarkContactDirectoryList,
+  type LarkContactDirectoryWriteInput,
+} from "./lark-contact-directory-management";
 import { OptionalLarkContactPrivateUserScan } from "./lark-contact-private-user-scan";
 
-export interface LarkContactDirectoryUpdateInput {
-  appId: string;
-  openId: string;
-  displayName: string | null;
-  email: string | null;
-}
+export type LarkContactDirectoryUpdateInput = LarkContactDirectoryWriteInput;
 
 function getBotName(bot: LarkChannelBotStatus): string {
   return bot.bot?.name || bot.name || bot.appId || "未命名飞书机器人";
@@ -50,20 +51,6 @@ export function matchesLarkContactSearch(user: LarkDirectoryUser, query: string)
   return [user.displayName, user.email, user.openId, user.firstMessageContent]
     .filter((value): value is string => Boolean(value))
     .some((value) => value.toLocaleLowerCase().includes(normalized));
-}
-
-function formatFirstMessageTime(value: string | null | undefined): string {
-  if (!value) return "暂无";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-function contactTitle(user: LarkDirectoryUser): string {
-  return user.displayName?.trim() || "未补充用户名";
-}
-
-function contactDescription(user: LarkDirectoryUser): string {
-  return `${user.email?.trim() || "未补充邮箱"} · ${user.openId}`;
 }
 
 function countContactsWithFirstMessage(users: readonly LarkDirectoryUser[]): number {
@@ -110,74 +97,6 @@ export function LarkContactDirectoryEntry({
   );
 }
 
-function ContactRow({
-  user,
-  isFirst,
-  connected,
-  onEdit,
-  onResolve,
-}: {
-  user: LarkDirectoryUser;
-  isFirst: boolean;
-  connected: boolean;
-  onEdit: (user: LarkDirectoryUser) => void;
-  onResolve?: (appId: string, openId: string) => Promise<LarkDirectoryUser>;
-}) {
-  const [resolving, setResolving] = useState(false);
-  const [resolveError, setResolveError] = useState<string | null>(null);
-  const handleEdit = useCallback(() => onEdit(user), [onEdit, user]);
-  const handleResolve = useCallback(async () => {
-    if (!onResolve) return;
-    setResolving(true);
-    setResolveError(null);
-    try {
-      await onResolve(user.appId, user.openId);
-    } catch (error) {
-      setResolveError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setResolving(false);
-    }
-  }, [onResolve, user.appId, user.openId]);
-
-  return (
-    <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
-      <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{contactTitle(user)}</Text>
-        <Text style={settingsStyles.rowHint}>{contactDescription(user)}</Text>
-        <Text style={styles.messageText}>
-          第一条消息：{user.firstMessageContent?.trim() || "暂无消息内容"}
-        </Text>
-        <Text style={settingsStyles.rowHint}>
-          第一条消息时间：{formatFirstMessageTime(user.firstMessageAt)}
-        </Text>
-        {resolveError ? <Text style={settingsStyles.rowError}>{resolveError}</Text> : null}
-      </View>
-      <View style={styles.rowActions}>
-        {onResolve && needsLarkContactResolution(user) ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={handleResolve}
-            loading={resolving}
-            disabled={!connected || resolving}
-            testID={`host-page-lark-contact-resolve-${user.openId}`}
-          >
-            自动获取
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
-          variant="outline"
-          onPress={handleEdit}
-          testID={`host-page-lark-contact-edit-${user.openId}`}
-        >
-          编辑
-        </Button>
-      </View>
-    </View>
-  );
-}
-
 function IdentityLookupResultRow({
   user,
   isFirst,
@@ -192,7 +111,7 @@ function IdentityLookupResultRow({
   return (
     <View style={isFirst ? settingsStyles.row : [settingsStyles.row, settingsStyles.rowBorder]}>
       <View style={settingsStyles.rowContent}>
-        <Text style={settingsStyles.rowTitle}>{contactTitle(user)}</Text>
+        <Text style={settingsStyles.rowTitle}>{getLarkContactTitle(user)}</Text>
         <Text style={settingsStyles.rowHint}>邮箱：{user.email?.trim() || "未补充"}</Text>
         <Text selectable style={settingsStyles.rowHint}>
           ou_id：{user.openId}
@@ -248,6 +167,8 @@ export function LarkContactDirectoryPage({
   onEdit,
   onResolve,
   onResolveUsers,
+  onCreate,
+  onDeleteMany,
   onScanPrivateUsers,
   onAddPrivateUser,
   onClearFirstMessages,
@@ -263,9 +184,11 @@ export function LarkContactDirectoryPage({
   onEdit: (user: LarkDirectoryUser) => void;
   onResolve: (appId: string, openId: string) => Promise<LarkDirectoryUser>;
   onResolveUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  onCreate: (input: LarkContactDirectoryUpdateInput) => Promise<LarkDirectoryUser>;
+  onDeleteMany: (appId: string, openIds: string[]) => Promise<string[]>;
   onScanPrivateUsers: (
     appId: string,
-    lookbackMinutes: number,
+    range: LarkDirectoryPrivateUserScanRange,
   ) => Promise<LarkDirectoryRecentPrivateUser[]>;
   onAddPrivateUser: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
   onClearFirstMessages: (appId: string) => Promise<number>;
@@ -320,7 +243,10 @@ export function LarkContactDirectoryPage({
         .sort((left, right) => {
           const leftTime = left.firstMessageAt ? Date.parse(left.firstMessageAt) : 0;
           const rightTime = right.firstMessageAt ? Date.parse(right.firstMessageAt) : 0;
-          return rightTime - leftTime || contactTitle(left).localeCompare(contactTitle(right));
+          return (
+            rightTime - leftTime ||
+            getLarkContactTitle(left).localeCompare(getLarkContactTitle(right))
+          );
         }),
     [searchQuery, selectedBotContacts],
   );
@@ -412,7 +338,17 @@ export function LarkContactDirectoryPage({
       setAdding(false);
     }
   }, [onResolve, openId, selectedBot?.appId]);
-
+  const handleDeleteMany = useCallback(
+    async (appId: string, openIds: string[]) => {
+      const deletedOpenIds = await onDeleteMany(appId, openIds);
+      const deleted = new Set(deletedOpenIds);
+      setIdentityResults((current) =>
+        current.filter((user) => user.appId !== appId || !deleted.has(user.openId)),
+      );
+      return deletedOpenIds;
+    },
+    [onDeleteMany],
+  );
   return (
     <View testID="host-page-lark-contacts">
       <SettingsSection title="当前飞书机器人">
@@ -426,6 +362,11 @@ export function LarkContactDirectoryPage({
             placeholder="选择飞书机器人"
             emptyText="暂无已配置的飞书机器人"
             testID="host-page-lark-contacts-bot"
+          />
+          <LarkContactCreateForm
+            appId={selectedBotAppId}
+            connected={connected}
+            onCreate={onCreate}
           />
           {supportsOpenIdLookup ? (
             <Field
@@ -501,38 +442,18 @@ export function LarkContactDirectoryPage({
         onScan={onScanPrivateUsers}
         onAdd={onAddPrivateUser}
       />
-      <SettingsSection title={`联系人（${contacts.length}）`}>
-        <View style={settingsStyles.card}>
-          <LarkContactFirstMessageCleanup
-            supported={supportsClearFirstMessages}
-            appId={selectedBotAppId}
-            contactCount={contactsWithFirstMessageCount}
-            connected={connected}
-            onClear={onClearFirstMessages}
-          />
-          {contacts.length > 0 ? (
-            contacts.map((user, index) => (
-              <ContactRow
-                key={`${user.appId}:${user.openId}`}
-                user={user}
-                isFirst={index === 0}
-                connected={connected}
-                onEdit={onEdit}
-                onResolve={supportsOpenIdLookup ? onResolve : undefined}
-              />
-            ))
-          ) : (
-            <View style={settingsStyles.row}>
-              <View style={settingsStyles.rowContent}>
-                <Text style={settingsStyles.rowTitle}>暂无联系人</Text>
-                <Text style={settingsStyles.rowHint}>
-                  收到私聊、替身模式相关消息，或在提醒中解析到用户后，会自动出现在这里。
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-      </SettingsSection>
+      <LarkContactDirectoryList
+        appId={selectedBotAppId}
+        contacts={contacts}
+        contactsWithFirstMessageCount={contactsWithFirstMessageCount}
+        connected={connected}
+        supportsOpenIdLookup={supportsOpenIdLookup}
+        supportsClearFirstMessages={supportsClearFirstMessages}
+        onEdit={onEdit}
+        onResolve={onResolve}
+        onDeleteMany={handleDeleteMany}
+        onClearFirstMessages={onClearFirstMessages}
+      />
     </View>
   );
 }
@@ -629,7 +550,7 @@ export function LarkContactEditorPage({
                 {user.firstMessageContent?.trim() || "暂无消息内容"}
               </Text>
               <Text style={settingsStyles.rowHint}>
-                消息时间：{formatFirstMessageTime(user.firstMessageAt)}
+                消息时间：{formatLarkContactFirstMessageTime(user.firstMessageAt)}
               </Text>
             </View>
           </View>
@@ -656,11 +577,6 @@ const styles = StyleSheet.create((theme) => ({
   lookupInput: {
     flex: 1,
     minWidth: 0,
-  },
-  rowActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
   },
   identityResults: {
     gap: theme.spacing[2],

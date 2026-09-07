@@ -2,6 +2,7 @@ import type pino from "pino";
 import type {
   AlertTroubleshooterConfig,
   AlertTroubleshooterRuntime,
+  AlertTroubleshooterTask,
   PluginAppState,
 } from "@getpaseo/protocol/messages";
 import type { BoundCreateAgentCommand } from "../agent/create-agent/create.js";
@@ -150,6 +151,7 @@ export class ProjectAlertTroubleshooterManager {
       recordStore: AlertTroubleshooterRecordStore;
       createAgent: BoundCreateAgentCommand;
       waitForAgentCompletion?: (agentId: string) => Promise<void>;
+      cancelAgent?: (agentId: string) => Promise<void>;
       createProjectWorkspace: (
         project: PersistedProjectRecord,
         title: string,
@@ -200,22 +202,33 @@ export class ProjectAlertTroubleshooterManager {
     }
   }
 
-  async enqueueRecord(projectId: string, recordId: string): Promise<boolean> {
+  async enqueueRecord(projectId: string, uniqueId: string): Promise<boolean> {
     const state = this.listConfiguredProjects().find(
       (candidate) => candidate.projectId === projectId,
     );
     if (!state) throw new Error(`Project ${projectId} 未配置该自动排查插件`);
     const config = this.readConfig(state);
     if (!config?.enabled) throw new Error("自动排查未启用");
-    const normalizedRecordId = recordId.trim();
-    if (!normalizedRecordId) throw new Error("请输入多维表格记录 ID");
-    const record = await this.options.recordStore.getRecord({
-      config,
-      recordId: normalizedRecordId,
-    });
-    if (!record) throw new Error(`未找到多维表格记录 ${normalizedRecordId}`);
+    const normalizedUniqueId = uniqueId.trim();
+    if (!normalizedUniqueId) throw new Error("请输入多维表格 unique_id");
+    const record = this.options.recordStore.getRecordByUniqueId
+      ? await this.options.recordStore.getRecordByUniqueId({
+          config,
+          pluginId: this.options.definition.pluginId,
+          uniqueId: normalizedUniqueId,
+        })
+      : await this.options.recordStore.getRecord({
+          config,
+          pluginId: this.options.definition.pluginId,
+          recordId: normalizedUniqueId,
+          tableDate: this.now().toISOString().slice(0, 10).replaceAll("-", ""),
+        });
+    if (!record) throw new Error(`今天和昨天的归因记录中未找到 unique_id：${normalizedUniqueId}`);
     this.queueStore.enqueue(projectId, {
       recordId: record.recordId,
+      uniqueId: record.uniqueId ?? `record_id:${record.recordId}`,
+      resultId: record.resultId,
+      tableDate: record.tableDate ?? this.now().toISOString().slice(0, 10).replaceAll("-", ""),
       messageId: record.messageId,
       trigger: "manual",
       force: true,
@@ -226,6 +239,48 @@ export class ProjectAlertTroubleshooterManager {
     });
     this.queueProjectProcessing(state, config, true);
     return true;
+  }
+
+  listTasks(projectId: string): AlertTroubleshooterTask[] {
+    return this.queueStore.list(projectId);
+  }
+
+  async pauseTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
+    const paused = this.queueStore.pause(projectId, taskIds);
+    await Promise.allSettled(
+      paused.flatMap((task) =>
+        task.agentId && this.options.cancelAgent ? [this.options.cancelAgent(task.agentId)] : [],
+      ),
+    );
+    const state = this.listConfiguredProjects().find(
+      (candidate) => candidate.projectId === projectId,
+    );
+    const config = state ? this.readConfig(state) : null;
+    if (config) {
+      await Promise.allSettled(
+        paused.map((task) =>
+          this.options.recordStore.markPaused({
+            config,
+            pluginId: this.options.definition.pluginId,
+            recordId: task.recordId,
+            tableDate: task.tableDate,
+          }),
+        ),
+      );
+    }
+    return paused.map((task) => task.id);
+  }
+
+  async deleteTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
+    const tasks = this.queueStore
+      .list(projectId)
+      .filter((task) => taskIds.includes(task.id) && task.status === "running");
+    await Promise.allSettled(
+      tasks.flatMap((task) =>
+        task.agentId && this.options.cancelAgent ? [this.options.cancelAgent(task.agentId)] : [],
+      ),
+    );
+    return this.queueStore.deleteMany(projectId, taskIds).map((task) => task.id);
   }
 
   private now(): Date {
@@ -301,13 +356,23 @@ export class ProjectAlertTroubleshooterManager {
       lastError: null,
       lastTrigger: "schedule",
     });
-    const events = await this.options.definition.scanMessages({
-      config,
-      window: buildScheduledAlertScanWindow(now, config),
-      cwd: source.path,
-    });
+    let events: NormalizedLarkMessageEvent[];
+    try {
+      events = await this.options.definition.scanMessages({
+        config,
+        window: buildScheduledAlertScanWindow(now, config),
+        cwd: source.path,
+      });
+    } catch (error) {
+      this.queueStore.recordFailure(state.projectId, {
+        uniqueId: `scan:${now.toISOString()}`,
+        trigger: "schedule",
+        error: errorMessage(error),
+      });
+      throw error;
+    }
     for (const event of events) {
-      await this.ingestMessage(state, config, "schedule", event);
+      await this.ingestMessage(state, config, "schedule", event, events.length || 1);
     }
     await this.pollUnclaimedRecords(state, config);
     await this.updateRuntime(state, {
@@ -324,20 +389,37 @@ export class ProjectAlertTroubleshooterManager {
     config: AlertTroubleshooterConfig,
     trigger: AlertTroubleshooterQueueTrigger,
     event: NormalizedLarkMessageEvent,
+    matchedCount = 1,
   ): Promise<void> {
     if (!state.projectId) return;
     await this.updateRuntime(state, { status: "ingesting", lastError: null, lastTrigger: trigger });
-    const record = await this.options.recordStore.upsertMessage({
-      config,
-      projectId: state.projectId,
-      pluginId: this.options.definition.pluginId,
-      trigger,
-      event,
-    });
+    let record: AlertTroubleshooterRecord;
+    try {
+      record = await this.options.recordStore.upsertMessage({
+        config,
+        projectId: state.projectId,
+        pluginId: this.options.definition.pluginId,
+        trigger,
+        event,
+      });
+    } catch (error) {
+      this.queueStore.recordFailure(state.projectId, {
+        uniqueId: `message_id:${event.messageId}`,
+        messageId: event.messageId,
+        trigger,
+        matchedCount,
+        error: errorMessage(error),
+      });
+      throw error;
+    }
     this.queueStore.enqueue(state.projectId, {
       recordId: record.recordId,
+      uniqueId: record.uniqueId ?? `record_id:${record.recordId}`,
+      resultId: record.resultId,
+      tableDate: record.tableDate ?? this.now().toISOString().slice(0, 10).replaceAll("-", ""),
       messageId: record.messageId,
       trigger,
+      matchedCount,
     });
     await this.updateRuntime(state, {
       status: "idle",
@@ -360,6 +442,9 @@ export class ProjectAlertTroubleshooterManager {
     for (const record of records) {
       this.queueStore.enqueue(state.projectId, {
         recordId: record.recordId,
+        uniqueId: record.uniqueId ?? `record_id:${record.recordId}`,
+        resultId: record.resultId,
+        tableDate: record.tableDate ?? this.now().toISOString().slice(0, 10).replaceAll("-", ""),
         messageId: record.messageId,
         trigger: "table",
       });
@@ -441,12 +526,16 @@ export class ProjectAlertTroubleshooterManager {
       if (!project || project.archivedAt) throw new Error(`Project ${state.projectId} 不存在`);
       const record = await this.options.recordStore.getRecord({
         config,
+        pluginId: this.options.definition.pluginId,
         recordId: item.recordId,
+        tableDate: item.tableDate,
       });
       if (!record) throw new Error(`多维表格记录 ${item.recordId} 不存在`);
       await this.options.recordStore.markRunning({
         config,
+        pluginId: this.options.definition.pluginId,
         recordId: item.recordId,
+        tableDate: item.tableDate,
         claimId: `${this.options.definition.pluginId}:${state.projectId}`,
       });
       await this.updateRuntime(state, {
@@ -481,12 +570,17 @@ export class ProjectAlertTroubleshooterManager {
       });
       if (created.initialPromptError) throw created.initialPromptError;
       const agentId = created.snapshot.id;
+      this.queueStore.attachAgent(state.projectId, item.id, agentId);
       await this.updateRuntime(state, { activeAgentId: agentId });
       await this.options.waitForAgentCompletion?.(agentId);
+      const latestTask = this.queueStore.get(state.projectId, item.id);
+      if (!latestTask || latestTask.status === "paused") return;
       this.queueStore.complete(state.projectId, item.id, agentId);
       await this.options.recordStore.markSucceeded({
         config,
+        pluginId: this.options.definition.pluginId,
         recordId: item.recordId,
+        tableDate: item.tableDate,
         agentId,
       });
       await this.updateRuntime(state, {
@@ -500,9 +594,26 @@ export class ProjectAlertTroubleshooterManager {
       });
     } catch (error) {
       const message = errorMessage(error);
+      const latestTask = this.queueStore.get(state.projectId, item.id);
+      if (!latestTask || latestTask.status === "paused") {
+        await this.updateRuntime(state, {
+          status: "idle",
+          queuedCount: this.queueStore.countQueued(state.projectId),
+          activeRecordId: null,
+          activeAgentId: null,
+          lastError: null,
+        });
+        return;
+      }
       this.queueStore.fail(state.projectId, item.id, message);
       await this.options.recordStore
-        .markFailed({ config, recordId: item.recordId, error: message })
+        .markFailed({
+          config,
+          pluginId: this.options.definition.pluginId,
+          recordId: item.recordId,
+          tableDate: item.tableDate,
+          error: message,
+        })
         .catch(() => undefined);
       await this.updateRuntime(state, {
         status: "error",
@@ -535,6 +646,10 @@ export class ProjectAlertTroubleshooterManager {
       pluginId: this.options.definition.pluginId,
       appId: this.options.definition.appId,
       recordId: record.recordId,
+      uniqueId: record.uniqueId,
+      unique_id: record.uniqueId,
+      resultId: record.resultId ?? "",
+      result_id: record.resultId ?? "",
       messageId: record.messageId ?? "",
       chatId: record.chatId ?? "",
       chatName: record.chatName ?? "",
@@ -543,7 +658,6 @@ export class ProjectAlertTroubleshooterManager {
       trigger,
       troubleshootingSopDoc: config.troubleshootingSopDoc,
       attributionRecordRoot: config.attributionRecordRoot,
-      recordTableUrl: config.recordTableUrl,
     };
     return renderPromptTemplate(config.promptTemplate, variables);
   }

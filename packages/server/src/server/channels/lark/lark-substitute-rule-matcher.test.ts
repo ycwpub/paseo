@@ -589,6 +589,70 @@ describe("matchLarkSubstituteMode", () => {
     ).toBeNull();
   });
 
+  test("matches users by open_id and bot senders by bot name", () => {
+    const openIdMode = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "specific-user",
+          conversationRules: [{ id: "all", type: "all" }],
+          userRules: [
+            {
+              id: "open-id",
+              type: "user_open_id",
+              openId: "ou_sender",
+              name: "旧名称",
+              email: null,
+            },
+          ],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+    expect(
+      matchLarkSubstituteMode({
+        modes: [openIdMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, displayName: "已改名" },
+        directory,
+      }),
+    ).not.toBeNull();
+
+    const botNameMode = mode({
+      audienceAllowRuleGroups: [
+        {
+          id: "specific-bot-name",
+          conversationRules: [{ id: "bot", type: "bot" }],
+          userRules: [{ id: "bot-name", type: "bot_name", name: "告警机器人" }],
+        },
+      ],
+      audienceDenyRuleGroups: [],
+    });
+    expect(
+      matchLarkSubstituteMode({
+        modes: [botNameMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: {
+          ...groupEvent,
+          senderType: "bot",
+          senderAppId: "cli_alert",
+          displayName: "告警机器人",
+        },
+        directory,
+      }),
+    ).not.toBeNull();
+    expect(
+      matchLarkSubstituteMode({
+        modes: [botNameMode],
+        botId: "bot-1",
+        appId: "cli_test",
+        event: { ...groupEvent, displayName: "告警机器人" },
+        directory,
+      }),
+    ).toBeNull();
+  });
+
   test("requires a bot-authored private message to mention the substitute user", () => {
     const configured = mode({
       audienceAllowRuleGroups: [

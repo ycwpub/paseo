@@ -132,6 +132,11 @@ export interface LarkChannelClientAdapter {
     config: StoredLarkChannelConfig,
     openId: string,
   ): Promise<LarkResolvedUser | null>;
+  searchUsers?(
+    config: StoredLarkChannelConfig,
+    query: string,
+    userAccessToken: string,
+  ): Promise<LarkResolvedUser[]>;
   resolveChats?(
     config: StoredLarkChannelConfig,
     query: string,
@@ -644,6 +649,58 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       return resolveLarkDirectoryUserIdentity({
         requestedOpenId: openId,
         user: result.data?.user,
+      });
+    } catch (error) {
+      throw describeLarkError(error);
+    }
+  }
+
+  async searchUsers(
+    config: StoredLarkChannelConfig,
+    query: string,
+    userAccessToken: string,
+  ): Promise<LarkResolvedUser[]> {
+    const client = createClient(config);
+    try {
+      const result = (await (
+        client as unknown as { request(input: unknown, options?: unknown): Promise<unknown> }
+      ).request(
+        {
+          method: "POST",
+          url: `${client.domain}/open-apis/search/v1/user`,
+          data: { query, page_size: 20 },
+        },
+        lark.withUserAccessToken(userAccessToken),
+      )) as {
+        code?: number;
+        msg?: string;
+        data?: {
+          users?: Array<{
+            open_id?: string;
+            user_id?: string;
+            name?: string;
+            email?: string;
+          }>;
+          items?: Array<{
+            open_id?: string;
+            user_id?: string;
+            name?: string;
+            email?: string;
+          }>;
+        };
+      };
+      assertSuccess(result);
+      return [...(result.data?.users ?? result.data?.items ?? [])].flatMap((user) => {
+        const openId = user.open_id ?? user.user_id;
+        return openId
+          ? [
+              {
+                openId,
+                displayName: user.name?.trim() || null,
+                email: user.email?.trim() || null,
+              },
+            ]
+          : [];
       });
     } catch (error) {
       throw describeLarkError(error);

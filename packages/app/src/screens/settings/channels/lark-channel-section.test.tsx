@@ -54,13 +54,28 @@ const channelState = vi.hoisted(() => ({
     rejectPairing: vi.fn(),
     revokeUser: vi.fn(),
     resolveDirectoryUsers: vi.fn(),
+    resolveDirectoryUser: vi.fn(),
     resolveDirectoryChats: vi.fn(),
+    scanDirectoryPrivateUsers: vi.fn(),
+    addDirectoryPrivateUser: vi.fn(),
+    clearDirectoryFirstMessages: vi.fn(),
+    createDirectoryUser: vi.fn(),
+    deleteDirectoryUsers: vi.fn(),
     updateDirectoryUser: vi.fn(),
     application: null as LarkBotApplication | null,
     applyBot: vi.fn(),
     refreshApplication: vi.fn(),
     clearApplication: vi.fn(),
   },
+}));
+
+const projectRuntime = vi.hoisted(() => ({
+  createDirectorylessProject: vi.fn(),
+  removeProject: vi.fn(),
+  registerProjectDescriptor: vi.fn(),
+  upsertProject: vi.fn(),
+  removeProjectFromStore: vi.fn(),
+  setHasHydratedWorkspaces: vi.fn(),
 }));
 
 vi.mock("react-native-unistyles", () => ({
@@ -83,6 +98,10 @@ vi.mock("lucide-react-native", () => ({
   ExternalLink: () => <span data-testid="external-link-icon" />,
 }));
 
+vi.mock("react-native-svg", () => ({
+  SvgXml: () => <span data-testid="qr-code" />,
+}));
+
 vi.mock("./use-lark-channel", () => ({
   useLarkChannel: () => ({
     status: channelState.current.status,
@@ -97,7 +116,13 @@ vi.mock("./use-lark-channel", () => ({
     rejectPairing: channelState.current.rejectPairing,
     revokeUser: channelState.current.revokeUser,
     resolveDirectoryUsers: channelState.current.resolveDirectoryUsers,
+    resolveDirectoryUser: channelState.current.resolveDirectoryUser,
     resolveDirectoryChats: channelState.current.resolveDirectoryChats,
+    scanDirectoryPrivateUsers: channelState.current.scanDirectoryPrivateUsers,
+    addDirectoryPrivateUser: channelState.current.addDirectoryPrivateUser,
+    clearDirectoryFirstMessages: channelState.current.clearDirectoryFirstMessages,
+    createDirectoryUser: channelState.current.createDirectoryUser,
+    deleteDirectoryUsers: channelState.current.deleteDirectoryUsers,
     updateDirectoryUser: channelState.current.updateDirectoryUser,
     application: channelState.current.application,
     applyBot: channelState.current.applyBot,
@@ -111,6 +136,102 @@ vi.mock("./use-lark-channel", () => ({
 
 vi.mock("@/runtime/host-features", () => ({
   useHostFeature: () => true,
+}));
+
+vi.mock("@/runtime/host-runtime", () => ({
+  useHostRuntimeClient: () => ({
+    createDirectorylessProject: projectRuntime.createDirectorylessProject,
+    removeProject: projectRuntime.removeProject,
+  }),
+}));
+
+vi.mock("@/hooks/open-project", () => ({
+  registerProjectDescriptor: (input: { project: unknown }) => {
+    projectRuntime.registerProjectDescriptor(input.project);
+    return true;
+  },
+}));
+
+vi.mock("@/stores/session-store", () => ({
+  useSessionStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      upsertProject: projectRuntime.upsertProject,
+      removeProject: projectRuntime.removeProjectFromStore,
+      setHasHydratedWorkspaces: projectRuntime.setHasHydratedWorkspaces,
+    }),
+}));
+
+vi.mock("./lark-project-binding-fields", () => ({
+  LarkProjectBindingFields: ({
+    mode,
+    cwd,
+    newProjectName,
+    projectOptions,
+    onModeChange,
+    onCwdChange,
+    onNewProjectNameChange,
+  }: {
+    mode: "existing" | "create";
+    cwd: string;
+    newProjectName: string;
+    projectOptions: Array<{ value: string; label: string }>;
+    onModeChange: (value: "existing" | "create") => void;
+    onCwdChange: (value: string) => void;
+    onNewProjectNameChange: (value: string) => void;
+  }) => {
+    const handleModeChange = React.useCallback(
+      (event: React.ChangeEvent<HTMLSelectElement>) => {
+        onModeChange(event.currentTarget.value as "existing" | "create");
+      },
+      [onModeChange],
+    );
+    const handleCwdChange = React.useCallback(
+      (event: React.ChangeEvent<HTMLSelectElement>) => {
+        onCwdChange(event.currentTarget.value);
+      },
+      [onCwdChange],
+    );
+    const handleNameChange = React.useCallback(
+      (event: React.ChangeEvent<HTMLInputElement>) => {
+        onNewProjectNameChange(event.currentTarget.value);
+      },
+      [onNewProjectNameChange],
+    );
+
+    return (
+      <>
+        <label>
+          <span>项目配置方式</span>
+          <select aria-label="项目配置方式" value={mode} onChange={handleModeChange}>
+            <option value="existing">选择已有项目</option>
+            <option value="create">创建新项目</option>
+          </select>
+        </label>
+        {mode === "existing" ? (
+          <label>
+            <span>已有项目</span>
+            <select aria-label="已有项目" value={cwd} onChange={handleCwdChange}>
+              {projectOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label>
+            <span>新项目名称</span>
+            <input
+              aria-label="新项目名称"
+              placeholder="新项目名称"
+              value={newProjectName}
+              onChange={handleNameChange}
+            />
+          </label>
+        )}
+      </>
+    );
+  },
 }));
 
 vi.mock("@/hooks/use-assistants", () => ({
@@ -559,8 +680,20 @@ describe("LarkChannelSection", () => {
     channelState.current.rejectPairing.mockReset();
     channelState.current.revokeUser.mockReset();
     channelState.current.resolveDirectoryUsers.mockReset();
+    channelState.current.resolveDirectoryUser.mockReset();
     channelState.current.resolveDirectoryChats.mockReset();
+    channelState.current.scanDirectoryPrivateUsers.mockReset();
+    channelState.current.addDirectoryPrivateUser.mockReset();
+    channelState.current.clearDirectoryFirstMessages.mockReset();
+    channelState.current.createDirectoryUser.mockReset();
+    channelState.current.deleteDirectoryUsers.mockReset();
     channelState.current.updateDirectoryUser.mockReset();
+    projectRuntime.createDirectorylessProject.mockReset();
+    projectRuntime.removeProject.mockReset();
+    projectRuntime.registerProjectDescriptor.mockReset();
+    projectRuntime.upsertProject.mockReset();
+    projectRuntime.removeProjectFromStore.mockReset();
+    projectRuntime.setHasHydratedWorkspaces.mockReset();
   });
 
   test("shows multiple configured Lark bots and loads the selected bot", async () => {
@@ -665,6 +798,70 @@ describe("LarkChannelSection", () => {
     fireEvent.click(screen.getByTestId("host-page-lark-bot-edit-bot-1"));
     fireEvent.click(screen.getByRole("button", { name: "Delete bot" }));
     await waitFor(() => expect(channelState.current.deleteBot).toHaveBeenCalledWith("bot-1"));
+  });
+
+  test("creates and binds a same-name Project when adding a Lark bot", async () => {
+    const existingBot = makeBot();
+    const newBot = makeBot({
+      id: "bot-2",
+      name: "财务机器人",
+      appId: "cli_finance",
+      target: {
+        ...existingBot.target,
+        cwd: "/Users/test/.paseo/projects/prj_finance",
+      },
+    });
+    channelState.current.status = makeStatus([existingBot]);
+    projectRuntime.createDirectorylessProject.mockResolvedValue({
+      project: {
+        projectId: "prj_finance",
+        projectKey: "prj_finance",
+        projectDisplayName: "财务机器人",
+        projectCustomName: null,
+        projectRootPath: "/Users/test/.paseo/projects/prj_finance",
+        projectSourceDirectory: "/Users/test/.paseo/projects/prj_finance",
+        projectDirectoryless: true,
+        projectKind: "directory",
+      },
+      error: null,
+    });
+    channelState.current.configure.mockResolvedValue(makeStatus([existingBot, newBot], newBot.id));
+
+    render(<LarkChannelSection serverId="server-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    fireEvent.change(screen.getByLabelText("机器人名称"), {
+      target: { value: "财务机器人" },
+    });
+    fireEvent.change(screen.getByLabelText("应用 ID"), {
+      target: { value: "cli_finance" },
+    });
+    fireEvent.change(screen.getByLabelText("项目配置方式"), {
+      target: { value: "create" },
+    });
+
+    expect((screen.getByPlaceholderText("新项目名称") as HTMLInputElement).value).toBe(
+      "财务机器人",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(projectRuntime.createDirectorylessProject).toHaveBeenCalledWith({
+        name: "财务机器人",
+      }),
+    );
+    expect(projectRuntime.registerProjectDescriptor).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "prj_finance" }),
+    );
+    expect(channelState.current.configure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createNew: true,
+        name: "财务机器人",
+        target: expect.objectContaining({
+          cwd: "/Users/test/.paseo/projects/prj_finance",
+        }),
+      }),
+    );
   });
 
   test("saves the selected thinking and safety modes", async () => {

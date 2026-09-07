@@ -27,12 +27,15 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useAssistants } from "@/hooks/use-assistants";
+import { registerProjectDescriptor } from "@/hooks/open-project";
 import { useTeams } from "@/hooks/use-teams";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import { useProjects } from "@/hooks/use-projects";
 import { useHostFeature } from "@/runtime/host-features";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/screens/settings/settings-section";
+import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
@@ -46,6 +49,11 @@ import {
 } from "./lark-contact-directory-section";
 import { formatLarkChatId, formatLarkUserOpenId } from "./lark-directory-format";
 import { LarkReminderEditor, LarkReminderSection } from "./lark-reminder-section";
+import {
+  LarkProjectBindingFields,
+  type LarkProjectBindingMode,
+} from "./lark-project-binding-fields";
+import { createLarkProjectBinding, rollbackLarkProjectBinding } from "./lark-project-binding";
 import {
   LarkSubstituteModeEditor,
   LarkSubstituteModeSection,
@@ -101,6 +109,10 @@ function canDeleteSelectedBot(
   return Boolean(
     selectedBotStatus?.id && status?.bots.some((bot) => bot.id === selectedBotStatus.id),
   );
+}
+
+function hasPendingBotMutation(channelSaving: boolean, projectSaving: boolean): boolean {
+  return channelSaving || projectSaving;
 }
 
 function getStatusDirectory(status: LarkChannelStatus | null): LarkDirectory | null {
@@ -288,6 +300,10 @@ interface CredentialsCardProps {
   modeId: string | null;
   thinkingOptionId: string | null;
   cwd: string;
+  projectMode: LarkProjectBindingMode;
+  newProjectName: string;
+  newProjectNameRevision: number;
+  supportsDirectorylessProjects: boolean;
   showOptional: boolean;
   targetOptions: SelectFieldOption<string>[];
   selectedTargetDisplay: SelectFieldDisplay | null;
@@ -317,6 +333,8 @@ interface CredentialsCardProps {
   onModeChange: (value: string) => void;
   onThinkingChange: (value: string) => void;
   onCwdChange: (value: string) => void;
+  onProjectModeChange: (value: LarkProjectBindingMode) => void;
+  onNewProjectNameChange: (value: string) => void;
   onToggleOptional: () => void;
   onSave: () => void;
   onTest: () => void;
@@ -783,17 +801,19 @@ function CredentialsCard(props: CredentialsCardProps) {
           searchable
           testID="host-page-lark-target"
         />
-        <SelectField
-          label="项目路径"
-          value={props.cwd || null}
-          selectedDisplay={props.selectedProjectDisplay}
-          options={props.projectOptions}
-          onChange={props.onCwdChange}
-          placeholder="选择项目"
-          emptyText="该主机没有已打开的项目"
-          searchable
-          testID="host-page-lark-project-path"
-          hint="每个飞书话题都会在该项目 中创建独立的 Paseo 会话。"
+        <LarkProjectBindingFields
+          mode={props.projectMode}
+          cwd={props.cwd}
+          newProjectName={props.newProjectName}
+          newProjectNameRevision={props.newProjectNameRevision}
+          supportsDirectorylessProjects={props.supportsDirectorylessProjects}
+          projectOptions={props.projectOptions}
+          selectedProjectDisplay={props.selectedProjectDisplay}
+          defaultNameDescription="默认与飞书机器人同名"
+          testIDPrefix="host-page-lark"
+          onModeChange={props.onProjectModeChange}
+          onCwdChange={props.onCwdChange}
+          onNewProjectNameChange={props.onNewProjectNameChange}
         />
         {props.saveError ? <Text style={settingsStyles.rowError}>{props.saveError}</Text> : null}
         <View style={styles.actionsRow}>
@@ -1249,6 +1269,8 @@ function LarkChannelLoadedContent({
   );
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId);
+  const client = useHostRuntimeClient(serverId);
+  const supportsDirectorylessProjects = useHostFeature(serverId, "projectCreateDirectoryless");
   const { projects } = useProjects();
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [creatingBot, setCreatingBot] = useState(false);
@@ -1264,8 +1286,13 @@ function LarkChannelLoadedContent({
   const [modeId, setModeId] = useState<string | null>(null);
   const [thinkingOptionId, setThinkingOptionId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("");
+  const [projectMode, setProjectMode] = useState<LarkProjectBindingMode>("existing");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectNameEdited, setNewProjectNameEdited] = useState(false);
+  const [newProjectNameRevision, setNewProjectNameRevision] = useState(0);
   const [showOptional, setShowOptional] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [formRevision, setFormRevision] = useState(0);
   const [page, setPage] = useState<LarkChannelPage>("overview");
   const [editingReminder, setEditingReminder] = useState<LarkReminder | null>(null);
@@ -1276,6 +1303,9 @@ function LarkChannelLoadedContent({
   const [taskListSubstituteMode, setTaskListSubstituteMode] = useState<LarkSubstituteMode | null>(
     null,
   );
+  const upsertProject = useSessionStore((state) => state.upsertProject);
+  const removeProject = useSessionStore((state) => state.removeProject);
+  const setHasHydratedWorkspaces = useSessionStore((state) => state.setHasHydratedWorkspaces);
   const status = channel.status;
   const activeBotId = getActiveBotId(status);
   const directory = getStatusDirectory(status);
@@ -1291,6 +1321,7 @@ function LarkChannelLoadedContent({
     [activeBotId, botStatuses, creatingBot, selectedBotId],
   );
   const selectedBotAppId = getBotAppId(selectedBotStatus);
+  const savingBot = hasPendingBotMutation(channel.isMutating, isSaving);
   useLarkBotDirectoryChatHydration({
     active: page === "bot",
     supported: supportsLarkDirectory,
@@ -1327,6 +1358,10 @@ function LarkChannelLoadedContent({
       setModeId(null);
       setThinkingOptionId(null);
       setCwd("");
+      setProjectMode("existing");
+      setNewProjectName("");
+      setNewProjectNameEdited(false);
+      setNewProjectNameRevision((value) => value + 1);
       setFormRevision((value) => value + 1);
       return;
     }
@@ -1352,6 +1387,10 @@ function LarkChannelLoadedContent({
     setModeId(selectedBotStatus.target.modeId ?? null);
     setThinkingOptionId(selectedBotStatus.target.thinkingOptionId ?? null);
     setCwd(selectedBotStatus.target.cwd ?? "");
+    setProjectMode("existing");
+    setNewProjectName(selectedBotStatus.name ?? "");
+    setNewProjectNameEdited(false);
+    setNewProjectNameRevision((value) => value + 1);
     setFormRevision((value) => value + 1);
   }, [creatingBot, selectedBotStatus]);
 
@@ -1405,6 +1444,10 @@ function LarkChannelLoadedContent({
     setModeId(null);
     setThinkingOptionId(null);
     setCwd("");
+    setProjectMode("existing");
+    setNewProjectName("");
+    setNewProjectNameEdited(false);
+    setNewProjectNameRevision((value) => value + 1);
     setSaveError(null);
     setFormRevision((value) => value + 1);
   }, []);
@@ -1491,10 +1534,19 @@ function LarkChannelLoadedContent({
     });
     return () => onDetailNavigationChange(null);
   }, [creatingBot, handleDetailBack, onDetailNavigationChange, page]);
-  const handleBotNameChange = useCallback((value: string) => {
-    setBotName(value);
-    setSaveError(null);
-  }, []);
+  const handleBotNameChange = useCallback(
+    (value: string) => {
+      setBotName(value);
+      if (!newProjectNameEdited) {
+        setNewProjectName(value);
+        if (projectMode === "create") {
+          setNewProjectNameRevision((revision) => revision + 1);
+        }
+      }
+      setSaveError(null);
+    },
+    [newProjectNameEdited, projectMode],
+  );
   const handleTargetChange = useCallback((value: string) => {
     const target = parseTargetValue(value);
     setAssistantId(target.assistantId);
@@ -1522,13 +1574,52 @@ function LarkChannelLoadedContent({
     setCwd(value);
     setSaveError(null);
   }, []);
+  const handleProjectModeChange = useCallback(
+    (value: LarkProjectBindingMode) => {
+      setProjectMode(value);
+      if (value === "create" && !newProjectNameEdited) {
+        setNewProjectName(botName);
+        setNewProjectNameRevision((revision) => revision + 1);
+      }
+      setSaveError(null);
+    },
+    [botName, newProjectNameEdited],
+  );
+  const handleNewProjectNameChange = useCallback((value: string) => {
+    setNewProjectName(value);
+    setNewProjectNameEdited(true);
+    setSaveError(null);
+  }, []);
 
   const handleToggleOptional = useCallback(() => {
     setShowOptional((value) => !value);
   }, []);
   const save = useCallback(async () => {
+    if (isSaving || channel.isMutating) return;
+    setIsSaving(true);
+    let createdProjectId: string | null = null;
+    let createdProjectCwd: string | null = null;
     try {
       setSaveError(null);
+      let targetCwd = cwd;
+      if (projectMode === "create") {
+        const project = await createLarkProjectBinding({
+          name: newProjectName,
+          supportsDirectorylessProjects,
+          client,
+          registerProject: (created) => {
+            registerProjectDescriptor({
+              serverId,
+              project: created,
+              upsertProject,
+              setHasHydratedWorkspaces,
+            });
+          },
+        });
+        createdProjectId = project.projectId;
+        createdProjectCwd = project.cwd;
+        targetCwd = project.cwd;
+      }
       const nextStatus = await channel.configure(
         buildConfigureInput({
           botId: selectedBotStatus?.id ?? selectedBotId,
@@ -1544,17 +1635,35 @@ function LarkChannelLoadedContent({
           model,
           modeId: effectiveModeId,
           thinkingOptionId: effectiveThinkingOptionId,
-          cwd,
+          cwd: targetCwd,
           status: selectedBotStatus,
         }),
       );
       const nextBotId = nextStatus.activeBotId ?? nextStatus.bots[0]?.id ?? null;
       setCreatingBot(false);
       setSelectedBotId(nextBotId);
+      if (createdProjectCwd) {
+        setCwd(createdProjectCwd);
+        setProjectMode("existing");
+        setNewProjectNameEdited(false);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setSaveError(message);
+      const rolledBack = await rollbackLarkProjectBinding({
+        projectId: createdProjectId,
+        client,
+        unregisterProject: (projectId) => removeProject(serverId, projectId),
+      });
+      if (!rolledBack && createdProjectCwd) {
+        setCwd(createdProjectCwd);
+        setProjectMode("existing");
+      }
+      setSaveError(
+        rolledBack ? message : `${message}；自动创建的 Project 回滚失败，已保留并绑定到表单`,
+      );
       throw error;
+    } finally {
+      setIsSaving(false);
     }
   }, [
     appId,
@@ -1562,16 +1671,25 @@ function LarkChannelLoadedContent({
     assistantId,
     botName,
     channel,
+    client,
     creatingBot,
     cwd,
     encryptKey,
     effectiveModeId,
     effectiveThinkingOptionId,
+    isSaving,
     model,
+    newProjectName,
     provider,
+    projectMode,
+    removeProject,
+    serverId,
     selectedBotId,
     selectedBotStatus,
+    setHasHydratedWorkspaces,
+    supportsDirectorylessProjects,
     teamId,
+    upsertProject,
     verificationToken,
   ]);
   const handleSave = useCallback(async () => {
@@ -1652,6 +1770,10 @@ function LarkChannelLoadedContent({
       modeId={effectiveModeId}
       thinkingOptionId={effectiveThinkingOptionId}
       cwd={cwd}
+      projectMode={projectMode}
+      newProjectName={newProjectName}
+      newProjectNameRevision={newProjectNameRevision}
+      supportsDirectorylessProjects={supportsDirectorylessProjects}
       showOptional={showOptional}
       targetOptions={targetOptions}
       selectedTargetDisplay={selectedTargetDisplay}
@@ -1668,7 +1790,7 @@ function LarkChannelLoadedContent({
       projectOptions={projectOptions}
       selectedProjectDisplay={selectedProjectDisplay}
       saveError={saveError}
-      saving={channel.isMutating}
+      saving={savingBot}
       connected={channel.isConnected}
       onBotNameChange={handleBotNameChange}
       onAppIdChange={setAppId}
@@ -1681,6 +1803,8 @@ function LarkChannelLoadedContent({
       onModeChange={setModeId}
       onThinkingChange={setThinkingOptionId}
       onCwdChange={handleProjectChange}
+      onProjectModeChange={handleProjectModeChange}
+      onNewProjectNameChange={handleNewProjectNameChange}
       onToggleOptional={handleToggleOptional}
       onSave={handleSave}
       onTest={handleTest}
@@ -1771,6 +1895,8 @@ function LarkChannelLoadedContent({
           onEdit={handleEditContact}
           onResolve={channel.resolveDirectoryUser}
           onResolveUsers={channel.resolveDirectoryUsers}
+          onCreate={channel.createDirectoryUser}
+          onDeleteMany={channel.deleteDirectoryUsers}
           onScanPrivateUsers={channel.scanDirectoryPrivateUsers}
           onAddPrivateUser={channel.addDirectoryPrivateUser}
           onClearFirstMessages={channel.clearDirectoryFirstMessages}

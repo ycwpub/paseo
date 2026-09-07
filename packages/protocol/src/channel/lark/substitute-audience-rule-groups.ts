@@ -64,6 +64,12 @@ const LarkSubstituteAudienceBotAppRuleSchema = z.object({
   appId: z.string().trim().min(1),
 });
 
+const LarkSubstituteAudienceBotNameRuleSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("bot_name"),
+  name: z.string().trim().min(1),
+});
+
 const LarkSubstituteAudienceAllBotsRuleSchema = z.object({
   id: z.string().min(1),
   type: z.literal("all_bots"),
@@ -90,12 +96,23 @@ const LarkSubstituteAudienceUserEmailRuleSchema = z.object({
   name: z.string().trim().nullable().default(null),
 });
 
+const LarkSubstituteAudienceUserOpenIdRuleSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("user_open_id"),
+  openId: z.string().trim().min(1),
+  name: z.string().trim().nullable().default(null),
+  email: z.string().trim().nullable().default(null),
+});
+
 export const LarkSubstituteAudienceUserRuleSchema = z.discriminatedUnion("type", [
   LarkSubstituteAudienceAllUsersRuleSchema,
   LarkSubstituteAudienceBotAppRuleSchema,
+  LarkSubstituteAudienceBotNameRuleSchema,
   LarkSubstituteAudienceAllBotsRuleSchema,
   LarkSubstituteAudienceAllSendersRuleSchema,
   LarkSubstituteAudienceUserNameRuleSchema,
+  LarkSubstituteAudienceUserOpenIdRuleSchema,
+  // COMPAT(larkSubstituteUserEmailRule): keep parsing old saved modes.
   LarkSubstituteAudienceUserEmailRuleSchema,
 ]);
 export type LarkSubstituteAudienceUserRule = z.infer<typeof LarkSubstituteAudienceUserRuleSchema>;

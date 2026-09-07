@@ -86,8 +86,20 @@ export class BambooTroubleshooterManager {
     return this.manager.observeIncomingMessage(botId, event);
   }
 
-  enqueueRecord(projectId: string, recordId: string): Promise<boolean> {
-    return this.manager.enqueueRecord(projectId, recordId);
+  enqueueRecord(projectId: string, uniqueId: string): Promise<boolean> {
+    return this.manager.enqueueRecord(projectId, uniqueId);
+  }
+
+  listTasks(projectId: string) {
+    return this.manager.listTasks(projectId);
+  }
+
+  pauseTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
+    return this.manager.pauseTasks(projectId, taskIds);
+  }
+
+  deleteTasks(projectId: string, taskIds: readonly string[]): Promise<string[]> {
+    return this.manager.deleteTasks(projectId, taskIds);
   }
 }
 
@@ -121,9 +133,10 @@ function buildBambooPrompt(
     "执行单条 Bamboo 对账报警自动排查。",
     "先读取 `life-settle-ai-assistant bamboo-alert-troubleshooter` 指引，再严格按 runner 状态机处理指定记录。",
     `多维表格记录 ID：${record.recordId}`,
+    `多维表格 unique_id：${record.uniqueId}`,
+    record.resultId ? `Bamboo result_id：${record.resultId}` : "",
     `触发方式：${trigger}`,
-    `归因记录目录：${config.attributionRecordRoot}`,
-    `消息记录表：${config.recordTableUrl}`,
+    `归因记录根目录：${config.attributionRecordRoot}`,
     `排查 SOP：${config.troubleshootingSopDoc}`,
     `监听群：${config.chats.map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`).join("、")}`,
     `触发消息：chat_id=${record.chatId ?? ""}, message_id=${record.messageId ?? ""}\n${record.messageText}`,

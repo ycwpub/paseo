@@ -141,6 +141,94 @@ describe("LarkChannelSession directory RPC", () => {
     });
   });
 
+  test("creates and batch deletes contacts through the main session", async () => {
+    const user = {
+      appId: "cli_test",
+      openId: "ou_alice",
+      displayName: "张三",
+      email: "alice@example.com",
+      firstMessageContent: null,
+      firstMessageAt: null,
+      updatedAt: "2026-09-07T02:00:00.000Z",
+    };
+    const status = {
+      enabled: false,
+      connectionStatus: "disabled",
+      error: null,
+      appId: null,
+      hasAppSecret: false,
+      hasEncryptKey: false,
+      hasVerificationToken: false,
+      domain: "feishu",
+      target: {
+        kind: "workspace",
+        provider: null,
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        cwd: null,
+        workspaceId: null,
+      },
+      substitute: { enabled: false, openId: null, name: null },
+      bot: null,
+      pendingPairings: [],
+      authorizedUsers: [],
+      activeBotId: null,
+      bots: [],
+      directory: { users: [user], chats: [] },
+    } as const;
+    const service = {
+      createDirectoryUser: vi.fn(() => user),
+      deleteDirectoryUsers: vi.fn(() => ["ou_alice"]),
+      getStatus: vi.fn(() => status),
+    } as unknown as LarkChannelService;
+    const emit = vi.fn();
+    const session = new LarkChannelSession({
+      host: { emit },
+      service,
+      logger: pino({ level: "silent" }),
+    });
+
+    await session.handleRequest({
+      type: "channel.lark.directory.create_user.request",
+      requestId: "create-contact",
+      appId: "cli_test",
+      openId: "ou_alice",
+      displayName: "张三",
+      email: "alice@example.com",
+    });
+    await session.handleRequest({
+      type: "channel.lark.directory.delete_users.request",
+      requestId: "delete-contacts",
+      appId: "cli_test",
+      openIds: ["ou_alice"],
+    });
+
+    expect(service.createDirectoryUser).toHaveBeenCalledWith("cli_test", "ou_alice", {
+      displayName: "张三",
+      email: "alice@example.com",
+    });
+    expect(service.deleteDirectoryUsers).toHaveBeenCalledWith("cli_test", ["ou_alice"]);
+    expect(emit).toHaveBeenNthCalledWith(1, {
+      type: "channel.lark.directory.create_user.response",
+      payload: {
+        requestId: "create-contact",
+        user,
+        status,
+        error: null,
+      },
+    });
+    expect(emit).toHaveBeenNthCalledWith(2, {
+      type: "channel.lark.directory.delete_users.response",
+      payload: {
+        requestId: "delete-contacts",
+        deletedOpenIds: ["ou_alice"],
+        status,
+        error: null,
+      },
+    });
+  });
+
   test("clears all first message content for the selected bot", async () => {
     const status = {
       enabled: false,
@@ -261,6 +349,8 @@ describe("LarkChannelSession directory RPC", () => {
       requestId: "scan-private-users",
       appId: "cli_test",
       lookbackMinutes: 30,
+      startTime: 1_788_729_600,
+      endTime: 1_788_733_200,
     });
     await session.handleRequest({
       type: "channel.lark.directory.add_private_user.request",
@@ -272,7 +362,11 @@ describe("LarkChannelSession directory RPC", () => {
       firstMessageAt: candidate.firstMessageAt,
     });
 
-    expect(service.scanRecentDirectoryPrivateUsers).toHaveBeenCalledWith("cli_test", 30);
+    expect(service.scanRecentDirectoryPrivateUsers).toHaveBeenCalledWith("cli_test", {
+      lookbackMinutes: 30,
+      startTime: 1_788_729_600,
+      endTime: 1_788_733_200,
+    });
     expect(service.addRecentDirectoryPrivateUser).toHaveBeenCalledWith("cli_test", {
       openId: candidate.openId,
       displayName: candidate.displayName,

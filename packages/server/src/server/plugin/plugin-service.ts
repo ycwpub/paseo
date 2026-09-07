@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type pino from "pino";
 import {
   PluginStateSchema,
+  type AlertTroubleshooterTask,
   type McpTransport,
   type PluginHttpServiceSummary,
   type PluginHttpListenerRuntime,
@@ -424,8 +425,25 @@ export class PluginService {
       pluginId: string;
       appId: string;
       projectId: string;
-      recordId: string;
+      uniqueId: string;
     }): Promise<boolean>;
+    listTasks(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+    }): AlertTroubleshooterTask[];
+    pauseTasks(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      taskIds: readonly string[];
+    }): Promise<string[]>;
+    deleteTasks(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      taskIds: readonly string[];
+    }): Promise<string[]>;
   } | null = null;
   private marketplaceStates: MarketplaceState[] = [];
   private catalogPlugins: CatalogPlugin[] = [];
@@ -491,8 +509,25 @@ export class PluginService {
       pluginId: string;
       appId: string;
       projectId: string;
-      recordId: string;
+      uniqueId: string;
     }): Promise<boolean>;
+    listTasks(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+    }): AlertTroubleshooterTask[];
+    pauseTasks(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      taskIds: readonly string[];
+    }): Promise<string[]>;
+    deleteTasks(input: {
+      pluginId: string;
+      appId: string;
+      projectId: string;
+      taskIds: readonly string[];
+    }): Promise<string[]>;
   }): void {
     this.alertTroubleshooterRuntime = runtime;
   }
@@ -501,12 +536,41 @@ export class PluginService {
     pluginId: string;
     appId: string;
     projectId: string;
-    recordId: string;
+    uniqueId: string;
   }): Promise<boolean> {
     if (!this.alertTroubleshooterRuntime) {
       throw new Error("自动排查运行时尚未就绪");
     }
     return this.alertTroubleshooterRuntime.enqueueRecord(input);
+  }
+
+  listAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }): AlertTroubleshooterTask[] {
+    if (!this.alertTroubleshooterRuntime) throw new Error("自动排查运行时尚未就绪");
+    return this.alertTroubleshooterRuntime.listTasks(input);
+  }
+
+  pauseAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    taskIds: readonly string[];
+  }): Promise<string[]> {
+    if (!this.alertTroubleshooterRuntime) throw new Error("自动排查运行时尚未就绪");
+    return this.alertTroubleshooterRuntime.pauseTasks(input);
+  }
+
+  deleteAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    taskIds: readonly string[];
+  }): Promise<string[]> {
+    if (!this.alertTroubleshooterRuntime) throw new Error("自动排查运行时尚未就绪");
+    return this.alertTroubleshooterRuntime.deleteTasks(input);
   }
 
   getApp(pluginId: string, appId: string, projectId: string): PluginAppState {

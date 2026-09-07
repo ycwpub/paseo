@@ -4,6 +4,7 @@ import type {
   LarkBotApplication,
   LarkChannelStatus,
   LarkDirectoryChat,
+  LarkDirectoryPrivateUserScanRange,
   LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
@@ -29,10 +30,17 @@ export interface UseLarkChannelResult {
   resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
   scanDirectoryPrivateUsers: (
     appId: string,
-    lookbackMinutes: number,
+    range: LarkDirectoryPrivateUserScanRange,
   ) => Promise<LarkDirectoryRecentPrivateUser[]>;
   addDirectoryPrivateUser: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
   clearDirectoryFirstMessages: (appId: string) => Promise<number>;
+  createDirectoryUser: (input: {
+    appId: string;
+    openId: string;
+    displayName: string | null;
+    email: string | null;
+  }) => Promise<LarkDirectoryUser>;
+  deleteDirectoryUsers: (appId: string, openIds: string[]) => Promise<string[]>;
   updateDirectoryUser: (input: {
     appId: string;
     openId: string;
@@ -278,12 +286,54 @@ export function useLarkChannel(
     [applyStatus, client],
   );
 
-  const scanDirectoryPrivateUsers = useCallback(
-    async (appId: string, lookbackMinutes: number) => {
+  const createDirectoryUser = useCallback(
+    async (input: {
+      appId: string;
+      openId: string;
+      displayName: string | null;
+      email: string | null;
+    }) => {
       if (!client) {
         throw new Error("Host is disconnected");
       }
-      const result = await client.scanLarkDirectoryPrivateUsers({ appId, lookbackMinutes });
+      const result = await client.createLarkDirectoryUser(input);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      if (!result.user) {
+        throw new Error("未能创建飞书联系人");
+      }
+      return result.user;
+    },
+    [applyStatus, client],
+  );
+
+  const deleteDirectoryUsers = useCallback(
+    async (appId: string, openIds: string[]) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.deleteLarkDirectoryUsers({ appId, openIds });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      return result.deletedOpenIds;
+    },
+    [applyStatus, client],
+  );
+
+  const scanDirectoryPrivateUsers = useCallback(
+    async (appId: string, range: LarkDirectoryPrivateUserScanRange) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.scanLarkDirectoryPrivateUsers({ appId, ...range });
       if (result.error) {
         throw new Error(result.error);
       }
@@ -382,6 +432,8 @@ export function useLarkChannel(
     scanDirectoryPrivateUsers,
     addDirectoryPrivateUser,
     clearDirectoryFirstMessages,
+    createDirectoryUser,
+    deleteDirectoryUsers,
     updateDirectoryUser,
     application,
     applyBot,

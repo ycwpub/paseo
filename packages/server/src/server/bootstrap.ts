@@ -1905,6 +1905,9 @@ export async function createPaseoDaemon(
     recordStore: alertTroubleshooterRecordStore,
     createAgent,
     waitForAgentCompletion: waitForAlertTroubleshooterAgent,
+    cancelAgent: async (agentId) => {
+      await cancelAgentRunCommand({ agentManager, logger }, agentId);
+    },
     createProjectWorkspace: async (project, title) => {
       const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
       const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
@@ -1928,6 +1931,9 @@ export async function createPaseoDaemon(
     recordStore: alertTroubleshooterRecordStore,
     createAgent,
     waitForAgentCompletion: waitForAlertTroubleshooterAgent,
+    cancelAgent: async (agentId) => {
+      await cancelAgentRunCommand({ agentManager, logger }, agentId);
+    },
     createProjectWorkspace: async (project, title) => {
       const source = resolveProjectSourceDirectory({ paseoHome: config.paseoHome, project });
       const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
@@ -1943,15 +1949,51 @@ export async function createPaseoDaemon(
     logger,
   });
   pluginService.attachAlertTroubleshooterRuntime({
-    enqueueRecord: ({ pluginId, appId, projectId, recordId }) => {
+    enqueueRecord: ({ pluginId, appId, projectId, uniqueId }) => {
       if (
         pluginId === "bamboo-reconciliation-troubleshooter" &&
         appId === "bamboo-troubleshooter-console"
       ) {
-        return bambooTroubleshooterManager!.enqueueRecord(projectId, recordId);
+        return bambooTroubleshooterManager!.enqueueRecord(projectId, uniqueId);
       }
       if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
-        return argosTroubleshooterManager!.enqueueRecord(projectId, recordId);
+        return argosTroubleshooterManager!.enqueueRecord(projectId, uniqueId);
+      }
+      throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
+    },
+    listTasks: ({ pluginId, appId, projectId }) => {
+      if (
+        pluginId === "bamboo-reconciliation-troubleshooter" &&
+        appId === "bamboo-troubleshooter-console"
+      ) {
+        return bambooTroubleshooterManager!.listTasks(projectId);
+      }
+      if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
+        return argosTroubleshooterManager!.listTasks(projectId);
+      }
+      throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
+    },
+    pauseTasks: ({ pluginId, appId, projectId, taskIds }) => {
+      if (
+        pluginId === "bamboo-reconciliation-troubleshooter" &&
+        appId === "bamboo-troubleshooter-console"
+      ) {
+        return bambooTroubleshooterManager!.pauseTasks(projectId, taskIds);
+      }
+      if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
+        return argosTroubleshooterManager!.pauseTasks(projectId, taskIds);
+      }
+      throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
+    },
+    deleteTasks: ({ pluginId, appId, projectId, taskIds }) => {
+      if (
+        pluginId === "bamboo-reconciliation-troubleshooter" &&
+        appId === "bamboo-troubleshooter-console"
+      ) {
+        return bambooTroubleshooterManager!.deleteTasks(projectId, taskIds);
+      }
+      if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
+        return argosTroubleshooterManager!.deleteTasks(projectId, taskIds);
       }
       throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
     },

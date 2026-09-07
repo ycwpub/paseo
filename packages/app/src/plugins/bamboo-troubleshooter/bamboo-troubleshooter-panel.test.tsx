@@ -31,7 +31,7 @@ const testState = vi.hoisted(() => ({
 
 function validConfig() {
   return {
-    version: 3,
+    version: 4,
     enabled: true,
     listenEnabled: true,
     troubleshootingEnabled: true,
@@ -43,7 +43,6 @@ function validConfig() {
     target: { kind: "assistant", assistantId: "assistant-1" },
     troubleshootingSopDoc: "https://example.com/wiki/sop",
     attributionRecordRoot: "https://example.com/wiki/records",
-    recordTableUrl: "https://example.com/base/alerts?table=tbl_alerts",
     promptTemplate: "处理 {{recordId}}：{{messageText}}",
     queuePollIntervalMinutes: 5,
     schedule: {
@@ -67,10 +66,15 @@ vi.mock("react-native-unistyles", () => ({
 }));
 
 vi.mock("lucide-react-native", () => ({
+  ClipboardList: () => null,
   Play: () => null,
   Plus: () => null,
   Save: () => null,
   Trash2: () => null,
+}));
+
+vi.mock("@/plugins/alert-troubleshooter/alert-troubleshooter-task-list-page", () => ({
+  AlertTroubleshooterTaskListPage: () => <div>任务执行记录页面</div>,
 }));
 
 vi.mock("@/components/ui/button", () => ({
@@ -197,9 +201,16 @@ vi.mock("@/plugins/project/plugin-project-default-agent-field", () => ({
 vi.mock("@/plugins/project/plugin-project-boundary", () => ({
   PluginProjectBoundary: ({
     children,
+    renderDetailActions,
   }: {
     children: (project: typeof testState.project) => React.ReactNode;
-  }) => <>{children(testState.project)}</>,
+    renderDetailActions?: (project: typeof testState.project) => React.ReactNode;
+  }) => (
+    <>
+      {renderDetailActions?.(testState.project)}
+      {children(testState.project)}
+    </>
+  ),
 }));
 
 vi.mock("@/runtime/host-features", () => ({
@@ -247,7 +258,7 @@ describe("BambooTroubleshooterPanel", () => {
     testState.enqueueAlertTroubleshooterRecord.mockReset();
     testState.enqueueAlertTroubleshooterRecord.mockResolvedValue({
       queued: true,
-      recordId: "rec_debug",
+      uniqueId: "result_id:123",
       error: null,
     });
     testState.project.data = { bambooTroubleshooter: validConfig() };
@@ -295,7 +306,6 @@ describe("BambooTroubleshooterPanel", () => {
               target: { kind: "assistant", assistantId: "assistant-1" },
               troubleshootingSopDoc: "https://example.com/wiki/sop",
               attributionRecordRoot: "https://example.com/wiki/records",
-              recordTableUrl: "https://example.com/base/alerts?table=tbl_alerts",
               listenEnabled: true,
               troubleshootingEnabled: true,
               promptTemplate: "处理 {{recordId}}：{{messageText}}",
@@ -383,13 +393,12 @@ describe("BambooTroubleshooterPanel", () => {
 
     expect(await screen.findByText(/请至少添加一个监听飞书群/)).toBeTruthy();
     expect(screen.getByText(/请输入排查 SOP 飞书文档链接/)).toBeTruthy();
-    expect(screen.getByText(/请输入归因记录飞书文档或目录链接/)).toBeTruthy();
-    expect(screen.getByText(/请输入消息多维表格链接/)).toBeTruthy();
+    expect(screen.getByText(/请输入归因记录根目录/)).toBeTruthy();
     expect(screen.queryByText(/invalid_format|"origin"|Too small/)).toBeNull();
     expect(testState.configurePluginApp).not.toHaveBeenCalled();
   });
 
-  it("queues a specified Base record for manual troubleshooting", async () => {
+  it("queues a specified Base unique_id for manual troubleshooting", async () => {
     render(
       <BambooTroubleshooterPanel
         active
@@ -399,8 +408,8 @@ describe("BambooTroubleshooterPanel", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("指定多维表格记录 ID"), {
-      target: { value: "rec_debug" },
+    fireEvent.change(screen.getByLabelText("指定多维表格 unique_id"), {
+      target: { value: "result_id:123" },
     });
     fireEvent.click(screen.getByRole("button", { name: "加入处理队列" }));
 
@@ -409,10 +418,10 @@ describe("BambooTroubleshooterPanel", () => {
         pluginId: "bamboo-reconciliation-troubleshooter",
         appId: "bamboo-troubleshooter-console",
         projectId: "project-1",
-        recordId: "rec_debug",
+        uniqueId: "result_id:123",
       }),
     );
-    expect(screen.getByText("记录 rec_debug 已加入处理队列。")).toBeTruthy();
+    expect(screen.getByText("记录 result_id:123 已加入处理队列。")).toBeTruthy();
   });
 
   it("explains how to correct invalid document links", async () => {
@@ -428,7 +437,7 @@ describe("BambooTroubleshooterPanel", () => {
     fireEvent.change(screen.getByLabelText("排查 SOP 飞书文档链接"), {
       target: { value: "invalid-sop" },
     });
-    fireEvent.change(screen.getByLabelText("归因记录飞书文档或目录链接"), {
+    fireEvent.change(screen.getByLabelText("归因记录根目录"), {
       target: { value: "invalid-record" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存自动排查配置" }));

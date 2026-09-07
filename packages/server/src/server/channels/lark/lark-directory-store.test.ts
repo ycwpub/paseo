@@ -213,6 +213,60 @@ describe("LarkDirectoryStore", () => {
     });
   });
 
+  test("creates a manual contact and rejects a duplicate for the same bot", () => {
+    expect(
+      store.createUser(
+        "cli_test",
+        " ou_alice ",
+        { displayName: " 张三 ", email: "Alice@Example.com" },
+        "2026-09-07T03:00:00.000Z",
+      ),
+    ).toEqual({
+      appId: "cli_test",
+      openId: "ou_alice",
+      displayName: "张三",
+      email: "alice@example.com",
+      firstMessageContent: null,
+      firstMessageAt: null,
+      updatedAt: "2026-09-07T03:00:00.000Z",
+    });
+
+    expect(() =>
+      store.createUser(
+        "cli_test",
+        "ou_alice",
+        { displayName: null, email: null },
+        "2026-09-07T03:01:00.000Z",
+      ),
+    ).toThrow("联系人已存在：ou_alice");
+  });
+
+  test("deletes only selected contacts belonging to one bot", () => {
+    store.createUser(
+      "cli_test",
+      "ou_alice",
+      { displayName: "张三", email: null },
+      "2026-09-07T03:00:00.000Z",
+    );
+    store.createUser(
+      "cli_test",
+      "ou_bob",
+      { displayName: "李四", email: null },
+      "2026-09-07T03:01:00.000Z",
+    );
+    store.createUser(
+      "cli_other",
+      "ou_alice",
+      { displayName: "其他机器人联系人", email: null },
+      "2026-09-07T03:02:00.000Z",
+    );
+
+    expect(store.deleteUsers("cli_test", ["ou_alice", "ou_missing"])).toEqual(["ou_alice"]);
+    expect(store.findUser("cli_test", "ou_alice")).toBeNull();
+    expect(store.findUser("cli_test", "ou_bob")).not.toBeNull();
+    expect(store.findUser("cli_other", "ou_alice")).not.toBeNull();
+  });
+
   test("clears first message content only for contacts belonging to the selected bot", () => {
     store.observeUser(
       "cli_test",

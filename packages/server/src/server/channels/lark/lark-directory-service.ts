@@ -1,25 +1,31 @@
 import type {
   LarkDirectory,
   LarkDirectoryChat,
+  LarkDirectoryPrivateUserScanRange,
   LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
-import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
+import type { LarkChannelClientAdapter, LarkResolvedUser } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
 import {
   PASEO_LARK_CHAT_LOOKUP_USER_SCOPES,
   PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES,
+  PASEO_LARK_USER_LOOKUP_USER_SCOPES,
 } from "./lark-bot-capability-requirements.js";
 import { hasCompleteLarkDirectoryUser } from "./lark-directory-identity.js";
 import { collectRecentLarkPrivateUsers } from "./lark-directory-private-user-scan.js";
+import { resolveLarkDirectoryPrivateUserScanRange } from "./lark-directory-private-user-scan-range.js";
 import type { LarkDirectoryStore } from "./lark-directory-store.js";
 import { toLarkDirectoryMessageTime } from "./lark-directory-message.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
-function uniqueEmails(emails: readonly string[]): string[] {
-  return Array.from(
-    new Set(emails.map((email) => email.trim().toLocaleLowerCase()).filter(Boolean)),
-  );
+function uniqueQueries(emails: readonly string[]): string[] {
+  const unique = new Map<string, string>();
+  for (const value of emails) {
+    const query = value.trim();
+    if (query) unique.set(query.toLocaleLowerCase(), query);
+  }
+  return [...unique.values()];
 }
 
 const DIRECTORY_CHAT_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -37,27 +43,64 @@ export class LarkDirectoryService {
   }
 
   async resolveUsers(appId: string, emails: readonly string[]): Promise<LarkDirectoryUser[]> {
-    const normalizedEmails = uniqueEmails(emails);
-    if (normalizedEmails.length === 0) {
-      throw new Error("At least one user email is required");
+    const queries = uniqueQueries(emails);
+    if (queries.length === 0) {
+      throw new Error("At least one user name, email, or Open ID is required");
     }
     const config = this.requireConfig(appId);
-    if (!this.adapter.resolveUsersByEmails) {
-      throw new Error("This Paseo daemon does not support Lark user lookup");
+    const resolved: LarkResolvedUser[] = [];
+    const emailQueries = queries
+      .filter((query) => query.includes("@"))
+      .map((query) => query.toLocaleLowerCase());
+    const openIdQueries = queries.filter((query) => /^ou_[A-Za-z0-9_-]+$/u.test(query));
+    const nameQueries = queries.filter(
+      (query) => !query.includes("@") && !/^ou_[A-Za-z0-9_-]+$/u.test(query),
+    );
+    if (emailQueries.length > 0) {
+      if (!this.adapter.resolveUsersByEmails) {
+        throw new Error("This Paseo daemon does not support Lark email lookup");
+      }
+      resolved.push(...(await this.adapter.resolveUsersByEmails(config, emailQueries)));
     }
-    const resolved = await this.adapter.resolveUsersByEmails(config, normalizedEmails);
+    if (openIdQueries.length > 0) {
+      if (!this.adapter.resolveUserByOpenId) {
+        throw new Error("This Paseo daemon does not support Lark Open ID lookup");
+      }
+      resolved.push(
+        ...(
+          await Promise.all(
+            openIdQueries.map((openId) => this.adapter.resolveUserByOpenId!(config, openId)),
+          )
+        ).filter((user): user is LarkResolvedUser => Boolean(user)),
+      );
+    }
+    if (nameQueries.length > 0) {
+      if (!this.adapter.searchUsers) {
+        throw new Error("This Paseo daemon does not support Lark user-name search");
+      }
+      const userAccessToken = await this.userOAuthService.getValidUserAccessToken(
+        appId,
+        PASEO_LARK_USER_LOOKUP_USER_SCOPES,
+      );
+      for (const query of nameQueries) {
+        resolved.push(...(await this.adapter.searchUsers(config, query, userAccessToken)));
+      }
+    }
     const byEmail = new Map(
       resolved.flatMap((entry) =>
         entry.email ? [[entry.email.toLocaleLowerCase(), entry] as const] : [],
       ),
     );
-    const missing = normalizedEmails.filter((email) => !byEmail.has(email));
+    const missing = emailQueries.filter((email) => !byEmail.has(email));
     if (missing.length > 0) {
       throw new Error(`No visible Lark user found for: ${missing.join(", ")}`);
     }
+    const uniqueResolved = Array.from(
+      new Map(resolved.map((user) => [user.openId, user] as const)).values(),
+    );
     const enriched = this.adapter.resolveUserByOpenId
       ? await Promise.all(
-          resolved.map(async (user) => {
+          uniqueResolved.map(async (user) => {
             if (hasCompleteLarkDirectoryUser(user)) return user;
             try {
               const details = await this.adapter.resolveUserByOpenId!(config, user.openId);
@@ -73,7 +116,10 @@ export class LarkDirectoryService {
             }
           }),
         )
-      : resolved;
+      : uniqueResolved;
+    if (enriched.length === 0) {
+      throw new Error(`No visible Lark user found for: ${queries.join(", ")}`);
+    }
     return this.store.upsertResolvedUsers(appId, enriched, new Date().toISOString());
   }
 
@@ -146,11 +192,8 @@ export class LarkDirectoryService {
 
   async scanRecentPrivateUsers(
     appId: string,
-    lookbackMinutes: number,
+    range: LarkDirectoryPrivateUserScanRange,
   ): Promise<LarkDirectoryRecentPrivateUser[]> {
-    if (!Number.isInteger(lookbackMinutes) || lookbackMinutes < 1 || lookbackMinutes > 10_080) {
-      throw new Error("私聊扫描时间范围必须是 1 到 10080 分钟");
-    }
     const config = this.requireConfig(appId);
     if (!this.adapter.searchPrivateMessagesAsUser) {
       throw new Error("当前飞书连接不支持扫描最近私聊用户");
@@ -161,12 +204,10 @@ export class LarkDirectoryService {
       PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES,
     );
     const now = new Date();
+    const scanRange = resolveLarkDirectoryPrivateUserScanRange(range, now.getTime());
     const rawMessages = await this.adapter.searchPrivateMessagesAsUser(
       config,
-      {
-        startTime: Math.floor((now.getTime() - lookbackMinutes * 60 * 1_000) / 1_000),
-        endTime: Math.floor(now.getTime() / 1_000),
-      },
+      scanRange,
       userAccessToken,
     );
     return collectRecentLarkPrivateUsers({
@@ -282,11 +323,29 @@ export class LarkDirectoryService {
     return user;
   }
 
+  createUser(
+    appId: string,
+    openId: string,
+    input: { displayName: string | null; email: string | null },
+  ): LarkDirectoryUser {
+    this.requireConfiguredBot(appId);
+    return this.store.createUser(appId, openId, input, new Date().toISOString());
+  }
+
+  deleteUsers(appId: string, openIds: readonly string[]): string[] {
+    this.requireConfiguredBot(appId);
+    return this.store.deleteUsers(appId, openIds);
+  }
+
   clearFirstMessageContents(appId: string): number {
+    this.requireConfiguredBot(appId);
+    return this.store.clearFirstMessageContents(appId, new Date().toISOString());
+  }
+
+  private requireConfiguredBot(appId: string): void {
     if (!this.channelStore.getBots().some((entry) => entry.config.appId === appId)) {
       throw new Error(`Lark bot App ID is not configured: ${appId}`);
     }
-    return this.store.clearFirstMessageContents(appId, new Date().toISOString());
   }
 
   private requireConfig(appId: string): StoredLarkChannelConfig {

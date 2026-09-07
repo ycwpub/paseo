@@ -40,6 +40,42 @@ describe("Lark directory private-user scan RPC schemas", () => {
     ).toHaveLength(1);
   });
 
+  test("accepts an explicit message time range and rejects invalid ranges", () => {
+    expect(
+      LarkDirectoryScanPrivateUsersRequestSchema.parse({
+        type: "channel.lark.directory.scan_private_users.request",
+        requestId: "scan-explicit",
+        appId: "cli_test",
+        lookbackMinutes: 30,
+        startTime: 1_788_729_600,
+        endTime: 1_788_733_200,
+      }),
+    ).toMatchObject({
+      startTime: 1_788_729_600,
+      endTime: 1_788_733_200,
+    });
+
+    expect(
+      LarkDirectoryScanPrivateUsersRequestSchema.safeParse({
+        type: "channel.lark.directory.scan_private_users.request",
+        requestId: "scan-partial",
+        appId: "cli_test",
+        lookbackMinutes: 30,
+        startTime: 1_788_729_600,
+      }).success,
+    ).toBe(false);
+    expect(
+      LarkDirectoryScanPrivateUsersRequestSchema.safeParse({
+        type: "channel.lark.directory.scan_private_users.request",
+        requestId: "scan-reversed",
+        appId: "cli_test",
+        lookbackMinutes: 30,
+        startTime: 1_788_733_200,
+        endTime: 1_788_729_600,
+      }).success,
+    ).toBe(false);
+  });
+
   test("accepts adding a scanned private user to the directory", () => {
     expect(
       LarkDirectoryAddPrivateUserRequestSchema.parse({

@@ -46,6 +46,10 @@ import {
   resolveSubstituteModeProject,
   rollbackSubstituteModeProject,
 } from "./lark-substitute-mode-project";
+import {
+  LarkProjectBindingFields,
+  type LarkProjectBindingMode,
+} from "./lark-project-binding-fields";
 import { useLarkSubstituteModes } from "./use-lark-substitute-modes";
 import { WeekdayMultiSelectField } from "./weekday-multi-select-field";
 
@@ -323,6 +327,12 @@ export function LarkSubstituteModeEditor({
   const { projects } = useProjects();
   const controller = useSubstituteModeForm(mode, bots);
   const { form, setCwd } = controller;
+  const [projectMode, setProjectMode] = useState<LarkProjectBindingMode>(
+    mode ? "existing" : "create",
+  );
+  const [newProjectName, setNewProjectName] = useState(mode?.name ?? form.name);
+  const [newProjectNameEdited, setNewProjectNameEdited] = useState(false);
+  const [newProjectNameRevision, setNewProjectNameRevision] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const upsertProject = useSessionStore((state) => state.upsertProject);
@@ -366,8 +376,9 @@ export function LarkSubstituteModeEditor({
         mode,
       });
       const project = await resolveSubstituteModeProject({
-        name: form.name,
+        name: newProjectName,
         cwd: form.cwd,
+        projectMode,
         supportsDirectorylessProjects,
         client,
         registerProject: (created) => {
@@ -397,6 +408,7 @@ export function LarkSubstituteModeEditor({
       });
       if (!rolledBack && createdProjectCwd) {
         setCwd(createdProjectCwd);
+        setProjectMode("existing");
       }
       const message = error instanceof Error ? error.message : String(error);
       setFormError(
@@ -411,7 +423,9 @@ export function LarkSubstituteModeEditor({
     isSaving,
     mode,
     modes,
+    newProjectName,
     onSaved,
+    projectMode,
     removeProject,
     selectedBot,
     serverId,
@@ -420,6 +434,35 @@ export function LarkSubstituteModeEditor({
     supportsDirectorylessProjects,
     upsertProject,
   ]);
+  const handleNameChange = useCallback(
+    (value: string) => {
+      controller.setName(value);
+      if (!newProjectNameEdited) {
+        setNewProjectName(value);
+        if (projectMode === "create") {
+          setNewProjectNameRevision((revision) => revision + 1);
+        }
+      }
+      setFormError(null);
+    },
+    [controller, newProjectNameEdited, projectMode],
+  );
+  const handleProjectModeChange = useCallback(
+    (value: LarkProjectBindingMode) => {
+      setProjectMode(value);
+      if (value === "create" && !newProjectNameEdited) {
+        setNewProjectName(form.name);
+        setNewProjectNameRevision((revision) => revision + 1);
+      }
+      setFormError(null);
+    },
+    [form.name, newProjectNameEdited],
+  );
+  const handleNewProjectNameChange = useCallback((value: string) => {
+    setNewProjectName(value);
+    setNewProjectNameEdited(true);
+    setFormError(null);
+  }, []);
 
   return (
     <View style={styles.editor}>
@@ -439,7 +482,7 @@ export function LarkSubstituteModeEditor({
           <Field label="名称">
             <FormTextInput
               value={form.name}
-              onChangeText={controller.setName}
+              onChangeText={handleNameChange}
               placeholder="例如：工作时间替身"
             />
           </Field>
@@ -669,19 +712,20 @@ export function LarkSubstituteModeEditor({
             emptyText="暂无助手或团队"
             searchable
           />
-          <SelectField
-            label="项目"
-            value={form.cwd || null}
-            selectedDisplay={optionDisplay(projectOptionList, form.cwd || null)}
-            options={projectOptionList}
-            onChange={controller.setCwd}
-            placeholder="选择项目"
-            emptyText="暂无可用项目"
-            searchable
+          <LarkProjectBindingFields
+            mode={projectMode}
+            cwd={form.cwd}
+            newProjectName={newProjectName}
+            newProjectNameRevision={newProjectNameRevision}
+            supportsDirectorylessProjects={supportsDirectorylessProjects}
+            projectOptions={projectOptionList}
+            selectedProjectDisplay={optionDisplay(projectOptionList, form.cwd || null)}
+            defaultNameDescription="默认与替身模式名称相同"
+            testIDPrefix="lark-substitute"
+            onModeChange={handleProjectModeChange}
+            onCwdChange={controller.setCwd}
+            onNewProjectNameChange={handleNewProjectNameChange}
           />
-          <Text style={settingsStyles.rowHint}>
-            不选择项目时，将使用替身模式名称自动创建并绑定一个 Project。
-          </Text>
           {formError ? <Text style={settingsStyles.rowError}>{formError}</Text> : null}
           <Button
             variant="default"

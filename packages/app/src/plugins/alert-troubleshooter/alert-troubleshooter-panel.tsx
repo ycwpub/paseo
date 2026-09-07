@@ -1,7 +1,7 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop -- Dynamic group rows and identity selectors bind to the active Project draft. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { Play, Plus, Save, Trash2 } from "lucide-react-native";
+import { ClipboardList, Play, Plus, Save, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { ZodType } from "zod";
 import type {
@@ -30,17 +30,17 @@ import { LarkChatDirectoryField } from "@/screens/settings/channels/lark-directo
 import { formatLarkChatIdentity } from "@/screens/settings/channels/lark-directory-format";
 import { useLarkChannel } from "@/screens/settings/channels/use-lark-channel";
 import { validateAlertTroubleshooterConfig } from "./alert-troubleshooter-form-validation";
+import { AlertTroubleshooterTaskListPage } from "./alert-troubleshooter-task-list-page";
 
 const DEFAULT_CONFIG: Omit<
   AlertTroubleshooterConfig,
   "botId" | "chats" | "troubleshootingSopDoc" | "attributionRecordRoot"
 > = {
-  version: 3,
+  version: 4,
   enabled: true,
   listenEnabled: true,
   troubleshootingEnabled: true,
-  target: { kind: "assistant", assistantId: "" },
-  recordTableUrl: "",
+  target: { kind: "default" },
   promptTemplate: "",
   queuePollIntervalMinutes: 5,
   schedule: {
@@ -102,9 +102,7 @@ function AlertTroubleshooterProject({
   );
   const [pendingChatId, setPendingChatId] = useState("");
   const [target, setTarget] = useState<AlertTroubleshooterTarget>(
-    initialConfig.success && initialConfig.data.target.kind !== "default"
-      ? initialConfig.data.target
-      : DEFAULT_CONFIG.target,
+    initialConfig.success ? initialConfig.data.target : DEFAULT_CONFIG.target,
   );
   const [agent, setAgent] = useState(project.defaultAgent);
   const [sopDoc, setSopDoc] = useState(
@@ -113,16 +111,13 @@ function AlertTroubleshooterProject({
   const [recordRoot, setRecordRoot] = useState(
     initialConfig.success ? initialConfig.data.attributionRecordRoot : "",
   );
-  const [recordTableUrl, setRecordTableUrl] = useState(
-    initialConfig.success ? initialConfig.data.recordTableUrl : "",
-  );
   const [promptTemplate, setPromptTemplate] = useState(
     initialConfig.success ? initialConfig.data.promptTemplate : "",
   );
   const [queuePollIntervalMinutes, setQueuePollIntervalMinutes] = useState(
     String(initialConfig.success ? initialConfig.data.queuePollIntervalMinutes : 5),
   );
-  const [debugRecordId, setDebugRecordId] = useState("");
+  const [debugUniqueId, setDebugUniqueId] = useState("");
   const [queueingRecord, setQueueingRecord] = useState(false);
   const [queuedRecord, setQueuedRecord] = useState<string | null>(null);
   const [scheduleEnabled, setScheduleEnabled] = useState(
@@ -182,6 +177,7 @@ function AlertTroubleshooterProject({
   );
   const identityOptions = useMemo(
     () => [
+      { value: "default" as const, label: "不指定" },
       { value: "assistant" as const, label: "助手" },
       { value: "team" as const, label: "团队", disabled: !supportsTeams },
     ],
@@ -193,23 +189,6 @@ function AlertTroubleshooterProject({
     if (botId || !status?.activeBotId) return;
     setBotId(status.activeBotId);
   }, [botId, status?.activeBotId]);
-
-  useEffect(() => {
-    if (target.kind === "assistant" && !target.assistantId) {
-      const assistantId = assistants.assistants[0]?.id;
-      if (assistantId) {
-        setTarget({ kind: "assistant", assistantId });
-        return;
-      }
-      const teamId = supportsTeams ? teams.teams[0]?.id : undefined;
-      if (teamId) setTarget({ kind: "team", teamId });
-      return;
-    }
-    if (target.kind === "team" && !target.teamId) {
-      const teamId = teams.teams[0]?.id;
-      if (teamId) setTarget({ kind: "team", teamId });
-    }
-  }, [assistants.assistants, supportsTeams, target, teams.teams]);
 
   const addChat = useCallback(() => {
     if (!pendingChatId || chats.some((chat) => chat.chatId === pendingChatId)) return;
@@ -265,7 +244,6 @@ function AlertTroubleshooterProject({
         target,
         troubleshootingSopDoc: sopDoc,
         attributionRecordRoot: recordRoot,
-        recordTableUrl,
         promptTemplate,
         queuePollIntervalMinutes,
         schedule: {
@@ -306,7 +284,6 @@ function AlertTroubleshooterProject({
     promptTemplate,
     project.projectId,
     recordRoot,
-    recordTableUrl,
     queuePollIntervalMinutes,
     scheduleEnabled,
     sopDoc,
@@ -317,9 +294,9 @@ function AlertTroubleshooterProject({
 
   const enqueueDebugRecord = useCallback(async () => {
     if (!client) return;
-    const recordId = debugRecordId.trim();
-    if (!recordId) {
-      setError("请输入多维表格记录 ID");
+    const uniqueId = debugUniqueId.trim();
+    if (!uniqueId) {
+      setError("请输入多维表格 unique_id");
       return;
     }
     setQueueingRecord(true);
@@ -330,18 +307,18 @@ function AlertTroubleshooterProject({
         pluginId: spec.pluginId,
         appId: spec.appId,
         projectId: project.projectId,
-        recordId,
+        uniqueId,
       });
       if (response.error || !response.queued) {
         throw new Error(response.error ?? "加入处理队列失败");
       }
-      setQueuedRecord(response.recordId);
+      setQueuedRecord(response.uniqueId);
     } catch (queueError) {
       setError(errorMessage(queueError));
     } finally {
       setQueueingRecord(false);
     }
-  }, [client, debugRecordId, project.projectId, spec.appId, spec.pluginId]);
+  }, [client, debugUniqueId, project.projectId, spec.appId, spec.pluginId]);
 
   return (
     <View style={styles.root}>
@@ -413,21 +390,11 @@ function AlertTroubleshooterProject({
             placeholder="https://.../wiki/..."
           />
         </Field>
-        <Field label="归因记录飞书文档或目录链接">
+        <Field label="归因记录根目录" hint="系统会在该目录下一层按日期自动创建或复用日报多维表格。">
           <FormTextInput
             value={recordRoot}
             onChangeText={setRecordRoot}
             placeholder="https://.../wiki/..."
-          />
-        </Field>
-        <Field
-          label="消息多维表格链接"
-          hint="监听和扫描发现的消息先写入该表，再进入本地持久队列。支持 Base 或 Wiki 多维表格链接。"
-        >
-          <FormTextInput
-            value={recordTableUrl}
-            onChangeText={setRecordTableUrl}
-            placeholder="https://.../base/...?...table=tbl..."
           />
         </Field>
         <PluginProjectDefaultAgentField
@@ -440,9 +407,9 @@ function AlertTroubleshooterProject({
           label="排查 Provider 和模型（必填）"
           hint="为当前自动排查项目指定实际使用的 Provider 和模型，不再只能沿用已有默认模型。"
         />
-        <Field label="执行主体（必填）" hint="助手和团队只能选择一个。">
+        <Field label="执行主体（选填）" hint="可不指定，或在助手和团队中选择一个。">
           <SegmentedControl
-            value={target.kind === "team" ? "team" : "assistant"}
+            value={target.kind}
             onValueChange={changeTargetKind}
             options={identityOptions}
           />
@@ -555,25 +522,26 @@ function AlertTroubleshooterProject({
         <Text selectable style={styles.variables}>
           可用变量：{"{{projectId}}"}、{"{{projectName}}"}、{"{{projectDirectory}}"}、
           {"{{pluginId}}"}、{"{{appId}}"}、{"{{recordId}}"}、{"{{messageId}}"}、{"{{chatId}}"}、
-          {"{{chatName}}"}、{"{{messageText}}"}、{"{{messageTime}}"}、{"{{trigger}}"}、
-          {"{{troubleshootingSopDoc}}"}、{"{{attributionRecordRoot}}"}、{"{{recordTableUrl}}"}
+          {"{{unique_id}}"}、{"{{result_id}}"}、{"{{chatName}}"}、{"{{messageText}}"}、
+          {"{{messageTime}}"}、{"{{trigger}}"}、{"{{troubleshootingSopDoc}}"}、
+          {"{{attributionRecordRoot}}"}
           ；Project 自定义变量使用 {"{{变量名}}"}。
         </Text>
         <Field
-          label="指定多维表格记录 ID"
-          hint="手动加入处理队列，便于调试；即使自动排查开关关闭，也会处理该手动任务。"
+          label="指定多维表格 unique_id"
+          hint="从今天或昨天的日报多维表格查找并加入处理队列，便于调试。"
         >
           <FormTextInput
-            value={debugRecordId}
-            onChangeText={setDebugRecordId}
-            placeholder="recxxxxxxxx"
+            value={debugUniqueId}
+            onChangeText={setDebugUniqueId}
+            placeholder="result_id:123456 或 message_id:om_xxx"
           />
         </Field>
         <Button
           variant="outline"
           leftIcon={Play}
           loading={queueingRecord}
-          disabled={!debugRecordId.trim()}
+          disabled={!debugUniqueId.trim()}
           onPress={enqueueDebugRecord}
         >
           加入处理队列
@@ -608,6 +576,22 @@ export function AlertTroubleshooterPanel({
   spec: AlertTroubleshooterPanelSpec;
   initialProjectId?: string;
 }) {
+  const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
+  const closeTasks = useCallback(() => setTaskProjectId(null), []);
+  const renderTaskAction = useCallback(
+    (project: PluginProjectContext) => (
+      <Button
+        size="sm"
+        variant="outline"
+        leftIcon={ClipboardList}
+        onPress={() => setTaskProjectId(project.projectId)}
+      >
+        任务执行记录
+      </Button>
+    ),
+    [],
+  );
+
   return (
     <PluginProjectBoundary
       active={active}
@@ -615,16 +599,30 @@ export function AlertTroubleshooterPanel({
       pluginId={spec.pluginId}
       appDefinition={appDefinition}
       initialProjectId={initialProjectId}
+      renderDetailActions={renderTaskAction}
     >
-      {(project) => (
-        <AlertTroubleshooterProject
-          key={project.projectId}
-          active={active}
-          serverId={serverId}
-          spec={spec}
-          project={project}
-        />
-      )}
+      {(project) =>
+        taskProjectId === project.projectId ? (
+          <AlertTroubleshooterTaskListPage
+            key={`${project.projectId}:tasks`}
+            active={active}
+            serverId={serverId}
+            pluginId={spec.pluginId}
+            appId={spec.appId}
+            projectId={project.projectId}
+            projectName={project.projectName}
+            onBack={closeTasks}
+          />
+        ) : (
+          <AlertTroubleshooterProject
+            key={project.projectId}
+            active={active}
+            serverId={serverId}
+            spec={spec}
+            project={project}
+          />
+        )
+      }
     </PluginProjectBoundary>
   );
 }

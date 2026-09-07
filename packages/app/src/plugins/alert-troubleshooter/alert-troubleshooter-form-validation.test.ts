@@ -17,7 +17,6 @@ const VALID_DRAFT: AlertTroubleshooterConfigDraft = {
   target: { kind: "assistant", assistantId: "assistant-1" },
   troubleshootingSopDoc: "https://example.com/wiki/sop",
   attributionRecordRoot: "https://example.com/wiki/records",
-  recordTableUrl: "https://example.com/base/messages?table=tbl_alerts",
   promptTemplate: "处理 {{recordId}}",
   queuePollIntervalMinutes: "5",
   schedule: {
@@ -36,7 +35,6 @@ describe("validateAlertTroubleshooterConfig", () => {
       chats: [],
       troubleshootingSopDoc: "",
       attributionRecordRoot: "",
-      recordTableUrl: "",
     });
 
     expect(result).toEqual({
@@ -45,8 +43,7 @@ describe("validateAlertTroubleshooterConfig", () => {
         "请选择飞书机器人",
         "请至少添加一个监听飞书群",
         "请输入排查 SOP 飞书文档链接",
-        "请输入归因记录飞书文档或目录链接",
-        "请输入消息多维表格链接",
+        "请输入归因记录根目录",
       ].join("\n"),
     });
   });
@@ -56,7 +53,6 @@ describe("validateAlertTroubleshooterConfig", () => {
       ...VALID_DRAFT,
       troubleshootingSopDoc: "not-a-url",
       attributionRecordRoot: "file:///tmp/records",
-      recordTableUrl: "not-a-base-url",
     });
 
     expect(result.success).toBe(false);
@@ -65,23 +61,17 @@ describe("validateAlertTroubleshooterConfig", () => {
       "排查 SOP 飞书文档链接格式无效，请输入完整的 http:// 或 https:// 链接",
     );
     expect(result.message).toContain("归因记录链接格式无效，请输入完整的 http:// 或 https:// 链接");
-    expect(result.message).toContain(
-      "消息多维表格链接格式无效，请输入完整的 http:// 或 https:// 链接",
-    );
     expect(result.message).not.toContain("invalid_format");
     expect(result.message).not.toContain('"origin"');
   });
 
-  it("requires exactly one assistant or team instead of the legacy default target", () => {
+  it("allows the execution identity to be omitted", () => {
     const result = validateAlertTroubleshooterConfig(AlertTroubleshooterConfigSchema, {
       ...VALID_DRAFT,
       target: { kind: "default" },
     });
 
-    expect(result).toEqual({
-      success: false,
-      message: "请选择助手或团队",
-    });
+    expect(result.success).toBe(true);
   });
 
   it("returns the parsed configuration for a valid draft", () => {
@@ -91,7 +81,7 @@ describe("validateAlertTroubleshooterConfig", () => {
     if (!result.success) return;
     expect(result.config).toEqual<AlertTroubleshooterConfig>({
       ...VALID_DRAFT,
-      version: 3,
+      version: 4,
       queuePollIntervalMinutes: 5,
       schedule: {
         enabled: true,

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import React, { type ReactNode } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   LarkSubstituteAudienceRuleListEditor,
@@ -157,8 +157,10 @@ describe("Lark substitute rule list editors", () => {
     expect(screen.getByRole("option", { name: "全部（群+用户+机器人）" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "全部用户" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "用户名称" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: "用户邮箱" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "用户邮箱" })).toBeNull();
+    expect(screen.getByRole("option", { name: "用户 open_id" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "机器人 app_id" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "机器人名称" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "全部机器人" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "全部（机器人+用户）" })).toBeTruthy();
 
@@ -253,5 +255,125 @@ describe("Lark substitute rule list editors", () => {
         ],
       },
     ]);
+  });
+
+  test("stores an open_id after searching a local contact by email", () => {
+    const onChange = vi.fn();
+    render(
+      <LarkSubstituteAudienceRuleListEditor
+        label="用户/群白名单"
+        hint="必须命中"
+        ruleGroups={[
+          {
+            id: "list-1",
+            conversationRules: [{ id: "private", type: "private" }],
+            userRules: [
+              {
+                id: "user-1",
+                type: "user_open_id",
+                openId: "",
+                name: null,
+                email: null,
+              },
+            ],
+          },
+        ]}
+        appId="cli_test"
+        users={[
+          {
+            appId: "cli_test",
+            openId: "ou_alice",
+            displayName: "张三",
+            email: "alice@example.com",
+            updatedAt: "2026-09-07T00:00:00.000Z",
+          },
+        ]}
+        chats={[]}
+        resolveUsers={vi.fn()}
+        resolveChats={vi.fn()}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("输入用户名、邮箱或 ou_xxx，从飞书搜索"), {
+      target: { value: "alice@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "从飞书搜索" }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        id: "list-1",
+        conversationRules: [{ id: "private", type: "private" }],
+        userRules: [
+          {
+            id: "user-1",
+            type: "user_open_id",
+            openId: "ou_alice",
+            name: "张三",
+            email: "alice@example.com",
+          },
+        ],
+      },
+    ]);
+  });
+
+  test("searches Feishu by user name and stores the returned open_id", async () => {
+    const onChange = vi.fn();
+    const resolveUsers = vi.fn(async () => [
+      {
+        appId: "cli_test",
+        openId: "ou_remote",
+        displayName: "远程用户",
+        email: "remote@example.com",
+        updatedAt: "2026-09-07T00:00:00.000Z",
+      },
+    ]);
+    render(
+      <LarkSubstituteAudienceRuleListEditor
+        label="用户/群白名单"
+        hint="必须命中"
+        ruleGroups={[
+          {
+            id: "list-1",
+            conversationRules: [{ id: "private", type: "private" }],
+            userRules: [
+              {
+                id: "user-1",
+                type: "user_open_id",
+                openId: "",
+                name: null,
+                email: null,
+              },
+            ],
+          },
+        ]}
+        appId="cli_test"
+        users={[]}
+        chats={[]}
+        resolveUsers={resolveUsers}
+        resolveChats={vi.fn()}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("输入用户名、邮箱或 ou_xxx，从飞书搜索"), {
+      target: { value: "远程用户" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "从飞书搜索" }));
+
+    await waitFor(() => expect(resolveUsers).toHaveBeenCalledWith("cli_test", ["远程用户"]));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith([
+        expect.objectContaining({
+          userRules: [
+            expect.objectContaining({
+              type: "user_open_id",
+              openId: "ou_remote",
+              name: "远程用户",
+            }),
+          ],
+        }),
+      ]),
+    );
   });
 });

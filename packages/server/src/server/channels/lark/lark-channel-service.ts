@@ -4,6 +4,7 @@ import {
   getLarkSubstituteGroupScan,
   type LarkChannelAuthorizedUser,
   type LarkChannelStatus,
+  type LarkDirectoryPrivateUserScanRange,
   type LarkReminder,
   type LarkReminderCreateInput,
   type LarkReminderUpdateInput,
@@ -185,11 +186,16 @@ interface PendingRelay {
   addressedBots: LarkAddressedBot[];
   substituteTrigger: LarkSubstituteTrigger | null;
   substituteTaskId: string | null;
+  createThreadOnReply: boolean;
+  rootMessageId: string;
+  userId: string;
+  title: string;
 }
 
 interface ResolvedLarkThread {
   threadId: string;
   replyMessageId: string;
+  createThreadOnReply: boolean;
 }
 
 interface ResolvedLarkTarget {
@@ -643,9 +649,9 @@ export class LarkChannelService {
     return chats;
   }
 
-  async scanRecentDirectoryPrivateUsers(appId: string, lookbackMinutes: number) {
+  async scanRecentDirectoryPrivateUsers(appId: string, range: LarkDirectoryPrivateUserScanRange) {
     if (!this.directoryService) throw new Error("Lark directory is unavailable");
-    return this.directoryService.scanRecentPrivateUsers(appId, lookbackMinutes);
+    return this.directoryService.scanRecentPrivateUsers(appId, range);
   }
 
   async addRecentDirectoryPrivateUser(
@@ -672,6 +678,24 @@ export class LarkChannelService {
     const user = this.directoryService.updateUser(appId, openId, input);
     this.emitStatusChanged();
     return user;
+  }
+
+  createDirectoryUser(
+    appId: string,
+    openId: string,
+    input: { displayName: string | null; email: string | null },
+  ) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const user = this.directoryService.createUser(appId, openId, input);
+    this.emitStatusChanged();
+    return user;
+  }
+
+  deleteDirectoryUsers(appId: string, openIds: readonly string[]): string[] {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const deletedOpenIds = this.directoryService.deleteUsers(appId, openIds);
+    this.emitStatusChanged();
+    return deletedOpenIds;
   }
 
   clearDirectoryFirstMessageContents(appId: string): number {
@@ -1184,7 +1208,7 @@ export class LarkChannelService {
       );
       return;
     }
-    const { threadId, replyMessageId } = thread;
+    const { threadId, replyMessageId, createThreadOnReply } = thread;
     if (!this.isTargetConfigured(effectiveConfig)) {
       await this.sendThreadTextSafe(
         botId,
@@ -1219,6 +1243,7 @@ export class LarkChannelService {
           nowIso,
           supplementalEvents,
           substituteTaskId,
+          createThreadOnReply,
         });
         return;
       }
@@ -1240,6 +1265,7 @@ export class LarkChannelService {
         nowIso,
         supplementalEvents,
         substituteTaskId,
+        createThreadOnReply: firstTopicThread.createThreadOnReply,
       });
     } catch (error) {
       const message = formatLarkProcessingError(error);
@@ -1874,6 +1900,7 @@ export class LarkChannelService {
     nowIso: string;
     supplementalEvents: NormalizedLarkMessageEvent[];
     substituteTaskId: string | null;
+    createThreadOnReply: boolean;
   }): Promise<void> {
     const lastAssistantMessage = await this.agentManager.getLastAssistantMessage(input.agentId);
     this.pendingRelays.set(input.agentId, {
@@ -1890,6 +1917,10 @@ export class LarkChannelService {
       addressedBots: input.participants.addressedBots,
       substituteTrigger: input.participants.substituteTrigger,
       substituteTaskId: input.substituteTaskId,
+      createThreadOnReply: input.createThreadOnReply,
+      rootMessageId: input.event.rootMessageId ?? input.event.messageId,
+      userId: input.participants.userId,
+      title: input.event.topicName,
     });
     if (input.substituteTaskId) {
       this.substituteTaskStore.attachAgent(
@@ -1936,6 +1967,7 @@ export class LarkChannelService {
     nowIso: string;
     supplementalEvents: NormalizedLarkMessageEvent[];
     substituteTaskId: string | null;
+    createThreadOnReply: boolean;
   }): Promise<void> {
     const prompt = await this.formatEventPromptWithHistory({
       config: input.config,
@@ -1989,15 +2021,17 @@ export class LarkChannelService {
       notifyOnFinish: false,
       promptFailure: "throw",
     });
-    this.store.recordThreadConversation(input.botId, {
-      agentId: snapshot.id,
-      chatId: input.event.chatId,
-      threadId: input.threadId,
-      rootMessageId: input.event.rootMessageId ?? input.event.messageId,
-      userId: input.participants.userId,
-      title,
-      now: input.nowIso,
-    });
+    if (!input.createThreadOnReply) {
+      this.store.recordThreadConversation(input.botId, {
+        agentId: snapshot.id,
+        chatId: input.event.chatId,
+        threadId: input.threadId,
+        rootMessageId: input.event.rootMessageId ?? input.event.messageId,
+        userId: input.participants.userId,
+        title,
+        now: input.nowIso,
+      });
+    }
     this.pendingRelays.set(snapshot.id, {
       botId: input.botId,
       agentId: snapshot.id,
@@ -2012,6 +2046,10 @@ export class LarkChannelService {
       addressedBots: input.participants.addressedBots,
       substituteTrigger: input.participants.substituteTrigger,
       substituteTaskId: input.substituteTaskId,
+      createThreadOnReply: input.createThreadOnReply,
+      rootMessageId: input.event.rootMessageId ?? input.event.messageId,
+      userId: input.participants.userId,
+      title,
     });
     if (input.substituteTaskId) {
       this.substituteTaskStore.attachAgent(
@@ -2169,6 +2207,9 @@ export class LarkChannelService {
     thread: ResolvedLarkThread;
     substituteTrigger: LarkSubstituteTrigger | null;
   }): Promise<ResolvedLarkThread> {
+    if (input.substituteTrigger) {
+      return input.thread;
+    }
     // When resolveThread had to create a thread, it already sent this ACK and
     // returned the ACK message as the reply anchor. If Lark provided/resolved a
     // topic id up front, still acknowledge the first @ in that topic before
@@ -2196,6 +2237,7 @@ export class LarkChannelService {
       return {
         threadId: input.thread.threadId,
         replyMessageId: ack.messageId ?? input.thread.replyMessageId,
+        createThreadOnReply: false,
       };
     } catch (error) {
       this.logger.warn(
@@ -2353,6 +2395,14 @@ export class LarkChannelService {
       return {
         threadId: event.threadId,
         replyMessageId: this.resolveReplyMessageId(event),
+        createThreadOnReply: false,
+      };
+    }
+    if (substituteTrigger) {
+      return {
+        threadId: "",
+        replyMessageId: event.messageId,
+        createThreadOnReply: true,
       };
     }
     try {
@@ -2366,6 +2416,7 @@ export class LarkChannelService {
         return {
           threadId: reply.threadId,
           replyMessageId: reply.messageId ?? event.messageId,
+          createThreadOnReply: false,
         };
       }
       this.logger.warn({ messageId: event.messageId }, "Lark reply did not return thread_id");
@@ -2410,6 +2461,7 @@ export class LarkChannelService {
     if (!storedBot) return;
     await this.sendThreadTextSafe(relay.botId, storedBot.config, relay.replyMessageId, error, {
       mention: { openId: relay.mentionUserOpenId },
+      createThreadOnFirstReply: relay.createThreadOnReply,
     });
   }
 
@@ -2452,8 +2504,21 @@ export class LarkChannelService {
       {
         mention: { openId: mentionUserOpenId },
         substituteTrigger: relay.substituteTrigger,
+        createThreadOnFirstReply: relay.createThreadOnReply,
       },
     );
+    const resolvedThreadId = sent?.threadId ?? relay.threadId;
+    if (sent && relay.createThreadOnReply && resolvedThreadId) {
+      this.store.recordThreadConversation(relay.botId, {
+        agentId: relay.agentId,
+        chatId: relay.chatId,
+        threadId: resolvedThreadId,
+        rootMessageId: relay.rootMessageId,
+        userId: relay.userId,
+        title: relay.title,
+        now: new Date().toISOString(),
+      });
+    }
     if (sent && !relay.substituteTrigger) {
       const relayMentionOpenIds = extractLarkMentionOpenIds(substituteReply);
       if (mentionUserOpenId && !relayMentionOpenIds.includes(mentionUserOpenId)) {
@@ -2463,7 +2528,7 @@ export class LarkChannelService {
         await this.relayLocalSubstituteMention({
           sourceBotId: relay.botId,
           chatId: relay.chatId,
-          threadId: sent.threadId ?? relay.threadId,
+          threadId: resolvedThreadId,
           sourceMessageId: sent.messageId,
           replyMessageId: relay.replyMessageId,
           text: substituteReply,
@@ -2476,7 +2541,7 @@ export class LarkChannelService {
       relay.botId,
       agent.id,
       relay.chatId,
-      relay.threadId,
+      resolvedThreadId,
       new Date().toISOString(),
     );
     this.completeSubstituteTask(
@@ -2670,7 +2735,10 @@ export class LarkChannelService {
       ...(oauthOpenId ? [oauthOpenId] : []),
       ...audienceGroups.flatMap((group) =>
         group.userRules.flatMap((rule) =>
-          (rule.type === "user_name" || rule.type === "user_email") && rule.openId
+          (rule.type === "user_name" ||
+            rule.type === "user_email" ||
+            rule.type === "user_open_id") &&
+          rule.openId
             ? [rule.openId]
             : [],
         ),
@@ -2798,18 +2866,29 @@ export class LarkChannelService {
     options: {
       mention?: LarkReplyMentionOptions | null;
       substituteTrigger?: LarkSubstituteTrigger | null;
+      createThreadOnFirstReply?: boolean;
     } = {},
   ): Promise<SentLarkThreadMessage | null> {
     const chunks = splitLarkText(text);
     let firstMessage: SentLarkThreadMessage | null = null;
     for (const [index, chunk] of chunks.entries()) {
       try {
-        const sent = await this.replyInThreadByIdentity(
-          config,
-          replyMessageId,
-          index === 0 ? prefixLarkReplyMention(chunk, options.mention ?? null) : chunk,
-          options.substituteTrigger ?? null,
-        );
+        const textWithMention =
+          index === 0 ? prefixLarkReplyMention(chunk, options.mention ?? null) : chunk;
+        const sent: SentLarkThreadMessage =
+          index === 0 && options.createThreadOnFirstReply
+            ? await this.replyToMessageInThreadByIdentity(
+                config,
+                replyMessageId,
+                textWithMention,
+                options.substituteTrigger ?? null,
+              )
+            : await this.replyInThreadByIdentity(
+                config,
+                firstMessage?.messageId ?? replyMessageId,
+                textWithMention,
+                options.substituteTrigger ?? null,
+              );
         if (index === 0) {
           firstMessage = sent;
         }

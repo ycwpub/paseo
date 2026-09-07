@@ -54,6 +54,17 @@ function createLegacyUserRules(rule: LarkSubstituteAudienceRule): LarkSubstitute
   if (rule.type !== "user") {
     return [{ id: `${rule.id}-all-senders`, type: "all" }];
   }
+  if (rule.openId) {
+    return [
+      {
+        id: `${rule.id}-open-id`,
+        type: "user_open_id",
+        openId: rule.openId,
+        name: rule.name,
+        email: rule.email,
+      },
+    ];
+  }
   if (rule.email) {
     return [
       {

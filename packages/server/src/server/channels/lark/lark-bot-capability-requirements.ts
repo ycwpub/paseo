@@ -52,6 +52,12 @@ export const PASEO_LARK_CHAT_LOOKUP_USER_SCOPES = [
   "im:chat:read",
 ] as const;
 
+export const PASEO_LARK_USER_LOOKUP_USER_SCOPES = [
+  "offline_access",
+  // Search visible users by name when configuring an open_id audience rule.
+  "search:user",
+] as const;
+
 export const PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES = [
   "offline_access",
   "im:message.p2p_msg:get_as_user",
@@ -75,7 +81,7 @@ function uniqueSorted(items: readonly string[]): string[] {
 export function buildLarkBotApplicationRequirements(): LarkBotApplicationRequirements {
   return {
     tenantScopes: uniqueSorted(PASEO_LARK_TENANT_SCOPES),
-    userScopes: uniqueSorted(PASEO_LARK_USER_SCOPES),
+    userScopes: uniqueSorted([...PASEO_LARK_USER_SCOPES, ...PASEO_LARK_USER_LOOKUP_USER_SCOPES]),
     events: uniqueSorted(PASEO_LARK_EVENT_SUBSCRIPTIONS),
     callbacks: uniqueSorted(PASEO_LARK_CALLBACK_ALLOWLIST),
   };

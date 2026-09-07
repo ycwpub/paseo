@@ -6,6 +6,11 @@ import type {
 } from "../channels/lark/lark-channel-store.js";
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
 import type { AlertTroubleshooterQueueTrigger } from "./alert-troubleshooter-queue-store.js";
+import {
+  alertTableDateKey,
+  resolveDailyAlertTable,
+  type AlertTroubleshooterTableLocation,
+} from "./alert-troubleshooter-daily-table.js";
 
 const FIELDS = {
   messageId: "消息 ID",
@@ -22,10 +27,13 @@ const FIELDS = {
   projectId: "Project ID",
   pluginId: "插件 ID",
   agentId: "Agent ID",
+  uniqueId: "unique_id",
+  resultId: "result_id",
 } as const;
 
 const STATUS_UNCLAIMED = "未认领";
 const STATUS_RUNNING = "处理中";
+const STATUS_PAUSED = "已暂停";
 const STATUS_SUCCEEDED = "已完成";
 const STATUS_FAILED = "失败";
 
@@ -33,6 +41,9 @@ type RecordFields = Record<string, unknown>;
 
 export interface AlertTroubleshooterRecord {
   recordId: string;
+  uniqueId: string;
+  resultId: string | null;
+  tableDate: string;
   messageId: string | null;
   chatId: string | null;
   chatName: string | null;
@@ -57,28 +68,42 @@ export interface AlertTroubleshooterRecordStore {
   }): Promise<AlertTroubleshooterRecord[]>;
   getRecord(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
+  }): Promise<AlertTroubleshooterRecord | null>;
+  getRecordByUniqueId(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    uniqueId: string;
   }): Promise<AlertTroubleshooterRecord | null>;
   markRunning(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
     claimId: string;
   }): Promise<void>;
   markSucceeded(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
     agentId: string;
+  }): Promise<void>;
+  markPaused(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
   }): Promise<void>;
   markFailed(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
     error: string;
   }): Promise<void>;
-}
-
-interface TableLocation {
-  appToken: string;
-  tableId: string;
 }
 
 interface LarkRecord {
@@ -141,12 +166,19 @@ function normalizeTrigger(value: unknown): AlertTroubleshooterQueueTrigger {
     : "table";
 }
 
-function toRecord(record: LarkRecord): AlertTroubleshooterRecord | null {
+function toRecord(record: LarkRecord, tableDate: string): AlertTroubleshooterRecord | null {
   const recordId = record.record_id?.trim();
   if (!recordId) return null;
+  const messageId = textValue(record.fields[FIELDS.messageId]);
+  const uniqueId =
+    textValue(record.fields[FIELDS.uniqueId]) ??
+    (messageId ? `message_id:${messageId}` : `record_id:${recordId}`);
   return {
     recordId,
-    messageId: textValue(record.fields[FIELDS.messageId]),
+    uniqueId,
+    resultId: textValue(record.fields[FIELDS.resultId]),
+    tableDate,
+    messageId,
     chatId: textValue(record.fields[FIELDS.chatId]),
     chatName: textValue(record.fields[FIELDS.chatName]),
     messageText: textValue(record.fields[FIELDS.content]) ?? "",
@@ -155,25 +187,17 @@ function toRecord(record: LarkRecord): AlertTroubleshooterRecord | null {
   };
 }
 
-function parseTableUrl(value: string): { token: string; tableId: string | null; wiki: boolean } {
-  const url = new URL(value);
-  const segments = url.pathname.split("/").filter(Boolean);
-  const baseIndex = segments.findIndex((segment) => segment === "base" || segment === "bitable");
-  const wikiIndex = segments.findIndex((segment) => segment === "wiki");
-  const token =
-    (baseIndex >= 0 ? segments[baseIndex + 1] : undefined) ??
-    (wikiIndex >= 0 ? segments[wikiIndex + 1] : undefined);
-  if (!token) {
-    throw new Error("多维表格链接无效，请使用飞书 Base 或 Wiki 多维表格链接");
-  }
-  return {
-    token,
-    tableId: url.searchParams.get("table") ?? url.searchParams.get("table_id"),
-    wiki: wikiIndex >= 0,
-  };
+function extractResultId(text: string): string | null {
+  return /\bresult[_\s-]*id\s*[:=：]\s*([a-zA-Z0-9_-]+)/iu.exec(text)?.[1]?.trim() ?? null;
+}
+
+function uniqueIdForEvent(event: NormalizedLarkMessageEvent, resultId: string | null): string {
+  return resultId ? `result_id:${resultId}` : `message_id:${event.messageId}`;
 }
 
 export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRecordStore {
+  private readonly locations = new Map<string, AlertTroubleshooterTableLocation>();
+
   constructor(private readonly channelStore: Pick<LarkChannelStore, "getBot">) {}
 
   async upsertMessage(input: {
@@ -183,10 +207,25 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     trigger: AlertTroubleshooterQueueTrigger;
     event: NormalizedLarkMessageEvent;
   }): Promise<AlertTroubleshooterRecord> {
-    const { client, location, primaryField } = await this.context(input.config);
+    const tableDate = alertTableDateKey(
+      input.event.createTime === null
+        ? new Date()
+        : new Date(
+            input.event.createTime < 10_000_000_000
+              ? input.event.createTime * 1000
+              : input.event.createTime,
+          ),
+    );
+    const { client, location, primaryField } = await this.context(
+      input.config,
+      input.pluginId,
+      tableDate,
+    );
     const existing = await this.findByMessageId(client, location, input.event.messageId);
     if (existing) return existing;
     const chat = input.config.chats.find((candidate) => candidate.chatId === input.event.chatId);
+    const resultId = extractResultId(input.event.text);
+    const uniqueId = uniqueIdForEvent(input.event, resultId);
     const fields: Record<string, string> = {
       [primaryField]: `${chat?.name ?? input.event.chatId} · ${input.event.messageId}`,
       [FIELDS.messageId]: input.event.messageId,
@@ -203,6 +242,8 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       [FIELDS.projectId]: input.projectId,
       [FIELDS.pluginId]: input.pluginId,
       [FIELDS.agentId]: "",
+      [FIELDS.uniqueId]: uniqueId,
+      [FIELDS.resultId]: resultId ?? "",
     };
     const result = await client.bitable.v1.appTableRecord.create({
       path: { app_token: location.appToken, table_id: location.tableId },
@@ -211,7 +252,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     });
     assertSuccess(result);
     const record = result.data?.record as LarkRecord | undefined;
-    const normalized = record ? toRecord(record) : null;
+    const normalized = record ? toRecord(record, tableDate) : null;
     if (!normalized) throw new Error("飞书多维表格新增记录后未返回 record_id");
     return normalized;
   }
@@ -222,7 +263,8 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     pluginId: string;
     limit: number;
   }): Promise<AlertTroubleshooterRecord[]> {
-    const { client, location } = await this.context(input.config);
+    const tableDate = alertTableDateKey(new Date());
+    const { client, location } = await this.context(input.config, input.pluginId, tableDate);
     const result = await client.bitable.v1.appTableRecord.search({
       path: { app_token: location.appToken, table_id: location.tableId },
       params: { page_size: Math.min(Math.max(input.limit * 4, 20), 200) },
@@ -242,7 +284,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         );
       })
       .flatMap((record) => {
-        const normalized = toRecord(record);
+        const normalized = toRecord(record, tableDate);
         return normalized ? [normalized] : [];
       })
       .slice(0, input.limit);
@@ -250,9 +292,11 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
 
   async getRecord(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
   }): Promise<AlertTroubleshooterRecord | null> {
-    const { client, location } = await this.context(input.config);
+    const { client, location } = await this.context(input.config, input.pluginId, input.tableDate);
     const result = await client.bitable.v1.appTableRecord.get({
       path: {
         app_token: location.appToken,
@@ -262,15 +306,47 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       params: { text_field_as_array: false },
     });
     assertSuccess(result);
-    return result.data?.record ? toRecord(result.data.record as LarkRecord) : null;
+    return result.data?.record ? toRecord(result.data.record as LarkRecord, input.tableDate) : null;
+  }
+
+  async getRecordByUniqueId(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    uniqueId: string;
+  }): Promise<AlertTroubleshooterRecord | null> {
+    const now = new Date();
+    const dateKeys = [
+      alertTableDateKey(now),
+      alertTableDateKey(new Date(now.getTime() - 24 * 60 * 60_000)),
+    ];
+    for (const tableDate of dateKeys) {
+      const { client, location } = await this.context(input.config, input.pluginId, tableDate);
+      const result = await client.bitable.v1.appTableRecord.search({
+        path: { app_token: location.appToken, table_id: location.tableId },
+        params: { page_size: 1 },
+        data: {
+          field_names: Object.values(FIELDS),
+          filter: {
+            conjunction: "and",
+            conditions: [{ field_name: FIELDS.uniqueId, operator: "is", value: [input.uniqueId] }],
+          },
+        },
+      });
+      assertSuccess(result);
+      const record = (result.data?.items?.[0] ?? null) as LarkRecord | null;
+      if (record) return toRecord(record, tableDate);
+    }
+    return null;
   }
 
   markRunning(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
     claimId: string;
   }): Promise<void> {
-    return this.update(input.config, input.recordId, {
+    return this.update(input.config, input.pluginId, input.tableDate, input.recordId, {
       [FIELDS.status]: STATUS_RUNNING,
       [FIELDS.claimId]: input.claimId,
       [FIELDS.claimedAt]: new Date().toISOString(),
@@ -280,10 +356,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
 
   markSucceeded(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
     agentId: string;
   }): Promise<void> {
-    return this.update(input.config, input.recordId, {
+    return this.update(input.config, input.pluginId, input.tableDate, input.recordId, {
       [FIELDS.status]: STATUS_SUCCEEDED,
       [FIELDS.agentId]: input.agentId,
       [FIELDS.completedAt]: new Date().toISOString(),
@@ -291,12 +369,27 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     });
   }
 
+  markPaused(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+  }): Promise<void> {
+    return this.update(input.config, input.pluginId, input.tableDate, input.recordId, {
+      [FIELDS.status]: STATUS_PAUSED,
+      [FIELDS.completedAt]: new Date().toISOString(),
+      [FIELDS.error]: "",
+    });
+  }
+
   markFailed(input: {
     config: AlertTroubleshooterConfig;
+    pluginId: string;
     recordId: string;
+    tableDate: string;
     error: string;
   }): Promise<void> {
-    return this.update(input.config, input.recordId, {
+    return this.update(input.config, input.pluginId, input.tableDate, input.recordId, {
       [FIELDS.status]: STATUS_FAILED,
       [FIELDS.completedAt]: new Date().toISOString(),
       [FIELDS.error]: input.error.slice(0, 10_000),
@@ -305,10 +398,12 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
 
   private async update(
     config: AlertTroubleshooterConfig,
+    pluginId: string,
+    tableDate: string,
     recordId: string,
     fields: Record<string, string>,
   ): Promise<void> {
-    const { client, location } = await this.context(config);
+    const { client, location } = await this.context(config, pluginId, tableDate);
     const result = await client.bitable.v1.appTableRecord.update({
       path: {
         app_token: location.appToken,
@@ -322,7 +417,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
 
   private async findByMessageId(
     client: lark.Client,
-    location: TableLocation,
+    location: AlertTroubleshooterTableLocation,
     messageId: string,
   ): Promise<AlertTroubleshooterRecord | null> {
     const result = await client.bitable.v1.appTableRecord.search({
@@ -338,49 +433,39 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     });
     assertSuccess(result);
     const record = (result.data?.items?.[0] ?? null) as LarkRecord | null;
-    return record ? toRecord(record) : null;
+    return record ? toRecord(record, location.dateKey) : null;
   }
 
-  private async context(config: AlertTroubleshooterConfig): Promise<{
+  private async context(
+    config: AlertTroubleshooterConfig,
+    pluginId: string,
+    tableDate: string,
+  ): Promise<{
     client: lark.Client;
-    location: TableLocation;
+    location: AlertTroubleshooterTableLocation;
     primaryField: string;
   }> {
     const bot = this.channelStore.getBot(config.botId);
     if (!bot) throw new Error(`飞书机器人 ${config.botId} 不存在`);
     const client = createClient(bot.config);
-    const location = await this.resolveLocation(client, config.recordTableUrl);
+    const cacheKey = `${config.botId}:${config.attributionRecordRoot}:${pluginId}:${tableDate}`;
+    const location =
+      this.locations.get(cacheKey) ??
+      (await resolveDailyAlertTable({
+        client,
+        rootUrl: config.attributionRecordRoot,
+        pluginId,
+        dateKey: tableDate,
+      }));
+    this.locations.set(cacheKey, location);
     const primaryField = await this.ensureFields(client, location);
     return { client, location, primaryField };
   }
 
-  private async resolveLocation(client: lark.Client, tableUrl: string): Promise<TableLocation> {
-    const parsed = parseTableUrl(tableUrl);
-    let appToken = parsed.token;
-    if (parsed.wiki) {
-      const result = await client.wiki.v2.space.getNode({
-        params: { token: parsed.token, obj_type: "wiki" },
-      });
-      assertSuccess(result);
-      if (result.data?.node?.obj_type !== "bitable" || !result.data.node.obj_token) {
-        throw new Error("配置的 Wiki 链接不是多维表格");
-      }
-      appToken = result.data.node.obj_token;
-    }
-    let tableId = parsed.tableId;
-    if (!tableId) {
-      const result = await client.bitable.v1.appTable.list({
-        path: { app_token: appToken },
-        params: { page_size: 1 },
-      });
-      assertSuccess(result);
-      tableId = result.data?.items?.[0]?.table_id ?? null;
-    }
-    if (!tableId) throw new Error("多维表格链接中缺少 table 参数，且未找到默认数据表");
-    return { appToken, tableId };
-  }
-
-  private async ensureFields(client: lark.Client, location: TableLocation): Promise<string> {
+  private async ensureFields(
+    client: lark.Client,
+    location: AlertTroubleshooterTableLocation,
+  ): Promise<string> {
     const result = await client.bitable.v1.appTableField.list({
       path: { app_token: location.appToken, table_id: location.tableId },
       params: { page_size: 100 },

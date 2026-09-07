@@ -44,7 +44,7 @@ export type AlertTroubleshooterSchedule = z.infer<typeof AlertTroubleshooterSche
 
 export const AlertTroubleshooterConfigSchema = z
   .object({
-    version: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(3),
+    version: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).default(4),
     enabled: z.boolean().default(true),
     listenEnabled: z.boolean().default(true),
     troubleshootingEnabled: z.boolean().default(true),
@@ -53,6 +53,7 @@ export const AlertTroubleshooterConfigSchema = z
     target: AlertTroubleshooterTargetSchema.default({ kind: "default" }),
     troubleshootingSopDoc: z.string().trim().url(),
     attributionRecordRoot: z.string().trim().url(),
+    /** @deprecated v4 resolves or creates the daily Base below attributionRecordRoot. */
     recordTableUrl: z.string().trim().url().optional(),
     promptTemplate: z.string().max(30_000).default(""),
     queuePollIntervalMinutes: z
@@ -70,14 +71,48 @@ export const AlertTroubleshooterConfigSchema = z
   })
   .transform((config) => ({
     ...config,
-    version: 3 as const,
-    recordTableUrl: config.recordTableUrl ?? config.attributionRecordRoot,
+    version: 4 as const,
     schedule:
       config.version === 1 && config.schedule.excludeRecentMinutes === 30
         ? { ...config.schedule, excludeRecentMinutes: 0 }
         : config.schedule,
   }));
 export type AlertTroubleshooterConfig = z.infer<typeof AlertTroubleshooterConfigSchema>;
+
+export const AlertTroubleshooterTaskTriggerSchema = z.enum([
+  "message",
+  "schedule",
+  "table",
+  "manual",
+]);
+export type AlertTroubleshooterTaskTrigger = z.infer<typeof AlertTroubleshooterTaskTriggerSchema>;
+
+export const AlertTroubleshooterTaskStatusSchema = z.enum([
+  "queued",
+  "running",
+  "paused",
+  "succeeded",
+  "failed",
+]);
+export type AlertTroubleshooterTaskStatus = z.infer<typeof AlertTroubleshooterTaskStatusSchema>;
+
+export const AlertTroubleshooterTaskSchema = z.object({
+  id: z.string().min(1),
+  recordId: z.string().min(1),
+  uniqueId: z.string().min(1),
+  resultId: z.string().nullable(),
+  tableDate: z.string().regex(/^\d{8}$/u),
+  messageId: z.string().nullable(),
+  trigger: AlertTroubleshooterTaskTriggerSchema,
+  status: AlertTroubleshooterTaskStatusSchema,
+  matchedCount: z.number().int().positive().default(1),
+  attempts: z.number().int().nonnegative(),
+  queuedAt: z.string(),
+  updatedAt: z.string(),
+  agentId: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type AlertTroubleshooterTask = z.infer<typeof AlertTroubleshooterTaskSchema>;
 
 export const AlertTroubleshooterRuntimeSchema = z.object({
   status: z

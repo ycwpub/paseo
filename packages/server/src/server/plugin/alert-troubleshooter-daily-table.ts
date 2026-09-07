@@ -1,0 +1,150 @@
+import * as lark from "@larksuiteoapi/node-sdk";
+
+export interface AlertTroubleshooterTableLocation {
+  appToken: string;
+  tableId: string;
+  dateKey: string;
+  title: string;
+}
+
+interface WikiRoot {
+  spaceId: string;
+  nodeToken: string;
+}
+
+function assertSuccess(result: { code?: number; msg?: string }): void {
+  if (typeof result.code === "number" && result.code !== 0) {
+    throw new Error(
+      result.msg
+        ? `飞书归因记录接口失败：${result.msg}（${result.code}）`
+        : `飞书归因记录接口返回错误码 ${result.code}`,
+    );
+  }
+}
+
+function wikiToken(value: string): string {
+  const url = new URL(value);
+  const segments = url.pathname.split("/").filter(Boolean);
+  const wikiIndex = segments.findIndex((segment) => segment === "wiki");
+  const token = wikiIndex >= 0 ? segments[wikiIndex + 1] : undefined;
+  if (!token) {
+    throw new Error("归因记录根目录必须是飞书 Wiki 目录链接");
+  }
+  return token;
+}
+
+function dailyTitle(pluginId: string, dateKey: string): string {
+  return pluginId.includes("bamboo")
+    ? `${dateKey}-bamboo对账归因记录`
+    : `${dateKey}-argos报警归因记录`;
+}
+
+export function alertTableDateKey(date: Date): string {
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}${value.month}${value.day}`;
+}
+
+async function resolveWikiRoot(client: lark.Client, rootUrl: string): Promise<WikiRoot> {
+  const token = wikiToken(rootUrl);
+  const result = await client.wiki.v2.space.getNode({
+    params: { token, obj_type: "wiki" },
+  });
+  assertSuccess(result);
+  const node = result.data?.node;
+  if (!node?.space_id || !node.node_token) {
+    throw new Error("无法解析归因记录根目录，请确认机器人可访问该 Wiki 目录");
+  }
+  return { spaceId: node.space_id, nodeToken: node.node_token };
+}
+
+async function findDailyNode(
+  client: lark.Client,
+  root: WikiRoot,
+  title: string,
+): Promise<{ appToken: string } | null> {
+  let pageToken: string | undefined;
+  const matches: Array<{ objToken: string; objType: string }> = [];
+  do {
+    const result = await client.wiki.v2.spaceNode.list({
+      path: { space_id: root.spaceId },
+      params: {
+        parent_node_token: root.nodeToken,
+        page_size: 50,
+        ...(pageToken ? { page_token: pageToken } : {}),
+      },
+    });
+    assertSuccess(result);
+    for (const node of result.data?.items ?? []) {
+      if (node.title === title && node.obj_token) {
+        matches.push({ objToken: node.obj_token, objType: node.obj_type });
+      }
+    }
+    pageToken = result.data?.has_more ? result.data.page_token : undefined;
+  } while (pageToken);
+
+  if (matches.length > 1) {
+    throw new Error(`归因记录根目录下存在多个同名节点：${title}`);
+  }
+  const match = matches[0];
+  if (!match) return null;
+  if (match.objType !== "bitable") {
+    throw new Error(`归因记录根目录下的同名节点不是多维表格：${title}`);
+  }
+  return { appToken: match.objToken };
+}
+
+async function createDailyNode(
+  client: lark.Client,
+  root: WikiRoot,
+  title: string,
+): Promise<{ appToken: string }> {
+  const result = await client.wiki.v2.spaceNode.create({
+    path: { space_id: root.spaceId },
+    data: {
+      obj_type: "bitable",
+      node_type: "origin",
+      parent_node_token: root.nodeToken,
+      title,
+    },
+  });
+  assertSuccess(result);
+  const appToken = result.data?.node?.obj_token;
+  if (!appToken) throw new Error(`创建日报多维表格后未返回 app_token：${title}`);
+  return { appToken };
+}
+
+async function resolveDefaultTableId(client: lark.Client, appToken: string): Promise<string> {
+  const result = await client.bitable.v1.appTable.list({
+    path: { app_token: appToken },
+    params: { page_size: 1 },
+  });
+  assertSuccess(result);
+  const tableId = result.data?.items?.[0]?.table_id;
+  if (!tableId) throw new Error("日报多维表格中未找到默认数据表");
+  return tableId;
+}
+
+export async function resolveDailyAlertTable(input: {
+  client: lark.Client;
+  rootUrl: string;
+  pluginId: string;
+  dateKey: string;
+}): Promise<AlertTroubleshooterTableLocation> {
+  const root = await resolveWikiRoot(input.client, input.rootUrl);
+  const title = dailyTitle(input.pluginId, input.dateKey);
+  const node =
+    (await findDailyNode(input.client, root, title)) ??
+    (await createDailyNode(input.client, root, title));
+  return {
+    appToken: node.appToken,
+    tableId: await resolveDefaultTableId(input.client, node.appToken),
+    dateKey: input.dateKey,
+    title,
+  };
+}

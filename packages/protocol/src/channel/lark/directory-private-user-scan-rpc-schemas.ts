@@ -15,12 +15,47 @@ export const LarkDirectoryRecentPrivateUserSchema = z.object({
 });
 export type LarkDirectoryRecentPrivateUser = z.infer<typeof LarkDirectoryRecentPrivateUserSchema>;
 
-export const LarkDirectoryScanPrivateUsersRequestSchema = z.object({
-  type: z.literal("channel.lark.directory.scan_private_users.request"),
-  requestId: z.string(),
-  appId: z.string().trim().min(1),
-  lookbackMinutes: z.number().int().min(1).max(10_080),
-});
+export interface LarkDirectoryPrivateUserScanRange {
+  lookbackMinutes: number;
+  startTime?: number;
+  endTime?: number;
+}
+
+export const LarkDirectoryScanPrivateUsersRequestSchema = z
+  .object({
+    type: z.literal("channel.lark.directory.scan_private_users.request"),
+    requestId: z.string(),
+    appId: z.string().trim().min(1),
+    lookbackMinutes: z.number().int().min(1).max(10_080),
+    startTime: z.number().int().nonnegative().optional(),
+    endTime: z.number().int().nonnegative().optional(),
+  })
+  .superRefine((range, context) => {
+    const hasStartTime = range.startTime != null;
+    const hasEndTime = range.endTime != null;
+    if (hasStartTime !== hasEndTime) {
+      context.addIssue({
+        code: "custom",
+        message: "startTime and endTime must be provided together",
+      });
+      return;
+    }
+    if (!hasStartTime || !hasEndTime) return;
+    if (range.endTime! <= range.startTime!) {
+      context.addIssue({
+        code: "custom",
+        message: "endTime must be later than startTime",
+        path: ["endTime"],
+      });
+    }
+    if (range.endTime! - range.startTime! > 10_080 * 60) {
+      context.addIssue({
+        code: "custom",
+        message: "scan range cannot exceed 7 days",
+        path: ["endTime"],
+      });
+    }
+  });
 
 export const LarkDirectoryScanPrivateUsersResponseSchema = z.object({
   type: z.literal("channel.lark.directory.scan_private_users.response"),

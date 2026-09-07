@@ -31,6 +31,7 @@ import type {
 import type {
   ApplyLarkBotOptions,
   AddLarkDirectoryPrivateUserOptions,
+  CreateLarkDirectoryUserOptions,
   ApproveLarkPairingOptions,
   AssistantRequestOptions,
   ClearLarkDirectoryFirstMessagesOptions,
@@ -55,6 +56,7 @@ import type {
   ResolveLarkDirectoryUserOptions,
   ResolveLarkDirectoryUsersOptions,
   ScanLarkDirectoryPrivateUsersOptions,
+  DeleteLarkDirectoryUsersOptions,
   UpdateLarkDirectoryUserOptions,
   RevokeLarkUserOptions,
   SetLarkChannelEnabledOptions,
@@ -502,11 +504,46 @@ export class DaemonResourceRpcClient {
     pluginId: string;
     appId: string;
     projectId: string;
-    recordId: string;
-  }): Promise<{ queued: boolean; recordId: string; error: string | null }> {
+    uniqueId: string;
+  }): Promise<{ queued: boolean; uniqueId: string; error: string | null }> {
     return this.request({
       message: { type: "plugin.alert_troubleshooter.enqueue_record.request", ...input },
       responseType: "plugin.alert_troubleshooter.enqueue_record.response",
+    });
+  }
+
+  async listAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+  }) {
+    return this.request({
+      message: { type: "plugin.alert_troubleshooter.task.list.request", ...input },
+      responseType: "plugin.alert_troubleshooter.task.list.response",
+    });
+  }
+
+  async pauseAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    taskIds: string[];
+  }) {
+    return this.request({
+      message: { type: "plugin.alert_troubleshooter.task.pause.request", ...input },
+      responseType: "plugin.alert_troubleshooter.task.pause.response",
+    });
+  }
+
+  async deleteAlertTroubleshooterTasks(input: {
+    pluginId: string;
+    appId: string;
+    projectId: string;
+    taskIds: string[];
+  }) {
+    return this.request({
+      message: { type: "plugin.alert_troubleshooter.task.delete.request", ...input },
+      responseType: "plugin.alert_troubleshooter.task.delete.response",
     });
   }
 
@@ -857,6 +894,32 @@ export class DaemonResourceRpcClient {
     });
   }
 
+  createLarkDirectoryUser(options: CreateLarkDirectoryUserOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.create_user.request",
+        appId: options.appId,
+        openId: options.openId,
+        displayName: options.displayName,
+        email: options.email,
+      },
+      responseType: "channel.lark.directory.create_user.response",
+    });
+  }
+
+  deleteLarkDirectoryUsers(options: DeleteLarkDirectoryUsersOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.delete_users.request",
+        appId: options.appId,
+        openIds: options.openIds,
+      },
+      responseType: "channel.lark.directory.delete_users.response",
+    });
+  }
+
   clearLarkDirectoryFirstMessages(options: ClearLarkDirectoryFirstMessagesOptions) {
     return this.request({
       requestId: options.requestId,
@@ -875,6 +938,8 @@ export class DaemonResourceRpcClient {
         type: "channel.lark.directory.scan_private_users.request",
         appId: options.appId,
         lookbackMinutes: options.lookbackMinutes,
+        ...(options.startTime == null ? {} : { startTime: options.startTime }),
+        ...(options.endTime == null ? {} : { endTime: options.endTime }),
       },
       responseType: "channel.lark.directory.scan_private_users.response",
     });

@@ -33,8 +33,16 @@ describe("Lark substitute split rule lists", () => {
           userRules: [
             { id: "all-users", type: "all_users" },
             { id: "bot-app", type: "bot_app_id", appId: "cli_alert" },
+            { id: "bot-name", type: "bot_name", name: "告警机器人" },
             { id: "all-bots", type: "all_bots" },
             { id: "all-senders", type: "all" },
+            {
+              id: "open-id",
+              type: "user_open_id",
+              openId: "ou_user",
+              name: "用户",
+              email: "user@example.com",
+            },
             {
               id: "email",
               type: "user_email",
@@ -62,7 +70,7 @@ describe("Lark substitute split rule lists", () => {
     expect(mode.audienceAllowlist).toHaveLength(3);
     expect(mode.audienceAllowRuleGroups).toHaveLength(1);
     expect(mode.audienceAllowRuleGroups?.[0]?.conversationRules).toHaveLength(4);
-    expect(mode.audienceAllowRuleGroups?.[0]?.userRules).toHaveLength(5);
+    expect(mode.audienceAllowRuleGroups?.[0]?.userRules).toHaveLength(7);
     expect(mode.questionAllowlist).toEqual([
       { id: "question-allow", description: "研发和代码问题" },
     ]);

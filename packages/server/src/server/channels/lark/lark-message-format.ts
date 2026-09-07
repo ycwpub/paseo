@@ -963,6 +963,7 @@ export function normalizeLarkApiMessage(
     topicName: getTopicName(message, text),
     text,
     createTime: createTimeOf(message),
+    mentions: getMentions(message),
   };
 }
 

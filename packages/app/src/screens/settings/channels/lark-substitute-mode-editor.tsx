@@ -463,7 +463,7 @@ export function LarkSubstituteModeEditor({
               <View style={settingsStyles.rowContent}>
                 <Text style={settingsStyles.rowTitle}>主动监听群消息</Text>
                 <Text style={settingsStyles.rowHint}>
-                  机器人在群内时，实时监听并处理 @ 授权替身用户的消息。
+                  机器人在群内时，仅实时监听并处理 @ 授权替身用户的消息；@ 机器人不会触发替身模式。
                 </Text>
               </View>
               <Text style={styles.enabledStatus}>已启用</Text>
@@ -473,7 +473,8 @@ export function LarkSubstituteModeEditor({
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>定时扫描群消息</Text>
               <Text style={settingsStyles.rowHint}>
-                扫描机器人已知或名单指定的群，补偿实时监听期间遗漏的 @ 替身用户消息。
+                扫描机器人已知或名单指定的群，补偿实时监听期间遗漏的 @ 授权替身用户消息；@
+                机器人不会触发替身模式。
               </Text>
             </View>
             <Switch

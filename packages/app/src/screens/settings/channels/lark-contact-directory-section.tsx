@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native-unistyles";
 import type {
   LarkChannelBotStatus,
   LarkDirectory,
+  LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
   normalizeLarkContactIdentityQuery,
   normalizeLarkContactOpenId,
 } from "./lark-contact-directory-model";
+import { OptionalLarkContactPrivateUserScan } from "./lark-contact-private-user-scan";
 
 export interface LarkContactDirectoryUpdateInput {
   appId: string;
@@ -231,20 +233,29 @@ export function LarkContactDirectoryPage({
   selectedBotId,
   connected,
   supportsOpenIdLookup,
+  supportsPrivateUserScan,
   onSelectBot,
   onEdit,
   onResolve,
   onResolveUsers,
+  onScanPrivateUsers,
+  onAddPrivateUser,
 }: {
   bots: LarkChannelBotStatus[];
   directory: LarkDirectory | null;
   selectedBotId: string | null;
   connected: boolean;
   supportsOpenIdLookup: boolean;
+  supportsPrivateUserScan: boolean;
   onSelectBot: (botId: string) => void;
   onEdit: (user: LarkDirectoryUser) => void;
   onResolve: (appId: string, openId: string) => Promise<LarkDirectoryUser>;
   onResolveUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
+  onScanPrivateUsers: (
+    appId: string,
+    lookbackMinutes: number,
+  ) => Promise<LarkDirectoryRecentPrivateUser[]>;
+  onAddPrivateUser: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [identityQuery, setIdentityQuery] = useState("");
@@ -465,6 +476,13 @@ export function LarkContactDirectoryPage({
           </Field>
         </View>
       </SettingsSection>
+      <OptionalLarkContactPrivateUserScan
+        supported={supportsPrivateUserScan}
+        appId={selectedBot?.appId ?? null}
+        connected={connected}
+        onScan={onScanPrivateUsers}
+        onAdd={onAddPrivateUser}
+      />
       <SettingsSection title={`联系人（${contacts.length}）`}>
         <View style={settingsStyles.card}>
           {contacts.length > 0 ? (

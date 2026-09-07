@@ -4,6 +4,7 @@ import type {
   LarkBotApplication,
   LarkChannelStatus,
   LarkDirectoryChat,
+  LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
 import type { ConfigureLarkChannelOptions } from "@getpaseo/client";
@@ -26,6 +27,11 @@ export interface UseLarkChannelResult {
   resolveDirectoryUsers: (appId: string, emails: string[]) => Promise<LarkDirectoryUser[]>;
   resolveDirectoryUser: (appId: string, openId: string) => Promise<LarkDirectoryUser>;
   resolveDirectoryChats: (appId: string, query: string) => Promise<LarkDirectoryChat[]>;
+  scanDirectoryPrivateUsers: (
+    appId: string,
+    lookbackMinutes: number,
+  ) => Promise<LarkDirectoryRecentPrivateUser[]>;
+  addDirectoryPrivateUser: (user: LarkDirectoryRecentPrivateUser) => Promise<LarkDirectoryUser>;
   updateDirectoryUser: (input: {
     appId: string;
     openId: string;
@@ -271,6 +277,46 @@ export function useLarkChannel(
     [applyStatus, client],
   );
 
+  const scanDirectoryPrivateUsers = useCallback(
+    async (appId: string, lookbackMinutes: number) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.scanLarkDirectoryPrivateUsers({ appId, lookbackMinutes });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      return result.users;
+    },
+    [client],
+  );
+
+  const addDirectoryPrivateUser = useCallback(
+    async (candidate: LarkDirectoryRecentPrivateUser) => {
+      if (!client) {
+        throw new Error("Host is disconnected");
+      }
+      const result = await client.addLarkDirectoryPrivateUser({
+        appId: candidate.appId,
+        openId: candidate.openId,
+        displayName: candidate.displayName,
+        firstMessageContent: candidate.firstMessageContent,
+        firstMessageAt: candidate.firstMessageAt,
+      });
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      if (result.status) {
+        applyStatus(result.status);
+      }
+      if (!result.user) {
+        throw new Error("未能将飞书用户加入通讯录");
+      }
+      return result.user;
+    },
+    [applyStatus, client],
+  );
+
   const applyBot = useCallback(
     async (name?: string) => {
       if (!client) {
@@ -315,6 +361,8 @@ export function useLarkChannel(
     resolveDirectoryUser,
     resolveDirectoryUsers,
     resolveDirectoryChats,
+    scanDirectoryPrivateUsers,
+    addDirectoryPrivateUser,
     updateDirectoryUser,
     application,
     applyBot,

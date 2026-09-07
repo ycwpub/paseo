@@ -21,6 +21,7 @@ describe("extension server integration regressions", () => {
       "larkReminders",
       "larkDirectory",
       "larkDirectoryOpenIdLookup",
+      "larkDirectoryPrivateUserScan",
       "larkUserOAuth",
       "assistants",
       "memory",

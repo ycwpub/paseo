@@ -42,6 +42,8 @@ type LarkChannelResponse = Extract<
       | "channel.lark.directory.resolve_users.response"
       | "channel.lark.directory.resolve_chats.response"
       | "channel.lark.directory.update_user.response"
+      | "channel.lark.directory.scan_private_users.response"
+      | "channel.lark.directory.add_private_user.response"
       | "channel.lark.user_oauth.get_status.response"
       | "channel.lark.user_oauth.start.response"
       | "channel.lark.user_oauth.complete.response"
@@ -71,6 +73,8 @@ type LarkDirectoryOrOAuthRequest = Extract<
       | "channel.lark.directory.resolve_users.request"
       | "channel.lark.directory.resolve_chats.request"
       | "channel.lark.directory.update_user.request"
+      | "channel.lark.directory.scan_private_users.request"
+      | "channel.lark.directory.add_private_user.request"
       | "channel.lark.user_oauth.get_status.request"
       | "channel.lark.user_oauth.start.request"
       | "channel.lark.user_oauth.complete.request"
@@ -96,6 +100,8 @@ function isDirectoryOrOAuthRequest(
     message.type === "channel.lark.directory.resolve_users.request" ||
     message.type === "channel.lark.directory.resolve_chats.request" ||
     message.type === "channel.lark.directory.update_user.request" ||
+    message.type === "channel.lark.directory.scan_private_users.request" ||
+    message.type === "channel.lark.directory.add_private_user.request" ||
     message.type.startsWith("channel.lark.user_oauth.")
   );
 }
@@ -416,6 +422,39 @@ export class LarkChannelSession {
         });
         return;
       }
+      case "channel.lark.directory.scan_private_users.request": {
+        const users = await this.service.scanRecentDirectoryPrivateUsers(
+          message.appId,
+          message.lookbackMinutes,
+        );
+        this.emitResponse({
+          type: "channel.lark.directory.scan_private_users.response",
+          payload: {
+            requestId: message.requestId,
+            users,
+            error: null,
+          },
+        });
+        return;
+      }
+      case "channel.lark.directory.add_private_user.request": {
+        const user = await this.service.addRecentDirectoryPrivateUser(message.appId, {
+          openId: message.openId,
+          displayName: message.displayName,
+          firstMessageContent: message.firstMessageContent,
+          firstMessageAt: message.firstMessageAt,
+        });
+        this.emitResponse({
+          type: "channel.lark.directory.add_private_user.response",
+          payload: {
+            requestId: message.requestId,
+            user,
+            status: this.service.getStatus(),
+            error: null,
+          },
+        });
+        return;
+      }
       case "channel.lark.user_oauth.get_status.request":
         this.emitResponse({
           type: "channel.lark.user_oauth.get_status.response",
@@ -617,6 +656,18 @@ export class LarkChannelSession {
       case "channel.lark.directory.update_user.request":
         this.emitResponse({
           type: "channel.lark.directory.update_user.response",
+          payload: { requestId: message.requestId, user: null, status, error },
+        });
+        return;
+      case "channel.lark.directory.scan_private_users.request":
+        this.emitResponse({
+          type: "channel.lark.directory.scan_private_users.response",
+          payload: { requestId: message.requestId, users: [], error },
+        });
+        return;
+      case "channel.lark.directory.add_private_user.request":
+        this.emitResponse({
+          type: "channel.lark.directory.add_private_user.response",
           payload: { requestId: message.requestId, user: null, status, error },
         });
         return;

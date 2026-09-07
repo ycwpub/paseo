@@ -1239,6 +1239,10 @@ function LarkChannelLoadedContent({
   const supportsTeams = useHostFeature(serverId, "teams");
   const supportsLarkDirectory = useHostFeature(serverId, "larkDirectory");
   const supportsLarkDirectoryOpenIdLookup = useHostFeature(serverId, "larkDirectoryOpenIdLookup");
+  const supportsLarkDirectoryPrivateUserScan = useHostFeature(
+    serverId,
+    "larkDirectoryPrivateUserScan",
+  );
   const teams = useTeams(serverId, { enabled: supportsTeams });
   const providersSnapshot = useProvidersSnapshot(serverId);
   const { projects } = useProjects();
@@ -1757,10 +1761,13 @@ function LarkChannelLoadedContent({
           selectedBotId={selectedBotStatus?.id ?? selectedBotId}
           connected={channel.isConnected}
           supportsOpenIdLookup={supportsLarkDirectoryOpenIdLookup}
+          supportsPrivateUserScan={supportsLarkDirectoryPrivateUserScan}
           onSelectBot={handleSelectBot}
           onEdit={handleEditContact}
           onResolve={channel.resolveDirectoryUser}
           onResolveUsers={channel.resolveDirectoryUsers}
+          onScanPrivateUsers={channel.scanDirectoryPrivateUsers}
+          onAddPrivateUser={channel.addDirectoryPrivateUser}
         />
       </View>
     ),

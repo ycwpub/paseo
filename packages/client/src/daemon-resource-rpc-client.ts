@@ -30,6 +30,7 @@ import type {
 
 import type {
   ApplyLarkBotOptions,
+  AddLarkDirectoryPrivateUserOptions,
   ApproveLarkPairingOptions,
   AssistantRequestOptions,
   ConfigureLarkChannelOptions,
@@ -52,6 +53,7 @@ import type {
   ResolveLarkDirectoryChatsOptions,
   ResolveLarkDirectoryUserOptions,
   ResolveLarkDirectoryUsersOptions,
+  ScanLarkDirectoryPrivateUsersOptions,
   UpdateLarkDirectoryUserOptions,
   RevokeLarkUserOptions,
   SetLarkChannelEnabledOptions,
@@ -851,6 +853,33 @@ export class DaemonResourceRpcClient {
         email: options.email,
       },
       responseType: "channel.lark.directory.update_user.response",
+    });
+  }
+
+  scanLarkDirectoryPrivateUsers(options: ScanLarkDirectoryPrivateUsersOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.scan_private_users.request",
+        appId: options.appId,
+        lookbackMinutes: options.lookbackMinutes,
+      },
+      responseType: "channel.lark.directory.scan_private_users.response",
+    });
+  }
+
+  addLarkDirectoryPrivateUser(options: AddLarkDirectoryPrivateUserOptions) {
+    return this.request({
+      requestId: options.requestId,
+      message: {
+        type: "channel.lark.directory.add_private_user.request",
+        appId: options.appId,
+        openId: options.openId,
+        displayName: options.displayName,
+        firstMessageContent: options.firstMessageContent,
+        firstMessageAt: options.firstMessageAt,
+      },
+      responseType: "channel.lark.directory.add_private_user.response",
     });
   }
 

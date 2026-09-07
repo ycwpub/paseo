@@ -633,6 +633,26 @@ export class LarkChannelService {
     return chats;
   }
 
+  async scanRecentDirectoryPrivateUsers(appId: string, lookbackMinutes: number) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    return this.directoryService.scanRecentPrivateUsers(appId, lookbackMinutes);
+  }
+
+  async addRecentDirectoryPrivateUser(
+    appId: string,
+    input: {
+      openId: string;
+      displayName: string | null;
+      firstMessageContent: string;
+      firstMessageAt: string;
+    },
+  ) {
+    if (!this.directoryService) throw new Error("Lark directory is unavailable");
+    const user = await this.directoryService.addRecentPrivateUser(appId, input);
+    this.emitStatusChanged();
+    return user;
+  }
+
   updateDirectoryUser(
     appId: string,
     openId: string,
@@ -1495,6 +1515,10 @@ export class LarkChannelService {
 
   private logLarkRouting(input: LarkRoutingDiagnosticInput): void {
     const config = input.storedBot.config;
+    const enabledModes = this.listSubstituteModes().filter((mode) => mode.enabled);
+    const enabledModeIds = enabledModes
+      .filter((mode) => mode.botId === input.botId)
+      .map((mode) => mode.id);
     const routingLog = {
       botId: input.botId,
       configuredBotName: input.storedBot.name,
@@ -1506,6 +1530,7 @@ export class LarkChannelService {
       substituteEnabled: config.substitute.enabled,
       substituteOpenId: config.substitute.openId,
       substituteName: config.substitute.name,
+      enabledSubstituteModeIds: enabledModeIds,
       substituteTriggerSource: input.substituteTrigger?.source ?? null,
       mentions: (input.event.mentions ?? []).map((mention) => ({
         openId: mention.openId,
@@ -1518,12 +1543,22 @@ export class LarkChannelService {
     } else {
       this.logger.debug(routingLog, "Resolved Lark bot and substitute routing");
     }
-    if (!input.botMentioned || input.substituteTrigger || config.substitute.enabled) {
+    if (
+      !input.botMentioned ||
+      input.substituteTrigger ||
+      config.substitute.enabled ||
+      enabledModeIds.length > 0
+    ) {
       return;
     }
+    const enabledModeBotIds = new Set(enabledModes.map((mode) => mode.botId));
     const enabledOnOtherBots = this.store
       .getBots()
-      .filter((bot) => bot.id !== input.botId && bot.config.substitute.enabled)
+      .filter(
+        (bot) =>
+          bot.id !== input.botId &&
+          (bot.config.substitute.enabled || enabledModeBotIds.has(bot.id)),
+      )
       .map((bot) => ({
         botId: bot.id,
         configuredBotName: bot.name,

@@ -39,6 +39,17 @@ describe("LarkDirectoryService", () => {
       directoryStore,
       adapter as LarkChannelClientAdapter,
       {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope: null,
+        })),
         getValidUserAccessToken: vi.fn(async () => userAccessToken),
       } as unknown as LarkUserOAuthService,
     );
@@ -147,6 +158,63 @@ describe("LarkDirectoryService", () => {
     expect(directoryStore.findUser("cli_test", "ou_yuan")).toMatchObject({
       email: null,
       displayName: "袁昌旺",
+    });
+  });
+
+  test("scans recent private users without automatically adding them", async () => {
+    const searchPrivateMessagesAsUser = vi.fn(async () => [
+      {
+        message_id: "om_recent",
+        chat_id: "oc_private",
+        chat_type: "p2p",
+        create_time: "1788768000000",
+        sender: {
+          id: "ou_recent",
+          id_type: "open_id",
+          sender_type: "user",
+          sender_name: "最近联系人",
+        },
+        body: { content: JSON.stringify({ text: "最近的私聊消息" }) },
+      },
+    ]);
+    const service = createService({ searchPrivateMessagesAsUser });
+
+    await expect(service.scanRecentPrivateUsers("cli_test", 30)).resolves.toEqual([
+      expect.objectContaining({
+        openId: "ou_recent",
+        displayName: "最近联系人",
+        lastMessageContent: "最近的私聊消息",
+        inDirectory: false,
+      }),
+    ]);
+    expect(directoryStore.findUser("cli_test", "ou_recent")).toBeNull();
+    expect(searchPrivateMessagesAsUser).toHaveBeenCalledWith(
+      expect.objectContaining({ appId: "cli_test" }),
+      expect.objectContaining({
+        startTime: expect.any(Number),
+        endTime: expect.any(Number),
+      }),
+      "u-token",
+    );
+  });
+
+  test("adds a scanned private user and keeps the first message evidence", async () => {
+    const service = createService({
+      resolveUserByOpenId: vi.fn(async () => null),
+    });
+
+    await expect(
+      service.addRecentPrivateUser("cli_test", {
+        openId: "ou_recent",
+        displayName: "最近联系人",
+        firstMessageContent: "最近的私聊消息",
+        firstMessageAt: "2026-09-07T08:00:00.000Z",
+      }),
+    ).resolves.toMatchObject({
+      openId: "ou_recent",
+      displayName: "最近联系人",
+      firstMessageContent: "最近的私聊消息",
+      firstMessageAt: "2026-09-07T08:00:00.000Z",
     });
   });
 

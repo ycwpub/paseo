@@ -693,6 +693,14 @@ type LarkDirectoryUpdateUserPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.directory.update_user.response" }
 >["payload"];
+type LarkDirectoryScanPrivateUsersPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.scan_private_users.response" }
+>["payload"];
+type LarkDirectoryAddPrivateUserPayload = Extract<
+  SessionOutboundMessage,
+  { type: "channel.lark.directory.add_private_user.response" }
+>["payload"];
 type LarkUserOAuthGetStatusPayload = Extract<
   SessionOutboundMessage,
   { type: "channel.lark.user_oauth.get_status.response" }
@@ -1103,6 +1111,19 @@ export interface UpdateLarkDirectoryUserOptions {
   openId: string;
   displayName: string | null;
   email: string | null;
+  requestId?: string;
+}
+export interface ScanLarkDirectoryPrivateUsersOptions {
+  appId: string;
+  lookbackMinutes: number;
+  requestId?: string;
+}
+export interface AddLarkDirectoryPrivateUserOptions {
+  appId: string;
+  openId: string;
+  displayName: string | null;
+  firstMessageContent: string;
+  firstMessageAt: string;
   requestId?: string;
 }
 export interface LarkUserOAuthGetStatusOptions {
@@ -6817,6 +6838,18 @@ export class DaemonClient {
     options: UpdateLarkDirectoryUserOptions,
   ): Promise<LarkDirectoryUpdateUserPayload> {
     return this.resourceRpc.updateLarkDirectoryUser(options);
+  }
+
+  async scanLarkDirectoryPrivateUsers(
+    options: ScanLarkDirectoryPrivateUsersOptions,
+  ): Promise<LarkDirectoryScanPrivateUsersPayload> {
+    return this.resourceRpc.scanLarkDirectoryPrivateUsers(options);
+  }
+
+  async addLarkDirectoryPrivateUser(
+    options: AddLarkDirectoryPrivateUserOptions,
+  ): Promise<LarkDirectoryAddPrivateUserPayload> {
+    return this.resourceRpc.addLarkDirectoryPrivateUser(options);
   }
 
   async getLarkUserOAuthStatus(

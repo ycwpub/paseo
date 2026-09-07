@@ -140,4 +140,105 @@ describe("LarkChannelSession directory RPC", () => {
       },
     });
   });
+
+  test("scans recent private users and adds a selected result", async () => {
+    const candidate = {
+      appId: "cli_test",
+      openId: "ou_recent",
+      displayName: "李四",
+      firstMessageContent: "你好",
+      firstMessageAt: "2026-09-07T08:00:00.000Z",
+      lastMessageContent: "请帮忙看一下",
+      lastMessageAt: "2026-09-07T08:10:00.000Z",
+      messageCount: 2,
+      inDirectory: false,
+    };
+    const user = {
+      appId: "cli_test",
+      openId: "ou_recent",
+      displayName: "李四",
+      email: null,
+      firstMessageContent: "你好",
+      firstMessageAt: "2026-09-07T08:00:00.000Z",
+      updatedAt: "2026-09-07T08:15:00.000Z",
+    };
+    const status = {
+      enabled: false,
+      connectionStatus: "disabled",
+      error: null,
+      appId: null,
+      hasAppSecret: false,
+      hasEncryptKey: false,
+      hasVerificationToken: false,
+      domain: "feishu",
+      target: {
+        kind: "workspace",
+        provider: null,
+        model: null,
+        modeId: null,
+        thinkingOptionId: null,
+        cwd: null,
+        workspaceId: null,
+      },
+      substitute: { enabled: false, openId: null, name: null },
+      bot: null,
+      pendingPairings: [],
+      authorizedUsers: [],
+      activeBotId: null,
+      bots: [],
+      directory: { users: [user], chats: [] },
+    } as const;
+    const service = {
+      scanRecentDirectoryPrivateUsers: vi.fn(async () => [candidate]),
+      addRecentDirectoryPrivateUser: vi.fn(async () => user),
+      getStatus: vi.fn(() => status),
+    } as unknown as LarkChannelService;
+    const emit = vi.fn();
+    const session = new LarkChannelSession({
+      host: { emit },
+      service,
+      logger: pino({ level: "silent" }),
+    });
+
+    await session.handleRequest({
+      type: "channel.lark.directory.scan_private_users.request",
+      requestId: "scan-private-users",
+      appId: "cli_test",
+      lookbackMinutes: 30,
+    });
+    await session.handleRequest({
+      type: "channel.lark.directory.add_private_user.request",
+      requestId: "add-private-user",
+      appId: "cli_test",
+      openId: candidate.openId,
+      displayName: candidate.displayName,
+      firstMessageContent: candidate.firstMessageContent,
+      firstMessageAt: candidate.firstMessageAt,
+    });
+
+    expect(service.scanRecentDirectoryPrivateUsers).toHaveBeenCalledWith("cli_test", 30);
+    expect(service.addRecentDirectoryPrivateUser).toHaveBeenCalledWith("cli_test", {
+      openId: candidate.openId,
+      displayName: candidate.displayName,
+      firstMessageContent: candidate.firstMessageContent,
+      firstMessageAt: candidate.firstMessageAt,
+    });
+    expect(emit).toHaveBeenNthCalledWith(1, {
+      type: "channel.lark.directory.scan_private_users.response",
+      payload: {
+        requestId: "scan-private-users",
+        users: [candidate],
+        error: null,
+      },
+    });
+    expect(emit).toHaveBeenNthCalledWith(2, {
+      type: "channel.lark.directory.add_private_user.response",
+      payload: {
+        requestId: "add-private-user",
+        user,
+        status,
+        error: null,
+      },
+    });
+  });
 });

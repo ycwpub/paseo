@@ -1,12 +1,17 @@
 import type {
   LarkDirectory,
   LarkDirectoryChat,
+  LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
-import { PASEO_LARK_CHAT_LOOKUP_USER_SCOPES } from "./lark-bot-capability-requirements.js";
+import {
+  PASEO_LARK_CHAT_LOOKUP_USER_SCOPES,
+  PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES,
+} from "./lark-bot-capability-requirements.js";
 import { hasCompleteLarkDirectoryUser } from "./lark-directory-identity.js";
+import { collectRecentLarkPrivateUsers } from "./lark-directory-private-user-scan.js";
 import type { LarkDirectoryStore } from "./lark-directory-store.js";
 import { toLarkDirectoryMessageTime } from "./lark-directory-message.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
@@ -137,6 +142,63 @@ export class LarkDirectoryService {
       throw new Error(`No visible Lark group found for: ${normalizedQuery}`);
     }
     return this.store.upsertChats(appId, resolved, new Date().toISOString());
+  }
+
+  async scanRecentPrivateUsers(
+    appId: string,
+    lookbackMinutes: number,
+  ): Promise<LarkDirectoryRecentPrivateUser[]> {
+    if (!Number.isInteger(lookbackMinutes) || lookbackMinutes < 1 || lookbackMinutes > 10_080) {
+      throw new Error("私聊扫描时间范围必须是 1 到 10080 分钟");
+    }
+    const config = this.requireConfig(appId);
+    if (!this.adapter.searchPrivateMessagesAsUser) {
+      throw new Error("当前飞书连接不支持扫描最近私聊用户");
+    }
+    const oauth = this.userOAuthService.getStatus(appId);
+    const userAccessToken = await this.userOAuthService.getValidUserAccessToken(
+      appId,
+      PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES,
+    );
+    const now = new Date();
+    const rawMessages = await this.adapter.searchPrivateMessagesAsUser(
+      config,
+      {
+        startTime: Math.floor((now.getTime() - lookbackMinutes * 60 * 1_000) / 1_000),
+        endTime: Math.floor(now.getTime() / 1_000),
+      },
+      userAccessToken,
+    );
+    return collectRecentLarkPrivateUsers({
+      appId,
+      rawMessages,
+      currentUserOpenId: oauth.openId,
+      directory: this.store.getState(),
+      now: now.toISOString(),
+    });
+  }
+
+  async addRecentPrivateUser(
+    appId: string,
+    input: {
+      openId: string;
+      displayName: string | null;
+      firstMessageContent: string;
+      firstMessageAt: string;
+    },
+  ): Promise<LarkDirectoryUser> {
+    this.requireConfig(appId);
+    const observed = this.store.observeUser(
+      appId,
+      {
+        openId: input.openId.trim(),
+        displayName: input.displayName,
+        firstMessageContent: input.firstMessageContent,
+        firstMessageAt: input.firstMessageAt,
+      },
+      new Date().toISOString(),
+    );
+    return (await this.refreshUserByOpenId(appId, observed.openId)) ?? observed;
   }
 
   async refreshChatById(

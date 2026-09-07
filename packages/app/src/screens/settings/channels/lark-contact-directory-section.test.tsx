@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
   LarkChannelBotStatus,
   LarkDirectory,
+  LarkDirectoryRecentPrivateUser,
   LarkDirectoryUser,
 } from "@getpaseo/protocol/messages";
 import { LarkContactDirectoryPage } from "./lark-contact-directory-section";
@@ -141,6 +142,15 @@ function renderDirectory(
   onResolve = vi.fn(async () => createUser()),
   onResolveUsers = vi.fn(async () => [createUser()]),
   connected = true,
+  onScanPrivateUsers = vi.fn(async () => [] as LarkDirectoryRecentPrivateUser[]),
+  onAddPrivateUser = vi.fn(async (user: LarkDirectoryRecentPrivateUser) =>
+    createUser({
+      openId: user.openId,
+      displayName: user.displayName,
+      firstMessageContent: user.firstMessageContent,
+      firstMessageAt: user.firstMessageAt,
+    }),
+  ),
 ) {
   render(
     <LarkContactDirectoryPage
@@ -149,13 +159,16 @@ function renderDirectory(
       selectedBotId="bot-1"
       connected={connected}
       supportsOpenIdLookup
+      supportsPrivateUserScan
       onSelectBot={vi.fn()}
       onEdit={vi.fn()}
       onResolve={onResolve}
       onResolveUsers={onResolveUsers}
+      onScanPrivateUsers={onScanPrivateUsers}
+      onAddPrivateUser={onAddPrivateUser}
     />,
   );
-  return { onResolve, onResolveUsers };
+  return { onResolve, onResolveUsers, onScanPrivateUsers, onAddPrivateUser };
 }
 
 afterEach(cleanup);
@@ -296,5 +309,53 @@ describe("Lark contact directory", () => {
     expect((screen.getByTestId("host-page-lark-contacts-search") as HTMLInputElement).value).toBe(
       "",
     );
+  });
+
+  test("scans the last 30 minutes by default and adds a selected private user", async () => {
+    const candidate: LarkDirectoryRecentPrivateUser = {
+      appId: "cli_test",
+      openId: "ou_recent",
+      displayName: "李四",
+      firstMessageContent: "请帮忙看一下",
+      firstMessageAt: "2026-09-07T08:00:00.000Z",
+      lastMessageContent: "现在有结果了吗",
+      lastMessageAt: "2026-09-07T08:10:00.000Z",
+      messageCount: 2,
+      inDirectory: false,
+    };
+    const onScanPrivateUsers = vi.fn(async () => [candidate]);
+    const onAddPrivateUser = vi.fn(async () =>
+      createUser({
+        openId: candidate.openId,
+        displayName: candidate.displayName,
+        firstMessageContent: candidate.firstMessageContent,
+        firstMessageAt: candidate.firstMessageAt,
+      }),
+    );
+    const result = renderDirectory(
+      { users: [], chats: [] },
+      vi.fn(async () => createUser()),
+      vi.fn(async () => []),
+      true,
+      onScanPrivateUsers,
+      onAddPrivateUser,
+    );
+
+    expect(
+      (screen.getByTestId("host-page-lark-contact-private-lookback") as HTMLInputElement).value,
+    ).toBe("30");
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-private-scan"));
+
+    await waitFor(() => {
+      expect(result.onScanPrivateUsers).toHaveBeenCalledWith("cli_test", 30);
+    });
+    expect(await screen.findByText("扫描结果（1）")).toBeTruthy();
+    expect(screen.getByText("最近消息：现在有结果了吗")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("host-page-lark-contact-private-add-ou_recent"));
+    await waitFor(() => {
+      expect(result.onAddPrivateUser).toHaveBeenCalledWith(candidate);
+    });
+    expect(await screen.findByText("已在通讯录")).toBeTruthy();
   });
 });

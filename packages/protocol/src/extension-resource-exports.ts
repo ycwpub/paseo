@@ -115,6 +115,7 @@ export {
   type LarkDirectoryUser,
 } from "./channel/lark/directory-types.js";
 export * from "./channel/lark/directory-rpc-schemas.js";
+export * from "./channel/lark/directory-private-user-scan-rpc-schemas.js";
 export * from "./channel/lark/user-oauth-rpc-schemas.js";
 export {
   LarkChannelAuthorizedUserSchema,

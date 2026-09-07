@@ -52,6 +52,13 @@ export const PASEO_LARK_CHAT_LOOKUP_USER_SCOPES = [
   "im:chat:read",
 ] as const;
 
+export const PASEO_LARK_PRIVATE_MESSAGE_SCAN_USER_SCOPES = [
+  "offline_access",
+  "im:message.p2p_msg:get_as_user",
+  "im:message:readonly",
+  "search:message",
+] as const;
+
 export const PASEO_LARK_EVENT_SUBSCRIPTIONS = ["im.message.receive_v1"] as const;
 
 /**

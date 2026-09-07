@@ -415,7 +415,7 @@ describe("lark-message-format", () => {
     expect(event?.text).toContain("event_id: 12345");
   });
 
-  test("normalizes mention identities from both event and REST API shapes", () => {
+  test("normalizes mention identities from event payloads", () => {
     const event = normalizeLarkMessageEvent({
       event_id: "evt_mentions",
       sender: { sender_name: "Alice", sender_id: {} },
@@ -457,6 +457,42 @@ describe("lark-message-format", () => {
         userId: null,
         appId: "cli_other",
         idType: "app_id",
+      },
+    ]);
+  });
+
+  test("preserves mention identities from REST API messages used by substitute scans", () => {
+    const event = normalizeLarkApiMessage(
+      {
+        message_id: "om_scanned_mention",
+        chat_id: "oc_1",
+        chat_type: "group",
+        msg_type: "text",
+        body: { content: JSON.stringify({ text: "@袁昌旺 请确认" }) },
+        sender: {
+          sender_type: "user",
+          sender_id: { open_id: "ou_sender" },
+          sender_name: "提问人",
+        },
+        mentions: [
+          {
+            key: "@_user_1",
+            name: "袁昌旺",
+            id: { open_id: "ou_authorized" },
+          },
+        ],
+      },
+      "oc_fallback",
+    );
+
+    expect(event?.mentions).toEqual([
+      {
+        key: "@_user_1",
+        name: "袁昌旺",
+        openId: "ou_authorized",
+        userId: null,
+        appId: null,
+        idType: null,
       },
     ]);
   });

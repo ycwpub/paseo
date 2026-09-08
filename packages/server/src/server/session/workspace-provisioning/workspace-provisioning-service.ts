@@ -432,6 +432,7 @@ export function createWorkspaceProvisioningService(deps: {
     workspaceCwd?: string,
     workspaceCheckout?: Awaited<ReturnType<WorkspaceGitService["getCheckout"]>>,
   ): Promise<PersistedProjectRecord> {
+    if (project.rootPath === null) return project;
     const projectRootPath = project.rootPath ?? workspaceCwd;
     if (!projectRootPath) {
       throw new Error(`Project has no directory: ${project.projectId}`);

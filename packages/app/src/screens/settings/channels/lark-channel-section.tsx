@@ -53,7 +53,11 @@ import {
   LarkProjectBindingFields,
   type LarkProjectBindingMode,
 } from "./lark-project-binding-fields";
-import { createLarkProjectBinding, rollbackLarkProjectBinding } from "./lark-project-binding";
+import {
+  createLarkProjectBinding,
+  findLarkProjectIdByCwd,
+  rollbackLarkProjectBinding,
+} from "./lark-project-binding";
 import {
   LarkSubstituteModeEditor,
   LarkSubstituteModeSection,
@@ -433,6 +437,7 @@ function buildConfigureInput(input: {
   modeId: string | null;
   thinkingOptionId: string | null;
   cwd: string;
+  projectId: string | null;
   status: LarkChannelBotStatus | null;
 }): ConfigureLarkChannelOptions {
   const secrets: Record<string, string> = {};
@@ -461,6 +466,7 @@ function buildConfigureInput(input: {
           thinkingOptionId: input.thinkingOptionId,
           cwd: cwd.length > 0 ? cwd : null,
           workspaceId: input.status?.target.workspaceId ?? null,
+          projectId: input.projectId,
         }
       : {
           kind: "assistant",
@@ -471,6 +477,7 @@ function buildConfigureInput(input: {
           thinkingOptionId: input.thinkingOptionId,
           cwd: cwd.length > 0 ? cwd : null,
           workspaceId: input.status?.target.workspaceId ?? null,
+          projectId: input.projectId,
         },
   };
 }
@@ -1602,6 +1609,11 @@ function LarkChannelLoadedContent({
     try {
       setSaveError(null);
       let targetCwd = cwd;
+      let targetProjectId =
+        findLarkProjectIdByCwd(projects, serverId, cwd) ??
+        (selectedBotStatus?.target.cwd === cwd
+          ? (selectedBotStatus.target.projectId ?? null)
+          : null);
       if (projectMode === "create") {
         const project = await createLarkProjectBinding({
           name: newProjectName,
@@ -1619,6 +1631,7 @@ function LarkChannelLoadedContent({
         createdProjectId = project.projectId;
         createdProjectCwd = project.cwd;
         targetCwd = project.cwd;
+        targetProjectId = project.projectId;
       }
       const nextStatus = await channel.configure(
         buildConfigureInput({
@@ -1636,6 +1649,7 @@ function LarkChannelLoadedContent({
           modeId: effectiveModeId,
           thinkingOptionId: effectiveThinkingOptionId,
           cwd: targetCwd,
+          projectId: targetProjectId,
           status: selectedBotStatus,
         }),
       );
@@ -1682,6 +1696,7 @@ function LarkChannelLoadedContent({
     newProjectName,
     provider,
     projectMode,
+    projects,
     removeProject,
     serverId,
     selectedBotId,

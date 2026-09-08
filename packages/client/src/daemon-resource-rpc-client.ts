@@ -1135,11 +1135,13 @@ export class DaemonResourceRpcClient {
   scanLarkSubstituteTasks(options?: string | ScanLarkSubstituteTasksOptions) {
     const requestId = typeof options === "string" ? options : options?.requestId;
     const modeId = typeof options === "string" ? undefined : options?.modeId;
+    const scanRange = typeof options === "string" ? undefined : options?.scanRange;
     return this.request({
       requestId,
       message: {
         type: "channel.lark.substitute_task.scan.request",
         ...(modeId ? { modeId } : {}),
+        ...(scanRange ? { scanRange } : {}),
       },
       responseType: "channel.lark.substitute_task.scan.response",
     });

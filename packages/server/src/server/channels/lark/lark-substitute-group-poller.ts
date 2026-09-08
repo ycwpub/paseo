@@ -1,5 +1,9 @@
 import type pino from "pino";
-import { getLarkSubstituteGroupScan, type LarkSubstituteMode } from "@getpaseo/protocol/messages";
+import {
+  getLarkSubstituteGroupScan,
+  type LarkSubstituteMode,
+  type LarkSubstituteTaskScanRange,
+} from "@getpaseo/protocol/messages";
 import type { NormalizedLarkMessageEvent } from "./lark-message-format.js";
 import { hasGroupSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
 
@@ -85,7 +89,7 @@ export class LarkSubstituteGroupPoller {
     }
   }
 
-  async runMode(mode: LarkSubstituteMode): Promise<void> {
+  async runMode(mode: LarkSubstituteMode, scanRange?: LarkSubstituteTaskScanRange): Promise<void> {
     const scan = getLarkSubstituteGroupScan(mode);
     if (
       this.running.has(mode.id) ||
@@ -108,9 +112,11 @@ export class LarkSubstituteGroupPoller {
       const chatIds = await this.options.listChatIds(mode);
       if (chatIds.length === 0) return;
       const now = this.now().getTime();
+      const lookbackMinutes = scanRange?.lookbackMinutes ?? scan.lookbackMinutes;
+      const excludeRecentMinutes = scanRange?.excludeRecentMinutes ?? scan.excludeRecentMinutes;
       const window = {
-        start: new Date(now - scan.lookbackMinutes * 60 * 1_000),
-        end: new Date(now - scan.excludeRecentMinutes * 60 * 1_000),
+        start: new Date(now - lookbackMinutes * 60 * 1_000),
+        end: new Date(now - excludeRecentMinutes * 60 * 1_000),
       };
       for (const chatId of chatIds) {
         await this.scanChat(mode, chatId, window, authorizedUserOpenId);

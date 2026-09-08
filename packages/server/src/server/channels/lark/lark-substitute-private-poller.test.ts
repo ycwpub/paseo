@@ -63,6 +63,27 @@ function privateMessage(id: string, senderOpenId: string, createTime: number) {
   };
 }
 
+function answerPreparation() {
+  return {
+    kind: "answer" as const,
+    taskId: "task-1",
+    agentId: "agent-1",
+    text: "【机器人代答】最终答案",
+    trigger: {
+      source: "private_message" as const,
+      configuredTarget: { openId: "ou_owner", name: "授权用户" },
+      observedMention: {
+        key: null,
+        name: "授权用户",
+        openId: "ou_owner",
+        userId: null,
+        appId: null,
+        idType: "open_id",
+      },
+    },
+  };
+}
+
 describe("LarkSubstitutePrivatePoller", () => {
   let paseoHome: string;
   const now = Date.parse("2026-09-06T12:00:00.000Z");
@@ -75,7 +96,7 @@ describe("LarkSubstitutePrivatePoller", () => {
     await rm(paseoHome, { recursive: true, force: true });
   });
 
-  test("creates and reuses a three-party relay group for unanswered private messages", async () => {
+  test("prepares the answer before creating the relay group and forwarding the private message", async () => {
     const adapter = {
       searchPrivateMessagesAsUser: vi
         .fn()
@@ -90,7 +111,8 @@ describe("LarkSubstitutePrivatePoller", () => {
       LarkChannelClientAdapter,
       "searchPrivateMessagesAsUser" | "createSubstituteRelayChat" | "sendTextWithResult"
     >;
-    const onRelayMessage = vi.fn(async () => undefined);
+    const prepareReply = vi.fn(async () => answerPreparation());
+    const deliverReply = vi.fn(async () => undefined);
     const onPrivateMessageObserved = vi.fn(async () => undefined);
     const options = {
       paseoHome,
@@ -121,7 +143,8 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(async () => "user-token"),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage,
+      prepareReply,
+      deliverReply,
       onPrivateMessageObserved,
       now: () => new Date(now),
     };
@@ -150,7 +173,8 @@ describe("LarkSubstitutePrivatePoller", () => {
       }),
       "user-token",
     );
-    expect(onRelayMessage).toHaveBeenCalledTimes(2);
+    expect(prepareReply).toHaveBeenCalledTimes(2);
+    expect(deliverReply).toHaveBeenCalledTimes(2);
     expect(onPrivateMessageObserved).toHaveBeenCalledTimes(2);
     expect(onPrivateMessageObserved).toHaveBeenCalledWith(
       expect.objectContaining({ appId: "cli_test" }),
@@ -160,21 +184,78 @@ describe("LarkSubstitutePrivatePoller", () => {
         text: "消息 om_1",
       }),
     );
-    expect(onRelayMessage).toHaveBeenLastCalledWith(
+    expect(deliverReply).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        modeId: "mode-1",
-        matchedMode: expect.objectContaining({
-          mode: expect.objectContaining({ id: "mode-1" }),
-          substituteUser: expect.objectContaining({ openId: "ou_owner" }),
-        }),
-        event: expect.objectContaining({
-          chatId: "oc_relay",
-          messageId: "om_forward_2",
-          openId: "ou_peer",
-        }),
+        botId: "bot-1",
+        relayChatId: "oc_relay",
+        forwardedMessageId: "om_forward_2",
+        source: expect.objectContaining({ messageId: "om_2", openId: "ou_peer" }),
+        prepared: expect.objectContaining({ kind: "answer", text: "【机器人代答】最终答案" }),
       }),
     );
+    expect(prepareReply.mock.invocationCallOrder[0]).toBeLessThan(
+      adapter.createSubstituteRelayChat.mock.invocationCallOrder[0]!,
+    );
+    expect(prepareReply.mock.invocationCallOrder[0]).toBeLessThan(
+      adapter.sendTextWithResult.mock.invocationCallOrder[0]!,
+    );
+    expect(adapter.sendTextWithResult.mock.invocationCallOrder[0]).toBeLessThan(
+      deliverReply.mock.invocationCallOrder[0]!,
+    );
     restartedPoller.stop();
+  });
+
+  test("does not create or forward a relay message when the agent rejects the question", async () => {
+    const adapter = {
+      searchPrivateMessagesAsUser: vi.fn(async () => [
+        privateMessage("om_denied", "ou_peer", now - 30 * 60_000),
+      ]),
+      createSubstituteRelayChat: vi.fn(),
+      sendTextWithResult: vi.fn(),
+    } satisfies Pick<
+      LarkChannelClientAdapter,
+      "searchPrivateMessagesAsUser" | "createSubstituteRelayChat" | "sendTextWithResult"
+    >;
+    const prepareReply = vi.fn(async () => ({ kind: "skip" as const }));
+    const deliverReply = vi.fn();
+    const options = {
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter,
+      userOAuthService: {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope: null,
+        })),
+        getValidUserAccessToken: vi.fn(async () => "user-token"),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      prepareReply,
+      deliverReply,
+      now: () => new Date(now),
+    };
+    const poller = new LarkSubstitutePrivatePoller(options);
+
+    await poller.runMode(mode());
+    await poller.runMode(mode());
+
+    expect(prepareReply).toHaveBeenCalledTimes(1);
+    expect(adapter.createSubstituteRelayChat).not.toHaveBeenCalled();
+    expect(adapter.sendTextWithResult).not.toHaveBeenCalled();
+    expect(deliverReply).not.toHaveBeenCalled();
   });
 
   test("does not scan or create a relay group when the private-user allowlist is empty", async () => {
@@ -200,7 +281,8 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage: vi.fn(),
+      prepareReply: vi.fn(async () => answerPreparation()),
+      deliverReply: vi.fn(),
       onPrivateMessageObserved,
       now: () => new Date(now),
     });
@@ -224,7 +306,7 @@ describe("LarkSubstitutePrivatePoller", () => {
       LarkChannelClientAdapter,
       "searchPrivateMessagesAsUser" | "createSubstituteRelayChat" | "sendTextWithResult"
     >;
-    const onRelayMessage = vi.fn();
+    const prepareReply = vi.fn(async () => answerPreparation());
     const poller = new LarkSubstitutePrivatePoller({
       paseoHome,
       channelStore: {
@@ -250,14 +332,15 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(async () => "user-token"),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage,
+      prepareReply,
+      deliverReply: vi.fn(),
       now: () => new Date(now),
     });
 
     await poller.runMode(mode());
 
     expect(adapter.createSubstituteRelayChat).not.toHaveBeenCalled();
-    expect(onRelayMessage).not.toHaveBeenCalled();
+    expect(prepareReply).not.toHaveBeenCalled();
   });
 
   test("waits until a private message is older than the excluded recent window", async () => {
@@ -271,7 +354,7 @@ describe("LarkSubstitutePrivatePoller", () => {
       LarkChannelClientAdapter,
       "searchPrivateMessagesAsUser" | "createSubstituteRelayChat" | "sendTextWithResult"
     >;
-    const onRelayMessage = vi.fn();
+    const prepareReply = vi.fn(async () => answerPreparation());
     const poller = new LarkSubstitutePrivatePoller({
       paseoHome,
       channelStore: {
@@ -297,14 +380,74 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(async () => "user-token"),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage,
+      prepareReply,
+      deliverReply: vi.fn(),
       now: () => new Date(now),
     });
 
     await poller.runMode(mode());
 
     expect(adapter.createSubstituteRelayChat).not.toHaveBeenCalled();
-    expect(onRelayMessage).not.toHaveBeenCalled();
+    expect(prepareReply).not.toHaveBeenCalled();
+  });
+
+  test("uses the one-off scan range override for search and recent-message exclusion", async () => {
+    const searchPrivateMessagesAsUser = vi.fn(async () => [
+      privateMessage("om_override", "ou_peer", now - 5 * 60_000),
+    ]);
+    const prepareReply = vi.fn(async () => ({ kind: "skip" as const }));
+    const poller = new LarkSubstitutePrivatePoller({
+      paseoHome,
+      channelStore: {
+        getBot: vi.fn(() => ({
+          id: "bot-1",
+          name: "Paseo",
+          config: { enabled: true, appId: "cli_test", appSecret: "secret" },
+        })),
+      } as unknown as Pick<LarkChannelStore, "getBot">,
+      adapter: {
+        searchPrivateMessagesAsUser,
+        createSubstituteRelayChat: vi.fn(),
+        sendTextWithResult: vi.fn(),
+      },
+      userOAuthService: {
+        getStatus: vi.fn(() => ({
+          appId: "cli_test",
+          authorized: true,
+          needsAuthorization: false,
+          expiresAt: null,
+          refreshTokenExpiresAt: null,
+          openId: "ou_owner",
+          email: null,
+          displayName: "授权用户",
+          scope: null,
+        })),
+        getValidUserAccessToken: vi.fn(async () => "user-token"),
+      } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
+      logger: pino({ level: "silent" }),
+      prepareReply,
+      deliverReply: vi.fn(),
+      now: () => new Date(now),
+    });
+
+    await poller.runMode(mode(), {
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    });
+
+    expect(searchPrivateMessagesAsUser).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        startTime: Math.floor((now - 120 * 60_000) / 1_000),
+        endTime: Math.floor(now / 1_000),
+      },
+      "user-token",
+    );
+    expect(prepareReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({ messageId: "om_override" }),
+      }),
+    );
   });
 
   test("reports user OAuth message-read permission failures to the task layer", async () => {
@@ -343,7 +486,8 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(async () => "user-token"),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage: vi.fn(),
+      prepareReply: vi.fn(async () => answerPreparation()),
+      deliverReply: vi.fn(),
       onScanFailure,
       now: () => new Date(now),
     });
@@ -352,6 +496,7 @@ describe("LarkSubstitutePrivatePoller", () => {
 
     expect(onScanFailure).toHaveBeenCalledWith({
       mode: expect.objectContaining({ id: "mode-1", botId: "bot-1" }),
+      stage: "private_scan",
       error: expect.stringContaining("请在飞书开发者后台开通该用户身份权限"),
     });
   });
@@ -394,7 +539,8 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(async () => "user-token"),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage: vi.fn(),
+      prepareReply: vi.fn(async () => answerPreparation()),
+      deliverReply: vi.fn(),
       onScanFailure,
       now: () => new Date(now),
     });
@@ -404,6 +550,7 @@ describe("LarkSubstitutePrivatePoller", () => {
     expect(onScanFailure).toHaveBeenCalledWith({
       mode: expect.objectContaining({ id: "mode-1", botId: "bot-1" }),
       event: expect.objectContaining({ messageId: "om_chat_permission" }),
+      stage: "reply",
       error: expect.stringContaining(
         "飞书用户 OAuth 缺少 im:chat:create_by_user 权限，无法创建替身私聊转发群",
       ),
@@ -446,7 +593,8 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(async () => "user-token"),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage: vi.fn(),
+      prepareReply: vi.fn(async () => answerPreparation()),
+      deliverReply: vi.fn(),
       onScanFailure,
       now: () => new Date(now),
     });
@@ -455,6 +603,7 @@ describe("LarkSubstitutePrivatePoller", () => {
 
     expect(onScanFailure).toHaveBeenCalledWith({
       mode: expect.objectContaining({ id: "mode-1" }),
+      stage: "private_scan",
       error: expect.stringContaining("飞书接口请求过于频繁"),
     });
     expect(onScanFailure).not.toHaveBeenCalledWith(
@@ -494,7 +643,8 @@ describe("LarkSubstitutePrivatePoller", () => {
         getValidUserAccessToken: vi.fn(),
       } as unknown as Pick<LarkUserOAuthService, "getStatus" | "getValidUserAccessToken">,
       logger: pino({ level: "silent" }),
-      onRelayMessage: vi.fn(),
+      prepareReply: vi.fn(async () => answerPreparation()),
+      deliverReply: vi.fn(),
       onScanFailure,
       now: () => new Date(now),
     });
@@ -504,6 +654,7 @@ describe("LarkSubstitutePrivatePoller", () => {
     expect(searchPrivateMessagesAsUser).not.toHaveBeenCalled();
     expect(onScanFailure).toHaveBeenCalledWith({
       mode: expect.objectContaining({ id: "mode-1" }),
+      stage: "private_scan",
       error: expect.stringContaining("重新授权"),
       event: undefined,
     });

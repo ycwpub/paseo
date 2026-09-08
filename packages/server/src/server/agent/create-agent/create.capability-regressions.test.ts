@@ -184,6 +184,7 @@ test("mcp create uses workspaceTitle only when provisioning a workspace", async 
     kind: "mcp",
     provider: "claude",
     cwd: "/tmp/paseo-create-test",
+    projectId: "prj_lark_target",
     title: "Topic title",
     workspaceTitle: "Workspace from Lark topic",
     initialPrompt: "Message from Lark user Alice in chat oc_1 (Topic title):\n\nReal prompt",
@@ -191,9 +192,13 @@ test("mcp create uses workspaceTitle only when provisioning a workspace", async 
     notifyOnFinish: false,
     promptFailure: "throw",
   });
-  expect(ensureWorkspaceForCreate).toHaveBeenCalledWith("/tmp/paseo-create-test", {
-    prompt: "Workspace from Lark topic",
-  });
+  expect(ensureWorkspaceForCreate).toHaveBeenCalledWith(
+    "/tmp/paseo-create-test",
+    {
+      prompt: "Workspace from Lark topic",
+    },
+    "prj_lark_target",
+  );
   expect(streamAgent).toHaveBeenCalledWith(
     "agent-1",
     "Message from Lark user Alice in chat oc_1 (Topic title):\n\nReal prompt",

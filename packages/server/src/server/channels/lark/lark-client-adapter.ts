@@ -114,6 +114,11 @@ export interface LarkChannelClientAdapter {
     messageId: string,
     options?: LarkMessageGetOptions,
   ): Promise<unknown | null>;
+  getMessageItems?(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    options?: LarkMessageGetOptions,
+  ): Promise<unknown[]>;
   listThreadMessages(
     config: StoredLarkChannelConfig,
     threadId: string,
@@ -766,6 +771,14 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     messageId: string,
     options: LarkMessageGetOptions = {},
   ): Promise<unknown | null> {
+    return (await this.getMessageItems(config, messageId, options))[0] ?? null;
+  }
+
+  async getMessageItems(
+    config: StoredLarkChannelConfig,
+    messageId: string,
+    options: LarkMessageGetOptions = {},
+  ): Promise<unknown[]> {
     const client = createClient(config);
     const result = await larkGet(
       client,
@@ -773,7 +786,7 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
       options.userCardContent ? { card_msg_content_type: "user_card_content" } : {},
     );
     assertSuccess(result);
-    return messageListItems(result)[0] ?? null;
+    return messageListItems(result);
   }
 
   async listThreadMessages(

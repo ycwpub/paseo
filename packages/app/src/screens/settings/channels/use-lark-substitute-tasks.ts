@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { LarkSubstituteTask } from "@getpaseo/protocol/messages";
+import type { LarkSubstituteTask, LarkSubstituteTaskScanRange } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 
@@ -31,9 +31,9 @@ export function useLarkSubstituteTasks(serverId: string, modeId: string, enabled
     onSuccess: (tasks) => queryClient.setQueryData(key, tasks),
   });
   const scanMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (scanRange: LarkSubstituteTaskScanRange) => {
       if (!client) throw new Error("主机未连接");
-      const result = await client.scanLarkSubstituteTasks({ modeId });
+      const result = await client.scanLarkSubstituteTasks({ modeId, scanRange });
       if (result.error) throw new Error(result.error);
       queryClient.setQueryData(key, result.tasks);
       return {

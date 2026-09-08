@@ -112,6 +112,7 @@ describe("LarkSubstituteModeStore", () => {
           model: "gpt-5.5",
           cwd: "/repo",
           workspaceId: null,
+          projectId: "prj-substitute",
         },
       },
       "2026-09-04T00:00:00.000Z",
@@ -119,6 +120,7 @@ describe("LarkSubstituteModeStore", () => {
 
     const disabled = store.setEnabled(created.id, false, "2026-09-04T01:00:00.000Z");
     expect(disabled?.enabled).toBe(false);
+    expect(disabled?.target.projectId).toBe("prj-substitute");
     expect(store.delete(created.id)).toBe(true);
     expect(store.list()).toEqual([]);
   });

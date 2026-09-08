@@ -42,6 +42,7 @@ import {
   type LarkDirectoryPrivateUserScanRange,
   type LarkSubstituteModeCreateInput,
   type LarkSubstituteModeUpdateInput,
+  type LarkSubstituteTaskScanRange,
 } from "@getpaseo/protocol/messages";
 import { validateWSOutboundMessage } from "@getpaseo/protocol/validation/ws-outbound";
 import { DaemonResourceRpcClient } from "./daemon-resource-rpc-client.js";
@@ -1230,6 +1231,7 @@ export interface ListLarkSubstituteTasksOptions {
 }
 export interface ScanLarkSubstituteTasksOptions {
   modeId?: string;
+  scanRange?: LarkSubstituteTaskScanRange;
   requestId?: string;
 }
 export interface PauseLarkSubstituteTasksOptions {

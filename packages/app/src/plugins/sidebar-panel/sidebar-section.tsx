@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { usePathname } from "expo-router";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
-import { GripVertical } from "lucide-react-native";
+import { ChevronDown, ChevronRight, EyeOff, GripVertical } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { resolvePluginIcon } from "@/plugins/icons";
@@ -18,6 +18,7 @@ import { resolvePluginLauncherIcon } from "@/plugins/sidebar-panel/presentation"
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { SortablePluginGrid } from "@/plugins/sidebar-panel/sortable-plugin-grid";
 import { usePluginSidebarHost } from "@/plugins/sidebar-panel/use-plugin-sidebar-host";
+import { usePluginSidebarVisibilityStore } from "@/plugins/sidebar-panel/visibility-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import type { Theme } from "@/styles/theme";
@@ -29,12 +30,18 @@ interface InstalledPluginSidebarSectionProps {
 
 const EMPTY_PLUGIN_ORDER: string[] = [];
 const ThemedGripVertical = withUnistyles(GripVertical);
+const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedChevronRight = withUnistyles(ChevronRight);
+const ThemedEyeOff = withUnistyles(EyeOff);
 const pluginIconColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const selectedPluginIconColorMapping = (theme: Theme) => ({
   color: theme.colors.accentForeground,
 });
 const orderHintColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundExtraMuted,
+});
+const sectionActionColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundMuted,
 });
 
 function PluginGlyph({ name, selected }: { name: string; selected: boolean }) {
@@ -129,6 +136,10 @@ export function InstalledPluginSidebarSection({
   );
   const selected = usePluginAppPanelStore((state) => state.selection);
   const toggle = usePluginAppPanelStore((state) => state.toggle);
+  const collapsed = usePluginSidebarVisibilityStore((state) => state.collapsed);
+  const hidden = usePluginSidebarVisibilityStore((state) => state.hidden);
+  const toggleCollapsed = usePluginSidebarVisibilityStore((state) => state.toggleCollapsed);
+  const hide = usePluginSidebarVisibilityStore((state) => state.hide);
 
   const handleEntryPress = useCallback(
     (pluginId: string) => {
@@ -176,34 +187,69 @@ export function InstalledPluginSidebarSection({
     [handleEntryPress, selected, serverId],
   );
 
-  if (!pluginHost || entries.length === 0) return null;
+  if (!pluginHost || entries.length === 0 || hidden) return null;
+
+  const CollapseIcon = collapsed ? ThemedChevronRight : ThemedChevronDown;
+  const collapseLabel = collapsed ? "展开全部插件" : "折叠全部插件";
 
   return (
     <View style={styles.section} testID="sidebar-installed-plugins">
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{t("settings.hostSections.plugins")}</Text>
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <View
-              accessibilityLabel="拖动插件可调整顺序"
-              accessibilityRole="text"
-              style={styles.orderHint}
-            >
-              <ThemedGripVertical size={12} uniProps={orderHintColorMapping} />
-            </View>
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={6}>
-            <Text style={styles.tooltipText}>拖动插件可调整顺序</Text>
-          </TooltipContent>
-        </Tooltip>
+        <Pressable
+          accessibilityLabel={collapseLabel}
+          accessibilityRole="button"
+          onPress={toggleCollapsed}
+          style={styles.sectionTitleButton}
+          testID="sidebar-plugin-collapse-all"
+        >
+          <CollapseIcon size={14} uniProps={sectionActionColorMapping} />
+          <Text style={styles.sectionTitle}>{t("settings.hostSections.plugins")}</Text>
+          <Text style={styles.sectionCount}>{entries.length}</Text>
+        </Pressable>
+        <View style={styles.sectionActions}>
+          {collapsed ? null : (
+            <Tooltip delayDuration={300}>
+              <TooltipTrigger asChild>
+                <View
+                  accessibilityLabel="拖动插件可调整顺序"
+                  accessibilityRole="text"
+                  style={styles.orderHint}
+                >
+                  <ThemedGripVertical size={12} uniProps={orderHintColorMapping} />
+                </View>
+              </TooltipTrigger>
+              <TooltipContent side="top" align="center" offset={6}>
+                <Text style={styles.tooltipText}>拖动插件可调整顺序</Text>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip delayDuration={300}>
+            <TooltipTrigger asChild>
+              <Pressable
+                accessibilityLabel="隐藏插件区域"
+                accessibilityRole="button"
+                onPress={hide}
+                style={styles.sectionAction}
+                testID="sidebar-plugin-hide"
+              >
+                <ThemedEyeOff size={14} uniProps={sectionActionColorMapping} />
+              </Pressable>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={6}>
+              <Text style={styles.tooltipText}>隐藏插件区域，可从底部工具栏恢复</Text>
+            </TooltipContent>
+          </Tooltip>
+        </View>
       </View>
-      <SortablePluginGrid
-        data={entries}
-        keyExtractor={keyExtractor}
-        onDragEnd={handleOrderChange}
-        style={styles.launcherGrid}
-        renderItem={renderPlugin}
-      />
+      {collapsed ? null : (
+        <SortablePluginGrid
+          data={entries}
+          keyExtractor={keyExtractor}
+          onDragEnd={handleOrderChange}
+          style={styles.launcherGrid}
+          renderItem={renderPlugin}
+        />
+      )}
     </View>
   );
 }
@@ -218,11 +264,36 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    minHeight: 24,
+  },
+  sectionTitleButton: {
+    minWidth: 0,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingVertical: theme.spacing[0.5],
   },
   sectionTitle: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
+  },
+  sectionCount: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  sectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[0.5],
+  },
+  sectionAction: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: theme.borderRadius.md,
   },
   orderHint: {
     color: theme.colors.foregroundExtraMuted,

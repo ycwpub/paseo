@@ -37,6 +37,7 @@ describe("LarkChannelStore", () => {
         thinkingOptionId: "high",
         cwd: "/repo/app",
         workspaceId: "ws-1",
+        projectId: "prj-support",
       },
     });
 
@@ -55,6 +56,7 @@ describe("LarkChannelStore", () => {
         thinkingOptionId: "high",
         cwd: "/repo/app",
         workspaceId: "ws-1",
+        projectId: "prj-support",
       },
       substitute: {
         enabled: true,

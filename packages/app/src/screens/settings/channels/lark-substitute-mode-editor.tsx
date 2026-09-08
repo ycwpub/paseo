@@ -55,6 +55,7 @@ import {
   LarkProjectBindingFields,
   type LarkProjectBindingMode,
 } from "./lark-project-binding-fields";
+import { findLarkProjectIdByCwd } from "./lark-project-binding";
 import { useLarkSubstituteModes } from "./use-lark-substitute-modes";
 import { WeekdayMultiSelectField } from "./weekday-multi-select-field";
 
@@ -380,9 +381,13 @@ export function LarkSubstituteModeEditor({
         selectedBot,
         mode,
       });
+      const selectedProjectId =
+        findLarkProjectIdByCwd(projects, serverId, form.cwd) ??
+        (mode?.target.cwd === form.cwd ? (mode.target.projectId ?? null) : null);
       const project = await resolveSubstituteModeProject({
         name: newProjectName,
         cwd: form.cwd,
+        projectId: selectedProjectId,
         projectMode,
         supportsDirectorylessProjects,
         client,
@@ -402,6 +407,7 @@ export function LarkSubstituteModeEditor({
         target: {
           ...baseInput.target,
           cwd: project.cwd,
+          projectId: project.projectId,
         },
       });
       onSaved();
@@ -431,6 +437,7 @@ export function LarkSubstituteModeEditor({
     newProjectName,
     onSaved,
     projectMode,
+    projects,
     removeProject,
     selectedBot,
     serverId,

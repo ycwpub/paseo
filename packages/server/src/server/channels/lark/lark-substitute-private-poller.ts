@@ -1,8 +1,17 @@
 import type pino from "pino";
-import type { LarkDirectory, LarkSubstituteMode } from "@getpaseo/protocol/messages";
+import type {
+  LarkDirectory,
+  LarkSubstituteMode,
+  LarkSubstituteTaskFailureStage,
+  LarkSubstituteTaskScanRange,
+} from "@getpaseo/protocol/messages";
 import type { LarkChannelClientAdapter } from "./lark-client-adapter.js";
 import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-store.js";
-import { normalizeLarkApiMessage, type NormalizedLarkMessageEvent } from "./lark-message-format.js";
+import {
+  normalizeLarkApiMessage,
+  type LarkSubstituteTrigger,
+  type NormalizedLarkMessageEvent,
+} from "./lark-message-format.js";
 import { hasPrivateSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
 import { LarkSubstitutePrivateRelayStore } from "./lark-substitute-private-relay-store.js";
 import {
@@ -16,6 +25,32 @@ interface LarkSubstitutePrivatePollerAdapter extends Pick<
   "createSubstituteRelayChat" | "searchPrivateMessagesAsUser" | "sendTextWithResult"
 > {}
 
+export interface LarkPrivateSubstituteReplyPreparationInput {
+  botId: string;
+  modeId: string;
+  matchedMode: MatchedLarkSubstituteMode;
+  event: NormalizedLarkMessageEvent;
+  supplementalEvents: NormalizedLarkMessageEvent[];
+}
+
+export type LarkPrivateSubstituteReplyPreparation =
+  | { kind: "skip" }
+  | {
+      kind: "answer";
+      taskId: string;
+      agentId: string;
+      text: string;
+      trigger: LarkSubstituteTrigger;
+    };
+
+export interface LarkPrivateSubstituteReplyDeliveryInput {
+  botId: string;
+  relayChatId: string;
+  forwardedMessageId: string;
+  source: NormalizedLarkMessageEvent;
+  prepared: Extract<LarkPrivateSubstituteReplyPreparation, { kind: "answer" }>;
+}
+
 interface LarkSubstitutePrivatePollerOptions {
   paseoHome: string;
   channelStore: Pick<LarkChannelStore, "getBot">;
@@ -27,19 +62,26 @@ interface LarkSubstitutePrivatePollerOptions {
     config: StoredLarkChannelConfig,
     event: NormalizedLarkMessageEvent,
   ) => Promise<void> | void;
-  onRelayMessage: (input: {
-    botId: string;
-    modeId: string;
-    matchedMode: MatchedLarkSubstituteMode;
-    event: NormalizedLarkMessageEvent;
-    supplementalEvents: NormalizedLarkMessageEvent[];
-  }) => Promise<void>;
+  prepareReply: (
+    input: LarkPrivateSubstituteReplyPreparationInput,
+  ) => Promise<LarkPrivateSubstituteReplyPreparation>;
+  deliverReply: (input: LarkPrivateSubstituteReplyDeliveryInput) => Promise<void>;
   onScanFailure?: (input: {
     mode: LarkSubstituteMode;
     event?: NormalizedLarkMessageEvent;
+    stage: LarkSubstituteTaskFailureStage;
     error: string;
   }) => Promise<void> | void;
   now?: () => Date;
+}
+
+class LarkPrivateSubstituteStageError extends Error {
+  constructor(
+    readonly stage: Extract<LarkSubstituteTaskFailureStage, "processing" | "reply">,
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+  }
 }
 
 function isHumanMessage(event: NormalizedLarkMessageEvent): boolean {
@@ -177,7 +219,7 @@ export class LarkSubstitutePrivatePoller {
     this.store.deleteMode(modeId);
   }
 
-  async runMode(mode: LarkSubstituteMode): Promise<void> {
+  async runMode(mode: LarkSubstituteMode, scanRange?: LarkSubstituteTaskScanRange): Promise<void> {
     if (
       this.running.has(mode.id) ||
       !mode.enabled ||
@@ -201,11 +243,12 @@ export class LarkSubstitutePrivatePoller {
       const search = this.options.adapter.searchPrivateMessagesAsUser;
       if (!search) throw new Error("当前飞书连接不支持扫描授权用户私聊消息");
       const now = this.now().getTime();
+      const lookbackMinutes = scanRange?.lookbackMinutes ?? mode.privateScan.lookbackMinutes;
       const rawMessages = await search.call(
         this.options.adapter,
         bot.config,
         {
-          startTime: Math.floor((now - mode.privateScan.lookbackMinutes * 60 * 1_000) / 1_000),
+          startTime: Math.floor((now - lookbackMinutes * 60 * 1_000) / 1_000),
           // Include recent messages so a recent reply from the authorized user
           // suppresses an older unanswered candidate.
           endTime: Math.floor(now / 1_000),
@@ -227,6 +270,8 @@ export class LarkSubstitutePrivatePoller {
         },
         events,
         now,
+        excludeRecentMinutes:
+          scanRange?.excludeRecentMinutes ?? mode.privateScan.excludeRecentMinutes,
       });
     } catch (error) {
       const failure = formatPrivateScanFailure(error);
@@ -259,9 +304,10 @@ export class LarkSubstitutePrivatePoller {
     authorizedUser: { openId: string; name: string | null; email: string | null };
     events: NormalizedLarkMessageEvent[];
     now: number;
+    excludeRecentMinutes: number;
   }): Promise<void> {
-    const { config, mode, authorizedUser, events, now } = input;
-    const eligibleBefore = now - mode.privateScan.excludeRecentMinutes * 60 * 1_000;
+    const { config, mode, authorizedUser, events, now, excludeRecentMinutes } = input;
+    const eligibleBefore = now - excludeRecentMinutes * 60 * 1_000;
     for (const candidate of getLatestUnansweredMessages(events, authorizedUser.openId)) {
       const candidateTime = candidate.latest.createTime ?? 0;
       if (candidateTime <= 0 || candidateTime > eligibleBefore) continue;
@@ -298,7 +344,8 @@ export class LarkSubstitutePrivatePoller {
           },
           "Failed to process scanned Lark private message for substitute mode",
         );
-        await this.reportScanFailure(mode, failure, candidate.latest);
+        const stage = error instanceof LarkPrivateSubstituteStageError ? error.stage : "processing";
+        await this.reportScanFailure(mode, failure, candidate.latest, stage);
       }
     }
   }
@@ -307,9 +354,10 @@ export class LarkSubstitutePrivatePoller {
     mode: LarkSubstituteMode,
     error: string,
     event?: NormalizedLarkMessageEvent,
+    stage: LarkSubstituteTaskFailureStage = "private_scan",
   ): Promise<void> {
     try {
-      await this.options.onScanFailure?.({ mode, event, error });
+      await this.options.onScanFailure?.({ mode, event, stage, error });
     } catch (recordError) {
       this.options.logger.warn(
         { err: recordError, modeId: mode.id, botId: mode.botId },
@@ -327,61 +375,65 @@ export class LarkSubstitutePrivatePoller {
     context: NormalizedLarkMessageEvent[],
   ): Promise<void> {
     if (!source.openId || !config.appId) return;
-    const token = await this.options.userOAuthService.getValidUserAccessToken(config.appId);
-    let relay = this.store.get(mode.id, source.openId);
-    if (relay && relay.authorizedUserOpenId !== authorizedUserOpenId) {
-      this.store.remove(mode.id, source.openId);
-      relay = null;
-    }
-    if (!relay) {
-      relay = await this.createRelay(config, mode, authorizedUserOpenId, source, token);
-    }
-    const send = this.options.adapter.sendTextWithResult;
-    if (!send) throw new Error("当前飞书连接不支持创建替身私聊话题");
-    let forwarded;
+    let prepared: LarkPrivateSubstituteReplyPreparation;
     try {
-      forwarded = await send.call(
-        this.options.adapter,
-        config,
-        relay.chatId,
-        buildRelayMessage(source),
-      );
-    } catch {
-      this.store.remove(mode.id, source.openId);
-      relay = await this.createRelay(config, mode, authorizedUserOpenId, source, token);
-      forwarded = await send.call(
-        this.options.adapter,
-        config,
-        relay.chatId,
-        buildRelayMessage(source),
-      );
+      prepared = await this.options.prepareReply({
+        botId: mode.botId,
+        modeId: mode.id,
+        matchedMode,
+        event: {
+          ...source,
+          eventId: `private-scan:${source.messageId}`,
+          chatType: "p2p",
+        },
+        supplementalEvents: context,
+      });
+    } catch (error) {
+      throw new LarkPrivateSubstituteStageError("processing", error);
     }
-    if (!forwarded.messageId) throw new Error("转发私聊消息后未返回 message_id");
-    await this.options.onRelayMessage({
-      botId: mode.botId,
-      modeId: mode.id,
-      matchedMode,
-      event: {
-        ...source,
-        eventId: `private-scan:${source.messageId}`,
-        messageId: forwarded.messageId,
-        chatId: relay.chatId,
-        chatType: "group",
-        threadId: null,
-        rootMessageId: null,
-        mentions: [
-          {
-            key: null,
-            name: null,
-            openId: authorizedUserOpenId,
-            userId: null,
-            appId: null,
-            idType: "open_id",
-          },
-        ],
-      },
-      supplementalEvents: context,
-    });
+    if (prepared.kind === "skip") return;
+
+    try {
+      const token = await this.options.userOAuthService.getValidUserAccessToken(config.appId);
+      let relay = this.store.get(mode.id, source.openId);
+      if (relay && relay.authorizedUserOpenId !== authorizedUserOpenId) {
+        this.store.remove(mode.id, source.openId);
+        relay = null;
+      }
+      if (!relay) {
+        relay = await this.createRelay(config, mode, authorizedUserOpenId, source, token);
+      }
+      const send = this.options.adapter.sendTextWithResult;
+      if (!send) throw new Error("当前飞书连接不支持创建替身私聊话题");
+      let forwarded;
+      try {
+        forwarded = await send.call(
+          this.options.adapter,
+          config,
+          relay.chatId,
+          buildRelayMessage(source),
+        );
+      } catch {
+        this.store.remove(mode.id, source.openId);
+        relay = await this.createRelay(config, mode, authorizedUserOpenId, source, token);
+        forwarded = await send.call(
+          this.options.adapter,
+          config,
+          relay.chatId,
+          buildRelayMessage(source),
+        );
+      }
+      if (!forwarded.messageId) throw new Error("转发私聊消息后未返回 message_id");
+      await this.options.deliverReply({
+        botId: mode.botId,
+        relayChatId: relay.chatId,
+        forwardedMessageId: forwarded.messageId,
+        source,
+        prepared,
+      });
+    } catch (error) {
+      throw new LarkPrivateSubstituteStageError("reply", error);
+    }
   }
 
   private async createRelay(

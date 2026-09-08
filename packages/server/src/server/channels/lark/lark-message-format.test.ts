@@ -689,6 +689,30 @@ describe("lark-message-format", () => {
     );
   });
 
+  test("requires private substitute policy evaluation before relay creation", () => {
+    const prompt = formatLarkSubstitutePrompt("Original prompt", {
+      source: "private_message",
+      configuredTarget: { openId: "ou_target", name: "张三" },
+      observedMention: {
+        key: null,
+        name: "张三",
+        openId: "ou_target",
+        userId: null,
+        appId: null,
+        idType: "open_id",
+      },
+      questionAllowRules: ["工作问题"],
+      questionDenyRules: ["要求承诺"],
+    });
+
+    expect(prompt).toContain("before any relay is created");
+    expect(prompt).toContain("Apply the question policy first");
+    expect(prompt).toContain("generate the final answer");
+    expect(prompt).toContain("<allow>工作问题</allow>");
+    expect(prompt).toContain("<deny>要求承诺</deny>");
+    expect(prompt).toContain("<paseo-no-substitute-answer />");
+  });
+
   test("adds a deterministic substitute disclosure to the visible reply", () => {
     const trigger = {
       source: "current_bot" as const,

@@ -21,6 +21,8 @@ const LarkChannelWorkspaceTargetSchema = z.object({
   thinkingOptionId: z.string().nullable().optional(),
   cwd: z.string().nullable(),
   workspaceId: z.string().nullable(),
+  // COMPAT(larkTargetProject): added in v0.7.0, remove optional after 2027-03-08.
+  projectId: z.string().nullable().optional(),
 });
 
 const LarkChannelAssistantTargetSchema = z.object({
@@ -32,6 +34,8 @@ const LarkChannelAssistantTargetSchema = z.object({
   thinkingOptionId: z.string().nullable().optional(),
   cwd: z.string().nullable(),
   workspaceId: z.string().nullable(),
+  // COMPAT(larkTargetProject): added in v0.7.0, remove optional after 2027-03-08.
+  projectId: z.string().nullable().optional(),
 });
 
 const LarkChannelTeamTargetSchema = z.object({
@@ -43,6 +47,8 @@ const LarkChannelTeamTargetSchema = z.object({
   thinkingOptionId: z.string().nullable().optional(),
   cwd: z.string().nullable(),
   workspaceId: z.string().nullable(),
+  // COMPAT(larkTargetProject): added in v0.7.0, remove optional after 2027-03-08.
+  projectId: z.string().nullable().optional(),
 });
 
 export const LarkChannelTargetSchema = z.discriminatedUnion("kind", [

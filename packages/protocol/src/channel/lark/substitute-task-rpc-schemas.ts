@@ -18,10 +18,23 @@ export const LarkSubstituteTaskListResponseSchema = z.object({
   payload: LarkSubstituteTaskListPayloadSchema,
 });
 
+export const LarkSubstituteTaskScanRangeSchema = z
+  .object({
+    lookbackMinutes: z.number().int().min(1).max(10_080),
+    excludeRecentMinutes: z.number().int().min(0).max(10_079),
+  })
+  .refine((value) => value.excludeRecentMinutes < value.lookbackMinutes, {
+    message: "excludeRecentMinutes must be less than lookbackMinutes",
+    path: ["excludeRecentMinutes"],
+  });
+
+export type LarkSubstituteTaskScanRange = z.infer<typeof LarkSubstituteTaskScanRangeSchema>;
+
 export const LarkSubstituteTaskScanRequestSchema = z.object({
   type: z.literal("channel.lark.substitute_task.scan.request"),
   requestId: z.string(),
   modeId: z.string().trim().min(1).optional(),
+  scanRange: LarkSubstituteTaskScanRangeSchema.optional(),
 });
 
 export const LarkSubstituteTaskScanResponseSchema = z.object({

@@ -10,12 +10,14 @@ export type SubstituteModeProjectClient = LarkProjectBindingClient;
 
 export interface ResolvedSubstituteModeProject {
   cwd: string;
+  projectId: string | null;
   createdProjectId: string | null;
 }
 
 export async function resolveSubstituteModeProject(input: {
   name: string;
   cwd: string;
+  projectId?: string | null;
   projectMode: LarkProjectBindingMode;
   supportsDirectorylessProjects: boolean;
   client: SubstituteModeProjectClient | null;
@@ -26,7 +28,7 @@ export async function resolveSubstituteModeProject(input: {
     if (!selectedCwd) {
       throw new Error("请选择已有项目");
     }
-    return { cwd: selectedCwd, createdProjectId: null };
+    return { cwd: selectedCwd, projectId: input.projectId ?? null, createdProjectId: null };
   }
   if (!input.name.trim()) {
     throw new Error("请输入新项目名称");
@@ -40,6 +42,7 @@ export async function resolveSubstituteModeProject(input: {
   });
   return {
     cwd: project.cwd,
+    projectId: project.projectId,
     createdProjectId: project.projectId,
   };
 }

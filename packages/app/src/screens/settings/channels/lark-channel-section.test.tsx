@@ -859,6 +859,7 @@ describe("LarkChannelSection", () => {
         name: "财务机器人",
         target: expect.objectContaining({
           cwd: "/Users/test/.paseo/projects/prj_finance",
+          projectId: "prj_finance",
         }),
       }),
     );

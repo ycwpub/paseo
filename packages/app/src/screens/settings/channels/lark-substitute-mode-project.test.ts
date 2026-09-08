@@ -23,13 +23,18 @@ describe("substitute mode Project resolution", () => {
     const result = await resolveSubstituteModeProject({
       name: "研发替身",
       cwd: " /repo/existing ",
+      projectId: "prj_existing",
       projectMode: "existing",
       supportsDirectorylessProjects: true,
       client: { createDirectorylessProject } as unknown as SubstituteModeProjectClient,
       registerProject: vi.fn(),
     });
 
-    expect(result).toEqual({ cwd: "/repo/existing", createdProjectId: null });
+    expect(result).toEqual({
+      cwd: "/repo/existing",
+      projectId: "prj_existing",
+      createdProjectId: null,
+    });
     expect(createDirectorylessProject).not.toHaveBeenCalled();
   });
 
@@ -57,6 +62,7 @@ describe("substitute mode Project resolution", () => {
     expect(registerProject).toHaveBeenCalledWith(created);
     expect(result).toEqual({
       cwd: "/Users/test/.paseo/projects/prj_substitute",
+      projectId: "prj_substitute",
       createdProjectId: "prj_substitute",
     });
   });

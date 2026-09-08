@@ -109,6 +109,36 @@ describe("LarkSubstituteGroupPoller", () => {
     );
   });
 
+  test("uses the one-off scan range override without changing the mode configuration", async () => {
+    const configuredMode = mode();
+    const listChatMessages = vi.fn(async () => []);
+    const poller = new LarkSubstituteGroupPoller({
+      logger: pino({ level: "silent" }),
+      listChatMessages,
+      listChatIds: () => ["oc_1"],
+      getAuthorizedUserOpenId: () => "ou_authorized",
+      hasTask: () => false,
+      onMessage: vi.fn(async () => undefined),
+      now: () => new Date("2026-09-07T10:00:00.000Z"),
+    });
+
+    await poller.runMode(configuredMode, {
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    });
+
+    expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_1", {
+      start: new Date("2026-09-07T08:00:00.000Z"),
+      end: new Date("2026-09-07T09:59:00.000Z"),
+    });
+    expect(configuredMode.groupScan).toEqual({
+      enabled: true,
+      intervalMinutes: 15,
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 20,
+    });
+  });
+
   test("does not rescan messages that already have tasks", async () => {
     const onMessage = vi.fn(async () => undefined);
     const poller = new LarkSubstituteGroupPoller({

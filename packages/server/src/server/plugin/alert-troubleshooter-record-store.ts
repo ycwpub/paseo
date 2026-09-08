@@ -12,6 +12,7 @@ import {
   createLarkAlertTroubleshooterApi,
   type LarkAlertTroubleshooterApi,
 } from "./lark-alert-troubleshooter-api.js";
+import { extractBambooResultId } from "./bamboo-alert-message.js";
 
 const FIELDS = {
   messageId: "消息 ID",
@@ -172,10 +173,6 @@ function toRecord(record: LarkRecord, tableDate: string): AlertTroubleshooterRec
   };
 }
 
-function extractResultId(text: string): string | null {
-  return /\bresult[_\s-]*id\s*[:=：]\s*([a-zA-Z0-9_-]+)/iu.exec(text)?.[1]?.trim() ?? null;
-}
-
 function uniqueIdForEvent(event: NormalizedLarkMessageEvent, resultId: string | null): string {
   return resultId ? `result_id:${resultId}` : `message_id:${event.messageId}`;
 }
@@ -212,7 +209,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const existing = await this.findByMessageId(api, location, input.event.messageId);
     if (existing) return existing;
     const chat = input.config.chats.find((candidate) => candidate.chatId === input.event.chatId);
-    const resultId = extractResultId(input.event.text);
+    const resultId = extractBambooResultId(input.event.text);
     const uniqueId = uniqueIdForEvent(input.event, resultId);
     const fields: Record<string, string> = {
       [primaryField]: `${chat?.name ?? input.event.chatId} · ${input.event.messageId}`,

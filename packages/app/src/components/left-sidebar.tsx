@@ -60,6 +60,7 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
 import { useWorkspace } from "@/stores/session-store-hooks";
 import { usePanelStore } from "@/stores/panel-store";
 import { InstalledPluginSidebarSection } from "@/plugins/sidebar-panel/sidebar-section";
+import { HiddenPluginSidebarRestoreButton } from "@/plugins/sidebar-panel/hidden-section-restore-button";
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
@@ -624,6 +625,7 @@ function SidebarFooter({
         theme={theme}
       />
       <View style={styles.footerIconRow}>
+        <HiddenPluginSidebarRestoreButton />
         <SidebarHostPicker
           theme={theme}
           label={labels.hosts}

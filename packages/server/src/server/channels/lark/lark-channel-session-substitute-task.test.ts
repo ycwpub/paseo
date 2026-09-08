@@ -115,6 +115,10 @@ describe("LarkChannelSession substitute task RPC", () => {
       type: "channel.lark.substitute_task.scan.request",
       requestId: "scan",
       modeId: "mode-1",
+      scanRange: {
+        lookbackMinutes: 120,
+        excludeRecentMinutes: 1,
+      },
     });
     await session.handleRequest({
       type: "channel.lark.substitute_task.pause.request",
@@ -163,7 +167,10 @@ describe("LarkChannelSession substitute task RPC", () => {
       },
     });
     expect(service.listSubstituteTasks).toHaveBeenCalledWith("mode-1");
-    expect(service.scanSubstituteTasksNow).toHaveBeenCalledWith("mode-1");
+    expect(service.scanSubstituteTasksNow).toHaveBeenCalledWith("mode-1", {
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    });
     expect(service.pauseSubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
     expect(service.deleteSubstituteTasks).toHaveBeenCalledWith(["task-1"], "mode-1");
   });

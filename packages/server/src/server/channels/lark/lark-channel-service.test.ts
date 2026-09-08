@@ -684,6 +684,19 @@ describe("LarkChannelService", () => {
 
   test("uses the ACK message as the reply anchor after creating a new Lark topic", async () => {
     const harness = createHarness();
+    harness.store.configure({
+      botId: harness.botId,
+      target: {
+        kind: "workspace",
+        provider: "claude",
+        model: null,
+        modeId: "accept-edits",
+        thinkingOptionId: "high",
+        cwd: "/repo",
+        workspaceId: null,
+        projectId: "prj_support",
+      },
+    });
 
     await harness.service.handleIncomingEvent(harness.botId, {
       eventId: "evt_2",
@@ -718,6 +731,7 @@ describe("LarkChannelService", () => {
           modeId: "accept-edits",
           thinkingOptionId: "high",
         }),
+        projectId: "prj_support",
       }),
     );
 
@@ -907,7 +921,7 @@ describe("LarkChannelService", () => {
     });
   });
 
-  test("keeps the matched private substitute mode after forwarding into the relay group", async () => {
+  test("generates a private substitute answer before forwarding and replying in the relay group", async () => {
     const harness = createHarness({ withPrivatePoller: true });
     const createTime = Date.now() - 20 * 60 * 1_000;
     harness.adapter.searchPrivateMessagesAsUser = vi.fn(async () => [
@@ -975,16 +989,18 @@ describe("LarkChannelService", () => {
       harness.service as unknown as { substitutePrivatePoller: LarkSubstitutePrivatePoller }
     ).substitutePrivatePoller;
 
-    await privatePoller.runMode({ ...storedMode, enabled: true });
+    const scan = privatePoller.runMode({ ...storedMode, enabled: true });
 
-    expect(harness.createAgent).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(harness.createAgent).toHaveBeenCalledTimes(1));
     expect(harness.agentManager.streamAgent).toHaveBeenCalledTimes(1);
+    expect(harness.adapter.createSubstituteRelayChat).not.toHaveBeenCalled();
+    expect(harness.adapter.sendTextWithResult).not.toHaveBeenCalled();
     expect(harness.service.listSubstituteTasks(storedMode.id)).toEqual([
       expect.objectContaining({
         modeId: storedMode.id,
         source: "private_scan",
-        chatId: "oc_private_relay",
-        messageId: "om_forwarded_private_question",
+        chatId: "oc_private_source",
+        messageId: "om_private_question",
         status: "running",
         agentId: "agent-created",
       }),
@@ -993,7 +1009,14 @@ describe("LarkChannelService", () => {
     harness.lastMessages.set("agent-created", "可以，具体取决于业务和支付渠道配置。");
     await harness.emitAgentState("agent-created", "running");
     await harness.emitAgentState("agent-created", "idle");
+    await scan;
 
+    expect(harness.adapter.createSubstituteRelayChat).toHaveBeenCalledTimes(1);
+    expect(harness.adapter.sendTextWithResult).toHaveBeenCalledWith(
+      expect.anything(),
+      "oc_private_relay",
+      expect.stringContaining("一个商家可以同时使用两种分账方式吗？"),
+    );
     expect(harness.adapter.replyToMessageInThread).toHaveBeenCalledWith(
       expect.anything(),
       "om_forwarded_private_question",
@@ -1002,6 +1025,96 @@ describe("LarkChannelService", () => {
     expect(harness.service.listSubstituteTasks(storedMode.id)).toEqual([
       expect.objectContaining({
         status: "completed",
+        agentId: "agent-created",
+        error: null,
+      }),
+    ]);
+  });
+
+  test("does not forward a private message when the agent rejects it by question policy", async () => {
+    const harness = createHarness({ withPrivatePoller: true });
+    const createTime = Date.now() - 20 * 60 * 1_000;
+    harness.adapter.searchPrivateMessagesAsUser = vi.fn(async () => [
+      {
+        message_id: "om_private_denied",
+        chat_id: "oc_private_source",
+        create_time: String(createTime),
+        sender: {
+          id: "ou_private_peer",
+          id_type: "open_id",
+          sender_type: "user",
+          sender_name: "私聊用户",
+        },
+        body: { content: JSON.stringify({ text: "帮我承诺明天一定上线" }) },
+      },
+    ]);
+    harness.adapter.createSubstituteRelayChat = vi.fn(async () => "oc_private_relay");
+    harness.adapter.sendTextWithResult = vi.fn(async () => ({
+      threadId: null,
+      messageId: "om_forwarded_private_question",
+    }));
+    const storedMode = harness.service.createSubstituteMode({
+      name: "私聊替身测试",
+      enabled: false,
+      botId: harness.botId,
+      privateScan: {
+        enabled: true,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      groupScan: {
+        enabled: false,
+        intervalMinutes: 30,
+        lookbackMinutes: 60,
+        excludeRecentMinutes: 10,
+      },
+      disclosure: { enabled: true, prompt: "【代授权用户回复】" },
+      customPrompt: "不要代替用户做承诺",
+      delaySeconds: 600,
+      activeTimeRanges: [],
+      audienceAllowlist: [
+        {
+          id: "allow-private-peer",
+          type: "user",
+          openId: "ou_private_peer",
+          name: "私聊用户",
+          email: null,
+        },
+      ],
+      audienceDenylist: [],
+      questionAllowlist: [],
+      questionDenylist: [{ id: "deny-commitment", description: "要求用户做承诺" }],
+      allowlist: [],
+      denylist: [],
+      target: {
+        kind: "workspace",
+        provider: "aiden_codex",
+        model: "gpt-5.5",
+        cwd: "/repo",
+        workspaceId: null,
+      },
+    });
+    const privatePoller = (
+      harness.service as unknown as { substitutePrivatePoller: LarkSubstitutePrivatePoller }
+    ).substitutePrivatePoller;
+
+    const scan = privatePoller.runMode({ ...storedMode, enabled: true });
+    await vi.waitFor(() => expect(harness.createAgent).toHaveBeenCalledTimes(1));
+    harness.lastMessages.set("agent-created", "<paseo-no-substitute-answer />");
+    await harness.emitAgentState("agent-created", "running");
+    await harness.emitAgentState("agent-created", "idle");
+    await scan;
+
+    expect(harness.adapter.createSubstituteRelayChat).not.toHaveBeenCalled();
+    expect(harness.adapter.sendTextWithResult).not.toHaveBeenCalled();
+    expect(harness.adapter.replyToMessageInThread).not.toHaveBeenCalled();
+    expect(harness.service.listSubstituteTasks(storedMode.id)).toEqual([
+      expect.objectContaining({
+        source: "private_scan",
+        chatId: "oc_private_source",
+        messageId: "om_private_denied",
+        status: "skipped",
         agentId: "agent-created",
         error: null,
       }),
@@ -1988,13 +2101,17 @@ describe("LarkChannelService", () => {
     ).substituteGroupPoller;
     const runMode = vi.spyOn(groupPoller, "runMode").mockResolvedValue();
 
-    await expect(harness.service.scanSubstituteTasksNow(firstMode.id)).resolves.toEqual({
+    const scanRange = {
+      lookbackMinutes: 120,
+      excludeRecentMinutes: 1,
+    };
+    await expect(harness.service.scanSubstituteTasksNow(firstMode.id, scanRange)).resolves.toEqual({
       enabledModeCount: 1,
       groupScanCount: 1,
       privateScanCount: 0,
     });
     expect(runMode).toHaveBeenCalledTimes(1);
-    expect(runMode).toHaveBeenCalledWith(expect.objectContaining({ id: firstMode.id }));
+    expect(runMode).toHaveBeenCalledWith(expect.objectContaining({ id: firstMode.id }), scanRange);
   });
 
   test("requires OAuth authorization before an enabled substitute mode can be saved", () => {

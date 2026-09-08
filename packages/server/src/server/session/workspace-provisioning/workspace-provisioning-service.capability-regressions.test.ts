@@ -108,3 +108,25 @@ test("createProjectForDirectory allocates a new project for an already registere
   expect(second.projectId).not.toBe(first.projectId);
   expect(await projectRegistry.list()).toHaveLength(2);
 });
+
+test("creating a Workspace in a directoryless Project preserves its name and identity", async () => {
+  const project = await projectRegistry.createDirectoryless({
+    displayName: "结算助手机器人",
+    timestamp: "2026-09-08T00:00:00.000Z",
+  });
+  const managedCwd = path.join(tmpDir, "projects", project.projectId);
+
+  const workspace = await provisioning.createWorkspaceForDirectory(
+    managedCwd,
+    "飞书问题",
+    project.projectId,
+  );
+
+  expect(workspace.projectId).toBe(project.projectId);
+  expect(await projectRegistry.get(project.projectId)).toMatchObject({
+    projectId: project.projectId,
+    rootPath: null,
+    displayName: "结算助手机器人",
+  });
+  expect(await projectRegistry.list()).toHaveLength(1);
+});

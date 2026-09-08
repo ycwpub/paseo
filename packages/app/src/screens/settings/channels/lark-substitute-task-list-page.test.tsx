@@ -7,9 +7,57 @@ import type {
   LarkChannelBotStatus,
   LarkSubstituteMode,
   LarkSubstituteTask,
+  LarkSubstituteTaskScanRange,
 } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { LarkSubstituteTaskListPage } from "./lark-substitute-task-list-page";
+
+vi.hoisted(() => {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: () => ({
+      addEventListener: () => {},
+      addListener: () => {},
+      dispatchEvent: () => false,
+      matches: false,
+      media: "",
+      onchange: null,
+      removeEventListener: () => {},
+      removeListener: () => {},
+    }),
+  });
+});
+
+const { theme } = vi.hoisted(() => ({
+  theme: {
+    spacing: { 1: 4, 2: 8, 3: 12, 4: 16, 6: 24 },
+    borderRadius: { sm: 4, md: 6, lg: 8 },
+    fontSize: { sm: 13, base: 15 },
+    fontWeight: { normal: "400" },
+    colors: {
+      border: "#444",
+      foreground: "#fff",
+      foregroundMuted: "#aaa",
+      foregroundExtraMuted: "#777",
+      primary: "#0a0",
+      primaryForeground: "#fff",
+      statusDanger: "#f00",
+      statusSuccess: "#0f0",
+      surface1: "#111",
+      surface2: "#222",
+      palette: { red: { 300: "#f66" } },
+    },
+  },
+}));
+
+vi.mock("react-native-unistyles", () => ({
+  StyleSheet: {
+    create: (factory: unknown) =>
+      typeof factory === "function"
+        ? (factory as (value: typeof theme) => Record<string, unknown>)(theme)
+        : factory,
+  },
+}));
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -21,7 +69,7 @@ const taskState = vi.hoisted(() => ({
     isScanning: false,
     error: null as Error | null,
     scanError: null as Error | null,
-    scanNow: vi.fn(async () => ({
+    scanNow: vi.fn(async (_scanRange: LarkSubstituteTaskScanRange) => ({
       enabledModeCount: 1,
       groupScanCount: 1,
       privateScanCount: 1,
@@ -68,6 +116,32 @@ vi.mock("@/components/ui/button", () => ({
       {children}
     </button>
   ),
+}));
+
+vi.mock("@/components/ui/form-field", () => ({
+  Field: ({ label, children }: { label: string; children: ReactNode }) => (
+    <label>
+      <span>{label}</span>
+      {children}
+    </label>
+  ),
+  FormTextInput: ({
+    value,
+    onChangeText,
+    testID,
+  }: {
+    value?: string;
+    onChangeText: (value: string) => void;
+    testID?: string;
+  }) => {
+    const handleChange = React.useCallback(
+      (event: React.ChangeEvent<HTMLInputElement>) => {
+        onChangeText(event.currentTarget.value);
+      },
+      [onChangeText],
+    );
+    return <input data-testid={testID} value={value ?? ""} onChange={handleChange} />;
+  },
 }));
 
 function task(
@@ -183,11 +257,37 @@ describe("LarkSubstituteTaskListPage", () => {
   test("立即执行一次群消息和私聊扫描", async () => {
     renderTaskList();
 
+    fireEvent.change(screen.getByTestId("lark-substitute-scan-lookback"), {
+      target: { value: "120" },
+    });
+    fireEvent.change(screen.getByTestId("lark-substitute-scan-exclude-recent"), {
+      target: { value: "1" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "立刻执行一次扫描" }));
 
     await waitFor(() => {
-      expect(taskState.current.scanNow).toHaveBeenCalledTimes(1);
+      expect(taskState.current.scanNow).toHaveBeenCalledWith({
+        lookbackMinutes: 120,
+        excludeRecentMinutes: 1,
+      });
       expect(screen.getByText("扫描完成：群消息扫描 1 个，私聊扫描 1 个。")).toBeTruthy();
+    });
+  });
+
+  test("非法的手动扫描范围不会发起扫描", async () => {
+    renderTaskList();
+
+    fireEvent.change(screen.getByTestId("lark-substitute-scan-lookback"), {
+      target: { value: "60" },
+    });
+    fireEvent.change(screen.getByTestId("lark-substitute-scan-exclude-recent"), {
+      target: { value: "60" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "立刻执行一次扫描" }));
+
+    await waitFor(() => {
+      expect(taskState.current.scanNow).not.toHaveBeenCalled();
+      expect(screen.getByText("排除最近必须是非负整数，并且小于扫描范围。")).toBeTruthy();
     });
   });
 

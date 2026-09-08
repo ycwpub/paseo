@@ -17,24 +17,13 @@ import type {
   AlertTroubleshooterRecord,
   AlertTroubleshooterRecordStore,
 } from "./alert-troubleshooter-record-store.js";
+import { isBambooAlertMessage } from "./bamboo-alert-message.js";
+
+export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
 export type BambooScanWindow = AlertScanWindow;
 export const buildScheduledBambooScanWindow = buildScheduledAlertScanWindow;
 export const buildRealtimeBambooScanWindow = buildRealtimeAlertScanWindow;
-
-export function isBambooAlertMessage(text: string, messageType?: string | null): boolean {
-  const normalized = text.toLowerCase();
-  const hasAlertMarker =
-    normalized.includes("报警") ||
-    normalized.includes("告警") ||
-    normalized.includes("result_id") ||
-    normalized.includes("task_id") ||
-    normalized.includes("离线数据质量");
-  return (
-    (normalized.includes("bamboo") && hasAlertMarker) ||
-    (messageType === "interactive" && hasAlertMarker)
-  );
-}
 
 type ManagerOptions = ConstructorParameters<typeof ProjectAlertTroubleshooterManager>[0];
 

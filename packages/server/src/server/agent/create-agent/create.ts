@@ -63,6 +63,7 @@ export interface CreateAgentCommandDependencies {
 export type EnsureWorkspaceForCreate = (
   cwd: string,
   firstAgentContext?: FirstAgentContext,
+  projectId?: string,
 ) => Promise<string>;
 
 export interface CreateAgentFromSessionInput {
@@ -99,6 +100,7 @@ export interface CreateAgentFromMcpInput {
   config?: Partial<AgentSessionConfig>;
   cwd?: string;
   workspaceId?: string;
+  projectId?: string;
   thinking?: string;
   features?: Record<string, unknown>;
   labels?: Record<string, string>;
@@ -383,6 +385,7 @@ async function resolveMcpCreateAgent(
           dependencies,
           resolvedCwd,
           input.workspaceTitle ?? input.initialPrompt ?? "",
+          input.projectId,
         ),
       ),
       cwd: resolvedCwd,
@@ -497,9 +500,13 @@ async function ensureWorkspaceForMcpCreate(
   dependencies: CreateAgentCommandDependencies,
   cwd: string,
   initialPrompt: string,
+  projectId?: string,
 ): Promise<string | undefined> {
   if (!dependencies.ensureWorkspaceForCreate) {
     return undefined;
+  }
+  if (projectId) {
+    return dependencies.ensureWorkspaceForCreate(cwd, { prompt: initialPrompt }, projectId);
   }
   return dependencies.ensureWorkspaceForCreate(cwd, { prompt: initialPrompt });
 }

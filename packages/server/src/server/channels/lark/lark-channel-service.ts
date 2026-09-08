@@ -13,6 +13,7 @@ import {
   type LarkSubstituteModeUpdateInput,
   type LarkSubstituteTask,
   type LarkSubstituteTaskFailureStage,
+  type LarkSubstituteTaskScanRange,
   type SessionInboundMessage,
 } from "@getpaseo/protocol/messages";
 import type { AgentManager, AgentManagerEvent, ManagedAgent } from "../../agent/agent-manager.js";
@@ -81,12 +82,22 @@ import {
   getLarkSubstituteRuleLists,
 } from "./lark-substitute-rule-lists.js";
 import { LarkSubstituteReplySender } from "./lark-substitute-reply-sender.js";
-import { LarkSubstitutePrivatePoller } from "./lark-substitute-private-poller.js";
+import {
+  LarkSubstitutePrivatePoller,
+  type LarkPrivateSubstituteReplyDeliveryInput,
+  type LarkPrivateSubstituteReplyPreparation,
+  type LarkPrivateSubstituteReplyPreparationInput,
+} from "./lark-substitute-private-poller.js";
 import { LarkSubstituteGroupPoller } from "./lark-substitute-group-poller.js";
 import {
   hasGroupSubstituteAudienceAllowlist,
   hasPrivateSubstituteAudienceAllowlist,
 } from "./lark-substitute-audience-policy.js";
+import {
+  LARK_SUBSTITUTE_SKIP_ANSWER,
+  LarkPrivateSubstituteAnswerWaiter,
+  type PreparedLarkPrivateSubstituteAnswer,
+} from "./lark-private-substitute-answer.js";
 import {
   selectLarkSubstituteGroupScanChats,
   type LarkSubstituteGroupScanChat,
@@ -99,6 +110,11 @@ import {
   isLarkMessageFromCurrentBot,
   LarkSubstituteBotLoopGuard,
 } from "./lark-substitute-bot-loop-guard.js";
+import { resolveLarkTargetProjectId } from "./lark-project-target.js";
+import {
+  isLarkMergedForwardMessage,
+  resolveLarkMergedForwardMessage,
+} from "./lark-merged-forward-message.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -206,6 +222,7 @@ interface ResolvedLarkTarget {
   thinkingOptionId: string | null;
   cwd: string;
   workspaceId: string | null;
+  projectId: string | null;
   initialPrompt: string;
   assistantId: string | null;
   labels: Record<string, string>;
@@ -463,7 +480,7 @@ function resolveLarkParticipantUserId(
 }
 
 export class LarkChannelService {
-  private readonly paseoHome: string | undefined;
+  private readonly paseoHome: string;
   private readonly store: LarkChannelStore;
   private readonly adapter: LarkChannelClientAdapter;
   private readonly agentManager: AgentManager;
@@ -481,6 +498,7 @@ export class LarkChannelService {
   private readonly substituteDebouncer = new LarkSubstituteDebouncer();
   private readonly substituteReplySender: LarkSubstituteReplySender;
   private readonly substituteBotLoopGuard = new LarkSubstituteBotLoopGuard();
+  private readonly privateSubstituteAnswerWaiter = new LarkPrivateSubstituteAnswerWaiter();
   private readonly substitutePrivatePoller: LarkSubstitutePrivatePoller | null;
   private readonly substituteGroupPoller: LarkSubstituteGroupPoller;
   private readonly incomingMessageObserver:
@@ -513,7 +531,7 @@ export class LarkChannelService {
       event: NormalizedLarkMessageEvent,
     ) => Promise<void> | void;
   }) {
-    this.paseoHome = options.paseoHome;
+    this.paseoHome = options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath()));
     this.store = options.store;
     this.adapter = options.adapter;
     this.agentManager = options.agentManager;
@@ -526,9 +544,7 @@ export class LarkChannelService {
     this.reminderService = options.reminderService ?? null;
     this.directoryService = options.directoryService ?? null;
     this.userOAuthService = options.userOAuthService ?? null;
-    this.substituteModeStore = new LarkSubstituteModeStore(
-      options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
-    );
+    this.substituteModeStore = new LarkSubstituteModeStore(this.paseoHome);
     this.substituteTaskStore = new LarkSubstituteTaskStore(
       options.paseoHome ?? path.dirname(path.dirname(options.store.getFilePath())),
     );
@@ -585,14 +601,9 @@ export class LarkChannelService {
             logger: this.logger,
             onPrivateMessageObserved: (config, event) =>
               this.observeDirectoryParticipants(config, event),
-            onRelayMessage: ({ botId, modeId, matchedMode, event, supplementalEvents }) =>
-              this.handleIncomingEvent(botId, event, {
-                ...createLarkSubstituteScanDispatchOptions(modeId),
-                matchedSubstituteMode: matchedMode,
-                supplementalEvents,
-                trustedSubstituteRelay: true,
-              }),
-            onScanFailure: ({ mode, event, error }) => {
+            prepareReply: (input) => this.preparePrivateSubstituteReply(input),
+            deliverReply: (input) => this.deliverPrivateSubstituteReply(input),
+            onScanFailure: ({ mode, event, stage, error }) => {
               const now = new Date().toISOString();
               this.substituteTaskStore.recordOperationalFailure(
                 {
@@ -600,7 +611,7 @@ export class LarkChannelService {
                   modeName: mode.name,
                   botId: mode.botId,
                   source: "private_scan",
-                  stage: "private_scan",
+                  stage,
                   chatId: event?.chatId,
                   chatName: event ? "授权用户私聊" : "授权用户私聊扫描",
                   messageId: event?.messageId,
@@ -719,15 +730,20 @@ export class LarkChannelService {
       startTime: Math.floor(window.start.getTime() / 1000),
       pageSize: 0,
     });
-    return messages
-      .map((message) => normalizeLarkApiMessage(message, chatId))
-      .filter((message): message is NormalizedLarkMessageEvent => {
-        if (!message) return false;
-        const rawTime = message.createTime;
-        if (rawTime === null) return true;
-        const timestamp = rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime;
-        return timestamp >= window.start.getTime() && timestamp <= window.end.getTime();
-      });
+    const expandedMessages: NormalizedLarkMessageEvent[] = [];
+    for (const message of messages) {
+      const normalized = normalizeLarkApiMessage(message, chatId);
+      if (!normalized) continue;
+      expandedMessages.push(
+        ...(await resolveLarkMergedForwardMessage(this.adapter, bot.config, normalized)),
+      );
+    }
+    return expandedMessages.filter((message) => {
+      const rawTime = message.createTime;
+      if (rawTime === null) return true;
+      const timestamp = rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime;
+      return timestamp >= window.start.getTime() && timestamp <= window.end.getTime();
+    });
   }
 
   private async listSubstituteGroupScanChatIds(mode: LarkSubstituteMode): Promise<string[]> {
@@ -982,7 +998,10 @@ export class LarkChannelService {
     return modeId ? tasks.filter((task) => task.modeId === modeId) : tasks;
   }
 
-  async scanSubstituteTasksNow(modeId?: string): Promise<{
+  async scanSubstituteTasksNow(
+    modeId?: string,
+    scanRange?: LarkSubstituteTaskScanRange,
+  ): Promise<{
     enabledModeCount: number;
     groupScanCount: number;
     privateScanCount: number;
@@ -1000,8 +1019,8 @@ export class LarkChannelService {
         )
       : [];
     await Promise.all([
-      ...groupModes.map((mode) => this.substituteGroupPoller.runMode(mode)),
-      ...privateModes.map((mode) => this.substitutePrivatePoller!.runMode(mode)),
+      ...groupModes.map((mode) => this.substituteGroupPoller.runMode(mode, scanRange)),
+      ...privateModes.map((mode) => this.substitutePrivatePoller!.runMode(mode, scanRange)),
     ]);
     return {
       enabledModeCount: modes.length,
@@ -1116,7 +1135,11 @@ export class LarkChannelService {
     const dedupeKey = getLarkEventDedupeKey(enrichedEvent);
     if (!this.store.claimIncomingEvent(botId, dedupeKey, new Date(now).toISOString())) {
       this.logger.debug(
-        { botId, eventId: enrichedEvent.eventId, messageId: enrichedEvent.messageId },
+        {
+          botId,
+          eventId: enrichedEvent.eventId,
+          messageId: enrichedEvent.messageId,
+        },
         "Ignoring duplicate Lark message event",
       );
       this.completeSubstituteTask(substituteTaskId, "skipped");
@@ -1287,6 +1310,155 @@ export class LarkChannelService {
         { mention: { openId: participants.mentionUserOpenId } },
       );
     }
+  }
+
+  private async preparePrivateSubstituteReply(
+    input: LarkPrivateSubstituteReplyPreparationInput,
+  ): Promise<LarkPrivateSubstituteReplyPreparation> {
+    const storedBot = this.store.getBot(input.botId);
+    if (!storedBot) throw new Error("飞书机器人不存在");
+    const taskId = this.enqueueSubstituteTask(
+      input.botId,
+      input.event,
+      input.matchedMode,
+      createLarkSubstituteScanDispatchOptions(input.modeId),
+    );
+    this.substituteTaskStore.markRunning(taskId, new Date().toISOString());
+    let pendingAgentId: string | null = null;
+    let answerPromise: Promise<PreparedLarkPrivateSubstituteAnswer> | null = null;
+    try {
+      const config = withSubstituteModeTarget(storedBot.config, input.matchedMode);
+      const trigger = createModeSubstituteTrigger(input.matchedMode, input.event);
+      const participants: LarkMessageParticipants = {
+        currentBotName: null,
+        senderBot: null,
+        availableBots: [],
+        addressedBots: [],
+        userId: `lark-user:${input.event.openId ?? "unknown"}`,
+        userName: input.event.displayName || null,
+        mentionUserOpenId: input.event.openId,
+        userUnionId: input.event.unionId,
+        substituteTrigger: trigger,
+      };
+      const prompt = await this.formatEventPromptWithHistory({
+        config,
+        event: input.event,
+        threadId: "",
+        previousMentionAt: null,
+        participants,
+        supplementalEvents: input.supplementalEvents,
+      });
+      const target = this.resolveTarget(config, input.event, prompt, {
+        channel: "lark",
+        "lark.botId": input.botId,
+        "lark.chatId": input.event.chatId,
+        "lark.threadId": "",
+        "lark.userId": participants.userId,
+        "lark.substituteModeId": input.modeId,
+        "lark.substituteSource": "private_scan",
+      });
+      if (!target) throw new Error("替身模式未配置可用的 Agent 目标");
+
+      const title = input.event.topicName;
+      const { snapshot } = await this.createAgent({
+        kind: "mcp",
+        provider: target.provider,
+        title,
+        workspaceTitle: title,
+        config: {
+          title,
+          ...(target.model ? { model: target.model } : {}),
+          ...(target.modeId ? { modeId: target.modeId } : {}),
+          ...(target.thinkingOptionId ? { thinkingOptionId: target.thinkingOptionId } : {}),
+          systemPrompt: LARK_CHANNEL_SYSTEM_PROMPT,
+        },
+        cwd: target.cwd,
+        workspaceId: target.workspaceId ?? undefined,
+        projectId: target.projectId ?? undefined,
+        labels: target.labels,
+        background: true,
+        notifyOnFinish: false,
+        promptFailure: "throw",
+      });
+      pendingAgentId = snapshot.id;
+      this.substituteTaskStore.attachAgent(taskId, snapshot.id, new Date().toISOString());
+      answerPromise = this.privateSubstituteAnswerWaiter.wait(snapshot.id, null);
+      await sendPromptToAgent({
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        agentId: snapshot.id,
+        prompt: target.initialPrompt,
+        unarchive: true,
+        logger: this.logger,
+      });
+      const answer = await answerPromise;
+      if (answer.kind === "skip") {
+        this.completeSubstituteTask(taskId, "skipped");
+        return answer;
+      }
+      const userDirective = extractLarkUserMentionDirective(answer.text);
+      const substituteReply = formatLarkSubstituteReply(userDirective.text, trigger);
+      return {
+        kind: "answer",
+        taskId,
+        agentId: snapshot.id,
+        text: substituteReply,
+        trigger,
+      };
+    } catch (error) {
+      const failure = formatLarkProcessingError(error);
+      if (pendingAgentId) {
+        this.privateSubstituteAnswerWaiter.cancel(pendingAgentId, new Error(failure));
+      }
+      void answerPromise?.catch(() => undefined);
+      this.completeSubstituteTask(taskId, "failed", failure, "processing");
+      throw error;
+    }
+  }
+
+  private async deliverPrivateSubstituteReply(
+    input: LarkPrivateSubstituteReplyDeliveryInput,
+  ): Promise<void> {
+    const storedBot = this.store.getBot(input.botId);
+    if (!storedBot) {
+      this.completeSubstituteTask(input.prepared.taskId, "failed", "飞书机器人不存在", "reply");
+      throw new Error("飞书机器人不存在");
+    }
+    const sent = await this.sendThreadTextSafe(
+      input.botId,
+      storedBot.config,
+      input.forwardedMessageId,
+      input.prepared.text,
+      {
+        substituteTrigger: input.prepared.trigger,
+        createThreadOnFirstReply: true,
+      },
+    );
+    if (!sent) {
+      const error = "发送替身回答失败";
+      this.completeSubstituteTask(input.prepared.taskId, "failed", error, "reply");
+      throw new Error(error);
+    }
+    const threadId = sent.threadId ?? "";
+    if (threadId) {
+      this.store.recordThreadConversation(input.botId, {
+        agentId: input.prepared.agentId,
+        chatId: input.relayChatId,
+        threadId,
+        rootMessageId: input.forwardedMessageId,
+        userId: `lark-user:${input.source.openId ?? "unknown"}`,
+        title: input.source.topicName,
+        now: new Date().toISOString(),
+      });
+    }
+    this.store.markConversationOutbound(
+      input.botId,
+      input.prepared.agentId,
+      input.relayChatId,
+      threadId,
+      new Date().toISOString(),
+    );
+    this.completeSubstituteTask(input.prepared.taskId, "completed");
   }
 
   private async prepareIncomingEvent(
@@ -1838,7 +2010,19 @@ export class LarkChannelService {
     event: NormalizedLarkMessageEvent,
   ): Promise<void> {
     try {
-      await this.handleIncomingEvent(botId, event);
+      const bot = this.store.getBot(botId);
+      if (!bot) return;
+      const events = await resolveLarkMergedForwardMessage(this.adapter, bot.config, event);
+      if (isLarkMergedForwardMessage(event) && events.length === 0) {
+        this.logger.warn(
+          { botId, chatId: event.chatId, messageId: event.messageId },
+          "Lark merged-forward message did not contain readable child messages",
+        );
+        return;
+      }
+      for (const expandedEvent of events) {
+        await this.handleIncomingEvent(botId, expandedEvent);
+      }
     } catch (error) {
       const failure = formatLarkProcessingError(error);
       const mode = this.findObservedSubstituteMode(botId, event);
@@ -2018,6 +2202,7 @@ export class LarkChannelService {
       },
       cwd: target.cwd,
       workspaceId: target.workspaceId ?? undefined,
+      projectId: target.projectId ?? undefined,
       labels: target.labels,
       background: true,
       notifyOnFinish: false,
@@ -2099,6 +2284,7 @@ export class LarkChannelService {
       thinkingOptionId: target.thinkingOptionId ?? null,
       cwd: target.cwd,
       workspaceId: target.workspaceId,
+      projectId: resolveLarkTargetProjectId(target, this.paseoHome) ?? null,
       initialPrompt: prompt,
       assistantId: null,
       labels,
@@ -2115,7 +2301,12 @@ export class LarkChannelService {
     try {
       context = resolveTeamLeaderCreateContext(
         { assistantStore: this.assistantStore, teamStore: this.teamStore },
-        { teamId: target.teamId, userPrompt: prompt, labels, paseoHome: this.paseoHome },
+        {
+          teamId: target.teamId,
+          userPrompt: prompt,
+          labels,
+          paseoHome: this.paseoHome,
+        },
       );
     } catch (error) {
       this.logger.warn({ err: error, teamId: target.teamId }, "Failed to resolve Lark team target");
@@ -2128,6 +2319,7 @@ export class LarkChannelService {
       thinkingOptionId: target.thinkingOptionId ?? null,
       cwd: target.cwd,
       workspaceId: target.workspaceId,
+      projectId: resolveLarkTargetProjectId(target, this.paseoHome) ?? null,
       initialPrompt: context.prompt,
       assistantId: context.assistantId ?? null,
       labels: context.labels,
@@ -2153,11 +2345,16 @@ export class LarkChannelService {
       thinkingOptionId: target.thinkingOptionId ?? null,
       cwd: target.cwd,
       workspaceId: target.workspaceId,
+      projectId: resolveLarkTargetProjectId(target, this.paseoHome) ?? null,
       initialPrompt: buildAssistantInitialPrompt(assistant, prompt, {
         paseoHome: this.paseoHome,
       }),
       assistantId: assistant.id,
-      labels: { ...labels, assistantId: assistant.id, assistantName: assistant.name },
+      labels: {
+        ...labels,
+        assistantId: assistant.id,
+        assistantName: assistant.name,
+      },
     };
   }
 
@@ -2243,7 +2440,11 @@ export class LarkChannelService {
       };
     } catch (error) {
       this.logger.warn(
-        { err: error, threadId: input.thread.threadId, messageId: input.event.messageId },
+        {
+          err: error,
+          threadId: input.thread.threadId,
+          messageId: input.event.messageId,
+        },
         "Failed to send Lark first-topic ACK; continuing agent work",
       );
       return input.thread;
@@ -2312,7 +2513,9 @@ export class LarkChannelService {
       }
       const quoteFetches = await Promise.allSettled([
         this.adapter.getMessage(input.config, quotedMessageId),
-        this.adapter.getMessage(input.config, quotedMessageId, { userCardContent: true }),
+        this.adapter.getMessage(input.config, quotedMessageId, {
+          userCardContent: true,
+        }),
       ]);
       for (const result of quoteFetches) {
         if (result.status === "fulfilled" && result.value) {
@@ -2440,6 +2643,7 @@ export class LarkChannelService {
   }
 
   private async handleAgentManagerEvent(event: AgentManagerEvent): Promise<void> {
+    if (await this.privateSubstituteAnswerWaiter.handle(event, this.agentManager)) return;
     if (event.type !== "agent_state") return;
     const relay = this.pendingRelays.get(event.agent.id);
     if (!relay) return;
@@ -2471,7 +2675,7 @@ export class LarkChannelService {
     this.pendingRelays.delete(agent.id);
     const message = await this.agentManager.getLastAssistantMessage(agent.id);
     const text = getCompletedAgentText(message, relay.lastAssistantMessage);
-    if (text.trim() === "<paseo-no-substitute-answer />") {
+    if (text.trim() === LARK_SUBSTITUTE_SKIP_ANSWER) {
       this.completeSubstituteTask(relay.substituteTaskId, "skipped");
       this.store.markConversationOutbound(
         relay.botId,
@@ -2612,7 +2816,10 @@ export class LarkChannelService {
       for (const openId of openIds) {
         const normalizedOpenId = openId?.trim();
         if (normalizedOpenId) {
-          candidates.set(`${appId}:${normalizedOpenId}`, { appId, openId: normalizedOpenId });
+          candidates.set(`${appId}:${normalizedOpenId}`, {
+            appId,
+            openId: normalizedOpenId,
+          });
         }
       }
     }
@@ -2668,7 +2875,9 @@ export class LarkChannelService {
   private async refreshDirectoryChat(appId: string, chatId: string, force = false): Promise<void> {
     if (!this.directoryService) return;
     try {
-      const chat = await this.directoryService.refreshChatById(appId, chatId, { force });
+      const chat = await this.directoryService.refreshChatById(appId, chatId, {
+        force,
+      });
       if (chat) {
         this.emitStatusChanged();
       }
@@ -2808,7 +3017,13 @@ export class LarkChannelService {
         (user) => user.unionId === sourceUser.unionId && user.openId === targetOpenId,
       );
       return matchesUser
-        ? [{ bot, targetOpenId, targetName: oauth?.displayName?.trim() || null }]
+        ? [
+            {
+              bot,
+              targetOpenId,
+              targetName: oauth?.displayName?.trim() || null,
+            },
+          ]
         : [];
     });
 

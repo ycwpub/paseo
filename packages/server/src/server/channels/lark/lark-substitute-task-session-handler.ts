@@ -44,7 +44,7 @@ export async function handleLarkSubstituteTaskSessionRequest(
       });
       return;
     case "channel.lark.substitute_task.scan.request": {
-      const summary = await service.scanSubstituteTasksNow(message.modeId);
+      const summary = await service.scanSubstituteTasksNow(message.modeId, message.scanRange);
       emitResponse({
         type: "channel.lark.substitute_task.scan.response",
         payload: {

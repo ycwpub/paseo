@@ -76,8 +76,32 @@ describe("Lark substitute task RPC schemas", () => {
         type: "channel.lark.substitute_task.scan.request",
         requestId: "req_scan",
         modeId: "mode_1",
-      }).modeId,
-    ).toBe("mode_1");
+        scanRange: {
+          lookbackMinutes: 120,
+          excludeRecentMinutes: 1,
+        },
+      }),
+    ).toMatchObject({
+      modeId: "mode_1",
+      scanRange: {
+        lookbackMinutes: 120,
+        excludeRecentMinutes: 1,
+      },
+    });
+  });
+
+  it("rejects an immediate scan range whose exclusion consumes the whole window", () => {
+    expect(() =>
+      LarkSubstituteTaskScanRequestSchema.parse({
+        type: "channel.lark.substitute_task.scan.request",
+        requestId: "req_scan",
+        modeId: "mode_1",
+        scanRange: {
+          lookbackMinutes: 120,
+          excludeRecentMinutes: 120,
+        },
+      }),
+    ).toThrow("excludeRecentMinutes must be less than lookbackMinutes");
   });
 
   it("parses immediate scan summaries with the refreshed task list", () => {

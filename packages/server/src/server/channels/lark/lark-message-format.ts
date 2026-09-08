@@ -1,3 +1,5 @@
+import { parseLarkInteractiveCardText } from "./lark-interactive-card-text.js";
+
 export interface NormalizedLarkMessageEvent {
   eventId: string;
   messageId: string;
@@ -292,15 +294,21 @@ export function normalizeLarkMessageEvent(event: unknown): NormalizedLarkMessage
     return null;
   }
   const messageType = getStringByKeys(message, ["message_type", "messageType"]);
-  if (messageType && messageType !== "text" && messageType !== "interactive") {
+  if (
+    messageType &&
+    messageType !== "text" &&
+    messageType !== "interactive" &&
+    messageType !== "merge_forward"
+  ) {
     return null;
   }
   const identity = getMessageIdentity(message);
   const rawContent = getString(message, "content");
   const text =
     messageType === "interactive"
-      ? parseInteractiveCardText(rawContent)
-      : parseContentText(rawContent);
+      ? parseLarkInteractiveCardText(rawContent)
+      : (parseContentText(rawContent) ??
+        (messageType === "merge_forward" ? "[merge_forward]" : null));
   if (!identity.chatId || !identity.messageId || !text) {
     return null;
   }
@@ -484,7 +492,7 @@ function getSubstituteTriggerDescription(source: LarkSubstituteTrigger["source"]
     case "current_bot":
       return "This group message triggered substitute mode because it mentioned the current bot while substitute mode is enabled.";
     case "private_message":
-      return "This unanswered private message was relayed into a three-party group; answer in the topic using the bot identity.";
+      return "Evaluate this unanswered private message before any relay is created. Apply the question policy first. If it is allowed, generate the final answer that Paseo will later post in the relay topic using the bot identity.";
   }
 }
 
@@ -693,7 +701,11 @@ export function formatLarkCollaborationPrompt(input: LarkCollaborationPromptInpu
       : ["<available_lark_bots />"];
   const mentions = addressedBots.map(
     (bot) =>
-      `  <mention token="${xmlEscape(bot.token ?? "")}" name="${xmlEscape(bot.name)}" open_id="${xmlEscape(bot.openId)}" current_bot="${bot.isCurrentBot ? "true" : "false"}" />`,
+      `  <mention token="${xmlEscape(bot.token ?? "")}" name="${xmlEscape(
+        bot.name,
+      )}" open_id="${xmlEscape(bot.openId)}" current_bot="${
+        bot.isCurrentBot ? "true" : "false"
+      }" />`,
   );
   const currentMessageBotMentions =
     mentions.length > 0
@@ -924,7 +936,7 @@ function parseApiMessageText(message: Record<string, unknown>): string {
   const body = getRecord(message, "body") ?? {};
   const rawContent = getString(body, "content") ?? getString(message, "content");
   if (msgType === "interactive") {
-    return parseInteractiveCardText(rawContent);
+    return parseLarkInteractiveCardText(rawContent);
   }
   const text = parseContentText(rawContent);
   if (text) {
@@ -975,124 +987,6 @@ export function normalizeLarkApiMessage(
     createTime: createTimeOf(message),
     mentions: getMentions(message),
   };
-}
-
-function getCardText(value: unknown): string | null {
-  if (typeof value === "string") {
-    return value.trim() || null;
-  }
-  const record = asRecord(value);
-  if (!record) {
-    return null;
-  }
-  return getStringByKeys(record, ["content", "text", "title", "placeholder"]);
-}
-
-function appendCardText(parts: string[], value: unknown): void {
-  const text = getCardText(value);
-  if (text) {
-    parts.push(text);
-  }
-}
-
-const CARD_INLINE_TEXT_TAGS = new Set(["text", "a", "at"]);
-const CARD_BLOCK_TEXT_TAGS = new Set(["div", "markdown", "plain_text"]);
-const CARD_SELECT_TAGS = new Set(["select_static", "multi_select_static", "overflow"]);
-const CARD_IMAGE_TAGS = new Set(["img", "image"]);
-
-function extractTaggedCardElementText(
-  record: Record<string, unknown>,
-  tag: string | null,
-  parts: string[],
-): void {
-  if (tag && CARD_INLINE_TEXT_TAGS.has(tag)) {
-    appendCardText(parts, record.text);
-    return;
-  }
-  if (tag && CARD_BLOCK_TEXT_TAGS.has(tag)) {
-    appendCardText(parts, record.text);
-    appendCardText(parts, record.content);
-    return;
-  }
-  if (tag === "button") {
-    const label = getCardText(record.text);
-    if (label) {
-      parts.push(`[${label}]`);
-    }
-    return;
-  }
-  if (tag === "input" || (tag && CARD_SELECT_TAGS.has(tag))) {
-    const placeholder = getCardText(record.placeholder);
-    if (placeholder) {
-      parts.push(`[${tag === "input" ? "input" : "select"}: ${placeholder}]`);
-    }
-    return;
-  }
-  if (tag && CARD_IMAGE_TAGS.has(tag)) {
-    const alt = getCardText(record.alt);
-    parts.push(alt ? `[image: ${alt}]` : "[image]");
-    return;
-  }
-  if (!tag) {
-    appendCardText(parts, record.text);
-  }
-}
-
-function extractCardElementText(element: unknown, parts: string[]): void {
-  if (Array.isArray(element)) {
-    for (const child of element) {
-      extractCardElementText(child, parts);
-    }
-    return;
-  }
-  const record = asRecord(element);
-  if (!record) {
-    return;
-  }
-  const tag = getStringByKeys(record, ["tag"]);
-  extractTaggedCardElementText(record, tag, parts);
-  for (const key of ["fields", "elements", "columns", "items", "options", "extra"]) {
-    const child = record[key];
-    if (child !== undefined) {
-      extractCardElementText(child, parts);
-    }
-  }
-}
-
-function unwrapInteractiveCard(rawContent: string | null): Record<string, unknown> | null {
-  if (!rawContent) {
-    return null;
-  }
-  try {
-    let card = asRecord(JSON.parse(rawContent));
-    if (!card) {
-      return null;
-    }
-    const userDsl = getString(card, "user_dsl");
-    if (userDsl) {
-      card = asRecord(JSON.parse(userDsl)) ?? card;
-    }
-    return getRecord(card, "card") ?? card;
-  } catch {
-    return null;
-  }
-}
-
-function parseInteractiveCardText(rawContent: string | null): string {
-  const card = unwrapInteractiveCard(rawContent);
-  if (!card) {
-    return "[interactive]";
-  }
-  const parts: string[] = [];
-  const header = getRecord(card, "header");
-  appendCardText(parts, header?.title);
-  appendCardText(parts, card.title);
-  const body = getRecord(card, "body");
-  extractCardElementText(body?.elements ?? card.elements, parts);
-  const unique = parts
-    .map((part) => part.trim())
-    .filter((part, index, all) => part.length > 0 && all.indexOf(part) === index);
-  return unique.join("\n") || "[interactive]";
 }
 
 function sanitizeQuotedText(text: string): string {

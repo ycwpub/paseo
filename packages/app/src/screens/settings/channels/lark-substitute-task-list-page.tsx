@@ -9,8 +9,13 @@ import type {
   LarkSubstituteTaskStatus,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import {
+  getLarkSubstituteManualScanRangeDefaults,
+  parseLarkSubstituteManualScanRange,
+} from "./lark-substitute-manual-scan-range";
 import {
   larkSubstituteFailureAdvice,
   larkSubstituteFailureStageLabel,
@@ -184,6 +189,7 @@ export function LarkSubstituteTaskListPage({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanRange, setScanRange] = useState(() => getLarkSubstituteManualScanRangeDefaults(mode));
   const selectedTasks = useMemo(
     () => tasks.tasks.filter((task) => selectedIds.has(task.id)),
     [selectedIds, tasks.tasks],
@@ -201,6 +207,9 @@ export function LarkSubstituteTaskListPage({
       return retained.size === current.size ? current : retained;
     });
   }, [tasks.tasks]);
+  useEffect(() => {
+    setScanRange(getLarkSubstituteManualScanRangeDefaults(mode));
+  }, [mode]);
   const handleToggle = useCallback((taskId: string) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -214,6 +223,12 @@ export function LarkSubstituteTaskListPage({
       current.size === tasks.tasks.length ? new Set() : new Set(tasks.tasks.map((task) => task.id)),
     );
   }, [tasks.tasks]);
+  const handleScanLookbackChange = useCallback((lookbackMinutes: string) => {
+    setScanRange((current) => ({ ...current, lookbackMinutes }));
+  }, []);
+  const handleScanExcludeRecentChange = useCallback((excludeRecentMinutes: string) => {
+    setScanRange((current) => ({ ...current, excludeRecentMinutes }));
+  }, []);
   const handlePause = useCallback(() => {
     if (pendingIds.length === 0) return;
     setActionError(null);
@@ -225,14 +240,19 @@ export function LarkSubstituteTaskListPage({
   const handleScanNow = useCallback(() => {
     setActionError(null);
     setScanMessage(null);
+    const parsed = parseLarkSubstituteManualScanRange(scanRange);
+    if (!parsed.ok) {
+      setActionError(parsed.error);
+      return;
+    }
     void tasks
-      .scanNow()
+      .scanNow(parsed.value)
       .then((summary) => {
         setScanMessage(scanResultMessage(summary));
         return undefined;
       })
       .catch((error) => setActionError(error instanceof Error ? error.message : String(error)));
-  }, [tasks]);
+  }, [scanRange, tasks]);
   const handleDelete = useCallback(async () => {
     if (selectedTasks.length === 0) return;
     const confirmed = await confirmDialog({
@@ -254,6 +274,45 @@ export function LarkSubstituteTaskListPage({
 
   return (
     <View>
+      <View style={styles.scanPanel}>
+        <Text style={settingsStyles.rowTitle}>本次手动扫描</Text>
+        <View style={styles.scanControls}>
+          <View style={styles.scanField}>
+            <Field label="扫描范围（分钟）">
+              <FormTextInput
+                value={scanRange.lookbackMinutes}
+                onChangeText={handleScanLookbackChange}
+                keyboardType="number-pad"
+                placeholder="120"
+                testID="lark-substitute-scan-lookback"
+              />
+            </Field>
+          </View>
+          <View style={styles.scanField}>
+            <Field label="排除最近（分钟）">
+              <FormTextInput
+                value={scanRange.excludeRecentMinutes}
+                onChangeText={handleScanExcludeRecentChange}
+                keyboardType="number-pad"
+                placeholder="1"
+                testID="lark-substitute-scan-exclude-recent"
+              />
+            </Field>
+          </View>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={tasks.isScanning}
+            disabled={isBusy}
+            onPress={handleScanNow}
+          >
+            立刻执行一次扫描
+          </Button>
+        </View>
+        <Text style={settingsStyles.rowHint}>
+          仅影响本次扫描，同时应用于当前已启用的群聊和私聊扫描，不会修改定时扫描配置。
+        </Text>
+      </View>
       <View style={styles.toolbar}>
         <View style={styles.selectAll}>
           <TaskSelection
@@ -267,15 +326,6 @@ export function LarkSubstituteTaskListPage({
           </Text>
         </View>
         <View style={styles.actions}>
-          <Button
-            size="sm"
-            variant="outline"
-            loading={tasks.isScanning}
-            disabled={isBusy}
-            onPress={handleScanNow}
-          >
-            立刻执行一次扫描
-          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -328,6 +378,25 @@ export function LarkSubstituteTaskListPage({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  scanPanel: {
+    backgroundColor: theme.colors.surface2,
+    borderRadius: theme.borderRadius.md,
+    gap: theme.spacing[3],
+    marginBottom: theme.spacing[3],
+    padding: theme.spacing[4],
+  },
+  scanControls: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing[3],
+  },
+  scanField: {
+    flexBasis: 180,
+    flexGrow: 1,
+    maxWidth: 260,
+    minWidth: 160,
+  },
   toolbar: {
     alignItems: "center",
     flexDirection: "row",

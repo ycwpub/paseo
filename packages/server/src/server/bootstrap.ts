@@ -1901,6 +1901,7 @@ export async function createPaseoDaemon(
     if (result.status === "error") {
       throw new Error(result.lastMessage ?? `排查 Agent ${agentId} 执行失败`);
     }
+    return { lastMessage: result.lastMessage };
   };
   bambooTroubleshooterManager = new BambooTroubleshooterManager({
     paseoHome: config.paseoHome,

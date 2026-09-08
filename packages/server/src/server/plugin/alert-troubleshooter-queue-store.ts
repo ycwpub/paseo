@@ -148,9 +148,14 @@ export class AlertTroubleshooterQueueStore {
     return { ...item };
   }
 
-  complete(projectId: string, itemId: string, agentId: string): void {
+  complete(
+    projectId: string,
+    itemId: string,
+    agentId: string,
+    status: "succeeded" | "pending" | "not_support" = "succeeded",
+  ): void {
     this.patch(projectId, itemId, {
-      status: "succeeded",
+      status,
       agentId,
       error: null,
     });

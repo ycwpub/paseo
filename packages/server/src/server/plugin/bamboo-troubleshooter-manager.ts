@@ -11,6 +11,8 @@ import {
   ProjectAlertTroubleshooterManager,
   buildRealtimeAlertScanWindow,
   buildScheduledAlertScanWindow,
+  type AlertScanFailure,
+  type AlertScanResult,
   type AlertScanWindow,
 } from "./alert-troubleshooter-manager.js";
 import type {
@@ -18,6 +20,7 @@ import type {
   AlertTroubleshooterRecordStore,
 } from "./alert-troubleshooter-record-store.js";
 import { isBambooAlertMessage } from "./bamboo-alert-message.js";
+import { parseBambooTroubleshooterCompletion } from "./bamboo-troubleshooter-completion.js";
 
 export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
@@ -56,9 +59,22 @@ export class BambooTroubleshooterManager {
         },
         matchesAlert: (event) => isBambooAlertMessage(event.text, event.messageType),
         scanMessages: ({ config, window }) =>
-          collectScheduledBambooAlerts(options.listChatMessages, config, window),
+          collectScheduledBambooAlerts(
+            options.listChatMessages,
+            options.recordStore,
+            config,
+            window,
+          ),
         buildDefaultPrompt: ({ config, trigger, record }) =>
           buildBambooPrompt(config, trigger, record),
+        parseCompletion: (message) => {
+          const result = parseBambooTroubleshooterCompletion(message);
+          return {
+            status: result.status,
+            summary: result.summary,
+            ...(result.feishu_doc_url ? { documentUrl: result.feishu_doc_url } : {}),
+          };
+        },
       },
     });
   }
@@ -102,19 +118,42 @@ async function collectScheduledBambooAlerts(
     chatId: string,
     window: AlertScanWindow,
   ) => Promise<NormalizedLarkMessageEvent[]>,
+  recordStore: AlertTroubleshooterRecordStore,
   config: AlertTroubleshooterConfig,
   window: AlertScanWindow,
-): Promise<NormalizedLarkMessageEvent[]> {
+): Promise<AlertScanResult> {
   const alerts = new Map<string, NormalizedLarkMessageEvent>();
+  const failures: AlertScanFailure[] = [];
   for (const chat of config.chats) {
-    const messages = await listChatMessages(config.botId, chat.chatId, window);
-    for (const message of messages) {
-      if (isBambooAlertMessage(message.text, message.messageType)) {
-        alerts.set(message.messageId, message);
+    try {
+      const latestMessageTime = await recordStore.getLatestMessageTimeByChat?.({
+        config,
+        pluginId: BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
+        chatId: chat.chatId,
+      });
+      const start =
+        latestMessageTime === undefined || latestMessageTime === null
+          ? window.start
+          : new Date(Math.max(window.start.getTime(), latestMessageTime + 1));
+      if (start > window.end) continue;
+      const messages = await listChatMessages(config.botId, chat.chatId, {
+        start,
+        end: window.end,
+      });
+      for (const message of messages) {
+        if (isBambooAlertMessage(message.text, message.messageType)) {
+          alerts.set(message.messageId, message);
+        }
       }
+    } catch (error) {
+      failures.push({
+        chatId: chat.chatId,
+        ...(chat.name ? { chatName: chat.name } : {}),
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
-  return [...alerts.values()];
+  return { events: [...alerts.values()], failures };
 }
 
 function buildBambooPrompt(
@@ -124,7 +163,7 @@ function buildBambooPrompt(
 ): string {
   return [
     "执行单条 Bamboo 对账报警自动排查。",
-    "先读取 `life-settle-ai-assistant bamboo-alert-troubleshooter` 指引，再严格按 runner 状态机处理指定记录。",
+    "先运行 `life-settle-ai-assistant bamboo guide alert-troubleshooter` 读取最新指引，再严格按 runner 单条状态机处理指定记录。",
     `多维表格记录 ID：${record.recordId}`,
     `多维表格 unique_id：${record.uniqueId}`,
     record.resultId ? `Bamboo result_id：${record.resultId}` : "",
@@ -133,8 +172,9 @@ function buildBambooPrompt(
     `排查 SOP：${config.troubleshootingSopDoc}`,
     `监听群：${config.chats.map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`).join("、")}`,
     `触发消息：chat_id=${record.chatId ?? ""}, message_id=${record.messageId ?? ""}\n${record.messageText}`,
-    "只处理上述指定记录，不要批量认领其他记录。",
-    "不要手工解析卡片、手工更新 Base、直接调用飞书 OpenAPI，或绕过 runner 的状态机和审查门禁。",
+    "只处理上述指定记录，不要批量认领其他记录；结果必须包含明确终态、证据摘要和排查文档链接。",
+    "不要手工解析卡片、直接调用飞书 OpenAPI，或绕过 runner 的状态机、结果校验和审查门禁。",
+    '最终一条消息必须只包含 JSON：{"status":"succeeded|pending|not_support","summary":"...","feishu_doc_url":"https://.../wiki/..."}；succeeded 必须提供归因根目录下的 Wiki 文档链接。',
   ]
     .filter(Boolean)
     .join("\n\n");

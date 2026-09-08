@@ -160,3 +160,21 @@ export async function resolveDailyAlertTable(input: {
     title,
   };
 }
+
+export async function resolveExistingDailyAlertTable(input: {
+  api: LarkAlertTroubleshooterApi;
+  rootUrl: string;
+  pluginId: string;
+  dateKey: string;
+}): Promise<AlertTroubleshooterTableLocation | null> {
+  const root = await resolveWikiRoot(input.api, input.rootUrl);
+  const title = dailyTitle(input.pluginId, input.dateKey);
+  const node = await findDailyNode(input.api, root, title);
+  if (!node) return null;
+  return {
+    appToken: node.appToken,
+    tableId: await resolveDefaultTableId(input.api, node.appToken),
+    dateKey: input.dateKey,
+    title,
+  };
+}

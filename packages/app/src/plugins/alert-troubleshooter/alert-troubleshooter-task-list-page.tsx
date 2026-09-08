@@ -34,6 +34,8 @@ function statusLabel(status: AlertTroubleshooterTaskStatus): string {
   if (status === "running") return "执行中";
   if (status === "paused") return "已暂停";
   if (status === "succeeded") return "已完成";
+  if (status === "pending") return "等待授权或人工处理";
+  if (status === "not_support") return "暂不支持";
   return "执行失败";
 }
 

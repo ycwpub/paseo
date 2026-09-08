@@ -94,6 +94,8 @@ export const AlertTroubleshooterTaskStatusSchema = z.enum([
   "running",
   "paused",
   "succeeded",
+  "pending",
+  "not_support",
   "failed",
 ]);
 export type AlertTroubleshooterTaskStatus = z.infer<typeof AlertTroubleshooterTaskStatusSchema>;

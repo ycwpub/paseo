@@ -33,6 +33,12 @@ const mocks = vi.hoisted(() => {
       dateKey,
       title: `${dateKey}-bamboo对账归因记录`,
     })),
+    resolveExistingDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
+      appToken: `app_${dateKey}`,
+      tableId: `tbl_${dateKey}`,
+      dateKey,
+      title: `${dateKey}-bamboo对账归因记录`,
+    })),
   };
 });
 
@@ -51,9 +57,12 @@ vi.mock("@larksuiteoapi/node-sdk", () => {
 vi.mock("./alert-troubleshooter-daily-table.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./alert-troubleshooter-daily-table.js")>()),
   resolveDailyAlertTable: mocks.resolveDailyAlertTable,
+  resolveExistingDailyAlertTable: mocks.resolveExistingDailyAlertTable,
 }));
 
 import { LarkAlertTroubleshooterRecordStore } from "./alert-troubleshooter-record-store.js";
+
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
 function config(): AlertTroubleshooterConfig {
   return AlertTroubleshooterConfigSchema.parse({
@@ -106,7 +115,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
           {
             record_id: "rec_existing",
             fields: {
-              unique_id: "result_id:123456",
+              unique_id: "123456",
               result_id: "123456",
               消息内容: "已有 Bamboo 报警",
               触发方式: "message",
@@ -125,7 +134,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
 
     expect(record).toMatchObject({
       recordId: "rec_existing",
-      uniqueId: "result_id:123456",
+      uniqueId: "123456",
       resultId: "123456",
     });
     expect(mocks.create).not.toHaveBeenCalled();
@@ -152,24 +161,102 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
 
     expect(record).toMatchObject({
       recordId: "rec_created",
-      uniqueId: "result_id:987654",
+      uniqueId: "987654",
       resultId: "987654",
       trigger: "manual",
     });
     expect(mocks.create).toHaveBeenCalledWith(
       expect.objectContaining({
+        params: {
+          client_token: expect.stringMatching(UUID_V4_PATTERN),
+        },
         data: {
           fields: expect.objectContaining({
             "Project ID": "prj_1",
             "插件 ID": "bamboo-reconciliation-troubleshooter",
-            unique_id: "result_id:987654",
+            unique_id: "987654",
             result_id: "987654",
             触发方式: "manual",
-            处理状态: "未认领",
+            status: "init",
           }),
         },
       }),
     );
     expect(mocks.getValidUserAccessToken).toHaveBeenCalledWith("cli_test", ["wiki:wiki:readonly"]);
+  });
+
+  it("uses a valid UUID v4 idempotency token when writing a scanned Lark message", async () => {
+    mocks.search.mockResolvedValue({ code: 0, data: { items: [] } });
+    mocks.create.mockImplementation(async ({ data }: { data: { fields: object } }) => ({
+      code: 0,
+      data: {
+        record: {
+          record_id: "rec_message",
+          fields: data.fields,
+        },
+      },
+    }));
+
+    await createStore().upsertMessage({
+      config: config(),
+      projectId: "prj_4491f78e4a562498",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      trigger: "schedule",
+      event: {
+        eventId: "evt_1",
+        messageId: "om_x100b66c9d98f48a8c2c5152968ce2c7:om_x100b66dc4fc1c8a0b36e38fcccb3ce9",
+        chatId: "oc_alerts",
+        chatType: "group",
+        messageType: "interactive",
+        threadId: null,
+        rootMessageId: null,
+        openId: null,
+        unionId: null,
+        displayName: "Bamboo",
+        topicName: "报警",
+        text: "Bamboo 对账报警 result_id=123456",
+        createTime: Date.parse("2026-09-08T11:18:16.000Z"),
+      },
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: {
+          client_token: expect.stringMatching(UUID_V4_PATTERN),
+        },
+      }),
+    );
+  });
+
+  it("polls claimable Bamboo records from both today and yesterday without creating tables", async () => {
+    mocks.search.mockImplementation(async ({ path }: { path: { app_token: string } }) => ({
+      code: 0,
+      data: {
+        items: [
+          {
+            record_id: `rec_${path.app_token}`,
+            fields: {
+              unique_id: path.app_token,
+              result_id: path.app_token,
+              status: path.app_token.endsWith("08") ? "init" : "failed",
+              "Project ID": "prj_1",
+              "插件 ID": "bamboo-reconciliation-troubleshooter",
+              触发方式: "table",
+            },
+          },
+        ],
+      },
+    }));
+
+    const records = await createStore().listUnclaimed({
+      config: config(),
+      projectId: "prj_1",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      limit: 20,
+    });
+
+    expect(records.map((record) => record.tableDate)).toEqual(["20260908", "20260907"]);
+    expect(mocks.resolveDailyAlertTable).not.toHaveBeenCalled();
+    expect(mocks.resolveExistingDailyAlertTable).toHaveBeenCalledTimes(2);
   });
 });

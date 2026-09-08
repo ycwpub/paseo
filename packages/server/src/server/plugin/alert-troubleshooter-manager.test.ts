@@ -41,7 +41,8 @@ function createHarness(input?: {
   config?: AlertTroubleshooterConfig;
   records?: AlertTroubleshooterRecord[];
   recordStoreOverrides?: Partial<AlertTroubleshooterRecordStore>;
-  waitForAgentCompletion?: (agentId: string) => Promise<void>;
+  waitForAgentCompletion?: (agentId: string) => Promise<{ lastMessage: string | null } | void>;
+  parseCompletion?: AlertTroubleshooterDefinition["parseCompletion"];
 }) {
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
   temporaryHomes.push(paseoHome);
@@ -122,6 +123,7 @@ function createHarness(input?: {
     matchesAlert: () => true,
     scanMessages,
     buildDefaultPrompt: ({ record }) => `处理 ${record.recordId}`,
+    ...(input?.parseCompletion ? { parseCompletion: input.parseCompletion } : {}),
   };
   const createAgent = vi.fn(async () => ({
     snapshot: { id: `agent-${createAgent.mock.calls.length}` },
@@ -420,6 +422,42 @@ describe("ProjectAlertTroubleshooterManager", () => {
     );
     expect(harness.recordStore.markRunning).toHaveBeenCalledWith(
       expect.objectContaining({ recordId: "rec_result_123456" }),
+    );
+    await harness.manager.stop();
+  });
+
+  it("does not mark a record succeeded when the completion contract rejects the agent output", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_invalid_completion",
+      uniqueId: "123456",
+      resultId: "123456",
+      tableDate: "20260906",
+      messageId: "om_invalid_completion",
+      chatId: "oc_alerts",
+      chatName: "报警群",
+      messageText: "Bamboo 对账报警 result_id=123456",
+      messageTime: "2026-09-06T07:30:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      records: [record],
+      waitForAgentCompletion: async () => ({ lastMessage: "任务已完成" }),
+      parseCompletion: () => {
+        throw new Error("缺少结构化终态");
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        status: "failed",
+        error: "缺少结构化终态",
+      }),
+    );
+
+    expect(harness.recordStore.markSucceeded).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: "rec_invalid_completion" }),
     );
     await harness.manager.stop();
   });

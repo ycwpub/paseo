@@ -39,6 +39,23 @@ export interface AlertScanWindow {
   end: Date;
 }
 
+export interface AlertScanFailure {
+  chatId: string;
+  chatName?: string;
+  error: string;
+}
+
+export interface AlertScanResult {
+  events: NormalizedLarkMessageEvent[];
+  failures: AlertScanFailure[];
+}
+
+export interface AlertTroubleshooterCompletion {
+  status: "succeeded" | "pending" | "not_support";
+  summary: string;
+  documentUrl?: string;
+}
+
 export interface AlertTroubleshooterDefinition {
   pluginId: string;
   appId: string;
@@ -53,12 +70,13 @@ export interface AlertTroubleshooterDefinition {
     config: AlertTroubleshooterConfig;
     window: AlertScanWindow;
     cwd: string;
-  }): Promise<NormalizedLarkMessageEvent[]>;
+  }): Promise<NormalizedLarkMessageEvent[] | AlertScanResult>;
   buildDefaultPrompt(input: {
     config: AlertTroubleshooterConfig;
     trigger: AlertTroubleshooterTrigger;
     record: AlertTroubleshooterRecord;
   }): string;
+  parseCompletion?(message: string | null | undefined): AlertTroubleshooterCompletion;
 }
 
 export function buildScheduledAlertScanWindow(
@@ -161,7 +179,7 @@ export class ProjectAlertTroubleshooterManager {
       teamStore: Pick<TeamStore, "get">;
       recordStore: AlertTroubleshooterRecordStore;
       createAgent: BoundCreateAgentCommand;
-      waitForAgentCompletion?: (agentId: string) => Promise<void>;
+      waitForAgentCompletion?: (agentId: string) => Promise<{ lastMessage: string | null } | void>;
       cancelAgent?: (agentId: string) => Promise<void>;
       createProjectWorkspace: (
         project: PersistedProjectRecord,
@@ -402,13 +420,14 @@ export class ProjectAlertTroubleshooterManager {
       lastError: null,
       lastTrigger: "schedule",
     });
-    let events: NormalizedLarkMessageEvent[];
+    let scanResult: AlertScanResult;
     try {
-      events = await this.options.definition.scanMessages({
+      const result = await this.options.definition.scanMessages({
         config,
         window: buildScheduledAlertScanWindow(now, config),
         cwd: source.path,
       });
+      scanResult = Array.isArray(result) ? { events: result, failures: [] } : result;
     } catch (error) {
       const failure = operationError("扫描飞书群消息", error);
       this.queueStore.recordFailure(state.projectId, {
@@ -418,8 +437,22 @@ export class ProjectAlertTroubleshooterManager {
       });
       throw failure;
     }
-    for (const event of events) {
-      await this.ingestMessage(state, config, "schedule", event, events.length || 1);
+    for (const failure of scanResult.failures) {
+      this.queueStore.recordFailure(state.projectId, {
+        uniqueId: `scan:${failure.chatId}:${now.toISOString()}`,
+        trigger: "schedule",
+        error: `扫描飞书群 ${failure.chatName ?? failure.chatId} 失败：${failure.error}`,
+      });
+    }
+    for (const event of scanResult.events) {
+      try {
+        await this.ingestMessage(state, config, "schedule", event, scanResult.events.length || 1);
+      } catch (error) {
+        this.logger.warn(
+          { err: error, projectId: state.projectId, messageId: event.messageId },
+          "Alert scan message ingestion failed; continuing with remaining messages",
+        );
+      }
     }
     await this.pollUnclaimedRecords(state, config);
     await this.updateRuntime(state, {
@@ -632,17 +665,35 @@ export class ProjectAlertTroubleshooterManager {
       const agentId = created.snapshot.id;
       this.queueStore.attachAgent(state.projectId, item.id, agentId);
       await this.updateRuntime(state, { activeAgentId: agentId });
-      await this.options.waitForAgentCompletion?.(agentId);
+      const completionResult = await this.options.waitForAgentCompletion?.(agentId);
       const latestTask = this.queueStore.get(state.projectId, item.id);
       if (!latestTask || latestTask.status === "paused") return;
-      this.queueStore.complete(state.projectId, item.id, agentId);
-      await this.options.recordStore.markSucceeded({
-        config,
-        pluginId: this.options.definition.pluginId,
-        recordId: item.recordId,
-        tableDate: item.tableDate,
-        agentId,
-      });
+      const completion = this.options.definition.parseCompletion
+        ? this.options.definition.parseCompletion(completionResult?.lastMessage)
+        : { status: "succeeded" as const, summary: "Agent 执行完成" };
+      this.queueStore.complete(state.projectId, item.id, agentId, completion.status);
+      if (this.options.definition.parseCompletion && this.options.recordStore.markOutcome) {
+        await this.options.recordStore.markOutcome({
+          config,
+          pluginId: this.options.definition.pluginId,
+          recordId: item.recordId,
+          tableDate: item.tableDate,
+          agentId,
+          status: completion.status,
+          summary: completion.summary,
+          ...(completion.documentUrl ? { documentUrl: completion.documentUrl } : {}),
+        });
+      } else if (completion.status === "succeeded") {
+        await this.options.recordStore.markSucceeded({
+          config,
+          pluginId: this.options.definition.pluginId,
+          recordId: item.recordId,
+          tableDate: item.tableDate,
+          agentId,
+        });
+      } else {
+        throw new Error(`记录存储不支持写入 ${completion.status} 终态`);
+      }
       await this.updateRuntime(state, {
         status: "idle",
         lastScanFinishedAt: this.now().toISOString(),

@@ -142,6 +142,10 @@ describe("BambooTroubleshooterManager", () => {
       teamStore: { get: () => null },
       recordStore,
       createAgent: createAgent as never,
+      waitForAgentCompletion: async () => ({
+        lastMessage:
+          '{"status":"succeeded","summary":"排查完成","feishu_doc_url":"https://example.com/wiki/result"}',
+      }),
       createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
       logger: createTestLogger(),
       now: () => new Date("2026-09-04T08:00:00.000Z"),
@@ -192,6 +196,91 @@ describe("BambooTroubleshooterManager", () => {
         end: new Date("2026-09-04T07:30:00.000Z"),
       });
       expect(recordStore.upsertMessage).toHaveBeenCalledTimes(2);
+    } finally {
+      await manager.stop();
+      rmSync(paseoHome, { recursive: true, force: true });
+    }
+  });
+
+  it("narrows each group scan after the latest persisted message and isolates group failures", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-bamboo-scan-test-"));
+    let current = {
+      ...state(),
+      data: {
+        bambooTroubleshooter: {
+          ...CONFIG,
+          chats: [
+            { chatId: "oc_failed", name: "失败群" },
+            { chatId: "oc_ok", name: "正常群" },
+          ],
+        },
+      },
+    };
+    const listChatMessages = vi.fn(async (_botId: string, chatId: string) => {
+      if (chatId === "oc_failed") throw new Error("临时网络错误");
+      return [];
+    });
+    const recordStore = {
+      upsertMessage: vi.fn(),
+      listUnclaimed: vi.fn(async () => []),
+      getRecord: vi.fn(),
+      getRecordByUniqueId: vi.fn(),
+      markRunning: vi.fn(),
+      markSucceeded: vi.fn(),
+      markPaused: vi.fn(),
+      markFailed: vi.fn(),
+      getLatestMessageTimeByChat: vi.fn(async ({ chatId }: { chatId: string }) =>
+        chatId === "oc_ok" ? Date.parse("2026-09-04T07:00:00.000Z") : null,
+      ),
+    } satisfies AlertTroubleshooterRecordStore;
+    const manager = new BambooTroubleshooterManager({
+      paseoHome,
+      pluginService: {
+        listAppProjects: () => [current],
+        configureApp: (_pluginId, _appId, _projectId, _defaultAgent, data) => {
+          current = { ...current, data: { ...current.data, ...data } };
+          return current;
+        },
+      },
+      projectRegistry: {
+        get: async () => ({
+          projectId: "prj_1",
+          rootPath: "/tmp/project",
+          kind: "non_git",
+          displayName: "结算项目",
+          projectKey: null,
+          customName: null,
+          customIconRevision: null,
+          parentProjectId: null,
+          createdAt: "2026-09-04T00:00:00.000Z",
+          updatedAt: "2026-09-04T00:00:00.000Z",
+          archivedAt: null,
+        }),
+      },
+      assistantStore: { get: () => null },
+      teamStore: { get: () => null },
+      recordStore,
+      createAgent: vi.fn() as never,
+      createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
+      logger: createTestLogger(),
+      now: () => new Date("2026-09-04T08:00:00.000Z"),
+      listChatMessages,
+    });
+
+    try {
+      manager.start();
+      await vi.waitFor(() => expect(listChatMessages).toHaveBeenCalledTimes(2));
+      expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_ok", {
+        start: new Date("2026-09-04T07:00:00.001Z"),
+        end: new Date("2026-09-04T07:30:00.000Z"),
+      });
+      expect(manager.listTasks("prj_1")).toEqual([
+        expect.objectContaining({
+          trigger: "schedule",
+          status: "failed",
+          error: "扫描飞书群 失败群 失败：临时网络错误",
+        }),
+      ]);
     } finally {
       await manager.stop();
       rmSync(paseoHome, { recursive: true, force: true });

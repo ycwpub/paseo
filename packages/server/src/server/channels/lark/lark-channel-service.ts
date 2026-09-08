@@ -585,9 +585,10 @@ export class LarkChannelService {
             logger: this.logger,
             onPrivateMessageObserved: (config, event) =>
               this.observeDirectoryParticipants(config, event),
-            onRelayMessage: ({ botId, modeId, event, supplementalEvents }) =>
+            onRelayMessage: ({ botId, modeId, matchedMode, event, supplementalEvents }) =>
               this.handleIncomingEvent(botId, event, {
                 ...createLarkSubstituteScanDispatchOptions(modeId),
+                matchedSubstituteMode: matchedMode,
                 supplementalEvents,
                 trustedSubstituteRelay: true,
               }),

@@ -5,7 +5,10 @@ import type { LarkChannelStore, StoredLarkChannelConfig } from "./lark-channel-s
 import { normalizeLarkApiMessage, type NormalizedLarkMessageEvent } from "./lark-message-format.js";
 import { hasPrivateSubstituteAudienceAllowlist } from "./lark-substitute-audience-policy.js";
 import { LarkSubstitutePrivateRelayStore } from "./lark-substitute-private-relay-store.js";
-import { matchLarkSubstituteMode } from "./lark-substitute-rule-matcher.js";
+import {
+  matchLarkSubstituteMode,
+  type MatchedLarkSubstituteMode,
+} from "./lark-substitute-rule-matcher.js";
 import type { LarkUserOAuthService } from "./lark-user-oauth-service.js";
 
 interface LarkSubstitutePrivatePollerAdapter extends Pick<
@@ -27,6 +30,7 @@ interface LarkSubstitutePrivatePollerOptions {
   onRelayMessage: (input: {
     botId: string;
     modeId: string;
+    matchedMode: MatchedLarkSubstituteMode;
     event: NormalizedLarkMessageEvent;
     supplementalEvents: NormalizedLarkMessageEvent[];
   }) => Promise<void>;
@@ -276,6 +280,7 @@ export class LarkSubstitutePrivatePoller {
         await this.relayPrivateMessage(
           config,
           mode,
+          matched,
           authorizedUser.openId,
           candidate.latest,
           candidate.context,
@@ -316,6 +321,7 @@ export class LarkSubstitutePrivatePoller {
   private async relayPrivateMessage(
     config: StoredLarkChannelConfig,
     mode: LarkSubstituteMode,
+    matchedMode: MatchedLarkSubstituteMode,
     authorizedUserOpenId: string,
     source: NormalizedLarkMessageEvent,
     context: NormalizedLarkMessageEvent[],
@@ -354,6 +360,7 @@ export class LarkSubstitutePrivatePoller {
     await this.options.onRelayMessage({
       botId: mode.botId,
       modeId: mode.id,
+      matchedMode,
       event: {
         ...source,
         eventId: `private-scan:${source.messageId}`,

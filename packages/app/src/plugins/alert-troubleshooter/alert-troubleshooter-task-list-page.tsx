@@ -10,6 +10,14 @@ import type {
 import { Button } from "@/components/ui/button";
 import { BackHeader } from "@/components/headers/back-header";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import {
+  isLarkUserOAuthRequiredError,
+  LarkUserOAuthErrorAction,
+} from "@/screens/settings/channels/lark-user-oauth-error-action";
+import {
+  isLarkBotPermissionRequiredError,
+  LarkBotPermissionErrorAction,
+} from "@/screens/settings/channels/lark-bot-permission-error-action";
 
 function triggerLabel(task: AlertTroubleshooterTask): string {
   if (task.trigger === "message") return "监听到 1 条消息并写入日报表";
@@ -32,13 +40,21 @@ function statusLabel(status: AlertTroubleshooterTaskStatus): string {
 function TaskRow({
   task,
   busy,
+  serverId,
+  larkAppId,
+  larkBotId,
   onPause,
   onDelete,
+  onAuthorized,
 }: {
   task: AlertTroubleshooterTask;
   busy: boolean;
+  serverId: string;
+  larkAppId: string;
+  larkBotId: string;
   onPause: (taskId: string) => void;
   onDelete: (taskId: string) => void;
+  onAuthorized: () => void;
 }) {
   const canPause = task.status === "queued" || task.status === "running";
   return (
@@ -63,9 +79,34 @@ function TaskRow({
             </Text>
           ) : null}
           {task.error ? (
-            <Text selectable style={styles.error}>
-              {task.error}
-            </Text>
+            <View style={styles.failure}>
+              <Text selectable style={styles.error}>
+                {task.error}
+              </Text>
+              {larkAppId && isLarkUserOAuthRequiredError(task.error) ? (
+                <View style={styles.authorizationAction}>
+                  <Text style={styles.meta}>权限链接：</Text>
+                  <LarkUserOAuthErrorAction
+                    serverId={serverId}
+                    appId={larkAppId}
+                    errorMessage={task.error}
+                    onAuthorized={onAuthorized}
+                  />
+                </View>
+              ) : null}
+              {larkAppId && larkBotId && isLarkBotPermissionRequiredError(task.error) ? (
+                <View style={styles.authorizationAction}>
+                  <Text style={styles.meta}>权限链接：</Text>
+                  <LarkBotPermissionErrorAction
+                    serverId={serverId}
+                    appId={larkAppId}
+                    botId={larkBotId}
+                    errorMessage={task.error}
+                    onAuthorized={onAuthorized}
+                  />
+                </View>
+              ) : null}
+            </View>
           ) : null}
         </View>
         <View style={styles.actions}>
@@ -101,6 +142,8 @@ export function AlertTroubleshooterTaskListPage({
   serverId,
   pluginId,
   appId,
+  larkAppId,
+  larkBotId,
   projectId,
   projectName,
   onBack,
@@ -109,6 +152,8 @@ export function AlertTroubleshooterTaskListPage({
   serverId: string;
   pluginId: string;
   appId: string;
+  larkAppId: string;
+  larkBotId: string;
   projectId: string;
   projectName: string;
   onBack: () => void;
@@ -201,7 +246,34 @@ export function AlertTroubleshooterTaskListPage({
           刷新
         </Button>
       </View>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.failure}>
+          <Text style={styles.error}>{error}</Text>
+          {larkAppId && isLarkUserOAuthRequiredError(error) ? (
+            <View style={styles.authorizationAction}>
+              <Text style={styles.meta}>权限链接：</Text>
+              <LarkUserOAuthErrorAction
+                serverId={serverId}
+                appId={larkAppId}
+                errorMessage={error}
+                onAuthorized={refresh}
+              />
+            </View>
+          ) : null}
+          {larkAppId && larkBotId && isLarkBotPermissionRequiredError(error) ? (
+            <View style={styles.authorizationAction}>
+              <Text style={styles.meta}>权限链接：</Text>
+              <LarkBotPermissionErrorAction
+                serverId={serverId}
+                appId={larkAppId}
+                botId={larkBotId}
+                errorMessage={error}
+                onAuthorized={refresh}
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
       {tasks.length === 0 && !loading ? (
         <View style={styles.empty}>
           <Text style={styles.taskTitle}>暂无任务执行记录</Text>
@@ -213,8 +285,12 @@ export function AlertTroubleshooterTaskListPage({
           key={task.id}
           task={task}
           busy={busyTaskId === task.id}
+          serverId={serverId}
+          larkAppId={larkAppId}
+          larkBotId={larkBotId}
           onPause={pauseTask}
           onDelete={deleteTask}
+          onAuthorized={refresh}
         />
       ))}
     </View>
@@ -276,6 +352,15 @@ const styles = StyleSheet.create((theme) => ({
   error: {
     color: theme.colors.destructive,
     fontSize: theme.fontSize.sm,
+  },
+  failure: {
+    gap: theme.spacing[1],
+  },
+  authorizationAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing[1],
   },
   empty: {
     gap: theme.spacing[2],

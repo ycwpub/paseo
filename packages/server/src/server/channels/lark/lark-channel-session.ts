@@ -189,7 +189,11 @@ export class LarkChannelSession {
             type: "channel.lark.apply_bot.response",
             payload: {
               requestId: message.requestId,
-              application: this.applicationService.start(message.name),
+              application: this.applicationService.start({
+                name: message.name,
+                appId: message.appId,
+                botId: message.botId,
+              }),
               error: null,
             },
           });

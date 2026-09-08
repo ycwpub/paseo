@@ -7,6 +7,7 @@ import {
 const mocks = vi.hoisted(() => {
   const search = vi.fn();
   const create = vi.fn();
+  const getValidUserAccessToken = vi.fn(async () => "user-token");
   const client = {
     bitable: {
       v1: {
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => {
     client,
     search,
     create,
+    getValidUserAccessToken,
     resolveDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
       appToken: `app_${dateKey}`,
       tableId: `tbl_${dateKey}`,
@@ -42,6 +44,7 @@ vi.mock("@larksuiteoapi/node-sdk", () => {
     AppType: { SelfBuild: "self-build" },
     Domain: { Lark: "lark", Feishu: "feishu" },
     Client,
+    withUserAccessToken: (token: string) => ({ userAccessToken: token }),
   };
 });
 
@@ -70,16 +73,21 @@ function config(): AlertTroubleshooterConfig {
 }
 
 function createStore(): LarkAlertTroubleshooterRecordStore {
-  return new LarkAlertTroubleshooterRecordStore({
-    getBot: () =>
-      ({
-        config: {
-          appId: "cli_test",
-          appSecret: "secret",
-          domain: "feishu",
-        },
-      }) as never,
-  });
+  return new LarkAlertTroubleshooterRecordStore(
+    {
+      getBot: () =>
+        ({
+          config: {
+            appId: "cli_test",
+            appSecret: "secret",
+            domain: "feishu",
+          },
+        }) as never,
+    },
+    {
+      getValidUserAccessToken: mocks.getValidUserAccessToken,
+    },
+  );
 }
 
 describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
@@ -87,6 +95,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     vi.clearAllMocks();
     mocks.search.mockReset();
     mocks.create.mockReset();
+    mocks.getValidUserAccessToken.mockClear();
   });
 
   it("reuses an existing daily record for the same result_id", async () => {
@@ -161,5 +170,6 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
         },
       }),
     );
+    expect(mocks.getValidUserAccessToken).toHaveBeenCalledWith("cli_test", ["wiki:wiki:readonly"]);
   });
 });

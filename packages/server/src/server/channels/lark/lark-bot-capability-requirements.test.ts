@@ -13,8 +13,14 @@ describe("Lark bot capability requirements", () => {
       expect(new Set(items).size).toBe(items.length);
     }
     expect(requirements.tenantScopes).toContain("im:message:readonly");
-    expect(requirements.tenantScopes).toContain("bitable:app");
-    expect(requirements.tenantScopes).toContain("wiki:wiki:readonly");
+    expect(requirements.tenantScopes).toContain("wiki:node:create");
+    expect(requirements.tenantScopes).toContain("base:table:read");
+    expect(requirements.tenantScopes).toContain("base:field:read");
+    expect(requirements.tenantScopes).toContain("base:field:create");
+    expect(requirements.tenantScopes).toContain("base:record:create");
+    expect(requirements.tenantScopes).toContain("base:record:retrieve");
+    expect(requirements.tenantScopes).toContain("base:record:update");
+    expect(requirements.tenantScopes).not.toContain("bitable:app");
     expect(requirements.userScopes).toContain("offline_access");
     expect(requirements.userScopes).not.toContain("im:chat");
     expect(requirements.userScopes).toContain("im:chat:create_by_user");
@@ -22,6 +28,9 @@ describe("Lark bot capability requirements", () => {
     expect(requirements.userScopes).toContain("im:message:readonly");
     expect(requirements.userScopes).toContain("search:message");
     expect(requirements.userScopes).toContain("search:user");
+    expect(requirements.userScopes).toContain("wiki:wiki:readonly");
+    expect(requirements.userScopes).not.toContain("bitable:app");
+    expect(requirements.userScopes).not.toContain("wiki:wiki");
     expect(requirements.userScopes).not.toContain("im:message.send_as_user");
     expect(requirements.events).toEqual(["im.message.receive_v1"]);
     expect(requirements.callbacks).toEqual(["card.action.trigger"]);

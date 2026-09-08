@@ -1889,7 +1889,10 @@ export async function createPaseoDaemon(
     listHttpTargets: () => pluginService.listEnabledHttpTargets(),
   });
   pluginService.attachAppRuntime(pluginAppService);
-  const alertTroubleshooterRecordStore = new LarkAlertTroubleshooterRecordStore(larkChannelStore);
+  const alertTroubleshooterRecordStore = new LarkAlertTroubleshooterRecordStore(
+    larkChannelStore,
+    larkUserOAuthService,
+  );
   const waitForAlertTroubleshooterAgent = async (agentId: string) => {
     const result = await agentManager.waitForAgentEvent(agentId, { waitForActive: true });
     if (result.status === "error") {

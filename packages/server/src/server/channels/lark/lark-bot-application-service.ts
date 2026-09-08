@@ -14,6 +14,12 @@ interface MutableApplication extends LarkBotApplication {
   createdAtMs: number;
 }
 
+interface LarkBotApplicationInput {
+  name?: string;
+  appId?: string;
+  botId?: string;
+}
+
 export interface LarkAppRegistrar {
   register(options: {
     addons: {
@@ -21,6 +27,7 @@ export interface LarkAppRegistrar {
       events: { items: { tenant: string[] } };
       callbacks: { items: string[] };
     };
+    appId?: string;
     createOnly: boolean;
     onQRCodeReady: (info: { url: string; expireIn: number }) => void;
     onStatusChange: (info: { status: string; interval?: number }) => void;
@@ -36,6 +43,7 @@ const officialRegistrar: LarkAppRegistrar = {
     registerApp({
       source: "paseo",
       addons: options.addons,
+      ...(options.appId ? { appId: options.appId } : {}),
       createOnly: options.createOnly,
       onQRCodeReady: options.onQRCodeReady,
       onStatusChange: options.onStatusChange,
@@ -68,25 +76,31 @@ export class LarkBotApplicationService {
     this.logger = options.logger.child({ module: "lark-bot-application-service" });
   }
 
-  start(name?: string): LarkBotApplication {
+  start(input: string | LarkBotApplicationInput = {}): LarkBotApplication {
     this.cleanup();
+    const options = typeof input === "string" ? { name: input } : input;
     const id = randomUUID();
     const requirements = buildLarkBotApplicationRequirements();
+    const updating = Boolean(options.appId);
     const application: MutableApplication = {
       id,
       status: "starting",
       qrUrl: null,
       expiresAt: null,
-      message: "正在向飞书申请机器人…",
+      message: updating ? "正在生成机器人权限更新链接…" : "正在向飞书申请机器人…",
       error: null,
-      botId: null,
-      appId: null,
+      botId: options.botId ?? null,
+      appId: options.appId ?? null,
       domain: null,
       requirements,
       createdAtMs: Date.now(),
     };
     this.applications.set(id, application);
-    void this.run(application, name?.trim() || undefined);
+    void this.run(application, {
+      name: options.name?.trim() || undefined,
+      appId: options.appId?.trim() || undefined,
+      botId: options.botId?.trim() || undefined,
+    });
     return publicSnapshot(application);
   }
 
@@ -96,17 +110,23 @@ export class LarkBotApplicationService {
     return application ? publicSnapshot(application) : null;
   }
 
-  private async run(application: MutableApplication, name?: string): Promise<void> {
+  private async run(
+    application: MutableApplication,
+    input: LarkBotApplicationInput,
+  ): Promise<void> {
     try {
       const requirements = application.requirements ?? buildLarkBotApplicationRequirements();
       const result = await this.registrar.register({
         addons: buildLarkBotApplicationAddons(requirements),
-        createOnly: true,
+        ...(input.appId ? { appId: input.appId } : {}),
+        createOnly: !input.appId,
         onQRCodeReady: ({ url, expireIn }) => {
           application.status = "waiting_for_scan";
           application.qrUrl = url;
           application.expiresAt = new Date(Date.now() + expireIn * 1000).toISOString();
-          application.message = "请使用飞书 App 扫码确认权限、事件订阅和回调白名单";
+          application.message = input.appId
+            ? "请打开链接并确认新增的机器人权限"
+            : "请使用飞书 App 扫码确认权限、事件订阅和回调白名单";
         },
         onStatusChange: ({ status, interval }) => {
           if (status === "domain_switched") {
@@ -116,7 +136,7 @@ export class LarkBotApplicationService {
           }
         },
       });
-      if (!result.client_id || !result.client_secret) {
+      if (!result.client_id || (!input.appId && !result.client_secret)) {
         throw new Error("飞书没有返回 App ID 或 App Secret");
       }
 
@@ -125,40 +145,11 @@ export class LarkBotApplicationService {
       application.expiresAt = null;
       application.appId = result.client_id;
       application.domain = result.user_info?.tenant_brand === "lark" ? "lark" : "feishu";
-      application.message = "申请成功，正在启动群消息长连接监听…";
-
-      let status = await this.channelService.configure({
-        createNew: true,
-        ...(name ? { name } : {}),
-        appId: result.client_id,
-        appSecret: result.client_secret,
-        domain: application.domain,
-      });
-      let bot =
-        status.bots.find((entry) => entry.id === status.activeBotId) ?? status.bots.at(-1) ?? null;
-      if (!bot) {
-        throw new Error("机器人已申请，但 Paseo 未能保存机器人配置");
+      if (input.appId) {
+        this.completePermissionUpdate(application, input);
+        return;
       }
-      if (bot.connectionStatus === "error") {
-        throw new Error(bot.error || "机器人已申请，但群消息长连接启动失败");
-      }
-      if (!name) {
-        status = await this.channelService.testConnection(bot.id);
-        bot = status.bots.find((entry) => entry.id === bot?.id) ?? bot;
-        const actualBotName = bot.bot?.name?.trim();
-        if (actualBotName) {
-          status = await this.channelService.configure({
-            botId: bot.id,
-            name: actualBotName,
-          });
-          bot = status.bots.find((entry) => entry.id === bot?.id) ?? bot;
-        }
-      }
-
-      application.status = "completed";
-      application.botId = bot.id;
-      application.message = "机器人申请完成，权限与回调白名单已申请，群消息监听已开启";
-      application.error = null;
+      await this.completeNewApplication(application, input, result.client_secret!);
     } catch (error) {
       const message = safeError(error);
       application.status = "failed";
@@ -171,6 +162,54 @@ export class LarkBotApplicationService {
         "Lark bot application failed",
       );
     }
+  }
+
+  private completePermissionUpdate(
+    application: MutableApplication,
+    input: LarkBotApplicationInput,
+  ): void {
+    application.status = "completed";
+    application.botId = input.botId ?? null;
+    application.message = "机器人权限更新完成";
+    application.error = null;
+  }
+
+  private async completeNewApplication(
+    application: MutableApplication,
+    input: LarkBotApplicationInput,
+    appSecret: string,
+  ): Promise<void> {
+    application.message = "申请成功，正在启动群消息长连接监听…";
+    let status = await this.channelService.configure({
+      createNew: true,
+      ...(input.name ? { name: input.name } : {}),
+      appId: application.appId!,
+      appSecret,
+      domain: application.domain!,
+    });
+    let bot =
+      status.bots.find((entry) => entry.id === status.activeBotId) ?? status.bots.at(-1) ?? null;
+    if (!bot) throw new Error("机器人已申请，但 Paseo 未能保存机器人配置");
+    if (bot.connectionStatus === "error") {
+      throw new Error(bot.error || "机器人已申请，但群消息长连接启动失败");
+    }
+    if (!input.name) {
+      status = await this.channelService.testConnection(bot.id);
+      bot = status.bots.find((entry) => entry.id === bot?.id) ?? bot;
+      const actualBotName = bot.bot?.name?.trim();
+      if (actualBotName) {
+        status = await this.channelService.configure({
+          botId: bot.id,
+          name: actualBotName,
+        });
+        bot = status.bots.find((entry) => entry.id === bot?.id) ?? bot;
+      }
+    }
+
+    application.status = "completed";
+    application.botId = bot.id;
+    application.message = "机器人申请完成，权限与回调白名单已申请，群消息监听已开启";
+    application.error = null;
   }
 
   private cleanup(): void {

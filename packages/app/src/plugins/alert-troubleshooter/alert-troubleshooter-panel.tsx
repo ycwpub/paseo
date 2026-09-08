@@ -585,6 +585,11 @@ export function AlertTroubleshooterPanel({
   initialProjectId?: string;
 }) {
   const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
+  const channel = useLarkChannel(serverId, { enabled: active });
+  const botAppIds = useMemo(
+    () => new Map((channel.status?.bots ?? []).map((bot) => [bot.id, bot.appId])),
+    [channel.status?.bots],
+  );
   const closeTasks = useCallback(() => setTaskProjectId(null), []);
   const renderTaskAction = useCallback(
     (project: PluginProjectContext) => (
@@ -610,26 +615,31 @@ export function AlertTroubleshooterPanel({
       renderDetailActions={renderTaskAction}
     >
       {(project) =>
-        taskProjectId === project.projectId ? (
-          <AlertTroubleshooterTaskListPage
-            key={`${project.projectId}:tasks`}
-            active={active}
-            serverId={serverId}
-            pluginId={spec.pluginId}
-            appId={spec.appId}
-            projectId={project.projectId}
-            projectName={project.projectName}
-            onBack={closeTasks}
-          />
-        ) : (
-          <AlertTroubleshooterProject
-            key={project.projectId}
-            active={active}
-            serverId={serverId}
-            spec={spec}
-            project={project}
-          />
-        )
+        (() => {
+          const config = spec.configSchema.safeParse(project.data[spec.configDataKey]);
+          return taskProjectId === project.projectId ? (
+            <AlertTroubleshooterTaskListPage
+              key={`${project.projectId}:tasks`}
+              active={active}
+              serverId={serverId}
+              pluginId={spec.pluginId}
+              appId={spec.appId}
+              larkAppId={config.success ? (botAppIds.get(config.data.botId)?.trim() ?? "") : ""}
+              larkBotId={config.success ? config.data.botId : ""}
+              projectId={project.projectId}
+              projectName={project.projectName}
+              onBack={closeTasks}
+            />
+          ) : (
+            <AlertTroubleshooterProject
+              key={project.projectId}
+              active={active}
+              serverId={serverId}
+              spec={spec}
+              project={project}
+            />
+          );
+        })()
       }
     </PluginProjectBoundary>
   );

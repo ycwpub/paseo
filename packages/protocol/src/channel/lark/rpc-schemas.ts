@@ -82,6 +82,8 @@ export const LarkChannelApplyBotRequestSchema = z.object({
   type: z.literal("channel.lark.apply_bot.request"),
   requestId: z.string(),
   name: z.string().max(100).optional(),
+  appId: z.string().min(1).optional(),
+  botId: z.string().min(1).optional(),
 });
 
 export const LarkChannelApplyBotResponseSchema = z.object({

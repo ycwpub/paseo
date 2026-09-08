@@ -1179,6 +1179,8 @@ export interface LarkChannelRequestOptions {
 }
 export interface ApplyLarkBotOptions {
   name?: string;
+  appId?: string;
+  botId?: string;
   requestId?: string;
 }
 export interface GetLarkBotApplicationOptions {

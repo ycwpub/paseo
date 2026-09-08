@@ -1,4 +1,4 @@
-import * as lark from "@larksuiteoapi/node-sdk";
+import type { LarkAlertTroubleshooterApi } from "./lark-alert-troubleshooter-api.js";
 
 export interface AlertTroubleshooterTableLocation {
   appToken: string;
@@ -10,16 +10,6 @@ export interface AlertTroubleshooterTableLocation {
 interface WikiRoot {
   spaceId: string;
   nodeToken: string;
-}
-
-function assertSuccess(result: { code?: number; msg?: string }): void {
-  if (typeof result.code === "number" && result.code !== 0) {
-    throw new Error(
-      result.msg
-        ? `飞书归因记录接口失败：${result.msg}（${result.code}）`
-        : `飞书归因记录接口返回错误码 ${result.code}`,
-    );
-  }
 }
 
 function wikiToken(value: string): string {
@@ -50,12 +40,19 @@ export function alertTableDateKey(date: Date): string {
   return `${value.year}${value.month}${value.day}`;
 }
 
-async function resolveWikiRoot(client: lark.Client, rootUrl: string): Promise<WikiRoot> {
+async function resolveWikiRoot(
+  api: LarkAlertTroubleshooterApi,
+  rootUrl: string,
+): Promise<WikiRoot> {
   const token = wikiToken(rootUrl);
-  const result = await client.wiki.v2.space.getNode({
-    params: { token, obj_type: "wiki" },
-  });
-  assertSuccess(result);
+  const result = await api.request(
+    () =>
+      api.client.wiki.v2.space.getNode(
+        { params: { token, obj_type: "wiki" } },
+        api.userRequestOptions,
+      ),
+    { identity: "user", requiredScopes: ["wiki:wiki:readonly"] },
+  );
   const node = result.data?.node;
   if (!node?.space_id || !node.node_token) {
     throw new Error("无法解析归因记录根目录，请确认机器人可访问该 Wiki 目录");
@@ -64,22 +61,28 @@ async function resolveWikiRoot(client: lark.Client, rootUrl: string): Promise<Wi
 }
 
 async function findDailyNode(
-  client: lark.Client,
+  api: LarkAlertTroubleshooterApi,
   root: WikiRoot,
   title: string,
 ): Promise<{ appToken: string } | null> {
   let pageToken: string | undefined;
   const matches: Array<{ objToken: string; objType: string }> = [];
   do {
-    const result = await client.wiki.v2.spaceNode.list({
-      path: { space_id: root.spaceId },
-      params: {
-        parent_node_token: root.nodeToken,
-        page_size: 50,
-        ...(pageToken ? { page_token: pageToken } : {}),
-      },
-    });
-    assertSuccess(result);
+    const result = await api.request(
+      () =>
+        api.client.wiki.v2.spaceNode.list(
+          {
+            path: { space_id: root.spaceId },
+            params: {
+              parent_node_token: root.nodeToken,
+              page_size: 50,
+              ...(pageToken ? { page_token: pageToken } : {}),
+            },
+          },
+          api.userRequestOptions,
+        ),
+      { identity: "user", requiredScopes: ["wiki:wiki:readonly"] },
+    );
     for (const node of result.data?.items ?? []) {
       if (node.title === title && node.obj_token) {
         matches.push({ objToken: node.obj_token, objType: node.obj_type });
@@ -100,50 +103,59 @@ async function findDailyNode(
 }
 
 async function createDailyNode(
-  client: lark.Client,
+  api: LarkAlertTroubleshooterApi,
   root: WikiRoot,
   title: string,
 ): Promise<{ appToken: string }> {
-  const result = await client.wiki.v2.spaceNode.create({
-    path: { space_id: root.spaceId },
-    data: {
-      obj_type: "bitable",
-      node_type: "origin",
-      parent_node_token: root.nodeToken,
-      title,
-    },
-  });
-  assertSuccess(result);
+  const result = await api.request(
+    () =>
+      api.client.wiki.v2.spaceNode.create({
+        path: { space_id: root.spaceId },
+        data: {
+          obj_type: "bitable",
+          node_type: "origin",
+          parent_node_token: root.nodeToken,
+          title,
+        },
+      }),
+    { identity: "bot", requiredScopes: ["wiki:node:create"] },
+  );
   const appToken = result.data?.node?.obj_token;
   if (!appToken) throw new Error(`创建日报多维表格后未返回 app_token：${title}`);
   return { appToken };
 }
 
-async function resolveDefaultTableId(client: lark.Client, appToken: string): Promise<string> {
-  const result = await client.bitable.v1.appTable.list({
-    path: { app_token: appToken },
-    params: { page_size: 1 },
-  });
-  assertSuccess(result);
+async function resolveDefaultTableId(
+  api: LarkAlertTroubleshooterApi,
+  appToken: string,
+): Promise<string> {
+  const result = await api.request(
+    () =>
+      api.client.bitable.v1.appTable.list({
+        path: { app_token: appToken },
+        params: { page_size: 1 },
+      }),
+    { identity: "bot", requiredScopes: ["base:table:read"] },
+  );
   const tableId = result.data?.items?.[0]?.table_id;
   if (!tableId) throw new Error("日报多维表格中未找到默认数据表");
   return tableId;
 }
 
 export async function resolveDailyAlertTable(input: {
-  client: lark.Client;
+  api: LarkAlertTroubleshooterApi;
   rootUrl: string;
   pluginId: string;
   dateKey: string;
 }): Promise<AlertTroubleshooterTableLocation> {
-  const root = await resolveWikiRoot(input.client, input.rootUrl);
+  const root = await resolveWikiRoot(input.api, input.rootUrl);
   const title = dailyTitle(input.pluginId, input.dateKey);
   const node =
-    (await findDailyNode(input.client, root, title)) ??
-    (await createDailyNode(input.client, root, title));
+    (await findDailyNode(input.api, root, title)) ??
+    (await createDailyNode(input.api, root, title));
   return {
     appToken: node.appToken,
-    tableId: await resolveDefaultTableId(input.client, node.appToken),
+    tableId: await resolveDefaultTableId(input.api, node.appToken),
     dateKey: input.dateKey,
     title,
   };

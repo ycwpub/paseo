@@ -134,6 +134,42 @@ describe("LarkBotApplicationService", () => {
     });
   });
 
+  test("updates an existing bot application without replacing its stored credentials", async () => {
+    const configure = vi.fn();
+    const registrar: LarkAppRegistrar = {
+      register: vi.fn(async ({ onQRCodeReady }) => {
+        onQRCodeReady({ url: "https://accounts.feishu.cn/device/update", expireIn: 600 });
+        return {
+          client_id: "cli_existing",
+          user_info: { tenant_brand: "feishu" },
+        };
+      }),
+    };
+    const service = new LarkBotApplicationService({
+      channelService: { configure } as unknown as LarkChannelService,
+      registrar,
+      logger: pino({ enabled: false }),
+    });
+
+    const started = service.start({ appId: "cli_existing", botId: "bot-existing" });
+    const completed = await waitForTerminalState(service, started.id);
+
+    expect(completed).toMatchObject({
+      status: "completed",
+      appId: "cli_existing",
+      botId: "bot-existing",
+      message: "机器人权限更新完成",
+    });
+    expect(registrar.register).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: "cli_existing",
+        addons: buildLarkBotApplicationAddons(),
+        createOnly: false,
+      }),
+    );
+    expect(configure).not.toHaveBeenCalled();
+  });
+
   test("reports a sanitized registration failure", async () => {
     const registrar: LarkAppRegistrar = {
       register: vi.fn(async () => {

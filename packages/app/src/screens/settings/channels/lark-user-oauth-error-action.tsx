@@ -4,26 +4,10 @@ import { StyleSheet } from "react-native-unistyles";
 import { DEFAULT_LARK_USER_OAUTH_REDIRECT_URI } from "@getpaseo/protocol/messages";
 import { settingsStyles } from "@/styles/settings";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { isLarkUserOAuthRequiredError } from "./lark-permission-error";
 import { useLarkUserOAuth } from "./use-lark-user-oauth";
 
-const OAUTH_REQUIRED_ERROR_MARKERS = [
-  "飞书用户身份未授权或已失效",
-  "请先完成 OAuth 授权",
-  "请先为 App ID",
-  "用户身份权限",
-  "缺少",
-  "未授权",
-  "已过期",
-  "重新授权",
-  "99991679",
-];
-
-export function isLarkUserOAuthRequiredError(message: string): boolean {
-  return (
-    (message.includes("OAuth") || message.includes("用户身份权限")) &&
-    OAUTH_REQUIRED_ERROR_MARKERS.some((marker) => message.includes(marker))
-  );
-}
+export { isLarkUserOAuthRequiredError } from "./lark-permission-error";
 
 export function LarkUserOAuthErrorAction({
   serverId,

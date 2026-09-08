@@ -1,13 +1,32 @@
 import type { LarkBotApplicationRequirements } from "@getpaseo/protocol/channel/lark/rpc-schemas";
 
+export const PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES = [
+  // Create the daily Base node below the configured Wiki root.
+  "wiki:node:create",
+  // Inspect the default table created with the daily Base.
+  "base:table:read",
+  // Inspect and create the fields used by the troubleshooting queue.
+  "base:field:read",
+  "base:field:create",
+  // Persist, claim, update, and resume troubleshooting records.
+  "base:record:create",
+  "base:record:retrieve",
+  "base:record:update",
+] as const;
+
+export const PASEO_LARK_ALERT_TROUBLESHOOTER_USER_SCOPES = [
+  // Resolve and enumerate the configured Wiki root with the authorized user's
+  // resource visibility. Daily node creation and Base writes use bot identity.
+  "wiki:wiki:readonly",
+] as const;
+
 /**
  * Keep the one-click application request aligned with the OpenAPI calls made by
  * the Lark channel. The registration page silently ignores unknown names, so
  * every item here must map to a capability used by Paseo.
  */
 export const PASEO_LARK_TENANT_SCOPES = [
-  // Persist alert messages and processing state in configured Base tables.
-  "bitable:app",
+  ...PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES,
   // Resolve users by email/open_id and display their complete identity.
   "contact:user.base:readonly",
   "contact:user.email:readonly",
@@ -24,11 +43,10 @@ export const PASEO_LARK_TENANT_SCOPES = [
   // Load message/thread history and reply as the application bot.
   "im:message:readonly",
   "im:message:send_as_bot",
-  // Resolve Wiki links that point to Base applications.
-  "wiki:wiki:readonly",
 ] as const;
 
 export const PASEO_LARK_USER_SCOPES = [
+  ...PASEO_LARK_ALERT_TROUBLESHOOTER_USER_SCOPES,
   // Keep user authorization renewable without asking for an environment token.
   "offline_access",
   // Create the three-party relay group used by substitute-mode private-message handling.

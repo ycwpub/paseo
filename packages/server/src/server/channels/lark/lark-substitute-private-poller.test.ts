@@ -163,6 +163,10 @@ describe("LarkSubstitutePrivatePoller", () => {
     expect(onRelayMessage).toHaveBeenLastCalledWith(
       expect.objectContaining({
         modeId: "mode-1",
+        matchedMode: expect.objectContaining({
+          mode: expect.objectContaining({ id: "mode-1" }),
+          substituteUser: expect.objectContaining({ openId: "ou_owner" }),
+        }),
         event: expect.objectContaining({
           chatId: "oc_relay",
           messageId: "om_forward_2",

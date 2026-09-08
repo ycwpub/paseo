@@ -761,7 +761,12 @@ export class DaemonResourceRpcClient {
   applyLarkBot(options: ApplyLarkBotOptions = {}) {
     return this.request({
       requestId: options.requestId,
-      message: { type: "channel.lark.apply_bot.request", name: options.name },
+      message: {
+        type: "channel.lark.apply_bot.request",
+        name: options.name,
+        appId: options.appId,
+        botId: options.botId,
+      },
       responseType: "channel.lark.apply_bot.response",
     });
   }

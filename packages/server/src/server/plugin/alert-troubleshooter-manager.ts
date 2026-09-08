@@ -17,6 +17,14 @@ import { resolveTeamLeaderCreateContext } from "../team/team-agent-context.js";
 import type { TeamStore } from "../team/team-store.js";
 import type { PersistedProjectRecord, ProjectRegistry } from "../workspace-registry.js";
 import type { PluginService } from "./plugin-service.js";
+import type {
+  AlertTroubleshooterAgentStageInput,
+  AlertTroubleshooterAgentStageResult,
+  AlertTroubleshooterCompletion,
+  AlertTroubleshooterCompletionContext,
+  AlertTroubleshooterRecordExecutionInput,
+  AlertTroubleshooterRecordExecutionResult,
+} from "./alert-troubleshooter-agent-execution.js";
 import {
   AlertTroubleshooterQueueStore,
   type AlertTroubleshooterQueueItem,
@@ -51,19 +59,10 @@ export interface AlertScanResult {
   failures: AlertScanFailure[];
 }
 
-export interface AlertTroubleshooterCompletion {
-  status: "succeeded" | "pending" | "not_support";
-  summary: string;
-  documentUrl?: string;
-}
-
-export interface AlertTroubleshooterCompletionContext {
-  message: string | null | undefined;
-  config: AlertTroubleshooterConfig;
-  record: AlertTroubleshooterRecord;
-  workspaceCwd: string;
-  wikiTarget?: { spaceId: string; parentNodeToken: string };
-}
+export type {
+  AlertTroubleshooterCompletion,
+  AlertTroubleshooterCompletionContext,
+} from "./alert-troubleshooter-agent-execution.js";
 
 interface AlertTroubleshooterOutcomePersistenceInput {
   config: AlertTroubleshooterConfig;
@@ -106,6 +105,9 @@ export interface AlertTroubleshooterDefinition {
   resolveCompletion?(
     input: AlertTroubleshooterCompletionContext,
   ): Promise<AlertTroubleshooterCompletion>;
+  executeRecord?(
+    input: AlertTroubleshooterRecordExecutionInput,
+  ): Promise<AlertTroubleshooterRecordExecutionResult>;
 }
 
 export function buildScheduledAlertScanWindow(
@@ -718,48 +720,52 @@ export class ProjectAlertTroubleshooterManager {
         project,
         `${this.options.definition.agentTitle} · ${this.now().toLocaleString("zh-CN")}`,
       );
-      const wikiTarget = await this.options.recordStore.resolveWikiTarget?.({
+      const executionContext = await this.options.recordStore.resolveExecutionContext?.({
         config,
         pluginId: this.options.definition.pluginId,
         tableDate: item.tableDate,
       });
+      const wikiTarget =
+        executionContext?.wikiTarget ??
+        (await this.options.recordStore.resolveWikiTarget?.({
+          config,
+          pluginId: this.options.definition.pluginId,
+          tableDate: item.tableDate,
+        }));
       const prompt = this.buildPrompt(config, state, project, record, item.trigger, wikiTarget);
-      const identity = this.resolveIdentity(config, state, prompt);
-      const created = await this.options.createAgent({
-        kind: "mcp",
-        provider: formatProviderModel(state.defaultAgent.provider, state.defaultAgent.model),
-        cwd: workspace.cwd,
-        workspaceId: workspace.workspaceId,
-        title: `${this.options.definition.agentTitle} · ${project.customName ?? project.displayName}`,
-        initialPrompt: identity.prompt,
-        outputSchema: this.options.definition.outputSchema,
-        labels: {
-          ...identity.labels,
-          alertRecordId: item.recordId,
-          alertQueueItemId: item.id,
-        },
-        unattended: true,
-        promptFailure: "return-error",
-        background: true,
-        notifyOnFinish: true,
-        internal: true,
+      const launchAgent = (stage: AlertTroubleshooterAgentStageInput) =>
+        this.launchAgentStage({
+          config,
+          state,
+          item,
+          workspace,
+          stage,
+        });
+      const execution = await this.executeRecord({
+        config,
+        state,
+        project,
+        record,
+        item,
+        workspace,
+        wikiTarget,
+        closeContext: executionContext?.closeContext,
+        prompt,
+        launchAgent,
       });
-      if (created.initialPromptError) throw created.initialPromptError;
-      const agentId = created.snapshot.id;
-      this.queueStore.attachAgent(state.projectId, item.id, agentId);
-      await this.updateRuntime(state, { activeAgentId: agentId });
-      const completionResult = await this.options.waitForAgentCompletion?.(agentId);
       const latestTask = this.queueStore.get(state.projectId, item.id);
       if (!latestTask || latestTask.status === "paused") return;
-      const completion = await this.resolveCompletion({
-        message: completionResult?.lastMessage,
-        config,
-        record,
-        workspaceCwd: workspace.cwd,
-        wikiTarget,
-      });
-      await this.persistCompletion({ config, item, agentId, completion });
-      this.queueStore.complete(state.projectId, item.id, agentId, completion.status);
+      const { agentId, completion } = execution;
+      if (!execution.persistenceHandled) {
+        await this.persistCompletion({ config, item, agentId, completion });
+      }
+      this.queueStore.complete(
+        state.projectId,
+        item.id,
+        agentId,
+        completion.status,
+        execution.completionWarning,
+      );
       await this.updateRuntime(state, {
         status: "idle",
         lastScanFinishedAt: this.now().toISOString(),
@@ -805,6 +811,88 @@ export class ProjectAlertTroubleshooterManager {
     }
   }
 
+  private executeRecord(
+    input: AlertTroubleshooterRecordExecutionInput,
+  ): Promise<AlertTroubleshooterRecordExecutionResult> {
+    const executeRecord = this.options.definition.executeRecord;
+    return executeRecord ? executeRecord(input) : this.executeSingleAgentRecord(input);
+  }
+
+  private async executeSingleAgentRecord(
+    input: Omit<AlertTroubleshooterRecordExecutionInput, "launchAgent"> & {
+      launchAgent(
+        stage: AlertTroubleshooterAgentStageInput,
+      ): Promise<AlertTroubleshooterAgentStageResult>;
+    },
+  ): Promise<AlertTroubleshooterRecordExecutionResult> {
+    const result = await input.launchAgent({
+      stage: "troubleshooting",
+      title: `${this.options.definition.agentTitle} · ${
+        input.project.customName ?? input.project.displayName
+      }`,
+      prompt: input.prompt,
+      outputSchema: this.options.definition.outputSchema,
+      notifyOnFinish: true,
+    });
+    return {
+      agentId: result.agentId,
+      completion: await this.resolveCompletion({
+        message: result.lastMessage,
+        config: input.config,
+        record: input.record,
+        workspaceCwd: input.workspace.cwd,
+        wikiTarget: input.wikiTarget,
+      }),
+    };
+  }
+
+  private async launchAgentStage(input: {
+    config: AlertTroubleshooterConfig;
+    state: PluginAppState;
+    item: AlertTroubleshooterQueueItem;
+    workspace: { workspaceId: string; cwd: string };
+    stage: AlertTroubleshooterAgentStageInput;
+  }): Promise<AlertTroubleshooterAgentStageResult> {
+    if (!input.state.projectId || !input.state.defaultAgent) {
+      throw new Error("自动排查项目未配置 Provider 和模型");
+    }
+    const identity = this.resolveIdentity(input.config, input.state, input.stage.prompt);
+    const created = await this.options.createAgent({
+      kind: "mcp",
+      provider: formatProviderModel(
+        input.state.defaultAgent.provider,
+        input.state.defaultAgent.model,
+      ),
+      cwd: input.workspace.cwd,
+      workspaceId: input.workspace.workspaceId,
+      title: input.stage.title,
+      initialPrompt: identity.prompt,
+      outputSchema: input.stage.outputSchema,
+      labels: {
+        ...identity.labels,
+        ...input.stage.labels,
+        alertRecordId: input.item.recordId,
+        alertQueueItemId: input.item.id,
+        alertAgentStage: input.stage.stage,
+      },
+      unattended: true,
+      promptFailure: "return-error",
+      background: true,
+      notifyOnFinish: input.stage.notifyOnFinish ?? false,
+      internal: true,
+    });
+    if (created.initialPromptError) throw created.initialPromptError;
+    const agentId = created.snapshot.id;
+    this.queueStore.attachAgent(input.state.projectId, input.item.id, agentId);
+    await this.updateRuntime(input.state, { activeAgentId: agentId });
+    const completionResult = await this.options.waitForAgentCompletion?.(agentId);
+    const latestTask = this.queueStore.get(input.state.projectId, input.item.id);
+    if (!latestTask || latestTask.status === "paused") {
+      throw new Error(`自动排查任务已停止：${input.item.id}`);
+    }
+    return { agentId, lastMessage: completionResult?.lastMessage ?? null };
+  }
+
   private async resolveCompletion(
     input: AlertTroubleshooterCompletionContext,
   ): Promise<AlertTroubleshooterCompletion> {
@@ -821,7 +909,9 @@ export class ProjectAlertTroubleshooterManager {
     input: AlertTroubleshooterOutcomePersistenceInput,
   ): Promise<void> {
     const hasCompletionHandler = Boolean(
-      this.options.definition.parseCompletion || this.options.definition.resolveCompletion,
+      this.options.definition.parseCompletion ||
+      this.options.definition.resolveCompletion ||
+      this.options.definition.executeRecord,
     );
     if (hasCompletionHandler && this.options.recordStore.markOutcome) {
       await this.options.recordStore.markOutcome({

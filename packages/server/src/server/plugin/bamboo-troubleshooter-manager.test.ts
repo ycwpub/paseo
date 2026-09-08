@@ -145,6 +145,22 @@ describe("BambooTroubleshooterManager", () => {
       assistantStore: { get: () => null },
       teamStore: { get: () => null },
       recordStore,
+      agentOrchestrator: async (input) => {
+        const agent = await input.launchAgent({
+          stage: "investigation",
+          title: "Bamboo 对账自动排查",
+          prompt: input.prompt,
+          notifyOnFinish: true,
+        });
+        return {
+          agentId: agent.agentId,
+          completion: {
+            status: "succeeded",
+            summary: "排查完成",
+            documentUrl: "https://example.com/wiki/result",
+          },
+        };
+      },
       createAgent: createAgent as never,
       waitForAgentCompletion: async () => ({
         lastMessage:

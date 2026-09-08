@@ -5,6 +5,14 @@ export const PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES = [
   "wiki:node:create",
   // Inspect the default table created with the daily Base.
   "base:table:read",
+  // Replace generated Base surfaces with the canonical attribution table.
+  "base:table:create",
+  "base:table:delete",
+  "base:table:update",
+  "base:dashboard:read",
+  "base:dashboard:delete",
+  "base:workflow:read",
+  "base:workflow:update",
   // Inspect and create the fields used by the troubleshooting queue.
   "base:field:read",
   "base:field:create",

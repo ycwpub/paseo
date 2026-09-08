@@ -1,4 +1,5 @@
 import type { LarkAlertTroubleshooterApi } from "./lark-alert-troubleshooter-api.js";
+import { ensureBambooAttributionTable } from "./bamboo-attribution-table.js";
 
 export interface AlertTroubleshooterTableLocation {
   appToken: string;
@@ -155,6 +156,16 @@ async function resolveDefaultTableId(
   return tableId;
 }
 
+function resolveTableId(
+  api: LarkAlertTroubleshooterApi,
+  appToken: string,
+  pluginId: string,
+): Promise<string> {
+  return pluginId.includes("bamboo")
+    ? ensureBambooAttributionTable(api, appToken)
+    : resolveDefaultTableId(api, appToken);
+}
+
 export async function resolveDailyAlertTable(input: {
   api: LarkAlertTroubleshooterApi;
   rootUrl: string;
@@ -168,7 +179,7 @@ export async function resolveDailyAlertTable(input: {
     (await createDailyNode(input.api, root, title));
   return {
     appToken: node.appToken,
-    tableId: await resolveDefaultTableId(input.api, node.appToken),
+    tableId: await resolveTableId(input.api, node.appToken, input.pluginId),
     spaceId: root.spaceId,
     nodeToken: node.nodeToken,
     dateKey: input.dateKey,
@@ -188,7 +199,7 @@ export async function resolveExistingDailyAlertTable(input: {
   if (!node) return null;
   return {
     appToken: node.appToken,
-    tableId: await resolveDefaultTableId(input.api, node.appToken),
+    tableId: await resolveTableId(input.api, node.appToken, input.pluginId),
     spaceId: root.spaceId,
     nodeToken: node.nodeToken,
     dateKey: input.dateKey,

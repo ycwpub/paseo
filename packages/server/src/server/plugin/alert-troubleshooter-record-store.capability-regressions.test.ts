@@ -5,18 +5,46 @@ import {
 } from "@getpaseo/protocol/messages";
 
 const mocks = vi.hoisted(() => {
+  const bambooFields = [
+    "unique_id",
+    "result_id",
+    "alarm_record_detail_id",
+    "task_id",
+    "task_name",
+    "task_time",
+    "bamboo_url",
+    "created_at",
+    "task_sql",
+    "task_result_num",
+    "task_result_object",
+    "extra",
+    "status",
+    "ai_session_id",
+    "ai_summary",
+    "ai_result",
+    "ai_finished_at",
+    "last_error",
+  ];
+  const bambooFieldItems = () =>
+    bambooFields.map((fieldName, index) => ({
+      field_name: fieldName,
+      is_primary: index === 0,
+    }));
   const search = vi.fn();
   const create = vi.fn();
   const get = vi.fn();
+  const listFields = vi.fn(async () => ({
+    code: 0,
+    data: {
+      items: bambooFieldItems(),
+    },
+  }));
   const getValidUserAccessToken = vi.fn(async () => "user-token");
   const client = {
     bitable: {
       v1: {
         appTableField: {
-          list: vi.fn(async () => ({
-            code: 0,
-            data: { items: [{ field_name: "标题", is_primary: true }] },
-          })),
+          list: listFields,
           create: vi.fn(async () => ({ code: 0 })),
         },
         appTableRecord: { search, create, get },
@@ -24,10 +52,13 @@ const mocks = vi.hoisted(() => {
     },
   };
   return {
+    bambooFields,
+    bambooFieldItems,
     client,
     search,
     create,
     get,
+    listFields,
     getValidUserAccessToken,
     resolveDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
       appToken: `app_${dateKey}`,
@@ -67,6 +98,7 @@ vi.mock("./alert-troubleshooter-daily-table.js", async (importOriginal) => ({
 }));
 
 import { LarkAlertTroubleshooterRecordStore } from "./alert-troubleshooter-record-store.js";
+import { BAMBOO_ATTRIBUTION_FIELD_NAMES } from "./bamboo-attribution-table.js";
 
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -113,6 +145,13 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     mocks.search.mockReset();
     mocks.create.mockReset();
     mocks.get.mockReset();
+    mocks.listFields.mockReset();
+    mocks.listFields.mockImplementation(async () => ({
+      code: 0,
+      data: {
+        items: mocks.bambooFieldItems(),
+      },
+    }));
     mocks.getValidUserAccessToken.mockClear();
   });
 
@@ -131,6 +170,33 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
       spaceId: "space_1",
       parentNodeToken: "node_20260908",
     });
+  });
+
+  it("invalidates a cached table location and resolves it again when Lark deletes the table", async () => {
+    const store = createStore();
+    const input = {
+      config: config(),
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      tableDate: "20260908",
+    };
+
+    await expect(store.resolveExecutionContext(input)).resolves.toMatchObject({
+      closeContext: { tableId: "tbl_20260908" },
+    });
+    mocks.listFields
+      .mockRejectedValueOnce(new Error("Lark API error: WrongTableId (code: 1254004)"))
+      .mockImplementationOnce(async () => ({
+        code: 0,
+        data: {
+          items: mocks.bambooFieldItems(),
+        },
+      }));
+
+    await expect(store.resolveExecutionContext(input)).resolves.toMatchObject({
+      closeContext: { tableId: "tbl_20260908" },
+    });
+
+    expect(mocks.resolveDailyAlertTable).toHaveBeenCalledTimes(2);
   });
 
   it("reuses an existing daily record for the same result_id", async () => {
@@ -198,16 +264,22 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
         },
         data: {
           fields: expect.objectContaining({
-            "Project ID": "prj_1",
-            "插件 ID": "bamboo-reconciliation-troubleshooter",
             unique_id: "987654",
             result_id: "987654",
-            触发方式: "manual",
             status: "init",
+            task_result_num: 0,
           }),
         },
       }),
     );
+    const createdFields = mocks.create.mock.calls[0]?.[0]?.data?.fields ?? {};
+    expect(
+      Object.keys(createdFields).every((field) =>
+        (BAMBOO_ATTRIBUTION_FIELD_NAMES as readonly string[]).includes(field),
+      ),
+    ).toBe(true);
+    expect(createdFields).not.toHaveProperty("Project ID");
+    expect(createdFields).not.toHaveProperty("消息内容");
     expect(mocks.getValidUserAccessToken).toHaveBeenCalledWith("cli_test", ["wiki:wiki:readonly"]);
   });
 

@@ -186,3 +186,20 @@ The app runs on iOS, Android, web (browser), and web (Electron desktop). Code is
 ## Debugging
 
 Find the complete daemon logs and traces in the $PASEO_HOME/daemon.log
+
+<!-- life-settle-ai-assistant:start -->
+
+## 结算 AI Assistant
+
+本项目已安装来自 `@byted/life-settle-ai-assistant` 的统一入口 skill。
+当请求涉及结算排障、Bamboo 报警、PSM 到代码仓库定位，或本包记录的 RPC 服务时，先检查并遵循该入口 skill：
+
+- TRAE: `.trae/skills/life-settle-ai-assistant/SKILL.md`
+- Claude Code: `.claude/skills/life-settle-ai-assistant/SKILL.md`
+- 通用 / Codex-style agents: `skills/life-settle-ai-assistant/SKILL.md`
+
+该 skill 会指导 agent 通过 `life-settle-ai-assistant` CLI 查询具体业务 skill 指引。
+
+命令名、PSM、RPC 方法名、JSON key、URL 和产品标识保持原始拼写。
+
+<!-- life-settle-ai-assistant:end -->

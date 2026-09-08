@@ -160,12 +160,13 @@ export class AlertTroubleshooterQueueStore {
     itemId: string,
     agentId: string,
     status: "succeeded" | "pending" | "not_support" = "succeeded",
+    warning?: string,
   ): void {
     this.patch(projectId, itemId, {
       status,
       agentId,
       nextRetryAt: null,
-      error: null,
+      error: warning?.trim() || null,
     });
   }
 

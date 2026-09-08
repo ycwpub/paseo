@@ -115,6 +115,7 @@ import {
   isLarkMergedForwardMessage,
   resolveLarkMergedForwardMessage,
 } from "./lark-merged-forward-message.js";
+import { readLarkChatHistoryWithIdentityFallback } from "./lark-chat-history-reader.js";
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
 const RECONNECT_EVENT_GRACE_MS = 5 * 60 * 1000;
@@ -725,10 +726,15 @@ export class LarkChannelService {
   ): Promise<NormalizedLarkMessageEvent[]> {
     const bot = this.store.getBot(botId);
     if (!bot) throw new Error(`飞书机器人 ${botId} 不存在`);
-    if (!this.adapter.listChatMessages) throw new Error("当前飞书连接不支持读取群历史消息");
-    const messages = await this.adapter.listChatMessages(bot.config, chatId, {
-      startTime: Math.floor(window.start.getTime() / 1000),
-      pageSize: 0,
+    const messages = await readLarkChatHistoryWithIdentityFallback({
+      adapter: this.adapter,
+      config: bot.config,
+      chatId,
+      options: {
+        startTime: Math.floor(window.start.getTime() / 1000),
+        pageSize: 0,
+      },
+      userOAuthService: this.userOAuthService,
     });
     const expandedMessages: NormalizedLarkMessageEvent[] = [];
     for (const message of messages) {

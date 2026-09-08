@@ -179,6 +179,55 @@ describe("publishBambooTroubleshooterDocument", () => {
     });
   });
 
+  it("publishes the explicitly reviewed Markdown instead of searching legacy locations", async () => {
+    const cwd = await workspace();
+    const markdownFile = path.join(cwd, ".tmp", "reviewed-run", "report.md");
+    await mkdir(path.dirname(markdownFile), { recursive: true });
+    await writeFile(markdownFile, "# 已审核排查结果\n\n证据完整。", "utf8");
+    const run = vi.fn<BambooTroubleshooterPublisherDependencies["run"]>(
+      async (_executable, args) => {
+        const outputFile = args[args.indexOf("--output-file") + 1];
+        if (!outputFile) throw new Error("missing output file");
+        await writeFile(
+          outputFile,
+          JSON.stringify({
+            success: true,
+            feishu_doc_url: "https://bytedance.larkoffice.com/wiki/wiki_reviewed",
+            doc_archive_status: "succeeded",
+            parent_wiki_token: "daily_node",
+            target_space_id: "space_1",
+          }),
+          "utf8",
+        );
+        return { stdout: "{}", stderr: "" };
+      },
+    );
+
+    const result = await publishBambooTroubleshooterDocument(
+      {
+        config: config(),
+        record: record(),
+        workspaceCwd: cwd,
+        wikiTarget: {
+          spaceId: "space_1",
+          parentNodeToken: "daily_node",
+        },
+        markdownFile,
+      },
+      {
+        resolveRunnerPath: async () => "/runner.mjs",
+        run,
+      },
+    );
+
+    expect(result.markdownFile).toBe(markdownFile);
+    expect(run).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["--markdown-file", markdownFile]),
+      expect.objectContaining({ cwd }),
+    );
+  });
+
   it("rejects a runner result that did not produce a Wiki link", async () => {
     const cwd = await workspace();
     const markdownFile = path.join(cwd, ".tmp", "19562663.md");

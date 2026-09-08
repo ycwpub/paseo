@@ -20,13 +20,14 @@ import type {
   AlertTroubleshooterRecordStore,
 } from "./alert-troubleshooter-record-store.js";
 import { isBambooAlertMessage } from "./bamboo-alert-message.js";
-import {
-  BAMBOO_TROUBLESHOOTER_OUTPUT_SCHEMA,
-  parseBambooTroubleshooterCompletion,
-} from "./bamboo-troubleshooter-completion.js";
-import { resolveBambooTroubleshooterCompletion } from "./bamboo-troubleshooter-completion-resolver.js";
 import { type BambooTroubleshooterDocumentPublication } from "./bamboo-troubleshooter-document-publisher.js";
 import { BAMBOO_MAX_AUTOMATIC_RETRIES } from "./alert-troubleshooter-retry-policy.js";
+import {
+  defaultBambooAgentOrchestratorDependencies,
+  executeBambooAgentPipeline,
+  type BambooAgentOrchestrator,
+  type BambooAgentOrchestratorDependencies,
+} from "./bamboo-agent-orchestrator.js";
 
 export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
@@ -47,7 +48,11 @@ export class BambooTroubleshooterManager {
         record: AlertTroubleshooterRecord;
         workspaceCwd: string;
         wikiTarget: { spaceId: string; parentNodeToken: string };
+        markdownFile?: string;
+        auditFile?: string;
       }) => Promise<BambooTroubleshooterDocumentPublication>;
+      agentOrchestratorDependencies?: Partial<BambooAgentOrchestratorDependencies>;
+      agentOrchestrator?: BambooAgentOrchestrator;
       listChatMessages: (
         botId: string,
         chatId: string,
@@ -66,7 +71,6 @@ export class BambooTroubleshooterManager {
         agentTitle: "Bamboo 对账自动排查",
         labelKey: "bambooTroubleshooter",
         maxAutomaticRetries: BAMBOO_MAX_AUTOMATIC_RETRIES,
-        outputSchema: BAMBOO_TROUBLESHOOTER_OUTPUT_SCHEMA,
         parseConfig: (value) => {
           const parsed = BambooTroubleshooterConfigSchema.safeParse(value);
           return parsed.success ? parsed.data : null;
@@ -89,25 +93,34 @@ export class BambooTroubleshooterManager {
         buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
           buildBambooPrompt(config, trigger, record, wikiTarget),
         buildPromptAppendix: ({ wikiTarget }) => buildBambooPromptAppendix(wikiTarget),
-        parseCompletion: (message) => {
-          const result = parseBambooTroubleshooterCompletion(message);
-          return {
-            status: result.status,
-            summary: result.summary,
-            ...(result.feishu_doc_url ? { documentUrl: result.feishu_doc_url } : {}),
-          };
-        },
-        resolveCompletion: async ({ message, config, record, workspaceCwd, wikiTarget }) =>
-          resolveBambooTroubleshooterCompletion(
-            {
-              message,
-              config,
-              record,
-              workspaceCwd,
-              wikiTarget,
-            },
-            options.publishDocument,
-          ),
+        executeRecord: (input) =>
+          (options.agentOrchestrator ?? executeBambooAgentPipeline)(input, {
+            prepareAgentData:
+              options.agentOrchestratorDependencies?.prepareAgentData ??
+              defaultBambooAgentOrchestratorDependencies.prepareAgentData,
+            publishDocument:
+              options.publishDocument ??
+              options.agentOrchestratorDependencies?.publishDocument ??
+              defaultBambooAgentOrchestratorDependencies.publishDocument,
+            publishSop:
+              options.agentOrchestratorDependencies?.publishSop ??
+              defaultBambooAgentOrchestratorDependencies.publishSop,
+            validateModelResult:
+              options.agentOrchestratorDependencies?.validateModelResult ??
+              defaultBambooAgentOrchestratorDependencies.validateModelResult,
+            validateResultDirectory:
+              options.agentOrchestratorDependencies?.validateResultDirectory ??
+              defaultBambooAgentOrchestratorDependencies.validateResultDirectory,
+            closeReadyWorkItem:
+              options.agentOrchestratorDependencies?.closeReadyWorkItem ??
+              defaultBambooAgentOrchestratorDependencies.closeReadyWorkItem,
+            buildRunSummary:
+              options.agentOrchestratorDependencies?.buildRunSummary ??
+              defaultBambooAgentOrchestratorDependencies.buildRunSummary,
+            renderRunReport:
+              options.agentOrchestratorDependencies?.renderRunReport ??
+              defaultBambooAgentOrchestratorDependencies.renderRunReport,
+          }),
       },
     });
   }
@@ -197,7 +210,7 @@ function buildBambooPrompt(
 ): string {
   return [
     "执行单条 Bamboo 对账报警自动排查。",
-    "先运行 `life-settle-ai-assistant bamboo guide alert-troubleshooter` 读取最新指引，再严格按 runner 单条状态机处理指定记录。",
+    "先运行 `life-settle-ai-assistant bamboo guide alert-troubleshooter` 读取最新指引，再基于代码准备的本地输入文件完成单条归因。",
     `多维表格记录 ID：${record.recordId}`,
     `多维表格 unique_id：${record.uniqueId}`,
     record.resultId ? `Bamboo result_id：${record.resultId}` : "",
@@ -212,10 +225,9 @@ function buildBambooPrompt(
     `触发消息：chat_id=${record.chatId ?? ""}, message_id=${
       record.messageId ?? ""
     }\n${record.messageText}`,
-    "只处理上述指定记录，不要批量认领其他记录；结果必须包含明确终态、证据摘要和排查文档链接。",
-    "不要手工解析卡片、直接调用飞书 OpenAPI，或绕过 runner 的状态机、结果校验和审查门禁。",
-    "发布文档时必须把上述 target_space_id 和 parent_wiki_token 传给 runner 的 publish-troubleshooting-doc；validator 未通过或未得到 /wiki/ 链接时不得返回 succeeded。",
-    '最终一条消息必须只包含 JSON：{"status":"succeeded|pending|not_support","summary":"...","feishu_doc_url":"https://.../wiki/..."}；succeeded 必须提供归因根目录下的 Wiki 文档链接。',
+    "只处理上述指定记录，不要批量扫描、认领或关闭其他记录。",
+    "只允许读取排查所需证据并生成编排器指定的本地临时文件；不得更新 Base、飞书文档、Bamboo 卡片或群消息。",
+    "文档发布、SOP 写回、状态更新、卡片更新和群消息回复统一由父编排代码在审核通过后执行。",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -230,10 +242,10 @@ function buildBambooPromptAppendix(wikiTarget?: {
     wikiTarget ? `target_space_id：${wikiTarget.spaceId}` : "",
     wikiTarget ? `parent_wiki_token：${wikiTarget.parentNodeToken}` : "",
     wikiTarget
-      ? "发布文档时必须把上述 target_space_id 和 parent_wiki_token 传给 runner 的 publish-troubleshooting-doc。"
-      : "如果无法解析日报 Base 的 Wiki 节点，不得把普通 docx 链接作为 succeeded 结果。",
-    "不要手工解析卡片、直接调用飞书 OpenAPI，或绕过 runner 的状态机、结果校验和审查门禁。",
-    '最终一条消息必须只包含 JSON：{"status":"succeeded|pending|not_support","summary":"...","feishu_doc_url":"https://.../wiki/..."}；succeeded 必须提供归因根目录下的 Wiki 文档链接。',
+      ? "日报 Base Wiki 目标仅作为本地结果上下文；Agent 不得直接发布文档。"
+      : "当前无法解析日报 Base Wiki 目标；Agent 仍只生成本地文件，不得尝试其它归档位置。",
+    "只允许读取证据并写入父编排器指定的本地临时文件，不得调用任何写入型 runner 或飞书接口。",
+    "父编排代码负责校验、审核门禁、文档与 SOP 发布以及最终状态回写。",
   ]
     .filter(Boolean)
     .join("\n");

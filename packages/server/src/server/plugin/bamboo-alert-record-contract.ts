@@ -1,6 +1,8 @@
 import type { NormalizedLarkMessageEvent } from "../channels/lark/lark-message-format.js";
 
 export const BAMBOO_RECORD_FIELDS = {
+  uniqueId: "unique_id",
+  resultId: "result_id",
   alarmRecordDetailId: "alarm_record_detail_id",
   taskId: "task_id",
   taskName: "task_name",
@@ -11,6 +13,7 @@ export const BAMBOO_RECORD_FIELDS = {
   taskResultNum: "task_result_num",
   taskResultObject: "task_result_object",
   status: "status",
+  aiSessionId: "ai_session_id",
   extra: "extra",
   aiSummary: "ai_summary",
   aiResult: "ai_result",

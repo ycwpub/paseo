@@ -14,6 +14,8 @@ const RUNNER_TIMEOUT_MS = 15 * 60_000;
 const PublishResultSchema = z.object({
   success: z.boolean(),
   feishu_doc_url: z.string().optional(),
+  doc_token: z.string().optional(),
+  doc_write_status: z.string().optional(),
   doc_archive_status: z.string().optional(),
   doc_archive_reason: z.string().optional(),
   parent_wiki_token: z.string().optional(),
@@ -29,6 +31,9 @@ export interface BambooTroubleshooterDocumentPublication {
   documentUrl: string;
   markdownFile: string;
   auditFile: string;
+  documentToken?: string;
+  writeStatus?: string;
+  archiveReason?: string;
 }
 
 export interface BambooTroubleshooterPublisherDependencies {
@@ -247,6 +252,8 @@ export async function publishBambooTroubleshooterDocument(
     record: AlertTroubleshooterRecord;
     workspaceCwd: string;
     wikiTarget: BambooTroubleshooterWikiTarget;
+    markdownFile?: string;
+    auditFile?: string;
   },
   dependencies: BambooTroubleshooterPublisherDependencies = defaultDependencies,
 ): Promise<BambooTroubleshooterDocumentPublication> {
@@ -254,9 +261,16 @@ export async function publishBambooTroubleshooterDocument(
   if (!resultId) {
     throw new Error("Bamboo 排查记录缺少 result_id，无法发布排查文档");
   }
-  const markdownFile = await findMarkdownFile(input.workspaceCwd, resultId);
-  const auditDirectory = path.join(input.workspaceCwd, ".tmp", `bamboo-single-${resultId}`);
-  const auditFile = path.join(auditDirectory, `publish-doc-${resultId}.json`);
+  const markdownFile = input.markdownFile ?? (await findMarkdownFile(input.workspaceCwd, resultId));
+  const auditFile =
+    input.auditFile ??
+    path.join(
+      input.workspaceCwd,
+      ".tmp",
+      `bamboo-single-${resultId}`,
+      `publish-doc-${resultId}.json`,
+    );
+  const auditDirectory = path.dirname(auditFile);
   await mkdir(auditDirectory, { recursive: true });
 
   const runnerPath = await dependencies.resolveRunnerPath();
@@ -274,5 +288,12 @@ export async function publishBambooTroubleshooterDocument(
   });
   const result = await readPublishResult(auditFile);
   const documentUrl = validatePublishResult(result, input.wikiTarget);
-  return { documentUrl, markdownFile, auditFile };
+  return {
+    documentUrl,
+    markdownFile,
+    auditFile,
+    ...(result.doc_token ? { documentToken: result.doc_token } : {}),
+    ...(result.doc_write_status ? { writeStatus: result.doc_write_status } : {}),
+    ...(result.doc_archive_reason ? { archiveReason: result.doc_archive_reason } : {}),
+  };
 }

@@ -129,6 +129,12 @@ export interface LarkChannelClientAdapter {
     chatId: string,
     options?: LarkChatMessageListOptions,
   ): Promise<unknown[]>;
+  listChatMessagesAsUser?(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    options: LarkChatMessageListOptions | undefined,
+    userAccessToken: string,
+  ): Promise<unknown[]>;
   resolveUsersByEmails?(
     config: StoredLarkChannelConfig,
     emails: readonly string[],
@@ -210,17 +216,25 @@ async function larkGet(
   client: lark.Client,
   url: string,
   params: LarkGetParams,
+  requestOptions?: unknown,
 ): Promise<LarkGetResult> {
   // The generated SDK message.list helper can attach an empty GET body. Some
   // Feishu gateways reject that before the OpenAPI handler runs. Use the SDK's
   // generic request path, matching botmux, so GETs are sent without a body while
   // still using the SDK token/cache/auth plumbing.
   try {
-    return (await (client as unknown as { request(input: unknown): Promise<unknown> }).request({
-      method: "GET",
-      url,
-      params,
-    })) as LarkGetResult;
+    return (await (
+      client as unknown as {
+        request(input: unknown, options?: unknown): Promise<unknown>;
+      }
+    ).request(
+      {
+        method: "GET",
+        url,
+        params,
+      },
+      requestOptions,
+    )) as LarkGetResult;
   } catch (error) {
     throw describeLarkError(error);
   }
@@ -824,20 +838,49 @@ export class OfficialLarkChannelClientAdapter implements LarkChannelClientAdapte
     options: LarkChatMessageListOptions = {},
   ): Promise<unknown[]> {
     const client = createClient(config);
+    return this.listChatMessagesWithClient(client, chatId, options);
+  }
+
+  async listChatMessagesAsUser(
+    config: StoredLarkChannelConfig,
+    chatId: string,
+    options: LarkChatMessageListOptions = {},
+    userAccessToken: string,
+  ): Promise<unknown[]> {
+    const client = createClient(config);
+    return this.listChatMessagesWithClient(
+      client,
+      chatId,
+      options,
+      lark.withUserAccessToken(userAccessToken),
+    );
+  }
+
+  private async listChatMessagesWithClient(
+    client: lark.Client,
+    chatId: string,
+    options: LarkChatMessageListOptions,
+    requestOptions?: unknown,
+  ): Promise<unknown[]> {
     const pageSize = options.pageSize ?? 0;
     const unlimited = wantsAllMessages(pageSize);
     const items: unknown[] = [];
     let pageToken: string | undefined;
     do {
-      const result = await larkGet(client, "/open-apis/im/v1/messages", {
-        container_id_type: "chat",
-        container_id: chatId,
-        page_size: getPageSize(pageSize, unlimited),
-        sort_type: "ByCreateTimeAsc",
-        with_sender_name: "true",
-        ...(options.startTime !== undefined ? { start_time: options.startTime } : {}),
-        ...(pageToken ? { page_token: pageToken } : {}),
-      });
+      const result = await larkGet(
+        client,
+        "/open-apis/im/v1/messages",
+        {
+          container_id_type: "chat",
+          container_id: chatId,
+          page_size: getPageSize(pageSize, unlimited),
+          sort_type: "ByCreateTimeAsc",
+          with_sender_name: "true",
+          ...(options.startTime !== undefined ? { start_time: options.startTime } : {}),
+          ...(pageToken ? { page_token: pageToken } : {}),
+        },
+        requestOptions,
+      );
       assertSuccess(result);
       items.push(...messageListItems(result));
       pageToken = result.data?.page_token;

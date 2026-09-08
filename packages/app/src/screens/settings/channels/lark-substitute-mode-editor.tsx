@@ -39,6 +39,11 @@ import {
   TARGET_WORKSPACE,
 } from "./lark-substitute-mode-form-model";
 import {
+  LARK_SUBSTITUTE_REALTIME_DELAY_HINT,
+  LARK_SUBSTITUTE_REALTIME_DELAY_LABEL,
+  LARK_SUBSTITUTE_SCAN_EXCLUDE_RECENT_HINT,
+} from "./lark-substitute-timing-copy";
+import {
   LarkSubstituteAudienceRuleListEditor,
   LarkSubstituteQuestionRuleListEditor,
 } from "./lark-substitute-rule-list-editor";
@@ -542,7 +547,7 @@ export function LarkSubstituteModeEditor({
                   keyboardType="number-pad"
                 />
               </Field>
-              <Field label="群聊排除最近（分钟）">
+              <Field label="群聊排除最近（分钟）" hint={LARK_SUBSTITUTE_SCAN_EXCLUDE_RECENT_HINT}>
                 <FormTextInput
                   value={form.groupScanExcludeRecentMinutes}
                   onChangeText={controller.setGroupScanExcludeRecentMinutes}
@@ -580,7 +585,7 @@ export function LarkSubstituteModeEditor({
                   keyboardType="number-pad"
                 />
               </Field>
-              <Field label="排除最近（分钟）">
+              <Field label="排除最近（分钟）" hint={LARK_SUBSTITUTE_SCAN_EXCLUDE_RECENT_HINT}>
                 <FormTextInput
                   value={form.privateScanExcludeRecentMinutes}
                   onChangeText={controller.setPrivateScanExcludeRecentMinutes}
@@ -617,7 +622,10 @@ export function LarkSubstituteModeEditor({
               multiline
             />
           </Field>
-          <Field label="自动回答延迟（秒）" hint="延迟期间的新消息会替换旧消息，以最后一条为准。">
+          <Field
+            label={LARK_SUBSTITUTE_REALTIME_DELAY_LABEL}
+            hint={LARK_SUBSTITUTE_REALTIME_DELAY_HINT}
+          >
             <FormTextInput
               value={form.delaySeconds}
               onChangeText={controller.setDelaySeconds}

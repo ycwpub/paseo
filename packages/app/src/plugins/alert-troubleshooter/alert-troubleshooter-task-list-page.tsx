@@ -6,16 +6,18 @@ import { StyleSheet } from "react-native-unistyles";
 import type {
   AlertTroubleshooterTask,
   AlertTroubleshooterTaskStatus,
-  AlertTroubleshooterTaskTrigger,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { BackHeader } from "@/components/headers/back-header";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 
-function triggerLabel(trigger: AlertTroubleshooterTaskTrigger, matchedCount: number): string {
-  if (trigger === "message") return "监听到 1 条消息并写入日报表";
-  if (trigger === "schedule") return `扫描到 ${matchedCount} 条消息，当前消息已写入日报表`;
-  if (trigger === "manual") return "按 unique_id 手动创建";
+function triggerLabel(task: AlertTroubleshooterTask): string {
+  if (task.trigger === "message") return "监听到 1 条消息并写入日报表";
+  if (task.trigger === "schedule")
+    return `扫描到 ${task.matchedCount} 条消息，当前消息已写入日报表`;
+  if (task.trigger === "manual") {
+    return task.resultId ? "按 result_id 手动调试" : "按 unique_id 手动创建";
+  }
   return "从日报表轮询认领";
 }
 
@@ -43,7 +45,7 @@ function TaskRow({
     <View style={styles.taskCard}>
       <View style={styles.rowBetween}>
         <View style={styles.flex}>
-          <Text style={styles.taskTitle}>{triggerLabel(task.trigger, task.matchedCount)}</Text>
+          <Text style={styles.taskTitle}>{triggerLabel(task)}</Text>
           <Text selectable style={styles.meta}>
             unique_id：{task.uniqueId}
           </Text>

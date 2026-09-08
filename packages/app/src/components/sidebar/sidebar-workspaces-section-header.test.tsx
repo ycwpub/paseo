@@ -11,6 +11,18 @@ const sidebarModel = vi.hoisted(() => ({
   allWorkspaceGroupsCollapsed: false,
   setAllWorkspaceGroupsCollapsed: vi.fn(),
 }));
+const bulkActions = vi.hoisted(() => ({
+  active: false,
+  selectedCount: 0,
+  archiving: false,
+  removing: false,
+  busy: false,
+  removeUnsupportedCount: 0,
+  start: vi.fn(),
+  cancel: vi.fn(),
+  archiveSelected: vi.fn(),
+  removeSelected: vi.fn(),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -22,6 +34,7 @@ vi.mock("lucide-react-native", () => ({
   ChevronsUp: () => <span />,
   ListChecks: () => <span />,
   Search: () => <span />,
+  Trash2: () => <span />,
   X: () => <span />,
 }));
 
@@ -33,14 +46,7 @@ vi.mock("@/components/sidebar/sidebar-model", () => ({
 }));
 
 vi.mock("@/components/sidebar/sidebar-workspace-bulk-archive", () => ({
-  useSidebarWorkspaceBulkArchive: () => ({
-    active: false,
-    selectedCount: 0,
-    archiving: false,
-    start: vi.fn(),
-    cancel: vi.fn(),
-    archiveSelected: vi.fn(),
-  }),
+  useSidebarWorkspaceBulkArchive: () => bulkActions,
 }));
 
 vi.mock("@/components/sidebar/display-preferences/menu", () => ({
@@ -77,6 +83,16 @@ describe("Workspaces section header", () => {
   beforeEach(() => {
     sidebarModel.allWorkspaceGroupsCollapsed = false;
     sidebarModel.setAllWorkspaceGroupsCollapsed.mockReset();
+    bulkActions.active = false;
+    bulkActions.selectedCount = 0;
+    bulkActions.archiving = false;
+    bulkActions.removing = false;
+    bulkActions.busy = false;
+    bulkActions.removeUnsupportedCount = 0;
+    bulkActions.start.mockReset();
+    bulkActions.cancel.mockReset();
+    bulkActions.archiveSelected.mockReset();
+    bulkActions.removeSelected.mockReset();
   });
 
   afterEach(cleanup);
@@ -96,5 +112,17 @@ describe("Workspaces section header", () => {
     fireEvent.click(screen.getByTestId("sidebar-toggle-all-workspaces"));
 
     expect(sidebarModel.setAllWorkspaceGroupsCollapsed).toHaveBeenCalledWith(false);
+  });
+
+  it("offers archive and delete actions for selected Workspaces", () => {
+    bulkActions.active = true;
+    bulkActions.selectedCount = 2;
+    render(<WorkspacesSectionHeader />);
+
+    fireEvent.click(screen.getByTestId("sidebar-bulk-archive-workspaces"));
+    fireEvent.click(screen.getByTestId("sidebar-bulk-remove-workspaces"));
+
+    expect(bulkActions.archiveSelected).toHaveBeenCalledTimes(1);
+    expect(bulkActions.removeSelected).toHaveBeenCalledTimes(1);
   });
 });

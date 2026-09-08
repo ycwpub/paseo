@@ -105,6 +105,7 @@ describe("LarkSubstituteGroupPoller", () => {
         messageId: "om_match",
         chatType: "group",
       }),
+      "mode-1",
     );
   });
 
@@ -159,6 +160,7 @@ describe("LarkSubstituteGroupPoller", () => {
     expect(onMessage).toHaveBeenCalledWith(
       "bot-1",
       expect.objectContaining({ chatId: "oc_2", messageId: "om_second" }),
+      "mode-1",
     );
   });
 

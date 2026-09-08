@@ -375,18 +375,21 @@ export class PluginSession {
         return;
       }
       case "plugin.alert_troubleshooter.enqueue_record.request": {
+        const uniqueId = message.uniqueId ?? `result_id:${message.resultId ?? ""}`;
         const queued = await this.service.enqueueAlertTroubleshooterRecord({
           pluginId: message.pluginId,
           appId: message.appId,
           projectId: message.projectId,
-          uniqueId: message.uniqueId,
+          ...(message.uniqueId ? { uniqueId: message.uniqueId } : {}),
+          ...(message.resultId ? { resultId: message.resultId } : {}),
         });
         this.host.emit({
           type: "plugin.alert_troubleshooter.enqueue_record.response",
           payload: {
             requestId: message.requestId,
             queued,
-            uniqueId: message.uniqueId,
+            uniqueId,
+            resultId: message.resultId ?? null,
             error: null,
           },
         });
@@ -788,7 +791,8 @@ export class PluginSession {
           payload: {
             requestId: message.requestId,
             queued: false,
-            uniqueId: message.uniqueId,
+            uniqueId: message.uniqueId ?? `result_id:${message.resultId ?? ""}`,
+            resultId: message.resultId ?? null,
             error,
           },
         });

@@ -504,8 +504,14 @@ export class DaemonResourceRpcClient {
     pluginId: string;
     appId: string;
     projectId: string;
+    uniqueId?: string;
+    resultId?: string;
+  }): Promise<{
+    queued: boolean;
     uniqueId: string;
-  }): Promise<{ queued: boolean; uniqueId: string; error: string | null }> {
+    resultId: string | null;
+    error: string | null;
+  }> {
     return this.request({
       message: { type: "plugin.alert_troubleshooter.enqueue_record.request", ...input },
       responseType: "plugin.alert_troubleshooter.enqueue_record.response",

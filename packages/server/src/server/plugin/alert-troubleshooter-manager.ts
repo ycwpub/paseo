@@ -1,9 +1,10 @@
 import type pino from "pino";
-import type {
-  AlertTroubleshooterConfig,
-  AlertTroubleshooterRuntime,
-  AlertTroubleshooterTask,
-  PluginAppState,
+import {
+  alertTroubleshooterPromptVariableName,
+  type AlertTroubleshooterConfig,
+  type AlertTroubleshooterRuntime,
+  type AlertTroubleshooterTask,
+  type PluginAppState,
 } from "@getpaseo/protocol/messages";
 import type { BoundCreateAgentCommand } from "../agent/create-agent/create.js";
 import { formatProviderModel } from "../agent/create-agent/create.js";
@@ -128,7 +129,13 @@ function projectVariables(input: {
   project: PersistedProjectRecord;
 }): Record<string, string> {
   const result = readProjectConfigForProject(input);
-  return result.ok ? { ...result.config?.project?.variables } : {};
+  if (!result.ok) return {};
+  return Object.fromEntries(
+    Object.entries(result.config?.project?.variables ?? {}).map(([name, value]) => [
+      alertTroubleshooterPromptVariableName(name),
+      value,
+    ]),
+  );
 }
 
 export class ProjectAlertTroubleshooterManager {
@@ -229,6 +236,41 @@ export class ProjectAlertTroubleshooterManager {
       uniqueId: record.uniqueId ?? `record_id:${record.recordId}`,
       resultId: record.resultId,
       tableDate: record.tableDate ?? this.now().toISOString().slice(0, 10).replaceAll("-", ""),
+      messageId: record.messageId,
+      trigger: "manual",
+      force: true,
+    });
+    await this.updateRuntime(state, {
+      queuedCount: this.queueStore.countQueued(projectId),
+      lastError: null,
+    });
+    this.queueProjectProcessing(state, config, true);
+    return true;
+  }
+
+  async enqueueResultId(projectId: string, resultId: string): Promise<boolean> {
+    const state = this.listConfiguredProjects().find(
+      (candidate) => candidate.projectId === projectId,
+    );
+    if (!state) throw new Error(`Project ${projectId} 未配置该自动排查插件`);
+    const config = this.readConfig(state);
+    if (!config?.enabled) throw new Error("自动排查未启用");
+    const normalizedResultId = resultId.trim().replace(/^result_id\s*[:=：]\s*/iu, "");
+    if (!normalizedResultId) throw new Error("请输入 Bamboo result_id");
+    if (!this.options.recordStore.upsertManualResult) {
+      throw new Error("当前自动排查插件不支持按 result_id 调试");
+    }
+    const record = await this.options.recordStore.upsertManualResult({
+      config,
+      projectId,
+      pluginId: this.options.definition.pluginId,
+      resultId: normalizedResultId,
+    });
+    this.queueStore.enqueue(projectId, {
+      recordId: record.recordId,
+      uniqueId: record.uniqueId,
+      resultId: normalizedResultId,
+      tableDate: record.tableDate,
       messageId: record.messageId,
       trigger: "manual",
       force: true,
@@ -637,27 +679,25 @@ export class ProjectAlertTroubleshooterManager {
     }
     const variables = {
       ...projectVariables({ paseoHome: this.options.paseoHome, project }),
-      projectId: state.projectId ?? "",
-      projectName: project.customName ?? project.displayName,
-      projectDirectory: resolveProjectSourceDirectory({
+      project_id: state.projectId ?? "",
+      project_name: project.customName ?? project.displayName,
+      project_directory: resolveProjectSourceDirectory({
         paseoHome: this.options.paseoHome,
         project,
       }).path,
-      pluginId: this.options.definition.pluginId,
-      appId: this.options.definition.appId,
-      recordId: record.recordId,
-      uniqueId: record.uniqueId,
+      plugin_id: this.options.definition.pluginId,
+      app_id: this.options.definition.appId,
+      record_id: record.recordId,
       unique_id: record.uniqueId,
-      resultId: record.resultId ?? "",
       result_id: record.resultId ?? "",
-      messageId: record.messageId ?? "",
-      chatId: record.chatId ?? "",
-      chatName: record.chatName ?? "",
-      messageText: record.messageText,
-      messageTime: record.messageTime ?? "",
+      message_id: record.messageId ?? "",
+      chat_id: record.chatId ?? "",
+      chat_name: record.chatName ?? "",
+      message_text: record.messageText,
+      message_time: record.messageTime ?? "",
       trigger,
-      troubleshootingSopDoc: config.troubleshootingSopDoc,
-      attributionRecordRoot: config.attributionRecordRoot,
+      troubleshooting_sop_doc: config.troubleshootingSopDoc,
+      attribution_record_root: config.attributionRecordRoot,
     };
     return renderPromptTemplate(config.promptTemplate, variables);
   }

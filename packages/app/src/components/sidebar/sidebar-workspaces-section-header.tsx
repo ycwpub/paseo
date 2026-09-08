@@ -8,7 +8,15 @@ import {
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Archive, ChevronsDown, ChevronsUp, ListChecks, Search, X } from "lucide-react-native";
+import {
+  Archive,
+  ChevronsDown,
+  ChevronsUp,
+  ListChecks,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
@@ -27,9 +35,17 @@ const ThemedChevronsDown = withUnistyles(ChevronsDown);
 const ThemedChevronsUp = withUnistyles(ChevronsUp);
 const ThemedListChecks = withUnistyles(ListChecks);
 const ThemedSearch = withUnistyles(Search);
+const ThemedTrash2 = withUnistyles(Trash2);
 const ThemedX = withUnistyles(X);
 
-type HeaderIconName = "archive" | "chevrons-down" | "chevrons-up" | "list-checks" | "search" | "x";
+type HeaderIconName =
+  | "archive"
+  | "chevrons-down"
+  | "chevrons-up"
+  | "list-checks"
+  | "search"
+  | "trash"
+  | "x";
 
 function HeaderIcon({ highlighted, name }: { highlighted: boolean; name: HeaderIconName }) {
   const uniProps = highlighted ? foregroundColorMapping : foregroundMutedColorMapping;
@@ -50,6 +66,9 @@ function HeaderIcon({ highlighted, name }: { highlighted: boolean; name: HeaderI
       break;
     case "search":
       icon = <ThemedSearch size={14} uniProps={uniProps} />;
+      break;
+    case "trash":
+      icon = <ThemedTrash2 size={14} uniProps={uniProps} />;
       break;
     case "x":
       icon = <ThemedX size={14} uniProps={uniProps} />;
@@ -137,6 +156,9 @@ export function WorkspacesSectionHeader() {
   const handleBulkArchivePress = useCallback(() => {
     void bulkArchive.archiveSelected();
   }, [bulkArchive]);
+  const handleBulkRemovePress = useCallback(() => {
+    void bulkArchive.removeSelected();
+  }, [bulkArchive]);
   const toggleAllIcon = allWorkspaceGroupsCollapsed ? "chevrons-down" : "chevrons-up";
   const toggleAllLabel = allWorkspaceGroupsCollapsed
     ? t("sidebar.actions.expandAllWorkspaces")
@@ -157,14 +179,31 @@ export function WorkspacesSectionHeader() {
               testID="sidebar-bulk-archive-workspaces"
               icon="archive"
               onPress={handleBulkArchivePress}
-              disabled={bulkArchive.selectedCount === 0 || bulkArchive.archiving}
+              disabled={bulkArchive.selectedCount === 0 || bulkArchive.busy}
+            />
+            <HeaderIconButton
+              label={
+                bulkArchive.removeUnsupportedCount > 0
+                  ? t("sidebar.workspace.bulkArchive.removeUnsupported", {
+                      count: bulkArchive.removeUnsupportedCount,
+                    })
+                  : t("sidebar.workspace.bulkArchive.removeConfirm")
+              }
+              testID="sidebar-bulk-remove-workspaces"
+              icon="trash"
+              onPress={handleBulkRemovePress}
+              disabled={
+                bulkArchive.selectedCount === 0 ||
+                bulkArchive.busy ||
+                bulkArchive.removeUnsupportedCount > 0
+              }
             />
             <HeaderIconButton
               label={t("sidebar.workspace.bulkArchive.cancel")}
               testID="sidebar-cancel-workspace-selection"
               icon="x"
               onPress={bulkArchive.cancel}
-              disabled={bulkArchive.archiving}
+              disabled={bulkArchive.busy}
             />
           </>
         ) : (

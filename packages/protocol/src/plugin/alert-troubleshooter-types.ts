@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeAlertTroubleshooterPromptTemplate } from "./alert-troubleshooter-prompt-variables.js";
 
 export const AlertTroubleshooterChatSchema = z.object({
   chatId: z.string().trim().min(1),
@@ -72,6 +73,7 @@ export const AlertTroubleshooterConfigSchema = z
   .transform((config) => ({
     ...config,
     version: 4 as const,
+    promptTemplate: normalizeAlertTroubleshooterPromptTemplate(config.promptTemplate),
     schedule:
       config.version === 1 && config.schedule.excludeRecentMinutes === 30
         ? { ...config.schedule, excludeRecentMinutes: 0 }

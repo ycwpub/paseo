@@ -35,6 +35,45 @@ describe("PluginSession alert troubleshooter RPC", () => {
         requestId: "request-1",
         queued: true,
         uniqueId: "result_id:1",
+        resultId: null,
+        error: null,
+      },
+    });
+  });
+
+  it("routes a Bamboo result_id debugging request", async () => {
+    const emit = vi.fn();
+    const enqueueAlertTroubleshooterRecord = vi.fn(async () => true);
+    const session = new PluginSession({
+      host: { emit },
+      service: { enqueueAlertTroubleshooterRecord } as never,
+      mcpStore: {} as never,
+      skillStore: {} as never,
+      logger: createTestLogger(),
+    });
+
+    await session.handleRequest({
+      type: "plugin.alert_troubleshooter.enqueue_record.request",
+      requestId: "request-result",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      appId: "bamboo-troubleshooter-console",
+      projectId: "prj_1",
+      resultId: "123456",
+    });
+
+    expect(enqueueAlertTroubleshooterRecord).toHaveBeenCalledWith({
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      appId: "bamboo-troubleshooter-console",
+      projectId: "prj_1",
+      resultId: "123456",
+    });
+    expect(emit).toHaveBeenCalledWith({
+      type: "plugin.alert_troubleshooter.enqueue_record.response",
+      payload: {
+        requestId: "request-result",
+        queued: true,
+        uniqueId: "result_id:123456",
+        resultId: "123456",
         error: null,
       },
     });
@@ -69,6 +108,7 @@ describe("PluginSession alert troubleshooter RPC", () => {
         requestId: "request-2",
         queued: false,
         uniqueId: "result_id:missing",
+        resultId: null,
         error: "record not found",
       },
     });

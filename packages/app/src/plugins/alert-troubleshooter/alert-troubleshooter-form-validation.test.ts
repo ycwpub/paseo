@@ -17,7 +17,7 @@ const VALID_DRAFT: AlertTroubleshooterConfigDraft = {
   target: { kind: "assistant", assistantId: "assistant-1" },
   troubleshootingSopDoc: "https://example.com/wiki/sop",
   attributionRecordRoot: "https://example.com/wiki/records",
-  promptTemplate: "处理 {{recordId}}",
+  promptTemplate: "处理 {{record_id}}",
   queuePollIntervalMinutes: "5",
   schedule: {
     enabled: true,

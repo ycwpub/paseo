@@ -153,6 +153,13 @@ export const featureTranslationAdditions = {
             "{{count}} selected worktree(s) have uncommitted or unpushed changes. Their directories may be deleted.",
           confirm: "Archive selected",
           failed: "Failed to archive {{count}} workspace(s)",
+          removeTitle: "Delete {{count}} workspaces?",
+          removeMessage:
+            "Permanently delete the Paseo-managed data for the selected workspaces?\n\nExternal source directories and all files in them will not be deleted or modified. This cannot be undone.",
+          removeConfirm: "Delete selected",
+          removeFailed: "Failed to delete {{count}} workspace(s)",
+          removeUnsupported:
+            "{{count}} selected workspace(s) cannot be deleted until their Host is updated",
         },
         confirmations: {
           removeTitle: "Delete workspace?",
@@ -3774,14 +3781,20 @@ export const featureTranslationAdditions = {
           removing: "正在删除...",
         },
         bulkArchive: {
-          select: "批量选择 workspace",
+          select: "批量选择工作区",
           selected: "已选择 {{count}} 项",
           cancel: "取消选择",
-          title: "归档 {{count}} 个 workspace？",
-          message: "选中的 workspace 将被归档，并从侧边栏移除。",
+          title: "归档 {{count}} 个工作区？",
+          message: "选中的工作区将被归档，并从侧边栏移除。",
           riskyWorktrees: "其中 {{count}} 个 工作树 存在未提交或未推送的更改，其目录可能会被删除。",
           confirm: "归档所选项",
-          failed: "{{count}} 个 workspace 归档失败",
+          failed: "{{count}} 个工作区归档失败",
+          removeTitle: "删除 {{count}} 个工作区？",
+          removeMessage:
+            "永久删除所选工作区的 Paseo 托管数据？\n\n不会删除或修改关联的外部源目录及其中任何文件。此操作无法撤销。",
+          removeConfirm: "删除所选项",
+          removeFailed: "{{count}} 个工作区删除失败",
+          removeUnsupported: "所选项中有 {{count}} 个工作区所在主机不支持删除，请先更新主机",
         },
         confirmations: {
           removeTitle: "删除 工作区？",

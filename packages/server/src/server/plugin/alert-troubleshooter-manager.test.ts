@@ -64,6 +64,9 @@ function createHarness(input?: {
     upsertMessage: vi.fn(async ({ event, trigger }) => {
       const record: AlertTroubleshooterRecord = {
         recordId: `rec_${event.messageId}`,
+        uniqueId: `message_id:${event.messageId}`,
+        resultId: null,
+        tableDate: "20260906",
         messageId: event.messageId,
         chatId: event.chatId,
         chatName: "报警群",
@@ -76,8 +79,29 @@ function createHarness(input?: {
     }),
     listUnclaimed: vi.fn(async () => [...storedRecords.values()]),
     getRecord: vi.fn(async ({ recordId }) => storedRecords.get(recordId) ?? null),
+    getRecordByUniqueId: vi.fn(
+      async ({ uniqueId }) =>
+        [...storedRecords.values()].find((record) => record.uniqueId === uniqueId) ?? null,
+    ),
+    upsertManualResult: vi.fn(async ({ resultId }) => {
+      const record: AlertTroubleshooterRecord = {
+        recordId: `rec_result_${resultId}`,
+        uniqueId: `result_id:${resultId}`,
+        resultId,
+        tableDate: "20260906",
+        messageId: null,
+        chatId: null,
+        chatName: null,
+        messageText: `手动指定 Bamboo result_id 进行调试：${resultId}`,
+        messageTime: "2026-09-06T08:00:00.000Z",
+        trigger: "manual",
+      };
+      storedRecords.set(record.recordId, record);
+      return record;
+    }),
     markRunning: vi.fn(async () => undefined),
     markSucceeded: vi.fn(async () => undefined),
+    markPaused: vi.fn(async () => undefined),
     markFailed: vi.fn(async () => undefined),
   };
   const scanMessages = vi.fn(async () => []);
@@ -194,6 +218,9 @@ describe("ProjectAlertTroubleshooterManager", () => {
   it("polls unclaimed Base rows when the local queue is empty", async () => {
     const record: AlertTroubleshooterRecord = {
       recordId: "rec_table",
+      uniqueId: "message_id:om_table",
+      resultId: null,
+      tableDate: "20260906",
       messageId: "om_table",
       chatId: "oc_alerts",
       chatName: "报警群",
@@ -219,6 +246,9 @@ describe("ProjectAlertTroubleshooterManager", () => {
   it("renders Project variables in a custom processing prompt", async () => {
     const record: AlertTroubleshooterRecord = {
       recordId: "rec_prompt",
+      uniqueId: "message_id:om_prompt",
+      resultId: null,
+      tableDate: "20260906",
       messageId: "om_prompt",
       chatId: "oc_alerts",
       chatName: "报警群",
@@ -229,7 +259,7 @@ describe("ProjectAlertTroubleshooterManager", () => {
     const harness = createHarness({
       config: config({
         promptTemplate:
-          "owner={{owner}} project={{projectId}} record={{recordId}} message={{messageText}}",
+          "owner={{owner_name}} project={{project_id}} record={{record_id}} message={{message_text}}",
       }),
       records: [record],
     });
@@ -237,7 +267,7 @@ describe("ProjectAlertTroubleshooterManager", () => {
     mkdirSync(configDirectory, { recursive: true });
     writeFileSync(
       path.join(configDirectory, "paseo.json"),
-      `${JSON.stringify({ project: { variables: { owner: "settlement" } } }, null, 2)}\n`,
+      `${JSON.stringify({ project: { variables: { ownerName: "settlement" } } }, null, 2)}\n`,
       "utf8",
     );
 
@@ -254,6 +284,9 @@ describe("ProjectAlertTroubleshooterManager", () => {
     const records: AlertTroubleshooterRecord[] = [
       {
         recordId: "rec_first",
+        uniqueId: "message_id:om_first",
+        resultId: null,
+        tableDate: "20260906",
         messageId: "om_first",
         chatId: "oc_alerts",
         chatName: "报警群",
@@ -263,6 +296,9 @@ describe("ProjectAlertTroubleshooterManager", () => {
       },
       {
         recordId: "rec_second",
+        uniqueId: "message_id:om_second",
+        resultId: null,
+        tableDate: "20260906",
         messageId: "om_second",
         chatId: "oc_alerts",
         chatName: "报警群",
@@ -294,6 +330,9 @@ describe("ProjectAlertTroubleshooterManager", () => {
   it("runs a manually selected Base row even when automatic troubleshooting is disabled", async () => {
     const record: AlertTroubleshooterRecord = {
       recordId: "rec_manual",
+      uniqueId: "message_id:om_manual",
+      resultId: null,
+      tableDate: "20260906",
       messageId: "om_manual",
       chatId: "oc_alerts",
       chatName: "报警群",
@@ -306,11 +345,33 @@ describe("ProjectAlertTroubleshooterManager", () => {
       records: [record],
     });
 
-    await expect(harness.manager.enqueueRecord("prj_1", "rec_manual")).resolves.toBe(true);
+    await expect(harness.manager.enqueueRecord("prj_1", "message_id:om_manual")).resolves.toBe(
+      true,
+    );
     await vi.waitFor(() => expect(harness.createAgent).toHaveBeenCalledTimes(1));
 
     expect(harness.recordStore.markRunning).toHaveBeenCalledWith(
       expect.objectContaining({ recordId: "rec_manual" }),
+    );
+    await harness.manager.stop();
+  });
+
+  it("creates a manual Base record from Bamboo result_id and starts troubleshooting", async () => {
+    const harness = createHarness({
+      config: config({ troubleshootingEnabled: false }),
+    });
+
+    await expect(harness.manager.enqueueResultId("prj_1", "result_id:123456")).resolves.toBe(true);
+    await vi.waitFor(() => expect(harness.createAgent).toHaveBeenCalledTimes(1));
+
+    expect(harness.recordStore.upsertManualResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "prj_1",
+        resultId: "123456",
+      }),
+    );
+    expect(harness.recordStore.markRunning).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: "rec_result_123456" }),
     );
     await harness.manager.stop();
   });

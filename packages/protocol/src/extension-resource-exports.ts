@@ -20,6 +20,12 @@ export {
   type PluginAppState,
 } from "./plugin/app-types.js";
 export {
+  ALERT_TROUBLESHOOTER_PROMPT_VARIABLES,
+  alertTroubleshooterPromptVariableName,
+  normalizeAlertTroubleshooterPromptTemplate,
+  type AlertTroubleshooterPromptVariable,
+} from "./plugin/alert-troubleshooter-prompt-variables.js";
+export {
   AlertTroubleshooterChatSchema,
   AlertTroubleshooterConfigSchema,
   AlertTroubleshooterRuntimeSchema,

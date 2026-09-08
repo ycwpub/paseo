@@ -43,7 +43,7 @@ function validConfig() {
     target: { kind: "assistant", assistantId: "assistant-1" },
     troubleshootingSopDoc: "https://example.com/wiki/sop",
     attributionRecordRoot: "https://example.com/wiki/records",
-    promptTemplate: "处理 {{recordId}}：{{messageText}}",
+    promptTemplate: "处理 {{record_id}}：{{message_text}}",
     queuePollIntervalMinutes: 5,
     schedule: {
       enabled: true,
@@ -259,6 +259,7 @@ describe("BambooTroubleshooterPanel", () => {
     testState.enqueueAlertTroubleshooterRecord.mockResolvedValue({
       queued: true,
       uniqueId: "result_id:123",
+      resultId: "123",
       error: null,
     });
     testState.project.data = { bambooTroubleshooter: validConfig() };
@@ -282,6 +283,13 @@ describe("BambooTroubleshooterPanel", () => {
       "aiden-codex/gpt-5.5",
     );
     expect(screen.queryByRole("button", { name: "默认模型" })).toBeNull();
+    expect(screen.getByText("按照回看范围和排除最近消息配置，定时扫描群消息。")).toBeTruthy();
+    expect(screen.queryByText(/2 小时/u)).toBeNull();
+    const promptVariables = screen.getByText(/可用变量：/).textContent ?? "";
+    expect(promptVariables).toContain("{{project_id}}");
+    expect(promptVariables).toContain("{{troubleshooting_sop_doc}}");
+    expect(promptVariables).toContain("{{attribution_record_root}}");
+    expect(promptVariables).not.toMatch(/\{\{[a-z0-9_]*[A-Z][a-zA-Z0-9_]*\}\}/u);
     const assistantButton = screen
       .getAllByRole("button")
       .find((button) => button.textContent === "助手");
@@ -308,7 +316,7 @@ describe("BambooTroubleshooterPanel", () => {
               attributionRecordRoot: "https://example.com/wiki/records",
               listenEnabled: true,
               troubleshootingEnabled: true,
-              promptTemplate: "处理 {{recordId}}：{{messageText}}",
+              promptTemplate: "处理 {{record_id}}：{{message_text}}",
               queuePollIntervalMinutes: 5,
             }),
           },
@@ -398,7 +406,7 @@ describe("BambooTroubleshooterPanel", () => {
     expect(testState.configurePluginApp).not.toHaveBeenCalled();
   });
 
-  it("queues a specified Base unique_id for manual troubleshooting", async () => {
+  it("creates or reuses a Base record and queues a specified Bamboo result_id", async () => {
     render(
       <BambooTroubleshooterPanel
         active
@@ -408,20 +416,20 @@ describe("BambooTroubleshooterPanel", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("指定多维表格 unique_id"), {
-      target: { value: "result_id:123" },
+    fireEvent.change(screen.getByLabelText("指定 Bamboo 对账 result_id"), {
+      target: { value: "123" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "加入处理队列" }));
+    fireEvent.click(screen.getByRole("button", { name: "按 result_id 调试" }));
 
     await waitFor(() =>
       expect(testState.enqueueAlertTroubleshooterRecord).toHaveBeenCalledWith({
         pluginId: "bamboo-reconciliation-troubleshooter",
         appId: "bamboo-troubleshooter-console",
         projectId: "project-1",
-        uniqueId: "result_id:123",
+        resultId: "123",
       }),
     );
-    expect(screen.getByText("记录 result_id:123 已加入处理队列。")).toBeTruthy();
+    expect(screen.getByText("Bamboo result_id 123 已加入处理队列。")).toBeTruthy();
   });
 
   it("explains how to correct invalid document links", async () => {

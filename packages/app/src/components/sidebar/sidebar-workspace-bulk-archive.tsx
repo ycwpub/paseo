@@ -13,20 +13,24 @@ import {
   toWorktreeArchiveRisk,
 } from "@/git/worktree-archive-warning";
 import { archiveWorkspacesOptimistically } from "@/workspace/workspace-archive";
+import { removeWorkspaces } from "@/workspace/workspace-remove";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { useHostFeatureMap } from "@/runtime/host-features";
 import type { Theme } from "@/styles/theme";
 
 interface SidebarWorkspaceBulkArchiveState {
   active: boolean;
   archiving: boolean;
+  removing: boolean;
   selectedKeys: ReadonlySet<string>;
   start: () => void;
   cancel: () => void;
   toggle: (workspaceKey: string) => void;
   setArchiving: (archiving: boolean) => void;
+  setRemoving: (removing: boolean) => void;
   keepSelected: (workspaceKeys: string[]) => void;
 }
 
@@ -34,12 +38,19 @@ export const useSidebarWorkspaceBulkArchiveStore = create<SidebarWorkspaceBulkAr
   (set) => ({
     active: false,
     archiving: false,
+    removing: false,
     selectedKeys: new Set<string>(),
     start: () => set({ active: true, selectedKeys: new Set<string>() }),
-    cancel: () => set({ active: false, archiving: false, selectedKeys: new Set<string>() }),
+    cancel: () =>
+      set({
+        active: false,
+        archiving: false,
+        removing: false,
+        selectedKeys: new Set<string>(),
+      }),
     toggle: (workspaceKey) =>
       set((state) => {
-        if (!state.active || state.archiving) {
+        if (!state.active || state.archiving || state.removing) {
           return state;
         }
         const selectedKeys = new Set(state.selectedKeys);
@@ -51,6 +62,7 @@ export const useSidebarWorkspaceBulkArchiveStore = create<SidebarWorkspaceBulkAr
         return { selectedKeys };
       }),
     setArchiving: (archiving) => set({ archiving }),
+    setRemoving: (removing) => set({ removing }),
     keepSelected: (workspaceKeys) =>
       set({
         active: workspaceKeys.length > 0,
@@ -62,13 +74,14 @@ export const useSidebarWorkspaceBulkArchiveStore = create<SidebarWorkspaceBulkAr
 export function useSidebarWorkspaceBulkSelection(workspaceKey: string) {
   const active = useSidebarWorkspaceBulkArchiveStore((state) => state.active);
   const archiving = useSidebarWorkspaceBulkArchiveStore((state) => state.archiving);
+  const removing = useSidebarWorkspaceBulkArchiveStore((state) => state.removing);
   const selected = useSidebarWorkspaceBulkArchiveStore((state) =>
     state.selectedKeys.has(workspaceKey),
   );
   const toggleSelection = useSidebarWorkspaceBulkArchiveStore((state) => state.toggle);
   const toggle = useCallback(() => toggleSelection(workspaceKey), [toggleSelection, workspaceKey]);
 
-  return { active, archiving, selected, toggle };
+  return { active, busy: archiving || removing, selected, toggle };
 }
 
 export function useSidebarWorkspaceBulkArchive(
@@ -79,10 +92,12 @@ export function useSidebarWorkspaceBulkArchive(
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const active = useSidebarWorkspaceBulkArchiveStore((state) => state.active);
   const archiving = useSidebarWorkspaceBulkArchiveStore((state) => state.archiving);
+  const removing = useSidebarWorkspaceBulkArchiveStore((state) => state.removing);
   const selectedKeys = useSidebarWorkspaceBulkArchiveStore((state) => state.selectedKeys);
   const start = useSidebarWorkspaceBulkArchiveStore((state) => state.start);
   const cancel = useSidebarWorkspaceBulkArchiveStore((state) => state.cancel);
   const setArchiving = useSidebarWorkspaceBulkArchiveStore((state) => state.setArchiving);
+  const setRemoving = useSidebarWorkspaceBulkArchiveStore((state) => state.setRemoving);
   const keepSelected = useSidebarWorkspaceBulkArchiveStore((state) => state.keepSelected);
 
   const selectedWorkspaces = useMemo(
@@ -93,9 +108,18 @@ export function useSidebarWorkspaceBulkArchive(
       }),
     [selectedKeys, workspaceEntriesByKey],
   );
+  const selectedServerIds = useMemo(
+    () => Array.from(new Set(selectedWorkspaces.map((workspace) => workspace.serverId))),
+    [selectedWorkspaces],
+  );
+  const removeSupportedByServerId = useHostFeatureMap(selectedServerIds, "workspaceRemove");
+  const removeUnsupportedCount = selectedWorkspaces.filter(
+    (workspace) => removeSupportedByServerId.get(workspace.serverId) !== true,
+  ).length;
+  const busy = archiving || removing;
 
   const archiveSelected = useCallback(async () => {
-    if (archiving || selectedWorkspaces.length === 0) {
+    if (busy || selectedWorkspaces.length === 0) {
       return;
     }
 
@@ -170,7 +194,7 @@ export function useSidebarWorkspaceBulkArchive(
     }
   }, [
     activeWorkspaceSelection,
-    archiving,
+    busy,
     cancel,
     keepSelected,
     selectedWorkspaces,
@@ -179,13 +203,93 @@ export function useSidebarWorkspaceBulkArchive(
     toast,
   ]);
 
+  const removeSelected = useCallback(async () => {
+    if (busy || selectedWorkspaces.length === 0 || removeUnsupportedCount > 0) {
+      return;
+    }
+
+    const confirmed = await confirmDialog({
+      title: t("sidebar.workspace.bulkArchive.removeTitle", {
+        count: selectedWorkspaces.length,
+      }),
+      message: t("sidebar.workspace.bulkArchive.removeMessage", {
+        count: selectedWorkspaces.length,
+      }),
+      confirmLabel: t("sidebar.workspace.bulkArchive.removeConfirm"),
+      cancelLabel: t("common.actions.cancel"),
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setRemoving(true);
+    try {
+      for (const workspace of selectedWorkspaces) {
+        redirectIfArchivingActiveWorkspace({
+          serverId: workspace.serverId,
+          workspaceId: workspace.workspaceId,
+          activeWorkspaceSelection,
+        });
+      }
+
+      const failures = await removeWorkspaces({
+        getClient: (serverId) => getHostRuntimeStore().getClient(serverId),
+        workspaces: selectedWorkspaces.map(({ serverId, workspaceId }) => ({
+          serverId,
+          workspaceId,
+        })),
+      });
+      const failedKeys = new Set(
+        failures.map(({ serverId, workspaceId }) => `${serverId}:${workspaceId}`),
+      );
+
+      for (const workspace of selectedWorkspaces) {
+        if (failedKeys.has(workspace.workspaceKey)) {
+          continue;
+        }
+        const persistenceKey = buildWorkspaceTabPersistenceKey(workspace);
+        if (persistenceKey) {
+          useWorkspaceLayoutStore.getState().purgeWorkspace(persistenceKey);
+        }
+      }
+
+      if (failures.length > 0) {
+        keepSelected(Array.from(failedKeys));
+        toast.error(
+          t("sidebar.workspace.bulkArchive.removeFailed", {
+            count: failures.length,
+          }),
+        );
+      } else {
+        cancel();
+      }
+    } finally {
+      setRemoving(false);
+    }
+  }, [
+    activeWorkspaceSelection,
+    busy,
+    cancel,
+    keepSelected,
+    removeUnsupportedCount,
+    selectedWorkspaces,
+    setRemoving,
+    t,
+    toast,
+  ]);
+
   return {
     active,
     archiving,
+    removing,
+    busy,
     selectedCount: selectedWorkspaces.length,
+    removeUnsupportedCount,
     start,
     cancel,
     archiveSelected,
+    removeSelected,
   };
 }
 

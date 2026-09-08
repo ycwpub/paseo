@@ -20,7 +20,7 @@ interface LarkSubstituteGroupPollerOptions {
   listChatIds: (mode: LarkSubstituteMode) => Promise<string[]> | string[];
   getAuthorizedUserOpenId: (botId: string) => string | null;
   hasTask: (modeId: string, messageId: string) => boolean;
-  onMessage: (botId: string, event: NormalizedLarkMessageEvent) => Promise<void>;
+  onMessage: (botId: string, event: NormalizedLarkMessageEvent, modeId: string) => Promise<void>;
   onScanFailure?: (input: LarkSubstituteGroupScanFailure) => Promise<void> | void;
   now?: () => Date;
 }
@@ -166,11 +166,15 @@ export class LarkSubstituteGroupPoller {
       return;
     }
     try {
-      await this.options.onMessage(mode.botId, {
-        ...event,
-        eventId: `group-scan:${event.messageId}`,
-        chatType: "group",
-      });
+      await this.options.onMessage(
+        mode.botId,
+        {
+          ...event,
+          eventId: `group-scan:${event.messageId}`,
+          chatType: "group",
+        },
+        mode.id,
+      );
       this.observed.add(key);
     } catch (error) {
       await this.reportScanFailure({

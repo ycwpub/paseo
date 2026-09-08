@@ -1949,15 +1949,18 @@ export async function createPaseoDaemon(
     logger,
   });
   pluginService.attachAlertTroubleshooterRuntime({
-    enqueueRecord: ({ pluginId, appId, projectId, uniqueId }) => {
+    enqueueRecord: ({ pluginId, appId, projectId, uniqueId, resultId }) => {
       if (
         pluginId === "bamboo-reconciliation-troubleshooter" &&
         appId === "bamboo-troubleshooter-console"
       ) {
-        return bambooTroubleshooterManager!.enqueueRecord(projectId, uniqueId);
+        return resultId
+          ? bambooTroubleshooterManager!.enqueueResultId(projectId, resultId)
+          : bambooTroubleshooterManager!.enqueueRecord(projectId, uniqueId ?? "");
       }
       if (pluginId === "argos-alert-troubleshooter" && appId === "argos-troubleshooter-console") {
-        return argosTroubleshooterManager!.enqueueRecord(projectId, uniqueId);
+        if (resultId) throw new Error("Argos 自动排查不支持按 Bamboo result_id 调试");
+        return argosTroubleshooterManager!.enqueueRecord(projectId, uniqueId ?? "");
       }
       throw new Error(`不支持的自动排查插件：${pluginId}/${appId}`);
     },

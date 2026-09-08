@@ -6654,8 +6654,14 @@ export class DaemonClient {
     pluginId: string;
     appId: string;
     projectId: string;
+    uniqueId?: string;
+    resultId?: string;
+  }): Promise<{
+    queued: boolean;
     uniqueId: string;
-  }): Promise<{ queued: boolean; uniqueId: string; error: string | null }> {
+    resultId: string | null;
+    error: string | null;
+  }> {
     return this.resourceRpc.enqueueAlertTroubleshooterRecord(input);
   }
 

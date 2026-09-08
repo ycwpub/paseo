@@ -77,6 +77,12 @@ export interface AlertTroubleshooterRecordStore {
     pluginId: string;
     uniqueId: string;
   }): Promise<AlertTroubleshooterRecord | null>;
+  upsertManualResult?(input: {
+    config: AlertTroubleshooterConfig;
+    projectId: string;
+    pluginId: string;
+    resultId: string;
+  }): Promise<AlertTroubleshooterRecord>;
   markRunning(input: {
     config: AlertTroubleshooterConfig;
     pluginId: string;
@@ -337,6 +343,59 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       if (record) return toRecord(record, tableDate);
     }
     return null;
+  }
+
+  async upsertManualResult(input: {
+    config: AlertTroubleshooterConfig;
+    projectId: string;
+    pluginId: string;
+    resultId: string;
+  }): Promise<AlertTroubleshooterRecord> {
+    const resultId = input.resultId.trim();
+    if (!resultId) throw new Error("请输入 Bamboo result_id");
+    const uniqueId = `result_id:${resultId}`;
+    const existing = await this.getRecordByUniqueId({
+      config: input.config,
+      pluginId: input.pluginId,
+      uniqueId,
+    });
+    if (existing) return existing;
+
+    const tableDate = alertTableDateKey(new Date());
+    const { client, location, primaryField } = await this.context(
+      input.config,
+      input.pluginId,
+      tableDate,
+    );
+    const fields: Record<string, string> = {
+      [primaryField]: `Bamboo result_id ${resultId} · 手动调试`,
+      [FIELDS.messageId]: "",
+      [FIELDS.chatId]: "",
+      [FIELDS.chatName]: "",
+      [FIELDS.content]: `手动指定 Bamboo result_id 进行调试：${resultId}`,
+      [FIELDS.messageTime]: new Date().toISOString(),
+      [FIELDS.trigger]: "manual",
+      [FIELDS.status]: STATUS_UNCLAIMED,
+      [FIELDS.claimId]: "",
+      [FIELDS.claimedAt]: "",
+      [FIELDS.completedAt]: "",
+      [FIELDS.error]: "",
+      [FIELDS.projectId]: input.projectId,
+      [FIELDS.pluginId]: input.pluginId,
+      [FIELDS.agentId]: "",
+      [FIELDS.uniqueId]: uniqueId,
+      [FIELDS.resultId]: resultId,
+    };
+    const result = await client.bitable.v1.appTableRecord.create({
+      path: { app_token: location.appToken, table_id: location.tableId },
+      params: { client_token: `${input.pluginId}:${input.projectId}:${uniqueId}` },
+      data: { fields },
+    });
+    assertSuccess(result);
+    const record = result.data?.record as LarkRecord | undefined;
+    const normalized = record ? toRecord(record, tableDate) : null;
+    if (!normalized) throw new Error("创建 Bamboo result_id 调试记录后未返回 record_id");
+    return normalized;
   }
 
   markRunning(input: {

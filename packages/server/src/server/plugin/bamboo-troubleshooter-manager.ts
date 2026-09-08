@@ -90,6 +90,10 @@ export class BambooTroubleshooterManager {
     return this.manager.enqueueRecord(projectId, uniqueId);
   }
 
+  enqueueResultId(projectId: string, resultId: string): Promise<boolean> {
+    return this.manager.enqueueResultId(projectId, resultId);
+  }
+
   listTasks(projectId: string) {
     return this.manager.listTasks(projectId);
   }

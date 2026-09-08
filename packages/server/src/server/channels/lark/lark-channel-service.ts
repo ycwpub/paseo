@@ -91,6 +91,7 @@ import {
   selectLarkSubstituteGroupScanChats,
   type LarkSubstituteGroupScanChat,
 } from "./lark-substitute-group-scan-chats.js";
+import { createLarkSubstituteScanDispatchOptions } from "./lark-substitute-scan-dispatch.js";
 import { getLarkSubstituteTaskSource } from "./lark-substitute-task-source.js";
 import { LarkSubstituteTaskStore } from "./lark-substitute-task-store.js";
 import {
@@ -543,7 +544,8 @@ export class LarkChannelService {
         return status?.authorized ? status.openId : null;
       },
       hasTask: (modeId, messageId) => this.substituteTaskStore.hasMessage(modeId, messageId),
-      onMessage: (botId, event) => this.handleIncomingEvent(botId, event),
+      onMessage: (botId, event, modeId) =>
+        this.handleIncomingEvent(botId, event, createLarkSubstituteScanDispatchOptions(modeId)),
       onScanFailure: ({ mode, chatId, event, error }) => {
         const groups = getLarkSubstituteRuleLists(mode).audienceAllowRuleGroups;
         const groupRule = getLarkSubstituteConversationRules(groups).find(
@@ -585,8 +587,7 @@ export class LarkChannelService {
               this.observeDirectoryParticipants(config, event),
             onRelayMessage: ({ botId, modeId, event, supplementalEvents }) =>
               this.handleIncomingEvent(botId, event, {
-                bypassSubstituteDelay: true,
-                modeId,
+                ...createLarkSubstituteScanDispatchOptions(modeId),
                 supplementalEvents,
                 trustedSubstituteRelay: true,
               }),

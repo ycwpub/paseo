@@ -425,7 +425,8 @@ export class PluginService {
       pluginId: string;
       appId: string;
       projectId: string;
-      uniqueId: string;
+      uniqueId?: string;
+      resultId?: string;
     }): Promise<boolean>;
     listTasks(input: {
       pluginId: string;
@@ -509,7 +510,8 @@ export class PluginService {
       pluginId: string;
       appId: string;
       projectId: string;
-      uniqueId: string;
+      uniqueId?: string;
+      resultId?: string;
     }): Promise<boolean>;
     listTasks(input: {
       pluginId: string;
@@ -536,7 +538,8 @@ export class PluginService {
     pluginId: string;
     appId: string;
     projectId: string;
-    uniqueId: string;
+    uniqueId?: string;
+    resultId?: string;
   }): Promise<boolean> {
     if (!this.alertTroubleshooterRuntime) {
       throw new Error("自动排查运行时尚未就绪");

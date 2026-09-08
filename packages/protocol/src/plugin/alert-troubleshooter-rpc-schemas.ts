@@ -1,14 +1,19 @@
 import { z } from "zod";
 import { AlertTroubleshooterTaskSchema } from "./alert-troubleshooter-types.js";
 
-export const AlertTroubleshooterEnqueueRecordRequestSchema = z.object({
-  type: z.literal("plugin.alert_troubleshooter.enqueue_record.request"),
-  requestId: z.string(),
-  pluginId: z.string().trim().min(1),
-  appId: z.string().trim().min(1),
-  projectId: z.string().trim().min(1),
-  uniqueId: z.string().trim().min(1),
-});
+export const AlertTroubleshooterEnqueueRecordRequestSchema = z
+  .object({
+    type: z.literal("plugin.alert_troubleshooter.enqueue_record.request"),
+    requestId: z.string(),
+    pluginId: z.string().trim().min(1),
+    appId: z.string().trim().min(1),
+    projectId: z.string().trim().min(1),
+    uniqueId: z.string().trim().min(1).optional(),
+    resultId: z.string().trim().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.uniqueId) !== Boolean(value.resultId), {
+    message: "必须且只能指定 uniqueId 或 resultId",
+  });
 
 export const AlertTroubleshooterEnqueueRecordResponseSchema = z.object({
   type: z.literal("plugin.alert_troubleshooter.enqueue_record.response"),
@@ -16,6 +21,7 @@ export const AlertTroubleshooterEnqueueRecordResponseSchema = z.object({
     requestId: z.string(),
     queued: z.boolean(),
     uniqueId: z.string(),
+    resultId: z.string().nullable(),
     error: z.string().nullable(),
   }),
 });

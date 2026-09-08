@@ -4,13 +4,14 @@ import { Text, View } from "react-native";
 import { ClipboardList, Play, Plus, Save, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { ZodType } from "zod";
-import type {
-  AlertTroubleshooterChat,
-  AlertTroubleshooterConfig,
-  AlertTroubleshooterRuntime,
-  AlertTroubleshooterTarget,
-  PluginAppDefinition,
-  PluginSummary,
+import {
+  ALERT_TROUBLESHOOTER_PROMPT_VARIABLES,
+  type AlertTroubleshooterChat,
+  type AlertTroubleshooterConfig,
+  type AlertTroubleshooterRuntime,
+  type AlertTroubleshooterTarget,
+  type PluginAppDefinition,
+  type PluginSummary,
 } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import { Field, FormTextInput } from "@/components/ui/form-field";
@@ -57,6 +58,7 @@ export interface AlertTroubleshooterPanelSpec {
   configDataKey: string;
   runtimeDataKey: string;
   productName: string;
+  manualDebugSelector?: "uniqueId" | "resultId";
   configSchema: ZodType<AlertTroubleshooterConfig>;
   runtimeSchema: ZodType<AlertTroubleshooterRuntime>;
 }
@@ -117,7 +119,7 @@ function AlertTroubleshooterProject({
   const [queuePollIntervalMinutes, setQueuePollIntervalMinutes] = useState(
     String(initialConfig.success ? initialConfig.data.queuePollIntervalMinutes : 5),
   );
-  const [debugUniqueId, setDebugUniqueId] = useState("");
+  const [debugRecordValue, setDebugRecordValue] = useState("");
   const [queueingRecord, setQueueingRecord] = useState(false);
   const [queuedRecord, setQueuedRecord] = useState<string | null>(null);
   const [scheduleEnabled, setScheduleEnabled] = useState(
@@ -184,6 +186,7 @@ function AlertTroubleshooterProject({
     [supportsTeams],
   );
   const runtime = spec.runtimeSchema.safeParse(project.data[spec.runtimeDataKey]);
+  const debugByResultId = spec.manualDebugSelector === "resultId";
 
   useEffect(() => {
     if (botId || !status?.activeBotId) return;
@@ -294,9 +297,9 @@ function AlertTroubleshooterProject({
 
   const enqueueDebugRecord = useCallback(async () => {
     if (!client) return;
-    const uniqueId = debugUniqueId.trim();
-    if (!uniqueId) {
-      setError("请输入多维表格 unique_id");
+    const value = debugRecordValue.trim();
+    if (!value) {
+      setError(debugByResultId ? "请输入 Bamboo result_id" : "请输入多维表格 unique_id");
       return;
     }
     setQueueingRecord(true);
@@ -307,18 +310,18 @@ function AlertTroubleshooterProject({
         pluginId: spec.pluginId,
         appId: spec.appId,
         projectId: project.projectId,
-        uniqueId,
+        ...(debugByResultId ? { resultId: value } : { uniqueId: value }),
       });
       if (response.error || !response.queued) {
         throw new Error(response.error ?? "加入处理队列失败");
       }
-      setQueuedRecord(response.uniqueId);
+      setQueuedRecord(debugByResultId ? (response.resultId ?? value) : response.uniqueId);
     } catch (queueError) {
       setError(errorMessage(queueError));
     } finally {
       setQueueingRecord(false);
     }
-  }, [client, debugUniqueId, project.projectId, spec.appId, spec.pluginId]);
+  }, [client, debugByResultId, debugRecordValue, project.projectId, spec.appId, spec.pluginId]);
 
   return (
     <View style={styles.root}>
@@ -444,7 +447,7 @@ function AlertTroubleshooterProject({
         <View style={styles.rowBetween}>
           <View style={styles.flex}>
             <Text style={styles.heading}>定时补偿扫描</Text>
-            <Text style={styles.description}>默认扫描最近 2 小时的全部消息。</Text>
+            <Text style={styles.description}>按照回看范围和排除最近消息配置，定时扫描群消息。</Text>
           </View>
           <Switch
             value={scheduleEnabled}
@@ -515,39 +518,44 @@ function AlertTroubleshooterProject({
             multiline
             value={promptTemplate}
             onChangeText={setPromptTemplate}
-            placeholder="例如：请处理记录 {{recordId}}，原始消息：{{messageText}}"
+            placeholder="例如：请处理记录 {{record_id}}，原始消息：{{message_text}}"
             textInputStyle={styles.promptInput}
           />
         </Field>
         <Text selectable style={styles.variables}>
-          可用变量：{"{{projectId}}"}、{"{{projectName}}"}、{"{{projectDirectory}}"}、
-          {"{{pluginId}}"}、{"{{appId}}"}、{"{{recordId}}"}、{"{{messageId}}"}、{"{{chatId}}"}、
-          {"{{unique_id}}"}、{"{{result_id}}"}、{"{{chatName}}"}、{"{{messageText}}"}、
-          {"{{messageTime}}"}、{"{{trigger}}"}、{"{{troubleshootingSopDoc}}"}、
-          {"{{attributionRecordRoot}}"}
-          ；Project 自定义变量使用 {"{{变量名}}"}。
+          可用变量：
+          {ALERT_TROUBLESHOOTER_PROMPT_VARIABLES.map((name) => `{{${name}}}`).join("、")}
+          ；Project 自定义变量也统一使用下划线名称，例如 {"{{service_owner}}"}。
         </Text>
         <Field
-          label="指定多维表格 unique_id"
-          hint="从今天或昨天的日报多维表格查找并加入处理队列，便于调试。"
+          label={debugByResultId ? "指定 Bamboo 对账 result_id" : "指定多维表格 unique_id"}
+          hint={
+            debugByResultId
+              ? "输入原始 result_id；系统会在当天归因多维表格创建或复用记录，并立即加入处理队列。"
+              : "从今天或昨天的日报多维表格查找并加入处理队列，便于调试。"
+          }
         >
           <FormTextInput
-            value={debugUniqueId}
-            onChangeText={setDebugUniqueId}
-            placeholder="result_id:123456 或 message_id:om_xxx"
+            value={debugRecordValue}
+            onChangeText={setDebugRecordValue}
+            placeholder={debugByResultId ? "例如：123456" : "result_id:123456 或 message_id:om_xxx"}
           />
         </Field>
         <Button
           variant="outline"
           leftIcon={Play}
           loading={queueingRecord}
-          disabled={!debugUniqueId.trim()}
+          disabled={!debugRecordValue.trim()}
           onPress={enqueueDebugRecord}
         >
-          加入处理队列
+          {debugByResultId ? "按 result_id 调试" : "加入处理队列"}
         </Button>
         {queuedRecord ? (
-          <Text style={styles.success}>记录 {queuedRecord} 已加入处理队列。</Text>
+          <Text style={styles.success}>
+            {debugByResultId
+              ? `Bamboo result_id ${queuedRecord} 已加入处理队列。`
+              : `记录 ${queuedRecord} 已加入处理队列。`}
+          </Text>
         ) : null}
       </View>
 

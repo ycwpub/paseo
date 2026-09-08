@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { PluginState } from "@getpaseo/protocol/messages";
 import { pluginsQueryKey } from "@/data/plugin";
-import { useReplicaQueries } from "@/data/query";
+import { useAuthoritativeReplicaQueries } from "@/data/query";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   prioritizePluginSidebarHosts,
@@ -29,7 +29,9 @@ export function usePluginSidebarHost(
   const featureMap = useHostFeatureMap(candidateServerIds, "plugins");
   const connectionStatuses = useHostRuntimeConnectionStatuses(candidateServerIds);
   const runtimeStore = getHostRuntimeStore();
-  const queries = useReplicaQueries<PluginState>(
+  // The sidebar is a navigation surface, so it must reconcile persisted replicas on mount instead
+  // of letting an old empty catalog hide every plugin after an App restart.
+  const queries = useAuthoritativeReplicaQueries<PluginState>(
     candidateServerIds.map((serverId) => {
       const client = runtimeStore.getSnapshot(serverId)?.client ?? null;
       const enabled =

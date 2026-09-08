@@ -49,6 +49,19 @@ export function useReplicaQueries<TData>(
   return useQueries({ queries: inputs.map((input) => replicaQueryOptions(input)) });
 }
 
+export function useAuthoritativeReplicaQueries<TData>(
+  inputs: ReplicaQueryInput<TData, Error, TData, QueryKey>[],
+): UseQueryResult<TData, Error>[] {
+  return useQueries({
+    queries: inputs.map((input) => ({
+      ...replicaQueryOptions(input),
+      refetchOnMount: "always",
+      refetchOnReconnect: "always",
+      staleTime: 0,
+    })),
+  });
+}
+
 export function useFetchQuery<
   TQueryFnData,
   TError = Error,

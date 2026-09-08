@@ -62,6 +62,16 @@ function permissionError(
   message: string,
   context: LarkRequestContext,
 ): Error | null {
+  if (code === 99991672) {
+    if (context.identity === "bot") {
+      return new Error(
+        `飞书机器人应用身份权限不足，请更新机器人权限（缺少 ${context.requiredScopes.join("、")}；错误码 99991672）。请开通后重新执行任务。`,
+      );
+    }
+    return new Error(
+      `飞书用户身份权限不足，请重新完成 OAuth 授权（缺少 ${context.requiredScopes.join("、")}；错误码 99991672）。请授权后重新执行任务。`,
+    );
+  }
   if (code === 99991679) {
     if (context.identity === "bot") {
       return new Error(

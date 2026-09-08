@@ -67,6 +67,25 @@ describe("Lark alert troubleshooter API", () => {
     );
   });
 
+  test("maps app-identity code 99991672 to the exact required scope", async () => {
+    await expect(
+      testableLarkAlertTroubleshooterApi.requestWithRetry(
+        async () => ({
+          code: 99991672,
+          msg: "Forbidden. required privileges: wiki:wiki or wiki:node:create",
+        }),
+        {
+          context: {
+            identity: "bot",
+            requiredScopes: ["wiki:node:create"],
+          },
+        },
+      ),
+    ).rejects.toThrow(
+      "飞书机器人应用身份权限不足，请更新机器人权限（缺少 wiki:node:create；错误码 99991672）。请开通后重新执行任务。",
+    );
+  });
+
   test("does not retain tokens in surfaced errors", async () => {
     await expect(
       testableLarkAlertTroubleshooterApi.requestWithRetry(async () => {

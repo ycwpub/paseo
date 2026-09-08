@@ -1,9 +1,10 @@
-import type { PluginSummary } from "@getpaseo/protocol/messages";
+import type { PluginState, PluginSummary } from "@getpaseo/protocol/messages";
 import { resolveInstalledPluginEntries } from "@/plugins/sidebar-panel/model";
 
 export interface PluginHostCatalog {
   serverId: string;
   plugins: readonly PluginSummary[];
+  online: boolean;
 }
 
 export function prioritizePluginSidebarHosts(
@@ -25,10 +26,23 @@ export function prioritizePluginSidebarHosts(
   return result;
 }
 
+export function projectPluginSidebarCatalogs(
+  serverIds: readonly string[],
+  pluginStates: readonly (PluginState | null | undefined)[],
+  onlineServerIds: ReadonlySet<string>,
+): PluginHostCatalog[] {
+  return serverIds.map((serverId, index) => ({
+    serverId,
+    plugins: pluginStates[index]?.plugins ?? [],
+    online: onlineServerIds.has(serverId),
+  }));
+}
+
 export function selectPluginSidebarHost(
   catalogs: readonly PluginHostCatalog[],
 ): PluginHostCatalog | null {
-  return (
-    catalogs.find((catalog) => resolveInstalledPluginEntries(catalog.plugins).length > 0) ?? null
+  const catalogsWithPlugins = catalogs.filter(
+    (catalog) => resolveInstalledPluginEntries(catalog.plugins).length > 0,
   );
+  return catalogsWithPlugins.find((catalog) => catalog.online) ?? catalogsWithPlugins[0] ?? null;
 }

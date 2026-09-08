@@ -5,6 +5,7 @@ import { useReplicaQueries } from "@/data/query";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import {
   prioritizePluginSidebarHosts,
+  projectPluginSidebarCatalogs,
   selectPluginSidebarHost,
   type PluginHostCatalog,
 } from "@/plugins/sidebar-panel/host-selection";
@@ -50,15 +51,14 @@ export function usePluginSidebarHost(
   return useMemo(
     () =>
       selectPluginSidebarHost(
-        candidateServerIds.map((serverId, index) => {
-          const available =
-            featureMap.get(serverId) === true && connectionStatuses.get(serverId) === "online";
-          return {
-            serverId,
-            plugins: available ? (queries[index]?.data?.plugins ?? []) : [],
-          };
-        }),
+        projectPluginSidebarCatalogs(
+          candidateServerIds,
+          queries.map((query) => query.data),
+          new Set(
+            candidateServerIds.filter((serverId) => connectionStatuses.get(serverId) === "online"),
+          ),
+        ),
       ),
-    [candidateServerIds, connectionStatuses, featureMap, queries],
+    [candidateServerIds, connectionStatuses, queries],
   );
 }

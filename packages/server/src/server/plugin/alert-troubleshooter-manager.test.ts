@@ -40,6 +40,7 @@ function config(patch: Partial<AlertTroubleshooterConfig> = {}): AlertTroublesho
 function createHarness(input?: {
   config?: AlertTroubleshooterConfig;
   records?: AlertTroubleshooterRecord[];
+  recordStoreOverrides?: Partial<AlertTroubleshooterRecordStore>;
   waitForAgentCompletion?: (agentId: string) => Promise<void>;
 }) {
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
@@ -104,6 +105,7 @@ function createHarness(input?: {
     markPaused: vi.fn(async () => undefined),
     markFailed: vi.fn(async () => undefined),
   };
+  Object.assign(recordStore, input?.recordStoreOverrides);
   const scanMessages = vi.fn(async () => []);
   const definition: AlertTroubleshooterDefinition = {
     pluginId: "test-alert-plugin",
@@ -241,6 +243,52 @@ describe("ProjectAlertTroubleshooterManager", () => {
       expect.objectContaining({ recordId: "rec_table" }),
     );
     await harness.manager.stop();
+  });
+
+  it("records daily table permission failures in the task list with the actionable reason", async () => {
+    const permissionError =
+      "飞书机器人应用身份权限不足，请更新机器人权限（缺少 wiki:node:create；错误码 99991672）。请开通后重新执行任务。";
+    const harness = createHarness({
+      recordStoreOverrides: {
+        listUnclaimed: vi.fn(async () => {
+          throw new Error(permissionError);
+        }),
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.manager.listTasks("prj_1")).toHaveLength(1));
+
+    expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+      trigger: "table",
+      status: "failed",
+      error: `读取或创建日报多维表格失败：${permissionError}`,
+    });
+    await harness.manager.stop();
+  });
+
+  it("records realtime message ingestion permission failures in the task list", async () => {
+    const permissionError =
+      "飞书机器人应用身份权限不足，请更新机器人权限（缺少 base:record:create；错误码 99991672）。请开通后重新执行任务。";
+    const harness = createHarness({
+      recordStoreOverrides: {
+        upsertMessage: vi.fn(async () => {
+          throw new Error(permissionError);
+        }),
+      },
+    });
+
+    await expect(harness.manager.observeIncomingMessage("bot-1", message())).rejects.toThrow(
+      `写入日报多维表格失败：${permissionError}`,
+    );
+
+    expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+      uniqueId: "message_id:om-1",
+      messageId: "om-1",
+      trigger: "message",
+      status: "failed",
+      error: `写入日报多维表格失败：${permissionError}`,
+    });
   });
 
   it("renders Project variables in a custom processing prompt", async () => {

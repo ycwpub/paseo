@@ -27,6 +27,12 @@ describe("Lark permission error actions", () => {
         "飞书机器人应用身份权限不足，请更新机器人权限（缺少 base:record:create；code: 99991679）",
       ),
     ).toBe(false);
+
+    expect(
+      isLarkBotPermissionRequiredError(
+        "读取或创建日报多维表格失败：飞书机器人应用身份权限不足，请更新机器人权限（缺少 wiki:node:create；错误码 99991672）。请开通后重新执行任务。",
+      ),
+    ).toBe(true);
   });
 
   test("does not offer OAuth again for a Wiki resource visibility failure", () => {

@@ -85,6 +85,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() ? error.message : String(error);
 }
 
+function operationError(operation: string, error: unknown): Error {
+  return new Error(`${operation}失败：${errorMessage(error)}`);
+}
+
 function nextRuntime(
   current: unknown,
   patch: Partial<AlertTroubleshooterRuntime>,
@@ -406,12 +410,13 @@ export class ProjectAlertTroubleshooterManager {
         cwd: source.path,
       });
     } catch (error) {
+      const failure = operationError("扫描飞书群消息", error);
       this.queueStore.recordFailure(state.projectId, {
         uniqueId: `scan:${now.toISOString()}`,
         trigger: "schedule",
-        error: errorMessage(error),
+        error: failure.message,
       });
-      throw error;
+      throw failure;
     }
     for (const event of events) {
       await this.ingestMessage(state, config, "schedule", event, events.length || 1);
@@ -445,14 +450,15 @@ export class ProjectAlertTroubleshooterManager {
         event,
       });
     } catch (error) {
+      const failure = operationError("写入日报多维表格", error);
       this.queueStore.recordFailure(state.projectId, {
         uniqueId: `message_id:${event.messageId}`,
         messageId: event.messageId,
         trigger,
         matchedCount,
-        error: errorMessage(error),
+        error: failure.message,
       });
-      throw error;
+      throw failure;
     }
     this.queueStore.enqueue(state.projectId, {
       recordId: record.recordId,
@@ -475,12 +481,24 @@ export class ProjectAlertTroubleshooterManager {
   ): Promise<void> {
     if (!state.projectId || !config.troubleshootingEnabled) return;
     await this.updateRuntime(state, { status: "polling", lastError: null });
-    const records = await this.options.recordStore.listUnclaimed({
-      config,
-      projectId: state.projectId,
-      pluginId: this.options.definition.pluginId,
-      limit: TABLE_POLL_BATCH_SIZE,
-    });
+    let records: AlertTroubleshooterRecord[];
+    try {
+      records = await this.options.recordStore.listUnclaimed({
+        config,
+        projectId: state.projectId,
+        pluginId: this.options.definition.pluginId,
+        limit: TABLE_POLL_BATCH_SIZE,
+      });
+    } catch (error) {
+      const failedAt = this.now();
+      const failure = operationError("读取或创建日报多维表格", error);
+      this.queueStore.recordFailure(state.projectId, {
+        uniqueId: `table_poll:${failedAt.toISOString()}`,
+        trigger: "table",
+        error: failure.message,
+      });
+      throw failure;
+    }
     for (const record of records) {
       this.queueStore.enqueue(state.projectId, {
         recordId: record.recordId,

@@ -2512,6 +2512,10 @@ export function useHostRuntimeConnectionStatus(serverId: string): HostRuntimeCon
 export function useHostRuntimeConnectionStatuses(
   serverIds: readonly string[],
 ): ReadonlyMap<string, HostRuntimeConnectionStatus> {
+  // React Compiler otherwise treats the aggregate map as dependent only on serverIds and can
+  // preserve the initial "connecting" values after the external-store version changes.
+  "use no memo";
+
   const store = getHostRuntimeStore();
   const version = useSyncExternalStore(
     (onStoreChange) => store.subscribeAll(onStoreChange),

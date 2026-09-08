@@ -9,7 +9,6 @@ import {
   selectPluginSidebarHost,
   type PluginHostCatalog,
 } from "@/plugins/sidebar-panel/host-selection";
-import { useHostFeatureMap } from "@/runtime/host-features";
 import {
   getHostRuntimeStore,
   useHostRuntimeConnectionStatuses,
@@ -26,7 +25,6 @@ export function usePluginSidebarHost(
     () => prioritizePluginSidebarHosts(currentServerId, localServerId, hostIds),
     [currentServerId, hostIds, localServerId],
   );
-  const featureMap = useHostFeatureMap(candidateServerIds, "plugins");
   const connectionStatuses = useHostRuntimeConnectionStatuses(candidateServerIds);
   const runtimeStore = getHostRuntimeStore();
   // The sidebar is a navigation surface, so it must reconcile persisted replicas on mount instead
@@ -34,12 +32,18 @@ export function usePluginSidebarHost(
   const queries = useAuthoritativeReplicaQueries<PluginState>(
     candidateServerIds.map((serverId) => {
       const client = runtimeStore.getSnapshot(serverId)?.client ?? null;
+      // Read capability support from the live client. During a cold desktop start the Host runtime
+      // can already be online while the separate Session store still has no server-info replica;
+      // gating on that replica permanently skipped this query until the whole App was restarted.
+      const advertisedPlugins = client?.getLastServerInfoMessage()?.features?.plugins;
       const enabled =
-        featureMap.get(serverId) === true && connectionStatuses.get(serverId) === "online";
+        Boolean(client) &&
+        connectionStatuses.get(serverId) === "online" &&
+        advertisedPlugins !== false;
       return {
         queryKey: pluginsQueryKey(serverId),
         pushEvent: "plugin.changed",
-        enabled: enabled && Boolean(client),
+        enabled,
         queryFn: async () => {
           if (!client) throw new Error("Host is disconnected");
           const result = await client.listUnifiedPlugins();

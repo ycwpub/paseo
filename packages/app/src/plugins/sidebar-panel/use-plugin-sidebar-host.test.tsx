@@ -10,18 +10,25 @@ import { pluginsQueryKey } from "@/data/plugin";
 import { usePluginSidebarHost } from "./use-plugin-sidebar-host";
 
 const listUnifiedPlugins = vi.fn();
+let advertisedPlugins: boolean | undefined = true;
 
 vi.mock("@/hooks/use-is-local-daemon", () => ({
   useLocalDaemonServerId: () => "local",
 }));
 
-vi.mock("@/runtime/host-features", () => ({
-  useHostFeatureMap: () => new Map([["local", true]]),
-}));
-
 vi.mock("@/runtime/host-runtime", () => ({
   getHostRuntimeStore: () => ({
-    getSnapshot: () => ({ client: { listUnifiedPlugins } }),
+    getSnapshot: () => ({
+      client: {
+        getLastServerInfoMessage: () =>
+          advertisedPlugins === undefined
+            ? null
+            : {
+                features: { plugins: advertisedPlugins },
+              },
+        listUnifiedPlugins,
+      },
+    }),
   }),
   useHostRuntimeConnectionStatuses: () => new Map([["local", "online"]]),
   useHosts: () => [{ serverId: "local" }],
@@ -60,9 +67,11 @@ function Providers({ client, children }: { client: QueryClient; children: ReactN
 describe("plugin sidebar catalog refresh", () => {
   afterEach(() => {
     listUnifiedPlugins.mockReset();
+    advertisedPlugins = true;
   });
 
-  it("replaces a persisted empty catalog with the authoritative daemon catalog on mount", async () => {
+  it("loads plugins after a cold start before server feature metadata is available", async () => {
+    advertisedPlugins = undefined;
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -83,5 +92,21 @@ describe("plugin sidebar catalog refresh", () => {
     expect(screen.getByText("无插件")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("Bamboo 对账自动排查")).toBeTruthy());
     expect(listUnifiedPlugins).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not request plugins from a daemon that does not advertise plugin support", async () => {
+    advertisedPlugins = false;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <Providers client={queryClient}>
+        <Harness />
+      </Providers>,
+    );
+
+    expect(screen.getByText("无插件")).toBeTruthy();
+    await waitFor(() => expect(listUnifiedPlugins).not.toHaveBeenCalled());
   });
 });

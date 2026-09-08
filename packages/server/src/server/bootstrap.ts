@@ -1248,6 +1248,7 @@ export async function createPaseoDaemon(
   });
   const workspaceProvisioning = createWorkspaceProvisioningService({
     serverId,
+    paseoHome: config.paseoHome,
     projectRegistry,
     workspaceRegistry,
     workspaceGitService,

@@ -7,6 +7,7 @@ import {
 const mocks = vi.hoisted(() => {
   const search = vi.fn();
   const create = vi.fn();
+  const get = vi.fn();
   const getValidUserAccessToken = vi.fn(async () => "user-token");
   const client = {
     bitable: {
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => {
           })),
           create: vi.fn(async () => ({ code: 0 })),
         },
-        appTableRecord: { search, create },
+        appTableRecord: { search, create, get },
       },
     },
   };
@@ -26,6 +27,7 @@ const mocks = vi.hoisted(() => {
     client,
     search,
     create,
+    get,
     getValidUserAccessToken,
     resolveDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
       appToken: `app_${dateKey}`,
@@ -104,6 +106,7 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     vi.clearAllMocks();
     mocks.search.mockReset();
     mocks.create.mockReset();
+    mocks.get.mockReset();
     mocks.getValidUserAccessToken.mockClear();
   });
 
@@ -258,5 +261,41 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     expect(records.map((record) => record.tableDate)).toEqual(["20260908", "20260907"]);
     expect(mocks.resolveDailyAlertTable).not.toHaveBeenCalled();
     expect(mocks.resolveExistingDailyAlertTable).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves legacy record_id task references for permission retry", async () => {
+    mocks.get.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        record: {
+          record_id: "rec_legacy",
+          fields: {
+            result_id: "123456",
+            消息内容: "Bamboo 报警",
+            触发方式: "table",
+          },
+        },
+      },
+    });
+
+    const record = await createStore().getRecordByUniqueId({
+      config: config(),
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      uniqueId: "record_id:20260908:rec_legacy",
+    });
+
+    expect(record).toMatchObject({
+      recordId: "rec_legacy",
+      uniqueId: "record_id:rec_legacy",
+      resultId: "123456",
+    });
+    expect(mocks.get).toHaveBeenCalledWith({
+      path: {
+        app_token: "app_20260908",
+        table_id: "tbl_20260908",
+        record_id: "rec_legacy",
+      },
+      params: { text_field_as_array: false },
+    });
   });
 });

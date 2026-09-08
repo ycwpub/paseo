@@ -26,6 +26,7 @@ import type {
   AlertTroubleshooterRecord,
   AlertTroubleshooterRecordStore,
 } from "./alert-troubleshooter-record-store.js";
+import { isAlertTroubleshooterActionDue } from "./alert-troubleshooter-schedule.js";
 
 const SCHEDULER_TICK_MS = 30_000;
 const EVENT_DEDUPE_TTL_MS = 24 * 60 * 60_000;
@@ -168,6 +169,7 @@ export class ProjectAlertTroubleshooterManager {
   private readonly lastTablePoll = new Map<string, number>();
   private readonly observedMessageIds = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
+  private tickInFlight: Promise<void> | null = null;
 
   constructor(
     private readonly options: {
@@ -199,14 +201,15 @@ export class ProjectAlertTroubleshooterManager {
 
   start(): void {
     if (this.timer) return;
-    void this.tick();
-    this.timer = setInterval(() => void this.tick(), SCHEDULER_TICK_MS);
+    this.requestTick();
+    this.timer = setInterval(() => this.requestTick(), SCHEDULER_TICK_MS);
     this.timer.unref?.();
   }
 
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.tickInFlight) await this.tickInFlight;
     await Promise.allSettled(this.activeRuns.values());
   }
 
@@ -366,22 +369,29 @@ export class ProjectAlertTroubleshooterManager {
     }
   }
 
+  private requestTick(): void {
+    if (this.tickInFlight) return;
+    const tick = this.tick().finally(() => {
+      if (this.tickInFlight === tick) this.tickInFlight = null;
+    });
+    this.tickInFlight = tick;
+  }
+
   private async tick(): Promise<void> {
     const now = this.now();
     for (const state of this.listConfiguredProjects()) {
       const config = this.readConfig(state);
       if (!config?.enabled || !state.projectId) continue;
       try {
-        if (config.schedule.enabled && this.isScanDue(state.projectId, config, now)) {
+        if (config.schedule.enabled && this.isScanDue(state, config, now)) {
           this.lastScheduledRun.set(state.projectId, now.getTime());
           await this.scanProject(state, config, now);
         }
         if (
           config.troubleshootingEnabled &&
           this.queueStore.countQueued(state.projectId) === 0 &&
-          this.isTablePollDue(state.projectId, config, now)
+          this.isTablePollDue(state, config, now)
         ) {
-          this.lastTablePoll.set(state.projectId, now.getTime());
           await this.pollUnclaimedRecords(state, config);
         }
         this.queueProjectProcessing(state, config);
@@ -395,14 +405,32 @@ export class ProjectAlertTroubleshooterManager {
     }
   }
 
-  private isScanDue(projectId: string, config: AlertTroubleshooterConfig, now: Date): boolean {
-    const lastRun = this.lastScheduledRun.get(projectId) ?? 0;
-    return now.getTime() - lastRun >= config.schedule.intervalMinutes * 60_000;
+  private isScanDue(state: PluginAppState, config: AlertTroubleshooterConfig, now: Date): boolean {
+    const runtime = state.data[this.options.definition.runtimeDataKey] as
+      | Partial<AlertTroubleshooterRuntime>
+      | undefined;
+    return isAlertTroubleshooterActionDue({
+      now,
+      intervalMinutes: config.schedule.intervalMinutes,
+      inMemoryTimestamp: this.lastScheduledRun.get(state.projectId ?? ""),
+      persistedTimestamp: runtime?.lastScanStartedAt,
+    });
   }
 
-  private isTablePollDue(projectId: string, config: AlertTroubleshooterConfig, now: Date): boolean {
-    const lastPoll = this.lastTablePoll.get(projectId) ?? 0;
-    return now.getTime() - lastPoll >= config.queuePollIntervalMinutes * 60_000;
+  private isTablePollDue(
+    state: PluginAppState,
+    config: AlertTroubleshooterConfig,
+    now: Date,
+  ): boolean {
+    const runtime = state.data[this.options.definition.runtimeDataKey] as
+      | Partial<AlertTroubleshooterRuntime>
+      | undefined;
+    return isAlertTroubleshooterActionDue({
+      now,
+      intervalMinutes: config.queuePollIntervalMinutes,
+      inMemoryTimestamp: this.lastTablePoll.get(state.projectId ?? ""),
+      persistedTimestamp: runtime?.lastQueuePollAt,
+    });
   }
 
   private async scanProject(
@@ -513,7 +541,13 @@ export class ProjectAlertTroubleshooterManager {
     config: AlertTroubleshooterConfig,
   ): Promise<void> {
     if (!state.projectId || !config.troubleshootingEnabled) return;
-    await this.updateRuntime(state, { status: "polling", lastError: null });
+    const pollStartedAt = this.now();
+    this.lastTablePoll.set(state.projectId, pollStartedAt.getTime());
+    await this.updateRuntime(state, {
+      status: "polling",
+      lastQueuePollAt: pollStartedAt.toISOString(),
+      lastError: null,
+    });
     let records: AlertTroubleshooterRecord[];
     try {
       records = await this.options.recordStore.listUnclaimed({

@@ -486,6 +486,32 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     pluginId: string;
     uniqueId: string;
   }): Promise<AlertTroubleshooterRecord | null> {
+    const recordReference = /^record_id:(?:(\d{8}):)?(.+)$/u.exec(input.uniqueId.trim());
+    const recordId = recordReference?.[2]?.trim();
+    if (recordId) {
+      const tableDates = recordReference?.[1] ? [recordReference[1]] : recentDateKeys();
+      for (const tableDate of tableDates) {
+        const context = await this.existingContext(input.config, input.pluginId, tableDate);
+        if (!context) continue;
+        const result = await context.api.request(
+          () =>
+            context.api.client.bitable.v1.appTableRecord.get({
+              path: {
+                app_token: context.location.appToken,
+                table_id: context.location.tableId,
+                record_id: recordId,
+              },
+              params: { text_field_as_array: false },
+            }),
+          { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+        );
+        const record = result.data?.record
+          ? toRecord(result.data.record as LarkRecord, tableDate)
+          : null;
+        if (record) return record;
+      }
+      return null;
+    }
     const uniqueIds = isBambooPlugin(input.pluginId)
       ? [
           normalizeBambooUniqueId(input.uniqueId),

@@ -1,7 +1,7 @@
 /* oxlint-disable react-perf/jsx-no-new-function-as-prop -- Task-row actions bind the selected persisted task id. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { Pause, RefreshCw, Trash2 } from "lucide-react-native";
+import { Pause, RefreshCw, RotateCcw, Trash2 } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type {
   AlertTroubleshooterTask,
@@ -18,6 +18,11 @@ import {
   isLarkBotPermissionRequiredError,
   LarkBotPermissionErrorAction,
 } from "@/screens/settings/channels/lark-bot-permission-error-action";
+import { confirmDialog } from "@/utils/confirm-dialog";
+import {
+  deleteAllAlertTroubleshooterTasks,
+  retryAlertTroubleshooterTask,
+} from "./alert-troubleshooter-task-actions";
 
 function triggerLabel(task: AlertTroubleshooterTask): string {
   if (task.trigger === "message") return "监听到 1 条消息并写入日报表";
@@ -47,6 +52,7 @@ function TaskRow({
   larkBotId,
   onPause,
   onDelete,
+  onRetry,
   onAuthorized,
 }: {
   task: AlertTroubleshooterTask;
@@ -56,9 +62,11 @@ function TaskRow({
   larkBotId: string;
   onPause: (taskId: string) => void;
   onDelete: (taskId: string) => void;
-  onAuthorized: () => void;
+  onRetry: (task: AlertTroubleshooterTask) => Promise<void>;
+  onAuthorized: (task: AlertTroubleshooterTask) => Promise<void>;
 }) {
   const canPause = task.status === "queued" || task.status === "running";
+  const canRetry = task.status === "failed" || task.status === "paused";
   return (
     <View style={styles.taskCard}>
       <View style={styles.rowBetween}>
@@ -92,7 +100,9 @@ function TaskRow({
                     serverId={serverId}
                     appId={larkAppId}
                     errorMessage={task.error}
-                    onAuthorized={onAuthorized}
+                    onAuthorized={() => {
+                      void onAuthorized(task).catch(() => {});
+                    }}
                   />
                 </View>
               ) : null}
@@ -104,7 +114,7 @@ function TaskRow({
                     appId={larkAppId}
                     botId={larkBotId}
                     errorMessage={task.error}
-                    onAuthorized={onAuthorized}
+                    onAuthorized={() => onAuthorized(task)}
                   />
                 </View>
               ) : null}
@@ -112,6 +122,17 @@ function TaskRow({
           ) : null}
         </View>
         <View style={styles.actions}>
+          {canRetry ? (
+            <Button
+              size="xs"
+              variant="outline"
+              leftIcon={RotateCcw}
+              disabled={busy}
+              onPress={() => void onRetry(task)}
+            >
+              重新执行
+            </Button>
+          ) : null}
           {canPause ? (
             <Button
               size="xs"
@@ -164,6 +185,7 @@ export function AlertTroubleshooterTaskListPage({
   const [tasks, setTasks] = useState<AlertTroubleshooterTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const request = useMemo(() => ({ pluginId, appId, projectId }), [appId, pluginId, projectId]);
 
@@ -231,6 +253,47 @@ export function AlertTroubleshooterTaskListPage({
     [client, request],
   );
 
+  const retryTask = useCallback(
+    async (task: AlertTroubleshooterTask) => {
+      if (!client) throw new Error("当前主机未连接，无法重新执行任务");
+      setBusyTaskId(task.id);
+      setError(null);
+      try {
+        setTasks(await retryAlertTroubleshooterTask(client, request, task));
+      } catch (retryError) {
+        const message = retryError instanceof Error ? retryError.message : String(retryError);
+        setError(message);
+        throw retryError;
+      } finally {
+        setBusyTaskId(null);
+      }
+    },
+    [client, request],
+  );
+
+  const deleteAllTasks = useCallback(async () => {
+    if (!client || tasks.length === 0) return;
+    const confirmed = await confirmDialog({
+      title: `删除全部 ${tasks.length} 条执行记录？`,
+      message: "删除后无法恢复；正在执行或等待执行的任务也会停止。",
+      confirmLabel: "删除全部",
+      cancelLabel: "取消",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setDeletingAll(true);
+    setError(null);
+    try {
+      setTasks(await deleteAllAlertTroubleshooterTasks(client, request, tasks));
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : String(deleteError);
+      await refresh();
+      setError(message);
+    } finally {
+      setDeletingAll(false);
+    }
+  }, [client, refresh, request, tasks]);
+
   return (
     <View style={styles.root}>
       <BackHeader title={`${projectName} · 任务执行记录`} onBack={onBack} />
@@ -238,15 +301,28 @@ export function AlertTroubleshooterTaskListPage({
         <Text style={styles.description}>
           查看监听、扫描、日报入表及 Agent 排查状态；失败原因会直接显示在对应任务中。
         </Text>
-        <Button
-          size="sm"
-          variant="outline"
-          leftIcon={RefreshCw}
-          loading={loading}
-          onPress={refresh}
-        >
-          刷新
-        </Button>
+        <View style={styles.actions}>
+          <Button
+            size="sm"
+            variant="outline"
+            leftIcon={RefreshCw}
+            loading={loading}
+            disabled={deletingAll}
+            onPress={refresh}
+          >
+            刷新
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            leftIcon={Trash2}
+            loading={deletingAll}
+            disabled={tasks.length === 0 || deletingAll || busyTaskId !== null}
+            onPress={() => void deleteAllTasks()}
+          >
+            删除全部
+          </Button>
+        </View>
       </View>
       {error ? (
         <View style={styles.failure}>
@@ -286,13 +362,14 @@ export function AlertTroubleshooterTaskListPage({
         <TaskRow
           key={task.id}
           task={task}
-          busy={busyTaskId === task.id}
+          busy={deletingAll || busyTaskId === task.id}
           serverId={serverId}
           larkAppId={larkAppId}
           larkBotId={larkBotId}
           onPause={pauseTask}
           onDelete={deleteTask}
-          onAuthorized={refresh}
+          onRetry={retryTask}
+          onAuthorized={retryTask}
         />
       ))}
     </View>

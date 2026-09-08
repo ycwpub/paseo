@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { bootstrapWorkspaceRegistries, migrateLegacyProjectIds, migrateManagedProjectStorage } =
-  vi.hoisted(() => ({
-    bootstrapWorkspaceRegistries: vi.fn(),
-    migrateLegacyProjectIds: vi.fn(),
-    migrateManagedProjectStorage: vi.fn(),
-  }));
+const {
+  bootstrapWorkspaceRegistries,
+  migrateLegacyProjectIds,
+  migrateManagedProjectStorage,
+  mergeDuplicateManagedProjects,
+} = vi.hoisted(() => ({
+  bootstrapWorkspaceRegistries: vi.fn(),
+  migrateLegacyProjectIds: vi.fn(),
+  migrateManagedProjectStorage: vi.fn(),
+  mergeDuplicateManagedProjects: vi.fn(),
+}));
 
 vi.mock("../workspace-registry-bootstrap.js", () => ({
   bootstrapWorkspaceRegistries,
@@ -16,6 +21,9 @@ vi.mock("../migrations/migrate-project-ids.migration.js", () => ({
 vi.mock("../migrations/migrate-managed-project-storage.migration.js", () => ({
   migrateManagedProjectStorage,
 }));
+vi.mock("../migrations/merge-duplicate-managed-projects.migration.js", () => ({
+  mergeDuplicateManagedProjects,
+}));
 
 import { bootstrapProjectWorkspaceRegistries } from "./project-workspace-registry-bootstrap.js";
 
@@ -25,6 +33,7 @@ describe("bootstrapProjectWorkspaceRegistries", () => {
     bootstrapWorkspaceRegistries.mockResolvedValue(undefined);
     migrateLegacyProjectIds.mockResolvedValue(undefined);
     migrateManagedProjectStorage.mockResolvedValue(undefined);
+    mergeDuplicateManagedProjects.mockResolvedValue(undefined);
   });
 
   test("runs Project migrations after the upstream registry bootstrap", async () => {
@@ -40,6 +49,9 @@ describe("bootstrapProjectWorkspaceRegistries", () => {
     );
     expect(migrateLegacyProjectIds.mock.invocationCallOrder[0]).toBeLessThan(
       migrateManagedProjectStorage.mock.invocationCallOrder[0]!,
+    );
+    expect(migrateManagedProjectStorage.mock.invocationCallOrder[0]).toBeLessThan(
+      mergeDuplicateManagedProjects.mock.invocationCallOrder[0]!,
     );
   });
 });

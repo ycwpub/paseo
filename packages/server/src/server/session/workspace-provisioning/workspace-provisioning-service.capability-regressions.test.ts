@@ -89,6 +89,7 @@ beforeEach(async () => {
   await workspaceRegistry.initialize();
   await projectRegistry.initialize();
   provisioning = createWorkspaceProvisioningService({
+    paseoHome: tmpDir,
     workspaceRegistry,
     projectRegistry,
     workspaceGitService: gitService(),
@@ -129,4 +130,17 @@ test("creating a Workspace in a directoryless Project preserves its name and ide
     displayName: "结算助手机器人",
   });
   expect(await projectRegistry.list()).toHaveLength(1);
+});
+
+test("managed Project source directory resolves to its directoryless Project without an explicit id", async () => {
+  const project = await projectRegistry.createDirectoryless({
+    displayName: "替身模式测试",
+    timestamp: "2026-09-08T00:00:00.000Z",
+  });
+  const managedCwd = path.join(tmpDir, "projects", project.projectId);
+
+  const workspace = await provisioning.createWorkspaceForDirectory(managedCwd, "飞书问题");
+
+  expect(workspace.projectId).toBe(project.projectId);
+  expect(await projectRegistry.list()).toEqual([project]);
 });

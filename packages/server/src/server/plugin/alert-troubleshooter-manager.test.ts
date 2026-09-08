@@ -39,6 +39,7 @@ function config(patch: Partial<AlertTroubleshooterConfig> = {}): AlertTroublesho
 
 function createHarness(input?: {
   config?: AlertTroubleshooterConfig;
+  runtime?: Record<string, unknown>;
   records?: AlertTroubleshooterRecord[];
   recordStoreOverrides?: Partial<AlertTroubleshooterRecordStore>;
   waitForAgentCompletion?: (agentId: string) => Promise<{ lastMessage: string | null } | void>;
@@ -53,7 +54,7 @@ function createHarness(input?: {
     projectId: "prj_1",
     defaultAgent: { provider: "codex", model: "gpt-5.6" },
     knowledge: "",
-    data: { alertConfig: activeConfig },
+    data: { alertConfig: activeConfig, ...(input?.runtime ? { alertRuntime: input.runtime } : {}) },
     document: null,
     conversation: [],
     createdAt: "2026-09-06T00:00:00.000Z",
@@ -166,7 +167,7 @@ function createHarness(input?: {
     logger: createTestLogger(),
     now: () => new Date("2026-09-06T08:00:00.000Z"),
   });
-  return { paseoHome, manager, recordStore, scanMessages, createAgent };
+  return { paseoHome, manager, recordStore, scanMessages, createAgent, getState: () => state };
 }
 
 function message() {
@@ -244,6 +245,43 @@ describe("ProjectAlertTroubleshooterManager", () => {
     expect(harness.recordStore.markSucceeded).toHaveBeenCalledWith(
       expect.objectContaining({ recordId: "rec_table" }),
     );
+    await harness.manager.stop();
+  });
+
+  it("records a table poll performed by scheduled scanning", async () => {
+    const harness = createHarness({
+      config: config({
+        schedule: {
+          enabled: true,
+          intervalMinutes: 30,
+          lookbackMinutes: 120,
+          excludeRecentMinutes: 0,
+        },
+      }),
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.recordStore.listUnclaimed).toHaveBeenCalledTimes(1));
+
+    expect(harness.getState().data.alertRuntime).toMatchObject({
+      lastQueuePollAt: "2026-09-06T08:00:00.000Z",
+    });
+    await harness.manager.stop();
+  });
+
+  it("honors the persisted table poll timestamp after restart", async () => {
+    const harness = createHarness({
+      config: config({ queuePollIntervalMinutes: 30 }),
+      runtime: {
+        status: "idle",
+        lastQueuePollAt: "2026-09-06T07:45:00.000Z",
+      },
+    });
+
+    harness.manager.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(harness.recordStore.listUnclaimed).not.toHaveBeenCalled();
     await harness.manager.stop();
   });
 

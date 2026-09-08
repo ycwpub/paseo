@@ -13,6 +13,7 @@ import {
   PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES,
   PASEO_LARK_ALERT_TROUBLESHOOTER_USER_SCOPES,
 } from "../channels/lark/lark-bot-capability-requirements.js";
+import { larkClientTokenCache } from "../channels/lark/lark-client-token-cache.js";
 
 export const ALERT_TROUBLESHOOTER_LARK_USER_SCOPES = PASEO_LARK_ALERT_TROUBLESHOOTER_USER_SCOPES;
 
@@ -50,6 +51,7 @@ function createClient(config: StoredLarkChannelConfig): lark.Client {
     appSecret: config.appSecret,
     appType: lark.AppType.SelfBuild,
     domain: config.domain === "lark" ? lark.Domain.Lark : lark.Domain.Feishu,
+    cache: larkClientTokenCache,
   });
 }
 

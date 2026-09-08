@@ -158,7 +158,7 @@ describe("LarkBotApplicationService", () => {
       status: "completed",
       appId: "cli_existing",
       botId: "bot-existing",
-      message: "机器人权限更新完成",
+      message: "机器人权限配置已提交，将在重新执行任务时验证是否生效",
     });
     expect(registrar.register).toHaveBeenCalledWith(
       expect.objectContaining({

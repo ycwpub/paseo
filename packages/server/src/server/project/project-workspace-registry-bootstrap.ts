@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 
 import type { AgentStorage } from "../agent/agent-storage.js";
+import { mergeDuplicateManagedProjects } from "../migrations/merge-duplicate-managed-projects.migration.js";
 import { migrateManagedProjectStorage } from "../migrations/migrate-managed-project-storage.migration.js";
 import { migrateLegacyProjectIds } from "../migrations/migrate-project-ids.migration.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
@@ -23,4 +24,5 @@ export async function bootstrapProjectWorkspaceRegistries(
   await bootstrapWorkspaceRegistries(options);
   await migrateLegacyProjectIds(options);
   await migrateManagedProjectStorage(options);
+  await mergeDuplicateManagedProjects(options);
 }

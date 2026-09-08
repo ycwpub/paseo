@@ -15,6 +15,7 @@ import {
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import type { CreatePaseoWorktreeWorkflowResult } from "../../worktree-session.js";
 import { deriveProjectKey } from "../../project-key.js";
+import { getManagedProjectIdForSourceDirectory } from "../../project/managed-project-source-identity.js";
 import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../../../utils/path.js";
 
 export interface ResolveOrCreateWorkspaceIdInput {
@@ -87,12 +88,14 @@ export class WorkspaceProvisioningError extends Error {
 
 export function createWorkspaceProvisioningService(deps: {
   serverId?: string;
+  paseoHome?: string;
   workspaceRegistry: WorkspaceRegistry;
   projectRegistry: ProjectRegistry;
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout" | "getSnapshot" | "peekSnapshot">;
   logger: Logger;
 }): WorkspaceProvisioningService {
-  const { serverId, workspaceRegistry, projectRegistry, workspaceGitService, logger } = deps;
+  const { serverId, paseoHome, workspaceRegistry, projectRegistry, workspaceGitService, logger } =
+    deps;
 
   async function runInImportWorkspace<T>(
     input: ImportWorkspaceInput,
@@ -159,6 +162,15 @@ export function createWorkspaceProvisioningService(deps: {
 
   async function findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
     const rootPath = resolve(cwd);
+    const managedProjectId = paseoHome
+      ? getManagedProjectIdForSourceDirectory(paseoHome, rootPath)
+      : null;
+    if (managedProjectId) {
+      const managedProject = await projectRegistry.get(managedProjectId);
+      if (managedProject && managedProject.rootPath === null && !managedProject.archivedAt) {
+        return managedProject;
+      }
+    }
     const checkout = await workspaceGitService.getCheckout(rootPath);
     const timestamp = new Date().toISOString();
     return projectRegistry.getOrCreateActiveByRoot({

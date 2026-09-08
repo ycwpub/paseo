@@ -6,6 +6,7 @@ import {
   buildLarkBotApplicationAddons,
   buildLarkBotApplicationRequirements,
 } from "./lark-bot-capability-requirements.js";
+import { invalidateLarkClientTokens } from "./lark-client-token-cache.js";
 import type { LarkChannelService } from "./lark-channel-service.js";
 
 const APPLICATION_TTL_MS = 30 * 60 * 1000;
@@ -168,9 +169,10 @@ export class LarkBotApplicationService {
     application: MutableApplication,
     input: LarkBotApplicationInput,
   ): void {
+    invalidateLarkClientTokens(application.appId ?? input.appId ?? "");
     application.status = "completed";
     application.botId = input.botId ?? null;
-    application.message = "机器人权限更新完成";
+    application.message = "机器人权限配置已提交，将在重新执行任务时验证是否生效";
     application.error = null;
   }
 

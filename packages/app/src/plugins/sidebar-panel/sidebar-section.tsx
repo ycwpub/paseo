@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { GripVertical } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePlugins } from "@/hooks/use-plugins";
 import { resolvePluginIcon } from "@/plugins/icons";
 import {
   installedPluginEntryKey,
@@ -18,7 +17,7 @@ import { usePluginSidebarOrderStore } from "@/plugins/sidebar-panel/order-store"
 import { resolvePluginLauncherIcon } from "@/plugins/sidebar-panel/presentation";
 import { usePluginAppPanelStore } from "@/plugins/sidebar-panel/selection-store";
 import { SortablePluginGrid } from "@/plugins/sidebar-panel/sortable-plugin-grid";
-import { useHostFeature } from "@/runtime/host-features";
+import { usePluginSidebarHost } from "@/plugins/sidebar-panel/use-plugin-sidebar-host";
 import { useHosts } from "@/runtime/host-runtime";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import type { Theme } from "@/styles/theme";
@@ -112,23 +111,21 @@ export function InstalledPluginSidebarSection({
   const hosts = useHosts();
   const activeWorkspace = useActiveWorkspaceSelection();
   const routeServerId = parseServerIdFromPathname(pathname);
-  const serverId =
+  const currentServerId =
     routeServerId ??
     activeWorkspace?.serverId ??
     (hosts.length === 1 ? hosts[0]?.serverId : null) ??
     hosts[0]?.serverId ??
     "";
-  const supportsPlugins = useHostFeature(serverId, "plugins");
-  const { plugins } = usePlugins(serverId, {
-    enabled: Boolean(serverId) && supportsPlugins,
-  });
+  const pluginHost = usePluginSidebarHost(currentServerId);
+  const serverId = pluginHost?.serverId ?? "";
   const preferredOrder = usePluginSidebarOrderStore(
     (state) => state.orderByServer[serverId] ?? EMPTY_PLUGIN_ORDER,
   );
   const setOrder = usePluginSidebarOrderStore((state) => state.setOrder);
   const entries = useMemo(
-    () => resolveInstalledPluginEntries(plugins, preferredOrder),
-    [plugins, preferredOrder],
+    () => resolveInstalledPluginEntries(pluginHost?.plugins, preferredOrder),
+    [pluginHost?.plugins, preferredOrder],
   );
   const selected = usePluginAppPanelStore((state) => state.selection);
   const toggle = usePluginAppPanelStore((state) => state.toggle);
@@ -179,7 +176,7 @@ export function InstalledPluginSidebarSection({
     [handleEntryPress, selected, serverId],
   );
 
-  if (!supportsPlugins || entries.length === 0) return null;
+  if (!pluginHost || entries.length === 0) return null;
 
   return (
     <View style={styles.section} testID="sidebar-installed-plugins">

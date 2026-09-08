@@ -66,11 +66,7 @@ export class AlertTroubleshooterQueueStore {
   ): AlertTroubleshooterQueueItem {
     const state = this.read(projectId);
     if (!input.force) {
-      const existing = state.items.find(
-        (item) =>
-          item.recordId === input.recordId &&
-          (item.status === "queued" || item.status === "running" || item.status === "succeeded"),
-      );
+      const existing = state.items.find((item) => item.recordId === input.recordId);
       if (existing) return existing;
     }
     const timestamp = this.now().toISOString();

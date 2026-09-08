@@ -3,11 +3,13 @@ import type { LarkAlertTroubleshooterApi } from "./lark-alert-troubleshooter-api
 export interface AlertTroubleshooterTableLocation {
   appToken: string;
   tableId: string;
+  spaceId: string;
+  nodeToken: string;
   dateKey: string;
   title: string;
 }
 
-interface WikiRoot {
+export interface AlertTroubleshooterWikiRoot {
   spaceId: string;
   nodeToken: string;
 }
@@ -40,10 +42,10 @@ export function alertTableDateKey(date: Date): string {
   return `${value.year}${value.month}${value.day}`;
 }
 
-async function resolveWikiRoot(
+export async function resolveAlertTroubleshooterWikiRoot(
   api: LarkAlertTroubleshooterApi,
   rootUrl: string,
-): Promise<WikiRoot> {
+): Promise<AlertTroubleshooterWikiRoot> {
   const token = wikiToken(rootUrl);
   const result = await api.request(
     () =>
@@ -62,11 +64,15 @@ async function resolveWikiRoot(
 
 async function findDailyNode(
   api: LarkAlertTroubleshooterApi,
-  root: WikiRoot,
+  root: AlertTroubleshooterWikiRoot,
   title: string,
-): Promise<{ appToken: string } | null> {
+): Promise<{ appToken: string; nodeToken: string } | null> {
   let pageToken: string | undefined;
-  const matches: Array<{ objToken: string; objType: string }> = [];
+  const matches: Array<{
+    objToken: string;
+    objType: string;
+    nodeToken: string;
+  }> = [];
   do {
     const result = await api.request(
       () =>
@@ -84,8 +90,12 @@ async function findDailyNode(
       { identity: "user", requiredScopes: ["wiki:wiki:readonly"] },
     );
     for (const node of result.data?.items ?? []) {
-      if (node.title === title && node.obj_token) {
-        matches.push({ objToken: node.obj_token, objType: node.obj_type });
+      if (node.title === title && node.obj_token && node.node_token) {
+        matches.push({
+          objToken: node.obj_token,
+          objType: node.obj_type,
+          nodeToken: node.node_token,
+        });
       }
     }
     pageToken = result.data?.has_more ? result.data.page_token : undefined;
@@ -99,14 +109,14 @@ async function findDailyNode(
   if (match.objType !== "bitable") {
     throw new Error(`归因记录根目录下的同名节点不是多维表格：${title}`);
   }
-  return { appToken: match.objToken };
+  return { appToken: match.objToken, nodeToken: match.nodeToken };
 }
 
 async function createDailyNode(
   api: LarkAlertTroubleshooterApi,
-  root: WikiRoot,
+  root: AlertTroubleshooterWikiRoot,
   title: string,
-): Promise<{ appToken: string }> {
+): Promise<{ appToken: string; nodeToken: string }> {
   const result = await api.request(
     () =>
       api.client.wiki.v2.spaceNode.create({
@@ -121,8 +131,11 @@ async function createDailyNode(
     { identity: "bot", requiredScopes: ["wiki:node:create"] },
   );
   const appToken = result.data?.node?.obj_token;
-  if (!appToken) throw new Error(`创建日报多维表格后未返回 app_token：${title}`);
-  return { appToken };
+  const nodeToken = result.data?.node?.node_token;
+  if (!appToken || !nodeToken) {
+    throw new Error(`创建日报多维表格后未返回 app_token 或 node_token：${title}`);
+  }
+  return { appToken, nodeToken };
 }
 
 async function resolveDefaultTableId(
@@ -148,7 +161,7 @@ export async function resolveDailyAlertTable(input: {
   pluginId: string;
   dateKey: string;
 }): Promise<AlertTroubleshooterTableLocation> {
-  const root = await resolveWikiRoot(input.api, input.rootUrl);
+  const root = await resolveAlertTroubleshooterWikiRoot(input.api, input.rootUrl);
   const title = dailyTitle(input.pluginId, input.dateKey);
   const node =
     (await findDailyNode(input.api, root, title)) ??
@@ -156,6 +169,8 @@ export async function resolveDailyAlertTable(input: {
   return {
     appToken: node.appToken,
     tableId: await resolveDefaultTableId(input.api, node.appToken),
+    spaceId: root.spaceId,
+    nodeToken: node.nodeToken,
     dateKey: input.dateKey,
     title,
   };
@@ -167,13 +182,15 @@ export async function resolveExistingDailyAlertTable(input: {
   pluginId: string;
   dateKey: string;
 }): Promise<AlertTroubleshooterTableLocation | null> {
-  const root = await resolveWikiRoot(input.api, input.rootUrl);
+  const root = await resolveAlertTroubleshooterWikiRoot(input.api, input.rootUrl);
   const title = dailyTitle(input.pluginId, input.dateKey);
   const node = await findDailyNode(input.api, root, title);
   if (!node) return null;
   return {
     appToken: node.appToken,
     tableId: await resolveDefaultTableId(input.api, node.appToken),
+    spaceId: root.spaceId,
+    nodeToken: node.nodeToken,
     dateKey: input.dateKey,
     title,
   };

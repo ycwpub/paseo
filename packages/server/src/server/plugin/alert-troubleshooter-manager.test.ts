@@ -44,6 +44,8 @@ function createHarness(input?: {
   recordStoreOverrides?: Partial<AlertTroubleshooterRecordStore>;
   waitForAgentCompletion?: (agentId: string) => Promise<{ lastMessage: string | null } | void>;
   parseCompletion?: AlertTroubleshooterDefinition["parseCompletion"];
+  buildPromptAppendix?: AlertTroubleshooterDefinition["buildPromptAppendix"];
+  validateRecord?: AlertTroubleshooterDefinition["validateRecord"];
 }) {
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
   temporaryHomes.push(paseoHome);
@@ -121,9 +123,11 @@ function createHarness(input?: {
       const parsed = AlertTroubleshooterConfigSchema.safeParse(value);
       return parsed.success ? parsed.data : null;
     },
+    ...(input?.validateRecord ? { validateRecord: input.validateRecord } : {}),
     matchesAlert: () => true,
     scanMessages,
     buildDefaultPrompt: ({ record }) => `处理 ${record.recordId}`,
+    ...(input?.buildPromptAppendix ? { buildPromptAppendix: input.buildPromptAppendix } : {}),
     ...(input?.parseCompletion ? { parseCompletion: input.parseCompletion } : {}),
   };
   const createAgent = vi.fn(async () => ({
@@ -368,6 +372,49 @@ describe("ProjectAlertTroubleshooterManager", () => {
     await harness.manager.stop();
   });
 
+  it("appends managed execution requirements to a custom processing prompt", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_prompt_appendix",
+      uniqueId: "result_id:19562663",
+      resultId: "19562663",
+      tableDate: "20260908",
+      messageId: null,
+      chatId: null,
+      chatName: null,
+      messageText: "手动排查",
+      messageTime: "2026-09-08T10:00:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      config: config({ promptTemplate: "自定义提示词：{{result_id}}" }),
+      records: [record],
+      recordStoreOverrides: {
+        resolveWikiTarget: vi.fn(async () => ({
+          spaceId: "space_daily",
+          parentNodeToken: "wiki_daily",
+        })),
+      },
+      buildPromptAppendix: ({ wikiTarget }) =>
+        [
+          `target_space_id：${wikiTarget?.spaceId ?? ""}`,
+          `parent_wiki_token：${wikiTarget?.parentNodeToken ?? ""}`,
+        ].join("\n"),
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() => expect(harness.createAgent).toHaveBeenCalledTimes(1));
+
+    expect(harness.createAgent.mock.calls[0]?.[0].initialPrompt).toBe(
+      [
+        "自定义提示词：19562663",
+        "",
+        "target_space_id：space_daily",
+        "parent_wiki_token：wiki_daily",
+      ].join("\n"),
+    );
+    await harness.manager.stop();
+  });
+
   it("waits for each task to finish before processing the next queued row", async () => {
     const records: AlertTroubleshooterRecord[] = [
       {
@@ -496,6 +543,42 @@ describe("ProjectAlertTroubleshooterManager", () => {
     expect(harness.recordStore.markSucceeded).not.toHaveBeenCalled();
     expect(harness.recordStore.markFailed).toHaveBeenCalledWith(
       expect.objectContaining({ recordId: "rec_invalid_completion" }),
+    );
+    await harness.manager.stop();
+  });
+
+  it("rejects an invalid record before creating an agent", async () => {
+    const record: AlertTroubleshooterRecord = {
+      recordId: "rec_missing_result",
+      uniqueId: "record_id:rec_missing_result",
+      resultId: null,
+      tableDate: "20260906",
+      messageId: null,
+      chatId: null,
+      chatName: null,
+      messageText: "缺少 result_id 的旧记录",
+      messageTime: "2026-09-06T07:30:00.000Z",
+      trigger: "table",
+    };
+    const harness = createHarness({
+      records: [record],
+      validateRecord: (candidate) => {
+        if (!candidate.resultId) throw new Error("缺少 result_id，已跳过 Agent 执行");
+      },
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
+        status: "failed",
+        error: "缺少 result_id，已跳过 Agent 执行",
+      }),
+    );
+
+    expect(harness.createAgent).not.toHaveBeenCalled();
+    expect(harness.recordStore.markRunning).not.toHaveBeenCalled();
+    expect(harness.recordStore.markFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ recordId: "rec_missing_result" }),
     );
     await harness.manager.stop();
   });

@@ -18,8 +18,9 @@ describe("Lark bot capability requirements", () => {
     expect(requirements.tenantScopes).toContain("base:field:read");
     expect(requirements.tenantScopes).toContain("base:field:create");
     expect(requirements.tenantScopes).toContain("base:record:create");
-    expect(requirements.tenantScopes).toContain("base:record:retrieve");
+    expect(requirements.tenantScopes).toContain("base:record:read");
     expect(requirements.tenantScopes).toContain("base:record:update");
+    expect(requirements.tenantScopes).not.toContain("base:record:retrieve");
     expect(requirements.tenantScopes).not.toContain("bitable:app");
     expect(requirements.userScopes).toContain("offline_access");
     expect(requirements.userScopes).not.toContain("im:chat");

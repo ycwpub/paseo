@@ -53,6 +53,8 @@ export interface AlertTroubleshooterRecord {
   recordId: string;
   uniqueId: string;
   resultId: string | null;
+  taskName?: string;
+  taskTime?: string;
   tableDate: string;
   messageId: string | null;
   chatId: string | null;
@@ -63,6 +65,11 @@ export interface AlertTroubleshooterRecord {
 }
 
 export interface AlertTroubleshooterRecordStore {
+  resolveWikiTarget?(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    tableDate: string;
+  }): Promise<{ spaceId: string; parentNodeToken: string }>;
   upsertMessage(input: {
     config: AlertTroubleshooterConfig;
     projectId: string;
@@ -200,6 +207,8 @@ function toRecord(record: LarkRecord, tableDate: string): AlertTroubleshooterRec
     recordId,
     uniqueId,
     resultId: textValue(record.fields[FIELDS.resultId]),
+    taskName: textValue(record.fields[BAMBOO_RECORD_FIELDS.taskName]) ?? undefined,
+    taskTime: textValue(record.fields[BAMBOO_RECORD_FIELDS.taskTime]) ?? undefined,
     tableDate,
     messageId,
     chatId:
@@ -235,8 +244,26 @@ function recordStatus(record: LarkRecord): string | null {
 
 function isClaimableStatus(status: string | null, bamboo: boolean): boolean {
   return bamboo
-    ? !status || status === "init" || status === "failed" || status === STATUS_UNCLAIMED
+    ? !status || status === "init" || status === STATUS_UNCLAIMED
     : !status || status === STATUS_UNCLAIMED;
+}
+
+function isUnclaimedRecordForProject(input: {
+  record: LarkRecord;
+  projectId: string;
+  pluginId: string;
+  bamboo: boolean;
+}): boolean {
+  if (!isClaimableStatus(recordStatus(input.record), input.bamboo)) return false;
+  const recordProjectId = textValue(input.record.fields[FIELDS.projectId]);
+  const recordPluginId = textValue(input.record.fields[FIELDS.pluginId]);
+  if (!input.bamboo) {
+    return recordProjectId === input.projectId && recordPluginId === input.pluginId;
+  }
+  return (
+    (recordProjectId === null || recordProjectId === input.projectId) &&
+    (recordPluginId === null || recordPluginId === input.pluginId)
+  );
 }
 
 function bambooStatusFields(status: BambooRecordStatus): Record<string, string> {
@@ -314,6 +341,18 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     private readonly channelStore: Pick<LarkChannelStore, "getBot">,
     private readonly oauthService: Pick<LarkUserOAuthService, "getValidUserAccessToken">,
   ) {}
+
+  async resolveWikiTarget(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    tableDate: string;
+  }): Promise<{ spaceId: string; parentNodeToken: string }> {
+    const { location } = await this.context(input.config, input.pluginId, input.tableDate);
+    return {
+      spaceId: location.spaceId,
+      parentNodeToken: location.nodeToken,
+    };
+  }
 
   async upsertMessage(input: {
     config: AlertTroubleshooterConfig;
@@ -401,23 +440,22 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
               sort: [{ field_name: FIELDS.messageTime, desc: false }],
             },
           }),
-        { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+        { identity: "bot", requiredScopes: ["base:record:read"] },
       );
       for (const record of (result.data?.items ?? []) as LarkRecord[]) {
-        const recordProjectId = textValue(record.fields[FIELDS.projectId]);
-        const recordPluginId = textValue(record.fields[FIELDS.pluginId]);
         const bamboo = isBambooPlugin(input.pluginId);
         if (
-          !isClaimableStatus(recordStatus(record), bamboo) ||
-          (!bamboo && recordProjectId !== input.projectId) ||
-          (!bamboo && recordPluginId !== input.pluginId) ||
-          (bamboo && recordProjectId !== null && recordProjectId !== input.projectId) ||
-          (bamboo && recordPluginId !== null && recordPluginId !== input.pluginId)
-        ) {
+          !isUnclaimedRecordForProject({
+            record,
+            projectId: input.projectId,
+            pluginId: input.pluginId,
+            bamboo,
+          })
+        )
           continue;
-        }
         const normalized = toRecord(record, tableDate);
-        if (normalized) records.push(normalized);
+        if (!normalized || (bamboo && !normalized.resultId)) continue;
+        records.push(normalized);
         if (records.length >= input.limit) return records;
       }
     }
@@ -443,11 +481,17 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
               field_names: [FIELDS.chatId, FIELDS.messageTime, BAMBOO_RECORD_FIELDS.extra],
               filter: {
                 conjunction: "and",
-                conditions: [{ field_name: FIELDS.chatId, operator: "is", value: [input.chatId] }],
+                conditions: [
+                  {
+                    field_name: FIELDS.chatId,
+                    operator: "is",
+                    value: [input.chatId],
+                  },
+                ],
               },
             },
           }),
-        { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+        { identity: "bot", requiredScopes: ["base:record:read"] },
       );
       for (const record of (result.data?.items ?? []) as LarkRecord[]) {
         const fromExtra = bambooMessageSentAtMs(record.fields[BAMBOO_RECORD_FIELDS.extra]);
@@ -476,7 +520,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
           },
           params: { text_field_as_array: false },
         }),
-      { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+      { identity: "bot", requiredScopes: ["base:record:read"] },
     );
     return result.data?.record ? toRecord(result.data.record as LarkRecord, input.tableDate) : null;
   }
@@ -503,7 +547,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
               },
               params: { text_field_as_array: false },
             }),
-          { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+          { identity: "bot", requiredScopes: ["base:record:read"] },
         );
         const record = result.data?.record
           ? toRecord(result.data.record as LarkRecord, tableDate)
@@ -720,11 +764,17 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
             field_names: Object.values(FIELDS),
             filter: {
               conjunction: "and",
-              conditions: [{ field_name: FIELDS.messageId, operator: "is", value: [messageId] }],
+              conditions: [
+                {
+                  field_name: FIELDS.messageId,
+                  operator: "is",
+                  value: [messageId],
+                },
+              ],
             },
           },
         }),
-      { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+      { identity: "bot", requiredScopes: ["base:record:read"] },
     );
     const record = (result.data?.items?.[0] ?? null) as LarkRecord | null;
     return record ? toRecord(record, location.dateKey) : null;
@@ -744,11 +794,17 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
             field_names: [...Object.values(FIELDS), ...Object.values(BAMBOO_RECORD_FIELDS)],
             filter: {
               conjunction: "and",
-              conditions: [{ field_name: FIELDS.uniqueId, operator: "is", value: [uniqueId] }],
+              conditions: [
+                {
+                  field_name: FIELDS.uniqueId,
+                  operator: "is",
+                  value: [uniqueId],
+                },
+              ],
             },
           },
         }),
-      { identity: "bot", requiredScopes: ["base:record:retrieve"] },
+      { identity: "bot", requiredScopes: ["base:record:read"] },
     );
     const record = (result.data?.items?.[0] ?? null) as LarkRecord | null;
     return record ? toRecord(record, location.dateKey) : null;

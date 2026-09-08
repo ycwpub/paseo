@@ -1,22 +1,23 @@
 import { z } from "zod";
 
-const BambooCompletionSchema = z
-  .object({
-    status: z.enum(["succeeded", "pending", "not_support"]),
-    summary: z.string().trim().min(1),
-    feishu_doc_url: z.string().trim().url().optional(),
-  })
-  .superRefine((value, context) => {
-    if (value.status === "succeeded" && !value.feishu_doc_url?.includes("/wiki/")) {
-      context.addIssue({
-        code: "custom",
-        path: ["feishu_doc_url"],
-        message: "succeeded 必须提供归因记录根目录下的 Wiki 排查文档链接",
-      });
-    }
-  });
+const BambooCompletionSchema = z.object({
+  status: z.enum(["succeeded", "pending", "not_support"]),
+  summary: z.string().trim().min(1),
+  feishu_doc_url: z.string().trim().url().optional(),
+});
 
 export type BambooTroubleshooterCompletion = z.infer<typeof BambooCompletionSchema>;
+
+export const BAMBOO_TROUBLESHOOTER_OUTPUT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: ["succeeded", "pending", "not_support"] },
+    summary: { type: "string", minLength: 1 },
+    feishu_doc_url: { type: "string" },
+  },
+  required: ["status", "summary"],
+  additionalProperties: false,
+};
 
 function jsonCandidates(text: string): string[] {
   const candidates = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/giu)]
@@ -42,7 +43,5 @@ export function parseBambooTroubleshooterCompletion(
       // Continue to the next JSON candidate.
     }
   }
-  throw new Error(
-    "排查 Agent 的最终结果不符合契约；必须返回 status、summary，并在 succeeded 时返回 feishu_doc_url",
-  );
+  throw new Error("排查 Agent 的最终结果不符合契约；必须返回 status 和 summary");
 }

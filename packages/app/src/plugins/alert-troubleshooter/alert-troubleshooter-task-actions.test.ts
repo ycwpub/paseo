@@ -23,7 +23,7 @@ function task(
     queuedAt: "2026-09-08T10:00:00.000Z",
     updatedAt: "2026-09-08T10:01:00.000Z",
     agentId: null,
-    error: "缺少 base:record:retrieve",
+    error: "缺少 base:record:read",
     ...overrides,
   };
 }

@@ -265,6 +265,7 @@ import { PluginAppService } from "./plugin/plugin-app-service.js";
 import { BambooTroubleshooterManager } from "./plugin/bamboo-troubleshooter-manager.js";
 import { ArgosTroubleshooterManager } from "./plugin/argos-troubleshooter-manager.js";
 import { LarkAlertTroubleshooterRecordStore } from "./plugin/alert-troubleshooter-record-store.js";
+import { waitForAlertTroubleshooterAgent as waitForAlertTroubleshooterAgentWithTimeout } from "./plugin/alert-troubleshooter-agent-wait.js";
 import { PluginWorkflowMemoryStoreWriter } from "./plugin/plugin-workflow-memory-writer.js";
 import { importProviderResourcesOnStartup } from "./shared-resource-importer.js";
 import { ProjectIndexService } from "./project/project-index-service.js";
@@ -1898,7 +1899,13 @@ export async function createPaseoDaemon(
     larkUserOAuthService,
   );
   const waitForAlertTroubleshooterAgent = async (agentId: string) => {
-    const result = await agentManager.waitForAgentEvent(agentId, { waitForActive: true });
+    const result = await waitForAlertTroubleshooterAgentWithTimeout({
+      agentId,
+      wait: () => agentManager.waitForAgentEvent(agentId, { waitForActive: true }),
+      cancel: async () => {
+        await cancelAgentRunCommand({ agentManager, logger }, agentId);
+      },
+    });
     if (result.status === "error") {
       throw new Error(result.lastMessage ?? `排查 Agent ${agentId} 执行失败`);
     }

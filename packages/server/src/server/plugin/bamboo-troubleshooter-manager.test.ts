@@ -96,8 +96,12 @@ describe("BambooTroubleshooterManager", () => {
     >();
     const recordStore: AlertTroubleshooterRecordStore = {
       upsertMessage: vi.fn(async ({ event, trigger }) => {
+        const resultId = event.text.match(/result_id=(\d+)/u)?.[1] ?? null;
         const record = {
           recordId: `rec_${event.messageId}`,
+          uniqueId: resultId ?? `message_id:${event.messageId}`,
+          resultId,
+          tableDate: "20260904",
           messageId: event.messageId,
           chatId: event.chatId,
           chatName: "结算报警群",

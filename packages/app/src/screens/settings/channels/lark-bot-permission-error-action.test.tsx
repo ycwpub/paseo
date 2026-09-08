@@ -96,7 +96,7 @@ describe("LarkBotPermissionErrorAction", () => {
       error: null,
     });
     const onAuthorized = vi.fn(async () => {
-      throw new Error("仍缺少 base:record:retrieve");
+      throw new Error("仍缺少 base:record:read");
     });
 
     render(
@@ -113,7 +113,7 @@ describe("LarkBotPermissionErrorAction", () => {
 
     await waitFor(() => expect(screen.getByText("重新验证并执行")).toBeTruthy());
     expect(
-      screen.getByText("权限配置已提交，但重新执行任务失败：仍缺少 base:record:retrieve"),
+      screen.getByText("权限配置已提交，但重新执行任务失败：仍缺少 base:record:read"),
     ).toBeTruthy();
   });
 });

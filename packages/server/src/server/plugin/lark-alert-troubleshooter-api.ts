@@ -33,6 +33,8 @@ interface LarkRequestContext {
   requiredScopes: readonly string[];
 }
 
+const REQUIRED_SCOPES_PATTERN = /(?:required|权限)[^[]*\[([^\]]+)\]/iu;
+
 export interface LarkAlertTroubleshooterApi {
   client: lark.Client;
   userRequestOptions: LarkRequestOptions;
@@ -59,30 +61,39 @@ function sleep(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
+function requiredScopesFromError(message: string, fallback: readonly string[]): readonly string[] {
+  const match = REQUIRED_SCOPES_PATTERN.exec(message);
+  const parsed = match?.[1]
+    ?.split(",")
+    .map((scope) => scope.trim())
+    .filter((scope) => /^[a-z][a-z0-9_.:-]*$/iu.test(scope));
+  return parsed && parsed.length > 0 ? parsed : fallback;
+}
+
 function permissionError(
   code: number | null,
   message: string,
   context: LarkRequestContext,
 ): Error | null {
+  const requiredScopes = requiredScopesFromError(message, context.requiredScopes);
+  const requiredScopeText = requiredScopes.join("、");
   if (code === 99991672) {
     if (context.identity === "bot") {
       return new Error(
-        `飞书机器人应用身份权限不足，请更新机器人权限（缺少 ${context.requiredScopes.join("、")}；错误码 99991672）。请开通后重新执行任务。`,
+        `飞书机器人应用身份权限不足，请更新机器人权限（缺少 ${requiredScopeText}；错误码 99991672）。请开通后重新执行任务。`,
       );
     }
     return new Error(
-      `飞书用户身份权限不足，请重新完成 OAuth 授权（缺少 ${context.requiredScopes.join("、")}；错误码 99991672）。请授权后重新执行任务。`,
+      `飞书用户身份权限不足，请重新完成 OAuth 授权（缺少 ${requiredScopeText}；错误码 99991672）。请授权后重新执行任务。`,
     );
   }
   if (code === 99991679) {
     if (context.identity === "bot") {
       return new Error(
-        `飞书机器人应用身份权限不足，请更新机器人权限（缺少 ${context.requiredScopes.join("、")}；code: 99991679）`,
+        `飞书机器人应用身份权限不足，请更新机器人权限（缺少 ${requiredScopeText}；code: 99991679）`,
       );
     }
-    return new Error(
-      `飞书用户身份权限不足，请重新完成 OAuth 授权（缺少 ${context.requiredScopes.join("、")}）`,
-    );
+    return new Error(`飞书用户身份权限不足，请重新完成 OAuth 授权（缺少 ${requiredScopeText}）`);
   }
   if (code === 131006) {
     if (context.identity === "bot") {
@@ -177,5 +188,6 @@ export async function createLarkAlertTroubleshooterApi(input: {
 }
 
 export const testableLarkAlertTroubleshooterApi = {
+  requiredScopesFromError,
   requestWithRetry,
 };

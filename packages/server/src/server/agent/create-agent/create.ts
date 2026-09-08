@@ -97,6 +97,7 @@ export interface CreateAgentFromMcpInput {
   title: string;
   workspaceTitle?: string;
   initialPrompt?: string;
+  outputSchema?: Record<string, unknown>;
   config?: Partial<AgentSessionConfig>;
   cwd?: string;
   workspaceId?: string;
@@ -419,6 +420,7 @@ async function resolveMcpCreateAgent(
       env: input.env,
     },
     prompt: trimmedPrompt ? trimmedPrompt : undefined,
+    runOptions: input.outputSchema ? { outputSchema: input.outputSchema } : undefined,
     setupContinuation,
     createdWorktree,
     background: input.background,

@@ -10,7 +10,7 @@ export const PASEO_LARK_ALERT_TROUBLESHOOTER_TENANT_SCOPES = [
   "base:field:create",
   // Persist, claim, update, and resume troubleshooting records.
   "base:record:create",
-  "base:record:retrieve",
+  "base:record:read",
   "base:record:update",
 ] as const;
 

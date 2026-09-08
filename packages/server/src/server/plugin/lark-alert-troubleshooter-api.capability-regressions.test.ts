@@ -86,6 +86,23 @@ describe("Lark alert troubleshooter API", () => {
     );
   });
 
+  test("uses the scopes returned by Lark instead of a stale local permission name", async () => {
+    await expect(
+      testableLarkAlertTroubleshooterApi.requestWithRetry(
+        async () => ({
+          code: 99991672,
+          msg: "Access denied. One of the following scopes is required: [bitable:app:readonly, bitable:app, base:record:read].",
+        }),
+        {
+          context: {
+            identity: "bot",
+            requiredScopes: ["base:record:retrieve"],
+          },
+        },
+      ),
+    ).rejects.toThrow("缺少 bitable:app:readonly、bitable:app、base:record:read；错误码 99991672");
+  });
+
   test("does not retain tokens in surfaced errors", async () => {
     await expect(
       testableLarkAlertTroubleshooterApi.requestWithRetry(async () => {

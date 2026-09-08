@@ -57,6 +57,21 @@ export interface AlertTroubleshooterCompletion {
   documentUrl?: string;
 }
 
+export interface AlertTroubleshooterCompletionContext {
+  message: string | null | undefined;
+  config: AlertTroubleshooterConfig;
+  record: AlertTroubleshooterRecord;
+  workspaceCwd: string;
+  wikiTarget?: { spaceId: string; parentNodeToken: string };
+}
+
+interface AlertTroubleshooterOutcomePersistenceInput {
+  config: AlertTroubleshooterConfig;
+  item: AlertTroubleshooterQueueItem;
+  agentId: string;
+  completion: AlertTroubleshooterCompletion;
+}
+
 export interface AlertTroubleshooterDefinition {
   pluginId: string;
   appId: string;
@@ -65,7 +80,9 @@ export interface AlertTroubleshooterDefinition {
   logModule: string;
   agentTitle: string;
   labelKey: string;
+  outputSchema?: Record<string, unknown>;
   parseConfig(value: unknown): AlertTroubleshooterConfig | null;
+  validateRecord?(record: AlertTroubleshooterRecord): void;
   matchesAlert(event: NormalizedLarkMessageEvent): boolean;
   scanMessages(input: {
     config: AlertTroubleshooterConfig;
@@ -76,8 +93,18 @@ export interface AlertTroubleshooterDefinition {
     config: AlertTroubleshooterConfig;
     trigger: AlertTroubleshooterTrigger;
     record: AlertTroubleshooterRecord;
+    wikiTarget?: { spaceId: string; parentNodeToken: string };
+  }): string;
+  buildPromptAppendix?(input: {
+    config: AlertTroubleshooterConfig;
+    trigger: AlertTroubleshooterTrigger;
+    record: AlertTroubleshooterRecord;
+    wikiTarget?: { spaceId: string; parentNodeToken: string };
   }): string;
   parseCompletion?(message: string | null | undefined): AlertTroubleshooterCompletion;
+  resolveCompletion?(
+    input: AlertTroubleshooterCompletionContext,
+  ): Promise<AlertTroubleshooterCompletion>;
 }
 
 export function buildScheduledAlertScanWindow(
@@ -658,6 +685,7 @@ export class ProjectAlertTroubleshooterManager {
         tableDate: item.tableDate,
       });
       if (!record) throw new Error(`多维表格记录 ${item.recordId} 不存在`);
+      this.options.definition.validateRecord?.(record);
       await this.options.recordStore.markRunning({
         config,
         pluginId: this.options.definition.pluginId,
@@ -675,7 +703,12 @@ export class ProjectAlertTroubleshooterManager {
         project,
         `${this.options.definition.agentTitle} · ${this.now().toLocaleString("zh-CN")}`,
       );
-      const prompt = this.buildPrompt(config, state, project, record, item.trigger);
+      const wikiTarget = await this.options.recordStore.resolveWikiTarget?.({
+        config,
+        pluginId: this.options.definition.pluginId,
+        tableDate: item.tableDate,
+      });
+      const prompt = this.buildPrompt(config, state, project, record, item.trigger, wikiTarget);
       const identity = this.resolveIdentity(config, state, prompt);
       const created = await this.options.createAgent({
         kind: "mcp",
@@ -684,6 +717,7 @@ export class ProjectAlertTroubleshooterManager {
         workspaceId: workspace.workspaceId,
         title: `${this.options.definition.agentTitle} · ${project.customName ?? project.displayName}`,
         initialPrompt: identity.prompt,
+        outputSchema: this.options.definition.outputSchema,
         labels: {
           ...identity.labels,
           alertRecordId: item.recordId,
@@ -702,32 +736,15 @@ export class ProjectAlertTroubleshooterManager {
       const completionResult = await this.options.waitForAgentCompletion?.(agentId);
       const latestTask = this.queueStore.get(state.projectId, item.id);
       if (!latestTask || latestTask.status === "paused") return;
-      const completion = this.options.definition.parseCompletion
-        ? this.options.definition.parseCompletion(completionResult?.lastMessage)
-        : { status: "succeeded" as const, summary: "Agent 执行完成" };
+      const completion = await this.resolveCompletion({
+        message: completionResult?.lastMessage,
+        config,
+        record,
+        workspaceCwd: workspace.cwd,
+        wikiTarget,
+      });
+      await this.persistCompletion({ config, item, agentId, completion });
       this.queueStore.complete(state.projectId, item.id, agentId, completion.status);
-      if (this.options.definition.parseCompletion && this.options.recordStore.markOutcome) {
-        await this.options.recordStore.markOutcome({
-          config,
-          pluginId: this.options.definition.pluginId,
-          recordId: item.recordId,
-          tableDate: item.tableDate,
-          agentId,
-          status: completion.status,
-          summary: completion.summary,
-          ...(completion.documentUrl ? { documentUrl: completion.documentUrl } : {}),
-        });
-      } else if (completion.status === "succeeded") {
-        await this.options.recordStore.markSucceeded({
-          config,
-          pluginId: this.options.definition.pluginId,
-          recordId: item.recordId,
-          tableDate: item.tableDate,
-          agentId,
-        });
-      } else {
-        throw new Error(`记录存储不支持写入 ${completion.status} 终态`);
-      }
       await this.updateRuntime(state, {
         status: "idle",
         lastScanFinishedAt: this.now().toISOString(),
@@ -770,15 +787,59 @@ export class ProjectAlertTroubleshooterManager {
     }
   }
 
+  private async resolveCompletion(
+    input: AlertTroubleshooterCompletionContext,
+  ): Promise<AlertTroubleshooterCompletion> {
+    if (this.options.definition.resolveCompletion) {
+      return this.options.definition.resolveCompletion(input);
+    }
+    if (this.options.definition.parseCompletion) {
+      return this.options.definition.parseCompletion(input.message);
+    }
+    return { status: "succeeded", summary: "Agent 执行完成" };
+  }
+
+  private async persistCompletion(
+    input: AlertTroubleshooterOutcomePersistenceInput,
+  ): Promise<void> {
+    const hasCompletionHandler = Boolean(
+      this.options.definition.parseCompletion || this.options.definition.resolveCompletion,
+    );
+    if (hasCompletionHandler && this.options.recordStore.markOutcome) {
+      await this.options.recordStore.markOutcome({
+        config: input.config,
+        pluginId: this.options.definition.pluginId,
+        recordId: input.item.recordId,
+        tableDate: input.item.tableDate,
+        agentId: input.agentId,
+        status: input.completion.status,
+        summary: input.completion.summary,
+        ...(input.completion.documentUrl ? { documentUrl: input.completion.documentUrl } : {}),
+      });
+      return;
+    }
+    if (input.completion.status !== "succeeded") {
+      throw new Error(`记录存储不支持写入 ${input.completion.status} 终态`);
+    }
+    await this.options.recordStore.markSucceeded({
+      config: input.config,
+      pluginId: this.options.definition.pluginId,
+      recordId: input.item.recordId,
+      tableDate: input.item.tableDate,
+      agentId: input.agentId,
+    });
+  }
+
   private buildPrompt(
     config: AlertTroubleshooterConfig,
     state: PluginAppState,
     project: PersistedProjectRecord,
     record: AlertTroubleshooterRecord,
     trigger: AlertTroubleshooterQueueTrigger,
+    wikiTarget?: { spaceId: string; parentNodeToken: string },
   ): string {
     if (!config.promptTemplate.trim()) {
-      return this.options.definition.buildDefaultPrompt({ config, trigger, record });
+      return this.options.definition.buildDefaultPrompt({ config, trigger, record, wikiTarget });
     }
     const variables = {
       ...projectVariables({ paseoHome: this.options.paseoHome, project }),
@@ -801,8 +862,17 @@ export class ProjectAlertTroubleshooterManager {
       trigger,
       troubleshooting_sop_doc: config.troubleshootingSopDoc,
       attribution_record_root: config.attributionRecordRoot,
+      target_space_id: wikiTarget?.spaceId ?? "",
+      parent_wiki_token: wikiTarget?.parentNodeToken ?? "",
     };
-    return renderPromptTemplate(config.promptTemplate, variables);
+    const prompt = renderPromptTemplate(config.promptTemplate, variables);
+    const appendix = this.options.definition.buildPromptAppendix?.({
+      config,
+      trigger,
+      record,
+      wikiTarget,
+    });
+    return appendix?.trim() ? `${prompt.trim()}\n\n${appendix.trim()}` : prompt;
   }
 
   private nextScanAt(config: AlertTroubleshooterConfig): string | null {

@@ -71,6 +71,18 @@ describe("AlertTroubleshooterQueueStore", () => {
     expect(store.claimNext("prj_1", { trigger: "manual" })?.id).toBe(forced.id);
   });
 
+  it("does not automatically enqueue a previously failed record again", () => {
+    const { store } = createStore();
+    const first = store.enqueue("prj_1", { recordId: "rec_1", trigger: "table" });
+    store.fail("prj_1", first.id, "temporary failure");
+
+    const duplicate = store.enqueue("prj_1", { recordId: "rec_1", trigger: "table" });
+
+    expect(duplicate.id).toBe(first.id);
+    expect(store.list("prj_1")).toHaveLength(1);
+    expect(store.list("prj_1")[0]?.status).toBe("failed");
+  });
+
   it("lists, pauses, and deletes execution records", () => {
     const { store } = createStore();
     const queued = store.enqueue("prj_1", {

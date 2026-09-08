@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AlertTroubleshooterConfigSchema,
   type AlertTroubleshooterConfig,
@@ -32,12 +32,16 @@ const mocks = vi.hoisted(() => {
     resolveDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
       appToken: `app_${dateKey}`,
       tableId: `tbl_${dateKey}`,
+      spaceId: "space_1",
+      nodeToken: `node_${dateKey}`,
       dateKey,
       title: `${dateKey}-bamboo对账归因记录`,
     })),
     resolveExistingDailyAlertTable: vi.fn(async ({ dateKey }: { dateKey: string }) => ({
       appToken: `app_${dateKey}`,
       tableId: `tbl_${dateKey}`,
+      spaceId: "space_1",
+      nodeToken: `node_${dateKey}`,
       dateKey,
       title: `${dateKey}-bamboo对账归因记录`,
     })),
@@ -103,11 +107,30 @@ function createStore(): LarkAlertTroubleshooterRecordStore {
 
 describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-08T12:00:00+08:00"));
     vi.clearAllMocks();
     mocks.search.mockReset();
     mocks.create.mockReset();
     mocks.get.mockReset();
     mocks.getValidUserAccessToken.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("uses the matching daily Base Wiki node as the document parent", async () => {
+    await expect(
+      createStore().resolveWikiTarget({
+        config: config(),
+        pluginId: "bamboo-reconciliation-troubleshooter",
+        tableDate: "20260908",
+      }),
+    ).resolves.toEqual({
+      spaceId: "space_1",
+      parentNodeToken: "node_20260908",
+    });
   });
 
   it("reuses an existing daily record for the same result_id", async () => {
@@ -231,17 +254,38 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     );
   });
 
-  it("polls claimable Bamboo records from both today and yesterday without creating tables", async () => {
+  it("polls only unclaimed Bamboo records with result_id without creating tables", async () => {
     mocks.search.mockImplementation(async ({ path }: { path: { app_token: string } }) => ({
       code: 0,
       data: {
         items: [
           {
-            record_id: `rec_${path.app_token}`,
+            record_id: `rec_valid_${path.app_token}`,
             fields: {
               unique_id: path.app_token,
               result_id: path.app_token,
-              status: path.app_token.endsWith("08") ? "init" : "failed",
+              status: "init",
+              "Project ID": "prj_1",
+              "插件 ID": "bamboo-reconciliation-troubleshooter",
+              触发方式: "table",
+            },
+          },
+          {
+            record_id: `rec_missing_result_${path.app_token}`,
+            fields: {
+              unique_id: `record_id:rec_missing_result_${path.app_token}`,
+              status: "init",
+              "Project ID": "prj_1",
+              "插件 ID": "bamboo-reconciliation-troubleshooter",
+              触发方式: "table",
+            },
+          },
+          {
+            record_id: `rec_failed_${path.app_token}`,
+            fields: {
+              unique_id: `failed_${path.app_token}`,
+              result_id: `failed_${path.app_token}`,
+              status: "failed",
               "Project ID": "prj_1",
               "插件 ID": "bamboo-reconciliation-troubleshooter",
               触发方式: "table",
@@ -259,6 +303,10 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     });
 
     expect(records.map((record) => record.tableDate)).toEqual(["20260908", "20260907"]);
+    expect(records.map((record) => record.recordId)).toEqual([
+      "rec_valid_app_20260908",
+      "rec_valid_app_20260907",
+    ]);
     expect(mocks.resolveDailyAlertTable).not.toHaveBeenCalled();
     expect(mocks.resolveExistingDailyAlertTable).toHaveBeenCalledTimes(2);
   });

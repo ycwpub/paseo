@@ -20,7 +20,12 @@ import type {
   AlertTroubleshooterRecordStore,
 } from "./alert-troubleshooter-record-store.js";
 import { isBambooAlertMessage } from "./bamboo-alert-message.js";
-import { parseBambooTroubleshooterCompletion } from "./bamboo-troubleshooter-completion.js";
+import {
+  BAMBOO_TROUBLESHOOTER_OUTPUT_SCHEMA,
+  parseBambooTroubleshooterCompletion,
+} from "./bamboo-troubleshooter-completion.js";
+import { resolveBambooTroubleshooterCompletion } from "./bamboo-troubleshooter-completion-resolver.js";
+import { type BambooTroubleshooterDocumentPublication } from "./bamboo-troubleshooter-document-publisher.js";
 
 export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
@@ -36,6 +41,12 @@ export class BambooTroubleshooterManager {
   constructor(
     options: Omit<ManagerOptions, "definition"> & {
       recordStore: AlertTroubleshooterRecordStore;
+      publishDocument?: (input: {
+        config: AlertTroubleshooterConfig;
+        record: AlertTroubleshooterRecord;
+        workspaceCwd: string;
+        wikiTarget: { spaceId: string; parentNodeToken: string };
+      }) => Promise<BambooTroubleshooterDocumentPublication>;
       listChatMessages: (
         botId: string,
         chatId: string,
@@ -53,9 +64,17 @@ export class BambooTroubleshooterManager {
         logModule: "bamboo-troubleshooter-manager",
         agentTitle: "Bamboo 对账自动排查",
         labelKey: "bambooTroubleshooter",
+        outputSchema: BAMBOO_TROUBLESHOOTER_OUTPUT_SCHEMA,
         parseConfig: (value) => {
           const parsed = BambooTroubleshooterConfigSchema.safeParse(value);
           return parsed.success ? parsed.data : null;
+        },
+        validateRecord: (record) => {
+          if (!record.resultId?.trim()) {
+            throw new Error(
+              `Bamboo 排查记录 ${record.recordId} 缺少 result_id，已跳过 Agent 执行；请修复日报记录后手动重试`,
+            );
+          }
         },
         matchesAlert: (event) => isBambooAlertMessage(event.text, event.messageType),
         scanMessages: ({ config, window }) =>
@@ -65,8 +84,9 @@ export class BambooTroubleshooterManager {
             config,
             window,
           ),
-        buildDefaultPrompt: ({ config, trigger, record }) =>
-          buildBambooPrompt(config, trigger, record),
+        buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
+          buildBambooPrompt(config, trigger, record, wikiTarget),
+        buildPromptAppendix: ({ wikiTarget }) => buildBambooPromptAppendix(wikiTarget),
         parseCompletion: (message) => {
           const result = parseBambooTroubleshooterCompletion(message);
           return {
@@ -75,6 +95,17 @@ export class BambooTroubleshooterManager {
             ...(result.feishu_doc_url ? { documentUrl: result.feishu_doc_url } : {}),
           };
         },
+        resolveCompletion: async ({ message, config, record, workspaceCwd, wikiTarget }) =>
+          resolveBambooTroubleshooterCompletion(
+            {
+              message,
+              config,
+              record,
+              workspaceCwd,
+              wikiTarget,
+            },
+            options.publishDocument,
+          ),
       },
     });
   }
@@ -160,6 +191,7 @@ function buildBambooPrompt(
   config: AlertTroubleshooterConfig,
   trigger: "message" | "schedule" | "table" | "manual",
   record: AlertTroubleshooterRecord,
+  wikiTarget?: { spaceId: string; parentNodeToken: string },
 ): string {
   return [
     "执行单条 Bamboo 对账报警自动排查。",
@@ -169,13 +201,38 @@ function buildBambooPrompt(
     record.resultId ? `Bamboo result_id：${record.resultId}` : "",
     `触发方式：${trigger}`,
     `归因记录根目录：${config.attributionRecordRoot}`,
+    wikiTarget ? `target_space_id：${wikiTarget.spaceId}` : "",
+    wikiTarget ? `parent_wiki_token：${wikiTarget.parentNodeToken}` : "",
     `排查 SOP：${config.troubleshootingSopDoc}`,
-    `监听群：${config.chats.map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`).join("、")}`,
-    `触发消息：chat_id=${record.chatId ?? ""}, message_id=${record.messageId ?? ""}\n${record.messageText}`,
+    `监听群：${config.chats
+      .map((chat) => `${chat.name ?? chat.chatId}(${chat.chatId})`)
+      .join("、")}`,
+    `触发消息：chat_id=${record.chatId ?? ""}, message_id=${
+      record.messageId ?? ""
+    }\n${record.messageText}`,
     "只处理上述指定记录，不要批量认领其他记录；结果必须包含明确终态、证据摘要和排查文档链接。",
     "不要手工解析卡片、直接调用飞书 OpenAPI，或绕过 runner 的状态机、结果校验和审查门禁。",
+    "发布文档时必须把上述 target_space_id 和 parent_wiki_token 传给 runner 的 publish-troubleshooting-doc；validator 未通过或未得到 /wiki/ 链接时不得返回 succeeded。",
     '最终一条消息必须只包含 JSON：{"status":"succeeded|pending|not_support","summary":"...","feishu_doc_url":"https://.../wiki/..."}；succeeded 必须提供归因根目录下的 Wiki 文档链接。',
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function buildBambooPromptAppendix(wikiTarget?: {
+  spaceId: string;
+  parentNodeToken: string;
+}): string {
+  return [
+    "Paseo 自动执行约束：",
+    wikiTarget ? `target_space_id：${wikiTarget.spaceId}` : "",
+    wikiTarget ? `parent_wiki_token：${wikiTarget.parentNodeToken}` : "",
+    wikiTarget
+      ? "发布文档时必须把上述 target_space_id 和 parent_wiki_token 传给 runner 的 publish-troubleshooting-doc。"
+      : "如果无法解析日报 Base 的 Wiki 节点，不得把普通 docx 链接作为 succeeded 结果。",
+    "不要手工解析卡片、直接调用飞书 OpenAPI，或绕过 runner 的状态机、结果校验和审查门禁。",
+    '最终一条消息必须只包含 JSON：{"status":"succeeded|pending|not_support","summary":"...","feishu_doc_url":"https://.../wiki/..."}；succeeded 必须提供归因根目录下的 Wiki 文档链接。',
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

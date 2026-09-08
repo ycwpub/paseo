@@ -494,7 +494,8 @@ function AlertTroubleshooterProject({
           <View style={styles.flex}>
             <Text style={styles.heading}>异步排查</Text>
             <Text style={styles.description}>
-              从本地队列逐条处理；队列为空时定时认领多维表格中的未认领记录。
+              从本地队列逐条处理；队列为空时定时认领多维表格中的未认领记录。Bamboo
+              任务失败后也按该间隔重试，最多自动重试 3 次。
             </Text>
           </View>
           <Switch
@@ -503,7 +504,7 @@ function AlertTroubleshooterProject({
             accessibilityLabel="启用异步排查"
           />
         </View>
-        <Field label="多维表格轮询间隔（分钟）">
+        <Field label="队列轮询/失败重试间隔（分钟）">
           <FormTextInput
             value={queuePollIntervalMinutes}
             onChangeText={setQueuePollIntervalMinutes}

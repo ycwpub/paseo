@@ -46,6 +46,7 @@ function createHarness(input?: {
   parseCompletion?: AlertTroubleshooterDefinition["parseCompletion"];
   buildPromptAppendix?: AlertTroubleshooterDefinition["buildPromptAppendix"];
   validateRecord?: AlertTroubleshooterDefinition["validateRecord"];
+  maxAutomaticRetries?: number;
 }) {
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
   temporaryHomes.push(paseoHome);
@@ -119,6 +120,9 @@ function createHarness(input?: {
     logModule: "test-alert-manager",
     agentTitle: "测试报警排查",
     labelKey: "testAlert",
+    ...(input?.maxAutomaticRetries === undefined
+      ? {}
+      : { maxAutomaticRetries: input.maxAutomaticRetries }),
     parseConfig: (value) => {
       const parsed = AlertTroubleshooterConfigSchema.safeParse(value);
       return parsed.success ? parsed.data : null;
@@ -525,7 +529,9 @@ describe("ProjectAlertTroubleshooterManager", () => {
       trigger: "table",
     };
     const harness = createHarness({
+      config: config({ queuePollIntervalMinutes: 30 }),
       records: [record],
+      maxAutomaticRetries: 3,
       waitForAgentCompletion: async () => ({ lastMessage: "任务已完成" }),
       parseCompletion: () => {
         throw new Error("缺少结构化终态");
@@ -537,6 +543,8 @@ describe("ProjectAlertTroubleshooterManager", () => {
       expect(harness.manager.listTasks("prj_1")[0]).toMatchObject({
         status: "failed",
         error: "缺少结构化终态",
+        attempts: 1,
+        nextRetryAt: "2026-09-06T08:30:00.000Z",
       }),
     );
 

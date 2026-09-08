@@ -80,6 +80,7 @@ export interface AlertTroubleshooterDefinition {
   logModule: string;
   agentTitle: string;
   labelKey: string;
+  maxAutomaticRetries?: number;
   outputSchema?: Record<string, unknown>;
   parseConfig(value: unknown): AlertTroubleshooterConfig | null;
   validateRecord?(record: AlertTroubleshooterRecord): void;
@@ -410,6 +411,10 @@ export class ProjectAlertTroubleshooterManager {
       const config = this.readConfig(state);
       if (!config?.enabled || !state.projectId) continue;
       try {
+        this.queueStore.promoteDueRetries(state.projectId, {
+          intervalMinutes: config.queuePollIntervalMinutes,
+          maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0,
+        });
         if (config.schedule.enabled && this.isScanDue(state, config, now)) {
           this.lastScheduledRun.set(state.projectId, now.getTime());
           await this.scanProject(state, config, now);
@@ -645,7 +650,12 @@ export class ProjectAlertTroubleshooterManager {
     let currentConfig = config;
     let item = this.queueStore.claimNext(
       state.projectId,
-      manualOnly ? { trigger: "manual" } : undefined,
+      manualOnly
+        ? {
+            trigger: "manual",
+            maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0,
+          }
+        : { maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0 },
     );
     while (item && (currentConfig.troubleshootingEnabled || item.trigger === "manual")) {
       await this.processQueueItem(state, currentConfig, item);
@@ -658,7 +668,12 @@ export class ProjectAlertTroubleshooterManager {
       if (!currentConfig.troubleshootingEnabled && !manualOnly) break;
       item = this.queueStore.claimNext(
         state.projectId,
-        manualOnly ? { trigger: "manual" } : undefined,
+        manualOnly
+          ? {
+              trigger: "manual",
+              maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0,
+            }
+          : { maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0 },
       );
     }
     await this.updateRuntime(state, {
@@ -767,7 +782,10 @@ export class ProjectAlertTroubleshooterManager {
         });
         return;
       }
-      this.queueStore.fail(state.projectId, item.id, message);
+      this.queueStore.fail(state.projectId, item.id, message, {
+        intervalMinutes: config.queuePollIntervalMinutes,
+        maxAutomaticRetries: this.options.definition.maxAutomaticRetries ?? 0,
+      });
       await this.options.recordStore
         .markFailed({
           config,

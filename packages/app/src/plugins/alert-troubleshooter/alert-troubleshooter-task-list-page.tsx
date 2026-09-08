@@ -44,9 +44,12 @@ function statusLabel(status: AlertTroubleshooterTaskStatus): string {
   return "执行失败";
 }
 
+const BAMBOO_MAX_AUTOMATIC_RETRIES = 3;
+
 function TaskRow({
   task,
   busy,
+  pluginId,
   serverId,
   larkAppId,
   larkBotId,
@@ -57,6 +60,7 @@ function TaskRow({
 }: {
   task: AlertTroubleshooterTask;
   busy: boolean;
+  pluginId: string;
   serverId: string;
   larkAppId: string;
   larkBotId: string;
@@ -65,7 +69,8 @@ function TaskRow({
   onRetry: (task: AlertTroubleshooterTask) => Promise<void>;
   onAuthorized: (task: AlertTroubleshooterTask) => Promise<void>;
 }) {
-  const canPause = task.status === "queued" || task.status === "running";
+  const canPause =
+    task.status === "queued" || task.status === "running" || Boolean(task.nextRetryAt);
   const canRetry = task.status === "failed" || task.status === "paused";
   return (
     <View style={styles.taskCard}>
@@ -83,6 +88,19 @@ function TaskRow({
           <Text selectable style={styles.meta}>
             日报：{task.tableDate} · 状态：{statusLabel(task.status)} · 尝试：{task.attempts}
           </Text>
+          {task.nextRetryAt ? (
+            <Text selectable style={styles.meta}>
+              下次自动重试：{new Date(task.nextRetryAt).toLocaleString("zh-CN")}
+            </Text>
+          ) : null}
+          {pluginId === "bamboo-reconciliation-troubleshooter" &&
+          task.status === "failed" &&
+          !task.nextRetryAt &&
+          task.attempts > BAMBOO_MAX_AUTOMATIC_RETRIES ? (
+            <Text selectable style={styles.meta}>
+              已达到自动重试上限（{BAMBOO_MAX_AUTOMATIC_RETRIES} 次）
+            </Text>
+          ) : null}
           {task.agentId ? (
             <Text selectable style={styles.meta}>
               Agent：{task.agentId}
@@ -363,6 +381,7 @@ export function AlertTroubleshooterTaskListPage({
           key={task.id}
           task={task}
           busy={deletingAll || busyTaskId === task.id}
+          pluginId={pluginId}
           serverId={serverId}
           larkAppId={larkAppId}
           larkBotId={larkBotId}

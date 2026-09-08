@@ -113,6 +113,7 @@ export const AlertTroubleshooterTaskSchema = z.object({
   attempts: z.number().int().nonnegative(),
   queuedAt: z.string(),
   updatedAt: z.string(),
+  nextRetryAt: z.string().nullable().optional(),
   agentId: z.string().nullable(),
   error: z.string().nullable(),
 });

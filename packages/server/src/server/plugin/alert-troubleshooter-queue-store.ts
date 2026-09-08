@@ -7,6 +7,10 @@ import {
   type AlertTroubleshooterTask,
   type AlertTroubleshooterTaskTrigger,
 } from "@getpaseo/protocol/messages";
+import {
+  isAlertTroubleshooterRetryDue,
+  nextAlertTroubleshooterRetryAt,
+} from "./alert-troubleshooter-retry-policy.js";
 
 export type AlertTroubleshooterQueueTrigger = AlertTroubleshooterTaskTrigger;
 
@@ -83,6 +87,7 @@ export class AlertTroubleshooterQueueStore {
       attempts: 0,
       queuedAt: timestamp,
       updatedAt: timestamp,
+      nextRetryAt: null,
       agentId: null,
       error: null,
     });
@@ -116,6 +121,7 @@ export class AlertTroubleshooterQueueStore {
       attempts: 0,
       queuedAt: timestamp,
       updatedAt: timestamp,
+      nextRetryAt: null,
       agentId: null,
       error: input.error,
     });
@@ -127,18 +133,23 @@ export class AlertTroubleshooterQueueStore {
 
   claimNext(
     projectId: string,
-    options?: { trigger?: AlertTroubleshooterQueueTrigger },
+    options?: {
+      trigger?: AlertTroubleshooterQueueTrigger;
+      maxAutomaticRetries?: number;
+    },
   ): AlertTroubleshooterQueueItem | null {
     const state = this.read(projectId);
     const item = state.items.find(
       (candidate) =>
         candidate.status === "queued" &&
+        candidate.attempts <= (options?.maxAutomaticRetries ?? 0) &&
         (options?.trigger === undefined || candidate.trigger === options.trigger),
     );
     if (!item) return null;
     item.status = "running";
     item.attempts += 1;
     item.updatedAt = this.now().toISOString();
+    item.nextRetryAt = null;
     item.error = null;
     this.write(projectId, state);
     return { ...item };
@@ -153,15 +164,73 @@ export class AlertTroubleshooterQueueStore {
     this.patch(projectId, itemId, {
       status,
       agentId,
+      nextRetryAt: null,
       error: null,
     });
   }
 
-  fail(projectId: string, itemId: string, error: string): void {
-    this.patch(projectId, itemId, {
-      status: "failed",
-      error,
+  fail(
+    projectId: string,
+    itemId: string,
+    error: string,
+    retry: { intervalMinutes: number; maxAutomaticRetries: number },
+  ): void {
+    const state = this.read(projectId);
+    const item = state.items.find((candidate) => candidate.id === itemId);
+    if (!item || item.status === "paused") return;
+    const failedAt = this.now();
+    item.status = "failed";
+    item.updatedAt = failedAt.toISOString();
+    item.nextRetryAt = nextAlertTroubleshooterRetryAt({
+      failedAt,
+      attempts: item.attempts,
+      intervalMinutes: retry.intervalMinutes,
+      maxAutomaticRetries: retry.maxAutomaticRetries,
     });
+    item.error = error;
+    this.write(projectId, state);
+  }
+
+  promoteDueRetries(
+    projectId: string,
+    retry: { intervalMinutes: number; maxAutomaticRetries: number },
+  ): number {
+    const state = this.read(projectId);
+    const now = this.now();
+    let promoted = 0;
+    let changed = false;
+    for (const item of state.items) {
+      if (item.status === "queued" && item.attempts > retry.maxAutomaticRetries) {
+        item.status = "failed";
+        item.updatedAt = now.toISOString();
+        item.nextRetryAt = null;
+        item.error ??= `已达到自动重试上限（${retry.maxAutomaticRetries} 次）`;
+        changed = true;
+        continue;
+      }
+      if (item.status !== "failed") continue;
+      const failedAt = new Date(item.updatedAt);
+      const nextRetryAt = Number.isFinite(failedAt.getTime())
+        ? nextAlertTroubleshooterRetryAt({
+            failedAt,
+            attempts: item.attempts,
+            intervalMinutes: retry.intervalMinutes,
+            maxAutomaticRetries: retry.maxAutomaticRetries,
+          })
+        : null;
+      if (item.nextRetryAt !== nextRetryAt) {
+        item.nextRetryAt = nextRetryAt;
+        changed = true;
+      }
+      if (!isAlertTroubleshooterRetryDue(nextRetryAt, now)) continue;
+      item.status = "queued";
+      item.updatedAt = now.toISOString();
+      item.nextRetryAt = null;
+      promoted += 1;
+      changed = true;
+    }
+    if (changed) this.write(projectId, state);
+    return promoted;
   }
 
   countQueued(projectId: string): number {
@@ -189,11 +258,15 @@ export class AlertTroubleshooterQueueStore {
     const updatedAt = this.now().toISOString();
     let changed = false;
     for (const item of state.items) {
-      if (!requested.has(item.id) || (item.status !== "queued" && item.status !== "running")) {
+      if (
+        !requested.has(item.id) ||
+        (item.status !== "queued" && item.status !== "running" && !item.nextRetryAt)
+      ) {
         continue;
       }
       item.status = "paused";
       item.updatedAt = updatedAt;
+      item.nextRetryAt = null;
       changed = true;
     }
     if (changed) this.write(projectId, state);
@@ -215,7 +288,9 @@ export class AlertTroubleshooterQueueStore {
   private patch(
     projectId: string,
     itemId: string,
-    patch: Partial<Pick<AlertTroubleshooterQueueItem, "status" | "error" | "agentId">>,
+    patch: Partial<
+      Pick<AlertTroubleshooterQueueItem, "status" | "error" | "agentId" | "nextRetryAt">
+    >,
   ): void {
     const state = this.read(projectId);
     const item = state.items.find((candidate) => candidate.id === itemId);

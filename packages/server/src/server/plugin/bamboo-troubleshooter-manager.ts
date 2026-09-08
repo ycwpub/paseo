@@ -26,6 +26,7 @@ import {
 } from "./bamboo-troubleshooter-completion.js";
 import { resolveBambooTroubleshooterCompletion } from "./bamboo-troubleshooter-completion-resolver.js";
 import { type BambooTroubleshooterDocumentPublication } from "./bamboo-troubleshooter-document-publisher.js";
+import { BAMBOO_MAX_AUTOMATIC_RETRIES } from "./alert-troubleshooter-retry-policy.js";
 
 export { isBambooAlertMessage } from "./bamboo-alert-message.js";
 
@@ -64,6 +65,7 @@ export class BambooTroubleshooterManager {
         logModule: "bamboo-troubleshooter-manager",
         agentTitle: "Bamboo 对账自动排查",
         labelKey: "bambooTroubleshooter",
+        maxAutomaticRetries: BAMBOO_MAX_AUTOMATIC_RETRIES,
         outputSchema: BAMBOO_TROUBLESHOOTER_OUTPUT_SCHEMA,
         parseConfig: (value) => {
           const parsed = BambooTroubleshooterConfigSchema.safeParse(value);

@@ -55,7 +55,7 @@ function issueMessage(path: PropertyKey[]): string {
   }
   if (field === "target.assistantId") return "请选择助手";
   if (field === "target.teamId") return "请选择团队";
-  if (field === "queuePollIntervalMinutes") return "多维表格轮询间隔必须是 1 到 1440 分钟";
+  if (field === "queuePollIntervalMinutes") return "队列轮询/失败重试间隔必须是 1 到 1440 分钟";
   if (field === "schedule.intervalMinutes") return "扫描间隔必须是 5 到 1440 分钟";
   if (field === "schedule.lookbackMinutes") return "回看范围必须是 30 到 10080 分钟";
   if (field === "schedule.excludeRecentMinutes") {

@@ -22,6 +22,7 @@ function task(
     attempts: 1,
     queuedAt: "2026-09-08T10:00:00.000Z",
     updatedAt: "2026-09-08T10:01:00.000Z",
+    nextRetryAt: null,
     agentId: null,
     error: "缺少 base:record:read",
     ...overrides,

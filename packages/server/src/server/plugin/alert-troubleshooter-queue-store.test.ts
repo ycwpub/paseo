@@ -6,16 +6,20 @@ import { AlertTroubleshooterQueueStore } from "./alert-troubleshooter-queue-stor
 
 const temporaryHomes: string[] = [];
 
-function createStore(): { home: string; store: AlertTroubleshooterQueueStore } {
+function createStore(): {
+  home: string;
+  store: AlertTroubleshooterQueueStore;
+  setNow: (value: string) => void;
+} {
   const home = mkdtempSync(path.join(tmpdir(), "paseo-alert-queue-"));
   temporaryHomes.push(home);
+  let now = new Date("2026-09-06T08:00:00.000Z");
   return {
     home,
-    store: new AlertTroubleshooterQueueStore(
-      home,
-      "argos-alert-troubleshooter",
-      () => new Date("2026-09-06T08:00:00.000Z"),
-    ),
+    store: new AlertTroubleshooterQueueStore(home, "argos-alert-troubleshooter", () => now),
+    setNow: (value) => {
+      now = new Date(value);
+    },
   };
 }
 
@@ -74,13 +78,87 @@ describe("AlertTroubleshooterQueueStore", () => {
   it("does not automatically enqueue a previously failed record again", () => {
     const { store } = createStore();
     const first = store.enqueue("prj_1", { recordId: "rec_1", trigger: "table" });
-    store.fail("prj_1", first.id, "temporary failure");
+    store.fail("prj_1", first.id, "temporary failure", {
+      intervalMinutes: 30,
+      maxAutomaticRetries: 3,
+    });
 
     const duplicate = store.enqueue("prj_1", { recordId: "rec_1", trigger: "table" });
 
     expect(duplicate.id).toBe(first.id);
     expect(store.list("prj_1")).toHaveLength(1);
     expect(store.list("prj_1")[0]?.status).toBe("failed");
+  });
+
+  it("waits for the configured interval and stops after three automatic retries", () => {
+    const { store, setNow } = createStore();
+    const task = store.enqueue("prj_1", { recordId: "rec_retry", trigger: "table" });
+    const retry = { intervalMinutes: 30, maxAutomaticRetries: 3 };
+
+    expect(store.claimNext("prj_1", { maxAutomaticRetries: 3 })?.attempts).toBe(1);
+    store.fail("prj_1", task.id, "attempt 1 failed", retry);
+    expect(store.get("prj_1", task.id)?.nextRetryAt).toBe("2026-09-06T08:30:00.000Z");
+
+    setNow("2026-09-06T08:29:59.999Z");
+    expect(store.promoteDueRetries("prj_1", retry)).toBe(0);
+    expect(store.claimNext("prj_1", { maxAutomaticRetries: 3 })).toBeNull();
+
+    for (const [dueAt, expectedAttempts] of [
+      ["2026-09-06T08:30:00.000Z", 2],
+      ["2026-09-06T09:00:00.000Z", 3],
+      ["2026-09-06T09:30:00.000Z", 4],
+    ] as const) {
+      setNow(dueAt);
+      expect(store.promoteDueRetries("prj_1", retry)).toBe(1);
+      expect(store.claimNext("prj_1", { maxAutomaticRetries: 3 })?.attempts).toBe(expectedAttempts);
+      store.fail("prj_1", task.id, `attempt ${expectedAttempts} failed`, retry);
+    }
+
+    expect(store.get("prj_1", task.id)).toMatchObject({
+      status: "failed",
+      attempts: 4,
+      nextRetryAt: null,
+      error: "attempt 4 failed",
+    });
+    setNow("2026-09-07T09:30:00.000Z");
+    expect(store.promoteDueRetries("prj_1", retry)).toBe(0);
+    expect(store.claimNext("prj_1", { maxAutomaticRetries: 3 })).toBeNull();
+  });
+
+  it("recalculates the next retry when the configured interval changes", () => {
+    const { store, setNow } = createStore();
+    const task = store.enqueue("prj_1", { recordId: "rec_retry", trigger: "table" });
+    store.claimNext("prj_1", { maxAutomaticRetries: 3 });
+    store.fail("prj_1", task.id, "temporary failure", {
+      intervalMinutes: 30,
+      maxAutomaticRetries: 3,
+    });
+
+    setNow("2026-09-06T08:10:00.000Z");
+    expect(
+      store.promoteDueRetries("prj_1", {
+        intervalMinutes: 5,
+        maxAutomaticRetries: 3,
+      }),
+    ).toBe(1);
+  });
+
+  it("can pause a failed task that is waiting for its retry interval", () => {
+    const { store } = createStore();
+    const task = store.enqueue("prj_1", { recordId: "rec_retry", trigger: "table" });
+    store.claimNext("prj_1", { maxAutomaticRetries: 3 });
+    store.fail("prj_1", task.id, "temporary failure", {
+      intervalMinutes: 30,
+      maxAutomaticRetries: 3,
+    });
+
+    expect(store.pause("prj_1", [task.id])).toEqual([
+      expect.objectContaining({
+        id: task.id,
+        status: "paused",
+        nextRetryAt: null,
+      }),
+    ]);
   });
 
   it("lists, pauses, and deletes execution records", () => {

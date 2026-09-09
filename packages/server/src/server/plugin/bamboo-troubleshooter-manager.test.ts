@@ -62,7 +62,7 @@ describe("BambooTroubleshooterManager", () => {
     expect(isBambooAlertMessage("普通聊天消息", "text")).toBe(false);
   });
 
-  it("ingests both realtime and scanned messages before starting Project-scoped agents", async () => {
+  it("ingests realtime cards from another bot without @ and also ingests scanned cards", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-bamboo-test-"));
     let current = state();
     const listChatMessages = vi.fn(async () => [
@@ -198,6 +198,7 @@ describe("BambooTroubleshooterManager", () => {
       rootMessageId: null,
       openId: null,
       unionId: null,
+      senderType: "app",
       displayName: "Bamboo",
       topicName: "报警",
       text: "Bamboo 对账报警 result_id=123",
@@ -245,7 +246,7 @@ describe("BambooTroubleshooterManager", () => {
     }
   });
 
-  it("narrows each group scan after the latest persisted message and isolates group failures", async () => {
+  it("keeps an overlapping scan window so newer records cannot hide an older missed alert", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-bamboo-scan-test-"));
     let current = {
       ...state(),
@@ -314,9 +315,10 @@ describe("BambooTroubleshooterManager", () => {
       manager.start();
       await vi.waitFor(() => expect(listChatMessages).toHaveBeenCalledTimes(2));
       expect(listChatMessages).toHaveBeenCalledWith("bot-1", "oc_ok", {
-        start: new Date("2026-09-04T07:00:00.001Z"),
+        start: new Date("2026-09-04T06:00:00.000Z"),
         end: new Date("2026-09-04T07:30:00.000Z"),
       });
+      expect(recordStore.getLatestMessageTimeByChat).not.toHaveBeenCalled();
       expect(manager.listTasks("prj_1")).toEqual([
         expect.objectContaining({
           trigger: "schedule",

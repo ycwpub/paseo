@@ -101,15 +101,8 @@ export class BambooTroubleshooterManager {
           }
         },
         matchesAlert: (event) => isBambooAlertMessage(event.text, event.messageType),
-        scanMessages: ({ config, window, cwd, trigger }) =>
-          collectScheduledBambooAlerts(
-            options.listChatMessages,
-            options.recordStore,
-            config,
-            window,
-            cwd,
-            trigger === "schedule",
-          ),
+        scanMessages: ({ config, window, cwd }) =>
+          collectScheduledBambooAlerts(options.listChatMessages, config, window, cwd),
         recoverScannedMessage: ({ cwd, messageId }) =>
           recoverBambooMessageFromScanAudit({ cwd, messageId }),
         buildDefaultPrompt: ({ config, trigger, record, wikiTarget }) =>
@@ -192,45 +185,26 @@ async function collectScheduledBambooAlerts(
     chatId: string,
     window: AlertScanWindow,
   ) => Promise<NormalizedLarkMessageEvent[]>,
-  recordStore: AlertTroubleshooterRecordStore,
   config: AlertTroubleshooterConfig,
   window: AlertScanWindow,
   cwd: string,
-  resumeFromLatestMessage = true,
 ): Promise<AlertScanResult> {
   const startedAt = new Date();
   const alerts = new Map<string, NormalizedLarkMessageEvent>();
   const failures: AlertScanFailure[] = [];
   const groupAudits: BambooGroupScanAudit[] = [];
   for (const chat of config.chats) {
-    let effectiveWindow = window;
     try {
-      const latestMessageTime = resumeFromLatestMessage
-        ? await recordStore.getLatestMessageTimeByChat?.({
-            config,
-            pluginId: BAMBOO_TROUBLESHOOTER_PLUGIN_ID,
-            chatId: chat.chatId,
-          })
-        : null;
-      const start =
-        latestMessageTime === undefined || latestMessageTime === null
-          ? window.start
-          : new Date(Math.max(window.start.getTime(), latestMessageTime + 1));
-      if (start > window.end) continue;
-      effectiveWindow = { start, end: window.end };
       const messages = await listChatMessages(
         config.bot.kind === "existing" ? config.bot.botId : config,
         chat.chatId,
-        {
-          start,
-          end: window.end,
-        },
+        window,
       );
       groupAudits.push(
         buildBambooGroupScanAudit({
           chatId: chat.chatId,
           ...(chat.name ? { chatName: chat.name } : {}),
-          window: effectiveWindow,
+          window,
           messages,
         }),
       );
@@ -250,7 +224,7 @@ async function collectScheduledBambooAlerts(
         buildBambooGroupScanAudit({
           chatId: chat.chatId,
           ...(chat.name ? { chatName: chat.name } : {}),
-          window: effectiveWindow,
+          window,
           messages: [],
           error: failure.error,
         }),

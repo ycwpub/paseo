@@ -195,6 +195,11 @@ function nextRuntime(
     lastError: base.lastError ?? null,
     activeAgentId: base.activeAgentId ?? null,
     lastTrigger: base.lastTrigger ?? null,
+    lastListenerEventAt: base.lastListenerEventAt ?? null,
+    lastListenerMatchedAt: base.lastListenerMatchedAt ?? null,
+    lastListenerBotId: base.lastListenerBotId ?? null,
+    lastListenerChatId: base.lastListenerChatId ?? null,
+    lastListenerMessageId: base.lastListenerMessageId ?? null,
     ...patch,
   };
 }
@@ -288,11 +293,7 @@ export class ProjectAlertTroubleshooterManager {
   }
 
   async observeIncomingMessage(botId: string, event: NormalizedLarkMessageEvent): Promise<void> {
-    if (!this.options.definition.matchesAlert(event)) return;
-    this.pruneObservedMessages();
-    const dedupeKey = `${botId}:${event.messageId}`;
-    if (this.observedMessageIds.has(dedupeKey)) return;
-    this.observedMessageIds.set(dedupeKey, this.now().getTime());
+    const matched = this.options.definition.matchesAlert(event);
     for (const state of this.listConfiguredProjects()) {
       const config = this.readConfig(state);
       if (
@@ -303,6 +304,20 @@ export class ProjectAlertTroubleshooterManager {
       ) {
         continue;
       }
+      await this.updateRuntime(state, {
+        lastListenerEventAt: this.now().toISOString(),
+        lastListenerBotId: botId,
+        lastListenerChatId: event.chatId,
+        lastListenerMessageId: event.messageId,
+      });
+      if (!matched) continue;
+      this.pruneObservedMessages();
+      const dedupeKey = `${botId}:${event.messageId}`;
+      if (this.observedMessageIds.has(dedupeKey)) continue;
+      this.observedMessageIds.set(dedupeKey, this.now().getTime());
+      await this.updateRuntime(state, {
+        lastListenerMatchedAt: this.now().toISOString(),
+      });
       await this.ingestMessage(state, config, "message", event);
       this.queueProjectProcessing(state, config);
     }

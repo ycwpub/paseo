@@ -97,12 +97,11 @@ afterEach(() => {
 });
 
 describe("mutable provider config owner", () => {
-  test("enables TraeX and removes legacy TRAE CLI without breaking other custom providers", () => {
+  test("removes TRAE CLI without breaking other custom providers", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
     tempDirs.push(paseoHome);
     const providers = {
       ...CONTROLLED_PROVIDERS,
-      traex: { enabled: false },
       traecli: {
         extends: "acp",
         label: "TRAE CLI",
@@ -141,10 +140,8 @@ describe("mutable provider config owner", () => {
     });
 
     try {
-      expect(() => store.patch({ providers: { traex: { enabled: true } } })).not.toThrow();
       expect(manager.hasProvider("traecli")).toBe(true);
       expect(manager.getProviderLabel("traecli")).toBe("TRAE CLI");
-      expect(agentManagerState.providerDefinitions.traex).toMatchObject({ enabled: true });
       expect(agentManagerState.providerDefinitions.traecli).toMatchObject({ enabled: true });
 
       expect(() => store.patch({ removeProviders: ["traecli"] })).not.toThrow();

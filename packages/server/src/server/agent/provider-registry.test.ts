@@ -545,6 +545,7 @@ test("builds registry with no overrides — same as built-in count", () => {
   const registry = buildProviderRegistry(logger);
 
   expect(Object.keys(registry)).toHaveLength(AGENT_PROVIDER_DEFINITIONS.length);
+  expect(registry.traex).toBeUndefined();
 });
 
 test("includes mock provider only for development builds", () => {
@@ -906,7 +907,7 @@ test("traecli provider extending acp uses TraeACPAgentClient", () => {
   });
 
   expect(registry.traecli.createClient(logger).provider).toBe("traecli");
-  expect(mockState.constructorArgs.trae.filter((entry) => entry.command[0] === "traecli")).toEqual([
+  expect(mockState.constructorArgs.trae).toEqual([
     {
       command: ["traecli", "acp", "serve"],
       env: undefined,

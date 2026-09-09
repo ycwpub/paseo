@@ -29,6 +29,7 @@ import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { LarkChatDirectoryField } from "@/screens/settings/channels/lark-directory-fields";
 import { formatLarkChatIdentity } from "@/screens/settings/channels/lark-directory-format";
+import { LarkBotPermissionErrorAction } from "@/screens/settings/channels/lark-bot-permission-error-action";
 import { useLarkChannel } from "@/screens/settings/channels/use-lark-channel";
 import { validateAlertTroubleshooterConfig } from "./alert-troubleshooter-form-validation";
 import { AlertTroubleshooterTaskListPage } from "./alert-troubleshooter-task-list-page";
@@ -78,6 +79,14 @@ function targetId(target: AlertTroubleshooterTarget): string | null {
   if (target.kind === "assistant") return target.assistantId;
   if (target.kind === "team") return target.teamId;
   return null;
+}
+
+function larkConnectionStatusLabel(status: string): string {
+  if (status === "connected") return "已连接";
+  if (status === "connecting") return "连接中";
+  if (status === "error") return "连接失败";
+  if (status === "disabled") return "已停用";
+  return "未连接";
 }
 
 // oxlint-disable-next-line complexity -- Coordinates the Project-scoped Lark, identity, schedule, and persistence form.
@@ -455,6 +464,49 @@ function AlertTroubleshooterProject({
             accessibilityLabel="启用群消息监听"
           />
         </View>
+        {botKind === "existing" && selectedBot ? (
+          <View style={styles.listenerStatus}>
+            <Text selectable style={styles.meta}>
+              绑定机器人：{selectedBot.name ?? selectedBot.bot?.name ?? selectedBot.id}
+              {selectedBot.appId ? `（${selectedBot.appId}）` : ""}
+              {` · 长连接：${larkConnectionStatusLabel(selectedBot.connectionStatus)}`}
+            </Text>
+            {runtime.success ? (
+              <>
+                <Text selectable style={styles.meta}>
+                  最近监听事件：{runtime.data.lastListenerEventAt ?? "尚未收到"}
+                  {runtime.data.lastListenerChatId
+                    ? ` · 群：${runtime.data.lastListenerChatId}`
+                    : ""}
+                </Text>
+                <Text selectable style={styles.meta}>
+                  最近实时命中 Bamboo：{runtime.data.lastListenerMatchedAt ?? "尚未命中"}
+                </Text>
+                <Text selectable style={styles.meta}>
+                  最近定时补偿扫描：{runtime.data.lastScanFinishedAt ?? "尚未执行"}
+                </Text>
+                {runtime.data.lastError ? (
+                  <Text selectable style={styles.error}>
+                    最近运行错误：{runtime.data.lastError}
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
+            {selectedBot.appId ? (
+              <View style={styles.authorizationAction}>
+                <Text style={styles.description}>
+                  如果机器人/卡片消息没有进入实时监听，请更新权限和事件订阅；完成后会自动重启长连接。
+                </Text>
+                <LarkBotPermissionErrorAction
+                  serverId={serverId}
+                  appId={selectedBot.appId}
+                  botId={selectedBot.id}
+                  errorMessage="请更新机器人权限，以接收群内其他机器人发送的 Bamboo 卡片消息"
+                />
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         <LarkChatDirectoryField
           label="添加监听群"
           hint={
@@ -575,7 +627,9 @@ function AlertTroubleshooterProject({
         <View style={styles.rowBetween}>
           <View style={styles.flex}>
             <Text style={styles.heading}>定时补偿扫描</Text>
-            <Text style={styles.description}>按照回看范围和排除最近消息配置，定时扫描群消息。</Text>
+            <Text style={styles.description}>
+              按配置的间隔、回看范围和排除最近时间扫描群消息，补偿飞书未实时投递的报警。
+            </Text>
           </View>
           <Switch
             value={scheduleEnabled}
@@ -864,6 +918,16 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "space-between",
     gap: theme.spacing[3],
     paddingTop: theme.spacing[2],
+  },
+  listenerStatus: {
+    gap: theme.spacing[2],
+    padding: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
+  },
+  authorizationAction: {
+    alignItems: "flex-start",
+    gap: theme.spacing[1],
   },
   flex: {
     flex: 1,

@@ -229,11 +229,22 @@ vi.mock("@/screens/settings/channels/lark-directory-fields", () => ({
   LarkChatDirectoryField: () => null,
 }));
 
+vi.mock("@/screens/settings/channels/lark-bot-permission-error-action", () => ({
+  LarkBotPermissionErrorAction: () => <div>更新机器人权限</div>,
+}));
+
 vi.mock("@/screens/settings/channels/use-lark-channel", () => ({
   useLarkChannel: () => ({
     status: {
       activeBotId: "bot-1",
-      bots: [{ id: "bot-1", appId: "cli_test", name: "结算机器人" }],
+      bots: [
+        {
+          id: "bot-1",
+          appId: "cli_test",
+          name: "结算机器人",
+          connectionStatus: "connected",
+        },
+      ],
       directory: { chats: [] },
     },
     resolveDirectoryChats: vi.fn(),
@@ -280,11 +291,17 @@ describe("BambooTroubleshooterPanel", () => {
 
     expect(screen.getByText("结算报警一群（oc_first）")).toBeTruthy();
     expect(screen.getByText("结算报警二群（oc_second）")).toBeTruthy();
+    expect(screen.getByText("绑定机器人：结算机器人（cli_test） · 长连接：已连接")).toBeTruthy();
+    expect(screen.getByText("更新机器人权限")).toBeTruthy();
     expect((screen.getByLabelText("排查 Provider 和模型（必填）") as HTMLSelectElement).value).toBe(
       "aiden-codex/gpt-5.5",
     );
     expect(screen.queryByRole("button", { name: "默认模型" })).toBeNull();
-    expect(screen.getByText("按照回看范围和排除最近消息配置，定时扫描群消息。")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "按配置的间隔、回看范围和排除最近时间扫描群消息，补偿飞书未实时投递的报警。",
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/2 小时/u)).toBeNull();
     const promptVariables = screen.getByText(/可用变量：/).textContent ?? "";
     expect(promptVariables).toContain("{{project_id}}");

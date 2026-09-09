@@ -200,12 +200,17 @@ function normalizeAgentProviders(value: unknown): unknown {
     return value;
   }
 
-  const rawProviders = value as Record<string, unknown>;
+  const rawProviders = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([providerId]) => {
+      // COMPAT(removedTraexProvider): added in v0.7.0-beta.1, remove after 2027-03-09.
+      return providerId !== "traex";
+    }),
+  );
   const hasLegacyEntries = Object.values(rawProviders).some((entry) =>
     isLegacyProviderEntry(entry),
   );
   if (!hasLegacyEntries) {
-    return value;
+    return rawProviders;
   }
 
   const legacyEntries: Record<string, unknown> = {};
@@ -221,7 +226,7 @@ function normalizeAgentProviders(value: unknown): unknown {
 
   const parsedLegacyEntries = AgentProviderRuntimeSettingsMapSchema.safeParse(legacyEntries);
   if (!parsedLegacyEntries.success) {
-    return value;
+    return rawProviders;
   }
 
   return {

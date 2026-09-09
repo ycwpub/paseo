@@ -197,5 +197,10 @@ export const AlertTroubleshooterRuntimeSchema = z.object({
   lastError: z.string().nullable().default(null),
   activeAgentId: z.string().nullable().default(null),
   lastTrigger: AlertTroubleshooterTaskTriggerSchema.nullable().default(null),
+  lastListenerEventAt: z.string().nullable().optional(),
+  lastListenerMatchedAt: z.string().nullable().optional(),
+  lastListenerBotId: z.string().nullable().optional(),
+  lastListenerChatId: z.string().nullable().optional(),
+  lastListenerMessageId: z.string().nullable().optional(),
 });
 export type AlertTroubleshooterRuntime = z.infer<typeof AlertTroubleshooterRuntimeSchema>;

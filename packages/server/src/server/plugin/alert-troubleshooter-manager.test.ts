@@ -278,6 +278,13 @@ describe("ProjectAlertTroubleshooterManager", () => {
 
     expect(harness.recordStore.upsertMessage).not.toHaveBeenCalled();
     expect(harness.manager.listTasks("prj_1")).toEqual([]);
+    expect(harness.getState().data.alertRuntime).toMatchObject({
+      lastListenerEventAt: "2026-09-06T08:00:00.000Z",
+      lastListenerBotId: "bot-1",
+      lastListenerChatId: "oc_alerts",
+      lastListenerMessageId: "om-1",
+      lastListenerMatchedAt: null,
+    });
   });
 
   it("silently ignores scanned messages that do not match the alert definition", async () => {

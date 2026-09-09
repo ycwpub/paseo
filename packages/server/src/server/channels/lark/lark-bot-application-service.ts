@@ -147,7 +147,7 @@ export class LarkBotApplicationService {
       application.appId = result.client_id;
       application.domain = result.user_info?.tenant_brand === "lark" ? "lark" : "feishu";
       if (input.appId) {
-        this.completePermissionUpdate(application, input);
+        await this.completePermissionUpdate(application, input);
         return;
       }
       await this.completeNewApplication(application, input, result.client_secret!);
@@ -165,14 +165,19 @@ export class LarkBotApplicationService {
     }
   }
 
-  private completePermissionUpdate(
+  private async completePermissionUpdate(
     application: MutableApplication,
     input: LarkBotApplicationInput,
-  ): void {
+  ): Promise<void> {
     invalidateLarkClientTokens(application.appId ?? input.appId ?? "");
+    if (input.botId) {
+      await this.channelService.configure({ botId: input.botId });
+    }
     application.status = "completed";
     application.botId = input.botId ?? null;
-    application.message = "机器人权限配置已提交，将在重新执行任务时验证是否生效";
+    application.message = input.botId
+      ? "机器人权限配置已提交，群消息长连接已重启"
+      : "机器人权限配置已提交，将在重新执行任务时验证是否生效";
     application.error = null;
   }
 

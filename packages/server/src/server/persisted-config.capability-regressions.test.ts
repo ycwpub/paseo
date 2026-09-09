@@ -28,3 +28,28 @@ describe("PersistedConfigSchema Host knowledge config", () => {
     });
   });
 });
+
+describe("PersistedConfigSchema removed providers", () => {
+  test("drops the removed TraeX built-in while preserving TRAE CLI", () => {
+    const parsed = PersistedConfigSchema.parse({
+      agents: {
+        providers: {
+          traex: { enabled: true },
+          traecli: {
+            extends: "acp",
+            label: "TRAE CLI",
+            command: ["traecli", "acp", "serve"],
+          },
+        },
+      },
+    });
+
+    expect(parsed.agents?.providers).toEqual({
+      traecli: {
+        extends: "acp",
+        label: "TRAE CLI",
+        command: ["traecli", "acp", "serve"],
+      },
+    });
+  });
+});

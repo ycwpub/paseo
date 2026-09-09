@@ -158,7 +158,7 @@ describe("LarkBotApplicationService", () => {
       status: "completed",
       appId: "cli_existing",
       botId: "bot-existing",
-      message: "机器人权限配置已提交，将在重新执行任务时验证是否生效",
+      message: "机器人权限配置已提交，群消息长连接已重启",
     });
     expect(registrar.register).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -167,7 +167,7 @@ describe("LarkBotApplicationService", () => {
         createOnly: false,
       }),
     );
-    expect(configure).not.toHaveBeenCalled();
+    expect(configure).toHaveBeenCalledWith({ botId: "bot-existing" });
   });
 
   test("reports a sanitized registration failure", async () => {

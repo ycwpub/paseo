@@ -45,7 +45,7 @@ function reviewPrompt(input: {
     "不得修改排查结果、不得执行飞书/Base/Bamboo/群消息写入、不得关闭任务。",
     "必须核对最终 result JSON、最终发布 audit 的 mergedMarkdown、SOP audit 和 Runner validator 输出；任一缺失、validator 未通过、发布正文仍含占位内容时必须 review_passed=false。",
     `先把审核 JSON 写入 ${input.reviewResult}.tmp，再原子重命名为 ${input.reviewResult}。`,
-    "JSON 必须包含 review_passed、blockers[]、required_rework_prompt、checked_files[]、validation_command、review_summary。",
+    "JSON 必须包含 review_passed、blockers[]、required_rework_prompt、checked_files[]、validation_command、review_summary；blockers 和 checked_files 的每一项必须是字符串，checked_files 只写绝对路径；required_rework_prompt、validation_command、review_summary 也必须是字符串，所有这些字段都不要写对象。",
     "审核不通过时，required_rework_prompt 必须给出可直接交回原排查 Agent 的明确返工要求。",
     "最终回复只确认审核文件已经完成，不要在回复中传递审核正文。",
   ].join("\n\n");

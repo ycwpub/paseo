@@ -38,7 +38,11 @@ import {
   validateNeedsManualConfirmation,
   validateRpcRequest,
 } from "./bamboo-alert-workflow.mjs";
-import { hasFeishuBotCredentials, preprocessBambooCommandEnv } from "./bamboo-alert-preprocess.mjs";
+import {
+  hasFeishuBotCredentials,
+  hasProjectScopedFeishuBotCredentials,
+  preprocessBambooCommandEnv,
+} from "./bamboo-alert-preprocess.mjs";
 import { getBambooRunnerCommand } from "./bamboo-alert-runner-contracts.mjs";
 
 const execFilePromise = promisify(nodeExecFile);
@@ -4348,6 +4352,27 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
     }
   }
 
+  async function ensureProjectBotLogin(command) {
+    if (
+      !isLarkBotCommand(command) ||
+      botAutoLoginAttempted ||
+      !hasProjectScopedFeishuBotCredentials(runnerEnv)
+    ) {
+      return;
+    }
+    botAutoLoginAttempted = true;
+    botAutoLoginResult = await tryFeishuBotLogin();
+    if (botAutoLoginResult.success) {
+      return;
+    }
+    const reason =
+      botAutoLoginResult.error ||
+      botAutoLoginResult.stderr ||
+      botAutoLoginResult.reason ||
+      "unknown";
+    throw new Error(`项目配置的飞书机器人初始化失败：${reason}`);
+  }
+
   function isImSendCommand(command) {
     const argsStr = (command?.args || []).join(" ");
     return /\blark\s+im\s+(?:messages-reply|message-send|messages-send|chat-messages-send|topics-reply)\b/.test(
@@ -4574,6 +4599,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
   }
 
   async function runJson(command, options = {}) {
+    await ensureProjectBotLogin(command);
     try {
       const payload = await runJsonOnce(command, options);
       payload.__identity_used = "bot";
@@ -13463,6 +13489,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
               String(title),
             ],
           });
+          await ensureProjectBotLogin(createCmd);
           const { stdout: createOut } = await execFile(createCmd.command, createCmd.args, {
             maxBuffer: 64 * 1024 * 1024,
             env: buildExecEnvForCommand(createCmd, runnerEnv),

@@ -465,6 +465,44 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     );
   });
 
+  it("backfills prepared Bamboo IDs and preserves existing extra metadata", async () => {
+    await createStore().updateBambooPreparedMetadata({
+      config: config(),
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      recordId: "recvuGHvu5oYNh",
+      tableDate: "20260908",
+      alarmRecordDetailId: "77762173",
+      taskId: "4086",
+      ruleId: "4086",
+      extra: {
+        project_id: "prj_1",
+        trigger: "schedule",
+      },
+    });
+
+    expect(mocks.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: {
+          app_token: "app_20260908",
+          table_id: "tbl_20260908",
+          record_id: "recvuGHvu5oYNh",
+        },
+        data: {
+          fields: {
+            alarm_record_detail_id: "77762173",
+            task_id: "4086",
+            extra: JSON.stringify({
+              project_id: "prj_1",
+              trigger: "schedule",
+              rule_id: "4086",
+              rules_id: "4086",
+            }),
+          },
+        },
+      }),
+    );
+  });
+
   it("keeps a Bamboo authorization blocker pending instead of terminally failed", async () => {
     await createStore().markPending({
       config: config(),

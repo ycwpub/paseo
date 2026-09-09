@@ -135,6 +135,16 @@ export interface AlertTroubleshooterRecordStore {
     pluginId: string;
     resultId: string;
   }): Promise<AlertTroubleshooterRecord>;
+  updateBambooPreparedMetadata?(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+    alarmRecordDetailId: string;
+    taskId: string;
+    ruleId: string;
+    extra?: Record<string, unknown>;
+  }): Promise<void>;
   markRunning(input: {
     config: AlertTroubleshooterConfig;
     pluginId: string;
@@ -730,6 +740,27 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const normalized = record ? toRecord(record, tableDate) : null;
     if (!normalized) throw new Error("创建 Bamboo result_id 调试记录后未返回 record_id");
     return normalized;
+  }
+
+  updateBambooPreparedMetadata(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    recordId: string;
+    tableDate: string;
+    alarmRecordDetailId: string;
+    taskId: string;
+    ruleId: string;
+    extra?: Record<string, unknown>;
+  }): Promise<void> {
+    return this.update(input.config, input.pluginId, input.tableDate, input.recordId, {
+      [BAMBOO_RECORD_FIELDS.alarmRecordDetailId]: input.alarmRecordDetailId,
+      [BAMBOO_RECORD_FIELDS.taskId]: input.taskId,
+      [BAMBOO_RECORD_FIELDS.extra]: JSON.stringify({
+        ...input.extra,
+        rule_id: input.ruleId,
+        rules_id: input.ruleId,
+      }),
+    });
   }
 
   markRunning(input: {

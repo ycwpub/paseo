@@ -35,7 +35,7 @@ life-settle-ai-assistant tce <service.name> rpc
 
 例外：`bamboo groups-scan-and-troubleshoot` 是受控 Bamboo CLI 指令。需要执行“扫描落表 + 目录排障”闭环时，先运行 `life-settle-ai-assistant bamboo groups-scan-and-troubleshoot ... --preflight-only` 或 `--dry-run`，preflight 会验证 PATH 上的全局 CLI 是否已经支持该子命令，正式执行仍由 runner 状态机和主会话按 `dispatch_plan` 派发子 agent。扫描落表细节由 runner 内部阶段处理；不要让 agent 读取扫描落表参考文档后手工解析群消息、复制模板或调用内部 runner 阶段。命令维护参考文档位于包内 `skills/bamboo/references/bamboo-alerts-to-base.md`，不作为子 skill 暴露。
 
-这些 Bamboo 受控子命令启动 runner 前会调用 `scripts/bamboo/bamboo-alert-preprocess.mjs` 统一预处理环境变量：把 `FEISHU_BOT_APP_ID` / `FEISHU_BOT_APP_SECRET` 映射为 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 和 `LARK_CLI_APP_ID` / `LARK_CLI_APP_SECRET`，清理旧 `LARKSUITE_CLI_*` 凭证并设置 `LARKSUITE_CLI_STRICT_MODE=off`。不要在 agent 步骤、shell wrapper 或子 skill 中重复实现环境变量处理。
+这些 Bamboo 受控子命令启动 runner 前会调用 `scripts/bamboo/bamboo-alert-preprocess.mjs` 统一预处理环境变量：把 `FEISHU_BOT_APP_ID` / `FEISHU_BOT_APP_SECRET` 映射为 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 和 `LARK_CLI_APP_ID` / `LARK_CLI_APP_SECRET`，清理旧 `LARKSUITE_CLI_*` 凭证并设置 `LARKSUITE_CLI_STRICT_MODE=off`。Paseo 启动的任务还会传入项目机器人专用的 `PASEO_BAMBOO_BYTEDCLI_PROFILE`；runner 必须在首个飞书操作前用项目凭证初始化该隔离 Profile，不得读取或覆盖默认 bytedcli 机器人会话。不要在 agent 步骤、shell wrapper 或子 skill 中重复实现环境变量处理。
 
 例如：
 

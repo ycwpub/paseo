@@ -38,7 +38,7 @@ export function bambooMessageFields(
   return {
     [BAMBOO_RECORD_FIELDS.uniqueId]: record.uniqueId,
     [BAMBOO_RECORD_FIELDS.resultId]: record.resultId,
-    [BAMBOO_RECORD_FIELDS.alarmRecordDetailId]: "0",
+    [BAMBOO_RECORD_FIELDS.alarmRecordDetailId]: "",
     [BAMBOO_RECORD_FIELDS.taskId]: record.taskId,
     [BAMBOO_RECORD_FIELDS.taskName]: record.taskName,
     ...(Number.isFinite(taskTime) ? { [BAMBOO_RECORD_FIELDS.taskTime]: taskTime } : {}),
@@ -72,7 +72,7 @@ export function bambooManualFields(input: {
   return {
     [BAMBOO_RECORD_FIELDS.uniqueId]: input.resultId,
     [BAMBOO_RECORD_FIELDS.resultId]: input.resultId,
-    [BAMBOO_RECORD_FIELDS.alarmRecordDetailId]: "0",
+    [BAMBOO_RECORD_FIELDS.alarmRecordDetailId]: "",
     [BAMBOO_RECORD_FIELDS.taskId]: "",
     [BAMBOO_RECORD_FIELDS.taskName]: `Bamboo result_id ${input.resultId}`,
     [BAMBOO_RECORD_FIELDS.taskTime]: now,

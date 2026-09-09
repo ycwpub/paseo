@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AlertTroubleshooterConfig } from "@getpaseo/protocol/messages";
 import type {
   LarkChannelStore,
@@ -33,6 +34,11 @@ function customChannelConfig(appId: string, appSecret: string): StoredLarkChanne
   };
 }
 
+function bytedcliProfile(identity: string, appId: string): string {
+  const digest = createHash("sha256").update(`${identity}\0${appId}`).digest("hex").slice(0, 16);
+  return `paseo-bamboo-${digest}`;
+}
+
 export class BambooBotCredentialResolver {
   constructor(
     private readonly channelStore: Pick<LarkChannelStore, "getBot">,
@@ -59,8 +65,12 @@ export class BambooBotCredentialResolver {
     config: AlertTroubleshooterConfig,
     base: NodeJS.ProcessEnv = process.env,
   ): NodeJS.ProcessEnv {
-    const credential = this.resolve(config).config;
+    const resolved = this.resolve(config);
+    const credential = resolved.config;
+    const profile = bytedcliProfile(resolved.identity, credential.appId ?? "");
     const env = { ...base };
+    delete env.BYTEDCLI_PROFILE;
+    delete env.PASEO_BAMBOO_BYTEDCLI_PROFILE;
     delete env.LARKSUITE_CLI_APP_ID;
     delete env.LARKSUITE_CLI_APP_SECRET;
     delete env.LARKSUITE_CLI_BRAND;
@@ -73,6 +83,8 @@ export class BambooBotCredentialResolver {
     env.FEISHU_APP_SECRET = credential.appSecret ?? "";
     env.LARK_CLI_APP_ID = credential.appId ?? "";
     env.LARK_CLI_APP_SECRET = credential.appSecret ?? "";
+    env.BYTEDCLI_PROFILE = profile;
+    env.PASEO_BAMBOO_BYTEDCLI_PROFILE = profile;
     return env;
   }
 }

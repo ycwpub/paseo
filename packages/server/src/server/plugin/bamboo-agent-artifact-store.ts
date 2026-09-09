@@ -1,6 +1,7 @@
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { BambooReviewResultSchema, type BambooReviewResult } from "./bamboo-review-result.js";
 
 const InvestigationResultSchema = z
   .object({
@@ -24,20 +25,9 @@ const SopSummaryResultSchema = z
   })
   .passthrough();
 
-const ReviewResultSchema = z
-  .object({
-    review_passed: z.boolean(),
-    blockers: z.array(z.string()),
-    required_rework_prompt: z.string(),
-    checked_files: z.array(z.string()).min(1),
-    validation_command: z.string().min(1),
-    review_summary: z.string().min(1),
-  })
-  .passthrough();
-
 export type BambooInvestigationResult = z.infer<typeof InvestigationResultSchema>;
 export type BambooSopSummaryResult = z.infer<typeof SopSummaryResultSchema>;
-export type BambooReviewResult = z.infer<typeof ReviewResultSchema>;
+export type { BambooReviewResult } from "./bamboo-review-result.js";
 
 export interface BambooAgentArtifactPaths {
   runDirectory: string;
@@ -202,7 +192,7 @@ export function readBambooSopSummaryResult(filePath: string): Promise<BambooSopS
 }
 
 export function readBambooReviewResult(filePath: string): Promise<BambooReviewResult> {
-  return readFinalJson(filePath, ReviewResultSchema, "审核结果");
+  return readFinalJson(filePath, BambooReviewResultSchema, "审核结果");
 }
 
 export async function readRequiredBambooMarkdown(

@@ -112,6 +112,7 @@ export class BambooTroubleshooterManager {
             resolveBambooAgentOrchestratorDependencies({
               overrides: options.agentOrchestratorDependencies,
               publishDocument: options.publishDocument,
+              recordStore: options.recordStore,
             }),
           ),
       },

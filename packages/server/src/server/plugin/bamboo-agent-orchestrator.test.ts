@@ -105,7 +105,7 @@ async function createHarness(reviewPasses: readonly boolean[] = [true]) {
       status: "succeeded",
       summary: "异常由上游账单状态延迟导致",
       attribution_result: "[业务问题]上游账单状态延迟",
-      rule_id: "rule-1",
+      rule_id: "4086",
       writeback_owner: "parent_orchestrator",
     });
     await writeFile(
@@ -131,11 +131,11 @@ async function createHarness(reviewPasses: readonly boolean[] = [true]) {
           result_id: "19562663",
           status: "ready",
           summary: "补充账单状态延迟排查步骤",
-          rule_id: "rule-1",
+          rule_id: "4086",
         });
         await writeFile(
           paths.sopSummaryMarkdown,
-          "# rule-1 排查 SOP\n\n## 步骤\n按账单 ID 核对状态、日志和异常样本。\n",
+          "# 4086 排查 SOP\n\n## 步骤\n按账单 ID 核对状态、日志和异常样本。\n",
           "utf8",
         );
       } else if (stage.stage === "review") {
@@ -170,15 +170,40 @@ async function createHarness(reviewPasses: readonly boolean[] = [true]) {
       events.push("code:prepare");
       await writeBambooAgentJsonAtomic(input.auditFile, {
         result_id: "19562663",
-        rule_id: "rule-1",
-        work_item: { result_id: "19562663", rule_id: "rule-1" },
+        rule_id: "4086",
+        work_item: { result_id: "19562663", rule_id: "4086" },
+        inspect_result: {
+          resultId: "19562663",
+          result: {
+            id: 19562663,
+            alarm_detail_id: 77762173,
+            rules_id: 4086,
+          },
+        },
       });
       return {
         result_id: "19562663",
-        rule_id: "rule-1",
-        work_item: { result_id: "19562663", rule_id: "rule-1" },
+        rule_id: "4086",
+        work_item: { result_id: "19562663", rule_id: "4086" },
+        inspect_result: {
+          resultId: "19562663",
+          result: {
+            id: 19562663,
+            alarm_detail_id: 77762173,
+            rules_id: 4086,
+          },
+        },
       };
     },
+    persistPreparedMetadata: vi.fn(async ({ metadata }) => {
+      events.push("code:persist-metadata");
+      expect(metadata).toEqual({
+        resultId: "19562663",
+        alarmRecordDetailId: "77762173",
+        taskId: "4086",
+        ruleId: "4086",
+      });
+    }),
     publishDocument: vi.fn(async ({ markdownFile }) => {
       events.push("code:publish-document");
       expect(markdownFile).toBe(paths.investigationReport);
@@ -327,11 +352,14 @@ describe("executeBambooAgentPipeline", () => {
     expect(harness.stages).toEqual(["agent:investigation", "agent:sop_summary", "agent:review"]);
     expect(harness.prompts[1]).not.toContain("异常由上游账单状态延迟导致");
     expect(harness.prompts[2]).not.toContain("异常由上游账单状态延迟导致");
+    expect(harness.prompts[0]).toContain("一、基础信息");
+    expect(harness.prompts[0]).toContain("五、归因结论与建议");
     expect(
       (harness.launchAgent as ReturnType<typeof vi.fn>).mock.results.map((entry) => entry.type),
     ).toEqual(["return", "return", "return"]);
     expect(harness.events).toEqual([
       "code:prepare",
+      "code:persist-metadata",
       "finished:investigation",
       "finished:sop_summary",
       "code:publish-document",
@@ -356,6 +384,24 @@ describe("executeBambooAgentPipeline", () => {
     expect(await readFile(harness.paths.runInput, "utf8")).toContain(
       '"writeback_owner": "parent_orchestrator"',
     );
+    await expect(readFile(harness.paths.workItem, "utf8")).resolves.toContain(
+      '"alarm_record_detail_id": "77762173"',
+    );
+    await expect(readFile(harness.paths.workItem, "utf8")).resolves.toContain('"task_id": "4086"');
+  });
+
+  it("replies to the visible parent of a merged-forward Bamboo card", async () => {
+    const harness = await createHarness();
+    harness.input.record.messageId = "om_parent:om_child";
+
+    await executeBambooAgentPipeline(harness.input, harness.dependencies);
+
+    const workItem = JSON.parse(await readFile(harness.paths.workItem, "utf8")) as {
+      message_id?: string;
+      extra?: { message_id?: string };
+    };
+    expect(workItem.message_id).toBe("om_parent");
+    expect(workItem.extra?.message_id).toBe("om_parent:om_child");
   });
 
   it("returns review blockers to the original investigation agent before closing", async () => {

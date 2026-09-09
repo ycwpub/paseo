@@ -566,14 +566,17 @@ export class ProjectAlertTroubleshooterManager {
         });
       }
     }
-    for (const event of scanResult.events) {
+    const matchedEvents = scanResult.events.filter((event) =>
+      this.options.definition.matchesAlert(event),
+    );
+    for (const event of matchedEvents) {
       try {
         await this.ingestMessage(
           state,
           config,
           "schedule",
           event,
-          scanResult.events.length || 1,
+          matchedEvents.length || 1,
           options.persistStageFailures !== false,
         );
       } catch (error) {

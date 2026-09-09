@@ -26,16 +26,13 @@ export function extractBambooResultId(text: string): string | null {
 export function isBambooAlertMessage(text: string, messageType?: string | null): boolean {
   if (isBambooTroubleshootingResultMessage(text)) return false;
   const normalized = text.toLowerCase();
-  const hasGenericAlertMarker =
-    normalized.includes("报警") ||
-    normalized.includes("告警") ||
+  const hasBambooMarker = normalized.includes("bamboo");
+  const hasAlertMarker = normalized.includes("报警") || normalized.includes("告警");
+  const hasBambooRecordMarker =
     normalized.includes("result_id") ||
     normalized.includes("task_id") ||
-    normalized.includes("离线数据质量");
-  const hasBambooMarker = normalized.includes("bamboo");
-  const hasBambooResultLink = hasBambooMarker && extractBambooResultId(text) !== null;
-  return (
-    (hasBambooMarker && (hasGenericAlertMarker || hasBambooResultLink)) ||
-    (messageType === "interactive" && hasGenericAlertMarker)
-  );
+    normalized.includes("bamboo.bytedance.net/result-manage/");
+  const hasKnownBambooCardMarker =
+    messageType === "interactive" && normalized.includes("离线数据质量");
+  return (hasBambooMarker && (hasAlertMarker || hasBambooRecordMarker)) || hasKnownBambooCardMarker;
 }

@@ -77,24 +77,30 @@ function createHarness(input?: {
   supportsAgentAutoArchive?: boolean;
   initialPromptError?: Error | null;
   archiveAgent?: (agentId: string) => Promise<void>;
+  matchesAlert?: AlertTroubleshooterDefinition["matchesAlert"];
+  scanMessages?: AlertTroubleshooterDefinition["scanMessages"];
 }) {
+  const options = input ?? {};
   const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-alert-manager-"));
   temporaryHomes.push(paseoHome);
-  const activeConfig = input?.config ?? config();
+  const activeConfig = options.config ?? config();
   let state: PluginAppState = {
     pluginId: "test-alert-plugin",
     appId: "test-alert-app",
     projectId: "prj_1",
     defaultAgent: { provider: "codex", model: "gpt-5.6" },
     knowledge: "",
-    data: { alertConfig: activeConfig, ...(input?.runtime ? { alertRuntime: input.runtime } : {}) },
+    data: {
+      alertConfig: activeConfig,
+      ...(options.runtime ? { alertRuntime: options.runtime } : {}),
+    },
     document: null,
     conversation: [],
     createdAt: "2026-09-06T00:00:00.000Z",
     updatedAt: "2026-09-06T00:00:00.000Z",
   };
   const storedRecords = new Map(
-    (input?.records ?? []).map((record) => [record.recordId, record] as const),
+    (options.records ?? []).map((record) => [record.recordId, record] as const),
   );
   const recordStore: AlertTroubleshooterRecordStore = {
     upsertMessage: vi.fn(async ({ event, trigger }) => {
@@ -142,8 +148,8 @@ function createHarness(input?: {
     markRetryScheduled: vi.fn(async () => undefined),
     markPending: vi.fn(async () => undefined),
   };
-  Object.assign(recordStore, input?.recordStoreOverrides);
-  const scanMessages = vi.fn(async () => []);
+  Object.assign(recordStore, options.recordStoreOverrides);
+  const scanMessages = vi.fn(options.scanMessages ?? (async () => []));
   const definition: AlertTroubleshooterDefinition = {
     pluginId: "test-alert-plugin",
     appId: "test-alert-app",
@@ -152,23 +158,23 @@ function createHarness(input?: {
     logModule: "test-alert-manager",
     agentTitle: "测试报警排查",
     labelKey: "testAlert",
-    ...(input?.maxAutomaticRetries === undefined
+    ...(options.maxAutomaticRetries === undefined
       ? {}
-      : { maxAutomaticRetries: input.maxAutomaticRetries }),
+      : { maxAutomaticRetries: options.maxAutomaticRetries }),
     parseConfig: (value) => {
       const parsed = AlertTroubleshooterConfigSchema.safeParse(value);
       return parsed.success ? parsed.data : null;
     },
-    ...(input?.validateRecord ? { validateRecord: input.validateRecord } : {}),
-    ...(input?.classifyFailure ? { classifyFailure: input.classifyFailure } : {}),
-    matchesAlert: () => true,
+    ...(options.validateRecord ? { validateRecord: options.validateRecord } : {}),
+    ...(options.classifyFailure ? { classifyFailure: options.classifyFailure } : {}),
+    matchesAlert: options.matchesAlert ?? (() => true),
     scanMessages,
     buildDefaultPrompt: ({ record }) => `处理 ${record.recordId}`,
-    ...(input?.buildPromptAppendix ? { buildPromptAppendix: input.buildPromptAppendix } : {}),
-    ...(input?.parseCompletion ? { parseCompletion: input.parseCompletion } : {}),
-    ...autoArchiveDefinitionOptions(input),
+    ...(options.buildPromptAppendix ? { buildPromptAppendix: options.buildPromptAppendix } : {}),
+    ...(options.parseCompletion ? { parseCompletion: options.parseCompletion } : {}),
+    ...autoArchiveDefinitionOptions(options),
   };
-  const { createAgent, archiveAgent } = createAgentLifecycleHarness(input);
+  const { createAgent, archiveAgent } = createAgentLifecycleHarness(options);
   const manager = new ProjectAlertTroubleshooterManager({
     paseoHome,
     definition,
@@ -198,7 +204,7 @@ function createHarness(input?: {
     teamStore: { get: () => null },
     recordStore,
     createAgent: createAgent as never,
-    waitForAgentCompletion: input?.waitForAgentCompletion ?? (async () => undefined),
+    waitForAgentCompletion: options.waitForAgentCompletion ?? (async () => undefined),
     archiveAgent,
     createProjectWorkspace: async () => ({ workspaceId: "ws-1", cwd: "/tmp/project" }),
     logger: createTestLogger(),
@@ -256,6 +262,46 @@ afterEach(() => {
 });
 
 describe("ProjectAlertTroubleshooterManager", () => {
+  it("silently ignores realtime messages that do not match the alert definition", async () => {
+    const harness = createHarness({
+      matchesAlert: () => false,
+    });
+
+    await expect(harness.manager.observeIncomingMessage("bot-1", message())).resolves.toBe(
+      undefined,
+    );
+
+    expect(harness.recordStore.upsertMessage).not.toHaveBeenCalled();
+    expect(harness.manager.listTasks("prj_1")).toEqual([]);
+  });
+
+  it("silently ignores scanned messages that do not match the alert definition", async () => {
+    const harness = createHarness({
+      config: config({
+        schedule: {
+          enabled: true,
+          intervalMinutes: 30,
+          lookbackMinutes: 120,
+          excludeRecentMinutes: 0,
+        },
+      }),
+      matchesAlert: () => false,
+      scanMessages: async () => [message()],
+    });
+
+    harness.manager.start();
+    await vi.waitFor(() =>
+      expect(harness.getState().data.alertRuntime).toMatchObject({
+        status: "idle",
+        lastScanFinishedAt: "2026-09-06T08:00:00.000Z",
+      }),
+    );
+
+    expect(harness.recordStore.upsertMessage).not.toHaveBeenCalled();
+    expect(harness.manager.listTasks("prj_1")).toEqual([]);
+    await harness.manager.stop();
+  });
+
   it("keeps listening, scheduled scanning, and troubleshooting independently switchable", async () => {
     const harness = createHarness({
       config: config({

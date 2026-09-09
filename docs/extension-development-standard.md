@@ -59,6 +59,16 @@ The 100-file limit remains a ceiling, but it must be met by extracting cohesive 
 removing obsolete shared-file edits—not by hiding modified implementations behind resolver
 overrides.
 
+## Synchronized runner lint policy
+
+Large workflow runners synchronized into `skills/**/scripts/` remain subject to all correctness,
+suspicious, performance, unused-code, promise, and formatting rules. If a synchronized runner
+predates the repository's structural limits, a path-specific lint override may disable only
+`complexity`, `max-depth`, and `no-nested-ternary`. Do not disable rule categories, broaden the
+override to a directory, or suppress correctness errors to make a synchronized runner pass.
+Structural debt must be reduced through behavior-preserving extraction when that runner is next
+substantially changed.
+
 ## Upstream-owned file budget
 
 The branch target is at most 100 conflict-bearing paths that already existed at the fixed upstream
@@ -126,6 +136,12 @@ session. Every monitoring stage that can fail before an Agent task is created,
 including scheduled scanning, real-time message ingestion, daily Base creation, and unclaimed-row
 polling, must persist a failed task record. The task error must name the failed stage, the request
 identity, the exact missing scope, the Lark error code, and the next recovery action.
+Realtime listeners and compensating scans must apply the same plugin alert matcher before writing
+records or creating queue tasks. Messages that do not match the target alert type are silently
+ignored; only parsing, permission, persistence, or execution failures after a positive match may
+create failed tasks.
+Bamboo alert times must be normalized from card Markdown before Base writes. Repeated scans of the
+same `result_id` must backfill a missing `task_time` instead of treating the existing row as complete.
 Canonical Bamboo table creation and migration must not depend on dashboard/workflow APIs. Those
 labels refer to generated data tables in legacy Wiki-created Bases, not separate Base resources.
 Local scan, message-ingestion, and table-poll failures are queue-stage tasks rather than Base

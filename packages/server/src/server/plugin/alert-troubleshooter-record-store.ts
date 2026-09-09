@@ -22,6 +22,7 @@ import {
   bambooManualFields,
   bambooMessageFields,
   bambooStatusFields,
+  bambooTaskTimeMs,
   parseBambooExtra,
   type BitableWritableFields,
 } from "./bamboo-attribution-record.js";
@@ -471,7 +472,14 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const existing = bamboo
       ? await this.findByUniqueId(api, location, uniqueId, true)
       : await this.findByMessageId(api, location, input.event.messageId);
-    if (existing) return existing;
+    if (existing)
+      return this.backfillBambooTaskTime({
+        config: input.config,
+        pluginId: input.pluginId,
+        tableDate,
+        existing,
+        bambooRecord,
+      });
     const fields = messageRecordFields({
       primaryField,
       projectId: input.projectId,
@@ -502,6 +510,21 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
     const normalized = record ? toRecord(record, tableDate) : null;
     if (!normalized) throw new Error("飞书多维表格新增记录后未返回 record_id");
     return normalized;
+  }
+
+  private async backfillBambooTaskTime(input: {
+    config: AlertTroubleshooterConfig;
+    pluginId: string;
+    tableDate: string;
+    existing: AlertTroubleshooterRecord;
+    bambooRecord: ReturnType<typeof parseBambooAlertRecord>;
+  }): Promise<AlertTroubleshooterRecord> {
+    const taskTime = input.bambooRecord ? bambooTaskTimeMs(input.bambooRecord) : null;
+    if (input.existing.taskTime || taskTime === null) return input.existing;
+    await this.update(input.config, input.pluginId, input.tableDate, input.existing.recordId, {
+      [BAMBOO_RECORD_FIELDS.taskTime]: taskTime,
+    });
+    return { ...input.existing, taskTime: new Date(taskTime).toISOString() };
   }
 
   async listUnclaimed(input: {

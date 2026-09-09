@@ -3,6 +3,7 @@ import {
   BAMBOO_RECORD_FIELDS,
   type BambooAlertRecordData,
   type BambooRecordStatus,
+  normalizeBambooTaskTime,
 } from "./bamboo-alert-record-contract.js";
 
 export type BitableWritableFields = Record<string, string | number | boolean>;
@@ -30,18 +31,36 @@ export function bambooStatusFields(status: BambooRecordStatus): BitableWritableF
   return { [BAMBOO_RECORD_FIELDS.status]: status };
 }
 
+export function bambooTaskTimeMs(record: BambooAlertRecordData): number | null {
+  const extra = parseBambooExtra(record.extra);
+  const candidates = [
+    record.taskTime,
+    extra.bamboo_check_time,
+    extra.message_sent_at,
+    extra.message_sent_at_ms,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+    const normalized = normalizeBambooTaskTime(candidate);
+    if (!normalized) continue;
+    const parsed = Date.parse(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 export function bambooMessageFields(
   record: BambooAlertRecordData,
   metadata: BambooAttributionMetadata,
 ): BitableWritableFields {
-  const taskTime = Date.parse(record.taskTime);
+  const taskTime = bambooTaskTimeMs(record);
   return {
     [BAMBOO_RECORD_FIELDS.uniqueId]: record.uniqueId,
     [BAMBOO_RECORD_FIELDS.resultId]: record.resultId,
     [BAMBOO_RECORD_FIELDS.alarmRecordDetailId]: "",
     [BAMBOO_RECORD_FIELDS.taskId]: record.taskId,
     [BAMBOO_RECORD_FIELDS.taskName]: record.taskName,
-    ...(Number.isFinite(taskTime) ? { [BAMBOO_RECORD_FIELDS.taskTime]: taskTime } : {}),
+    ...(taskTime === null ? {} : { [BAMBOO_RECORD_FIELDS.taskTime]: taskTime }),
     [BAMBOO_RECORD_FIELDS.bambooUrl]: record.bambooUrl,
     [BAMBOO_RECORD_FIELDS.createdAt]: Date.now(),
     [BAMBOO_RECORD_FIELDS.taskSql]: "",

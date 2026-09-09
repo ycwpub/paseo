@@ -42,4 +42,31 @@ describe("Bamboo alert record contract", () => {
   it("normalizes legacy prefixed unique ids", () => {
     expect(normalizeBambooUniqueId("result_id:123456")).toBe("123456");
   });
+
+  it("removes Markdown decoration from the alert time before persisting it", () => {
+    const record = parseBambooAlertRecord({
+      eventId: "evt_19630485",
+      messageId: "om_19630485",
+      chatId: "oc_alerts",
+      chatType: "group",
+      messageType: "interactive",
+      threadId: null,
+      rootMessageId: null,
+      openId: null,
+      unionId: null,
+      displayName: "Bamboo",
+      topicName: "对账报警",
+      text: [
+        "【数据监控-bamboo-WARNING】触发单未按时生成父分账单",
+        "result_id=19630485",
+        "**告警时间:** ** 2026-09-09T14:41:59.230",
+      ].join("\n"),
+      createTime: Date.parse("2026-09-09T07:25:27.965Z"),
+    });
+
+    expect(record?.taskTime).toBe("2026-09-09T14:41:59.230");
+    expect(JSON.parse(record?.extra ?? "{}")).toMatchObject({
+      bamboo_check_time: "2026-09-09T14:41:59.230",
+    });
+  });
 });

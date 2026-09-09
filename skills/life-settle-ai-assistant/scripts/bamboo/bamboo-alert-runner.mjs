@@ -1266,7 +1266,7 @@ function extractTroubleshootingDocTemplateFromSopMarkdown(markdown) {
         parsed?.docTemplate,
       );
       if (value) return value.trim();
-    } catch (_) {
+    } catch {
       // 继续尝试行式配置。
     }
   }
@@ -1947,15 +1947,6 @@ const DAILY_BASE_SCHEMA_FIELDS = [
   { field_name: "last_error", type: "text" },
 ];
 const DAILY_BASE_DEFAULT_FIELD_NAMES = ["Text", "Single option", "Date", "Attachment"];
-const DAILY_BASE_REQUIRED_FIELDS = [
-  "status",
-  "result_id",
-  "bamboo_url",
-  "ai_summary",
-  "ai_result",
-  "ai_finished_at",
-  "extra",
-];
 const CHAT_MESSAGE_CSV_FIELDS = [
   "message_id",
   "chat_id",
@@ -2416,16 +2407,19 @@ function selectDailyBaseNodes({ nodes, dateKeys, bizSuffix, claimOrder = "update
     // 默认 updated_time_desc（新日报先处理，今天先 claim，保证新告警优先）
     return Number(b.node.updated_time || 0) - Number(a.node.updated_time || 0);
   });
-  const enriched = withMatchInfo.map(({ node, match, dateKey }) => ({
-    ...node,
-    date_key: dateKey || "",
-    biz_suffix_match: {
-      canonical: match.canonical,
-      original: match.original,
-      matched_suffix: match.matchedSuffix,
-      was_fallback: match.wasFallback,
-    },
-  }));
+  const enriched = [];
+  for (const { node, match, dateKey } of withMatchInfo) {
+    enriched.push({
+      ...node,
+      date_key: dateKey || "",
+      biz_suffix_match: {
+        canonical: match.canonical,
+        original: match.original,
+        matched_suffix: match.matchedSuffix,
+        was_fallback: match.wasFallback,
+      },
+    });
+  }
   return enriched;
 }
 
@@ -2515,25 +2509,26 @@ function normalizeVisibleFieldNames(payload) {
 }
 
 function normalizeBaseFieldDefinitions(payload) {
-  return getItems(payload)
-    .map((field) => {
-      if (typeof field === "string") {
-        return { field_name: field, name: field, type: "" };
-      }
-      const fieldName = normalizeFieldName(field);
-      if (!fieldName) return null;
-      return {
-        ...field,
-        field_name: fieldName,
-        name: fieldName,
-        type: String(field?.type || field?.ui_type || field?.field_type || "")
-          .trim()
-          .toLowerCase(),
-        style: field?.style || field?.formatter || field?.property?.formatter || {},
-        options: field?.options || field?.property?.options || field?.property?.options_list || [],
-      };
-    })
-    .filter(Boolean);
+  const definitions = [];
+  for (const field of getItems(payload)) {
+    if (typeof field === "string") {
+      definitions.push({ field_name: field, name: field, type: "" });
+      continue;
+    }
+    const fieldName = normalizeFieldName(field);
+    if (!fieldName) continue;
+    definitions.push({
+      ...field,
+      field_name: fieldName,
+      name: fieldName,
+      type: String(field?.type || field?.ui_type || field?.field_type || "")
+        .trim()
+        .toLowerCase(),
+      style: field?.style || field?.formatter || field?.property?.formatter || {},
+      options: field?.options || field?.property?.options || field?.property?.options_list || [],
+    });
+  }
+  return definitions;
 }
 
 function explicitPrimaryFieldName(fieldDefinitions) {
@@ -2584,16 +2579,6 @@ function withDailyBaseSchemaErrorCode(blocker) {
     error_code: dailyBaseSchemaErrorCode(blocker.code),
     ...blocker,
   };
-}
-
-function normalizeDateTimeSecondText(value) {
-  const scalar = extractSingleCellValue(value);
-  if (scalar === undefined || scalar === null) return "";
-  if (typeof scalar === "number" && Number.isFinite(scalar)) {
-    const ms = scalar < 1000000000000 ? scalar * 1000 : scalar;
-    return formatDateTimeSecond(ms);
-  }
-  return String(scalar).trim();
 }
 
 function hasSecondPrecision(value) {
@@ -2847,7 +2832,7 @@ function modelResultMarkdownCandidates({ resultDir, workItem }) {
     .map((value) => String(value || "").trim())
     .filter(Boolean);
   const candidates = [];
-  for (const key of [...new Set(keys)]) {
+  for (const key of new Set(keys)) {
     candidates.push(join(resultDir, `${key}.md`));
     candidates.push(join(resultDir, `doc-${key}.md`));
   }
@@ -2923,7 +2908,9 @@ async function findModelResultMarkdownForWorkItem({ resultDir, workItem }) {
       }
     } catch (error) {
       if (error?.code === "ENOENT") continue;
-      throw new Error(`Invalid model result Markdown ${filePath}: ${error.message}`);
+      throw new Error(`Invalid model result Markdown ${filePath}: ${error.message}`, {
+        cause: error,
+      });
     }
   }
   return {
@@ -2940,7 +2927,7 @@ function workItemArtifactKeys(workItem) {
 
 function modelResultReviewCandidates({ resultDir, workItem }) {
   const candidates = [];
-  for (const key of [...new Set(workItemArtifactKeys(workItem))]) {
+  for (const key of new Set(workItemArtifactKeys(workItem))) {
     candidates.push(join(resultDir, `${key}.review.json`));
     candidates.push(join(resultDir, `review-${key}.json`));
   }
@@ -2949,7 +2936,7 @@ function modelResultReviewCandidates({ resultDir, workItem }) {
 
 function modelResultPublishAuditCandidates({ resultDir, workItem }) {
   const candidates = [];
-  for (const key of [...new Set(workItemArtifactKeys(workItem))]) {
+  for (const key of new Set(workItemArtifactKeys(workItem))) {
     candidates.push(join(resultDir, `publish-doc-${key}.json`));
     candidates.push(join(resultDir, `${key}.doc.json`));
   }
@@ -4547,7 +4534,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
   }
 
   function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return new Promise((complete) => setTimeout(complete, ms));
   }
 
   async function runJsonOnce(command, options = {}) {
@@ -4796,10 +4783,6 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
     }
     const payload = await runJson(buildBambooResultCommand(normalizedResultId));
     return getBambooResultData(payload);
-  }
-
-  async function fetchAlarmRecordDetailId(resultId) {
-    return extractAlarmRecordDetailIdFromBambooResult(await fetchBambooResult(resultId));
   }
 
   return {
@@ -5337,16 +5320,16 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
         if (!keepTemp) {
           try {
             await unlink(messageCsvPath);
-          } catch (_) {}
+          } catch {}
           try {
             const files = await readdir(tempDir);
             await Promise.all(
               files.map((file) => unlink(join(tempDir, file)).catch(() => undefined)),
             );
-          } catch (_) {}
+          } catch {}
           try {
             await rm(tempDir, { recursive: true, force: true });
-          } catch (_) {}
+          } catch {}
         }
       }
     },
@@ -5398,7 +5381,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
               __cache_key: memCacheKey,
             };
           }
-        } catch (_cacheMiss) {
+        } catch {
           // cache miss = normal path，不抛错、不告警
         }
       }
@@ -5757,7 +5740,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       } finally {
         try {
           await unlink(filePath);
-        } catch (_) {}
+        } catch {}
       }
     },
 
@@ -5840,9 +5823,9 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             reasons: aiSummaryValidation.reasons,
             hints: aiSummaryValidation.hints,
             sample_fixed: aiSummaryValidation.sampleFixed,
-            reason: `ai_summary 不符合 skill 约束，禁止写入 status=succeeded，必须按 hints/sample_fixed 一直改到 valid=true 为止。当前 ai_summary=\"${String(
+            reason: `ai_summary 不符合 skill 约束，禁止写入 status=succeeded，必须按 hints/sample_fixed 一直改到 valid=true 为止。当前 ai_summary="${String(
               summary,
-            ).slice(0, 200)}\"; 具体原因：${aiSummaryValidation.reasons.join(" | ")}`,
+            ).slice(0, 200)}"; 具体原因：${aiSummaryValidation.reasons.join(" | ")}`,
           });
         }
       } else if (summary) {
@@ -5877,10 +5860,10 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             },
             reasons: failedStatusValidation.reasons,
             hints: failedStatusValidation.hints,
-            reason: `status=failed 不符合 AGENTS.md 准入约束，禁止写入。必须按 hints 改成 pending/succeeded 或补齐合法 failedAdmission 后重跑。当前 summary=\"${summary.slice(
+            reason: `status=failed 不符合 AGENTS.md 准入约束，禁止写入。必须按 hints 改成 pending/succeeded 或补齐合法 failedAdmission 后重跑。当前 summary="${summary.slice(
               0,
               200,
-            )}\"; 具体原因：${failedStatusValidation.reasons.join(" | ")}`,
+            )}"; 具体原因：${failedStatusValidation.reasons.join(" | ")}`,
           });
         }
       }
@@ -6927,10 +6910,10 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       } finally {
         try {
           await unlink(relPath);
-        } catch (_) {}
+        } catch {}
         try {
           await unlink(jsonPath);
-        } catch (_) {}
+        } catch {}
       }
     },
 
@@ -7603,7 +7586,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       if (!qcResObj && qc_result_json && typeof qc_result_json === "string") {
         try {
           qcResObj = JSON.parse(qc_result_json);
-        } catch (_) {
+        } catch {
           qcResObj = null;
         }
       }
@@ -7611,7 +7594,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       if (!workItemObj && work_item_json && typeof work_item_json === "string") {
         try {
           workItemObj = JSON.parse(work_item_json);
-        } catch (_) {
+        } catch {
           workItemObj = null;
         }
       }
@@ -7688,7 +7671,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             2,
           );
           await writeJsonFile(previewOutFile, JSON.parse(outJson));
-        } catch (_) {
+        } catch {
           // 写文件失败不影响主流程
         }
       }
@@ -7818,7 +7801,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             effectiveTemplateDoc = extractTroubleshootingDocTemplateFromSopMarkdown(sopMarkdown);
             if (effectiveTemplateDoc) docTemplateSource = "troubleshooting_sop_doc";
           }
-        } catch (_error) {
+        } catch {
           effectiveTemplateDoc = "";
           docTemplateSource = "troubleshooting_sop_doc_unreadable";
         }
@@ -7901,7 +7884,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             ).map((item) => normalizeNodeItem(item, targetSpaceId));
             const matchedNode = listAfter.find((node) => node.obj_token === docToken);
             if (matchedNode?.node_token) resolvedWikiNodeToken = matchedNode.node_token;
-          } catch (_requeryErr) {
+          } catch {
             // 反查失败不影响主流程，URL 会降级为 docx 直链 + __raw_docx_url 原样
           }
         } catch (error) {
@@ -7930,17 +7913,16 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       // 【任务 8】Markdown 内容 nul byte / 控制字符预检（写 overwrite 之前做，避免 bytedcli SpawnFailed nul byte）
       //   允许范围：可打印 ASCII \x20-\x7E、TAB \x09、LF \x0A、CR \x0D + 合法 UTF-8 多字节
       //   拦截范围：NUL\0 / BS\b\x08 / VT\v\x0B-\x1F / DEL\x7F
-      const controlCharRe = /[\0-\x08\x0B-\x1F\x7F]/;
       const markdownToCheck = typeof markdown === "string" ? markdown : "";
-      if (controlCharRe.test(markdownToCheck)) {
-        const badOffsets = [];
-        const g = /[\0-\x08\x0B-\x1F\x7F]/g;
-        let m;
-        while ((m = g.exec(markdownToCheck)) !== null) {
-          const code = markdownToCheck.charCodeAt(m.index);
-          badOffsets.push({ offset: m.index, hex: `0x${code.toString(16).padStart(2, "0")}` });
+      const badOffsets = [];
+      for (let index = 0; index < markdownToCheck.length; index += 1) {
+        const code = markdownToCheck.charCodeAt(index);
+        if ((code >= 0 && code <= 8) || (code >= 11 && code <= 31) || code === 127) {
+          badOffsets.push({ offset: index, hex: `0x${code.toString(16).padStart(2, "0")}` });
           if (badOffsets.length >= 10) break;
         }
+      }
+      if (badOffsets.length > 0) {
         const err = new Error(
           `publishTroubleshootingDoc: markdown contains NUL/control characters (${badOffsets.length}+ positions, ` +
             `first offset=${badOffsets[0]?.offset ?? -1} hex=${badOffsets[0]?.hex ?? "??"}). ` +
@@ -8114,7 +8096,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             docKeyToRecords.get(key).push(entry);
             scan.records_with_doc += 1;
           }
-        } catch (_) {
+        } catch {
           // 单个 Base 读取失败不影响整体审计
         }
 
@@ -8415,7 +8397,6 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       statusOnly = false,
       preflightOnly = false,
       denyExistingProcessing = true,
-      allowBatchClaim = false,
       aiSessionId,
       autoRecoverStaleProcessing = false,
       processingMaxAgeMinutes = 120,
@@ -8476,13 +8457,6 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
         skippedNearbySupported: 0,
       };
       if (dailyBases.length === 0) {
-        const normalizedClaimOrder =
-          claimOrder === "task_date_asc" || claimOrder === "updated_time_desc"
-            ? claimOrder
-            : "updated_time_desc";
-        const readOnlyPrepare = Boolean(statusOnly || preflightOnly);
-        const normalizedClaimLimit = readOnlyPrepare ? 0 : Math.max(0, unsafeBatch);
-        const processingSessionId = buildProcessingSessionId(aiSessionId);
         const drainSafety = {
           safe_to_declare_drained: false,
           reason: "no_daily_bases_matched",
@@ -9905,7 +9879,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
           try {
             markdown = await readFile(candidate, "utf8");
             break;
-          } catch (_e) {
+          } catch {
             // keep looking
           }
         }
@@ -10042,7 +10016,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
         let sopNodeToken = sopDoc;
         try {
           sopNodeToken = extractWikiNodeToken(sopDoc);
-        } catch (_) {
+        } catch {
           sopNodeToken = sopDoc;
         }
         const sopNodePayload = await runJson(buildWikiNodeGetCommand({ scanDirUrl: sopNodeToken }));
@@ -10204,7 +10178,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             const url = new URL(String(ruleDocUrl));
             const parts = url.pathname.split("/").filter(Boolean);
             return parts[parts.length - 1] || ruleDocUrl;
-          } catch (_) {
+          } catch {
             return ruleDocUrl;
           }
         })();
@@ -10347,7 +10321,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
         taskResultNum: taskResultNum ?? task_result_num,
       });
       const qc = classifyQuickClosureConditions({
-        ...(inspect.result || {}),
+        ...inspect.result,
         taskResultNum: taskResultNum ?? task_result_num,
       });
       // 2) 派生字段：bambooUrl / task_name / task_date / rule_id（兼容 inspect 原始、--task-* 参数、workItem 结构）
@@ -10385,7 +10359,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             const day = String(d.getDate()).padStart(2, "0");
             return `${y}${m}${day}`;
           }
-        } catch (_) {}
+        } catch {}
         return String(taskDate || task_date || "");
       };
       const finalTaskDate = taskDate || task_date || toTaskDate(rawTaskTime) || "20260101";
@@ -11563,7 +11537,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
               await readFile(join(normalizedResultDir, `${resultId}.json`), "utf8"),
             );
             if (direct && typeof direct === "object") modelResult = direct;
-          } catch (_e) {
+          } catch {
             /* noop */
           }
 
@@ -11588,7 +11562,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                   if (rawQc && typeof rawQc === "object") qc = rawQc;
                 }
                 if (!singlePrep && obj && obj.work_item) singlePrep = obj;
-              } catch (_e) {
+              } catch {
                 /* noop */
               }
             }
@@ -11654,7 +11628,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                 ).trim();
                 if (status && docArchiveStatus === "skipped")
                   docArchiveStatus = status === "failed" ? "failed" : "succeeded";
-              } catch (_e) {
+              } catch {
                 /* noop */
               }
             }
@@ -11667,7 +11641,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
               ]) {
                 try {
                   mdText = mdText || (await readFile(candidate, "utf8"));
-                } catch (_e) {
+                } catch {
                   /* noop */
                 }
               }
@@ -11722,7 +11696,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                 sopStatus = String(obj?.sop_writeback_status || obj?.status || "skipped").trim();
                 sopReason = String(obj?.sop_writeback_reason || obj?.reason || sopReason).trim();
                 break;
-              } catch (_e) {
+              } catch {
                 /* noop */
               }
             }
@@ -11739,7 +11713,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                 });
                 sopStatus = String(sop?.sop_writeback_status || "skipped").trim();
                 sopReason = String(sop?.sop_writeback_reason || sopReason).trim();
-              } catch (_e) {
+              } catch {
                 /* 失败仍保持 skipped */
               }
             }
@@ -11790,7 +11764,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                 `${JSON.stringify(modelResult, null, 2)}\n`,
                 "utf8",
               );
-            } catch (_e) {
+            } catch {
               /* noop */
             }
           }
@@ -11826,7 +11800,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                   `${JSON.stringify(modelResult, null, 2)}\n`,
                   "utf8",
                 );
-              } catch (_e) {
+              } catch {
                 /* noop */
               }
             }
@@ -11852,7 +11826,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                 `${JSON.stringify(modelResult, null, 2)}\n`,
                 "utf8",
               );
-            } catch (_e) {
+            } catch {
               /* noop */
             }
           }
@@ -11881,7 +11855,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
                   fieldName: statusField,
                   optionName: "processing",
                 });
-              } catch (_e) {
+              } catch {
                 /* noop */
               }
               await runJson(
@@ -11894,7 +11868,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
               );
               claimed = true;
             }
-          } catch (_e) {
+          } catch {
             /* claimed=false 但仍继续，closePreparedWorkItem 不强制要求 processing */
           }
 
@@ -11944,8 +11918,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
         summary.shouldProceed = false;
       } else if (summary.succeeded > 0) {
         summary.decisionHint = `批量快速闭环回写部分成功：${summary.succeeded}/${summary.processed} 成功，${summary.failed} 失败，请检查 failures[] 列表。${remainingHint}`;
-        summary.shouldProceed =
-          summary.totalNearbyClaimable?.skippedNearbySupported > 0 ? true : false;
+        summary.shouldProceed = summary.totalNearbyClaimable?.skippedNearbySupported > 0;
       } else {
         summary.decisionHint = `批量快速闭环回写失败：${summary.processed} 条中 ${summary.failed} 条失败，${summary.skipped} 条跳过，请先修复 failures[] 原因或确认 resultDir=${normalizedResultDir} 下是否存在 <result_id>.json/inspect/doc 产物。${remainingHint}`;
         summary.shouldProceed = false;
@@ -13344,11 +13317,11 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
           finalClassification = inspect.classification || null;
           if (!finalQc) {
             finalQc = classifyQuickClosureConditions({
-              ...(inspect.result || {}),
+              ...inspect.result,
               taskResultNum: input.taskResultNum ?? input.task_result_num,
             });
           }
-        } catch (_err) {
+        } catch {
           /* classification 缺失不报错，兜底用 whitelist */
         }
       }
@@ -13516,7 +13489,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
           const mdPath = path.resolve(`.tmp/base-analysis-${Date.now()}.md`);
           await mkdir(dirname(mdPath), { recursive: true });
           await writeFile(mdPath, baseAnalysis.analysis_markdown, "utf8");
-        } catch (_writeErr) {
+        } catch {
           /* 写入失败不影响 docToken 已创建的结果 */
         }
       }
@@ -13704,9 +13677,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
             (candidates.topCandidate && candidates.topCandidate.label) ||
             "[有效告警]其他原因(需要修数)";
           const isQuick =
-            candidates.topCandidate && candidates.topCandidate.source === "WHITELIST_QC"
-              ? true
-              : false;
+            Boolean(candidates.topCandidate) && candidates.topCandidate.source === "WHITELIST_QC";
           const suggestedStatus = candidates.is_new_issue ? "pending" : "succeeded";
           const modelResult = {
             result_id: rid,
@@ -13810,7 +13781,7 @@ export function createBambooAlertRunner({ execFile = execFilePromise, env = proc
       }
       const result = validateRpcRequest({ psm, method, params, schemas });
       // 硬约束：若 invalid 且 strictMode=true（默认 true）则直接 throw，禁止 bypass
-      const strictMode = input.strictMode === false ? false : true;
+      const strictMode = input.strictMode !== false;
       if (!result.overallValid && strictMode) {
         const msg = `validate-rpc-request [HARD FAIL] psm=${psm}/${method} invalid，禁止 bypass。前 ${result.reasons.length} 条原因：\n  - ${result.reasons.slice(0, 15).join("\n  - ")}`;
         throw Object.assign(new Error(msg), { validationOutput: result });
@@ -14106,7 +14077,7 @@ async function main(argv) {
       claimOrder: readOption(args, "--claim-order"),
       statusOnly: readFlag(args, "--status-only"),
       preflightOnly: readFlag(args, "--preflight-only"),
-      denyExistingProcessing: readFlag(args, "--allow-existing-processing") ? false : true,
+      denyExistingProcessing: !readFlag(args, "--allow-existing-processing"),
       aiSessionId: readOption(args, "--ai-session-id"),
       allowBatchClaim: readFlag(args, "--allow-batch-claim"),
       autoRecoverStaleProcessing: readFlag(args, "--auto-recover-stale-processing"),
@@ -14650,7 +14621,7 @@ async function main(argv) {
       failedAttemptsRequired: readOption(args, "--failed-attempts-required")
         ? Number(readOption(args, "--failed-attempts-required"))
         : 3,
-      strictMode: args.includes("--no-strict") ? false : true,
+      strictMode: !args.includes("--no-strict"),
     });
     const outputFile = readOption(args, "--output-file");
     if (outputFile) {
@@ -14874,7 +14845,7 @@ async function main(argv) {
       method: readOption(args, "--method") || "",
       params: params || {},
       schemasFile,
-      strictMode: args.includes("--no-strict") ? false : true,
+      strictMode: !args.includes("--no-strict"),
     });
     const outputFile = readOption(args, "--output-file");
     if (outputFile) {
@@ -14891,7 +14862,7 @@ if (isMainModule(import.meta.url)) {
   const emitNdjson = process.argv.slice(2).includes("--heartbeat");
   main(process.argv.slice(2))
     .then((result) => {
-      process.stdout.write(
+      return process.stdout.write(
         `${emitNdjson ? JSON.stringify(result) : JSON.stringify(result, null, 2)}\n`,
       );
     })

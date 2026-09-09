@@ -172,7 +172,7 @@ export function validateAiSummary(summary, opts = {}) {
     .replace(/原因[：:]/g, "")
     .replace(/根因[：:]/g, "")
     .replace(/分析[：:]/g, "")
-    .replace(/[，。；、！？,\.;!\?\-—\:"'"'`~()（）【】《》<>\[\]{}|\\#@$%^&*_+=…·\/\s]/g, "")
+    .replace(/[，。；、！？,.;!?\-—:"'"'`~()（）【】《》<>[\]{}|\\#@$%^&*_+=…·/\s]/g, "")
     .trim();
 
   if (raw && cleaned.length < minFreeTextLength) {
@@ -989,7 +989,7 @@ function classifyHiveRuntimeFailureFromText(haystack, { resultId = "", ruleId = 
 }
 
 export function classifyBySqlAndSamples(result = {}) {
-  const { text, sampleCount, hasFalseReason, ruleId, resultId, taskName } =
+  const { text, sampleCount, hasFalseReason, ruleId, resultId } =
     collectSqlAndSampleEvidence(result);
   const haystack = text.replace(/\s+/g, " ");
   const lower = haystack.toLowerCase();
@@ -1732,7 +1732,7 @@ export function validateNeedsManualConfirmation(status, opts = {}) {
       );
       break;
     case "succeeded":
-      needs = Boolean(opts.overrideByDoc) ? true : false;
+      needs = Boolean(opts.overrideByDoc);
       if (needs)
         reasons.push(
           "status=succeeded 因 SOP 文档标注需要人工 follow-up，needs_manual_review=true",
@@ -1819,7 +1819,6 @@ export function normalizeAiSummaryLengthAndKeywords(aiSummary, opts = {}) {
   if (normalizedAttribution) {
     normalized = normalizeAttributionSummary(normalized, normalizedAttribution);
   }
-  let missingKeywords = false;
   if (requireFreeTextKeywords) {
     const freeText = normalized.replace(/\[(有效|无效)告警\][^\s，。；\n]+/g, "").trim();
     const kwRequired = [
@@ -1832,7 +1831,6 @@ export function normalizeAiSummaryLengthAndKeywords(aiSummary, opts = {}) {
     ];
     const hit = kwRequired.some((kw) => freeText.includes(kw));
     if (!hit) {
-      missingKeywords = true;
       valid = false;
       reasons.push(
         `ai_summary 去掉固定归因后的自由文案缺少状态关键词，应至少包含：${kwRequired.join(" / ")} 之一`,
@@ -1888,7 +1886,7 @@ export function normalizeAiSummaryLengthAndKeywords(aiSummary, opts = {}) {
 //   P-5: code_idl_config.status ∈ {done, blocked, not_applicable}
 //   P-6: closure_candidates.status ∈ {done, blocked, not_applicable} 且至少 2 项候选被评估
 // 任一不通过 → hardFailCode=P-N，deepValid=false，不再继续
-export function deepValidatePendingAdmission(pendingAdmission, context = {}) {
+export function deepValidatePendingAdmission(pendingAdmission, _context = {}) {
   if (!pendingAdmission || typeof pendingAdmission !== "object") {
     return {
       deepValid: false,
@@ -1936,7 +1934,7 @@ export function deepValidatePendingAdmission(pendingAdmission, context = {}) {
     };
   }
   const authReq = pendingAdmission.authorization_request || {};
-  const allowedStatuses = ["done", "blocked", "not_applicable"];
+  const allowedStatuses = new Set(["done", "blocked", "not_applicable"]);
   const checks = [
     {
       code: "P-1",
@@ -1980,7 +1978,7 @@ export function deepValidatePendingAdmission(pendingAdmission, context = {}) {
       code: "P-3",
       run: () => {
         const c = pendingAdmission.current_online_state || {};
-        if (!allowedStatuses.includes(c.status))
+        if (!allowedStatuses.has(c.status))
           return {
             ok: false,
             reason: `current_online_state.status=${c.status}，必须∈{done,blocked,not_applicable}`,
@@ -1997,7 +1995,7 @@ export function deepValidatePendingAdmission(pendingAdmission, context = {}) {
       code: "P-4",
       run: () => {
         const c = pendingAdmission.permission_blockers || {};
-        if (!allowedStatuses.includes(c.status))
+        if (!allowedStatuses.has(c.status))
           return {
             ok: false,
             reason: `permission_blockers.status=${c.status}，必须∈{done,blocked,not_applicable}`,
@@ -2014,7 +2012,7 @@ export function deepValidatePendingAdmission(pendingAdmission, context = {}) {
       code: "P-5",
       run: () => {
         const c = pendingAdmission.code_idl_config || {};
-        if (!allowedStatuses.includes(c.status))
+        if (!allowedStatuses.has(c.status))
           return {
             ok: false,
             reason: `code_idl_config.status=${c.status}，必须∈{done,blocked,not_applicable}`,
@@ -2026,7 +2024,7 @@ export function deepValidatePendingAdmission(pendingAdmission, context = {}) {
       code: "P-6",
       run: () => {
         const c = pendingAdmission.closure_candidates || {};
-        if (!allowedStatuses.includes(c.status))
+        if (!allowedStatuses.has(c.status))
           return {
             ok: false,
             reason: `closure_candidates.status=${c.status}，必须∈{done,blocked,not_applicable}`,

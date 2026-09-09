@@ -319,6 +319,21 @@
       }
     },
     {
+      "files": [
+        "skills/life-settle-ai-assistant/scripts/bamboo/bamboo-alert-runner.mjs",
+        "skills/life-settle-ai-assistant/scripts/bamboo/bamboo-alert-workflow.mjs",
+        ".claude/skills/life-settle-ai-assistant/scripts/bamboo/bamboo-alert-runner.mjs",
+        ".claude/skills/life-settle-ai-assistant/scripts/bamboo/bamboo-alert-workflow.mjs",
+        ".trae/skills/life-settle-ai-assistant/scripts/bamboo/bamboo-alert-runner.mjs",
+        ".trae/skills/life-settle-ai-assistant/scripts/bamboo/bamboo-alert-workflow.mjs"
+      ],
+      "rules": {
+        "complexity": "off",
+        "max-depth": "off",
+        "no-nested-ternary": "off"
+      }
+    },
+    {
       "files": ["**/e2e/**/fixtures.ts"],
       "rules": {
         "no-empty-pattern": "off"

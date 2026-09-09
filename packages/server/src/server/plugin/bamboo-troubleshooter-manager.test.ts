@@ -82,6 +82,22 @@ describe("BambooTroubleshooterManager", () => {
         text: "Bamboo 对账报警 result_id=456",
         createTime: Date.parse("2026-09-04T07:30:00.000Z"),
       },
+      {
+        eventId: "history:om-unrelated",
+        messageId: "om-unrelated",
+        chatId: "oc_alerts",
+        chatType: "group" as const,
+        messageType: "interactive",
+        threadId: null,
+        rootMessageId: null,
+        openId: null,
+        unionId: null,
+        senderType: "app",
+        displayName: "其他系统",
+        topicName: "报警",
+        text: "其他系统报警，请及时处理",
+        createTime: Date.parse("2026-09-04T07:29:00.000Z"),
+      },
     ]);
     const createAgent = vi.fn(async () => ({
       snapshot: { id: "agent-1" },
@@ -188,6 +204,13 @@ describe("BambooTroubleshooterManager", () => {
       createTime: Date.parse("2026-09-04T07:59:00.000Z"),
     };
     try {
+      await manager.observeIncomingMessage("bot-1", {
+        ...event,
+        eventId: "evt-unrelated",
+        messageId: "om-unrelated-realtime",
+        displayName: "其他系统",
+        text: "其他系统报警，请及时处理",
+      });
       await manager.observeIncomingMessage("bot-1", event);
       await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(1));
       await manager.observeIncomingMessage("bot-1", event);

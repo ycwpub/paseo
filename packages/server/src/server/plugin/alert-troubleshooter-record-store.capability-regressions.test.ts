@@ -374,6 +374,66 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     );
   });
 
+  it("backfills a missing task_time when a duplicate Bamboo alert is scanned again", async () => {
+    mocks.search.mockResolvedValueOnce({
+      code: 0,
+      data: {
+        items: [
+          {
+            record_id: "rec_19630485",
+            fields: {
+              unique_id: "19630485",
+              result_id: "19630485",
+              task_name: "触发单未按时生成父分账单",
+              status: "init",
+            },
+          },
+        ],
+      },
+    });
+
+    const record = await createStore().upsertMessage({
+      config: config(),
+      projectId: "prj_4491f78e4a562498",
+      pluginId: "bamboo-reconciliation-troubleshooter",
+      trigger: "schedule",
+      event: {
+        eventId: "evt_19630485",
+        messageId: "om_19630485",
+        chatId: "oc_alerts",
+        chatType: "group",
+        messageType: "interactive",
+        threadId: null,
+        rootMessageId: null,
+        openId: null,
+        unionId: null,
+        displayName: "Bamboo",
+        topicName: "报警",
+        text: [
+          "【数据监控-bamboo-WARNING】触发单未按时生成父分账单",
+          "result_id=19630485",
+          "**告警时间:** ** 2026-09-09T14:41:59.230",
+        ].join("\n"),
+        createTime: Date.parse("2026-09-09T07:25:27.965Z"),
+      },
+    });
+
+    expect(mocks.update).toHaveBeenCalledWith({
+      path: {
+        app_token: "app_20260909",
+        table_id: "tbl_20260909",
+        record_id: "rec_19630485",
+      },
+      data: {
+        fields: {
+          task_time: Date.parse("2026-09-09T14:41:59.230"),
+        },
+      },
+    });
+    expect(record.taskTime).toBe(new Date("2026-09-09T14:41:59.230").toISOString());
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
   it("polls init and failed Bamboo records with result_id without creating tables", async () => {
     mocks.search.mockImplementation(async ({ path }: { path: { app_token: string } }) => ({
       code: 0,

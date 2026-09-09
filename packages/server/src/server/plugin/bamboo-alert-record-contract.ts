@@ -72,6 +72,15 @@ export function normalizeBambooUniqueId(value: string): string {
   return value.trim().replace(/^result_id\s*[:=：]\s*/iu, "");
 }
 
+export function normalizeBambooTaskTime(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const match =
+    /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2})?)/u.exec(
+      value,
+    )?.[1] ?? "";
+  return Number.isFinite(Date.parse(match)) ? match : "";
+}
+
 export function parseBambooAlertRecord(
   event: NormalizedLarkMessageEvent,
 ): BambooAlertRecordData | null {
@@ -101,10 +110,12 @@ export function parseBambooAlertRecord(
   const timestamp = eventTimestamp(event);
   const messageSentAt = timestamp === null ? null : new Date(timestamp).toISOString();
   const taskTime =
-    firstMatch(event.text, [
-      /告警时间\s*[:：]\s*([^\n]+)/iu,
-      /\btask_time\s*[:=："'\s]+\s*([0-9T:.\-\s]+)/iu,
-    ]) ||
+    normalizeBambooTaskTime(
+      firstMatch(event.text, [
+        /告警时间\s*[:：]\s*([^\n]+)/iu,
+        /\btask_time\s*[:=："'\s]+\s*([^\n]+)/iu,
+      ]),
+    ) ||
     messageSentAt ||
     "";
   const bambooUrl = firstMatch(event.text, [

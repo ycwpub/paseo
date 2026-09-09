@@ -29,6 +29,11 @@ describe("Bamboo alert messages", () => {
     );
   });
 
+  it("does not classify unrelated interactive alarm cards as Bamboo alerts", () => {
+    expect(isBambooAlertMessage("其他系统报警，请及时处理", "interactive")).toBe(false);
+    expect(isBambooAlertMessage("业务告警 result_id=123456", "interactive")).toBe(false);
+  });
+
   it("does not ingest its own troubleshooting result as a new alert", () => {
     const text = "Bamboo 报警自动排查结果\nresult_id: 19562663\n状态: succeeded";
     expect(isBambooTroubleshootingResultMessage(text)).toBe(true);

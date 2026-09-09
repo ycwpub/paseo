@@ -29,6 +29,7 @@ import {
 import { BAMBOO_ATTRIBUTION_FIELD_NAMES } from "./bamboo-attribution-table.js";
 import type { BambooBotCredentialResolver } from "./bamboo-bot-credential-resolver.js";
 import { isMissingAlertTroubleshooterRecordError } from "./alert-troubleshooter-task-reference.js";
+import { isStaleAlertTroubleshooterTableLocation } from "./alert-troubleshooter-table-location-error.js";
 
 const FIELDS = {
   messageId: "消息 ID",
@@ -235,11 +236,6 @@ function normalizeTrigger(value: unknown): AlertTroubleshooterQueueTrigger {
     trigger === "manual"
     ? trigger
     : "table";
-}
-
-function isStaleTableLocationError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return /\b(?:1254004|1254041|WrongTableId|TableIdNotFound)\b/iu.test(message);
 }
 
 function dateTimeValue(value: unknown): string | null {
@@ -1073,7 +1069,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         const primaryField = await this.ensureFields(api, location, pluginId);
         return { api, location, primaryField };
       } catch (error) {
-        if (!isStaleTableLocationError(error)) throw error;
+        if (!isStaleAlertTroubleshooterTableLocation(error)) throw error;
         this.locations.delete(cacheKey);
       }
     }
@@ -1088,7 +1084,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
       const primaryField = await this.ensureFields(api, location, pluginId);
       return { api, location, primaryField };
     } catch (error) {
-      if (!isStaleTableLocationError(error)) throw error;
+      if (!isStaleAlertTroubleshooterTableLocation(error)) throw error;
       this.locations.delete(cacheKey);
       location = await resolveDailyAlertTable({
         api,
@@ -1121,7 +1117,7 @@ export class LarkAlertTroubleshooterRecordStore implements AlertTroubleshooterRe
         await this.ensureFields(api, cached, pluginId);
         return { api, location: cached };
       } catch (error) {
-        if (!isStaleTableLocationError(error)) throw error;
+        if (!isStaleAlertTroubleshooterTableLocation(error)) throw error;
         this.locations.delete(cacheKey);
       }
     }

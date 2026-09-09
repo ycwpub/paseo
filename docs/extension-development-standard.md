@@ -129,7 +129,10 @@ rows; unknown non-empty business tables must stop cleanup. Deprecated, unknown, 
 dashboard/workflow delete scopes must not be requested. Lark rate limits and
 transient network failures use bounded retries; user OAuth errors, bot permission errors, and
 resource visibility errors remain distinct, and credentials must never be included in logs or
-persisted task errors. Bamboo Runner processes must receive credentials only from the plugin Project
+persisted task errors. A deleted or missing daily Base invalidates both cached locations and stale
+Wiki directory entries; write paths create a replacement Base while read-only discovery treats it
+as absent. Permission and visibility errors must not trigger replacement creation. Bamboo Runner
+processes must receive credentials only from the plugin Project
 configuration. Each configured robot uses an isolated bytedcli Profile, which is initialized before
 the first Lark operation; Runner processes must not read or modify the user's default bytedcli robot
 session. Every monitoring stage that can fail before an Agent task is created,

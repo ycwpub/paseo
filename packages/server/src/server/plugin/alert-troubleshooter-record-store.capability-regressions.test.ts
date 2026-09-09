@@ -175,7 +175,10 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     });
   });
 
-  it("invalidates a cached table location and resolves it again when Lark deletes the table", async () => {
+  it.each([
+    "Lark API error: WrongTableId (code: 1254004)",
+    "Lark API error: note has been deleted (code: 1002)",
+  ])("invalidates a cached table location and resolves it again for %s", async (message) => {
     const store = createStore();
     const input = {
       config: config(),
@@ -186,14 +189,12 @@ describe("LarkAlertTroubleshooterRecordStore result_id debugging", () => {
     await expect(store.resolveExecutionContext(input)).resolves.toMatchObject({
       closeContext: { tableId: "tbl_20260908" },
     });
-    mocks.listFields
-      .mockRejectedValueOnce(new Error("Lark API error: WrongTableId (code: 1254004)"))
-      .mockImplementationOnce(async () => ({
-        code: 0,
-        data: {
-          items: mocks.bambooFieldItems(),
-        },
-      }));
+    mocks.listFields.mockRejectedValueOnce(new Error(message)).mockImplementationOnce(async () => ({
+      code: 0,
+      data: {
+        items: mocks.bambooFieldItems(),
+      },
+    }));
 
     await expect(store.resolveExecutionContext(input)).resolves.toMatchObject({
       closeContext: { tableId: "tbl_20260908" },

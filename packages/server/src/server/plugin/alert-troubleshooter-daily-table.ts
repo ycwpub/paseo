@@ -1,6 +1,7 @@
 import type { LarkAlertTroubleshooterApi } from "./lark-alert-troubleshooter-api.js";
 import { ensureBambooAttributionTable } from "./bamboo-attribution-table.js";
 import { createBambooDailyBase } from "./bamboo-daily-base-creator.js";
+import { isStaleAlertTroubleshooterTableLocation } from "./alert-troubleshooter-table-location-error.js";
 
 export interface AlertTroubleshooterTableLocation {
   appToken: string;
@@ -14,6 +15,12 @@ export interface AlertTroubleshooterTableLocation {
 export interface AlertTroubleshooterWikiRoot {
   spaceId: string;
   nodeToken: string;
+}
+
+interface DailyNode {
+  appToken: string;
+  nodeToken: string;
+  tableId?: string;
 }
 
 function wikiToken(value: string): string {
@@ -64,7 +71,7 @@ async function findDailyNode(
   api: LarkAlertTroubleshooterApi,
   root: AlertTroubleshooterWikiRoot,
   title: string,
-): Promise<{ appToken: string; nodeToken: string } | null> {
+): Promise<DailyNode | null> {
   let pageToken: string | undefined;
   const matches: Array<{
     objToken: string;
@@ -96,14 +103,31 @@ async function findDailyNode(
     pageToken = result.data?.has_more ? result.data.page_token : undefined;
   } while (pageToken);
 
-  if (matches.length > 1) {
+  const availableMatches: typeof matches = [];
+  for (const match of matches) {
+    if (match.objType !== "bitable") {
+      throw new Error(`归因记录根目录下的同名节点不是多维表格：${title}`);
+    }
+    try {
+      await api.request(
+        () =>
+          api.client.bitable.v1.appTable.list({
+            path: { app_token: match.objToken },
+            params: { page_size: 1 },
+          }),
+        { identity: "bot", requiredScopes: ["base:table:read"] },
+      );
+      availableMatches.push(match);
+    } catch (error) {
+      if (!isStaleAlertTroubleshooterTableLocation(error)) throw error;
+    }
+  }
+
+  if (availableMatches.length > 1) {
     throw new Error(`归因记录根目录下存在多个同名节点：${title}`);
   }
-  const match = matches[0];
+  const match = availableMatches[0];
   if (!match) return null;
-  if (match.objType !== "bitable") {
-    throw new Error(`归因记录根目录下的同名节点不是多维表格：${title}`);
-  }
   return { appToken: match.objToken, nodeToken: match.nodeToken };
 }
 
@@ -112,7 +136,7 @@ async function createDailyNode(
   root: AlertTroubleshooterWikiRoot,
   title: string,
   pluginId: string,
-): Promise<{ appToken: string; nodeToken: string }> {
+): Promise<DailyNode> {
   if (pluginId.includes("bamboo")) {
     return createBambooDailyBase({
       api,
@@ -177,12 +201,23 @@ export async function resolveDailyAlertTable(input: {
 }): Promise<AlertTroubleshooterTableLocation> {
   const root = await resolveAlertTroubleshooterWikiRoot(input.api, input.rootUrl);
   const title = dailyTitle(input.pluginId, input.dateKey);
-  const node =
-    (await findDailyNode(input.api, root, title)) ??
-    (await createDailyNode(input.api, root, title, input.pluginId));
+  let node = await findDailyNode(input.api, root, title);
+  let tableId: string | undefined;
+  if (node) {
+    try {
+      tableId = await resolveTableId(input.api, node.appToken, input.pluginId);
+    } catch (error) {
+      if (!isStaleAlertTroubleshooterTableLocation(error)) throw error;
+      node = null;
+    }
+  }
+  if (!node) {
+    node = await createDailyNode(input.api, root, title, input.pluginId);
+    tableId = node.tableId;
+  }
   return {
     appToken: node.appToken,
-    tableId: await resolveTableId(input.api, node.appToken, input.pluginId),
+    tableId: tableId ?? (await resolveTableId(input.api, node.appToken, input.pluginId)),
     spaceId: root.spaceId,
     nodeToken: node.nodeToken,
     dateKey: input.dateKey,
@@ -200,9 +235,16 @@ export async function resolveExistingDailyAlertTable(input: {
   const title = dailyTitle(input.pluginId, input.dateKey);
   const node = await findDailyNode(input.api, root, title);
   if (!node) return null;
+  let tableId: string;
+  try {
+    tableId = await resolveTableId(input.api, node.appToken, input.pluginId);
+  } catch (error) {
+    if (isStaleAlertTroubleshooterTableLocation(error)) return null;
+    throw error;
+  }
   return {
     appToken: node.appToken,
-    tableId: await resolveTableId(input.api, node.appToken, input.pluginId),
+    tableId,
     spaceId: root.spaceId,
     nodeToken: node.nodeToken,
     dateKey: input.dateKey,
